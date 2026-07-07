@@ -1,0 +1,22 @@
+{
+  "name": "@pi-interface/server",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "start": "tsx src/index.ts",
+    "typecheck": "tsc --noEmit",
+    "build": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@earendil-works/pi-coding-agent": "^0.80.3",
+    "fastify": "^5.3.0",
+    "@fastify/websocket": "^11.0.2"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.0",
+    "typescript": "^5.8.0",
+    "@types/node": "^24.0.0",
+    "@types/ws": "^8.18.0"
+  }
+}
