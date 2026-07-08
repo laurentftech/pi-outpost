@@ -1,55 +1,95 @@
 import { useEffect, useRef } from "react";
 import { AssistantMessage } from "./components/AssistantMessage";
 import { Composer } from "./components/Composer";
+import { Header } from "./components/Header";
 import { ToolCard } from "./components/ToolCard";
 import { useAgent } from "./useAgent";
 
 export default function App() {
-  const { state, prompt, abort } = useAgent();
+  const {
+    state,
+    prompt,
+    abort,
+    setModel,
+    setThinking,
+    newSession,
+    switchSession,
+    deleteSession,
+    listSessions,
+  } = useAgent();
+  const mainRef = useRef<HTMLElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const stickToBottom = useRef(true);
 
-  // Auto-scroll while streaming
+  // Track whether the user is reading scrollback: only auto-scroll when
+  // already near the bottom (avoids yanking during streaming).
+  function handleScroll() {
+    const main = mainRef.current;
+    if (!main) return;
+    stickToBottom.current = main.scrollHeight - main.scrollTop - main.clientHeight < 120;
+  }
+
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [state.items, state.isStreaming]);
+    if (stickToBottom.current) {
+      bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [state.items]);
+
+  useEffect(() => {
+    document.title = state.branding.title ?? "pi";
+    if (state.branding.accentColor) {
+      document.documentElement.style.setProperty("--accent", state.branding.accentColor);
+    }
+  }, [state.branding]);
 
   return (
     <div className="flex h-full flex-col">
-      <header className="flex items-center gap-3 border-b border-zinc-800 px-4 py-2.5">
-        <span className="text-lg font-semibold tracking-tight">π</span>
-        <span className="font-mono text-xs text-zinc-500">{state.model || "…"}</span>
-        {state.isStreaming && (
-          <span className="flex items-center gap-1.5 text-xs text-amber-400">
-            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-amber-400" />
-            working
-          </span>
-        )}
-        <span
-          className={`ml-auto h-2 w-2 rounded-full ${state.connected ? "bg-emerald-500" : "bg-red-500"}`}
-          title={state.connected ? "connected" : "disconnected"}
-        />
-      </header>
+      <Header
+        title={state.branding.title}
+        model={state.model}
+        models={state.models}
+        thinkingLevel={state.thinkingLevel}
+        modelSupportsReasoning={state.modelSupportsReasoning}
+        sessions={state.sessions}
+        sessionId={state.sessionId}
+        isStreaming={state.isStreaming}
+        connected={state.connected}
+        onSetModel={setModel}
+        onSetThinking={setThinking}
+        onNewSession={newSession}
+        onSwitchSession={switchSession}
+        onDeleteSession={deleteSession}
+        onListSessions={listSessions}
+      />
 
-      <main className="flex-1 overflow-y-auto">
+      <main ref={mainRef} onScroll={handleScroll} className="flex-1 overflow-y-auto">
         <div className="mx-auto flex max-w-3xl flex-col gap-3 px-4 py-6">
           {state.items.length === 0 && (
             <div className="mt-24 text-center text-zinc-600">
-              <div className="mb-2 text-4xl">π</div>
-              <p className="text-sm">Send a message to start the agent.</p>
+              <div className="mb-2 text-4xl">{state.branding.title ?? "π"}</div>
+              <p className="text-sm">{state.branding.welcome ?? "Send a message to start the agent."}</p>
             </div>
           )}
           {state.items.map((item, i) => {
+            // Scope keys to the session so component state (collapsed cards…)
+            // never bleeds across session_replaced
+            const key = `${state.sessionId}:${i}`;
             if (item.kind === "user") {
               return (
-                <div key={i} className="ml-auto max-w-[85%] whitespace-pre-wrap rounded-xl bg-sky-950/60 px-4 py-2 text-[15px]">
+                <div
+                  key={key}
+                  className="ml-auto max-w-[85%] whitespace-pre-wrap rounded-xl bg-sky-950/60 px-4 py-2 text-[15px]"
+                >
                   {item.text}
                 </div>
               );
             }
             if (item.kind === "tool") {
-              return <ToolCard key={item.toolCallId || i} item={item} />;
+              return <ToolCard key={item.toolCallId ? `${state.sessionId}:${item.toolCallId}` : key} item={item} />;
             }
-            return <AssistantMessage key={i} item={item} />;
+            // Tool-call-only messages produce empty assistant items — skip them
+            if (item.blocks.length === 0 && !item.errorMessage) return null;
+            return <AssistantMessage key={key} item={item} />;
           })}
 
           {(state.queue.steering.length > 0 || state.queue.followUp.length > 0) && (
@@ -64,7 +104,10 @@ export default function App() {
           )}
 
           {state.errors.map((error, i) => (
-            <div key={i} className="rounded-lg border border-red-900/60 bg-red-950/30 px-3 py-2 text-sm text-red-300">
+            <div
+              key={i}
+              className="rounded-lg border border-red-900/60 bg-red-950/30 px-3 py-2 text-sm text-red-300"
+            >
               {error}
             </div>
           ))}
@@ -77,6 +120,7 @@ export default function App() {
           <Composer
             isStreaming={state.isStreaming}
             connected={state.connected}
+            commands={state.commands}
             onSend={prompt}
             onAbort={abort}
           />

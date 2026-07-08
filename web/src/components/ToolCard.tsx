@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { ChatItem } from "../protocol";
+import type { ChatItem } from "@pi-interface/shared";
 
 type ToolItem = Extract<ChatItem, { kind: "tool" }>;
 

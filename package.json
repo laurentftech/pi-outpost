@@ -2,6 +2,7 @@
   "name": "pi-interface",
   "private": true,
   "workspaces": [
+    "shared",
     "server",
     "web"
   ],
@@ -9,8 +10,8 @@
     "dev": "concurrently -n server,web -c blue,green \"npm run dev:server\" \"npm run dev:web\"",
     "dev:server": "npm run dev --workspace server",
     "dev:web": "npm run dev --workspace web",
-    "build": "npm run build --workspaces",
-    "typecheck": "npm run typecheck --workspaces"
+    "build": "npm run build --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present"
   },
   "devDependencies": {
     "concurrently": "^10.0.3"

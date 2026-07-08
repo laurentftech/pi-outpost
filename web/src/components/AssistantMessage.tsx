@@ -1,7 +1,8 @@
 import { useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import type { ChatItem } from "../protocol";
+import type { ChatItem } from "@pi-interface/shared";
+import { Mermaid } from "./Mermaid";
 
 type AssistantItem = Extract<ChatItem, { kind: "assistant" }>;
 
@@ -26,15 +27,38 @@ function ThinkingBlock({ text }: { text: string }) {
   );
 }
 
+function mermaidCode(children: React.ReactNode): string | null {
+  if (
+    children !== null &&
+    typeof children === "object" &&
+    "props" in children &&
+    typeof (children.props as { className?: string }).className === "string" &&
+    /language-mermaid\b/.test((children.props as { className: string }).className)
+  ) {
+    return String((children.props as { children?: React.ReactNode }).children ?? "").trim();
+  }
+  return null;
+}
+
+/** Route ```mermaid fences to the Mermaid renderer, keep other code in <pre>. */
+function PreBlock(props: React.HTMLAttributes<HTMLPreElement>) {
+  const { children, ...rest } = props;
+  const code = mermaidCode(children);
+  if (code !== null) return <Mermaid code={code} />;
+  return <pre {...rest}>{children}</pre>;
+}
+
 export function AssistantMessage({ item }: { item: AssistantItem }) {
   return (
     <div className="max-w-none">
       {item.blocks.map((block, i) =>
         block.type === "thinking" ? (
-          <ThinkingBlock key={i} text={block.text} />
+          <ThinkingBlock key={block.contentIndex ?? i} text={block.text} />
         ) : (
-          <div key={i} className="prose-chat">
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>{block.text}</ReactMarkdown>
+          <div key={block.contentIndex ?? i} className="prose-chat">
+            <ReactMarkdown remarkPlugins={[remarkGfm]} components={{ pre: PreBlock }}>
+              {block.text}
+            </ReactMarkdown>
           </div>
         ),
       )}

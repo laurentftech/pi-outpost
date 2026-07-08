@@ -1,7 +1,7 @@
 /**
  * Conversion from SDK AgentMessage history to wire ChatItems.
  */
-import type { AssistantBlock, ChatItem } from "./protocol.ts";
+import type { AssistantBlock, ChatItem } from "@pi-interface/shared";
 
 const MAX_TOOL_OUTPUT = 20_000;
 
@@ -41,15 +41,36 @@ export function truncate(text: string, max = MAX_TOOL_OUTPUT): string {
   return `${text.slice(0, max)}\n… [truncated, ${text.length} chars total]`;
 }
 
+function assistantBlocks(content: string | AnyContent[]): AssistantBlock[] {
+  const blocks: AssistantBlock[] = [];
+  if (!Array.isArray(content)) return blocks;
+  content.forEach((c, contentIndex) => {
+    if (c.type === "text" && c.text) {
+      blocks.push({ type: "text", text: c.text, contentIndex });
+    } else if (c.type === "thinking" && c.thinking) {
+      blocks.push({ type: "thinking", text: c.thinking, contentIndex });
+    }
+  });
+  return blocks;
+}
+
 /**
  * Convert session history to chat items. Tool results are merged with the
  * originating toolCall (matched by id) so the UI shows one card per tool run.
+ *
+ * When `streaming` is true (mid-stream connect):
+ * - the trailing partial assistant message (pushed into session.messages at
+ *   message_start) is marked `streaming` so deltas route to it;
+ * - toolCalls without a result yet become running tool cards.
  */
-export function historyToItems(messages: AnyMessage[]): ChatItem[] {
+export function historyToItems(messages: AnyMessage[], streaming = false): ChatItem[] {
   const items: ChatItem[] = [];
-  const toolArgs = new Map<string, { name: string; args: unknown }>();
+  const pendingCalls = new Map<string, { name: string; args: unknown }>();
+  // Item emitted for the trailing message, when that message is assistant
+  let trailingAssistantItem: Extract<ChatItem, { kind: "assistant" }> | undefined;
 
   for (const message of messages) {
+    trailingAssistantItem = undefined;
     switch (message.role) {
       case "user": {
         const text = contentText(message.content);
@@ -57,28 +78,26 @@ export function historyToItems(messages: AnyMessage[]): ChatItem[] {
         break;
       }
       case "assistant": {
-        const blocks: AssistantBlock[] = [];
         const content = Array.isArray(message.content) ? message.content : [];
         for (const c of content) {
-          if (c.type === "text" && c.text) {
-            blocks.push({ type: "text", text: c.text });
-          } else if (c.type === "thinking" && c.thinking) {
-            blocks.push({ type: "thinking", text: c.thinking });
-          } else if (c.type === "toolCall" && c.id && c.name) {
-            toolArgs.set(c.id, { name: c.name, args: c.arguments });
+          if (c.type === "toolCall" && c.id && c.name) {
+            pendingCalls.set(c.id, { name: c.name, args: c.arguments });
           }
         }
+        const blocks = assistantBlocks(message.content);
         if (blocks.length > 0 || message.errorMessage) {
-          items.push({
+          trailingAssistantItem = {
             kind: "assistant",
             blocks,
             ...(message.errorMessage ? { errorMessage: message.errorMessage } : {}),
-          });
+          };
+          items.push(trailingAssistantItem);
         }
         break;
       }
       case "toolResult": {
-        const call = message.toolCallId ? toolArgs.get(message.toolCallId) : undefined;
+        const call = message.toolCallId ? pendingCalls.get(message.toolCallId) : undefined;
+        if (message.toolCallId) pendingCalls.delete(message.toolCallId);
         items.push({
           kind: "tool",
           toolCallId: message.toolCallId ?? "",
@@ -94,20 +113,39 @@ export function historyToItems(messages: AnyMessage[]): ChatItem[] {
         break;
     }
   }
+
+  if (streaming && messages[messages.length - 1]?.role === "assistant") {
+    // The SDK pushes the partial assistant message at message_start, possibly
+    // with zero blocks (TTFT window). Mark it — or materialize it when empty —
+    // so client deltas route here, never to an earlier complete message.
+    if (trailingAssistantItem) {
+      trailingAssistantItem.streaming = true;
+    } else {
+      items.push({ kind: "assistant", blocks: [], streaming: true });
+    }
+  }
+  if (streaming) {
+    // toolCalls still executing (no result yet) → running cards
+    for (const [toolCallId, call] of pendingCalls) {
+      items.push({
+        kind: "tool",
+        toolCallId,
+        toolName: call.name,
+        args: call.args,
+        output: "",
+        running: true,
+      });
+    }
+  }
+
   return items;
 }
 
 /** Convert a final assistant message to a ChatItem (for assistant_end sync). */
 export function assistantToItem(message: AnyMessage): ChatItem {
-  const blocks: AssistantBlock[] = [];
-  const content = Array.isArray(message.content) ? message.content : [];
-  for (const c of content) {
-    if (c.type === "text" && c.text) blocks.push({ type: "text", text: c.text });
-    else if (c.type === "thinking" && c.thinking) blocks.push({ type: "thinking", text: c.thinking });
-  }
   return {
     kind: "assistant",
-    blocks,
+    blocks: assistantBlocks(message.content),
     ...(message.errorMessage ? { errorMessage: message.errorMessage } : {}),
   };
 }

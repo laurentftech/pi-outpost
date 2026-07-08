@@ -1,0 +1,21 @@
+{
+  "cwd": "./workspace",
+  "agentDir": "./.pi-interface-agent",
+  "sandbox": {
+    "root": "./workspace",
+    "allowWrite": false,
+    "allowBash": false
+  },
+  "noExtensions": true,
+  "extensionPaths": [],
+  "server": {
+    "port": 3141,
+    "host": "127.0.0.1",
+    "allowedOrigins": ["https://app.example.com"]
+  },
+  "branding": {
+    "title": "My Assistant",
+    "welcome": "Ask anything about the project.",
+    "accentColor": "#0ea5e9"
+  }
+}
