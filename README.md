@@ -47,13 +47,15 @@ Optional. Create `pi-interface.config.json` next to where you launch the server 
 |-----|--------|
 | `cwd` | Agent working directory |
 | `agentDir` | Own config dir (auth, models, settings, sessions) — fully separate from `~/.pi/agent` |
-| `sandbox.root` | File tools (read/ls/grep/find) are confined to this directory, symlinks resolved |
+| `sandbox.root` | File tools (read/ls/grep/find) are confined to this directory, symlinks resolved. Defaults to `cwd` if omitted |
 | `sandbox.allowWrite` | Adds edit/write, still confined to the root (default `false`) |
 | `sandbox.allowBash` | Adds bash — **not path-confined**, explicit opt-in (default `false`) |
 | `tools` | Tool allowlist in non-sandbox mode, e.g. `["read","grep","find","ls"]` |
 | `noExtensions` / `extensionPaths` | Disable extension discovery / load only listed extensions |
+| `server.port` | Port to listen on (default `3141`, or the `PORT` env var if set) |
+| `server.host` | Host to bind to (default `127.0.0.1` — only change this if you understand the security note above) |
 | `server.allowedOrigins` | Extra exact Origins accepted on the WebSocket (embed the UI as a tab in another app) |
-| `branding` | `title`, `welcome` message, `accentColor` — applied by the web UI |
+| `branding` | `title` (default `"π"`), `welcome` message, `accentColor` — applied by the web UI |
 | `branding.defaultTheme` | `"light"` \| `"dark"` \| `"system"` (default) — used when the client has no stored preference |
 | `branding.allowThemeToggle` | Show the theme toggle button (default `true`). Set `false` when embedding in a host app that drives the theme itself — see below |
 
