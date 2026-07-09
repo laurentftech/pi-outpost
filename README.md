@@ -21,7 +21,7 @@ npm install
 npm run dev
 ```
 
-- Web UI: http://localhost:5173 (Vite dev server, proxies `/ws` to the agent server)
+- Web UI: http://localhost:5173 (Vite dev server, proxies `/ws`, `/branding`, `/health` to the agent server)
 - Agent server: ws://127.0.0.1:3141/ws
 
 The agent works in the directory the server is started from; override with `PI_CWD=/path/to/project`.

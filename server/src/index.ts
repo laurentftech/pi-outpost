@@ -46,11 +46,55 @@ const AGENT_DIR = config.agentDir ?? getAgentDir();
 // Own agentDir ⇒ own session store, fully separate from ~/.pi/agent
 const SESSION_DIR = config.agentDir ? path.join(config.agentDir, "sessions") : undefined;
 
-// --- Agent session runtime ---------------------------------------------------
-
 const sandboxedTools = config.sandbox ? await createSandboxedTools(config.sandbox) : undefined;
 const BROWSER_ROOT = await resolveBrowserRoot(config);
 const WRITABLE_ROOT = await resolveWritableRoot(config, BROWSER_ROOT);
+
+// --- HTTP server ---------------------------------------------------------------
+//
+// Started now, before the AgentSessionRuntime below (which loads models, extensions,
+// and skills, and can take a few seconds) — branding is pure config with no session
+// dependency, so it must not wait behind that setup (that wait was showing up as a
+// flash of default branding on every page load). /ws and /health stay stubbed out
+// (WS connections are closed immediately, so the client's reconnect loop just
+// retries) until the runtime is ready and wires up the real handlers below.
+
+/**
+ * WebSocket connections are exempt from the same-origin policy: any webpage
+ * could otherwise connect to this localhost server and drive an agent that
+ * has bash/write tools. Only accept browser connections from local dev
+ * origins. Requests without an Origin header (non-browser clients: curl,
+ * native tools) are allowed — a local process already has shell access.
+ */
+const ORIGIN_ALLOWLIST = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/;
+
+/** Local dev origins always pass; config.allowedOrigins adds exact origins for embedding. */
+function originAllowed(origin: string): boolean {
+  return ORIGIN_ALLOWLIST.test(origin) || config.allowedOrigins.includes(origin);
+}
+
+let handleWsConnection: (socket: WebSocket) => void = (socket) => {
+  socket.close(1013, "starting up");
+};
+let getHealth: () => { ok: boolean; sessionId?: string } = () => ({ ok: false });
+
+const app = Fastify({ logger: false });
+await app.register(websocket);
+app.get("/branding", () => config.branding);
+app.get("/ws", { websocket: true }, (socket, req) => {
+  const origin = req.headers.origin;
+  if (origin !== undefined && !originAllowed(origin)) {
+    console.warn(`[server] rejected ws connection from origin ${origin}`);
+    socket.close(1008, "forbidden origin");
+    return;
+  }
+  handleWsConnection(socket);
+});
+app.get("/health", () => getHealth());
+await app.listen({ port: PORT, host: HOST });
+console.log(`[server] ws://${HOST}:${PORT}/ws`);
+
+// --- Agent session runtime ---------------------------------------------------
 
 const createRuntime: CreateAgentSessionRuntimeFactory = async ({
   cwd,
@@ -734,41 +778,16 @@ function handleClientMessage(socket: WebSocket, raw: string): void {
   }
 }
 
-// --- HTTP server -------------------------------------------------------------------
+// --- Wire up the real /ws and /health handlers, now that the runtime is ready ------
 
-const app = Fastify({ logger: false });
-await app.register(websocket);
-
-/**
- * WebSocket connections are exempt from the same-origin policy: any webpage
- * could otherwise connect to this localhost server and drive an agent that
- * has bash/write tools. Only accept browser connections from local dev
- * origins. Requests without an Origin header (non-browser clients: curl,
- * native tools) are allowed — a local process already has shell access.
- */
-const ORIGIN_ALLOWLIST = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/;
-
-/** Local dev origins always pass; config.allowedOrigins adds exact origins for embedding. */
-function originAllowed(origin: string): boolean {
-  return ORIGIN_ALLOWLIST.test(origin) || config.allowedOrigins.includes(origin);
-}
-
-app.get("/ws", { websocket: true }, (socket, req) => {
-  const origin = req.headers.origin;
-  if (origin !== undefined && !originAllowed(origin)) {
-    console.warn(`[server] rejected ws connection from origin ${origin}`);
-    socket.close(1008, "forbidden origin");
-    return;
-  }
+handleWsConnection = (socket) => {
   clients.add(socket);
   send(socket, { type: "hello", ...snapshot() });
   socket.on("message", (data: Buffer) => handleClientMessage(socket, data.toString()));
   socket.on("close", () => clients.delete(socket));
-});
+};
+getHealth = () => ({ ok: true, sessionId: runtime.session.sessionId });
 
-app.get("/health", () => ({ ok: true, sessionId: runtime.session.sessionId }));
-
-await app.listen({ port: PORT, host: HOST });
 console.log(`[pi] session ${runtime.session.sessionId}`);
 console.log(`[pi] model ${modelName()} · cwd ${AGENT_CWD} · agentDir ${AGENT_DIR}`);
 if (config.sandbox) {
@@ -779,7 +798,6 @@ if (config.sandbox) {
   console.log(`[pi] sandbox ${config.sandbox.root} · ${extras}`);
 }
 console.log(`[pi] file browser root ${BROWSER_ROOT}`);
-console.log(`[server] ws://${HOST}:${PORT}/ws`);
 
 // --- Shutdown -------------------------------------------------------------------------
 

@@ -104,7 +104,8 @@ type Action =
   | { type: "file_read_started"; path: string; requestId: string }
   | { type: "close_file_preview" }
   | { type: "file_search_started"; query: string; requestId: string }
-  | { type: "file_search_cleared" };
+  | { type: "file_search_cleared" }
+  | { type: "branding_loaded"; branding: Branding };
 
 /** Update the in-flight assistant item; append a new one when none exists (upsert). */
 function upsertLastAssistant(items: ChatItem[], update: (item: AssistantItem) => ChatItem): ChatItem[] {
@@ -168,6 +169,9 @@ function applySnapshot(state: AgentState, message: ServerMessage & { sessionId: 
 function reduce(state: AgentState, action: Action): AgentState {
   if (action.type === "connected") return { ...state, connected: true };
   if (action.type === "disconnected") return { ...state, connected: false };
+  // Fetched independently of the WS "hello" so it renders before the session is ready
+  // (see the /branding fetch below); "hello" still wins if it arrives with a different value.
+  if (action.type === "branding_loaded") return { ...state, branding: action.branding };
   if (action.type === "dismiss_notification") {
     return { ...state, notifications: state.notifications.filter((n) => n.id !== action.id) };
   }
@@ -342,6 +346,22 @@ export function useAgent() {
     if (socket && socket.readyState === WebSocket.OPEN) {
       socket.send(JSON.stringify(message));
     }
+  }, []);
+
+  // Branding is pure config (no session dependency) and served as soon as the process
+  // starts — fetch it directly instead of waiting on the WS "hello", which only arrives
+  // once the (slower) AgentSession runtime is ready.
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/branding")
+      .then((res) => (res.ok ? (res.json() as Promise<Branding>) : null))
+      .then((branding) => {
+        if (!cancelled && branding) dispatch({ type: "branding_loaded", branding });
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {

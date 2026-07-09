@@ -11,6 +11,8 @@ export default defineConfig({
         target: 'ws://127.0.0.1:3141',
         ws: true,
       },
+      '/branding': 'http://127.0.0.1:3141',
+      '/health': 'http://127.0.0.1:3141',
     },
   },
 })
