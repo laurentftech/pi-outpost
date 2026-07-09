@@ -372,22 +372,32 @@ function cancelPendingExtensionRequests(): void {
 
 /** (Re)bind the extension runtime — UI bridge, mode, error reporting — to the current session. */
 async function bindExtensionsForSession(): Promise<void> {
-  await runtime.session.bindExtensions({
-    // Cast: structurally satisfies ExtensionUIContext (verified against the SDK's
-    // own RPC-mode implementation); see the `theme` getter above for the one gap.
-    uiContext: createExtensionUIContext() as any,
-    mode: "rpc",
-    // Extensions can call ctx.abort() themselves; no override needed here.
-    // commandContextActions (fork/tree navigation) isn't wired up — out of scope for the UI bridge.
-    shutdownHandler: () => {
-      // Unlike pi's one-shot RPC subprocess, this server is long-lived and shared
-      // across tabs/sessions — an extension asking to "shut down" shouldn't kill it.
-      console.warn("[pi] extension requested shutdown — ignored (pi-interface is a persistent server)");
-    },
-    onError: (err) => {
-      reportError(new Error(`[extension ${err.extensionPath}] ${err.error}`));
-    },
-  });
+  // runtime.session.bindExtensions() has been observed to never settle in some
+  // process contexts (e.g. spawned under `concurrently` / Start-Process, where
+  // stdout isn't a TTY). This warning surfaces that case instead of hanging silently.
+  const stallWarning = setTimeout(() => {
+    console.warn("[pi] bindExtensions has not resolved after 5s — extensions may be unavailable this session");
+  }, 5000);
+  try {
+    await runtime.session.bindExtensions({
+      // Cast: structurally satisfies ExtensionUIContext (verified against the SDK's
+      // own RPC-mode implementation); see the `theme` getter above for the one gap.
+      uiContext: createExtensionUIContext() as any,
+      mode: "rpc",
+      // Extensions can call ctx.abort() themselves; no override needed here.
+      // commandContextActions (fork/tree navigation) isn't wired up — out of scope for the UI bridge.
+      shutdownHandler: () => {
+        // Unlike pi's one-shot RPC subprocess, this server is long-lived and shared
+        // across tabs/sessions — an extension asking to "shut down" shouldn't kill it.
+        console.warn("[pi] extension requested shutdown — ignored (pi-interface is a persistent server)");
+      },
+      onError: (err) => {
+        reportError(new Error(`[extension ${err.extensionPath}] ${err.error}`));
+      },
+    });
+  } finally {
+    clearTimeout(stallWarning);
+  }
 }
 
 /**
@@ -492,7 +502,9 @@ function bindSession(): () => void {
 }
 
 let unsubscribe = bindSession();
-await bindExtensionsForSession();
+// Fire-and-forget: if this hangs (see the stall warning inside bindExtensionsForSession),
+// it must not block app.listen() below — the server should still come up without extensions.
+void bindExtensionsForSession().catch((err) => console.error(`[pi] bindExtensions failed: ${err}`));
 
 /** After runtime.newSession()/switchSession(), runtime.session is a new object. */
 async function rebindAndAnnounce(): Promise<void> {
