@@ -93,3 +93,7 @@ web/  (React + Vite + Tailwind)          server/  (Fastify + ws)
 Sessions persist in `<agentDir>/sessions/` — reconnecting clients receive the full history (`hello` message).
 
 Planned: fork/tree navigation, images, embeddable build.
+
+## License
+
+[MIT](LICENSE)
