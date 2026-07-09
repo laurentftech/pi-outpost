@@ -30,10 +30,16 @@ export interface BrandingConfig {
 }
 
 export interface SandboxConfig {
-  /** Directory file tools are confined to (absolute after load). */
+  /** Directory file tools are confined to (absolute after load) — the read-only zone. */
   root: string;
-  /** Enable edit/write inside the root. Default: false (read-only). */
+  /** Enable edit/write inside writableRoot (or the whole root). Default: false (read-only). */
   allowWrite: boolean;
+  /**
+   * Subdirectory of root that edit/write are further confined to — the read-write zone.
+   * Must resolve inside root. Defaults to root itself (the whole sandbox is writable).
+   * Ignored when allowWrite is false.
+   */
+  writableRoot?: string;
   /**
    * Enable the bash tool. Default: false — bash cannot be path-scoped, so
    * turning it on effectively disables the file sandbox. Explicit opt-in only.
@@ -130,13 +136,28 @@ export function loadConfig(baseCwd: string): AppConfig {
   if (raw.sandbox !== undefined) {
     const sandbox = asObject(raw.sandbox, "sandbox");
     const root = optionalString(sandbox, "root");
+    const resolvedRoot = root ? resolve(root) : config.cwd;
+    const allowWrite = optionalBoolean(sandbox, "allowWrite", false);
+    const writableRoot = optionalString(sandbox, "writableRoot");
+    const resolvedWritableRoot = writableRoot ? resolve(writableRoot) : undefined;
+    if (resolvedWritableRoot !== undefined) {
+      if (!allowWrite) fail(`"sandbox.writableRoot" requires "sandbox.allowWrite" to be true`);
+      const rel = path.relative(resolvedRoot, resolvedWritableRoot);
+      if (rel.startsWith("..") || path.isAbsolute(rel)) {
+        fail(`"sandbox.writableRoot" must be inside "sandbox.root"`);
+      }
+    }
     config.sandbox = {
-      root: root ? resolve(root) : config.cwd,
-      allowWrite: optionalBoolean(sandbox, "allowWrite", false),
+      root: resolvedRoot,
+      allowWrite,
+      writableRoot: resolvedWritableRoot,
       allowBash: optionalBoolean(sandbox, "allowBash", false),
     };
     if (!fs.existsSync(config.sandbox.root)) {
       fail(`sandbox.root does not exist: ${config.sandbox.root}`);
+    }
+    if (config.sandbox.writableRoot && !fs.existsSync(config.sandbox.writableRoot)) {
+      fail(`sandbox.writableRoot does not exist: ${config.sandbox.writableRoot}`);
     }
   }
 

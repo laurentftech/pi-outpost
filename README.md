@@ -48,8 +48,9 @@ Optional. Create `pi-interface.config.json` next to where you launch the server 
 |-----|--------|
 | `cwd` | Agent working directory |
 | `agentDir` | Own config dir (auth, models, settings, sessions) — fully separate from `~/.pi/agent` |
-| `sandbox.root` | File tools (read/ls/grep/find) are confined to this directory, symlinks resolved. Defaults to `cwd` if omitted |
-| `sandbox.allowWrite` | Adds edit/write, still confined to the root (default `false`) |
+| `sandbox.root` | Read-only zone: read/ls/grep/find are confined to this directory, symlinks resolved. Defaults to `cwd` if omitted |
+| `sandbox.allowWrite` | Adds edit/write, confined to `sandbox.writableRoot` (or the whole root if unset) (default `false`) |
+| `sandbox.writableRoot` | Read-write zone: subdirectory of `root` that edit/write are further confined to. Must be inside `root`. Defaults to `root` itself |
 | `sandbox.allowBash` | Adds bash — **not path-confined**, explicit opt-in (default `false`) |
 | `tools` | Tool allowlist in non-sandbox mode, e.g. `["read","grep","find","ls"]` |
 | `noExtensions` / `extensionPaths` | Disable extension discovery / load only listed extensions |

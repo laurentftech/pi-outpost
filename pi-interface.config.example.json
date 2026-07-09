@@ -3,7 +3,8 @@
   "agentDir": "./.pi-interface-agent",
   "sandbox": {
     "root": "./workspace",
-    "allowWrite": false,
+    "allowWrite": true,
+    "writableRoot": "./workspace/scratch",
     "allowBash": false
   },
   "noExtensions": true,
