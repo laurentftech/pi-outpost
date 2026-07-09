@@ -69,6 +69,9 @@ export function Mermaid({ code }: { code: string }) {
             {showCode ? "⚏ diagram" : "⌗ code"}
           </button>
         </div>
+        <div className="absolute right-2 top-2 z-10 opacity-0 transition-opacity group-hover:opacity-100">
+          <CopyButton text={code} />
+        </div>
         {showCode ? (
           <pre className="overflow-x-auto font-mono text-xs text-zinc-500 dark:text-zinc-400">{code}</pre>
         ) : (
@@ -78,9 +81,6 @@ export function Mermaid({ code }: { code: string }) {
             dangerouslySetInnerHTML={{ __html: svg }}
           />
         )}
-        <div className="mt-1 flex justify-end opacity-0 transition-opacity group-hover:opacity-100">
-          <CopyButton text={code} />
-        </div>
       </div>
     );
   }

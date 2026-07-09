@@ -58,6 +58,11 @@ export function AssistantMessage({ item }: { item: AssistantItem }) {
 
   return (
     <div className="group max-w-none">
+      {fullText && !item.streaming && (
+        <div className="flex justify-end opacity-0 transition-opacity group-hover:opacity-100">
+          <CopyButton text={fullText} />
+        </div>
+      )}
       {item.blocks.map((block, i) =>
         block.type === "thinking" ? (
           <ThinkingBlock key={block.contentIndex ?? i} text={block.text} />
@@ -72,11 +77,6 @@ export function AssistantMessage({ item }: { item: AssistantItem }) {
       {item.errorMessage && (
         <div className="mt-2 rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-300">
           {item.errorMessage}
-        </div>
-      )}
-      {fullText && !item.streaming && (
-        <div className="mt-1 flex justify-end opacity-0 transition-opacity group-hover:opacity-100">
-          <CopyButton text={fullText} />
         </div>
       )}
     </div>
