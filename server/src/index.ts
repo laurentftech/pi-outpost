@@ -33,6 +33,7 @@ import {
 import path from "node:path";
 import { loadConfig } from "./config.ts";
 import { assistantToItem, contentText, customMessageToItem, historyToItems, truncate } from "./convert.ts";
+import { FileBrowserError, listDirectory, readFileForPreview, resolveBrowserRoot } from "./fileBrowser.ts";
 import { createSandboxedTools } from "./sandbox.ts";
 
 // npm workspace scripts run with cwd=server/ — INIT_CWD is where `npm run` was invoked
@@ -48,6 +49,7 @@ const SESSION_DIR = config.agentDir ? path.join(config.agentDir, "sessions") : u
 // --- Agent session runtime ---------------------------------------------------
 
 const sandboxedTools = config.sandbox ? await createSandboxedTools(config.sandbox) : undefined;
+const BROWSER_ROOT = await resolveBrowserRoot(config);
 
 const createRuntime: CreateAgentSessionRuntimeFactory = async ({
   cwd,
@@ -570,6 +572,28 @@ function reportError(error: unknown): void {
   broadcast({ type: "error", message: error instanceof Error ? error.message : String(error) });
 }
 
+/** File-browser sidebar: list a directory, confined to BROWSER_ROOT. */
+async function handleListDirectory(socket: WebSocket, dirPath: string, requestId: string): Promise<void> {
+  try {
+    const entries = await listDirectory(BROWSER_ROOT, dirPath);
+    send(socket, { type: "directory_listing", requestId, path: dirPath, entries });
+  } catch (error) {
+    const message = error instanceof FileBrowserError ? error.message : `Unexpected error: ${(error as Error).message}`;
+    send(socket, { type: "file_browser_error", requestId, path: dirPath, message });
+  }
+}
+
+/** File-browser sidebar: read a file for preview, confined to BROWSER_ROOT. */
+async function handleReadFile(socket: WebSocket, filePath: string, requestId: string): Promise<void> {
+  try {
+    const { content, size } = await readFileForPreview(BROWSER_ROOT, filePath);
+    send(socket, { type: "file_content", requestId, path: filePath, content, size });
+  } catch (error) {
+    const message = error instanceof FileBrowserError ? error.message : `Unexpected error: ${(error as Error).message}`;
+    send(socket, { type: "file_browser_error", requestId, path: filePath, message });
+  }
+}
+
 function handleClientMessage(socket: WebSocket, raw: string): void {
   let message: ClientMessage;
   try {
@@ -633,6 +657,14 @@ function handleClientMessage(socket: WebSocket, raw: string): void {
     case "extension_ui_response":
       handleExtensionUIResponse(message);
       break;
+    case "list_directory":
+      if (typeof message.path !== "string" || typeof message.requestId !== "string") return;
+      handleListDirectory(socket, message.path, message.requestId).catch(reportError);
+      break;
+    case "read_file":
+      if (typeof message.path !== "string" || typeof message.requestId !== "string") return;
+      handleReadFile(socket, message.path, message.requestId).catch(reportError);
+      break;
   }
 }
 
@@ -680,6 +712,7 @@ if (config.sandbox) {
   ].join(", ");
   console.log(`[pi] sandbox ${config.sandbox.root} · ${extras}`);
 }
+console.log(`[pi] file browser root ${BROWSER_ROOT}`);
 console.log(`[server] ws://${HOST}:${PORT}/ws`);
 
 // --- Shutdown -------------------------------------------------------------------------

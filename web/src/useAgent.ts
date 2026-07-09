@@ -5,6 +5,7 @@ import type {
   ClientMessage,
   CommandInfo,
   ContextUsage,
+  DirEntry,
   ExtensionUIRequest,
   ModelChoice,
   ServerMessage,
@@ -26,6 +27,13 @@ export interface ExtensionWidget {
   lines: string[];
   placement: "aboveEditor" | "belowEditor";
 }
+
+/** File-browser sidebar: one entry per directory path ("" = root), keyed flat (not nested). */
+export type DirState = DirEntry[] | "loading" | { error: string };
+export type OpenFile =
+  | { status: "loading"; path: string; requestId: string }
+  | { status: "loaded"; path: string; content: string; size: number }
+  | { status: "error"; path: string; message: string };
 
 export interface AgentState {
   connected: boolean;
@@ -49,6 +57,8 @@ export interface AgentState {
   widgets: Record<string, ExtensionWidget>;
   extensionTitle?: string;
   editorPrefill: { text: string; nonce: number } | null;
+  fileTree: Record<string, DirState>;
+  openFile: OpenFile | null;
 }
 
 const initialState: AgentState = {
@@ -72,6 +82,8 @@ const initialState: AgentState = {
   statuses: {},
   widgets: {},
   editorPrefill: null,
+  fileTree: {},
+  openFile: null,
 };
 
 type Action =
@@ -79,7 +91,10 @@ type Action =
   | { type: "disconnected" }
   | { type: "server"; message: ServerMessage }
   | { type: "dismiss_notification"; id: string }
-  | { type: "dialog_answered" };
+  | { type: "dialog_answered" }
+  | { type: "dir_list_started"; path: string }
+  | { type: "file_read_started"; path: string; requestId: string }
+  | { type: "close_file_preview" };
 
 /** Update the in-flight assistant item; append a new one when none exists (upsert). */
 function upsertLastAssistant(items: ChatItem[], update: (item: AssistantItem) => ChatItem): ChatItem[] {
@@ -138,6 +153,13 @@ function reduce(state: AgentState, action: Action): AgentState {
     return { ...state, notifications: state.notifications.filter((n) => n.id !== action.id) };
   }
   if (action.type === "dialog_answered") return { ...state, dialogQueue: state.dialogQueue.slice(1) };
+  if (action.type === "dir_list_started") {
+    return { ...state, fileTree: { ...state.fileTree, [action.path]: "loading" } };
+  }
+  if (action.type === "file_read_started") {
+    return { ...state, openFile: { status: "loading", path: action.path, requestId: action.requestId } };
+  }
+  if (action.type === "close_file_preview") return { ...state, openFile: null };
 
   const message = action.message;
   switch (message.type) {
@@ -223,6 +245,18 @@ function reduce(state: AgentState, action: Action): AgentState {
       };
     case "error":
       return { ...state, errors: [...state.errors, message.message] };
+    case "directory_listing":
+      return { ...state, fileTree: { ...state.fileTree, [message.path]: message.entries } };
+    case "file_content":
+      // Ignore stale responses from a since-superseded read (user opened another file meanwhile)
+      if (state.openFile?.status !== "loading" || state.openFile.requestId !== message.requestId) return state;
+      return { ...state, openFile: { status: "loaded", path: message.path, content: message.content, size: message.size } };
+    case "file_browser_error":
+      if (message.requestId.startsWith("dir:")) {
+        return { ...state, fileTree: { ...state.fileTree, [message.path]: { error: message.message } } };
+      }
+      if (state.openFile?.status !== "loading" || state.openFile.requestId !== message.requestId) return state;
+      return { ...state, openFile: { status: "error", path: message.path, message: message.message } };
     case "extension_ui_request":
       switch (message.method) {
         case "select":
@@ -329,5 +363,17 @@ export function useAgent() {
       dispatch({ type: "dialog_answered" });
     },
     dismissNotification: (id: string) => dispatch({ type: "dismiss_notification", id }),
+    /** List a directory's children (path is relative to the browser root; "" = root). */
+    listDirectory: (path: string) => {
+      dispatch({ type: "dir_list_started", path });
+      sendMessage({ type: "list_directory", path, requestId: `dir:${crypto.randomUUID()}` });
+    },
+    /** Open a file's read-only preview. */
+    readFile: (path: string) => {
+      const requestId = `file:${crypto.randomUUID()}`;
+      dispatch({ type: "file_read_started", path, requestId });
+      sendMessage({ type: "read_file", path, requestId });
+    },
+    closeFilePreview: () => dispatch({ type: "close_file_preview" }),
   };
 }

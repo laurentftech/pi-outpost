@@ -119,6 +119,12 @@ export type ExtensionUIResponse =
   | { type: "extension_ui_response"; id: string; confirmed: boolean }
   | { type: "extension_ui_response"; id: string; cancelled: true };
 
+/** One entry in a directory listing for the file-browser sidebar. */
+export interface DirEntry {
+  name: string;
+  type: "file" | "directory" | "symlink-file" | "symlink-directory" | "other";
+}
+
 /** Snapshot of session state, sent on connect and after session replacement. */
 export interface SessionSnapshot {
   branding: Branding;
@@ -159,6 +165,9 @@ export type ServerMessage =
   | { type: "compaction_start" }
   | { type: "compaction_end"; errorMessage?: string }
   | { type: "error"; message: string }
+  | { type: "directory_listing"; requestId: string; path: string; entries: DirEntry[] }
+  | { type: "file_content"; requestId: string; path: string; content: string; size: number }
+  | { type: "file_browser_error"; requestId: string; path: string; message: string }
   | ExtensionUIRequest;
 
 /** Client -> server */
@@ -172,4 +181,6 @@ export type ClientMessage =
   | { type: "delete_session"; path: string }
   | { type: "list_sessions" }
   | { type: "compact" }
+  | { type: "list_directory"; path: string; requestId: string }
+  | { type: "read_file"; path: string; requestId: string }
   | ExtensionUIResponse;

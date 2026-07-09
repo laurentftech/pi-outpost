@@ -25,7 +25,7 @@ import type { SandboxConfig } from "./config.ts";
  * link pointing outside the root cannot smuggle paths in (or out) of the
  * sandbox. Non-existent tails (e.g. a file about to be written) are kept as-is.
  */
-async function realResolve(target: string): Promise<string> {
+export async function realResolve(target: string): Promise<string> {
   let existing = target;
   let tail = "";
   for (;;) {
@@ -41,7 +41,7 @@ async function realResolve(target: string): Promise<string> {
   }
 }
 
-function isWithin(root: string, target: string): boolean {
+export function isWithin(root: string, target: string): boolean {
   return target === root || target.startsWith(root + path.sep);
 }
 

@@ -35,6 +35,7 @@ The agent works in the directory the server is started from; override with `PI_C
 - Steer / follow-up while streaming, abort
 - Model + thinking-level selectors
 - Session list / resume / new / delete
+- Collapsible file-browser sidebar: lazy-loaded tree + read-only preview, confined to the same root the agent's own tools can see
 - Slash commands with autocompletion (`/` in the composer: extension commands, prompt templates, skills)
 - Extension "Custom UI" support: dialogs, notifications, status/widgets, editor prefill (see below)
 - Standalone mode: own config dir, file sandbox, branding (see below)

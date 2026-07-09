@@ -11,6 +11,8 @@ interface HeaderProps {
   showThemeToggle: boolean;
   /** Extension setStatus() key/text pairs — see extensions.md#custom-ui. */
   statuses: Record<string, string>;
+  sidebarOpen: boolean;
+  onToggleSidebar: () => void;
   onToggleTheme: () => void;
   onNewSession: () => void;
   onSwitchSession: (path: string) => void;
@@ -136,6 +138,19 @@ export function Header(props: HeaderProps) {
       ))}
 
       <div className="ml-auto flex items-center gap-2">
+        <button
+          type="button"
+          onClick={props.onToggleSidebar}
+          title={props.sidebarOpen ? "Hide files" : "Show files"}
+          aria-pressed={props.sidebarOpen}
+          className={`rounded-md border px-2 py-1 text-xs ${
+            props.sidebarOpen
+              ? "border-zinc-400 text-zinc-700 dark:border-zinc-600 dark:text-zinc-200"
+              : "border-zinc-300 text-zinc-500 hover:border-zinc-400 hover:text-zinc-700 dark:border-zinc-800 dark:text-zinc-400 dark:hover:border-zinc-600 dark:hover:text-zinc-200"
+          }`}
+        >
+          files
+        </button>
         {props.showThemeToggle && <ThemeToggle theme={props.theme} onToggle={props.onToggleTheme} />}
         <button
           type="button"
