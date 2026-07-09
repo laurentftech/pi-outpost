@@ -16,6 +16,8 @@
   "branding": {
     "title": "My Assistant",
     "welcome": "Ask anything about the project.",
-    "accentColor": "#0ea5e9"
+    "accentColor": "#0ea5e9",
+    "defaultTheme": "system",
+    "allowThemeToggle": true
   }
 }

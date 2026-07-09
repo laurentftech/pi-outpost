@@ -59,11 +59,18 @@ export interface CommandInfo {
   source: "extension" | "prompt" | "skill";
 }
 
+export const THEMES = ["light", "dark", "system"] as const;
+export type Theme = (typeof THEMES)[number];
+
 /** Branding applied by the web UI (from the server's standalone config). */
 export interface Branding {
   title?: string;
   welcome?: string;
   accentColor?: string;
+  /** Theme applied when the client has no stored preference. Default: "system". */
+  defaultTheme?: Theme;
+  /** Whether the UI shows a theme toggle button. Default: true. */
+  allowThemeToggle?: boolean;
 }
 
 /** Context window usage, for the compaction button. */

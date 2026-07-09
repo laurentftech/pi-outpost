@@ -10,6 +10,7 @@
  */
 import fs from "node:fs";
 import path from "node:path";
+import { THEMES, type Theme } from "@pi-interface/shared";
 
 export interface BrandingConfig {
   /** Header title. Default: "π". */
@@ -18,6 +19,14 @@ export interface BrandingConfig {
   welcome?: string;
   /** CSS accent color (buttons, highlights), e.g. "#0ea5e9". */
   accentColor?: string;
+  /** Theme applied when the client has no stored preference. Default: "system". */
+  defaultTheme?: Theme;
+  /**
+   * Whether the UI shows a theme toggle button. Default: true.
+   * Disable when embedding pi-interface in a host app that drives the theme
+   * itself (e.g. by posting `{ type: "pi-interface:set-theme", theme }`).
+   */
+  allowThemeToggle?: boolean;
 }
 
 export interface SandboxConfig {
@@ -156,10 +165,16 @@ export function loadConfig(baseCwd: string): AppConfig {
 
   if (raw.branding !== undefined) {
     const branding = asObject(raw.branding, "branding");
+    const defaultTheme = optionalString(branding, "defaultTheme");
+    if (defaultTheme !== undefined && !THEMES.includes(defaultTheme as Theme)) {
+      fail(`"branding.defaultTheme" must be one of ${THEMES.join(", ")}`);
+    }
     config.branding = {
       title: optionalString(branding, "title"),
       welcome: optionalString(branding, "welcome"),
       accentColor: optionalString(branding, "accentColor"),
+      defaultTheme: defaultTheme as Theme | undefined,
+      allowThemeToggle: optionalBoolean(branding, "allowThemeToggle", true),
     };
   }
 

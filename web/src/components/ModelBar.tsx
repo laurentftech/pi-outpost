@@ -15,9 +15,9 @@ interface ModelBarProps {
 }
 
 function ringColor(usage: ContextUsage | null): string {
-  if (!usage || usage.percent === null) return "text-zinc-600";
+  if (!usage || usage.percent === null) return "text-zinc-400 dark:text-zinc-600";
   if (usage.percent >= 85) return "text-red-500";
-  if (usage.percent >= 60) return "text-amber-400";
+  if (usage.percent >= 60) return "text-amber-500 dark:text-amber-400";
   return "text-emerald-500";
 }
 
@@ -30,7 +30,15 @@ function ContextRing({ usage }: { usage: ContextUsage | null }) {
 
   return (
     <svg width={18} height={18} viewBox="0 0 36 36" className="-rotate-90 shrink-0">
-      <circle cx="18" cy="18" r={radius} fill="none" stroke="currentColor" strokeWidth="4" className="text-zinc-800" />
+      <circle
+        cx="18"
+        cy="18"
+        r={radius}
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="4"
+        className="text-zinc-200 dark:text-zinc-800"
+      />
       {usage && usage.percent !== null && (
         <circle
           cx="18"
@@ -60,7 +68,7 @@ export function ModelBar(props: ModelBarProps) {
           if (choice) props.onSetModel(choice.provider, choice.id);
         }}
         disabled={isStreaming}
-        className="max-w-64 rounded-md border border-zinc-800 bg-zinc-900 px-2 py-1 font-mono text-xs text-zinc-300 outline-none hover:border-zinc-600 disabled:opacity-50"
+        className="max-w-64 rounded-md border border-zinc-300 bg-white px-2 py-1 font-mono text-xs text-zinc-700 outline-none hover:border-zinc-400 disabled:opacity-50 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:border-zinc-600"
       >
         {!models.some((m) => `${m.provider}/${m.id}` === model) && <option value={model}>{model}</option>}
         {models.map((m) => (
@@ -75,7 +83,7 @@ export function ModelBar(props: ModelBarProps) {
           value={thinkingLevel}
           onChange={(e) => props.onSetThinking(e.target.value as ThinkingLevel)}
           disabled={isStreaming}
-          className="rounded-md border border-zinc-800 bg-zinc-900 px-2 py-1 font-mono text-xs text-zinc-300 outline-none hover:border-zinc-600 disabled:opacity-50"
+          className="rounded-md border border-zinc-300 bg-white px-2 py-1 font-mono text-xs text-zinc-700 outline-none hover:border-zinc-400 disabled:opacity-50 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:border-zinc-600"
           title="thinking level"
         >
           {THINKING_LEVELS.map((level) => (
@@ -95,7 +103,7 @@ export function ModelBar(props: ModelBarProps) {
             ? `${contextUsage.tokens.toLocaleString()} / ${contextUsage.contextWindow.toLocaleString()} tokens — click to compact`
             : "Click to compact the conversation context"
         }
-        className="ml-auto flex items-center gap-1.5 rounded-md border border-zinc-800 px-2 py-1 font-mono text-xs text-zinc-400 hover:border-zinc-600 disabled:opacity-50"
+        className="ml-auto flex items-center gap-1.5 rounded-md border border-zinc-300 px-2 py-1 font-mono text-xs text-zinc-500 hover:border-zinc-400 disabled:opacity-50 dark:border-zinc-800 dark:text-zinc-400 dark:hover:border-zinc-600"
       >
         <ContextRing usage={contextUsage} />
         {isCompacting ? "compacting…" : contextUsage?.percent != null ? `${Math.round(contextUsage.percent)}%` : "context"}

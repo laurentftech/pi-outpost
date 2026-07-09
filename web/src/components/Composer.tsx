@@ -91,7 +91,7 @@ export function Composer({ isStreaming, connected, commands, onSend, onAbort }: 
       {open && (
         <div
           ref={listRef}
-          className="absolute bottom-full left-0 z-20 mb-2 max-h-72 w-full max-w-xl overflow-y-auto rounded-lg border border-zinc-700 bg-zinc-900 py-1 shadow-xl"
+          className="absolute bottom-full left-0 z-20 mb-2 max-h-72 w-full max-w-xl overflow-y-auto rounded-lg border border-zinc-200 bg-white py-1 shadow-xl dark:border-zinc-700 dark:bg-zinc-900"
         >
           {suggestions.map((command, i) => (
             <button
@@ -101,17 +101,17 @@ export function Composer({ isStreaming, connected, commands, onSend, onAbort }: 
               onMouseEnter={() => setSelected(i)}
               onClick={() => pick(command)}
               className={`flex w-full items-baseline gap-2 px-3 py-1.5 text-left text-sm ${
-                i === selected ? "bg-zinc-800" : ""
+                i === selected ? "bg-zinc-100 dark:bg-zinc-800" : ""
               }`}
             >
-              <span className="font-mono text-zinc-200">/{command.name}</span>
+              <span className="font-mono text-zinc-800 dark:text-zinc-200">/{command.name}</span>
               {command.argumentHint && (
                 <span className="font-mono text-xs text-zinc-500">{command.argumentHint}</span>
               )}
               {command.description && (
                 <span className="min-w-0 flex-1 truncate text-xs text-zinc-500">{command.description}</span>
               )}
-              <span className="ml-auto shrink-0 rounded bg-zinc-800 px-1 text-[10px] uppercase text-zinc-500">
+              <span className="ml-auto shrink-0 rounded bg-zinc-200 px-1 text-[10px] uppercase text-zinc-500 dark:bg-zinc-800">
                 {SOURCE_BADGE[command.source]}
               </span>
             </button>
@@ -119,7 +119,7 @@ export function Composer({ isStreaming, connected, commands, onSend, onAbort }: 
         </div>
       )}
 
-      <div className="flex items-end gap-2 rounded-xl border border-zinc-800 bg-zinc-900 p-2 focus-within:border-zinc-600">
+      <div className="flex items-end gap-2 rounded-xl border border-zinc-200 bg-zinc-50 p-2 focus-within:border-zinc-400 dark:border-zinc-800 dark:bg-zinc-900 dark:focus-within:border-zinc-600">
         <textarea
           value={text}
           onChange={(e) => setText(e.target.value)}
@@ -133,13 +133,13 @@ export function Composer({ isStreaming, connected, commands, onSend, onAbort }: 
           }
           disabled={!connected}
           rows={Math.min(6, Math.max(1, text.split("\n").length))}
-          className="flex-1 resize-none bg-transparent px-2 py-1.5 text-[15px] outline-none placeholder:text-zinc-600 disabled:opacity-50"
+          className="flex-1 resize-none bg-transparent px-2 py-1.5 text-[15px] outline-none placeholder:text-zinc-400 disabled:opacity-50 dark:placeholder:text-zinc-600"
         />
         {isStreaming && (
           <button
             type="button"
             onClick={onAbort}
-            className="rounded-lg bg-red-900/60 px-3 py-1.5 text-sm text-red-200 hover:bg-red-900"
+            className="rounded-lg bg-red-100 px-3 py-1.5 text-sm text-red-700 hover:bg-red-200 dark:bg-red-900/60 dark:text-red-200 dark:hover:bg-red-900"
           >
             stop
           </button>
@@ -148,7 +148,7 @@ export function Composer({ isStreaming, connected, commands, onSend, onAbort }: 
           type="button"
           onClick={submit}
           disabled={!connected || !text.trim()}
-          className="rounded-lg bg-zinc-100 px-3 py-1.5 text-sm font-medium text-zinc-900 hover:bg-white disabled:opacity-30"
+          className="rounded-lg bg-zinc-900 px-3 py-1.5 text-sm font-medium text-zinc-100 hover:bg-zinc-800 disabled:opacity-30 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-white"
         >
           {isStreaming ? "steer" : "send"}
         </button>

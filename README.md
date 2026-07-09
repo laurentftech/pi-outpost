@@ -48,6 +48,20 @@ Optional. Create `pi-interface.config.json` next to where you launch the server 
 | `noExtensions` / `extensionPaths` | Disable extension discovery / load only listed extensions |
 | `server.allowedOrigins` | Extra exact Origins accepted on the WebSocket (embed the UI as a tab in another app) |
 | `branding` | `title`, `welcome` message, `accentColor` — applied by the web UI |
+| `branding.defaultTheme` | `"light"` \| `"dark"` \| `"system"` (default) — used when the client has no stored preference |
+| `branding.allowThemeToggle` | Show the theme toggle button (default `true`). Set `false` when embedding in a host app that drives the theme itself — see below |
+
+### Theming
+
+The UI ships with light and dark themes. Precedence: a local pick from the toggle button (persisted in `localStorage`) or a message from a host page beats `branding.defaultTheme`, which falls back to the OS preference (`"system"`).
+
+To embed pi-interface in another app that controls the theme, set `"allowThemeToggle": false` (hides the toggle) and drive the theme from the host page with:
+
+```js
+iframeWindow.postMessage({ type: "pi-interface:set-theme", theme: "light" }, "https://your-pi-interface-origin")
+```
+
+`theme` is `"light"`, `"dark"`, or `"system"`. This works whether or not the toggle is shown. Use the exact origin the UI is served from as the target, not `"*"`.
 
 Relative paths are resolved against the config file's directory.
 
