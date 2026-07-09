@@ -8,6 +8,7 @@
  */
 import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
+import fastifyStatic from "@fastify/static";
 import websocket from "@fastify/websocket";
 import Fastify from "fastify";
 import type { WebSocket } from "ws";
@@ -91,8 +92,24 @@ app.get("/ws", { websocket: true }, (socket, req) => {
   handleWsConnection(socket);
 });
 app.get("/health", () => getHealth());
+
+// Serve the built web UI as a single deployable unit when present (`npm run build
+// --workspace web` first) — /branding, /ws, /health above take priority over it
+// regardless of registration order, since Fastify's router favors exact routes over
+// this plugin's wildcard. Skipped silently in dev, where `npm run dev:web` (Vite,
+// with HMR) serves the UI instead.
+const WEB_DIST = path.resolve(import.meta.dirname, "../../web/dist");
+const webDistExists = await fs
+  .stat(WEB_DIST)
+  .then((s) => s.isDirectory())
+  .catch(() => false);
+if (webDistExists) {
+  await app.register(fastifyStatic, { root: WEB_DIST });
+  console.log(`[server] serving web UI from ${WEB_DIST}`);
+}
+
 await app.listen({ port: PORT, host: HOST });
-console.log(`[server] ws://${HOST}:${PORT}/ws`);
+console.log(`[server] http://${HOST}:${PORT}/`);
 
 // --- Agent session runtime ---------------------------------------------------
 

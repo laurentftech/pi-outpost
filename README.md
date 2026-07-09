@@ -28,6 +28,16 @@ The agent works in the directory the server is started from; override with `PI_C
 
 > **Security note:** the server binds to `127.0.0.1` and validates the WebSocket `Origin` header. The agent has bash/edit/write tools — never expose this server on a network without the sandbox config below.
 
+## Production (single process)
+
+```bash
+npm run start
+```
+
+Builds the web UI once (`web/dist`) and starts **one** Node process that serves the UI, `/ws`, `/branding`, and `/health` together on `server.port` (default `3141`) — nothing else to run or keep track of. Point a process manager (systemd, pm2, Docker `CMD`, …) at this one command; there's no separate dev server to start or stop.
+
+Rebuild (`npm run build --workspace web`) and restart after any UI change — this mode has no hot reload, unlike `npm run dev` above.
+
 ## Features
 
 - Streaming chat (markdown, thinking blocks, mermaid diagrams)
