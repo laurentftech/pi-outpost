@@ -32,7 +32,7 @@ import {
 } from "@pi-interface/shared";
 import path from "node:path";
 import { loadConfig } from "./config.ts";
-import { assistantToItem, contentText, historyToItems, truncate } from "./convert.ts";
+import { assistantToItem, contentText, customMessageToItem, historyToItems, truncate } from "./convert.ts";
 import { createSandboxedTools } from "./sandbox.ts";
 
 // npm workspace scripts run with cwd=server/ — INIT_CWD is where `npm run` was invoked
@@ -413,6 +413,8 @@ function bindSession(): () => void {
         if (event.message.role === "assistant") {
           // Full sync of the finished message (covers retries/partial rebuilds)
           broadcast({ type: "assistant_end", item: assistantToItem(event.message as never) });
+        } else if (event.message.role === "custom" && (event.message as { display?: boolean }).display) {
+          broadcast({ type: "custom_message", item: customMessageToItem(event.message as never) });
         }
         break;
       case "tool_execution_start":

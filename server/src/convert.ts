@@ -21,6 +21,10 @@ interface AnyMessage {
   toolCallId?: string;
   toolName?: string;
   isError?: boolean;
+  customType?: string;
+  details?: unknown;
+  /** Whether the message is shown in the transcript vs. sent to the LLM only. */
+  display?: boolean;
 }
 
 export function contentText(content: string | AnyContent[] | undefined): string {
@@ -108,8 +112,14 @@ export function historyToItems(messages: AnyMessage[], streaming = false): ChatI
         });
         break;
       }
+      case "custom": {
+        // display:false means "context for the LLM only" — the TUI hides those too
+        const text = message.display ? contentText(message.content) : "";
+        if (text) items.push(customMessageToItem(message));
+        break;
+      }
       default:
-        // custom messages (compaction summaries, etc.) — skipped in v1
+        // compaction/branch summaries, bash executions — skipped in v1
         break;
     }
   }
@@ -147,5 +157,20 @@ export function assistantToItem(message: AnyMessage): ChatItem {
     kind: "assistant",
     blocks: assistantBlocks(message.content),
     ...(message.errorMessage ? { errorMessage: message.errorMessage } : {}),
+  };
+}
+
+/**
+ * Convert an extension-defined custom message (pi.sendMessage() with a
+ * customType) to a ChatItem. We don't run the extension's MessageRenderer
+ * (a terminal Component, not renderable in the browser) — just the plain
+ * text content, with `details` along for an optional expanded view.
+ */
+export function customMessageToItem(message: AnyMessage): ChatItem {
+  return {
+    kind: "custom",
+    customType: message.customType ?? "custom",
+    text: contentText(message.content),
+    ...(message.details !== undefined ? { details: message.details } : {}),
   };
 }

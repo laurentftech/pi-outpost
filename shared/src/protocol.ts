@@ -22,6 +22,14 @@ export type ChatItem =
       output: string;
       isError?: boolean;
       running?: boolean;
+    }
+  | {
+      /** Extension-defined message (pi.sendMessage() with a customType) — see extensions.md#message-and-entry-rendering. */
+      kind: "custom";
+      customType: string;
+      text: string;
+      /** Extension-specific structured data, shown only when expanded (avoid a wall of JSON by default). */
+      details?: unknown;
     };
 
 export interface AssistantBlock {
@@ -142,6 +150,7 @@ export type ServerMessage =
       delta: string;
     }
   | { type: "assistant_end"; item: ChatItem }
+  | { type: "custom_message"; item: ChatItem }
   | { type: "tool_start"; toolCallId: string; toolName: string; args: unknown }
   | { type: "tool_update"; toolCallId: string; text: string }
   | { type: "tool_end"; toolCallId: string; isError: boolean; text: string }

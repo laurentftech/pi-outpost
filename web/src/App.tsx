@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { AssistantMessage } from "./components/AssistantMessage";
 import { Composer } from "./components/Composer";
+import { CustomMessageCard } from "./components/CustomMessageCard";
 import { ExtensionDialog } from "./components/ExtensionDialog";
 import { ExtensionNotifications } from "./components/ExtensionNotifications";
 import { ExtensionWidgets } from "./components/ExtensionWidgets";
@@ -99,6 +100,9 @@ export default function App() {
               }
               if (item.kind === "tool") {
                 return <ToolCard key={item.toolCallId ? `${state.sessionId}:${item.toolCallId}` : key} item={item} />;
+              }
+              if (item.kind === "custom") {
+                return <CustomMessageCard key={key} item={item} />;
               }
               // Tool-call-only messages produce empty assistant items — skip them
               if (item.blocks.length === 0 && !item.errorMessage) return null;

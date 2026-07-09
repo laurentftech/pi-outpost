@@ -184,6 +184,8 @@ function reduce(state: AgentState, action: Action): AgentState {
       };
     case "assistant_end":
       return { ...state, items: upsertLastAssistant(state.items, () => message.item) };
+    case "custom_message":
+      return { ...state, items: [...state.items, message.item] };
     case "tool_start":
       return {
         ...state,
