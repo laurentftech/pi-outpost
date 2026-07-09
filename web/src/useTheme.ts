@@ -9,8 +9,13 @@ import { loadStoredTheme, resolveSystemTheme, storeTheme } from "./theme";
  * from a host page (`{ type: "pi-interface:set-theme", theme }` — for
  * embedding, independent of whether the toggle is enabled) wins over
  * `defaultTheme` from server config, which itself falls back to "system".
+ *
+ * `rootElement` is where `data-theme` is applied — `document.documentElement`
+ * for the standalone app, or the widget's own container element when mounted
+ * inside a Shadow DOM (see `embed/src/mount.tsx`), so `dark:` styling stays
+ * scoped to the widget instead of leaking onto the host page's `<html>`.
  */
-export function useTheme(defaultTheme: Theme, allowToggle: boolean) {
+export function useTheme(defaultTheme: Theme, allowToggle: boolean, rootElement: HTMLElement = document.documentElement) {
   const stored = allowToggle ? loadStoredTheme() : null;
   const [preference, setPreference] = useState<Theme>(stored ?? defaultTheme);
   const hasOverride = useRef(stored !== null);
@@ -43,8 +48,8 @@ export function useTheme(defaultTheme: Theme, allowToggle: boolean) {
   const resolved = preference === "system" ? systemTheme : preference;
 
   useLayoutEffect(() => {
-    document.documentElement.dataset.theme = resolved;
-  }, [resolved]);
+    rootElement.dataset.theme = resolved;
+  }, [rootElement, resolved]);
 
   const setTheme = useCallback(
     (next: Theme) => {
@@ -57,5 +62,5 @@ export function useTheme(defaultTheme: Theme, allowToggle: boolean) {
 
   const toggle = useCallback(() => setTheme(resolved === "dark" ? "light" : "dark"), [resolved, setTheme]);
 
-  return { theme: resolved, toggle };
+  return { theme: resolved, toggle, setTheme };
 }

@@ -327,7 +327,19 @@ function reduce(state: AgentState, action: Action): AgentState {
   }
 }
 
-export function useAgent() {
+/** `serverUrl.replace(/^http/, "ws") + "/ws"`, or same-origin `/ws` when unset. */
+function wsUrlFor(serverUrl: string): string {
+  if (serverUrl) return `${serverUrl.replace(/^http/, "ws")}/ws`;
+  const protocol = location.protocol === "https:" ? "wss" : "ws";
+  return `${protocol}://${location.host}/ws`;
+}
+
+/**
+ * `serverUrl` is the pi-interface backend's origin (e.g. "https://api.example.com"),
+ * used by the embeddable widget (`embed/src/mount.tsx`) whose page isn't served by
+ * that backend. Defaults to "" — same-origin, the standalone app's behavior.
+ */
+export function useAgent(serverUrl = "") {
   const [state, dispatch] = useReducer(reduce, initialState);
   const socketRef = useRef<WebSocket | null>(null);
   // Mirrors of state read from inside the stable onmessage closure below (which
@@ -353,7 +365,7 @@ export function useAgent() {
   // once the (slower) AgentSession runtime is ready.
   useEffect(() => {
     let cancelled = false;
-    fetch("/branding")
+    fetch(`${serverUrl}/branding`)
       .then((res) => (res.ok ? (res.json() as Promise<Branding>) : null))
       .then((branding) => {
         if (!cancelled && branding) dispatch({ type: "branding_loaded", branding });
@@ -362,15 +374,14 @@ export function useAgent() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [serverUrl]);
 
   useEffect(() => {
     let retryTimer: number | undefined;
     let disposed = false;
 
     function connect() {
-      const protocol = location.protocol === "https:" ? "wss" : "ws";
-      const socket = new WebSocket(`${protocol}://${location.host}/ws`);
+      const socket = new WebSocket(wsUrlFor(serverUrl));
       socketRef.current = socket;
 
       socket.onopen = () => {
@@ -418,7 +429,7 @@ export function useAgent() {
       socketRef.current = null;
       socket?.close();
     };
-  }, [sendMessage]);
+  }, [sendMessage, serverUrl]);
 
   return {
     state,

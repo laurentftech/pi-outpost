@@ -40,6 +40,7 @@ The agent works in the directory the server is started from; override with `PI_C
 - File mentions with autocompletion (`@` in the composer: recursive name search over the browser root, inserts the relative path)
 - Extension "Custom UI" support: dialogs, notifications, status/widgets, editor prefill (see below)
 - Standalone mode: own config dir, file sandbox, branding (see below)
+- Embeddable widget (`@pi-interface/embed`): mount into any web app, isolated via Shadow DOM (see below)
 
 ## Standalone configuration
 
@@ -66,17 +67,38 @@ Optional. Create `pi-interface.config.json` next to where you launch the server 
 
 ### Theming
 
-The UI ships with light and dark themes. Precedence: a local pick from the toggle button (persisted in `localStorage`) or a message from a host page beats `branding.defaultTheme`, which falls back to the OS preference (`"system"`).
+The UI ships with light and dark themes. Precedence: a local pick from the toggle button (persisted in `localStorage`) or an explicit override (the embed widget's `theme` option / `setTheme()`, or a host page's `postMessage`) beats `branding.defaultTheme`, which falls back to the OS preference (`"system"`).
 
-To embed pi-interface in another app that controls the theme, set `"allowThemeToggle": false` (hides the toggle) and drive the theme from the host page with:
+Relative paths are resolved against the config file's directory.
+
+## Embedding
+
+`embed/` publishes `@pi-interface/embed`, mounting pi-interface into any element inside a **Shadow DOM** — fully isolated from the host app's CSS in both directions, React supplied as a peer dependency (not bundled), everything else (Tailwind, markdown/mermaid/highlight.js, the shared protocol types) compiled into the package.
+
+```js
+import { mount } from "@pi-interface/embed";
+
+const widget = mount(document.getElementById("assistant"), {
+  serverUrl: "https://your-pi-interface-server", // omit for same-origin
+  theme: "dark", // optional; falls back to branding.defaultTheme, then "system"
+});
+
+widget.setTheme("light"); // change the theme at runtime
+widget.unmount(); // tear down the React tree
+```
+
+Build it with `npm run build --workspace @pi-interface/embed` (outputs ESM + CJS to `embed/dist/`, plus a rolled-up `.d.ts`), then publish `embed/` to your own registry.
+
+Two things to configure on the server side regardless of deployment topology:
+
+- **`server.allowedOrigins`**: the widget's WebSocket connection carries the *host page's* origin (e.g. `https://your-app.example.com`), not pi-interface's own — add it explicitly, even same-domain deployments need this (only `localhost`/`127.0.0.1` are trusted automatically).
+- **CORS**: `/branding` and `/health` are plain HTTP endpoints with no CORS headers. They work with zero extra config when the widget and the backend share an origin (recommended: reverse-proxy pi-interface under your own domain). A genuinely cross-origin deployment needs a CORS layer in front — not built in yet.
+
+A raw iframe (`<iframe src="https://your-pi-interface-server">`) still works too, and still honors `branding.allowThemeToggle: false` plus the host-driven theme channel:
 
 ```js
 iframeWindow.postMessage({ type: "pi-interface:set-theme", theme: "light" }, "https://your-pi-interface-origin")
 ```
-
-`theme` is `"light"`, `"dark"`, or `"system"`. This works whether or not the toggle is shown. Use the exact origin the UI is served from as the target, not `"*"`.
-
-Relative paths are resolved against the config file's directory.
 
 ### Extension Custom UI
 
@@ -97,7 +119,7 @@ web/  (React + Vite + Tailwind)          server/  (Fastify + ws)
 
 Sessions persist in `<agentDir>/sessions/` — reconnecting clients receive the full history (`hello` message).
 
-Planned: fork/tree navigation, images, embeddable build.
+Planned: fork/tree navigation, images.
 
 ## License
 

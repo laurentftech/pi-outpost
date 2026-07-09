@@ -1,9 +1,19 @@
 @import "tailwindcss";
 
-/* data-theme is set by useTheme() on <html>; lets dark: utilities key off it
-   instead of only prefers-color-scheme, so the in-app toggle/config default
+/* Explicit source root: Tailwind's automatic content detection is relative to the
+   Vite build consuming this file, which resolves correctly for web's own build but
+   not for embed's (a different package importing this file directly) — this makes
+   utility-class scanning of web/src work the same regardless of which build processes
+   this stylesheet. */
+@source "./**/*.{ts,tsx}";
+
+/* data-theme is set by useTheme() on the root element: document.documentElement for
+   the standalone app, or the widget's shadow host when embedded (embed/src/mount.tsx)
+   — the third branch matches that case, since [data-theme="dark"] then lives on an
+   element outside the shadow tree these rules are scoped to. Lets dark: utilities key
+   off it instead of only prefers-color-scheme, so the in-app toggle/config default
    and host-driven postMessage overrides all take effect. */
-@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *, :host([data-theme="dark"]) &));
 
 @theme {
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
@@ -11,12 +21,22 @@
 }
 
 /* Default brand accent (deep blue) — App.tsx overrides this inline when
-   branding.accentColor is configured; inline style wins over this rule. */
-:root {
+   branding.accentColor is configured; inline style wins over this rule.
+   :host variants apply the same defaults when embedded (see mount.tsx). */
+:root,
+:host {
   --accent: #1d4ed8;
 }
-:root[data-theme="dark"] {
+:root[data-theme="dark"],
+:host([data-theme="dark"]) {
   --accent: #60a5fa;
+}
+
+/* Sizing for the widget's shadow host — the standalone app's html/body/#root rule
+   below covers the equivalent for a normal page. */
+:host {
+  display: block;
+  height: 100%;
 }
 
 html,
@@ -25,7 +45,10 @@ body,
   height: 100%;
 }
 
-body {
+/* #root is body's equivalent inside the widget's shadow tree (no <body> there) —
+   same id as the standalone app's mount point, see embed/src/mount.tsx. */
+body,
+#root {
   @apply bg-white text-zinc-900 antialiased dark:bg-zinc-950 dark:text-zinc-100;
 }
 

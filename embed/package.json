@@ -1,0 +1,45 @@
+{
+  "name": "@pi-interface/embed",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Mount pi-interface as a Shadow-DOM-isolated widget inside another web app.",
+  "main": "./dist/pi-interface-embed.cjs",
+  "module": "./dist/pi-interface-embed.js",
+  "types": "./dist/mount.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/mount.d.ts",
+      "import": "./dist/pi-interface-embed.js",
+      "require": "./dist/pi-interface-embed.cjs"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "peerDependencies": {
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "scripts": {
+    "build": "tsc -b && vite build",
+    "typecheck": "tsc -b"
+  },
+  "devDependencies": {
+    "@pi-interface/shared": "*",
+    "@tailwindcss/vite": "^4.3.2",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.3",
+    "highlight.js": "^11.11.1",
+    "mermaid": "^11.16.0",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1",
+    "tailwindcss": "^4.3.2",
+    "typescript": "~6.0.2",
+    "vite": "^8.1.1",
+    "vite-plugin-dts": "^5.0.3",
+    "web": "*"
+  }
+}
