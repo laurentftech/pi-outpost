@@ -14,16 +14,38 @@ interface ModelBarProps {
   onCompact: () => void;
 }
 
-function contextLabel(usage: ContextUsage | null): string {
-  if (!usage || usage.percent === null) return "context";
-  return `context ${Math.round(usage.percent)}%`;
+function ringColor(usage: ContextUsage | null): string {
+  if (!usage || usage.percent === null) return "text-zinc-600";
+  if (usage.percent >= 85) return "text-red-500";
+  if (usage.percent >= 60) return "text-amber-400";
+  return "text-emerald-500";
 }
 
-function contextColor(usage: ContextUsage | null): string {
-  if (!usage || usage.percent === null) return "border-zinc-800 text-zinc-400 hover:border-zinc-600";
-  if (usage.percent >= 85) return "border-red-900 text-red-400 hover:border-red-600";
-  if (usage.percent >= 60) return "border-amber-900 text-amber-400 hover:border-amber-600";
-  return "border-zinc-800 text-zinc-400 hover:border-zinc-600";
+/** Radial progress ring: fills clockwise as context usage grows. */
+function ContextRing({ usage }: { usage: ContextUsage | null }) {
+  const radius = 15.9155;
+  const circumference = 2 * Math.PI * radius;
+  const percent = usage?.percent ?? 0;
+  const filled = (Math.min(100, Math.max(0, percent)) / 100) * circumference;
+
+  return (
+    <svg width={18} height={18} viewBox="0 0 36 36" className="-rotate-90 shrink-0">
+      <circle cx="18" cy="18" r={radius} fill="none" stroke="currentColor" strokeWidth="4" className="text-zinc-800" />
+      {usage && usage.percent !== null && (
+        <circle
+          cx="18"
+          cy="18"
+          r={radius}
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="4"
+          strokeLinecap="round"
+          strokeDasharray={`${filled} ${circumference - filled}`}
+          className={ringColor(usage)}
+        />
+      )}
+    </svg>
+  );
 }
 
 export function ModelBar(props: ModelBarProps) {
@@ -73,9 +95,10 @@ export function ModelBar(props: ModelBarProps) {
             ? `${contextUsage.tokens.toLocaleString()} / ${contextUsage.contextWindow.toLocaleString()} tokens — click to compact`
             : "Click to compact the conversation context"
         }
-        className={`ml-auto rounded-md border px-2 py-1 font-mono text-xs disabled:opacity-50 ${contextColor(contextUsage)}`}
+        className="ml-auto flex items-center gap-1.5 rounded-md border border-zinc-800 px-2 py-1 font-mono text-xs text-zinc-400 hover:border-zinc-600 disabled:opacity-50"
       >
-        {isCompacting ? "compacting…" : contextLabel(contextUsage)}
+        <ContextRing usage={contextUsage} />
+        {isCompacting ? "compacting…" : contextUsage?.percent != null ? `${Math.round(contextUsage.percent)}%` : "context"}
       </button>
     </div>
   );
