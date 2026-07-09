@@ -168,6 +168,7 @@ export type ServerMessage =
   | { type: "directory_listing"; requestId: string; path: string; entries: DirEntry[] }
   | { type: "file_content"; requestId: string; path: string; content: string; size: number }
   | { type: "file_browser_error"; requestId: string; path: string; message: string }
+  | { type: "file_changed"; path: string }
   | ExtensionUIRequest;
 
 /** Client -> server */

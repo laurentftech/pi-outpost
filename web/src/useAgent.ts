@@ -1,4 +1,4 @@
-import { useEffect, useReducer, useRef } from "react";
+import { useCallback, useEffect, useReducer, useRef } from "react";
 import type {
   Branding,
   ChatItem,
@@ -143,6 +143,14 @@ function applySnapshot(state: AgentState, message: ServerMessage & { sessionId: 
     errors: [],
     contextUsage: message.contextUsage ?? null,
     isCompacting: false,
+    // The old session's extensions (and any dialogs/toasts/status/widgets they
+    // set) are gone once the session is replaced — nothing survives a switch.
+    dialogQueue: [],
+    notifications: [],
+    statuses: {},
+    widgets: {},
+    extensionTitle: undefined,
+    editorPrefill: null,
   };
 }
 
@@ -299,6 +307,23 @@ function reduce(state: AgentState, action: Action): AgentState {
 export function useAgent() {
   const [state, dispatch] = useReducer(reduce, initialState);
   const socketRef = useRef<WebSocket | null>(null);
+  // Mirrors of state read from inside the stable onmessage closure below (which
+  // must not be recreated per-render, so it can't close over fresh `state`).
+  const fileTreeRef = useRef(state.fileTree);
+  const openFileRef = useRef(state.openFile);
+  useEffect(() => {
+    fileTreeRef.current = state.fileTree;
+  }, [state.fileTree]);
+  useEffect(() => {
+    openFileRef.current = state.openFile;
+  }, [state.openFile]);
+
+  const sendMessage = useCallback((message: ClientMessage) => {
+    const socket = socketRef.current;
+    if (socket && socket.readyState === WebSocket.OPEN) {
+      socket.send(JSON.stringify(message));
+    }
+  }, []);
 
   useEffect(() => {
     let retryTimer: number | undefined;
@@ -315,11 +340,28 @@ export function useAgent() {
       };
       socket.onmessage = (event) => {
         if (socketRef.current !== socket) return;
+        let message: ServerMessage;
         try {
-          dispatch({ type: "server", message: JSON.parse(event.data as string) as ServerMessage });
+          message = JSON.parse(event.data as string) as ServerMessage;
         } catch {
-          // ignore malformed frames
+          return; // ignore malformed frames
         }
+        if (message.type === "file_changed") {
+          const lastSlash = message.path.lastIndexOf("/");
+          const parentPath = lastSlash < 0 ? "" : message.path.slice(0, lastSlash);
+          if (fileTreeRef.current[parentPath] !== undefined) {
+            dispatch({ type: "dir_list_started", path: parentPath });
+            sendMessage({ type: "list_directory", path: parentPath, requestId: `dir:${crypto.randomUUID()}` });
+          }
+          const openFile = openFileRef.current;
+          if (openFile?.status === "loaded" && openFile.path === message.path) {
+            const requestId = `file:${crypto.randomUUID()}`;
+            dispatch({ type: "file_read_started", path: message.path, requestId });
+            sendMessage({ type: "read_file", path: message.path, requestId });
+          }
+          return;
+        }
+        dispatch({ type: "server", message });
       };
       socket.onclose = () => {
         // Superseded sockets must not flip the indicator (StrictMode remount, reconnect races)
@@ -337,14 +379,7 @@ export function useAgent() {
       socketRef.current = null;
       socket?.close();
     };
-  }, []);
-
-  function sendMessage(message: ClientMessage) {
-    const socket = socketRef.current;
-    if (socket && socket.readyState === WebSocket.OPEN) {
-      socket.send(JSON.stringify(message));
-    }
-  }
+  }, [sendMessage]);
 
   return {
     state,

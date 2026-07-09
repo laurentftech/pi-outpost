@@ -34,7 +34,7 @@ import path from "node:path";
 import { loadConfig } from "./config.ts";
 import { assistantToItem, contentText, customMessageToItem, historyToItems, truncate } from "./convert.ts";
 import { FileBrowserError, listDirectory, readFileForPreview, resolveBrowserRoot } from "./fileBrowser.ts";
-import { createSandboxedTools } from "./sandbox.ts";
+import { createSandboxedTools, isWithin, realResolve } from "./sandbox.ts";
 
 // npm workspace scripts run with cwd=server/ — INIT_CWD is where `npm run` was invoked
 const BASE_CWD = process.env.PI_CWD ?? process.env.INIT_CWD ?? process.cwd();
@@ -362,6 +362,14 @@ function handleExtensionUIResponse(response: ExtensionUIResponse): void {
   pending.resolve(response);
 }
 
+/** Unblock any extension still awaiting a dialog/editor answer from a session about to be replaced. */
+function cancelPendingExtensionRequests(): void {
+  for (const pending of pendingExtensionRequests.values()) {
+    pending.resolve({ type: "extension_ui_response", id: "", cancelled: true });
+  }
+  pendingExtensionRequests.clear();
+}
+
 /** (Re)bind the extension runtime — UI bridge, mode, error reporting — to the current session. */
 async function bindExtensionsForSession(): Promise<void> {
   await runtime.session.bindExtensions({
@@ -380,6 +388,25 @@ async function bindExtensionsForSession(): Promise<void> {
       reportError(new Error(`[extension ${err.extensionPath}] ${err.error}`));
     },
   });
+}
+
+/**
+ * Best-effort file-browser invalidation: if an edit/write tool touched a path inside
+ * BROWSER_ROOT, tell clients so an expanded directory or open preview can refresh.
+ * Not a security boundary — resolution failures or out-of-root paths are just skipped.
+ */
+async function announceFileChange(toolName: string, args: unknown): Promise<void> {
+  if (toolName !== "edit" && toolName !== "write") return;
+  const targetPath = (args as { path?: unknown } | null)?.path;
+  if (typeof targetPath !== "string") return;
+  try {
+    const resolved = await realResolve(path.resolve(BROWSER_ROOT, targetPath));
+    if (!isWithin(BROWSER_ROOT, resolved)) return;
+    const relPath = path.relative(BROWSER_ROOT, resolved).split(path.sep).join("/");
+    broadcast({ type: "file_changed", path: relPath });
+  } catch {
+    // Resolution failure (e.g. race with the tool call) — nothing to invalidate
+  }
 }
 
 // --- SDK events -> wire events -------------------------------------------------
@@ -426,6 +453,7 @@ function bindSession(): () => void {
           toolName: event.toolName,
           args: event.args,
         });
+        void announceFileChange(event.toolName, event.args);
         break;
       case "tool_execution_update": {
         const text = contentText(event.partialResult?.content);
@@ -468,6 +496,7 @@ await bindExtensionsForSession();
 
 /** After runtime.newSession()/switchSession(), runtime.session is a new object. */
 async function rebindAndAnnounce(): Promise<void> {
+  cancelPendingExtensionRequests();
   unsubscribe();
   unsubscribe = bindSession();
   await bindExtensionsForSession();
