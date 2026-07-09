@@ -59,8 +59,7 @@ export function Mermaid({ code }: { code: string }) {
   if (svg) {
     return (
       <div className="group relative my-2 rounded-lg border border-zinc-200 bg-zinc-50 p-3 dark:border-zinc-800 dark:bg-zinc-900">
-        <div className="absolute right-2 top-2 z-10 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
-          <CopyButton text={code} />
+        <div className="absolute left-2 top-2 z-10 opacity-0 transition-opacity group-hover:opacity-100">
           <button
             type="button"
             onClick={() => setShowCode(!showCode)}
@@ -79,6 +78,9 @@ export function Mermaid({ code }: { code: string }) {
             dangerouslySetInnerHTML={{ __html: svg }}
           />
         )}
+        <div className="mt-1 flex justify-end opacity-0 transition-opacity group-hover:opacity-100">
+          <CopyButton text={code} />
+        </div>
       </div>
     );
   }
