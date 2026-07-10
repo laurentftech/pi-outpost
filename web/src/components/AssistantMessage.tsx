@@ -3,7 +3,7 @@ import ReactMarkdown from "react-markdown";
 import rehypeKatex from "rehype-katex";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
-import type { ChatItem } from "@pi-interface/shared";
+import type { ChatItem } from "@pi-outpost/shared";
 import { CopyButton } from "./CopyButton";
 import { Mermaid } from "./Mermaid";
 

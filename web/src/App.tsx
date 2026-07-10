@@ -1,5 +1,5 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
-import type { Theme } from "@pi-interface/shared";
+import type { Theme } from "@pi-outpost/shared";
 import { AssistantMessage } from "./components/AssistantMessage";
 import { Composer } from "./components/Composer";
 import { CustomMessageCard } from "./components/CustomMessageCard";
@@ -19,7 +19,7 @@ export interface AppHandle {
 }
 
 interface AppProps {
-  /** pi-interface backend origin (e.g. "https://api.example.com"); "" (default) = same origin as this page. */
+  /** pi-outpost backend origin (e.g. "https://api.example.com"); "" (default) = same origin as this page. */
   serverUrl?: string;
   /**
    * Element `data-theme`/`--accent` are applied to. Defaults to

@@ -1,12 +1,12 @@
 import { createElement, createRef } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import type { Theme } from "@pi-interface/shared";
+import type { Theme } from "@pi-outpost/shared";
 import App, { type AppHandle } from "web/App";
 // eslint-disable-next-line import/no-unresolved -- resolved at build time via the `?inline` query (raw CSS string)
 import css from "web/index.css?inline";
 
 export interface MountOptions {
-  /** pi-interface backend origin, e.g. "https://api.example.com". Defaults to same-origin as the host page. */
+  /** pi-outpost backend origin, e.g. "https://api.example.com". Defaults to same-origin as the host page. */
   serverUrl?: string;
   /** Initial theme; falls back to the server's branding.defaultTheme, then "system". */
   theme?: Theme;
@@ -19,7 +19,7 @@ export interface MountHandle {
 }
 
 /**
- * Mounts pi-interface into `container` inside a Shadow DOM, fully isolated from the
+ * Mounts pi-outpost into `container` inside a Shadow DOM, fully isolated from the
  * host page's CSS in both directions (Tailwind's reset never touches the host page,
  * and the host page's styles never bleed into the widget).
  */

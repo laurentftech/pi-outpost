@@ -1,20 +1,44 @@
-# Pi Interface
+# Pi Outpost
 
-Web UI for the [pi coding agent](https://github.com/earendil-works/pi), built on its [SDK](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/sdk.md).
+[![CI](https://github.com/laurentftech/pi-outpost/actions/workflows/ci.yml/badge.svg)](https://github.com/laurentftech/pi-outpost/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Node](https://img.shields.io/badge/node-%E2%89%A520-brightgreen)](https://nodejs.org)
+
+**A web chat UI for the [pi coding agent](https://github.com/earendil-works/pi)** — run it as a standalone app, or embed it as a Shadow-DOM-isolated widget inside any web app. Built directly on pi's [SDK](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/sdk.md).
 
 A Node server embeds a pi `AgentSession` and bridges it to a React chat UI over WebSocket: streaming responses, collapsible thinking blocks, live tool-execution cards (bash, edit, …), steering while the agent runs, and abort.
 
 <p align="center">
-  <img src="docs/screenshots/chat-light.png" alt="pi-interface, light theme" width="49%">
-  <img src="docs/screenshots/chat-dark.png" alt="pi-interface, dark theme" width="49%">
+  <img src="docs/screenshots/chat-light.png" alt="pi-outpost, light theme" width="49%">
+  <img src="docs/screenshots/chat-dark.png" alt="pi-outpost, dark theme" width="49%">
 </p>
 
-## Requirements
+## Contents
 
-- Node ≥ 20
-- [pi](https://github.com/earendil-works/pi) configured (`~/.pi/agent/auth.json` or provider env vars like `ANTHROPIC_API_KEY`)
+- [Features](#features)
+- [Quick start](#quick-start)
+- [Production (single process)](#production-single-process)
+- [Standalone configuration](#standalone-configuration)
+- [Embedding](#embedding)
+- [Architecture](#architecture)
 
-## Run
+## Features
+
+- Streaming chat (markdown, thinking blocks, mermaid diagrams)
+- Tool execution cards with live output
+- Steer / follow-up while streaming, abort
+- Model + thinking-level selectors
+- Session list / resume / new / delete
+- Collapsible file-browser sidebar: lazy-loaded tree + read-only preview (syntax-highlighted, Markdown rendered), confined to the same root the agent's own tools can see; entries outside `sandbox.writableRoot` render dimmed
+- Slash commands with autocompletion (`/` in the composer: extension commands, prompt templates, skills)
+- File mentions with autocompletion (`@` in the composer: recursive name search over the browser root, inserts the relative path)
+- Extension "Custom UI" support: dialogs, notifications, status/widgets, editor prefill (see below)
+- Standalone mode: own config dir, file sandbox, branding (see below)
+- Embeddable widget (`@pi-outpost/embed`): mount into any web app, isolated via Shadow DOM (see below)
+
+## Quick start
+
+Requirements: Node ≥ 20, and [pi](https://github.com/earendil-works/pi) configured (`~/.pi/agent/auth.json` or provider env vars like `ANTHROPIC_API_KEY`).
 
 ```bash
 npm install
@@ -40,23 +64,9 @@ Rebuild (`npm run build --workspace web`) and restart after any UI change — th
 
 Need to distribute a version that doesn't require Node.js installed at all (e.g. a Windows `.exe` for non-technical users)? See [`docs/sea-packaging.md`](docs/sea-packaging.md).
 
-## Features
-
-- Streaming chat (markdown, thinking blocks, mermaid diagrams)
-- Tool execution cards with live output
-- Steer / follow-up while streaming, abort
-- Model + thinking-level selectors
-- Session list / resume / new / delete
-- Collapsible file-browser sidebar: lazy-loaded tree + read-only preview (syntax-highlighted, Markdown rendered), confined to the same root the agent's own tools can see; entries outside `sandbox.writableRoot` render dimmed
-- Slash commands with autocompletion (`/` in the composer: extension commands, prompt templates, skills)
-- File mentions with autocompletion (`@` in the composer: recursive name search over the browser root, inserts the relative path)
-- Extension "Custom UI" support: dialogs, notifications, status/widgets, editor prefill (see below)
-- Standalone mode: own config dir, file sandbox, branding (see below)
-- Embeddable widget (`@pi-interface/embed`): mount into any web app, isolated via Shadow DOM (see below)
-
 ## Standalone configuration
 
-Optional. Create `pi-interface.config.json` next to where you launch the server (or point `PI_INTERFACE_CONFIG` at a file). See [`pi-interface.config.example.json`](pi-interface.config.example.json). Without it, the server behaves like a plain local pi (user's `~/.pi/agent`, full toolset).
+Optional. Create `pi-outpost.config.json` next to where you launch the server (or point `PI_OUTPOST_CONFIG` at a file). See [`pi-outpost.config.example.json`](pi-outpost.config.example.json). Without it, the server behaves like a plain local pi (user's `~/.pi/agent`, full toolset).
 
 | Key | Effect |
 |-----|--------|
@@ -88,13 +98,13 @@ Relative paths are resolved against the config file's directory.
 
 ## Embedding
 
-`embed/` publishes `@pi-interface/embed`, mounting pi-interface into any element inside a **Shadow DOM** — fully isolated from the host app's CSS in both directions, React supplied as a peer dependency (not bundled), everything else (Tailwind, markdown/mermaid/highlight.js, the shared protocol types) compiled into the package.
+`embed/` publishes `@pi-outpost/embed`, mounting pi-outpost into any element inside a **Shadow DOM** — fully isolated from the host app's CSS in both directions, React supplied as a peer dependency (not bundled), everything else (Tailwind, markdown/mermaid/highlight.js, the shared protocol types) compiled into the package.
 
 ```js
-import { mount } from "@pi-interface/embed";
+import { mount } from "@pi-outpost/embed";
 
 const widget = mount(document.getElementById("assistant"), {
-  serverUrl: "https://your-pi-interface-server", // omit for same-origin
+  serverUrl: "https://your-pi-outpost-server", // omit for same-origin
   theme: "dark", // optional; falls back to branding.defaultTheme, then "system"
 });
 
@@ -102,17 +112,17 @@ widget.setTheme("light"); // change the theme at runtime
 widget.unmount(); // tear down the React tree
 ```
 
-Build it with `npm run build --workspace @pi-interface/embed` (outputs ESM + CJS to `embed/dist/`, plus a rolled-up `.d.ts`), then publish `embed/` to your own registry.
+Build it with `npm run build --workspace @pi-outpost/embed` (outputs ESM + CJS to `embed/dist/`, plus a rolled-up `.d.ts`), then publish `embed/` to your own registry.
 
 Two things to configure on the server side regardless of deployment topology:
 
-- **`server.allowedOrigins`**: the widget's WebSocket connection carries the *host page's* origin (e.g. `https://your-app.example.com`), not pi-interface's own — add it explicitly, even same-domain deployments need this (only `localhost`/`127.0.0.1` are trusted automatically).
-- **CORS**: `/branding` and `/health` are plain HTTP endpoints with no CORS headers. They work with zero extra config when the widget and the backend share an origin (recommended: reverse-proxy pi-interface under your own domain). A genuinely cross-origin deployment needs a CORS layer in front — not built in yet.
+- **`server.allowedOrigins`**: the widget's WebSocket connection carries the *host page's* origin (e.g. `https://your-app.example.com`), not pi-outpost's own — add it explicitly, even same-domain deployments need this (only `localhost`/`127.0.0.1` are trusted automatically).
+- **CORS**: `/branding` and `/health` are plain HTTP endpoints with no CORS headers. They work with zero extra config when the widget and the backend share an origin (recommended: reverse-proxy pi-outpost under your own domain). A genuinely cross-origin deployment needs a CORS layer in front — not built in yet.
 
-A raw iframe (`<iframe src="https://your-pi-interface-server">`) still works too, and still honors `branding.allowThemeToggle: false` plus the host-driven theme channel:
+A raw iframe (`<iframe src="https://your-pi-outpost-server">`) still works too, and still honors `branding.allowThemeToggle: false` plus the host-driven theme channel:
 
 ```js
-iframeWindow.postMessage({ type: "pi-interface:set-theme", theme: "light" }, "https://your-pi-interface-origin")
+iframeWindow.postMessage({ type: "pi-outpost:set-theme", theme: "light" }, "https://your-pi-outpost-origin")
 ```
 
 ### Extension Custom UI

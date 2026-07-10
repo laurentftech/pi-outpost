@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { CommandInfo, FileSearchEntry } from "@pi-interface/shared";
+import type { CommandInfo, FileSearchEntry } from "@pi-outpost/shared";
 import type { FileSearch } from "../useAgent";
 
 interface ComposerProps {

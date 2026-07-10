@@ -1,8 +1,8 @@
 /**
- * Standalone configuration for pi-interface.
+ * Standalone configuration for pi-outpost.
  *
- * Loaded from PI_INTERFACE_CONFIG (path to a JSON file) or
- * `pi-interface.config.json` in the launch directory. Everything is optional:
+ * Loaded from PI_OUTPOST_CONFIG (path to a JSON file) or
+ * `pi-outpost.config.json` in the launch directory. Everything is optional:
  * without a config file the server behaves like a plain local pi (user's
  * ~/.pi/agent config, full toolset, no branding).
  *
@@ -10,7 +10,7 @@
  */
 import fs from "node:fs";
 import path from "node:path";
-import { THEMES, type Theme } from "@pi-interface/shared";
+import { THEMES, type Theme } from "@pi-outpost/shared";
 
 export interface BrandingConfig {
   /** Header title. Default: "π". */
@@ -23,8 +23,8 @@ export interface BrandingConfig {
   defaultTheme?: Theme;
   /**
    * Whether the UI shows a theme toggle button. Default: true.
-   * Disable when embedding pi-interface in a host app that drives the theme
-   * itself (e.g. by posting `{ type: "pi-interface:set-theme", theme }`).
+   * Disable when embedding pi-outpost in a host app that drives the theme
+   * itself (e.g. by posting `{ type: "pi-outpost:set-theme", theme }`).
    */
   allowThemeToggle?: boolean;
 }
@@ -156,8 +156,8 @@ export function loadConfig(baseCwd: string): AppConfig {
     branding: {},
   };
 
-  const explicitPath = process.env.PI_INTERFACE_CONFIG;
-  const filePath = explicitPath ?? path.join(baseCwd, "pi-interface.config.json");
+  const explicitPath = process.env.PI_OUTPOST_CONFIG;
+  const filePath = explicitPath ?? path.join(baseCwd, "pi-outpost.config.json");
   if (!fs.existsSync(filePath)) {
     if (explicitPath) fail(`config file not found: ${explicitPath}`);
     return config;

@@ -4,7 +4,7 @@ import type { ExtensionFactory } from "@earendil-works/pi-coding-agent";
  * Extensions to bake into a SEA (Single Executable Application) build — see
  * server/scripts/build-sea.mjs and docs/sea-packaging.md.
  *
- * config.extensionPaths (pi-interface.config.json) loads extensions dynamically
+ * config.extensionPaths (pi-outpost.config.json) loads extensions dynamically
  * at runtime via the SDK's jiti-based loader, which does not survive being bundled
  * into a single file (confirmed: silently registers zero commands, no error).
  * extensionFactories sidesteps that entirely — the SDK just calls the function

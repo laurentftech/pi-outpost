@@ -1,5 +1,5 @@
 {
-  "name": "pi-interface",
+  "name": "pi-outpost",
   "private": true,
   "workspaces": [
     "shared",
