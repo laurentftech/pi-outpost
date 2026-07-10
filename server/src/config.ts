@@ -68,6 +68,13 @@ export interface AppConfig {
    */
   noSkills: boolean;
   /**
+   * Skip auto-discovering prompt templates entirely (both agentDir and the
+   * project's cwd/.pi/prompts). Like noSkills, cwd doubles as both the
+   * agent's working directory and a resource-discovery root, so pointing
+   * cwd at a real project pulls in that project's .pi/prompts too.
+   */
+  noPromptTemplates: boolean;
+  /**
    * Restrict the model switcher to exactly these provider/id pairs. Without
    * this, it lists every built-in model whose provider has configured auth —
    * often dozens of variants the deployment doesn't actually serve (e.g. an
@@ -141,6 +148,7 @@ export function loadConfig(baseCwd: string): AppConfig {
     noExtensions: false,
     extensionPaths: [],
     noSkills: false,
+    noPromptTemplates: false,
     appendSystemPrompt: [],
     port: Number(process.env.PORT ?? 3141),
     host: "127.0.0.1",
@@ -201,6 +209,7 @@ export function loadConfig(baseCwd: string): AppConfig {
   config.noExtensions = optionalBoolean(raw, "noExtensions", false);
   config.extensionPaths = (optionalStringArray(raw, "extensionPaths") ?? []).map(resolve);
   config.noSkills = optionalBoolean(raw, "noSkills", false);
+  config.noPromptTemplates = optionalBoolean(raw, "noPromptTemplates", false);
   config.allowedModels = optionalModelList(raw, "allowedModels");
 
   const systemPrompt = optionalString(raw, "systemPrompt");

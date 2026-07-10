@@ -128,6 +128,7 @@ const createRuntime: CreateAgentSessionRuntimeFactory = async ({
         ? { additionalExtensionPaths: config.extensionPaths }
         : {}),
       ...(config.noSkills ? { noSkills: true } : {}),
+      ...(config.noPromptTemplates ? { noPromptTemplates: true } : {}),
       ...(config.systemPrompt !== undefined ? { systemPrompt: config.systemPrompt } : {}),
       ...(config.appendSystemPrompt.length > 0 ? { appendSystemPrompt: config.appendSystemPrompt } : {}),
       ...(seaExtensionFactories.length > 0 ? { extensionFactories: seaExtensionFactories } : {}),
