@@ -1,6 +1,8 @@
 import { useState } from "react";
 import ReactMarkdown from "react-markdown";
+import rehypeKatex from "rehype-katex";
 import remarkGfm from "remark-gfm";
+import remarkMath from "remark-math";
 import type { OpenFile } from "../useAgent";
 import { CodeHighlight } from "./CodeHighlight";
 import { CopyButton } from "./CopyButton";
@@ -45,7 +47,9 @@ export function FilePreview({ file, onClose }: { file: OpenFile; onClose: () => 
         {file.status === "error" && <div className="text-xs text-red-600 dark:text-red-400">{file.message}</div>}
         {file.status === "loaded" && markdown && !showRaw && (
           <div className="prose-chat text-zinc-700 dark:text-zinc-300">
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>{file.content}</ReactMarkdown>
+            <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
+              {file.content}
+            </ReactMarkdown>
           </div>
         )}
         {file.status === "loaded" && (!markdown || showRaw) && <CodeHighlight code={file.content} path={file.path} />}
