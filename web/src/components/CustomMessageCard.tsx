@@ -1,6 +1,8 @@
 import { useState } from "react";
 import ReactMarkdown from "react-markdown";
+import rehypeKatex from "rehype-katex";
 import remarkGfm from "remark-gfm";
+import remarkMath from "remark-math";
 import type { ChatItem } from "@pi-interface/shared";
 
 type CustomItem = Extract<ChatItem, { kind: "custom" }>;
@@ -33,7 +35,9 @@ export function CustomMessageCard({ item }: { item: CustomItem }) {
         )}
       </div>
       <div className="prose-chat mt-1 text-violet-950 dark:text-violet-100">
-        <ReactMarkdown remarkPlugins={[remarkGfm]}>{item.text}</ReactMarkdown>
+        <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
+          {item.text}
+        </ReactMarkdown>
       </div>
       {open && hasDetails && (
         <pre className="mt-2 max-h-96 overflow-auto border-t border-violet-200 pt-2 font-mono text-xs text-violet-600 dark:border-violet-900/60 dark:text-violet-400">

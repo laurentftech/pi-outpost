@@ -1,6 +1,8 @@
 import { useState } from "react";
 import ReactMarkdown from "react-markdown";
+import rehypeKatex from "rehype-katex";
 import remarkGfm from "remark-gfm";
+import remarkMath from "remark-math";
 import type { ChatItem } from "@pi-interface/shared";
 import { CopyButton } from "./CopyButton";
 import { Mermaid } from "./Mermaid";
@@ -68,7 +70,11 @@ export function AssistantMessage({ item }: { item: AssistantItem }) {
           <ThinkingBlock key={block.contentIndex ?? i} text={block.text} />
         ) : (
           <div key={block.contentIndex ?? i} className="prose-chat">
-            <ReactMarkdown remarkPlugins={[remarkGfm]} components={{ pre: PreBlock }}>
+            <ReactMarkdown
+              remarkPlugins={[remarkGfm, remarkMath]}
+              rehypePlugins={[rehypeKatex]}
+              components={{ pre: PreBlock }}
+            >
               {block.text}
             </ReactMarkdown>
           </div>
