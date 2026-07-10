@@ -38,6 +38,8 @@ Builds the web UI once (`web/dist`) and starts **one** Node process that serves 
 
 Rebuild (`npm run build --workspace web`) and restart after any UI change — this mode has no hot reload, unlike `npm run dev` above.
 
+Need to distribute a version that doesn't require Node.js installed at all (e.g. a Windows `.exe` for non-technical users)? See [`docs/sea-packaging.md`](docs/sea-packaging.md).
+
 ## Features
 
 - Streaming chat (markdown, thinking blocks, mermaid diagrams)

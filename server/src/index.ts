@@ -36,6 +36,7 @@ import { loadConfig } from "./config.ts";
 import { assistantToItem, contentText, customMessageToItem, historyToItems, truncate } from "./convert.ts";
 import { FileBrowserError, listDirectory, readFileForPreview, resolveBrowserRoot, resolveWritableRoot, searchFiles } from "./fileBrowser.ts";
 import { createSandboxedTools, isWithin, realResolve } from "./sandbox.ts";
+import { seaExtensionFactories } from "./sea-extensions.ts";
 
 // npm workspace scripts run with cwd=server/ — INIT_CWD is where `npm run` was invoked
 const BASE_CWD = process.env.PI_CWD ?? process.env.INIT_CWD ?? process.cwd();
@@ -128,6 +129,7 @@ const createRuntime: CreateAgentSessionRuntimeFactory = async ({
         : {}),
       ...(config.systemPrompt !== undefined ? { systemPrompt: config.systemPrompt } : {}),
       ...(config.appendSystemPrompt.length > 0 ? { appendSystemPrompt: config.appendSystemPrompt } : {}),
+      ...(seaExtensionFactories.length > 0 ? { extensionFactories: seaExtensionFactories } : {}),
     },
   });
   return {
