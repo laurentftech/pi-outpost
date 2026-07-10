@@ -1,6 +1,6 @@
 {
   "cwd": "./workspace",
-  "agentDir": "./.pi-interface-agent",
+  "agentDir": "./.pi-outpost-agent",
   "sandbox": {
     "root": "./workspace",
     "allowWrite": true,

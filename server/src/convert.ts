@@ -1,7 +1,7 @@
 /**
  * Conversion from SDK AgentMessage history to wire ChatItems.
  */
-import type { AssistantBlock, ChatItem } from "@pi-interface/shared";
+import type { AssistantBlock, ChatItem } from "@pi-outpost/shared";
 
 const MAX_TOOL_OUTPUT = 20_000;
 

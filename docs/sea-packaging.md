@@ -1,4 +1,4 @@
-# Packaging pi-interface as a Windows executable (Node SEA)
+# Packaging pi-outpost as a Windows executable (Node SEA)
 
 Node's [Single Executable Applications](https://nodejs.org/api/single-executable-applications.html)
 (SEA) feature bundles the server into one `.exe` with the Node runtime baked
@@ -10,7 +10,7 @@ loading), but the final Windows-only steps (injecting into a real `node.exe`,
 code-signing) haven't been — verify on a real Windows machine before
 distributing.
 
-## Known limitation: `pi-interface.config.json`'s `extensionPaths` doesn't work
+## Known limitation: `pi-outpost.config.json`'s `extensionPaths` doesn't work
 
 Extensions loaded via `extensionPaths` are loaded dynamically at runtime by
 the SDK's `jiti`-based loader. That does not survive being bundled into a
@@ -64,30 +64,30 @@ Produces, in `server/dist/`:
 
 ```powershell
 # 1. Start from a real Windows node.exe (same major version used to build the blob)
-copy "C:\path\to\node.exe" pi-interface.exe
+copy "C:\path\to\node.exe" pi-outpost.exe
 
 # 2. Inject the blob (requires the `postject` npm package)
-npx postject pi-interface.exe NODE_SEA_BLOB server\dist\sea-prep.blob ^
+npx postject pi-outpost.exe NODE_SEA_BLOB server\dist\sea-prep.blob ^
   --sentinel-fuse NODE_SEA_FUSE_fce680ab2cc467b6e072b8b5df1996b2 ^
   --overwrite
 
 # 3. Re-sign (requires signtool + a code-signing cert) — postject invalidates
 #    node.exe's original signature; an unsigned .exe reliably triggers
 #    Windows SmartScreen for a downloaded file
-signtool sign /fd SHA256 pi-interface.exe
+signtool sign /fd SHA256 pi-outpost.exe
 ```
 
 Then lay out the final folder so the server's existing static-file resolution
 (`../../web/dist` relative to where the bundle lives) keeps working:
 
 ```
-pi-interface\
-  pi-interface.exe
+pi-outpost\
+  pi-outpost.exe
   web\
     dist\            <- from `npm run build --workspace web`
-  pi-interface.config.json
+  pi-outpost.config.json
 ```
 
-`pi-interface.exe` run from that folder serves the UI, `/ws`, `/branding`,
+`pi-outpost.exe` run from that folder serves the UI, `/ws`, `/branding`,
 `/health` — same behavior as `npm run start`, just no Node.js install
 required on the machine running it.

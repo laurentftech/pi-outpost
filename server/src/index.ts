@@ -1,5 +1,5 @@
 /**
- * Pi-interface server: bridges a pi AgentSession to WebSocket clients.
+ * Pi-outpost server: bridges a pi AgentSession to WebSocket clients.
  *
  * SECURITY: binds to 127.0.0.1 only (protects against the network) and
  * validates the Origin header on WebSocket upgrades (protects against
@@ -30,7 +30,7 @@ import {
   type ServerMessage,
   type SessionSnapshot,
   THINKING_LEVELS,
-} from "@pi-interface/shared";
+} from "@pi-outpost/shared";
 import path from "node:path";
 import { loadConfig } from "./config.ts";
 import { assistantToItem, contentText, customMessageToItem, historyToItems, truncate } from "./convert.ts";
@@ -419,7 +419,7 @@ function createExtensionUIContext() {
       return undefined;
     },
     setTheme() {
-      return { success: false, error: "Theme switching not supported in pi-interface" };
+      return { success: false, error: "Theme switching not supported in pi-outpost" };
     },
     getToolsExpanded() {
       return false;
@@ -463,7 +463,7 @@ async function bindExtensionsForSession(): Promise<void> {
       shutdownHandler: () => {
         // Unlike pi's one-shot RPC subprocess, this server is long-lived and shared
         // across tabs/sessions — an extension asking to "shut down" shouldn't kill it.
-        console.warn("[pi] extension requested shutdown — ignored (pi-interface is a persistent server)");
+        console.warn("[pi] extension requested shutdown — ignored (pi-outpost is a persistent server)");
       },
       onError: (err) => {
         reportError(new Error(`[extension ${err.extensionPath}] ${err.error}`));

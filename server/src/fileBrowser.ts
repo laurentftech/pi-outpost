@@ -7,7 +7,7 @@
 import type { Dirent } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
-import type { DirEntry, FileSearchEntry } from "@pi-interface/shared";
+import type { DirEntry, FileSearchEntry } from "@pi-outpost/shared";
 import type { AppConfig } from "./config.ts";
 import { isWithin, realResolve } from "./sandbox.ts";
 

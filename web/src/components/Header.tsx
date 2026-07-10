@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { SessionSummary } from "@pi-interface/shared";
+import type { SessionSummary } from "@pi-outpost/shared";
 
 interface HeaderProps {
   title?: string;

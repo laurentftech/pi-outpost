@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 /**
- * Builds a Node SEA (Single Executable Application) blob for pi-interface's
+ * Builds a Node SEA (Single Executable Application) blob for pi-outpost's
  * server, for distribution as a standalone Windows .exe. See
  * docs/sea-packaging.md for the full walkthrough, including why extensions
- * must go through sea-extensions.ts instead of pi-interface.config.json's
+ * must go through sea-extensions.ts instead of pi-outpost.config.json's
  * extensionPaths, and the Windows-only steps this script can't do for you.
  *
  * Output layout (server/dist/), mirroring server/src/'s depth so the server's
@@ -72,17 +72,17 @@ console.log(`
   ${BLOB_PATH}
 
 Known limitation (see docs/sea-packaging.md): extensions loaded via
-pi-interface.config.json's "extensionPaths" do NOT work once bundled — add
+pi-outpost.config.json's "extensionPaths" do NOT work once bundled — add
 them as static imports in server/src/sea-extensions.ts instead, then re-run
 this script.
 
 Remaining steps happen on Windows (this script can only prepare the blob):
-  1. Copy a Windows node.exe (same major version as this build) to pi-interface.exe
-  2. npx postject pi-interface.exe NODE_SEA_BLOB "${BLOB_PATH}" ^
+  1. Copy a Windows node.exe (same major version as this build) to pi-outpost.exe
+  2. npx postject pi-outpost.exe NODE_SEA_BLOB "${BLOB_PATH}" ^
        --sentinel-fuse NODE_SEA_FUSE_fce680ab2cc467b6e072b8b5df1996b2 ^
        --overwrite
-  3. (Windows only, requires signtool) re-sign pi-interface.exe — postject invalidates
+  3. (Windows only, requires signtool) re-sign pi-outpost.exe — postject invalidates
      the original Node signature, and an unsigned .exe will trigger SmartScreen
-  4. Place pi-interface.exe next to a "web" folder containing dist/ (i.e. web/dist/,
-     a sibling of where this script's bundle.js would sit) and a pi-interface.config.json
+  4. Place pi-outpost.exe next to a "web" folder containing dist/ (i.e. web/dist/,
+     a sibling of where this script's bundle.js would sit) and a pi-outpost.config.json
 `);

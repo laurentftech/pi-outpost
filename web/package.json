@@ -15,7 +15,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@pi-interface/shared": "*",
+    "@pi-outpost/shared": "*",
     "@tailwindcss/vite": "^4.3.2",
     "highlight.js": "^11.11.1",
     "katex": "^0.16.47",

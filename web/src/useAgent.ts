@@ -12,7 +12,7 @@ import type {
   ServerMessage,
   SessionSummary,
   ThinkingLevel,
-} from "@pi-interface/shared";
+} from "@pi-outpost/shared";
 
 type AssistantItem = Extract<ChatItem, { kind: "assistant" }>;
 type ToolItem = Extract<ChatItem, { kind: "tool" }>;
@@ -335,7 +335,7 @@ function wsUrlFor(serverUrl: string): string {
 }
 
 /**
- * `serverUrl` is the pi-interface backend's origin (e.g. "https://api.example.com"),
+ * `serverUrl` is the pi-outpost backend's origin (e.g. "https://api.example.com"),
  * used by the embeddable widget (`embed/src/mount.tsx`) whose page isn't served by
  * that backend. Defaults to "" — same-origin, the standalone app's behavior.
  */

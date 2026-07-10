@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { DirEntry } from "@pi-interface/shared";
+import type { DirEntry } from "@pi-outpost/shared";
 import type { DirState } from "../useAgent";
 
 interface TreeProps {

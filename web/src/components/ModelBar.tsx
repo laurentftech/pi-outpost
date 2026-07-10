@@ -1,5 +1,5 @@
-import type { ContextUsage, ModelChoice, ThinkingLevel } from "@pi-interface/shared";
-import { THINKING_LEVELS } from "@pi-interface/shared";
+import type { ContextUsage, ModelChoice, ThinkingLevel } from "@pi-outpost/shared";
+import { THINKING_LEVELS } from "@pi-outpost/shared";
 
 interface ModelBarProps {
   model: string;

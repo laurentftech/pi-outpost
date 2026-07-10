@@ -1,6 +1,6 @@
-import type { Theme } from "@pi-interface/shared";
+import type { Theme } from "@pi-outpost/shared";
 
-const STORAGE_KEY = "pi-interface:theme";
+const STORAGE_KEY = "pi-outpost:theme";
 
 export function resolveSystemTheme(): "light" | "dark" {
   return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";

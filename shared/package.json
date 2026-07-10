@@ -1,5 +1,5 @@
 {
-  "name": "@pi-interface/shared",
+  "name": "@pi-outpost/shared",
   "private": true,
   "type": "module",
   "exports": {

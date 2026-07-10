@@ -15,8 +15,8 @@ export default defineConfig({
   build: {
     lib: {
       entry: 'src/mount.tsx',
-      name: 'PiInterfaceEmbed',
-      fileName: 'pi-interface-embed',
+      name: 'PiOutpostEmbed',
+      fileName: 'pi-outpost-embed',
       formats: ['es', 'cjs'],
     },
     rollupOptions: {

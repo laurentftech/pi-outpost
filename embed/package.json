@@ -1,16 +1,16 @@
 {
-  "name": "@pi-interface/embed",
+  "name": "@pi-outpost/embed",
   "version": "0.1.0",
   "type": "module",
-  "description": "Mount pi-interface as a Shadow-DOM-isolated widget inside another web app.",
-  "main": "./dist/pi-interface-embed.cjs",
-  "module": "./dist/pi-interface-embed.js",
+  "description": "Mount pi-outpost as a Shadow-DOM-isolated widget inside another web app.",
+  "main": "./dist/pi-outpost-embed.cjs",
+  "module": "./dist/pi-outpost-embed.js",
   "types": "./dist/mount.d.ts",
   "exports": {
     ".": {
       "types": "./dist/mount.d.ts",
-      "import": "./dist/pi-interface-embed.js",
-      "require": "./dist/pi-interface-embed.cjs"
+      "import": "./dist/pi-outpost-embed.js",
+      "require": "./dist/pi-outpost-embed.cjs"
     }
   },
   "files": [
@@ -25,7 +25,7 @@
     "typecheck": "tsc -b"
   },
   "devDependencies": {
-    "@pi-interface/shared": "*",
+    "@pi-outpost/shared": "*",
     "@tailwindcss/vite": "^4.3.2",
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
