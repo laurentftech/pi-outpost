@@ -172,6 +172,7 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
               key={state.openFile.path}
               file={state.openFile}
               writableRoot={state.writableRoot}
+              isStreaming={state.isStreaming}
               onClose={closeFilePreview}
               onReload={readFile}
               onSave={writeFile}

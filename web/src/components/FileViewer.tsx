@@ -12,6 +12,8 @@ interface FileViewerProps {
   file: OpenFile;
   /** Writable zone; see SessionSnapshot.writableRoot (undefined = everything, null = nothing). */
   writableRoot?: string | null;
+  /** The viewer covers the chat: surface agent activity so a running reply isn't invisible. */
+  isStreaming: boolean;
   onClose: () => void;
   /** Refetch the file from disk (discards the edit baseline). */
   onReload: (path: string) => void;
@@ -29,6 +31,25 @@ function isWritable(path: string, writableRoot: string | null | undefined): bool
   return writableRoot === "" || path === writableRoot || path.startsWith(`${writableRoot}/`);
 }
 
+/**
+ * Resolve a markdown-relative href against the open file's directory, into a
+ * browser-root-relative path ("/x" hrefs are treated as root-relative). ".."
+ * clamps at the root — the server rejects escapes anyway.
+ */
+function resolveRelativeHref(currentPath: string, href: string): string {
+  const clean = href.split(/[?#]/)[0];
+  const segments = clean.startsWith("/")
+    ? clean.split("/")
+    : [...currentPath.split("/").slice(0, -1), ...clean.split("/")];
+  const out: string[] = [];
+  for (const segment of segments) {
+    if (segment === "" || segment === ".") continue;
+    if (segment === "..") out.pop();
+    else out.push(segment);
+  }
+  return out.join("/");
+}
+
 /** Baseline captured when Edit mode starts; saves are validated against it. */
 interface EditState {
   draft: string;
@@ -41,9 +62,11 @@ interface EditState {
  * markdown) reading, and — inside the writable zone — a textarea edit mode whose
  * saves go through write_file with an mtime conflict guard.
  */
-export function FileViewer({ file, writableRoot, onClose, onReload, onSave }: FileViewerProps) {
+export function FileViewer({ file, writableRoot, isStreaming, onClose, onReload, onSave }: FileViewerProps) {
   const [showRaw, setShowRaw] = useState(false);
   const [edit, setEdit] = useState<EditState | null>(null);
+  // "done" = a reply finished while this viewer was covering the chat
+  const [agentActivity, setAgentActivity] = useState<"idle" | "streaming" | "done">("idle");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   // Content of the last submitted save — the rebase effect below matches on it, not on
   // the live draft, so typing during the save round-trip can't wedge a false conflict
@@ -111,6 +134,11 @@ export function FileViewer({ file, writableRoot, onClose, onReload, onSave }: Fi
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
   });
+
+  useEffect(() => {
+    if (isStreaming) setAgentActivity("streaming");
+    else setAgentActivity((current) => (current === "streaming" ? "done" : current));
+  }, [isStreaming]);
 
   return (
     <div className="absolute inset-0 z-20 flex flex-col bg-white dark:bg-zinc-950">
@@ -214,7 +242,42 @@ export function FileViewer({ file, writableRoot, onClose, onReload, onSave }: Fi
         )}
         {loaded && edit === null && markdown && !showRaw && (
           <div className="prose-chat mx-auto max-w-3xl p-4 text-zinc-700 dark:text-zinc-300">
-            <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
+            <ReactMarkdown
+              remarkPlugins={[remarkGfm, remarkMath]}
+              rehypePlugins={[rehypeKatex]}
+              components={{
+                // Relative links point at sibling files, not server routes: open them
+                // in the viewer instead of navigating the page (which 404s)
+                a: ({ href, children, ...rest }) => {
+                  if (!href || /^[a-z][a-z0-9+.-]*:/i.test(href)) {
+                    return (
+                      <a href={href} target="_blank" rel="noreferrer" {...rest}>
+                        {children}
+                      </a>
+                    );
+                  }
+                  if (href.startsWith("#")) {
+                    return (
+                      <a href={href} {...rest}>
+                        {children}
+                      </a>
+                    );
+                  }
+                  return (
+                    <a
+                      href={href}
+                      onClick={(event) => {
+                        event.preventDefault();
+                        onReload(resolveRelativeHref(file.path, href));
+                      }}
+                      {...rest}
+                    >
+                      {children}
+                    </a>
+                  );
+                },
+              }}
+            >
               {normalizeMathDelimiters(loaded.content)}
             </ReactMarkdown>
           </div>
@@ -225,6 +288,27 @@ export function FileViewer({ file, writableRoot, onClose, onReload, onSave }: Fi
           </div>
         )}
       </div>
+
+      {agentActivity !== "idle" && (
+        <button
+          type="button"
+          onClick={requestClose}
+          className="flex items-center gap-2 border-t border-zinc-200 px-3 py-2 text-left text-sm hover:bg-zinc-50 dark:border-zinc-800 dark:hover:bg-zinc-900"
+        >
+          {agentActivity === "streaming" ? (
+            <>
+              <span className="h-2 w-2 animate-pulse rounded-full bg-amber-500" />
+              <span className="text-amber-700 dark:text-amber-400">π is replying…</span>
+            </>
+          ) : (
+            <>
+              <span className="h-2 w-2 rounded-full bg-emerald-500" />
+              <span className="text-emerald-700 dark:text-emerald-400">π replied</span>
+            </>
+          )}
+          <span className="ml-auto text-xs text-zinc-400 dark:text-zinc-500">show conversation →</span>
+        </button>
+      )}
     </div>
   );
 }
