@@ -30,6 +30,7 @@ import {
   type ServerMessage,
   type SessionSnapshot,
   THINKING_LEVELS,
+  type TreeNode,
   type WireImage,
 } from "@pi-outpost/shared";
 import path from "node:path";
@@ -717,6 +718,114 @@ function reportError(error: unknown): void {
   broadcast({ type: "error", message: error instanceof Error ? error.message : String(error) });
 }
 
+// --- Fork / tree navigation -------------------------------------------------------
+
+/** SDK tree node (structural subset — the SDK type isn't exported at the root). */
+interface SdkTreeNode {
+  entry: { type: string; id: string; message?: { role?: string; content?: unknown } };
+  children: SdkTreeNode[];
+  label?: string;
+}
+
+/**
+ * Collapse the raw session tree (every entry is a node: assistant messages,
+ * tool results, model changes…) down to user-message nodes only, so the UI
+ * shows "the points you can return to". A node is `onPath` when the current
+ * leaf lives in its subtree, i.e. it is on the active branch.
+ */
+function buildTree(): TreeNode[] {
+  const manager = runtime.session.sessionManager;
+  const leafId = manager.getLeafId();
+
+  function subtreeHasLeaf(node: SdkTreeNode): boolean {
+    return node.entry.id === leafId || node.children.some(subtreeHasLeaf);
+  }
+
+  function collapse(node: SdkTreeNode): TreeNode[] {
+    const childNodes = node.children.flatMap(collapse);
+    if (node.entry.type === "message" && node.entry.message?.role === "user") {
+      const text = contentText(node.entry.message.content as never).split("\n")[0].slice(0, 100);
+      return [
+        {
+          entryId: node.entry.id,
+          text,
+          onPath: subtreeHasLeaf(node),
+          ...(node.label ? { label: node.label } : {}),
+          children: childNodes,
+        },
+      ];
+    }
+    return childNodes;
+  }
+
+  return (manager.getTree() as SdkTreeNode[]).flatMap(collapse);
+}
+
+function sendTree(socket: WebSocket): void {
+  send(socket, { type: "tree", roots: buildTree() });
+}
+
+/**
+ * Move the current leaf to another node of the same session file (checkout of
+ * an earlier/parallel branch). The transcript changes without a session
+ * replacement, so clients get a fresh snapshot; the abandoned user message
+ * comes back as composer prefill (same UX as pi's TUI).
+ */
+/** Fork/navigate targets must be user-message entries (the SDK throws on anything else). */
+function isUserMessageEntry(entryId: string): boolean {
+  const entry = runtime.session.sessionManager.getEntry(entryId) as
+    | { type: string; message?: { role?: string } }
+    | undefined;
+  return entry?.type === "message" && entry.message?.role === "user";
+}
+
+async function navigateTree(socket: WebSocket, entryId: string): Promise<void> {
+  if (runtime.session.isStreaming) {
+    send(socket, { type: "error", message: "Cannot navigate the tree while the agent is running" });
+    return;
+  }
+  if (!isUserMessageEntry(entryId)) {
+    send(socket, { type: "error", message: "Unknown tree node" });
+    return;
+  }
+  // Serialize against session replacement AND against a prompt sneaking in
+  // during the SDK's async pre-navigation hooks (session_before_tree): the
+  // flag closes the check-then-act window at the server boundary.
+  if (replacingSession) {
+    send(socket, { type: "error", message: "Session change already in progress" });
+    return;
+  }
+  replacingSession = true;
+  try {
+    const { cancelled, editorText } = await runtime.session.navigateTree(entryId);
+    if (cancelled) return;
+    broadcast({ type: "session_replaced", ...snapshot() });
+    if (editorText) send(socket, { type: "editor_prefill", text: editorText });
+    broadcast({ type: "tree", roots: buildTree() });
+  } finally {
+    replacingSession = false;
+  }
+}
+
+/** Fork a new session file starting just before the given user message. */
+async function forkSession(socket: WebSocket, entryId: string): Promise<void> {
+  if (!isUserMessageEntry(entryId)) {
+    // Also protects replaceSession's recovery path: runtime.fork throws on
+    // non-user entries BEFORE teardown, and recovery would needlessly swap
+    // the healthy live session for a fresh one.
+    send(socket, { type: "error", message: "Unknown tree node" });
+    return;
+  }
+  let selectedText: string | undefined;
+  await replaceSession(socket, async () => {
+    const result = await runtime.fork(entryId);
+    selectedText = result.selectedText;
+    return result;
+  });
+  if (selectedText) send(socket, { type: "editor_prefill", text: selectedText });
+  broadcast({ type: "tree", roots: buildTree() });
+}
+
 /** File-browser sidebar: list a directory, confined to BROWSER_ROOT. */
 async function handleListDirectory(socket: WebSocket, dirPath: string, requestId: string): Promise<void> {
   try {
@@ -825,6 +934,21 @@ function handleClientMessage(socket: WebSocket, raw: string): void {
     case "search_files":
       if (typeof message.query !== "string" || typeof message.requestId !== "string") return;
       handleSearchFiles(socket, message.query, message.requestId).catch(reportError);
+      break;
+    case "list_tree":
+      try {
+        sendTree(socket);
+      } catch (error) {
+        reportError(error);
+      }
+      break;
+    case "navigate_tree":
+      if (typeof message.entryId !== "string") return;
+      navigateTree(socket, message.entryId).catch(reportError);
+      break;
+    case "fork_session":
+      if (typeof message.entryId !== "string") return;
+      forkSession(socket, message.entryId).catch(reportError);
       break;
   }
 }

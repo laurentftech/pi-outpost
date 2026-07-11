@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState } from "react";
-import type { SessionSummary } from "@pi-outpost/shared";
+import type { SessionSummary, TreeNode } from "@pi-outpost/shared";
+import { TreeMenu } from "./TreeMenu";
 
 interface HeaderProps {
   title?: string;
   sessions: SessionSummary[] | null;
   sessionId: string;
+  tree: TreeNode[] | null;
   isStreaming: boolean;
   connected: boolean;
   theme: "light" | "dark";
@@ -18,6 +20,9 @@ interface HeaderProps {
   onSwitchSession: (path: string) => void;
   onDeleteSession: (path: string) => void;
   onListSessions: () => void;
+  onListTree: () => void;
+  onNavigateTree: (entryId: string) => void;
+  onForkSession: (entryId: string) => void;
 }
 
 function useClickOutside(onClose: () => void) {
@@ -160,6 +165,13 @@ export function Header(props: HeaderProps) {
         >
           + new
         </button>
+        <TreeMenu
+          tree={props.tree}
+          isStreaming={isStreaming}
+          onListTree={props.onListTree}
+          onNavigate={props.onNavigateTree}
+          onFork={props.onForkSession}
+        />
         <SessionMenu
           sessions={props.sessions}
           sessionId={props.sessionId}

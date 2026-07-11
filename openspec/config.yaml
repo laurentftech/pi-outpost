@@ -1,0 +1,16 @@
+schema: spec-driven
+openlore:
+  version: 1.0.0
+  generatedAt: 2026-07-11T01:51:07.668Z
+  domains:
+    - model
+    - file
+    - theme
+    - agent
+  confidence: 0.85
+context: |-
+  # Auto-detected by openlore
+  Tech stack: TypeScript, React
+  Architecture: Layered (routes → controllers → services → repositories)
+  Domains: model, file, extension, theme, agent
+  Key patterns: Component-based UI

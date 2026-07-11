@@ -45,6 +45,9 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
     switchSession,
     deleteSession,
     listSessions,
+    listTree,
+    navigateTree,
+    forkSession,
     compact,
     respondToDialog,
     dismissNotification,
@@ -143,6 +146,7 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
             title={state.branding.title}
             sessions={state.sessions}
             sessionId={state.sessionId}
+            tree={state.tree}
             isStreaming={state.isStreaming}
             connected={state.connected}
             theme={theme}
@@ -155,6 +159,9 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
             onSwitchSession={switchSession}
             onDeleteSession={deleteSession}
             onListSessions={listSessions}
+            onListTree={listTree}
+            onNavigateTree={navigateTree}
+            onForkSession={forkSession}
           />
 
           <main ref={mainRef} onScroll={handleScroll} className="flex-1 overflow-y-auto">

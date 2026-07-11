@@ -138,6 +138,23 @@ export interface FileSearchEntry {
   type: DirEntry["type"];
 }
 
+/**
+ * One node of the conversation tree (fork/branch navigation). Only user
+ * messages are nodes — assistant/tool entries are collapsed into their
+ * preceding user turn — so the tree reads as "the points you can return to".
+ */
+export interface TreeNode {
+  /** Session entry id (navigation/fork target). */
+  entryId: string;
+  /** First line of the user message (truncated server-side). */
+  text: string;
+  /** True when this node is an ancestor of (or is) the current leaf. */
+  onPath: boolean;
+  /** Branch summary label, when the SDK generated one for an abandoned branch. */
+  label?: string;
+  children: TreeNode[];
+}
+
 /** Snapshot of session state, sent on connect and after session replacement. */
 export interface SessionSnapshot {
   branding: Branding;
@@ -189,6 +206,8 @@ export type ServerMessage =
   | { type: "file_browser_error"; requestId: string; path: string; message: string }
   | { type: "file_changed"; path: string }
   | { type: "file_search_results"; requestId: string; query: string; results: FileSearchEntry[] }
+  | { type: "tree"; roots: TreeNode[] }
+  | { type: "editor_prefill"; text: string }
   | ExtensionUIRequest;
 
 /** Client -> server */
@@ -205,4 +224,7 @@ export type ClientMessage =
   | { type: "list_directory"; path: string; requestId: string }
   | { type: "read_file"; path: string; requestId: string }
   | { type: "search_files"; query: string; requestId: string }
+  | { type: "list_tree" }
+  | { type: "navigate_tree"; entryId: string }
+  | { type: "fork_session"; entryId: string }
   | ExtensionUIResponse;

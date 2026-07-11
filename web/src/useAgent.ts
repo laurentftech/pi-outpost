@@ -12,6 +12,7 @@ import type {
   ServerMessage,
   SessionSummary,
   ThinkingLevel,
+  TreeNode,
   WireImage,
 } from "@pi-outpost/shared";
 
@@ -50,6 +51,8 @@ export interface AgentState {
   models: ModelChoice[];
   commands: CommandInfo[];
   sessions: SessionSummary[] | null;
+  /** Conversation tree (fork/branch navigation); null until list_tree is answered. */
+  tree: TreeNode[] | null;
   isStreaming: boolean;
   items: ChatItem[];
   queue: { steering: string[]; followUp: string[] };
@@ -79,6 +82,7 @@ const initialState: AgentState = {
   models: [],
   commands: [],
   sessions: null,
+  tree: null,
   isStreaming: false,
   items: [],
   queue: { steering: [], followUp: [] },
@@ -163,6 +167,8 @@ function applySnapshot(state: AgentState, message: ServerMessage & { sessionId: 
     widgets: {},
     extensionTitle: undefined,
     editorPrefill: null,
+    // Stale after any snapshot: navigate_tree re-sends it, session switches invalidate it
+    tree: null,
     writableRoot: message.writableRoot,
   };
 }
@@ -196,6 +202,13 @@ function reduce(state: AgentState, action: Action): AgentState {
       return applySnapshot(state, message);
     case "sessions":
       return { ...state, sessions: message.sessions };
+    case "tree":
+      return { ...state, tree: message.roots };
+    case "editor_prefill":
+      return {
+        ...state,
+        editorPrefill: { text: message.text, nonce: state.editorPrefill ? state.editorPrefill.nonce + 1 : 1 },
+      };
     case "model_changed":
       return { ...state, model: message.model, modelSupportsReasoning: message.reasoning };
     case "thinking_changed":
@@ -449,6 +462,9 @@ export function useAgent(serverUrl = "") {
     switchSession: (path: string) => sendMessage({ type: "switch_session", path }),
     deleteSession: (path: string) => sendMessage({ type: "delete_session", path }),
     listSessions: () => sendMessage({ type: "list_sessions" }),
+    listTree: () => sendMessage({ type: "list_tree" }),
+    navigateTree: (entryId: string) => sendMessage({ type: "navigate_tree", entryId }),
+    forkSession: (entryId: string) => sendMessage({ type: "fork_session", entryId }),
     compact: () => sendMessage({ type: "compact" }),
     /** Answer the dialog at the head of the queue and pop it locally. */
     respondToDialog: (response: { id: string; value: string } | { id: string; confirmed: boolean } | { id: string; cancelled: true }) => {

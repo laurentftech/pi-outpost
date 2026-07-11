@@ -1,0 +1,66 @@
+{
+  "generatedAt": "2026-07-11T01:51:07.677Z",
+  "specVersion": "1.0.0",
+  "domains": [
+    {
+      "domain": "agent",
+      "specPath": "openspec/specs/agent/spec.md",
+      "sourceFiles": [
+        "/Users/laurent/Projets/Pi-interface/web/src/useAgent.ts"
+      ],
+      "requirementCount": 4,
+      "dependsOn": [],
+      "calledBy": [
+        "components",
+        "file",
+        "web"
+      ]
+    },
+    {
+      "domain": "file",
+      "specPath": "openspec/specs/file/spec.md",
+      "sourceFiles": [
+        "/Users/laurent/Projets/Pi-interface/web/src/components/FileTree.tsx",
+        "/Users/laurent/Projets/Pi-interface/web/src/components/FilePreview.tsx",
+        "/Users/laurent/Projets/Pi-interface/server/src/fileBrowser.ts"
+      ],
+      "requirementCount": 8,
+      "dependsOn": [
+        "components",
+        "server",
+        "web"
+      ],
+      "calledBy": [
+        "components",
+        "server"
+      ]
+    },
+    {
+      "domain": "model",
+      "specPath": "openspec/specs/model/spec.md",
+      "sourceFiles": [
+        "/Users/laurent/Projets/Pi-interface/web/src/components/ModelBar.tsx"
+      ],
+      "requirementCount": 9,
+      "dependsOn": [],
+      "calledBy": [
+        "web"
+      ]
+    },
+    {
+      "domain": "theme",
+      "specPath": "openspec/specs/theme/spec.md",
+      "sourceFiles": [
+        "/Users/laurent/Projets/Pi-interface/web/src/useTheme.ts",
+        "/Users/laurent/Projets/Pi-interface/web/src/ThemeContext.ts",
+        "/Users/laurent/Projets/Pi-interface/web/src/theme.ts"
+      ],
+      "requirementCount": 2,
+      "dependsOn": [],
+      "calledBy": [
+        "components",
+        "web"
+      ]
+    }
+  ]
+}
