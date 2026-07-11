@@ -9,8 +9,8 @@ openlore:
     - agent
   confidence: 0.85
 context: |-
-  # Auto-detected by openlore
-  Tech stack: TypeScript, React
-  Architecture: Layered (routes → controllers → services → repositories)
+  # Auto-detected by openlore (corrected by hand 2026-07-11)
+  Tech stack: TypeScript, React, Fastify, Vite
+  Architecture: Client/server over a typed WebSocket protocol (shared/src/protocol.ts)
   Domains: model, file, extension, theme, agent
-  Key patterns: Component-based UI
+  Key patterns: Component-based UI, single embedded AgentSession broadcast to all clients
