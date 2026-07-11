@@ -64,6 +64,58 @@ export function diffLines(oldText: string, newText: string): DiffLine[] {
   return lines;
 }
 
+/** One side-by-side row: left = before, right = after; null = no line on that side. */
+export interface SideBySideRow {
+  left: string | null;
+  right: string | null;
+  changed: boolean;
+}
+
+/** Pair del/add runs into aligned before/after rows for a split diff view. */
+export function toSideBySide(lines: DiffLine[]): SideBySideRow[] {
+  const rows: SideBySideRow[] = [];
+  let i = 0;
+  while (i < lines.length) {
+    if (lines[i].type === "same") {
+      rows.push({ left: lines[i].text, right: lines[i].text, changed: false });
+      i++;
+      continue;
+    }
+    const dels: string[] = [];
+    const adds: string[] = [];
+    while (i < lines.length && lines[i].type === "del") dels.push(lines[i++].text);
+    while (i < lines.length && lines[i].type === "add") adds.push(lines[i++].text);
+    for (let k = 0; k < Math.max(dels.length, adds.length); k++) {
+      rows.push({ left: k < dels.length ? dels[k] : null, right: k < adds.length ? adds[k] : null, changed: true });
+    }
+  }
+  return rows;
+}
+
+/**
+ * Collapse long unchanged row runs to a separator, keeping `context` rows around
+ * changes. Returns null where a "⋯" separator belongs.
+ */
+export function rowsWithContext(rows: SideBySideRow[], context = 2): (SideBySideRow | null)[] {
+  const keep = new Array<boolean>(rows.length).fill(false);
+  rows.forEach((row, i) => {
+    if (!row.changed) return;
+    for (let k = Math.max(0, i - context); k <= Math.min(rows.length - 1, i + context); k++) keep[k] = true;
+  });
+  const out: (SideBySideRow | null)[] = [];
+  let skipping = false;
+  rows.forEach((row, i) => {
+    if (keep[i]) {
+      out.push(row);
+      skipping = false;
+    } else if (!skipping) {
+      out.push(null);
+      skipping = true;
+    }
+  });
+  return out;
+}
+
 /**
  * Collapse long unchanged runs to a separator, keeping `context` lines around
  * changes (unified-diff style). Returns null rows where a "⋯" separator belongs.

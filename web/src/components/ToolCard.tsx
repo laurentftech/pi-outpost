@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { ChatItem } from "@pi-outpost/shared";
-import { type DiffLine, diffLines, withContext } from "../diff";
+import { type DiffLine, diffLines, rowsWithContext, toSideBySide, withContext } from "../diff";
 
 type ToolItem = Extract<ChatItem, { kind: "tool" }>;
 
@@ -33,6 +33,46 @@ function writeContent(item: ToolItem): string | null {
   if (item.toolName !== "write" || item.args === null || typeof item.args !== "object") return null;
   const content = (item.args as { content?: unknown }).content;
   return typeof content === "string" ? content : null;
+}
+
+/** Side-by-side before/after view for edit calls. */
+function SplitDiffBlock({ lines }: { lines: DiffLine[] }) {
+  return (
+    <div className="max-h-72 overflow-auto rounded border border-zinc-200 font-mono text-xs leading-relaxed dark:border-zinc-800">
+      {rowsWithContext(toSideBySide(lines)).map((row, i) =>
+        row === null ? (
+          <div key={i} className="bg-zinc-100 px-2 text-center text-zinc-400 dark:bg-zinc-800/60 dark:text-zinc-600">
+            ⋯
+          </div>
+        ) : (
+          <div key={i} className="grid grid-cols-2">
+            <div
+              className={`whitespace-pre-wrap break-words border-r border-zinc-200 px-2 dark:border-zinc-800 ${
+                row.changed
+                  ? row.left === null
+                    ? "bg-zinc-50 dark:bg-zinc-900/40"
+                    : "bg-red-50 text-red-700 dark:bg-red-950/40 dark:text-red-300"
+                  : "text-zinc-500 dark:text-zinc-500"
+              }`}
+            >
+              {row.left ?? " "}
+            </div>
+            <div
+              className={`whitespace-pre-wrap break-words px-2 ${
+                row.changed
+                  ? row.right === null
+                    ? "bg-zinc-50 dark:bg-zinc-900/40"
+                    : "bg-emerald-50 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300"
+                  : "text-zinc-500 dark:text-zinc-500"
+              }`}
+            >
+              {row.right ?? " "}
+            </div>
+          </div>
+        ),
+      )}
+    </div>
+  );
 }
 
 function DiffBlock({ lines }: { lines: DiffLine[] }) {
@@ -98,7 +138,7 @@ export function ToolCard({ item }: { item: ToolItem }) {
           {pairs !== null && (
             <div className="mb-2 flex flex-col gap-2">
               {pairs.map((pair, i) => (
-                <DiffBlock key={i} lines={diffLines(pair.oldText, pair.newText)} />
+                <SplitDiffBlock key={i} lines={diffLines(pair.oldText, pair.newText)} />
               ))}
             </div>
           )}
