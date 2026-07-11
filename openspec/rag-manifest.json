@@ -21,10 +21,10 @@
       "specPath": "openspec/specs/file/spec.md",
       "sourceFiles": [
         "/Users/laurent/Projets/Pi-interface/web/src/components/FileTree.tsx",
-        "/Users/laurent/Projets/Pi-interface/web/src/components/FilePreview.tsx",
+        "/Users/laurent/Projets/Pi-interface/web/src/components/FileViewer.tsx",
         "/Users/laurent/Projets/Pi-interface/server/src/fileBrowser.ts"
       ],
-      "requirementCount": 8,
+      "requirementCount": 11,
       "dependsOn": [
         "components",
         "server",

@@ -30,6 +30,7 @@ Discriminated union of messages sent from the client to the server over the WebS
 | list_sessions | — |
 | compact | — |
 | list_directory / read_file | path: string, requestId: string |
+| write_file | path: string, content: string, expectedMtimeMs: number, force?: boolean, requestId: string |
 | search_files | query: string, requestId: string |
 | list_tree | — |
 | navigate_tree / fork_session | entryId: string |
@@ -106,12 +107,13 @@ File-sandbox settings; when present, built-in file tools are replaced by scoped 
 ### Requirement: ClientMessageValidation
 
 The system SHALL validate ClientMessage according to these rules:
-- type must be one of: prompt, abort, set_model, set_thinking, new_session, switch_session, delete_session, list_sessions, compact, list_directory, read_file, search_files, list_tree, navigate_tree, fork_session, extension_ui_response
+- type must be one of: prompt, abort, set_model, set_thinking, new_session, switch_session, delete_session, list_sessions, compact, list_directory, read_file, write_file, search_files, list_tree, navigate_tree, fork_session, extension_ui_response
 - When type is 'prompt', text is required (images optional)
 - When type is 'set_model', provider and id are required
 - When type is 'set_thinking', level is required
 - When type is 'switch_session' or 'delete_session', path is required
 - When type is 'list_directory' or 'read_file', path and requestId are required
+- When type is 'write_file', path, content, expectedMtimeMs, and requestId are required
 - When type is 'search_files', query and requestId are required
 - When type is 'navigate_tree' or 'fork_session', entryId is required
 - Malformed or non-object frames are ignored without crashing the server
@@ -170,7 +172,12 @@ The system SHALL validate ClientMessage according to these rules:
 #### Scenario: ReadFile
 - **GIVEN** Client knows path to file
 - **WHEN** Client sends message with type 'read_file'
-- **THEN** Server returns contents of the specified file
+- **THEN** Server returns contents of the specified file with size and mtimeMs
+
+#### Scenario: WriteFile
+- **GIVEN** Client has edited content for an open file
+- **WHEN** Client sends message with type 'write_file'
+- **THEN** Server writes the file if permitted and unchanged on disk, answering with 'file_written' (new size and mtimeMs) or 'file_browser_error'
 
 #### Scenario: SearchFiles
 - **GIVEN** Client has search query
