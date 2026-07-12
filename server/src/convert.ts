@@ -68,9 +68,15 @@ function assistantBlocks(content: string | AnyContent[]): AssistantBlock[] {
  * - the trailing partial assistant message (pushed into session.messages at
  *   message_start) is marked `streaming` so deltas route to it;
  * - toolCalls without a result yet become running tool cards.
+ *
+ * `userEntryIds` are the session entry ids of the user messages on the current
+ * branch, oldest first. They are matched to the emitted user items from the END:
+ * compaction drops a prefix of the history, so the items are a suffix of the
+ * branch. Items left unmatched simply carry no entryId (edit stays disabled).
  */
-export function historyToItems(messages: AnyMessage[], streaming = false): ChatItem[] {
+export function historyToItems(messages: AnyMessage[], streaming = false, userEntryIds: string[] = []): ChatItem[] {
   const items: ChatItem[] = [];
+  const userItems: Extract<ChatItem, { kind: "user" }>[] = [];
   const pendingCalls = new Map<string, { name: string; args: unknown }>();
   // Item emitted for the trailing message, when that message is assistant
   let trailingAssistantItem: Extract<ChatItem, { kind: "assistant" }> | undefined;
@@ -96,7 +102,13 @@ export function historyToItems(messages: AnyMessage[], streaming = false): ChatI
               .map((c) => ({ data: c.data as string, mimeType: c.mimeType as string }))
           : [];
         if (text || images.length > 0) {
-          items.push({ kind: "user", text, ...(images.length > 0 ? { images } : {}) });
+          const item: Extract<ChatItem, { kind: "user" }> = {
+            kind: "user",
+            text,
+            ...(images.length > 0 ? { images } : {}),
+          };
+          items.push(item);
+          userItems.push(item);
         }
         break;
       }
@@ -141,6 +153,11 @@ export function historyToItems(messages: AnyMessage[], streaming = false): ChatI
         // compaction/branch summaries, bash executions — skipped in v1
         break;
     }
+  }
+
+  // Right-align: the last user item is the last user entry of the branch
+  for (let i = 1; i <= Math.min(userItems.length, userEntryIds.length); i++) {
+    userItems[userItems.length - i].entryId = userEntryIds[userEntryIds.length - i];
   }
 
   if (streaming && messages[messages.length - 1]?.role === "assistant") {

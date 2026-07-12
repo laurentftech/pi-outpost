@@ -12,7 +12,13 @@ export interface WireImage {
 
 /** Chat item as displayed by the UI (also used to serialize history). */
 export type ChatItem =
-  | { kind: "user"; text: string; images?: WireImage[] }
+  | {
+      kind: "user";
+      text: string;
+      images?: WireImage[];
+      /** Session entry id — lets the UI re-send an edited version as a new branch. */
+      entryId?: string;
+    }
   | {
       kind: "assistant";
       blocks: AssistantBlock[];
@@ -164,8 +170,14 @@ export interface FileSearchEntry {
  * preceding user turn — so the tree reads as "the points you can return to".
  */
 export interface TreeNode {
-  /** Session entry id (navigation/fork target). */
+  /** Session entry id (navigation/fork target): navigating here rewinds to *before* this message. */
   entryId: string;
+  /**
+   * Last entry of this turn's reply (the state right *after* the exchange).
+   * Navigating here restores the full transcript, reply included. Absent when
+   * the turn has no reply yet, or when the reply forks ambiguously.
+   */
+  tipId?: string;
   /** First line of the user message (truncated server-side). */
   text: string;
   /** True when this node is an ancestor of (or is) the current leaf. */
@@ -204,6 +216,16 @@ export type ServerMessage =
   | { type: "model_changed"; model: string; reasoning: boolean }
   | { type: "thinking_changed"; level: string }
   | { type: "user"; text: string; images?: WireImage[] }
+  /**
+   * User messages persisted on the current branch, oldest first. Sent once a turn
+   * lands, so the client's optimistically echoed bubbles pick up their entryId and
+   * become editable. The text travels along because the echo and the persisted
+   * entries are NOT 1:1 — an extension slash command or a steer that was aborted
+   * before delivery echoes a bubble that never becomes an entry — so the client
+   * pairs from the end and stops at the first text mismatch (fail safe: no id, no
+   * edit) instead of blindly aligning by position.
+   */
+  | { type: "user_entries"; entries: { entryId: string; text: string }[] }
   | { type: "agent_start" }
   | { type: "agent_end" }
   | { type: "assistant_start" }
@@ -272,6 +294,12 @@ export type ClientMessage =
   | { type: "list_tree" }
   | { type: "navigate_tree"; entryId: string }
   | { type: "fork_session"; entryId: string }
+  /**
+   * Re-send a user message with edited text: rewinds to just before `entryId`
+   * and prompts again, so the answer starts a new branch of the same session
+   * (the old exchange stays reachable through the tree).
+   */
+  | { type: "edit_prompt"; entryId: string; text: string; images?: WireImage[] }
   | { type: "git_status"; requestId: string }
   | { type: "git_log"; limit?: number; requestId: string }
   | { type: "git_diff"; path: string; requestId: string }

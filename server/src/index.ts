@@ -362,6 +362,18 @@ function availableCommands(): CommandInfo[] {
  * message_start, and historyToItems adds running tool cards for toolCalls
  * without a result yet.
  */
+/** User messages persisted on the current branch, oldest first — lets the UI edit a past prompt. */
+function branchUserEntries(): { entryId: string; text: string }[] {
+  const entries = runtime.session.sessionManager.buildContextEntries() as {
+    type: string;
+    id: string;
+    message?: { role?: string; content?: unknown };
+  }[];
+  return entries
+    .filter((e) => e.type === "message" && e.message?.role === "user")
+    .map((e) => ({ entryId: e.id, text: contentText(e.message!.content as never) }));
+}
+
 function snapshot(): SessionSnapshot {
   const session = runtime.session;
   return {
@@ -370,7 +382,11 @@ function snapshot(): SessionSnapshot {
     model: modelName(),
     thinkingLevel: session.thinkingLevel,
     isStreaming: session.isStreaming,
-    items: historyToItems(session.messages as never, session.isStreaming),
+    items: historyToItems(
+      session.messages as never,
+      session.isStreaming,
+      branchUserEntries().map((entry) => entry.entryId),
+    ),
     models: availableModels(),
     commands: availableCommands(),
     contextUsage: contextUsage(),
@@ -804,6 +820,43 @@ async function handlePrompt(text: string, images?: WireImage[]): Promise<void> {
     ...(session.isStreaming ? { streamingBehavior: "steer" as const } : {}),
   };
   await session.prompt(text, options);
+  // The turn is persisted now: hand the client the entries so the bubbles it
+  // echoed optimistically become editable (edit_prompt targets an entry id)
+  broadcast({ type: "user_entries", entries: branchUserEntries() });
+  broadcast({ type: "tree", roots: buildTree() });
+}
+
+/**
+ * Re-send a past user message with edited text: rewind to just before it, then
+ * prompt again. The new answer becomes a sibling branch — the original exchange
+ * stays reachable in the tree (that's the whole point of editing here).
+ */
+async function editPrompt(socket: WebSocket, entryId: string, text: string, images?: WireImage[]): Promise<void> {
+  if (runtime.session.isStreaming) {
+    send(socket, { type: "error", message: "Cannot edit a message while the agent is running" });
+    return;
+  }
+  if (!isUserMessageEntry(entryId)) {
+    send(socket, { type: "error", message: "Unknown message" });
+    return;
+  }
+  if (replacingSession) {
+    send(socket, { type: "error", message: "Session change already in progress" });
+    return;
+  }
+  replacingSession = true;
+  try {
+    const { cancelled } = await runtime.session.navigateTree(entryId);
+    if (cancelled) {
+      // An extension vetoed the rewind — say so: the client already dropped the draft
+      send(socket, { type: "error", message: "Edit cancelled — the conversation was not rewound" });
+      return;
+    }
+    broadcast({ type: "session_replaced", ...snapshot() });
+  } finally {
+    replacingSession = false;
+  }
+  await handlePrompt(text, images);
 }
 
 /**
@@ -883,13 +936,44 @@ function buildTree(): TreeNode[] {
     return node.entry.id === leafId || node.children.some(subtreeHasLeaf);
   }
 
+  function isUserNode(node: SdkTreeNode): boolean {
+    return node.entry.type === "message" && node.entry.message?.role === "user";
+  }
+
+  /**
+   * End of this turn's reply: descend through the entries answering the message
+   * (assistant text, tool results…) and stop at the next user turn. Navigating
+   * there restores the exchange in full — navigating to the user message itself
+   * rewinds to *before* it (the SDK hands the text back as editor prefill and
+   * the reply disappears from the transcript).
+   *
+   * Only a non-user `message` entry is a valid tip: the SDK treats custom_message
+   * targets exactly like user messages (leaf = parent, content → editor prefill),
+   * so stopping on one would rewind a step short and paste an extension's internal
+   * message into the composer. Undefined when the turn has no reply yet, or when
+   * the replies fork (ambiguous — the user node stays the safe fallback).
+   */
+  function replyTip(node: SdkTreeNode): string | undefined {
+    let current = node;
+    let tip: SdkTreeNode | undefined;
+    for (;;) {
+      const replies = current.children.filter((child) => !isUserNode(child));
+      if (replies.length !== 1) break;
+      current = replies[0];
+      if (current.entry.type === "message") tip = current;
+    }
+    return tip?.entry.id;
+  }
+
   function collapse(node: SdkTreeNode): TreeNode[] {
     const childNodes = node.children.flatMap(collapse);
-    if (node.entry.type === "message" && node.entry.message?.role === "user") {
-      const text = contentText(node.entry.message.content as never).split("\n")[0].slice(0, 100);
+    if (isUserNode(node)) {
+      const text = contentText(node.entry.message!.content as never).split("\n")[0].slice(0, 100);
+      const tipId = replyTip(node);
       return [
         {
           entryId: node.entry.id,
+          ...(tipId ? { tipId } : {}),
           text,
           onPath: subtreeHasLeaf(node),
           ...(node.label ? { label: node.label } : {}),
@@ -903,17 +987,25 @@ function buildTree(): TreeNode[] {
   return (manager.getTree() as SdkTreeNode[]).flatMap(collapse);
 }
 
+/** Every entry id the tree exposes as a navigation target (user turns + their reply tips). */
+function treeNavigationTargets(roots: TreeNode[]): Set<string> {
+  const ids = new Set<string>();
+  function walk(nodes: TreeNode[]): void {
+    for (const node of nodes) {
+      ids.add(node.entryId);
+      if (node.tipId) ids.add(node.tipId);
+      walk(node.children);
+    }
+  }
+  walk(roots);
+  return ids;
+}
+
 function sendTree(socket: WebSocket): void {
   send(socket, { type: "tree", roots: buildTree() });
 }
 
-/**
- * Move the current leaf to another node of the same session file (checkout of
- * an earlier/parallel branch). The transcript changes without a session
- * replacement, so clients get a fresh snapshot; the abandoned user message
- * comes back as composer prefill (same UX as pi's TUI).
- */
-/** Fork/navigate targets must be user-message entries (the SDK throws on anything else). */
+/** Fork targets must be user-message entries (the SDK throws on anything else). */
 function isUserMessageEntry(entryId: string): boolean {
   const entry = runtime.session.sessionManager.getEntry(entryId) as
     | { type: string; message?: { role?: string } }
@@ -921,12 +1013,20 @@ function isUserMessageEntry(entryId: string): boolean {
   return entry?.type === "message" && entry.message?.role === "user";
 }
 
+/**
+ * Move the current leaf to another node of the same session file (checkout of an
+ * earlier/parallel branch). The transcript changes without a session replacement,
+ * so clients get a fresh snapshot. Two kinds of target: a user message (rewind to
+ * before it — the SDK hands its text back as composer prefill, same UX as pi's
+ * TUI) or a reply tip (restore that exchange in full, reply included).
+ */
 async function navigateTree(socket: WebSocket, entryId: string): Promise<void> {
   if (runtime.session.isStreaming) {
     send(socket, { type: "error", message: "Cannot navigate the tree while the agent is running" });
     return;
   }
-  if (!isUserMessageEntry(entryId)) {
+  const roots = buildTree();
+  if (!treeNavigationTargets(roots).has(entryId)) {
     send(socket, { type: "error", message: "Unknown tree node" });
     return;
   }
@@ -1089,6 +1189,12 @@ function handleClientMessage(socket: WebSocket, raw: string): void {
   switch (message.type) {
     case "prompt": {
       if (typeof message.text !== "string") return;
+      // A prompt landing mid-navigation would append under the OLD leaf, and the
+      // navigation would then overwrite the running turn's message state
+      if (replacingSession) {
+        send(socket, { type: "error", message: "Session change already in progress" });
+        return;
+      }
       const text = message.text.trim();
       const images = validImages(message.images);
       if (message.images !== undefined && images === undefined) {
@@ -1186,6 +1292,18 @@ function handleClientMessage(socket: WebSocket, raw: string): void {
       if (typeof message.entryId !== "string") return;
       forkSession(socket, message.entryId).catch(reportError);
       break;
+    case "edit_prompt": {
+      if (typeof message.entryId !== "string" || typeof message.text !== "string") return;
+      const editText = message.text.trim();
+      const editImages = validImages(message.images);
+      if (message.images !== undefined && editImages === undefined) {
+        send(socket, { type: "error", message: "Attachments rejected (too large or invalid)" });
+        return;
+      }
+      if (!editText && !editImages?.length) return;
+      editPrompt(socket, message.entryId, editText || "(see attached images)", editImages).catch(reportError);
+      break;
+    }
     case "git_status":
       if (typeof message.requestId !== "string") return;
       handleGitStatus(socket, message.requestId).catch(reportError);

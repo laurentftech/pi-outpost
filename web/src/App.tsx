@@ -13,6 +13,7 @@ import { ModelBar } from "./components/ModelBar";
 import { Sidebar } from "./components/Sidebar";
 import { TokenGate } from "./components/TokenGate";
 import { ToolCard } from "./components/ToolCard";
+import { UserMessage } from "./components/UserMessage";
 import { ThemeContext } from "./ThemeContext";
 import { useAgent } from "./useAgent";
 import { useTheme } from "./useTheme";
@@ -55,6 +56,7 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
     listTree,
     navigateTree,
     forkSession,
+    editPrompt,
     compact,
     respondToDialog,
     dismissNotification,
@@ -260,24 +262,12 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
                 const key = `${state.sessionId}:${i}`;
                 if (item.kind === "user") {
                   return (
-                    <div
+                    <UserMessage
                       key={key}
-                      className="ml-auto max-w-[85%] whitespace-pre-wrap rounded-xl bg-blue-100 px-4 py-2 text-[15px] text-blue-950 dark:bg-blue-950/60 dark:text-zinc-100"
-                    >
-                      {item.images && item.images.length > 0 && (
-                        <div className="mb-1.5 flex flex-wrap gap-1.5">
-                          {item.images.map((image, j) => (
-                            <img
-                              key={j}
-                              src={`data:${image.mimeType};base64,${image.data}`}
-                              alt=""
-                              className="max-h-48 max-w-full rounded-lg object-contain"
-                            />
-                          ))}
-                        </div>
-                      )}
-                      {item.text}
-                    </div>
+                      item={item}
+                      canEdit={!state.isStreaming && state.connected}
+                      onEdit={editPrompt}
+                    />
                   );
                 }
                 if (item.kind === "tool") {

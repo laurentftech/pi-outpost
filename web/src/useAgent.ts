@@ -297,6 +297,34 @@ function reduce(state: AgentState, action: Action): AgentState {
           { kind: "user", text: message.text, ...(message.images ? { images: message.images } : {}) },
         ],
       };
+    case "user_entries": {
+      // Pair from the end (compaction drops a prefix of the history) and STOP at the
+      // first text mismatch: a bubble the server never persisted — an extension slash
+      // command, a steer aborted before delivery — shifts the alignment, and pairing
+      // past it would hand a bubble the previous message's id (editing it would then
+      // silently rewind the wrong turn). Unpaired bubbles lose their id: no ✎, no harm.
+      const { entries } = message;
+      const userIndexes = state.items.flatMap((item, i) => (item.kind === "user" ? [i] : []));
+      const paired = new Map<number, string>();
+      for (let i = userIndexes.length - 1, k = entries.length - 1; i >= 0 && k >= 0; i--, k--) {
+        const item = state.items[userIndexes[i]];
+        if (item.kind !== "user" || item.text !== entries[k].text) break;
+        paired.set(userIndexes[i], entries[k].entryId);
+      }
+      return {
+        ...state,
+        items: state.items.map((item, i) => {
+          if (item.kind !== "user") return item;
+          const entryId = paired.get(i);
+          if (entryId === item.entryId) return item;
+          if (entryId === undefined) {
+            const { entryId: _dropped, ...rest } = item;
+            return rest;
+          }
+          return { ...item, entryId };
+        }),
+      };
+    }
     case "agent_start":
       return { ...state, isStreaming: true, errors: [] };
     case "agent_end":
@@ -659,6 +687,9 @@ export function useAgent(serverUrl = "", explicitToken?: string, embedded = fals
     listTree: () => sendMessage({ type: "list_tree" }),
     navigateTree: (entryId: string) => sendMessage({ type: "navigate_tree", entryId }),
     forkSession: (entryId: string) => sendMessage({ type: "fork_session", entryId }),
+    /** Re-send a past user message with edited text — the answer branches off, the original stays in the tree. */
+    editPrompt: (entryId: string, text: string, images?: WireImage[]) =>
+      sendMessage({ type: "edit_prompt", entryId, text, ...(images?.length ? { images } : {}) }),
     compact: () => sendMessage({ type: "compact" }),
     /** Answer the dialog at the head of the queue and pop it locally. */
     respondToDialog: (response: { id: string; value: string } | { id: string; confirmed: boolean } | { id: string; cancelled: true }) => {
