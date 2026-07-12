@@ -8,7 +8,7 @@
       "sourceFiles": [
         "/Users/laurent/Projets/Pi-interface/web/src/useAgent.ts"
       ],
-      "requirementCount": 4,
+      "requirementCount": 5,
       "dependsOn": [],
       "calledBy": [
         "components",

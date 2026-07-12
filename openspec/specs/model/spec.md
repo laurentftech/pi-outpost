@@ -34,6 +34,10 @@ Discriminated union of messages sent from the client to the server over the WebS
 | search_files | query: string, requestId: string |
 | list_tree | — |
 | navigate_tree / fork_session | entryId: string |
+| git_status | requestId: string |
+| git_diff | path: string, requestId: string |
+| git_log | requestId: string |
+| git_show | sha: string, requestId: string |
 | extension_ui_response | id + value / confirmed / cancelled |
 
 **Relationships:**
@@ -62,8 +66,10 @@ Server configuration loaded from `pi-outpost.config.json` (or the file named by 
 | allowedModels | {provider, id}[]? | Restrict the model switcher to these pairs |
 | systemPrompt | string? | Replace pi's built-in system prompt entirely |
 | appendSystemPrompt | string[] | Extra paragraphs appended to the system prompt |
+| webContext | boolean | Inject the web-UI context block into the system prompt (default true) |
 | port / host | number / string | Listen address; host defaults to 127.0.0.1 |
 | allowedOrigins | string[] | Extra exact Origins allowed on the WebSocket (for embedding) |
+| token | string? | Shared secret gating the WebSocket and HTTP API (PI_OUTPOST_TOKEN env overrides) |
 | branding | BrandingConfig | UI branding |
 
 **Relationships:**
@@ -107,7 +113,7 @@ File-sandbox settings; when present, built-in file tools are replaced by scoped 
 ### Requirement: ClientMessageValidation
 
 The system SHALL validate ClientMessage according to these rules:
-- type must be one of: prompt, abort, set_model, set_thinking, new_session, switch_session, delete_session, list_sessions, compact, list_directory, read_file, write_file, search_files, list_tree, navigate_tree, fork_session, extension_ui_response
+- type must be one of: prompt, abort, set_model, set_thinking, new_session, switch_session, delete_session, list_sessions, compact, list_directory, read_file, write_file, search_files, list_tree, navigate_tree, fork_session, git_status, git_diff, git_log, git_show, extension_ui_response
 - When type is 'prompt', text is required (images optional)
 - When type is 'set_model', provider and id are required
 - When type is 'set_thinking', level is required
@@ -116,6 +122,9 @@ The system SHALL validate ClientMessage according to these rules:
 - When type is 'write_file', path, content, expectedMtimeMs, and requestId are required
 - When type is 'search_files', query and requestId are required
 - When type is 'navigate_tree' or 'fork_session', entryId is required
+- When type is 'git_status' or 'git_log', requestId is required (git_log limit optional, clamped to [1, 100])
+- When type is 'git_diff', path and requestId are required
+- When type is 'git_show', sha (matching /^[0-9a-f]{7,40}$/i) and requestId are required
 - Malformed or non-object frames are ignored without crashing the server
 
 #### Scenario: SendPromptMessage
@@ -200,6 +209,26 @@ The system SHALL validate ClientMessage according to these rules:
 - **WHEN** Client sends message with type 'fork_session'
 - **THEN** Server creates a new session file forked from that entry
 
+#### Scenario: GitStatus
+- **GIVEN** Git is available on the server
+- **WHEN** Client sends message with type 'git_status'
+- **THEN** Server returns branch, ahead/behind and per-file statuses scoped to the browser root
+
+#### Scenario: GitDiff
+- **GIVEN** Client knows path of a changed file
+- **WHEN** Client sends message with type 'git_diff'
+- **THEN** Server returns the file's HEAD content and worktree content (or 'git_error')
+
+#### Scenario: GitLog
+- **GIVEN** Client wants recent history
+- **WHEN** Client sends message with type 'git_log'
+- **THEN** Server returns up to limit commits touching the browser root
+
+#### Scenario: GitShow
+- **GIVEN** Client knows a commit sha from git_log
+- **WHEN** Client sends message with type 'git_show'
+- **THEN** Server returns that commit's patch scoped to the browser root, flagged if truncated
+
 ### Requirement: AppConfigValidation
 
 > Implementation: `loadConfig` in `server/src/config.ts` · confidence: reviewed
@@ -208,12 +237,18 @@ The system SHALL validate AppConfig on load according to these rules:
 - Config is read from `pi-outpost.config.json` in the base cwd, or from the file named by the `PI_OUTPOST_CONFIG` env variable; missing file yields defaults
 - Every typed field is checked (strings non-empty, booleans, string arrays); violations throw an error prefixed `[config]`
 - Path fields (cwd, agentDir, sandbox.root, sandbox.writableRoot) are resolved to absolute paths
+- `server.token`, when present, must be a non-empty string; the `PI_OUTPOST_TOKEN` environment variable overrides it
 
 #### Scenario: LoadApplicationConfiguration
 - **GIVEN** A valid config file
 - **WHEN** loadConfig is called
 - **THEN** AppConfig is loaded with cwd, sandbox, branding, server, and tool settings applied
 - **AND** If a field has the wrong type, an error prefixed `[config]` is thrown
+
+#### Scenario: TokenFromEnvironment
+- **GIVEN** PI_OUTPOST_TOKEN is set in the environment
+- **WHEN** loadConfig is called
+- **THEN** The effective token is the environment value, regardless of server.token
 
 ### Requirement: BrandingConfigValidation
 
