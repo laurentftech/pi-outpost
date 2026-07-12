@@ -41,7 +41,7 @@
       "sourceFiles": [
         "/Users/laurent/Projets/Pi-interface/web/src/components/ModelBar.tsx"
       ],
-      "requirementCount": 9,
+      "requirementCount": 10,
       "dependsOn": [],
       "calledBy": [
         "web"

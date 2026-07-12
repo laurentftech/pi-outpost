@@ -34,6 +34,7 @@ Discriminated union of messages sent from the client to the server over the WebS
 | search_files | query: string, requestId: string |
 | list_tree | — |
 | navigate_tree / fork_session | entryId: string |
+| edit_prompt | entryId: string, text: string, images?: WireImage[] |
 | git_status | requestId: string |
 | git_diff | path: string, requestId: string |
 | git_log | requestId: string |
@@ -113,7 +114,7 @@ File-sandbox settings; when present, built-in file tools are replaced by scoped 
 ### Requirement: ClientMessageValidation
 
 The system SHALL validate ClientMessage according to these rules:
-- type must be one of: prompt, abort, set_model, set_thinking, new_session, switch_session, delete_session, list_sessions, compact, list_directory, read_file, write_file, search_files, list_tree, navigate_tree, fork_session, git_status, git_diff, git_log, git_show, extension_ui_response
+- type must be one of: prompt, abort, set_model, set_thinking, new_session, switch_session, delete_session, list_sessions, compact, list_directory, read_file, write_file, search_files, list_tree, navigate_tree, fork_session, edit_prompt, git_status, git_diff, git_log, git_show, extension_ui_response
 - When type is 'prompt', text is required (images optional)
 - When type is 'set_model', provider and id are required
 - When type is 'set_thinking', level is required
@@ -122,6 +123,7 @@ The system SHALL validate ClientMessage according to these rules:
 - When type is 'write_file', path, content, expectedMtimeMs, and requestId are required
 - When type is 'search_files', query and requestId are required
 - When type is 'navigate_tree' or 'fork_session', entryId is required
+- When type is 'edit_prompt', entryId and text are required (images optional); entryId must be a user-message entry
 - When type is 'git_status' or 'git_log', requestId is required (git_log limit optional, clamped to [1, 100])
 - When type is 'git_diff', path and requestId are required
 - When type is 'git_show', sha (matching /^[0-9a-f]{7,40}$/i) and requestId are required
@@ -151,63 +153,23 @@ The system SHALL validate ClientMessage according to these rules:
 <!-- openlore-test: tags=smoke (auto) -->
 - **GIVEN** Client wants to start a new session
 - **WHEN** Client sends message with type 'new_session'
-- **THEN** Server creates a new session
-
-#### Scenario: SwitchSession
-- **GIVEN** Client knows path of session to switch to (from the server's session listing)
-- **WHEN** Client sends message with type 'switch_session'
-- **THEN** Server switches to the specified session
-
-#### Scenario: DeleteSession
-- **GIVEN** Client knows path of session to delete
-- **WHEN** Client sends message with type 'delete_session'
-- **THEN** Server deletes the specified session
-
-#### Scenario: ListSessions
-- **GIVEN** Client wants to see available sessions
-- **WHEN** Client sends message with type 'list_sessions'
-- **THEN** Server returns list of available sessions
-
-#### Scenario: CompactSession
-- **GIVEN** Client wants to compact the conversation context
-- **WHEN** Client sends message with type 'compact'
-- **THEN** Server compacts the current session
-
-#### Scenario: ListDirectory
-- **GIVEN** Client knows path to directory
-- **WHEN** Client sends message with type 'list_directory'
-- **THEN** Server returns contents of the specified directory
-
-#### Scenario: ReadFile
-- **GIVEN** Client knows path to file
-- **WHEN** Client sends message with type 'read_file'
-- **THEN** Server returns contents of the specified file with size and mtimeMs
-
-#### Scenario: WriteFile
-- **GIVEN** Client has edited content for an open file
-- **WHEN** Client sends message with type 'write_file'
-- **THEN** Server writes the file if permitted and unchanged on disk, answering with 'file_written' (new size and mtimeMs) or 'file_browser_error'
-
-#### Scenario: SearchFiles
-- **GIVEN** Client has search query
-- **WHEN** Client sends message with type 'search_files'
-- **THEN** Server returns files matching the search query
-
-#### Scenario: ListTree
-- **GIVEN** Client wants to see the conversation tree of the current session
-- **WHEN** Client sends message with type 'list_tree'
-- **THEN** Server returns the tree of user-message entry points (with the active path marked)
+- **THEN** Server creates a new session and broadcasts session_replaced
 
 #### Scenario: NavigateTree
-- **GIVEN** Client knows entryId of a user message to rewind to
+- **GIVEN** Client knows an entryId the tree advertised (a user turn, or that turn's reply tip)
 - **WHEN** Client sends message with type 'navigate_tree'
-- **THEN** Server rewinds the session to just before that entry and prefills the composer with its text
+- **THEN** Server moves the leaf: a user-message target rewinds to just before it and prefills the composer with its text, a reply-tip target restores that exchange in full
 
 #### Scenario: ForkSession
 <!-- openlore-test: tags=smoke (auto) -->
 - **GIVEN** Client knows entryId of a user message to fork from
 - **WHEN** Client sends message with type 'fork_session'
 - **THEN** Server creates a new session file forked from that entry
+
+#### Scenario: EditPrompt
+- **GIVEN** Client knows the entryId of a persisted user message
+- **WHEN** Client sends message with type 'edit_prompt' with new text
+- **THEN** Server rewinds to just before that message and prompts again, so the answer forms a sibling branch
 
 #### Scenario: GitStatus
 - **GIVEN** Git is available on the server
@@ -316,7 +278,10 @@ The system SHALL truncate text to a specified maximum length.
 The system SHALL convert session history messages into ChatItems: user messages (text + images),
 assistant messages (blocks), tool calls merged with their results, and extension custom messages.
 While the agent is streaming, the trailing in-progress assistant message is excluded (it is
-streamed separately).
+streamed separately). User items SHALL carry the session entry id of the message they came from,
+taken from the current branch's user entries and matched from the end (compaction drops a prefix
+of the history, so the items are a suffix of the branch's user entries); items left unmatched
+carry no entry id.
 
 #### Scenario: ConvertIdleHistory
 - **GIVEN** A session history and no active stream
@@ -327,6 +292,11 @@ streamed separately).
 - **GIVEN** A session history while the agent is streaming
 - **WHEN** historyToItems is called
 - **THEN** The trailing in-progress assistant message is not duplicated as a history item
+
+#### Scenario: AttachUserEntryIds
+- **GIVEN** A session history and the current branch's user entry ids
+- **WHEN** historyToItems is called
+- **THEN** Each user item carries its entry id, aligned from the most recent message backwards
 
 ### Requirement: ConvertAssistantMessageToItem
 
@@ -349,6 +319,22 @@ The system SHALL convert an extension-defined custom message into a chat item.
 - **GIVEN** A custom message
 - **WHEN** customMessageToItem is called
 - **THEN** The message is converted to a chat item
+
+### Requirement: UserEntryBroadcast
+
+Once a turn is persisted, the server SHALL broadcast the current branch's user messages as `{entryId, text}` pairs, oldest first. The client SHALL pair them onto its user items from the most recent backwards and SHALL stop at the first text mismatch, leaving the remaining items without an entry id.
+
+This is required because the optimistic user echo and the persisted entries are not one-to-one: an extension slash command, an extension `input` handler that consumes the message, or a steer aborted before delivery all echo a chat bubble that never becomes a session entry. Position-only alignment would shift every earlier bubble onto the previous message's entry, and an edit would then rewind the wrong turn.
+
+#### Scenario: PairAfterTurn
+- **GIVEN** a client that echoed a user bubble optimistically
+- **WHEN** the turn is persisted and user_entries arrives
+- **THEN** the bubble carries its entry id and becomes editable
+
+#### Scenario: PhantomBubbleFailsClosed
+- **GIVEN** a chat bubble that never became a session entry
+- **WHEN** user_entries arrives
+- **THEN** pairing stops at that bubble: it carries no entry id, and no earlier bubble is paired with another message's entry
 
 ## Technical Notes
 

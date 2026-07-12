@@ -39,4 +39,4 @@
 
 ## 6. Follow-up
 
-- [ ] 6.1 Sync the delta specs into `openspec/specs/` and archive this change
+- [x] 6.1 Sync the delta specs into `openspec/specs/` and archive this change
