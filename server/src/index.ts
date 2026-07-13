@@ -18,6 +18,7 @@ import {
   createAgentSessionRuntime,
   createAgentSessionServices,
   getAgentDir,
+  type SessionInfo,
   SessionManager,
 } from "@earendil-works/pi-coding-agent";
 import {
@@ -29,6 +30,7 @@ import {
   type ModelChoice,
   type ServerMessage,
   type SessionSnapshot,
+  type SessionSummary,
   THINKING_LEVELS,
   type TreeNode,
   type WireImage,
@@ -39,6 +41,16 @@ import { assistantToItem, contentText, customMessageToItem, historyToItems, trun
 import { FileBrowserError, listDirectory, readFileForPreview, readFileRaw, writeFileFromBrowser, resolveBrowserRoot, resolveWritableRoot, searchFiles } from "./fileBrowser.ts";
 import { GitError, gitHeadContent, gitLog, gitShow, gitStatus, probeGit } from "./git.ts";
 import { createSandboxedTools, isWithin, realResolve } from "./sandbox.ts";
+import {
+  firstExchange,
+  generateSessionTitle,
+  hasBeenNamed,
+  MAX_NAME_LENGTH,
+  MAX_QUERY_LENGTH,
+  sanitizeName,
+  searchSessions,
+  toSummary,
+} from "./sessions.ts";
 import { seaExtensionFactories } from "./sea-extensions.ts";
 
 // npm workspace scripts run with cwd=server/ — INIT_CWD is where `npm run` was invoked
@@ -668,6 +680,8 @@ function bindSession(): () => void {
         broadcast({ type: "agent_end" });
         const usage = contextUsage();
         if (usage) broadcast({ type: "context_usage", usage });
+        // Off the prompt path on purpose: a slow title must never delay a reply
+        void maybeNameSession();
         break;
       }
       case "message_start":
@@ -880,6 +894,7 @@ async function deleteSession(socket: WebSocket, path: string): Promise<void> {
     return;
   }
   await fs.unlink(path);
+  invalidateSessionScan();
   await listSessions(socket);
 }
 
@@ -891,22 +906,137 @@ async function switchSession(socket: WebSocket, path: string): Promise<void> {
   await replaceSession(socket, () => runtime.switchSession(path));
 }
 
-async function listSessions(socket: WebSocket): Promise<void> {
+const SESSION_LIST_LIMIT = 50;
+/**
+ * `SessionManager.list` reads every session file, transcripts included — and the
+ * session search fires one per (debounced) keystroke. Reuse the scan for a moment:
+ * a session the user is typing about does not change between two keystrokes.
+ */
+const SESSION_SCAN_TTL_MS = 1000;
+let sessionScan: { at: number; sessions: SessionInfo[] } | null = null;
+
+async function scanSessions(): Promise<SessionInfo[]> {
+  if (sessionScan && Date.now() - sessionScan.at < SESSION_SCAN_TTL_MS) return sessionScan.sessions;
   const sessions = await SessionManager.list(AGENT_CWD, SESSION_DIR);
+  sessionScan = { at: Date.now(), sessions };
+  return sessions;
+}
+
+/** Anything that writes to a session file (rename, title, delete) must drop the scan. */
+function invalidateSessionScan(): void {
+  sessionScan = null;
+}
+
+async function sessionList(): Promise<SessionSummary[]> {
+  const sessions = await scanSessions();
+  return [...sessions]
+    .sort((a, b) => b.modified.getTime() - a.modified.getTime())
+    .slice(0, SESSION_LIST_LIMIT)
+    .map((info) => toSummary(info));
+}
+
+async function listSessions(socket: WebSocket): Promise<void> {
+  send(socket, { type: "sessions", sessions: await sessionList() });
+}
+
+/** A name change is visible to everyone: all clients watch the same agent. */
+async function broadcastSessions(): Promise<void> {
+  broadcast({ type: "sessions", sessions: await sessionList() });
+}
+
+/**
+ * Set (or clear, with an empty name) a session's display name. Any saved session
+ * can be renamed, not just the live one — but the path comes from a client, so it
+ * goes through the same allowlist as switch/delete: no writing to arbitrary files.
+ */
+async function renameSession(socket: WebSocket, path: string, rawName: string): Promise<void> {
+  if (!(await isKnownSessionPath(path))) {
+    send(socket, { type: "error", message: "Unknown session" });
+    return;
+  }
+  const name = sanitizeName(rawName);
+  if (isLiveSessionFile(path)) {
+    // Through the live AgentSession, so the running session and its file agree.
+    // A second SessionManager over the live file would be a disaster: opening one
+    // can rewrite the file wholesale (version migration), racing the live appends.
+    runtime.session.setSessionName(name);
+  } else {
+    SessionManager.open(path, SESSION_DIR, AGENT_CWD).appendSessionInfo(name);
+  }
+  invalidateSessionScan();
+  await broadcastSessions();
+}
+
+/** Is this path the session the agent is running right now? Both sides resolved: they come from different normalizers. */
+function isLiveSessionFile(candidate: string): boolean {
+  const live = runtime.session.sessionManager.getSessionFile();
+  return live !== undefined && path.resolve(candidate) === path.resolve(live);
+}
+
+/** Match against the name, the first message and the whole transcript (server-side — see sessions.ts). */
+async function handleSearchSessions(socket: WebSocket, query: string, requestId: string): Promise<void> {
   send(socket, {
-    type: "sessions",
-    sessions: sessions
-      .sort((a, b) => b.modified.getTime() - a.modified.getTime())
-      .slice(0, 50)
-      .map((info) => ({
-        path: info.path,
-        id: info.id,
-        name: info.name,
-        firstMessage: info.firstMessage.slice(0, 120),
-        modified: info.modified.toISOString(),
-        messageCount: info.messageCount,
-      })),
+    type: "session_search_results",
+    requestId,
+    query,
+    sessions: searchSessions(await scanSessions(), query, SESSION_LIST_LIMIT),
   });
+}
+
+// --- Automatic session naming ------------------------------------------------------
+
+const TITLE_TIMEOUT_MS = 30_000;
+
+/** Session files with a title request in flight — keyed, not global: two sessions can be named in parallel. */
+const namingSessions = new Set<string>();
+
+/**
+ * Title a session from its first exchange, once, after the turn has landed — the
+ * session menu should list topics, not opening lines. Best-effort on purpose: a
+ * failing model (or no credentials) leaves the session unnamed, the UI falls back
+ * to the first message, and no error ever reaches the client.
+ *
+ * "Once" means once *ever*, and the signal is the `session_info` entry rather than
+ * the name: a user who clears a name reads back as unnamed, and re-titling what
+ * they just erased on their next turn would be the opposite of helpful.
+ */
+async function maybeNameSession(): Promise<void> {
+  const session = runtime.session;
+  const file = session.sessionManager.getSessionFile();
+  if (file === undefined || namingSessions.has(file)) return;
+  if (hasBeenNamed(session.sessionManager.getEntries())) return;
+  const exchange = firstExchange(session.sessionManager.buildContextEntries());
+  if (!exchange) return;
+  const model = session.model;
+  if (!model) return;
+  namingSessions.add(file);
+  try {
+    const auth = await runtime.services.modelRegistry.getApiKeyAndHeaders(model);
+    if (!auth.ok) return;
+    const title = await generateSessionTitle({
+      exchange,
+      model,
+      auth: { apiKey: auth.apiKey, headers: auth.headers, env: auth.env },
+      // Same stream function as a real turn: a provider whose key lives in the
+      // environment (the registry never resolves those) still authenticates
+      streamFn: session.agent.streamFn,
+      signal: AbortSignal.timeout(TITLE_TIMEOUT_MS),
+    });
+    if (!title) return;
+    // While the model answered, the session may have been named by hand — or replaced.
+    // `replacingSession` covers the window where the old session is already disposed
+    // but `runtime.session` still points at it: writing there would emit into a
+    // torn-down extension runner.
+    if (replacingSession || runtime.session !== session) return;
+    if (hasBeenNamed(session.sessionManager.getEntries())) return;
+    session.setSessionName(title);
+    invalidateSessionScan();
+    await broadcastSessions();
+  } catch (error) {
+    console.warn(`[pi] session title failed: ${error instanceof Error ? error.message : String(error)}`);
+  } finally {
+    namingSessions.delete(file);
+  }
 }
 
 function reportError(error: unknown): void {
@@ -1244,6 +1374,17 @@ function handleClientMessage(socket: WebSocket, raw: string): void {
       break;
     case "list_sessions":
       listSessions(socket).catch(reportError);
+      break;
+    case "rename_session":
+      if (typeof message.path !== "string" || typeof message.name !== "string") return;
+      if (message.name.length > MAX_NAME_LENGTH * 4) return;
+      renameSession(socket, message.path, message.name).catch(reportError);
+      break;
+    case "search_sessions":
+      if (typeof message.query !== "string" || typeof message.requestId !== "string") return;
+      // A search scans every transcript: don't let a client do it with a novel
+      if (message.query.length > MAX_QUERY_LENGTH) return;
+      handleSearchSessions(socket, message.query, message.requestId).catch(reportError);
       break;
     case "compact":
       // Failures surface via the compaction_end event (errorMessage) — avoid double-reporting.

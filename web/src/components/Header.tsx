@@ -1,12 +1,14 @@
 import { useEffect, useRef, useState } from "react";
-import type { GitLogEntry, SessionSummary, TreeNode } from "@pi-outpost/shared";
-import type { GitStatusState } from "../useAgent";
+import { MIN_SESSION_QUERY_LENGTH, type GitLogEntry, type SessionSummary, type TreeNode } from "@pi-outpost/shared";
+import type { GitStatusState, SessionSearch } from "../useAgent";
 import { GitMenu } from "./GitMenu";
 import { TreeMenu } from "./TreeMenu";
 
 interface HeaderProps {
   title?: string;
   sessions: SessionSummary[] | null;
+  /** Active session search (name / first message / transcript), null when the menu lists everything. */
+  sessionSearch: SessionSearch | null;
   sessionId: string;
   tree: TreeNode[] | null;
   isStreaming: boolean;
@@ -28,6 +30,9 @@ interface HeaderProps {
   onSwitchSession: (path: string) => void;
   onDeleteSession: (path: string) => void;
   onListSessions: () => void;
+  onRenameSession: (path: string, name: string) => void;
+  onSearchSessions: (query: string) => void;
+  onClearSessionSearch: () => void;
   onListTree: () => void;
   onNavigateTree: (entryId: string) => void;
   onForkSession: (entryId: string) => void;
@@ -47,70 +52,221 @@ function useClickOutside(onClose: () => void) {
   return ref;
 }
 
+const SESSION_SEARCH_DEBOUNCE_MS = 200;
+
+/** Inline rename field: Enter commits, Escape cancels, an empty value clears the name. */
+function RenameField({ initial, onCommit, onCancel }: { initial: string; onCommit: (name: string) => void; onCancel: () => void }) {
+  const [value, setValue] = useState(initial);
+  return (
+    <input
+      autoFocus
+      value={value}
+      onChange={(event) => setValue(event.target.value)}
+      onBlur={onCancel}
+      onKeyDown={(event) => {
+        if (event.key === "Enter") onCommit(value);
+        else if (event.key === "Escape") onCancel();
+      }}
+      placeholder="Session name (empty to clear)"
+      aria-label="Session name"
+      className="w-full rounded-md border border-zinc-400 bg-transparent px-2 py-1 text-sm outline-none placeholder:text-zinc-400 dark:border-zinc-600 dark:placeholder:text-zinc-600"
+    />
+  );
+}
+
+function SessionRow({
+  session,
+  isCurrent,
+  renaming,
+  onSwitch,
+  onDelete,
+  onStartRename,
+  onRename,
+  onCancelRename,
+}: {
+  session: SessionSummary;
+  isCurrent: boolean;
+  renaming: boolean;
+  onSwitch: () => void;
+  onDelete: () => void;
+  onStartRename: () => void;
+  onRename: (name: string) => void;
+  onCancelRename: () => void;
+}) {
+  if (renaming) {
+    return (
+      <div className="px-3 py-2">
+        <RenameField initial={session.name ?? ""} onCommit={onRename} onCancel={onCancelRename} />
+      </div>
+    );
+  }
+  return (
+    <div
+      className={`group flex items-start gap-1 hover:bg-zinc-100 dark:hover:bg-zinc-800 ${
+        isCurrent ? "bg-zinc-100 dark:bg-zinc-800/60" : ""
+      }`}
+    >
+      <button type="button" onClick={onSwitch} className="min-w-0 flex-1 px-3 py-2 text-left text-sm">
+        <div className="truncate text-zinc-700 dark:text-zinc-300">
+          {session.name || session.firstMessage || "(empty)"}
+        </div>
+        {/* Why this session matched: the excerpt is only sent for search results */}
+        {session.snippet && (
+          <div className="mt-0.5 truncate text-xs text-zinc-500 dark:text-zinc-500">{session.snippet}</div>
+        )}
+        <div className="mt-0.5 text-xs text-zinc-400 dark:text-zinc-600">
+          {new Date(session.modified).toLocaleString()} · {session.messageCount} messages
+          {isCurrent ? " · current" : ""}
+        </div>
+      </button>
+      <button
+        type="button"
+        onClick={onStartRename}
+        title="rename session"
+        aria-label="Rename session"
+        className="mt-2 rounded px-1.5 py-0.5 text-xs text-zinc-400 opacity-0 hover:bg-zinc-200 hover:text-zinc-700 focus-visible:opacity-100 group-hover:opacity-100 dark:text-zinc-600 dark:hover:bg-zinc-700 dark:hover:text-zinc-200"
+      >
+        ✎
+      </button>
+      {!isCurrent && (
+        <button
+          type="button"
+          onClick={onDelete}
+          title="delete session"
+          aria-label="Delete session"
+          className="mr-2 mt-2 rounded px-1.5 py-0.5 text-xs text-zinc-400 opacity-0 hover:bg-red-100 hover:text-red-600 focus-visible:opacity-100 group-hover:opacity-100 dark:text-zinc-600 dark:hover:bg-red-950/60 dark:hover:text-red-400"
+        >
+          ✕
+        </button>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Saved sessions: named (the agent titles a session after its first exchange, the
+ * user renames with ✎) and searchable — the query is matched server-side against
+ * the whole transcript, so a session is findable by anything ever said in it.
+ */
 function SessionMenu({
   sessions,
+  sessionSearch,
   sessionId,
   onSwitchSession,
   onDeleteSession,
   onListSessions,
-}: Pick<HeaderProps, "sessions" | "sessionId" | "onSwitchSession" | "onDeleteSession" | "onListSessions">) {
+  onRenameSession,
+  onSearchSessions,
+  onClearSessionSearch,
+}: Pick<
+  HeaderProps,
+  | "sessions"
+  | "sessionSearch"
+  | "sessionId"
+  | "onSwitchSession"
+  | "onDeleteSession"
+  | "onListSessions"
+  | "onRenameSession"
+  | "onSearchSessions"
+  | "onClearSessionSearch"
+>) {
   const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const [renamingPath, setRenamingPath] = useState<string | null>(null);
   const ref = useClickOutside(() => setOpen(false));
+
+  const trimmed = query.trim();
+  // A single letter would scan every transcript for nothing useful — the server
+  // ignores it too (MIN_QUERY_LENGTH), so don't even ask
+  const searching = trimmed.length >= MIN_SESSION_QUERY_LENGTH;
+
+  // Debounced: every keystroke re-reads every session file on the server
+  useEffect(() => {
+    if (!open) return;
+    if (!searching) {
+      onClearSessionSearch();
+      return;
+    }
+    const timer = setTimeout(() => onSearchSessions(trimmed), SESSION_SEARCH_DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, trimmed, searching]);
+
+  function close() {
+    setOpen(false);
+    setRenamingPath(null);
+  }
+
+  // While an answer is in flight the results are empty but not *known* to be empty:
+  // rendering "no matches" there would call every query a miss for a whole round trip.
+  // Results for an older query are just as wrong — the user has typed on since.
+  const pending = searching && !(sessionSearch?.status === "loaded" && sessionSearch.query === trimmed);
+  const rows = searching ? (pending ? null : (sessionSearch?.results ?? null)) : sessions;
 
   return (
     <div className="relative" ref={ref}>
       <button
         type="button"
         onClick={() => {
-          setOpen(!open);
-          if (!open) onListSessions();
+          if (open) {
+            close();
+            return;
+          }
+          setOpen(true);
+          setQuery("");
+          setRenamingPath(null);
+          onClearSessionSearch();
+          onListSessions();
         }}
         className="rounded-md border border-zinc-300 px-2 py-1 text-xs text-zinc-500 hover:border-zinc-400 hover:text-zinc-700 dark:border-zinc-800 dark:text-zinc-400 dark:hover:border-zinc-600 dark:hover:text-zinc-200"
       >
         sessions
       </button>
       {open && (
-        <div className="absolute right-0 top-full z-20 mt-1 max-h-96 w-96 overflow-y-auto rounded-lg border border-zinc-200 bg-white shadow-xl dark:border-zinc-700 dark:bg-zinc-900">
-          {sessions === null && <div className="px-3 py-2 text-xs text-zinc-500">loading…</div>}
-          {sessions?.length === 0 && <div className="px-3 py-2 text-xs text-zinc-500">no saved sessions</div>}
-          {sessions?.map((session) => (
-            <div
-              key={session.path}
-              className={`group flex items-start gap-1 hover:bg-zinc-100 dark:hover:bg-zinc-800 ${
-                session.id === sessionId ? "bg-zinc-100 dark:bg-zinc-800/60" : ""
-              }`}
-            >
-              <button
-                type="button"
-                onClick={() => {
+        <div className="absolute right-0 top-full z-20 mt-1 flex max-h-96 w-96 flex-col rounded-lg border border-zinc-200 bg-white shadow-xl dark:border-zinc-700 dark:bg-zinc-900">
+          <div className="border-b border-zinc-200 px-3 py-2 dark:border-zinc-800">
+            <input
+              type="search"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Search sessions"
+              aria-label="Search sessions"
+              className="w-full rounded-md border border-zinc-300 bg-transparent px-2 py-1 text-sm outline-none placeholder:text-zinc-400 focus:border-zinc-500 dark:border-zinc-700 dark:placeholder:text-zinc-600 dark:focus:border-zinc-500"
+            />
+            <p className="mt-1.5 text-[11px] text-zinc-400 dark:text-zinc-500">
+              Searches names and everything said in a session · ✎ to rename
+            </p>
+          </div>
+          <div className="min-h-0 overflow-y-auto">
+            {rows === null && <div className="px-3 py-2 text-xs text-zinc-500">loading…</div>}
+            {rows?.length === 0 && (
+              <div className="px-3 py-2 text-xs text-zinc-500">{searching ? "no matches" : "no saved sessions"}</div>
+            )}
+            {rows?.map((session) => (
+              <SessionRow
+                key={session.path}
+                session={session}
+                isCurrent={session.id === sessionId}
+                renaming={renamingPath === session.path}
+                onSwitch={() => {
                   onSwitchSession(session.path);
-                  setOpen(false);
+                  close();
                 }}
-                className="min-w-0 flex-1 px-3 py-2 text-left text-sm"
-              >
-                <div className="truncate text-zinc-700 dark:text-zinc-300">
-                  {session.name || session.firstMessage || "(empty)"}
-                </div>
-                <div className="mt-0.5 text-xs text-zinc-400 dark:text-zinc-600">
-                  {new Date(session.modified).toLocaleString()} · {session.messageCount} messages
-                  {session.id === sessionId ? " · current" : ""}
-                </div>
-              </button>
-              {session.id !== sessionId && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (window.confirm("Delete this session?")) onDeleteSession(session.path);
-                  }}
-                  title="delete session"
-                  aria-label="Delete session"
-                  className="mr-2 mt-2 rounded px-1.5 py-0.5 text-xs text-zinc-400 opacity-0 hover:bg-red-100 hover:text-red-600 group-hover:opacity-100 dark:text-zinc-600 dark:hover:bg-red-950/60 dark:hover:text-red-400"
-                >
-                  ✕
-                </button>
-              )}
-            </div>
-          ))}
+                onDelete={() => {
+                  if (window.confirm("Delete this session?")) onDeleteSession(session.path);
+                }}
+                onStartRename={() => setRenamingPath(session.path)}
+                onRename={(name) => {
+                  onRenameSession(session.path, name);
+                  setRenamingPath(null);
+                  // Search results are a server-side snapshot: the rename's `sessions`
+                  // broadcast doesn't refresh them, so ask again
+                  if (searching) onSearchSessions(query.trim());
+                }}
+                onCancelRename={() => setRenamingPath(null)}
+              />
+            ))}
+          </div>
         </div>
       )}
     </div>
@@ -211,10 +367,14 @@ export function Header(props: HeaderProps) {
         />
         <SessionMenu
           sessions={props.sessions}
+          sessionSearch={props.sessionSearch}
           sessionId={props.sessionId}
           onSwitchSession={props.onSwitchSession}
           onDeleteSession={props.onDeleteSession}
           onListSessions={props.onListSessions}
+          onRenameSession={props.onRenameSession}
+          onSearchSessions={props.onSearchSessions}
+          onClearSessionSearch={props.onClearSessionSearch}
         />
         <span
           className={`h-2 w-2 rounded-full ${connected ? "bg-emerald-500" : "bg-red-500"}`}

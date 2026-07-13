@@ -65,7 +65,16 @@ export interface SessionSummary {
   firstMessage: string;
   modified: string;
   messageCount: number;
+  /** Excerpt of the transcript around the match — search results only. */
+  snippet?: string;
 }
+
+/**
+ * Shortest session-search query worth sending: matching scans every saved
+ * transcript server-side, and one letter matches everything anyway. The server
+ * enforces it too — this is here so the client doesn't bother asking.
+ */
+export const MIN_SESSION_QUERY_LENGTH = 2;
 
 export const THINKING_LEVELS = ["off", "minimal", "low", "medium", "high", "xhigh"] as const;
 export type ThinkingLevel = (typeof THINKING_LEVELS)[number];
@@ -213,6 +222,8 @@ export type ServerMessage =
   | ({ type: "hello" } & SessionSnapshot)
   | ({ type: "session_replaced" } & SessionSnapshot)
   | { type: "sessions"; sessions: SessionSummary[] }
+  /** Answer to search_sessions — sent only to the client that asked. */
+  | { type: "session_search_results"; requestId: string; query: string; sessions: SessionSummary[] }
   | { type: "model_changed"; model: string; reasoning: boolean }
   | { type: "thinking_changed"; level: string }
   | { type: "user"; text: string; images?: WireImage[] }
@@ -277,6 +288,10 @@ export type ClientMessage =
   | { type: "switch_session"; path: string }
   | { type: "delete_session"; path: string }
   | { type: "list_sessions" }
+  /** Set a session's display name (any saved session, live or not). Empty name clears it. */
+  | { type: "rename_session"; path: string; name: string }
+  /** Find sessions by name, first message or transcript content (matched server-side). */
+  | { type: "search_sessions"; query: string; requestId: string }
   | { type: "compact" }
   | { type: "list_directory"; path: string; requestId: string }
   | { type: "read_file"; path: string; requestId: string }

@@ -53,6 +53,9 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
     switchSession,
     deleteSession,
     listSessions,
+    renameSession,
+    searchSessions,
+    clearSessionSearch,
     listTree,
     navigateTree,
     forkSession,
@@ -200,6 +203,7 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
           <Header
             title={state.branding.title}
             sessions={state.sessions}
+            sessionSearch={state.sessionSearch}
             sessionId={state.sessionId}
             tree={state.tree}
             isStreaming={state.isStreaming}
@@ -216,6 +220,9 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
             onSwitchSession={switchSession}
             onDeleteSession={deleteSession}
             onListSessions={listSessions}
+            onRenameSession={renameSession}
+            onSearchSessions={searchSessions}
+            onClearSessionSearch={clearSessionSearch}
             onListTree={listTree}
             onNavigateTree={navigateTree}
             onForkSession={forkSession}

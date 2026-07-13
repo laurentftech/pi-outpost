@@ -54,6 +54,14 @@ export type OpenFile =
 /** Composer `@` mention autocomplete: results for the most recently issued search. */
 export type FileSearch = { status: "loading" | "loaded"; query: string; requestId: string; results: FileSearchEntry[] };
 
+/** Session menu search: results for the most recently issued query (matched server-side, transcripts included). */
+export type SessionSearch = {
+  status: "loading" | "loaded";
+  query: string;
+  requestId: string;
+  results: SessionSummary[];
+};
+
 /** Latest git working-tree status; null until the first git_status answer. */
 export interface GitStatusState {
   branch: string;
@@ -85,6 +93,8 @@ export interface AgentState {
   models: ModelChoice[];
   commands: CommandInfo[];
   sessions: SessionSummary[] | null;
+  /** Active session search; null when the menu shows the plain list. */
+  sessionSearch: SessionSearch | null;
   /** Conversation tree (fork/branch navigation); null until list_tree is answered. */
   tree: TreeNode[] | null;
   isStreaming: boolean;
@@ -123,6 +133,7 @@ const initialState: AgentState = {
   models: [],
   commands: [],
   sessions: null,
+  sessionSearch: null,
   tree: null,
   isStreaming: false,
   items: [],
@@ -159,6 +170,8 @@ type Action =
   | { type: "close_file_preview" }
   | { type: "file_search_started"; query: string; requestId: string }
   | { type: "file_search_cleared" }
+  | { type: "session_search_started"; query: string; requestId: string }
+  | { type: "session_search_cleared" }
   | { type: "git_diff_started"; path: string; requestId: string }
   | { type: "git_diff_cleared" }
   | { type: "git_show_cleared" }
@@ -267,6 +280,13 @@ function reduce(state: AgentState, action: Action): AgentState {
     return { ...state, fileSearch: { status: "loading", query: action.query, requestId: action.requestId, results: [] } };
   }
   if (action.type === "file_search_cleared") return { ...state, fileSearch: null };
+  if (action.type === "session_search_started") {
+    return {
+      ...state,
+      sessionSearch: { status: "loading", query: action.query, requestId: action.requestId, results: [] },
+    };
+  }
+  if (action.type === "session_search_cleared") return { ...state, sessionSearch: null };
   if (action.type === "git_diff_started") return { ...state, gitDiff: null };
   if (action.type === "git_diff_cleared") return { ...state, gitDiff: null };
   if (action.type === "git_show_cleared") return { ...state, gitShow: null, gitLog: state.gitLog };
@@ -278,6 +298,10 @@ function reduce(state: AgentState, action: Action): AgentState {
       return applySnapshot(state, message);
     case "sessions":
       return { ...state, sessions: message.sessions };
+    case "session_search_results":
+      // Ignore stale answers: the user has typed on since this search was issued
+      if (state.sessionSearch?.requestId !== message.requestId) return state;
+      return { ...state, sessionSearch: { ...state.sessionSearch, status: "loaded", results: message.sessions } };
     case "tree":
       return { ...state, tree: message.roots };
     case "editor_prefill":
@@ -684,6 +708,15 @@ export function useAgent(serverUrl = "", explicitToken?: string, embedded = fals
     switchSession: (path: string) => sendMessage({ type: "switch_session", path }),
     deleteSession: (path: string) => sendMessage({ type: "delete_session", path }),
     listSessions: () => sendMessage({ type: "list_sessions" }),
+    /** Set a session's display name; an empty name clears it (back to its first message). */
+    renameSession: (path: string, name: string) => sendMessage({ type: "rename_session", path, name }),
+    /** Find sessions by name, first message or transcript content. */
+    searchSessions: (query: string) => {
+      const requestId = `sessions:${crypto.randomUUID()}`;
+      dispatch({ type: "session_search_started", query, requestId });
+      sendMessage({ type: "search_sessions", query, requestId });
+    },
+    clearSessionSearch: () => dispatch({ type: "session_search_cleared" }),
     listTree: () => sendMessage({ type: "list_tree" }),
     navigateTree: (entryId: string) => sendMessage({ type: "navigate_tree", entryId }),
     forkSession: (entryId: string) => sendMessage({ type: "fork_session", entryId }),
