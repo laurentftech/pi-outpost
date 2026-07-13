@@ -172,7 +172,6 @@ export async function readSecret(prompt: string): Promise<string> {
     for await (const chunk of process.stdin) chunks.push(chunk as Buffer);
     return Buffer.concat(chunks).toString("utf8").trim();
   }
-  const ENTER = ["\r", "\n"];
   const CTRL_C = "\u0003";
   const BACKSPACE = ["\u007f", "\b"];
 
@@ -183,11 +182,17 @@ export async function readSecret(prompt: string): Promise<string> {
   try {
     for await (const chunk of process.stdin) {
       const text = (chunk as Buffer).toString("utf8");
-      if (ENTER.includes(text)) break;
-      // Ctrl-C must abort, not hand back half a key
-      if (text === CTRL_C) throw new CliError("cancelled");
-      if (BACKSPACE.includes(text)) typed = typed.slice(0, -1);
-      else typed += text;
+      // Ctrl-C aborts rather than handing back half a key
+      if (text.includes(CTRL_C)) throw new CliError("cancelled");
+      // A pasted key arrives with its newline in the *same* chunk ("sk-abc\r"), so the
+      // terminator has to be looked for inside the chunk, not compared against it.
+      const end = text.search(/[\r\n]/);
+      const typedNow = end === -1 ? text : text.slice(0, end);
+      for (const char of typedNow) {
+        if (BACKSPACE.includes(char)) typed = typed.slice(0, -1);
+        else typed += char;
+      }
+      if (end !== -1) break;
     }
   } finally {
     process.stdin.setRawMode(false);

@@ -230,8 +230,13 @@ export interface CredentialStatus {
   providers: { id: string; name: string; configured: boolean }[];
   /** A model with usable credentials exists — the agent can answer. */
   usableModel: boolean;
-  /** Where credentials are stored, so an error can name it (`<agentDir>/auth.json`). */
-  agentDir: string;
+  /**
+   * Where credentials belong, for the onboarding screen to say so. Sent *only* while
+   * no model is usable: it is an absolute server-side path (it names the OS account),
+   * and a configured server has no reason to hand that to every client, embed hosts
+   * included.
+   */
+  agentDir?: string;
 }
 
 /** Server -> client */
@@ -242,6 +247,13 @@ export type ServerMessage =
   /** Answer to search_sessions — sent only to the client that asked. */
   | { type: "session_search_results"; requestId: string; query: string; sessions: SessionSummary[] }
   | { type: "model_changed"; model: string; reasoning: boolean }
+  /**
+   * A credential was stored or a provider declared: the model list and the credential
+   * status changed, nothing else did. Deliberately *not* a session snapshot — the
+   * session is the one the user was already in, and a snapshot would make clients drop
+   * live extension dialogs, notifications, statuses and widgets the server still holds.
+   */
+  | { type: "credentials_changed"; models: ModelChoice[]; model: string; credentials: CredentialStatus }
   | { type: "thinking_changed"; level: string }
   | { type: "user"; text: string; images?: WireImage[] }
   /**

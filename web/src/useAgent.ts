@@ -317,6 +317,20 @@ function reduce(state: AgentState, action: Action): AgentState {
       };
     case "model_changed":
       return { ...state, model: message.model, modelSupportsReasoning: message.reasoning };
+    case "credentials_changed": {
+      // Onboarding landed: new models, new status, same session — so nothing else here
+      // is touched (a snapshot would wipe live extension dialogs and widgets).
+      const current = message.models.find((choice) => `${choice.provider}/${choice.id}` === message.model);
+      return {
+        ...state,
+        models: message.models,
+        model: message.model,
+        modelSupportsReasoning: current?.reasoning ?? false,
+        credentials: message.credentials,
+        // errors stay: the "credentials stored, but allowedModels leaves no model"
+        // case sends an error *and* this message — clearing them would eat it
+      };
+    }
     case "thinking_changed":
       return { ...state, thinkingLevel: message.level };
     case "user":

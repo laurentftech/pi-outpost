@@ -9,7 +9,7 @@
  */
 import fs from "node:fs/promises";
 import path from "node:path";
-import { AuthStorage } from "@earendil-works/pi-coding-agent";
+import { AuthStorage, ModelRegistry } from "@earendil-works/pi-coding-agent";
 import type { ProviderCompat } from "@pi-outpost/shared";
 
 export class CredentialError extends Error {}
@@ -25,6 +25,17 @@ export interface ProviderDeclaration {
 
 /** A provider id has to survive as a JSON key and a config lookup — keep it boring. */
 const PROVIDER_ID = /^[a-z0-9][a-z0-9._-]{0,63}$/i;
+
+/**
+ * Providers the SDK knows about, for `login` to check a name against. A typo would
+ * otherwise store a credential nothing ever reads, and report success — leaving the
+ * user with a server that still says it has no credentials and no clue why.
+ */
+export function knownProviders(agentDir: string): string[] {
+  const authStorage = AuthStorage.create(path.join(agentDir, "auth.json"));
+  const registry = ModelRegistry.create(authStorage, path.join(agentDir, "models.json"));
+  return [...new Set(registry.getAll().map((model) => model.provider))].sort();
+}
 
 export function validProviderId(provider: unknown): provider is string {
   return typeof provider === "string" && PROVIDER_ID.test(provider);
@@ -102,11 +113,15 @@ export async function storeProvider(agentDir: string, declaration: ProviderDecla
   }
 
   file.providers = {
-    ...(file.providers ?? {}),
+    ...file.providers,
     [provider]: providerFileEntry(declaration),
   };
   try {
     await fs.writeFile(modelsPath, `${JSON.stringify(file, null, 2)}\n`, { mode: 0o600 });
+    // `mode` only applies when writeFile *creates* the file. A models.json the user
+    // hand-wrote under a 0644 umask would keep those permissions — and it now holds
+    // their API key, readable by every local account. Narrow it either way.
+    await fs.chmod(modelsPath, 0o600);
   } catch (error) {
     throw new CredentialError(`Could not write ${modelsPath}: ${(error as Error).message}`);
   }

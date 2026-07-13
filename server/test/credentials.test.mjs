@@ -40,11 +40,16 @@ test("an unconfigured server reports no usable model, then onboards without a re
 
     client.send({ type: "set_credential", provider: "anthropic", apiKey: "sk-ant-not-a-real-key" });
 
-    const replaced = await client.waitFor((m) => m.type === "session_replaced");
+    const replaced = await client.waitFor((m) => m.type === "credentials_changed");
     assert.equal(replaced.credentials.usableModel, true, "the agent can answer now");
     const anthropic = replaced.credentials.providers.find((provider) => provider.id === "anthropic");
     assert.equal(anthropic.configured, true);
     assert.ok(replaced.model.startsWith("anthropic/"), `session moved onto the usable model, got ${replaced.model}`);
+    // Not a snapshot: a snapshot means "different session", and clients answer it by
+    // dropping live extension dialogs and widgets the server still holds.
+    assert.ok(!client.received.some((m) => m.type === "session_replaced"));
+    // The path is only disclosed while onboarding needs it
+    assert.equal(replaced.credentials.agentDir, undefined, "a configured server stops naming its agentDir");
 
     // The key travels one way. A snapshot that echoed it would hand it to any client
     // that later reaches this socket.
@@ -74,7 +79,7 @@ test("a custom OpenAI-compatible endpoint becomes selectable, and is written whe
       compat: { supportsDeveloperRole: false, supportsReasoningEffort: false },
     });
 
-    const replaced = await client.waitFor((m) => m.type === "session_replaced");
+    const replaced = await client.waitFor((m) => m.type === "credentials_changed");
     assert.ok(
       replaced.models.some((model) => model.provider === "corp" && model.id === "gpt-oss-120b"),
       "the declared model is selectable straight away",
@@ -120,7 +125,7 @@ test("a base URL that is not http(s) is refused", async () => {
     client.send({ type: "declare_provider", provider: "bad", baseUrl: "file:///etc/passwd", apiKey: "k", models: ["m"] });
     // Nothing to wait for: the frame is dropped. Prove the state never moved.
     await new Promise((resolve) => setTimeout(resolve, 500));
-    assert.ok(!client.received.some((m) => m.type === "session_replaced"));
+    assert.ok(!client.received.some((m) => m.type === "credentials_changed"));
   } finally {
     client.close();
     await server.stop();

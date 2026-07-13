@@ -29,7 +29,6 @@ import {
   type ExtensionUIRequest,
   type ExtensionUIResponse,
   type ModelChoice,
-  type ProviderCompat,
   type ServerMessage,
   type SessionSnapshot,
   type SessionSummary,
@@ -42,6 +41,7 @@ import { CliError, helpText, parseCli, readSecret, runInit } from "./cli.ts";
 import { loadConfig, NoConfigError } from "./config.ts";
 import {
   CredentialError,
+  knownProviders,
   type ProviderDeclaration,
   providerConfig,
   storeApiKey,
@@ -150,7 +150,13 @@ const SESSION_DIR = config.agentDir ? path.join(config.agentDir, "sessions") : u
 if (cli.command === "login") {
   try {
     if (!validProviderId(cli.login.provider)) {
-      throw new CliError('login needs a provider: pi-outpost login --provider anthropic');
+      throw new CliError("login needs a provider: pi-outpost login --provider anthropic");
+    }
+    // A typo would otherwise store a key nothing reads, and say "stored" — leaving a
+    // server that still reports no credentials, for no visible reason.
+    const known = knownProviders(AGENT_DIR);
+    if (!known.includes(cli.login.provider)) {
+      throw new CliError(`unknown provider "${cli.login.provider}" — known: ${known.join(", ")}`);
     }
     const key = await readSecret(`API key for ${cli.login.provider} (not echoed): `);
     const written = await storeApiKey(AGENT_DIR, cli.login.provider, key);
@@ -475,10 +481,13 @@ function credentialStatus(): CredentialStatus {
       configured: registry.getProviderAuthStatus(model.provider).configured,
     });
   }
+  const usableModel = availableModels().length > 0;
   return {
     providers: [...providers.values()],
-    usableModel: availableModels().length > 0,
-    agentDir: AGENT_DIR,
+    usableModel,
+    // Only while onboarding needs it: an absolute path names the server's OS account,
+    // and there is no reason for a working server to tell every client where it lives.
+    ...(usableModel ? {} : { agentDir: AGENT_DIR }),
   };
 }
 
@@ -978,9 +987,13 @@ async function handleSetCredential(socket: WebSocket, provider: string, apiKey: 
 /** Declare an OpenAI-compatible endpoint: live for this session, and persisted for the next. */
 async function handleDeclareProvider(socket: WebSocket, declaration: ProviderDeclaration): Promise<void> {
   try {
-    await storeProvider(AGENT_DIR, declaration);
+    // Register *first*: it validates, and a declaration the registry rejects must never
+    // reach models.json. The SDK falls back to built-in models only when that file does
+    // not load — so one bad entry would take the user's other custom providers with it.
     runtime.services.modelRegistry.registerProvider(declaration.provider, providerConfig(declaration));
+    await storeProvider(AGENT_DIR, declaration);
   } catch (error) {
+    runtime.services.modelRegistry.unregisterProvider(declaration.provider);
     send(socket, { type: "error", message: error instanceof CredentialError ? error.message : String(error) });
     return;
   }
@@ -993,16 +1006,23 @@ async function handleDeclareProvider(socket: WebSocket, declaration: ProviderDec
  * The session itself is fine — it was only pointed at a model with no auth — so this
  * re-points it rather than rebuilding it, and the conversation (empty on a first run,
  * but not necessarily: credentials can also expire mid-session) survives untouched.
- * Clients get a full snapshot, which is what carries the new model list and status.
+ *
+ * Which is also why clients get `credentials_changed` and not a snapshot: a snapshot
+ * means "this is a different session", and clients answer it by dropping every live
+ * extension dialog, notification, status and widget — state this server still holds,
+ * and a pending dialog the agent is still waiting on.
  */
 async function adoptUsableModel(socket: WebSocket): Promise<void> {
+  const announce = () =>
+    broadcast({ type: "credentials_changed", models: availableModels(), model: modelName(), credentials: credentialStatus() });
+
   const choices = availableModels();
   if (choices.length === 0) {
     send(socket, {
       type: "error",
       message: `Credentials stored in ${AGENT_DIR}, but no model is available — check "allowedModels" in your configuration.`,
     });
-    broadcast({ type: "session_replaced", ...snapshot() });
+    announce();
     return;
   }
   const current = runtime.session.model as { provider?: string; id?: string } | undefined;
@@ -1011,7 +1031,7 @@ async function adoptUsableModel(socket: WebSocket): Promise<void> {
     const target = runtime.services.modelRegistry.find(choices[0].provider, choices[0].id);
     if (target) await runtime.session.setModel(target);
   }
-  broadcast({ type: "session_replaced", ...snapshot() });
+  announce();
 }
 
 const MAX_IMAGES = 6;

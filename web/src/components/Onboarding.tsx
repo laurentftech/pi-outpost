@@ -213,8 +213,8 @@ export function Onboarding({ title, credentials, onSetCredential, onDeclareProvi
         ))}
 
         <p className="mt-4 text-center text-xs text-zinc-400 dark:text-zinc-600">
-          Stored in {credentials.agentDir}. Provider environment variables work too, as does{" "}
-          <code>pi-outpost login</code>.
+          {credentials.agentDir ? `Stored in ${credentials.agentDir}. ` : ""}Provider environment variables work too, as
+          does <code>pi-outpost login</code>.
         </p>
       </form>
     </div>
