@@ -46,5 +46,5 @@
 ## 8. Verification
 
 - [x] 8.1 Tests for config discovery/precedence/profiles/refusal (`server/test/`), following the existing harness pattern.
-- [ ] 8.2 End-to-end: `npm pack` the CLI, install the tarball in a scratch directory outside the repo, `pi-outpost init`, `pi-outpost`, open the UI, send a prompt.
+- [x] 8.2 End-to-end: `npm pack` the CLI, install the tarball in a scratch directory outside the repo, `pi-outpost init`, `pi-outpost`, open the UI, send a prompt.
 - [x] 8.3 `npm run typecheck`, `npm run lint`, `npm test --workspace server`.
