@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/laurentftech/pi-outpost/actions/workflows/ci.yml/badge.svg)](https://github.com/laurentftech/pi-outpost/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Node](https://img.shields.io/badge/node-%E2%89%A520-brightgreen)](https://nodejs.org)
+[![Node](https://img.shields.io/badge/node-%E2%89%A522.19-brightgreen)](https://nodejs.org)
 
 **A web chat UI for the [pi coding agent](https://github.com/earendil-works/pi)** — run it as a standalone app, or embed it as a Shadow-DOM-isolated widget inside any web app. Built directly on pi's [SDK](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/sdk.md).
 
@@ -38,7 +38,7 @@ A Node server embeds a pi `AgentSession` and bridges it to a React chat UI over 
 
 ## Quick start
 
-Requirements: Node ≥ 20, and [pi](https://github.com/earendil-works/pi) configured (`~/.pi/agent/auth.json` or provider env vars like `ANTHROPIC_API_KEY`).
+Requirements: Node ≥ 22.19 (what the pi SDK itself requires), and [pi](https://github.com/earendil-works/pi) configured (`~/.pi/agent/auth.json` or provider env vars like `ANTHROPIC_API_KEY`).
 
 ### Run it
 

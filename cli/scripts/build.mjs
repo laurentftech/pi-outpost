@@ -41,7 +41,7 @@ await esbuild.build({
   bundle: true,
   platform: "node",
   format: "esm",
-  target: "node20",
+  target: "node22",
   outfile: BUNDLE,
   define: { __PI_OUTPOST_VERSION__: JSON.stringify(version) },
   banner: {

@@ -7,7 +7,7 @@ npx pi-outpost init   # writes a starter pi-outpost.config.json here
 npx pi-outpost        # http://127.0.0.1:3141/
 ```
 
-Requires Node ≥ 20 and [pi](https://github.com/earendil-works/pi) configured (`~/.pi/agent/auth.json`, or a provider variable like `ANTHROPIC_API_KEY`).
+Requires Node ≥ 22.19 and [pi](https://github.com/earendil-works/pi) configured (`~/.pi/agent/auth.json`, or a provider variable like `ANTHROPIC_API_KEY`).
 
 ## It will not start without a configuration file
 
