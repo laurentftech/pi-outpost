@@ -291,7 +291,11 @@ export function Header(props: HeaderProps) {
   const { isStreaming, connected } = props;
 
   return (
-    <header className="flex items-center gap-3 border-b border-zinc-200 px-4 py-2.5 dark:border-zinc-800">
+    // `relative z-30`: the dropdowns below (sessions, tree, git) are absolutely
+    // positioned and spill over the content area. Without a stacking context of its
+    // own, the header competes there on DOM order alone — and the open FileViewer,
+    // declared after it, wins. The menus would open *behind* the file preview.
+    <header className="relative z-30 flex items-center gap-3 border-b border-zinc-200 px-4 py-2.5 dark:border-zinc-800">
       {/* File/repo controls live on the left, the side their panel opens on */}
       <button
         type="button"

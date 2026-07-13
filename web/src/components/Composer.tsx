@@ -1,55 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { CommandInfo, FileSearchEntry, WireImage } from "@pi-outpost/shared";
+import { composePrompt, mentionedPaths, type Attachment } from "../attachments";
 import type { FileSearch } from "../useAgent";
-
-/** File attached before sending: images go to the model, text is inlined. */
-export interface Attachment {
-  name: string;
-  kind: "image" | "text";
-  /** base64 (image) or plain text (text file) */
-  data: string;
-  mimeType: string;
-}
-
-const MAX_TEXT_FILE_BYTES = 512 * 1024;
-// Must stay under the server's 10 MB base64 cap (base64 ≈ 4/3 × raw): 7 MB raw ≈ 9.8 MB base64
-const MAX_IMAGE_FILE_BYTES = 7 * 1024 * 1024;
-
-function readAsBase64(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve((reader.result as string).split(",", 2)[1] ?? "");
-    reader.onerror = () => reject(reader.error);
-    reader.readAsDataURL(file);
-  });
-}
-
-export async function filesToAttachments(
-  files: Iterable<File>,
-): Promise<{ attachments: Attachment[]; errors: string[] }> {
-  const attachments: Attachment[] = [];
-  const errors: string[] = [];
-  for (const file of files) {
-    if (file.type.startsWith("image/")) {
-      if (file.size > MAX_IMAGE_FILE_BYTES) {
-        errors.push(`${file.name}: image too large (max 7 MB)`);
-        continue;
-      }
-      attachments.push({ name: file.name, kind: "image", data: await readAsBase64(file), mimeType: file.type });
-    } else if (file.size <= MAX_TEXT_FILE_BYTES) {
-      const text = await file.text();
-      // Binary sniff: NUL byte ⇒ not a text file
-      if (text.includes("\0")) {
-        errors.push(`${file.name}: unsupported binary file`);
-      } else {
-        attachments.push({ name: file.name, kind: "text", data: text, mimeType: file.type || "text/plain" });
-      }
-    } else {
-      errors.push(`${file.name}: file too large (max 512 KB for text)`);
-    }
-  }
-  return { attachments, errors };
-}
 
 interface ComposerProps {
   isStreaming: boolean;
@@ -60,6 +12,8 @@ interface ComposerProps {
   prefill: { text: string; nonce: number } | null;
   attachments: Attachment[];
   onAttach: (files: Iterable<File>) => void;
+  /** Paths the draft names with `@`; the file tree marks them as referenced. */
+  onMentionPaths: (paths: string[]) => void;
   onRemoveAttachment: (index: number) => void;
   onSend: (text: string, images?: WireImage[]) => void;
   onAbort: () => void;
@@ -93,6 +47,7 @@ export function Composer({
   prefill,
   attachments,
   onAttach,
+  onMentionPaths,
   onRemoveAttachment,
   onSend,
   onAbort,
@@ -121,6 +76,12 @@ export function Composer({
     textareaRef.current?.setSelectionRange(pendingCursorRef.current, pendingCursorRef.current);
     pendingCursorRef.current = null;
   }, [text]);
+
+  const mentioned = useMemo(() => mentionedPaths(text), [text]);
+  useEffect(() => {
+    onMentionPaths(mentioned);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mentioned.join("\n")]);
 
   // Autocomplete only while typing the command name: "/" + no whitespace yet
   const commandPrefix = useMemo(() => {
@@ -169,17 +130,15 @@ export function Composer({
   }, [selected]);
 
   function submit() {
-    let full = text.trim();
-    // Text files travel inline as fenced blocks; images go as attachments
-    for (const attachment of attachments) {
-      if (attachment.kind === "text") {
-        full += `${full ? "\n\n" : ""}\`\`\`${attachment.name}\n${attachment.data}\n\`\`\``;
-      }
-    }
+    const full = composePrompt(text, attachments);
     const images = attachments
       .filter((a) => a.kind === "image")
       .map((a) => ({ data: a.data, mimeType: a.mimeType }));
-    if (!full && images.length === 0) return;
+    // A path reference is context, not a question: opening a preview must not turn a
+    // stray Enter into a prompt. Content the user supplied (a dropped file, an image)
+    // still stands on its own.
+    const onlyReferences = attachments.every((a) => a.kind === "path");
+    if (!text.trim() && (onlyReferences || !full) && images.length === 0) return;
     onSend(full, images.length > 0 ? images : undefined);
     setText("");
     onClearFileSearch();
@@ -264,6 +223,7 @@ export function Composer({
           {attachments.map((attachment, i) => (
             <span
               key={`${attachment.name}:${i}`}
+              title={attachment.kind === "path" ? `${attachment.name} — sent as a reference; the agent reads the file itself` : attachment.name}
               className="flex items-center gap-1.5 rounded-md border border-zinc-200 bg-zinc-50 py-1 pl-1.5 pr-1 text-xs text-zinc-600 dark:border-zinc-700 dark:bg-zinc-800/60 dark:text-zinc-300"
             >
               {attachment.kind === "image" ? (
@@ -273,7 +233,9 @@ export function Composer({
                   className="h-8 w-8 rounded object-cover"
                 />
               ) : (
-                <span aria-hidden>📄</span>
+                <span aria-hidden className={attachment.kind === "path" ? "font-mono font-bold text-blue-600 dark:text-blue-400" : ""}>
+                  {attachment.kind === "path" ? "@" : "📄"}
+                </span>
               )}
               <span className="max-w-40 truncate">{attachment.name}</span>
               <button

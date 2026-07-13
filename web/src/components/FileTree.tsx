@@ -9,10 +9,14 @@ interface TreeProps {
   writableRoot?: string | null;
   /** Git status per browser-root-relative path; badges render from it. */
   gitFiles?: Record<string, GitFileState>;
+  /** Paths currently attached to the composer as references (from the tree or the open preview). */
+  attachedPaths?: string[];
   onExpand: (path: string) => void;
   onSelectFile: (path: string) => void;
   /** Open the file directly on its uncommitted diff (badge click). */
   onSelectDiff?: (path: string) => void;
+  /** Attach the file to the composer as an `@path` reference, or drop it if already attached. */
+  onToggleAttachPath?: (path: string) => void;
 }
 
 const GIT_BADGE: Record<GitFileState, { label: string; className: string }> = {
@@ -119,9 +123,10 @@ function TreeNode({
 
   const selected = fullPath === props.openFilePath;
   const gitState = props.gitFiles?.[fullPath];
+  const attached = props.attachedPaths?.includes(fullPath) ?? false;
   return (
     <div
-      className={`flex w-full items-center rounded hover:bg-zinc-100 dark:hover:bg-zinc-800 ${
+      className={`group flex w-full items-center rounded hover:bg-zinc-100 dark:hover:bg-zinc-800 ${
         selected ? "bg-zinc-100 dark:bg-zinc-800" : ""
       }`}
     >
@@ -135,6 +140,26 @@ function TreeNode({
           {entry.name}
         </span>
       </button>
+      {props.onToggleAttachPath && (
+        <button
+          type="button"
+          onClick={() => props.onToggleAttachPath?.(fullPath)}
+          title={attached ? "Remove this file from the prompt" : "Reference this file in the prompt"}
+          aria-label={`${attached ? "Remove" : "Reference"} ${entry.name} in the prompt`}
+          aria-pressed={attached}
+          // Referenced: the pin stays lit, so the tree at rest says what the next prompt carries —
+          // whether the reference came from a chip or from an `@` the user typed. Otherwise the pin
+          // only appears on hover (an icon on every row drowns the tree), except on a touch screen,
+          // which has no hover and where a hidden control is an invisible tap target.
+          className={`mr-1 shrink-0 rounded px-1 font-mono text-xs hover:bg-zinc-200 group-hover:opacity-100 focus-visible:opacity-100 dark:hover:bg-zinc-700 ${
+            attached
+              ? "font-bold text-blue-600 dark:text-blue-400"
+              : "text-zinc-400 dark:text-zinc-600 [@media(hover:hover)]:opacity-0"
+          }`}
+        >
+          @
+        </button>
+      )}
       {gitState && (
         <button
           type="button"

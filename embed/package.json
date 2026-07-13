@@ -1,6 +1,6 @@
 {
   "name": "@pi-outpost/embed",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "type": "module",
   "description": "Mount pi-outpost as a Shadow-DOM-isolated widget inside another web app.",
   "license": "MIT",

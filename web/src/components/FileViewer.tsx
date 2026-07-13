@@ -36,6 +36,8 @@ interface FileViewerProps {
   serverUrl?: string;
   /** Auth token appended to /files/raw image URLs (img can't send headers). */
   token?: string | null;
+  /** Confirms that an image preview decoded successfully before it becomes a chat attachment. */
+  onImageLoad: (path: string) => void;
 }
 
 function isMarkdown(path: string): boolean {
@@ -76,6 +78,7 @@ export function FileViewer({
   onSave,
   serverUrl = "",
   token = null,
+  onImageLoad,
 }: FileViewerProps) {
   const [showRaw, setShowRaw] = useState(false);
   const [showGitDiff, setShowGitDiff] = useState(initialShowGitDiff);
@@ -292,6 +295,7 @@ export function FileViewer({
             <img
               src={rawFileUrl(serverUrl, file.path, token)}
               alt={file.path}
+              onLoad={() => onImageLoad(file.path)}
               className="max-h-full max-w-full rounded object-contain"
             />
           </div>

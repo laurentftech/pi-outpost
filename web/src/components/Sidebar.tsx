@@ -10,13 +10,26 @@ interface SidebarProps {
   writableRoot?: string | null;
   /** Git status per path, for tree badges. */
   gitFiles?: Record<string, GitFileState>;
+  /** Paths already referenced by the composer, so the tree can show the toggle as active. */
+  attachedPaths?: string[];
   onExpand: (path: string) => void;
   onSelectFile: (path: string) => void;
   onSelectDiff?: (path: string) => void;
+  onToggleAttachPath?: (path: string) => void;
 }
 
 /** Collapsible file-browser sidebar: lazy tree; selecting a file opens the FileViewer overlay. */
-export function Sidebar({ tree, openFile, writableRoot, gitFiles, onExpand, onSelectFile, onSelectDiff }: SidebarProps) {
+export function Sidebar({
+  tree,
+  openFile,
+  writableRoot,
+  gitFiles,
+  attachedPaths,
+  onExpand,
+  onSelectFile,
+  onSelectDiff,
+  onToggleAttachPath,
+}: SidebarProps) {
   useEffect(() => {
     if (tree[""] === undefined) onExpand("");
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -33,9 +46,11 @@ export function Sidebar({ tree, openFile, writableRoot, gitFiles, onExpand, onSe
           openFilePath={openFile?.path}
           writableRoot={writableRoot}
           gitFiles={gitFiles}
+          attachedPaths={attachedPaths}
           onExpand={onExpand}
           onSelectFile={onSelectFile}
           onSelectDiff={onSelectDiff}
+          onToggleAttachPath={onToggleAttachPath}
         />
       </div>
     </aside>

@@ -1,7 +1,16 @@
-import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import type { Theme, WireImage } from "@pi-outpost/shared";
 import { AssistantMessage } from "./components/AssistantMessage";
-import { type Attachment, Composer, filesToAttachments } from "./components/Composer";
+import {
+  addPathAttachment,
+  imagePreviewToAttachment,
+  type Attachment,
+  filesToAttachments,
+  removeAttachment,
+  replacePreviewAttachment,
+  textPreviewToAttachment,
+} from "./attachments";
+import { Composer } from "./components/Composer";
 import { CustomMessageCard } from "./components/CustomMessageCard";
 import { ExtensionDialog } from "./components/ExtensionDialog";
 import { ExtensionNotifications } from "./components/ExtensionNotifications";
@@ -17,6 +26,7 @@ import { UserMessage } from "./components/UserMessage";
 import { ThemeContext } from "./ThemeContext";
 import { useAgent } from "./useAgent";
 import { useTheme } from "./useTheme";
+import { isImageFile, rawFileUrl } from "./workspacePath";
 
 export interface AppHandle {
   setTheme(theme: Theme): void;
@@ -77,7 +87,14 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
   } = useAgent(serverUrl, token, embedded);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
+  // Paths the composer's draft names with `@`: they reference a file as surely as a chip does
+  const [draftMentions, setDraftMentions] = useState<string[]>([]);
+  const [previewAttachmentError, setPreviewAttachmentError] = useState<string | null>(null);
+  const [loadedPreviewImagePath, setLoadedPreviewImagePath] = useState<string | null>(null);
   const [viewerDirty, setViewerDirty] = useState(false);
+  const attachmentsRef = useRef<Attachment[]>([]);
+  const activePreviewPathRef = useRef<string | null>(null);
+  const dismissedPreviewPathRef = useRef<string | null>(null);
   // Badge click in the tree opens the file straight onto its uncommitted diff
   const [diffOnOpen, setDiffOnOpen] = useState(false);
   // Tool-noise filter: skip tool cards in the list (long sessions drown in them).
@@ -109,13 +126,90 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
     setAttachmentErrors(errors);
   }
 
+  useEffect(() => {
+    attachmentsRef.current = attachments;
+  }, [attachments]);
+
+  useEffect(() => {
+    const file = state.openFile;
+    // Closing the viewer must not discard its context: the user needs to close the
+    // overlay before they can use the composer. A newly opened file replaces it.
+    if (!file) return;
+    const path = file.path;
+    const loaded = file.status === "loaded";
+
+    if (activePreviewPathRef.current !== path) {
+      activePreviewPathRef.current = path;
+      dismissedPreviewPathRef.current = null;
+      setAttachments((current) => current.filter((attachment) => attachment.source !== "preview"));
+      setPreviewAttachmentError(null);
+      setLoadedPreviewImagePath(null);
+    }
+    if (dismissedPreviewPathRef.current === path) return;
+
+    let cancelled = false;
+    async function attachPreview() {
+      const result = isImageFile(path)
+        ? loadedPreviewImagePath === path
+          ? await imagePreviewToAttachment(path, rawFileUrl(serverUrl, path, authToken))
+          : null
+        : loaded
+          ? textPreviewToAttachment(path)
+          : null;
+      if (cancelled || result === null || activePreviewPathRef.current !== path || dismissedPreviewPathRef.current === path) return;
+      if (typeof result === "string") {
+        setPreviewAttachmentError(result);
+        return;
+      }
+      setPreviewAttachmentError(null);
+      setAttachments((current) => replacePreviewAttachment(current, result));
+    }
+    void attachPreview();
+    return () => {
+      cancelled = true;
+    };
+  }, [state.openFile, serverUrl, authToken, loadedPreviewImagePath]);
+
+  function closePreview() {
+    activePreviewPathRef.current = null;
+    dismissedPreviewPathRef.current = null;
+    closeFilePreview();
+  }
+
+  const attachedPaths = useMemo(
+    () => [
+      ...attachments.filter((attachment) => attachment.kind === "path").map((attachment) => attachment.data),
+      ...draftMentions,
+    ],
+    [attachments, draftMentions],
+  );
+
+  /** Tree pin: reference a file in the prompt, or drop the reference it already has. */
+  function toggleAttachPath(path: string) {
+    const index = attachmentsRef.current.findIndex((attachment) => attachment.kind === "path" && attachment.data === path);
+    // Removing through the same path as the chip's ✕ keeps the preview-suppression bookkeeping in one place
+    if (index >= 0) handleRemoveAttachment(index);
+    // A path the draft already mentions needs no chip — and the tree must not edit the user's text
+    else if (!draftMentions.includes(path)) setAttachments((current) => addPathAttachment(current, path));
+  }
+
+  function handleRemoveAttachment(index: number) {
+    const attachment = attachmentsRef.current[index];
+    if (attachment?.source === "preview") {
+      dismissedPreviewPathRef.current = attachment.previewPath ?? activePreviewPathRef.current;
+      setPreviewAttachmentError(null);
+    }
+    setAttachments((current) => removeAttachment(current, index));
+  }
+
   function sendPrompt(text: string, images?: WireImage[]) {
     prompt(text, images);
     setAttachments([]);
     setAttachmentErrors([]);
+    setPreviewAttachmentError(null);
     // Sending a message means the user wants the conversation back — close the file
     // viewer unless it holds unsaved edits (the viewer's activity strip covers that case)
-    if (!viewerDirty) closeFilePreview();
+    if (!viewerDirty) closePreview();
   }
 
   function handleDrop(e: React.DragEvent) {
@@ -176,7 +270,8 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
         onDrop={handleDrop}
       >
         {dragDepth > 0 && (
-          <div className="pointer-events-none absolute inset-0 z-30 flex items-center justify-center border-2 border-dashed bg-white/70 backdrop-blur-sm dark:bg-zinc-950/70" style={{ borderColor: "var(--accent, #3b82f6)" }}>
+          // Above the header (z-30) too: a drop target the header punches a hole in reads as broken.
+          <div className="pointer-events-none absolute inset-0 z-40 flex items-center justify-center border-2 border-dashed bg-white/70 backdrop-blur-sm dark:bg-zinc-950/70" style={{ borderColor: "var(--accent, #3b82f6)" }}>
             <p className="text-lg font-medium text-zinc-700 dark:text-zinc-200">
               Drop files to attach (images &amp; text)
             </p>
@@ -188,6 +283,7 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
             openFile={state.openFile}
             writableRoot={state.writableRoot}
             gitFiles={state.gitStatus?.files}
+            attachedPaths={attachedPaths}
             onExpand={listDirectory}
             onSelectFile={(path) => {
               setDiffOnOpen(false);
@@ -197,6 +293,7 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
               setDiffOnOpen(true);
               readFile(path);
             }}
+            onToggleAttachPath={toggleAttachPath}
           />
         )}
         <div className="flex h-full min-w-0 flex-1 flex-col">
@@ -233,7 +330,10 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
             onShowCommit={fetchGitShow}
           />
 
-          <div className="relative flex min-h-0 flex-1 flex-col">
+          {/* `z-0` makes this a stacking context, so everything inside it (the file
+              viewer, a commit view) stays below the header's menus no matter what
+              z-index it asks for. */}
+          <div className="relative z-0 flex min-h-0 flex-1 flex-col">
           {state.openFile && (
             <FileViewer
               // Remount per file: edit drafts must never survive a switch to another path
@@ -247,11 +347,12 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
               gitDiff={state.gitDiff}
               onFetchGitDiff={fetchGitDiff}
               onClearGitDiff={clearGitDiff}
-              onClose={closeFilePreview}
+              onClose={closePreview}
               onReload={readFile}
               onSave={writeFile}
               serverUrl={serverUrl}
               token={authToken}
+              onImageLoad={setLoadedPreviewImagePath}
             />
           )}
           {state.gitShow && <GitCommitView show={state.gitShow} onClose={clearGitShow} />}
@@ -319,6 +420,11 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
                   {error}
                 </div>
               ))}
+              {previewAttachmentError && (
+                <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-300">
+                  {previewAttachmentError}
+                </div>
+              )}
               {state.errors.map((error, i) => (
                 <div
                   key={i}
@@ -343,7 +449,8 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
                 prefill={state.editorPrefill}
                 attachments={attachments}
                 onAttach={(files) => void attachFiles(files)}
-                onRemoveAttachment={(index) => setAttachments((current) => current.filter((_, i) => i !== index))}
+                onMentionPaths={setDraftMentions}
+                onRemoveAttachment={handleRemoveAttachment}
                 onSend={sendPrompt}
                 onAbort={abort}
                 onSearchFiles={searchFiles}
