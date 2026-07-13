@@ -32,6 +32,9 @@ async function cli(args, { cwd, env = {} } = {}) {
   try {
     const { stdout, stderr } = await run(TSX, [ENTRY, ...args], {
       cwd,
+      // None of these commands serve — but a bug that made one of them hang must
+      // fail the test, not the job (a test with no timeout froze CI for 19 minutes)
+      timeout: 60_000,
       env: {
         ...process.env,
         // A test must never pick up the developer's own config, in any of the four places

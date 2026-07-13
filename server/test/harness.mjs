@@ -13,6 +13,9 @@ import WebSocket from "ws";
 
 const SERVER_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const ENTRY = path.join(SERVER_DIR, "src", "index.ts");
+// The binary itself, not `npx tsx`: one less process between us and the server, and
+// one less wrapper that swallows the signal meant for it.
+const TSX = path.join(SERVER_DIR, "..", "node_modules", ".bin", "tsx");
 
 /** Ports are per-suite so suites can run in parallel without colliding with a dev server. */
 let nextPort = 3400 + Math.floor(Math.random() * 200);
@@ -56,10 +59,15 @@ export async function startServer(root, config = {}) {
   const configPath = path.join(root, "pi-outpost.test.json");
   await writeFile(configPath, JSON.stringify(full, null, 2));
 
-  const child = spawn("npx", ["tsx", ENTRY], {
+  // `detached` gives the server its own process group, so stop() can take the whole
+  // thing down. Without it, killing the child leaves the real node process alive,
+  // still holding this file's stdout pipe — the test file then never exits, and the
+  // CI job hangs until it is cancelled. (macOS happened to reap it; Linux does not.)
+  const child = spawn(TSX, [ENTRY], {
     cwd: SERVER_DIR,
     env: { ...process.env, PI_OUTPOST_CONFIG: configPath },
     stdio: ["ignore", "pipe", "pipe"],
+    detached: true,
   });
   let log = "";
   child.stdout.on("data", (d) => (log += d));
@@ -86,10 +94,18 @@ export async function startServer(root, config = {}) {
     wsUrl: (token) => `ws://127.0.0.1:${port}/ws${token ? `?token=${encodeURIComponent(token)}` : ""}`,
     log: () => log,
     async stop() {
-      // The tsx wrapper forwards nothing on kill: signal the group so no child survives
-      child.kill("SIGTERM");
+      // Signal the *group* (negative pid): tsx does not forward signals to the node
+      // process it spawns, so killing the child alone would orphan the server.
+      const killGroup = (signal) => {
+        try {
+          process.kill(-child.pid, signal);
+        } catch {
+          // already gone
+        }
+      };
+      killGroup("SIGTERM");
       await new Promise((r) => setTimeout(r, 300));
-      child.kill("SIGKILL");
+      killGroup("SIGKILL");
       await rm(root, { recursive: true, force: true });
     },
   };
