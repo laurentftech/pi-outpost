@@ -8,7 +8,7 @@
     "typecheck": "tsc --noEmit",
     "build": "tsc --noEmit",
     "build:sea": "node scripts/build-sea.mjs",
-    "test": "node --test test/*.test.mjs",
+    "test": "node --test --test-timeout=120000 test/*.test.mjs",
     "test:live": "node --test --test-timeout=180000 test/live/*.test.mjs"
   },
   "dependencies": {
