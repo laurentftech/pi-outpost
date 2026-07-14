@@ -15,6 +15,7 @@ type ToolItem = Extract<ChatItem, { kind: "tool" }>;
  * Checks for authoritative __pi_render envelope first, otherwise returns undefined.
  * For openlore tools, also formats known fields as readable markdown.
  * Handles truncated JSON by stripping the truncation suffix before parsing.
+ * Falls back to simple text display if JSON parsing fails.
  */
 function getFormattedToolOutput(output: string): string | undefined {
   // Try to parse as JSON - handle truncated output by stripping the truncation suffix
@@ -60,9 +61,14 @@ function getFormattedToolOutput(output: string): string | undefined {
       const summary = lines.join("\n").trim();
       if (summary) return summary;
     }
+    // If parsed is a string, return it as-is (could be already formatted markdown)
+    if (typeof parsed === "string") {
+      return parsed;
+    }
   } catch {
     // Not JSON or parse error
   }
+  
   return undefined;
 }
 
