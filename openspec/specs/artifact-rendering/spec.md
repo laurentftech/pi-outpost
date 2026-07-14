@@ -36,10 +36,3 @@ Links in assistant-message markdown whose `href` is a relative path (or a path i
 #### Scenario: ExternalLinkNewTab
 - **WHEN** the user clicks `[doc](https://example.com)` in an assistant message
 - **THEN** the link opens in a new tab and the app keeps its state
-
-<!-- manual -->
-## Known Invariants
-
-- **CustomMessageCard (web/src/components/CustomMessageCard.tsx)**: Extension message `details` payload SHALL be collapsed behind an accessible toggle button. The toggle button MUST be clearly labeled ("Details") and styled distinctly with visual affordances (padding, rounded corners, hover state) to be easily discoverable. JSON data MUST NOT be shown verbose by default.
-  — discovered via bug fix on 2026-07-14, root cause: button label and styling made details toggle too subtle, appearing as a small triangle without context
-<!-- /manual -->
