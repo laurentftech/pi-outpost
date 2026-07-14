@@ -11,17 +11,20 @@ import { RenderedHtml } from "./RenderedHtml";
 
 type ToolItem = Extract<ChatItem, { kind: "tool" }>;
 
-/** Try to format tool output as readable markdown if it's JSON with known fields. */
-function formatToolOutput(output: string): string {
-  // Try to parse as JSON
+/** Extract formatted user-facing text from tool output.
+ * Checks for authoritative __pi_render envelope first, otherwise returns undefined.
+ * For openlore tools, also formats known fields as readable markdown.
+ */
+function getFormattedToolOutput(output: string): string | undefined {
   try {
     const parsed = JSON.parse(output);
     if (parsed && typeof parsed === "object") {
-      // Check for __pi_render envelope
+      // Check for authoritative __pi_render envelope first
       if (parsed.__pi_render?.text) {
         return String(parsed.__pi_render.text);
       }
-      // Check for openlore-style fields
+      
+      // For openlore-style JSON without __pi_render, format known fields
       const lines: string[] = [];
       if (parsed.task) lines.push(`**${String(parsed.task)}**`);
       if (parsed.searchMode) lines.push(`Mode: ${String(parsed.searchMode)}`);
@@ -48,13 +51,11 @@ function formatToolOutput(output: string): string {
       }
       const summary = lines.join("\n").trim();
       if (summary) return summary;
-      // Fall back to JSON stringification
-      return JSON.stringify(parsed, null, 2);
     }
   } catch {
-    // Not JSON, return as-is
+    // Not JSON or parse error
   }
-  return output;
+  return undefined;
 }
 
 /** One-line summary of tool args (command for bash, path for file tools…). */
@@ -93,16 +94,35 @@ export function ToolCard({ item }: { item: ToolItem }) {
   const pairs = hasHtml ? null : editPairs(item);
   const written = hasHtml ? null : writeContent(item);
   const hasDiff = pairs !== null || written !== null;
-  // Agent file changes matter: show before/after without requiring a click
-  const [open, setOpen] = useState(hasDiff || hasHtml);
+  
+  // Check if tool has formatted output (either HTML from extension or __pi_render envelope)
+  const formattedOutput = hasHtml ? undefined : (item.output ? getFormattedToolOutput(item.output) : undefined);
+  const hasFormattedOutput = Boolean(formattedOutput);
+  
+  // Show formatted output by default if available, otherwise show raw
+  const [open, setOpen] = useState(hasDiff || hasHtml || !hasFormattedOutput);
+  
   // A live tool card starts before its extension renderer has produced HTML.
   // Reveal the result as soon as it arrives, matching the TUI's completed view.
   useEffect(() => {
     if (hasHtml) setOpen(true);
   }, [hasHtml]);
+  
   const summary = argsSummary(item.args);
   const previewHtml = item.outputHtmlCollapsed ?? item.outputHtml;
   const showCollapsedPreview = !open && Boolean(previewHtml);
+  
+  // For collapsed preview, show formatted output if available
+  const collapsedContent = !open && formattedOutput ? (
+    <div className="prose-chat max-h-24 overflow-auto text-zinc-700 dark:text-zinc-300">
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm, remarkMath]}
+        rehypePlugins={[rehypeKatex]}
+      >
+        {normalizeMathDelimiters(formattedOutput)}
+      </ReactMarkdown>
+    </div>
+  ) : null;
 
   return (
     <div
@@ -137,6 +157,7 @@ export function ToolCard({ item }: { item: ToolItem }) {
           <RenderedHtml html={previewHtml} className="max-h-24 text-zinc-700 dark:text-zinc-300" />
         </div>
       )}
+      {!showCollapsedPreview && collapsedContent}
       {open && (
         <div className="border-t border-zinc-200 px-3 py-2 dark:border-zinc-800">
           {pairs !== null && (
@@ -151,18 +172,28 @@ export function ToolCard({ item }: { item: ToolItem }) {
               <DiffBlock lines={written.split("\n").map((text) => ({ type: "add" as const, text }))} />
             </div>
           )}
-
+          
+          {/* Always show raw output when expanded - this is the source of truth for inspection */}
           {item.outputHtml ? (
             <RenderedHtml html={item.outputHtml} className="max-h-96 text-zinc-700 dark:text-zinc-300" />
           ) : item.output ? (
-            <div className="prose-chat max-h-96 overflow-auto text-zinc-700 dark:text-zinc-300">
-              <ReactMarkdown
-                remarkPlugins={[remarkGfm, remarkMath]}
-                rehypePlugins={[rehypeKatex]}
-              >
-                {normalizeMathDelimiters(formatToolOutput(item.output))}
-              </ReactMarkdown>
-            </div>
+            <>
+              {/* Show formatted output if available */}
+              {formattedOutput && (
+                <div className="prose-chat mb-4 max-h-96 overflow-auto text-zinc-700 dark:text-zinc-300">
+                  <ReactMarkdown
+                    remarkPlugins={[remarkGfm, remarkMath]}
+                    rehypePlugins={[rehypeKatex]}
+                  >
+                    {normalizeMathDelimiters(formattedOutput)}
+                  </ReactMarkdown>
+                </div>
+              )}
+              {/* Always show raw JSON for inspection when expanded */}
+              <pre className="max-h-96 overflow-auto whitespace-pre-wrap font-mono text-xs text-zinc-700 dark:text-zinc-300">
+                {item.output}
+              </pre>
+            </>
           ) : (
             <pre className="max-h-96 overflow-auto whitespace-pre-wrap font-mono text-xs text-zinc-700 dark:text-zinc-300">
               {item.running ? "running…" : "(no output)"}
