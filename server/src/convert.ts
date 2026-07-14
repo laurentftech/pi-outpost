@@ -54,7 +54,7 @@ export function truncate(text: string, max = MAX_TOOL_OUTPUT): string {
  *
  * {
  *   "__pi_render": { "format": "markdown", "text": "...user text..." },
- *   "payload": { /* full machine JSON */ }
+ *   "payload": { "<full machine JSON>": true }
  * }
  *
  * If that envelope is missing or malformed, return null — do not synthesize
