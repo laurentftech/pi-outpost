@@ -110,18 +110,6 @@ export function ToolCard({ item }: { item: ToolItem }) {
   const summary = argsSummary(item.args);
   const previewHtml = item.outputHtmlCollapsed ?? item.outputHtml;
   const showCollapsedPreview = !open && Boolean(previewHtml);
-  
-  // For collapsed preview, show formatted output if available
-  const collapsedContent = !open && formattedOutput ? (
-    <div className="prose-chat max-h-24 overflow-auto text-zinc-700 dark:text-zinc-300">
-      <ReactMarkdown
-        remarkPlugins={[remarkGfm, remarkMath]}
-        rehypePlugins={[rehypeKatex]}
-      >
-        {normalizeMathDelimiters(formattedOutput)}
-      </ReactMarkdown>
-    </div>
-  ) : null;
 
   return (
     <div
@@ -156,7 +144,6 @@ export function ToolCard({ item }: { item: ToolItem }) {
           <RenderedHtml html={previewHtml} className="max-h-24 text-zinc-700 dark:text-zinc-300" />
         </div>
       )}
-      {!showCollapsedPreview && collapsedContent}
       {open && (
         <div className="border-t border-zinc-200 px-3 py-2 dark:border-zinc-800">
           {pairs !== null && (
