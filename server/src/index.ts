@@ -569,26 +569,15 @@ function snapshot(): SessionSnapshot {
 
 const clients = new Set<WebSocket>();
 
-const WS_LOG_PATH = process.env.WS_LOG_PATH ? path.resolve(process.env.WS_LOG_PATH) : undefined;
-
 function broadcast(message: ServerMessage): void {
   const data = JSON.stringify(message);
-  // Optional file logging for debugging WebSocket payloads
-  if (WS_LOG_PATH) {
-    // Best-effort write; don't block the event loop on failures
-    fs.appendFile(WS_LOG_PATH, data + "\n").catch(() => {});
-  }
   for (const socket of clients) {
     if (socket.readyState === socket.OPEN) socket.send(data);
   }
 }
 
 function send(socket: WebSocket, message: ServerMessage): void {
-  const data = JSON.stringify(message);
-  if (WS_LOG_PATH) {
-    fs.appendFile(WS_LOG_PATH, data + "\n").catch(() => {});
-  }
-  if (socket.readyState === socket.OPEN) socket.send(data);
+  if (socket.readyState === socket.OPEN) socket.send(JSON.stringify(message));
 }
 
 // --- Extension "Custom UI" bridge -----------------------------------------------
