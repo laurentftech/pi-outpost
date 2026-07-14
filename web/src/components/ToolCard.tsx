@@ -97,9 +97,13 @@ export function ToolCard({ item }: { item: ToolItem }) {
   
   // Check if tool has formatted output (either HTML from extension or __pi_render envelope)
   const formattedOutput = hasHtml ? undefined : (item.output ? getFormattedToolOutput(item.output) : undefined);
+  const hasFormattedOutput = Boolean(formattedOutput);
   
-  // Always start collapsed; user must explicitly expand to see details
-  const [open, setOpen] = useState(hasDiff || hasHtml);
+  // Start collapsed to show formatted output; expanded state shows raw JSON for inspection
+  // For edit/write tools with diffs, start expanded to show the diff
+  // For tools with HTML from extension, start expanded to show the rendered HTML
+  // For tools with formatted output, start collapsed to show the formatted MD
+  const [open, setOpen] = useState(hasDiff || hasHtml || !hasFormattedOutput);
   
   // A live tool card starts before its extension renderer has produced HTML.
   // Reveal the result as soon as it arrives, matching the TUI's completed view.
@@ -159,32 +163,29 @@ export function ToolCard({ item }: { item: ToolItem }) {
             </div>
           )}
           
-          {/* Always show raw output when expanded - this is the source of truth for inspection */}
           {item.outputHtml ? (
             <RenderedHtml html={item.outputHtml} className="max-h-96 text-zinc-700 dark:text-zinc-300" />
           ) : item.output ? (
-            <>
-              {/* Show formatted output if available */}
-              {formattedOutput && (
-                <div className="prose-chat mb-4 max-h-96 overflow-auto text-zinc-700 dark:text-zinc-300">
-                  <ReactMarkdown
-                    remarkPlugins={[remarkGfm, remarkMath]}
-                    rehypePlugins={[rehypeKatex]}
-                  >
-                    {normalizeMathDelimiters(formattedOutput)}
-                  </ReactMarkdown>
-                </div>
-              )}
-              {/* Always show raw JSON for inspection when expanded */}
-              <pre className="max-h-96 overflow-auto whitespace-pre-wrap font-mono text-xs text-zinc-700 dark:text-zinc-300">
-                {item.output}
-              </pre>
-            </>
+            <pre className="max-h-96 overflow-auto whitespace-pre-wrap font-mono text-xs text-zinc-700 dark:text-zinc-300">
+              {item.output}
+            </pre>
           ) : (
             <pre className="max-h-96 overflow-auto whitespace-pre-wrap font-mono text-xs text-zinc-700 dark:text-zinc-300">
               {item.running ? "running…" : "(no output)"}
             </pre>
           )}
+        </div>
+      )}
+      {!open && formattedOutput && !showCollapsedPreview && (
+        <div className="border-t border-zinc-200 px-3 py-2 dark:border-zinc-800">
+          <div className="prose-chat max-h-96 overflow-auto text-zinc-700 dark:text-zinc-300">
+            <ReactMarkdown
+              remarkPlugins={[remarkGfm, remarkMath]}
+              rehypePlugins={[rehypeKatex]}
+            >
+              {normalizeMathDelimiters(formattedOutput)}
+            </ReactMarkdown>
+          </div>
         </div>
       )}
     </div>
