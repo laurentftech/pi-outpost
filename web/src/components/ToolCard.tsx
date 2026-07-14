@@ -14,10 +14,18 @@ type ToolItem = Extract<ChatItem, { kind: "tool" }>;
 /** Extract formatted user-facing text from tool output.
  * Checks for authoritative __pi_render envelope first, otherwise returns undefined.
  * For openlore tools, also formats known fields as readable markdown.
+ * Handles truncated JSON by stripping the truncation suffix before parsing.
  */
 function getFormattedToolOutput(output: string): string | undefined {
+  // Try to parse as JSON - handle truncated output by stripping the truncation suffix
+  let jsonToParse = output;
+  const truncationMarker = "\n… [truncated,";
+  if (output.includes(truncationMarker)) {
+    jsonToParse = output.split(truncationMarker)[0];
+  }
+  
   try {
-    const parsed = JSON.parse(output);
+    const parsed = JSON.parse(jsonToParse);
     if (parsed && typeof parsed === "object") {
       // Check for authoritative __pi_render envelope first
       if (parsed.__pi_render?.text) {
