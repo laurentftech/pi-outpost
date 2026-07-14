@@ -1,0 +1,55 @@
+- generic [ref=f5e4]:
+  - banner [ref=f5e5]:
+    - button "◨ files" [ref=f5e6]
+    - button "⎇ shim/tool-result-summary" [ref=f5e40]
+    - generic [ref=f5e7]: π dev
+    - generic [ref=f5e45]: working
+    - generic [ref=f5e8]:
+      - button "⚒ tools" [ref=f5e9]
+      - button "Switch to dark theme" [ref=f5e10]: ☾
+      - button "+ new" [ref=f5e11]
+      - button "tree" [ref=f5e13]
+      - button "sessions" [ref=f5e15]
+      - generic "connected" [ref=f5e41]
+  - main [ref=f5e18]:
+    - generic [ref=f5e19]: openlore_get_function_body --directory /Users/laurent/Projets/Pi-interface --filePath web/src/components/ToolCard.tsx --functionName ToolCard
+  - contentinfo [ref=f5e23]:
+    - generic [ref=f5e24]:
+      - generic [ref=f5e26]:
+        - textbox "steer the agent… (Enter to send)" [active] [ref=f5e50]
+        - button "Stop the agent" [ref=f5e51]
+        - button "Attach files" [ref=f5e28]
+        - button "Steer the agent" [disabled] [ref=f5e54]
+      - generic [ref=f5e34]:
+        - combobox [disabled] [ref=f5e35]:
+          - option "mistral/codestral-latest" [selected]
+          - option "mistral/devstral-2512"
+          - option "mistral/devstral-latest"
+          - option "mistral/devstral-medium-2507"
+          - option "mistral/devstral-medium-latest"
+          - option "mistral/devstral-small-2505"
+          - option "mistral/devstral-small-2507"
+          - option "mistral/labs-devstral-small-2512"
+          - option "mistral/magistral-medium-latest"
+          - option "mistral/magistral-small"
+          - option "mistral/ministral-3b-latest"
+          - option "mistral/ministral-8b-latest"
+          - option "mistral/mistral-large-2411"
+          - option "mistral/mistral-large-2512"
+          - option "mistral/mistral-large-latest"
+          - option "mistral/mistral-medium-2505"
+          - option "mistral/mistral-medium-2508"
+          - option "mistral/mistral-medium-2604"
+          - option "mistral/mistral-medium-3.5"
+          - option "mistral/mistral-medium-latest"
+          - option "mistral/mistral-nemo"
+          - option "mistral/mistral-small-2506"
+          - option "mistral/mistral-small-2603"
+          - option "mistral/mistral-small-latest"
+          - option "mistral/open-mistral-7b"
+          - option "mistral/open-mistral-nemo"
+          - option "mistral/open-mixtral-8x22b"
+          - option "mistral/open-mixtral-8x7b"
+          - option "mistral/pixtral-12b"
+          - option "mistral/pixtral-large-latest"
+        - button "0%" [disabled] [ref=f5e43]

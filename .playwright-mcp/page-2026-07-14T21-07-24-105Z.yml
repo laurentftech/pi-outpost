@@ -1,0 +1,112 @@
+- generic [ref=e4]:
+  - banner [ref=e5]:
+    - button "◨ files" [ref=e6]
+    - button "⎇ shim/tool-result-summary ↑2" [ref=e40]
+    - generic [ref=e7]: π test
+    - generic [ref=e8]:
+      - button "⚒ tools" [ref=e9]
+      - button "Switch to dark theme" [ref=e10]: ☾
+      - button "+ new" [ref=e11]
+      - button "tree" [ref=e13]
+      - button "sessions" [ref=e15]
+      - generic "connected" [ref=e41]
+  - main [ref=e18]:
+    - generic [ref=e19]:
+      - generic [ref=e91]:
+        - button "Edit this prompt" [ref=e102]: ✎
+        - generic [ref=e92]: openlore orient "test formatting"
+      - generic [ref=e103]:
+        - button "openlore orient \"test formatting\" ▸" [active] [ref=e145]:
+          - generic [ref=e106]: openlore orient "test formatting"
+          - generic [ref=e108]: ▸
+        - generic [ref=e148]:
+          - paragraph [ref=e149]:
+            - strong [ref=e150]: test formatting
+            - text: "Mode: hybrid"
+          - paragraph [ref=e151]: "Relevant files:"
+          - list [ref=e152]:
+            - listitem [ref=e153]: server/test/live/conversation-branching.test.mjs
+            - listitem [ref=e154]: server/test/session-names.test.mjs
+            - listitem [ref=e155]: server/test/config-cli.test.mjs
+            - listitem [ref=e156]: server/test/files-raw.test.mjs
+            - listitem [ref=e157]: web/test/attachments.test.ts
+          - paragraph [ref=e158]: "Relevant functions:"
+          - list [ref=e159]:
+            - listitem [ref=e160]: bubbles (server/test/live/conversation-branching.test.mjs)
+            - listitem [ref=e161]: search (server/test/session-names.test.mjs)
+            - listitem [ref=e162]: configWithPort (server/test/config-cli.test.mjs)
+            - listitem [ref=e163]: status (server/test/files-raw.test.mjs)
+            - listitem [ref=e164]: globalThis.fetch (web/test/attachments.test.ts)
+          - paragraph [ref=e165]: "Next steps:"
+          - list [ref=e166]:
+            - listitem [ref=e167]: Before making an architectural choice, call record_decision(title, rationale, consequences, affectedFiles) to document it
+            - listitem [ref=e168]: Call get_subgraph("open") to trace the call neighbourhood
+            - listitem [ref=e169]: After implementing, run check_spec_drift to verify the code matches the spec
+      - generic [ref=e111]:
+        - button "⧉ copy" [ref=e113]
+        - generic [ref=e114]:
+          - paragraph [ref=e115]: "I've oriented the codebase for testing formatting. Here's what I found:"
+          - paragraph [ref=e116]: "Relevant test files:"
+          - list [ref=e117]:
+            - listitem [ref=e118]: server/test/live/conversation-branching.test.mjs
+            - listitem [ref=e119]: server/test/session-names.test.mjs
+            - listitem [ref=e120]: server/test/config-cli.test.mjs
+            - listitem [ref=e121]: server/test/files-raw.test.mjs
+            - listitem [ref=e122]: web/test/attachments.test.ts
+          - paragraph [ref=e123]: "Key test functions:"
+          - list [ref=e124]:
+            - listitem [ref=e125]: bubbles (conversation-branching.test.mjs)
+            - listitem [ref=e126]: search (session-names.test.mjs)
+            - listitem [ref=e127]: configWithPort (config-cli.test.mjs)
+            - listitem [ref=e128]: status (files-raw.test.mjs)
+            - listitem [ref=e129]: globalThis.fetch (attachments.test.ts)
+          - paragraph [ref=e130]: "Suggested next steps:"
+          - list [ref=e131]:
+            - listitem [ref=e132]: Record any architectural decisions with record_decision
+            - listitem [ref=e133]: Analyze call graphs with get_subgraph
+            - listitem [ref=e134]: Verify spec compliance with check_spec_drift after implementation
+          - paragraph [ref=e135]: "The most promising insertion points are:"
+          - list [ref=e136]:
+            - listitem [ref=e137]: open (server/test/harness.mjs) - as an entry point
+            - listitem [ref=e138]: connect (server/test/harness.mjs) - as an entry point
+            - listitem [ref=e139]: bubbles (conversation-branching.test.mjs) - for shared logic
+          - paragraph [ref=e140]: Would you like to proceed with any of these steps or focus on a specific aspect of the test formatting?
+  - contentinfo [ref=e23]:
+    - generic [ref=e24]:
+      - generic [ref=e26]:
+        - textbox "message pi… (/ for commands, @ for files, Enter to send, Shift+Enter for newline)" [ref=e141]
+        - button "Attach files" [ref=e28]
+        - button "Send message" [disabled] [ref=e142]
+      - generic [ref=e34]:
+        - combobox [ref=e35]:
+          - option "mistral/codestral-latest" [selected]
+          - option "mistral/devstral-2512"
+          - option "mistral/devstral-latest"
+          - option "mistral/devstral-medium-2507"
+          - option "mistral/devstral-medium-latest"
+          - option "mistral/devstral-small-2505"
+          - option "mistral/devstral-small-2507"
+          - option "mistral/labs-devstral-small-2512"
+          - option "mistral/magistral-medium-latest"
+          - option "mistral/magistral-small"
+          - option "mistral/ministral-3b-latest"
+          - option "mistral/ministral-8b-latest"
+          - option "mistral/mistral-large-2411"
+          - option "mistral/mistral-large-2512"
+          - option "mistral/mistral-large-latest"
+          - option "mistral/mistral-medium-2505"
+          - option "mistral/mistral-medium-2508"
+          - option "mistral/mistral-medium-2604"
+          - option "mistral/mistral-medium-3.5"
+          - option "mistral/mistral-medium-latest"
+          - option "mistral/mistral-nemo"
+          - option "mistral/mistral-small-2506"
+          - option "mistral/mistral-small-2603"
+          - option "mistral/mistral-small-latest"
+          - option "mistral/open-mistral-7b"
+          - option "mistral/open-mistral-nemo"
+          - option "mistral/open-mixtral-8x22b"
+          - option "mistral/open-mixtral-8x7b"
+          - option "mistral/pixtral-12b"
+          - option "mistral/pixtral-large-latest"
+        - button "7%" [ref=e144]

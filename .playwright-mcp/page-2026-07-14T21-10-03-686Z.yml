@@ -1,0 +1,58 @@
+- generic [ref=f2e4]:
+  - banner [ref=f2e5]:
+    - button "◨ files" [ref=f2e6]
+    - button "⎇ shim/tool-result-summary ↑2" [ref=f2e40]
+    - generic [ref=f2e7]: π dev
+    - generic [ref=f2e8]:
+      - button "⚒ tools" [ref=f2e9]
+      - button "Switch to dark theme" [ref=f2e10]: ☾
+      - button "+ new" [ref=f2e11]
+      - button "tree" [ref=f2e13]
+      - button "sessions" [ref=f2e15]
+      - generic "connected" [ref=f2e41]
+  - main [ref=f2e18]:
+    - generic [ref=f2e20]:
+      - generic [ref=f2e21]: π dev
+      - paragraph [ref=f2e22]: Send a message to start the agent.
+  - contentinfo [ref=f2e23]:
+    - generic [ref=f2e24]:
+      - generic [ref=f2e26]:
+        - textbox "message pi… (/ for commands, @ for files, Enter to send, Shift+Enter for newline)" [ref=f2e42]
+        - button "Attach files" [ref=f2e28]
+        - button "Send message" [disabled] [ref=f2e31]
+      - generic [ref=f2e34]:
+        - combobox [active] [ref=f2e35]:
+          - option "mistral/codestral-latest"
+          - option "mistral/devstral-2512"
+          - option "mistral/devstral-latest"
+          - option "mistral/devstral-medium-2507"
+          - option "mistral/devstral-medium-latest"
+          - option "mistral/devstral-small-2505"
+          - option "mistral/devstral-small-2507"
+          - option "mistral/labs-devstral-small-2512"
+          - option "mistral/magistral-medium-latest"
+          - option "mistral/magistral-small"
+          - option "mistral/ministral-3b-latest"
+          - option "mistral/ministral-8b-latest"
+          - option "mistral/mistral-large-2411"
+          - option "mistral/mistral-large-2512"
+          - option "mistral/mistral-large-latest"
+          - option "mistral/mistral-medium-2505"
+          - option "mistral/mistral-medium-2508"
+          - option "mistral/mistral-medium-2604"
+          - option "mistral/mistral-medium-3.5"
+          - option "mistral/mistral-medium-latest" [selected]
+          - option "mistral/mistral-nemo"
+          - option "mistral/mistral-small-2506"
+          - option "mistral/mistral-small-2603"
+          - option "mistral/mistral-small-latest"
+          - option "mistral/open-mistral-7b"
+          - option "mistral/open-mistral-nemo"
+          - option "mistral/open-mixtral-8x22b"
+          - option "mistral/open-mixtral-8x7b"
+          - option "mistral/pixtral-12b"
+          - option "mistral/pixtral-large-latest"
+        - button "off" [ref=f2e44]:
+          - generic [ref=f2e45]: 🧠
+          - text: "off"
+        - button "0%" [ref=f2e46]

@@ -1,0 +1,349 @@
+- generic [ref=f5e4]:
+  - banner [ref=f5e5]:
+    - button "◨ files" [ref=f5e6]
+    - button "⎇ shim/tool-result-summary" [ref=f5e40]
+    - generic [ref=f5e7]: π dev
+    - generic [ref=f5e345]: working
+    - generic [ref=f5e8]:
+      - button "⚒ tools" [ref=f5e9]
+      - button "Switch to dark theme" [ref=f5e10]: ☾
+      - button "+ new" [ref=f5e11]
+      - button "tree" [ref=f5e13]
+      - button "sessions" [ref=f5e15]
+      - generic "connected" [ref=f5e41]
+  - main [ref=f5e18]:
+    - generic [ref=f5e19]:
+      - generic [ref=f5e47]: openlore_get_function_body --directory /Users/laurent/Projets/Pi-interface --filePath web/src/components/ToolCard.tsx --functionName ToolCard
+      - generic [ref=f5e59]:
+        - button "read web/src/components/ToolCard.tsx ▸" [ref=f5e60]:
+          - generic [ref=f5e62]: read web/src/components/ToolCard.tsx
+          - generic [ref=f5e64]: ▸
+        - generic [ref=f5e66]:
+          - generic [ref=f5e348]: "import { useState } from \"react\";"
+          - generic [ref=f5e349]: import ReactMarkdown from "react-markdown";
+          - generic [ref=f5e350]: import rehypeKatex from "rehype-katex";
+          - generic [ref=f5e351]: import remarkGfm from "remark-gfm";
+          - generic [ref=f5e352]: import remarkMath from "remark-math";
+          - generic [ref=f5e353]: "import type { ChatItem } from \"@pi-outpost/shared\";"
+          - generic [ref=f5e354]: "import { normalizeMathDelimiters } from \"../markdownMath\";"
+          - generic [ref=f5e355]: "import { diffLines } from \"../diff\";"
+          - generic [ref=f5e356]: "import { DiffBlock, SplitDiffBlock } from \"./DiffBlocks\";"
+          - generic [ref=f5e357]: "import { RenderedHtml } from \"./RenderedHtml\";"
+          - generic [ref=f5e358]: "type ToolItem = Extract<ChatItem, { kind: \"tool\" }>;"
+          - generic [ref=f5e359]: /** Extract formatted user-facing text from tool output.
+          - generic [ref=f5e360]: "* Checks for authoritative __pi_render envelope first, otherwise returns undefined."
+          - generic [ref=f5e361]: "* For openlore tools, also formats known fields as readable markdown."
+          - generic [ref=f5e362]: "* Handles truncated JSON by stripping the truncation suffix before parsing."
+          - generic [ref=f5e363]: "* Falls back to brace-counting recovery for mid-truncation cases."
+          - generic [ref=f5e364]: "* Returns undefined only for non-JSON or completely unparseable content."
+          - generic [ref=f5e365]: "*/"
+          - generic [ref=f5e366]: "function getFormattedToolOutput(output: string): string | undefined {"
+          - generic [ref=f5e367]: // Try to parse as JSON - handle truncated output by stripping the truncation suffix
+          - generic [ref=f5e368]: let jsonToParse = output;
+          - generic [ref=f5e369]: const truncationMarker = "\n… [truncated,";
+          - generic [ref=f5e370]: "if (output.includes(truncationMarker)) {"
+          - generic [ref=f5e371]: jsonToParse = output.split(truncationMarker)[0];
+          - generic [ref=f5e372]: "}"
+          - generic [ref=f5e373]: // Helper to format a parsed JSON object
+          - generic [ref=f5e374]: "const formatParsedObject = (parsed: Record<string, unknown>): string | undefined => {"
+          - generic [ref=f5e375]: "const lines: string[] = [];"
+          - generic [ref=f5e376]: "if (parsed.task) lines.push(`**${String(parsed.task)}**`);"
+          - generic [ref=f5e377]: "if (parsed.searchMode) lines.push(`Mode: ${String(parsed.searchMode)}`);"
+          - generic [ref=f5e378]: "if (parsed.title) lines.push(`**${String(parsed.title)}**`);"
+          - generic [ref=f5e379]: if (parsed.summary) lines.push(String(parsed.summary));
+          - generic [ref=f5e380]: "if (Array.isArray(parsed.relevantFiles) && parsed.relevantFiles.length > 0) {"
+          - generic [ref=f5e381]: lines.push("\nRelevant files:");
+          - generic [ref=f5e382]: "for (const f of (parsed.relevantFiles as string[]).slice(0, 5)) lines.push(`- ${f}`);"
+          - generic [ref=f5e383]: "}"
+          - generic [ref=f5e384]: "if (Array.isArray(parsed.relevantFunctions) && parsed.relevantFunctions.length > 0) {"
+          - generic [ref=f5e385]: lines.push("\nRelevant functions:");
+          - generic [ref=f5e386]: "for (const fn of (parsed.relevantFunctions as any[]).slice(0, 5)) {"
+          - generic [ref=f5e387]: "if (fn && fn.name) lines.push(`- ${fn.name} (${fn.filePath ?? fn.file ?? \"unknown\"})`);"
+          - generic [ref=f5e388]: "else lines.push(`- ${String(fn)}`);"
+          - generic [ref=f5e389]: "}"
+          - generic [ref=f5e390]: "}"
+          - generic [ref=f5e391]: "if (Array.isArray(parsed.nextSteps) && parsed.nextSteps.length > 0) {"
+          - generic [ref=f5e392]: lines.push("\nNext steps:");
+          - generic [ref=f5e393]: "for (const s of (parsed.nextSteps as string[]).slice(0, 5)) lines.push(`- ${s}`);"
+          - generic [ref=f5e394]: "}"
+          - generic [ref=f5e395]: "if (Array.isArray(parsed.nextStepsText) && parsed.nextStepsText.length > 0) {"
+          - generic [ref=f5e396]: lines.push("\nNext steps:");
+          - generic [ref=f5e397]: "for (const s of (parsed.nextStepsText as string[]).slice(0, 5)) lines.push(`- ${s}`);"
+          - generic [ref=f5e398]: "}"
+          - generic [ref=f5e399]: const summary = lines.join("\n").trim();
+          - generic [ref=f5e400]: if (summary) return summary;
+          - generic [ref=f5e401]: // No formatted output for pure JSON - return undefined to show nothing in collapsed state
+          - generic [ref=f5e402]: return undefined;
+          - generic [ref=f5e403]: "};"
+          - generic [ref=f5e404]: // First, try to parse as valid JSON
+          - generic [ref=f5e405]: "try {"
+          - generic [ref=f5e406]: const parsed = JSON.parse(jsonToParse);
+          - generic [ref=f5e407]: "if (parsed && typeof parsed === \"object\") {"
+          - generic [ref=f5e408]: // Check for authoritative __pi_render envelope first
+          - generic [ref=f5e409]: "if (parsed.__pi_render?.text) {"
+          - generic [ref=f5e410]: return String(parsed.__pi_render.text);
+          - generic [ref=f5e411]: "}"
+          - generic [ref=f5e412]: return formatParsedObject(parsed as Record<string, unknown>);
+          - generic [ref=f5e413]: "}"
+          - generic [ref=f5e414]: // If parsed is a string, return it as-is (could be already formatted markdown)
+          - generic [ref=f5e415]: "if (typeof parsed === \"string\") {"
+          - generic [ref=f5e416]: return parsed;
+          - generic [ref=f5e417]: "}"
+          - generic [ref=f5e418]: "} catch {"
+          - generic [ref=f5e419]: // Not JSON or parse error - try to fix truncated JSON by finding the last valid closing brace
+          - generic [ref=f5e420]: "}"
+          - generic [ref=f5e421]: "// Try brace-counting recovery: find a valid JSON substring by counting braces"
+          - generic [ref=f5e422]: "// First pass: look for a complete object (braceCount === 0)"
+          - generic [ref=f5e423]: "try {"
+          - generic [ref=f5e424]: let braceCount = 0;
+          - generic [ref=f5e425]: let lastCompleteIndex = -1;
+          - generic [ref=f5e426]: let lastClosingIndex = -1;
+          - generic [ref=f5e427]: "for (let i = 0; i < jsonToParse.length; i++) {"
+          - generic [ref=f5e428]: "if (jsonToParse[i] === \"{\") braceCount++;"
+          - generic [ref=f5e429]: "if (jsonToParse[i] === \"}\") {"
+          - generic [ref=f5e430]: braceCount--;
+          - generic [ref=f5e431]: lastClosingIndex = i; // Track the last closing brace we see
+          - generic [ref=f5e432]: "if (braceCount === 0) {"
+          - generic [ref=f5e433]: lastCompleteIndex = i;
+          - generic [ref=f5e434]: break; // Found the matching closing brace for the outermost object
+          - generic [ref=f5e435]: "}"
+          - generic [ref=f5e436]: "}"
+          - generic [ref=f5e437]: "}"
+          - generic [ref=f5e438]: // First, try the complete object if found
+          - generic [ref=f5e439]: "if (lastCompleteIndex > 0) {"
+          - generic [ref=f5e440]: const validJson = jsonToParse.slice(0, lastCompleteIndex + 1);
+          - generic [ref=f5e441]: const parsed = JSON.parse(validJson);
+          - generic [ref=f5e442]: "if (parsed && typeof parsed === \"object\") {"
+          - generic [ref=f5e443]: return formatParsedObject(parsed as Record<string, unknown>);
+          - generic [ref=f5e444]: "}"
+          - generic [ref=f5e445]: "}"
+          - generic [ref=f5e446]: // If no complete object found, try using the last closing brace we saw
+          - generic [ref=f5e447]: // This handles cases where JSON is truncated mid-object
+          - generic [ref=f5e448]: "if (lastClosingIndex > 0 && lastCompleteIndex === -1) {"
+          - generic [ref=f5e449]: const validJson = jsonToParse.slice(0, lastClosingIndex + 1);
+          - generic [ref=f5e450]: "try {"
+          - generic [ref=f5e451]: const parsed = JSON.parse(validJson);
+          - generic [ref=f5e452]: "if (parsed && typeof parsed === \"object\") {"
+          - generic [ref=f5e453]: return formatParsedObject(parsed as Record<string, unknown>);
+          - generic [ref=f5e454]: "}"
+          - generic [ref=f5e455]: "} catch {"
+          - generic [ref=f5e456]: // Still can't parse this fragment
+          - generic [ref=f5e457]: "}"
+          - generic [ref=f5e458]: "}"
+          - generic [ref=f5e459]: "} catch {"
+          - generic [ref=f5e460]: // Still can't parse
+          - generic [ref=f5e461]: "}"
+          - generic [ref=f5e462]: return undefined;
+          - generic [ref=f5e463]: "}"
+          - generic [ref=f5e464]: /** One-line summary of tool args (command for bash, path for file tools…). */
+          - generic [ref=f5e465]: "function argsSummary(args: unknown): string {"
+          - generic [ref=f5e466]: if (args === null || typeof args !== "object") return "";
+          - generic [ref=f5e467]: const record = args as Record<string, unknown>;
+          - generic [ref=f5e468]: const key = ["command", "path", "file_path", "pattern", "query"].find(
+          - generic [ref=f5e469]: (k) => typeof record[k] === "string",
+          - generic [ref=f5e470]: );
+          - generic [ref=f5e471]: if (key) return record[key] as string;
+          - generic [ref=f5e472]: const json = JSON.stringify(record);
+          - generic [ref=f5e473]: "return json === \"{}\" ? \"\" : json;"
+          - generic [ref=f5e474]: "}"
+          - generic [ref=f5e475]: /** The edit tool's before/after pairs, when this call has them. */
+          - generic [ref=f5e476]: "function editPairs(item: ToolItem): { oldText: string; newText: string }[] | null {"
+          - generic [ref=f5e477]: if (item.toolName !== "edit" || item.args === null || typeof item.args !== "object") return null;
+          - generic [ref=f5e478]: "const edits = (item.args as { edits?: unknown }).edits;"
+          - generic [ref=f5e479]: if (!Array.isArray(edits)) return null;
+          - generic [ref=f5e480]: const pairs = edits.filter(
+          - generic [ref=f5e481]: "(e): e is { oldText: string; newText: string } =>"
+          - generic [ref=f5e482]: e !== null && typeof e === "object" && typeof (e as Record<string, unknown>).oldText ===
+          - generic [ref=f5e483]: "\"string\" && typeof (e as Record<string, unknown>).newText === \"string\","
+          - generic [ref=f5e484]: );
+          - generic [ref=f5e485]: "return pairs.length > 0 ? pairs : null;"
+          - generic [ref=f5e486]: "}"
+          - generic [ref=f5e487]: /** The write tool's new content (rendered as an all-additions diff). */
+          - generic [ref=f5e488]: "function writeContent(item: ToolItem): string | null {"
+          - generic [ref=f5e489]: if (item.toolName !== "write" || item.args === null || typeof item.args !== "object") return null;
+          - generic [ref=f5e490]: "const content = (item.args as { content?: unknown }).content;"
+          - generic [ref=f5e491]: "return typeof content === \"string\" ? content : null;"
+          - generic [ref=f5e492]: "}"
+          - generic [ref=f5e493]: "export function ToolCard({ item }: { item: ToolItem }) {"
+          - generic [ref=f5e494]: const hasHtml = Boolean(item.outputHtml);
+          - generic [ref=f5e495]: "const pairs = hasHtml ? null : editPairs(item);"
+          - generic [ref=f5e496]: "const written = hasHtml ? null : writeContent(item);"
+          - generic [ref=f5e497]: const hasDiff = pairs !== null || written !== null;
+          - generic [ref=f5e498]: // Check if tool has formatted output (either HTML from extension or __pi_render envelope)
+          - generic [ref=f5e499]: "const formattedOutput = item.output ? getFormattedToolOutput(item.output) : undefined;"
+          - generic [ref=f5e500]: const hasFormattedOutput = Boolean(formattedOutput);
+          - generic [ref=f5e501]: // Start collapsed to show formatted output; expanded state shows raw JSON for inspection
+          - generic [ref=f5e502]: // For edit/write tools with diffs, start expanded to show the diff
+          - generic [ref=f5e503]: // For tools with HTML from extension, start expanded to show the rendered HTML
+          - generic [ref=f5e504]: // For tools with formatted output, start collapsed to show the formatted MD
+          - generic [ref=f5e505]: const [open, setOpen] = useState(hasDiff);
+          - generic [ref=f5e506]: const summary = argsSummary(item.args);
+          - generic [ref=f5e507]: const previewHtml = item.outputHtmlCollapsed ?? item.outputHtml;
+          - generic [ref=f5e508]: // In collapsed mode, prefer formatted MD output over HTML preview
+          - generic [ref=f5e509]: const showFormattedCollapsed = !open && hasFormattedOutput;
+          - generic [ref=f5e510]: const showCollapsedPreview = !open && !hasFormattedOutput && Boolean(previewHtml);
+          - generic [ref=f5e511]: return (
+          - generic [ref=f5e512]: <div
+          - generic [ref=f5e513]: "className={`rounded-lg border text-sm ${"
+          - generic [ref=f5e514]: item.isError
+          - generic [ref=f5e515]: "? \"border-red-300 bg-red-50 dark:border-red-900/60 dark:bg-red-950/20\""
+          - generic [ref=f5e516]: ": \"border-zinc-200 bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-900/60\""
+          - generic [ref=f5e517]: "}`}"
+          - generic [ref=f5e518]: ">"
+          - generic [ref=f5e519]: <button
+          - generic [ref=f5e520]: type="button"
+          - generic [ref=f5e521]: "onClick={() => setOpen(!open)}"
+          - generic [ref=f5e522]: className="flex w-full items-center gap-2 px-3 py-2 text-left"
+          - generic [ref=f5e523]: ">"
+          - generic [ref=f5e524]: "<span className={`h-2 w-2 shrink-0 rounded-full ${"
+          - generic [ref=f5e525]: "item.running ? \"animate-pulse motion-reduce:animate-none bg-amber-400\" : item.isError ?"
+          - generic [ref=f5e526]: "\"bg-red-500\" : \"bg-emerald-500\""
+          - generic [ref=f5e527]: "}`} />"
+          - generic [ref=f5e528]: "{item.callHtml ? ("
+          - generic [ref=f5e529]: "<RenderedHtml as=\"span\" html={item.callHtml} className=\"min-w-0 flex-1 text-zinc-700"
+          - generic [ref=f5e530]: dark:text-zinc-300" />
+          - generic [ref=f5e531]: ") : ("
+          - generic [ref=f5e532]: <>
+          - generic [ref=f5e533]: <span className="font-mono font-medium text-zinc-700
+          - generic [ref=f5e534]: "dark:text-zinc-300\">{item.toolName}</span>"
+          - generic [ref=f5e535]: "{summary && ("
+          - generic [ref=f5e536]: "<span className=\"truncate font-mono text-xs text-zinc-500\">{summary}</span>"
+          - generic [ref=f5e537]: ")}"
+          - generic [ref=f5e538]: </>
+          - generic [ref=f5e539]: ")}"
+          - generic [ref=f5e540]: "<span className=\"ml-auto text-xs text-zinc-400 dark:text-zinc-600\">{open ? \"▾\" : \"▸\"}</span>"
+          - generic [ref=f5e541]: </button>
+          - generic [ref=f5e542]: "{showFormattedCollapsed && formattedOutput && ("
+          - generic [ref=f5e543]: <div className="border-t border-zinc-200 px-3 py-2 dark:border-zinc-800">
+          - generic [ref=f5e544]: <div className="prose-chat max-h-96 overflow-auto text-zinc-700 dark:text-zinc-300">
+          - generic [ref=f5e545]: <ReactMarkdown
+          - generic [ref=f5e546]: "remarkPlugins={[remarkGfm, remarkMath]}"
+          - generic [ref=f5e547]: "rehypePlugins={[rehypeKatex]}"
+          - generic [ref=f5e548]: ">"
+          - generic [ref=f5e549]: "{normalizeMathDelimiters(formattedOutput)}"
+          - generic [ref=f5e550]: </ReactMarkdown>
+          - generic [ref=f5e551]: </div>
+          - generic [ref=f5e552]: </div>
+          - generic [ref=f5e553]: ")}"
+          - generic [ref=f5e554]: "{showCollapsedPreview && previewHtml && ("
+          - generic [ref=f5e555]: <div className="border-t border-zinc-200 px-3 py-2 dark:border-zinc-800">
+          - generic [ref=f5e556]: "<RenderedHtml html={previewHtml} className=\"max-h-24 text-zinc-700 dark:text-zinc-300\" />"
+          - generic [ref=f5e557]: </div>
+          - generic [ref=f5e558]: ")}"
+          - generic [ref=f5e559]: "{open && ("
+          - generic [ref=f5e560]: <div className="border-t border-zinc-200 px-3 py-2 dark:border-zinc-800">
+          - generic [ref=f5e561]: "{pairs !== null && ("
+          - generic [ref=f5e562]: <div className="mb-2 flex flex-col gap-2">
+          - generic [ref=f5e563]: "{pairs.map((pair, i) => ("
+          - generic [ref=f5e564]: "<SplitDiffBlock key={i} lines={diffLines(pair.oldText, pair.newText)} />"
+          - generic [ref=f5e565]: "))}"
+          - generic [ref=f5e566]: </div>
+          - generic [ref=f5e567]: ")}"
+          - generic [ref=f5e568]: "{written !== null && ("
+          - generic [ref=f5e569]: <div className="mb-2">
+          - generic [ref=f5e570]: "<DiffBlock lines={written.split(\"\\n\").map((text) => ({ type: \"add\" as const, text }))}"
+          - generic [ref=f5e571]: />
+          - generic [ref=f5e572]: </div>
+          - generic [ref=f5e573]: ")}"
+          - generic [ref=f5e574]: "{item.outputHtml ? ("
+          - generic [ref=f5e575]: "<RenderedHtml html={item.outputHtml} className=\"max-h-96 text-zinc-700"
+          - generic [ref=f5e576]: dark:text-zinc-300" />
+          - generic [ref=f5e577]: ") : item.output ? ("
+          - generic [ref=f5e578]: <pre className="max-h-96 overflow-auto whitespace-pre-wrap font-mono text-xs
+          - generic [ref=f5e579]: text-zinc-700 dark:text-zinc-300">
+          - generic [ref=f5e580]: "{item.output}"
+          - generic [ref=f5e581]: </pre>
+          - generic [ref=f5e582]: ") : ("
+          - generic [ref=f5e583]: <pre className="max-h-96 overflow-auto whitespace-pre-wrap font-mono text-xs
+          - generic [ref=f5e584]: text-zinc-700 dark:text-zinc-300">
+          - generic [ref=f5e585]: "{item.running ? \"running…\" : \"(no output)\"}"
+          - generic [ref=f5e586]: </pre>
+          - generic [ref=f5e587]: ")}"
+          - generic [ref=f5e588]: </div>
+          - generic [ref=f5e589]: ")}"
+          - generic [ref=f5e590]: </div>
+          - generic [ref=f5e591]: );
+          - generic [ref=f5e592]: "}"
+      - generic [ref=f5e312]:
+        - button "⧉ copy" [ref=f5e314]
+        - generic [ref=f5e315]:
+          - paragraph [ref=f5e316]:
+            - text: The
+            - code [ref=f5e317]: ToolCard
+            - text: component is a React component that displays information about a tool call in a chat interface. It shows the tool name, its arguments, and the output of the tool. The component also includes a toggle to expand or collapse the output for better readability.
+          - paragraph [ref=f5e318]:
+            - text: The component takes a single prop,
+            - code [ref=f5e319]: item
+            - text: ", which is an object of type"
+            - code [ref=f5e320]: ToolItem
+            - text: . The
+            - code [ref=f5e321]: ToolItem
+            - text: type is an extract of the
+            - code [ref=f5e322]: ChatItem
+            - text: type, specifically for items with a kind of "tool".
+          - paragraph [ref=f5e323]: "The component uses several helper functions to format and display the tool's output:"
+          - list [ref=f5e324]:
+            - listitem [ref=f5e325]:
+              - paragraph [ref=f5e326]:
+                - code [ref=f5e327]: getFormattedToolOutput
+                - text: ": This function extracts formatted user-facing text from tool output. It checks for an authoritative"
+                - code [ref=f5e328]: __pi_render
+                - text: envelope first, otherwise returns undefined. For openlore tools, it also formats known fields as readable markdown. It handles truncated JSON by stripping the truncation suffix before parsing. It falls back to brace-counting recovery for mid-truncation cases. It returns undefined only for non-JSON or completely unparseable content.
+            - listitem [ref=f5e329]:
+              - paragraph [ref=f5e330]:
+                - code [ref=f5e331]: argsSummary
+                - text: ": This function provides a one-line summary of tool args (command for bash, path for file tools…)."
+            - listitem [ref=f5e332]:
+              - paragraph [ref=f5e333]:
+                - code [ref=f5e334]: editPairs
+                - text: ": This function returns the edit tool's before/after pairs, when this call has them."
+            - listitem [ref=f5e335]:
+              - paragraph [ref=f5e336]:
+                - code [ref=f5e337]: writeContent
+                - text: ": This function returns the write tool's new content (rendered as an all-additions diff)."
+          - paragraph [ref=f5e338]:
+            - text: The
+            - code [ref=f5e339]: ToolCard
+            - text: component uses these helper functions to determine how to display the tool's output. If the tool has HTML output, it will be displayed directly. If the tool has edit pairs or write content, these will be displayed as diffs. If the tool has formatted output, this will be displayed in a collapsed state. If the tool has a preview HTML, this will be displayed in a collapsed state.
+          - paragraph [ref=f5e340]: The component also includes a toggle to expand or collapse the output. When the output is collapsed, the component will display the formatted output or the preview HTML, depending on what is available. When the output is expanded, the component will display the full output, including any diffs or HTML.
+      - generic [ref=f5e593]: "bash --command \"echo '{\\\"test\\\": \\\"value\\\"}'\""
+  - contentinfo [ref=f5e23]:
+    - generic [ref=f5e24]:
+      - generic [ref=f5e26]:
+        - textbox "steer the agent… (Enter to send)" [active] [ref=f5e596]
+        - button "Stop the agent" [ref=f5e597]
+        - button "Attach files" [ref=f5e28]
+        - button "Steer the agent" [disabled] [ref=f5e600]
+      - generic [ref=f5e34]:
+        - combobox [disabled] [ref=f5e35]:
+          - option "mistral/codestral-latest" [selected]
+          - option "mistral/devstral-2512"
+          - option "mistral/devstral-latest"
+          - option "mistral/devstral-medium-2507"
+          - option "mistral/devstral-medium-latest"
+          - option "mistral/devstral-small-2505"
+          - option "mistral/devstral-small-2507"
+          - option "mistral/labs-devstral-small-2512"
+          - option "mistral/magistral-medium-latest"
+          - option "mistral/magistral-small"
+          - option "mistral/ministral-3b-latest"
+          - option "mistral/ministral-8b-latest"
+          - option "mistral/mistral-large-2411"
+          - option "mistral/mistral-large-2512"
+          - option "mistral/mistral-large-latest"
+          - option "mistral/mistral-medium-2505"
+          - option "mistral/mistral-medium-2508"
+          - option "mistral/mistral-medium-2604"
+          - option "mistral/mistral-medium-3.5"
+          - option "mistral/mistral-medium-latest"
+          - option "mistral/mistral-nemo"
+          - option "mistral/mistral-small-2506"
+          - option "mistral/mistral-small-2603"
+          - option "mistral/mistral-small-latest"
+          - option "mistral/open-mistral-7b"
+          - option "mistral/open-mistral-nemo"
+          - option "mistral/open-mixtral-8x22b"
+          - option "mistral/open-mixtral-8x7b"
+          - option "mistral/pixtral-12b"
+          - option "mistral/pixtral-large-latest"
+        - button "9%" [disabled] [ref=f5e344]

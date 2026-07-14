@@ -410,6 +410,7 @@ function reduce(state: AgentState, action: Action): AgentState {
           toolName: message.toolName,
           args: message.args,
           running: true,
+          callHtml: message.callHtml,
         }),
       };
     case "tool_update":
@@ -424,6 +425,8 @@ function reduce(state: AgentState, action: Action): AgentState {
           output: message.text,
           isError: message.isError,
           running: false,
+          outputHtml: message.outputHtml,
+          outputHtmlCollapsed: message.outputHtmlCollapsed,
         }),
       };
     case "queue":

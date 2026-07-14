@@ -1,0 +1,25 @@
+- generic [ref=f6e4]:
+  - banner [ref=f6e5]:
+    - button "◨ files" [ref=f6e6]
+    - generic [ref=f6e7]: π
+    - generic [ref=f6e8]:
+      - button "⚒ tools" [ref=f6e9]
+      - button "Switch to dark theme" [ref=f6e10]: ☾
+      - button "+ new" [ref=f6e11]
+      - button "tree" [ref=f6e13]
+      - button "sessions" [ref=f6e15]
+      - generic "disconnected" [ref=f6e16]
+  - main [ref=f6e18]:
+    - generic [ref=f6e20]:
+      - generic [ref=f6e21]: π
+      - paragraph [ref=f6e22]: Send a message to start the agent.
+  - contentinfo [ref=f6e23]:
+    - generic [ref=f6e24]:
+      - generic [ref=f6e26]:
+        - textbox "connecting…" [disabled] [ref=f6e27]
+        - button "Attach files" [disabled] [ref=f6e28]
+        - button "Send message" [disabled] [ref=f6e31]
+      - generic [ref=f6e34]:
+        - combobox [ref=f6e35]:
+          - option [selected]
+        - button "context" [ref=f6e36]

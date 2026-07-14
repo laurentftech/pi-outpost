@@ -1,0 +1,252 @@
+- generic [ref=f4e4]:
+  - banner [ref=f4e5]:
+    - button "◨ files" [ref=f4e6]
+    - button "⎇ shim/tool-result-summary ↑2" [ref=f4e40]
+    - generic [ref=f4e7]: π dev
+    - generic [ref=f4e8]:
+      - button "⚒ tools" [ref=f4e9]
+      - button "Switch to dark theme" [ref=f4e10]: ☾
+      - button "+ new" [ref=f4e11]
+      - button "tree" [ref=f4e13]
+      - button "sessions" [ref=f4e15]
+      - generic "connected" [ref=f4e41]
+  - main [ref=f4e18]:
+    - generic [ref=f4e19]:
+      - generic [ref=f4e47]:
+        - button "Edit this prompt" [ref=f4e158]: ✎
+        - generic [ref=f4e48]: read_file /Users/laurent/Projets/Pi-interface/package.json
+      - generic [ref=f4e59]:
+        - button "read ~/Projets/Pi-interface/package.json ▾" [ref=f4e92]:
+          - generic [ref=f4e62]: read ~/Projets/Pi-interface/package.json
+          - generic [ref=f4e64]: ▾
+        - generic [ref=f4e95]:
+          - generic [ref=f4e160]: "{"
+          - generic [ref=f4e161]: "\"name\": \"pi-outpost\","
+          - generic [ref=f4e162]: "\"private\": true,"
+          - generic [ref=f4e163]: "\"workspaces\": ["
+          - generic [ref=f4e164]: "\"shared\","
+          - generic [ref=f4e165]: "\"server\","
+          - generic [ref=f4e166]: "\"web\","
+          - generic [ref=f4e167]: "\"embed\","
+          - generic [ref=f4e168]: "\"cli\""
+          - generic [ref=f4e169]: "],"
+          - generic [ref=f4e170]: "\"scripts\": {"
+          - generic [ref=f4e171]: "\"dev\": \"concurrently -n server,web -c blue,green \\\"npm run dev --workspace server\\\" \\\"npm run"
+          - generic [ref=f4e172]: dev --workspace web\"",
+          - generic [ref=f4e173]: "\"dev:server\": \"npm run dev --workspace server\","
+          - generic [ref=f4e174]: "\"dev:web\": \"npm run dev --workspace web\","
+          - generic [ref=f4e175]: "\"start\": \"npm run build --workspace web && npm run start --workspace server\","
+          - generic [ref=f4e176]: "\"build\": \"npm run build --workspaces --if-present\","
+          - generic [ref=f4e177]: "\"typecheck\": \"npm run typecheck --workspaces --if-present\","
+          - generic [ref=f4e178]: "\"lint\": \"npm run lint --workspaces --if-present\""
+          - generic [ref=f4e179]: "},"
+          - generic [ref=f4e180]: "\"devDependencies\": {"
+          - generic [ref=f4e181]: "\"concurrently\": \"^10.0.3\""
+          - generic [ref=f4e182]: "}"
+          - generic [ref=f4e183]: "}"
+      - generic [ref=f4e69]:
+        - button "⧉ copy" [ref=f4e71]
+        - generic [ref=f4e72]:
+          - paragraph [ref=f4e73]: "The package.json file for the Pi-interface project has been successfully read. Here's a summary of its contents:"
+          - list [ref=f4e74]:
+            - listitem [ref=f4e75]: "Project name: pi-outpost"
+            - listitem [ref=f4e76]: "Private: true"
+            - listitem [ref=f4e77]: "Workspaces: shared, server, web, embed, cli"
+            - listitem [ref=f4e78]:
+              - text: "Scripts:"
+              - list [ref=f4e79]:
+                - listitem [ref=f4e80]: "dev: Runs the server and web workspaces concurrently"
+                - listitem [ref=f4e81]: "dev:server: Runs the server workspace in development mode"
+                - listitem [ref=f4e82]: "dev:web: Runs the web workspace in development mode"
+                - listitem [ref=f4e83]: "start: Builds the web workspace and starts the server workspace"
+                - listitem [ref=f4e84]: "build: Builds all workspaces that have a build script"
+                - listitem [ref=f4e85]: "typecheck: Runs type checking for all workspaces that have a typecheck script"
+                - listitem [ref=f4e86]: "lint: Runs linting for all workspaces that have a lint script"
+          - paragraph [ref=f4e87]: The project uses concurrently as a development dependency to run multiple npm scripts simultaneously.
+      - generic [ref=f4e147]:
+        - button "Edit this prompt" [ref=f4e184]: ✎
+        - generic [ref=f4e148]: openlore_orient --directory /Users/laurent/Projets/Pi-interface --task "test tool card"
+      - generic [ref=f4e185]:
+        - button "openlore orient \"test tool card\" ▾" [active] [ref=f4e345]:
+          - generic [ref=f4e188]: openlore orient "test tool card"
+          - generic [ref=f4e190]: ▾
+        - generic [ref=f4e347]: "{ \"task\": \"test tool card\", \"searchMode\": \"hybrid\", \"relevantFiles\": [ \"web/src/useAgent.ts\", \"web/src/diff.ts\", \"server/test/live/conversation-branching.test.mjs\", \"server/test/session-names.test.mjs\", \"server/test/config-cli.test.mjs\", \"server/test/files-raw.test.mjs\", \"server/src/convert.ts\", \"web/test/attachments.test.ts\", \"server/test/credentials.test.mjs\", \"server/test/harness.mjs\" ], \"relevantFunctions\": [ { \"name\": \"upsertTool\", \"filePath\": \"web/src/useAgent.ts\", \"score\": 8.537, \"expand\": \"upsertTool::web/src/useAgent.ts\", \"signature\": \"function upsertTool(items: ChatItem[], toolCallId: string, toolName: string, patch: Partial<ToolItem>): ChatItem[]\", \"docstring\": \"Update a tool card by id; append a running card when none exists (upsert).\", \"language\": \"TypeScript\", \"fanIn\": 1, \"fanOut\": 0, \"isHub\": false, \"isEntryPoint\": false, \"linkedSpecs\": [ { \"requirement\": \"initializeAgent\", \"domain\": \"agent\", \"specFile\": \"./openspec/specs/agent/spec.md\" }, { \"requirement\": \"handleNotification\", \"domain\": \"agent\", \"specFile\": \"./openspec/specs/agent/spec.md\" }, { \"requirement\": \"makeRequest\", \"domain\": \"agent\", \"specFile\": \"./openspec/specs/agent/spec.md\" }, { \"requirement\": \"parseResponse\", \"domain\": \"agent\", \"specFile\": \"./openspec/specs/agent/spec.md\" }, { \"requirement\": \"establishConnection\", \"domain\": \"agent\", \"specFile\": \"./openspec/specs/agent/spec.md\" } ] }, { \"name\": \"diffLines\", \"filePath\": \"web/src/diff.ts\", \"score\": 7.102, \"expand\": \"diffLines::web/src/diff.ts\", \"signature\": \"function diffLines(oldText: string, newText: string): DiffLine[]\", \"docstring\": \"Line diff for tool-card before/after views. Trims the common prefix/suffix\", \"language\": \"TypeScript\", \"fanIn\": 0, \"fanOut\": 7, \"isHub\": false, \"isEntryPoint\": true, \"linkedSpecs\": [] }, { \"name\": \"bubbles\", \"filePath\": \"server/test/live/conversation-branching.test.mjs\", \"score\": 4.45, \"expand\": \"bubbles::server/test/live/conversation-branching.test.mjs\", \"signature\": \"function bubbles(client)\", \"language\": \"TypeScript\", \"fanIn\": 0, \"fanOut\": 1, \"isHub\": false, \"isEntryPoint\": false, \"linkedSpecs\": [] }, { \"name\": \"search\", \"filePath\": \"server/test/session-names.test.mjs\", \"score\": 4.45, \"expand\": \"search::server/test/session-names.test.mjs\", \"signature\": \"async function search(query)\", \"language\": \"TypeScript\", \"fanIn\": 0, \"fanOut\": 3, \"isHub\": false, \"isEntryPoint\": false, \"linkedSpecs\": [] }, { \"name\": \"configWithPort\", \"filePath\": \"server/test/config-cli.test.mjs\", \"score\": 4.352, \"expand\": \"configWithPort::server/test/config-cli.test.mjs\", \"signature\": \"const configWithPort = (port) => JSON.stringify(\", \"language\": \"TypeScript\", \"fanIn\": 0, \"fanOut\": 0, \"isHub\": false, \"isEntryPoint\": false, \"linkedSpecs\": [] }, { \"name\": \"status\", \"filePath\": \"server/test/files-raw.test.mjs\", \"score\": 4.168, \"expand\": \"status::server/test/files-raw.test.mjs\", \"signature\": \"const status = (host) => new Promise((resolve, reject) =>\", \"language\": \"TypeScript\", \"fanIn\": 0, \"fanOut\": 4, \"isHub\": false, \"isEntryPoint\": false, \"linkedSpecs\": [] }, { \"name\": \"truncate\", \"filePath\": \"server/src/convert.ts\", \"score\": 4.106, \"expand\": \"truncate::server/src/convert.ts\", \"signature\": \"function truncate(text: string, max = MAX_TOOL_OUTPUT): string\", \"language\": \"TypeScript\", \"fanIn\": 2, \"fanOut\": 1, \"isHub\": false, \"isEntryPoint\": false, \"linkedSpecs\": [ { \"requirement\": \"convertContentToText\", \"domain\": \"model\", \"specFile\": \"./openspec/specs/model/spec.md\" }, { \"requirement\": \"truncateText\", \"domain\": \"model\", \"specFile\": \"./openspec/specs/model/spec.md\" }, { \"requirement\": \"convertHistoryToItems\", \"domain\": \"model\", \"specFile\": \"./openspec/specs/model/spec.md\" }, { \"requirement\": \"convertAssistantMessageToItem\", \"domain\": \"model\", \"specFile\": \"./openspec/specs/model/spec.md\" }, { \"requirement\": \"convertCustomMessageToItem\", \"domain\": \"model\", \"specFile\": \"./openspec/specs/model/spec.md\" }, { \"requirement\": \"convertCustomMessage\", \"domain\": \"model\", \"specFile\": \"./openspec/specs/model/spec.md\" }, { \"requirement\": \"sendMessage\", \"domain\": \"agent\", \"specFile\": \"./openspec/specs/agent/spec.md\" }, { \"requirement\": \"memoizeCallback\", \"domain\": \"agent\", \"specFile\": \"./openspec/specs/agent/spec.md\" } ] }, { \"name\": \"globalThis.fetch\", \"filePath\": \"web/test/attachments.test.ts\", \"score\": 4.081, \"expand\": \"globalThis.fetch::web/test/attachments.test.ts\", \"signature\": \"globalThis.fetch = async () => new Response(\\\"not an image\\\",\", \"language\": \"TypeScript\", \"fanIn\": 0, \"fanOut\": 0, \"isHub\": false, \"isEntryPoint\": false, \"linkedSpecs\": [] }, { \"name\": \"AGENT_DIR\", \"filePath\": \"server/test/credentials.test.mjs\", \"score\": 3.999, \"expand\": \"AGENT_DIR::server/test/credentials.test.mjs\", \"signature\": \"const AGENT_DIR = (root) => path.join(root, \\\".pi-agent\\\");\", \"language\": \"TypeScript\", \"fanIn\": 0, \"fanOut\": 0, \"isHub\": false, \"isEntryPoint\": false, \"linkedSpecs\": [] }, { \"name\": \"open\", \"filePath\": \"server/test/harness.mjs\", \"score\": 3.903, \"expand\": \"open::server/test/harness.mjs\", \"signature\": \"open()\", \"language\": \"TypeScript\", \"fanIn\": 0, \"fanOut\": 1, \"isHub\": false, \"isEntryPoint\": true, \"linkedSpecs\": [] } ], \"specDomains\": [ { \"domain\": \"agent\", \"specFile\": \"./openspec/specs/agent/spec.md\", \"matchCount\": 7 }, { \"domain\": \"model\", \"specFile\": \"./openspec/specs/model/spec.md\", \"matchCount\": 6 } ], \"callPaths\": [ { \"function\": \"upsertTool\", \"filePath\": \"web/src/useAgent.ts\", \"callers\": [ { \"name\": \"reduce\", \"filePath\": \"web/src/useAgent.ts\" }, { \"name\": \"reduce\", \"filePath\": \"web/src/useAgent.ts\" }, { \"name\": \"reduce\", \"filePath\": \"web/src/useAgent.ts\" } ], \"callees\": [] }, { \"function\": \"diffLines\", \"filePath\": \"web/src/diff.ts\", \"callers\": [], \"callees\": [] }, { \"function\": \"bubbles\", \"filePath\": \"server/test/live/conversation-branching.test.mjs\", \"callers\": [], \"callees\": [] }, { \"function\": \"search\", \"filePath\": \"server/test/session-names.test.mjs\", \"callers\": [], \"callees\": [] }, { \"function\": \"configWithPort\", \"filePath\": \"server/test/config-cli.test.mjs\", \"callers\": [], \"callees\": [] }, { \"function\": \"status\", \"filePath\": \"server/test/files-raw.test.mjs\", \"callers\": [], \"callees\": [] }, { \"function\": \"truncate\", \"filePath\": \"server/src/convert.ts\", \"callers\": [ { \"name\": \"historyToItems\", \"filePath\": \"server/src/convert.ts\" }, { \"name\": \"bindSession\", \"filePath\": \"server/src/index.ts\" }, { \"name\": \"bindSession\", \"filePath\": \"server/src/index.ts\" } ], \"callees\": [] }, { \"function\": \"globalThis.fetch\", \"filePath\": \"web/test/attachments.test.ts\", \"callers\": [], \"callees\": [] }, { \"function\": \"AGENT_DIR\", \"filePath\": \"server/test/credentials.test.mjs\", \"callers\": [], \"callees\": [] }, { \"function\": \"open\", \"filePath\": \"server/test/harness.mjs\", \"callers\": [], \"callees\": [] } ], \"suggestedTools\": [ \"record_decision\", \"get_subgraph\", \"get_spec\", \"get_landmarks\", \"get_test_coverage\", \"check_spec_drift\" ], \"specLinkedFunctions\": [ { \"name\": \"ExtensionNotifications\", \"filePath\": \"web/src/components/ExtensionNotifications.tsx\", \"domain\": \"agent\", \"requirement\": \"handleNotification\" }, { \"name\": \"CustomMessageCard\", \"filePath\": \"web/src/components/CustomMessageCard.tsx\", \"domain\": \"agent\", \"requirement\": \"sendMessage\" }, { \"name\": \"ToolCard\", \"filePath\": \"web/src/components/ToolCard.tsx\", \"domain\": \"model\", \"requirement\": \"pushItem\" } ], \"inlineSpecs\": [ { \"domain\": \"agent\", \"specPath\": \"openspec/specs/agent/spec.md\", \"sourceFiles\": [ \"web/src/useAgent.ts\" ], \"dependsOn\": [], \"calledBy\": [ \"components\", \"file\", \"web\" ], \"content\": \"Manages the state and communication with the agent backend, including WebSocket connections, message\\nhandling, and state updates.\" }, { \"domain\": \"model\", \"specPath\": \"openspec/specs/model/spec.md\", \"sourceFiles\": [ \"web/src/components/ModelBar.tsx\" ], \"dependsOn\": [], \"calledBy\": [ \"web\" ], \"content\": \"Defines the wire-protocol and configuration data models, and the conversion of agent messages\\ninto standardized chat items for display.\" } ], \"insertionPoints\": [ { \"rank\": 1, \"name\": \"diffLines\", \"filePath\": \"web/src/diff.ts\", \"role\": \"entry_point\", \"strategy\": \"extend_entry_point\", \"score\": 0.899, \"reason\": \"diffLines is an entry point (no internal callers). Add your feature here or create a sibling entry point that delegates to it.\" }, { \"rank\": 2, \"name\": \"upsertTool\", \"filePath\": \"web/src/useAgent.ts\", \"role\": \"utility\", \"strategy\": \"extract_shared_logic\", \"score\": 0.72, \"reason\": \"upsertTool is a low-traffic utility. Shared logic for your feature can live here or be extracted alongside it.\" }, { \"rank\": 3, \"name\": \"open\", \"filePath\": \"server/test/harness.mjs\", \"role\": \"entry_point\", \"strategy\": \"extend_entry_point\", \"score\": 0.674, \"reason\": \"open is an entry point (no internal callers). Add your feature here or create a sibling entry point that delegates to it.\" } ], \"provenance\": [ { \"file\": \"server/src/convert.ts\", \"lastAuthor\": \"Laurent FRANCOISE\", \"lastDate\": \"2026-07-14T22:59:14+02:00\", \"lastPr\": 8, \"lastPrTitle\": \"Rename project from pi-interface to pi-outpost\" }, { \"file\": \"server/test/config-cli.test.mjs\", \"lastAuthor\": \"Laurent FRANCOISE\", \"lastDate\": \"2026-07-13T11:56:33+02:00\" }, { \"file\": \"server/test/credentials.test.mjs\", \"lastAuthor\": \"Laurent FRANCOISE\", \"lastDate\": \"2026-07-13T17:44:08+02:00\" }, { \"file\": \"server/test/files-raw.test.mjs\", \"lastAuthor\": \"Laurent FRANCOISE\", \"lastDate\": \"2026-07-12T22:01:55+02:00\" }, { \"file\": \"server/test/harness.mjs\", \"lastAuthor\": \"Laurent FRANCOISE\", \"lastDate\": \"2026-07-13T17:32:35+02:00\" }, { \"file\": \"server/test/live/conversation-branching.test.mjs\", \"lastAuthor\": \"Laurent FRANCOISE\", \"lastDate\": \"2026-07-12T22:01:55+02:00\" }, { \"file\": \"server/test/session-names.test.mjs\", \"lastAuthor\": \"Laurent FRANCOISE\", \"lastDate\": \"2026-07-13T09:47:20+02:00\" }, { \"file\": \"web/src/diff.ts\", \"lastAuthor\": \"Laurent FRANCOISE\", \"lastDate\": \"2026-07-11T10:50:57+02:00\" }, { \"file\": \"web/src/useAgent.ts\", \"lastAuthor\": \"Laurent FRANCOISE\", \"lastDate\": \"2026-07-13T17:44:08+02:00\", \"lastPr\": 8, \"lastPrTitle\": \"Rename project from pi-interface to pi-outpost\" }, { \"file\": \"web/test/attachments.test.ts\", \"lastAuthor\": \"Laurent FRANCOISE\", \"lastDate\": \"2026-07-13T15:38:20+02:00\" } ], \"changeCoupling\": [ { \"file\": \"server/src/convert.ts\", \"volatility\": \"medium\", \"changes\": 11, \"frequentlyChangesWith\": [ { \"file\": \"server/src/index.ts\", \"confidence\": 0.45 }, { \"file\": \"shared/src/protocol.ts\", \"confidence\": 0.36 }, { \"file\": \"web/src/App.tsx\", \"confidence\": 0.36 }, { \"file\": \"web/src/useAgent.ts\", \"confidence\": 0.36 } ] }, { \"file\": \"web/src/useAgent.ts\", \"volatility\": \"high\", \"changes\": 20, \"frequentlyChangesWith\": [ { \"file\": \"server/src/index.ts\", \"confidence\": 0.95 }, { \"file\": \"web/src/App.tsx\", \"confidence\": 0.85 }, { \"file\": \"shared/src/protocol.ts\", \"confidence\": 0.8 }, { \"file\": \"README.md\", \"confidence\": 0.55 }, { \"file\": \"web/src/components/Header.tsx\", \"confidence\": 0.4 } ] } ], \"landmarks\": [ { \"id\": \"server/src/convert.ts::historyToItems\", \"name\": \"historyToItems\", \"file\": \"server/server/src/convert.ts\", \"distance\": 1, \"hops\": 1, \"signals\": [ { \"label\": \"orchestrator\", \"evidence\": { \"fanOut\": 13 } }, { \"label\": \"volatile\", \"evidence\": { \"level\": \"medium\", \"commits\": 11, \"coChangedWith\": 4 } } ] }, { \"id\": \"web/src/useAgent.ts::reduce\", \"name\": \"reduce\", \"file\": \"server/web/src/useAgent.ts\", \"distance\": 1, \"hops\": 1, \"signals\": [ { \"label\": \"entrypoint\", \"evidence\": { \"fanOut\": 7 } }, { \"label\": \"volatile\", \"evidence\": { \"level\": \"high\", \"commits\": 20, \"coChangedWith\": 5 } } ] }, { \"id\": \"server/src/convert.ts::assistantBlocks\", \"name\": \"assistantBlocks\", \"file\": \"server/server/src/convert.ts\", \"distance\": 2, \"hops\": 2, \"signals\": [ { \"label\": \"volatile\", \"evidence\": { \"level\": \"medium\", \"commits\": 11, \"coChangedWith\": 4 } } ] }, { \"id\": \"server/src/convert.ts::contentText\", \"name\": \"contentText\", \"file\": \"server/server/src/convert.ts\", \"distance\": 2, \"hops\": 2, \"signals\": [ { \"label\": \"hub\", \"evidence\": { \"fanIn\": 6 } }, { \"label\": \"chokepoint\", \"evidence\": { \"fanIn\": 6, \"fanOut\": 0 } }, { \"label\": \"volatile\", \"evidence\": { \"level\": \"medium\", \"commits\": 11, \"coChangedWith\": 4 } } ] }, { \"id\": \"server/src/convert.ts::customMessageToItem\", \"name\": \"customMessageToItem\", \"file\": \"server/server/src/convert.ts\", \"distance\": 2, \"hops\": 2, \"signals\": [ { \"label\": \"volatile\", \"evidence\": { \"level\": \"medium\", \"commits\": 11, \"coChangedWith\": 4 } } ] }, { \"id\": \"web/src/useAgent.ts::applySnapshot\", \"name\": \"applySnapshot\", \"file\": \"server/web/src/useAgent.ts\", \"distance\": 2, \"hops\": 2, \"signals\": [ { \"label\": \"volatile\", \"evidence\": { \"level\": \"high\", \"commits\": 20, \"coChangedWith\": 5 } } ] } ], \"nextSteps\": [ \"Before making an architectural choice, call record_decision(title, rationale, consequences, affectedFiles) to document it\", \"Call get_subgraph(\\\"diffLines\\\") to trace the call neighbourhood\", \"Domain purposes included in inlineSpecs — call get_spec(\\\"agent\\\") for requirements and implementation details\", \"After implementing, run check_spec_drift to verify the code matches the spec\" ] }"
+      - generic [ref=f4e215]:
+        - button "⧉ copy" [ref=f4e217]
+        - generic [ref=f4e218]:
+          - paragraph [ref=f4e219]:
+            - text: The
+            - code [ref=f4e220]: openlore_orient
+            - text: "command has been executed successfully. Here's a summary of the results:"
+          - list [ref=f4e221]:
+            - listitem [ref=f4e222]:
+              - paragraph [ref=f4e223]:
+                - strong [ref=f4e224]: Task
+                - text: ": \"test tool card\""
+            - listitem [ref=f4e225]:
+              - paragraph [ref=f4e226]:
+                - strong [ref=f4e227]: Relevant Files
+                - text: ":"
+              - list [ref=f4e228]:
+                - listitem [ref=f4e229]: web/src/useAgent.ts
+                - listitem [ref=f4e230]: web/src/diff.ts
+                - listitem [ref=f4e231]: server/test/live/conversation-branching.test.mjs
+                - listitem [ref=f4e232]: server/test/session-names.test.mjs
+                - listitem [ref=f4e233]: server/test/config-cli.test.mjs
+                - listitem [ref=f4e234]: server/test/files-raw.test.mjs
+                - listitem [ref=f4e235]: server/src/convert.ts
+                - listitem [ref=f4e236]: web/test/attachments.test.ts
+                - listitem [ref=f4e237]: server/test/credentials.test.mjs
+                - listitem [ref=f4e238]: server/test/harness.mjs
+            - listitem [ref=f4e239]:
+              - paragraph [ref=f4e240]:
+                - strong [ref=f4e241]: Relevant Functions
+                - text: ":"
+              - list [ref=f4e242]:
+                - listitem [ref=f4e243]: upsertTool (web/src/useAgent.ts)
+                - listitem [ref=f4e244]: diffLines (web/src/diff.ts)
+                - listitem [ref=f4e245]: bubbles (server/test/live/conversation-branching.test.mjs)
+                - listitem [ref=f4e246]: search (server/test/session-names.test.mjs)
+                - listitem [ref=f4e247]: configWithPort (server/test/config-cli.test.mjs)
+                - listitem [ref=f4e248]: status (server/test/files-raw.test.mjs)
+                - listitem [ref=f4e249]: truncate (server/src/convert.ts)
+                - listitem [ref=f4e250]: globalThis.fetch (web/test/attachments.test.ts)
+                - listitem [ref=f4e251]: AGENT_DIR (server/test/credentials.test.mjs)
+                - listitem [ref=f4e252]: open (server/test/harness.mjs)
+            - listitem [ref=f4e253]:
+              - paragraph [ref=f4e254]:
+                - strong [ref=f4e255]: Spec Domains
+                - text: ":"
+              - list [ref=f4e256]:
+                - listitem [ref=f4e257]: agent (7 matches)
+                - listitem [ref=f4e258]: model (6 matches)
+            - listitem [ref=f4e259]:
+              - paragraph [ref=f4e260]:
+                - strong [ref=f4e261]: Call Paths
+                - text: ":"
+              - list [ref=f4e262]:
+                - listitem [ref=f4e263]: upsertTool is called by reduce in web/src/useAgent.ts
+                - listitem [ref=f4e264]: diffLines has no callers or callees
+                - listitem [ref=f4e265]: bubbles has no callers or callees
+                - listitem [ref=f4e266]: search has no callers or callees
+                - listitem [ref=f4e267]: configWithPort has no callers or callees
+                - listitem [ref=f4e268]: status has no callers or callees
+                - listitem [ref=f4e269]: truncate is called by historyToItems in server/src/convert.ts and bindSession in server/src/index.ts
+                - listitem [ref=f4e270]: globalThis.fetch has no callers or callees
+                - listitem [ref=f4e271]: AGENT_DIR has no callers or callees
+                - listitem [ref=f4e272]: open has no callers or callees
+            - listitem [ref=f4e273]:
+              - paragraph [ref=f4e274]:
+                - strong [ref=f4e275]: Suggested Tools
+                - text: ":"
+              - list [ref=f4e276]:
+                - listitem [ref=f4e277]: record_decision
+                - listitem [ref=f4e278]: get_subgraph
+                - listitem [ref=f4e279]: get_spec
+                - listitem [ref=f4e280]: get_landmarks
+                - listitem [ref=f4e281]: get_test_coverage
+                - listitem [ref=f4e282]: check_spec_drift
+            - listitem [ref=f4e283]:
+              - paragraph [ref=f4e284]:
+                - strong [ref=f4e285]: Spec-Linked Functions
+                - text: ":"
+              - list [ref=f4e286]:
+                - listitem [ref=f4e287]: ExtensionNotifications (web/src/components/ExtensionNotifications.tsx) linked to handleNotification in the agent domain
+                - listitem [ref=f4e288]: CustomMessageCard (web/src/components/CustomMessageCard.tsx) linked to sendMessage in the agent domain
+                - listitem [ref=f4e289]: ToolCard (web/src/components/ToolCard.tsx) linked to pushItem in the model domain
+            - listitem [ref=f4e290]:
+              - paragraph [ref=f4e291]:
+                - strong [ref=f4e292]: Inline Specs
+                - text: ":"
+              - list [ref=f4e293]:
+                - listitem [ref=f4e294]: "agent domain: Manages the state and communication with the agent backend, including WebSocket connections, message handling, and state updates."
+                - listitem [ref=f4e295]: "model domain: Defines the wire-protocol and configuration data models, and the conversion of agent messages into standardized chat items for display."
+            - listitem [ref=f4e296]:
+              - paragraph [ref=f4e297]:
+                - strong [ref=f4e298]: Insertion Points
+                - text: ":"
+              - list [ref=f4e299]:
+                - listitem [ref=f4e300]: diffLines (web/src/diff.ts) is an entry point with a score of 0.899. It's recommended to add your feature here or create a sibling entry point that delegates to it.
+                - listitem [ref=f4e301]: upsertTool (web/src/useAgent.ts) is a utility with a score of 0.72. Shared logic for your feature can live here or be extracted alongside it.
+                - listitem [ref=f4e302]: open (server/test/harness.mjs) is an entry point with a score of 0.674. It's recommended to add your feature here or create a sibling entry point that delegates to it.
+            - listitem [ref=f4e303]:
+              - paragraph [ref=f4e304]:
+                - strong [ref=f4e305]: Provenance
+                - text: ":"
+              - list [ref=f4e306]:
+                - listitem [ref=f4e307]: server/src/convert.ts was last modified by Laurent FRANCOISE on 2026-07-14.
+                - listitem [ref=f4e308]: server/test/config-cli.test.mjs was last modified by Laurent FRANCOISE on 2026-07-13.
+                - listitem [ref=f4e309]: server/test/credentials.test.mjs was last modified by Laurent FRANCOISE on 2026-07-13.
+                - listitem [ref=f4e310]: server/test/files-raw.test.mjs was last modified by Laurent FRANCOISE on 2026-07-12.
+                - listitem [ref=f4e311]: server/test/harness.mjs was last modified by Laurent FRANCOISE on 2026-07-13.
+                - listitem [ref=f4e312]: server/test/live/conversation-branching.test.mjs was last modified by Laurent FRANCOISE on 2026-07-12.
+                - listitem [ref=f4e313]: server/test/session-names.test.mjs was last modified by Laurent FRANCOISE on 2026-07-13.
+                - listitem [ref=f4e314]: web/src/diff.ts was last modified by Laurent FRANCOISE on 2026-07-11.
+                - listitem [ref=f4e315]: web/src/useAgent.ts was last modified by Laurent FRANCOISE on 2026-07-13.
+                - listitem [ref=f4e316]: web/test/attachments.test.ts was last modified by Laurent FRANCOISE on 2026-07-13.
+            - listitem [ref=f4e317]:
+              - paragraph [ref=f4e318]:
+                - strong [ref=f4e319]: Change Coupling
+                - text: ":"
+              - list [ref=f4e320]:
+                - listitem [ref=f4e321]: server/src/convert.ts has a medium volatility and is frequently changed with server/src/index.ts, shared/src/protocol.ts, and web/src/App.tsx.
+                - listitem [ref=f4e322]: web/src/useAgent.ts has a high volatility and is frequently changed with server/src/index.ts, web/src/App.tsx, shared/src/protocol.ts, README.md, and web/src/components/Header.tsx.
+            - listitem [ref=f4e323]:
+              - paragraph [ref=f4e324]:
+                - strong [ref=f4e325]: Landmarks
+                - text: ":"
+              - list [ref=f4e326]:
+                - listitem [ref=f4e327]: historyToItems (server/src/convert.ts) is an orchestrator and volatile.
+                - listitem [ref=f4e328]: reduce (web/src/useAgent.ts) is an entry point and volatile.
+                - listitem [ref=f4e329]: assistantBlocks (server/src/convert.ts) is volatile.
+                - listitem [ref=f4e330]: contentText (server/src/convert.ts) is a hub, chokepoint, and volatile.
+                - listitem [ref=f4e331]: customMessageToItem (server/src/convert.ts) is volatile.
+                - listitem [ref=f4e332]: applySnapshot (web/src/useAgent.ts) is volatile.
+            - listitem [ref=f4e333]:
+              - paragraph [ref=f4e334]:
+                - strong [ref=f4e335]: Next Steps
+                - text: ":"
+              - list [ref=f4e336]:
+                - listitem [ref=f4e337]: Before making an architectural choice, call record_decision(title, rationale, consequences, affectedFiles) to document it.
+                - listitem [ref=f4e338]: Call get_subgraph("diffLines") to trace the call neighbourhood.
+                - listitem [ref=f4e339]: Domain purposes included in inlineSpecs — call get_spec("agent") for requirements and implementation details.
+                - listitem [ref=f4e340]: After implementing, run check_spec_drift to verify the code matches the spec.
+  - contentinfo [ref=f4e23]:
+    - generic [ref=f4e24]:
+      - generic [ref=f4e26]:
+        - textbox "message pi… (/ for commands, @ for files, Enter to send, Shift+Enter for newline)" [ref=f4e341]
+        - button "Attach files" [ref=f4e28]
+        - button "Send message" [disabled] [ref=f4e342]
+      - generic [ref=f4e34]:
+        - combobox [ref=f4e35]:
+          - option "mistral/codestral-latest" [selected]
+          - option "mistral/devstral-2512"
+          - option "mistral/devstral-latest"
+          - option "mistral/devstral-medium-2507"
+          - option "mistral/devstral-medium-latest"
+          - option "mistral/devstral-small-2505"
+          - option "mistral/devstral-small-2507"
+          - option "mistral/labs-devstral-small-2512"
+          - option "mistral/magistral-medium-latest"
+          - option "mistral/magistral-small"
+          - option "mistral/ministral-3b-latest"
+          - option "mistral/ministral-8b-latest"
+          - option "mistral/mistral-large-2411"
+          - option "mistral/mistral-large-2512"
+          - option "mistral/mistral-large-latest"
+          - option "mistral/mistral-medium-2505"
+          - option "mistral/mistral-medium-2508"
+          - option "mistral/mistral-medium-2604"
+          - option "mistral/mistral-medium-3.5"
+          - option "mistral/mistral-medium-latest"
+          - option "mistral/mistral-nemo"
+          - option "mistral/mistral-small-2506"
+          - option "mistral/mistral-small-2603"
+          - option "mistral/mistral-small-latest"
+          - option "mistral/open-mistral-7b"
+          - option "mistral/open-mistral-nemo"
+          - option "mistral/open-mixtral-8x22b"
+          - option "mistral/open-mixtral-8x7b"
+          - option "mistral/pixtral-12b"
+          - option "mistral/pixtral-large-latest"
+        - button "10%" [ref=f4e344]

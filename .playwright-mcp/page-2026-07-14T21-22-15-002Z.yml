@@ -1,0 +1,104 @@
+- generic [ref=f4e4]:
+  - banner [ref=f4e5]:
+    - button "◨ files" [ref=f4e6]
+    - button "⎇ shim/tool-result-summary ↑2" [ref=f4e40]
+    - generic [ref=f4e7]: π dev
+    - generic [ref=f4e8]:
+      - button "⚒ tools" [ref=f4e9]
+      - button "Switch to dark theme" [ref=f4e10]: ☾
+      - button "+ new" [ref=f4e11]
+      - button "tree" [ref=f4e13]
+      - button "sessions" [ref=f4e15]
+      - generic "connected" [ref=f4e41]
+  - main [ref=f4e18]:
+    - generic [ref=f4e19]:
+      - generic [ref=f4e47]:
+        - button "Edit this prompt" [ref=f4e58]: ✎
+        - generic [ref=f4e48]: read_file /Users/laurent/Projets/Pi-interface/package.json
+      - generic [ref=f4e59]:
+        - button "read ~/Projets/Pi-interface/package.json ▾" [active] [ref=f4e92]:
+          - generic [ref=f4e62]: read ~/Projets/Pi-interface/package.json
+          - generic [ref=f4e64]: ▾
+        - generic [ref=f4e95]:
+          - generic [ref=f4e96]: "{"
+          - generic [ref=f4e97]: "\"name\": \"pi-outpost\","
+          - generic [ref=f4e98]: "\"private\": true,"
+          - generic [ref=f4e99]: "\"workspaces\": ["
+          - generic [ref=f4e100]: "\"shared\","
+          - generic [ref=f4e101]: "\"server\","
+          - generic [ref=f4e102]: "\"web\","
+          - generic [ref=f4e103]: "\"embed\","
+          - generic [ref=f4e104]: "\"cli\""
+          - generic [ref=f4e105]: "],"
+          - generic [ref=f4e106]: "\"scripts\": {"
+          - generic [ref=f4e107]: "\"dev\": \"concurrently -n server,web -c blue,green \\\"npm run dev --workspace server\\\" \\\"npm run"
+          - generic [ref=f4e108]: dev --workspace web\"",
+          - generic [ref=f4e109]: "\"dev:server\": \"npm run dev --workspace server\","
+          - generic [ref=f4e110]: "\"dev:web\": \"npm run dev --workspace web\","
+          - generic [ref=f4e111]: "\"start\": \"npm run build --workspace web && npm run start --workspace server\","
+          - generic [ref=f4e112]: "\"build\": \"npm run build --workspaces --if-present\","
+          - generic [ref=f4e113]: "\"typecheck\": \"npm run typecheck --workspaces --if-present\","
+          - generic [ref=f4e114]: "\"lint\": \"npm run lint --workspaces --if-present\""
+          - generic [ref=f4e115]: "},"
+          - generic [ref=f4e116]: "\"devDependencies\": {"
+          - generic [ref=f4e117]: "\"concurrently\": \"^10.0.3\""
+          - generic [ref=f4e118]: "}"
+          - generic [ref=f4e119]: "}"
+      - generic [ref=f4e69]:
+        - button "⧉ copy" [ref=f4e71]
+        - generic [ref=f4e72]:
+          - paragraph [ref=f4e73]: "The package.json file for the Pi-interface project has been successfully read. Here's a summary of its contents:"
+          - list [ref=f4e74]:
+            - listitem [ref=f4e75]: "Project name: pi-outpost"
+            - listitem [ref=f4e76]: "Private: true"
+            - listitem [ref=f4e77]: "Workspaces: shared, server, web, embed, cli"
+            - listitem [ref=f4e78]:
+              - text: "Scripts:"
+              - list [ref=f4e79]:
+                - listitem [ref=f4e80]: "dev: Runs the server and web workspaces concurrently"
+                - listitem [ref=f4e81]: "dev:server: Runs the server workspace in development mode"
+                - listitem [ref=f4e82]: "dev:web: Runs the web workspace in development mode"
+                - listitem [ref=f4e83]: "start: Builds the web workspace and starts the server workspace"
+                - listitem [ref=f4e84]: "build: Builds all workspaces that have a build script"
+                - listitem [ref=f4e85]: "typecheck: Runs type checking for all workspaces that have a typecheck script"
+                - listitem [ref=f4e86]: "lint: Runs linting for all workspaces that have a lint script"
+          - paragraph [ref=f4e87]: The project uses concurrently as a development dependency to run multiple npm scripts simultaneously.
+  - contentinfo [ref=f4e23]:
+    - generic [ref=f4e24]:
+      - generic [ref=f4e26]:
+        - textbox "message pi… (/ for commands, @ for files, Enter to send, Shift+Enter for newline)" [ref=f4e88]
+        - button "Attach files" [ref=f4e28]
+        - button "Send message" [disabled] [ref=f4e89]
+      - generic [ref=f4e34]:
+        - combobox [ref=f4e35]:
+          - option "mistral/codestral-latest" [selected]
+          - option "mistral/devstral-2512"
+          - option "mistral/devstral-latest"
+          - option "mistral/devstral-medium-2507"
+          - option "mistral/devstral-medium-latest"
+          - option "mistral/devstral-small-2505"
+          - option "mistral/devstral-small-2507"
+          - option "mistral/labs-devstral-small-2512"
+          - option "mistral/magistral-medium-latest"
+          - option "mistral/magistral-small"
+          - option "mistral/ministral-3b-latest"
+          - option "mistral/ministral-8b-latest"
+          - option "mistral/mistral-large-2411"
+          - option "mistral/mistral-large-2512"
+          - option "mistral/mistral-large-latest"
+          - option "mistral/mistral-medium-2505"
+          - option "mistral/mistral-medium-2508"
+          - option "mistral/mistral-medium-2604"
+          - option "mistral/mistral-medium-3.5"
+          - option "mistral/mistral-medium-latest"
+          - option "mistral/mistral-nemo"
+          - option "mistral/mistral-small-2506"
+          - option "mistral/mistral-small-2603"
+          - option "mistral/mistral-small-latest"
+          - option "mistral/open-mistral-7b"
+          - option "mistral/open-mistral-nemo"
+          - option "mistral/open-mixtral-8x22b"
+          - option "mistral/open-mixtral-8x7b"
+          - option "mistral/pixtral-12b"
+          - option "mistral/pixtral-large-latest"
+        - button "8%" [ref=f4e91]

@@ -1,0 +1,125 @@
+- generic [ref=f8e4]:
+  - banner [ref=f8e5]:
+    - button "◨ files" [ref=f8e6]
+    - button "⎇ shim/tool-result-summary" [ref=f8e40]
+    - generic [ref=f8e7]: π dev
+    - generic [ref=f8e8]:
+      - button "⚒ tools" [ref=f8e9]
+      - button "Switch to dark theme" [ref=f8e10]: ☾
+      - button "+ new" [ref=f8e11]
+      - button "tree" [ref=f8e13]
+      - button "sessions" [ref=f8e15]
+      - generic "connected" [ref=f8e41]
+  - main [ref=f8e18]:
+    - generic [ref=f8e19]:
+      - generic [ref=f8e47]:
+        - button "Edit this prompt" [ref=f8e58]: ✎
+        - generic [ref=f8e48]: teste tous les tools openlore
+      - generic [ref=f8e59]:
+        - button "openlore orient \"teste tous les tools openlore\" ▸" [ref=f8e60]:
+          - generic [ref=f8e62]: openlore orient "teste tous les tools openlore"
+          - generic [ref=f8e64]: ▸
+        - generic [ref=f8e66]:
+          - paragraph [ref=f8e67]:
+            - strong [ref=f8e68]: teste tous les tools openlore
+            - text: "Mode: hybrid"
+          - paragraph [ref=f8e69]: "Relevant files:"
+          - list [ref=f8e70]:
+            - listitem [ref=f8e71]: web/src/App.tsx
+            - listitem [ref=f8e72]: server/src/config.ts
+            - listitem [ref=f8e73]: web/src/components/ToolCard.tsx
+          - paragraph [ref=f8e74]: "Relevant functions:"
+          - list [ref=f8e75]:
+            - listitem [ref=f8e76]: toggleHideTools (web/src/App.tsx)
+            - listitem [ref=f8e77]: requireTokenOffLoopback (server/src/config.ts)
+            - listitem [ref=f8e78]: argsSummary (web/src/components/ToolCard.tsx)
+          - paragraph [ref=f8e79]: "Next steps:"
+          - list [ref=f8e80]:
+            - listitem [ref=f8e81]: Before making an architectural choice, call record_decision(title, rationale, consequences, affectedFiles) to document it
+            - listitem [ref=f8e82]: Call get_subgraph("toggleHideTools") to trace the call neighbourhood
+            - listitem [ref=f8e83]: Domain purposes included in inlineSpecs — call get_spec("model") for requirements and implementation details
+            - listitem [ref=f8e84]: After implementing, run check_spec_drift to verify the code matches the spec
+      - generic [ref=f8e85]:
+        - button "openlore search_code \"teste tous les tools openlore\" ▸" [ref=f8e86]:
+          - generic [ref=f8e88]: openlore search_code "teste tous les tools openlore"
+          - generic [ref=f8e90]: ▸
+        - paragraph [ref=f8e93]: "Mode: hybrid"
+      - generic [ref=f8e94]:
+        - button "openlore get_subgraph \"toggleHideTools\" ▾" [active] [ref=f8e172]:
+          - generic [ref=f8e97]: openlore get_subgraph "toggleHideTools"
+          - generic [ref=f8e99]: ▾
+        - generic [ref=f8e174]: "{ \"query\": { \"functionName\": \"toggleHideTools\", \"direction\": \"downstream\", \"maxDepth\": 3 }, \"seeds\": [ { \"name\": \"toggleHideTools\", \"file\": \"web/src/App.tsx\" } ], \"stats\": { \"nodes\": 1, \"edges\": 0, \"governingDecisions\": 0 }, \"nodes\": [ { \"name\": \"toggleHideTools\", \"file\": \"web/src/App.tsx\", \"fanIn\": 0, \"fanOut\": 2, \"language\": \"TypeScript\", \"isExternal\": false, \"isSeed\": true } ], \"edges\": [], \"confidenceBoundary\": { \"complete\": false, \"basis\": { \"directEdges\": 0, \"synthesizedEdges\": 0 }, \"staleness\": { \"indexCommit\": \"a0bea3b\", \"filesChangedSince\": 6, \"detail\": \"Computed against the index built at commit a0bea3b; 6 source file(s) changed since. Re-run analyze_codebase for a current answer.\" } } }"
+      - button "openlore get_subgraph \"requireTokenOffLoopback\" ▸" [ref=f8e101]:
+        - generic [ref=f8e103]: openlore get_subgraph "requireTokenOffLoopback"
+        - generic [ref=f8e105]: ▸
+      - button "openlore get_subgraph \"argsSummary\" ▸" [ref=f8e107]:
+        - generic [ref=f8e109]: openlore get_subgraph "argsSummary"
+        - generic [ref=f8e111]: ▸
+      - button "openlore get_spec \"model\" ▸" [ref=f8e113]:
+        - generic [ref=f8e115]: openlore get_spec "model"
+        - generic [ref=f8e117]: ▸
+      - button "openlore get_landmarks ▸" [ref=f8e119]:
+        - generic [ref=f8e121]: openlore get_landmarks
+        - generic [ref=f8e123]: ▸
+      - button "openlore get_landmarks ▸" [ref=f8e125]:
+        - generic [ref=f8e127]: openlore get_landmarks
+        - generic [ref=f8e129]: ▸
+      - button "openlore get_landmarks ▸" [ref=f8e131]:
+        - generic [ref=f8e133]: openlore get_landmarks
+        - generic [ref=f8e135]: ▸
+      - button "openlore get_landmarks ▸" [ref=f8e137]:
+        - generic [ref=f8e139]: openlore get_landmarks
+        - generic [ref=f8e141]: ▸
+      - button "openlore get_landmarks ▸" [ref=f8e143]:
+        - generic [ref=f8e145]: openlore get_landmarks
+        - generic [ref=f8e147]: ▸
+      - button "openlore get_landmarks ▸" [ref=f8e149]:
+        - generic [ref=f8e151]: openlore get_landmarks
+        - generic [ref=f8e153]: ▸
+      - generic [ref=f8e154]:
+        - button "openlore check_spec_drift ▸" [ref=f8e155]:
+          - generic [ref=f8e157]: openlore check_spec_drift
+          - generic [ref=f8e159]: ▸
+        - paragraph [ref=f8e162]: "[object Object]"
+      - generic [ref=f8e163]:
+        - button "⧉ copy" [ref=f8e165]
+        - paragraph [ref=f8e167]: All tools openlore have been tested successfully.
+  - contentinfo [ref=f8e23]:
+    - generic [ref=f8e24]:
+      - generic [ref=f8e26]:
+        - textbox "message pi… (/ for commands, @ for files, Enter to send, Shift+Enter for newline)" [ref=f8e168]
+        - button "Attach files" [ref=f8e28]
+        - button "Send message" [disabled] [ref=f8e169]
+      - generic [ref=f8e34]:
+        - combobox [ref=f8e35]:
+          - option "mistral/codestral-latest" [selected]
+          - option "mistral/devstral-2512"
+          - option "mistral/devstral-latest"
+          - option "mistral/devstral-medium-2507"
+          - option "mistral/devstral-medium-latest"
+          - option "mistral/devstral-small-2505"
+          - option "mistral/devstral-small-2507"
+          - option "mistral/labs-devstral-small-2512"
+          - option "mistral/magistral-medium-latest"
+          - option "mistral/magistral-small"
+          - option "mistral/ministral-3b-latest"
+          - option "mistral/ministral-8b-latest"
+          - option "mistral/mistral-large-2411"
+          - option "mistral/mistral-large-2512"
+          - option "mistral/mistral-large-latest"
+          - option "mistral/mistral-medium-2505"
+          - option "mistral/mistral-medium-2508"
+          - option "mistral/mistral-medium-2604"
+          - option "mistral/mistral-medium-3.5"
+          - option "mistral/mistral-medium-latest"
+          - option "mistral/mistral-nemo"
+          - option "mistral/mistral-small-2506"
+          - option "mistral/mistral-small-2603"
+          - option "mistral/mistral-small-latest"
+          - option "mistral/open-mistral-7b"
+          - option "mistral/open-mistral-nemo"
+          - option "mistral/open-mixtral-8x22b"
+          - option "mistral/open-mixtral-8x7b"
+          - option "mistral/pixtral-12b"
+          - option "mistral/pixtral-large-latest"
+        - button "16%" [ref=f8e171]
