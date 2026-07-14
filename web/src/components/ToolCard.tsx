@@ -55,8 +55,8 @@ function getFormattedToolOutput(output: string): string | undefined {
     const summary = lines.join("\n").trim();
     if (summary) return summary;
     
-    // Fallback for any valid JSON object: return pretty-printed JSON in a markdown code block
-    return "```json\n" + JSON.stringify(parsed, null, 2) + "\n```";
+    // No formatted output for pure JSON - return undefined to show nothing in collapsed state
+    return undefined;
   };
   
   // First, try to parse as valid JSON
@@ -173,10 +173,8 @@ export function ToolCard({ item }: { item: ToolItem }) {
   // For tools with formatted output, start collapsed to show the formatted MD
   const [open, setOpen] = useState(hasDiff);
   const summary = argsSummary(item.args);
-  const previewHtml = item.outputHtmlCollapsed ?? item.outputHtml;
-  // In collapsed mode, prefer formatted MD output over HTML preview
+  // In collapsed mode, show formatted MD output if available; otherwise show nothing
   const showFormattedCollapsed = !open && hasFormattedOutput;
-  const showCollapsedPreview = !open && !hasFormattedOutput && Boolean(previewHtml);
 
   return (
     <div
@@ -216,11 +214,6 @@ export function ToolCard({ item }: { item: ToolItem }) {
               {normalizeMathDelimiters(formattedOutput)}
             </ReactMarkdown>
           </div>
-        </div>
-      )}
-      {showCollapsedPreview && previewHtml && (
-        <div className="border-t border-zinc-200 px-3 py-2 dark:border-zinc-800">
-          <RenderedHtml html={previewHtml} className="max-h-24 text-zinc-700 dark:text-zinc-300" />
         </div>
       )}
       {open && (
