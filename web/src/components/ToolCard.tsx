@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import rehypeKatex from "rehype-katex";
 import remarkGfm from "remark-gfm";
@@ -18,7 +18,7 @@ type ToolItem = Extract<ChatItem, { kind: "tool" }>;
  * Falls back to brace-counting recovery for mid-truncation cases.
  * Returns undefined only for non-JSON or completely unparseable content.
  */
-function getFormattedToolOutput(output: string): string | undefined {
+export function getFormattedToolOutput(output: string): string | undefined {
   // Try to parse as JSON - handle truncated output by stripping the truncation suffix
   let jsonToParse = output;
   const truncationMarker = "\n… [truncated,";
@@ -172,6 +172,8 @@ export function ToolCard({ item }: { item: ToolItem }) {
   // For tools with HTML from extension, start expanded to show the rendered HTML
   // For tools with formatted output, start collapsed to show the formatted MD
   const [open, setOpen] = useState(hasDiff);
+  // Keep open state in sync when hasDiff changes mid-stream (e.g. tool output arrives after mount)
+  useEffect(() => { setOpen(hasDiff); }, [hasDiff]);
   const summary = argsSummary(item.args);
   // In collapsed mode, show formatted MD output if available; otherwise show nothing
   const showFormattedCollapsed = !open && hasFormattedOutput;
@@ -208,8 +210,8 @@ export function ToolCard({ item }: { item: ToolItem }) {
         <div className="border-t border-zinc-200 px-3 py-2 dark:border-zinc-800">
           <div className="prose-chat max-h-96 overflow-auto text-zinc-700 dark:text-zinc-300">
             <ReactMarkdown
-              remarkPlugins={[remarkGfm, remarkMath]}
-              rehypePlugins={[rehypeKatex]}
+              remarkPlugins={useMemo(() => [remarkGfm, remarkMath], [])}
+              rehypePlugins={useMemo(() => [rehypeKatex], [])}
             >
               {normalizeMathDelimiters(formattedOutput)}
             </ReactMarkdown>
