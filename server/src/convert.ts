@@ -48,64 +48,31 @@ export function truncate(text: string, max = MAX_TOOL_OUTPUT): string {
 }
 
 /**
- * Heuristic summarizer for JSON tool results. Returns a short markdown-ish
- * `text` plus the full parsed `details` when successful, or `null` when the
- * payload isn't JSON or doesn't match expected shapes.
+ * Only accept an authoritative rendering envelope from the extension. The
+ * extension must return JSON with a top-level `__pi_render` object describing
+ * the user-facing text (and optionally format). Example:
+ *
+ * {
+ *   "__pi_render": { "format": "markdown", "text": "...user text..." },
+ *   "payload": { /* full machine JSON */ }
+ * }
+ *
+ * If that envelope is missing or malformed, return null — do not synthesize
+ * any rendering on the server.
  */
 export function summarizeToolResult(toolName: string | undefined, raw?: string): { text: string; details?: unknown } | null {
   if (!raw) return null;
   try {
     const parsed = JSON.parse(raw);
-    if (parsed === null || (typeof parsed !== "object" && !Array.isArray(parsed))) return null;
-
-    // Only synthesize a summary when the payload contains fields that indicate a
-    // user-facing rendering was intended. This avoids coalescing arbitrary tool
-    // outputs (search indexes, raw result dumps) into a faux-rendered card.
-    const renderKeys = new Set([
-      "title",
-      "task",
-      "summary",
-      "nextSteps",
-      "nextStepsText",
-      "relevantFiles",
-      "relevantFunctions",
-      "rendering",
-      "message",
-      "entries",
-      "entry",
-      "render",
-      "view",
-      "html",
-      "markdown",
-      "rendered",
-    ]);
-    if (typeof parsed === "object") {
-      const keys = Object.keys(parsed as Record<string, unknown>);
-      const hasRenderKey = keys.some((k) => renderKeys.has(k));
-      if (!hasRenderKey) return null;
-    }
-
-    const lines: string[] = [];
-    if ((parsed as any).title) lines.push(`**${String((parsed as any).title)}**`);
-    if ((parsed as any).task) lines.push(`**${String((parsed as any).task)}**`);
-    if ((parsed as any).summary) lines.push(String((parsed as any).summary));
-    if (Array.isArray((parsed as any).relevantFiles) && (parsed as any).relevantFiles.length > 0) {
-      lines.push(`\nRelevant files:`);
-      for (const f of ((parsed as any).relevantFiles as string[]).slice(0, 5)) lines.push(`- ${f}`);
-    }
-    if (Array.isArray((parsed as any).relevantFunctions) && (parsed as any).relevantFunctions.length > 0) {
-      lines.push(`\nRelevant functions:`);
-      for (const fn of ((parsed as any).relevantFunctions as any[]).slice(0, 5)) {
-        if (fn && fn.name) lines.push(`- ${fn.name} (${fn.filePath ?? fn.file ?? 'unknown'})`);
-        else lines.push(`- ${String(fn)}`);
-      }
-    }
-    if (Array.isArray((parsed as any).nextSteps) && (parsed as any).nextSteps.length > 0) {
-      lines.push(`\nNext steps:`);
-      for (const s of ((parsed as any).nextSteps as string[]).slice(0, 5)) lines.push(`- ${s}`);
-    }
-    const summary = lines.join("\n").trim() || JSON.stringify(parsed, null, 2);
-    return { text: summary, details: parsed };
+    if (parsed === null || typeof parsed !== "object") return null;
+    const envelope = (parsed as any).__pi_render;
+    if (!envelope || typeof envelope !== "object") return null;
+    const text = typeof envelope.text === "string" ? envelope.text : null;
+    if (!text) return null;
+    // Accept optional payload location (`payload` or `details`). If absent, use
+    // the original parsed object (extension might inline fields).
+    const details = (parsed as any).payload ?? (parsed as any).details ?? parsed;
+    return { text, details };
   } catch (e) {
     return null;
   }
