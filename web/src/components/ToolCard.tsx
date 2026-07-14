@@ -79,24 +79,44 @@ function getFormattedToolOutput(output: string): string | undefined {
   }
   
   // Try brace-counting recovery: find a valid JSON substring by counting braces
+  // First pass: look for a complete object (braceCount === 0)
   try {
     let braceCount = 0;
-    let lastValidIndex = -1;
+    let lastCompleteIndex = -1;
+    let lastClosingIndex = -1;
+    
     for (let i = 0; i < jsonToParse.length; i++) {
       if (jsonToParse[i] === "{") braceCount++;
       if (jsonToParse[i] === "}") {
         braceCount--;
+        lastClosingIndex = i; // Track the last closing brace we see
         if (braceCount === 0) {
-          lastValidIndex = i;
+          lastCompleteIndex = i;
           break; // Found the matching closing brace for the outermost object
         }
       }
     }
-    if (lastValidIndex > 0) {
-      const validJson = jsonToParse.slice(0, lastValidIndex + 1);
+    
+    // First, try the complete object if found
+    if (lastCompleteIndex > 0) {
+      const validJson = jsonToParse.slice(0, lastCompleteIndex + 1);
       const parsed = JSON.parse(validJson);
       if (parsed && typeof parsed === "object") {
         return formatParsedObject(parsed as Record<string, unknown>);
+      }
+    }
+    
+    // If no complete object found, try using the last closing brace we saw
+    // This handles cases where JSON is truncated mid-object
+    if (lastClosingIndex > 0 && lastCompleteIndex === -1) {
+      const validJson = jsonToParse.slice(0, lastClosingIndex + 1);
+      try {
+        const parsed = JSON.parse(validJson);
+        if (parsed && typeof parsed === "object") {
+          return formatParsedObject(parsed as Record<string, unknown>);
+        }
+      } catch {
+        // Still can't parse this fragment
       }
     }
   } catch {

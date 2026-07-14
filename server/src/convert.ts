@@ -2,6 +2,11 @@
  * Conversion from SDK AgentMessage history to wire ChatItems.
  */
 import type { AssistantBlock, ChatItem, WireImage } from "@pi-outpost/shared";
+import {
+  renderCustomMessageHtml,
+  renderToolCallHtml,
+  renderToolResultHtml,
+} from "./extensionRender.ts";
 
 const MAX_TOOL_OUTPUT = 20_000;
 
@@ -43,39 +48,8 @@ export function contentText(content: string | AnyContent[] | undefined): string 
 }
 
 export function truncate(text: string, max = MAX_TOOL_OUTPUT): string {
-  if (text.length <= max) return text;
+  if (text.length < max) return text;
   return `${text.slice(0, max)}\n… [truncated, ${text.length} chars total]`;
-}
-
-/**
- * Only accept an authoritative rendering envelope from the extension. The
- * extension must return JSON with a top-level `__pi_render` object describing
- * the user-facing text (and optionally format). Example:
- *
- * {
- *   "__pi_render": { "format": "markdown", "text": "...user text..." },
- *   "payload": { "<full machine JSON>": true }
- * }
- *
- * If that envelope is missing or malformed, return null — do not synthesize
- * any rendering on the server.
- */
-export function summarizeToolResult(toolName: string | undefined, raw?: string): { text: string; details?: unknown } | null {
-  if (!raw) return null;
-  try {
-    const parsed = JSON.parse(raw);
-    if (parsed === null || typeof parsed !== "object") return null;
-    const envelope = (parsed as any).__pi_render;
-    if (!envelope || typeof envelope !== "object") return null;
-    const text = typeof envelope.text === "string" ? envelope.text : null;
-    if (!text) return null;
-    // Accept optional payload location (`payload` or `details`). If absent, use
-    // the original parsed object (extension might inline fields).
-    const details = (parsed as any).payload ?? (parsed as any).details ?? parsed;
-    return { text, details };
-  } catch (e) {
-    return null;
-  }
 }
 
 function assistantBlocks(content: string | AnyContent[]): AssistantBlock[] {
@@ -165,30 +139,28 @@ export function historyToItems(messages: AnyMessage[], streaming = false, userEn
         const call = message.toolCallId ? pendingCalls.get(message.toolCallId) : undefined;
         if (message.toolCallId) pendingCalls.delete(message.toolCallId);
 
-        // Only synthesize a render when the tool's result appears intended for
-        // user-facing rendering. Use the shared summarizer which checks payload
-        // shape for rendering hints instead of promiscuously converting every
-        // openlore output.
-        const raw = typeof message.content === "string" ? message.content : undefined;
-        if (raw && (call?.name?.startsWith("openlore") || message.toolName?.startsWith("openlore"))) {
-          try {
-            const summarized = summarizeToolResult(message.toolName ?? call?.name ?? undefined, raw);
-            if (summarized) {
-              items.push({ kind: "custom", customType: message.toolName ?? call?.name ?? "openlore", text: summarized.text, details: summarized.details });
-              break;
-            }
-          } catch (e) {
-            // fall through to default behavior
-          }
-        }
+        const toolCallId = message.toolCallId ?? "";
+        const toolName = message.toolName ?? call?.name ?? "tool";
+        const callHtml = renderToolCallHtml(toolCallId, toolName, call?.args ?? {});
+        const rendered = renderToolResultHtml(
+          toolCallId,
+          toolName,
+          message.content,
+          message.details,
+          message.isError ?? false,
+        );
 
         items.push({
           kind: "tool",
-          toolCallId: message.toolCallId ?? "",
-          toolName: message.toolName ?? call?.name ?? "tool",
+          toolCallId,
+          toolName,
           args: call?.args ?? {},
           output: truncate(contentText(message.content)),
           isError: message.isError ?? false,
+          ...(callHtml ? { callHtml } : {}),
+          ...(rendered
+            ? { outputHtml: rendered.expanded, outputHtmlCollapsed: rendered.collapsed }
+            : {}),
         });
         break;
       }
@@ -222,6 +194,7 @@ export function historyToItems(messages: AnyMessage[], streaming = false, userEn
   if (streaming) {
     // toolCalls still executing (no result yet) → running cards
     for (const [toolCallId, call] of pendingCalls) {
+      const callHtml = renderToolCallHtml(toolCallId, call.name, call.args);
       items.push({
         kind: "tool",
         toolCallId,
@@ -229,6 +202,7 @@ export function historyToItems(messages: AnyMessage[], streaming = false, userEn
         args: call.args,
         output: "",
         running: true,
+        ...(callHtml ? { callHtml } : {}),
       });
     }
   }
@@ -252,16 +226,18 @@ export function assistantToItem(message: AnyMessage): ChatItem {
  * text content, with `details` along for an optional expanded view.
  */
 export function customMessageToItem(message: AnyMessage): ChatItem {
-  console.log("[DEBUG] customMessageToItem called:", {
-    customType: message.customType,
-    contentType: typeof message.content,
-    contentLength: typeof message.content === "string" ? message.content.length : Array.isArray(message.content) ? message.content.length : "unknown",
-    detailsKeys: message.details ? Object.keys(message.details) : "none",
-  });
+  const customType = message.customType ?? "custom";
+  const display = message.display !== false;
+  const content = message.content;
+  const rendered = renderCustomMessageHtml(customType, content, message.details, display);
+
   return {
     kind: "custom",
-    customType: message.customType ?? "custom",
-    text: contentText(message.content),
+    customType,
+    text: contentText(content),
     ...(message.details !== undefined ? { details: message.details } : {}),
+    ...(rendered
+      ? { contentHtml: rendered.expanded, contentHtmlCollapsed: rendered.collapsed }
+      : {}),
   };
 }
