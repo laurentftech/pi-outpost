@@ -28,10 +28,10 @@ export function CustomMessageCard({ item }: { item: CustomItem }) {
           <button
             type="button"
             onClick={() => setOpen(!open)}
-            title="Show details"
-            className="ml-auto text-xs text-violet-500 hover:text-violet-700 dark:text-violet-500 dark:hover:text-violet-300"
+            title={open ? "Hide details" : "Show details"}
+            className="ml-auto inline-flex items-center gap-1 rounded px-2 py-1 text-xs font-medium text-violet-600 hover:bg-violet-100 dark:text-violet-400 dark:hover:bg-violet-900/40"
           >
-            {open ? "▾" : "▸"}
+            {open ? "▾" : "▸"} Details
           </button>
         )}
       </div>
