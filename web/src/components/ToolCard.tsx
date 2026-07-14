@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import ReactMarkdown from "react-markdown";
 import rehypeKatex from "rehype-katex";
 import remarkGfm from "remark-gfm";
@@ -164,24 +164,19 @@ export function ToolCard({ item }: { item: ToolItem }) {
   const hasDiff = pairs !== null || written !== null;
   
   // Check if tool has formatted output (either HTML from extension or __pi_render envelope)
-  const formattedOutput = hasHtml ? undefined : (item.output ? getFormattedToolOutput(item.output) : undefined);
+  const formattedOutput = item.output ? getFormattedToolOutput(item.output) : undefined;
   const hasFormattedOutput = Boolean(formattedOutput);
   
   // Start collapsed to show formatted output; expanded state shows raw JSON for inspection
   // For edit/write tools with diffs, start expanded to show the diff
   // For tools with HTML from extension, start expanded to show the rendered HTML
   // For tools with formatted output, start collapsed to show the formatted MD
-  const [open, setOpen] = useState(hasDiff || hasHtml || !hasFormattedOutput);
-  
-  // A live tool card starts before its extension renderer has produced HTML.
-  // Reveal the result as soon as it arrives, matching the TUI's completed view.
-  useEffect(() => {
-    if (hasHtml) setOpen(true);
-  }, [hasHtml]);
-  
+  const [open, setOpen] = useState(hasDiff);
   const summary = argsSummary(item.args);
   const previewHtml = item.outputHtmlCollapsed ?? item.outputHtml;
-  const showCollapsedPreview = !open && Boolean(previewHtml);
+  // In collapsed mode, prefer formatted MD output over HTML preview
+  const showFormattedCollapsed = !open && hasFormattedOutput;
+  const showCollapsedPreview = !open && !hasFormattedOutput && Boolean(previewHtml);
 
   return (
     <div
@@ -211,6 +206,18 @@ export function ToolCard({ item }: { item: ToolItem }) {
         )}
         <span className="ml-auto text-xs text-zinc-400 dark:text-zinc-600">{open ? "▾" : "▸"}</span>
       </button>
+      {showFormattedCollapsed && formattedOutput && (
+        <div className="border-t border-zinc-200 px-3 py-2 dark:border-zinc-800">
+          <div className="prose-chat max-h-96 overflow-auto text-zinc-700 dark:text-zinc-300">
+            <ReactMarkdown
+              remarkPlugins={[remarkGfm, remarkMath]}
+              rehypePlugins={[rehypeKatex]}
+            >
+              {normalizeMathDelimiters(formattedOutput)}
+            </ReactMarkdown>
+          </div>
+        </div>
+      )}
       {showCollapsedPreview && previewHtml && (
         <div className="border-t border-zinc-200 px-3 py-2 dark:border-zinc-800">
           <RenderedHtml html={previewHtml} className="max-h-24 text-zinc-700 dark:text-zinc-300" />
@@ -242,18 +249,6 @@ export function ToolCard({ item }: { item: ToolItem }) {
               {item.running ? "running…" : "(no output)"}
             </pre>
           )}
-        </div>
-      )}
-      {!open && formattedOutput && !showCollapsedPreview && (
-        <div className="border-t border-zinc-200 px-3 py-2 dark:border-zinc-800">
-          <div className="prose-chat max-h-96 overflow-auto text-zinc-700 dark:text-zinc-300">
-            <ReactMarkdown
-              remarkPlugins={[remarkGfm, remarkMath]}
-              rehypePlugins={[rehypeKatex]}
-            >
-              {normalizeMathDelimiters(formattedOutput)}
-            </ReactMarkdown>
-          </div>
         </div>
       )}
     </div>
