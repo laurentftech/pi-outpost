@@ -151,11 +151,7 @@ export function ToolCard({ item }: { item: ToolItem }) {
               <DiffBlock lines={written.split("\n").map((text) => ({ type: "add" as const, text }))} />
             </div>
           )}
-          {hasDiff || summary === "" || (
-            <pre className="mb-2 overflow-x-auto font-mono text-xs text-zinc-500 dark:text-zinc-400">
-              {JSON.stringify(item.args, null, 2)}
-            </pre>
-          )}
+
           {item.outputHtml ? (
             <RenderedHtml html={item.outputHtml} className="max-h-96 text-zinc-700 dark:text-zinc-300" />
           ) : item.output ? (
