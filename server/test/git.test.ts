@@ -55,6 +55,7 @@ describe("git operations", () => {
 
   function setupRepo() {
     git("init");
+    git("branch", "-M", "main");
     git("config", "user.email", "test@test");
     git("config", "user.name", "Test");
     git("config", "commit.gpgsign", "false");
