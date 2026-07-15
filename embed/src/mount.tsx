@@ -41,9 +41,20 @@ export function mount(container: HTMLElement, options: MountOptions = {}): Mount
   const shadow = container.shadowRoot ?? container.attachShadow({ mode: "open" });
   shadow.replaceChildren();
 
-  const style = document.createElement("style");
-  style.textContent = css;
-  shadow.appendChild(style);
+  // Chrome 97 silently drops <style> elements >~512 KB inside Shadow DOM;
+  // Tailwind v4 is ~1.5 MB, so we use the constructable stylesheet API instead.
+  const canUseConstructableSheets =
+    typeof CSSStyleSheet !== "undefined" &&
+    typeof CSSStyleSheet.prototype.replaceSync === "function";
+  if (canUseConstructableSheets) {
+    const sheet = new CSSStyleSheet();
+    sheet.replaceSync(css);
+    (shadow as ShadowRoot & { adoptedStyleSheets: CSSStyleSheet[] }).adoptedStyleSheets = [sheet];
+  } else {
+    const style = document.createElement("style");
+    style.textContent = css;
+    shadow.appendChild(style);
+  }
 
   // Same id as the standalone app's mount point — reuses index.css's `#root { height: 100% }`
   // rule as-is inside the shadow tree.
