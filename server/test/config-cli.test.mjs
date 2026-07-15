@@ -17,7 +17,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import process from "node:process";
 import { after, before, describe, test } from "node:test";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 
 const run = promisify(execFile);
@@ -32,11 +32,14 @@ const TSX_LOADER = path.join(SERVER_DIR, "..", "node_modules", "tsx", "dist", "e
 /**
  * Resolve the command and args to run a TypeScript file via tsx.
  * On Windows, execFile cannot run `.cmd` wrappers directly, so we use
- * `node --import=<abs-path-to-tsx-loader>` (same pattern as the test harness).
+ * `node --import=file:///...tsx-loader` instead (same pattern as the test harness).
+ * The path must be a file:// URL because Windows drive letters (D:...) are
+ * rejected by the ESM loader as an unsupported URL scheme.
  */
 function commandArgs(entryArgs) {
   if (isWindows) {
-    return [process.execPath, [`--import=${TSX_LOADER}`, ENTRY, ...entryArgs]];
+    const loaderUrl = pathToFileURL(TSX_LOADER).href;
+    return [process.execPath, [`--import=${loaderUrl}`, ENTRY, ...entryArgs]];
   }
   return [TSX, [ENTRY, ...entryArgs]];
 }
