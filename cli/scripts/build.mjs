@@ -14,7 +14,10 @@ import { execFileSync } from "node:child_process";
 import { cp, chmod, mkdir, rm, readFile, stat } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { dirname, resolve } from "node:path";
+import process from "node:process";
 import { fileURLToPath } from "node:url";
+
+const isWindows = process.platform === "win32";
 import esbuild from "esbuild";
 
 const require = createRequire(import.meta.url);
@@ -30,7 +33,7 @@ const { version } = require(resolve(CLI_DIR, "package.json"));
 // Always rebuild: an existing web/dist proves nothing about its age, and shipping a
 // stale UI is invisible — the package works, it is just the wrong version of itself.
 console.log("[build] building the web UI …");
-execFileSync("npm", ["run", "build", "--workspace", "web"], { cwd: REPO_ROOT, stdio: "inherit" });
+execFileSync("npm", ["run", "build", "--workspace", "web"], { cwd: REPO_ROOT, stdio: "inherit", shell: isWindows });
 
 await rm(OUT_DIR, { recursive: true, force: true });
 await mkdir(OUT_DIR, { recursive: true });
