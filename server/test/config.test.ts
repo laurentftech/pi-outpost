@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import path from "node:path";
 import { describe, test } from "node:test";
 import {
   fail,
@@ -203,25 +204,25 @@ describe("applyDirectories", () => {
   test("env var overrides cwd", () => {
     const config = baseConfig();
     applyDirectories(config, {}, { PI_OUTPOST_CWD: "/env/cwd" });
-    assert.equal(config.cwd, "/env/cwd");
+    assert.equal(config.cwd, path.resolve("/env/cwd"));
   });
 
   test("env var overrides agentDir", () => {
     const config = baseConfig();
     applyDirectories(config, {}, { PI_OUTPOST_AGENT_DIR: "/env/agent" });
-    assert.equal(config.agentDir, "/env/agent");
+    assert.equal(config.agentDir, path.resolve("/env/agent"));
   });
 
   test("flag overrides env var for cwd", () => {
     const config = baseConfig();
     applyDirectories(config, { cwd: "/flag/cwd" }, { PI_OUTPOST_CWD: "/env/cwd" });
-    assert.equal(config.cwd, "/flag/cwd");
+    assert.equal(config.cwd, path.resolve("/flag/cwd"));
   });
 
   test("flag overrides env var for agentDir", () => {
     const config = baseConfig();
     applyDirectories(config, { agentDir: "/flag/agent" }, { PI_OUTPOST_AGENT_DIR: "/env/agent" });
-    assert.equal(config.agentDir, "/flag/agent");
+    assert.equal(config.agentDir, path.resolve("/flag/agent"));
   });
 });
 
