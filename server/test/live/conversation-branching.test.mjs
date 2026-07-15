@@ -67,7 +67,7 @@ describe("conversation branching (live)", () => {
   let server;
   before(async () => {
     const root = await makeWorkspace({ "README.md": "# test workspace\n" });
-    server = await startServer(root, { extensionScripts: [SWALLOW_EXTENSION] });
+    server = await startServer(root, { extensionPaths: [SWALLOW_EXTENSION] });
   });
   after(() => server?.stop());
 

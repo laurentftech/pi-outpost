@@ -21,12 +21,12 @@ const FIXTURES = path.resolve(
 );
 
 describe("resource isolation", () => {
-  test("extensionScripts loads the listed extension", async () => {
+  test("extensionPaths loads the listed extension", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "pi-outpost-ext-test-"));
     try {
       const server = await startServer(root, {
         noExtensions: true,
-        extensionScripts: [path.join(FIXTURES, "test-extension.ts")],
+        extensionPaths: [path.join(FIXTURES, "test-extension.ts")],
         server: { port: freePort() },
       });
 
@@ -76,7 +76,7 @@ describe("resource isolation", () => {
     }
   });
 
-  test("relative extensionScripts resolves against config file dir", async () => {
+  test("relative extensionPaths resolves against config file dir", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "pi-outpost-rel-ext-"));
     try {
       // Copy fixture into root so relative path resolves to it
@@ -87,7 +87,7 @@ describe("resource isolation", () => {
 
       const server = await startServer(root, {
         noExtensions: true,
-        extensionScripts: ["./test-extension.ts"], // relative → resolved against root
+        extensionPaths: ["./test-extension.ts"], // relative → resolved against root
         server: { port: freePort() },
       });
 
@@ -139,7 +139,7 @@ describe("resource isolation", () => {
     }
   });
 
-  test("noExtensions + extensionScripts + noSkills + skillPaths + noPromptTemplates + promptPaths together", async () => {
+  test("noExtensions + extensionPaths + extensionScripts + noSkills + skillPaths + noPromptTemplates + promptPaths together", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "pi-outpost-combo-"));
     try {
       // Copy all fixtures so relative paths work
@@ -159,6 +159,7 @@ describe("resource isolation", () => {
 
       const server = await startServer(root, {
         noExtensions: true,
+        extensionPaths: ["./test-extension.ts"],
         extensionScripts: ["./test-extension.ts"],
         noSkills: true,
         skillPaths: ["./test-skill"],

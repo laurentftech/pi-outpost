@@ -61,6 +61,7 @@ Server configuration loaded from `pi-outpost.config.json` (or the file named by 
 | sandbox | SandboxConfig? | File-scoped sandbox; when set, built-in tools are replaced by scoped ones |
 | tools | string[]? | Tool name allowlist (non-sandbox mode) |
 | noExtensions | boolean | Skip loading extensions entirely |
+| extensionPaths | string[] | Explicit extension paths to load (jiti-based, works in dev and bundled builds) |
 | extensionScripts | string[] | Extension .mjs files loaded at runtime via import(); works in both dev mode and bundled builds |
 | noSkills | boolean | Skip loading skills (needed for real isolation; skills also auto-load from the home directory) |
 | noPromptTemplates | boolean | Skip auto-discovering prompt templates |

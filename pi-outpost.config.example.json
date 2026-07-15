@@ -8,6 +8,7 @@
     "allowBash": false
   },
   "noExtensions": true,
+  "extensionPaths": [],
   "extensionScripts": [],
   "noSkills": true,
   "skillPaths": [],

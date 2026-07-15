@@ -12,8 +12,13 @@ distributing.
 
 ## Extension loading with the SEA build
 
+Config.`extensionPaths` loads `.ts`/`.mjs` files via the pi SDK's jiti
+loader. Since npm dependencies are no longer bundled into the single-file
+output, jiti remains available — `extensionPaths` works in both dev mode
+and the published npm package.
+
 The `extensionScripts` config key loads `.mjs` files at runtime via native
-`import()`, which esbuild preserves in bundled output:
+`import()`, which esbuild also preserves in bundled output:
 
 ```json
 {

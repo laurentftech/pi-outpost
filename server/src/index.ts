@@ -421,6 +421,9 @@ const createRuntime: CreateAgentSessionRuntimeFactory = async ({
     agentDir: config.agentDir,
     resourceLoaderOptions: {
       ...(config.noExtensions ? { noExtensions: true } : {}),
+      ...(config.extensionPaths.length > 0
+        ? { additionalExtensionPaths: config.extensionPaths }
+        : {}),
       ...(config.noSkills ? { noSkills: true } : {}),
       ...(config.skillPaths.length > 0
         ? { additionalSkillPaths: config.skillPaths }

@@ -20,7 +20,7 @@ try {
 
   const server = await startServer(root, {
     noExtensions: true,
-    extensionScripts: [path.join(root, "my-ext", "index.ts")],
+    extensionPaths: [path.join(root, "my-ext", "index.ts")],
     // noSkills already set by harness; override noPromptTemplates
     noPromptTemplates: true,
   });

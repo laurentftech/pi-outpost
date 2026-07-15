@@ -66,6 +66,8 @@ export interface AppConfig {
   tools?: string[];
   /** Skip loading extensions entirely. */
   noExtensions: boolean;
+  /** Explicit extension paths to load (in addition to defaults). */
+  extensionPaths: string[];
   /**
    * Extension script paths loaded at runtime via import(). Works in both dev
    * mode and bundled builds (esbuild preserves dynamic import()). Files must
@@ -267,6 +269,7 @@ export function loadConfig(
     configFile: filePath,
     cwd: launchDir,
     noExtensions: false,
+    extensionPaths: [],
     extensionScripts: [],
     noSkills: false,
     skillPaths: [],
@@ -345,6 +348,7 @@ export function loadConfig(
 
   config.tools = optionalStringArray(raw, "tools");
   config.noExtensions = optionalBoolean(raw, "noExtensions", false);
+  config.extensionPaths = (optionalStringArray(raw, "extensionPaths") ?? []).map(resolve);
   config.extensionScripts = (optionalStringArray(raw, "extensionScripts") ?? []).map(resolve);
   config.noSkills = optionalBoolean(raw, "noSkills", false);
   config.skillPaths = (optionalStringArray(raw, "skillPaths") ?? []).map(resolve);

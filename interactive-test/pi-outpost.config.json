@@ -8,7 +8,7 @@
     "allowBash": false
   },
   "noExtensions": true,
-  "extensionScripts": ["./mon-ext/index.mjs"],
+  "extensionPaths": ["./mon-ext/index.ts"],
   "noSkills": true,
   "noPromptTemplates": true,
   "webContext": false,
