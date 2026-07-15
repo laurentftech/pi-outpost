@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import { mkdtempSync, realpathSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -43,8 +43,7 @@ describe("git operations", () => {
   let root: string;
 
   function git(...args: string[]) {
-    const cmd = args.map((a) => (/\s/.test(a) ? `'${a}'` : a)).join(" ");
-    execSync(`git ${cmd}`, { cwd: root });
+    execFileSync("git", args, { cwd: root, shell: process.platform === "win32" });
   }
 
   function write(relPath: string, content: string) {

@@ -375,13 +375,14 @@ describe("requireTokenOffLoopback", () => {
 describe("userConfigDir", () => {
   test("uses XDG_CONFIG_HOME when set", () => {
     const result = userConfigDir({ XDG_CONFIG_HOME: "/custom/xdg" });
-    assert.equal(result, "/custom/xdg/pi-outpost");
+    assert.equal(result, path.join("/custom/xdg", "pi-outpost"));
   });
 
   test("falls back to ~/.config when XDG_CONFIG_HOME is not set", () => {
     // We can't mock homedir easily, so just check it contains the suffix
     const result = userConfigDir({});
-    assert.ok(result.endsWith("/pi-outpost"), `expected .../pi-outpost, got ${result}`);
+    const suffix = path.sep + "pi-outpost";
+    assert.ok(result.endsWith(suffix), `expected ...${suffix}, got ${result}`);
     assert.ok(!result.includes("xdg") || result.includes("XDG_CONFIG_HOME") === false);
   });
 });
