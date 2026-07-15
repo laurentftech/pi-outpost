@@ -1,0 +1,24 @@
+{
+  "cwd": "./workspace",
+  "agentDir": "./.pi-agent",
+  "sandbox": {
+    "root": "./workspace",
+    "allowWrite": true,
+    "writableRoot": "./workspace",
+    "allowBash": false
+  },
+  "noExtensions": true,
+  "extensionPaths": ["./mon-ext/index.ts"],
+  "noSkills": true,
+  "noPromptTemplates": true,
+  "webContext": false,
+  "server": {
+    "port": 3142,
+    "host": "127.0.0.1"
+  },
+  "branding": {
+    "title": "Pi-Outpost Demo",
+    "welcome": "Extension demo with relative path 👋",
+    "accentColor": "#0ea5e9"
+  }
+}

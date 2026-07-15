@@ -15,3 +15,8 @@ dist/
 pi-outpost.config.json
 .pi-outpost-test-agent/
 scratch/
+
+# Interactive test ephemeral data
+interactive-test/workspace/
+interactive-test/.pi-agent/
+interactive-test/*.log
