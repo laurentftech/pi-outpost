@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { getFormattedToolOutput } from "../src/components/ToolCard.tsx";
+import { getFormattedToolOutput } from "../src/toolOutput.ts";
 
 // Test cases based on actual openlore output
 test("formats openlore orient output correctly", () => {

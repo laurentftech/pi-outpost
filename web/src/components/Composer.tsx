@@ -107,13 +107,12 @@ export function Composer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mention?.query]);
 
-  const fileSuggestions = mention && fileSearch?.query === mention.query ? fileSearch.results : [];
-
   const menu = useMemo(() => {
     if (commandSuggestions.length > 0) return { kind: "command" as const, items: commandSuggestions };
-    if (mention && fileSuggestions.length > 0) return { kind: "file" as const, items: fileSuggestions };
+    const fileItems = mention && fileSearch?.query === mention.query ? fileSearch.results : [];
+    if (fileItems.length > 0) return { kind: "file" as const, items: fileItems };
     return null;
-  }, [commandSuggestions, mention, fileSuggestions]);
+  }, [commandSuggestions, mention, fileSearch]);
 
   const open = menu !== null && !dismissed;
 
