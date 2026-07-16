@@ -15,5 +15,5 @@ import type { ExtensionFactory } from "@earendil-works/pi-coding-agent";
 import monExt from "../../interactive-test/mon-ext/index.ts";
 
 export const seaExtensionFactories: ExtensionFactory[] = [
-  monExt,
+  monExt as unknown as ExtensionFactory,
 ];
