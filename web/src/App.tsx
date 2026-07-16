@@ -1,4 +1,4 @@
-import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
+import { forwardRef, Fragment, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import type { Theme, WireImage } from "@pi-outpost/shared";
 import { AssistantMessage } from "./components/AssistantMessage";
 import {
@@ -388,13 +388,23 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
                 // never bleeds across session_replaced
                 const key = `${state.sessionId}:${i}`;
                 if (item.kind === "user") {
+                  const showSpinner = i === state.items.length - 1 && state.isStreaming;
                   return (
-                    <UserMessage
-                      key={key}
-                      item={item}
-                      canEdit={!state.isStreaming && state.connected}
-                      onEdit={editPrompt}
-                    />
+                    <Fragment key={key}>
+                      <UserMessage
+                        item={item}
+                        canEdit={!state.isStreaming && state.connected}
+                        onEdit={editPrompt}
+                      />
+                      {showSpinner && (
+                        <div className="flex justify-end px-4">
+                          <div className="flex items-center gap-2 py-1">
+                            <span className="inline-block h-4 w-4 animate-spin rounded-full border-[3px] border-zinc-300 border-t-blue-500 dark:border-zinc-600 dark:border-t-blue-400 motion-reduce:animate-pulse" />
+                            <span className="text-xs text-zinc-400 dark:text-zinc-500">working…</span>
+                          </div>
+                        </div>
+                      )}
+                    </Fragment>
                   );
                 }
                 if (item.kind === "tool") {

@@ -323,13 +323,6 @@ export function Header(props: HeaderProps) {
         {props.title ?? "π"}
       </span>
 
-      {isStreaming && (
-        <span aria-live="polite" className="flex items-center gap-1.5 text-xs text-amber-600 dark:text-amber-400">
-          <span className="h-1.5 w-1.5 animate-pulse motion-reduce:animate-none rounded-full bg-amber-500 dark:bg-amber-400" />
-          working
-        </span>
-      )}
-
       {Object.entries(props.statuses).map(([key, text]) => (
         <span
           key={key}
