@@ -20,21 +20,21 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+      
+      # On commence en Node 22 pour les tests et le lint
       - uses: actions/setup-node@v5
         with:
-          node-version: 24
+          node-version: 22
           cache: npm
           registry-url: https://registry.npmjs.org
 
       # Trusted publishing (OIDC) needs npm >= 11.5.1; Node 22 ships npm 10.
-      # Without this npm never even attempts OIDC, and asks for a token instead.
       - run: npm install -g npm@latest
 
       - run: npm ci
 
       # A tag claims a version; at least one package must actually be at it, and none
-      # may disagree with it. (The two packages version independently — a cli-only
-      # release leaves embed behind, and must not force a no-op republish of it.)
+      # may disagree with it.
       - name: Tag must match the packages it releases
         id: plan
         run: |
@@ -44,7 +44,6 @@ jobs:
             version=$(node -p "require('./$pkg/package.json').version")
             if [ "$version" = "$tag" ]; then
               name=$(node -p "require('./$pkg/package.json').name")
-              # Idempotent: a re-run after a half-published tag skips what already landed
               if npm view "$name@$tag" version > /dev/null 2>&1; then
                 echo "$name@$tag is already on npm — skipping"
               else
@@ -58,24 +57,26 @@ jobs:
           fi
           echo "publish=$publish" >> "$GITHUB_OUTPUT"
 
-      # The same gates as CI — a tag must not be a way around them.
+      # Tests et Lint en Node 22
       - run: npm run typecheck
       - run: npm run lint
       - run: npm test --workspace server
       - run: npm run build
 
-      # Build the blob SEA
+      # BASCULE vers Node 24 spécifiquement pour le build du blob (SEA)
+      - name: Setup Node 24 for SEA build
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+
+      # Build the blob SEA (en Node 24)
       - run: npm run build:sea --workspace server
       
-      # prepack rebuilds each package from this clean checkout, so what ships is what
-      # was just tested — never a stale dist/ from someone's machine.
-      #
-      # No credential here on purpose: npm authenticates with the OIDC token above,
-      # against the trusted publisher registered for each package. `--provenance` is
-      # not passed either — trusted publishing attests it on its own.
-            
+      # Le publish peut se faire en Node 24 sans problème
       - name: Publish
         run: |
           for pkg in ${{ steps.plan.outputs.publish }}; do
             npm publish --workspace "$pkg"
           done
+
