@@ -67,6 +67,9 @@ import {
   toSummary,
 } from "./sessions.ts";
 import { seaExtensionFactories } from "./sea-extensions.ts";
+// Generated at build time (cli/scripts/build.mjs, server/scripts/build-sea.mjs).
+// Empty map in dev — see the comment at the static-serving block below.
+import { EMBEDDED_WEB } from "./embedded-web.ts";
 
 // Replaced at bundle time; `typeof` on an undeclared name is safe, so a source run says "dev".
 declare const __PI_OUTPOST_VERSION__: string;
@@ -385,7 +388,29 @@ for (const candidate of webDistCandidates) {
     break;
   }
 }
-if (WEB_DIST !== undefined) {
+
+// Prefer the inlined UI (self-contained SEA/npm bundle) — no web/ folder needed
+// next to the executable. Falls back to fastifyStatic from disk for dev/npm
+// builds that don't embed it.
+if (EMBEDDED_WEB && Object.keys(EMBEDDED_WEB).length > 0) {
+  const serveAsset = (reply: any, url: string) => {
+    const asset = EMBEDDED_WEB[url];
+    if (!asset) {
+      reply.code(404);
+      return reply.send("Not found");
+    }
+    reply.header("Content-Type", asset.type);
+    reply.send(Buffer.from(asset.b64, "base64"));
+  };
+  app.get("/*", async (req: any, reply: any) => {
+    const url = (req.params["*"] as string) || "";
+    if (url === "" || url.endsWith("/")) {
+      return serveAsset(reply, "/index.html");
+    }
+    return serveAsset(reply, "/" + url);
+  });
+  console.log(`[server] serving web UI from embedded bundle (${Object.keys(EMBEDDED_WEB).length} assets)`);
+} else if (WEB_DIST !== undefined) {
   await app.register(fastifyStatic, { root: WEB_DIST });
   console.log(`[server] serving web UI from ${WEB_DIST}`);
 }

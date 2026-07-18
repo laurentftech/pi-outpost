@@ -47,6 +47,12 @@ if (!existsSync(WEB_DIST)) {
 
 await mkdir(OUT_DIR, { recursive: true });
 
+// Inline the built UI into the bundle (self-contained .exe — no web/ folder needed)
+console.log("[build-sea] inlining web UI into the server bundle …");
+const { generateEmbeddedWeb } = await import("../../cli/scripts/embed-web.mjs");
+const embeddedCount = await generateEmbeddedWeb(WEB_DIST, resolve(SERVER_DIR, "src/embedded-web.ts"));
+console.log(`[build-sea] embedded ${embeddedCount} web assets`);
+
 // ── 1. Bundle server as ESM ──────────────────────────────────────────────────
 console.log("[build-sea] bundling server/src/index.ts …");
 await esbuild.build({

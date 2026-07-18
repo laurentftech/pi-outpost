@@ -2,6 +2,9 @@
 # openlore analysis artifacts
 .openlore/
 
+# Generated at build time: web UI inlined into the SEA/npm bundle
+server/src/embedded-web.ts
+
 node_modules/
 dist/
 *.log

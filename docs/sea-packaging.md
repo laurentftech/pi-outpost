@@ -1,8 +1,10 @@
 # Packaging pi-outpost as a Windows executable (Node SEA)
 
 Node's [Single Executable Applications](https://nodejs.org/api/single-executable-applications.html)
-(SEA) feature bundles the server into one `.exe` with the Node runtime baked
-in — end users need nothing installed, no `npm install`, no terminal.
+(SEA) feature bundles the server **and the built web UI** into one `.exe` with
+the Node runtime baked in — end users need nothing installed, no `npm install`,
+no terminal, and **no separate web/ folder** next to the executable. The UI is
+inlined at build time into the bundle.
 
 > **Requires Node ≥ 26** (for `--build-sea` + `mainFormat: "module"` support).
 
@@ -16,35 +18,38 @@ npm install pi-outpost
 
 # 2. Create a SEA config file
 # (on Windows the output must end in .exe)
+# NOTE: -Encoding utf8NoBOM — plain utf8 adds a BOM that breaks Node's JSON parse
 @'
 { "main": "node_modules/pi-outpost/dist/pi-outpost.sea.mjs",
   "output": "pi-outpost.exe",
   "mainFormat": "module" }
-'@ | Out-File -Encoding utf8 sea-config.json
+'@ | Out-File -Encoding utf8NoBOM sea-config.json
 
 # 3. Build the executable (Node ≥ 26 only)
 node --build-sea sea-config.json
 
-# 4. Run it
+# 4. Run it (the web UI is already inside the .exe — nothing else to copy)
 .\pi-outpost.exe --version
 ```
 
 The published npm package ships two bundles:
 - `pi-outpost.mjs` (≈ 2 MB) — npm dependencies external, for `npx` / `npm start`.
-- `pi-outpost.sea.mjs` (≈ 16 MB) — all dependencies inlined, for `--build-sea`.
+- `pi-outpost.sea.mjs` (≈ 21 MB) — all dependencies **and the web UI** inlined, for `--build-sea`.
 
 ## Build from source
 
 ```bash
 npm run build --workspace web       # web UI
-npm run build --workspace pi-outpost # produces both .mjs bundles in cli/dist/
-npm run build:sea --workspace server # .exe + sea-prep.blob in server/dist/
+npm run build --workspace pi-outpost # produces both .mjs bundles in cli/dist/ (UI inlined)
+npm run build:sea --workspace server # .exe + sea-prep.blob in server/dist/ (UI inlined)
 ```
 
 The `build:sea` step in `server/scripts/build-sea.mjs`:
-1. **Bundles** `server/src/index.ts` via esbuild into one ESM file (`bundle.mjs`).
-2. **Generates a cross-platform blob** (`sea-prep.blob`) via `--experimental-sea-config`.
-3. **On Windows only** (skipped in CI), builds a native `.exe` via `--build-sea`.
+1. **Builds the web UI** (`npm run build --workspace web`) and **inlines it** into
+   `server/src/embedded-web.ts` so the bundle is self-contained.
+2. **Bundles** `server/src/index.ts` via esbuild into one ESM file (`bundle.mjs`).
+3. **Generates a cross-platform blob** (`sea-prep.blob`) via `--experimental-sea-config`.
+4. **On Windows only** (skipped in CI), builds a native `.exe` via `--build-sea`.
 
 ## Using the cross-platform blob (any platform)
 

@@ -37,6 +37,12 @@ const piSdkVersion = JSON.parse(readFileSync(resolve(dirname(piSdkMain), "..", "
 console.log("[build] building the web UI …");
 execFileSync("npm", ["run", "build", "--workspace", "web"], { cwd: REPO_ROOT, stdio: "inherit", shell: isWindows });
 
+// Inline the built UI into the bundle (self-contained .exe — no web/ folder needed)
+console.log("[build] inlining web UI into the server bundle …");
+const { generateEmbeddedWeb } = await import("./embed-web.mjs");
+const embeddedCount = await generateEmbeddedWeb(WEB_SRC, resolve(REPO_ROOT, "server/src/embedded-web.ts"));
+console.log(`[build] embedded ${embeddedCount} web assets`);
+
 await rm(OUT_DIR, { recursive: true, force: true });
 await mkdir(OUT_DIR, { recursive: true });
 
