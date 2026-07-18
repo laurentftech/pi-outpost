@@ -93,7 +93,7 @@ export function SettingsMenu({ extensionPaths, sandbox, onUpdateConfig }: Settin
               ) : (
                 <ul className="space-y-1">
                   {extensionPaths.map((p, i) => (
-                    <li key={i} className="truncate rounded bg-zinc-50 px-2 py-1 text-xs text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400" title={p}>
+                    <li key={i} className="break-all rounded bg-zinc-50 px-2 py-1 text-xs text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400" title={p}>
                       {p}
                     </li>
                   ))}
