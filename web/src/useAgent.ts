@@ -216,7 +216,7 @@ function upsertTool(items: ChatItem[], toolCallId: string, toolName: string, pat
 
 function applySnapshot(state: AgentState, message: ServerMessage & { sessionId: string }): AgentState {
   if (message.type !== "hello" && message.type !== "session_replaced" && message.type !== "update_config_ack") return state;
-  console.log("[applySnapshot] sandbox from message:", message.sandbox, "type:", message.type, "sessionId:", message.sessionId);
+  console.log("[applySnapshot] sandbox from message:", message.sandbox, "type:", message.type, "sessionId:", message.sessionId, "fileTree keys:", Object.keys(state.fileTree).join(",") || "(empty)");
   const current = message.models.find((m) => `${m.provider}/${m.id}` === message.model);
   return {
     ...state,
@@ -244,6 +244,8 @@ function applySnapshot(state: AgentState, message: ServerMessage & { sessionId: 
     editorPrefill: null,
     // Stale after any snapshot: navigate_tree re-sends it, session switches invalidate it
     tree: null,
+    // The file tree is cached per BROWSER_ROOT — a replaced session may have a different root.
+    fileTree: {},
     writableRoot: message.writableRoot,
     gitAvailable: message.gitAvailable === true,
     credentials: message.credentials ?? null,
@@ -664,9 +666,13 @@ export function useAgent(serverUrl = "", explicitToken?: string, embedded = fals
         if (message.type === "file_changed") {
           const lastSlash = message.path.lastIndexOf("/");
           const parentPath = lastSlash < 0 ? "" : message.path.slice(0, lastSlash);
+          console.log("[file_changed] path=", message.path, "parentPath=", parentPath, "fileTree keys=", Object.keys(fileTreeRef.current).join(","));
           if (fileTreeRef.current[parentPath] !== undefined) {
+            console.log("[file_changed] parent found in fileTree, refreshing");
             dispatch({ type: "dir_list_started", path: parentPath });
             sendMessage({ type: "list_directory", path: parentPath, requestId: `dir:${crypto.randomUUID()}` });
+          } else {
+            console.log("[file_changed] parent NOT in fileTree, skipping refresh");
           }
           const openFile = openFileRef.current;
           if (openFile?.status === "loaded" && openFile.path === message.path) {
@@ -691,6 +697,12 @@ export function useAgent(serverUrl = "", explicitToken?: string, embedded = fals
           gitStatusSettled();
         }
         dispatch({ type: "server", message });
+        // A replaced session may have a different sandbox root — reload the root listing
+        if (message.type === "session_replaced") {
+          const requestId = `dir:${crypto.randomUUID()}`;
+          dispatch({ type: "dir_list_started", path: "" });
+          sendMessage({ type: "list_directory", path: "", requestId });
+        }
       };
       socket.onclose = (event) => {
         // Superseded sockets must not flip the indicator (StrictMode remount, reconnect races)

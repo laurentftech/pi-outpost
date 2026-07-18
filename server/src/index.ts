@@ -884,13 +884,19 @@ const pendingFileMutations = new Map<string, unknown>();
  */
 async function announceFileChange(args: unknown): Promise<void> {
   const targetPath = (args as { path?: unknown } | null)?.path;
+  console.log("[announceFileChange] args type=", typeof args, "targetPath=", targetPath);
   if (typeof targetPath !== "string") return;
   try {
     const resolved = await realResolve(path.resolve(BROWSER_ROOT, targetPath));
-    if (!isWithin(BROWSER_ROOT, resolved)) return;
+    if (!isWithin(BROWSER_ROOT, resolved)) {
+      console.log("[announceFileChange] not within BROWSER_ROOT, skipping");
+      return;
+    }
     const relPath = path.relative(BROWSER_ROOT, resolved).split(path.sep).join("/");
+    console.log("[announceFileChange] broadcasting file_changed path=", relPath);
     broadcast({ type: "file_changed", path: relPath });
-  } catch {
+  } catch (e) {
+    console.log("[announceFileChange] error:", e);
     // Resolution failure (e.g. race with the tool call) — nothing to invalidate
   }
 }
