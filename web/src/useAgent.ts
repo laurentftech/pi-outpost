@@ -216,6 +216,7 @@ function upsertTool(items: ChatItem[], toolCallId: string, toolName: string, pat
 
 function applySnapshot(state: AgentState, message: ServerMessage & { sessionId: string }): AgentState {
   if (message.type !== "hello" && message.type !== "session_replaced" && message.type !== "update_config_ack") return state;
+  console.log("[applySnapshot] sandbox from message:", message.sandbox, "type:", message.type, "sessionId:", message.sessionId);
   const current = message.models.find((m) => `${m.provider}/${m.id}` === message.model);
   return {
     ...state,

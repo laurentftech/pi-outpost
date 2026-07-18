@@ -597,15 +597,19 @@ function snapshot(): SessionSnapshot {
     gitAvailable: GIT !== null,
     credentials: credentialStatus(),
     extensionPaths: session.extensionRunner.getExtensionPaths(),
-    sandbox: config.sandbox
-      ? {
-          root: config.sandbox.root,
-          allowWrite: config.sandbox.allowWrite ?? false,
-          allowBash: config.sandbox.allowBash ?? false,
-          writableRoot: config.sandbox.writableRoot,
-          locks: config.sandboxLocks,
-        }
-      : undefined,
+    sandbox: (() => {
+      const v = config.sandbox
+        ? {
+            root: config.sandbox.root,
+            allowWrite: config.sandbox.allowWrite ?? false,
+            allowBash: config.sandbox.allowBash ?? false,
+            writableRoot: config.sandbox.writableRoot,
+            locks: config.sandboxLocks,
+          }
+        : undefined;
+      console.log("[snapshot] sandbox =", JSON.stringify(v));
+      return v;
+    })(),
   };
 }
 
