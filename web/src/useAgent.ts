@@ -253,6 +253,7 @@ function applySnapshot(state: AgentState, message: ServerMessage & { sessionId: 
     credentials: message.credentials ?? null,
     extensionPaths: message.extensionPaths ?? [],
     sandbox: message.sandbox ?? null,
+    versions: message.versions ?? null,
   };
 }
 
