@@ -249,8 +249,12 @@ app.get("/ws", { websocket: true }, (socket, req) => {
   }
   handleWsConnection(socket);
 });
-app.get("/health", () => {
+app.get("/health", (req, reply) => {
   const health = getHealth();
+  // During startup (getHealth stub returns { ok: false }), return 503 so
+  // callers don't mistake the HTTP 200 for readiness — the real handler
+  // (wired after createAgentSessionRuntime resolves) returns { ok: true }.
+  if (!health.ok) return reply.code(503).send({ ok: false });
   // With auth enabled, the public health probe must not leak the session id
   return config.token !== undefined ? { ok: health.ok } : health;
 });
