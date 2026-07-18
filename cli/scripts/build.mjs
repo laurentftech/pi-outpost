@@ -11,7 +11,7 @@
  * to load extensions at runtime) available, so config.extensionPaths works.
  */
 import { execFileSync } from "node:child_process";
-import { cp, chmod, mkdir, rm, stat } from "node:fs/promises";
+import { cp, chmod, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { dirname, resolve } from "node:path";
 import process from "node:process";
@@ -81,6 +81,42 @@ await esbuild.build({
     ].join("\n"),
   },
 });
+
+// ── Patch getAliases() for SEA mode ──────────────────────────────────────────
+// In SEA mode (or when running the bundled file outside node_modules), the
+// SDK's getAliases() calls require.resolve("typebox") relative to the bundle's
+// location on disk. Since the SEA bundle is fully inlined, there is no
+// node_modules/ at that path and require.resolve() throws MODULE_NOT_FOUND.
+// We wrap getAliases() so resolution failures produce empty aliases instead —
+// enough for extensions that use only type imports (stripped by jiti).
+{
+  console.log("[build] patching getAliases() for SEA bundle …");
+  let src = await readFile(SEA_BUNDLE, "utf-8");
+  // esbuild bundles with 2-space indentation — match it exactly
+  const openBefore =
+    "function getAliases() {\n" +
+    "  if (_aliases)\n" +
+    "    return _aliases;";
+  const openAfter =
+    "function getAliases() {\n" +
+    "  if (_aliases)\n" +
+    "    return _aliases;\n" +
+    "  try {";
+  const tailBefore =
+    "};\n" +
+    "  return _aliases;\n" +
+    "}";
+  const tailAfter =
+    "};\n" +
+    "  return _aliases;\n" +
+    "  } catch {\n" +
+    "    _aliases = {};\n" +
+    "    return _aliases;\n" +
+    "  }\n" +
+    "}";
+  src = src.replace(openBefore, openAfter).replace(tailBefore, tailAfter);
+  await writeFile(SEA_BUNDLE, src, "utf-8");
+}
 
 console.log("[build] copying the web UI …");
 await cp(WEB_SRC, WEB_OUT, { recursive: true });

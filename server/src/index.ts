@@ -399,6 +399,8 @@ const WEB_UI_CONTEXT = [
   "Avoid terminal-only affordances: no 'open this file in your editor' or 'run this command to view' phrasing, no ASCII art where a mermaid diagram or an image file works better.",
 ].join("\n");
 
+const DEBUG = process.env.PI_OUTPOST_DEBUG ? console.log : () => {};
+
 const createRuntime: CreateAgentSessionRuntimeFactory = async ({
   cwd,
   sessionManager,
@@ -438,6 +440,14 @@ const createRuntime: CreateAgentSessionRuntimeFactory = async ({
       ...(extraFactories.length > 0 ? { extensionFactories: extraFactories } : {}),
     },
   });
+  const extResult = services.resourceLoader.getExtensions();
+  if (extResult.errors.length > 0) {
+    for (const err of extResult.errors) {
+      console.error("[pi-outpost] Extension error:", err.path, err.error);
+    }
+  } else {
+    DEBUG("[pi-outpost] No extension errors. Loaded:", extResult.extensions.length, "extensions");
+  }
   return {
     ...(await createAgentSessionFromServices({
       services,
