@@ -63,6 +63,25 @@ await esbuild.build({
 });
 await chmod(BUNDLE, 0o755);
 
+// Also produce a fully-bundled version for --build-sea (no external deps)
+const SEA_BUNDLE = resolve(OUT_DIR, "pi-outpost.sea.mjs");
+console.log("[build] bundling SEA-ready version (all deps inlined) …");
+await esbuild.build({
+  entryPoints: [resolve(REPO_ROOT, "server/src/index.ts")],
+  bundle: true,
+  platform: "node",
+  format: "esm",
+  target: "node26",
+  outfile: SEA_BUNDLE,
+  define: { __PI_OUTPOST_VERSION__: JSON.stringify(version) },
+  banner: {
+    js: [
+      "#!/usr/bin/env node",
+      "import { createRequire as ___createRequire } from 'node:module'; const require = ___createRequire(import.meta.url);",
+    ].join("\n"),
+  },
+});
+
 console.log("[build] copying the web UI …");
 await cp(WEB_SRC, WEB_OUT, { recursive: true });
 
