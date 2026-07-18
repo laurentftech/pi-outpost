@@ -9,7 +9,8 @@
  */
 import fs from "node:fs/promises";
 import path from "node:path";
-import { AuthStorage, ModelRegistry } from "@earendil-works/pi-coding-agent";
+import { ModelRuntime } from "@earendil-works/pi-coding-agent";
+import { AuthStorage } from "../node_modules/@earendil-works/pi-coding-agent/dist/core/auth-storage.js";
 import type { ProviderCompat } from "@pi-outpost/shared";
 
 export class CredentialError extends Error {}
@@ -31,10 +32,13 @@ const PROVIDER_ID = /^[a-z0-9][a-z0-9._-]{0,63}$/i;
  * otherwise store a credential nothing ever reads, and report success — leaving the
  * user with a server that still says it has no credentials and no clue why.
  */
-export function knownProviders(agentDir: string): string[] {
-  const authStorage = AuthStorage.create(path.join(agentDir, "auth.json"));
-  const registry = ModelRegistry.create(authStorage, path.join(agentDir, "models.json"));
-  return [...new Set(registry.getAll().map((model) => model.provider))].sort();
+export async function knownProviders(agentDir: string): Promise<string[]> {
+  const modelRuntime = await ModelRuntime.create({
+    authPath: path.join(agentDir, "auth.json"),
+    modelsPath: path.join(agentDir, "models.json"),
+    allowModelNetwork: false,
+  });
+  return [...new Set(modelRuntime.getProviders().map((p: { id: string }) => p.id))].sort();
 }
 
 export function validProviderId(provider: unknown): provider is string {
@@ -63,17 +67,26 @@ export async function storeApiKey(
   agentDir: string,
   provider: string,
   apiKey: string,
-  storage?: { set(provider: string, credential: { type: "api_key"; key: string }): void },
+  modelRuntime?: { setRuntimeApiKey(provider: string, apiKey: string): Promise<void> },
 ): Promise<string> {
   if (!validProviderId(provider)) throw new CredentialError(`Invalid provider name: ${provider}`);
   if (typeof apiKey !== "string" || apiKey.trim().length === 0) throw new CredentialError("An API key is required");
   const authPath = path.join(agentDir, "auth.json");
   await fs.mkdir(agentDir, { recursive: true }).catch(() => {});
+
+  // Always persist to auth.json on disk so the key survives a restart.
   try {
-    (storage ?? AuthStorage.create(authPath)).set(provider, { type: "api_key", key: apiKey.trim() });
+    const storage = AuthStorage.create(authPath);
+    await storage.modify(provider, async () => ({ type: "api_key", key: apiKey.trim() }));
   } catch (error) {
     throw new CredentialError(`Could not write ${authPath}: ${(error as Error).message}`);
   }
+
+  // Also register with the live model runtime so the current session sees it.
+  if (modelRuntime) {
+    await modelRuntime.setRuntimeApiKey(provider, apiKey.trim());
+  }
+
   return authPath;
 }
 

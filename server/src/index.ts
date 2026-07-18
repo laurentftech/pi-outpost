@@ -156,7 +156,7 @@ if (cli.command === "login") {
     }
     // A typo would otherwise store a key nothing reads, and say "stored" — leaving a
     // server that still reports no credentials, for no visible reason.
-    const known = knownProviders(AGENT_DIR);
+    const known = await knownProviders(AGENT_DIR);
     if (!known.includes(cli.login.provider)) {
       throw new CliError(`unknown provider "${cli.login.provider}" — known: ${known.join(", ")}`);
     }
@@ -466,7 +466,7 @@ function contextUsage(): ContextUsage | undefined {
 }
 
 function availableModels(): ModelChoice[] {
-  let models = runtime.services.modelRegistry.getAvailable();
+  let models = runtime.services.modelRuntime.getAvailableSnapshot();
   if (config.allowedModels) {
     const allowed = config.allowedModels;
     models = models.filter((m) => allowed.some((a) => a.provider === m.provider && a.id === m.id));
@@ -488,14 +488,14 @@ function availableModels(): ModelChoice[] {
  * list, which conflates the two.
  */
 function credentialStatus(): CredentialStatus {
-  const registry = runtime.services.modelRegistry;
+  const runtime_ = runtime.services.modelRuntime;
   const providers = new Map<string, { id: string; name: string; configured: boolean }>();
-  for (const model of registry.getAll()) {
-    if (providers.has(model.provider)) continue;
-    providers.set(model.provider, {
-      id: model.provider,
-      name: registry.getProviderDisplayName(model.provider),
-      configured: registry.getProviderAuthStatus(model.provider).configured,
+  for (const provider of runtime_.getProviders()) {
+    if (providers.has(provider.id)) continue;
+    providers.set(provider.id, {
+      id: provider.id,
+      name: provider.name ?? provider.id,
+      configured: runtime_.getProviderAuthStatus(provider.id).configured,
     });
   }
   const usableModel = availableModels().length > 0;
@@ -1027,15 +1027,15 @@ async function replaceSession(socket: WebSocket, action: () => Promise<{ cancell
  */
 async function handleSetCredential(socket: WebSocket, provider: string, apiKey: string): Promise<void> {
   try {
-    // Through the session's own AuthStorage: the registry reads that instance, so a
-    // key written with any other one would sit on disk while the agent still claims
-    // to have none.
-    await storeApiKey(AGENT_DIR, provider, apiKey, runtime.services.authStorage);
+    // Through the session's own ModelRuntime: the live registry reads its auth
+    // through that instance, so a key written with any other one would sit on
+    // disk while the agent still claims to have none.
+    await storeApiKey(AGENT_DIR, provider, apiKey, runtime.services.modelRuntime);
   } catch (error) {
     send(socket, { type: "error", message: error instanceof CredentialError ? error.message : String(error) });
     return;
   }
-  runtime.services.modelRegistry.refresh();
+  await runtime.services.modelRuntime.refresh();
   await adoptUsableModel(socket);
 }
 
@@ -1045,10 +1045,10 @@ async function handleDeclareProvider(socket: WebSocket, declaration: ProviderDec
     // Register *first*: it validates, and a declaration the registry rejects must never
     // reach models.json. The SDK falls back to built-in models only when that file does
     // not load — so one bad entry would take the user's other custom providers with it.
-    runtime.services.modelRegistry.registerProvider(declaration.provider, providerConfig(declaration));
+    runtime.services.modelRuntime.registerProvider(declaration.provider, providerConfig(declaration));
     await storeProvider(AGENT_DIR, declaration);
   } catch (error) {
-    runtime.services.modelRegistry.unregisterProvider(declaration.provider);
+    runtime.services.modelRuntime.unregisterProvider(declaration.provider);
     send(socket, { type: "error", message: error instanceof CredentialError ? error.message : String(error) });
     return;
   }
@@ -1083,7 +1083,7 @@ async function adoptUsableModel(socket: WebSocket): Promise<void> {
   const current = runtime.session.model as { provider?: string; id?: string } | undefined;
   const usable = choices.some((choice) => choice.provider === current?.provider && choice.id === current?.id);
   if (!usable) {
-    const target = runtime.services.modelRegistry.find(choices[0].provider, choices[0].id);
+    const target = runtime.services.modelRuntime.getModel(choices[0].provider, choices[0].id);
     if (target) await runtime.session.setModel(target);
   }
   announce();
@@ -1294,12 +1294,12 @@ async function maybeNameSession(): Promise<void> {
   if (!model) return;
   namingSessions.add(file);
   try {
-    const auth = await runtime.services.modelRegistry.getApiKeyAndHeaders(model);
-    if (!auth.ok) return;
+    const auth = await runtime.services.modelRuntime.getAuth(model);
+    if (!auth) return;
     const title = await generateSessionTitle({
       exchange,
       model,
-      auth: { apiKey: auth.apiKey, headers: auth.headers, env: auth.env },
+      auth: { apiKey: auth.auth.apiKey, headers: auth.auth.headers as Record<string, string> | undefined, env: auth.env },
       // Same stream function as a real turn: a provider whose key lives in the
       // environment (the registry never resolves those) still authenticates
       streamFn: session.agent.streamFn,
@@ -1628,7 +1628,7 @@ function handleClientMessage(socket: WebSocket, raw: string): void {
       break;
     case "set_model": {
       if (typeof message.provider !== "string" || typeof message.id !== "string") return;
-      const model = runtime.services.modelRegistry.find(message.provider, message.id);
+      const model = runtime.services.modelRuntime.getModel(message.provider, message.id);
       if (!model) {
         send(socket, { type: "error", message: `Unknown model ${message.provider}/${message.id}` });
         return;
