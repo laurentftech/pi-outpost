@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { MIN_SESSION_QUERY_LENGTH, type GitLogEntry, type SessionSummary, type TreeNode } from "@pi-outpost/shared";
 import type { GitStatusState, SessionSearch } from "../useAgent";
 import { GitMenu } from "./GitMenu";
+import { SettingsMenu } from "./SettingsMenu";
 import { TreeMenu } from "./TreeMenu";
 
 interface HeaderProps {
@@ -23,6 +24,9 @@ interface HeaderProps {
   gitAvailable: boolean;
   gitStatus: GitStatusState | null;
   gitLog: GitLogEntry[] | null;
+  extensionPaths: string[];
+  sandbox: { root: string; allowWrite: boolean; allowBash: boolean; writableRoot?: string } | null;
+  onUpdateConfig: (sandbox: { root: string; allowWrite: boolean; allowBash: boolean; writableRoot?: string }) => void;
   onToggleSidebar: () => void;
   onToggleHideTools: () => void;
   onToggleTheme: () => void;
@@ -372,6 +376,11 @@ export function Header(props: HeaderProps) {
           onRenameSession={props.onRenameSession}
           onSearchSessions={props.onSearchSessions}
           onClearSessionSearch={props.onClearSessionSearch}
+        />
+        <SettingsMenu
+          extensionPaths={props.extensionPaths}
+          sandbox={props.sandbox}
+          onUpdateConfig={props.onUpdateConfig}
         />
         <span
           className={`h-2 w-2 rounded-full ${connected ? "bg-emerald-500" : "bg-red-500"}`}

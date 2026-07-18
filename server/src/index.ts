@@ -170,10 +170,10 @@ if (cli.command === "login") {
   }
 }
 
-const sandboxedTools = config.sandbox ? await createSandboxedTools(config.sandbox) : undefined;
-const BROWSER_ROOT = await resolveBrowserRoot(config);
-const WRITABLE_ROOT = await resolveWritableRoot(config, BROWSER_ROOT);
-const GIT = await probeGit(BROWSER_ROOT);
+let sandboxedTools = config.sandbox ? await createSandboxedTools(config.sandbox) : undefined;
+let BROWSER_ROOT = await resolveBrowserRoot(config);
+let WRITABLE_ROOT = await resolveWritableRoot(config, BROWSER_ROOT);
+let GIT = await probeGit(BROWSER_ROOT);
 
 // --- HTTP server ---------------------------------------------------------------
 //
@@ -574,6 +574,9 @@ function branchUserEntries(): { entryId: string; text: string }[] {
     .map((e) => ({ entryId: e.id, text: contentText(e.message!.content as never) }));
 }
 
+/** Sandbox paths to announce after updating. */
+let lastAnnouncedSandbox: { root: string; allowWrite: boolean; allowBash: boolean; writableRoot?: string } | undefined;
+
 function snapshot(): SessionSnapshot {
   const session = runtime.session;
   return {
@@ -593,6 +596,16 @@ function snapshot(): SessionSnapshot {
     writableRoot: WRITABLE_ROOT,
     gitAvailable: GIT !== null,
     credentials: credentialStatus(),
+    extensionPaths: session.extensionRunner.getExtensionPaths(),
+    sandbox: config.sandbox
+      ? {
+          root: config.sandbox.root,
+          allowWrite: config.sandbox.allowWrite ?? false,
+          allowBash: config.sandbox.allowBash ?? false,
+          writableRoot: config.sandbox.writableRoot,
+          locks: config.sandboxLocks,
+        }
+      : undefined,
   };
 }
 
@@ -1051,6 +1064,58 @@ async function handleSetCredential(socket: WebSocket, provider: string, apiKey: 
   }
   await runtime.services.modelRuntime.refresh();
   await adoptUsableModel(socket);
+}
+
+/**
+ * Update sandbox config at runtime. Re-resolves the file browser paths and
+ * creates a fresh session so new tool restrictions take effect for subsequent
+ * turns. The running turn (if any) continues under the old sandbox.
+ */
+async function handleUpdateConfig(
+  socket: WebSocket,
+  newSandbox: { root: string; allowWrite: boolean; allowBash: boolean; writableRoot?: string },
+): Promise<void> {
+  if (replacingSession) {
+    send(socket, { type: "error", message: "Session change already in progress" });
+    return;
+  }
+
+  // Enforce locks from config: locked fields keep their current value
+  const locks = config.sandboxLocks ?? {};
+  const mergedSandbox = {
+    root: locks.root ? config.sandbox!.root : newSandbox.root,
+    allowWrite: locks.allowWrite ? config.sandbox!.allowWrite : newSandbox.allowWrite,
+    allowBash: locks.allowBash ? config.sandbox!.allowBash : newSandbox.allowBash,
+    writableRoot: locks.writableRoot ? config.sandbox!.writableRoot : newSandbox.writableRoot,
+  };
+
+  replacingSession = true;
+  try {
+    // Persist to the live config object so the next server start remembers
+    config.sandbox = {
+      root: mergedSandbox.root,
+      allowWrite: mergedSandbox.allowWrite,
+      allowBash: mergedSandbox.allowBash,
+      writableRoot: mergedSandbox.writableRoot,
+    };
+    BROWSER_ROOT = await resolveBrowserRoot(config);
+    WRITABLE_ROOT = await resolveWritableRoot(config, BROWSER_ROOT);
+    GIT = await probeGit(BROWSER_ROOT);
+    sandboxedTools = config.sandbox ? await createSandboxedTools(config.sandbox) : undefined;
+    // Replace the current session so the new runtime picks up the updated tools
+    const { cancelled } = await runtime.newSession();
+    if (!cancelled) await rebindAndAnnounce();
+  } catch (error) {
+    reportError(error);
+    try {
+      const { cancelled } = await runtime.newSession();
+      if (!cancelled) await rebindAndAnnounce();
+    } catch (recoveryError) {
+      reportError(recoveryError);
+    }
+  } finally {
+    replacingSession = false;
+  }
 }
 
 /** Declare an OpenAI-compatible endpoint: live for this session, and persisted for the next. */
@@ -1779,6 +1844,23 @@ function handleClientMessage(socket: WebSocket, raw: string): void {
         ...(message.compat ? { compat: message.compat } : {}),
       }).catch(reportError);
       break;
+    case "update_config": {
+      if (config.sandbox === undefined) {
+        send(socket, { type: "error", message: "No sandbox configured — cannot update" });
+        return;
+      }
+      if (
+        typeof message.sandbox?.root !== "string" ||
+        typeof message.sandbox.allowWrite !== "boolean" ||
+        typeof message.sandbox.allowBash !== "boolean" ||
+        (message.sandbox.writableRoot !== undefined && typeof message.sandbox.writableRoot !== "string")
+      ) {
+        send(socket, { type: "error", message: "Invalid sandbox config" });
+        return;
+      }
+      handleUpdateConfig(socket, message.sandbox).catch(reportError);
+      break;
+    }
   }
 }
 

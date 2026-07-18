@@ -61,6 +61,17 @@ export interface SandboxConfig {
   readExceptions: string[];
 }
 
+export interface SandboxLocks {
+  /** Whether sandbox.root is locked (not editable from UI). Default: false. */
+  root?: boolean;
+  /** Whether sandbox.allowWrite is locked. Default: false. */
+  allowWrite?: boolean;
+  /** Whether sandbox.allowBash is locked. Default: false. */
+  allowBash?: boolean;
+  /** Whether sandbox.writableRoot is locked. Default: false. */
+  writableRoot?: boolean;
+}
+
 export interface AppConfig {
   /** The file this configuration was read from — the one of four locations that won. */
   configFile: string;
@@ -70,6 +81,8 @@ export interface AppConfig {
   agentDir?: string;
   /** File-scoped sandbox. When set, built-in tools are replaced by scoped ones. */
   sandbox?: SandboxConfig;
+  /** Which sandbox fields the user's settings menu may not change. */
+  sandboxLocks?: SandboxLocks;
   /** Tool name allowlist (non-sandbox mode), e.g. ["read","grep","find","ls"]. */
   tools?: string[];
   /** Skip loading extensions entirely. */
@@ -358,6 +371,16 @@ export function loadConfig(
     if (config.sandbox.writableRoot && !fs.existsSync(config.sandbox.writableRoot)) {
       fail(`sandbox.writableRoot does not exist: ${config.sandbox.writableRoot}`);
     }
+  }
+
+  if (raw.sandboxLocks !== undefined) {
+    const locks = asObject(raw.sandboxLocks, "sandboxLocks");
+    config.sandboxLocks = {
+      root: optionalBoolean(locks, "root", false),
+      allowWrite: optionalBoolean(locks, "allowWrite", false),
+      allowBash: optionalBoolean(locks, "allowBash", false),
+      writableRoot: optionalBoolean(locks, "writableRoot", false),
+    };
   }
 
   config.tools = optionalStringArray(raw, "tools");

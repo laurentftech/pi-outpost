@@ -7,6 +7,9 @@
     "writableRoot": "./workspace",
     "allowBash": false
   },
+  "sandboxLocks": {
+    "allowBash": true
+  },
   "noExtensions": true,
   "extensionPaths": ["./mon-ext/index.ts"],
   "noSkills": false,

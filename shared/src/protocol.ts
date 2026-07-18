@@ -227,6 +227,17 @@ export interface SessionSnapshot {
   gitAvailable?: boolean;
   /** Which providers are usable, and whether the agent can answer at all. Never carries a key. */
   credentials?: CredentialStatus;
+  /** Absolute paths of loaded extension files. */
+  extensionPaths?: string[];
+  /** Sandbox configuration — absent when no sandbox is configured. */
+  sandbox?: {
+    root: string;
+    allowWrite: boolean;
+    allowBash: boolean;
+    writableRoot?: string;
+    /** Which fields the settings menu must not allow editing — set from config.sandboxLocks. */
+    locks?: { root?: boolean; allowWrite?: boolean; allowBash?: boolean; writableRoot?: boolean };
+  };
 }
 
 /**
@@ -322,6 +333,8 @@ export type ServerMessage =
   | { type: "git_log"; requestId: string; entries: GitLogEntry[] }
   | { type: "git_show"; requestId: string; sha: string; patch: string; truncated: boolean }
   | { type: "git_error"; requestId: string; message: string }
+  /** Sandbox config was updated — carries the full new snapshot after session replacement. */
+  | ({ type: "update_config_ack" } & SessionSnapshot)
   | ExtensionUIRequest;
 
 /** Client -> server */
@@ -373,6 +386,8 @@ export type ClientMessage =
   | { type: "set_credential"; provider: string; apiKey: string }
   /** Declare an OpenAI-compatible endpoint (a corporate gateway, vLLM, Ollama…). */
   | { type: "declare_provider"; provider: string; baseUrl: string; apiKey: string; models: string[]; compat?: ProviderCompat }
+  /** Update the sandbox config at runtime — server will replace the session with the new settings. */
+  | { type: "update_config"; sandbox: { root: string; allowWrite: boolean; allowBash: boolean; writableRoot?: string } }
   | ExtensionUIResponse;
 
 /**

@@ -118,6 +118,8 @@ export interface AgentState {
   /** Which providers can answer; drives the onboarding screen. Never carries a key. */
   credentials: CredentialStatus | null;
   fileSearch: FileSearch | null;
+  extensionPaths: string[];
+  sandbox: { root: string; allowWrite: boolean; allowBash: boolean; writableRoot?: string } | null;
   gitAvailable: boolean;
   gitStatus: GitStatusState | null;
   /** Worktree-vs-HEAD contents for the viewer's diff toggle. */
@@ -153,6 +155,8 @@ const initialState: AgentState = {
   fileTree: {},
   openFile: null,
   fileSearch: null,
+  extensionPaths: [],
+  sandbox: null,
   gitAvailable: false,
   credentials: null,
   gitStatus: null,
@@ -211,7 +215,7 @@ function upsertTool(items: ChatItem[], toolCallId: string, toolName: string, pat
 }
 
 function applySnapshot(state: AgentState, message: ServerMessage & { sessionId: string }): AgentState {
-  if (message.type !== "hello" && message.type !== "session_replaced") return state;
+  if (message.type !== "hello" && message.type !== "session_replaced" && message.type !== "update_config_ack") return state;
   const current = message.models.find((m) => `${m.provider}/${m.id}` === message.model);
   return {
     ...state,
@@ -242,6 +246,8 @@ function applySnapshot(state: AgentState, message: ServerMessage & { sessionId: 
     writableRoot: message.writableRoot,
     gitAvailable: message.gitAvailable === true,
     credentials: message.credentials ?? null,
+    extensionPaths: message.extensionPaths ?? [],
+    sandbox: message.sandbox ?? null,
   };
 }
 
@@ -301,6 +307,7 @@ function reduce(state: AgentState, action: Action): AgentState {
   switch (message.type) {
     case "hello":
     case "session_replaced":
+    case "update_config_ack":
       return applySnapshot(state, message);
     case "sessions":
       return { ...state, sessions: message.sessions };
@@ -795,5 +802,8 @@ export function useAgent(serverUrl = "", explicitToken?: string, embedded = fals
     /** Onboarding: declare an OpenAI-compatible endpoint (corporate gateway, vLLM, Ollama…). */
     declareProvider: (declaration: { provider: string; baseUrl: string; apiKey: string; models: string[]; compat?: ProviderCompat }) =>
       sendMessage({ type: "declare_provider", ...declaration }),
+    /** Update sandbox config at runtime. */
+    updateConfig: (sandbox: { root: string; allowWrite: boolean; allowBash: boolean; writableRoot?: string }) =>
+      sendMessage({ type: "update_config", sandbox }),
   };
 }

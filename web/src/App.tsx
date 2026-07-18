@@ -87,6 +87,7 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
     clearGitShow,
     setCredential,
     declareProvider,
+    updateConfig,
   } = useAgent(serverUrl, token, embedded);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
@@ -345,6 +346,9 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
             gitAvailable={state.gitAvailable}
             gitStatus={state.gitStatus}
             gitLog={state.gitLog}
+            extensionPaths={state.extensionPaths}
+            sandbox={state.sandbox}
+            onUpdateConfig={updateConfig}
             onFetchGitLog={fetchGitLog}
             onShowCommit={fetchGitShow}
           />
