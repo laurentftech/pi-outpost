@@ -21,6 +21,6 @@
     "concurrently": "^10.0.3"
   },
   "dependencies": {
-    "pi-outpost": "^0.6.2"
+    "pi-outpost": "^0.6.3"
   }
 }
