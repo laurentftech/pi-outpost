@@ -33,6 +33,7 @@ A Node server embeds a pi `AgentSession` and bridges it to a React chat UI over 
 - Sessions: list, resume, rename, delete, and full-text search across saved transcripts
 - Conversation tree: edit a past message to re-ask it, and the old exchange stays reachable as a branch you can navigate back to
 - File browser: lazy-loaded tree, full-size viewer (syntax-highlighted, Markdown rendered) and an editor with save inside the writable zone — all confined to the same root the agent's own tools can see; entries outside `sandbox.writableRoot` render dimmed
+- In-browser sandbox settings: tweak root, writable root, write and bash permissions from the gear menu — no config file edit or server restart needed
 - Attachments: drop or paste images and text files into the composer; the file you are previewing attaches itself as an `@path` reference, so the agent reads it on demand instead of the prompt carrying its content
 - Git: uncommitted-change badges in the tree, per-file diffs in the viewer, log and commit inspection
 - Slash commands with autocompletion (`/` in the composer: extension commands, prompt templates, skills)
