@@ -51,6 +51,32 @@ The `build:sea` step in `server/scripts/build-sea.mjs`:
 3. **Generates a cross-platform blob** (`sea-prep.blob`) via `--experimental-sea-config`.
 4. **On Windows only** (skipped in CI), builds a native `.exe` via `--build-sea`.
 
+## Server-only / embed mode (no inlined UI)
+
+By default the bundle inlines the entire web UI (≈ 185 assets) so the
+executable is self-contained. When you only need the **server** — e.g. to embed
+the UI as a Shadow-DOM widget in another app, or to serve a `web/` folder you
+build/update separately — skip the inlining with `BUILD_EMBED_WEB=0`:
+
+```bash
+BUILD_EMBED_WEB=0 npm run build --workspace pi-outpost   # server bundle, no inlined UI
+BUILD_EMBED_WEB=0 npm run build:sea --workspace server   # .exe, no inlined UI
+```
+
+With `BUILD_EMBED_WEB=0`:
+
+- `server/src/embedded-web.ts` is written **empty** (`EMBEDDED_WEB = {}`), so the
+  server falls back to serving the UI from a `web/` folder on disk (the
+  `fastifyStatic` path in `server/src/index.ts`).
+- The build still copies `web/dist` to `cli/dist/web/`, and the `.exe` looks for
+  `./web` next to it. To point at a different location, set
+  `PI_OUTPOST_WEB_DIST=/path/to/web/dist` at runtime.
+- Updating the UI is then a matter of rebuilding `web/` — no need to recompile
+  the server or re-inject the SEA blob.
+
+This is the recommended setup when the executable is a **backend for an embedded
+widget** rather than a standalone desktop app.
+
 ## Using the cross-platform blob (any platform)
 
 The `sea-prep.blob` is included in the npm package and can be injected into

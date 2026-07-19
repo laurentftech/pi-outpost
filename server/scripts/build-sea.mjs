@@ -47,11 +47,19 @@ if (!existsSync(WEB_DIST)) {
 
 await mkdir(OUT_DIR, { recursive: true });
 
-// Inline the built UI into the bundle (self-contained .exe — no web/ folder needed)
-console.log("[build-sea] inlining web UI into the server bundle …");
-const { generateEmbeddedWeb } = await import("../../cli/scripts/embed-web.mjs");
-const embeddedCount = await generateEmbeddedWeb(WEB_DIST, resolve(SERVER_DIR, "src/embedded-web.ts"));
-console.log(`[build-sea] embedded ${embeddedCount} web assets`);
+// Inline the built UI into the bundle (self-contained .exe — no web/ folder needed).
+// Set BUILD_EMBED_WEB=0 for server-only / embed mode: the UI is then served
+// from a web/ folder on disk (fastifyStatic fallback in server/src/index.ts).
+console.log("[build-sea] building the embedded web UI …");
+const { generateEmbeddedWeb, writeEmptyEmbeddedWeb } = await import("../../cli/scripts/embed-web.mjs");
+const EMBED_WEB = process.env.BUILD_EMBED_WEB !== "0";
+if (EMBED_WEB) {
+  const embeddedCount = await generateEmbeddedWeb(WEB_DIST, resolve(SERVER_DIR, "src/embedded-web.ts"));
+  console.log(`[build-sea] embedded ${embeddedCount} web assets`);
+} else {
+  await writeEmptyEmbeddedWeb(resolve(SERVER_DIR, "src/embedded-web.ts"));
+  console.log("[build-sea] server-only mode: web UI served from disk (web/), not embedded");
+}
 
 // ── 1. Bundle server as ESM ──────────────────────────────────────────────────
 console.log("[build-sea] bundling server/src/index.ts …");

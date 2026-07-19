@@ -37,11 +37,19 @@ const piSdkVersion = JSON.parse(readFileSync(resolve(dirname(piSdkMain), "..", "
 console.log("[build] building the web UI …");
 execFileSync("npm", ["run", "build", "--workspace", "web"], { cwd: REPO_ROOT, stdio: "inherit", shell: isWindows });
 
-// Inline the built UI into the bundle (self-contained .exe — no web/ folder needed)
-console.log("[build] inlining web UI into the server bundle …");
-const { generateEmbeddedWeb } = await import("./embed-web.mjs");
-const embeddedCount = await generateEmbeddedWeb(WEB_SRC, resolve(REPO_ROOT, "server/src/embedded-web.ts"));
-console.log(`[build] embedded ${embeddedCount} web assets`);
+// Inline the built UI into the bundle (self-contained .exe — no web/ folder needed).
+// Set BUILD_EMBED_WEB=0 for server-only / embed mode: the UI is then served
+// from a web/ folder on disk (fastifyStatic fallback in server/src/index.ts).
+console.log("[build] building the embedded web UI …");
+const { generateEmbeddedWeb, writeEmptyEmbeddedWeb } = await import("./embed-web.mjs");
+const EMBED_WEB = process.env.BUILD_EMBED_WEB !== "0";
+if (EMBED_WEB) {
+  const embeddedCount = await generateEmbeddedWeb(WEB_SRC, resolve(REPO_ROOT, "server/src/embedded-web.ts"));
+  console.log(`[build] embedded ${embeddedCount} web assets`);
+} else {
+  await writeEmptyEmbeddedWeb(resolve(REPO_ROOT, "server/src/embedded-web.ts"));
+  console.log("[build] server-only mode: web UI served from disk (web/), not embedded");
+}
 
 await rm(OUT_DIR, { recursive: true, force: true });
 await mkdir(OUT_DIR, { recursive: true });
