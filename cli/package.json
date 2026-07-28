@@ -40,7 +40,7 @@
     "prepack": "node scripts/build.mjs"
   },
   "dependencies": {
-    "@earendil-works/pi-coding-agent": "^0.80.9",
+    "@earendil-works/pi-coding-agent": "^0.82.1",
     "@fastify/static": "^10.1.2",
     "@fastify/websocket": "^11.0.2",
     "fastify": "^5.3.0",
