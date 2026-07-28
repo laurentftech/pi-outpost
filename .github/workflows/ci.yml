@@ -27,4 +27,5 @@ jobs:
       - run: npm test --workspace server
         env:
           CI: true
+      - run: npm test --workspace ui
       - run: npm run build
