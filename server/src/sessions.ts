@@ -22,7 +22,7 @@ import { contentText } from "./convert.ts";
  * branch/compaction preamble, which would land verbatim in the session menu.
  */
 export type SdkModel = NonNullable<AgentSession["model"]>;
-export type SdkStreamFn = AgentSession["agent"]["streamFn"];
+export type SdkStreamFn = AgentSession["agent"]["streamFunction"];
 
 /** `apiKey` is only what the registry resolves eagerly — a provider whose key lives in an env var has none. */
 export interface RequestAuth {
@@ -118,9 +118,9 @@ export async function generateSessionTitle(options: {
   );
   const response = await stream.result();
   if (response.stopReason === "error" || response.stopReason === "aborted") return undefined;
-  const text = response.content
+  const text = (response.content as { type: string; text?: string }[])
     .filter((block) => block.type === "text")
-    .map((block) => block.text)
+    .map((block) => block.text ?? "")
     .join("");
   return sanitizeName(text) || undefined;
 }

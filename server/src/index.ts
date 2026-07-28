@@ -1428,7 +1428,7 @@ async function maybeNameSession(): Promise<void> {
       auth: { apiKey: auth.auth.apiKey, headers: auth.auth.headers as Record<string, string> | undefined, env: auth.env },
       // Same stream function as a real turn: a provider whose key lives in the
       // environment (the registry never resolves those) still authenticates
-      streamFn: session.agent.streamFn,
+      streamFn: session.agent.streamFunction,
       signal: AbortSignal.timeout(TITLE_TIMEOUT_MS),
     });
     if (!title) return;

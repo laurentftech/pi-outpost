@@ -10,7 +10,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
-import { AuthStorage } from "../node_modules/@earendil-works/pi-coding-agent/dist/core/auth-storage.js";
 import type { ProviderCompat } from "@pi-outpost/shared";
 
 export class CredentialError extends Error {}
@@ -76,8 +75,14 @@ export async function storeApiKey(
 
   // Always persist to auth.json on disk so the key survives a restart.
   try {
-    const storage = AuthStorage.create(authPath);
-    await storage.modify(provider, async () => ({ type: "api_key", key: apiKey.trim() }));
+    let auth: Record<string, unknown> = {};
+    try {
+      auth = JSON.parse(await fs.readFile(authPath, "utf8"));
+    } catch (error: unknown) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    }
+    auth[provider] = { type: "api_key", key: apiKey.trim() };
+    await fs.writeFile(authPath, JSON.stringify(auth, null, 2) + "\n", { mode: 0o600 });
   } catch (error) {
     throw new CredentialError(`Could not write ${authPath}: ${(error as Error).message}`);
   }

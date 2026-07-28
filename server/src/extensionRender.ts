@@ -7,10 +7,10 @@
  * layout (they are resolved at build time, so a restructured node_modules is caught
  * by tsc before shipping).
  */
-import { createCustomMessage } from "../node_modules/@earendil-works/pi-coding-agent/dist/core/messages.js";
-import { ansiLinesToHtml } from "../node_modules/@earendil-works/pi-coding-agent/dist/core/export-html/ansi-to-html.js";
-import { createToolHtmlRenderer } from "../node_modules/@earendil-works/pi-coding-agent/dist/core/export-html/tool-renderer.js";
-import { getThemeByName } from "../node_modules/@earendil-works/pi-coding-agent/dist/modes/interactive/theme/theme.js";
+import { createCustomMessage } from "../../node_modules/@earendil-works/pi-coding-agent/dist/core/messages.js";
+import { ansiLinesToHtml } from "../../node_modules/@earendil-works/pi-coding-agent/dist/core/export-html/ansi-to-html.js";
+import { createToolHtmlRenderer } from "../../node_modules/@earendil-works/pi-coding-agent/dist/core/export-html/tool-renderer.js";
+import { getThemeByName } from "../../node_modules/@earendil-works/pi-coding-agent/dist/modes/interactive/theme/theme.js";
 import type { MessageRenderer, ToolDefinition } from "@earendil-works/pi-coding-agent";
 import type { Theme } from "@earendil-works/pi-coding-agent";
 
@@ -146,8 +146,8 @@ export function renderCustomMessageHtml(
       details,
       new Date().toISOString(),
     );
-    const collapsed = componentToHtml(msgRenderer(message, { expanded: false }, renderer.theme) as RenderComponent);
-    const expanded = componentToHtml(msgRenderer(message, { expanded: true }, renderer.theme) as RenderComponent);
+    const collapsed = componentToHtml(msgRenderer(message, { expanded: false, outputPad: 0 }, renderer.theme) as RenderComponent);
+    const expanded = componentToHtml(msgRenderer(message, { expanded: true, outputPad: 0 }, renderer.theme) as RenderComponent);
     if (!expanded) return undefined;
     return {
       expanded,
