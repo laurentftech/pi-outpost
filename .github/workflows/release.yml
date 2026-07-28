@@ -62,6 +62,7 @@ jobs:
       - run: npm run build --workspace @pi-outpost/embed
       - run: npm run lint
       - run: npm test --workspace server
+      - run: npm test --workspace ui
       - run: npm run build
 
       # BASCULE vers Node 26 pour le build du blob SEA (--build-sea + mainFormat:module)
