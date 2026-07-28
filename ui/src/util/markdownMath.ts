@@ -13,8 +13,8 @@ export function normalizeMathDelimiters(text: string): string {
       i % 2 === 1
         ? segment
         : segment
-            .replace(/\\\[([\s\S]+?)\\\]/g, (_, math: string) => `$$${math}$$`)
-            .replace(/\\\(([\s\S]+?)\\\)/g, (_, math: string) => `$${math}$`),
+            .replace(/\\\[([^\]]*?)\\\]/g, (_, math: string) => `$$${math}$$`)
+            .replace(/\\\(([^)]*?)\\\)/g, (_, math: string) => `$${math}$`),
     )
     .join("");
 }
