@@ -1,4 +1,4 @@
-import { type DiffLine, rowsWithContext, toSideBySide, withContext } from "../diff";
+import { type DiffLine, rowsWithContext, toSideBySide, withContext } from "../util/diff";
 
 /** Side-by-side before/after view (edit-tool cards, viewer git diff). */
 export function SplitDiffBlock({ lines, fill = false }: { lines: DiffLine[]; fill?: boolean }) {

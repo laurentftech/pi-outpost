@@ -4,7 +4,7 @@ import rehypeKatex from "rehype-katex";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import type { ChatItem } from "@pi-outpost/shared";
-import { normalizeMathDelimiters } from "../markdownMath";
+import { normalizeMathDelimiters } from "../util/markdownMath";
 import { RenderedHtml } from "./RenderedHtml";
 
 type CustomItem = Extract<ChatItem, { kind: "custom" }>;

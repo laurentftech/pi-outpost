@@ -1,6 +1,15 @@
 import { forwardRef, Fragment, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import type { Theme, WireImage } from "@pi-outpost/shared";
-import { AssistantMessage } from "./components/AssistantMessage";
+import {
+  AssistantMessage,
+  CustomMessageCard,
+  ThemeContext,
+  ToolCard,
+  UserMessage,
+  useTheme,
+  isImageFile,
+  rawFileUrl,
+} from "@pi-outpost/ui";
 import {
   addPathAttachment,
   imagePreviewToAttachment,
@@ -11,7 +20,6 @@ import {
   textPreviewToAttachment,
 } from "./attachments";
 import { Composer } from "./components/Composer";
-import { CustomMessageCard } from "./components/CustomMessageCard";
 import { ExtensionDialog } from "./components/ExtensionDialog";
 import { ExtensionNotifications } from "./components/ExtensionNotifications";
 import { ExtensionWidgets } from "./components/ExtensionWidgets";
@@ -22,12 +30,7 @@ import { ModelBar } from "./components/ModelBar";
 import { Onboarding } from "./components/Onboarding";
 import { Sidebar } from "./components/Sidebar";
 import { TokenGate } from "./components/TokenGate";
-import { ToolCard } from "./components/ToolCard";
-import { UserMessage } from "./components/UserMessage";
-import { ThemeContext } from "./ThemeContext";
 import { useAgent } from "./useAgent";
-import { useTheme } from "./useTheme";
-import { isImageFile, rawFileUrl } from "./workspacePath";
 
 export interface AppHandle {
   setTheme(theme: Theme): void;

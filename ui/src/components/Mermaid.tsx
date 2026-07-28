@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState } from "react";
-import { useThemeContext } from "../ThemeContext";
+import { useThemeContext } from "../theme/ThemeContext";
 import { CopyButton } from "./CopyButton";
 
 type MermaidTheme = "dark" | "default";

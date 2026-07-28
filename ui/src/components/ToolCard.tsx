@@ -4,11 +4,11 @@ import rehypeKatex from "rehype-katex";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import type { ChatItem } from "@pi-outpost/shared";
-import { normalizeMathDelimiters } from "../markdownMath";
-import { diffLines } from "../diff";
+import { normalizeMathDelimiters } from "../util/markdownMath";
+import { diffLines } from "../util/diff";
 import { DiffBlock, SplitDiffBlock } from "./DiffBlocks";
 import { RenderedHtml } from "./RenderedHtml";
-import { getFormattedToolOutput } from "../toolOutput";
+import { getFormattedToolOutput } from "../util/toolOutput";
 
 type ToolItem = Extract<ChatItem, { kind: "tool" }>;
 

@@ -4,13 +4,17 @@ import rehypeKatex from "rehype-katex";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import type { GitFileState } from "@pi-outpost/shared";
-import { diffLines } from "../diff";
-import { normalizeMathDelimiters } from "../markdownMath";
 import type { GitDiffState, OpenFile } from "../useAgent";
-import { isImageFile, rawFileUrl, resolveRelativeHref } from "../workspacePath";
-import { CodeHighlight } from "./CodeHighlight";
-import { CopyButton } from "./CopyButton";
-import { SplitDiffBlock } from "./DiffBlocks";
+import {
+  CodeHighlight,
+  CopyButton,
+  diffLines,
+  isImageFile,
+  normalizeMathDelimiters,
+  rawFileUrl,
+  resolveRelativeHref,
+  SplitDiffBlock,
+} from "@pi-outpost/ui";
 
 interface FileViewerProps {
   file: OpenFile;

@@ -4,8 +4,8 @@ import rehypeKatex from "rehype-katex";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import type { ChatItem } from "@pi-outpost/shared";
-import { normalizeMathDelimiters } from "../markdownMath";
-import { isExternalRef, rawFileUrl, resolveRelativeHref } from "../workspacePath";
+import { normalizeMathDelimiters } from "../util/markdownMath";
+import { isExternalRef, rawFileUrl, resolveRelativeHref } from "../util/workspacePath";
 import { CopyButton } from "./CopyButton";
 import { Mermaid } from "./Mermaid";
 
