@@ -9,7 +9,9 @@ dist/
 .env
 .claude/settings.local.json
 .code-review-graph/
-.claude/settings.local.json
+
+# Test coverage artifacts (vitest --coverage)
+coverage/
 
 # Local test config (personal): the agent's workspace, its own agentDir, its writable zone
 /pi-outpost.config.json
