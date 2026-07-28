@@ -67,6 +67,6 @@
     "typescript": "~6.0.2",
     "vite": "^8.1.1",
     "vite-plugin-dts": "^5.0.3",
-    "web": "*"
+    "@pi-outpost/ui": "*"
   }
 }

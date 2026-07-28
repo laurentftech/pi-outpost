@@ -1,15 +1,12 @@
 import { forwardRef, Fragment, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import type { Theme, WireImage } from "@pi-outpost/shared";
-import {
-  AssistantMessage,
-  CustomMessageCard,
-  ThemeContext,
-  ToolCard,
-  UserMessage,
-  useTheme,
-  isImageFile,
-  rawFileUrl,
-} from "@pi-outpost/ui";
+import { AssistantMessage } from "./components/AssistantMessage";
+import { CustomMessageCard } from "./components/CustomMessageCard";
+import { ThemeContext } from "./theme/ThemeContext";
+import { ToolCard } from "./components/ToolCard";
+import { UserMessage } from "./components/UserMessage";
+import { useTheme } from "./theme/useTheme";
+import { isImageFile, rawFileUrl } from "./util/workspacePath";
 import {
   addPathAttachment,
   imagePreviewToAttachment,

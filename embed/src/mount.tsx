@@ -1,7 +1,7 @@
 import { createElement, createRef } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import type { Theme as WireTheme } from "@pi-outpost/shared";
-import App, { type AppHandle } from "web/App";
+import { App, type AppHandle } from "@pi-outpost/ui";
 // eslint-disable-next-line import/no-unresolved -- resolved at build time via the `?inline` query (raw CSS string)
 import css from "web/index.css?inline";
 

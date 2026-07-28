@@ -5,16 +5,12 @@ import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import type { GitFileState } from "@pi-outpost/shared";
 import type { GitDiffState, OpenFile } from "../useAgent";
-import {
-  CodeHighlight,
-  CopyButton,
-  diffLines,
-  isImageFile,
-  normalizeMathDelimiters,
-  rawFileUrl,
-  resolveRelativeHref,
-  SplitDiffBlock,
-} from "@pi-outpost/ui";
+import { CodeHighlight } from "./CodeHighlight";
+import { CopyButton } from "./CopyButton";
+import { SplitDiffBlock } from "./DiffBlocks";
+import { diffLines } from "../util/diff";
+import { isImageFile, rawFileUrl, resolveRelativeHref } from "../util/workspacePath";
+import { normalizeMathDelimiters } from "../util/markdownMath";
 
 interface FileViewerProps {
   file: OpenFile;
