@@ -73,11 +73,15 @@ npm run dev
 
 ```bash
 npm run test --workspace server        # integration tests: no model auth needed, no tokens spent
+npm run test --workspace ui            # component unit tests (vitest, jsdom, testing-library)
 npm run test:live --workspace server   # drives real agent turns (needs model auth, costs tokens)
 ```
 
-Each test boots a real server against a throwaway workspace (isolated `agentDir` — your sessions and
-extensions are never touched) and talks to it over HTTP/WebSocket. See `server/test/README.md`.
+Server integration tests boot a real server against a throwaway workspace (isolated `agentDir` — your
+sessions and extensions are never touched) and talk to it over HTTP/WebSocket. See `server/test/README.md`.
+
+UI component tests run under vitest with jsdom and `@testing-library/react`, covering components in
+`ui/src/components/` and utilities in `ui/src/util/`. They need no model auth and cost no tokens.
 
 > **Security note:** the server binds to `127.0.0.1` and validates the WebSocket `Origin` header. The agent has bash/edit/write tools — never expose this server on a network without the sandbox config below **and** an auth token: set `server.token` (or the `PI_OUTPOST_TOKEN` env variable, which wins) to a long random secret, e.g. `openssl rand -hex 32`. Binding off loopback without one is now **refused**, not merely discouraged: the WebSocket accepts connections with no `Origin` header (a local process already has shell access, so the check would be theatre), and with no token every request is valid — so `--host 0.0.0.0` alone would hand the agent to anything that can route to the host. Clients authenticate by opening `http://host:3141/?token=<secret>` once (stored locally, stripped from the URL) or via the embed widget's `token` option. Use a reverse proxy or Tailscale for transport encryption.
 
@@ -243,12 +247,22 @@ Custom messages (`pi.sendMessage()` with a `customType`, see [Message and Entry 
 ## Architecture
 
 ```
-web/  (React + Vite + Tailwind)          server/  (Fastify + ws)
-┌──────────────────────────┐             ┌─────────────────────────┐
-│ useAgent (WS + reducer)  │  /ws JSON   │ AgentSession (pi SDK)   │
-│ chat items: user /       │ ◄─────────► │ SDK events → lean wire  │
-│ assistant / tool cards   │             │ events (shared/)        │
-└──────────────────────────┘             └─────────────────────────┘
+shared/  (protocol types — events, ChatItem, DialogRequest)
+
+ui/  (React components & hooks)       server/  (Fastify + ws)
+┌──────────────────────────┐          ┌─────────────────────────┐
+│ @pi-outpost/ui exports  │          │ AgentSession (pi SDK)   │
+│ CopyButton, DiffBlocks, │  /ws     │ SDK events → lean wire  │
+│ ToolCard, useAgent, …   │ ◄───────► │ events (shared/)        │
+│                          │  JSON    │                         │
+└────────┬─────────────────┘          └─────────────────────────┘
+         │ import
+         ▼
+web/  (React + Vite + Tailwind)     embed/  (Shadow-DOM widget)
+┌──────────────────────┐            ┌──────────────────────────┐
+│ Standalone app       │            │ @pi-outpost/embed         │
+│ (mounts UI from ui/) │            │ (mounts UI from ui/)      │
+└──────────────────────┘            └──────────────────────────┘
 ```
 
 Sessions persist in `<agentDir>/sessions/` — reconnecting clients receive the full history (`hello` message).
