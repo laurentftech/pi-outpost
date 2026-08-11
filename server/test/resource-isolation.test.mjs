@@ -48,7 +48,7 @@ describe("resource isolation", () => {
         skillPaths: ["./test-skill"],
         noPromptTemplates: true,
         promptPaths: ["./test-prompt.md"],
-        server: { port: freePort() },
+        server: { port: await freePort() },
       });
 
       const client = connect(server.wsUrl());
@@ -106,7 +106,7 @@ describe("resource isolation", () => {
         noExtensions: true,
         noSkills: true,
         noPromptTemplates: true,
-        server: { port: freePort() },
+        server: { port: await freePort() },
       });
 
       const client = connect(server.wsUrl());
@@ -140,7 +140,7 @@ describe("resource isolation", () => {
       const server = await startServer(root, {
         noExtensions: true,
         extensionPaths: [path.join(FIXTURES, "test-extension.ts")],
-        server: { port: freePort() },
+        server: { port: await freePort() },
       });
 
       const client = connect(server.wsUrl());

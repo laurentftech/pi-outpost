@@ -6,6 +6,7 @@
  */
 import { spawn, execSync } from "node:child_process";
 import { mkdtemp, rm, writeFile, mkdir } from "node:fs/promises";
+import net from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -19,10 +20,28 @@ const ENTRY = path.join(SERVER_DIR, "src", "index.ts");
 // wrapper on Windows combined with `detached: true` produces spawn EINVAL.
 const TSX_LOADER = "--import=tsx/esm";
 
-/** Ports are per-suite so suites can run in parallel without colliding with a dev server. */
-let nextPort = 3400 + Math.floor(Math.random() * 200);
-export function freePort() {
-  return nextPort++;
+/**
+ * A port nothing else is on, from the OS.
+ *
+ * This used to be `3400 + random(200)` per process, incrementing. node --test runs
+ * test files in parallel, so two of them regularly drew the same base — and the
+ * loser's client then talked to the *other* file's server. When that server was
+ * auth.test.mjs's, which requires a token, the connection came back as
+ * `socket closed (4401)` in a test that never configured a token: the release run
+ * for v0.6.6 died that way. Binding port 0 and reading back what the kernel picked
+ * removes the guess.
+ */
+export async function freePort() {
+  const probe = net.createServer();
+  try {
+    await new Promise((resolve, reject) => {
+      probe.once("error", reject);
+      probe.listen(0, "127.0.0.1", resolve);
+    });
+    return probe.address().port;
+  } finally {
+    await new Promise((resolve) => probe.close(resolve));
+  }
 }
 
 /**
@@ -44,7 +63,7 @@ export async function makeWorkspace(files = {}) {
  * absolute). Resolves once /health answers. Always `await server.stop()`.
  */
 export async function startServer(root, config = {}, options = {}) {
-  const port = config.server?.port ?? freePort();
+  const port = config.server?.port ?? (await freePort());
   const full = {
     cwd: root,
     // Sessions, settings and extensions live inside the throwaway workspace: without

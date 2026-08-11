@@ -105,7 +105,7 @@ describe("sandbox readExceptions integration", () => {
       noSkills: true,
       skillPaths: [skillDir],
       noPromptTemplates: true,
-      server: { port: freePort() },
+      server: { port: await freePort() },
     });
   });
 
