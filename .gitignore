@@ -18,6 +18,10 @@ coverage/
 .pi-outpost-test-agent/
 scratch/
 
+# Agent resources the running agent discovers from cwd (prompts, skills). Local to
+# each checkout — the project's own copies live in .claude/.
+.pi/
+
 # Interactive test ephemeral data
 interactive-test/workspace/
 interactive-test/.pi-agent/
