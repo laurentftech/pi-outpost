@@ -37,4 +37,46 @@ describe("normalizeMathDelimiters", () => {
     expect(result).toContain("$x$");
     expect(result).toContain("$$\\sum x$$");
   });
+
+  // A formula opened one way and closed the other. Left alone, the opening $$ never
+  // closes: remark-math swallows the equation and every later $…$ in the message
+  // pairs up wrongly, so one malformed formula takes the whole answer down.
+  describe("delimiters the model mixed up", () => {
+    it("closes $$ opened math that ends with \\]", () => {
+      expect(normalizeMathDelimiters("$$e^{i\\pi} + 1 = 0\\]")).toBe("$$e^{i\\pi} + 1 = 0$$");
+    });
+
+    it("closes \\[ opened math that ends with $$", () => {
+      expect(normalizeMathDelimiters("\\[e^{i\\pi} + 1 = 0$$")).toBe("$$e^{i\\pi} + 1 = 0$$");
+    });
+
+    it("closes $ opened math that ends with \\)", () => {
+      expect(normalizeMathDelimiters("valeur $x\\) ici")).toBe("valeur $x$ ici");
+    });
+
+    it("closes \\( opened math that ends with $", () => {
+      expect(normalizeMathDelimiters("valeur \\(x$ ici")).toBe("valeur $x$ ici");
+    });
+
+    it("rescues the rest of the message, not just the broken formula", () => {
+      const result = normalizeMathDelimiters("$$e^{i\\pi} + 1 = 0\\]\n\nElle relie $e$ et $\\pi$.");
+      expect(result).toContain("$$e^{i\\pi} + 1 = 0$$");
+      expect(result).toContain("$e$ et $\\pi$");
+    });
+
+    it("leaves a lone dollar alone rather than swallowing the line", () => {
+      // A price, and an unrelated \) further along: the $ must not claim it.
+      expect(normalizeMathDelimiters("Ça coûte $5 et \\(x\\) suit")).toBe("Ça coûte $5 et $x$ suit");
+    });
+
+    it("does not pair across a paragraph break", () => {
+      const text = "$$x\n\nplus loin \\] ailleurs";
+      expect(normalizeMathDelimiters(text)).toBe(text);
+    });
+
+    it("still leaves mixed delimiters inside a fenced block alone", () => {
+      const text = "```latex\n$$e^{i\\pi} + 1 = 0\\]\n```";
+      expect(normalizeMathDelimiters(text)).toBe(text);
+    });
+  });
 });
