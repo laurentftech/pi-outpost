@@ -14,6 +14,13 @@ import type { ProviderCompat } from "@pi-outpost/shared";
 
 export class CredentialError extends Error {}
 
+/**
+ * The key reached disk, but the live model runtime did not take it — a distinct
+ * outcome from "could not store it": the credential survives a restart, so the
+ * caller should say so and carry on rather than report a failed login.
+ */
+export class CredentialSyncError extends Error {}
+
 /** OpenAI-compatible endpoint as the UI and the CLI describe it. */
 export interface ProviderDeclaration {
   provider: string;
@@ -66,7 +73,10 @@ export async function storeApiKey(
   agentDir: string,
   provider: string,
   apiKey: string,
-  modelRuntime?: { setRuntimeApiKey(provider: string, apiKey: string): Promise<void> },
+  modelRuntime?: {
+    setRuntimeApiKey(provider: string, apiKey: string, options?: { signal?: AbortSignal }): Promise<void>;
+  },
+  options?: { signal?: AbortSignal },
 ): Promise<string> {
   if (!validProviderId(provider)) throw new CredentialError(`Invalid provider name: ${provider}`);
   if (typeof apiKey !== "string" || apiKey.trim().length === 0) throw new CredentialError("An API key is required");
@@ -87,9 +97,17 @@ export async function storeApiKey(
     throw new CredentialError(`Could not write ${authPath}: ${(error as Error).message}`);
   }
 
-  // Also register with the live model runtime so the current session sees it.
+  // Also register with the live model runtime so the current session sees it. The
+  // SDK imposes no deadline of its own here (its operationSignal() is documented as
+  // normalising a signal "without imposing a deadline"), and the registration is
+  // serialised behind any credential operation already in flight for this provider —
+  // so without a caller-supplied signal this await can hang indefinitely.
   if (modelRuntime) {
-    await modelRuntime.setRuntimeApiKey(provider, apiKey.trim());
+    try {
+      await modelRuntime.setRuntimeApiKey(provider, apiKey.trim(), { signal: options?.signal });
+    } catch (error) {
+      throw new CredentialSyncError((error as Error).message, { cause: error });
+    }
   }
 
   return authPath;

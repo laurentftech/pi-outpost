@@ -42,6 +42,7 @@ import { CliError, helpText, parseCli, readSecret, runInit } from "./cli.ts";
 import { loadConfig, NoConfigError } from "./config.ts";
 import {
   CredentialError,
+  CredentialSyncError,
   knownProviders,
   type ProviderDeclaration,
   providerConfig,
@@ -1098,17 +1099,43 @@ async function replaceSession(socket: WebSocket, action: () => Promise<{ cancell
  * Rebuilding through replaceSession is what turns the onboarding screen into a
  * working chat without a restart or even a reload.
  */
+/** How long onboarding waits on the SDK before it reports what it has. */
+const CREDENTIAL_SYNC_TIMEOUT_MS = 20_000;
+
 async function handleSetCredential(socket: WebSocket, provider: string, apiKey: string): Promise<void> {
+  // Neither of the two SDK calls below carries a deadline of its own, and both are
+  // serialised behind whatever credential work is already in flight for this provider.
+  // Onboarding is a user pressing Save and watching a spinner, so give the pair a
+  // ceiling: past it, announce what we have rather than leaving the UI waiting forever.
+  const deadline = AbortSignal.timeout(CREDENTIAL_SYNC_TIMEOUT_MS);
+  const stalled = (step: string, error: unknown) =>
+    console.warn(
+      `[pi] ${provider} key stored, but ${step} did not finish within ${CREDENTIAL_SYNC_TIMEOUT_MS / 1000}s: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+
   try {
     // Through the session's own ModelRuntime: the live registry reads its auth
     // through that instance, so a key written with any other one would sit on
     // disk while the agent still claims to have none.
-    await storeApiKey(AGENT_DIR, provider, apiKey, runtime.services.modelRuntime);
+    await storeApiKey(AGENT_DIR, provider, apiKey, runtime.services.modelRuntime, { signal: deadline });
   } catch (error) {
-    send(socket, { type: "error", message: error instanceof CredentialError ? error.message : String(error) });
-    return;
+    // A key that never reached disk is a failed login. One that reached disk but not
+    // the live runtime is not: it works on the next start, and the snapshot below
+    // still tells the client where things stand.
+    if (!(error instanceof CredentialSyncError)) {
+      send(socket, { type: "error", message: error instanceof CredentialError ? error.message : String(error) });
+      return;
+    }
+    stalled("the live model runtime", error);
   }
-  await runtime.services.modelRuntime.refresh();
+
+  try {
+    await runtime.services.modelRuntime.refresh({ signal: deadline });
+  } catch (error) {
+    stalled("the model refresh", error);
+  }
   await adoptUsableModel(socket);
 }
 
