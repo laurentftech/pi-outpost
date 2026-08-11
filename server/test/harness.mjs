@@ -139,13 +139,17 @@ export function connect(url) {
     for (const waiter of [...waiters]) {
       if (waiter.matches(message)) {
         waiters.splice(waiters.indexOf(waiter), 1);
+        clearTimeout(waiter.timer);
         waiter.resolve(message);
       }
     }
   });
   ws.on("close", (code) => {
     closeInfo = { code };
-    for (const waiter of waiters.splice(0)) waiter.reject(new Error(`socket closed (${code})`));
+    for (const waiter of waiters.splice(0)) {
+      clearTimeout(waiter.timer);
+      waiter.reject(new Error(`socket closed (${code})`));
+    }
   });
 
   return {
@@ -153,29 +157,39 @@ export function connect(url) {
     received,
     closed: () => closeInfo,
     send: (message) => ws.send(JSON.stringify(message)),
-    /** First message matching `match` (a type string or predicate), or reject on timeout. */
+    /**
+     * First message matching `match` (a type string or predicate), or reject on timeout.
+     *
+     * The timer is cleared the moment the wait settles. Left running, it holds the event
+     * loop open for its full duration *after the test has passed*: a file whose longest
+     * wait is 180 s exits 180 s late, and node --test counts that idle process against
+     * its concurrency limit — starving the remaining files on a CI runner.
+     */
     waitFor(match, timeoutMs = 60_000) {
       const predicate = typeof match === "string" ? (m) => m.type === match : match;
       const existing = received.find(predicate);
       if (existing) return Promise.resolve(existing);
       return new Promise((resolve, reject) => {
         const waiter = { matches: predicate, resolve, reject };
-        waiters.push(waiter);
-        setTimeout(() => {
+        waiter.timer = setTimeout(() => {
           const i = waiters.indexOf(waiter);
           if (i >= 0) {
             waiters.splice(i, 1);
             reject(new Error(`timed out waiting for ${typeof match === "string" ? match : "predicate"}`));
           }
         }, timeoutMs);
+        waiters.push(waiter);
       });
     },
     /** Resolves with the close code (never rejects) — for auth rejection tests. */
     waitForClose(timeoutMs = 10_000) {
       if (closeInfo) return Promise.resolve(closeInfo.code);
       return new Promise((resolve, reject) => {
-        ws.on("close", (code) => resolve(code));
-        setTimeout(() => reject(new Error("socket did not close")), timeoutMs);
+        const timer = setTimeout(() => reject(new Error("socket did not close")), timeoutMs);
+        ws.on("close", (code) => {
+          clearTimeout(timer);
+          resolve(code);
+        });
       });
     },
     open() {
