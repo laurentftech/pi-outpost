@@ -68,7 +68,12 @@ export async function startServer(root, config = {}, options = {}) {
   // `options.env` patches the child's environment; a key set to undefined is *removed*.
   // Credential tests need that: the developer's own ANTHROPIC_API_KEY (or CI's) would
   // otherwise configure the very server the test needs to find unconfigured.
-  const env = { ...process.env, PI_OUTPOST_CONFIG: configPath };
+  // PI_OFFLINE keeps the SDK's model runtime off the network. Without it,
+  // ModelRuntime.refresh() fetches remote model catalogs — on a CI runner that
+  // request hangs, and set_credential went from ~200 ms to 20 s (its ceiling) in
+  // roughly a quarter of runs, which is the whole of #27. These tests assert local
+  // onboarding behaviour; a remote catalog has nothing to do with what they check.
+  const env = { ...process.env, PI_OUTPOST_CONFIG: configPath, PI_OFFLINE: "1" };
   for (const [key, value] of Object.entries(options.env ?? {})) {
     if (value === undefined) delete env[key];
     else env[key] = value;

@@ -41,12 +41,12 @@ test("an unconfigured server reports no usable model, then onboards without a re
 
     client.send({ type: "set_credential", provider: "anthropic", apiKey: "sk-ant-not-a-real-key" });
 
-    // Registering the key stays local: the SDK's anthropic provider declares no
-    // api-key `check`, so the availability pass behind set_credential resolves the
-    // credential from disk without a request. The default 60 s wait is generous —
-    // the whole exchange is a few hundred milliseconds. Earlier this wait was raised
-    // to 180 s to absorb "SDK network calls" that never happen; what it really
-    // absorbed was the harness leaking its own timer (see waitFor).
+    // Registering the key is local — the SDK's anthropic provider declares no api-key
+    // `check`, so it resolves the credential from disk. The model refresh that follows
+    // is *not*: it fetches remote catalogs, and on a CI runner that request hangs until
+    // the server's ceiling cuts it, which is what made this test flaky (#27). The
+    // harness runs the server with PI_OFFLINE, so the exchange stays in the hundreds of
+    // milliseconds and the default 60 s wait is generous.
     const replaced = await client
       .waitFor((m) => m.type === "credentials_changed")
       // Nothing else tells us why the server stayed silent, and this test only ever

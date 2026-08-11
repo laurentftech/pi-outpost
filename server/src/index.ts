@@ -1103,15 +1103,17 @@ async function replaceSession(socket: WebSocket, action: () => Promise<{ cancell
 const CREDENTIAL_SYNC_TIMEOUT_MS = 20_000;
 
 async function handleSetCredential(socket: WebSocket, provider: string, apiKey: string): Promise<void> {
-  // Neither of the two SDK calls below carries a deadline of its own, and both are
-  // serialised behind whatever credential work is already in flight for this provider.
-  // Onboarding is a user pressing Save and watching a spinner, so give the pair a
-  // ceiling: past it, announce what we have rather than leaving the UI waiting forever.
-  const deadline = AbortSignal.timeout(CREDENTIAL_SYNC_TIMEOUT_MS);
-  const stalled = (step: string, error: unknown) =>
+  // Neither of the two SDK calls below carries a deadline of its own. Onboarding is a
+  // user pressing Save and watching a spinner, so give each one a ceiling: past it,
+  // announce what we have rather than leaving the UI waiting forever.
+  //
+  // A ceiling *each*, not one shared between them: with a single signal, a first step
+  // that burns the whole budget leaves the second none, and the second would abort
+  // instantly for a reason that has nothing to do with it.
+  const stalled = (step: string, detail: unknown) =>
     console.warn(
       `[pi] ${provider} key stored, but ${step} did not finish within ${CREDENTIAL_SYNC_TIMEOUT_MS / 1000}s: ${
-        error instanceof Error ? error.message : String(error)
+        detail instanceof Error ? detail.message : String(detail)
       }`,
     );
 
@@ -1119,7 +1121,9 @@ async function handleSetCredential(socket: WebSocket, provider: string, apiKey: 
     // Through the session's own ModelRuntime: the live registry reads its auth
     // through that instance, so a key written with any other one would sit on
     // disk while the agent still claims to have none.
-    await storeApiKey(AGENT_DIR, provider, apiKey, runtime.services.modelRuntime, { signal: deadline });
+    await storeApiKey(AGENT_DIR, provider, apiKey, runtime.services.modelRuntime, {
+      signal: AbortSignal.timeout(CREDENTIAL_SYNC_TIMEOUT_MS),
+    });
   } catch (error) {
     // A key that never reached disk is a failed login. One that reached disk but not
     // the live runtime is not: it works on the next start, and the snapshot below
@@ -1132,7 +1136,16 @@ async function handleSetCredential(socket: WebSocket, provider: string, apiKey: 
   }
 
   try {
-    await runtime.services.modelRuntime.refresh({ signal: deadline });
+    // refresh() reaches the network unless PI_OFFLINE is set: it re-fetches remote
+    // model catalogs, and that request is what hangs on a constrained host.
+    //
+    // It also *swallows* an abort — it resolves with `{ aborted: true }` instead of
+    // throwing — so the catch below never sees one. Read the flag, or a refresh cut
+    // short at the ceiling passes for a clean one and the warning never fires.
+    const result = await runtime.services.modelRuntime.refresh({
+      signal: AbortSignal.timeout(CREDENTIAL_SYNC_TIMEOUT_MS),
+    });
+    if (result?.aborted) stalled("the model refresh", "aborted at the ceiling");
   } catch (error) {
     stalled("the model refresh", error);
   }
