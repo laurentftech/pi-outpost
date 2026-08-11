@@ -1,7 +1,7 @@
 /**
  * Conversion from SDK AgentMessage history to wire ChatItems.
  */
-import type { AssistantBlock, ChatItem, WireImage } from "@pi-outpost/shared";
+import type { AssistantBlock, ChatItem, TurnUsage, WireImage } from "@pi-outpost/shared";
 import {
   renderCustomMessageHtml,
   renderToolCallHtml,
@@ -32,6 +32,39 @@ interface AnyMessage {
   details?: unknown;
   /** Whether the message is shown in the transcript vs. sent to the LLM only. */
   display?: boolean;
+  /** Billing counters, on finished assistant messages. Shape: pi-ai's `Usage`. */
+  usage?: unknown;
+}
+
+const isNumber = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value);
+
+/**
+ * Billing counters off a finished assistant message.
+ *
+ * Deliberately strict: a turn is reported only when the four token counters are
+ * all present and numeric. Half a turn would quietly skew any total built on it,
+ * and a missing turn is honest in a way that a zeroed one is not — the same
+ * reason `cost` stays absent rather than defaulting to 0 for providers that
+ * price nothing.
+ */
+export function messageUsage(message: AnyMessage): TurnUsage | undefined {
+  const usage = message.usage;
+  if (typeof usage !== "object" || usage === null) return undefined;
+  const { input, output, cacheRead, cacheWrite, reasoning, totalTokens, cost } = usage as Record<string, unknown>;
+  if (!isNumber(input) || !isNumber(output) || !isNumber(cacheRead) || !isNumber(cacheWrite)) return undefined;
+
+  const total = isNumber(totalTokens) ? totalTokens : input + output + cacheRead + cacheWrite;
+  const costTotal = typeof cost === "object" && cost !== null ? (cost as Record<string, unknown>).total : undefined;
+
+  return {
+    input,
+    output,
+    cacheRead,
+    cacheWrite,
+    ...(isNumber(reasoning) ? { reasoning } : {}),
+    totalTokens: total,
+    ...(isNumber(costTotal) ? { cost: costTotal } : {}),
+  };
 }
 
 export function contentText(content: string | AnyContent[] | undefined): string {
@@ -126,10 +159,14 @@ export function historyToItems(messages: AnyMessage[], streaming = false, userEn
         }
         const blocks = assistantBlocks(message.content);
         if (blocks.length > 0 || message.errorMessage) {
+          // Replayed history carries what each turn cost, so reopening a session
+          // shows the same totals it showed while it ran.
+          const usage = messageUsage(message);
           trailingAssistantItem = {
             kind: "assistant",
             blocks,
             ...(message.errorMessage ? { errorMessage: message.errorMessage } : {}),
+            ...(usage ? { usage } : {}),
           };
           items.push(trailingAssistantItem);
         }
@@ -212,10 +249,12 @@ export function historyToItems(messages: AnyMessage[], streaming = false, userEn
 
 /** Convert a final assistant message to a ChatItem (for assistant_end sync). */
 export function assistantToItem(message: AnyMessage): ChatItem {
+  const usage = messageUsage(message);
   return {
     kind: "assistant",
     blocks: assistantBlocks(message.content),
     ...(message.errorMessage ? { errorMessage: message.errorMessage } : {}),
+    ...(usage ? { usage } : {}),
   };
 }
 

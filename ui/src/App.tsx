@@ -3,6 +3,7 @@ import type { Theme, WireImage } from "@pi-outpost/shared";
 import { AssistantMessage } from "./components/AssistantMessage";
 import { CustomMessageCard } from "./components/CustomMessageCard";
 import { ThemeContext } from "./theme/ThemeContext";
+import { sessionUsage } from "./util/sessionUsage";
 import { ToolCard } from "./components/ToolCard";
 import { UserMessage } from "./components/UserMessage";
 import { useTheme } from "./theme/useTheme";
@@ -244,6 +245,10 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
       bottomRef.current?.scrollIntoView({ behavior: "smooth" });
     }
   }, [state.items]);
+
+  // Recomputed only when the transcript itself changes, not on every unrelated
+  // render of a component this tall.
+  const usage = useMemo(() => sessionUsage(state.items), [state.items]);
 
   useEffect(() => {
     // An extension's setTitle() (see extensions.md#custom-ui) wins until branding changes again.
@@ -498,6 +503,7 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
                 modelSupportsReasoning={state.modelSupportsReasoning}
                 isStreaming={state.isStreaming}
                 contextUsage={state.contextUsage}
+                sessionUsage={usage}
                 isCompacting={state.isCompacting}
                 onSetModel={setModel}
                 onSetThinking={setThinking}

@@ -25,6 +25,12 @@ export type ChatItem =
       errorMessage?: string;
       /** True for the in-flight message included in `hello` during streaming. */
       streaming?: boolean;
+      /**
+       * What this turn cost. Absent while streaming — the provider reports it with
+       * the finished message — and absent on replayed history the provider never
+       * priced.
+       */
+      usage?: TurnUsage;
     }
   | {
       kind: "tool";
@@ -110,6 +116,30 @@ export interface Branding {
   defaultTheme?: Theme;
   /** Whether the UI shows a theme toggle button. Default: true. */
   allowThemeToggle?: boolean;
+}
+
+/**
+ * What one assistant turn consumed and cost, as the provider billed it.
+ *
+ * Distinct from ContextUsage below, which is a *level* — how full the window is
+ * right now. This is a *flow*: what this turn added. Both are needed, and only
+ * this one accumulates into a session total.
+ *
+ * Cost is the provider's own figure in USD, not a local estimate. It is absent
+ * when the provider does not report one, which is why every consumer has to
+ * treat an unpriced turn as unknown rather than as zero.
+ */
+export interface TurnUsage {
+  /** Fresh input tokens — a cache miss, the expensive kind. */
+  input: number;
+  output: number;
+  cacheRead: number;
+  cacheWrite: number;
+  /** Subset of `output`, when the provider breaks reasoning out. */
+  reasoning?: number;
+  totalTokens: number;
+  /** USD, provider-reported. Absent when the provider prices nothing. */
+  cost?: number;
 }
 
 /** Context window usage, for the compaction button. */

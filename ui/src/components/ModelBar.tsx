@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { ContextUsage, ModelChoice, ThinkingLevel } from "@pi-outpost/shared";
 import { THINKING_LEVELS } from "@pi-outpost/shared";
+import { formatCost, formatTokens, type SessionUsage } from "../util/sessionUsage";
 
 interface ModelBarProps {
   model: string;
@@ -9,6 +10,8 @@ interface ModelBarProps {
   modelSupportsReasoning: boolean;
   isStreaming: boolean;
   contextUsage: ContextUsage | null;
+  /** Billed totals for the session so far; absent turns simply do not count. */
+  sessionUsage: SessionUsage;
   isCompacting: boolean;
   onSetModel: (provider: string, id: string) => void;
   onSetThinking: (level: ThinkingLevel) => void;
@@ -20,6 +23,43 @@ function ringColor(usage: ContextUsage | null): string {
   if (usage.percent >= 85) return "text-red-500";
   if (usage.percent >= 60) return "text-amber-500 dark:text-amber-400";
   return "text-emerald-500";
+}
+
+/**
+ * What the session has consumed. Tokens lead: they are reported on every
+ * deployment, whereas a self-hosted or gateway-fronted model prices nothing, and
+ * a cost-first indicator would show an empty slot on exactly those setups.
+ *
+ * Cost is appended only once some turn carried one, and unpriced turns are named
+ * beside it — an amount covering 5 of 7 turns must not read as the whole bill.
+ */
+function UsageIndicator({ usage }: { usage: SessionUsage }) {
+  if (usage.turns === 0) return null;
+
+  const priced = usage.turns - usage.unpriced;
+  const breakdown = [
+    `${usage.turns} turn${usage.turns === 1 ? "" : "s"}`,
+    `input ${usage.input.toLocaleString()}`,
+    `output ${usage.output.toLocaleString()}`,
+    `cache read ${usage.cacheRead.toLocaleString()}`,
+    `cache write ${usage.cacheWrite.toLocaleString()}`,
+    ...(usage.unpriced > 0 && priced > 0 ? [`${usage.unpriced} unpriced`] : []),
+  ].join(" · ");
+
+  return (
+    <span
+      title={breakdown}
+      className="flex items-center gap-1.5 rounded-md border border-zinc-300 px-2 py-1 font-mono text-xs text-zinc-500 dark:border-zinc-800 dark:text-zinc-400"
+    >
+      <span>{formatTokens(usage.totalTokens)} tok</span>
+      {priced > 0 && (
+        <span className="text-zinc-400 dark:text-zinc-500">
+          {formatCost(usage.cost)}
+          {usage.unpriced > 0 && "*"}
+        </span>
+      )}
+    </span>
+  );
 }
 
 /** Radial progress ring: fills clockwise as context usage grows. */
@@ -133,7 +173,8 @@ function ThinkingControl({
 }
 
 export function ModelBar(props: ModelBarProps) {
-  const { model, models, thinkingLevel, modelSupportsReasoning, isStreaming, contextUsage, isCompacting } = props;
+  const { model, models, thinkingLevel, modelSupportsReasoning, isStreaming, contextUsage, sessionUsage, isCompacting } =
+    props;
 
   return (
     <div className="mt-2 flex items-center gap-2">
@@ -176,6 +217,7 @@ export function ModelBar(props: ModelBarProps) {
         <ContextRing usage={contextUsage} />
         {isCompacting ? "compacting…" : contextUsage?.percent != null ? `${Math.round(contextUsage.percent)}%` : "context"}
       </button>
+      <UsageIndicator usage={sessionUsage} />
     </div>
   );
 }
