@@ -29,3 +29,5 @@ jobs:
           CI: true
       - run: npm test --workspace ui
       - run: npm run build
+      # A stylesheet can build cleanly and style nothing (#38) — check the artifact.
+      - run: npm run check:css

@@ -64,6 +64,8 @@ jobs:
       - run: npm test --workspace server
       - run: npm test --workspace ui
       - run: npm run build
+      # 0.6.6 shipped unstyled; never publish that again.
+      - run: npm run check:css
 
       # BASCULE vers Node 26 pour le build du blob SEA (--build-sea + mainFormat:module)
       - name: Setup Node 26 for SEA build
