@@ -16,9 +16,17 @@
   },
   "keywords": [
     "pi",
+    "pi-coding-agent",
     "coding-agent",
+    "agent",
+    "ai",
+    "ai-agent",
+    "llm",
     "chat",
+    "web-ui",
+    "web-interface",
     "widget",
+    "embeddable",
     "shadow-dom",
     "react",
     "embed"
