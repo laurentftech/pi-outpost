@@ -30,5 +30,5 @@
 
 - [x] 5.1 `npm run typecheck` across all workspaces
 - [x] 5.2 `npm test --workspace server` and `npm test --workspace ui`
-- [ ] 5.3 Run the app against a real turn and confirm the displayed token total matches what the provider reported; where a price exists, check it too
+- [x] 5.3 Run the app against a real turn and confirm the displayed token total matches what the provider reported; where a price exists, check it too
 - [x] 5.4 `openspec validate add-turn-usage --strict`
