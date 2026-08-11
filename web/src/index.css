@@ -7,6 +7,11 @@
    utility-class scanning of web/src work the same regardless of which build processes
    this stylesheet. */
 @source "./**/*.{ts,tsx}";
+/* Every component moved to the ui workspace (#20/#21); web/src now holds little
+   more than main.tsx. Without this, Tailwind scans a directory with no components
+   in it and emits no utilities at all — the app renders unstyled. Relative to this
+   stylesheet, so it resolves the same whether web or embed is doing the build. */
+@source "../../ui/src/**/*.{ts,tsx}";
 
 /* data-theme is set by useTheme() on the root element: document.documentElement for
    the standalone app, or the widget's shadow host when embedded (embed/src/mount.tsx)
