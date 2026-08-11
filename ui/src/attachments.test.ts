@@ -121,6 +121,27 @@ describe("composePrompt", () => {
     expect(result).toBe("see @src/index.ts");
   });
 
+  it("mentions a path once when two attachments reference it", () => {
+    const result = composePrompt("look", [
+      textPreviewToAttachment("src/index.ts"),
+      pathAttachment("src/index.ts"),
+    ]);
+    expect(result).toBe("look\n\n@src/index.ts");
+  });
+
+  it("a mention that only prefixes the attached path does not suppress it", () => {
+    const result = composePrompt("see @src/index.ts.bak", [
+      pathAttachment("src/index.ts"),
+    ]);
+    expect(result).toBe("see @src/index.ts.bak\n\n@src/index.ts");
+  });
+
+  it("a mention followed by sentence punctuation still counts as mentioned", () => {
+    for (const typed of ["explain @src/index.ts.", "explain @src/index.ts, please", "explain @src/index.ts?"]) {
+      expect(composePrompt(typed, [pathAttachment("src/index.ts")])).toBe(typed);
+    }
+  });
+
   it("wraps text attachments in fenced blocks", () => {
     const result = composePrompt("here it is", [
       { name: "data.csv", kind: "text", data: "a,b,c", mimeType: "text/csv", source: "manual" },
@@ -172,6 +193,10 @@ describe("mentionedPaths", () => {
 
   it("ignores lone @ without a path", () => {
     expect(mentionedPaths("just @")).toEqual([]);
+  });
+
+  it("does not read an email address as a path", () => {
+    expect(mentionedPaths("mail@example.com is not a path")).toEqual([]);
   });
 });
 

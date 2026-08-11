@@ -63,4 +63,8 @@ describe("getFormattedToolOutput", () => {
   it("returns undefined for empty output", () => {
     expect(getFormattedToolOutput("")).toBeUndefined();
   });
+
+  it("returns a bare JSON string as-is", () => {
+    expect(getFormattedToolOutput('"simple string"')).toBe("simple string");
+  });
 });
