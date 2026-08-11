@@ -44,9 +44,11 @@ The system SHALL check if a target path is within a specified root directory.
 > Implementation: `createSandboxedTools` in `server/src/sandbox.ts` · confidence: reviewed
 
 The system SHALL create a set of sandboxed tool definitions from a SandboxConfig: read/ls/grep/find
-confined to `root` (the read-only zone); edit/write only when `allowWrite` is true, further confined
-to `writableRoot` when set (the read-write zone); bash only when `allowBash` is true (bash cannot be
-path-scoped, so it is an explicit opt-in).
+confined to `root` (the read-only zone) plus the configured read-only exception roots derived from
+skill, prompt, and extension locations; edit/write only when `allowWrite` is true, further confined
+to `writableRoot` when set (the read-write zone) and never extended by those exceptions; bash only
+when `allowBash` is true (bash cannot be path-scoped, so it is an explicit opt-in). All roots and
+requested paths SHALL be checked after resolving symlinks.
 
 #### Scenario: CreateToolsWithValidConfig
 <!-- openlore-test: tags=smoke (auto) -->
@@ -59,6 +61,21 @@ path-scoped, so it is an explicit opt-in).
 - **GIVEN** A SandboxConfig with `allowWrite: false` and `allowBash: false`
 - **WHEN** createSandboxedTools is called
 - **THEN** The returned tools contain no edit, write, or bash tool
+
+#### Scenario: ReadConfiguredResourceOutsideRoot
+- **GIVEN** a skill, prompt, extension directory, or extension script configured outside `sandbox.root`
+- **WHEN** a read, ls, grep, or find tool accesses a path inside that configured location
+- **THEN** the read operation is allowed
+
+#### Scenario: ExceptionDoesNotGrantWriteAccess
+- **GIVEN** a configured read-only exception outside `sandbox.root` and sandbox writes enabled
+- **WHEN** an edit or write tool targets a path inside that exception
+- **THEN** the operation is denied because the path is outside the writable root
+
+#### Scenario: UnrelatedPathRemainsDenied
+- **GIVEN** one or more configured read-only exceptions
+- **WHEN** a read tool targets a path outside both `sandbox.root` and every exception root, including a prefix look-alike
+- **THEN** the operation is denied
 
 > `server/src/fileBrowser.ts`
 
@@ -180,7 +197,7 @@ write MUST be refused with a conflict error instead of silently overwriting.
 
 ### Requirement: FullSizeFileViewer
 
-> Implementation: `FileViewer` in `web/src/components/FileViewer.tsx` · confidence: reviewed
+- **Implementation**: `FileViewer::ui/src/components/FileViewer.tsx`
 
 The frontend SHALL display a selected file in a full-size viewer overlaying the chat pane
 (syntax highlighting, rendered-markdown toggle), instead of a narrow sidebar preview.

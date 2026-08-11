@@ -1,0 +1,160 @@
+# Components Specification
+
+## Purpose
+
+Defines the reusable React presentation and interaction layer in `ui/src/components`. These
+components render application state supplied by their consumers and report user intent through
+callbacks; server communication and persistent state remain outside this domain.
+
+## Requirements
+
+### Requirement: ConversationItemRendering
+
+The component layer SHALL provide dedicated renderers for assistant, user, tool, and custom
+conversation items. `AssistantMessage` SHALL support normalized markdown, Mermaid blocks,
+workspace-file references, and copy actions. `ToolCard` SHALL support formatted tool output,
+diff blocks, and extension-rendered HTML. `CustomMessageCard` SHALL support extension-rendered
+HTML and normalized markdown.
+
+#### Scenario: AssistantContentIsRendered
+- **GIVEN** an assistant item supplied by the application
+- **WHEN** `AssistantMessage` renders the item
+- **THEN** its supported markdown, diagram, workspace-reference, and copy affordances are presented through the component layer
+
+#### Scenario: ToolOutputUsesSpecializedRenderers
+- **GIVEN** a tool item containing formatted output, a diff, or rendered HTML
+- **WHEN** `ToolCard` renders the item
+- **THEN** it delegates to the corresponding formatted-output, diff, or HTML renderer
+
+#### Scenario: CustomExtensionMessageIsRendered
+- **GIVEN** a custom conversation item supplied by an extension
+- **WHEN** `CustomMessageCard` renders the item
+- **THEN** supported rendered HTML or normalized markdown is displayed
+
+### Requirement: PromptComposition
+
+`Composer` SHALL present prompt composition from the connection, streaming, command, file-search,
+and prefill state supplied by its consumer. It SHALL use the attachment composition utilities to
+compose the submitted prompt and identify mentioned workspace paths, and SHALL report user actions
+through callbacks rather than communicating with the server directly.
+
+#### Scenario: ComposeConnectedPrompt
+- **GIVEN** a connected, non-streaming application with composer input and attachments
+- **WHEN** the user submits through `Composer`
+- **THEN** the component composes the prompt and reports the submission through its callback
+
+#### Scenario: PresentCommandAndFileChoices
+- **GIVEN** command metadata or file-search state supplied to `Composer`
+- **WHEN** the corresponding completion interaction is active
+- **THEN** the available choices are presented from that supplied state
+
+#### Scenario: ApplyPrefill
+- **GIVEN** prefill state supplied to `Composer`
+- **WHEN** the component receives that state
+- **THEN** the prefill is made available for editing before submission
+
+### Requirement: WorkspaceAndGitNavigation
+
+The component layer SHALL provide `FileTree`, `FileViewer`, `Sidebar`, `GitMenu`, and
+`GitCommitView` for workspace and repository navigation. `FileTree` SHALL derive its presentation
+from supplied directory, writable-root, Git-status, open-file, and attachment state. `FileViewer`
+SHALL compose syntax highlighting, copy, diff, markdown, and workspace-path rendering components.
+Navigation and mutation requests SHALL be emitted through callbacks.
+
+#### Scenario: SelectWorkspaceFile
+- **GIVEN** a directory tree supplied to `FileTree`
+- **WHEN** the user selects a file
+- **THEN** `FileTree` reports the selected path through its file-selection callback
+
+#### Scenario: RenderFileContent
+- **GIVEN** file state supplied to `FileViewer`
+- **WHEN** the viewer displays the file
+- **THEN** it uses the applicable code, markdown, image, copy, or diff presentation support
+
+#### Scenario: InspectCommit
+- **GIVEN** Git status and log state supplied to `GitMenu`
+- **WHEN** the user selects a commit
+- **THEN** the selected SHA is reported for presentation by `GitCommitView`
+
+### Requirement: ExtensionInteractionSurfaces
+
+The component layer SHALL provide distinct surfaces for extension dialogs, notifications, and
+widgets. `ExtensionDialog` SHALL render a supplied dialog request and report a dialog response.
+Notification and widget components SHALL render the corresponding extension state supplied by the
+application.
+
+#### Scenario: RespondToExtensionDialog
+- **GIVEN** a dialog request supplied to `ExtensionDialog`
+- **WHEN** the user completes or cancels the dialog
+- **THEN** the component reports a dialog response through its response callback
+
+#### Scenario: RenderExtensionNotifications
+- **GIVEN** extension notification state supplied by the application
+- **WHEN** `ExtensionNotifications` renders
+- **THEN** the notifications are presented by the dedicated extension surface
+
+#### Scenario: RenderExtensionWidgets
+- **GIVEN** extension widget state supplied by the application
+- **WHEN** `ExtensionWidgets` renders
+- **THEN** the widgets are presented by the dedicated extension surface
+
+### Requirement: RuntimeControls
+
+The component layer SHALL expose runtime controls through `Header`, `ModelBar`, `SettingsMenu`,
+`Onboarding`, `TokenGate`, and `TreeMenu`. These components SHALL render only the runtime,
+configuration, credential, authentication, session-tree, and version state supplied to them and
+SHALL report requested changes through callbacks.
+
+#### Scenario: ChangeModelOrThinkingLevel
+- **GIVEN** model choices and thinking state supplied to `ModelBar`
+- **WHEN** the user selects a model or thinking level
+- **THEN** the corresponding callback is invoked with the requested value
+
+#### Scenario: PresentSandboxSettings
+- **GIVEN** sandbox, extension-path, and version state supplied to `SettingsMenu`
+- **WHEN** the settings menu is opened
+- **THEN** the supplied settings and version information are presented
+
+#### Scenario: SubmitAuthenticationToken
+- **GIVEN** `TokenGate` is displayed after authentication is required
+- **WHEN** the user submits a token
+- **THEN** the token is reported through the component's submit callback
+
+#### Scenario: NavigateConversationTree
+- **GIVEN** conversation-tree state supplied to `TreeMenu`
+- **WHEN** the user selects a navigation or fork action
+- **THEN** the requested action is reported through the corresponding callback
+
+### Requirement: SharedPresentationPrimitives
+
+The domain SHALL provide shared presentation primitives for copying text, syntax highlighting,
+Mermaid diagrams, unified and split diffs, and rendered HTML. Higher-level components SHALL reuse
+these primitives through the observed component relationships instead of embedding duplicate
+presentations.
+
+#### Scenario: CopyPresentedText
+- **GIVEN** text supplied to `CopyButton`
+- **WHEN** the user activates the copy action
+- **THEN** the supplied text is the content offered for copying
+
+#### Scenario: RenderCodeWithPathContext
+- **GIVEN** source text and a path supplied to `CodeHighlight`
+- **WHEN** the component renders
+- **THEN** it presents the source using the path as language context
+
+#### Scenario: RenderDiffRows
+- **GIVEN** diff lines supplied to `DiffBlock` or `SplitDiffBlock`
+- **WHEN** the component renders
+- **THEN** the lines are presented in the requested unified or split form
+
+#### Scenario: RenderExtensionHtml
+- **GIVEN** rendered HTML supplied to `RenderedHtml`
+- **WHEN** the component renders
+- **THEN** the HTML is presented through the shared rendered-HTML surface
+
+## Technical Notes
+
+- **Defining location**: `ui/src/components/`
+- **Consumer**: `ui/src/App.tsx`
+- **Supporting state and types**: `ui/src/useAgent.ts`
+- **Supporting utilities**: `ui/src/attachments.ts`, `ui/src/util/`

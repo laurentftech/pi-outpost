@@ -9,11 +9,11 @@ Manages the application's theme settings, including light/dark mode toggling and
 
 ## Requirements
 
-> `web/src/useTheme.ts`
+> `ui/src/theme/useTheme.ts`, `ui/src/theme/theme.ts`
 
 ### Requirement: ApplyTheme
 
-> Implementation: `useTheme` in `web/src/useTheme.ts` · confidence: reviewed
+- **Implementation**: `useTheme::ui/src/theme/useTheme.ts`, `resolveSystemTheme::ui/src/theme/theme.ts`, `loadStoredTheme::ui/src/theme/theme.ts`
 
 The system SHALL resolve and apply the effective light/dark theme from, in priority order: the
 user's stored preference (localStorage), then the configured default (`branding.defaultTheme`,
@@ -35,7 +35,7 @@ embedded).
 
 ### Requirement: ToggleTheme
 
-> Implementation: `useTheme` in `web/src/useTheme.ts` · confidence: reviewed
+- **Implementation**: `useTheme::ui/src/theme/useTheme.ts`, `storeTheme::ui/src/theme/theme.ts`
 
 The system SHALL toggle between light and dark themes and persist the new preference in
 localStorage. The toggle can be disabled by config (`branding.allowThemeToggle: false`), e.g.

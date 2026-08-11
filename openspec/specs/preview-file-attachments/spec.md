@@ -11,7 +11,7 @@ its own file tools; images, which the agent cannot hand to the model itself, tra
 
 ### Requirement: Automatically attach the active preview
 
-> Implementation: `textPreviewToAttachment` / `imagePreviewToAttachment` in `web/src/attachments.ts` · confidence: reviewed
+- **Implementation**: `textPreviewToAttachment::ui/src/attachments.ts`, `imagePreviewToAttachment::ui/src/attachments.ts`
 
 The system SHALL add a successfully displayed file preview to the composer as the attachment for the active preview. It SHALL create at most one automatic attachment for an active preview path, and SHALL preserve manually added attachments.
 
@@ -31,7 +31,7 @@ Text files SHALL be attached as a path reference, not as content: the agent brow
 
 ### Requirement: Synchronize automatic attachment with preview selection
 
-> Implementation: `replacePreviewAttachment` in `web/src/attachments.ts` · confidence: reviewed
+- **Implementation**: `replacePreviewAttachment::ui/src/attachments.ts`
 
 The system SHALL replace the previous automatic attachment when a different file becomes the active preview. It SHALL not remove manually added attachments during that replacement.
 
@@ -41,7 +41,11 @@ The system SHALL replace the previous automatic attachment when a different file
 
 ### Requirement: Allow automatic attachment removal
 
-> Implementation: `handleRemoveAttachment` in `web/src/App.tsx` · confidence: reviewed
+- **Implementation**: `removeAttachment::ui/src/attachments.ts`
+
+> The `handleRemoveAttachment` wrapper in `ui/src/App.tsx` is a component-local
+> function, not an export, so it cannot be anchored; the exported behaviour it
+> delegates to is `removeAttachment`.
 
 The system SHALL allow the user to remove an automatic preview attachment through the existing attachment control. It SHALL keep the attachment removed while that file remains the active preview.
 
@@ -51,7 +55,11 @@ The system SHALL allow the user to remove an automatic preview attachment throug
 
 ### Requirement: Reference files from the file tree
 
-> Implementation: `TreeNode` in `web/src/components/FileTree.tsx`, `toggleAttachPath` in `web/src/App.tsx` · confidence: reviewed
+- **Implementation**: `FileTree::ui/src/components/FileTree.tsx`, `addPathAttachment::ui/src/attachments.ts`
+
+> `TreeNode` and `toggleAttachPath` are local to their modules and cannot be
+> anchored; `FileTree` is the exported component that renders them, and
+> `addPathAttachment` the exported state transition it drives.
 
 The system SHALL let the user reference any file listed in the file tree as a prompt attachment without opening its preview, and SHALL let the user drop that reference the same way. The tree SHALL mark every file the next prompt references — whether the reference comes from an attachment or from an `@` mention typed in the draft — and SHALL surface the reference control itself only on hover, on devices that have hover.
 
@@ -69,7 +77,7 @@ The system SHALL let the user reference any file listed in the file tree as a pr
 
 ### Requirement: Degrade safely for unsendable previews
 
-> Implementation: `imagePreviewToAttachment` in `web/src/attachments.ts` · confidence: reviewed
+- **Implementation**: `imagePreviewToAttachment::ui/src/attachments.ts`
 
 The system SHALL not attach a preview whose image content is unsupported, unreadable, or exceeds the established image attachment limit. It SHALL leave the preview available and report a non-blocking attachment error.
 

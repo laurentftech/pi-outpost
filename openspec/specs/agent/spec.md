@@ -10,11 +10,11 @@ handling, and state updates.
 
 ## Requirements
 
-> `web/src/useAgent.ts`
+> `ui/src/useAgent.ts`
 
 ### Requirement: InitializeAgent
 
-> Implementation: `useAgent` in `web/src/useAgent.ts` · confidence: reviewed
+> Implementation: `useAgent` in `ui/src/useAgent.ts` · confidence: reviewed
 
 The system SHALL initialize the agent client by opening a WebSocket to the server and setting up
 reducer-based state management. On connect, the server sends a full state snapshot (session id,
@@ -34,7 +34,10 @@ items, models, branding, queue) that replaces local state.
 
 ### Requirement: SendMessage
 
-> Implementation: `send` / `prompt` in `web/src/useAgent.ts` · confidence: reviewed
+- **Implementation**: `useAgent::ui/src/useAgent.ts`
+
+> `sendMessage` and the prompt helper are closures inside the hook, not exports,
+> so they cannot be anchored; `useAgent` is the exported unit that owns them.
 
 The system SHALL send ClientMessage frames (prompt with optional images, abort, session and tree
 operations…) to the server over the WebSocket as JSON. Before sending a prompt, the composer SHALL
@@ -62,7 +65,10 @@ file preview follow the same rules.
 
 ### Requirement: HandleNotification
 
-> Implementation: `reducer` in `web/src/useAgent.ts` · confidence: reviewed
+- **Implementation**: `useAgent::ui/src/useAgent.ts`
+
+> The notification handling lives in the module-local reducer, which is not an
+> export; `useAgent` is the exported unit that drives it.
 
 The system SHALL handle ServerMessage frames received from the backend (streaming deltas, tool
 events, session_replaced snapshots, tree updates, extension UI requests, errors) by dispatching
