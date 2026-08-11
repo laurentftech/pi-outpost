@@ -195,6 +195,13 @@ describe("mentionedPaths", () => {
     expect(mentionedPaths("just @")).toEqual([]);
   });
 
+  it("strips a long run of trailing punctuation without stalling", () => {
+    // The regex this replaced was O(n^2) on exactly this shape (CodeQL #9): 100k
+    // repetitions took seconds. Linear stripping returns immediately, so the test's
+    // own timeout is the assertion that it stayed linear.
+    expect(mentionedPaths(`see @a.ts${"!".repeat(100_000)}`)).toEqual(["a.ts"]);
+  });
+
   it("does not read an email address as a path", () => {
     expect(mentionedPaths("mail@example.com is not a path")).toEqual([]);
   });

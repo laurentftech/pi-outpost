@@ -76,6 +76,23 @@ function mentions(text: string, path: string): boolean {
   return new RegExp(`(^|\\s)@${escaped}[,.;:!?)\\]]*(\\s|$)`).test(text);
 }
 
+const TRAILING_PUNCTUATION = new Set([",", ".", ";", ":", "!", "?", ")", "]"]);
+
+/**
+ * Drop sentence punctuation from the end of a path, by hand.
+ *
+ * The regex this replaces — `/[,.;:!?)\]]+$/` — is a polynomial ReDoS (CodeQL #9):
+ * anchoring `+` to the end makes the engine retry the run from every position, so a
+ * draft holding a long stretch of `!` costs O(n²). The text comes from the composer,
+ * which means a user can only hang their own tab, but the loop below is linear and
+ * every bit as clear.
+ */
+function withoutTrailingPunctuation(path: string): string {
+  let end = path.length;
+  while (end > 0 && TRAILING_PUNCTUATION.has(path[end - 1])) end--;
+  return path.slice(0, end);
+}
+
 /**
  * Paths the user named with `@` in their draft. They reference a file just as an
  * attachment does, so the tree marks them too — the file tree cannot see the composer's
@@ -83,7 +100,7 @@ function mentions(text: string, path: string): boolean {
  */
 export function mentionedPaths(text: string): string[] {
   const found = text.matchAll(/(?:^|\s)@([^\s@]+)/g);
-  return [...found].map(([, path]) => path.replace(/[,.;:!?)\]]+$/, "")).filter((path) => path.length > 0);
+  return [...found].map(([, path]) => withoutTrailingPunctuation(path)).filter((path) => path.length > 0);
 }
 
 /**
