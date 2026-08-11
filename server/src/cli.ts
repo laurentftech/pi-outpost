@@ -53,6 +53,7 @@ Options
   --agent-dir <dir>  pi config/session store (default: ~/.pi/agent)
   --port <n>         port to listen on (default: 3141)
   --host <addr>      address to bind (default: 127.0.0.1)
+  --offline          never fetch remote model catalogs (air-gapped hosts)
   -h, --help         show this help
   -v, --version      show the version
 
@@ -121,6 +122,7 @@ export function parseCli(argv: string[]): ParsedCli {
         "agent-dir": { type: "string" },
         port: { type: "string" },
         host: { type: "string" },
+        offline: { type: "boolean", default: false },
         global: { type: "boolean", default: false },
         force: { type: "boolean", default: false },
         provider: { type: "string" },
@@ -150,6 +152,8 @@ export function parseCli(argv: string[]): ParsedCli {
     agentDir: values["agent-dir"],
     port: integerFlag(values.port, "--port"),
     host: values.host,
+    // Only an override when actually passed: a bare false must not beat the file.
+    ...(values.offline ? { offline: true } : {}),
   };
 
   const kind = values.help ? "help" : values.version ? "version" : (command ?? "serve");

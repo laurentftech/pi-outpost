@@ -46,6 +46,27 @@ For every setting that can come from more than one place, the server SHALL apply
 - **WHEN** the CLI is invoked with an unknown `--token` flag
 - **THEN** it exits with an error, because a secret passed on the command line is readable by any process listing
 
+### Requirement: OfflineModelCatalogs
+
+The server SHALL support an `offline` setting — config file `offline`, the `--offline` flag, or the pi SDK's own `PI_OFFLINE` environment variable — that keeps the model runtime from fetching remote model catalogs. When it is set, the server SHALL make the SDK aware of it before the model runtime is constructed, because the SDK reads that variable once at construction.
+
+Off a network that can reach the catalogs, the fetch runs on every credential change; on a host that cannot — air-gapped, or behind a proxy that does not route it — the request hangs until the server's ceiling cuts it, stalling each change by that ceiling. Built-in models and providers declared in `models.json` remain available either way: the catalog only adds metadata for models the SDK already knows.
+
+#### Scenario: OfflineFromTheConfigFile
+- **GIVEN** a config file with `"offline": true`
+- **WHEN** the server starts
+- **THEN** no remote model catalog is fetched, and the startup log says so
+
+#### Scenario: OfflineFromTheEnvironment
+- **GIVEN** `PI_OFFLINE` set to a non-empty value
+- **WHEN** the server starts
+- **THEN** offline mode is on, whatever the config file says
+
+#### Scenario: AbsentFlagDoesNotOverrideTheFile
+- **GIVEN** a config file with `"offline": true`
+- **WHEN** the server starts without `--offline`
+- **THEN** offline mode stays on, because a flag that was not passed is not a value
+
 ### Requirement: ConfigProfiles
 
 The server SHALL accept a profile name (`--profile <name>` or `PI_OUTPOST_PROFILE`) and SHALL load `profiles/<name>.json` from the user config directory. A profile file SHALL be an ordinary config file, subject to the same validation and the same relative-path resolution. Naming both a profile and an explicit `--config` path SHALL be an error. A named profile that does not exist SHALL be an error.

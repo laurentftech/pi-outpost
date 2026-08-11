@@ -34,6 +34,15 @@ describe("parseCli", () => {
     assert.equal(result.command, "help");
   });
 
+  test("--offline sets the flag", () => {
+    assert.equal(parseCli(["--offline"]).flags.offline, true);
+  });
+
+  test("without --offline the flag is absent, not false", () => {
+    // Present-and-false would beat `"offline": true` in the config file.
+    assert.equal("offline" in parseCli([]).flags, false);
+  });
+
   test("--version returns version command", () => {
     const result = parseCli(["--version"]);
     assert.equal(result.command, "version");

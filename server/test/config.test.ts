@@ -191,6 +191,7 @@ describe("applyDirectories", () => {
       promptPaths: [],
       appendSystemPrompt: [],
       webContext: true,
+      offline: false,
       port: 3141,
       host: "127.0.0.1",
       allowedOrigins: [],
@@ -247,6 +248,7 @@ describe("applyRuntime", () => {
       promptPaths: [],
       appendSystemPrompt: [],
       webContext: true,
+      offline: false,
       port: 3141,
       host: "127.0.0.1",
       allowedOrigins: [],
@@ -277,6 +279,37 @@ describe("applyRuntime", () => {
     const config = baseConfig();
     applyRuntime(config, {}, { PI_OUTPOST_PORT: "4003", PORT: "4002" });
     assert.equal(config.port, 4003);
+  });
+
+  test("offline defaults to off", () => {
+    const config = baseConfig();
+    applyRuntime(config, {}, {});
+    assert.equal(config.offline, false);
+  });
+
+  test("PI_OFFLINE turns offline on", () => {
+    const config = baseConfig();
+    applyRuntime(config, {}, { PI_OFFLINE: "1" });
+    assert.equal(config.offline, true);
+  });
+
+  test("an empty PI_OFFLINE is not a value", () => {
+    const config = baseConfig();
+    applyRuntime(config, {}, { PI_OFFLINE: "" });
+    assert.equal(config.offline, false);
+  });
+
+  test("--offline turns offline on", () => {
+    const config = baseConfig();
+    applyRuntime(config, { offline: true }, {});
+    assert.equal(config.offline, true);
+  });
+
+  test("no flag leaves an offline config file alone", () => {
+    // The flag defaults to false in the parser; it must not undo `"offline": true`.
+    const config = { ...baseConfig(), offline: true };
+    applyRuntime(config, {}, {});
+    assert.equal(config.offline, true);
   });
 
   test("PI_OUTPOST_PORT must be a valid port number", () => {
@@ -349,6 +382,7 @@ describe("requireTokenOffLoopback", () => {
       promptPaths: [],
       appendSystemPrompt: [],
       webContext: true,
+      offline: false,
       port: 3141,
       allowedOrigins: [],
       branding: {},

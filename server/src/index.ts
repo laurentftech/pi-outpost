@@ -498,6 +498,11 @@ const createRuntime: CreateAgentSessionRuntimeFactory = async ({
   };
 };
 
+// The SDK decides this once, when it constructs its ModelRuntime — it reads
+// `process.env.PI_OFFLINE` there and keeps the answer — so the variable has to be
+// set before the runtime exists, not merely present in our config object.
+if (config.offline) process.env.PI_OFFLINE = "1";
+
 const runtime = await createAgentSessionRuntime(createRuntime, {
   cwd: AGENT_CWD,
   agentDir: AGENT_DIR,
@@ -1971,6 +1976,9 @@ if (config.sandbox) {
   console.log(`[pi] sandbox ${config.sandbox.root} · ${extras}`);
 }
 console.log(`[pi] file browser root ${BROWSER_ROOT}`);
+// Worth a line: it changes where models come from, and its absence is what makes
+// credential changes hang for 20 s on a host that cannot reach the catalogs.
+if (config.offline) console.log("[pi] offline — model catalogs are not fetched");
 // The old warning ("No models available") named neither the cause nor a way out, and
 // the failure only surfaced on the user's first message. Say it at startup, name the
 // directory the credentials are missing from, and point at both ways to supply them.

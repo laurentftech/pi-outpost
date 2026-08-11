@@ -133,6 +133,15 @@ export interface AppConfig {
    * deployments with a tightly curated prompt.
    */
   webContext: boolean;
+  /**
+   * Keep the model runtime off the network. The SDK otherwise re-fetches remote
+   * model catalogs whenever credentials change, and on a host that cannot reach
+   * them — air-gapped, or behind a proxy that does not route them — that request
+   * hangs until the server's own ceiling cuts it, stalling every credential
+   * change by 20 s. Built-in and models.json-declared models still work: the
+   * catalog only adds metadata for models the SDK already knows about.
+   */
+  offline: boolean;
   port: number;
   host: string;
   /** Extra exact Origins allowed on the WebSocket (for embedding in another app). */
@@ -155,6 +164,7 @@ export interface CliOptions {
   agentDir?: string;
   port?: number;
   host?: string;
+  offline?: boolean;
 }
 
 /** Thrown when no config file exists anywhere: the CLI turns it into `init` advice. */
@@ -298,6 +308,7 @@ export function loadConfig(
     promptPaths: [],
     appendSystemPrompt: [],
     webContext: true,
+    offline: false,
     port: 3141,
     host: "127.0.0.1",
     allowedOrigins: [],
@@ -407,6 +418,7 @@ export function loadConfig(
   }
   config.appendSystemPrompt = optionalStringArray(raw, "appendSystemPrompt") ?? [];
   config.webContext = optionalBoolean(raw, "webContext", true);
+  config.offline = optionalBoolean(raw, "offline", false);
 
   if (raw.server !== undefined) {
     const server = asObject(raw.server, "server");
@@ -502,6 +514,11 @@ export function applyDirectories(config: AppConfig, flags: CliOptions, env: Node
  * There is deliberately no token flag: argv is readable by any process listing.
  */
 export function applyRuntime(config: AppConfig, flags: CliOptions, env: NodeJS.ProcessEnv): void {
+  // Same precedence as the rest: file, then environment, then flag. PI_OFFLINE is
+  // the SDK's own variable — honouring it here keeps one spelling for both layers.
+  if (env.PI_OFFLINE !== undefined && env.PI_OFFLINE !== "") config.offline = true;
+  if (flags.offline) config.offline = true;
+
   // Bare PORT is honoured too: PaaS hosts inject it, and it costs one `??`.
   const port = env.PI_OUTPOST_PORT ?? env.PORT;
   if (port !== undefined && port !== "") {

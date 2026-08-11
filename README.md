@@ -170,7 +170,7 @@ Not sure which file won, or why a setting has the value it has? **`pi-outpost co
 
 **Profiles.** `--profile work` (or `$PI_OUTPOST_PROFILE`) reads `<user config dir>/profiles/work.json`. A profile is an ordinary config file — same keys, same rules — so `pi-outpost --profile work` from anywhere gives you the setup you configured once.
 
-**Precedence.** For any setting that appears in more than one place: **flag > environment variable > config file > default**. Environment variables: `PI_OUTPOST_PORT` (falling back to `PORT`, which platforms inject), `PI_OUTPOST_HOST`, `PI_OUTPOST_CWD`, `PI_OUTPOST_AGENT_DIR`, `PI_OUTPOST_TOKEN`.
+**Precedence.** For any setting that appears in more than one place: **flag > environment variable > config file > default**. Environment variables: `PI_OUTPOST_PORT` (falling back to `PORT`, which platforms inject), `PI_OUTPOST_HOST`, `PI_OUTPOST_CWD`, `PI_OUTPOST_AGENT_DIR`, `PI_OUTPOST_TOKEN`, `PI_OFFLINE` (the pi SDK's own variable, honoured here so one spelling covers both layers).
 
 One exception, and it is deliberate: **a sandbox that grants write or bash, but names no `sandbox.root`, refuses a `--cwd`/`PI_OUTPOST_CWD` override.** Such a sandbox falls back to `cwd`, so an inherited variable (a shell profile, a CI job, a compose file) could otherwise turn "write inside my project" into "write inside `/`" without touching the file that granted it. Name the root, and the grant says what it covers. A read-only sandbox has no such hazard and simply follows the workspace.
 
@@ -195,6 +195,7 @@ See [`pi-outpost.config.example.json`](pi-outpost.config.example.json).
 | `systemPrompt` / `systemPromptFile` | Replace pi's built-in system prompt entirely (mutually exclusive; `systemPromptFile` is a path to a text file). Project context files, skills, and `appendSystemPrompt` are still layered on top |
 | `appendSystemPrompt` | Array of extra paragraphs appended after the (built-in or custom) system prompt |
 | `webContext` | Inject a short web-UI context block into the system prompt so the agent knows its replies render in this UI (markdown, inline images, file links). Default `true`; set `false` for tightly curated prompts |
+| `offline` | Never fetch remote model catalogs. On a host that cannot reach them — air-gapped, or behind a proxy that does not route them — that request hangs and stalls every credential change by 20 s. Built-in and `models.json` providers are unaffected: the catalog only adds metadata for models the SDK already knows. Default `false`; `--offline` and `PI_OFFLINE` also turn it on |
 | `server.port` | Port to listen on (default `3141`). `--port` and `PI_OUTPOST_PORT`/`PORT` override it |
 | `server.host` | Host to bind to (default `127.0.0.1` — only change this if you understand the security note above) |
 | `server.allowedOrigins` | Extra exact Origins accepted on the WebSocket (embed the UI as a tab in another app) |
