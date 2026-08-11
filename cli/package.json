@@ -1,6 +1,6 @@
 {
   "name": "pi-outpost",
-  "version": "0.6.6",
+  "version": "0.6.7",
   "type": "module",
   "description": "A web interface for the pi coding agent: a browser chat UI you run with npx — no clone, no build.",
   "license": "MIT",
