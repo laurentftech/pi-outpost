@@ -370,3 +370,168 @@ describe("file history", () => {
     await assert.rejects(() => gitRevisionContent(root, root, "worktree", "docs/notes.txt"), /read from disk/);
   });
 });
+
+// ---------------------------------------------------------------------------
+// The repository is larger than the browser root — the case where the two path
+// conventions actually differ. git reports log paths from the toplevel, while a
+// pathspec is read from cwd, so every conversion in gitFileLog only earns its
+// keep here; with root === toplevel both are the identity.
+// ---------------------------------------------------------------------------
+describe("file history below the repository toplevel", () => {
+  let toplevel: string;
+  let root: string;
+  const sha: Record<string, string> = {};
+
+  function git(...args: string[]) {
+    execFileSync("git", args, { cwd: toplevel, stdio: "pipe" });
+  }
+
+  function commit(relPath: string, content: string, subject: string) {
+    const full = path.join(toplevel, relPath);
+    mkdirSync(path.dirname(full), { recursive: true });
+    writeFileSync(full, content);
+    git("add", "-A");
+    git("commit", "-m", subject);
+    sha[subject] = execFileSync("git", ["rev-parse", "HEAD"], { cwd: toplevel, encoding: "utf8" }).trim();
+  }
+
+  before(() => {
+    toplevel = mkdtempSync(path.join(tmpdir(), "pi-git-nested-"));
+    // The browser only exposes workspace/app, two levels below the repository root
+    root = path.join(toplevel, "workspace", "app");
+    git("init", "-b", "main");
+    git("config", "user.email", "test@test");
+    git("config", "user.name", "Test");
+    git("config", "commit.gpgsign", "false");
+
+    commit("workspace/app/index.ts", "one\n", "create index");
+    commit("workspace/app/index.ts", "one\ntwo\n", "extend index");
+    // A file outside the browser root, to prove the pathspec confines the log
+    commit("outside.txt", "not yours\n", "add a file outside the root");
+  });
+
+  after(() => {
+    rmSync(toplevel, { recursive: true, force: true });
+  });
+
+  test("reports paths relative to the browser root, not the toplevel", async () => {
+    const log = await gitFileLog(root, toplevel, "index.ts", 50);
+    assert.equal(log.length, 2, `expected both commits, got ${JSON.stringify(log.map((e) => e.subject))}`);
+    // Not "workspace/app/index.ts": the UI speaks browser-root paths
+    assert.deepEqual(
+      log.map((entry) => entry.path),
+      ["index.ts", "index.ts"],
+    );
+  });
+
+  test("does not list commits that only touched files outside the browser root", async () => {
+    const subjects = (await gitFileLog(root, toplevel, "index.ts", 50)).map((entry) => entry.subject);
+    assert.ok(!subjects.includes("add a file outside the root"), `unexpected outside commit in ${JSON.stringify(subjects)}`);
+  });
+
+  test("reads a revision's content through the toplevel prefix", async () => {
+    assert.equal(await gitRevisionContent(root, toplevel, sha["create index"], "index.ts"), "one\n");
+    assert.equal(await gitRevisionContent(root, toplevel, sha["extend index"], "index.ts"), "one\ntwo\n");
+  });
+
+  test("gitHeadContent agrees with it", async () => {
+    assert.equal(await gitHeadContent(root, toplevel, "index.ts"), "one\ntwo\n");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Cases the single-rename fixture above cannot reach: a rename *chain*, which is
+// the only thing that makes the stitch loop run more than once, plus the numstat
+// and pathspec shapes git only produces for particular files.
+// ---------------------------------------------------------------------------
+describe("file history edge cases", () => {
+  let root: string;
+
+  function git(...args: string[]) {
+    execFileSync("git", args, { cwd: root, stdio: "pipe" });
+  }
+
+  function write(relPath: string, content: string | Buffer) {
+    const full = path.join(root, relPath);
+    mkdirSync(path.dirname(full), { recursive: true });
+    writeFileSync(full, content);
+  }
+
+  function commit(subject: string) {
+    git("add", "-A");
+    git("commit", "-m", subject);
+  }
+
+  before(() => {
+    root = mkdtempSync(path.join(tmpdir(), "pi-git-edge-"));
+    git("init", "-b", "main");
+    git("config", "user.email", "test@test");
+    git("config", "user.name", "Test");
+    git("config", "commit.gpgsign", "false");
+
+    // A chain of two renames: a.txt -> b.txt -> c.txt, each with an edit so the
+    // rename is detected and each pass of the stitch has something to report
+    write("a.txt", "1\n");
+    commit("first name");
+    git("mv", "a.txt", "b.txt");
+    write("b.txt", "1\n2\n");
+    commit("second name");
+    git("mv", "b.txt", "c.txt");
+    write("c.txt", "1\n2\n3\n");
+    commit("third name");
+    write("c.txt", "1\n2\n3\n4\n");
+    commit("edit under the third name");
+
+    // Binary: git reports "-" for both counts instead of numbers
+    write("logo.bin", Buffer.from([0, 1, 2, 0, 255, 0]));
+    commit("add a binary file");
+
+    // A filename that looks like an option unless the pathspec is separated by --
+    write("-weird.txt", "dashed\n");
+    commit("add a file whose name starts with a dash");
+  });
+
+  after(() => {
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  test("follows a chain of two renames", async () => {
+    const log = await gitFileLog(root, root, "c.txt", 50);
+    const subjects = log.map((entry) => entry.subject);
+    assert.deepEqual(subjects, ["edit under the third name", "third name", "second name", "first name"]);
+  });
+
+  test("reports the name the file had at each link of the chain", async () => {
+    const log = await gitFileLog(root, root, "c.txt", 50);
+    const bySubject = Object.fromEntries(log.map((entry) => [entry.subject, entry.path]));
+    assert.equal(bySubject["third name"], "c.txt");
+    assert.equal(bySubject["second name"], "b.txt");
+    assert.equal(bySubject["first name"], "a.txt");
+  });
+
+  test("spends the limit across the whole chain, not per pass", async () => {
+    assert.equal((await gitFileLog(root, root, "c.txt", 3)).length, 3);
+    assert.equal((await gitFileLog(root, root, "c.txt", 1)).length, 1);
+  });
+
+  test("reads content from before both renames", async () => {
+    const log = await gitFileLog(root, root, "c.txt", 50);
+    const first = log.find((entry) => entry.subject === "first name")!;
+    assert.equal(await gitRevisionContent(root, root, first.sha, first.path), "1\n");
+  });
+
+  test("reports a binary file's counts as zero rather than NaN", async () => {
+    const [entry] = await gitFileLog(root, root, "logo.bin", 50);
+    assert.equal(entry.subject, "add a binary file");
+    // git prints "-" for a binary file's added/deleted
+    assert.equal(entry.added, 0);
+    assert.equal(entry.deleted, 0);
+  });
+
+  test("treats a leading-dash filename as a path, not an option", async () => {
+    const log = await gitFileLog(root, root, "-weird.txt", 50);
+    assert.equal(log.length, 1);
+    assert.equal(log[0].subject, "add a file whose name starts with a dash");
+    assert.equal(await gitRevisionContent(root, root, log[0].sha, "-weird.txt"), "dashed\n");
+  });
+});
