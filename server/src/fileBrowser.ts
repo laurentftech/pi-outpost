@@ -51,6 +51,16 @@ async function resolveConfined(root: string, relPath: string): Promise<string> {
   return resolved;
 }
 
+/**
+ * Confinement on its own, for paths that need not exist on disk — a file's path
+ * at an old commit, or one that has since been deleted. `realResolve` keeps a
+ * non-existent tail, so the check still follows symlinks in the part that does
+ * exist and cannot be walked out of the root by a link.
+ */
+export async function assertWithinRoot(root: string, relPath: string): Promise<void> {
+  await resolveConfined(root, relPath);
+}
+
 function classify(dirent: { name: string; isDirectory(): boolean; isSymbolicLink(): boolean }, realType: "file" | "directory" | "other"): DirEntry["type"] {
   if (!dirent.isSymbolicLink()) return realType === "other" ? "other" : realType;
   return realType === "directory" ? "symlink-directory" : realType === "file" ? "symlink-file" : "other";

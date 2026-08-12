@@ -26,6 +26,7 @@ import { ExtensionNotifications } from "./components/ExtensionNotifications";
 import { ExtensionWidgets } from "./components/ExtensionWidgets";
 import { FileViewer } from "./components/FileViewer";
 import { GitCommitView } from "./components/GitCommitView";
+import { GitFileHistory } from "./components/GitFileHistory";
 import { Header } from "./components/Header";
 import { ModelBar } from "./components/ModelBar";
 import { Onboarding } from "./components/Onboarding";
@@ -89,6 +90,10 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
     fetchGitLog,
     fetchGitShow,
     clearGitShow,
+    fetchGitFileHistory,
+    closeGitFileHistory,
+    fetchGitFileDiff,
+    clearGitFileDiff,
     setCredential,
     declareProvider,
     updateConfig,
@@ -395,12 +400,24 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
               gitDiff={state.gitDiff}
               onFetchGitDiff={fetchGitDiff}
               onClearGitDiff={clearGitDiff}
+              gitAvailable={state.gitAvailable}
+              onOpenGitHistory={fetchGitFileHistory}
               onClose={closePreview}
               onReload={readFile}
               onSave={writeFile}
               serverUrl={serverUrl}
               token={authToken}
               onImageLoad={setLoadedPreviewImagePath}
+            />
+          )}
+          {state.gitFileHistory && (
+            <GitFileHistory
+              history={state.gitFileHistory}
+              diff={state.gitFileDiff}
+              dirty={state.gitStatus?.files[state.gitFileHistory.path] !== undefined}
+              onFetchDiff={fetchGitFileDiff}
+              onClearDiff={clearGitFileDiff}
+              onClose={closeGitFileHistory}
             />
           )}
           {state.gitShow && <GitCommitView show={state.gitShow} onClose={clearGitShow} />}

@@ -28,6 +28,7 @@ import {
   type CredentialStatus,
   type ExtensionUIRequest,
   type ExtensionUIResponse,
+  type GitRevision,
   type ModelChoice,
   type ServerMessage,
   type SessionSnapshot,
@@ -35,6 +36,7 @@ import {
   THINKING_LEVELS,
   type TreeNode,
   type WireImage,
+  WORKTREE_REVISION,
 } from "@pi-outpost/shared";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -54,8 +56,8 @@ import {
 } from "./credentials.ts";
 import { assistantToItem, contentText, customMessageToItem, historyToItems, truncate } from "./convert.ts";
 import { configureExtensionRender, renderToolCallHtml, renderToolResultHtml } from "./extensionRender.ts";
-import { FileBrowserError, listDirectory, readFileForPreview, readFileRaw, writeFileFromBrowser, resolveBrowserRoot, resolveWritableRoot, searchFiles } from "./fileBrowser.ts";
-import { GitError, gitHeadContent, gitLog, gitShow, gitStatus, probeGit } from "./git.ts";
+import { assertWithinRoot, FileBrowserError, listDirectory, MAX_PREVIEW_BYTES, readFileForPreview, readFileRaw, writeFileFromBrowser, resolveBrowserRoot, resolveWritableRoot, searchFiles } from "./fileBrowser.ts";
+import { GitError, gitFileLog, gitHeadContent, gitLog, gitRevisionContent, gitShow, gitStatus, probeGit } from "./git.ts";
 import { createSandboxedTools, isWithin, realResolve } from "./sandbox.ts";
 import {
   firstExchange,
@@ -1749,6 +1751,61 @@ async function handleGitLog(socket: WebSocket, limit: number, requestId: string)
   }
 }
 
+function isGitRevision(value: unknown): value is GitRevision {
+  const revision = value as GitRevision | undefined;
+  return typeof revision?.rev === "string" && typeof revision.path === "string";
+}
+
+/** Commits touching one file, for the history graph. */
+async function handleGitFileLog(socket: WebSocket, filePath: string, limit: number, requestId: string): Promise<void> {
+  if (GIT === null) return send(socket, { type: "git_error", requestId, message: "git is not available" });
+  try {
+    // Confine before spawning: this path goes straight into a pathspec. Only
+    // confinement applies — a deleted or oversized file still has a history.
+    await assertWithinRoot(BROWSER_ROOT, filePath);
+    const entries = await gitFileLog(BROWSER_ROOT, GIT.toplevel, filePath, limit);
+    send(socket, { type: "git_file_log", requestId, path: filePath, entries });
+  } catch (error) {
+    send(socket, { type: "git_error", requestId, message: gitErrorMessage(error) });
+  }
+}
+
+/**
+ * One side of a two-point file diff. The working tree is read from disk; every
+ * other revision goes through git. Both sides obey the file browser's confinement
+ * and its size and binary limits, so a pair can never smuggle out an oversized
+ * blob or a path outside the browser root.
+ */
+async function readRevisionSide(revision: GitRevision, toplevel: string): Promise<string> {
+  if (revision.rev === WORKTREE_REVISION) {
+    try {
+      return (await readFileForPreview(BROWSER_ROOT, revision.path)).content;
+    } catch (error) {
+      // A file deleted since that commit legitimately has no worktree side
+      if (error instanceof FileBrowserError && error.reason === "not-found") return "";
+      throw error;
+    }
+  }
+  // Confine before spawning: the path becomes part of a `<rev>:<path>` argument
+  await assertWithinRoot(BROWSER_ROOT, revision.path);
+  const content = await gitRevisionContent(BROWSER_ROOT, toplevel, revision.rev, revision.path);
+  if (content.includes("\0")) throw new FileBrowserError("binary", "Binary file — diff not supported");
+  if (Buffer.byteLength(content, "utf8") > MAX_PREVIEW_BYTES) {
+    throw new FileBrowserError("too-large", `${revision.rev.slice(0, 7)} is larger than the 1 MB limit`);
+  }
+  return content;
+}
+
+async function handleGitFileDiff(socket: WebSocket, base: GitRevision, target: GitRevision, requestId: string): Promise<void> {
+  if (GIT === null) return send(socket, { type: "git_error", requestId, message: "git is not available" });
+  try {
+    const [beforeText, afterText] = await Promise.all([readRevisionSide(base, GIT.toplevel), readRevisionSide(target, GIT.toplevel)]);
+    send(socket, { type: "git_file_diff", requestId, base, target, beforeText, afterText });
+  } catch (error) {
+    send(socket, { type: "git_error", requestId, message: gitErrorMessage(error) });
+  }
+}
+
 async function handleGitShow(socket: WebSocket, sha: string, requestId: string): Promise<void> {
   if (GIT === null) return send(socket, { type: "git_error", requestId, message: "git is not available" });
   try {
@@ -1919,6 +1976,16 @@ function handleClientMessage(socket: WebSocket, raw: string): void {
     case "git_show":
       if (typeof message.sha !== "string" || typeof message.requestId !== "string") return;
       handleGitShow(socket, message.sha, message.requestId).catch(reportError);
+      break;
+    case "git_file_log":
+      if (typeof message.path !== "string" || typeof message.requestId !== "string") return;
+      if (message.limit !== undefined && typeof message.limit !== "number") return;
+      handleGitFileLog(socket, message.path, message.limit ?? 100, message.requestId).catch(reportError);
+      break;
+    case "git_file_diff":
+      if (typeof message.requestId !== "string") return;
+      if (!isGitRevision(message.base) || !isGitRevision(message.target)) return;
+      handleGitFileDiff(socket, message.base, message.target, message.requestId).catch(reportError);
       break;
     case "set_credential":
       if (!validProviderId(message.provider) || typeof message.apiKey !== "string" || message.apiKey.trim() === "") return;

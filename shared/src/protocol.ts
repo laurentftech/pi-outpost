@@ -206,6 +206,34 @@ export interface GitLogEntry {
   subject: string;
 }
 
+/** One commit touching a single file, with what the graph needs to draw it. */
+export interface GitFileLogEntry extends GitLogEntry {
+  /**
+   * Parent commit ids, pruned to the commits present in the same response — git
+   * hides commits that did not touch the file, so raw parents would point at
+   * commits the client cannot draw.
+   */
+  parents: string[];
+  /** The file's path (relative to the browser root) at this commit; differs across a rename. */
+  path: string;
+  added: number;
+  deleted: number;
+}
+
+/** The working tree, as a revision the user can pick alongside any commit. */
+export const WORKTREE_REVISION = "worktree";
+
+/**
+ * One side of a two-point file diff: a commit id (or the working-tree marker) plus
+ * the path the file had there, so a diff across a rename compares the right blobs.
+ */
+export interface GitRevision {
+  /** A commit id matching /^[0-9a-f]{7,40}$/i, or exactly WORKTREE_REVISION. */
+  rev: string;
+  /** Path relative to the browser root (posix separators). */
+  path: string;
+}
+
 /** One match from a recursive file-name search (composer's `@` mention autocomplete). */
 export interface FileSearchEntry {
   /** Path relative to the browser root (posix separators). */
@@ -364,6 +392,9 @@ export type ServerMessage =
   | { type: "git_diff"; requestId: string; path: string; before: string; after: string }
   | { type: "git_log"; requestId: string; entries: GitLogEntry[] }
   | { type: "git_show"; requestId: string; sha: string; patch: string; truncated: boolean }
+  | { type: "git_file_log"; requestId: string; path: string; entries: GitFileLogEntry[] }
+  /** Both revisions are echoed so the client can drop a reply its selection has moved past. */
+  | { type: "git_file_diff"; requestId: string; base: GitRevision; target: GitRevision; beforeText: string; afterText: string }
   | { type: "git_error"; requestId: string; message: string }
   /** Sandbox config was updated — carries the full new snapshot after session replacement. */
   | ({ type: "update_config_ack" } & SessionSnapshot)
@@ -410,6 +441,9 @@ export type ClientMessage =
   | { type: "git_log"; limit?: number; requestId: string }
   | { type: "git_diff"; path: string; requestId: string }
   | { type: "git_show"; sha: string; requestId: string }
+  /** Commits touching one file, renames followed; limit clamped to [1, 200] server-side. */
+  | { type: "git_file_log"; path: string; limit?: number; requestId: string }
+  | { type: "git_file_diff"; base: GitRevision; target: GitRevision; requestId: string }
   /**
    * Store an API key for a known provider. Carries no auth of its own: it rides the
    * token check that already guards /ws, and the server refuses to bind off-loopback

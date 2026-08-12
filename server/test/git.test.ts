@@ -4,7 +4,7 @@ import { mkdtempSync, existsSync, rmSync, writeFileSync, mkdirSync } from "node:
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { before, after, describe, test } from "node:test";
-import { probeGit, gitStatus, gitLog, gitShow, gitHeadContent, unquote } from "../src/git.ts";
+import { probeGit, gitStatus, gitLog, gitShow, gitHeadContent, gitFileLog, gitRevisionContent, unquote } from "../src/git.ts";
 
 // ---------------------------------------------------------------------------
 // unquote — C-style path unquoting (pure, no git needed)
@@ -189,5 +189,184 @@ describe("git operations", () => {
   test("gitHeadContent works with nested paths", async () => {
     const content = await gitHeadContent(root, root, "src/main.ts");
     assert.ok(content.includes('console.log("hi")'));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// File history — a repo shaped to exercise every branch of the stitching walk:
+// a rename (which `--full-history` alone stops at), a fork and a merge resolving
+// a conflict in the file (which `--follow` alone drops), and a subject carrying
+// the record separator the log format uses.
+// ---------------------------------------------------------------------------
+describe("file history", () => {
+  let root: string;
+  /** Subject → sha, so assertions never depend on generated ids. */
+  const sha: Record<string, string> = {};
+
+  function git(...args: string[]) {
+    execFileSync("git", args, { cwd: root, stdio: "pipe" });
+  }
+
+  function write(relPath: string, content: string) {
+    const full = `${root}/${relPath}`;
+    mkdirSync(path.dirname(full), { recursive: true });
+    writeFileSync(full, content);
+  }
+
+  function commit(subject: string) {
+    git("add", "-A");
+    git("commit", "-m", subject);
+    sha[subject] = execFileSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8" }).trim();
+  }
+
+  const SEP_SUBJECT = "tidy up \x1e and carry on";
+
+  before(() => {
+    root = mkdtempSync(path.join(tmpdir(), "pi-git-history-"));
+    git("init", "-b", "main");
+    git("config", "user.email", "test@test");
+    git("config", "user.name", "Test");
+    git("config", "commit.gpgsign", "false");
+
+    write("notes.txt", "1\n");
+    commit("create notes");
+    write("notes.txt", "1\n2\n");
+    commit("extend notes");
+
+    // Rename: `--full-history` stops here, so the walk has to probe and resume
+    mkdirSync(`${root}/docs`, { recursive: true });
+    git("mv", "notes.txt", "docs/notes.txt");
+    write("docs/notes.txt", "1\n2\n3\n");
+    commit("move notes into docs");
+
+    // Fork both sides of the file, then merge with a conflict so the merge commit
+    // differs from both parents and survives history simplification
+    git("checkout", "-b", "side");
+    write("docs/notes.txt", "1\n2\nside\n");
+    commit("side edit");
+    git("checkout", "main");
+    write("docs/notes.txt", "1\n2\nmain\n");
+    commit("main edit");
+    try {
+      git("merge", "--no-commit", "side");
+    } catch {
+      // expected: the conflict is the point
+    }
+    write("docs/notes.txt", "1\n2\nmerged\n");
+    commit("merge side");
+
+    write("docs/notes.txt", "1\n2\nmerged\n4\n");
+    commit(SEP_SUBJECT);
+  });
+
+  after(() => {
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  test("lists the file's commits newest first", async () => {
+    const log = await gitFileLog(root, root, "docs/notes.txt", 50);
+    assert.equal(log[0].subject, SEP_SUBJECT);
+    assert.equal(log[0].sha, sha[SEP_SUBJECT]);
+    assert.ok(log[0].author.length > 0);
+    assert.ok(log[0].date.length > 0);
+  });
+
+  test("reports per-file line counts", async () => {
+    const log = await gitFileLog(root, root, "docs/notes.txt", 50);
+    const latest = log.find((entry) => entry.subject === SEP_SUBJECT);
+    assert.equal(latest!.added, 1);
+    assert.equal(latest!.deleted, 0);
+  });
+
+  test("keeps a record separator inside a subject", async () => {
+    const log = await gitFileLog(root, root, "docs/notes.txt", 50);
+    assert.ok(
+      log.some((entry) => entry.subject === SEP_SUBJECT),
+      `expected the \\x1e subject to survive parsing, got ${JSON.stringify(log.map((e) => e.subject))}`,
+    );
+  });
+
+  test("keeps the merge commit and both its parents", async () => {
+    const log = await gitFileLog(root, root, "docs/notes.txt", 50);
+    const merge = log.find((entry) => entry.subject === "merge side");
+    assert.ok(merge, "expected the merge commit in the history");
+    assert.equal(merge!.parents.length, 2);
+    assert.deepEqual(new Set(merge!.parents), new Set([sha["main edit"], sha["side edit"]]));
+  });
+
+  test("follows the rename past the point --full-history stops at", async () => {
+    const log = await gitFileLog(root, root, "docs/notes.txt", 50);
+    const subjects = log.map((entry) => entry.subject);
+    assert.ok(subjects.includes("extend notes"), `expected pre-rename history, got ${JSON.stringify(subjects)}`);
+    assert.ok(subjects.includes("create notes"));
+  });
+
+  test("reports the path the file had at each commit", async () => {
+    const log = await gitFileLog(root, root, "docs/notes.txt", 50);
+    assert.equal(log.find((entry) => entry.subject === "create notes")!.path, "notes.txt");
+    assert.equal(log.find((entry) => entry.subject === "main edit")!.path, "docs/notes.txt");
+  });
+
+  test("leaves every entry connected to one already in the list", async () => {
+    const log = await gitFileLog(root, root, "docs/notes.txt", 50);
+    const present = new Set(log.map((entry) => entry.sha));
+    for (const entry of log.slice(0, -1)) {
+      assert.ok(entry.parents.length > 0, `${entry.subject} has no parent to draw a rail to`);
+      for (const parent of entry.parents) assert.ok(present.has(parent), `${entry.subject} points at an absent parent`);
+    }
+    assert.deepEqual(log[log.length - 1].parents, [], "the root commit has no parent");
+  });
+
+  test("clamps the limit", async () => {
+    assert.equal((await gitFileLog(root, root, "docs/notes.txt", 2)).length, 2);
+    assert.equal((await gitFileLog(root, root, "docs/notes.txt", 0)).length, 1);
+  });
+
+  test("returns an empty list for an untracked file", async () => {
+    write("scratch.txt", "not committed\n");
+    try {
+      assert.deepEqual(await gitFileLog(root, root, "scratch.txt", 50), []);
+    } finally {
+      rmSync(`${root}/scratch.txt`);
+    }
+  });
+
+  test("gitRevisionContent reads the file at a commit", async () => {
+    const content = await gitRevisionContent(root, root, sha["main edit"], "docs/notes.txt");
+    assert.equal(content, "1\n2\nmain\n");
+  });
+
+  test("gitRevisionContent reads the pre-rename path at an old commit", async () => {
+    const content = await gitRevisionContent(root, root, sha["extend notes"], "notes.txt");
+    assert.equal(content, "1\n2\n");
+  });
+
+  test("gitRevisionContent returns empty where the file did not exist yet", async () => {
+    const content = await gitRevisionContent(root, root, sha["create notes"], "docs/notes.txt");
+    assert.equal(content, "");
+  });
+
+  test("gitRevisionContent peels an annotated tag", async () => {
+    git("tag", "-a", "v1", "-m", "release", sha["main edit"]);
+    const tagId = execFileSync("git", ["rev-parse", "v1"], { cwd: root, encoding: "utf8" }).trim();
+    const content = await gitRevisionContent(root, root, tagId, "docs/notes.txt");
+    assert.equal(content, "1\n2\nmain\n");
+  });
+
+  test("gitRevisionContent refuses a blob id", async () => {
+    const blob = execFileSync("git", ["rev-parse", `${sha["main edit"]}:docs/notes.txt`], { cwd: root, encoding: "utf8" }).trim();
+    // ^{commit} refuses a blob outright, and that must surface rather than read as
+    // an empty file — an empty side would silently render as an all-added diff
+    await assert.rejects(() => gitRevisionContent(root, root, blob, "docs/notes.txt"), /blob/i);
+  });
+
+  test("gitRevisionContent refuses a malformed revision", async () => {
+    await assert.rejects(() => gitRevisionContent(root, root, "main", "docs/notes.txt"), /Invalid commit id/);
+    await assert.rejects(() => gitRevisionContent(root, root, "HEAD@{0}", "docs/notes.txt"), /Invalid commit id/);
+    await assert.rejects(() => gitRevisionContent(root, root, "--upload-pack=evil", "docs/notes.txt"), /Invalid commit id/);
+  });
+
+  test("gitRevisionContent refuses the working-tree marker", async () => {
+    await assert.rejects(() => gitRevisionContent(root, root, "worktree", "docs/notes.txt"), /read from disk/);
   });
 });

@@ -10,8 +10,10 @@ import type {
   DirEntry,
   ExtensionUIRequest,
   FileSearchEntry,
+  GitFileLogEntry,
   GitFileState,
   GitLogEntry,
+  GitRevision,
   ModelChoice,
   ProviderCompat,
   ServerMessage,
@@ -83,6 +85,34 @@ export interface GitShowState {
   truncated: boolean;
 }
 
+/** The open file's commit history; null when the history pane is closed. */
+export interface GitFileHistoryState {
+  path: string;
+  status: "loading" | "loaded" | "error";
+  entries: GitFileLogEntry[];
+  error?: string;
+  requestId: string;
+}
+
+/**
+ * The diff between the two selected revisions. `beforeText`/`afterText` survive a
+ * reload so the pane can dim the previous diff instead of flashing empty.
+ */
+export interface GitFileDiffState {
+  base: GitRevision;
+  target: GitRevision;
+  status: "loading" | "loaded" | "error";
+  beforeText: string;
+  afterText: string;
+  error?: string;
+  requestId: string;
+}
+
+/** Two revision pairs are the same request when both sides match, side for side. */
+function samePair(a: { base: GitRevision; target: GitRevision }, b: { base: GitRevision; target: GitRevision }): boolean {
+  return a.base.rev === b.base.rev && a.base.path === b.base.path && a.target.rev === b.target.rev && a.target.path === b.target.path;
+}
+
 export interface AgentState {
   connected: boolean;
   /** The server refused our token (WS close 4401): show the token screen, stop reconnecting. */
@@ -127,6 +157,9 @@ export interface AgentState {
   gitDiff: GitDiffState | null;
   gitLog: GitLogEntry[] | null;
   gitShow: GitShowState | null;
+  /** The open file's history, and the diff between the two revisions picked in it. */
+  gitFileHistory: GitFileHistoryState | null;
+  gitFileDiff: GitFileDiffState | null;
 }
 
 const initialState: AgentState = {
@@ -165,6 +198,8 @@ const initialState: AgentState = {
   gitDiff: null,
   gitLog: null,
   gitShow: null,
+  gitFileHistory: null,
+  gitFileDiff: null,
 };
 
 type Action =
@@ -186,6 +221,10 @@ type Action =
   | { type: "git_diff_started"; path: string; requestId: string }
   | { type: "git_diff_cleared" }
   | { type: "git_show_cleared" }
+  | { type: "git_file_history_started"; path: string; requestId: string }
+  | { type: "git_file_history_closed" }
+  | { type: "git_file_diff_started"; base: GitRevision; target: GitRevision; requestId: string }
+  | { type: "git_file_diff_cleared" }
   | { type: "branding_loaded"; branding: Branding };
 
 /** Update the in-flight assistant item; append a new one when none exists (upsert). */
@@ -307,6 +346,29 @@ function reduce(state: AgentState, action: Action): AgentState {
   if (action.type === "git_diff_started") return { ...state, gitDiff: null };
   if (action.type === "git_diff_cleared") return { ...state, gitDiff: null };
   if (action.type === "git_show_cleared") return { ...state, gitShow: null, gitLog: state.gitLog };
+  if (action.type === "git_file_history_started") {
+    return {
+      ...state,
+      gitFileHistory: { path: action.path, status: "loading", entries: [], requestId: action.requestId },
+      gitFileDiff: null,
+    };
+  }
+  if (action.type === "git_file_history_closed") return { ...state, gitFileHistory: null, gitFileDiff: null };
+  if (action.type === "git_file_diff_started") {
+    return {
+      ...state,
+      gitFileDiff: {
+        base: action.base,
+        target: action.target,
+        status: "loading",
+        // Keep the previous texts so the pane dims the old diff instead of flashing empty
+        beforeText: state.gitFileDiff?.beforeText ?? "",
+        afterText: state.gitFileDiff?.afterText ?? "",
+        requestId: action.requestId,
+      },
+    };
+  }
+  if (action.type === "git_file_diff_cleared") return { ...state, gitFileDiff: null };
 
   const message = action.message;
   switch (message.type) {
@@ -506,11 +568,29 @@ function reduce(state: AgentState, action: Action): AgentState {
       return { ...state, gitLog: message.entries };
     case "git_show":
       return { ...state, gitShow: { sha: message.sha, patch: message.patch, truncated: message.truncated } };
+    case "git_file_log":
+      // The pane may have closed, or moved to another file, since we asked
+      if (state.gitFileHistory?.requestId !== message.requestId) return state;
+      return { ...state, gitFileHistory: { ...state.gitFileHistory, status: "loaded", entries: message.entries } };
+    case "git_file_diff":
+      // Drop a reply the selection has already moved past
+      if (state.gitFileDiff === null || !samePair(state.gitFileDiff, message)) return state;
+      return {
+        ...state,
+        gitFileDiff: { ...state.gitFileDiff, status: "loaded", beforeText: message.beforeText, afterText: message.afterText },
+      };
     case "git_error":
       // Diff failures belong in the viewer's diff pane (the error banner renders
       // under the full-pane overlay where nobody can see it)
       if (message.requestId.startsWith("gitdiff:")) {
         return { ...state, gitDiff: state.openFile ? { path: state.openFile.path, error: message.message } : null };
+      }
+      // Same reasoning for the history pane: its failures belong inside it
+      if (message.requestId === state.gitFileHistory?.requestId) {
+        return { ...state, gitFileHistory: { ...state.gitFileHistory, status: "error", error: message.message } };
+      }
+      if (message.requestId === state.gitFileDiff?.requestId) {
+        return { ...state, gitFileDiff: { ...state.gitFileDiff, status: "error", error: message.message } };
       }
       return { ...state, errors: [...state.errors, `git: ${message.message}`] };
     case "extension_ui_request":
@@ -812,6 +892,20 @@ export function useAgent(serverUrl = "", explicitToken?: string, embedded = fals
     fetchGitLog: (limit?: number) => sendMessage({ type: "git_log", ...(limit ? { limit } : {}), requestId: `gitlog:${crypto.randomUUID()}` }),
     fetchGitShow: (sha: string) => sendMessage({ type: "git_show", sha, requestId: `gitshow:${crypto.randomUUID()}` }),
     clearGitShow: () => dispatch({ type: "git_show_cleared" }),
+    /** Open the history pane for one file (answers land in state.gitFileHistory). */
+    fetchGitFileHistory: (path: string, limit?: number) => {
+      const requestId = `gitfilelog:${crypto.randomUUID()}`;
+      dispatch({ type: "git_file_history_started", path, requestId });
+      sendMessage({ type: "git_file_log", path, ...(limit ? { limit } : {}), requestId });
+    },
+    closeGitFileHistory: () => dispatch({ type: "git_file_history_closed" }),
+    /** Contents of one file at two revisions (answers land in state.gitFileDiff). */
+    fetchGitFileDiff: (base: GitRevision, target: GitRevision) => {
+      const requestId = `gitfilediff:${crypto.randomUUID()}`;
+      dispatch({ type: "git_file_diff_started", base, target, requestId });
+      sendMessage({ type: "git_file_diff", base, target, requestId });
+    },
+    clearGitFileDiff: () => dispatch({ type: "git_file_diff_cleared" }),
     /** Onboarding: store an API key for a provider the server already knows. */
     setCredential: (provider: string, apiKey: string) => sendMessage({ type: "set_credential", provider, apiKey }),
     /** Onboarding: declare an OpenAI-compatible endpoint (corporate gateway, vLLM, Ollama…). */

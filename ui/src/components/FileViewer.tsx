@@ -28,6 +28,9 @@ interface FileViewerProps {
   gitDiff: GitDiffState | null;
   onFetchGitDiff: (path: string) => void;
   onClearGitDiff: () => void;
+  /** Enables the history affordance — for any tracked file, changed or not. */
+  gitAvailable: boolean;
+  onOpenGitHistory: (path: string) => void;
   onClose: () => void;
   /** Refetch the file from disk (discards the edit baseline). */
   onReload: (path: string) => void;
@@ -73,6 +76,8 @@ export function FileViewer({
   gitDiff,
   onFetchGitDiff,
   onClearGitDiff,
+  gitAvailable,
+  onOpenGitHistory,
   onClose,
   onReload,
   onSave,
@@ -208,6 +213,16 @@ export function FileViewer({
             }`}
           >
             ± diff
+          </button>
+        )}
+        {gitAvailable && edit === null && (
+          <button
+            type="button"
+            onClick={() => onOpenGitHistory(file.path)}
+            title="Show this file's history"
+            className="shrink-0 rounded px-1.5 py-0.5 text-xs text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700 dark:text-zinc-600 dark:hover:bg-zinc-800 dark:hover:text-zinc-300"
+          >
+            ⎇ history
           </button>
         )}
         <span className="min-w-0 flex-1 truncate font-mono text-xs text-zinc-500 dark:text-zinc-400" title={file.path}>
