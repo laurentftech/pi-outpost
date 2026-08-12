@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, afterEach } from "vitest";
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import type { ChatItem, TurnUsage } from "@pi-outpost/shared";
 import { SessionAnalysisPanel } from "./SessionAnalysis";
@@ -29,9 +29,9 @@ function section(title: string) {
   return within(element);
 }
 
-function renderPanel(items: ChatItem[], onJump = vi.fn()) {
-  render(<SessionAnalysisPanel analysis={analyzeSession(items)} onJump={onJump} onClose={() => {}} />);
-  return onJump;
+function renderPanel(items: ChatItem[], onJump = vi.fn(), onClose = vi.fn()) {
+  render(<SessionAnalysisPanel analysis={analyzeSession(items)} onJump={onJump} onClose={onClose} />);
+  return { onJump, onClose };
 }
 
 describe("SessionAnalysisPanel", () => {
@@ -72,13 +72,13 @@ describe("SessionAnalysisPanel", () => {
   });
 
   it("jumps to the turn behind a chart point", () => {
-    const onJump = renderPanel([user("go"), turn(), turn()]);
+    const { onJump } = renderPanel([user("go"), turn(), turn()]);
     fireEvent.click(screen.getByRole("button", { name: /Turn 2:/ }));
     expect(onJump).toHaveBeenCalledWith(2);
   });
 
   it("ranks tool calls by the chosen criterion", () => {
-    const onJump = renderPanel([
+    const { onJump } = renderPanel([
       user("go"),
       turn(),
       tool({ toolCallId: "small", output: "a", args: { path: "a/very/long/path/to/a/file.ts" } }),
@@ -125,7 +125,7 @@ describe("SessionAnalysisPanel", () => {
   });
 
   it("ranks requests by consumption and jumps to the user message", () => {
-    const onJump = renderPanel([
+    const { onJump } = renderPanel([
       user("light one"),
       turn({ totalTokens: 10 }),
       user("heavy one"),
@@ -163,5 +163,67 @@ describe("SessionAnalysisPanel", () => {
       />,
     );
     expect(section("tokens").getByLabelText("total: 3k")).toBeTruthy();
+  });
+});
+
+describe("SessionAnalysisPanel — narrow screens", () => {
+  const wide = window.innerWidth;
+
+  function resize(width: number) {
+    Object.defineProperty(window, "innerWidth", { value: width, configurable: true, writable: true });
+  }
+
+  afterEach(() => resize(wide));
+
+  it("closes itself on a jump when it covers the conversation", () => {
+    // Below the breakpoint the drawer is full-width: landing behind it would
+    // show the user nothing.
+    resize(500);
+    const { onJump, onClose } = renderPanel([user("go"), turn(), turn()]);
+    fireEvent.click(screen.getAllByRole("button", { name: /^Turn 1:/ })[0]);
+    expect(onJump).toHaveBeenCalledWith(1);
+    expect(onClose).toHaveBeenCalledOnce();
+  });
+
+  it("stays open on a jump when the conversation is beside it", () => {
+    resize(1400);
+    const { onJump, onClose } = renderPanel([user("go"), turn(), turn()]);
+    fireEvent.click(screen.getAllByRole("button", { name: /^Turn 1:/ })[0]);
+    expect(onJump).toHaveBeenCalledWith(1);
+    expect(onClose).not.toHaveBeenCalled();
+  });
+});
+
+describe("SessionAnalysisPanel — chart geometry", () => {
+  /** y of the plotted point for a series, read off the rendered SVG. */
+  function pointYs(className: string) {
+    return [...document.querySelectorAll(`circle.${className}`)].map((c) => Number(c.getAttribute("cy")));
+  }
+
+  it("plots a heavier turn above a lighter one", () => {
+    renderPanel([user("go"), turn({ input: 100, totalTokens: 100 }), turn({ input: 5000, totalTokens: 5000 })]);
+    const [light, heavy] = pointYs("text-emerald-500");
+    // SVG y grows downward: the heavier turn sits at the smaller coordinate.
+    expect(heavy).toBeLessThan(light);
+  });
+
+  it("keeps every point on the plot when a turn consumed nothing", () => {
+    // A zero maximum would divide by zero and put the line off the chart.
+    renderPanel([
+      user("go"),
+      turn({ input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0 }),
+      turn({ input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0 }),
+    ]);
+    for (const y of pointYs("text-emerald-500")) {
+      expect(Number.isFinite(y)).toBe(true);
+      expect(y).toBeGreaterThan(0);
+    }
+  });
+
+  it("scales the chart to fit however many turns it has", () => {
+    renderPanel([user("go"), ...Array.from({ length: 40 }, () => turn())]);
+    const chart = section("tokens per turn").getByRole("group", { name: "Per-turn chart" });
+    // Fixed spacing per turn: a long session scrolls rather than collapsing.
+    expect(Number(chart.getAttribute("width"))).toBeGreaterThan(40 * 20);
   });
 });

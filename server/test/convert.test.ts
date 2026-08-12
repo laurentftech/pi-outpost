@@ -352,6 +352,28 @@ describe("historyToItems — turn usage", () => {
     assert.equal(assistant?.usage?.cost, 0.004);
   });
 
+  test("the live and replay paths report a turn identically", () => {
+    // The bug this guards against is a divergence, not a wrong figure: a session
+    // reopened must report what it reported while it ran, and the two paths build
+    // the assistant item separately.
+    const tokens = { input: 10, output: 5, cacheRead: 2, cacheWrite: 1, totalTokens: 18 };
+    const messages = [
+      { role: "assistant", content: [{ type: "text", text: "done" }], usage: { ...tokens, cost: { total: 0.02 } } },
+      {
+        role: "assistant",
+        content: [{ type: "toolCall", id: "call-1", name: "read", arguments: {} }],
+        usage: { ...tokens, cost: { total: 0.01 } },
+      },
+    ];
+    for (const message of messages) {
+      const replayed = historyToItems([{ role: "user", content: "hi" }, message]).find(
+        (item) => item.kind === "assistant",
+      );
+      const live = assistantToItem(message);
+      assert.deepEqual(replayed?.usage, live.kind === "assistant" ? live.usage : undefined);
+    }
+  });
+
   test("a tool-only turn without usage stays out of the transcript", () => {
     const items = historyToItems([
       { role: "user", content: "hi" },
