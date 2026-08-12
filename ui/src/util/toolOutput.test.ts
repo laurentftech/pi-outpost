@@ -68,3 +68,80 @@ describe("getFormattedToolOutput", () => {
     expect(getFormattedToolOutput('"simple string"')).toBe("simple string");
   });
 });
+
+/**
+ * The recovery paths: what happens when the tool's JSON never finished arriving.
+ * These are the branches that decide between showing a partial summary and showing
+ * nothing, and they are the ones a malformed payload actually reaches.
+ */
+describe("getFormattedToolOutput — partial and unusual payloads", () => {
+  it("formats the search mode and the summary", () => {
+    const output = JSON.stringify({ searchMode: "semantic", summary: "Four call sites." });
+    expect(getFormattedToolOutput(output)).toBe("Mode: semantic\nFour call sites.");
+  });
+
+  it("formats nextStepsText the same way as nextSteps", () => {
+    const output = JSON.stringify({ title: "Orient", nextStepsText: ["read the spec", "run the tests"] });
+    expect(getFormattedToolOutput(output)).toContain("- read the spec");
+  });
+
+  it("caps the long lists at five entries", () => {
+    const many = ["a", "b", "c", "d", "e", "f", "g"];
+    const output = JSON.stringify({ title: "T", nextSteps: many, relevantFunctions: many.map((name) => ({ name })) });
+    const formatted = getFormattedToolOutput(output) ?? "";
+    expect(formatted).toContain("- e");
+    expect(formatted).not.toContain("- f");
+  });
+
+  it("names a function whose file is reported under `file` rather than `filePath`", () => {
+    const output = JSON.stringify({ relevantFunctions: [{ name: "runGit", file: "server/src/git.ts" }] });
+    expect(getFormattedToolOutput(output)).toContain("- runGit (server/src/git.ts)");
+  });
+
+  it("says the file is unknown rather than printing undefined", () => {
+    const output = JSON.stringify({ relevantFunctions: [{ name: "runGit" }] });
+    expect(getFormattedToolOutput(output)).toContain("- runGit (unknown)");
+  });
+
+  it("falls back to the raw value for a function that is not an object", () => {
+    const output = JSON.stringify({ relevantFunctions: ["runGit"] });
+    expect(getFormattedToolOutput(output)).toContain("- runGit");
+  });
+
+  it("recovers a complete object followed by trailing rubbish", () => {
+    // A tool that appended a log line after its JSON: the object is intact, so the
+    // summary should still be shown rather than dropped for the trailing bytes
+    const output = `${JSON.stringify({ title: "Orient", summary: "Two hits." })}\nwarning: cache stale`;
+    expect(getFormattedToolOutput(output)).toBe("**Orient**\nTwo hits.");
+  });
+
+  it("shows nothing rather than a guess when the outer object never closed", () => {
+    // The brace-counting recovery needs a closing brace for the outermost object.
+    // A payload cut off before that has no prefix that parses, so there is nothing
+    // honest to show — better empty than a summary invented from half a field.
+    const output = '{"title":"Orient","summary":"Two hits.","relevantFiles":["a.ts","b.t';
+    expect(getFormattedToolOutput(output)).toBeUndefined();
+  });
+
+  it("recovers the object when the truncation landed after it closed", () => {
+    const output = '{"title":"Orient","summary":"Two hits."} trailing bytes {"partial":';
+    expect(getFormattedToolOutput(output)).toContain("Two hits.");
+  });
+
+  it("gives up rather than guessing when nothing parses", () => {
+    expect(getFormattedToolOutput('{"title": "Orient"')).toBeUndefined();
+    expect(getFormattedToolOutput("{{{{")).toBeUndefined();
+    expect(getFormattedToolOutput("plain text output")).toBeUndefined();
+  });
+
+  it("returns nothing for a JSON value that is not an object or string", () => {
+    expect(getFormattedToolOutput("42")).toBeUndefined();
+    expect(getFormattedToolOutput("null")).toBeUndefined();
+    expect(getFormattedToolOutput("true")).toBeUndefined();
+  });
+
+  it("prefers the render envelope over the fields beside it", () => {
+    const output = JSON.stringify({ __pi_render: { text: "rendered" }, title: "ignored" });
+    expect(getFormattedToolOutput(output)).toBe("rendered");
+  });
+});
