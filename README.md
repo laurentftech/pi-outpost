@@ -36,7 +36,8 @@ A Node server embeds a pi `AgentSession` and bridges it to a React chat UI over 
 - File browser: lazy-loaded tree, full-size viewer (syntax-highlighted, Markdown rendered) and an editor with save inside the writable zone — all confined to the same root the agent's own tools can see; entries outside `sandbox.writableRoot` render dimmed
 - In-browser sandbox settings: tweak root, writable root, write and bash permissions from the gear menu — no config file edit or server restart needed
 - Attachments: drop or paste images and text files into the composer; the file you are previewing attaches itself as an `@path` reference, so the agent reads it on demand instead of the prompt carrying its content
-- Git: uncommitted-change badges in the tree, per-file diffs in the viewer, log and commit inspection
+- Git: uncommitted-change badges in the tree, per-file diffs in the viewer, log and commit inspection, and a per-file history graph (renames followed) that diffs the file between any two revisions — the working tree included
+- Session cost: tokens and price per turn in the model bar, and a session-analysis panel behind it — tokens/cost charted across turns, tool calls ranked by output size or failure, requests ranked by what they cost, every row jumping back to the message that produced it
 - Slash commands with autocompletion (`/` in the composer: extension commands, prompt templates, skills)
 - File mentions with autocompletion (`@` in the composer: recursive name search over the browser root, inserts the relative path)
 - Extension "Custom UI" support: dialogs, notifications, status/widgets, editor prefill (see below)
