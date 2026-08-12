@@ -118,6 +118,27 @@ describe("AssistantMessage", () => {
     });
   });
 
+  describe("code fences", () => {
+    it("routes a mermaid fence to the diagram renderer", () => {
+      setup({ item: item({ blocks: [{ type: "text", text: "```mermaid\ngraph TD; A-->B;\n```" }] }) });
+      // Before mermaid has drawn anything the renderer shows the source, so finding
+      // it proves the fence reached the renderer rather than a plain <pre>
+      expect(screen.getByText(/graph TD; A-->B;/)).toBeInTheDocument();
+      expect(document.querySelector("pre.my-2")).not.toBeNull();
+    });
+
+    it("leaves any other fence as plain code", () => {
+      setup({ item: item({ blocks: [{ type: "text", text: "```ts\nconst a = 1;\n```" }] }) });
+      expect(screen.getByText(/const a = 1;/)).toBeInTheDocument();
+      expect(document.querySelector("pre.my-2")).toBeNull();
+    });
+
+    it("leaves a fence with no language as plain code", () => {
+      setup({ item: item({ blocks: [{ type: "text", text: "```\nplain\n```" }] }) });
+      expect(document.querySelector("pre.my-2")).toBeNull();
+    });
+  });
+
   describe("failures", () => {
     it("shows what went wrong alongside whatever arrived", () => {
       setup({ item: item({ errorMessage: "The provider refused the request" }) });

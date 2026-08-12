@@ -52,6 +52,8 @@ function agentState(overrides: Record<string, unknown> = {}) {
     gitDiff: null,
     gitLog: null,
     gitShow: null,
+    gitFileHistory: null,
+    gitFileDiff: null,
     ...overrides,
   };
 }
@@ -91,6 +93,10 @@ function agentApi(state: ReturnType<typeof agentState>) {
     fetchGitLog: vi.fn(),
     fetchGitShow: vi.fn(),
     clearGitShow: vi.fn(),
+    fetchGitFileHistory: vi.fn(),
+    closeGitFileHistory: vi.fn(),
+    fetchGitFileDiff: vi.fn(),
+    clearGitFileDiff: vi.fn(),
     setCredential: vi.fn(),
     declareProvider: vi.fn(),
     updateConfig: vi.fn(),
@@ -246,5 +252,136 @@ describe("App — session analysis", () => {
     openAnalysis();
     const heading = screen.getByText("tokens", { selector: "h3" });
     expect(within(heading.closest("section") as HTMLElement).getByLabelText("total: 2k")).toBeTruthy();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Wiring: App holds the state the panes share, so these are the handovers
+// between them rather than any single component's behaviour.
+// ---------------------------------------------------------------------------
+/** The sidebar toggle, told apart from the composer's "Attach files" by its glyph. */
+const sidebarToggle = () => screen.getByRole("button", { name: /[◨◧]\s*files/ });
+
+describe("App — panes and handovers", () => {
+  function mount(overrides: Record<string, unknown> = {}) {
+    const api = agentApi(agentState(overrides));
+    mockUseAgent.mockReturnValue(api);
+    const view = render(<App />);
+    return { api, ...view };
+  }
+
+  it("opens and closes the file sidebar", () => {
+    mount();
+    expect(screen.queryByText("Files")).not.toBeInTheDocument();
+    fireEvent.click(sidebarToggle());
+    expect(screen.getByText("Files")).toBeInTheDocument();
+    fireEvent.click(sidebarToggle());
+    expect(screen.queryByText("Files")).not.toBeInTheDocument();
+  });
+
+  it("shows the file viewer over the conversation when a file is open", () => {
+    mount({ openFile: { status: "loaded", path: "src/main.ts", content: "const a = 1;", size: 12, mtimeMs: 1 } });
+    expect(screen.getByRole("button", { name: "Close file viewer" })).toBeInTheDocument();
+  });
+
+  it("asks for a file's history from the viewer", () => {
+    const { api } = mount({
+      gitAvailable: true,
+      openFile: { status: "loaded", path: "src/main.ts", content: "x", size: 1, mtimeMs: 1 },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /history/ }));
+    expect(api.fetchGitFileHistory).toHaveBeenCalledWith("src/main.ts");
+  });
+
+  it("shows the history pane once the answer arrives", () => {
+    mount({
+      gitAvailable: true,
+      openFile: { status: "loaded", path: "src/main.ts", content: "x", size: 1, mtimeMs: 1 },
+      gitFileHistory: { path: "src/main.ts", status: "loaded", entries: [], requestId: "r1" },
+    });
+    expect(screen.getByRole("button", { name: "Close file history" })).toBeInTheDocument();
+    expect(screen.getByText("No commits touch this file yet.")).toBeInTheDocument();
+  });
+
+  it("surfaces errors from the agent", () => {
+    mount({ errors: ["git: not a repository"] });
+    expect(screen.getByText(/not a repository/)).toBeInTheDocument();
+  });
+
+  it("shows an extension notification", () => {
+    mount({ notifications: [{ id: "n1", message: "OmniRoute ready", type: "info" }] });
+    expect(screen.getByText("OmniRoute ready")).toBeInTheDocument();
+  });
+
+  it("queues an extension dialog for an answer", () => {
+    mount({ dialogQueue: [{ type: "extension_ui_request", id: "d1", method: "confirm", title: "Proceed?", message: "Really?" }] });
+    expect(screen.getByText("Proceed?")).toBeInTheDocument();
+  });
+
+  it("remembers the tool-noise filter across mounts", () => {
+    localStorage.clear();
+    const first = mount();
+    fireEvent.click(screen.getByRole("button", { name: /tools/ }));
+    first.unmount();
+
+    mount();
+    expect(screen.getByRole("button", { name: /tools/ })).toHaveAttribute("aria-pressed", "true");
+    localStorage.clear();
+  });
+});
+
+describe("App — attachments", () => {
+  function mount(overrides: Record<string, unknown> = {}) {
+    const api = agentApi(agentState(overrides));
+    mockUseAgent.mockReturnValue(api);
+    const view = render(<App />);
+    return { api, ...view };
+  }
+
+  it("references a file pinned in the tree, and drops it when unpinned", () => {
+    mount({ fileTree: { "": [{ name: "readme.md", type: "file" }] } });
+    fireEvent.click(sidebarToggle());
+    const pin = screen.getByRole("button", { name: "Reference readme.md in the prompt" });
+
+    fireEvent.click(pin);
+    expect(screen.getByRole("button", { name: "Remove readme.md in the prompt" })).toHaveAttribute("aria-pressed", "true");
+
+    fireEvent.click(screen.getByRole("button", { name: "Remove readme.md in the prompt" }));
+    expect(screen.getByRole("button", { name: "Reference readme.md in the prompt" })).toHaveAttribute("aria-pressed", "false");
+  });
+
+  it("sends the prompt and clears what was attached to it", () => {
+    const { api } = mount({ fileTree: { "": [{ name: "readme.md", type: "file" }] } });
+    fireEvent.click(sidebarToggle());
+    fireEvent.click(screen.getByRole("button", { name: "Reference readme.md in the prompt" }));
+
+    const box = screen.getByRole("textbox");
+    fireEvent.change(box, { target: { value: "what is this?" } });
+    fireEvent.keyDown(box, { key: "Enter" });
+
+    expect(api.prompt).toHaveBeenCalledWith(expect.stringContaining("@readme.md"), undefined);
+    expect(screen.getByRole("button", { name: "Reference readme.md in the prompt" })).toHaveAttribute("aria-pressed", "false");
+  });
+
+  it("closes the viewer on send, since the user wants the conversation back", () => {
+    const { api } = mount({ openFile: { status: "loaded", path: "src/main.ts", content: "x", size: 1, mtimeMs: 1 } });
+    const box = screen.getByRole("textbox");
+    fireEvent.change(box, { target: { value: "carry on" } });
+    fireEvent.keyDown(box, { key: "Enter" });
+    expect(api.closeFilePreview).toHaveBeenCalled();
+  });
+
+  it("keeps the viewer open on send when it holds unsaved edits", () => {
+    const { api } = mount({
+      openFile: { status: "loaded", path: "src/main.ts", content: "x", size: 1, mtimeMs: 1 },
+      sandbox: { root: "/w", allowWrite: true, allowBash: false },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "✎ edit" }));
+    fireEvent.change(screen.getAllByRole("textbox")[0], { target: { value: "edited" } });
+
+    const composer = screen.getAllByRole("textbox").at(-1)!;
+    fireEvent.change(composer, { target: { value: "carry on" } });
+    fireEvent.keyDown(composer, { key: "Enter" });
+    expect(api.closeFilePreview).not.toHaveBeenCalled();
   });
 });
