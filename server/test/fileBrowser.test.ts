@@ -41,6 +41,8 @@ describe("file browser", () => {
   let root: string;
   /** A sibling of the root — nothing served may ever reach inside it. */
   let outside: string;
+  /** Windows refuses symlink creation without a privilege CI does not have. */
+  let symlinksAvailable = false;
 
   function write(relPath: string, content: string | Buffer) {
     const full = path.join(root, relPath);
@@ -49,14 +51,17 @@ describe("file browser", () => {
   }
 
   before(() => {
-    // realpathSync is not optional: on macOS /var is a symlink to /private/var, so
-    // an unresolved root fails isWithin against every resolved path and each test
-    // below would refuse as "outside-root" for the wrong reason
-    const base = realpathSync(mkdtempSync(path.join(tmpdir(), "pi-fb-")));
-    root = path.join(base, "root");
-    outside = path.join(base, "outside");
-    mkdirSync(root, { recursive: true });
-    mkdirSync(outside, { recursive: true });
+    // realpathSync is not optional, and it has to be applied to the directories
+    // themselves rather than to their parent: on macOS /var is a symlink to
+    // /private/var, and on Windows a temp path can carry an 8.3 short name that
+    // realpath expands. An unresolved root fails isWithin against every resolved
+    // path, and each test below would then refuse as "outside-root" for the wrong
+    // reason — which is exactly how this first ran green locally and red on CI.
+    const base = mkdtempSync(path.join(tmpdir(), "pi-fb-"));
+    mkdirSync(path.join(base, "root"), { recursive: true });
+    mkdirSync(path.join(base, "outside"), { recursive: true });
+    root = realpathSync(path.join(base, "root"));
+    outside = realpathSync(path.join(base, "outside"));
 
     writeFileSync(path.join(outside, "secret.txt"), "SECRET\n");
     write("readme.md", "# hello\n");
@@ -66,10 +71,19 @@ describe("file browser", () => {
     write("big.txt", "x".repeat(MAX_PREVIEW_BYTES + 10));
     mkdirSync(path.join(root, "empty"), { recursive: true });
 
-    // A symlink pointing out of the root: listed, but never followed
-    symlinkSync(path.join(outside, "secret.txt"), path.join(root, "escape-link"));
-    symlinkSync(outside, path.join(root, "escape-dir"));
-    symlinkSync(path.join(root, "src"), path.join(root, "src-link"));
+    // A symlink pointing out of the root: listed, but never followed. Creating one
+    // needs a privilege Windows does not grant by default, so the tests that depend
+    // on these skip rather than fail there — the confinement they check is a POSIX
+    // property of realpath, and the platform that cannot make the link cannot be
+    // walked out through it either.
+    try {
+      symlinkSync(path.join(outside, "secret.txt"), path.join(root, "escape-link"));
+      symlinkSync(outside, path.join(root, "escape-dir"), "dir");
+      symlinkSync(path.join(root, "src"), path.join(root, "src-link"), "dir");
+      symlinksAvailable = true;
+    } catch {
+      symlinksAvailable = false;
+    }
   });
 
   after(() => {
@@ -94,14 +108,16 @@ describe("file browser", () => {
       assert.equal(await reasonOf(() => readFileForPreview(root, "src/../../outside/secret.txt")), "outside-root");
     });
 
-    test("refuses to follow a symlink pointing out of the root", async () => {
+    test("refuses to follow a symlink pointing out of the root", async (t) => {
+      if (!symlinksAvailable) return t.skip("symlinks unavailable on this platform");
       // The link itself lives inside the root; its target does not
       assert.equal(await reasonOf(() => readFileForPreview(root, "escape-link")), "outside-root");
       assert.equal(await reasonOf(() => listDirectory(root, "escape-dir")), "outside-root");
       assert.equal(await reasonOf(() => readFileForPreview(root, "escape-dir/secret.txt")), "outside-root");
     });
 
-    test("follows a symlink that stays inside the root", async () => {
+    test("follows a symlink that stays inside the root", async (t) => {
+      if (!symlinksAvailable) return t.skip("symlinks unavailable on this platform");
       const entries = await listDirectory(root, "src-link");
       assert.deepEqual(
         entries.map((e) => e.name).sort(),
@@ -134,7 +150,8 @@ describe("file browser", () => {
       assert.ok(names.indexOf("binary.bin") < names.indexOf("readme.md"), "files sort by name");
     });
 
-    test("classifies symlinks by what they point at, without following them", async () => {
+    test("classifies symlinks by what they point at, without following them", async (t) => {
+      if (!symlinksAvailable) return t.skip("symlinks unavailable on this platform");
       const entries = await listDirectory(root, "");
       const byName = Object.fromEntries(entries.map((e) => [e.name, e.type]));
       // Shown rather than hidden, so an out-of-root link is visible but inert
@@ -302,7 +319,8 @@ describe("file browser", () => {
       assert.ok((await searchFiles(root, "e", 2)).length <= 2);
     });
 
-    test("skips symlinks, so a cycle cannot hang the walk", async () => {
+    test("skips symlinks, so a cycle cannot hang the walk", async (t) => {
+      if (!symlinksAvailable) return t.skip("symlinks unavailable on this platform");
       const hits = await searchFiles(root, "link");
       assert.deepEqual(hits, [], `symlinks must not be walked, got ${JSON.stringify(hits.map((h) => h.path))}`);
     });
