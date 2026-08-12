@@ -9,7 +9,7 @@
  * are the difference between a refused request and a corrupted file.
  */
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, realpathSync, rmSync, symlinkSync, writeFileSync, statSync } from "node:fs";
+import { mkdtempSync, mkdirSync, rmSync, symlinkSync, writeFileSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { after, before, describe, test } from "node:test";
@@ -25,6 +25,7 @@ import {
   searchFiles,
   writeFileFromBrowser,
 } from "../src/fileBrowser.ts";
+import { realResolve } from "../src/sandbox.ts";
 
 /** The reason carried by a FileBrowserError, or the error itself when it is another kind. */
 async function reasonOf(run: () => Promise<unknown>): Promise<string> {
@@ -50,18 +51,18 @@ describe("file browser", () => {
     writeFileSync(full, content);
   }
 
-  before(() => {
-    // realpathSync is not optional, and it has to be applied to the directories
-    // themselves rather than to their parent: on macOS /var is a symlink to
-    // /private/var, and on Windows a temp path can carry an 8.3 short name that
-    // realpath expands. An unresolved root fails isWithin against every resolved
-    // path, and each test below would then refuse as "outside-root" for the wrong
-    // reason — which is exactly how this first ran green locally and red on CI.
+  before(async () => {
+    // Resolve through the module's own primitive rather than realpathSync. The
+    // confinement compares `root` against whatever realResolve returns, and the two
+    // do not agree on every platform — on Windows a temp path can come back with a
+    // \\?\ prefix that path.resolve then reshapes, leaving every path "outside the
+    // browser root". Using the production resolver here makes the fixture agree with
+    // the check by construction instead of by coincidence.
     const base = mkdtempSync(path.join(tmpdir(), "pi-fb-"));
     mkdirSync(path.join(base, "root"), { recursive: true });
     mkdirSync(path.join(base, "outside"), { recursive: true });
-    root = realpathSync(path.join(base, "root"));
-    outside = realpathSync(path.join(base, "outside"));
+    root = await realResolve(path.join(base, "root"));
+    outside = await realResolve(path.join(base, "outside"));
 
     writeFileSync(path.join(outside, "secret.txt"), "SECRET\n");
     write("readme.md", "# hello\n");
