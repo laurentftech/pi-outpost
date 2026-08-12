@@ -26,7 +26,9 @@ Three constraints shape the approach:
 **Attach usage to the assistant item, not to a separate event.**
 The alternative — a `turn_usage` message keyed by turn id — would need an identifier the protocol does not currently carry on assistant items, and would let the two streams diverge (an item without its usage, or usage without its item). Carrying it on the item makes replay work for free: the same field, from the same converter, on both paths. The cost is that the aggregate is recomputed from the item list rather than accumulated incrementally; at conversation sizes this is a sum over a few hundred entries.
 
-**Cost is optional and omitted, never zero.**
+**Cost is optional and omitted, never zero — and "no price" is detected from an all-zero breakdown.**
+The SDK does not pass a provider's price through; it computes one from the model's own rates and always fills `cost.total`. A model with no rates — the self-hosted case — therefore reports `0`, not nothing. Reading that field alone would put a measured-looking `$0.00` in front of exactly the deployment that has no bill, so a turn counts as priced only when some component of the breakdown exceeds zero. A turn genuinely charged nothing is then reported unpriced, which says the same thing about the money without claiming to have measured it.
+
 A provider that reports no price is not a provider reporting a price of zero. Collapsing the two makes a total look authoritative when it is not — the failure mode is silent and always in the direction of understating the bill. The aggregate therefore carries `unpriced` alongside `cost`, and the UI can say "$0.42 · 2 unpriced" rather than "$0.42".
 
 **Tokens are the primary figure, cost the conditional one.**
