@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { ChatItem, TurnUsage } from "@pi-outpost/shared";
 import App from "./App";
 
@@ -383,5 +383,125 @@ describe("App — attachments", () => {
     fireEvent.change(composer, { target: { value: "carry on" } });
     fireEvent.keyDown(composer, { key: "Enter" });
     expect(api.closeFilePreview).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Drag and drop, and the callbacks the panes hand back. These are the parts of
+// App that no single component owns.
+// ---------------------------------------------------------------------------
+describe("App — dropping files", () => {
+  function mount(overrides: Record<string, unknown> = {}) {
+    const api = agentApi(agentState(overrides));
+    mockUseAgent.mockReturnValue(api);
+    const view = render(<App />);
+    return { api, ...view };
+  }
+
+  /** A drag carrying the given payload kinds, as the browser reports them. */
+  const dataTransfer = (types: string[], files: File[] = []) => ({ types, files });
+  const dropZone = () => document.querySelector(".relative.flex.h-full")!;
+
+  it("invites a drop only once files are actually being dragged", () => {
+    mount();
+    fireEvent.dragEnter(dropZone(), { dataTransfer: dataTransfer(["text/plain"]) });
+    expect(screen.queryByText(/Drop files to attach/)).not.toBeInTheDocument();
+
+    fireEvent.dragEnter(dropZone(), { dataTransfer: dataTransfer(["Files"]) });
+    expect(screen.getByText(/Drop files to attach/)).toBeInTheDocument();
+  });
+
+  it("keeps the invitation up while the pointer crosses child elements", () => {
+    // dragenter/dragleave fire for every child crossed, so this counts rather than toggles
+    mount();
+    fireEvent.dragEnter(dropZone(), { dataTransfer: dataTransfer(["Files"]) });
+    fireEvent.dragEnter(dropZone(), { dataTransfer: dataTransfer(["Files"]) });
+    fireEvent.dragLeave(dropZone());
+    expect(screen.getByText(/Drop files to attach/)).toBeInTheDocument();
+
+    fireEvent.dragLeave(dropZone());
+    expect(screen.queryByText(/Drop files to attach/)).not.toBeInTheDocument();
+  });
+
+  it("does not fall below zero when a stray dragleave arrives first", () => {
+    mount();
+    fireEvent.dragLeave(dropZone());
+    fireEvent.dragEnter(dropZone(), { dataTransfer: dataTransfer(["Files"]) });
+    expect(screen.getByText(/Drop files to attach/)).toBeInTheDocument();
+  });
+
+  it("takes the invitation down once the files land", async () => {
+    mount();
+    fireEvent.dragEnter(dropZone(), { dataTransfer: dataTransfer(["Files"]) });
+    const dropped = new File(["hello"], "notes.txt", { type: "text/plain" });
+    fireEvent.drop(dropZone(), { dataTransfer: dataTransfer(["Files"], [dropped]) });
+    await waitFor(() => expect(screen.queryByText(/Drop files to attach/)).not.toBeInTheDocument());
+  });
+
+  it("attaches a dropped text file to the next prompt", async () => {
+    mount();
+    const dropped = new File(["hello"], "notes.txt", { type: "text/plain" });
+    fireEvent.drop(dropZone(), { dataTransfer: dataTransfer(["Files"], [dropped]) });
+    await waitFor(() => expect(screen.getByText("notes.txt")).toBeInTheDocument());
+  });
+
+  it("says why a file it cannot take was refused", async () => {
+    mount();
+    const huge = new File([new Uint8Array(600 * 1024)], "big.txt", { type: "text/plain" });
+    fireEvent.drop(dropZone(), { dataTransfer: dataTransfer(["Files"], [huge]) });
+    await waitFor(() => expect(screen.getByText(/big\.txt/)).toBeInTheDocument());
+  });
+});
+
+describe("App — model bar and tree", () => {
+  function mount(overrides: Record<string, unknown> = {}) {
+    const api = agentApi(agentState(overrides));
+    mockUseAgent.mockReturnValue(api);
+    render(<App />);
+    return api;
+  }
+
+  it("changes the model from the bar", () => {
+    const api = mount({ models: [{ provider: "anthropic", id: "opus", name: "Opus", reasoning: true }] });
+    fireEvent.change(screen.getByRole("combobox"), { target: { value: "anthropic/opus" } });
+    expect(api.setModel).toHaveBeenCalledWith("anthropic", "opus");
+  });
+
+  it("asks for the tree when the menu opens, and navigates from it", () => {
+    const api = mount({ tree: [{ entryId: "e1", text: "first turn", onPath: true, children: [] }] });
+    fireEvent.click(screen.getByRole("button", { name: "tree" }));
+    expect(api.listTree).toHaveBeenCalled();
+
+    fireEvent.click(screen.getByText("first turn"));
+    expect(api.navigateTree).toHaveBeenCalledWith("e1");
+  });
+
+  it("forks a session from the tree", () => {
+    const api = mount({ tree: [{ entryId: "e1", text: "first turn", onPath: true, children: [] }] });
+    fireEvent.click(screen.getByRole("button", { name: "tree" }));
+    fireEvent.click(screen.getByRole("button", { name: /fork/ }));
+    expect(api.forkSession).toHaveBeenCalledWith("e1");
+  });
+
+  it("opens a file from the tree straight onto its diff", () => {
+    const api = mount({
+      fileTree: { "": [{ name: "readme.md", type: "file" }] },
+      gitStatus: { branch: "main", ahead: 0, behind: 0, files: { "readme.md": "modified" } },
+      gitAvailable: true,
+    });
+    fireEvent.click(screen.getByRole("button", { name: /[◨◧]\s*files/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Show diff of readme.md" }));
+    expect(api.readFile).toHaveBeenCalledWith("readme.md");
+  });
+
+  it("shows the steering and follow-up queue", () => {
+    mount({ queue: { steering: ["stop that"], followUp: ["then this"] } });
+    expect(screen.getByText(/stop that/)).toBeInTheDocument();
+    expect(screen.getByText(/then this/)).toBeInTheDocument();
+  });
+
+  it("shows an extension's widget above the editor", () => {
+    mount({ widgets: { w1: { lines: ["build: passing"], placement: "aboveEditor" } } });
+    expect(screen.getByText("build: passing")).toBeInTheDocument();
   });
 });

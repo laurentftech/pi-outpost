@@ -1004,3 +1004,112 @@ describe("git errors that belong nowhere in particular", () => {
     expect(result.current.state.errors).toHaveLength(0);
   });
 });
+
+// ---------------------------------------------------------------------------
+// The outgoing commands. Each is a one-liner, but its frame is the contract the
+// server validates: a wrong `type` or a missing field is refused there and shows
+// up here as a button that silently does nothing.
+// ---------------------------------------------------------------------------
+describe("commands on the wire", () => {
+  /** The last frame the hook sent, parsed. */
+  function lastFrame() {
+    return JSON.parse(mockWs!.sent[mockWs!.sent.length - 1]) as Record<string, unknown>;
+  }
+
+  const cases: Array<[string, (api: Awaited<ReturnType<typeof connected>>["current"]) => void, Record<string, unknown>]> = [
+    ["prompt", (api) => api.prompt("hello"), { type: "prompt", text: "hello" }],
+    ["prompt with images", (api) => api.prompt("look", [{ data: "AA", mimeType: "image/png" }]), { type: "prompt", text: "look", images: [{ data: "AA", mimeType: "image/png" }] }],
+    ["abort", (api) => api.abort(), { type: "abort" }],
+    ["setModel", (api) => api.setModel("anthropic", "opus"), { type: "set_model", provider: "anthropic", id: "opus" }],
+    ["setThinking", (api) => api.setThinking("high"), { type: "set_thinking", level: "high" }],
+    ["newSession", (api) => api.newSession(), { type: "new_session" }],
+    ["switchSession", (api) => api.switchSession("/s/a.jsonl"), { type: "switch_session", path: "/s/a.jsonl" }],
+    ["deleteSession", (api) => api.deleteSession("/s/a.jsonl"), { type: "delete_session", path: "/s/a.jsonl" }],
+    ["listSessions", (api) => api.listSessions(), { type: "list_sessions" }],
+    ["renameSession", (api) => api.renameSession("/s/a.jsonl", "notes"), { type: "rename_session", path: "/s/a.jsonl", name: "notes" }],
+    ["listTree", (api) => api.listTree(), { type: "list_tree" }],
+    ["navigateTree", (api) => api.navigateTree("e1"), { type: "navigate_tree", entryId: "e1" }],
+    ["forkSession", (api) => api.forkSession("e1"), { type: "fork_session", entryId: "e1" }],
+    ["editPrompt", (api) => api.editPrompt("e1", "again"), { type: "edit_prompt", entryId: "e1", text: "again" }],
+    ["compact", (api) => api.compact(), { type: "compact" }],
+    ["fetchGitLog", (api) => api.fetchGitLog(20), { type: "git_log", limit: 20 }],
+    ["fetchGitShow", (api) => api.fetchGitShow("abc1234"), { type: "git_show", sha: "abc1234" }],
+    ["setCredential", (api) => api.setCredential("openai", "sk-x"), { type: "set_credential", provider: "openai", apiKey: "sk-x" }],
+    [
+      "declareProvider",
+      (api) => api.declareProvider({ provider: "corp", baseUrl: "https://x/v1", apiKey: "k", models: ["m"] }),
+      { type: "declare_provider", provider: "corp", baseUrl: "https://x/v1", apiKey: "k", models: ["m"] },
+    ],
+    [
+      "updateConfig",
+      (api) => api.updateConfig({ root: "/w", allowWrite: true, allowBash: false }),
+      { type: "update_config", sandbox: { root: "/w", allowWrite: true, allowBash: false } },
+    ],
+  ];
+
+  for (const [name, call, expected] of cases) {
+    it(`sends the right frame for ${name}`, async () => {
+      const result = await connected();
+      act(() => call(result.current));
+      expect(lastFrame()).toMatchObject(expected);
+    });
+  }
+
+  it("omits an empty image list rather than sending one", async () => {
+    const result = await connected();
+    act(() => result.current.prompt("hello", []));
+    expect(lastFrame()).not.toHaveProperty("images");
+  });
+
+  it("omits the limit when none was asked for", async () => {
+    const result = await connected();
+    act(() => result.current.fetchGitLog());
+    expect(lastFrame()).not.toHaveProperty("limit");
+  });
+
+  it("answers a dialog and pops it from the queue", async () => {
+    const result = await connected();
+    act(() =>
+      mockWs!.receive({ type: "extension_ui_request", id: "d1", method: "confirm", title: "Proceed?", message: "Really?" }),
+    );
+    await waitFor(() => expect(result.current.state.dialogQueue).toHaveLength(1));
+
+    act(() => result.current.respondToDialog({ id: "d1", confirmed: true }));
+    expect(lastFrame()).toMatchObject({ type: "extension_ui_response", id: "d1", confirmed: true });
+    await waitFor(() => expect(result.current.state.dialogQueue).toHaveLength(0));
+  });
+
+  it("searches sessions and files under their own request ids", async () => {
+    const result = await connected();
+    act(() => result.current.searchSessions("parser"));
+    expect(lastFrame()).toMatchObject({ type: "search_sessions", query: "parser" });
+    expect(result.current.state.sessionSearch).toMatchObject({ status: "loading", query: "parser" });
+
+    act(() => result.current.searchFiles("main"));
+    expect(lastFrame()).toMatchObject({ type: "search_files", query: "main" });
+    expect(result.current.state.fileSearch).toMatchObject({ status: "loading", query: "main" });
+  });
+
+  it("clears each search locally, without asking the server", async () => {
+    const result = await connected();
+    act(() => result.current.searchSessions("parser"));
+    act(() => result.current.searchFiles("main"));
+    const before = mockWs!.sent.length;
+
+    act(() => result.current.clearSessionSearch());
+    act(() => result.current.clearFileSearch());
+    expect(mockWs!.sent).toHaveLength(before);
+    expect(result.current.state.sessionSearch).toBeNull();
+    expect(result.current.state.fileSearch).toBeNull();
+  });
+
+  it("dismisses a notification locally", async () => {
+    const result = await connected();
+    act(() => mockWs!.receive({ type: "extension_ui_request", id: "n1", method: "notify", message: "done" }));
+    await waitFor(() => expect(result.current.state.notifications).toHaveLength(1));
+    const id = result.current.state.notifications[0].id;
+
+    act(() => result.current.dismissNotification(id));
+    await waitFor(() => expect(result.current.state.notifications).toHaveLength(0));
+  });
+});

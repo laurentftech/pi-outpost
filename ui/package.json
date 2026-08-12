@@ -11,7 +11,7 @@
   "scripts": {
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage --coverage.provider=v8 --coverage.reporter=text --coverage.reporter=lcov --coverage.thresholds.lines=89 --coverage.thresholds.branches=84 --coverage.thresholds.functions=88"
+    "test:coverage": "vitest run --coverage --coverage.provider=v8 --coverage.reporter=text --coverage.reporter=lcov --coverage.thresholds.lines=91 --coverage.thresholds.branches=85 --coverage.thresholds.functions=93"
   },
   "dependencies": {
     "@pi-outpost/shared": "*",
