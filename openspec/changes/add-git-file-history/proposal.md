@@ -18,6 +18,7 @@ None — this extends the existing git integration rather than introducing a sep
 
 ### Modified Capabilities
 
+- `components`: `WorkspaceAndGitNavigation` gains `GitFileHistory` in the component inventory and the viewer's history entry point; a new `SharedGraphPrimitives` requirement covers the lane primitives the two graphs share.
 - `git`: adds two requirements — `FileCommitHistory` (per-file log with parents, rename following, and per-file line counts) and `RevisionPairDiff` (content of a file at two selectable revisions, where one may be the working tree). Extends `ConfinedGitCommands` (the new requests take a path *and* one or two revisions, both of which must be validated) and `GitUISurface` (the file-history full-pane view and its viewer entry point).
 
 ## Impact

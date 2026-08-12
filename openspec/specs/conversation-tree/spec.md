@@ -9,12 +9,19 @@ How the UI exposes pi's branching sessions: the branch graph, what a turn's navi
 
 ### Requirement: BranchGraphRendering
 
-The conversation tree SHALL render as a branch graph: one rail per branch, the current path on the first lane in a color reserved for it, fork points visibly leaving their parent's rail, and per-turn chips for the branch count at a fork, the current turn, and any SDK-generated branch label. The header SHALL state the number of turns and branch points, and a search box SHALL filter turns by message text or label.
+The conversation tree SHALL render as a branch graph: one rail per branch, the current path drawn in a color reserved for it wherever its lane runs, fork points visibly leaving their parent's rail, and per-turn chips for the branch count at a fork, the current turn, and any SDK-generated branch label. Lanes SHALL be assigned from the shape of the tree alone, so that moving the current path between branches leaves every other branch on its lane, in its color, and at its position in the list. The header SHALL state the number of turns and branch points, and a search box SHALL filter turns by message text or label.
 
 #### Scenario: CurrentBranchIsIdentifiable
 - **GIVEN** a session with an abandoned branch and a current branch
 - **WHEN** the user opens the tree
-- **THEN** the current path is on the first lane in the reserved color, and no abandoned branch uses that color
+- **THEN** the current path is drawn in the reserved color, and no abandoned branch uses that color
+
+#### Scenario: SwitchingBranchLeavesTheRestAlone
+- **GIVEN** a session with three branches off one turn
+- **WHEN** the user navigates from one branch to another
+- **THEN** only the turns that entered or left the current path change color
+- **AND** every other branch keeps its color and its position in the list
+- **AND** the branch just left returns to the color it had before
 
 #### Scenario: ForkIsVisible
 - **GIVEN** a turn whose replies branch in two directions
