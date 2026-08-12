@@ -42,6 +42,15 @@ jobs:
       - name: Coverage summary
         if: matrix.os == 'ubuntu-latest' && !cancelled()
         run: node scripts/coverage-summary.mjs server=server/coverage/lcov.info ui=ui/coverage/lcov.info
+      - name: Keep the coverage for the badge job
+        if: matrix.os == 'ubuntu-latest' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: |
+            server/coverage/lcov.info
+            ui/coverage/lcov.info
+          retention-days: 1
 
       - run: npm test --workspace ui
         if: matrix.os != 'ubuntu-latest'
@@ -49,3 +58,46 @@ jobs:
       - run: npm run build
       # A stylesheet can build cleanly and style nothing (#38) — check the artifact.
       - run: npm run check:css
+
+  # The badge, drawn and pushed here rather than by a marketplace action: this is
+  # the only job that may write to the repository, and nothing outside it runs.
+  # Main only — a badge is a claim about the shipped branch.
+  badge:
+    needs: check
+    if: github.event_name == 'push' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    # One badge writer at a time: two pushes landing together would race on gh-pages.
+    concurrency:
+      group: coverage-badge
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v4
+        with:
+          name: coverage
+          path: coverage-artifact
+      - run: node scripts/coverage-badge.mjs badge/coverage.svg coverage-artifact/server/coverage/lcov.info coverage-artifact/ui/coverage/lcov.info
+      - name: Publish to gh-pages
+        run: |
+          set -euo pipefail
+          git config user.name  'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+
+          # An orphan branch holding only the badge: no history of the code, nothing
+          # to review, and a force-free push because it is rebuilt from empty.
+          if git ls-remote --exit-code --heads origin gh-pages >/dev/null 2>&1; then
+            git fetch --depth=1 origin gh-pages
+            git checkout -B gh-pages origin/gh-pages
+          else
+            git checkout --orphan gh-pages
+            git rm -rf . >/dev/null 2>&1 || true
+          fi
+
+          mkdir -p badges
+          mv badge/coverage.svg badges/coverage.svg
+          git add badges/coverage.svg
+          # Nothing to say when the figure has not moved
+          git diff --staged --quiet || git commit -m 'chore(badge): coverage [skip ci]'
+          git push origin gh-pages

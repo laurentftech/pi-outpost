@@ -1,6 +1,7 @@
 # Pi Outpost
 
 [![CI](https://github.com/laurentftech/pi-outpost/actions/workflows/ci.yml/badge.svg)](https://github.com/laurentftech/pi-outpost/actions/workflows/ci.yml)
+[![Coverage](https://laurentftech.github.io/pi-outpost/badges/coverage.svg)](https://github.com/laurentftech/pi-outpost/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Node](https://img.shields.io/badge/node-%E2%89%A524-brightgreen)](https://nodejs.org)
 
