@@ -110,9 +110,7 @@ File-sandbox settings; when present, built-in file tools are replaced by scoped 
 | allowWrite | boolean | Enable edit/write; default false (read-only) |
 | writableRoot | string? | Subdirectory of root that edit/write are further confined to (read-write zone); defaults to root |
 | allowBash | boolean | Enable the bash tool; default false (bash cannot be path-scoped) |
-
 ## Requirements
-
 ### Requirement: ClientMessageValidation
 
 The system SHALL validate ClientMessage according to these rules:
@@ -277,15 +275,9 @@ The system SHALL truncate text to a specified maximum length.
 
 ### Requirement: ConvertHistoryToItems
 
-> Implementation: `historyToItems` in `server/src/convert.ts` · confidence: reviewed
+The system SHALL convert session history into an ordered list of chat items, merging each tool result with the tool call that produced it, marking the trailing assistant message as streaming when the conversion is made mid-stream, and attaching the branch's user entry ids from the most recent message backwards.
 
-The system SHALL convert session history messages into ChatItems: user messages (text + images),
-assistant messages (blocks), tool calls merged with their results, and extension custom messages.
-While the agent is streaming, the trailing in-progress assistant message is excluded (it is
-streamed separately). User items SHALL carry the session entry id of the message they came from,
-taken from the current branch's user entries and matched from the end (compaction drops a prefix
-of the history, so the items are a suffix of the branch's user entries); items left unmatched
-carry no entry id.
+Assistant items produced from history SHALL carry the same turn usage as items produced live, so a replayed conversation reports the same figures it reported while it ran.
 
 #### Scenario: ConvertIdleHistory
 - **GIVEN** A session history and no active stream
@@ -297,21 +289,41 @@ carry no entry id.
 - **WHEN** historyToItems is called
 - **THEN** The trailing in-progress assistant message is not duplicated as a history item
 
+#### Scenario: MergeToolResults
+- **GIVEN** A session history containing tool calls and their results
+- **WHEN** historyToItems is called
+- **THEN** Each tool result is merged with its originating call into a single item
+
 #### Scenario: AttachUserEntryIds
 - **GIVEN** A session history and the current branch's user entry ids
 - **WHEN** historyToItems is called
 - **THEN** Each user item carries its entry id, aligned from the most recent message backwards
 
+#### Scenario: ReplayedTurnsKeepTheirUsage
+- **GIVEN** a session history whose assistant messages carry billing counters
+- **WHEN** historyToItems is called
+- **THEN** the assistant items carry those turns' usage
+
 ### Requirement: ConvertAssistantMessageToItem
 
-> Implementation: `assistantToItem` in `server/src/convert.ts` · confidence: reviewed
-
 The system SHALL convert an assistant message into a chat item.
+
+When the message carries billing counters, the resulting chat item SHALL include the turn's usage. The counters SHALL be accepted only when complete — a turn missing any of its token counters SHALL be reported as having no usage rather than as a partial one, since a partial turn silently skews any total built from it.
 
 #### Scenario: ConvertAssistantMessage
 - **GIVEN** An assistant message
 - **WHEN** assistantToItem is called
 - **THEN** The message is converted to a chat item
+
+#### Scenario: CarriesUsageWhenReported
+- **GIVEN** an assistant message whose billing counters are complete
+- **WHEN** it is converted to a chat item
+- **THEN** the item carries the turn's usage
+
+#### Scenario: OmitsIncompleteUsage
+- **GIVEN** an assistant message whose billing counters are missing or malformed
+- **WHEN** it is converted to a chat item
+- **THEN** the item carries no usage at all
 
 ### Requirement: ConvertCustomMessageToItem
 
@@ -339,6 +351,23 @@ This is required because the optimistic user echo and the persisted entries are 
 - **GIVEN** a chat bubble that never became a session entry
 - **WHEN** user_entries arrives
 - **THEN** pairing stops at that bubble: it carries no entry id, and no earlier bubble is paired with another message's entry
+
+### Requirement: TurnUsageModel
+
+The wire protocol SHALL define a turn-usage model carrying what one assistant turn consumed — fresh input tokens, output tokens, cache-read tokens, cache-write tokens, a total, and optionally the reasoning tokens counted within the output — together with the provider-reported cost of that turn in USD.
+
+The cost SHALL be optional and SHALL be omitted, never sent as zero, when the provider reports no price. Consumers can then distinguish "this turn was free" from "nobody priced this turn".
+
+This model is distinct from the context-window usage already on the protocol: that one reports how full the window is *now*, while this one reports what a single turn *added*. Only the latter is meaningful to accumulate.
+
+#### Scenario: CarriesCountersAndCost
+- **WHEN** a turn's usage is placed on the wire
+- **THEN** it carries the token counters and, when the provider priced the turn, the cost in USD
+
+#### Scenario: UnpricedTurnOmitsCost
+- **GIVEN** a provider that reports token counters but no price
+- **WHEN** that turn's usage is placed on the wire
+- **THEN** the cost field is absent rather than zero
 
 ## Technical Notes
 
