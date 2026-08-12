@@ -110,13 +110,15 @@ for (const { name, summary } of overall) {
 }
 out.push("");
 
+// Always said, whether the file shows up in the report or not: a reader comparing
+// these figures to the repository has to know which code they do not describe.
+out.push(
+  "> Measured over the unit suites. `server/src/index.ts` and the WebSocket wiring are covered by integration tests that drive a real server in a subprocess, which the instrumentation does not follow — their absence here is not an absence of tests.\n",
+);
+
 const excluded = overall.flatMap(({ name, apart }) => apart.map((record) => ({ name, record })));
 if (excluded.length > 0) {
-  out.push("### Measured apart\n");
-  out.push(
-    "These are covered by integration tests that run the server in a subprocess, which the instrumentation does not follow — the figure below is not a measure of how well they are tested.\n",
-  );
-  out.push("| file | lines |");
+  out.push("| measured apart | lines |");
   out.push("| --- | ---: |");
   for (const { record } of excluded) {
     out.push(`| \`${path.posix.normalize(record.file)}\` | ${show(pct(...record.lines))} |`);

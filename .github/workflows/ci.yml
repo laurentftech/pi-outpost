@@ -25,9 +25,14 @@ jobs:
       - run: npm run build --workspace @pi-outpost/embed
       - run: npm run lint
 
-      # Coverage rides along on one platform rather than in a job of its own: the
-      # suites already run here, and instrumenting them costs seconds. Windows runs
-      # them plain, so a coverage tool can never be what turns that leg red.
+      - run: npm test --workspace server
+        env:
+          CI: true
+
+      # Coverage on one platform only, and over the unit suites alone. The .mjs
+      # suites drive a real server in a subprocess: its coverage is not ours to
+      # claim, and loading them all made node truncate its own report at 10 MB.
+      # Windows runs nothing instrumented, so a coverage tool cannot turn that leg red.
       - run: npm run test:coverage --workspace server
         if: matrix.os == 'ubuntu-latest'
         env:
@@ -38,10 +43,6 @@ jobs:
         if: matrix.os == 'ubuntu-latest' && !cancelled()
         run: node scripts/coverage-summary.mjs server=server/coverage/lcov.info ui=ui/coverage/lcov.info
 
-      - run: npm test --workspace server
-        if: matrix.os != 'ubuntu-latest'
-        env:
-          CI: true
       - run: npm test --workspace ui
         if: matrix.os != 'ubuntu-latest'
 
