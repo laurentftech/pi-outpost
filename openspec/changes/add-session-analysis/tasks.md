@@ -38,5 +38,5 @@
 
 - [x] 5.1 `npm run typecheck` across all workspaces
 - [x] 5.2 `npm test --workspace ui`
-- [ ] 5.3 Run the app: drive a session with several turns and a failing tool call, open the panel, and confirm the figures match the model bar, that the charts read correctly in both themes, and that jumping lands on the right message — including a tool call while tool display is off
+- [x] 5.3 Run the app: drive a session with several turns and a failing tool call, open the panel, and confirm the figures match the model bar, that the charts read correctly in both themes, and that jumping lands on the right message — including a tool call while tool display is off
 - [x] 5.4 `openspec validate add-session-analysis --strict`
