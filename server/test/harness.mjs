@@ -93,6 +93,12 @@ export async function startServer(root, config = {}, options = {}) {
   // roughly a quarter of runs, which is the whole of #27. These tests assert local
   // onboarding behaviour; a remote catalog has nothing to do with what they check.
   const env = { ...process.env, PI_OUTPOST_CONFIG: configPath, PI_OFFLINE: "1" };
+  // Under `--experimental-test-coverage` node exports NODE_V8_COVERAGE, and a child
+  // that inherits it writes its own coverage file into the same directory. stop()
+  // ends these servers with SIGKILL, so that file is left half-written and the
+  // parent's reporter dies on it ("Unterminated string in JSON"). Their coverage was
+  // never attributable to us anyway — the process is measured, not the source.
+  delete env.NODE_V8_COVERAGE;
   for (const [key, value] of Object.entries(options.env ?? {})) {
     if (value === undefined) delete env[key];
     else env[key] = value;
