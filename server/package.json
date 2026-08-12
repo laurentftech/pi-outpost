@@ -12,7 +12,9 @@
     "build": "tsc --noEmit",
     "build:sea": "node scripts/build-sea.mjs",
     "test": "node --import tsx/esm --test --test-timeout=300000 test/*.test.mjs test/*.test.ts",
-    "test:live": "node --test --test-timeout=180000 test/live/*.test.mjs"
+    "test:live": "node --test --test-timeout=180000 test/live/*.test.mjs",
+    "test:coverage": "node --import tsx/esm --test --experimental-test-coverage --test-reporter=spec --test-reporter-destination=stdout --test-reporter=lcov --test-reporter-destination=coverage/lcov.info --test-timeout=300000 test/*.test.mjs test/*.test.ts",
+    "pretest:coverage": "node -e \"require('node:fs').mkdirSync('coverage',{recursive:true})\""
   },
   "dependencies": {
     "@earendil-works/pi-coding-agent": "^0.84.1",

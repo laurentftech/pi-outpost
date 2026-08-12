@@ -24,10 +24,27 @@ jobs:
       - run: npm run typecheck
       - run: npm run build --workspace @pi-outpost/embed
       - run: npm run lint
+
+      # Coverage rides along on one platform rather than in a job of its own: the
+      # suites already run here, and instrumenting them costs seconds. Windows runs
+      # them plain, so a coverage tool can never be what turns that leg red.
+      - run: npm run test:coverage --workspace server
+        if: matrix.os == 'ubuntu-latest'
+        env:
+          CI: true
+      - run: npm run test:coverage --workspace ui
+        if: matrix.os == 'ubuntu-latest'
+      - name: Coverage summary
+        if: matrix.os == 'ubuntu-latest' && !cancelled()
+        run: node scripts/coverage-summary.mjs server=server/coverage/lcov.info ui=ui/coverage/lcov.info
+
       - run: npm test --workspace server
+        if: matrix.os != 'ubuntu-latest'
         env:
           CI: true
       - run: npm test --workspace ui
+        if: matrix.os != 'ubuntu-latest'
+
       - run: npm run build
       # A stylesheet can build cleanly and style nothing (#38) — check the artifact.
       - run: npm run check:css

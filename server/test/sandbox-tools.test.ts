@@ -8,7 +8,7 @@
  * and a symlink used to walk out of either.
  */
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { after, before, describe, test } from "node:test";
@@ -42,8 +42,12 @@ describe("realResolve", () => {
   /** Windows refuses symlink creation without a privilege CI does not have. */
   let symlinksAvailable = false;
 
-  before(() => {
-    base = realpathSync(mkdtempSync(path.join(tmpdir(), "pi-resolve-")));
+  before(async () => {
+    // realResolve, not realpathSync: on Windows the async fs.realpath expands an 8.3
+    // short name ("RUNNER~1" -> "runneradmin") and the sync one does not, so a fixture
+    // built with realpathSync compares a short path against an expanded one and every
+    // assertion here fails for a reason that has nothing to do with the code.
+    base = await realResolve(mkdtempSync(path.join(tmpdir(), "pi-resolve-")));
     mkdirSync(path.join(base, "real"), { recursive: true });
     writeFileSync(path.join(base, "real", "file.txt"), "hi\n");
     try {
@@ -83,14 +87,14 @@ describe("createSandboxedTools", () => {
   /** Windows refuses symlink creation without a privilege CI does not have. */
   let symlinksAvailable = false;
 
-  before(() => {
-    // Resolve the directories themselves: a temp path can be a symlink (macOS) or an
-    // 8.3 short name (Windows), and every check here compares resolved paths
+  before(async () => {
+    // Resolve through the same primitive the code under test uses — see the note in
+    // the realResolve suite above for why realpathSync is not interchangeable here
     const parent = mkdtempSync(path.join(tmpdir(), "pi-sandbox-"));
     mkdirSync(path.join(parent, "root", "src"), { recursive: true });
     mkdirSync(path.join(parent, "outside"), { recursive: true });
-    root = realpathSync(path.join(parent, "root"));
-    outside = realpathSync(path.join(parent, "outside"));
+    root = await realResolve(path.join(parent, "root"));
+    outside = await realResolve(path.join(parent, "outside"));
     writable = path.join(root, "src");
     writeFileSync(path.join(root, "readme.md"), "# hi\n");
     writeFileSync(path.join(writable, "main.ts"), "const a = 1;\n");
@@ -168,7 +172,7 @@ describe("createSandboxedTools", () => {
     });
 
     test("keeps refusing paths outside both the root and the exceptions", async () => {
-      const elsewhere = realpathSync(mkdtempSync(path.join(tmpdir(), "pi-elsewhere-")));
+      const elsewhere = await realResolve(mkdtempSync(path.join(tmpdir(), "pi-elsewhere-")));
       try {
         const [read] = await createSandboxedTools(config({ root, readExceptions: [outside] }));
         assert.match((await denial(read, path.join(elsewhere, "x.txt"))) ?? "", /outside the sandbox/);
