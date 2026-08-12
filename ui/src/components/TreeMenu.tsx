@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { TreeNode } from "@pi-outpost/shared";
 import { Rail } from "./graph/Rail";
-import { ROW_H, type RailRow } from "./graph/lanes";
+import { branchColor, ROW_H, type RailRow } from "./graph/lanes";
 
 interface TreeMenuProps {
   tree: TreeNode[] | null;
@@ -24,11 +24,15 @@ function useClickOutside(onClose: () => void) {
 }
 
 /**
- * One lane per branch, git-log style. Lane 0 is the current path (onPath sorts
- * first among both children and roots), and emerald is reserved for it — the
- * other lanes cycle through the remaining colors, so no dead branch ever wears
- * the "you are here" color. The geometry and palette live in ./graph/lanes, which
- * the file-history graph reads from too.
+ * One lane per branch, git-log style.
+ *
+ * Lanes are numbered by tree structure alone, so a branch keeps its lane — and
+ * the colour indexed by it — however you move around. The current path is marked
+ * per row instead (`highlight`), carrying the reserved colour wherever it runs;
+ * `branchColor` never yields that colour, so no dead branch can wear it.
+ *
+ * The geometry and palette live in ./graph/lanes, which the file-history graph
+ * reads from too.
  */
 interface GraphRow extends RailRow {
   node: TreeNode;
@@ -38,15 +42,17 @@ interface GraphRow extends RailRow {
   isCurrent: boolean;
 }
 
-function layoutGraph(roots: TreeNode[]): { rows: GraphRow[]; laneCount: number; branchPoints: number } {
+export function layoutGraph(roots: TreeNode[]): { rows: GraphRow[]; laneCount: number; branchPoints: number } {
   const rows: GraphRow[] = [];
   const active = new Set<number>();
   let laneCount = 0;
   let branchPoints = 0;
 
   function walk(node: TreeNode, lane: number, lineAbove: boolean, branchIndex?: number) {
-    // Current path first: it keeps the parent's lane, so lane 0 is the highlighted branch
-    const kids = [...node.children].sort((a, b) => Number(b.onPath) - Number(a.onPath));
+    // Children in their own order, never reordered by which one is current: lane
+    // numbers are what the palette is indexed by, so sorting on onPath would
+    // repaint — and reorder — the whole graph every time you moved between branches
+    const kids = node.children;
     const extras = kids.slice(1).map((kid) => {
       const extraLane = laneCount++;
       return [kid, extraLane] as const;
@@ -63,6 +69,8 @@ function layoutGraph(roots: TreeNode[]): { rows: GraphRow[]; laneCount: number; 
       branchIndex,
       isCurrent,
       emphasis: isCurrent ? "current" : node.onPath ? "filled" : "hollow",
+      // The reserved colour follows the path itself, wherever its lane runs
+      highlight: node.onPath,
     });
     if (kids.length === 0) {
       active.delete(lane);
@@ -74,14 +82,13 @@ function layoutGraph(roots: TreeNode[]): { rows: GraphRow[]; laneCount: number; 
   }
 
   // Sibling roots ARE branches: rewinding to the first user turn moves the leaf
-  // before it, so re-prompting from there creates a new root. Current path first,
-  // like children, so it lands on lane 0 and keeps the current-branch color.
+  // before it, so re-prompting from there creates a new root. Their own order too,
+  // for the same reason as children above.
   if (roots.length > 1) branchPoints++;
-  const orderedRoots = [...roots].sort((a, b) => Number(b.onPath) - Number(a.onPath));
-  orderedRoots.forEach((root, i) => {
+  roots.forEach((root, i) => {
     const lane = laneCount++;
     active.add(lane);
-    walk(root, lane, false, orderedRoots.length > 1 ? i + 1 : undefined);
+    walk(root, lane, false, roots.length > 1 ? i + 1 : undefined);
   });
   return { rows, laneCount, branchPoints };
 }
@@ -145,7 +152,7 @@ function GraphRowView({
         }
         className="flex h-full min-w-0 flex-1 items-center gap-2 pl-2 text-left text-sm disabled:opacity-50"
       >
-        <Rail row={row} laneCount={laneCount} />
+        <Rail row={row} laneCount={laneCount} colorOf={branchColor} />
         <span className={`min-w-0 truncate ${node.onPath ? "text-zinc-800 dark:text-zinc-200" : "text-zinc-600 dark:text-zinc-400"}`}>
           {node.text || "(empty)"}
         </span>
@@ -189,9 +196,9 @@ function GraphRowView({
 
 /**
  * Conversation tree dropdown, rendered git-log style: one colored rail per
- * branch, the current path highlighted on lane 0, fork points curve out to
- * their branch's rail. Every node is a user turn to rewind to (same session,
- * branches preserved) or to fork into a new session.
+ * branch, the current path picked out in the reserved color, fork points curve
+ * out to their branch's rail. Every node is a user turn to rewind to (same
+ * session, branches preserved) or to fork into a new session.
  */
 export function TreeMenu({ tree, isStreaming, onListTree, onNavigate, onFork }: TreeMenuProps) {
   const [open, setOpen] = useState(false);

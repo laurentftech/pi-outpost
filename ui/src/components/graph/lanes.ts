@@ -14,6 +14,14 @@ export function laneColor(lane: number): string {
   return lane === 0 ? CURRENT_COLOR : BRANCH_COLORS[(lane - 1) % BRANCH_COLORS.length];
 }
 
+/**
+ * Palette for graphs where "you are here" is a *path* rather than a lane, so no
+ * lane may claim the reserved colour: the highlighted rows carry it instead.
+ */
+export function branchColor(lane: number): string {
+  return BRANCH_COLORS[lane % BRANCH_COLORS.length];
+}
+
 /** Horizontal centre of a lane inside the rail SVG. */
 export function laneX(lane: number): number {
   return lane * LANE_W + LANE_W / 2 + 1;
@@ -40,4 +48,11 @@ export interface RailRow {
   emphasis: NodeEmphasis;
   /** Dashed rail, for a row that is not a commit (the working tree). */
   dashed?: boolean;
+  /**
+   * This row sits on the highlighted path, so its own node and rail wear the
+   * reserved colour wherever the path happens to run. Lets a graph keep its lane
+   * assignment structural — and therefore stable while you navigate — instead of
+   * reshuffling lanes to keep the highlighted line on lane 0.
+   */
+  highlight?: boolean;
 }
