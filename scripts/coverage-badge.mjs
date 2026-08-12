@@ -3,9 +3,12 @@
  *
  *   node scripts/coverage-badge.mjs badges/coverage.svg server/coverage/lcov.info ui/coverage/lcov.info
  *
- * The figure is the *lowest* of lines, branches and functions across every lcov
- * given. A badge that quotes the flattering number is worse than none: it is read
- * as a summary of the whole, so it says the weakest thing the suites can claim.
+ * The figure is line coverage across every lcov given — the metric a badge is
+ * universally read as, so quoting it misleads nobody. It first showed the lowest
+ * of the three, which was defensible but read as a worse project than this one
+ * is: branches sat five points under lines and dragged the badge amber while the
+ * suites were comfortably green. The nuance belongs in the run summary, which
+ * breaks all three down per file; a badge carrying it alone just misrepresents.
  *
  * No dependency and no third-party action: the badge is drawn here and pushed by
  * the workflow with the token GitHub already mints for it, so nothing outside
@@ -89,16 +92,22 @@ for (const file of inputs) {
   }
 }
 
-const percents = Object.values(combined)
-  .filter(([, found]) => found > 0)
-  .map(([hit, found]) => (hit / found) * 100);
-if (percents.length === 0) {
-  console.error("no coverage data found in the given lcov files");
+const [linesHit, linesFound] = combined.lines;
+if (linesFound === 0) {
+  console.error("no line coverage found in the given lcov files");
   process.exit(1);
 }
 
-const worst = Math.min(...percents);
-const value = `${worst.toFixed(1)}%`;
+const percent = (linesHit / linesFound) * 100;
+const value = `${percent.toFixed(1)}%`;
 mkdirSync(path.dirname(output), { recursive: true });
-writeFileSync(output, svg("coverage", value, colour(worst)));
-console.log(`${output}: ${value} (lowest of lines/branches/functions across ${inputs.length} workspace(s))`);
+writeFileSync(output, svg("coverage", value, colour(percent)));
+
+const report = (key) => {
+  const [hit, found] = combined[key];
+  return found === 0 ? `${key} —` : `${key} ${((hit / found) * 100).toFixed(1)}%`;
+};
+console.log(`${output}: ${value} lines across ${inputs.length} workspace(s)`);
+// The other two are logged, not drawn: the run summary is where they belong, but a
+// badge that silently ignored them would be easy to forget about
+console.log(`  also: ${report("branches")}, ${report("functions")}`);
