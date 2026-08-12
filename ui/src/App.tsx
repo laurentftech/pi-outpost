@@ -1,8 +1,11 @@
-import { forwardRef, Fragment, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import type { Theme, WireImage } from "@pi-outpost/shared";
 import { AssistantMessage } from "./components/AssistantMessage";
 import { CustomMessageCard } from "./components/CustomMessageCard";
+import { SessionAnalysisPanel } from "./components/SessionAnalysis";
 import { ThemeContext } from "./theme/ThemeContext";
+import { useConversationJump } from "./useConversationJump";
+import { analyzeSession } from "./util/sessionAnalysis";
 import { sessionUsage } from "./util/sessionUsage";
 import { ToolCard } from "./components/ToolCard";
 import { UserMessage } from "./components/UserMessage";
@@ -121,6 +124,8 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
       return !current;
     });
   }
+  // Session analysis drawer: closed until asked for, from the model bar's usage indicator.
+  const [analysisOpen, setAnalysisOpen] = useState(false);
   const [attachmentErrors, setAttachmentErrors] = useState<string[]>([]);
   // Counter, not boolean: dragenter/dragleave fire for every child crossed
   const [dragDepth, setDragDepth] = useState(0);
@@ -249,6 +254,20 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
   // Recomputed only when the transcript itself changes, not on every unrelated
   // render of a component this tall.
   const usage = useMemo(() => sessionUsage(state.items), [state.items]);
+  // The breakdown behind that total. Derived only while the panel is open: the
+  // walk is linear but the rankings sort, and the panel is closed most of the time.
+  const analysis = useMemo(
+    () => (analysisOpen ? analyzeSession(state.items) : null),
+    [analysisOpen, state.items],
+  );
+  const showTools = useCallback(() => setHideTools(false), []);
+  const { jumpToItem, highlightIndex } = useConversationJump({
+    items: state.items,
+    scrollerRef: mainRef,
+    hideTools,
+    onShowTools: showTools,
+    stickToBottom,
+  });
 
   useEffect(() => {
     // An extension's setTitle() (see extensions.md#custom-ui) wins until branding changes again.
@@ -385,7 +404,20 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
             />
           )}
           {state.gitShow && <GitCommitView show={state.gitShow} onClose={clearGitShow} />}
-          <main ref={mainRef} onScroll={handleScroll} className="flex-1 overflow-y-auto">
+          {analysis && (
+            <SessionAnalysisPanel
+              analysis={analysis}
+              onJump={jumpToItem}
+              onClose={() => setAnalysisOpen(false)}
+            />
+          )}
+          {/* The drawer overlays the right side; padding keeps the conversation
+              beside it rather than behind it, so a jump lands somewhere visible. */}
+          <main
+            ref={mainRef}
+            onScroll={handleScroll}
+            className={`flex-1 overflow-y-auto ${analysisOpen ? "md:pr-[26rem]" : ""}`}
+          >
             <div className="mx-auto flex max-w-3xl flex-col gap-3 px-4 py-6">
               {state.items.length === 0 && (
                 <div className="mt-24 text-center text-zinc-500 dark:text-zinc-600">
@@ -397,10 +429,23 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
                 // Scope keys to the session so component state (collapsed cards…)
                 // never bleeds across session_replaced
                 const key = `${state.sessionId}:${i}`;
+                // `data-item-index` is what the analysis panel scrolls to; the ring
+                // marks the arrival long enough to find it among its neighbours.
+                const anchor = (content: React.ReactNode, anchorKey = key) => (
+                  <div
+                    key={anchorKey}
+                    data-item-index={i}
+                    className={`flex flex-col gap-3 rounded-lg transition-shadow ${
+                      highlightIndex === i ? "ring-2 ring-blue-400 dark:ring-blue-500" : ""
+                    }`}
+                  >
+                    {content}
+                  </div>
+                );
                 if (item.kind === "user") {
                   const showSpinner = i === state.items.length - 1 && state.isStreaming;
-                  return (
-                    <Fragment key={key}>
+                  return anchor(
+                    <>
                       <UserMessage
                         item={item}
                         canEdit={!state.isStreaming && state.connected}
@@ -414,21 +459,27 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
                           </div>
                         </div>
                       )}
-                    </Fragment>
+                    </>,
                   );
                 }
                 if (item.kind === "tool") {
                   if (hideTools) return null;
-                  return <ToolCard key={item.toolCallId ? `${state.sessionId}:${item.toolCallId}` : key} item={item} />;
+                  return anchor(
+                    <ToolCard item={item} />,
+                    item.toolCallId ? `${state.sessionId}:${item.toolCallId}` : key,
+                  );
                 }
                 if (item.kind === "custom") {
-                  return <CustomMessageCard key={key} item={item} />;
+                  return anchor(<CustomMessageCard item={item} />);
                 }
-                // Tool-call-only messages produce empty assistant items — skip them
-                if (item.blocks.length === 0 && !item.errorMessage) return null;
-                return (
+                // Tool-call-only messages produce empty assistant items — nothing to
+                // show, but they are turns and carry usage, so the analysis can point
+                // at one. A bare anchor keeps that jump from landing nowhere.
+                if (item.blocks.length === 0 && !item.errorMessage) {
+                  return <div key={key} data-item-index={i} className="sr-only" aria-hidden />;
+                }
+                return anchor(
                   <AssistantMessage
-                    key={key}
                     item={item}
                     serverUrl={serverUrl}
                     token={authToken}
@@ -436,7 +487,7 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
                       setDiffOnOpen(false);
                       readFile(path);
                     }}
-                  />
+                  />,
                 );
               })}
 
@@ -504,6 +555,8 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
                 isStreaming={state.isStreaming}
                 contextUsage={state.contextUsage}
                 sessionUsage={usage}
+                analysisOpen={analysisOpen}
+                onToggleAnalysis={() => setAnalysisOpen((open) => !open)}
                 isCompacting={state.isCompacting}
                 onSetModel={setModel}
                 onSetThinking={setThinking}

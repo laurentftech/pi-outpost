@@ -1,5 +1,5 @@
-import { describe, it, expect } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { describe, it, expect, vi } from "vitest";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { ModelBar } from "./ModelBar";
 import type { SessionUsage } from "../util/sessionUsage";
 
@@ -14,7 +14,7 @@ const NOTHING: SessionUsage = {
   totalTokens: 0,
 };
 
-function renderBar(sessionUsage: SessionUsage) {
+function renderBar(sessionUsage: SessionUsage, onToggleAnalysis = () => {}) {
   return render(
     <ModelBar
       model="anthropic/claude-opus-5"
@@ -24,6 +24,8 @@ function renderBar(sessionUsage: SessionUsage) {
       isStreaming={false}
       contextUsage={null}
       sessionUsage={sessionUsage}
+      analysisOpen={false}
+      onToggleAnalysis={onToggleAnalysis}
       isCompacting={false}
       onSetModel={() => {}}
       onSetThinking={() => {}}
@@ -76,6 +78,8 @@ describe("ModelBar usage indicator", () => {
         isStreaming={false}
         contextUsage={null}
         sessionUsage={{ ...NOTHING, turns: 2, totalTokens: 3_000, cost: 0.03 }}
+        analysisOpen={false}
+        onToggleAnalysis={() => {}}
         isCompacting={false}
         onSetModel={() => {}}
         onSetThinking={() => {}}
@@ -84,5 +88,12 @@ describe("ModelBar usage indicator", () => {
     );
     expect(screen.getByText("3k tok")).toBeTruthy();
     expect(screen.getByText("$0.03")).toBeTruthy();
+  });
+
+  it("opens the session analysis when the figure is clicked", () => {
+    const onToggleAnalysis = vi.fn();
+    renderBar({ ...NOTHING, turns: 1, totalTokens: 1_000, cost: 0.01 }, onToggleAnalysis);
+    fireEvent.click(screen.getByTitle(/1 turn/));
+    expect(onToggleAnalysis).toHaveBeenCalledOnce();
   });
 });

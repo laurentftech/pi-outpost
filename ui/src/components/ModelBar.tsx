@@ -12,6 +12,13 @@ interface ModelBarProps {
   contextUsage: ContextUsage | null;
   /** Billed totals for the session so far; absent turns simply do not count. */
   sessionUsage: SessionUsage;
+  /**
+   * True while the session analysis drawer is open. Optional, with
+   * `onToggleAnalysis`, so an embedding host that renders the bar without an
+   * analysis panel keeps a plain, non-clickable indicator.
+   */
+  analysisOpen?: boolean;
+  onToggleAnalysis?: () => void;
   isCompacting: boolean;
   onSetModel: (provider: string, id: string) => void;
   onSetThinking: (level: ThinkingLevel) => void;
@@ -32,8 +39,18 @@ function ringColor(usage: ContextUsage | null): string {
  *
  * Cost is appended only once some turn carried one, and unpriced turns are named
  * beside it — an amount covering 5 of 7 turns must not read as the whole bill.
+ *
+ * The figure is also the way in: clicking it opens the breakdown behind it.
  */
-function UsageIndicator({ usage }: { usage: SessionUsage }) {
+function UsageIndicator({
+  usage,
+  analysisOpen,
+  onToggleAnalysis,
+}: {
+  usage: SessionUsage;
+  analysisOpen?: boolean;
+  onToggleAnalysis?: () => void;
+}) {
   if (usage.turns === 0) return null;
 
   const priced = usage.turns - usage.unpriced;
@@ -46,11 +63,8 @@ function UsageIndicator({ usage }: { usage: SessionUsage }) {
     ...(usage.unpriced > 0 && priced > 0 ? [`${usage.unpriced} unpriced`] : []),
   ].join(" · ");
 
-  return (
-    <span
-      title={breakdown}
-      className="flex items-center gap-1.5 rounded-md border border-zinc-300 px-2 py-1 font-mono text-xs text-zinc-500 dark:border-zinc-800 dark:text-zinc-400"
-    >
+  const figures = (
+    <>
       <span>{formatTokens(usage.totalTokens)} tok</span>
       {priced > 0 && (
         <span className="text-zinc-400 dark:text-zinc-500">
@@ -58,7 +72,33 @@ function UsageIndicator({ usage }: { usage: SessionUsage }) {
           {usage.unpriced > 0 && "*"}
         </span>
       )}
-    </span>
+    </>
+  );
+  const base = "flex items-center gap-1.5 rounded-md border px-2 py-1 font-mono text-xs text-zinc-500 dark:text-zinc-400";
+
+  if (!onToggleAnalysis) {
+    return (
+      <span title={breakdown} className={`${base} border-zinc-300 dark:border-zinc-800`}>
+        {figures}
+      </span>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={onToggleAnalysis}
+      title={`${breakdown} — click for the session analysis`}
+      aria-haspopup="dialog"
+      aria-expanded={analysisOpen ?? false}
+      className={`${base} ${
+        analysisOpen
+          ? "border-zinc-400 dark:border-zinc-600"
+          : "border-zinc-300 hover:border-zinc-400 dark:border-zinc-800 dark:hover:border-zinc-600"
+      }`}
+    >
+      {figures}
+    </button>
   );
 }
 
@@ -217,7 +257,11 @@ export function ModelBar(props: ModelBarProps) {
         <ContextRing usage={contextUsage} />
         {isCompacting ? "compacting…" : contextUsage?.percent != null ? `${Math.round(contextUsage.percent)}%` : "context"}
       </button>
-      <UsageIndicator usage={sessionUsage} />
+      <UsageIndicator
+        usage={sessionUsage}
+        analysisOpen={props.analysisOpen}
+        onToggleAnalysis={props.onToggleAnalysis}
+      />
     </div>
   );
 }
