@@ -342,14 +342,19 @@ export function parsePageRange(spec: string, pageCount: number): number[] {
  * resolved when the package is on disk (npm install, npx) and simply absent in
  * the single-file build, where a document that needs them reports unextractable
  * text rather than emitting mojibake.
+ *
+ * pdf.js treats these as URLs and rejects any value that does not end in `/` —
+ * `path.sep` therefore breaks every call on Windows, where it is a backslash.
+ * The rest of the path may keep its native separators: Node's fs accepts both
+ * there, and only the ending is checked. Exported for that reason.
  */
-function pdfjsAssetDirs(): { standardFontDataUrl?: string; cMapUrl?: string } {
+export function pdfjsAssetDirs(): { standardFontDataUrl?: string; cMapUrl?: string } {
   try {
     const require = createRequire(import.meta.url);
     const root = path.dirname(require.resolve("pdfjs-dist/package.json"));
     return {
-      standardFontDataUrl: `${path.join(root, "standard_fonts")}${path.sep}`,
-      cMapUrl: `${path.join(root, "cmaps")}${path.sep}`,
+      standardFontDataUrl: `${path.join(root, "standard_fonts")}/`,
+      cMapUrl: `${path.join(root, "cmaps")}/`,
     };
   } catch {
     return {};
