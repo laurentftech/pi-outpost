@@ -27,17 +27,17 @@ A Node server embeds a pi `AgentSession` and bridges it to a React chat UI over 
 ## Features
 
 - Streaming chat (markdown, thinking blocks, mermaid diagrams, inline images and workspace file links)
-- Tool execution cards with live output — hide them behind a toggle when they drown the conversation
+- Tool execution cards with live output — hide them behind a toggle when they drown the conversation. Results are rendered by what they are, not by which tool produced them: a `git diff` becomes per-file diff blocks with `open` and `history` beside each path, a code search becomes hits grouped by file, an edit or write becomes the diff it applied — and anything unrecognized stays the raw output, one keystroke away under every specialized view
 - Steer / follow-up while streaming, abort
 - Model + thinking-level selectors
 - First-run setup in the browser: no credentials, no cryptic failure — paste an API key, or declare your own OpenAI-compatible endpoint (see [Model credentials](#model-credentials))
 - Sessions: list, resume, rename, delete, and full-text search across saved transcripts
 - Conversation tree: edit a past message to re-ask it, and the old exchange stays reachable as a branch you can navigate back to
-- File browser: lazy-loaded tree, full-size viewer (syntax-highlighted, Markdown rendered) and an editor with save inside the writable zone — all confined to the same root the agent's own tools can see; entries outside `sandbox.writableRoot` render dimmed
+- File browser: lazy-loaded tree, full-size viewer (syntax-highlighted, Markdown rendered) and an editor with save inside the writable zone — all confined to the same root the agent's own tools can see; entries outside `sandbox.writableRoot` render dimmed. Create a file or folder from the tree itself: `+` on a writable directory opens an input where the file will land (a trailing `/` makes it a folder), and a new file opens straight into the editor
 - PDF: select one in the tree and it renders in the viewer (pages, zoom, keyboard paging); the agent reads its text and tables through a `pdf_extract` tool — no shell, no external binary, no OCR
 - In-browser sandbox settings: tweak root, writable root, write and bash permissions from the gear menu — no config file edit or server restart needed
 - Attachments: drop or paste images and text files into the composer; the file you are previewing attaches itself as an `@path` reference, so the agent reads it on demand instead of the prompt carrying its content
-- Git: uncommitted-change badges in the tree, per-file diffs in the viewer, log and commit inspection, and a per-file history graph (renames followed) that diffs the file between any two revisions — the working tree included
+- Git: uncommitted-change badges in the tree, per-file diffs in the viewer, log and commit inspection, and a per-file history graph (renames followed) that diffs the file between any two revisions — the working tree included. Commit rows truncate to keep the graph dense; hovering one gives back the whole subject
 - Session cost: tokens and price per turn in the model bar, and a session-analysis panel behind it — tokens/cost charted across turns, tool calls ranked by output size or failure, requests ranked by what they cost, every row jumping back to the message that produced it
 - Slash commands with autocompletion (`/` in the composer: extension commands, prompt templates, skills)
 - File mentions with autocompletion (`@` in the composer: recursive name search over the browser root, inserts the relative path)
