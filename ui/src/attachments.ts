@@ -67,6 +67,14 @@ export function textPreviewToAttachment(path: string): Attachment {
 }
 
 /**
+ * A displayed PDF, referenced by path rather than carried as bytes: the agent has
+ * a tool that reads a PDF at a path, so the prompt never pays for the document.
+ */
+export function pdfPreviewToAttachment(path: string): Attachment {
+  return textPreviewToAttachment(path);
+}
+
+/**
  * Already-typed `@src/App.tsx` — an attachment chip must not add it a second time.
  * Sentence punctuation may follow the path ("…@src/App.tsx, please"), but another
  * path character must not: `@src/App.tsx.bak` names a different file.

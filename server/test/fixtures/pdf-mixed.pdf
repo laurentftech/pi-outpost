@@ -1,0 +1,46 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [4 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+4 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R >> >> /Contents 5 0 R >>
+endobj
+5 0 obj
+<< /Length 657 >>
+stream
+BT /F1 16 Tf 72 740 Td (Sales by region) Tj ET
+BT /F1 12 Tf 72 716 Td (The table below breaks the quarter down by region.) Tj ET
+BT /F1 12 Tf 72 660 Td (Region) Tj ET
+BT /F1 12 Tf 222 660 Td (Units) Tj ET
+BT /F1 12 Tf 372 660 Td (Revenue) Tj ET
+BT /F1 12 Tf 72 640 Td (North) Tj ET
+BT /F1 12 Tf 222 640 Td (1200) Tj ET
+BT /F1 12 Tf 372 640 Td (48000) Tj ET
+BT /F1 12 Tf 72 620 Td (South) Tj ET
+BT /F1 12 Tf 222 620 Td (900) Tj ET
+BT /F1 12 Tf 372 620 Td (36500) Tj ET
+BT /F1 12 Tf 72 600 Td (East) Tj ET
+BT /F1 12 Tf 222 600 Td (1500) Tj ET
+BT /F1 12 Tf 372 600 Td (61000) Tj ET
+BT /F1 12 Tf 72 540 Td (Figures are provisional until the audit closes.) Tj ET
+endstream
+endobj
+xref
+0 6
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000115 00000 n 
+0000000185 00000 n 
+0000000311 00000 n 
+trailer
+<< /Size 6 /Root 1 0 R >>
+startxref
+1019
+%%EOF

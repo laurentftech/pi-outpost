@@ -34,6 +34,14 @@ export function isImageFile(path: string): boolean {
 }
 
 /**
+ * A PDF the viewer renders itself, from the bytes of /files/raw — the text
+ * preview protocol answers "binary" for it, as it does for an image.
+ */
+export function isPdfFile(path: string): boolean {
+  return /\.pdf$/i.test(path);
+}
+
+/**
  * URL of the server's raw-bytes endpoint for a workspace file. `<img>` cannot
  * send headers, so the auth token rides the query string (same trade-off as
  * the WebSocket URL). `serverUrl` is the embed widget's backend origin, "" when

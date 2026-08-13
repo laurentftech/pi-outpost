@@ -8,6 +8,7 @@ import {
   removeAttachment,
   pathAttachment,
   textPreviewToAttachment,
+  pdfPreviewToAttachment,
   imagePreviewToAttachment,
   type Attachment,
 } from "./attachments";
@@ -297,6 +298,18 @@ describe("pathAttachment / textPreviewToAttachment", () => {
     const a = textPreviewToAttachment("src/foo.ts");
     expect(a.source).toBe("preview");
     expect(a.previewPath).toBe("src/foo.ts");
+  });
+
+  it("pdfPreviewToAttachment references the path and never carries the bytes", () => {
+    const a = pdfPreviewToAttachment("docs/report.pdf");
+    expect(a).toEqual({
+      name: "docs/report.pdf",
+      kind: "path",
+      data: "docs/report.pdf",
+      mimeType: "text/plain",
+      source: "preview",
+      previewPath: "docs/report.pdf",
+    });
   });
 });
 
