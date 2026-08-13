@@ -34,6 +34,7 @@ A Node server embeds a pi `AgentSession` and bridges it to a React chat UI over 
 - Sessions: list, resume, rename, delete, and full-text search across saved transcripts
 - Conversation tree: edit a past message to re-ask it, and the old exchange stays reachable as a branch you can navigate back to
 - File browser: lazy-loaded tree, full-size viewer (syntax-highlighted, Markdown rendered) and an editor with save inside the writable zone — all confined to the same root the agent's own tools can see; entries outside `sandbox.writableRoot` render dimmed
+- PDF: select one in the tree and it renders in the viewer (pages, zoom, keyboard paging); the agent reads its text and tables through a `pdf_extract` tool — no shell, no external binary, no OCR
 - In-browser sandbox settings: tweak root, writable root, write and bash permissions from the gear menu — no config file edit or server restart needed
 - Attachments: drop or paste images and text files into the composer; the file you are previewing attaches itself as an `@path` reference, so the agent reads it on demand instead of the prompt carrying its content
 - Git: uncommitted-change badges in the tree, per-file diffs in the viewer, log and commit inspection
@@ -185,6 +186,7 @@ See [`pi-outpost.config.example.json`](pi-outpost.config.example.json).
 | `sandbox.allowWrite` | Adds edit/write, confined to `sandbox.writableRoot` (or the whole root if unset) (default `false`) |
 | `sandbox.writableRoot` | Read-write zone: subdirectory of `root` that edit/write are further confined to. Must be inside `root`. Defaults to `root` itself |
 | `sandbox.allowBash` | Adds bash — **not path-confined**, explicit opt-in (default `false`) |
+| `pdf.maxBytes` | Largest PDF the viewer may load, in bytes (default `26214400` — 25 MB). Every other file keeps the 1 MB limit. The `pdf_extract` tool refuses a PDF above the same ceiling |
 | `tools` | Tool allowlist in non-sandbox mode, e.g. `["read","grep","find","ls"]` |
 | `noExtensions` | Disable extension discovery entirely |
 | `extensionPaths` | Explicit extension `.ts`/`.mjs` files to load (resolved relative to the config file's directory). Loaded via the pi SDK's jiti-based loader — works in dev mode and the npm-published bundle |

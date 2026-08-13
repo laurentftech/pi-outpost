@@ -72,6 +72,18 @@ export interface SandboxLocks {
   writableRoot?: boolean;
 }
 
+export interface PdfConfig {
+  /**
+   * Largest PDF the raw-file route will serve, in bytes. Default: 25 MiB.
+   * PDFs get their own ceiling because the 1 MiB preview limit excludes most
+   * real documents; every other file keeps that limit.
+   */
+  maxBytes: number;
+}
+
+/** Default PDF ceiling — 25 MiB, well above the 1 MiB that governs other files. */
+export const DEFAULT_PDF_MAX_BYTES = 26_214_400;
+
 export interface AppConfig {
   /** The file this configuration was read from — the one of four locations that won. */
   configFile: string;
@@ -154,6 +166,8 @@ export interface AppConfig {
    */
   token?: string;
   branding: BrandingConfig;
+  /** PDF handling (size ceiling for the raw-file route). */
+  pdf: PdfConfig;
 }
 
 /** Launch-time options from the command line — the top of the precedence chain. */
@@ -313,6 +327,7 @@ export function loadConfig(
     host: "127.0.0.1",
     allowedOrigins: [],
     branding: {},
+    pdf: { maxBytes: DEFAULT_PDF_MAX_BYTES },
   };
 
   let raw: Record<string, unknown>;
@@ -438,6 +453,16 @@ export function loadConfig(
     }
     config.allowedOrigins = origins;
     config.token = optionalString(server, "token");
+  }
+
+  if (raw.pdf !== undefined) {
+    const pdf = asObject(raw.pdf, "pdf");
+    if (pdf.maxBytes !== undefined) {
+      if (typeof pdf.maxBytes !== "number" || !Number.isInteger(pdf.maxBytes) || pdf.maxBytes <= 0) {
+        fail(`"pdf.maxBytes" must be a positive integer (bytes)`);
+      }
+      config.pdf.maxBytes = pdf.maxBytes;
+    }
   }
 
   if (raw.branding !== undefined) {

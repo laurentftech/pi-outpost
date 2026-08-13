@@ -56,8 +56,9 @@ import {
 } from "./credentials.ts";
 import { assistantToItem, contentText, customMessageToItem, historyToItems, truncate } from "./convert.ts";
 import { configureExtensionRender, renderToolCallHtml, renderToolResultHtml } from "./extensionRender.ts";
-import { assertWithinRoot, FileBrowserError, listDirectory, MAX_PREVIEW_BYTES, readFileForPreview, readFileRaw, writeFileFromBrowser, resolveBrowserRoot, resolveWritableRoot, searchFiles } from "./fileBrowser.ts";
+import { assertWithinRoot, FileBrowserError, isPdfPath, listDirectory, MAX_PREVIEW_BYTES, readFileForPreview, readFileRaw, writeFileFromBrowser, resolveBrowserRoot, resolveWritableRoot, searchFiles } from "./fileBrowser.ts";
 import { GitError, gitFileLog, gitHeadContent, gitLog, gitRevisionContent, gitShow, gitStatus, probeGit } from "./git.ts";
+import { createPdfExtractToolDefinition } from "./pdfTool.ts";
 import { createSandboxedTools, isWithin, realResolve } from "./sandbox.ts";
 import {
   firstExchange,
@@ -182,7 +183,7 @@ if (cli.command === "login") {
   }
 }
 
-let sandboxedTools = config.sandbox ? await createSandboxedTools(config.sandbox) : undefined;
+let sandboxedTools = config.sandbox ? await createSandboxedTools(config.sandbox, config.pdf.maxBytes) : undefined;
 let BROWSER_ROOT = await resolveBrowserRoot(config);
 let WRITABLE_ROOT = await resolveWritableRoot(config, BROWSER_ROOT);
 let GIT = await probeGit(BROWSER_ROOT);
@@ -328,7 +329,8 @@ app.get("/files/raw", async (req, reply) => {
   const relPath = typeof query.path === "string" ? query.path : undefined;
   if (!relPath) return reply.code(400).send({ error: "missing path" });
   try {
-    const bytes = await readFileRaw(BROWSER_ROOT, relPath);
+    // PDFs are measured against their own ceiling; everything else keeps 1 MB.
+    const bytes = await readFileRaw(BROWSER_ROOT, relPath, config.pdf.maxBytes);
     reply.header("X-Content-Type-Options", "nosniff");
     // Workspace content may be stale seconds later (agent regenerates a plot)
     reply.header("Cache-Control", "no-store");
@@ -348,7 +350,12 @@ app.get("/files/raw", async (req, reply) => {
       .send(bytes);
   } catch (error) {
     if (error instanceof FileBrowserError) {
-      return reply.code(error.reason === "too-large" ? 413 : 404).send({ error: error.reason });
+      if (error.reason === "too-large") {
+        // The viewer names the limit it hit, and the limit depends on the type
+        const limit = isPdfPath(relPath) ? config.pdf.maxBytes : MAX_PREVIEW_BYTES;
+        return reply.code(413).send({ error: error.reason, limit });
+      }
+      return reply.code(404).send({ error: error.reason });
     }
     throw error;
   }
@@ -494,6 +501,20 @@ const createRuntime: CreateAgentSessionRuntimeFactory = async ({
       // Sandbox replaces the built-in toolset with path-scoped equivalents
       ...(sandboxedTools ? { noTools: "builtin" as const, customTools: sandboxedTools } : {}),
       ...(!sandboxedTools && config.tools ? { tools: config.tools } : {}),
+      // No sandbox: the built-in toolset stands, and pdf_extract joins it — it is
+      // not one of pi's built-ins, so nothing else would supply it. It stays
+      // confined to the workspace, which is the only root there is to name here.
+      ...(sandboxedTools
+        ? {}
+        : {
+            customTools: [
+              createPdfExtractToolDefinition({
+                cwd,
+                allowedRoots: [await fs.realpath(cwd)],
+                maxBytes: config.pdf.maxBytes,
+              }),
+            ],
+          }),
     })),
     services,
     diagnostics: services.diagnostics,
@@ -1195,7 +1216,7 @@ async function handleUpdateConfig(
     BROWSER_ROOT = await resolveBrowserRoot(config);
     WRITABLE_ROOT = await resolveWritableRoot(config, BROWSER_ROOT);
     GIT = await probeGit(BROWSER_ROOT);
-    sandboxedTools = config.sandbox ? await createSandboxedTools(config.sandbox) : undefined;
+    sandboxedTools = config.sandbox ? await createSandboxedTools(config.sandbox, config.pdf.maxBytes) : undefined;
     // Replace the current session so the new runtime picks up the updated tools
     const { cancelled } = await runtime.newSession();
     if (!cancelled) await rebindAndAnnounce();

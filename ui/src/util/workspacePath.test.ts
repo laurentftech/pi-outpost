@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { isExternalRef, resolveRelativeHref, isImageFile, rawFileUrl } from "./workspacePath";
+import { isExternalRef, resolveRelativeHref, isImageFile, isPdfFile, rawFileUrl } from "./workspacePath";
 
 describe("isExternalRef", () => {
   it("returns true for http/https URLs", () => {
@@ -74,6 +74,20 @@ describe("isImageFile", () => {
     expect(isImageFile("file.ts")).toBe(false);
     expect(isImageFile("file.md")).toBe(false);
     expect(isImageFile("file.pdf")).toBe(false);
+  });
+});
+
+describe("isPdfFile", () => {
+  it("recognizes a PDF whatever the case of its extension", () => {
+    expect(isPdfFile("report.pdf")).toBe(true);
+    expect(isPdfFile("deep/path/report.PDF")).toBe(true);
+  });
+
+  it("returns false for everything else, including near misses", () => {
+    expect(isPdfFile("file.ts")).toBe(false);
+    expect(isPdfFile("photo.png")).toBe(false);
+    expect(isPdfFile("report.pdf.bak")).toBe(false);
+    expect(isPdfFile("pdf")).toBe(false);
   });
 });
 

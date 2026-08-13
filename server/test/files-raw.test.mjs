@@ -16,6 +16,7 @@ const TOKEN = "test-token-files-raw";
 describe("GET /files/raw", () => {
   let open;
   let guarded;
+  let tightPdf;
   let secretPath;
 
   before(async () => {
@@ -25,6 +26,9 @@ describe("GET /files/raw", () => {
       "report.html": "<h1>hi</h1><script>alert(1)</script>",
       "img.svg": '<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>',
       "notes.md": "# hello\n",
+      // Bigger than the 1 MB cap that governs every other file: the PDF ceiling
+      // is the only reason this one may be served at all
+      "big.pdf": Buffer.concat([Buffer.from("%PDF-1.4\n"), randomBytes(2_000_000)]),
     };
     const openRoot = await makeWorkspace(files);
     // Outside the workspace: nothing must ever reach it
@@ -34,10 +38,14 @@ describe("GET /files/raw", () => {
 
     const guardedRoot = await makeWorkspace(files);
     guarded = await startServer(guardedRoot, { server: { token: TOKEN } });
+
+    const tightRoot = await makeWorkspace(files);
+    tightPdf = await startServer(tightRoot, { pdf: { maxBytes: 1_048_576 } });
   });
   after(async () => {
     await open?.stop();
     await guarded?.stop();
+    await tightPdf?.stop();
   });
 
   test("serves an image with its content type", async () => {
@@ -60,6 +68,23 @@ describe("GET /files/raw", () => {
   test("refuses a file over the 1 MiB cap", async () => {
     const res = await fetch(`${open.base}/files/raw?path=big.png`);
     assert.equal(res.status, 413);
+  });
+
+  test("serves a PDF above the 1 MB cap, under the PDF ceiling", async () => {
+    const res = await fetch(`${open.base}/files/raw?path=big.pdf`);
+    assert.equal(res.status, 200);
+    assert.equal(Buffer.from(await res.arrayBuffer()).length, 2_000_009);
+  });
+
+  test("a PDF over the configured PDF ceiling is still refused", async () => {
+    const res = await fetch(`${tightPdf.base}/files/raw?path=big.pdf`);
+    assert.equal(res.status, 413);
+  });
+
+  test("a PDF is a download too — the browser's own viewer never runs it here", async () => {
+    const res = await fetch(`${open.base}/files/raw?path=big.pdf`);
+    assert.equal(res.headers.get("content-type"), "application/octet-stream");
+    assert.equal(res.headers.get("content-disposition"), "attachment");
   });
 
   test("non-image files are downloads, never renderable on our origin", async () => {
