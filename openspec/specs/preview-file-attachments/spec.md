@@ -6,20 +6,22 @@ Turns the file the user is looking at into the context of their next question, w
 them attach it by hand — and without spending the agent's context window on a file they may
 never ask about. A previewed text file travels as an `@path` reference the agent resolves with
 its own file tools; images, which the agent cannot hand to the model itself, travel as bytes.
-
 ## Requirements
-
 ### Requirement: Automatically attach the active preview
 
 - **Implementation**: `textPreviewToAttachment::ui/src/attachments.ts`, `imagePreviewToAttachment::ui/src/attachments.ts`
 
 The system SHALL add a successfully displayed file preview to the composer as the attachment for the active preview. It SHALL create at most one automatic attachment for an active preview path, and SHALL preserve manually added attachments.
 
-Text files SHALL be attached as a path reference, not as content: the agent browses the same root as the file viewer and reads the file itself, so a large preview MUST NOT consume prompt context proportional to its size. Images SHALL still be attached as image bytes, which the agent cannot supply to the model on its own.
+Text files SHALL be attached as a path reference, not as content: the agent browses the same root as the file viewer and reads the file itself, so a large preview MUST NOT consume prompt context proportional to its size. PDFs SHALL likewise be attached as a path reference, because the agent has a tool that reads a PDF at a path — their bytes MUST NOT travel with the prompt. Images SHALL still be attached as image bytes, which the agent cannot supply to the model on its own.
 
 #### Scenario: Text preview becomes a path reference
 - **WHEN** a text file preview has loaded successfully
 - **THEN** the composer contains a removable attachment referencing the file's path, and the prompt carries an `@path` mention rather than the file's content
+
+#### Scenario: PDF preview becomes a path reference
+- **WHEN** a PDF is displayed in the viewer
+- **THEN** the composer contains a removable attachment referencing the file's path, and the PDF's bytes are not attached
 
 #### Scenario: Image preview becomes an attachment
 - **WHEN** an image file is displayed in the preview and its raw bytes can be read within the image attachment limit
@@ -88,3 +90,4 @@ The system SHALL not attach a preview whose image content is unsupported, unread
 #### Scenario: Large text preview
 - **WHEN** a successfully displayed text preview is larger than the composer's inline text limit
 - **THEN** it is still attached, because only its path travels with the prompt
+

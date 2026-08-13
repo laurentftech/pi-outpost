@@ -8,9 +8,7 @@
 This document specifies the HTTP API exposed by the system. All agent interaction happens
 over the WebSocket (`/ws`) using the wire protocol in `shared/src/protocol.ts`; the HTTP
 surface is limited to branding, health, and static assets.
-
 ## Requirements
-
 ### Requirement: GETBranding
 
 The API SHALL support `GET /branding` to retrieve branding information for the application.
@@ -59,7 +57,7 @@ The API SHALL serve the built web frontend (`web/dist`) as static files from the
 
 ### Requirement: GETFilesRaw
 
-The server SHALL expose `GET /files/raw?path=<relative>` returning the raw bytes of a file inside the browser root. The path SHALL be confined to the browser root using the same resolution as the WebSocket file browser (symlink-safe, no traversal). Files over 1 MiB SHALL be rejected with 413. Responses SHALL carry an image content type only for a known image-extension allowlist (png, jpg/jpeg, gif, webp, svg, avif); all other files SHALL be served as `application/octet-stream` with `Content-Disposition: attachment` so no workspace file can execute in the server's origin. When `server.token` is set, the request SHALL be rejected with 401 unless a valid `token` query parameter (or Bearer header) is supplied, using the same timing-safe comparison as the WebSocket. When no token is configured, the request SHALL be rejected with 403 unless the `Host` header names localhost/127.0.0.1/[::1], the configured bind host, or a configured allowed origin — a DNS-rebinding page cannot present any of these.
+The server SHALL expose `GET /files/raw?path=<relative>` returning the raw bytes of a file inside the browser root. The path SHALL be confined to the browser root using the same resolution as the WebSocket file browser (symlink-safe, no traversal). The size limit SHALL depend on the file's type: PDFs SHALL be rejected with 413 above the configured PDF limit (default 25 MiB), and every other file SHALL be rejected with 413 above 1 MiB. Responses SHALL carry an image content type only for a known image-extension allowlist (png, jpg/jpeg, gif, webp, svg, avif); all other files — PDFs included — SHALL be served as `application/octet-stream` with `Content-Disposition: attachment` so no workspace file can execute or render in the server's origin. When `server.token` is set, the request SHALL be rejected with 401 unless a valid `token` query parameter (or Bearer header) is supplied, using the same timing-safe comparison as the WebSocket. When no token is configured, the request SHALL be rejected with 403 unless the `Host` header names localhost/127.0.0.1/[::1], the configured bind host, or a configured allowed origin — a DNS-rebinding page cannot present any of these.
 
 #### Scenario: ServeImage
 - **GIVEN** `plot.png` (200 KiB) inside the browser root and no auth token configured
@@ -75,6 +73,11 @@ The server SHALL expose `GET /files/raw?path=<relative>` returning the raw bytes
 - **WHEN** the client requests it via `/files/raw`
 - **THEN** the response has `Content-Type: application/octet-stream` and `Content-Disposition: attachment`
 
+#### Scenario: PdfIsAttachment
+- **GIVEN** `report.pdf` inside the browser root
+- **WHEN** the client requests it via `/files/raw`
+- **THEN** the response has `Content-Type: application/octet-stream` and `Content-Disposition: attachment`, so the browser's own PDF viewer never runs it on this origin
+
 #### Scenario: TokenRequired
 - **GIVEN** a server with `server.token` configured
 - **WHEN** the client requests `/files/raw?path=plot.png` without a token or with a wrong one
@@ -87,6 +90,16 @@ The server SHALL expose `GET /files/raw?path=<relative>` returning the raw bytes
 
 #### Scenario: OversizeRejected
 - **GIVEN** a 2 MiB image inside the browser root
+- **WHEN** the client requests it via `/files/raw`
+- **THEN** the response is 413
+
+#### Scenario: PdfUnderItsOwnLimit
+- **GIVEN** a 6 MiB PDF inside the browser root and a 25 MiB PDF limit
+- **WHEN** the client requests it via `/files/raw`
+- **THEN** the response is 200 with the file bytes
+
+#### Scenario: PdfOverItsOwnLimit
+- **GIVEN** a PDF larger than the configured PDF limit
 - **WHEN** the client requests it via `/files/raw`
 - **THEN** the response is 413
 
@@ -193,3 +206,36 @@ The WebSocket protocol SHALL accept a `declare_provider` client message carrying
 #### Scenario: RejectNonHttpBaseUrl
 - **WHEN** the base URL is missing or is not an http(s) URL
 - **THEN** the server rejects the message and registers nothing
+
+### Requirement: CreateEntryMessages
+
+The WebSocket protocol SHALL carry a `create_file` and a `create_directory` client message, each
+naming a path relative to the browser root and a request id. The server SHALL answer a successful
+`create_file` with the same message that answers a write — path, size and mtime — so the client can
+open the new file without a second round trip, and a successful `create_directory` with a directory
+listing of its parent or an equivalent acknowledgement.
+
+A refusal SHALL be reported as a file-browser error carrying the request id and a machine-readable
+reason, reusing the existing set: `denied` outside the writable zone, `conflict` when the path
+exists, `outside-root` for a path that escapes.
+
+These messages SHALL NOT relax `write_file`. Its refusal of a path that is not already a file is
+the guard against writing over something that moved, and creation is a separate intent with its own
+message.
+
+#### Scenario: CreateFileMessage
+- **WHEN** a client sends `create_file` for a new path inside the writable zone
+- **THEN** the file is created and the client receives the written-file answer with its size and mtime
+
+#### Scenario: CreateDirectoryMessage
+- **WHEN** a client sends `create_directory` for a new path inside the writable zone
+- **THEN** the directory is created and the client is told so under the same request id
+
+#### Scenario: CreateRefusedCarriesReason
+- **WHEN** creation is refused because the path exists, is outside the writable zone, or escapes the root
+- **THEN** the client receives a file-browser error under that request id with the matching reason
+
+#### Scenario: WriteFileStillRefusesMissingPaths
+- **WHEN** `write_file` names a path that does not exist
+- **THEN** it is still refused as a conflict, as before
+

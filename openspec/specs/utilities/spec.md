@@ -9,7 +9,6 @@ Pure, dependency-free helpers shared by the UI: line diffing for tool cards, LaT
 delimiter normalization for model output, tool-result formatting, and
 workspace-relative reference resolution. Every function here is deterministic and
 side-effect free — they are the leaves the rendering components build on.
-
 ## Requirements
 
 > `ui/src/util/diff.ts`, `ui/src/util/markdownMath.ts`, `ui/src/util/toolOutput.ts`, `ui/src/util/workspacePath.ts`
@@ -73,13 +72,18 @@ delimiter repetition.
 
 ### Requirement: FormatToolOutput
 
-- **Implementation**: `getFormattedToolOutput::ui/src/util/toolOutput.ts`
+- **Implementation**: `getFormattedToolOutput::ui/src/util/toolOutput.ts`, `parseLooseJson::ui/src/util/toolOutput.ts`
 
-The system SHALL format a tool result for display, preferring an authoritative
-`__pi_render` envelope when present. It SHALL recover from truncated JSON by
-stripping the truncation suffix and, failing that, by brace-counting. It SHALL
-return `undefined` only for content that is not JSON or is unrecoverable — never
-a partially parsed object presented as complete.
+The system SHALL format a tool result for display from an authoritative
+`__pi_render` envelope. It SHALL recover from truncated JSON by stripping the
+truncation suffix and, failing that, by brace-counting, and SHALL expose that
+recovery so other presentations parse a tool result the same way rather than
+re-implementing it. It SHALL return `undefined` for content that is not JSON, is
+unrecoverable, or carries no envelope — never a partially parsed object presented
+as complete.
+
+Formatting that is specific to one tool vendor's payload SHALL NOT live in this
+utility; it belongs to a presentation with a named match.
 
 #### Scenario: OutputCarriesARenderEnvelope
 - **GIVEN** a result containing a `__pi_render` envelope
@@ -91,6 +95,12 @@ a partially parsed object presented as complete.
 - **WHEN** it is formatted
 - **THEN** recovery is attempted before giving up
 - **AND** unrecoverable content yields `undefined` rather than a partial render
+
+#### Scenario: OutputIsJsonWithoutAnEnvelope
+- **GIVEN** a JSON result carrying no `__pi_render` envelope
+- **WHEN** it is formatted
+- **THEN** the result is `undefined`
+- **AND** the parsed object is available to presentations through the shared recovery
 
 ### Requirement: ResolveWorkspaceReferences
 
