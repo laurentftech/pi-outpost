@@ -16,6 +16,7 @@ import {
   detectTableBlocks,
   extractPdf,
   lineCells,
+  linesToMarkdownTable,
   parsePageRange,
   pdfjsAssetDirs,
   PdfError,
@@ -258,6 +259,25 @@ describe("line and table geometry", () => {
     ]);
 
     assert.deepEqual(detectTableBlocks(lines), []);
+  });
+
+  test("a cell cannot break out of its column", () => {
+    // The text is the PDF's, so it is attacker-controlled. Escaping only the pipe
+    // would turn a trailing backslash into an escaped backslash followed by a live
+    // separator — the cell would swallow the boundary and shift every column after it.
+    const rows = [700, 680, 660].flatMap((y, r) => [
+      piece(r === 0 ? "name\\" : `n${r}`, 72, y),
+      piece(`v${r}`, 300, y),
+    ]);
+    const lines = buildLines(rows);
+    const block = detectTableBlocks(lines)[0];
+
+    const markdown = linesToMarkdownTable(lines, block);
+    const header = markdown.split("\n")[0];
+    assert.equal(header, String.raw`| name\\ | v0 |`);
+    for (const row of markdown.split("\n")) {
+      assert.equal(row.split(" | ").length, 2, `every row keeps two columns: ${row}`);
+    }
   });
 
   test("three aligned rows are a table", () => {

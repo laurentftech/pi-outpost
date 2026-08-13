@@ -203,8 +203,16 @@ function columnsOf(lines: Line[], cellsPerLine: Cell[][], start: number, end: nu
   return columns.length >= 2 ? { start, end, columns } : null;
 }
 
+/**
+ * A cell's text comes from the PDF, so it is attacker-controlled: it must not be
+ * able to add columns or rows to the table it lands in.
+ *
+ * Backslashes are escaped first. Escaping only the pipe leaves `\|` as `\\|` —
+ * an escaped backslash followed by a *live* pipe, which splits the cell exactly
+ * as the crafted text intended.
+ */
 function escapeCell(text: string): string {
-  return text.replace(/\|/g, "\\|").replace(/\s+/g, " ").trim();
+  return text.replace(/\\/g, "\\\\").replace(/\|/g, "\\|").replace(/\s+/g, " ").trim();
 }
 
 /**
