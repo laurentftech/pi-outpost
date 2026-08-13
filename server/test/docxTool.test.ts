@@ -6,7 +6,8 @@
  * how it runs when no sandbox is configured.
  */
 import assert from "node:assert/strict";
-import { copyFile, mkdtemp, writeFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { copyFile, mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -33,7 +34,7 @@ describe("docx_extract", () => {
     await copyFile(path.join(FIXTURES, "docx-mixed.docx"), path.join(root, "report.docx"));
     await copyFile(path.join(FIXTURES, "docx-encrypted.docx"), path.join(root, "locked.docx"));
     await writeFile(path.join(root, "notes.txt"), "not a docx\n");
-    tool = createDocxExtractToolDefinition({ cwd: root, allowedRoots: [root], maxBytes: 25 * 1024 * 1024 });
+    tool = createDocxExtractToolDefinition({ cwd: root, allowedRoots: [root], maxBytes: 25 * 1024 * 1024, writableRoot: root });
   });
 
   test("is named and described for the model", () => {
@@ -78,7 +79,7 @@ describe("docx_extract", () => {
   });
 
   test("refuses a document above the ceiling before parsing it", async () => {
-    const tight = createDocxExtractToolDefinition({ cwd: root, allowedRoots: [root], maxBytes: 100 });
+    const tight = createDocxExtractToolDefinition({ cwd: root, allowedRoots: [root], maxBytes: 100, writableRoot: root });
     await assert.rejects(
       () =>
         (tight.execute as unknown as (id: string, params: unknown, signal?: AbortSignal) => Promise<unknown>)(
@@ -88,5 +89,96 @@ describe("docx_extract", () => {
         ),
       /larger than the 0 KB Word limit/,
     );
+  });
+});
+
+describe("docx_extract writing to a file", () => {
+  let root: string;
+  let outside: string;
+
+  /** A tool with the writable zone this test needs. */
+  function toolWith(writableRoot: string | null) {
+    return createDocxExtractToolDefinition({ cwd: root, allowedRoots: [root], maxBytes: 25 * 1024 * 1024, writableRoot });
+  }
+
+  async function run(tool: ReturnType<typeof createDocxExtractToolDefinition>, params: Record<string, unknown>): Promise<string> {
+    const result = await (
+      tool.execute as unknown as (id: string, params: unknown, signal?: AbortSignal) => Promise<{ content: { text: string }[] }>
+    )("call-w", params, undefined);
+    return result.content[0].text;
+  }
+
+  before(async () => {
+    const base = await mkdtemp(path.join(tmpdir(), "pi-docxout-"));
+    root = await realResolve(path.join(base, "root"));
+    outside = await realResolve(path.join(base, "outside"));
+    await mkdir(root, { recursive: true });
+    await mkdir(outside, { recursive: true });
+    await mkdir(path.join(root, "sub"), { recursive: true });
+    await copyFile(path.join(FIXTURES, "docx-mixed.docx"), path.join(root, "report.docx"));
+    await writeFile(path.join(root, "taken.md"), "keep me\n");
+  });
+
+  test("writes the whole extraction and returns a summary, not the content", async () => {
+    const answer = await run(toolWith(root), { path: "report.docx", output_path: "out.md" });
+
+    assert.match(answer, /Wrote 4 of 4 blocks to `out\.md`/);
+    assert.match(answer, /Opening lines:/);
+    // The point of writing to a file is that the document does not travel back
+    assert.ok(answer.length < 900, `summary should stay a summary, got ${answer.length} chars`);
+
+    const written = await readFile(path.join(root, "out.md"), "utf8");
+    assert.match(written, /# Sales by region/);
+    assert.match(written, /\| Region \| Units \| Revenue \|/);
+    assert.match(written, /Figures are provisional/);
+  });
+
+  test("refuses a destination outside the writable zone", async () => {
+    await assert.rejects(
+      () => run(toolWith(root), { path: "report.docx", output_path: path.join(outside, "escape.md") }),
+      /outside the writable zone/,
+    );
+    assert.equal(existsSync(path.join(outside, "escape.md")), false);
+  });
+
+  test("refuses a destination that climbs out with ..", async () => {
+    await assert.rejects(
+      () => run(toolWith(root), { path: "report.docx", output_path: "../outside/climb.md" }),
+      /outside the writable zone/,
+    );
+    assert.equal(existsSync(path.join(outside, "climb.md")), false);
+  });
+
+  test("refuses a destination in the read-only part of the root", async () => {
+    // Writable zone narrowed to root/sub: the rest of the root is readable, not writable
+    await assert.rejects(
+      () => run(toolWith(path.join(root, "sub")), { path: "report.docx", output_path: "elsewhere.md" }),
+      /outside the writable zone/,
+    );
+    assert.equal(existsSync(path.join(root, "elsewhere.md")), false);
+  });
+
+  test("refuses every destination when writing is disabled", async () => {
+    await assert.rejects(
+      () => run(toolWith(null), { path: "report.docx", output_path: "nope.md" }),
+      /read-only/,
+    );
+    assert.equal(existsSync(path.join(root, "nope.md")), false);
+  });
+
+  test("never overwrites a file that is already there", async () => {
+    await assert.rejects(
+      () => run(toolWith(root), { path: "report.docx", output_path: "taken.md" }),
+      /already exists/,
+    );
+    assert.equal(await readFile(path.join(root, "taken.md"), "utf8"), "keep me\n");
+  });
+
+  test("a refused destination leaves ordinary extraction working", async () => {
+    const readOnly = toolWith(null);
+    await assert.rejects(() => run(readOnly, { path: "report.docx", output_path: "nope.md" }), /read-only/);
+
+    const answer = await run(readOnly, { path: "report.docx" });
+    assert.match(answer, /# Sales by region/);
   });
 });

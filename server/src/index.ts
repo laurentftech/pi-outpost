@@ -513,11 +513,15 @@ const createRuntime: CreateAgentSessionRuntimeFactory = async ({
                 cwd,
                 allowedRoots: [await fs.realpath(cwd)],
                 maxBytes: config.pdf.maxBytes,
+                // No sandbox: anything under the workspace is writable, the same
+                // rule writeFileFromBrowser applies to the browser's own writes.
+                writableRoot: await fs.realpath(cwd),
               }),
               createDocxExtractToolDefinition({
                 cwd,
                 allowedRoots: [await fs.realpath(cwd)],
                 maxBytes: config.docx.maxBytes,
+                writableRoot: await fs.realpath(cwd),
               }),
             ],
           }),

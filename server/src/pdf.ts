@@ -24,7 +24,9 @@ export type PdfErrorReason =
   /** Not a PDF, or damaged past reading. */
   | "unreadable"
   /** Parsing exceeded the time budget. */
-  | "budget";
+  | "budget"
+  /** The whole document does not fit in one answer (see `full`). */
+  | "too-large";
 
 export class PdfError extends Error {
   constructor(
@@ -40,6 +42,12 @@ export interface PdfExtractOptions {
   /** `"3"`, `"2-8"`, `"2-8,12"`. Omitted means "from page 1 until a cap stops us". */
   pages?: string;
   mode?: PdfMode;
+  /**
+   * Return the whole document rather than one call's worth. The per-call caps
+   * lift; ABSOLUTE_MAX_CHARS and the deadline still apply, and a document past
+   * that ceiling is refused rather than quietly cut.
+   */
+  full?: boolean;
   maxPages?: number;
   maxChars?: number;
   timeoutMs?: number;
@@ -57,6 +65,12 @@ export interface PdfExtraction {
 /** Caps chosen so one call cannot spend a session's context on a long report. */
 export const DEFAULT_MAX_PAGES = 20;
 export const DEFAULT_MAX_CHARS = 40_000;
+/**
+ * The ceiling `full` cannot lift — roughly 100 000 tokens. Past it the call is
+ * refused and pointed at a file, because a truncated "whole document" is the
+ * failure this option exists to remove.
+ */
+export const ABSOLUTE_MAX_CHARS = 400_000;
 export const DEFAULT_TIMEOUT_MS = 20_000;
 
 /* ── Geometry ───────────────────────────────────────────────────────────────── */
@@ -452,8 +466,9 @@ function toPieces(items: unknown[]): TextPiece[] {
  */
 export async function extractPdf(bytes: Uint8Array, options: PdfExtractOptions = {}): Promise<PdfExtraction> {
   const mode = options.mode ?? "both";
-  const maxPages = options.maxPages ?? DEFAULT_MAX_PAGES;
-  const maxChars = options.maxChars ?? DEFAULT_MAX_CHARS;
+  const full = options.full === true;
+  const maxPages = options.maxPages ?? (full ? Number.POSITIVE_INFINITY : DEFAULT_MAX_PAGES);
+  const maxChars = options.maxChars ?? (full ? ABSOLUTE_MAX_CHARS : DEFAULT_MAX_CHARS);
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const started = Date.now();
 
@@ -470,6 +485,15 @@ export async function extractPdf(bytes: Uint8Array, options: PdfExtractOptions =
 
     for (const [index, pageNumber] of requested.entries()) {
       if (index >= maxPages || characters >= maxChars) {
+        // Under `full` the caller asked for everything, so stopping here would
+        // hand back a document that looks complete and is not.
+        if (full) {
+          throw new PdfError(
+            "too-large",
+            `This document is larger than the ${ABSOLUTE_MAX_CHARS} character ceiling for a single answer. ` +
+              `Extract it to a file with output_path, or ask for a page range.`,
+          );
+        }
         nextPage = pageNumber;
         break;
       }

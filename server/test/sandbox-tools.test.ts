@@ -224,6 +224,23 @@ describe("createSandboxedTools", () => {
       assert.equal(await denial(pdf!, path.join(outside, "secret.txt")), null);
     });
 
+    test("a read exception does not become writable for an extraction", async () => {
+      // The exceptions widen reading only. A skill directory outside the root is
+      // readable and must stay unwritable — the same rule edit/write follow.
+      const tools = await createSandboxedTools(
+        config({ root, allowWrite: true, readExceptions: [outside] }),
+      );
+      const pdf = tools.find((tool) => tool.name === "pdf_extract");
+      const write = (target: string) =>
+        (pdf!.execute as unknown as (id: string, params: unknown, signal?: AbortSignal) => Promise<unknown>)(
+          "call-x",
+          { path: "readme.md", output_path: target },
+          undefined,
+        );
+
+      await assert.rejects(() => write(path.join(outside, "out.md")), /outside the writable zone/);
+    });
+
     test("keeps refusing paths outside both the root and the exceptions", async () => {
       const elsewhere = await realResolve(mkdtempSync(path.join(tmpdir(), "pi-elsewhere-")));
       try {

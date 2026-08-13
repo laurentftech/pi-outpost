@@ -10,6 +10,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { Type } from "typebox";
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
+import { assertWritableDestination, excerptOf, extractionSummary, writeExtraction } from "./extractionOutput.ts";
 import { extractPdf, PdfError, type PdfMode } from "./pdf.ts";
 import { isWithinAny, realResolve } from "./sandbox.ts";
 
@@ -20,6 +21,11 @@ export interface PdfToolOptions {
   allowedRoots: string[];
   /** Largest PDF this tool will open, in bytes. */
   maxBytes: number;
+  /**
+   * Zone `output_path` must land in. `null` means writing is disabled, and every
+   * destination is refused — reading is unaffected.
+   */
+  writableRoot: string | null;
 }
 
 const parameters = Type.Object({
@@ -32,6 +38,16 @@ const parameters = Type.Object({
   mode: Type.Optional(
     Type.Union([Type.Literal("text"), Type.Literal("tables"), Type.Literal("both")], {
       description: 'What to return: "text", "tables", or "both" (default).',
+    }),
+  ),
+  full: Type.Optional(
+    Type.Boolean({
+      description: "Return the whole document in one call instead of the first pages. Refused if it is too large for one answer — use output_path then.",
+    }),
+  ),
+  output_path: Type.Optional(
+    Type.String({
+      description: "Write the whole extraction to this workspace path and return a summary instead of the content. The file must not already exist.",
     }),
   ),
 });
@@ -59,7 +75,17 @@ export function createPdfExtractToolDefinition(options: PdfToolOptions): ToolDef
     ],
     parameters,
     async execute(_toolCallId, params) {
-      const { path: target, pages, mode } = params as { path: string; pages?: string; mode?: PdfMode };
+      const {
+        path: target,
+        pages,
+        mode,
+        full,
+        output_path: destination,
+      } = params as { path: string; pages?: string; mode?: PdfMode; full?: boolean; output_path?: string };
+
+      // SECURITY: scopeToRoot confines `path` and nothing else, so `output_path`
+      // is checked by writeExtraction against the writable zone. Two arguments,
+      // two zones — the read zone never grants a write.
       const resolved = await realResolve(path.resolve(options.cwd, target));
       if (!isWithinAny(options.allowedRoots, resolved)) {
         throw new Error(`Access denied: "${target}" is outside the sandbox (${options.allowedRoots[0]})`);
@@ -71,13 +97,23 @@ export function createPdfExtractToolDefinition(options: PdfToolOptions): ToolDef
         throw new Error(`"${target}" is larger than the ${describeSize(options.maxBytes)} PDF limit`);
       }
 
-      let markdown: string;
+      // Checked before any parsing: a refusal is knowable now, and spending the
+      // parse first only to refuse afterwards wastes it.
+      if (destination !== undefined) {
+        await assertWritableDestination(destination, { cwd: options.cwd, writableRoot: options.writableRoot });
+      }
+
+      // A destination writes the whole document: a file holding the first pages of
+      // a long report looks finished, which is worse than no file at all.
+      const wholeDocument = full === true || destination !== undefined;
+
+      let extraction: Awaited<ReturnType<typeof extractPdf>>;
       try {
-        const result = await extractPdf(new Uint8Array(await fs.readFile(resolved)), {
+        extraction = await extractPdf(new Uint8Array(await fs.readFile(resolved)), {
           ...(pages === undefined ? {} : { pages }),
           ...(mode === undefined ? {} : { mode }),
+          ...(wholeDocument ? { full: true } : {}),
         });
-        markdown = result.markdown;
       } catch (error) {
         // The reason is the useful part: "password-protected" and "not a PDF"
         // call for different next moves, and neither is worth a retry loop.
@@ -85,7 +121,19 @@ export function createPdfExtractToolDefinition(options: PdfToolOptions): ToolDef
         throw error;
       }
 
-      return { content: [{ type: "text", text: markdown }], details: undefined };
+      if (destination === undefined) {
+        return { content: [{ type: "text", text: extraction.markdown }], details: undefined };
+      }
+
+      const written = await writeExtraction(destination, extraction.markdown, {
+        cwd: options.cwd,
+        writableRoot: options.writableRoot,
+      });
+      const summary = extractionSummary(written, {
+        covered: `${extraction.pages.length} of ${extraction.pageCount} pages`,
+        excerpt: excerptOf(extraction.markdown),
+      });
+      return { content: [{ type: "text", text: summary }], details: undefined };
     },
   } as ToolDefinition;
 }

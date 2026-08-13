@@ -42,6 +42,12 @@ export interface DocxExtractOptions {
   /** `"12"`, `"5-40"`, `"5-40,80"`. Omitted means "from the first block until a cap stops us". */
   blocks?: string;
   mode?: DocxMode;
+  /**
+   * Return the whole document rather than one call's worth. The per-call caps
+   * lift; ABSOLUTE_MAX_CHARS and the deadline still apply, and a document past
+   * that ceiling is refused rather than quietly cut.
+   */
+  full?: boolean;
   maxBlocks?: number;
   maxChars?: number;
   timeoutMs?: number;
@@ -59,6 +65,12 @@ export interface DocxExtraction {
 /** Caps chosen so one call cannot spend a session's context on a long specification. */
 export const DEFAULT_MAX_BLOCKS = 200;
 export const DEFAULT_MAX_CHARS = 40_000;
+/**
+ * The ceiling `full` cannot lift — roughly 100 000 tokens. Past it the call is
+ * refused and pointed at a file, because a truncated "whole document" is the
+ * failure this option exists to remove.
+ */
+export const ABSOLUTE_MAX_CHARS = 400_000;
 export const DEFAULT_TIMEOUT_MS = 20_000;
 /** A package with more entries than this is refused before anything is inflated. */
 export const MAX_ZIP_ENTRIES = 512;
@@ -318,8 +330,9 @@ function asDocxError(error: unknown): DocxError {
  */
 export async function extractDocx(bytes: Uint8Array, options: DocxExtractOptions = {}): Promise<DocxExtraction> {
   const mode = options.mode ?? "both";
-  const maxBlocks = options.maxBlocks ?? DEFAULT_MAX_BLOCKS;
-  const maxChars = options.maxChars ?? DEFAULT_MAX_CHARS;
+  const full = options.full === true;
+  const maxBlocks = options.maxBlocks ?? (full ? Number.POSITIVE_INFINITY : DEFAULT_MAX_BLOCKS);
+  const maxChars = options.maxChars ?? (full ? ABSOLUTE_MAX_CHARS : DEFAULT_MAX_CHARS);
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const started = Date.now();
   const deadline = () => {
@@ -374,6 +387,15 @@ export async function extractDocx(bytes: Uint8Array, options: DocxExtractOptions
 
   for (const [index, number] of requested.entries()) {
     if (index >= maxBlocks || characters >= maxChars) {
+      // Under `full` the caller asked for everything, so stopping here would
+      // hand back a document that looks complete and is not.
+      if (full) {
+        throw new DocxError(
+          "too-large",
+          `This document is larger than the ${ABSOLUTE_MAX_CHARS} character ceiling for a single answer. ` +
+            `Extract it to a file with output_path, or ask for a block range.`,
+        );
+      }
       nextBlock = number;
       break;
     }

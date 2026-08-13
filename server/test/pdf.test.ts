@@ -192,6 +192,32 @@ describe("extractPdf caps", () => {
     assert.match(result.markdown, /Truncated/);
   });
 
+  test("full returns the whole document, with no truncation note", async () => {
+    const result = await extractPdf(await fixture("pdf-long"), { full: true, maxPages: undefined });
+
+    assert.deepEqual(result.pages, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+    assert.equal(result.nextPage, undefined);
+    assert.doesNotMatch(result.markdown, /Truncated/);
+  });
+
+  test("full refuses a document past the absolute ceiling instead of cutting it", async () => {
+    // Truncating here would hand back a document that looks complete: exactly the
+    // failure `full` exists to remove.
+    try {
+      await extractPdf(await fixture("pdf-long"), { full: true, maxChars: 50 });
+      assert.fail("expected a refusal");
+    } catch (error) {
+      assert.ok(error instanceof PdfError);
+      assert.equal(error.reason, "too-large");
+      assert.match(error.message, /output_path/);
+    }
+  });
+
+  test("full still respects the deadline", async () => {
+    const error = await failureOf(await fixture("pdf-long"), { full: true, timeoutMs: -1 });
+    assert.equal(error.reason, "budget");
+  });
+
   test("an explicit range wider than the page cap stops at the cap", async () => {
     const result = await extractPdf(await fixture("pdf-long"), { pages: "2-10", maxPages: 2 });
 

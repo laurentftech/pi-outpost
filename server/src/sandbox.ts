@@ -111,23 +111,32 @@ export async function createSandboxedTools(
     sandbox.readExceptions.length > 0
       ? await Promise.all(sandbox.readExceptions.map((p) => fs.realpath(p).catch(() => p)))
       : undefined;
+  // The zone a document extraction may write into. Computed before the read tools
+  // are built because they take it too — `null` when writes are disabled, which
+  // makes every output_path a refusal rather than an unchecked write.
+  let realWritableRoot: string | null = null;
+  if (sandbox.allowWrite) {
+    realWritableRoot = sandbox.writableRoot ? await fs.realpath(sandbox.writableRoot) : realRoot;
+    if (!isWithin(realRoot, realWritableRoot)) {
+      throw new Error(`sandbox.writableRoot (${realWritableRoot}) must be inside sandbox.root (${realRoot})`);
+    }
+  }
+
   // Reading a document is reading: same zone, same exceptions, never behind allowBash.
+  // The read exceptions are NOT passed as a writable zone — they widen reading only,
+  // so a skill directory outside the root stays unwritable, as it does for edit.
   const documentRoots = [realRoot, ...(readExceptions ?? [])];
   readFactories.push((cwd) =>
-    createPdfExtractToolDefinition({ cwd, allowedRoots: documentRoots, maxBytes: pdfMaxBytes }),
+    createPdfExtractToolDefinition({ cwd, allowedRoots: documentRoots, maxBytes: pdfMaxBytes, writableRoot: realWritableRoot }),
   );
   readFactories.push((cwd) =>
-    createDocxExtractToolDefinition({ cwd, allowedRoots: documentRoots, maxBytes: docxMaxBytes }),
+    createDocxExtractToolDefinition({ cwd, allowedRoots: documentRoots, maxBytes: docxMaxBytes, writableRoot: realWritableRoot }),
   );
   const tools = readFactories.map((create) =>
     scopeToRoot(create(realRoot), realRoot, realRoot, readExceptions),
   );
 
-  if (sandbox.allowWrite) {
-    const realWritableRoot = sandbox.writableRoot ? await fs.realpath(sandbox.writableRoot) : realRoot;
-    if (!isWithin(realRoot, realWritableRoot)) {
-      throw new Error(`sandbox.writableRoot (${realWritableRoot}) must be inside sandbox.root (${realRoot})`);
-    }
+  if (realWritableRoot !== null) {
     const writeFactories: Array<(cwd: string) => ToolDefinition> = [
       (cwd) => createEditToolDefinition(cwd) as ToolDefinition,
       (cwd) => createWriteToolDefinition(cwd) as ToolDefinition,

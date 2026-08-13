@@ -12,6 +12,7 @@ import path from "node:path";
 import { Type } from "typebox";
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { DocxError, extractDocx, type DocxMode } from "./docx.ts";
+import { assertWritableDestination, excerptOf, extractionSummary, writeExtraction } from "./extractionOutput.ts";
 import { isWithinAny, realResolve } from "./sandbox.ts";
 
 export interface DocxToolOptions {
@@ -21,6 +22,11 @@ export interface DocxToolOptions {
   allowedRoots: string[];
   /** Largest document this tool will open, in bytes. */
   maxBytes: number;
+  /**
+   * Zone `output_path` must land in. `null` means writing is disabled, and every
+   * destination is refused — reading is unaffected.
+   */
+  writableRoot: string | null;
 }
 
 const parameters = Type.Object({
@@ -33,6 +39,16 @@ const parameters = Type.Object({
   mode: Type.Optional(
     Type.Union([Type.Literal("text"), Type.Literal("tables"), Type.Literal("both")], {
       description: 'What to return: "text", "tables", or "both" (default).',
+    }),
+  ),
+  full: Type.Optional(
+    Type.Boolean({
+      description: "Return the whole document in one call instead of the first blocks. Refused if it is too large for one answer — use output_path then.",
+    }),
+  ),
+  output_path: Type.Optional(
+    Type.String({
+      description: "Write the whole extraction to this workspace path and return a summary instead of the content. The file must not already exist.",
     }),
   ),
 });
@@ -60,7 +76,17 @@ export function createDocxExtractToolDefinition(options: DocxToolOptions): ToolD
     ],
     parameters,
     async execute(_toolCallId, params) {
-      const { path: target, blocks, mode } = params as { path: string; blocks?: string; mode?: DocxMode };
+      const {
+        path: target,
+        blocks,
+        mode,
+        full,
+        output_path: destination,
+      } = params as { path: string; blocks?: string; mode?: DocxMode; full?: boolean; output_path?: string };
+
+      // SECURITY: scopeToRoot confines `path` and nothing else, so `output_path`
+      // is checked by writeExtraction against the writable zone. Two arguments,
+      // two zones — the read zone never grants a write.
       const resolved = await realResolve(path.resolve(options.cwd, target));
       if (!isWithinAny(options.allowedRoots, resolved)) {
         throw new Error(`Access denied: "${target}" is outside the sandbox (${options.allowedRoots[0]})`);
@@ -72,13 +98,23 @@ export function createDocxExtractToolDefinition(options: DocxToolOptions): ToolD
         throw new Error(`"${target}" is larger than the ${describeSize(options.maxBytes)} Word limit`);
       }
 
-      let markdown: string;
+      // Checked before any parsing: a refusal is knowable now, and spending the
+      // parse first only to refuse afterwards wastes it.
+      if (destination !== undefined) {
+        await assertWritableDestination(destination, { cwd: options.cwd, writableRoot: options.writableRoot });
+      }
+
+      // A destination writes the whole document: a file holding the first blocks of
+      // a long specification looks finished, which is worse than no file at all.
+      const wholeDocument = full === true || destination !== undefined;
+
+      let extraction: Awaited<ReturnType<typeof extractDocx>>;
       try {
-        const result = await extractDocx(new Uint8Array(await fs.readFile(resolved)), {
+        extraction = await extractDocx(new Uint8Array(await fs.readFile(resolved)), {
           ...(blocks === undefined ? {} : { blocks }),
           ...(mode === undefined ? {} : { mode }),
+          ...(wholeDocument ? { full: true } : {}),
         });
-        markdown = result.markdown;
       } catch (error) {
         // The reason is the useful part: "password-protected" and "not a Word
         // document" call for different next moves, and neither is worth retrying.
@@ -86,7 +122,19 @@ export function createDocxExtractToolDefinition(options: DocxToolOptions): ToolD
         throw error;
       }
 
-      return { content: [{ type: "text", text: markdown }], details: undefined };
+      if (destination === undefined) {
+        return { content: [{ type: "text", text: extraction.markdown }], details: undefined };
+      }
+
+      const written = await writeExtraction(destination, extraction.markdown, {
+        cwd: options.cwd,
+        writableRoot: options.writableRoot,
+      });
+      const summary = extractionSummary(written, {
+        covered: `${extraction.blocks.length} of ${extraction.blockCount} blocks`,
+        excerpt: excerptOf(extraction.markdown),
+      });
+      return { content: [{ type: "text", text: summary }], details: undefined };
     },
   } as ToolDefinition;
 }

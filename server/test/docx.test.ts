@@ -160,6 +160,26 @@ describe("extractDocx caps", () => {
     assert.match(result.markdown, /Truncated/);
   });
 
+  test("full returns the whole document, with no truncation note", async () => {
+    const result = await extractDocx(await fixture("docx-long"), { full: true });
+
+    assert.equal(result.blocks.length, 60);
+    assert.equal(result.nextBlock, undefined);
+    assert.doesNotMatch(result.markdown, /Truncated/);
+  });
+
+  test("full refuses a document past the absolute ceiling instead of cutting it", async () => {
+    const error = await failureOf(await fixture("docx-long"), { full: true, maxChars: 50 });
+
+    assert.equal(error.reason, "too-large");
+    assert.match(error.message, /output_path/);
+  });
+
+  test("full still respects the deadline", async () => {
+    const error = await failureOf(await fixture("docx-long"), { full: true, timeoutMs: -1 });
+    assert.equal(error.reason, "budget");
+  });
+
   test("covers every block across successive calls", async () => {
     const bytes = await fixture("docx-long");
     const seen: number[] = [];
