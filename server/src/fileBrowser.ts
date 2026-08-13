@@ -171,6 +171,99 @@ export async function readFileRaw(
 }
 
 /**
+ * The last segment of a path the user typed is a *name*, not a route.
+ *
+ * `resolveConfined` already refuses an escape, so this is belt and braces — but a
+ * separator in a name is a specific mistake and deserves to be named as one
+ * rather than reported as a confinement refusal.
+ */
+export function assertCreatableName(relPath: string): void {
+  const name = relPath.split("/").pop() ?? "";
+  if (name.trim() === "") {
+    throw new FileBrowserError("denied", "A name is required");
+  }
+  if (name !== name.trim()) {
+    // Leading/trailing spaces in a filename are almost always a typo, and they
+    // make the file miserable to reference from a shell or a prompt.
+    throw new FileBrowserError("denied", `"${name}" starts or ends with a space`);
+  }
+  if (name === "." || name === "..") {
+    throw new FileBrowserError("denied", `"${name}" is not a name`);
+  }
+  if (name.includes("\\") || name.includes("\0")) {
+    throw new FileBrowserError("denied", `"${name}" is a path, not a name`);
+  }
+}
+
+/** The two creation paths share every check; only their last syscall differs. */
+async function resolveForCreation(
+  root: string,
+  writableRel: string | null | undefined,
+  relPath: string,
+): Promise<string> {
+  if (writableRel === null) {
+    throw new FileBrowserError("denied", "The sandbox is read-only");
+  }
+  assertCreatableName(relPath);
+  const writableRoot = writableRel === undefined ? root : path.resolve(root, writableRel);
+  const resolved = await resolveConfined(root, relPath);
+  if (!isWithin(writableRoot, resolved)) {
+    throw new FileBrowserError("denied", `"${relPath}" is outside the writable zone`);
+  }
+  return resolved;
+}
+
+/** Turn a filesystem refusal into the reason the client can act on. */
+function creationError(error: unknown, relPath: string): FileBrowserError {
+  const code = (error as NodeJS.ErrnoException).code;
+  if (code === "EEXIST") return new FileBrowserError("conflict", `"${relPath}" already exists`);
+  if (code === "ENOENT") return new FileBrowserError("not-found", `The folder for "${relPath}" does not exist`);
+  if (code === "ENOTDIR") return new FileBrowserError("not-found", `The folder for "${relPath}" is not a folder`);
+  if (code === "EACCES" || code === "EPERM") return new FileBrowserError("denied", `Cannot create "${relPath}"`);
+  return error instanceof FileBrowserError ? error : new FileBrowserError("denied", `Cannot create "${relPath}"`);
+}
+
+/**
+ * Create an empty file from the browser, under exactly the permission rules that
+ * govern a write.
+ *
+ * The `wx` flag does the existence check and the creation in one syscall: a
+ * `stat` first would leave a window in which the path could appear, and this
+ * operation must never truncate something that is already there.
+ */
+export async function createFileFromBrowser(
+  root: string,
+  writableRel: string | null | undefined,
+  relPath: string,
+): Promise<{ size: number; mtimeMs: number }> {
+  const resolved = await resolveForCreation(root, writableRel, relPath);
+  try {
+    await fs.writeFile(resolved, "", { flag: "wx" });
+  } catch (error) {
+    throw creationError(error, relPath);
+  }
+  const stat = await fs.stat(resolved);
+  return { size: stat.size, mtimeMs: stat.mtimeMs };
+}
+
+/**
+ * Create one directory from the browser. Not `recursive`: a control that creates
+ * a chain of directories from a typo is a control that surprises.
+ */
+export async function createDirectoryFromBrowser(
+  root: string,
+  writableRel: string | null | undefined,
+  relPath: string,
+): Promise<void> {
+  const resolved = await resolveForCreation(root, writableRel, relPath);
+  try {
+    await fs.mkdir(resolved);
+  } catch (error) {
+    throw creationError(error, relPath);
+  }
+}
+
+/**
  * Write a file back from the browser's editor. Permission mirrors the agent's own
  * write tool: without a sandbox anything under the browser root is writable; with
  * one, writes need `allowWrite` and must land inside the writable zone.

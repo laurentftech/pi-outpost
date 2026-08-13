@@ -450,6 +450,89 @@ describe("stale responses", () => {
 });
 
 // ---------------------------------------------------------------------------
+// File and directory creation
+// ---------------------------------------------------------------------------
+describe("file creation", () => {
+  function lastSent() {
+    return JSON.parse(mockWs!.sent[mockWs!.sent.length - 1]) as Record<string, unknown>;
+  }
+
+  it("asks for a file with its own message, never a write", async () => {
+    const result = await connected();
+
+    act(() => result.current.createFile("src/new.ts"));
+
+    const sent = lastSent();
+    expect(sent.type).toBe("create_file");
+    expect(sent.path).toBe("src/new.ts");
+    expect(String(sent.requestId)).toMatch(/^create:/);
+  });
+
+  it("asks for a directory with its own message", async () => {
+    const result = await connected();
+
+    act(() => result.current.createDirectory("src/newdir"));
+
+    const sent = lastSent();
+    expect(sent.type).toBe("create_directory");
+    expect(sent.path).toBe("src/newdir");
+  });
+
+  it("opens the created file, empty and ready to edit", async () => {
+    const result = await connected();
+    act(() => result.current.createFile("src/new.ts"));
+
+    act(() => mockWs!.receive({ type: "file_written", requestId: lastRequestId(), path: "src/new.ts", size: 0, mtimeMs: 42 }));
+
+    await waitFor(() => {
+      const file = result.current.state.openFile;
+      expect(file?.status).toBe("loaded");
+      expect(file?.status === "loaded" && file.content).toBe("");
+      expect(file?.status === "loaded" && file.mtimeMs).toBe(42);
+      expect(file?.status === "loaded" && file.justCreated).toBe(true);
+    });
+  });
+
+  it("keeps a refusal on the tree instead of opening anything", async () => {
+    const result = await connected();
+    act(() => result.current.createFile("src/taken.ts"));
+
+    act(() =>
+      mockWs!.receive({
+        type: "file_browser_error",
+        requestId: lastRequestId(),
+        path: "src/taken.ts",
+        message: '"src/taken.ts" already exists',
+        reason: "conflict",
+      }),
+    );
+
+    await waitFor(() => expect(result.current.state.createError?.path).toBe("src/taken.ts"));
+    expect(result.current.state.createError?.message).toMatch(/already exists/);
+    expect(result.current.state.openFile).toBeNull();
+  });
+
+  it("clears the previous refusal when a new attempt starts", async () => {
+    const result = await connected();
+    act(() => result.current.createFile("src/taken.ts"));
+    act(() =>
+      mockWs!.receive({
+        type: "file_browser_error",
+        requestId: lastRequestId(),
+        path: "src/taken.ts",
+        message: "already exists",
+        reason: "conflict",
+      }),
+    );
+    await waitFor(() => expect(result.current.state.createError).not.toBeNull());
+
+    act(() => result.current.createFile("src/other.ts"));
+
+    expect(result.current.state.createError).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
 // File writes and errors — routed by requestId prefix
 // ---------------------------------------------------------------------------
 describe("file writes", () => {
