@@ -42,15 +42,15 @@ The system SHALL check if a target path is within a specified root directory.
 
 > Implementation: `createSandboxedTools` in `server/src/sandbox.ts` · confidence: reviewed
 
-The system SHALL create a set of sandboxed tool definitions from a SandboxConfig: read/ls/grep/find
-and PDF extraction confined to `root` (the read-only zone) plus the configured read-only exception
-roots derived from skill, prompt, and extension locations; edit/write only when `allowWrite` is
-true, further confined to `writableRoot` when set (the read-write zone) and never extended by those
-exceptions; bash only when `allowBash` is true (bash cannot be path-scoped, so it is an explicit
-opt-in). All roots and requested paths SHALL be checked after resolving symlinks.
+The system SHALL create a set of sandboxed tool definitions from a SandboxConfig: read/ls/grep/find,
+PDF extraction and Word extraction confined to `root` (the read-only zone) plus the configured
+read-only exception roots derived from skill, prompt, and extension locations; edit/write only when
+`allowWrite` is true, further confined to `writableRoot` when set (the read-write zone) and never
+extended by those exceptions; bash only when `allowBash` is true (bash cannot be path-scoped, so it
+is an explicit opt-in). All roots and requested paths SHALL be checked after resolving symlinks.
 
-PDF extraction SHALL be a read tool: available whenever the read tools are, denied wherever they
-are denied, and never gated behind `allowBash`.
+Document extraction — PDF and Word alike — SHALL be a read tool: available whenever the read tools
+are, denied wherever they are denied, and never gated behind `allowBash`.
 
 #### Scenario: CreateToolsWithValidConfig
 <!-- openlore-test: tags=smoke (auto) -->
@@ -63,7 +63,7 @@ are denied, and never gated behind `allowBash`.
 - **GIVEN** A SandboxConfig with `allowWrite: false` and `allowBash: false`
 - **WHEN** createSandboxedTools is called
 - **THEN** The returned tools contain no edit, write, or bash tool
-- **AND** The returned tools still contain the PDF extraction tool
+- **AND** The returned tools still contain the PDF and Word extraction tools
 
 #### Scenario: ReadConfiguredResourceOutsideRoot
 - **GIVEN** a skill, prompt, extension directory, or extension script configured outside `sandbox.root`
@@ -83,6 +83,11 @@ are denied, and never gated behind `allowBash`.
 #### Scenario: PdfExtractionIsPathConfined
 - **GIVEN** a sandbox root
 - **WHEN** the PDF extraction tool targets a path that resolves outside that root and outside every read exception
+- **THEN** the operation is denied
+
+#### Scenario: DocxExtractionIsPathConfined
+- **GIVEN** a sandbox root
+- **WHEN** the Word extraction tool targets a path that resolves outside that root and outside every read exception
 - **THEN** the operation is denied
 
 ### Requirement: ResolveBrowserRoot
