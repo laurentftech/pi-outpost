@@ -1,63 +1,14 @@
 import { describe, it, expect } from "vitest";
-import { getFormattedToolOutput } from "./toolOutput";
+import { getFormattedToolOutput, parseLooseJson } from "./toolOutput";
 
 describe("getFormattedToolOutput", () => {
   it("returns undefined for non-JSON content", () => {
     expect(getFormattedToolOutput("plain text output")).toBeUndefined();
   });
 
-  it("renderes __pi_render envelope", () => {
+  it("renders the __pi_render envelope", () => {
     const result = getFormattedToolOutput(JSON.stringify({ __pi_render: { text: "Rendered content" } }));
     expect(result).toBe("Rendered content");
-  });
-
-  it("formats an object with task and title", () => {
-    const result = getFormattedToolOutput(JSON.stringify({ task: "Refactor", title: "Extract Module", summary: "Moved code" }));
-    expect(result).toContain("**Refactor**");
-    expect(result).toContain("**Extract Module**");
-    expect(result).toContain("Moved code");
-  });
-
-  it("formats relevantFiles", () => {
-    const result = getFormattedToolOutput(JSON.stringify({ relevantFiles: ["a.ts", "b.ts", "c.ts"] }));
-    expect(result).toContain("Relevant files:");
-    expect(result).toContain("- a.ts");
-    expect(result).toContain("- b.ts");
-  });
-
-  it("limits relevantFiles to 5 entries", () => {
-    const files = Array.from({ length: 10 }, (_, i) => `file${i}.ts`);
-    const result = getFormattedToolOutput(JSON.stringify({ relevantFiles: files }));
-    const matches = result!.match(/- file/g);
-    expect(matches).toHaveLength(5);
-  });
-
-  it("formats relevantFunctions with name and filePath", () => {
-    const result = getFormattedToolOutput(JSON.stringify({
-      relevantFunctions: [{ name: "foo", filePath: "a.ts" }, { name: "bar", filePath: "b.ts" }],
-    }));
-    expect(result).toContain("foo (a.ts)");
-    expect(result).toContain("bar (b.ts)");
-  });
-
-  it("formats nextSteps", () => {
-    const result = getFormattedToolOutput(JSON.stringify({ nextSteps: ["Step 1", "Step 2"] }));
-    expect(result).toContain("Next steps:");
-    expect(result).toContain("- Step 1");
-  });
-
-  it("returns undefined for pure JSON with no formatted fields", () => {
-    const result = getFormattedToolOutput(JSON.stringify({ raw: "data", value: 42 }));
-    expect(result).toBeUndefined();
-  });
-
-  it("handles truncated JSON output", () => {
-    const base = JSON.stringify({ task: "Analysis", searchMode: "deep", relevantFiles: ["a.ts", "b.ts"] });
-    const truncated = base + "\n… [truncated, 1234 more chars]";
-    const result = getFormattedToolOutput(truncated);
-    expect(result).toContain("**Analysis**");
-    expect(result).toContain("deep");
-    expect(result).toContain("a.ts");
   });
 
   it("returns undefined for empty output", () => {
@@ -67,71 +18,11 @@ describe("getFormattedToolOutput", () => {
   it("returns a bare JSON string as-is", () => {
     expect(getFormattedToolOutput('"simple string"')).toBe("simple string");
   });
-});
 
-/**
- * The recovery paths: what happens when the tool's JSON never finished arriving.
- * These are the branches that decide between showing a partial summary and showing
- * nothing, and they are the ones a malformed payload actually reaches.
- */
-describe("getFormattedToolOutput — partial and unusual payloads", () => {
-  it("formats the search mode and the summary", () => {
-    const output = JSON.stringify({ searchMode: "semantic", summary: "Four call sites." });
-    expect(getFormattedToolOutput(output)).toBe("Mode: semantic\nFour call sites.");
-  });
-
-  it("formats nextStepsText the same way as nextSteps", () => {
-    const output = JSON.stringify({ title: "Orient", nextStepsText: ["read the spec", "run the tests"] });
-    expect(getFormattedToolOutput(output)).toContain("- read the spec");
-  });
-
-  it("caps the long lists at five entries", () => {
-    const many = ["a", "b", "c", "d", "e", "f", "g"];
-    const output = JSON.stringify({ title: "T", nextSteps: many, relevantFunctions: many.map((name) => ({ name })) });
-    const formatted = getFormattedToolOutput(output) ?? "";
-    expect(formatted).toContain("- e");
-    expect(formatted).not.toContain("- f");
-  });
-
-  it("names a function whose file is reported under `file` rather than `filePath`", () => {
-    const output = JSON.stringify({ relevantFunctions: [{ name: "runGit", file: "server/src/git.ts" }] });
-    expect(getFormattedToolOutput(output)).toContain("- runGit (server/src/git.ts)");
-  });
-
-  it("says the file is unknown rather than printing undefined", () => {
-    const output = JSON.stringify({ relevantFunctions: [{ name: "runGit" }] });
-    expect(getFormattedToolOutput(output)).toContain("- runGit (unknown)");
-  });
-
-  it("falls back to the raw value for a function that is not an object", () => {
-    const output = JSON.stringify({ relevantFunctions: ["runGit"] });
-    expect(getFormattedToolOutput(output)).toContain("- runGit");
-  });
-
-  it("recovers a complete object followed by trailing rubbish", () => {
-    // A tool that appended a log line after its JSON: the object is intact, so the
-    // summary should still be shown rather than dropped for the trailing bytes
-    const output = `${JSON.stringify({ title: "Orient", summary: "Two hits." })}\nwarning: cache stale`;
-    expect(getFormattedToolOutput(output)).toBe("**Orient**\nTwo hits.");
-  });
-
-  it("shows nothing rather than a guess when the outer object never closed", () => {
-    // The brace-counting recovery needs a closing brace for the outermost object.
-    // A payload cut off before that has no prefix that parses, so there is nothing
-    // honest to show — better empty than a summary invented from half a field.
-    const output = '{"title":"Orient","summary":"Two hits.","relevantFiles":["a.ts","b.t';
-    expect(getFormattedToolOutput(output)).toBeUndefined();
-  });
-
-  it("recovers the object when the truncation landed after it closed", () => {
-    const output = '{"title":"Orient","summary":"Two hits."} trailing bytes {"partial":';
-    expect(getFormattedToolOutput(output)).toContain("Two hits.");
-  });
-
-  it("gives up rather than guessing when nothing parses", () => {
-    expect(getFormattedToolOutput('{"title": "Orient"')).toBeUndefined();
-    expect(getFormattedToolOutput("{{{{")).toBeUndefined();
-    expect(getFormattedToolOutput("plain text output")).toBeUndefined();
+  it("returns undefined for a JSON object carrying no envelope", () => {
+    // Formatting a particular vendor's payload belongs to a presentation, not here
+    expect(getFormattedToolOutput(JSON.stringify({ title: "Orient", summary: "Two hits." }))).toBeUndefined();
+    expect(getFormattedToolOutput(JSON.stringify({ raw: "data", value: 42 }))).toBeUndefined();
   });
 
   it("returns nothing for a JSON value that is not an object or string", () => {
@@ -140,8 +31,63 @@ describe("getFormattedToolOutput — partial and unusual payloads", () => {
     expect(getFormattedToolOutput("true")).toBeUndefined();
   });
 
-  it("prefers the render envelope over the fields beside it", () => {
-    const output = JSON.stringify({ __pi_render: { text: "rendered" }, title: "ignored" });
-    expect(getFormattedToolOutput(output)).toBe("rendered");
+  it("reads the envelope out of a truncated payload", () => {
+    const base = JSON.stringify({ __pi_render: { text: "Rendered content" } });
+    expect(getFormattedToolOutput(`${base}\n… [truncated, 1234 more chars]`)).toBe("Rendered content");
+  });
+});
+
+/**
+ * The recovery paths: what happens when the tool's JSON never finished arriving.
+ * These are the branches that decide between showing a partial summary and showing
+ * nothing, and they are the ones a malformed payload actually reaches.
+ */
+describe("parseLooseJson", () => {
+  it("parses a well-formed object", () => {
+    expect(parseLooseJson('{"title":"Orient"}')).toEqual({ title: "Orient" });
+  });
+
+  it("strips the truncation suffix before parsing", () => {
+    const base = JSON.stringify({ task: "Analysis", searchMode: "deep" });
+    expect(parseLooseJson(`${base}\n… [truncated, 1234 more chars]`)).toEqual({
+      task: "Analysis",
+      searchMode: "deep",
+    });
+  });
+
+  it("recovers a complete object followed by trailing rubbish", () => {
+    // A tool that appended a log line after its JSON: the object is intact, so the
+    // summary should still be shown rather than dropped for the trailing bytes
+    const output = `${JSON.stringify({ title: "Orient", summary: "Two hits." })}\nwarning: cache stale`;
+    expect(parseLooseJson(output)).toEqual({ title: "Orient", summary: "Two hits." });
+  });
+
+  it("recovers the object when the truncation landed after it closed", () => {
+    const output = '{"title":"Orient","summary":"Two hits."} trailing bytes {"partial":';
+    expect(parseLooseJson(output)).toEqual({ title: "Orient", summary: "Two hits." });
+  });
+
+  it("gives up rather than guessing when the outer object never closed", () => {
+    // The brace-counting recovery needs a closing brace for the outermost object.
+    // A payload cut off before that has no prefix that parses, so there is nothing
+    // honest to show — better empty than a summary invented from half a field.
+    expect(parseLooseJson('{"title":"Orient","summary":"Two hits.","relevantFiles":["a.ts","b.t')).toBeUndefined();
+  });
+
+  it("gives up when a brace inside a string makes the count lie", () => {
+    // Brace counting does not know about string literals: it sees the outer object
+    // close early. The slice it hands to JSON.parse is invalid, and an invalid
+    // slice yields nothing rather than a partial object.
+    expect(parseLooseJson('{"pattern":"}"')).toBeUndefined();
+  });
+
+  it("gives up when only a nested object ever closed", () => {
+    expect(parseLooseJson('{"a": {"b": 1}, "c": ')).toBeUndefined();
+  });
+
+  it("gives up rather than guessing when nothing parses", () => {
+    expect(parseLooseJson('{"title": "Orient"')).toBeUndefined();
+    expect(parseLooseJson("{{{{")).toBeUndefined();
+    expect(parseLooseJson("plain text output")).toBeUndefined();
   });
 });
