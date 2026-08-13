@@ -114,19 +114,20 @@ describe("createSandboxedTools", () => {
   describe("which tools the model gets", () => {
     test("read-only by default", async () => {
       const tools = await createSandboxedTools(config({ root }));
-      assert.deepEqual(names(tools), ["find", "grep", "ls", "pdf_extract", "read"]);
+      assert.deepEqual(names(tools), ["docx_extract", "find", "grep", "ls", "pdf_extract", "read"]);
     });
 
     test("adds edit and write only when writing is allowed", async () => {
       const tools = await createSandboxedTools(config({ root, allowWrite: true }));
-      assert.deepEqual(names(tools), ["edit", "find", "grep", "ls", "pdf_extract", "read", "write"]);
+      assert.deepEqual(names(tools), ["docx_extract", "edit", "find", "grep", "ls", "pdf_extract", "read", "write"]);
     });
 
-    test("hands over pdf_extract with no shell and no writes", async () => {
-      // Reading a PDF is reading: it must not depend on allowBash the way a
+    test("hands over the document readers with no shell and no writes", async () => {
+      // Reading a document is reading: it must not depend on allowBash the way a
       // pdftotext-style workaround would.
       const tools = await createSandboxedTools(config({ root, allowWrite: false, allowBash: false }));
       assert.ok(names(tools).includes("pdf_extract"));
+      assert.ok(names(tools).includes("docx_extract"));
       assert.ok(!names(tools).includes("bash"));
     });
 
@@ -188,6 +189,24 @@ describe("createSandboxedTools", () => {
       assert.match((await denial(pdf, "../outside/secret.pdf")) ?? "", /outside the sandbox/);
       // A prefix look-alike is a different directory, whatever its name shares
       assert.match((await denial(pdf, `${root}-evil/secret.pdf`)) ?? "", /outside the sandbox/);
+    });
+
+    test("confines docx_extract to the same zone as the other read tools", async () => {
+      const tools = await createSandboxedTools(config({ root }));
+      const docx = tools.find((tool) => tool.name === "docx_extract");
+      assert.ok(docx !== undefined);
+
+      assert.match((await denial(docx, path.join(outside, "secret.docx"))) ?? "", /outside the sandbox/);
+      assert.match((await denial(docx, "../outside/secret.docx")) ?? "", /outside the sandbox/);
+      assert.match((await denial(docx, `${root}-evil/secret.docx`)) ?? "", /outside the sandbox/);
+    });
+
+    test("lets docx_extract reach a declared read exception", async () => {
+      const tools = await createSandboxedTools(config({ root, readExceptions: [outside] }));
+      const docx = tools.find((tool) => tool.name === "docx_extract");
+      // Allowed through confinement; it then fails on the file itself, which is
+      // not a Word document — the distinction being the point of this assertion.
+      assert.equal(await denial(docx!, path.join(outside, "secret.txt")), null);
     });
 
     test("refuses to follow a symlink out of the root for pdf_extract", async (t) => {

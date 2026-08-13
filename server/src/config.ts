@@ -72,6 +72,18 @@ export interface SandboxLocks {
   writableRoot?: boolean;
 }
 
+export interface DocxConfig {
+  /**
+   * Largest Word document the extraction tool will open, in bytes. Default: 25 MiB.
+   * Same ceiling as PDFs, for the same reason: the 1 MiB preview limit is about
+   * text previews, and says nothing useful about a document format.
+   */
+  maxBytes: number;
+}
+
+/** Default Word ceiling — 25 MiB, matching the PDF one. */
+export const DEFAULT_DOCX_MAX_BYTES = 26_214_400;
+
 export interface PdfConfig {
   /**
    * Largest PDF the raw-file route will serve, in bytes. Default: 25 MiB.
@@ -168,6 +180,8 @@ export interface AppConfig {
   branding: BrandingConfig;
   /** PDF handling (size ceiling for the raw-file route). */
   pdf: PdfConfig;
+  /** Word handling (size ceiling for the extraction tool). */
+  docx: DocxConfig;
 }
 
 /** Launch-time options from the command line — the top of the precedence chain. */
@@ -328,6 +342,7 @@ export function loadConfig(
     allowedOrigins: [],
     branding: {},
     pdf: { maxBytes: DEFAULT_PDF_MAX_BYTES },
+    docx: { maxBytes: DEFAULT_DOCX_MAX_BYTES },
   };
 
   let raw: Record<string, unknown>;
@@ -462,6 +477,16 @@ export function loadConfig(
         fail(`"pdf.maxBytes" must be a positive integer (bytes)`);
       }
       config.pdf.maxBytes = pdf.maxBytes;
+    }
+  }
+
+  if (raw.docx !== undefined) {
+    const docx = asObject(raw.docx, "docx");
+    if (docx.maxBytes !== undefined) {
+      if (typeof docx.maxBytes !== "number" || !Number.isInteger(docx.maxBytes) || docx.maxBytes <= 0) {
+        fail(`"docx.maxBytes" must be a positive integer (bytes)`);
+      }
+      config.docx.maxBytes = docx.maxBytes;
     }
   }
 

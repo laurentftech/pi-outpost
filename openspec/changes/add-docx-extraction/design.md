@@ -32,21 +32,40 @@ See `proposal.md` — Why. What shapes the approach:
 
 ## Decisions
 
-### D1 — Two dependencies, both pure JavaScript
+### D1 — No new dependency at all
 
-`fflate` (~800 KB unpacked, no dependencies) to read the zip, `fast-xml-parser` (~1.3 MB unpacked,
-no dependencies) to read the XML.
+**Revised twice at implementation time, and the second revision is the one that matters.**
 
-*Alternative — hand-rolled.* A zip central-directory reader is a hundred lines and `inflateRaw` is
-in `node:zlib`; an XML scanner is not. OOXML uses namespaces, entities, and attribute forms that a
-regex reader gets wrong quietly — on attacker-controlled input, quietly wrong is the worst outcome.
+The first version named `fflate` and `fast-xml-parser`, calling both dependency-free. The check
+task 1.1 demanded showed `fast-xml-parser@5` pulls six transitive packages, so the second version
+dropped it for `sax` (zero dependencies, 85 M downloads a week). That was still the wrong frame:
+**the deployments this serves are air-gapped.** There, a dependency is not a download — it is a
+package someone's security team has to vendor, review and re-review, for a target that cannot fetch
+anything at runtime. "Popular and dependency-free" does not shrink that work; only *absent* does.
 
-*Alternative — `mammoth`.* Purpose-built for docx and would do most of this, but it targets HTML,
-carries its own dependency tree, and its style mapping is a second configuration surface. We need
-markdown and control over what is *not* extracted.
+So both halves are written here, against the standard library:
 
-Both bundle as code, so unlike pdf.js there is nothing to resolve from disk at runtime and nothing
-that goes missing in the SEA build.
+- **Zip**: `node:zlib`. A zip's end-of-central-directory record and its local file headers are fixed
+  binary structures, and this reader performs exactly one operation — find an entry by exact name
+  and inflate it. `createInflateRaw()` is a stream, so the decompression cap (D3) applies *while*
+  the data expands instead of being measured after the fact.
+- **XML**: a scanner scoped to WordprocessingML, not a general parser. It handles what
+  `word/document.xml` actually contains — start, end and self-closing tags with quoted attributes,
+  text, CDATA, comments, processing instructions — and **refuses a DOCTYPE outright**.
+
+That refusal is the point worth keeping: with no internal subset accepted, entity expansion is not
+mitigated, it is unreachable. A library would have given us a *default* we then had to verify;
+rejecting the construct is a property we can state.
+
+The honest cost: a hand-rolled scanner can be quietly wrong where a mature library would not, and
+quiet wrongness on attacker-controlled input is the failure mode this whole change is built to
+avoid. Three things hold it down — the scanner only treats what it understands as structure and
+everything else as text, the fixtures include real exports from both Word and Google Docs (whose
+markup differs), and no output is trusted downstream: cells go through the shared escaper (D6).
+
+*Rejected:* `fast-xml-parser@5` (six transitive packages), `fast-xml-parser@4.5.3` (a major version
+behind), `sax` (still a package to vendor), `fflate` (a dependency to do less than `node:zlib`),
+`mammoth` (targets HTML, own tree, style mapping as a second configuration surface).
 
 ### D2 — Blocks, not pages
 
@@ -65,8 +84,8 @@ Four bounds, in the order they can bite:
 
 1. **File size**, from config (`docx.maxBytes`, default 25 MB as for PDFs): a `stat` before the file
    is opened.
-2. **Decompressed total**: reading stops once the parts read exceed a multiple of the file's own
-   size (bomb guard), reported as such.
+2. **Decompressed total**: inflation runs as a stream with a byte budget, so a bomb is stopped
+   *while* it expands rather than measured afterwards (D1). Reported as its own reason.
 3. **Entry count**: a package with an absurd number of entries is refused before any inflation.
 4. **Deadline**: wall-clock, checked between parts and between blocks.
 
@@ -82,8 +101,8 @@ Entries are read by exact name, never by walking the archive. A zip can carry en
 zip-slip has no reachable sink — and reading by name keeps it that way by construction rather than
 by a check that could be dropped later.
 
-XML entity expansion is disabled: `fast-xml-parser` does not resolve external entities, and internal
-entity processing stays off.
+Entity expansion is unreachable rather than disabled: the scanner refuses a DOCTYPE, so there is no
+internal subset in which entities could be declared (D1).
 
 ### D5 — Accepted text only, at the run level
 
@@ -104,10 +123,28 @@ duplicated and only one copy is fixed.
 Appended to the read tools in `createSandboxedTools`, and passed as a custom tool when no sandbox
 is configured. The parameter is named `path` so `scopeToRoot` confines it with no new security code.
 
+### D8 — What a real document taught us
+
+Added after running the reader against a real Word file (a 107-block edition of Descartes'
+*Discours de la méthode*, produced by a conversion tool rather than by Word):
+
+- **Its cover page is a 1×1 table.** Layout, not data. A single-cell table is now returned as text:
+  handing the model an empty header row and a separator around one paragraph of prose is noise it
+  has to parse past.
+- **It declares no heading styles at all** — `BodyText`, `Normal`, `UserStyle_13`, and titles set by
+  direct formatting. So the heading feature contributes nothing on this document, and the extractor
+  is right not to invent levels from font size. Documents written in Word do carry `Heading1`; ones
+  converted from other tools often do not.
+
+  The reachable improvement, deliberately not in this change: `word/styles.xml` maps a custom style
+  to an outline level, so `UserStyle_13` may well *be* a heading two indirections away. Reading that
+  part would find them, at the cost of a second part to parse and a style table to resolve.
+
 ## Risks / Trade-offs
 
-- **Two new dependencies on untrusted input** → both are widely used and dependency-free; the caps
-  in D3 sit above them, so a bug in either is bounded by our budget rather than by its own.
+- **Hand-rolled parsing of attacker-controlled input** → the caps in D3 bound every loop, the
+  scanner refuses what it does not understand as structure, and the fixtures cover both Word and
+  Google Docs output. This is the risk the change accepts in exchange for adding nothing to vendor.
 - **A docx with content only outside the body** (headers, footnotes, text boxes) reads as empty →
   the spec requires saying which parts are not read, so the answer is "not extracted here", never
   "the document is blank".

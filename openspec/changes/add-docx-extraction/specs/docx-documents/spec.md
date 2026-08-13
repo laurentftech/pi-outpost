@@ -69,6 +69,11 @@ lost.
 - **WHEN** the table is returned
 - **THEN** every row still has the column count the document declares
 
+#### Scenario: SingleCellTableIsLayout
+- **GIVEN** a table declaring exactly one row with one cell — a cover page, a callout box
+- **WHEN** the document is extracted
+- **THEN** its content is returned as text rather than as a one-column table
+
 #### Scenario: MixedDocument
 - **GIVEN** a document with headings, paragraphs and a table
 - **WHEN** it is extracted with mode `both`

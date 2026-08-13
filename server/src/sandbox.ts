@@ -20,7 +20,8 @@ import {
   createWriteToolDefinition,
   type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
-import { DEFAULT_PDF_MAX_BYTES, type SandboxConfig } from "./config.ts";
+import { DEFAULT_DOCX_MAX_BYTES, DEFAULT_PDF_MAX_BYTES, type SandboxConfig } from "./config.ts";
+import { createDocxExtractToolDefinition } from "./docxTool.ts";
 import { createPdfExtractToolDefinition } from "./pdfTool.ts";
 
 /**
@@ -97,6 +98,7 @@ function scopeToRoot(
 export async function createSandboxedTools(
   sandbox: SandboxConfig,
   pdfMaxBytes: number = DEFAULT_PDF_MAX_BYTES,
+  docxMaxBytes: number = DEFAULT_DOCX_MAX_BYTES,
 ): Promise<ToolDefinition[]> {
   const realRoot = await fs.realpath(sandbox.root);
   const readFactories: Array<(cwd: string) => ToolDefinition> = [
@@ -109,13 +111,13 @@ export async function createSandboxedTools(
     sandbox.readExceptions.length > 0
       ? await Promise.all(sandbox.readExceptions.map((p) => fs.realpath(p).catch(() => p)))
       : undefined;
-  // Reading a PDF is reading: same zone, same exceptions, never behind allowBash.
+  // Reading a document is reading: same zone, same exceptions, never behind allowBash.
+  const documentRoots = [realRoot, ...(readExceptions ?? [])];
   readFactories.push((cwd) =>
-    createPdfExtractToolDefinition({
-      cwd,
-      allowedRoots: [realRoot, ...(readExceptions ?? [])],
-      maxBytes: pdfMaxBytes,
-    }),
+    createPdfExtractToolDefinition({ cwd, allowedRoots: documentRoots, maxBytes: pdfMaxBytes }),
+  );
+  readFactories.push((cwd) =>
+    createDocxExtractToolDefinition({ cwd, allowedRoots: documentRoots, maxBytes: docxMaxBytes }),
   );
   const tools = readFactories.map((create) =>
     scopeToRoot(create(realRoot), realRoot, realRoot, readExceptions),

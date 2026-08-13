@@ -58,6 +58,7 @@ import { assistantToItem, contentText, customMessageToItem, historyToItems, trun
 import { configureExtensionRender, renderToolCallHtml, renderToolResultHtml } from "./extensionRender.ts";
 import { assertWithinRoot, createDirectoryFromBrowser, createFileFromBrowser, FileBrowserError, isPdfPath, listDirectory, MAX_PREVIEW_BYTES, readFileForPreview, readFileRaw, writeFileFromBrowser, resolveBrowserRoot, resolveWritableRoot, searchFiles } from "./fileBrowser.ts";
 import { GitError, gitFileLog, gitHeadContent, gitLog, gitRevisionContent, gitShow, gitStatus, probeGit } from "./git.ts";
+import { createDocxExtractToolDefinition } from "./docxTool.ts";
 import { createPdfExtractToolDefinition } from "./pdfTool.ts";
 import { createSandboxedTools, isWithin, realResolve } from "./sandbox.ts";
 import {
@@ -183,7 +184,7 @@ if (cli.command === "login") {
   }
 }
 
-let sandboxedTools = config.sandbox ? await createSandboxedTools(config.sandbox, config.pdf.maxBytes) : undefined;
+let sandboxedTools = config.sandbox ? await createSandboxedTools(config.sandbox, config.pdf.maxBytes, config.docx.maxBytes) : undefined;
 let BROWSER_ROOT = await resolveBrowserRoot(config);
 let WRITABLE_ROOT = await resolveWritableRoot(config, BROWSER_ROOT);
 let GIT = await probeGit(BROWSER_ROOT);
@@ -512,6 +513,11 @@ const createRuntime: CreateAgentSessionRuntimeFactory = async ({
                 cwd,
                 allowedRoots: [await fs.realpath(cwd)],
                 maxBytes: config.pdf.maxBytes,
+              }),
+              createDocxExtractToolDefinition({
+                cwd,
+                allowedRoots: [await fs.realpath(cwd)],
+                maxBytes: config.docx.maxBytes,
               }),
             ],
           }),
@@ -1216,7 +1222,7 @@ async function handleUpdateConfig(
     BROWSER_ROOT = await resolveBrowserRoot(config);
     WRITABLE_ROOT = await resolveWritableRoot(config, BROWSER_ROOT);
     GIT = await probeGit(BROWSER_ROOT);
-    sandboxedTools = config.sandbox ? await createSandboxedTools(config.sandbox, config.pdf.maxBytes) : undefined;
+    sandboxedTools = config.sandbox ? await createSandboxedTools(config.sandbox, config.pdf.maxBytes, config.docx.maxBytes) : undefined;
     // Replace the current session so the new runtime picks up the updated tools
     const { cancelled } = await runtime.newSession();
     if (!cancelled) await rebindAndAnnounce();
