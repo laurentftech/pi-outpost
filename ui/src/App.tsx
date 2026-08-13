@@ -8,12 +8,14 @@ import { useConversationJump } from "./useConversationJump";
 import { analyzeSession } from "./util/sessionAnalysis";
 import { sessionUsage } from "./util/sessionUsage";
 import { ToolCard } from "./components/ToolCard";
+import { createActionDispatch } from "./presentations/actions";
 import { UserMessage } from "./components/UserMessage";
 import { useTheme } from "./theme/useTheme";
-import { isImageFile, rawFileUrl } from "./util/workspacePath";
+import { isImageFile, isPdfFile, rawFileUrl } from "./util/workspacePath";
 import {
   addPathAttachment,
   imagePreviewToAttachment,
+  pdfPreviewToAttachment,
   type Attachment,
   filesToAttachments,
   removeAttachment,
@@ -104,6 +106,7 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
   const [draftMentions, setDraftMentions] = useState<string[]>([]);
   const [previewAttachmentError, setPreviewAttachmentError] = useState<string | null>(null);
   const [loadedPreviewImagePath, setLoadedPreviewImagePath] = useState<string | null>(null);
+  const [loadedPreviewPdfPath, setLoadedPreviewPdfPath] = useState<string | null>(null);
   const [viewerDirty, setViewerDirty] = useState(false);
   const attachmentsRef = useRef<Attachment[]>([]);
   const activePreviewPathRef = useRef<string | null>(null);
@@ -159,6 +162,7 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
       setAttachments((current) => current.filter((attachment) => attachment.source !== "preview"));
       setPreviewAttachmentError(null);
       setLoadedPreviewImagePath(null);
+      setLoadedPreviewPdfPath(null);
     }
     if (dismissedPreviewPathRef.current === path) return;
 
@@ -168,9 +172,15 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
         ? loadedPreviewImagePath === path
           ? await imagePreviewToAttachment(path, rawFileUrl(serverUrl, path, authToken))
           : null
-        : loaded
-          ? textPreviewToAttachment(path)
-          : null;
+        : isPdfFile(path)
+          ? // A PDF never reaches "loaded" — the text preview refuses it as binary.
+            // Its own viewer says when it displayed, and only then is it attachable.
+            loadedPreviewPdfPath === path
+            ? pdfPreviewToAttachment(path)
+            : null
+          : loaded
+            ? textPreviewToAttachment(path)
+            : null;
       if (cancelled || result === null || activePreviewPathRef.current !== path || dismissedPreviewPathRef.current === path) return;
       if (typeof result === "string") {
         setPreviewAttachmentError(result);
@@ -183,7 +193,7 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
     return () => {
       cancelled = true;
     };
-  }, [state.openFile, serverUrl, authToken, loadedPreviewImagePath]);
+  }, [state.openFile, serverUrl, authToken, loadedPreviewImagePath, loadedPreviewPdfPath]);
 
   function closePreview() {
     activePreviewPathRef.current = null;
@@ -264,6 +274,27 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
   const analysis = useMemo(
     () => (analysisOpen ? analyzeSession(state.items) : null),
     [analysisOpen, state.items],
+  );
+  // What a tool presentation is allowed to ask for. The names are a closed set
+  // and each one lands on an action this app already exposes: a card can open a
+  // file or its history, never send a message of its own making.
+  const toolActions = useMemo(
+    () =>
+      createActionDispatch({
+        readFile: (path) => {
+          setDiffOnOpen(false);
+          readFile(path);
+        },
+        fetchGitFileHistory: (path) => fetchGitFileHistory(path),
+        // Same route the tree's diff badge takes: open the viewer already on the
+        // uncommitted diff, which is what fetches it.
+        fetchGitDiff: (path) => {
+          setDiffOnOpen(true);
+          readFile(path);
+        },
+        searchFiles: (query) => searchFiles(query),
+      }),
+    [readFile, fetchGitFileHistory, searchFiles],
   );
   const showTools = useCallback(() => setHideTools(false), []);
   const { jumpToItem, highlightIndex } = useConversationJump({
@@ -408,6 +439,7 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
               serverUrl={serverUrl}
               token={authToken}
               onImageLoad={setLoadedPreviewImagePath}
+              onPdfLoad={setLoadedPreviewPdfPath}
             />
           )}
           {state.gitFileHistory && (
@@ -482,7 +514,7 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
                 if (item.kind === "tool") {
                   if (hideTools) return null;
                   return anchor(
-                    <ToolCard item={item} />,
+                    <ToolCard item={item} dispatch={toolActions} />,
                     item.toolCallId ? `${state.sessionId}:${item.toolCallId}` : key,
                   );
                 }

@@ -15,6 +15,11 @@ import { isWithin, realResolve } from "./sandbox.ts";
 /** Hard cap for file previews — refused outright above this, never silently truncated. */
 export const MAX_PREVIEW_BYTES = 1_048_576; // 1 MiB
 
+/** A PDF is never previewed as text, so the preview cap says nothing useful about it. */
+export function isPdfPath(relPath: string): boolean {
+  return path.extname(relPath).toLowerCase() === ".pdf";
+}
+
 export class FileBrowserError extends Error {
   constructor(
     public readonly reason: FileBrowserErrorReason,
@@ -133,11 +138,20 @@ export async function readFileForPreview(
 }
 
 /**
- * Raw bytes for the HTTP `/files/raw` endpoint (inline images in the chat).
- * Same confinement and size cap as previews; binary is fine here — deciding
- * what's safe to *serve* (content type, disposition) is the route's job.
+ * Raw bytes for the HTTP `/files/raw` endpoint — inline images in the chat, and
+ * the bytes the PDF viewer renders. Same confinement as previews; binary is fine
+ * here — deciding what's safe to *serve* (content type, disposition) is the
+ * route's job.
+ *
+ * The size cap depends on the file's type: a PDF is measured against
+ * `pdfMaxBytes`, which is the whole point — most real PDFs exceed the 1 MB
+ * preview limit that governs everything else.
  */
-export async function readFileRaw(root: string, relPath: string): Promise<Buffer> {
+export async function readFileRaw(
+  root: string,
+  relPath: string,
+  pdfMaxBytes = MAX_PREVIEW_BYTES,
+): Promise<Buffer> {
   const resolved = await resolveConfined(root, relPath);
   let stat: Awaited<ReturnType<typeof fs.stat>>;
   try {
@@ -148,8 +162,10 @@ export async function readFileRaw(root: string, relPath: string): Promise<Buffer
   if (!stat.isFile()) {
     throw new FileBrowserError("not-found", `"${relPath}" is not a file`);
   }
-  if (stat.size > MAX_PREVIEW_BYTES) {
-    throw new FileBrowserError("too-large", `File is larger than the 1 MB limit`);
+  const limit = isPdfPath(relPath) ? pdfMaxBytes : MAX_PREVIEW_BYTES;
+  if (stat.size > limit) {
+    const mb = (limit / (1024 * 1024)).toFixed(0);
+    throw new FileBrowserError("too-large", `File is larger than the ${mb} MB limit`);
   }
   return fs.readFile(resolved);
 }

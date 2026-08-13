@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import rehypeKatex from "rehype-katex";
 import remarkGfm from "remark-gfm";
@@ -9,8 +9,12 @@ import { CodeHighlight } from "./CodeHighlight";
 import { CopyButton } from "./CopyButton";
 import { SplitDiffBlock } from "./DiffBlocks";
 import { diffLines } from "../util/diff";
-import { isImageFile, rawFileUrl, resolveRelativeHref } from "../util/workspacePath";
+import { isImageFile, isPdfFile, rawFileUrl, resolveRelativeHref } from "../util/workspacePath";
 import { normalizeMathDelimiters } from "../util/markdownMath";
+import { ViewerErrorBoundary } from "./ViewerErrorBoundary";
+
+// pdf.js is over a megabyte: a session that never opens a PDF must not load it.
+const PdfViewer = lazy(() => import("./PdfViewer"));
 
 interface FileViewerProps {
   file: OpenFile;
@@ -41,6 +45,8 @@ interface FileViewerProps {
   token?: string | null;
   /** Confirms that an image preview decoded successfully before it becomes a chat attachment. */
   onImageLoad: (path: string) => void;
+  /** Confirms that a PDF actually rendered before it becomes a chat attachment. */
+  onPdfLoad?: (path: string) => void;
 }
 
 function isMarkdown(path: string): boolean {
@@ -84,6 +90,7 @@ export function FileViewer({
   serverUrl = "",
   token = null,
   onImageLoad,
+  onPdfLoad,
 }: FileViewerProps) {
   const [showRaw, setShowRaw] = useState(false);
   const [showGitDiff, setShowGitDiff] = useState(initialShowGitDiff);
@@ -100,7 +107,10 @@ export function FileViewer({
   // Images can't travel the text-preview protocol (read_file answers "binary");
   // the viewer loads them straight from /files/raw instead and ignores that error.
   const image = isImageFile(file.path);
-  const writable = isWritable(file.path, writableRoot);
+  // Same door for a PDF — it renders from the raw bytes, not from the preview.
+  const pdf = isPdfFile(file.path);
+  // A PDF is never editable here: this viewer edits text, and there is no text.
+  const writable = isWritable(file.path, writableRoot) && !pdf;
   const dirty = edit !== null && edit.draft !== edit.baseContent;
   const saving = loaded?.pendingSave !== undefined;
   // The reducer refetches on file_changed, so a foreign write shows up as a new mtime
@@ -305,6 +315,18 @@ export function FileViewer({
             {gitDiff?.path !== file.path && <div className="text-sm text-zinc-400 dark:text-zinc-600">loading diff…</div>}
           </div>
         )}
+        {pdf && edit === null && !showGitDiff && (
+          <ViewerErrorBoundary label="This PDF">
+            <Suspense fallback={<div className="p-4 text-sm text-zinc-400 dark:text-zinc-600">loading…</div>}>
+              <PdfViewer
+                path={file.path}
+                serverUrl={serverUrl}
+                token={token}
+                {...(onPdfLoad ? { onLoaded: onPdfLoad } : {})}
+              />
+            </Suspense>
+          </ViewerErrorBoundary>
+        )}
         {image && edit === null && !showGitDiff && (
           <div className="flex h-full items-center justify-center p-4">
             <img
@@ -315,10 +337,10 @@ export function FileViewer({
             />
           </div>
         )}
-        {file.status === "loading" && edit === null && !showGitDiff && !image && (
+        {file.status === "loading" && edit === null && !showGitDiff && !image && !pdf && (
           <div className="p-4 text-sm text-zinc-400 dark:text-zinc-600">loading…</div>
         )}
-        {file.status === "error" && !image && (
+        {file.status === "error" && !image && !pdf && (
           <div className="p-4 text-sm text-red-600 dark:text-red-400">{file.message}</div>
         )}
         {/* Keyed on `edit`, not `loaded`: the post-save file_changed refetch flips the file
