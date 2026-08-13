@@ -67,7 +67,11 @@ export function GitMenu({ status, log, onFetchLog, onShowCommit }: GitMenuProps)
               className="flex w-full items-baseline gap-2 px-3 py-1.5 text-left text-sm hover:bg-zinc-100 dark:hover:bg-zinc-800"
             >
               <span className="shrink-0 font-mono text-xs text-amber-600 dark:text-amber-500">{entry.sha.slice(0, 7)}</span>
-              <span className="min-w-0 flex-1 truncate text-zinc-700 dark:text-zinc-300">{entry.subject}</span>
+              {/* Same reason as the history graph: the list truncates, the tooltip
+                  gives back the end of the subject without opening the commit. */}
+              <span className="min-w-0 flex-1 truncate text-zinc-700 dark:text-zinc-300" title={entry.subject}>
+                {entry.subject}
+              </span>
               <span className="shrink-0 text-xs text-zinc-400 dark:text-zinc-600">
                 {entry.author} · {relativeDate(entry.date)}
               </span>

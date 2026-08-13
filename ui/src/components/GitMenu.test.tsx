@@ -114,4 +114,11 @@ describe("GitMenu", () => {
     fireEvent.mouseDown(within(screen.getByText("most recent")).getByText("most recent"));
     expect(screen.getByText("most recent")).toBeInTheDocument();
   });
+
+  it("keeps the whole subject reachable on hover, since the row truncates it", () => {
+    setup();
+    fireEvent.click(chip());
+
+    expect(screen.getByText("most recent")).toHaveAttribute("title", "most recent");
+  });
 });

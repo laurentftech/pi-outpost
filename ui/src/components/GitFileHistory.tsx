@@ -323,7 +323,11 @@ function HistoryRow({ row, laneCount, role, isFocused, onSelect, onFocus, ref }:
       {entry ? (
         <>
           <span className="shrink-0 font-mono text-xs text-amber-600 dark:text-amber-500">{entry.sha.slice(0, 7)}</span>
-          <span className="min-w-0 flex-1 truncate text-sm text-zinc-700 dark:text-zinc-300">{entry.subject}</span>
+          {/* The row truncates to keep the graph dense; hovering restores what
+              was cut, which is usually the half of the subject that says why. */}
+          <span className="min-w-0 flex-1 truncate text-sm text-zinc-700 dark:text-zinc-300" title={entry.subject}>
+            {entry.subject}
+          </span>
           <span className="shrink-0 text-[10px] text-zinc-400 dark:text-zinc-600">
             {entry.author} · {relativeDate(entry.date)}
           </span>

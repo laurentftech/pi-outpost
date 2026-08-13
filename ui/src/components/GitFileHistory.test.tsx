@@ -37,6 +37,13 @@ describe("GitFileHistory", () => {
     expect(rows[1]).toHaveAttribute("aria-label", expect.stringContaining("latest change"));
   });
 
+  it("keeps the whole subject reachable on hover, since the row truncates it", () => {
+    const long = "a subject far too long for the row, whose end says why the commit exists";
+    setup({ history: loaded({ entries: [entry("aaaaaaa1", [], long)] }) });
+
+    expect(screen.getByText(long)).toHaveAttribute("title", long);
+  });
+
   it("spells out the line counts for a screen reader", () => {
     setup();
     expect(screen.getAllByLabelText("3 lines added, 1 removed").length).toBe(ENTRIES.length);
