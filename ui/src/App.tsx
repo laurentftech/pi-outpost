@@ -84,6 +84,8 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
     listDirectory,
     readFile,
     writeFile,
+    createFile,
+    createDirectory,
     closeFilePreview,
     searchFiles,
     clearFileSearch,
@@ -374,6 +376,13 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
               readFile(path);
             }}
             onToggleAttachPath={toggleAttachPath}
+            onCreateFile={(path) => {
+              setDiffOnOpen(false);
+              createFile(path);
+            }}
+            onCreateDirectory={createDirectory}
+            createError={state.createError}
+            created={state.created}
           />
         )}
         <div className="flex h-full min-w-0 flex-1 flex-col">

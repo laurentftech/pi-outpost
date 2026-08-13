@@ -20,6 +20,8 @@ import {
   MAX_PREVIEW_BYTES,
   readFileForPreview,
   readFileRaw,
+  createFileFromBrowser,
+  createDirectoryFromBrowser,
   resolveBrowserRoot,
   resolveWritableRoot,
   searchFiles,
@@ -329,6 +331,85 @@ describe("file browser", () => {
     test("reports the entry type", async () => {
       const hits = await searchFiles(root, "nested");
       assert.equal(hits.find((h) => h.path === "src/nested")?.type, "directory");
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Creation
+  // -------------------------------------------------------------------------
+  describe("createFileFromBrowser", () => {
+    test("creates an empty file inside the writable zone", async () => {
+      const result = await createFileFromBrowser(root, undefined, "scratch/created.txt");
+
+      assert.equal(result.size, 0);
+      assert.ok(result.mtimeMs > 0);
+      assert.equal((await readFileForPreview(root, "scratch/created.txt")).content, "");
+    });
+
+    test("creates inside a nested writable zone, and refuses outside it", async () => {
+      mkdirSync(path.join(root, "zone"), { recursive: true });
+      await createFileFromBrowser(root, "zone", "zone/inside.txt");
+      assert.equal(statSync(path.join(root, "zone", "inside.txt")).size, 0);
+
+      assert.equal(await reasonOf(() => createFileFromBrowser(root, "zone", "readme-2.md")), "denied");
+    });
+
+    test("refuses when the sandbox is read-only", async () => {
+      assert.equal(await reasonOf(() => createFileFromBrowser(root, null, "nope.txt")), "denied");
+    });
+
+    test("refuses a path that climbs out of the root", async () => {
+      assert.equal(await reasonOf(() => createFileFromBrowser(root, undefined, "../outside/evil.txt")), "outside-root");
+      assert.equal(statSync(path.join(outside, "evil.txt"), { throwIfNoEntry: false }), undefined);
+    });
+
+    test("refuses to follow a symlink out of the root", async (t) => {
+      if (!symlinksAvailable) return t.skip("symlinks unavailable on this platform");
+      assert.equal(await reasonOf(() => createFileFromBrowser(root, undefined, "escape-dir/evil.txt")), "outside-root");
+      assert.equal(statSync(path.join(outside, "evil.txt"), { throwIfNoEntry: false }), undefined);
+    });
+
+    test("never truncates something already there", async () => {
+      write("scratch/taken.txt", "keep me\n");
+
+      assert.equal(await reasonOf(() => createFileFromBrowser(root, undefined, "scratch/taken.txt")), "conflict");
+      assert.equal((await readFileForPreview(root, "scratch/taken.txt")).content, "keep me\n");
+    });
+
+    test("refuses a name already taken by a directory", async () => {
+      assert.equal(await reasonOf(() => createFileFromBrowser(root, undefined, "empty")), "conflict");
+    });
+
+    test("refuses a name that is not a name", async () => {
+      for (const target of ["scratch/", "scratch/.", "scratch/..", "scratch/   ", "scratch/ spaced.txt", "scratch/back\\slash"]) {
+        assert.equal(await reasonOf(() => createFileFromBrowser(root, undefined, target)), "denied", target);
+      }
+    });
+
+    test("reports a missing parent rather than creating one", async () => {
+      assert.equal(await reasonOf(() => createFileFromBrowser(root, undefined, "no/such/dir/file.txt")), "not-found");
+      assert.equal(statSync(path.join(root, "no"), { throwIfNoEntry: false }), undefined);
+    });
+  });
+
+  describe("createDirectoryFromBrowser", () => {
+    test("creates one directory inside the writable zone", async () => {
+      await createDirectoryFromBrowser(root, undefined, "scratch/newdir");
+
+      assert.ok(statSync(path.join(root, "scratch", "newdir")).isDirectory());
+      assert.deepEqual(await listDirectory(root, "scratch/newdir"), []);
+    });
+
+    test("does not create a chain of missing parents", async () => {
+      assert.equal(await reasonOf(() => createDirectoryFromBrowser(root, undefined, "chain/of/dirs")), "not-found");
+      assert.equal(statSync(path.join(root, "chain"), { throwIfNoEntry: false }), undefined);
+    });
+
+    test("refuses the same things a file creation refuses", async () => {
+      assert.equal(await reasonOf(() => createDirectoryFromBrowser(root, null, "nope")), "denied");
+      assert.equal(await reasonOf(() => createDirectoryFromBrowser(root, undefined, "../outside/evil")), "outside-root");
+      assert.equal(await reasonOf(() => createDirectoryFromBrowser(root, undefined, "empty")), "conflict");
+      assert.equal(await reasonOf(() => createDirectoryFromBrowser(root, undefined, "scratch/..")), "denied");
     });
   });
 

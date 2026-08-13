@@ -52,6 +52,8 @@ export type OpenFile =
       /** In-flight write_file request — its content becomes `content` on file_written. */
       pendingSave?: { requestId: string; content: string };
       saveError?: { message: string; conflict: boolean };
+      /** Created from the tree just now: the viewer opens straight into edit mode. */
+      justCreated?: boolean;
     }
   | { status: "error"; path: string; message: string };
 
@@ -148,6 +150,14 @@ export interface AgentState {
   /** Which providers can answer; drives the onboarding screen. Never carries a key. */
   credentials: CredentialStatus | null;
   fileSearch: FileSearch | null;
+  /** Refusal of the last creation request, for the tree row that asked for it. */
+  createError: { path: string; message: string } | null;
+  /**
+   * Path the last creation actually produced. The tree needs a definite answer:
+   * "the name is in the listing" is also true when the name was already taken,
+   * which is the refusal it must not mistake for success.
+   */
+  created: string | null;
   extensionPaths: string[];
   sandbox: { root: string; allowWrite: boolean; allowBash: boolean; writableRoot?: string } | null;
   versions: { piOutpost: string; piSdk: string } | null;
@@ -189,6 +199,8 @@ const initialState: AgentState = {
   fileTree: {},
   openFile: null,
   fileSearch: null,
+  createError: null,
+  created: null,
   extensionPaths: [],
   sandbox: null,
   versions: null,
@@ -214,6 +226,7 @@ type Action =
   | { type: "file_read_started"; path: string; requestId: string }
   | { type: "file_save_started"; path: string; requestId: string; content: string }
   | { type: "close_file_preview" }
+  | { type: "file_create_started" }
   | { type: "file_search_started"; query: string; requestId: string }
   | { type: "file_search_cleared" }
   | { type: "session_search_started"; query: string; requestId: string }
@@ -336,6 +349,7 @@ function reduce(state: AgentState, action: Action): AgentState {
     return { ...state, fileSearch: { status: "loading", query: action.query, requestId: action.requestId, results: [] } };
   }
   if (action.type === "file_search_cleared") return { ...state, fileSearch: null };
+  if (action.type === "file_create_started") return { ...state, createError: null, created: null };
   if (action.type === "session_search_started") {
     return {
       ...state,
@@ -518,7 +532,12 @@ function reduce(state: AgentState, action: Action): AgentState {
     case "error":
       return { ...state, errors: [...state.errors, message.message] };
     case "directory_listing":
-      return { ...state, fileTree: { ...state.fileTree, [message.path]: message.entries } };
+      return {
+        ...state,
+        fileTree: { ...state.fileTree, [message.path]: message.entries },
+        // A listing answered under a creation request id *is* the creation's answer.
+        ...(message.requestId.startsWith("create:") ? { created: message.path, createError: null } : {}),
+      };
     case "file_content":
       // Ignore stale responses from a since-superseded read (user opened another file meanwhile)
       if (state.openFile?.status !== "loading" || state.openFile.requestId !== message.requestId) return state;
@@ -527,6 +546,24 @@ function reduce(state: AgentState, action: Action): AgentState {
         openFile: { status: "loaded", path: message.path, content: message.content, size: message.size, mtimeMs: message.mtimeMs },
       };
     case "file_written": {
+      if (message.requestId.startsWith("create:")) {
+        // A file that did not exist a moment ago: open it, empty, in edit mode.
+        // Its size and mtime come with the answer, so the editor can save without
+        // reading it back first.
+        return {
+          ...state,
+          createError: null,
+          created: message.path,
+          openFile: {
+            status: "loaded",
+            path: message.path,
+            content: "",
+            size: message.size,
+            mtimeMs: message.mtimeMs,
+            justCreated: true,
+          },
+        };
+      }
       const file = state.openFile;
       if (file?.status !== "loaded" || file.pendingSave?.requestId !== message.requestId) return state;
       return {
@@ -537,6 +574,9 @@ function reduce(state: AgentState, action: Action): AgentState {
     case "file_browser_error": {
       if (message.requestId.startsWith("dir:")) {
         return { ...state, fileTree: { ...state.fileTree, [message.path]: { error: message.message } } };
+      }
+      if (message.requestId.startsWith("create:")) {
+        return { ...state, createError: { path: message.path, message: message.message } };
       }
       if (message.requestId.startsWith("write:")) {
         const file = state.openFile;
@@ -872,6 +912,20 @@ export function useAgent(serverUrl = "", explicitToken?: string, embedded = fals
       const requestId = `write:${crypto.randomUUID()}`;
       dispatch({ type: "file_save_started", path, requestId, content });
       sendMessage({ type: "write_file", path, content, expectedMtimeMs, ...(force ? { force } : {}), requestId });
+    },
+    /**
+     * Create an empty file and open it. Deliberately not writeFile: `write_file`
+     * refuses a path that does not exist, and that refusal is the guard against
+     * clobbering a file that moved.
+     */
+    createFile: (path: string) => {
+      dispatch({ type: "file_create_started" });
+      sendMessage({ type: "create_file", path, requestId: `create:${crypto.randomUUID()}` });
+    },
+    /** Create one directory; answered with its (empty) listing. */
+    createDirectory: (path: string) => {
+      dispatch({ type: "file_create_started" });
+      sendMessage({ type: "create_directory", path, requestId: `create:${crypto.randomUUID()}` });
     },
     /** Search file/directory names for the composer's `@` mention autocomplete. */
     searchFiles: (query: string) => {

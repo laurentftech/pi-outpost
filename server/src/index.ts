@@ -56,7 +56,7 @@ import {
 } from "./credentials.ts";
 import { assistantToItem, contentText, customMessageToItem, historyToItems, truncate } from "./convert.ts";
 import { configureExtensionRender, renderToolCallHtml, renderToolResultHtml } from "./extensionRender.ts";
-import { assertWithinRoot, FileBrowserError, isPdfPath, listDirectory, MAX_PREVIEW_BYTES, readFileForPreview, readFileRaw, writeFileFromBrowser, resolveBrowserRoot, resolveWritableRoot, searchFiles } from "./fileBrowser.ts";
+import { assertWithinRoot, createDirectoryFromBrowser, createFileFromBrowser, FileBrowserError, isPdfPath, listDirectory, MAX_PREVIEW_BYTES, readFileForPreview, readFileRaw, writeFileFromBrowser, resolveBrowserRoot, resolveWritableRoot, searchFiles } from "./fileBrowser.ts";
 import { GitError, gitFileLog, gitHeadContent, gitLog, gitRevisionContent, gitShow, gitStatus, probeGit } from "./git.ts";
 import { createPdfExtractToolDefinition } from "./pdfTool.ts";
 import { createSandboxedTools, isWithin, realResolve } from "./sandbox.ts";
@@ -1723,6 +1723,43 @@ async function handleWriteFile(
   }
 }
 
+/**
+ * Create an empty file. Answered like a write, so the client can open the new
+ * file straight into its editor without a second round trip.
+ */
+async function handleCreateFile(socket: WebSocket, filePath: string, requestId: string): Promise<void> {
+  try {
+    const { size, mtimeMs } = await createFileFromBrowser(BROWSER_ROOT, WRITABLE_ROOT, filePath);
+    send(socket, { type: "file_written", requestId, path: filePath, size, mtimeMs });
+    broadcast({ type: "file_changed", path: filePath });
+  } catch (error) {
+    sendFileBrowserError(socket, requestId, filePath, error);
+  }
+}
+
+/**
+ * Create one directory. Answered with its listing — empty, but it tells the tree
+ * the directory exists and lets it expand without asking again.
+ */
+async function handleCreateDirectory(socket: WebSocket, dirPath: string, requestId: string): Promise<void> {
+  try {
+    await createDirectoryFromBrowser(BROWSER_ROOT, WRITABLE_ROOT, dirPath);
+    const entries = await listDirectory(BROWSER_ROOT, dirPath);
+    send(socket, { type: "directory_listing", requestId, path: dirPath, entries });
+    broadcast({ type: "file_changed", path: dirPath });
+  } catch (error) {
+    sendFileBrowserError(socket, requestId, dirPath, error);
+  }
+}
+
+function sendFileBrowserError(socket: WebSocket, requestId: string, targetPath: string, error: unknown): void {
+  if (error instanceof FileBrowserError) {
+    send(socket, { type: "file_browser_error", requestId, path: targetPath, message: error.message, reason: error.reason });
+  } else {
+    send(socket, { type: "file_browser_error", requestId, path: targetPath, message: `Unexpected error: ${(error as Error).message}` });
+  }
+}
+
 // --- Git (read-only, confined to BROWSER_ROOT via `-- .` pathspec) --------------
 
 function gitErrorMessage(error: unknown): string {
@@ -1949,6 +1986,14 @@ function handleClientMessage(socket: WebSocket, raw: string): void {
       handleWriteFile(socket, message.path, message.content, message.expectedMtimeMs, message.force === true, message.requestId).catch(
         reportError,
       );
+      break;
+    case "create_file":
+      if (typeof message.path !== "string" || typeof message.requestId !== "string") return;
+      handleCreateFile(socket, message.path, message.requestId).catch(reportError);
+      break;
+    case "create_directory":
+      if (typeof message.path !== "string" || typeof message.requestId !== "string") return;
+      handleCreateDirectory(socket, message.path, message.requestId).catch(reportError);
       break;
     case "search_files":
       if (typeof message.query !== "string" || typeof message.requestId !== "string") return;

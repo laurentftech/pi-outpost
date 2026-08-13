@@ -229,3 +229,181 @@ describe("FileTree", () => {
     expect(row.className).toMatch(/bg-zinc-100/);
   });
 });
+
+describe("creating", () => {
+  const creators = () => ({ onCreateFile: vi.fn(), onCreateDirectory: vi.fn() });
+
+  /** Open the input inside `src`, which the fixture already has a listing for. */
+  function openInputInSrc(extra: Partial<Props> = {}) {
+    const handlers = creators();
+    render(
+      <FileTree
+        tree={tree()}
+        onExpand={vi.fn()}
+        onSelectFile={vi.fn()}
+        {...handlers}
+        {...extra}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "New file or folder in src" }));
+    return { ...handlers, input: screen.getByRole("textbox", { name: /New file or folder in src/ }) };
+  }
+
+  it("offers no creation control without a creation callback", () => {
+    render(<FileTree tree={tree()} onExpand={vi.fn()} onSelectFile={vi.fn()} />);
+
+    expect(screen.queryByRole("button", { name: /New file or folder/ })).toBeNull();
+  });
+
+  it("offers no control on a directory outside the writable zone", () => {
+    render(
+      <FileTree tree={tree()} onExpand={vi.fn()} onSelectFile={vi.fn()} writableRoot="other" {...creators()} />,
+    );
+
+    expect(screen.queryByRole("button", { name: "New file or folder in src" })).toBeNull();
+  });
+
+  it("offers nothing at all when the sandbox is read-only", () => {
+    render(<FileTree tree={tree()} onExpand={vi.fn()} onSelectFile={vi.fn()} writableRoot={null} {...creators()} />);
+
+    expect(screen.queryByRole("button", { name: /New file or folder/ })).toBeNull();
+  });
+
+  it("reports the joined path for a file", () => {
+    const { onCreateFile, onCreateDirectory, input } = openInputInSrc();
+
+    fireEvent.change(input, { target: { value: "helper.ts" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    expect(onCreateFile).toHaveBeenCalledWith("src/helper.ts");
+    expect(onCreateDirectory).not.toHaveBeenCalled();
+  });
+
+  it("reads a trailing slash as a directory", () => {
+    const { onCreateFile, onCreateDirectory, input } = openInputInSrc();
+
+    fireEvent.change(input, { target: { value: "widgets/" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    expect(onCreateDirectory).toHaveBeenCalledWith("src/widgets");
+    expect(onCreateFile).not.toHaveBeenCalled();
+  });
+
+  it("creates at the workspace root from the header control", () => {
+    const handlers = creators();
+    render(<FileTree tree={tree()} onExpand={vi.fn()} onSelectFile={vi.fn()} {...handlers} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "New file or folder in the workspace root" }));
+    const input = screen.getByRole("textbox", { name: /workspace root/ });
+    fireEvent.change(input, { target: { value: "notes.md" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    expect(handlers.onCreateFile).toHaveBeenCalledWith("notes.md");
+  });
+
+  it("refuses a name that is a path, without asking the server", () => {
+    const { onCreateFile, input } = openInputInSrc();
+
+    fireEvent.change(input, { target: { value: "deep/helper.ts" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    expect(onCreateFile).not.toHaveBeenCalled();
+    expect(screen.getByText("That is a path, not a name")).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: /New file or folder in src/ })).toHaveValue("deep/helper.ts");
+  });
+
+  it("refuses an empty name", () => {
+    const { onCreateFile, input } = openInputInSrc();
+
+    fireEvent.change(input, { target: { value: "   " } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    expect(onCreateFile).not.toHaveBeenCalled();
+    expect(screen.getByText("A name is required")).toBeInTheDocument();
+  });
+
+  it("keeps the typed name when the server refuses it", () => {
+    const { input } = openInputInSrc({
+      createError: { path: "src/taken.ts", message: '"src/taken.ts" already exists' },
+    });
+
+    fireEvent.change(input, { target: { value: "taken.ts" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    expect(screen.getByText('"src/taken.ts" already exists')).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: /New file or folder in src/ })).toHaveValue("taken.ts");
+  });
+
+  it("shows nothing for a refusal of some other path", () => {
+    const { input } = openInputInSrc({
+      createError: { path: "elsewhere/other.ts", message: "already exists" },
+    });
+
+    fireEvent.change(input, { target: { value: "mine.ts" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    expect(screen.queryByText("already exists")).toBeNull();
+  });
+
+  it("closes the input when the creation actually happened", () => {
+    const handlers = creators();
+    const { rerender } = render(
+      <FileTree tree={tree()} onExpand={vi.fn()} onSelectFile={vi.fn()} {...handlers} />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "New file or folder in src" }));
+    const input = screen.getByRole("textbox", { name: /New file or folder in src/ });
+    fireEvent.change(input, { target: { value: "helper.ts" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    // What the server answers: the creation happened, and at which path
+    rerender(
+      <FileTree
+        tree={tree({ src: [file("main.ts"), file("helper.ts"), dir("nested")] })}
+        onExpand={vi.fn()}
+        onSelectFile={vi.fn()}
+        created="src/helper.ts"
+        {...handlers}
+      />,
+    );
+
+    expect(screen.queryByRole("textbox", { name: /New file or folder in src/ })).toBeNull();
+  });
+
+  it("does not read a listing that already holds the name as success", () => {
+    // The refused-duplicate case: the name is in the listing precisely because
+    // the server refused it. Closing the input here would swallow the refusal.
+    const handlers = creators();
+    const existing = { src: [file("main.ts"), file("taken.ts"), dir("nested")] };
+    const { rerender } = render(
+      <FileTree tree={tree(existing)} onExpand={vi.fn()} onSelectFile={vi.fn()} {...handlers} />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "New file or folder in src" }));
+    const input = screen.getByRole("textbox", { name: /New file or folder in src/ });
+    fireEvent.change(input, { target: { value: "taken.ts" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    rerender(
+      <FileTree
+        tree={tree(existing)}
+        onExpand={vi.fn()}
+        onSelectFile={vi.fn()}
+        createError={{ path: "src/taken.ts", message: '"src/taken.ts" already exists' }}
+        {...handlers}
+      />,
+    );
+
+    expect(screen.getByRole("textbox", { name: /New file or folder in src/ })).toHaveValue("taken.ts");
+    expect(screen.getByText('"src/taken.ts" already exists')).toBeInTheDocument();
+  });
+
+  it("cancels on Escape without reporting anything", () => {
+    const { onCreateFile, onCreateDirectory, input } = openInputInSrc();
+
+    fireEvent.change(input, { target: { value: "helper.ts" } });
+    fireEvent.keyDown(input, { key: "Escape" });
+
+    expect(onCreateFile).not.toHaveBeenCalled();
+    expect(onCreateDirectory).not.toHaveBeenCalled();
+    expect(screen.queryByRole("textbox", { name: /New file or folder in src/ })).toBeNull();
+  });
+});

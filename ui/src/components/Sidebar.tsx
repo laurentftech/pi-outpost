@@ -16,6 +16,13 @@ interface SidebarProps {
   onSelectFile: (path: string) => void;
   onSelectDiff?: (path: string) => void;
   onToggleAttachPath?: (path: string) => void;
+  /** Create an empty file at this path (and open it). */
+  onCreateFile?: (path: string) => void;
+  onCreateDirectory?: (path: string) => void;
+  /** The server's refusal of the last creation request. */
+  createError?: { path: string; message: string } | null;
+  /** Path the last creation produced. */
+  created?: string | null;
 }
 
 /** Collapsible file-browser sidebar: lazy tree; selecting a file opens the FileViewer overlay. */
@@ -29,6 +36,10 @@ export function Sidebar({
   onSelectFile,
   onSelectDiff,
   onToggleAttachPath,
+  onCreateFile,
+  onCreateDirectory,
+  createError,
+  created,
 }: SidebarProps) {
   useEffect(() => {
     if (tree[""] === undefined) onExpand("");
@@ -51,6 +62,10 @@ export function Sidebar({
           onSelectFile={onSelectFile}
           onSelectDiff={onSelectDiff}
           onToggleAttachPath={onToggleAttachPath}
+          onCreateFile={onCreateFile}
+          onCreateDirectory={onCreateDirectory}
+          createError={createError}
+          created={created}
         />
       </div>
     </aside>

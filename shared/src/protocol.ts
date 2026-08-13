@@ -427,6 +427,14 @@ export type ClientMessage =
       force?: boolean;
       requestId: string;
     }
+  /**
+   * Create an empty file. Deliberately not a flag on `write_file`: that message
+   * refuses a path that no longer exists, which is how a concurrent move is
+   * caught — a boolean suspending it would be a guard with an off switch.
+   */
+  | { type: "create_file"; path: string; requestId: string }
+  /** Create one directory (not a chain of missing parents). */
+  | { type: "create_directory"; path: string; requestId: string }
   | { type: "search_files"; query: string; requestId: string }
   | { type: "list_tree" }
   | { type: "navigate_tree"; entryId: string }

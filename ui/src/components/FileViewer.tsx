@@ -94,7 +94,14 @@ export function FileViewer({
 }: FileViewerProps) {
   const [showRaw, setShowRaw] = useState(false);
   const [showGitDiff, setShowGitDiff] = useState(initialShowGitDiff);
-  const [edit, setEdit] = useState<EditState | null>(null);
+  // A file created from the tree opens in edit mode: creating a file is wanting
+  // to write in it. The viewer is remounted per path, so this only ever applies
+  // to the file that was just created.
+  const [edit, setEdit] = useState<EditState | null>(
+    file.status === "loaded" && file.justCreated
+      ? { draft: file.content, baseContent: file.content, baseMtimeMs: file.mtimeMs }
+      : null,
+  );
   // "done" = a reply finished while this viewer was covering the chat
   const [agentActivity, setAgentActivity] = useState<"idle" | "streaming" | "done">("idle");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
