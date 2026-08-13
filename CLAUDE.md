@@ -57,3 +57,29 @@ See https://github.com/clay-good/OpenLore for details.
 ## Tooling & CLI Constraints
 - ALWAYS use `rg` (ripgrep) instead of `grep` for code search and file inspection.
 - NEVER run recursive `grep -r` commands. `rg` is faster and respects `.gitignore`.
+
+## UI and UX changes: test them in the running app
+
+Any change that touches the interface **or the way it is used** — a component, a
+tool the agent calls, a tool's description, a message the model reads — must be
+exercised in the running app with Playwright before it is called done. Unit tests
+are necessary and they are not sufficient.
+
+Three failures from one session, none of which any suite caught:
+
+- A PDF viewer that released documents through the wrong object. The throw landed
+  in an effect cleanup, so **the whole application unmounted** and the user saw a
+  blank page. The test fake had grown a method the real API never had.
+- A file-creation input that closed itself on a refused duplicate, swallowing the
+  error. It inferred success from a side effect the failure produces too.
+- An extraction tool that worked perfectly when driven directly, while the agent
+  kept not using the option that made it worth having. The mechanism was right;
+  the behaviour was not.
+
+The pattern: a fake is kinder than reality, an outcome is inferred rather than
+observed, or the code is correct and the *use* of it is not. Only the running app
+shows those.
+
+What "exercised" means: drive the actual feature — create the file, open the
+document, ask the agent for the thing — then read back the DOM, the filesystem, or
+the session transcript to check what really happened. A screenshot is not a check.

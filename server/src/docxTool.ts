@@ -55,10 +55,15 @@ const parameters = Type.Object({
 
 const DESCRIPTION = [
   "Extract a Word (.docx) document as markdown: paragraphs, headings, and tables with the rows and columns the document declares.",
-  "Output is capped per call — when it is truncated it says so and names the block range to ask for next.",
+  "If the user wants the document saved, converted, or written anywhere, pass output_path: it writes the whole document there in one call and returns a short summary.",
+  "Do not return the content and then write it yourself — that spends the context twice.",
+  "Otherwise output is capped per call — when it is truncated it says so and names the block range to ask for next, or pass full:true to get everything at once.",
   "Tracked changes are resolved to the accepted text: insertions are kept, deletions are not returned.",
   "Headers, footers, footnotes, comments, text boxes and images are not read.",
 ].join(" ");
+
+/** Past this, an answer is large enough that the file option is worth naming again. */
+const LARGE_ANSWER_CHARS = 60_000;
 
 /** A limit is only actionable if it reads like one: "25 MB", not "0 MB". */
 function describeSize(bytes: number): string {
@@ -73,6 +78,7 @@ export function createDocxExtractToolDefinition(options: DocxToolOptions): ToolD
     promptSnippet: "Read the text, headings and tables of a Word document",
     promptGuidelines: [
       "Use docx_extract to read a .docx file — read/grep return its compressed bytes, not its content.",
+      "When the user asks for a document to be saved or converted to a file, give the extraction tool an output_path instead of returning the content and writing it afterwards.",
     ],
     parameters,
     async execute(_toolCallId, params) {
@@ -123,7 +129,15 @@ export function createDocxExtractToolDefinition(options: DocxToolOptions): ToolD
       }
 
       if (destination === undefined) {
-        return { content: [{ type: "text", text: extraction.markdown }], details: undefined };
+        // A very large answer is the moment output_path becomes worth knowing about:
+        // saying so here reaches the caller when the cost is in front of it, which a
+        // tool description read once at session start does not.
+        const text =
+          extraction.markdown.length > LARGE_ANSWER_CHARS
+            ? `${extraction.markdown}\n\n> This answer is ${extraction.markdown.length} characters. ` +
+              `For a document this size, pass output_path next time to write it to a file instead.`
+            : extraction.markdown;
+        return { content: [{ type: "text", text }], details: undefined };
       }
 
       const written = await writeExtraction(destination, extraction.markdown, {

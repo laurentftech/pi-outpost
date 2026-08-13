@@ -54,10 +54,15 @@ const parameters = Type.Object({
 
 const DESCRIPTION = [
   "Extract the content of a PDF as markdown: text per page, and tables reconstructed as markdown tables.",
-  "Output is capped per call — when it is truncated it says so and names the page range to ask for next.",
+  "If the user wants the document saved, converted, or written anywhere, pass output_path: it writes the whole document there in one call and returns a short summary.",
+  "Do not return the content and then write it yourself — that spends the context twice.",
+  "Otherwise output is capped per call — when it is truncated it says so and names the page range to ask for next, or pass full:true to get everything at once.",
   "Table reconstruction is best-effort; use mode=\"text\" to see a page exactly as its text layer reads.",
   "A scanned PDF has no text layer and is reported as such: there is no OCR.",
 ].join(" ");
+
+/** Past this, an answer is large enough that the file option is worth naming again. */
+const LARGE_ANSWER_CHARS = 60_000;
 
 /** A limit is only actionable if it reads like one: "25 MB", not "0 MB". */
 function describeSize(bytes: number): string {
@@ -72,6 +77,7 @@ export function createPdfExtractToolDefinition(options: PdfToolOptions): ToolDef
     promptSnippet: "Read the text and tables of a PDF file",
     promptGuidelines: [
       "Use pdf_extract to read a .pdf file — read/grep return its binary bytes, not its content.",
+      "When the user asks for a document to be saved or converted to a file, give the extraction tool an output_path instead of returning the content and writing it afterwards.",
     ],
     parameters,
     async execute(_toolCallId, params) {
@@ -122,7 +128,15 @@ export function createPdfExtractToolDefinition(options: PdfToolOptions): ToolDef
       }
 
       if (destination === undefined) {
-        return { content: [{ type: "text", text: extraction.markdown }], details: undefined };
+        // A very large answer is the moment output_path becomes worth knowing about:
+        // saying so here reaches the caller when the cost is in front of it, which a
+        // tool description read once at session start does not.
+        const text =
+          extraction.markdown.length > LARGE_ANSWER_CHARS
+            ? `${extraction.markdown}\n\n> This answer is ${extraction.markdown.length} characters. ` +
+              `For a document this size, pass output_path next time to write it to a file instead.`
+            : extraction.markdown;
+        return { content: [{ type: "text", text }], details: undefined };
       }
 
       const written = await writeExtraction(destination, extraction.markdown, {
