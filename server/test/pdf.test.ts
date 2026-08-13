@@ -17,6 +17,7 @@ import {
   extractPdf,
   lineCells,
   parsePageRange,
+  pdfjsAssetDirs,
   PdfError,
   type TextPiece,
 } from "../src/pdf.ts";
@@ -195,6 +196,20 @@ describe("extractPdf caps", () => {
 
     assert.deepEqual(result.pages, [2, 3]);
     assert.equal(result.nextPage, 4);
+  });
+});
+
+describe("pdfjsAssetDirs", () => {
+  test("ends every path with a forward slash, on every platform", () => {
+    const dirs = pdfjsAssetDirs();
+
+    // pdf.js validates these as URLs: anything not ending in "/" is refused
+    // outright, which on Windows made `path.sep` fail every single extraction.
+    for (const value of [dirs.standardFontDataUrl, dirs.cMapUrl]) {
+      assert.ok(value !== undefined, "the installed package should resolve here");
+      assert.ok(value.endsWith("/"), `${value} must end with a forward slash`);
+      assert.ok(!value.endsWith("\\/"), `${value} must not end with a backslash`);
+    }
   });
 });
 
