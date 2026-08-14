@@ -73,7 +73,11 @@ if (absent.length > 0) {
 // --ignore-scripts: prepack would rebuild, and we are inspecting what is there.
 let packed;
 try {
-  const output = execFileSync("npm", ["pack", "--dry-run", "--json", "--ignore-scripts"], {
+  // npm.cmd on Windows: execFileSync does not go through a shell, so the bare
+  // name resolves to nothing there (spawnSync npm ENOENT). Naming the file
+  // keeps the call shell-free, which is what we want around an argument list.
+  const npm = process.platform === "win32" ? "npm.cmd" : "npm";
+  const output = execFileSync(npm, ["pack", "--dry-run", "--json", "--ignore-scripts"], {
     cwd: EMBED,
     encoding: "utf8",
     stdio: ["ignore", "pipe", "ignore"],
