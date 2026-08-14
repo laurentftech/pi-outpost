@@ -7,8 +7,16 @@ dist/
 *.log
 .DS_Store
 .env
-.claude/settings.local.json
 .code-review-graph/
+
+# Local agent tooling and its output — each checkout configures its own
+.claude/
+.agents/
+.mcp.json
+.playwright-mcp/
+
+# Sample documents used to try the readers by hand: personal, and often large
+exemples/
 
 # Test coverage artifacts (vitest --coverage)
 coverage/
