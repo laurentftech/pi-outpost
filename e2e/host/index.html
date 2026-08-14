@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>embed host page</title>
+    <style>
+      /*
+       * Deliberately hostile host styles. A widget that survives these survives a
+       * real application: every one of them is something a design system does, and
+       * every one would reach the widget if the Shadow DOM were not doing its job.
+       */
+      * {
+        color: rgb(255, 0, 0);
+        font-family: "Comic Sans MS", cursive;
+        box-sizing: content-box;
+      }
+      button,
+      input,
+      textarea {
+        all: unset;
+        background: rgb(255, 0, 255);
+      }
+      body {
+        margin: 0;
+        background: rgb(240, 240, 240);
+      }
+      #widget {
+        width: 900px;
+        height: 700px;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- Witness element: the widget's own reset must not reach it. -->
+    <p id="host-text">host paragraph</p>
+    <div id="widget"></div>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>

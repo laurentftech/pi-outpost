@@ -58,6 +58,37 @@ jobs:
       - run: npm run build
       # A stylesheet can build cleanly and style nothing (#38) — check the artifact.
       - run: npm run check:css
+      # An embed package can build cleanly and be unusable: a missing entry point,
+      # or a second React bundled in. Both are invisible until someone installs it.
+      - run: npm run check:embed
+
+  # The two ways this project is consumed, in a real browser: the app the server
+  # serves, and the widget a host page mounts. Shadow DOM, cross-origin wiring and
+  # an actually-applied stylesheet are all invisible to jsdom, which is where the
+  # 847 UI tests run. Its own job: it needs a browser the other legs do not, and
+  # running in parallel keeps it off the critical path.
+  browser:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      # web/dist is what the server serves, embed/dist is what the host page imports
+      - run: npm run build
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e
+        env:
+          CI: true
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: e2e/test-results/
+          retention-days: 7
 
   # The badge, drawn and pushed here rather than by a marketplace action: this is
   # the only job that may write to the repository, and nothing outside it runs.

@@ -13,6 +13,10 @@ dist/
 # Test coverage artifacts (vitest --coverage)
 coverage/
 
+# Browser smoke test: the built host page, and what a failing run leaves behind
+e2e/dist-host/
+e2e/test-results/
+
 # Local test config (personal): the agent's workspace, its own agentDir, its writable zone
 /pi-outpost.config.json
 .pi-outpost-test-agent/

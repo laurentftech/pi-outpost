@@ -1,0 +1,5 @@
+{
+  "private": true,
+  "type": "module",
+  "//": "Not a workspace — this exists so Playwright loads the files here as ES modules. The global setup imports server/test/harness.mjs, which a CommonJS transpile could not require()."
+}

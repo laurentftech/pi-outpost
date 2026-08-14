@@ -66,6 +66,19 @@ jobs:
       - run: npm run build
       # 0.6.6 shipped unstyled; never publish that again.
       - run: npm run check:css
+      # Never publish a package whose entry points resolve to nothing, or that
+      # carries its own React into a host page that already has one.
+      - run: npm run check:embed
+
+      # The browser smoke test runs on every PR too. Repeated here because this is
+      # the last gate before the artifact becomes someone else's dependency, and
+      # the widget's integration surface — Shadow DOM, cross-origin — is exactly
+      # what a consumer meets first.
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e
+        env:
+          CI: true
 
       # BASCULE vers Node 26 pour le build du blob SEA (--build-sea + mainFormat:module)
       - name: Setup Node 26 for SEA build

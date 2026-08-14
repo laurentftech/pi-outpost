@@ -17,9 +17,13 @@
     "build": "npm run build --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "lint": "npm run lint --workspaces --if-present",
-    "check:css": "node scripts/check-web-css.mjs"
+    "check:css": "node scripts/check-web-css.mjs",
+    "check:embed": "node scripts/check-embed-package.mjs",
+    "build:e2e-host": "vite build --config e2e/vite.config.ts",
+    "test:e2e": "npm run build:e2e-host && playwright test --config e2e/playwright.config.ts"
   },
   "devDependencies": {
+    "@playwright/test": "^1.61.1",
     "concurrently": "^10.0.4"
   },
   "dependencies": {
