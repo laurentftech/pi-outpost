@@ -472,6 +472,27 @@ describe("loadConfig — resource path resolution", () => {
     });
   });
 
+  test("xlsx.maxBytes defaults to 25 MB and can be changed", async () => {
+    await withTempDir(async (dir) => {
+      const configPath = path.join(dir, "config.json");
+      await writeFile(configPath, JSON.stringify({}, null, 2));
+      assert.equal(loadConfig(dir, { config: configPath }).xlsx.maxBytes, 26_214_400);
+
+      await writeFile(configPath, JSON.stringify({ xlsx: { maxBytes: 4_000_000 } }, null, 2));
+      assert.equal(loadConfig(dir, { config: configPath }).xlsx.maxBytes, 4_000_000);
+    });
+  });
+
+  test("xlsx.maxBytes refuses a value that is not a positive integer", async () => {
+    await withTempDir(async (dir) => {
+      const configPath = path.join(dir, "config.json");
+      for (const maxBytes of ["25MB", 0, -1, 1.5]) {
+        await writeFile(configPath, JSON.stringify({ xlsx: { maxBytes } }, null, 2));
+        assert.throws(() => loadConfig(dir, { config: configPath }), /"xlsx.maxBytes" must be a positive integer/);
+      }
+    });
+  });
+
   test("pdf.maxBytes refuses a value that is not a positive integer", async () => {
     await withTempDir(async (dir) => {
       const configPath = path.join(dir, "config.json");

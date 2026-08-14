@@ -20,8 +20,9 @@ import {
   createWriteToolDefinition,
   type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
-import { DEFAULT_DOCX_MAX_BYTES, DEFAULT_PDF_MAX_BYTES, type SandboxConfig } from "./config.ts";
+import { DEFAULT_DOCX_MAX_BYTES, DEFAULT_PDF_MAX_BYTES, DEFAULT_XLSX_MAX_BYTES, type SandboxConfig } from "./config.ts";
 import { createDocxExtractToolDefinition } from "./docxTool.ts";
+import { createXlsxExtractToolDefinition } from "./xlsxTool.ts";
 import { createPdfExtractToolDefinition } from "./pdfTool.ts";
 
 /**
@@ -99,6 +100,7 @@ export async function createSandboxedTools(
   sandbox: SandboxConfig,
   pdfMaxBytes: number = DEFAULT_PDF_MAX_BYTES,
   docxMaxBytes: number = DEFAULT_DOCX_MAX_BYTES,
+  xlsxMaxBytes: number = DEFAULT_XLSX_MAX_BYTES,
 ): Promise<ToolDefinition[]> {
   const realRoot = await fs.realpath(sandbox.root);
   const readFactories: Array<(cwd: string) => ToolDefinition> = [
@@ -131,6 +133,9 @@ export async function createSandboxedTools(
   );
   readFactories.push((cwd) =>
     createDocxExtractToolDefinition({ cwd, allowedRoots: documentRoots, maxBytes: docxMaxBytes, writableRoot: realWritableRoot }),
+  );
+  readFactories.push((cwd) =>
+    createXlsxExtractToolDefinition({ cwd, allowedRoots: documentRoots, maxBytes: xlsxMaxBytes, writableRoot: realWritableRoot }),
   );
   const tools = readFactories.map((create) =>
     scopeToRoot(create(realRoot), realRoot, realRoot, readExceptions),

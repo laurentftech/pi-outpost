@@ -114,12 +114,12 @@ describe("createSandboxedTools", () => {
   describe("which tools the model gets", () => {
     test("read-only by default", async () => {
       const tools = await createSandboxedTools(config({ root }));
-      assert.deepEqual(names(tools), ["docx_extract", "find", "grep", "ls", "pdf_extract", "read"]);
+      assert.deepEqual(names(tools), ["docx_extract", "find", "grep", "ls", "pdf_extract", "read", "xlsx_extract"]);
     });
 
     test("adds edit and write only when writing is allowed", async () => {
       const tools = await createSandboxedTools(config({ root, allowWrite: true }));
-      assert.deepEqual(names(tools), ["docx_extract", "edit", "find", "grep", "ls", "pdf_extract", "read", "write"]);
+      assert.deepEqual(names(tools), ["docx_extract", "edit", "find", "grep", "ls", "pdf_extract", "read", "write", "xlsx_extract"]);
     });
 
     test("hands over the document readers with no shell and no writes", async () => {
@@ -128,6 +128,7 @@ describe("createSandboxedTools", () => {
       const tools = await createSandboxedTools(config({ root, allowWrite: false, allowBash: false }));
       assert.ok(names(tools).includes("pdf_extract"));
       assert.ok(names(tools).includes("docx_extract"));
+      assert.ok(names(tools).includes("xlsx_extract"));
       assert.ok(!names(tools).includes("bash"));
     });
 
@@ -207,6 +208,49 @@ describe("createSandboxedTools", () => {
       // Allowed through confinement; it then fails on the file itself, which is
       // not a Word document — the distinction being the point of this assertion.
       assert.equal(await denial(docx!, path.join(outside, "secret.txt")), null);
+    });
+
+    test("confines xlsx_extract to the same zone as the other read tools", async () => {
+      const tools = await createSandboxedTools(config({ root }));
+      const xlsx = tools.find((tool) => tool.name === "xlsx_extract");
+      assert.ok(xlsx !== undefined);
+
+      assert.match((await denial(xlsx, path.join(outside, "secret.xlsx"))) ?? "", /outside the sandbox/);
+      assert.match((await denial(xlsx, "../outside/secret.xlsx")) ?? "", /outside the sandbox/);
+      assert.match((await denial(xlsx, `${root}-evil/secret.xlsx`)) ?? "", /outside the sandbox/);
+    });
+
+    test("refuses to follow a symlink out of the root for xlsx_extract", async (t) => {
+      if (!symlinksAvailable) return t.skip("symlinks unavailable on this platform");
+      const tools = await createSandboxedTools(config({ root }));
+      const xlsx = tools.find((tool) => tool.name === "xlsx_extract");
+      assert.match((await denial(xlsx!, "escape/secret.xlsx")) ?? "", /outside the sandbox/);
+    });
+
+    test("lets xlsx_extract reach a declared read exception", async () => {
+      const tools = await createSandboxedTools(config({ root, readExceptions: [outside] }));
+      const xlsx = tools.find((tool) => tool.name === "xlsx_extract");
+      // Allowed through confinement; it then fails on the file itself, which is
+      // not a workbook — the distinction being the point of this assertion.
+      assert.equal(await denial(xlsx!, path.join(outside, "secret.txt")), null);
+    });
+
+    test("an xlsx destination outside the writable zone is refused too", async () => {
+      // Same rule as pdf_extract: the read zone never grants a write, and each
+      // extraction tool has to check its own destination.
+      const tools = await createSandboxedTools(
+        config({ root, allowWrite: true, readExceptions: [outside] }),
+      );
+      const xlsx = tools.find((tool) => tool.name === "xlsx_extract");
+      await assert.rejects(
+        () =>
+          (xlsx!.execute as unknown as (id: string, params: unknown, signal?: AbortSignal) => Promise<unknown>)(
+            "call-x",
+            { path: "readme.md", output_path: path.join(outside, "out.md") },
+            undefined,
+          ),
+        /outside the writable zone/,
+      );
     });
 
     test("refuses to follow a symlink out of the root for pdf_extract", async (t) => {

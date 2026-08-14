@@ -84,6 +84,19 @@ export interface DocxConfig {
 /** Default Word ceiling — 25 MiB, matching the PDF one. */
 export const DEFAULT_DOCX_MAX_BYTES = 26_214_400;
 
+export interface XlsxConfig {
+  /**
+   * Largest workbook the extraction tool will open, in bytes. Default: 25 MiB.
+   * The same ceiling as PDFs and Word documents — a spreadsheet compresses far
+   * better than either, so this bounds the file, and the row and character caps
+   * in the reader bound what one call returns.
+   */
+  maxBytes: number;
+}
+
+/** Default spreadsheet ceiling — 25 MiB, matching the other two. */
+export const DEFAULT_XLSX_MAX_BYTES = 26_214_400;
+
 export interface PdfConfig {
   /**
    * Largest PDF the raw-file route will serve, in bytes. Default: 25 MiB.
@@ -182,6 +195,7 @@ export interface AppConfig {
   pdf: PdfConfig;
   /** Word handling (size ceiling for the extraction tool). */
   docx: DocxConfig;
+  xlsx: XlsxConfig;
 }
 
 /** Launch-time options from the command line — the top of the precedence chain. */
@@ -343,6 +357,7 @@ export function loadConfig(
     branding: {},
     pdf: { maxBytes: DEFAULT_PDF_MAX_BYTES },
     docx: { maxBytes: DEFAULT_DOCX_MAX_BYTES },
+    xlsx: { maxBytes: DEFAULT_XLSX_MAX_BYTES },
   };
 
   let raw: Record<string, unknown>;
@@ -487,6 +502,16 @@ export function loadConfig(
         fail(`"docx.maxBytes" must be a positive integer (bytes)`);
       }
       config.docx.maxBytes = docx.maxBytes;
+    }
+  }
+
+  if (raw.xlsx !== undefined) {
+    const xlsx = asObject(raw.xlsx, "xlsx");
+    if (xlsx.maxBytes !== undefined) {
+      if (typeof xlsx.maxBytes !== "number" || !Number.isInteger(xlsx.maxBytes) || xlsx.maxBytes <= 0) {
+        fail(`"xlsx.maxBytes" must be a positive integer (bytes)`);
+      }
+      config.xlsx.maxBytes = xlsx.maxBytes;
     }
   }
 
