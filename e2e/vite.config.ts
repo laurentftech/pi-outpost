@@ -1,5 +1,11 @@
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
+
+// fileURLToPath, not URL.pathname: on Windows the latter yields "/D:/..." with a
+// leading slash, which is not a path any filesystem call accepts.
+const HERE = path.dirname(fileURLToPath(import.meta.url));
 
 /**
  * Builds the host page the embed smoke test loads.
@@ -10,10 +16,10 @@ import { defineConfig } from "vite";
  * whether or not the Shadow DOM did anything.
  */
 export default defineConfig({
-  root: new URL("./host", import.meta.url).pathname,
+  root: path.join(HERE, "host"),
   plugins: [react()],
   build: {
-    outDir: new URL("./dist-host", import.meta.url).pathname,
+    outDir: path.join(HERE, "dist-host"),
     emptyOutDir: true,
   },
 });

@@ -25,6 +25,7 @@
 import { execFileSync } from "node:child_process";
 import { access, readFile } from "node:fs/promises";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 
 const ROOT = path.resolve(import.meta.dirname, "..");
 const EMBED = path.join(ROOT, "embed");
@@ -122,10 +123,13 @@ if (unpublished.length > 0) {
 // Imported rather than pattern-matched: an export the bundler renamed, or a
 // module that throws while initialising, both fail here and neither shows in a
 // substring search. mount() itself is not called — it needs a DOM.
+//
+// As a file:// URL: on Windows an absolute path starts with a drive letter,
+// which the ESM loader reads as an unsupported "d:" scheme.
 const entry = path.join(EMBED, manifest.module ?? manifest.main);
 let exported;
 try {
-  exported = await import(entry);
+  exported = await import(pathToFileURL(entry).href);
 } catch (error) {
   fail(
     `importing the ESM entry threw: ${error.message}`,
