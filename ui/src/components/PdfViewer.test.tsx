@@ -149,13 +149,23 @@ describe("PdfViewer", () => {
     serverReturnsPdf(1);
     const cancel = vi.fn();
     let resolveRender: (() => void) | undefined;
+    const startRender = vi.fn(() => ({
+      promise: new Promise<void>((resolve) => (resolveRender = resolve)),
+      cancel,
+    }));
     getPage.mockImplementation(async () => ({
       getViewport: () => ({ width: 10, height: 10 }),
-      render: () => ({ promise: new Promise<void>((resolve) => (resolveRender = resolve)), cancel }),
+      render: startRender,
     }));
 
     render(<PdfViewer path="report.pdf" />);
     await screen.findByText("Page 1 / 1");
+    // The counter says the document loaded; it does not say a render started.
+    // The component only holds a task to cancel once it is past `await getPage`,
+    // so zooming before that finds nothing in flight and the test fails without
+    // the component having done anything wrong — which is how it flaked, on the
+    // slowest runner and nowhere else.
+    await waitFor(() => expect(startRender).toHaveBeenCalled());
 
     // pdf.js refuses a second render on a canvas already rendering, so zooming
     // mid-render must cancel the first one rather than start beside it.
