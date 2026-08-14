@@ -73,18 +73,38 @@ if (absent.length > 0) {
 // --ignore-scripts: prepack would rebuild, and we are inspecting what is there.
 let packed;
 try {
-  // npm.cmd on Windows: execFileSync does not go through a shell, so the bare
-  // name resolves to nothing there (spawnSync npm ENOENT). Naming the file
-  // keeps the call shell-free, which is what we want around an argument list.
-  const npm = process.platform === "win32" ? "npm.cmd" : "npm";
-  const output = execFileSync(npm, ["pack", "--dry-run", "--json", "--ignore-scripts"], {
+  packed = new Set(packedFiles().map((entry) => entry.path));
+} catch (error) {
+  fail(`could not inspect the package tarball: ${error.message}`);
+}
+
+/**
+ * `npm pack --dry-run --json`, run without a shell on every platform.
+ *
+ * Windows makes this awkward twice over: the executable is `npm.cmd`, so the
+ * bare name resolves to nothing (ENOENT), and since the CVE-2024-27980 fix Node
+ * refuses to spawn a `.cmd` at all unless `shell: true` (EINVAL). Passing
+ * `shell: true` would work — the arguments here are literals — but it hands an
+ * argument list to a command interpreter for no reason.
+ *
+ * So npm is invoked the way npm invokes itself: node running npm's own CLI
+ * entry point, whose path npm exports as `npm_execpath` to the scripts it runs.
+ * Outside `npm run` that variable is absent, and the platform name is the
+ * fallback — with the shell Windows requires for a `.cmd`.
+ */
+function packedFiles() {
+  const cli = process.env.npm_execpath;
+  const [command, argv, useShell] = cli
+    ? [process.execPath, [cli], false]
+    : [process.platform === "win32" ? "npm.cmd" : "npm", [], true];
+
+  const output = execFileSync(command, [...argv, "pack", "--dry-run", "--json", "--ignore-scripts"], {
     cwd: EMBED,
     encoding: "utf8",
     stdio: ["ignore", "pipe", "ignore"],
+    shell: useShell && process.platform === "win32",
   });
-  packed = new Set(JSON.parse(output)[0].files.map((entry) => entry.path));
-} catch (error) {
-  fail(`could not inspect the package tarball: ${error.message}`);
+  return JSON.parse(output)[0].files;
 }
 
 const unpublished = declared.filter(([, relative]) => !packed.has(relative.replace(/^\.\//, "")));
