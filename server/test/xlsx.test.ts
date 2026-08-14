@@ -16,7 +16,7 @@ import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 import { describe, test } from "node:test";
 import {
@@ -409,9 +409,13 @@ describe("determinism", () => {
 
 /** Extract the formats fixture in a child process with the environment given. */
 async function renderIn(env: Record<string, string>): Promise<string> {
+  // The module is imported as a file:// URL, not as a path: on Windows an
+  // absolute path starts with a drive letter, which the ESM loader reads as an
+  // unsupported "d:" scheme. readFile takes the plain path, which it wants.
+  const module = pathToFileURL(path.join(HERE, "..", "src", "xlsx.ts")).href;
   const script =
     `import { readFile } from "node:fs/promises";` +
-    `import { extractXlsx } from ${JSON.stringify(path.join(HERE, "..", "src", "xlsx.ts"))};` +
+    `import { extractXlsx } from ${JSON.stringify(module)};` +
     `const bytes = new Uint8Array(await readFile(${JSON.stringify(path.join(FIXTURES, "xlsx-formats.xlsx"))}));` +
     `process.stdout.write((await extractXlsx(bytes)).markdown);`;
 
