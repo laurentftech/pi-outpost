@@ -61,6 +61,30 @@ function serveHostPage(): Promise<{ url: string; close: () => Promise<void> }> {
 }
 
 /**
+ * The environment the test server gets: no provider key except one that is not
+ * real.
+ *
+ * Both halves matter. Without the removals the run inherits whatever the
+ * developer has configured, and the suite passes on their machine and fails on a
+ * runner that has nothing — which is exactly what happened the first time this
+ * job ran in CI: with no key at all the app renders the onboarding screen ("No
+ * model provider is set up yet") and there is no composer to find. Without the
+ * fake key it would now fail everywhere instead.
+ *
+ * The key is never used: PI_OFFLINE keeps the runtime off the network and no
+ * test sends a message. It exists so the interface under test is the interface,
+ * not the setup wizard.
+ */
+function onlyOneFakeProvider(): Record<string, string | undefined> {
+  const env: Record<string, string | undefined> = {};
+  for (const name of Object.keys(process.env)) {
+    if (/API_KEY|AUTH_TOKEN|_TOKEN$/.test(name)) env[name] = undefined;
+  }
+  env.ANTHROPIC_API_KEY = "sk-ant-not-a-real-key";
+  return env;
+}
+
+/**
  * Boots what both specs need and hands the URLs to the workers through the
  * environment. Returning a function registers it as the teardown.
  */
@@ -83,11 +107,15 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
   const root = await makeWorkspace({
     "readme.md": "# workspace\n\nA file the browser is allowed to see.\n",
   });
-  const server = await startServer(root, {
-    // The host page is a different origin, which is the whole point of the widget.
-    server: { allowedOrigins: [host.url] },
-    branding: { title: "embed smoke" },
-  });
+  const server = await startServer(
+    root,
+    {
+      // The host page is a different origin, which is the whole point of the widget.
+      server: { allowedOrigins: [host.url] },
+      branding: { title: "embed smoke" },
+    },
+    { env: onlyOneFakeProvider() },
+  );
 
   process.env.PI_E2E_HOST_URL = host.url;
   process.env.PI_E2E_SERVER_URL = server.base;
