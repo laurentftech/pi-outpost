@@ -50,7 +50,7 @@ A Node server runs the agent — a pi `AgentSession` in its own process, or a su
 
 ## Quick start
 
-Requirements: Node ≥ 22.19 (what the pi SDK itself requires), and **model credentials**. You do *not* need [pi](https://github.com/earendil-works/pi) installed — its SDK is bundled here.
+Requirements: Node ≥ 24 (what the pi SDK itself requires), and **model credentials**. You do *not* need [pi](https://github.com/earendil-works/pi) installed — its SDK is bundled here.
 
 ### Run it
 

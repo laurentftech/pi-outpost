@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "engines": {
-    "node": ">=26"
+    "node": ">=24"
   },
   "scripts": {
     "dev": "tsx watch src/index.ts --config ../pi-outpost.config.dev.json",
