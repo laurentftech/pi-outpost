@@ -7,7 +7,7 @@
 
 **A web chat UI for the [pi coding agent](https://github.com/earendil-works/pi)** — run it as a standalone app, or embed it as a Shadow-DOM-isolated widget inside any web app. Built directly on pi's [SDK](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/sdk.md).
 
-A Node server embeds a pi `AgentSession` and bridges it to a React chat UI over WebSocket: streaming responses, collapsible thinking blocks, live tool-execution cards (bash, edit, …), steering while the agent runs, and abort.
+A Node server runs the agent — a pi `AgentSession` in its own process, or a supervised `pi --mode rpc` child — and bridges it to a React chat UI over WebSocket: streaming responses, collapsible thinking blocks, live tool-execution cards (bash, edit, …), steering while the agent runs, and abort.
 
 <p align="center">
   <img src="docs/screenshots/chat-light.png" alt="pi-outpost, light theme" width="49%">
@@ -35,8 +35,11 @@ A Node server embeds a pi `AgentSession` and bridges it to a React chat UI over 
 - Conversation tree: edit a past message to re-ask it, and the old exchange stays reachable as a branch you can navigate back to
 - File browser: lazy-loaded tree, full-size viewer (syntax-highlighted, Markdown rendered) and an editor with save inside the writable zone — all confined to the same root the agent's own tools can see; entries outside `sandbox.writableRoot` render dimmed, and truncated entries reveal their complete name on hover. Create a file or folder from the tree itself: `+` on a writable directory opens an input where the file will land (a trailing `/` makes it a folder), and a new file opens straight into the editor. Files can also be opened with the operating system's associated application, renamed, or deleted after confirmation. Drag a writable file onto a writable directory to move it, or drag a read-only file there to copy it
 - PDF: select one in the tree and it renders in the viewer (pages, zoom, keyboard paging); the agent reads its text and tables through a `pdf_extract` tool — no shell, no external binary, no OCR
+- Office documents: `docx_extract`, `xlsx_extract` and `pptx_extract` give the agent Word text and tables, one markdown table per spreadsheet sheet (values rendered from their number format), and slide structure with speaker notes. Same rules as `pdf_extract` — available wherever `read` is, never behind `allowBash`, confined to the sandbox root, each with its own size ceiling. Every extractor also takes `output_path`: write the whole document to a workspace file and get a summary back, instead of paging through it and then writing it out, which spends the context twice
+- Structured results: a tool can hand back **data** — a graph, a sequence, a table — and the UI renders it natively instead of showing text that describes a picture nobody can check. When the document names a `target` it becomes an approval gate: someone is agreeing to a change an external authority will then apply. Versioned schema, a conformance suite, and a standalone validator a producer elsewhere can run against its own output; the agent gets a `present_structure` tool and a bundled skill
+- Agent runtime: embedded pi SDK by default, or a supervised `pi --mode rpc` child process (see [`agentRuntime`](#standalone-configuration)) — same browser protocol either way
 - In-browser sandbox settings: tweak root, writable root, write and bash permissions from the gear menu — no config file edit or server restart needed
-- Attachments: drop or paste images and text files into the composer; the file you are previewing attaches itself as an `@path` reference, so the agent reads it on demand instead of the prompt carrying its content. Selected `.docx` and `.xlsx` files do the same even though they have no inline preview, because the agent can read them through built-in extraction tools
+- Attachments: drop or paste images and text files into the composer; the file you are previewing attaches itself as an `@path` reference, so the agent reads it on demand instead of the prompt carrying its content. Dropping a PDF, `.docx`, `.xlsx` or `.pptx` uploads it into the workspace and attaches the **path** — which is what the extraction tools take, and why a document is no longer refused as oversized text or as an unsupported binary
 - Git: uncommitted-change badges in the tree, per-file diffs in the viewer, log and commit inspection, and a per-file history graph (renames followed) that diffs the file between any two revisions — the working tree included. Commit rows truncate to keep the graph dense; hovering one gives back the whole subject
 - Session cost: tokens and price per turn in the model bar, and a session-analysis panel behind it — tokens/cost charted across turns, tool calls ranked by output size or failure, requests ranked by what they cost, every row jumping back to the message that produced it
 - Slash commands with autocompletion (`/` in the composer: extension commands, prompt templates, skills)
@@ -187,12 +190,15 @@ See [`pi-outpost.config.example.json`](pi-outpost.config.example.json).
 | `sandbox.allowWrite` | Adds edit/write, confined to `sandbox.writableRoot` (or the whole root if unset) (default `false`) |
 | `sandbox.writableRoot` | Read-write zone: subdirectory of `root` that edit/write are further confined to. Must be inside `root`. Defaults to `root` itself |
 | `sandbox.allowBash` | Adds bash — **not path-confined**, explicit opt-in (default `false`) |
+| `agentRuntime` | Which runtime serves the browser: `{ "mode": "embedded" }` (default) keeps the pi SDK session in this process; `{ "mode": "rpc", "executable": "pi", "args": [] }` supervises a `pi --mode rpc` child. pi-outpost appends `--mode rpc` and derives `--session-dir` itself, so `args` may not contain either, nor `--tools`/`--system-prompt` (those come from `tools`/`systemPrompt`), nor any flag that would make the child print something and exit. A failed executable stops startup — there is no silent fallback to embedded. **`sandbox` cannot be combined with `rpc`** and the pair is refused at load: the sandbox is a replacement toolset this server builds, and a child builds its own |
 | `pdf.maxBytes` | Largest PDF the viewer may load, in bytes (default `26214400` — 25 MB). Every other file keeps the 1 MB limit. The `pdf_extract` tool refuses a PDF above the same ceiling |
+| `docx.maxBytes` / `xlsx.maxBytes` / `pptx.maxBytes` | Same ceiling, per format, for `docx_extract` / `xlsx_extract` / `pptx_extract` |
 | `tools` | Tool allowlist in non-sandbox mode, e.g. `["read","grep","find","ls"]` |
 | `noExtensions` | Disable extension discovery entirely |
 | `extensionPaths` | Explicit extension `.ts`/`.mjs` files to load (resolved relative to the config file's directory). Loaded via the pi SDK's jiti-based loader — works in dev mode and the npm-published bundle |
 | `extensionScripts` | Extension `.mjs` files loaded at runtime via `import()` — works in dev mode and the npm-published bundle. Each file must default-export an `ExtensionFactory`. Paths are resolved relative to the config file's directory |
 | `noSkills` | Disable skill discovery entirely. Needed for real isolation: even with a custom `agentDir`, skills also auto-load from `~/.agents/skills` (hardcoded to the real home directory) and from `.agents/skills` walked up from `cwd` to the git root — neither is scoped by `agentDir` |
+| `skillPaths` | Explicit skill files or directories to load, in addition to discovery. Loaded even under `noSkills` — naming a skill and being given nothing is the worse surprise. Paths are resolved relative to the config file's directory |
 | `noPromptTemplates` | Disable prompt template auto-discovery entirely (both `agentDir` and the project's `cwd/.pi/prompts`). Relevant when `cwd` points at a real project: it doubles as a resource-discovery root, so that project's own prompt templates load too unless disabled |
 | `promptPaths` | Explicit prompt template directories to load (in addition to auto-discovered ones). Paths are resolved relative to the config file's directory |
 | `allowedModels` | Restrict the model switcher to these `{ "provider", "id" }` pairs. Without it, every built-in model whose provider has configured auth is listed — often more variants than a given deployment (e.g. an air-gapped internal endpoint) actually serves |
@@ -235,7 +241,7 @@ Build it with `npm run build --workspace @pi-outpost/embed` (outputs ESM + CJS t
 Two things to configure on the server side regardless of deployment topology:
 
 - **`server.allowedOrigins`**: the widget's WebSocket connection carries the *host page's* origin (e.g. `https://your-app.example.com`), not pi-outpost's own — add it explicitly, even same-domain deployments need this (only `localhost`/`127.0.0.1` are trusted automatically).
-- **CORS**: `/branding` and `/health` are plain HTTP endpoints with no CORS headers. They work with zero extra config when the widget and the backend share an origin (recommended: reverse-proxy pi-outpost under your own domain). A genuinely cross-origin deployment needs a CORS layer in front — not built in yet.
+- **CORS**: an origin listed in `server.allowedOrigins` now receives CORS headers on the HTTP endpoints too (`/branding`, `/health`, `/files/raw`, the static app), with cache variants preserved — so a genuinely cross-origin widget works without a proxy in front. The allowlist is the whole of it: no origin outside it is answered.
 
 A raw iframe (`<iframe src="https://your-pi-outpost-server">`) still works too, and still honors `branding.allowThemeToggle: false` plus the host-driven theme channel:
 
@@ -255,12 +261,12 @@ Custom messages (`pi.sendMessage()` with a `customType`, see [Message and Entry 
 shared/  (protocol types — events, ChatItem, DialogRequest)
 
 ui/  (React components & hooks)       server/  (Fastify + ws)
-┌──────────────────────────┐          ┌─────────────────────────┐
-│ @pi-outpost/ui exports  │          │ AgentSession (pi SDK)   │
-│ CopyButton, DiffBlocks, │  /ws     │ SDK events → lean wire  │
-│ ToolCard, useAgent, …   │ ◄───────► │ events (shared/)        │
-│                          │  JSON    │                         │
-└────────┬─────────────────┘          └─────────────────────────┘
+┌──────────────────────────┐          ┌──────────────────────────┐
+│ @pi-outpost/ui exports  │          │ agent runtime boundary   │
+│ CopyButton, DiffBlocks, │  /ws     │  ├ embedded AgentSession │
+│ ToolCard, useAgent, …   │ ◄───────► │  └ pi --mode rpc child   │
+│                          │  JSON    │ events → lean wire       │
+└────────┬─────────────────┘          └──────────────────────────┘
          │ import
          ▼
 web/  (React + Vite + Tailwind)     embed/  (Shadow-DOM widget)
@@ -272,7 +278,7 @@ web/  (React + Vite + Tailwind)     embed/  (Shadow-DOM widget)
 
 Sessions persist in `<agentDir>/sessions/` — reconnecting clients receive the full history (`hello` message).
 
-**Single-tenant by design.** One `AgentSession`, one `clients` set, and `broadcast()` sends every event to every socket: two people connected to the same server share one conversation, and the sandbox roots are resolved once at startup. That is deliberate for a personal deployment, and the thing to fix before a shared one — see [#4, multi-user support](https://github.com/laurentftech/pi-outpost/issues/4).
+**Single-tenant by design.** One agent runtime, one `clients` set, and `broadcast()` sends every event to every socket: two people connected to the same server share one conversation, and the sandbox roots are resolved once at startup. That is deliberate for a personal deployment, and the thing to fix before a shared one — see [#4, multi-user support](https://github.com/laurentftech/pi-outpost/issues/4).
 
 ## License
 
