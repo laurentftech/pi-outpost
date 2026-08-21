@@ -65,7 +65,8 @@ The server opens the interface in your browser once it is listening. `--no-open`
 **Or download a single file with nothing installed at all** — no Node, no npm.
 Each release carries an executable per platform under
 [Releases](https://github.com/laurentftech/pi-outpost/releases): the server and the
-web UI are inside it. Unsigned, so macOS and Windows warn on first launch; see
+web UI are inside it. On macOS and Linux, `chmod +x` it first — a release download
+carries no execute bit. Unsigned, so macOS and Windows warn on first launch; see
 [docs/sea-packaging.md](docs/sea-packaging.md), which also covers building one
 yourself with `npx pi-outpost build-exe`.
 

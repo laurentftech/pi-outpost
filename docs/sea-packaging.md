@@ -19,6 +19,18 @@ queues until it times out rather than failing. On an Intel Mac, build your own w
 `npx pi-outpost build-exe` — it works, and it is what produced the executables this
 feature was tested with.
 
+On macOS and Linux, mark it executable first — a release asset is a plain HTTP
+download, which carries no POSIX permission bits no matter what CI set them to, so
+every download lands non-executable:
+
+```bash
+chmod +x pi-outpost-<version>-<os>-<arch>
+```
+
+Skip this and it fails closed rather than misleadingly: `Permission denied`, exit
+126, nothing about signing or Gatekeeper. Windows needs no equivalent — a `.exe`
+carries no execute bit to lose.
+
 They are **not signed for distribution**. macOS Gatekeeper and Windows SmartScreen
 both warn on a downloaded unsigned binary; on macOS you clear it with
 `xattr -d com.apple.quarantine ./pi-outpost` or the Open-anyway button in System
