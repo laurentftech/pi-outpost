@@ -66,7 +66,8 @@ The server opens the interface in your browser once it is listening. `--no-open`
 Each release carries an executable per platform under
 [Releases](https://github.com/laurentftech/pi-outpost/releases): the server and the
 web UI are inside it. On macOS and Linux, `chmod +x` it first — a release download
-carries no execute bit. Unsigned, so macOS and Windows warn on first launch; see
+carries no execute bit. Unsigned, so macOS blocks a fresh download outright and
+Windows SmartScreen warns on first launch — both clear in a step; see
 [docs/sea-packaging.md](docs/sea-packaging.md), which also covers building one
 yourself with `npx pi-outpost build-exe`.
 

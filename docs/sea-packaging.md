@@ -31,10 +31,24 @@ Skip this and it fails closed rather than misleadingly: `Permission denied`, exi
 126, nothing about signing or Gatekeeper. Windows needs no equivalent — a `.exe`
 carries no execute bit to lose.
 
-They are **not signed for distribution**. macOS Gatekeeper and Windows SmartScreen
-both warn on a downloaded unsigned binary; on macOS you clear it with
-`xattr -d com.apple.quarantine ./pi-outpost` or the Open-anyway button in System
-Settings. Real signing means a certificate and notarisation, and is not done here.
+They are **not signed for distribution**, and no code fix closes that. The ad-hoc
+signature above (`resignMacho`) satisfies Apple Silicon's kernel-level requirement
+that a binary carry *some* signature to run at all — that's a different check from
+Gatekeeper's, and does not satisfy it. Gatekeeper acts on the quarantine attribute a
+browser or `curl` sets on anything downloaded from the internet, unrelated to the
+`chmod` above, and it is not a dismiss-and-continue warning on first launch:
+
+- **macOS** refuses to open a fresh download outright — not a warning dialog with an
+  obvious way through. Clear it once with
+  `xattr -d com.apple.quarantine ./pi-outpost-<version>-macos-<arch>`, or open it via
+  Control-click → Open, or via System Settings → Privacy & Security, which surfaces
+  an **Open Anyway** button once the first attempt has been blocked.
+- **Windows** SmartScreen shows "Windows protected your PC" with only **Don't run**
+  visible; click **More info**, then **Run anyway**. A managed/corporate machine may
+  have that button removed by policy — there is no user-side bypass then.
+
+Real signing means a paid Apple Developer ID plus notarisation, and a code-signing
+certificate on Windows; neither is done here.
 
 **Build it from the package you have:**
 
