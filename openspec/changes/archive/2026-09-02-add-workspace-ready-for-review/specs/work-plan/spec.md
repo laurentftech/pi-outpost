@@ -1,7 +1,7 @@
 ## MODIFIED Requirements
 
 ### Requirement: Structured agent management
-The system SHALL expose structured operations for the agent to create a plan, add, edit, move, remove, and reopen tasks, set status and status reason, add or remove dependencies and resource references, and replace the plan. Each accepted operation SHALL be atomic. The system SHALL describe the Work Plan to the agent as explicit working state for systematic decomposition, execution tracking, and verification, not merely progress reporting. For non-trivial work, it SHALL guide the agent to maintain and reconcile that state before declaring completion; trivial interactions SHALL NOT require a plan. The system SHALL NOT infer task state or completion from tool calls, messages, or Structured Exchange artifacts.
+The system SHALL expose structured operations for the agent to create a plan, add, edit, move, remove, and reopen tasks, set status and status reason, add or remove dependencies and resource references, set task evidence, and replace the plan. Each accepted operation SHALL be atomic. The system SHALL describe the Work Plan to the agent as explicit working state for systematic decomposition, execution tracking, and verification, not merely progress reporting. For non-trivial work, it SHALL guide the agent to maintain and reconcile that state before declaring completion; trivial interactions SHALL NOT require a plan. The system SHALL NOT infer task state, completion, or evidence from tool calls, messages, Structured Exchange artifacts, or other activity.
 
 When work has reached a result that requires human review, the agent SHALL explicitly reconcile the plan so every task is `done` or `needs_review` and at least one task is `needs_review`. That authoritative plan state SHALL mean the owning workspace is ready for review whenever it is otherwise inactive. Acknowledgement SHALL be represented by explicit Work Plan mutations that resolve the applicable `needs_review` tasks; resumed work SHALL be represented by moving the applicable tasks out of `done` or `needs_review`. The system SHALL NOT mutate the plan or acknowledge review merely because a turn ends, a tool completes, or the user selects the workspace.
 
@@ -17,6 +17,10 @@ When work has reached a result that requires human review, the agent SHALL expli
 - **GIVEN** the agent used a Work Plan for non-trivial work
 - **WHEN** the agent is preparing to declare that work complete
 - **THEN** its Work Plan guidance requires the agent to reconcile the plan with execution and verification outcomes first
+
+#### Scenario: Activity does not fabricate evidence
+- **WHEN** the agent runs a test, command, tool, or external check without recording evidence
+- **THEN** the Work Plan evidence remains unchanged
 
 #### Scenario: Review readiness comes from the plan
 - **GIVEN** an inactive workspace whose Work Plan has at least one `needs_review` task

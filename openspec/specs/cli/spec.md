@@ -55,6 +55,7 @@ The binary SHALL additionally accept an `update` subcommand, and a `--check` fla
 #### Scenario: HelpDocumentsTheUpdateCommand
 - **WHEN** the user runs `pi-outpost --help`
 - **THEN** the `update` subcommand and its `--check` flag appear alongside the other commands
+
 ### Requirement: InitCommand
 
 `pi-outpost init` SHALL write a starter configuration file and print its path: `./pi-outpost.config.json` by default, or `config.json` in the user config directory with `--global`. It SHALL refuse to overwrite an existing file unless `--force` is given. The file it writes SHALL be valid input for the server as-is.
@@ -89,10 +90,17 @@ The binary SHALL additionally accept an `update` subcommand, and a `--check` fla
 ### Requirement: StartingOpensTheInterface
 
 However the server was started — from a package runner, from an installed binary, or
-from a standalone executable — starting it for a person SHALL open the interface in
-their default browser, at the address the server is actually listening on, once it is
-listening and not before. Anyone who starts this reads the address off the terminal
-and pastes it into a browser; the software can do that itself.
+from a standalone executable — starting it for a person SHALL open the interface at
+the address the server is actually listening on, once it is listening and not before.
+Anyone who starts this reads the address off the terminal and pastes it into a
+browser; the software can do that itself.
+
+It SHALL be opened in a window of its own — without tabs or an address bar — where
+the machine can present one. This is what the interface is: an application that was
+launched, not a page that was visited. Where no such window can be presented, it
+SHALL open in the default browser, exactly as it does otherwise; the shape of the
+window SHALL be overridable from the command line and from configuration, in both
+directions.
 
 The address SHALL be the one bound, not the one requested: where the port was chosen
 by the operating system, the opened address SHALL be the port it chose.
@@ -106,25 +114,42 @@ hosted elsewhere. The decision SHALL be overridable in both directions from the
 command line and from configuration.
 
 A failure to open SHALL NOT be a failure to start: the server SHALL keep running and
-SHALL print the address, which is what the operator would have read anyway.
+SHALL print the address, which is what the operator would have read anyway. This
+SHALL hold for a window of its own exactly as it holds for a browser tab, and failing
+to present one SHALL NOT be reported as an error the operator must act on.
 
 #### Scenario: StartingOnADesktopOpensTheInterface
 - **GIVEN** a machine with a desktop session
 - **WHEN** the operator starts the server
-- **THEN** the default browser opens the interface, and it is being served by the time the page loads
+- **THEN** the interface opens, and it is being served by the time the page loads
+
+#### Scenario: ItOpensInAWindowOfItsOwn
+- **GIVEN** a machine that can present a window without tabs or an address bar
+- **WHEN** the server is started for a person
+- **THEN** the interface appears in such a window
+
+#### Scenario: WhereNoOwnWindowIsPossible
+- **GIVEN** a machine whose browser cannot present a window of its own
+- **WHEN** the server is started for a person
+- **THEN** the interface opens in the default browser, as it does today
+- **AND** the server reports no error for it
+
+#### Scenario: TheOperatorCanAskForATab
+- **WHEN** the operator asks for the interface in the default browser rather than its own window
+- **THEN** it opens in the default browser, on a machine that could have presented its own window
 
 #### Scenario: LaunchedWithoutATerminal
 - **GIVEN** a standalone executable launched from a file manager, with no terminal attached
-- **THEN** the browser still opens — the absence of a terminal is not the absence of a person
+- **THEN** the interface still opens — the absence of a terminal is not the absence of a person
 
 #### Scenario: TheOpenedAddressIsTheBoundOne
 - **GIVEN** a configuration that lets the operating system choose the port
-- **WHEN** the browser is opened
+- **WHEN** the interface is opened
 - **THEN** the address it opens is the one the server bound, not the one configured
 
 #### Scenario: NothingOpensWhereNothingCanSeeIt
 - **WHEN** the server runs with no desktop session available
-- **THEN** no browser is launched, and the address is printed as usual
+- **THEN** nothing is launched, and the address is printed as usual
 
 #### Scenario: TheOperatorCanSaySoEitherWay
 - **WHEN** the operator asks for no browser, or asks for one where it would not have opened
@@ -134,3 +159,58 @@ SHALL print the address, which is what the operator would have read anyway.
 - **GIVEN** a machine where launching a browser fails
 - **WHEN** the server starts
 - **THEN** it is running and serving, and the address is printed
+
+### Requirement: AFailureToStartIsSaidOutLoud
+
+A server that cannot start SHALL report why in the same voice as every other failure this
+binary can have: one line naming what went wrong, and a non-zero exit. This holds wherever
+the start fails — no configuration file to be found, a flag that will not parse, or a port
+that will not bind. It SHALL NOT exit on an unhandled error, and it SHALL NOT print a stack
+trace as its explanation — a stack is where the code was, not what the operator must do.
+
+An address already in use SHALL be named for what it is. The message SHALL carry the host
+and port that were refused, and SHALL name the way to move it, so that reading the line is
+enough to act on it. Any other reason a bind fails SHALL still produce a readable line
+rather than a trace.
+
+The message SHALL survive the console it was printed on, for every one of those failures.
+Where the process owns that console — a standalone executable started from a file manager,
+which is how the interface is meant to be opened and which has no terminal behind it — the
+process SHALL hold it open until the operator dismisses it, because exiting would close the
+window and take the only copy of the message with it. Where the console belongs to
+something else — a shell, a script, a continuous integration runner — the process SHALL
+exit immediately and wait for no one.
+
+A server that starts SHALL be unaffected: nothing added to its output, and nothing to
+dismiss.
+
+#### Scenario: ThePortIsAlreadyTaken
+- **GIVEN** something is already listening on the host and port the server was asked to bind
+- **WHEN** the operator starts the server
+- **THEN** it exits non-zero having printed a single line that names that host and port and the flag that moves it
+- **AND** no stack trace is printed
+
+#### Scenario: TheBindFailsForSomeOtherReason
+- **GIVEN** an address the machine will not let this process bind
+- **WHEN** the operator starts the server
+- **THEN** it exits non-zero having printed a readable line naming the failure, not a stack trace
+
+#### Scenario: TheMessageOutlivesTheWindow
+- **GIVEN** a launch that owns its console, with no terminal behind it
+- **WHEN** the server fails to start
+- **THEN** the process holds the console open until the operator dismisses it, so the message can be read
+
+#### Scenario: AFailureBeforeListeningIsHeldToo
+- **GIVEN** a launch that owns its console
+- **WHEN** the start fails before it reaches the port — no configuration file, or a flag that will not parse
+- **THEN** the console is held open until the operator dismisses it, exactly as a bind failure is
+- **AND** the same launch from a shell exits at once, with the message and no prompt
+
+#### Scenario: NobodyElseIsMadeToWait
+- **GIVEN** a launch from a shell, a script, or a continuous integration runner
+- **WHEN** the server fails to start
+- **THEN** it exits immediately, waiting for no input
+
+#### Scenario: AServerThatStartsIsUnchanged
+- **WHEN** the server binds successfully
+- **THEN** it prints what it prints today, waits for nothing, and keeps running
