@@ -229,8 +229,17 @@ export class TerminalManager {
       const { shell, args } = this.getDefaultShell(shellOptions);
       const resolvedCwd = path.resolve(cwd);
 
+      // `NODE_V8_COVERAGE` is the one inherited variable that bites. Node sets it for
+      // the whole process tree when a run asks for coverage, so a shell started here
+      // writes its own coverage JSON into the collection directory — and this class
+      // kills its shells, by design, on close and on disconnect. A child killed
+      // mid-write leaves a truncated file and the parent's reporter dies parsing it:
+      // a green run reported as a red one. Empty rather than deleted, because
+      // `delete` on an env object is silently undone (see `piRpcProcess.ts`). A user's
+      // shell has no business carrying the server's instrumentation besides.
       const env = {
         ...process.env,
+        NODE_V8_COVERAGE: "",
         TERM: "xterm-256color",
         COLORTERM: "truecolor",
       };
