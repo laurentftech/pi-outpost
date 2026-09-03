@@ -156,6 +156,8 @@ export class Workspace {
    */
   documentToolIdleTurns = new Map<string, number>();
   documentToolsEverUsed = new Set<string>();
+  /** Called during the turn now running, so the end of it does not count as idle. */
+  documentToolsUsedThisTurn = new Set<string>();
 
   /** Loaded from the runtime's session file by the caller; null until then. */
   workPlan: WorkPlan | null = null;

@@ -29,12 +29,19 @@ export const DOCUMENT_TOOLS = Object.values(EXTRACTORS);
  *
  * The boundary before the name is what keeps prose out: "convert this to PDF" names no
  * file, and publishing on the bare word would put all four back in every conversation
- * that merely discusses documents. A name must be preceded by a path character or the
- * start of a token, carry at least one character of its own, and be followed by
- * whitespace, punctuation that ends a path — a sentence's full stop included, since
- * "read a.pdf." is a mention and `a.pdf.bak` is close enough to one — or nothing.
+ * that merely discusses documents.
+ *
+ * Inside the name, almost anything goes — parentheses and brackets included, because
+ * `report (1).pdf` is what a browser calls the second copy of a download and
+ * `report[final].docx` is what a colleague sends. An earlier version excluded them and
+ * silently failed on exactly the files people attach most.
+ *
+ * What still ends a name: whitespace, quotes and angle brackets, followed by the
+ * extension and then end-of-token — whitespace, closing punctuation (a bracket that
+ * closed a parenthetical, "(report.pdf)", as much as a comma), or a sentence's full
+ * stop.
  */
-const MENTION = /(?:^|[\s"'`(\[<@])(?:[^\s"'`()[\]<>]*[/\\])?[^\s"'`()[\]<>/\\]+\.(pdf|docx|xlsx|pptx)(?=$|[\s"'`)\]>,;:!?.])/gi;
+const MENTION = /(?:^|[\s"'`<])(?:[^\s"'`<>]*[/\\])?[^\s"'`<>/\\]+\.(pdf|docx|xlsx|pptx)(?=$|[\s"'`>)\],;:!?.])/gi;
 
 /**
  * The extractor tools the text calls for, in the order they are registered.

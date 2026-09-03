@@ -54,8 +54,15 @@ Publication SHALL be derived from the persisted plan rather than from separately
 and a change SHALL take effect within the turn that causes it: an agent that creates a plan
 SHALL be able to record evidence against it without waiting for the next turn.
 
-Each tool SHALL name the other and say what it carries, and an action refused because it
-belongs to the other tool SHALL be refused by name, saying where it lives.
+Each tool SHALL name the other and say what it carries, in its description and its prompt
+guidelines, so an agent that reaches for an operation the tool it is holding does not have
+is told where to find it **before** it calls.
+
+A call naming an action the tool does not carry SHALL be refused. For a model that reaches
+the tool through the runtime, the refusal comes from the published schema, whose `action`
+enumerates only that tool's operations — the runtime validates against it before the tool
+runs, so the tool's own guard never sees such a call. That guard SHALL nevertheless answer
+by name for the callers that bypass validation.
 
 Where a runtime cannot change its published toolset — the RPC dialect has no command for it —
 that runtime SHALL publish both tools at all times rather than emulate the gating. The
@@ -88,10 +95,13 @@ embedded SDK runtime is the supported target for this behaviour.
 - **THEN** each action appears in exactly one of them
 - **AND** none is absent from both
 
-#### Scenario: An action asked of the wrong tool is refused by name
-- **WHEN** an agent asks one tool for an action the other carries
-- **THEN** the refusal names the action and the tool that carries it
-- **AND** it does not enumerate the requirements of unrelated operations
+#### Scenario: An action asked of the wrong tool is refused
+- **WHEN** a model asks one tool for an action the other carries
+- **THEN** the call is refused before the tool runs, by the schema that does not enumerate it
+
+#### Scenario: Each tool says where the other operations live
+- **WHEN** an agent reads either tool's description and guidelines
+- **THEN** it is told which tool carries the operations this one does not
 
 #### Scenario: Creation no longer advertises evidence, and the store still accepts it
 - **WHEN** an agent inspects the creation task shape

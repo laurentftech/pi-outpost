@@ -724,7 +724,7 @@ describe("work_plan tool", () => {
     }
   });
 
-  it("gives every action exactly one home, and says where when asked of the wrong tool", async () => {
+  it("gives every action exactly one home, and each tool says where the others live", () => {
     // Checked against the enumerated actions rather than a list written here: a new
     // action must land in one of the tools on purpose, not be forgotten by both.
     const homes = new Map<string, string[]>();
@@ -739,17 +739,33 @@ describe("work_plan tool", () => {
       assert.equal(carriers.length, 1, `${action} is carried by exactly one tool, not ${carriers.length}`);
     }
 
-    const refused = await createWorkPlanToolDefinition().execute(
-      "call-wrong-tool",
-      { action: "set_evidence", taskId: "build", evidence: [] },
-      undefined,
-      undefined,
-      { sessionManager: { getSessionFile: () => "/nowhere/session.jsonl" } } as never,
+    // How a *model* is refused: the runtime validates a call against the published schema
+    // before the tool runs, and this action is not in this tool's enum. Asserting the
+    // tool's own guard here would assert a path no model reaches — the guard is kept for
+    // callers that bypass validation, and the wire test in `documentToolsWire` shows what
+    // the boundary actually does.
+    const validator = Compile(createWorkPlanToolDefinition().parameters as never);
+    assert.equal(validator.Check({ action: "set_evidence", taskId: "build", evidence: [] }), false);
+    assert.equal(
+      Compile(createWorkPlanExtendedToolDefinition().parameters as never)
+        .Check({ action: "set_evidence", taskId: "build", evidence: [] }),
+      true,
+      "and it is accepted by the tool that carries it",
     );
-    assert.equal(refused.isError, true);
-    const text = (refused.content as Array<{ text: string }>)[0].text;
-    assert.match(text, /set_evidence/, "the refusal names the action");
-    assert.match(text, /work_plan_extended/, "and the tool that carries it");
+
+    // What keeps a model out of that refusal in the first place: each tool names the other.
+    const common = createWorkPlanToolDefinition();
+    assert.match(
+      [common.description, ...(common.promptGuidelines ?? [])].join(" "),
+      /work_plan_extended/,
+      "the common tool says where the operations it lacks live",
+    );
+    const extended = createWorkPlanExtendedToolDefinition();
+    assert.match(
+      [extended.description, ...(extended.promptGuidelines ?? [])].join(" "),
+      /work_plan\b/,
+      "and the extended tool points back",
+    );
   });
 
   it("keeps each published definition under its context budget", () => {

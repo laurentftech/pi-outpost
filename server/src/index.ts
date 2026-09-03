@@ -1224,11 +1224,31 @@ function withholdDocumentTools(workspace: Workspace): void {
  * handles another, and withdrawing would invalidate a caching provider's prefix a
  * second time to save what it had already stopped paying for.
  */
-function publishDocumentTools(workspace: Workspace, text: string): void {
+function publishDocumentTools(workspace: Workspace, text: string): string[] {
+  const published: string[] = [];
   for (const tool of documentToolsFor(text)) {
     // Naming the document is what resets the clock, whether or not the tool was already
     // there: the conversation has just turned back to a document of that kind.
-    if (workspace.agent.setToolPublished(tool, true)) workspace.documentToolIdleTurns.set(tool, 0);
+    if (workspace.agent.setToolPublished(tool, true)) {
+      if (!workspace.documentToolIdleTurns.has(tool)) published.push(tool);
+      workspace.documentToolIdleTurns.set(tool, 0);
+    }
+  }
+  return published;
+}
+
+/**
+ * Undo a publication whose turn never happened.
+ *
+ * Publishing has to precede the dispatch, so it precedes the runtime's answer about
+ * whether the prompt was taken at all — and a refused prompt raises no `agent_end`, so
+ * nothing would age the tool out. Without this, a prompt rejected for want of a model
+ * leaves an extractor in the next, unrelated request.
+ */
+function unpublishDocumentTools(workspace: Workspace, tools: string[]): void {
+  for (const tool of tools) {
+    workspace.agent.setToolPublished(tool, false);
+    workspace.documentToolIdleTurns.delete(tool);
   }
 }
 
@@ -1252,7 +1272,10 @@ const DOCUMENT_TOOL_IDLE_LIMIT = { unused: 1, used: 5 };
  * what is counted here is silence.
  */
 function ageDocumentTools(workspace: Workspace): void {
+  const used = workspace.documentToolsUsedThisTurn;
   for (const [tool, idle] of workspace.documentToolIdleTurns) {
+    // A turn that called it is not a turn it sat idle through.
+    if (used.has(tool)) continue;
     const limit = workspace.documentToolsEverUsed.has(tool)
       ? DOCUMENT_TOOL_IDLE_LIMIT.used
       : DOCUMENT_TOOL_IDLE_LIMIT.unused;
@@ -1263,6 +1286,7 @@ function ageDocumentTools(workspace: Workspace): void {
     workspace.agent.setToolPublished(tool, false);
     workspace.documentToolIdleTurns.delete(tool);
   }
+  used.clear();
 }
 
 function publishWorkPlanTools(workspace: Workspace, plan: WorkPlan | null): void {
@@ -1769,10 +1793,13 @@ function onRuntimeEvent(workspace: Workspace, event: RuntimeEvent): void {
       break;
     case "tool_start": {
       // Called, so the clock goes back to zero — and it is no longer a tool nobody has
-      // ever wanted, which is what decides how long it may sit idle from here.
+      // ever wanted, which is what decides how long it may sit idle from here. Noted as
+      // used *this turn* too: the turn that called it is not one of its idle ones, and
+      // ageing it at the end would spend the first of five on the work itself.
       if (workspace.documentToolIdleTurns.has(event.toolName)) {
         workspace.documentToolIdleTurns.set(event.toolName, 0);
         workspace.documentToolsEverUsed.add(event.toolName);
+        workspace.documentToolsUsedThisTurn.add(event.toolName);
       }
       const callHtml = workspace.renderer.renderToolCallHtml(event.toolCallId, event.toolName, event.args);
       broadcast(workspace, {
@@ -2499,7 +2526,7 @@ async function handlePrompt(workspace: Workspace, text: string, images?: WireIma
   // Before the turn, not after: a tool published once the request is on its way is a
   // tool the model could not call. The composer references an attached document by
   // path, so the text naming a document is the same event as one arriving.
-  publishDocumentTools(workspace, promptText);
+  const publishedNow = publishDocumentTools(workspace, promptText);
   await workspace.agent.prompt(promptText, {
     ...(images?.length ? { images } : {}),
     // Echo the user message only once accepted (avoids ghost bubbles on reject).
@@ -2508,6 +2535,8 @@ async function handlePrompt(workspace: Workspace, text: string, images?: WireIma
     // the same rule.
     onAccepted: (accepted) => {
       if (accepted) broadcast(workspace, { type: "user", text, ...(images?.length ? { images } : {}) });
+      // A refused prompt runs no turn, so nothing would ever age these out.
+      else unpublishDocumentTools(workspace, publishedNow);
     },
   });
   // The entries and tree are announced when the turn settles, not here: an RPC

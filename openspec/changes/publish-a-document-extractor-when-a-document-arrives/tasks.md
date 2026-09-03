@@ -5,7 +5,7 @@
 ## 2. Publish on arrival
 
 - [x] 2.1 `documentToolsFor(text)` in `server/src/documentTools.ts`: the extractors a prompt calls for, matched on a path-like token so prose ("convert this to PDF") publishes nothing.
-- [x] 2.2 Called from `handlePrompt` before `agent.prompt`, publishing through `AgentRuntime.setToolPublished` — the seam the Work Plan split added.
+- [x] 2.2 Called from `handlePrompt` before `agent.prompt`, publishing through `AgentRuntime.setToolPublished` — the seam the Work Plan split added. A prompt the runtime then refuses runs no turn, so nothing would age the publication out: the rejection path withdraws exactly what that call published.
 - [x] 2.3 Withheld at every bind: boot, a project started later, and a session replacement, which is a new conversation.
 - [x] 2.4 Each published extractor carries a count of idle turns (`Workspace.documentToolIdleTurns`, with `documentToolsEverUsed`): a `tool_start` resets it to zero and marks the tool as wanted, `agent_end` ages the rest, and the threshold is one turn for a tool never called, five for one that was. Naming the document again republishes and resets. The wire test caught the ordering bug in the first version of this — the check read the runtime *after* publishing, so nothing was ever counted.
 
@@ -20,7 +20,11 @@
 
 - [x] 4.1 Done — `verification.md`. A real model, a real `.docx`: no extractor at rest in a workspace that holds the document, and `docx_extract` called on the first attempt once the prompt named it.
 
-## 5. Validation
+## 5. Review
 
-- [x] 5.1 Done — 8 scenarios, all covered.
-- [ ] 5.2 `npm run check:scenarios`, `openspec validate --strict`, and the **full** server suite — both CI failures on this stack came from files a partial local run never touched.
+- [x] 5.0 `codex-review --base main` over the whole stack. Four findings, all confirmed against the code and all fixed: filenames carrying parentheses or brackets matched nothing (`report (1).pdf` — the common case), a publication survived a refused prompt, the turn that called a tool was counted among its idle turns, and the named wrong-tool refusal was unreachable through the path a model actually takes. The last one was also a coverage overstatement, corrected in the spec and the matrix rather than papered over.
+
+## 6. Validation
+
+- [x] 6.1 Done — 10 scenarios, all covered.
+- [ ] 6.2 `npm run check:scenarios`, `openspec validate --strict`, and the **full** server suite — both CI failures on this stack came from files a partial local run never touched.
