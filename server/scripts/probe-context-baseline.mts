@@ -3,14 +3,16 @@
  * prompt plus every tool's name, description, guidelines and parameter schema.
  *
  * Three configurations — pi's own defaults, what a pi-outpost session publishes at rest,
- * and everything it can publish — read from real `AgentSession`s rather than from the
- * sources, so the prompt guidelines a tool contributes are counted where they actually
- * land.
+ * and what it publishes once a Work Plan is open — read from real `AgentSession`s rather
+ * than from the sources, so the prompt guidelines a tool contributes are counted where
+ * they actually land.
  *
- * "At rest" is the figure that matters, because it is what almost every turn of almost
- * every conversation carries: no `work_plan_extended` (published once a session has a
- * plan) and no document extractor (published once a document is named). The full set is
- * what a session that plans and reads documents ends up with.
+ * Those are the two states a conversation actually sits in. "At rest" is most turns of
+ * most conversations: no `work_plan_extended`, no document extractor. "A Work Plan open"
+ * is what real work settles into, since a plan is opened once and kept for the session.
+ *
+ * There is deliberately no "everything published" row: an extractor is forgotten five
+ * turns after its last call, so holding all four at once is a moment, not a state.
  *
  * Run it with `npx tsx server/scripts/probe-context-baseline.mts`. It is what the
  * figures in `docs/comparison.md` come from, and re-running it is how they are checked
@@ -45,6 +47,8 @@ const tok = (n: number) => `${(n / 4 / 1000).toFixed(1)}k`;
 
 /** What a session withholds until something asks for it. */
 const ON_DEMAND = ["work_plan_extended", "pdf_extract", "docx_extract", "xlsx_extract", "pptx_extract"];
+/** The document extractors alone: transient, forgotten five turns after their last call. */
+const EXTRACTORS = ["pdf_extract", "docx_extract", "xlsx_extract", "pptx_extract"];
 
 async function measure(label: string, options: { outpost: boolean; withheld?: string[] }) {
   const cwd = await realpath(await mkdtemp(path.join(tmpdir(), "baseline-")));
@@ -108,4 +112,6 @@ async function measure(label: string, options: { outpost: boolean; withheld?: st
 
 await measure("pi (defaults)", { outpost: false });
 await measure("pi-outpost (at rest)", { outpost: true, withheld: ON_DEMAND });
-await measure("pi-outpost (everything published)", { outpost: true });
+// The state real work settles into: a plan is opened once and kept, where an extractor
+// comes and goes with the document that called for it.
+await measure("pi-outpost (a Work Plan open)", { outpost: true, withheld: EXTRACTORS });

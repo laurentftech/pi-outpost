@@ -50,14 +50,17 @@ every conversation, and the first thing to look at when a context window feels s
 |---|---|---|---|
 | pi, default toolset | ~0.7k tokens | 8 tools, ~1.7k | **~2.4k tokens** |
 | **Pi Outpost, at rest** | ~1.5k tokens | 11 tools, ~3.8k | **~5.2k tokens** |
+| **Pi Outpost, a Work Plan open** | ~1.7k tokens | 12 tools, ~4.9k | **~6.6k tokens** |
 | opencode 1.18.27, default agent | ~2.4k tokens | 10 tools, ~5.2k | **~7.6k tokens** |
-| Pi Outpost, everything published | ~2.0k tokens | 16 tools, ~7.0k | ~9.0k tokens |
 
-**At rest** is what almost every turn of almost every conversation carries. Five tools are
-withheld until something asks for them: `work_plan_extended` until the session has a plan,
-and the four document extractors until a document of their kind is named. A session that
-plans and reads documents ends up at the last row; one that refactors TypeScript stays at
-the second.
+Those are the two states a conversation sits in. **At rest** is most turns of most
+conversations: no `work_plan_extended`, no document extractor. **A Work Plan open** is what
+real work settles into, since a plan is opened once and kept for the session — it is the
+figure to compare against opencode's, which carries every tool it has on every request.
+
+A document extractor adds ~0.5k on top while it lasts, and it does not last: five turns
+after its last call it is forgotten. There is deliberately no "everything published" row —
+holding all four at once is a moment, not a state.
 
 It was **~10.7k** before that work — the row this page carried when it was first written,
 and the reason the work happened.
@@ -80,14 +83,14 @@ Per tool, largest first, in the state each is actually sent in:
 
 | Tool | chars | ~tokens | Sent |
 |---|---|---|---|
-| `work_plan_extended` | 4 602 | ~1.2k | once the session has a plan |
+| `work_plan_extended` | 4 602 | ~1.2k | once the session has a plan, then kept |
 | `work_plan` | 4 331 | ~1.1k | always |
 | `bash` (opencode) | 5 319 | ~1.3k | always |
-| `xlsx_extract` | 2 345 | ~0.6k | once a spreadsheet is named |
+| `xlsx_extract` | 2 345 | ~0.6k | while a spreadsheet is in play |
 | `write_structure_figure` | 2 195 | ~0.5k | always |
-| `docx_extract` | 2 027 | ~0.5k | once a Word file is named |
-| `pdf_extract` | 1 944 | ~0.5k | once a PDF is named |
-| `pptx_extract` | 1 933 | ~0.5k | once a deck is named |
+| `docx_extract` | 2 027 | ~0.5k | while a Word file is in play |
+| `pdf_extract` | 1 944 | ~0.5k | while a PDF is in play |
+| `pptx_extract` | 1 933 | ~0.5k | while a deck is in play |
 | `edit` | 1 773 | ~0.4k | always |
 | `present_structure` | 1 535 | ~0.4k | always |
 | `grep` | 1 107 | ~0.3k | always |
@@ -110,7 +113,7 @@ npx tsx server/scripts/probe-context-baseline.mts
 ```
 
 It builds three real `AgentSession`s — pi's defaults, what pi-outpost publishes at rest,
-and everything it can publish — then reads `session.systemPrompt` and
+and what it publishes with a Work Plan open — then reads `session.systemPrompt` and
 `session.getAllTools()`, counting the JSON of each tool's name, description, prompt
 guidelines and parameter schema. The resting figure withholds the on-demand tools through
 `setActiveToolsByName`, the way the server does, rather than subtracting them afterwards:
@@ -127,9 +130,8 @@ enough to tell a 4k tool from a 0.2k one, which is the decision this page is for
 - **Skills, extensions and project context files.** Discovery is off in the probe. A
   deployment that loads skills pays for them on top, and that cost belongs to the
   deployment rather than to the software.
-- **What a conversation goes on to publish.** The resting figure is the floor, not the
-  average: a session that opens a work plan adds ~1.2k tokens for the rest of it, and one
-  that reads a spreadsheet adds ~0.6k until five turns pass without another call.
+- **The transient tools.** A document extractor adds ~0.5k while the document is being
+  worked on and goes five turns after its last call, so neither row above includes one.
 - **The sandbox.** It replaces the built-in tools with path-scoped equivalents of much
   the same size, so the figure moves little.
 - **Two methods, one comparison.** pi and pi-outpost are read from their own sessions
