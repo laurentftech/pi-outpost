@@ -272,7 +272,10 @@ await writeFile(
     // What the child answers for each model, and what it silently clamps to on a
     // model change — the real one does both.
     thinkingLevelsByModel: {
-      "local/qwen3.8-27b": ["low", "medium", "high", "xhigh"],
+      // `off` included, as a real reasoning model's set is: thinking can be turned off
+      // whatever the effort tiers are. Without it the child would step a returning `off`
+      // *up* to `low`, which is a fake's artefact and not what a deployment sees.
+      "local/qwen3.8-27b": ["off", "low", "medium", "high", "xhigh"],
       "local/plain-mini": ["off", "low", "medium", "high", "xhigh"],
     },
   }),
