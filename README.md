@@ -23,6 +23,7 @@ once — each with its own sandbox, history and agent — and a sandbox you deci
 - [Start in 5 minutes](#start-in-5-minutes)
 - [How do I…](#how-do-i)
 - [What you get](#what-you-get)
+- [Next to pi and opencode](#next-to-pi-and-opencode)
 - [Model credentials](#model-credentials)
 - [Projects](#projects)
 - [Settings from the browser](#settings-from-the-browser)
@@ -211,6 +212,23 @@ one needs, the command that proves it works, and the caution that goes with it.
   prefill
 - Two agent runtimes behind the same interface: the bundled pi SDK, or a supervised
   `pi --mode rpc` child process
+
+## Next to pi and opencode
+
+pi is the agent underneath this: the second column below is the first plus what a web
+interface adds. opencode is a terminal agent of the same family, listed for scale.
+
+| | pi | Pi Outpost | opencode |
+|---|---|---|---|
+| Interface | terminal | browser, installable, embeddable | terminal |
+| Several projects at once | — | yes, each with its own agent and sandbox | — |
+| Files, git, PDF and Office in the interface | — | yes | — |
+| Baseline context (system prompt + tool definitions) | **~2.4k tokens** | **~11k tokens** | not measured |
+
+That baseline is what every turn carries before you have typed anything, and most of the
+difference is one tool: `work_plan` alone is ~4k tokens. The full table, the per-tool
+breakdown and the probe that produced them are in
+[`docs/comparison.md`](docs/comparison.md).
 
 ## Model credentials
 
