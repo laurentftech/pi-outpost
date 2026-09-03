@@ -6,8 +6,8 @@
 > been checked on more than one machine and one run.
 
 
-Measured on **2026-09-03**, against **pi-outpost 0.20.1** plus the tool-publication work
-that followed it (#162, #164, #166), and the **pi SDK 0.84.4** it bundles. All three columns are measured — opencode **1.18.27**, installed and run for this
+Measured on **2026-09-03**, against **pi-outpost 0.20.1** plus the tool work that followed
+it (#162, #164, #166, #167), and the **pi SDK 0.84.4** it bundles. All three columns are measured — opencode **1.18.27**, installed and run for this
 page. The features are read from documentation and behaviour; the context figures come
 from the probes described below and can be re-run.
 
@@ -49,9 +49,9 @@ every conversation, and the first thing to look at when a context window feels s
 | | system prompt | tools | baseline |
 |---|---|---|---|
 | pi, default toolset | ~0.7k tokens | 8 tools, ~1.7k | **~2.4k tokens** |
-| **Pi Outpost, at rest** | ~1.5k tokens | 11 tools, ~3.9k | **~5.4k tokens** |
+| **Pi Outpost, at rest** | ~1.5k tokens | 11 tools, ~3.8k | **~5.2k tokens** |
 | opencode 1.18.27, default agent | ~2.4k tokens | 10 tools, ~5.2k | **~7.6k tokens** |
-| Pi Outpost, everything published | ~2.0k tokens | 16 tools, ~7.3k | ~9.3k tokens |
+| Pi Outpost, everything published | ~2.0k tokens | 16 tools, ~7.0k | ~9.0k tokens |
 
 **At rest** is what almost every turn of almost every conversation carries. Five tools are
 withheld until something asks for them: `work_plan_extended` until the session has a plan,
@@ -59,7 +59,8 @@ and the four document extractors until a document of their kind is named. A sess
 plans and reads documents ends up at the last row; one that refactors TypeScript stays at
 the second.
 
-It was **~10.7k** before that work — the row this page carried when it was first written.
+It was **~10.7k** before that work — the row this page carried when it was first written,
+and the reason the work happened.
 
 opencode's ten tools, largest first: `bash` 5 319 chars (~1.3k), `task` 3 856 (~1.0k),
 `todowrite` 2 686 (~0.7k), `edit` 1 958, `read` 1 734, `webfetch` 1 293, `grep` 1 183,
@@ -68,18 +69,19 @@ descriptions are written at length — and every one of them is sent on every re
 is what puts its floor above a Pi Outpost session at rest.
 
 The comparison worth drawing is `todowrite` against `work_plan`: the same job — an
-agent-owned list of what it is doing — at **2 686 characters against 4 969**. It was
+agent-owned list of what it is doing — at **2 686 characters against 4 331**. It was
 16 160 when this page was first written, which is what prompted the work: 73 copies of one
-regex, a second way to spell `update_task`, and the collection shapes for four operations
-that cannot be called before a plan exists. What is left does more than `todowrite` —
-dependencies, evidence, review states — and is now within twice its size.
+regex, a second way to spell `update_task`, the collection shapes for four operations that
+cannot be called before a plan exists, and 92 length bounds restating what the normaliser
+already enforced. What is left does more than `todowrite` — dependencies, evidence, review
+states — and is now within 1.6× of its size.
 
 Per tool, largest first, in the state each is actually sent in:
 
 | Tool | chars | ~tokens | Sent |
 |---|---|---|---|
-| `work_plan_extended` | 5 360 | ~1.3k | once the session has a plan |
-| `work_plan` | 4 969 | ~1.2k | always |
+| `work_plan_extended` | 4 602 | ~1.2k | once the session has a plan |
+| `work_plan` | 4 331 | ~1.1k | always |
 | `bash` (opencode) | 5 319 | ~1.3k | always |
 | `xlsx_extract` | 2 345 | ~0.6k | once a spreadsheet is named |
 | `write_structure_figure` | 2 195 | ~0.5k | always |
@@ -126,8 +128,8 @@ enough to tell a 4k tool from a 0.2k one, which is the decision this page is for
   deployment that loads skills pays for them on top, and that cost belongs to the
   deployment rather than to the software.
 - **What a conversation goes on to publish.** The resting figure is the floor, not the
-  average: a session that opens a work plan adds ~1.3k tokens for the rest of it, and one
-  that reads a spreadsheet adds ~0.6k until five turns pass without another.
+  average: a session that opens a work plan adds ~1.2k tokens for the rest of it, and one
+  that reads a spreadsheet adds ~0.6k until five turns pass without another call.
 - **The sandbox.** It replaces the built-in tools with path-scoped equivalents of much
   the same size, so the figure moves little.
 - **Two methods, one comparison.** pi and pi-outpost are read from their own sessions
