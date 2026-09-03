@@ -338,7 +338,9 @@ Both flows rebuild the session at once — no server restart — and never alter
 by the deployment. Extension folders warn that they execute code; an extension-bearing or
 mixed Git repository also requires revision-specific confirmation before updating.
 `extensionLock` still permits skill-only enrollment from a mixed preview, but blocks
-extension activation and updates of the mixed repository as a unit.
+extension activation and updates of the mixed repository as a unit. The enrollment warning
+is browser-side acknowledgement rather than access control; `extensionLock` is the
+server-side boundary. Update confirmation is revision-bound and checked by the server.
 
 The Git updater only performs a clean fast-forward to the assessed upstream revision. Fix
 dirty, detached, ahead, diverged, or missing-upstream states in an external terminal, then

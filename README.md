@@ -303,7 +303,10 @@ interface offers to remove.
 A deployment can forbid any of it: `sandboxLocks` locks individual sandbox fields,
 `extensionLock` forbids extension-path changes (skill paths stay editable — loading code is
 not the same act as pointing the agent at more text to read). What is locked is refused by
-the server, not merely hidden by the interface.
+the server, not merely hidden by the interface. The enrollment warning is a browser-side
+acknowledgement, not an authorization boundary; deployments that must forbid extension
+activation should set `extensionLock`. Update confirmation is revision-bound and enforced
+again by the server.
 
 If the file cannot be written, nothing is applied and the session in front of you is left
 exactly as it was.

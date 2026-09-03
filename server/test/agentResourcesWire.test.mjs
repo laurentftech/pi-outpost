@@ -245,7 +245,7 @@ test("updating a shared repository reloads every started workspace and broadcast
   const { remote, seed } = await makeRemote(root);
   const checkout = path.join(root, "shared-resources");
   run(root, ["clone", "-q", remote, checkout]);
-  const server = await startServer(root, { openProjects: [beta], noSkills: false, skillPaths: [path.join(checkout, "skills")] });
+  const server = await startServer(root, { openProjects: [beta], skillPaths: [path.join(checkout, "skills")] });
   t.after(() => server.stop());
   const alpha = connect(server.wsUrl());
   const betaClient = connect(server.wsUrl());

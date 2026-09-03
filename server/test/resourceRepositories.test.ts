@@ -417,7 +417,9 @@ describe("guarded repository updates", () => {
       assert.deepEqual(new Set(assessments.map((entry) => entry.repositoryId)), new Set(inventory.repositories.map((repo) => repo.id)));
       assert.ok(maximum > 1, `expected parallel refreshes, observed ${maximum}`);
       assert.ok(maximum <= 4, `refresh concurrency exceeded four: ${maximum}`);
-      assert.equal(commands.filter((args) => args[0] === "fetch").length, 8);
+      const fetches = commands.filter((args) => args.includes("fetch"));
+      assert.equal(fetches.length, 8);
+      assert.ok(fetches.every((args) => args.some((arg) => arg.startsWith("core.hooksPath="))));
     } finally {
       useResourceGitObserver();
     }

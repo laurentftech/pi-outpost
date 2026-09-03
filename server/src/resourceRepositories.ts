@@ -458,7 +458,7 @@ export class ResourceRepositoryService {
       if (!branch) return (repo.assessment = { ...blockedAssessment(repo.id, "detached", "The repository has a detached HEAD"), checkedAt });
       const upstream = await tryGit(repo.path, ["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}"]);
       if (!upstream) return (repo.assessment = { ...blockedAssessment(repo.id, "no-upstream", "The current branch has no upstream"), branch, checkedAt });
-      if (fetch) await runGit(repo.path, ["fetch", "--quiet"]);
+      if (fetch) await runGit(repo.path, ["-c", `core.hooksPath=${this.hooksDir}`, "fetch", "--quiet"]);
       const localRevision = (await runGit(repo.path, ["rev-parse", "HEAD"])).trim();
       const upstreamRevision = (await runGit(repo.path, ["rev-parse", "@{upstream}"])).trim();
       const hasSubmodules = await fileExists(path.join(repo.path, ".gitmodules"));
@@ -504,7 +504,10 @@ export class ResourceRepositoryService {
 async function repositoryFilesystemIdentity(root: string): Promise<string> {
   const gitDirectory = (await runGit(root, ["rev-parse", "--absolute-git-dir"])).trim();
   const stat = await fs.stat(gitDirectory, { bigint: true });
-  return `${stat.dev}:${stat.ino}`;
+  // Linux filesystems may recycle an inode immediately after a repository is
+  // removed. The creation timestamp distinguishes that new directory while
+  // keeping the identity stable across ordinary fetches, merges and checkouts.
+  return `${stat.dev}:${stat.ino}:${stat.birthtimeNs}`;
 }
 
 function toWireRepository(repo: KnownRepository): AgentResourceRepository {

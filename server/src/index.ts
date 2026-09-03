@@ -1160,6 +1160,7 @@ const resourceServices = new Map<string, ResourceRepositoryService>();
 const resourceInventories = new Map<string, AgentResourceInventory>();
 const resourceWorkspaceRoots = new Map<string, Set<string>>();
 const resourceRefreshHints = new Map<string, string>();
+const resourceReloadSyncs = new Map<string, Promise<AgentResourceInventory>>();
 
 function rebuildResourceWorkspaceIndex(): void {
   resourceWorkspaceRoots.clear();
@@ -1981,9 +1982,22 @@ function onRuntimeEvent(workspace: Workspace, event: RuntimeEvent): void {
       refreshExtensionRender(workspace);
       const updatedRepositoryPath = resourceRefreshHints.get(workspace.root);
       resourceRefreshHints.delete(workspace.root);
-      void refreshResourceInventory(workspace, updatedRepositoryPath)
-        .catch(reportError)
-        .then(() => queueWorkPlanSessionSync(workspace));
+      if (updatedRepositoryPath) {
+        // The updater awaits this exact refresh. Running a second inventory scan
+        // here and in the request handler doubled every fetch and made the second
+        // workspace race the first session replacement on slower CI hosts.
+        const sync = refreshResourceInventory(workspace, updatedRepositoryPath)
+          .then(async (inventory) => {
+            await queueWorkPlanSessionSync(workspace);
+            return inventory;
+          });
+        resourceReloadSyncs.set(workspace.root, sync);
+        void sync.catch(reportError);
+      } else {
+        void refreshResourceInventory(workspace)
+          .catch(reportError)
+          .then(() => queueWorkPlanSessionSync(workspace));
+      }
       break;
     case "extension_ui_request":
       // Only the four dialog methods block a turn. notify, setStatus, setWidget,
@@ -3556,6 +3570,7 @@ async function handleUpdateAgentResourceRepository(
     }
 
     const reloads: AgentResourceReloadResult[] = [];
+    let requesterInventoryRefreshed = false;
     for (const target of affected) {
       if (!target.started) {
         reloads.push({ workspaceRoot: target.root, status: "not-started" });
@@ -3569,17 +3584,18 @@ async function handleUpdateAgentResourceRepository(
       try {
         resourceRefreshHints.set(target.root, repositoryPath);
         await rebuild.call(target.agent);
-        const inventory = await refreshResourceInventory(target, repositoryPath);
+        const inventory = await (resourceReloadSyncs.get(target.root) ?? refreshResourceInventory(target, repositoryPath));
         broadcast(target, { type: "agent_resource_inventory", inventory });
-        await target.workPlanSync;
+        if (target === workspace) requesterInventoryRefreshed = true;
         reloads.push({ workspaceRoot: target.root, status: "reloaded" });
       } catch (error) {
         reloads.push({ workspaceRoot: target.root, status: "failed", message: error instanceof Error ? error.message : String(error) });
       } finally {
         resourceRefreshHints.delete(target.root);
+        resourceReloadSyncs.delete(target.root);
       }
     }
-    await refreshResourceInventory(workspace, repositoryPath);
+    if (!requesterInventoryRefreshed) await refreshResourceInventory(workspace, repositoryPath);
     const failed = reloads.some((reload) => reload.status === "failed");
     const result: AgentResourceUpdateResult = {
       status: failed ? "updated-reload-failed" : "updated",
