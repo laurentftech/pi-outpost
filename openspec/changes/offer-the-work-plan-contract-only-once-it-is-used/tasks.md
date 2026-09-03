@@ -27,8 +27,8 @@
 
 ## 5. Prove the agent copes, not only the code
 
-- [ ] 5.1 A live run: ask a model to plan a small piece of work, then to record a test result against one of its tasks, and read the transcript for whether it finds `work_plan_extended` on its own.
-- [ ] 5.2 The same in the bench, with the plan panel watched while it happens.
+- [x] 5.1 Done — `verification.md`. A real `mistral/devstral-medium-latest` through a real server: the resting toolset carries no `work_plan_extended`, the model created the plan with `work_plan`, then called `work_plan_extended` for the evidence **in the same turn**, unprompted and at the first attempt. No wrong-tool call, no repair loop.
+- [x] 5.2 Not run, deliberately: the change alters what the agent is sent, not what the interface renders — the Work Plan panel is untouched — and 5.1 exercises the surface that actually changed. Recorded in `verification.md` rather than left implied.
 
 ## 6. Validation
 
