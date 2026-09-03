@@ -39,6 +39,7 @@ import { Onboarding } from "./components/Onboarding";
 import { Sidebar } from "./components/Sidebar";
 import { TokenGate } from "./components/TokenGate";
 import { WorkPlanPanel } from "./components/WorkPlanPanel";
+import { TerminalPanel } from "./components/TerminalPanel";
 import { OutcomePanel } from "./components/OutcomePanel";
 import { useAgent } from "./useAgent";
 
@@ -134,6 +135,12 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
     switchWorkspace,
     openProject,
     closeProject,
+    openTerminal,
+    sendTerminalInput,
+    getTerminalCwd,
+    resizeTerminal,
+    closeTerminal,
+    subscribeTerminal,
     setOutcomeActive,
     refreshOutcome,
   } = useAgent(serverUrl, token, embedded, workspace);
@@ -223,6 +230,21 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
   // Session analysis drawer: closed until asked for, from the model bar's usage indicator.
   const [analysisOpen, setAnalysisOpen] = useState(false);
   const [workPlanOpen, setWorkPlanOpen] = useState(true);
+  const [terminalOpen, setTerminalOpen] = useState(false);
+  const terminalEnabled = state.terminal?.enabled ?? false;
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (!terminalEnabled) return;
+      if ((event.ctrlKey || event.metaKey) && event.key === "`") {
+        event.preventDefault();
+        setTerminalOpen((prev) => !prev);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [terminalEnabled]);
+
   const [outcomeOpen, setOutcomeOpen] = useState(false);
   const [requestedTaskId, setRequestedTaskId] = useState<string | null>(null);
   const clearRequestedTask = useCallback(() => setRequestedTaskId(null), []);
@@ -866,6 +888,8 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
             onUpdateConfig={updateConfig}
             onFetchGitLog={fetchGitLog}
             onShowCommit={fetchGitShow}
+            terminalOpen={terminalOpen}
+            onToggleTerminal={terminalEnabled ? () => setTerminalOpen((prev) => !prev) : undefined}
           />
 
           {/* `z-0` makes this a stacking context, so everything inside it (the file
@@ -1124,6 +1148,43 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
           )}
           </div>
           </div>
+
+          {terminalEnabled && (
+            <TerminalPanel
+              open={terminalOpen}
+              onClose={() => setTerminalOpen(false)}
+              cwd={state.workspace?.root}
+              onSetWorkspaceRoot={(newRoot) => {
+                if (openProject && !embedded) {
+                  openProject(newRoot);
+                } else if (state.sandbox) {
+                  updateConfig({
+                    sandbox: {
+                      root: newRoot,
+                      allowWrite: state.sandbox.allowWrite,
+                      allowBash: state.sandbox.allowBash,
+                      ...(state.sandbox.writableRoot ? { writableRoot: state.sandbox.writableRoot } : {}),
+                    },
+                  });
+                } else {
+                  // No sandbox configured on this server: keep unconstrained write and bash
+                  updateConfig({
+                    sandbox: {
+                      root: newRoot,
+                      allowWrite: true,
+                      allowBash: true,
+                    },
+                  });
+                }
+              }}
+              openTerminal={openTerminal}
+              sendTerminalInput={sendTerminalInput}
+              getTerminalCwd={getTerminalCwd}
+              resizeTerminal={resizeTerminal}
+              closeTerminal={closeTerminal}
+              subscribeTerminal={subscribeTerminal}
+            />
+          )}
 
           <footer className="border-t border-zinc-200 px-4 py-3 dark:border-zinc-800">
             <div className="mx-auto max-w-3xl">

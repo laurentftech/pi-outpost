@@ -62,7 +62,7 @@ async function bundleServer({ externals, defines = true }) {
     target: externals ? "node22" : "node26",
     outfile,
     external: externals
-      ? ["@earendil-works/pi-coding-agent", "@fastify/static", "@fastify/websocket", "fastify", "ws"]
+      ? ["@earendil-works/pi-coding-agent", "@fastify/static", "@fastify/websocket", "fastify", "node-pty", "ws"]
       : [],
     ...(defines
       ? {

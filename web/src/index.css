@@ -1,5 +1,6 @@
 @import "tailwindcss";
 @import "katex/dist/katex.min.css";
+@import "@xterm/xterm/css/xterm.css";
 
 /* Explicit source root: Tailwind's automatic content detection is relative to the
    Vite build consuming this file, which resolves correctly for web's own build but

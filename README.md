@@ -395,6 +395,9 @@ in [`pi-outpost.config.example.json`](pi-outpost.config.example.json).
 | `branding` | `title` (default `"π"`), `welcome` message, `accentColor` |
 | `branding.defaultTheme` | `"light"` \| `"dark"` \| `"system"` (default), used when the client has no stored preference |
 | `branding.allowThemeToggle` | Show the theme toggle (default `true`). Set `false` when a host app drives the theme |
+| `terminal.enabled` | Enable integrated interactive web terminal (default `false` — explicit opt-in only). See [Integrated Terminal](#integrated-terminal) |
+| `terminal.shell` | Path to the shell executable (default: Git Bash -> PowerShell on Windows; `$SHELL` -> `/bin/zsh` -> `/bin/bash` on Unix) |
+| `terminal.shellArgs` | Arguments passed to the shell (default: `["-l"]` on Unix login shells) |
 | `embed.workspaceControls` | What a mounted widget offers: `"settings"` (default, one project), `"root"` (a compact root chooser), `"projects"` (open/switch/close) |
 | `updateCheck` / `updateRegistry` | See [Staying up to date](#staying-up-to-date) |
 | `gitPath` | Path to the git executable. Unset, git is found on `PATH` and then where installers put it. See [Git](#git) |
@@ -496,6 +499,7 @@ pi-outpost update [--check]   move to the newest published version, or just look
 | `--offline` | Never fetch remote model catalogs |
 | `--open` / `--no-open` | Open the interface once listening (default: wherever a desktop session exists) |
 | `--open-in <shape>` | `window` (its own window, the default) or `browser` (a tab) |
+| `--terminal` / `--no-terminal` | Enable or disable the integrated web terminal (default `false`) |
 | `-h, --help` / `-v, --version` | |
 | `login --provider <name>` | Store a key for that provider (prompted, or read from stdin — never a flag) |
 | `init --global` | Write to the user config directory instead of `./` |
@@ -506,6 +510,16 @@ pi-outpost update [--check]   move to the newest published version, or just look
 
 There is deliberately **no `--token` flag**: a secret on the command line is readable by
 anyone who can list processes. Use `PI_OUTPOST_TOKEN` or the file's `server.token`.
+
+## Integrated Terminal
+
+When enabled via `--terminal`, `PI_OUTPOST_TERMINAL=1`, or `"terminal": { "enabled": true }` in the configuration file, Pi Outpost provides an interactive pseudo-terminal (PTY) directly in the browser:
+
+- **Full PTY multiplexing**: Real interactive login shells (`bash`, `zsh`, `powershell`) with 24-bit ANSI color and xterm.js emulation over the existing authenticated WebSocket connection.
+- **Multi-Tab with inline renaming**: Create tabs (`+`), close them (`✕`), and double-click on any tab title to rename it.
+- **Background minimization**: Press `Ctrl+\`` (or `Cmd+\``) or click `>_ terminal` in the header to minimize the panel without interrupting active builds, commands, or logs.
+- **1-Click Workspace Repointing**: The terminal detects current working directory (`pwd`) in real time (supporting OSC 7). Clicking `📁 <dir> → open as project` repositions the AI agent, file browser, and git view to that subdirectory.
+
 
 When the server cannot start — a port already taken, an unreadable directory, a bad
 configuration — it says which of those it was in a sentence, not a stack trace. A window

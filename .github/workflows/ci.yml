@@ -101,6 +101,8 @@ jobs:
     container:
       image: mcr.microsoft.com/playwright:v1.62.1-noble
     steps:
+      - name: Install build tools for native addons
+        run: apt-get update && apt-get install -y build-essential
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
         with:

@@ -39,6 +39,7 @@ scratch/
 # Agent resources the running agent discovers from cwd (prompts, skills). Local to
 # each checkout — the project's own copies live in .claude/.
 .pi/
+.pi-agent/
 
 # Interactive test ephemeral data
 interactive-test/workspace/

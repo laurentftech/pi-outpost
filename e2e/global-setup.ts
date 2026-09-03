@@ -267,6 +267,17 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
     { env: onlyOneFakeProvider() },
   );
 
+  // A dedicated server with terminal: { enabled: true }
+  const terminalServer = await startServer(
+    await makeWorkspace({ "readme.md": "# terminal enabled\n" }),
+    {
+      server: { allowedOrigins: [host.url] },
+      branding: { title: "terminal smoke" },
+      terminal: { enabled: true },
+    },
+    { env: onlyOneFakeProvider() },
+  );
+
   // A third server, whose session already holds the diagrams. Its own server
   // because the transcript comes from a scripted RPC child rather than the
   // embedded runtime, and because it is the one configured to open light —
@@ -637,9 +648,11 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
   process.env.PI_E2E_PLAN_FORK = forkSession;
   process.env.PI_E2E_EXTENSIONS_DIR = extensionsDir;
   process.env.PI_E2E_EXTENSIONS_LOCKED_URL = extensionsLocked.base;
+  process.env.PI_E2E_TERMINAL_URL = terminalServer.base;
   process.env.PI_E2E_TOKEN = E2E_TOKEN;
 
   return async () => {
+    await terminalServer.stop();
     await outcome.stop();
     await reviewReady.stop();
     await thinking.stop();

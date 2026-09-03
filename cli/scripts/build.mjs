@@ -68,6 +68,7 @@ await esbuild.build({
     "@fastify/static",
     "@fastify/websocket",
     "fastify",
+    "node-pty",
     "ws",
   ],
   define: { __PI_OUTPOST_VERSION__: JSON.stringify(version), __PI_SDK_VERSION__: JSON.stringify(piSdkVersion) },

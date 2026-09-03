@@ -97,6 +97,8 @@ interface HeaderProps {
   onShowCommit: (repo: string, sha: string) => void;
   /** What the viewer has open, so the branch chip can name that project's repository. */
   gitSelectedPath: string | null;
+  terminalOpen?: boolean;
+  onToggleTerminal?: () => void;
 }
 
 const SESSION_SEARCH_DEBOUNCE_MS = 200;
@@ -438,6 +440,21 @@ export function Header(props: HeaderProps) {
         >
           ⚒ tools
         </button>
+        {props.onToggleTerminal && (
+          <button
+            type="button"
+            onClick={props.onToggleTerminal}
+            title={props.terminalOpen ? "Close Terminal (Ctrl+`)" : "Open Terminal (Ctrl+`)"}
+            aria-pressed={props.terminalOpen}
+            className={`rounded-md border px-2 py-1 text-xs ${
+              props.terminalOpen
+                ? "border-zinc-400 bg-zinc-100 text-zinc-700 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-200"
+                : "border-zinc-300 text-zinc-500 hover:border-zinc-400 hover:text-zinc-700 dark:border-zinc-800 dark:text-zinc-400 dark:hover:border-zinc-600 dark:hover:text-zinc-200"
+            }`}
+          >
+            &gt;_ terminal
+          </button>
+        )}
         {props.showThemeToggle && <ThemeToggle theme={props.theme} onToggle={props.onToggleTheme} />}
         <button
           type="button"

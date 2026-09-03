@@ -67,6 +67,8 @@ Options
   --open             open the interface in your browser once the server is listening
   --no-open          do not (the default wherever no desktop session exists)
   --open-in <shape>  window (its own window, the default) or browser (a tab)
+  --terminal         enable the integrated interactive web terminal (default: disabled)
+  --no-terminal      explicitly disable the integrated web terminal
   -h, --help         show this help
   -v, --version      show the version
 
@@ -203,6 +205,8 @@ export function parseCli(argv: string[]): ParsedCli {
         open: { type: "boolean", default: false },
         "no-open": { type: "boolean", default: false },
         "open-in": { type: "string" },
+        terminal: { type: "boolean", default: false },
+        "no-terminal": { type: "boolean", default: false },
         help: { type: "boolean", short: "h", default: false },
         version: { type: "boolean", short: "v", default: false },
       },
@@ -244,6 +248,9 @@ export function parseCli(argv: string[]): ParsedCli {
   if (values.open && values["no-open"]) {
     throw new CliError('"--open" and "--no-open" contradict each other — see "pi-outpost --help"');
   }
+  if (values.terminal && values["no-terminal"]) {
+    throw new CliError('"--terminal" and "--no-terminal" contradict each other — see "pi-outpost --help"');
+  }
 
   const flags: CliOptions = {
     config: values.config,
@@ -258,6 +265,8 @@ export function parseCli(argv: string[]): ParsedCli {
     // config file still decides. It rides in `flags` because that is the bag
     // loadConfig() reads — a copy on the top-level result would never reach it.
     ...(openIn === undefined ? {} : { openIn: openIn as OpenShape }),
+    ...(values.terminal ? { terminal: true } : {}),
+    ...(values["no-terminal"] ? { terminal: false } : {}),
   };
 
   const kind = values.help ? "help" : values.version ? "version" : (command ?? "serve");

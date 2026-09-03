@@ -78,6 +78,25 @@ export interface SandboxLocks {
   allowBash?: boolean;
   /** Whether sandbox.writableRoot is locked. Default: false. */
   writableRoot?: boolean;
+  /** Whether terminal.enabled is locked. Default: false. */
+  terminal?: boolean;
+}
+
+export interface TerminalConfig {
+  /**
+   * Whether the integrated web terminal (PTY) is enabled. Default: false.
+   * Explicit opt-in only.
+   */
+  enabled: boolean;
+  /**
+   * Path to the shell executable to spawn (e.g. "/bin/zsh", "bash.exe", "powershell.exe").
+   * When unset, the platform default is automatically detected (Git Bash -> PowerShell -> cmd on Windows; $SHELL -> zsh -> bash on Unix).
+   */
+  shell?: string;
+  /**
+   * Arguments passed to the shell process (defaults to ["-l"] on Unix login shells).
+   */
+  shellArgs?: string[];
 }
 
 export interface DocxConfig {
@@ -493,6 +512,8 @@ export interface AppConfig {
   pptx: PptxConfig;
   /** Structured-exchange documents opened as files (size ceiling for the viewer). */
   structuredExchange: StructuredExchangeConfig;
+  /** Integrated interactive web terminal (PTY) configuration. */
+  terminal: TerminalConfig;
 }
 
 /** Launch-time options from the command line — the top of the precedence chain. */
@@ -506,6 +527,8 @@ export interface CliOptions {
   offline?: boolean;
   /** Set by --open-in; leave it out and configuration decides the shape. */
   openIn?: OpenShape;
+  /** Enable or disable the integrated web terminal. */
+  terminal?: boolean;
 }
 
 /** Thrown when no config file exists anywhere: the CLI turns it into `init` advice. */
@@ -736,6 +759,7 @@ export function loadConfig(
     xlsx: { maxBytes: DEFAULT_XLSX_MAX_BYTES },
     pptx: { maxBytes: DEFAULT_PPTX_MAX_BYTES },
     structuredExchange: { maxBytes: DEFAULT_STRUCTURED_EXCHANGE_MAX_BYTES },
+    terminal: { enabled: false },
   };
 
   let raw: Record<string, unknown>;
@@ -833,6 +857,7 @@ export function loadConfig(
       allowWrite: optionalBoolean(locks, "allowWrite", false),
       allowBash: optionalBoolean(locks, "allowBash", false),
       writableRoot: optionalBoolean(locks, "writableRoot", false),
+      terminal: optionalBoolean(locks, "terminal", false),
     };
   }
 
@@ -1071,6 +1096,22 @@ export function loadConfig(
     }
   }
 
+  if (raw.terminal !== undefined) {
+    const terminal = asObject(raw.terminal, "terminal");
+    const shell = optionalString(terminal, "shell", "terminal.shell");
+    config.terminal = {
+      enabled: optionalBoolean(terminal, "enabled", false),
+      shell: shell !== undefined && (shell.includes("/") || shell.includes("\\")) ? resolve(shell) : shell,
+      shellArgs: optionalStringArray(terminal, "shellArgs"),
+    };
+  }
+  if (flags.terminal !== undefined) {
+    config.terminal.enabled = flags.terminal;
+  } else if (env.PI_OUTPOST_TERMINAL !== undefined) {
+    const val = env.PI_OUTPOST_TERMINAL.toLowerCase();
+    config.terminal.enabled = val === "1" || val === "true";
+  }
+
   applyRuntime(config, flags, env);
   requireTokenOffLoopback(config);
 
@@ -1088,6 +1129,9 @@ export function loadConfig(
       ? `[config] agent runtime rpc: ${redactRpcCommand(config.agentRuntime)}`
       : `[config] agent runtime embedded`,
   );
+  if (config.terminal.enabled) {
+    announce(`[config] terminal enabled`);
+  }
   // The sandbox is the security boundary, and it is now reachable from a flag and a
   // variable as well as the file — so state what is actually enforced, every start.
   if (config.sandbox) {

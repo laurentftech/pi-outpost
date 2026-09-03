@@ -49,6 +49,18 @@ export interface ExtensionWidget {
   placement: "aboveEditor" | "belowEditor";
 }
 
+export type TerminalDataListener = (data: string) => void;
+export type TerminalCwdListener = (cwd: string) => void;
+export type TerminalExitListener = (exitCode?: number) => void;
+export type TerminalErrorListener = (message: string) => void;
+
+interface TerminalListeners {
+  onData: Set<TerminalDataListener>;
+  onCwd: Set<TerminalCwdListener>;
+  onExit: Set<TerminalExitListener>;
+  onError: Set<TerminalErrorListener>;
+}
+
 /** File-browser sidebar: one entry per directory path ("" = root), keyed flat (not nested). */
 export type DirState = DirEntry[] | "loading" | { error: string };
 export type OpenFile =
@@ -293,6 +305,8 @@ export interface AgentState {
   extensionLock: boolean;
   tools: { name: string; active: boolean }[];
   sandbox: { root: string; allowWrite: boolean; allowBash: boolean; writableRoot?: string } | null;
+  /** Terminal configuration — whether the terminal is enabled and locked. */
+  terminal?: { enabled: boolean; locked?: boolean } | null;
   /**
    * Skill paths added through Settings — the list the user may add to and remove
    * from. The configuration file's own `skillPaths` are not carried into the UI:
@@ -365,6 +379,7 @@ const initialState: AgentState = {
   extensionLock: false,
   tools: [],
   sandbox: null,
+  terminal: null,
   userSkillPaths: [],
   serverBrowse: null,
   settingsApply: null,
@@ -515,6 +530,7 @@ function applySnapshot(state: AgentState, message: ServerMessage & { sessionId: 
     extensionLock: message.extensionLock === true,
     tools: message.tools ?? [],
     sandbox: message.sandbox ?? null,
+    terminal: message.terminal ?? null,
     userSkillPaths: message.userSkillPaths ?? [],
     serverBrowse: null,
     settingsApply: null,
@@ -1186,6 +1202,7 @@ export function useAgent(serverUrl = "", explicitToken?: string, embedded = fals
   // open, or a manual refresh). From then on the connection-driven effect below
   // keeps the root listed across reconnects and snapshots — see its comment.
   const rootListingRequestedRef = useRef(false);
+  const terminalListenersRef = useRef(new Map<string, TerminalListeners>());
   const outcomeIdentityRef = useRef({ workspaceRoot: state.workspace?.root ?? null, sessionId: state.sessionId });
   useEffect(() => {
     outcomeIdentityRef.current = { workspaceRoot: state.workspace?.root ?? null, sessionId: state.sessionId };
@@ -1394,6 +1411,34 @@ export function useAgent(serverUrl = "", explicitToken?: string, embedded = fals
           message = JSON.parse(event.data as string) as ServerMessage;
         } catch {
           return; // ignore malformed frames
+        }
+        if (message.type === "terminal_data") {
+          const listeners = terminalListenersRef.current.get(message.terminalId);
+          if (listeners) {
+            for (const listener of listeners.onData) listener(message.data);
+          }
+          return;
+        }
+        if (message.type === "terminal_cwd") {
+          const listeners = terminalListenersRef.current.get(message.terminalId);
+          if (listeners) {
+            for (const listener of listeners.onCwd) listener(message.cwd);
+          }
+          return;
+        }
+        if (message.type === "terminal_exit") {
+          const listeners = terminalListenersRef.current.get(message.terminalId);
+          if (listeners) {
+            for (const listener of listeners.onExit) listener(message.exitCode);
+          }
+          return;
+        }
+        if (message.type === "terminal_error") {
+          const listeners = terminalListenersRef.current.get(message.terminalId);
+          if (listeners) {
+            for (const listener of listeners.onError) listener(message.message);
+          }
+          return;
         }
         if (message.type === "file_uploaded") {
           const waiter = uploadWaitersRef.current.get(message.requestId);
@@ -1750,6 +1795,43 @@ export function useAgent(serverUrl = "", explicitToken?: string, embedded = fals
     }) => {
       dispatch({ type: "settings_apply_started" });
       sendMessage({ type: "update_config", ...update });
+    },
+    openTerminal: (terminalId: string, cwd?: string, cols?: number, rows?: number) =>
+      sendMessage({ type: "terminal_open", terminalId, cwd, cols, rows }),
+    sendTerminalInput: (terminalId: string, data: string) =>
+      sendMessage({ type: "terminal_input", terminalId, data }),
+    getTerminalCwd: (terminalId: string) =>
+      sendMessage({ type: "terminal_get_cwd", terminalId }),
+    resizeTerminal: (terminalId: string, cols: number, rows: number) =>
+      sendMessage({ type: "terminal_resize", terminalId, cols, rows }),
+    closeTerminal: (terminalId: string) => {
+      sendMessage({ type: "terminal_close", terminalId });
+      terminalListenersRef.current.delete(terminalId);
+    },
+    subscribeTerminal: (
+      terminalId: string,
+      callbacks: {
+        onData?: TerminalDataListener;
+        onCwd?: TerminalCwdListener;
+        onExit?: TerminalExitListener;
+        onError?: TerminalErrorListener;
+      },
+    ) => {
+      let entry = terminalListenersRef.current.get(terminalId);
+      if (!entry) {
+        entry = { onData: new Set(), onCwd: new Set(), onExit: new Set(), onError: new Set() };
+        terminalListenersRef.current.set(terminalId, entry);
+      }
+      if (callbacks.onData) entry.onData.add(callbacks.onData);
+      if (callbacks.onCwd) entry.onCwd.add(callbacks.onCwd);
+      if (callbacks.onExit) entry.onExit.add(callbacks.onExit);
+      if (callbacks.onError) entry.onError.add(callbacks.onError);
+      return () => {
+        if (callbacks.onData) entry?.onData.delete(callbacks.onData);
+        if (callbacks.onCwd) entry?.onCwd.delete(callbacks.onCwd);
+        if (callbacks.onExit) entry?.onExit.delete(callbacks.onExit);
+        if (callbacks.onError) entry?.onError.delete(callbacks.onError);
+      };
     },
   };
 }

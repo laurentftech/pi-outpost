@@ -25,6 +25,9 @@
     "pdfjs-dist": "6.2.108",
     "typebox": "1.3.18"
   },
+  "optionalDependencies": {
+    "node-pty": "^1.1.0"
+  },
   "devDependencies": {
     "@types/node": "^24.0.0",
     "@types/ws": "^8.18.0",

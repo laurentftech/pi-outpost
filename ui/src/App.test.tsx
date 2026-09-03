@@ -131,6 +131,12 @@ function agentApi(state: ReturnType<typeof agentState>) {
     setOutcomeActive: vi.fn(),
     refreshOutcome: vi.fn(),
     closeServerBrowser: vi.fn(),
+    openTerminal: vi.fn(),
+    sendTerminalInput: vi.fn(),
+    getTerminalCwd: vi.fn(),
+    resizeTerminal: vi.fn(),
+    closeTerminal: vi.fn(),
+    subscribeTerminal: vi.fn(() => () => {}),
   };
 }
 
@@ -1666,6 +1672,101 @@ describe("ReturnToLatest", () => {
       layout(main, { scrollHeight: 4000, clientHeight: 600, scrollTop: 3400 });
       fireEvent.scroll(main);
       expect(control()).toBeNull();
+    });
+  });
+});
+
+describe("Terminal integration in App", () => {
+  it("toggles terminal panel and repoints workspace root", () => {
+    const updateConfig = vi.fn();
+    const openProject = vi.fn();
+    mockUseAgent.mockReturnValue({
+      ...agentApi(
+        agentState({
+          terminal: { enabled: true },
+          workspace: { root: "/current/workspace" },
+          sandbox: { root: "/current/workspace", allowWrite: true, allowBash: true },
+        }),
+      ),
+      openProject,
+      updateConfig,
+    });
+
+    render(<App />);
+
+    const terminalButton = screen.getByRole("button", { name: />_ terminal/i });
+    expect(terminalButton).toBeInTheDocument();
+
+    // Open terminal
+    fireEvent.click(terminalButton);
+    expect(screen.getByText("terminal 1")).toBeInTheDocument();
+
+    // Repoint via open as project button
+    const syncButton = screen.getByTitle(/as the workspace project/i);
+    fireEvent.click(syncButton);
+    expect(openProject).toHaveBeenCalledWith("/current/workspace");
+  });
+
+  it("updates sandbox config when embedded or openProject unset", () => {
+    const updateConfig = vi.fn();
+    mockUseAgent.mockReturnValue({
+      ...agentApi(
+        agentState({
+          terminal: { enabled: true },
+          workspace: { root: "/current/workspace" },
+          sandbox: { root: "/current/workspace", allowWrite: true, allowBash: true, writableRoot: "/current/workspace" },
+        }),
+      ),
+      openProject: undefined,
+      updateConfig,
+    });
+
+    render(<App token="test-token" />);
+
+    const terminalButton = screen.getByRole("button", { name: />_ terminal/i });
+    fireEvent.click(terminalButton);
+
+    const syncButton = screen.getByTitle(/as the workspace project/i);
+    fireEvent.click(syncButton);
+
+    expect(updateConfig).toHaveBeenCalledWith({
+      sandbox: {
+        root: "/current/workspace",
+        allowWrite: true,
+        allowBash: true,
+        writableRoot: "/current/workspace",
+      },
+    });
+  });
+
+  it("updates sandbox config on unconstrained server", () => {
+    const updateConfig = vi.fn();
+    mockUseAgent.mockReturnValue({
+      ...agentApi(
+        agentState({
+          terminal: { enabled: true },
+          workspace: { root: "/current/workspace" },
+          sandbox: null,
+        }),
+      ),
+      openProject: undefined,
+      updateConfig,
+    });
+
+    render(<App token="test-token" />);
+
+    const terminalButton = screen.getByRole("button", { name: />_ terminal/i });
+    fireEvent.click(terminalButton);
+
+    const syncButton = screen.getByTitle(/as the workspace project/i);
+    fireEvent.click(syncButton);
+
+    expect(updateConfig).toHaveBeenCalledWith({
+      sandbox: {
+        root: "/current/workspace",
+        allowWrite: true,
+        allowBash: true,
+      },
     });
   });
 });

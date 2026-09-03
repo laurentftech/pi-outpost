@@ -2483,3 +2483,86 @@ describe("applying settings", () => {
     expect(result.current.state.errors).toEqual(["something else broke"]);
   });
 });
+
+describe("integrated terminal in useAgent", () => {
+  const sentSince = (from: number) => mockWs!.sent.slice(from).map((raw) => JSON.parse(raw) as Record<string, unknown>);
+
+  it("sends terminal wire messages and notifies listeners", async () => {
+    const result = await connected();
+    let before = mockWs!.sent.length;
+
+    // openTerminal
+    act(() => result.current.openTerminal("term-1", "/test/dir", 80, 24));
+    expect(sentSince(before)).toContainEqual({
+      type: "terminal_open",
+      terminalId: "term-1",
+      cwd: "/test/dir",
+      cols: 80,
+      rows: 24,
+    });
+
+    // sendTerminalInput
+    before = mockWs!.sent.length;
+    act(() => result.current.sendTerminalInput("term-1", "ls -la\n"));
+    expect(sentSince(before)).toContainEqual({
+      type: "terminal_input",
+      terminalId: "term-1",
+      data: "ls -la\n",
+    });
+
+    // getTerminalCwd
+    before = mockWs!.sent.length;
+    act(() => result.current.getTerminalCwd("term-1"));
+    expect(sentSince(before)).toContainEqual({
+      type: "terminal_get_cwd",
+      terminalId: "term-1",
+    });
+
+    // resizeTerminal
+    before = mockWs!.sent.length;
+    act(() => result.current.resizeTerminal("term-1", 120, 40));
+    expect(sentSince(before)).toContainEqual({
+      type: "terminal_resize",
+      terminalId: "term-1",
+      cols: 120,
+      rows: 40,
+    });
+
+    // subscribeTerminal
+    const onData = vi.fn();
+    const onCwd = vi.fn();
+    const onExit = vi.fn();
+    const onError = vi.fn();
+
+    const unsubscribe = result.current.subscribeTerminal("term-1", {
+      onData,
+      onCwd,
+      onExit,
+      onError,
+    });
+
+    // Receive server events
+    act(() => mockWs!.receive({ type: "terminal_data", terminalId: "term-1", data: "output text\n" }));
+    expect(onData).toHaveBeenCalledWith("output text\n");
+
+    act(() => mockWs!.receive({ type: "terminal_cwd", terminalId: "term-1", cwd: "/test/sub" }));
+    expect(onCwd).toHaveBeenCalledWith("/test/sub");
+
+    act(() => mockWs!.receive({ type: "terminal_exit", terminalId: "term-1", exitCode: 0 }));
+    expect(onExit).toHaveBeenCalledWith(0);
+
+    act(() => mockWs!.receive({ type: "terminal_error", terminalId: "term-1", message: "pty error" }));
+    expect(onError).toHaveBeenCalledWith("pty error");
+
+    // Unsubscribe
+    act(() => unsubscribe());
+
+    // closeTerminal
+    before = mockWs!.sent.length;
+    act(() => result.current.closeTerminal("term-1"));
+    expect(sentSince(before)).toContainEqual({
+      type: "terminal_close",
+      terminalId: "term-1",
+    });
+  });
+});

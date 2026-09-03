@@ -290,6 +290,29 @@ describe("build-exe and the browser flags", () => {
   });
 });
 
+describe("--terminal", () => {
+  test("the flag decides, and its absence leaves the decision to configuration", () => {
+    // In `flags`, because that is the bag loadConfig() reads: a copy on the top-level
+    // result would never reach the configuration it is meant to override.
+    assert.equal(parseCli([]).flags.terminal, undefined);
+    assert.equal(parseCli(["--terminal"]).flags.terminal, true);
+    assert.equal(parseCli(["--no-terminal"]).flags.terminal, false);
+  });
+
+  test("the two flags contradict each other rather than one quietly winning", () => {
+    // A web PTY is an unconfined host shell; "the last flag wins" is the wrong answer
+    // to an ambiguous command line when that is what is being switched on.
+    assert.throws(() => parseCli(["--terminal", "--no-terminal"]), CliError);
+  });
+
+  test("help names both flags and says which way the default falls", () => {
+    const help = helpText();
+    assert.match(help, /--terminal/);
+    assert.match(help, /--no-terminal/);
+    assert.match(help, /default: disabled/);
+  });
+});
+
 describe("--open-in", () => {
   test("names the shape the interface opens in", () => {
     // In `flags`, because that is the bag loadConfig() reads to override the file;
