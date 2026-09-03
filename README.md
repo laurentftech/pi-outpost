@@ -470,6 +470,12 @@ back to the OS preference.
 pi SDK session inside this process. `rpc` supervises a `pi --mode rpc` child — to match an
 existing pi installation, or to isolate a crash.
 
+**The embedded SDK runtime is the supported target; `rpc` is best effort.** Features are
+designed, measured and proven against the SDK session. The RPC dialect gets what it can
+express: where a capability has no equivalent there, it is reported as unavailable rather
+than faked, and a feature may land for `embedded` first — or only. That is a deliberate
+priority, not an oversight, and the list below is what it costs today.
+
 pi-outpost appends `--mode rpc` and derives `--session-dir` itself, so `args` may contain
 neither, nor `--tools`/`--system-prompt` (those come from `tools`/`systemPrompt`), nor any
 flag that would make the child print something and exit. The rest of the configuration

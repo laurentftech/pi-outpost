@@ -10,18 +10,20 @@ import {
 import { applyWorkPlanMutation } from "./workPlanStore.ts";
 
 const objectOptions = { additionalProperties: false } as const;
+/**
+ * A non-empty string with a ceiling. `minLength` carries the empty case; the
+ * whitespace-only case is left to `requireNonEmptyString` in the shared
+ * normaliser, which every mutation already passes through and which names the
+ * offending field.
+ *
+ * It used to carry an anchored `pattern` for that second case. On this schema
+ * that is 73 copies of the same regex — 2.5k characters, ~640 tokens on every
+ * turn of every conversation — to reject a string the handler rejects anyway,
+ * with a message the model can act on rather than a schema error it cannot.
+ */
 const boundedText = (maxLength: number, description?: string) => Type.String({
   minLength: 1,
   maxLength,
-  // Rejects whitespace-only strings. Anchored (`^`…`$`) rather than the bare
-  // `\S` this replaced: JSON Schema `pattern` is a "contains a match" test so
-  // both reject the same strings, but automatic parser/grammar generation for
-  // structured output (constrained decoding on some providers) requires every
-  // pattern to be fully anchored and rejects the schema outright otherwise —
-  // as a 400 on every call once a tool carries one, this field appears on most
-  // of the work_plan schema's string properties, so the error repeated once
-  // per occurrence.
-  pattern: "^[\\s\\S]*\\S[\\s\\S]*$",
   ...(description === undefined ? {} : { description }),
 });
 const identifierSchema = boundedText(WORK_PLAN_LIMITS.title);
@@ -103,15 +105,13 @@ const creationTaskSchema = (depth: number): TSchema => Type.Object({
     : {}),
 }, objectOptions);
 
-const taskChangesSchema = Type.Object({
-  title: Type.Optional(titleSchema),
-  description: Type.Optional(Type.Union([descriptionSchema, Type.Null()])),
-  status: Type.Optional(statusSchema),
-  statusReason: Type.Optional(Type.Union([reasonSchema, Type.Null()])),
-  parentId: Type.Optional(Type.Union([identifierSchema, Type.Null()])),
-  dependsOn: Type.Optional(dependenciesSchema),
-  resources: Type.Optional(resourcesSchema),
-}, objectOptions);
+/**
+ * `update_task` used to advertise a `changes` object beside the flat fields, with
+ * exactly the same seven properties. Two ways to say one thing, the second costing
+ * 1.2k characters of schema on every turn — and the normaliser already falls back
+ * from `changes` to the flat form (`loosenedChanges`), so only the advertisement
+ * is gone: a model that still sends `changes` is honoured.
+ */
 
 /**
  * One object, not a union of ten.
@@ -130,7 +130,7 @@ export const workPlanParameters = Type.Object({
     WORK_PLAN_ACTIONS,
     "What to do. Every property below is required by some actions and ignored by the rest.",
   ),
-  title: Type.Optional(Type.String({ ...titleSchema, description: "Plan title (create), or the task's new title (update_task, when no changes object is given)." })),
+  title: Type.Optional(Type.String({ ...titleSchema, description: "Plan title (create), or the task's new title (update_task)." })),
   tasks: Type.Optional(Type.Array(creationTaskSchema(1), {
     maxItems: WORK_PLAN_LIMITS.tasks,
     description: `Top-level tasks (create); each may carry subtasks. At most ${WORK_PLAN_LIMITS.tasks} tasks total and ${WORK_PLAN_LIMITS.serializedBytes} serialized bytes across the complete plan.`,
@@ -138,10 +138,9 @@ export const workPlanParameters = Type.Object({
   plan: Type.Optional(Type.Object({ ...normalizedPlanSchema.properties }, { ...objectOptions, description: "A complete normalized plan (replace)." })),
   task: Type.Optional(Type.Object({ ...normalizedTaskSchema.properties }, { ...objectOptions, description: "One complete task, id and status included (add_task)." })),
   taskId: Type.Optional(Type.String({ ...identifierSchema, description: "Which task to act on (update_task, move_task, remove_task, set_dependencies, set_resources, set_evidence)." })),
-  changes: Type.Optional(Type.Object({ ...taskChangesSchema.properties }, { ...objectOptions, description: "Fields to change (update_task). The same fields may be given here beside taskId instead." })),
-  status: Type.Optional(stringEnum(WORK_PLAN_STATUSES, "New status (update_task, when no changes object is given).")),
-  description: Type.Optional(Type.Union([descriptionSchema, Type.Null()], { description: "New description, or null to clear it (update_task, when no changes object is given)." })),
-  statusReason: Type.Optional(Type.Union([reasonSchema, Type.Null()], { description: "Why the task sits in its status, or null to clear it (update_task, when no changes object is given)." })),
+  status: Type.Optional(stringEnum(WORK_PLAN_STATUSES, "New status (update_task).")),
+  description: Type.Optional(Type.Union([descriptionSchema, Type.Null()], { description: "New description, or null to clear it (update_task)." })),
+  statusReason: Type.Optional(Type.Union([reasonSchema, Type.Null()], { description: "Why the task sits in its status, or null to clear it (update_task)." })),
   parentId: Type.Optional(Type.Union([identifierSchema, Type.Null()], { description: "New parent, or null for top level (move_task)." })),
   dependsOn: Type.Optional(Type.Array(identifierSchema, { maxItems: WORK_PLAN_LIMITS.tasks, uniqueItems: true, description: "Complete dependency set for taskId (set_dependencies)." })),
   resources: Type.Optional(Type.Array(resourceSchema, { maxItems: WORK_PLAN_LIMITS.resourcesPerTask, description: "Complete resource set for taskId (set_resources)." })),

@@ -677,7 +677,7 @@ describe("work_plan tool", () => {
     // schema no longer separates them into branches.
     for (const [field, action] of [
       ["title", /create/], ["tasks", /create/], ["plan", /replace/], ["task", /add_task/],
-      ["taskId", /update_task/], ["changes", /update_task/], ["parentId", /move_task/],
+      ["taskId", /update_task/], ["parentId", /move_task/],
       ["dependsOn", /set_dependencies/], ["resources", /set_resources/], ["evidence", /set_evidence/],
     ] as const) {
       assert.match(String(properties[field].description), action, `${field} names the action that uses it`);
@@ -700,13 +700,35 @@ describe("work_plan tool", () => {
       else assert.equal(taskProperties.subtasks, undefined, "subtasks cannot nest again");
     }
 
-    const changeProperties = (properties.changes.properties) as Record<string, Record<string, unknown>>;
+    // `update_task` takes its fields beside `taskId`. The `changes` wrapper said the
+    // same thing a second way and is no longer advertised — the normaliser still
+    // honours one that arrives, but the schema stops paying 1.2k characters for it.
+    assert.equal(properties.changes, undefined, "the redundant changes wrapper is not published");
     for (const field of ["description", "statusReason", "parentId"]) {
       assert.ok(
-        (changeProperties[field].anyOf as Array<Record<string, unknown>>).some((candidate) => candidate.type === "null"),
+        (properties[field].anyOf as Array<Record<string, unknown>>).some((candidate) => candidate.type === "null"),
         `${field} declares JSON null clearing`,
       );
     }
+  });
+
+  /**
+   * The schema is sent on every turn of every conversation, whether or not a plan
+   * is ever made. It was 16 160 characters — some 4k tokens, more than everything
+   * pi sends by default and 37% of this deployment's whole baseline — of which 2.5k
+   * was 73 copies of one regex and 1.2k a second way to spell `update_task`.
+   *
+   * The ceiling is what stops that coming back one property at a time. Raising it
+   * is allowed; doing so silently is what this is here to prevent. Re-measure with
+   * `npx tsx server/scripts/probe-context-baseline.mts`.
+   */
+  it("keeps the published definition under its context budget", () => {
+    const definition = createWorkPlanToolDefinition();
+    const size = JSON.stringify(definition).length;
+    assert.ok(
+      size <= 13_000,
+      `work_plan is ${size} characters (~${Math.round(size / 4 / 100) / 10}k tokens), over the 13 000 budget`,
+    );
   });
 
   it("publishes finite evidence schemas for creation, replacement, addition, and mutation", () => {
@@ -737,14 +759,16 @@ describe("work_plan tool", () => {
     assert.equal(validator.Check({ action: "set_evidence", taskId: "verify", evidence: [{ ...summaryOnly, provider: "openlore" }] }), false);
   });
 
-  it("anchors every pattern, so a provider can generate a parser for the schema", () => {
-    // The schema goes to the provider on every request — work_plan is registered
-    // unconditionally, whether or not the session has a plan — so a schema a
-    // provider cannot compile fails every message, not every work_plan call.
-    // Providers that build a parser or grammar from the tool schema for
-    // constrained decoding require each `pattern` to be fully anchored and
-    // refuse the schema otherwise ("Pattern must start with '^' and end with
-    // '$'"), once per occurrence: the bounded-text pattern appears on 48 fields.
+  it("publishes no pattern at all, so there is none to anchor", () => {
+    // There used to be 48 fields carrying one anchored regex, whose only job was to
+    // reject whitespace-only text. Anchoring was forced on it by providers that
+    // compile a grammar from the schema for constrained decoding and refuse an
+    // unanchored `pattern` outright — a 400 on every message, once per occurrence.
+    //
+    // The cheaper answer is not to send a regex the handler duplicates: 73 copies of
+    // it in the published schema came to ~2.5k characters, ~640 tokens on every turn
+    // of every conversation, plan or no plan. Blankness is checked below, where the
+    // failure can name the field.
     const patterns: string[] = [];
     const walk = (value: unknown): void => {
       if (typeof value !== "object" || value === null) return;
@@ -756,22 +780,34 @@ describe("work_plan tool", () => {
       }
     };
     walk(createWorkPlanToolDefinition().parameters);
-
-    assert.ok(patterns.length > 0, "the schema still constrains text with a pattern");
-    const unanchored = [...new Set(patterns)].filter((pattern) => !pattern.startsWith("^") || !pattern.endsWith("$"));
-    assert.deepEqual(unanchored, [], `every pattern must start with '^' and end with '$': ${unanchored.join(", ")}`);
+    assert.deepEqual(patterns, [], "no pattern is published, so no provider can reject one for being unanchored");
   });
 
-  it("still refuses blank text through the anchored pattern", () => {
-    // Anchoring is only correct if it rejects what the bare `\S` rejected: JSON
-    // Schema `pattern` searches rather than matches, so the two agree only when
-    // the anchored form is written to span the whole string.
-    const validator = Compile(createWorkPlanToolDefinition().parameters as never);
-    for (const title of ["", " ", "\t\n"]) {
-      assert.equal(validator.Check({ action: "create", title, tasks: [{ title: "First" }] }), false, `blank title ${JSON.stringify(title)}`);
+  it("still refuses blank text, in the mutation rather than the schema", () => {
+    // What the pattern was there for. The schema now accepts a blank string and the
+    // normaliser refuses it — naming the field, which a schema error never did.
+    for (const [current, mutation, field] of [
+      [null, { action: "create", title: " ", tasks: [{ title: "First" }] }, /title/],
+      [null, { action: "create", title: "Ship", tasks: [{ title: "\t\n" }] }, /title/],
+      [base(), { action: "update_task", taskId: "build", description: "  " }, /description/],
+      [base(), { action: "set_resources", taskId: "build", resources: [{ uri: " " }] }, /uri/],
+      [
+        base(),
+        { action: "set_evidence", taskId: "build", evidence: [{ id: "t", type: " ", result: "passed", summary: "ok" }] },
+        /type/,
+      ],
+    ] as const) {
+      assert.throws(() => mutateWorkPlan(current as never, mutation as never), (error: Error) => {
+        assert.match(error.message, field);
+        assert.match(error.message, /non-empty/);
+        return true;
+      }, `blank text refused: ${JSON.stringify(mutation)}`);
     }
+
+    // ...and the schema still rejects the empty string, which costs one keyword.
+    const validator = Compile(createWorkPlanToolDefinition().parameters as never);
+    assert.equal(validator.Check({ action: "create", title: "", tasks: [{ title: "First" }] }), false, "empty title");
     assert.equal(validator.Check({ action: "create", title: "Ship it", tasks: [{ title: "First" }] }), true);
-    assert.equal(validator.Check({ action: "create", title: "  padded  ", tasks: [{ title: "First" }] }), true, "text with surrounding space is not blank");
   });
 
   it("answers a refused property by naming it, and says nothing about other actions", () => {
