@@ -276,6 +276,90 @@ describe("AgentResourceManager", () => {
     expect(onUpdate).toHaveBeenCalledWith("repo-team", "token-repo-team", "1111111111111111111111111111111111111111", "2222222222222222222222222222222222222222", true);
   });
 
+  it("lets a discovered root be deselected before anything is enrolled", () => {
+    // Every root arrives selected, and the point of a preview is that the user may want
+    // only some of them. Nothing had exercised unticking one.
+    const { onEnrollRepository, rerenderWith } = setup();
+    fireEvent.click(screen.getByRole("button", { name: "Add Git repository…" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "Repository address" }), { target: { value: "https://example.test/team/resources.git" } });
+    rerenderWith({ operations: operations({ preview: { requestId: "preview", status: "ready", preview: {
+      token: "preview-token",
+      repositoryPath: "/srv/resources",
+      repositoryName: "resources",
+      headRevision: "abc",
+      roots: [
+        { kind: "skill", path: "/srv/resources/skills", name: "skills" },
+        { kind: "skill", path: "/srv/resources/.agents/skills", name: ".agents/skills" },
+      ],
+    } } }) });
+
+    const checkboxes = screen.getAllByRole("checkbox");
+    expect(checkboxes).toHaveLength(2);
+    fireEvent.click(checkboxes[1]);
+    fireEvent.click(screen.getByRole("button", { name: "Activate selected resources" }));
+    expect(onEnrollRepository).toHaveBeenCalledWith("preview-token", ["/srv/resources/skills"], []);
+
+    // ...and unticking the last one leaves nothing to activate.
+    fireEvent.click(checkboxes[0]);
+    expect(screen.getByRole("button", { name: "Activate selected resources" })).toBeDisabled();
+  });
+
+  it("closes on Escape and on a click outside the dialog, but not on a click inside it", () => {
+    const { onClose } = setup();
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(onClose).toHaveBeenCalledTimes(1);
+
+    fireEvent.mouseDown(screen.getByRole("dialog", { name: "Agent resources" }));
+    expect(onClose).toHaveBeenCalledTimes(1);
+
+    fireEvent.mouseDown(screen.getByRole("presentation"));
+    expect(onClose).toHaveBeenCalledTimes(2);
+  });
+
+  it("asks for a refresh, and says nothing while one is running", () => {
+    const { onRefresh, rerenderWith } = setup();
+    fireEvent.click(screen.getByRole("button", { name: "Refresh all" }));
+    expect(onRefresh).toHaveBeenCalledTimes(1);
+
+    rerenderWith({ operations: operations({ refresh: { requestId: "refresh", status: "loading" } }) });
+    expect(screen.getByRole("button", { name: "Refresh all" })).toBeDisabled();
+  });
+
+  it("removes a user-owned extension root from the extension paths, not the skill paths", () => {
+    // The skill half of this branch was covered; the extension half sends a different
+    // config key, and sending the wrong one would drop an unrelated skill.
+    const { onUpdateConfig } = setup({
+      userExtensionPaths: ["/repos/team/extensions"],
+      inventory: {
+        capabilities: { skills: "available", extensions: "available" },
+        resources: [
+          { id: "extension:deploy", kind: "extension", name: "deploy", origin: "user", path: "/repos/team/extensions/deploy.ts", userRoot: "/repos/team/extensions" },
+        ],
+        repositories: [],
+      },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Remove /repos/team/extensions" }));
+    expect(onUpdateConfig).toHaveBeenCalledWith({ userExtensionPaths: [] });
+  });
+
+  it("leaves the update alone when the executable confirmation is declined", () => {
+    // The confirming half is covered; declining must not fall through to the update.
+    const { onUpdate } = setup();
+    fireEvent.click(screen.getByRole("button", { name: "Update repository" }));
+    expect(screen.getByRole("alertdialog")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(onUpdate).not.toHaveBeenCalled();
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+  });
+
+  it("abandons the add flow and closes the server browser with it", () => {
+    const { onCloseServerBrowser } = setup();
+    fireEvent.click(screen.getByRole("button", { name: "Add Git repository…" }));
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(onCloseServerBrowser).toHaveBeenCalled();
+    expect(screen.queryByRole("textbox", { name: "Repository address" })).not.toBeInTheDocument();
+  });
+
   it("keeps an in-flight result keyed to its repository and falls back after stale identity", () => {
     const { rerenderWith } = setup({ operations: operations({ updates: { "repo-team": { requestId: "update", status: "loading" } } }) });
     fireEvent.click(screen.getByRole("button", { name: /Provenance unavailable/ }));
