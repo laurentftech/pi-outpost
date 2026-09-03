@@ -6,8 +6,8 @@
 > been checked on more than one machine and one run.
 
 
-Measured on **2026-09-03**, against **pi-outpost 0.20.1** and the **pi SDK 0.84.4** it
-bundles. All three columns are measured — opencode **1.18.27**, installed and run for this
+Measured on **2026-09-03**, against **pi-outpost 0.20.1** plus the tool-publication work
+that followed it (#162, #164, #166), and the **pi SDK 0.84.4** it bundles. All three columns are measured — opencode **1.18.27**, installed and run for this
 page. The features are read from documentation and behaviour; the context figures come
 from the probes described below and can be re-run.
 
@@ -28,7 +28,7 @@ have said anything.
 | Git | through bash | change badges, per-file diffs, log, per-file history graph, multi-repository workspaces | through bash |
 | PDF and Office | — | `pdf_extract`, `docx_extract`, `xlsx_extract`, `pptx_extract`, no shell and no external binary | — |
 | Structured results | — | a tool can hand back a graph, a sequence or a table and the interface draws it | — |
-| Work plans | — | agent-owned plan with dependencies, evidence and review states | to-do list tool |
+| Work plans | — | agent-owned plan with dependencies, evidence and review states, published in two halves | to-do list tool |
 | Embeddable in another app | — | `@pi-outpost/embed`, Shadow-DOM isolated | — |
 | Standalone executable | — | one per platform, no Node needed | single binary |
 | Local or gateway models | any OpenAI-compatible endpoint | the same, declarable from the browser | many providers, catalogue-driven |
@@ -49,46 +49,57 @@ every conversation, and the first thing to look at when a context window feels s
 | | system prompt | tools | baseline |
 |---|---|---|---|
 | pi, default toolset | ~0.7k tokens | 8 tools, ~1.7k | **~2.4k tokens** |
+| **Pi Outpost, at rest** | ~1.5k tokens | 11 tools, ~3.9k | **~5.4k tokens** |
 | opencode 1.18.27, default agent | ~2.4k tokens | 10 tools, ~5.2k | **~7.6k tokens** |
-| Pi Outpost, default configuration | ~1.9k tokens | 15 tools, ~8.8k | **~10.7k tokens** |
+| Pi Outpost, everything published | ~2.0k tokens | 16 tools, ~7.3k | ~9.3k tokens |
+
+**At rest** is what almost every turn of almost every conversation carries. Five tools are
+withheld until something asks for them: `work_plan_extended` until the session has a plan,
+and the four document extractors until a document of their kind is named. A session that
+plans and reads documents ends up at the last row; one that refactors TypeScript stays at
+the second.
+
+It was **~10.7k** before that work — the row this page carried when it was first written.
 
 opencode's ten tools, largest first: `bash` 5 319 chars (~1.3k), `task` 3 856 (~1.0k),
 `todowrite` 2 686 (~0.7k), `edit` 1 958, `read` 1 734, `webfetch` 1 293, `grep` 1 183,
 `glob` 1 114, `write` 1 026, `skill` 676. Its prompt carries more than pi's and its tool
-descriptions are written at length; the totals land between the two others.
+descriptions are written at length — and every one of them is sent on every request, which
+is what puts its floor above a Pi Outpost session at rest.
 
 The comparison worth drawing is `todowrite` against `work_plan`: the same job — an
-agent-owned list of what it is doing — at **2 686 characters against 16 160**. Work
-plans do more (dependencies, evidence, review states), but not six times more.
+agent-owned list of what it is doing — at **2 686 characters against 4 969**. It was
+16 160 when this page was first written, which is what prompted the work: 73 copies of one
+regex, a second way to spell `update_task`, and the collection shapes for four operations
+that cannot be called before a plan exists. What is left does more than `todowrite` —
+dependencies, evidence, review states — and is now within twice its size.
 
-Per tool, largest first — this is where the difference actually is:
+Per tool, largest first, in the state each is actually sent in:
 
-| Tool | chars | ~tokens | |
+| Tool | chars | ~tokens | Sent |
 |---|---|---|---|
-| `work_plan` | 16 160 | ~4.0k | Pi Outpost |
-| `bash` (opencode) | 5 319 | ~1.3k | opencode |
-| `xlsx_extract` | 2 345 | ~0.6k | Pi Outpost |
-| `write_structure_figure` | 2 195 | ~0.5k | Pi Outpost |
-| `docx_extract` | 2 027 | ~0.5k | Pi Outpost |
-| `pdf_extract` | 1 944 | ~0.5k | Pi Outpost |
-| `pptx_extract` | 1 933 | ~0.5k | Pi Outpost |
-| `edit` | 1 773 | ~0.4k | pi |
-| `present_structure` | 1 535 | ~0.4k | Pi Outpost |
-| `grep` | 1 107 | ~0.3k | pi |
-| `read` | 824 | ~0.2k | pi |
-| `powershell` | 734 | ~0.2k | pi |
-| `bash` | 716 | ~0.2k | pi |
-| `find` | 684 | ~0.2k | pi |
-| `write` | 573 | ~0.1k | pi |
-| `ls` | 538 | ~0.1k | pi |
+| `work_plan_extended` | 5 360 | ~1.3k | once the session has a plan |
+| `work_plan` | 4 969 | ~1.2k | always |
+| `bash` (opencode) | 5 319 | ~1.3k | always |
+| `xlsx_extract` | 2 345 | ~0.6k | once a spreadsheet is named |
+| `write_structure_figure` | 2 195 | ~0.5k | always |
+| `docx_extract` | 2 027 | ~0.5k | once a Word file is named |
+| `pdf_extract` | 1 944 | ~0.5k | once a PDF is named |
+| `pptx_extract` | 1 933 | ~0.5k | once a deck is named |
+| `edit` | 1 773 | ~0.4k | always |
+| `present_structure` | 1 535 | ~0.4k | always |
+| `grep` | 1 107 | ~0.3k | always |
+| `read` | 824 | ~0.2k | always |
+| `powershell` | 734 | ~0.2k | always |
+| `bash` | 716 | ~0.2k | always |
+| `find` | 684 | ~0.2k | always |
+| `write` | 573 | ~0.1k | always |
+| `ls` | 538 | ~0.1k | always |
 
-**`work_plan` is 37% of the whole baseline** — on its own it is larger than everything pi
-sends by default, and it is the reason the system prompt grows too: a tool's prompt
-guidelines are appended to it. The four document extractors together cost about as much
-as pi's entire toolset. Everything else is noise by comparison.
-
-That is the shape of any optimisation worth doing: one tool's description, not the
-distribution of fifteen.
+`work_plan` is still the largest thing sent to every conversation, and the four extractors
+together are still about the size of pi's entire toolset — but none of the five is sent to a
+session that has no use for it. The shape of any further optimisation is the same as the
+last one: one tool's definition, not the distribution of sixteen.
 
 ## How the figures were produced
 
@@ -96,9 +107,13 @@ distribution of fifteen.
 npx tsx server/scripts/probe-context-baseline.mts
 ```
 
-It builds two real `AgentSession`s — pi's defaults, and pi-outpost's toolset on top —
-then reads `session.systemPrompt` and `session.getAllTools()`, counting the JSON of each
-tool's name, description, prompt guidelines and parameter schema. Reading the sources
+It builds three real `AgentSession`s — pi's defaults, what pi-outpost publishes at rest,
+and everything it can publish — then reads `session.systemPrompt` and
+`session.getAllTools()`, counting the JSON of each tool's name, description, prompt
+guidelines and parameter schema. The resting figure withholds the on-demand tools through
+`setActiveToolsByName`, the way the server does, rather than subtracting them afterwards:
+pi rebuilds the system prompt around the active set, so a withheld tool takes its
+guidelines with it — 2 074 characters that a subtraction would have counted anyway. Reading the sources
 instead would miss where a tool's guidelines actually land, which is in the prompt.
 
 Tokens are **characters ÷ 4**. That is an order of magnitude, not a bill: the real count
@@ -110,6 +125,9 @@ enough to tell a 4k tool from a 0.2k one, which is the decision this page is for
 - **Skills, extensions and project context files.** Discovery is off in the probe. A
   deployment that loads skills pays for them on top, and that cost belongs to the
   deployment rather than to the software.
+- **What a conversation goes on to publish.** The resting figure is the floor, not the
+  average: a session that opens a work plan adds ~1.3k tokens for the rest of it, and one
+  that reads a spreadsheet adds ~0.6k until five turns pass without another.
 - **The sandbox.** It replaces the built-in tools with path-scoped equivalents of much
   the same size, so the figure moves little.
 - **Two methods, one comparison.** pi and pi-outpost are read from their own sessions
