@@ -1,9 +1,9 @@
 # Pi Outpost next to pi and opencode
 
 Measured on **2026-09-03**, against **pi-outpost 0.20.1** and the **pi SDK 0.84.4** it
-bundles. Figures for pi and pi-outpost come from the probe described below and are
-reproducible; the opencode column is compiled from its public documentation and is
-**not measured here** — see [What is not measured](#what-is-not-measured).
+bundles. All three columns are measured — opencode **1.18.27**, installed and run for this
+page. The features are read from documentation and behaviour; the context figures come
+from the probes described below and can be re-run.
 
 The point of this page is not a scoreboard. Two of the three are terminal agents and one
 is a web interface; they are picked for different reasons. What is worth comparing is
@@ -43,14 +43,24 @@ every conversation, and the first thing to look at when a context window feels s
 | | system prompt | tools | baseline |
 |---|---|---|---|
 | pi, default toolset | ~0.7k tokens | 8 tools, ~1.7k | **~2.4k tokens** |
+| opencode 1.18.27, default agent | ~2.4k tokens | 10 tools, ~5.2k | **~7.6k tokens** |
 | Pi Outpost, default configuration | ~1.9k tokens | 15 tools, ~8.8k | **~10.7k tokens** |
-| opencode | not measured | not measured | not measured |
+
+opencode's ten tools, largest first: `bash` 5 319 chars (~1.3k), `task` 3 856 (~1.0k),
+`todowrite` 2 686 (~0.7k), `edit` 1 958, `read` 1 734, `webfetch` 1 293, `grep` 1 183,
+`glob` 1 114, `write` 1 026, `skill` 676. Its prompt carries more than pi's and its tool
+descriptions are written at length; the totals land between the two others.
+
+The comparison worth drawing is `todowrite` against `work_plan`: the same job — an
+agent-owned list of what it is doing — at **2 686 characters against 16 160**. Work
+plans do more (dependencies, evidence, review states), but not six times more.
 
 Per tool, largest first — this is where the difference actually is:
 
 | Tool | chars | ~tokens | |
 |---|---|---|---|
 | `work_plan` | 16 160 | ~4.0k | Pi Outpost |
+| `bash` (opencode) | 5 319 | ~1.3k | opencode |
 | `xlsx_extract` | 2 345 | ~0.6k | Pi Outpost |
 | `write_structure_figure` | 2 195 | ~0.5k | Pi Outpost |
 | `docx_extract` | 2 027 | ~0.5k | Pi Outpost |
@@ -96,7 +106,11 @@ enough to tell a 4k tool from a 0.2k one, which is the decision this page is for
   deployment rather than to the software.
 - **The sandbox.** It replaces the built-in tools with path-scoped equivalents of much
   the same size, so the figure moves little.
-- **opencode.** It is not installed on the machine these numbers come from, and an
-  invented figure for someone else's software would be worth less than an empty cell.
-  Its default toolset is comparable in count and its prompt is of the same family, so the
-  honest way to fill that row is to run the equivalent probe against it.
+- **Two methods, one comparison.** pi and pi-outpost are read from their own sessions
+  (`session.systemPrompt` and `session.getAllTools()`); opencode is read from the wire —
+  it was pointed at a local OpenAI-compatible endpoint that logged the request, and the
+  figures are the `system` messages and the `tools` array it actually sent. The wire is
+  the stricter of the two, so if anything opencode's number is the more generous.
+- **opencode's environment.** Run with `--pure` and a clean `HOME`, so no plugins, no
+  project `AGENTS.md`, and none of the skills it would otherwise discover — including,
+  on this machine, the ones under `~/.claude/skills`.
