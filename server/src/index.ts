@@ -62,19 +62,35 @@ import { pathToFileURL } from "node:url";
 import { CliError, helpText, parseCli, readSecret, runInit } from "./cli.ts";
 import { bindFailureMessage, holdConsoleIfOwned } from "./startupFailure.ts";
 import { BuildExeError, buildExecutable } from "./buildExe.ts";
-import { TerminalManager } from "./terminalManager.ts";
+import { probePty, TerminalManager } from "./terminalManager.ts";
 import { browsableUrl, openBrowser, shouldOpenBrowser } from "./openBrowser.ts";
-import { runStartupUpdateNotice, runUpdateCommand, updateCheckEnabled, whyCheckingDisabled } from "./update.ts";
+import {
+  currentEvidence,
+  detectChannel,
+  runStartupUpdateNotice,
+  runUpdateCommand,
+  updateCheckEnabled,
+  whyCheckingDisabled,
+} from "./update.ts";
 import {
   allExtensionPaths,
   allSkillPaths,
   ConfigWriteError,
   declaredThinkingLevels,
   type EditableSettings,
+  findConfigFile,
   loadConfig,
   NoConfigError,
   persistEditableSettings,
 } from "./config.ts";
+import {
+  carriesIndexHtml,
+  diagnose,
+  exitCodeFor,
+  probeAddress,
+  renderReport,
+  webDistCandidatesFor,
+} from "./doctor.ts";
 import { listServerDirectories, ServerDirectoryError } from "./serverDirectories.ts";
 import {
   CredentialError,
@@ -263,6 +279,53 @@ if (cli.command === "update") {
       ...(settings.registry !== undefined ? { registry: settings.registry } : {}),
     }),
   );
+}
+
+// Before the configuration is loaded, and that is the entire point: the failure this
+// command exists to explain is a configuration that cannot be found or cannot be
+// read, and a diagnostic that loads one first would die of the disease it diagnoses.
+// `config` sits below for exactly the opposite reason — it reports a configuration,
+// so it must have one.
+if (cli.command === "doctor") {
+  const checks = await diagnose({
+    version: VERSION,
+    nodeVersion: process.version,
+    platform: process.platform,
+    arch: process.arch,
+    channel: detectChannel(currentEvidence(VERSION)),
+    launchDir: LAUNCH_DIR,
+    env: process.env,
+    findConfig: () => findConfigFile(LAUNCH_DIR, cli.flags),
+    // Quiet: the report below says what was loaded and from where, in more detail
+    // than the banner, and a banner above it would only disagree in formatting.
+    loadConfig: () => loadConfig(LAUNCH_DIR, cli.flags, process.env, { quiet: true }),
+    probeAddress,
+    embeddedWebAssets: EMBEDDED_WEB ? Object.keys(EMBEDDED_WEB).length : 0,
+    webDistCandidates: webDistCandidatesFor(import.meta.dirname),
+    hasIndexHtml: carriesIndexHtml,
+    git: async () => {
+      // The configured path when there is a configuration to read it from, so a
+      // wrong `gitPath` is reported as the wrong path rather than as "no git".
+      const configured = (() => {
+        try {
+          return loadConfig(LAUNCH_DIR, cli.flags, process.env, { quiet: true }).gitPath;
+        } catch {
+          return undefined;
+        }
+      })();
+      try {
+        return { executable: await resolveGitExecutable(configured) };
+      } catch (error) {
+        return { error: error instanceof Error ? error.message : String(error) };
+      }
+    },
+    loadPty: probePty,
+  });
+  console.log(renderReport(checks));
+  // A double-clicked executable owns its console: the report would close with the
+  // process, which is the failure mode this command was written against.
+  await holdConsoleIfOwned();
+  process.exit(exitCodeFor(checks));
 }
 
 const config = await (async () => {

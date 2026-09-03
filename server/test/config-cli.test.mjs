@@ -317,3 +317,68 @@ describe("configuration: discovery, precedence, profiles", () => {
     assert.match(again.out, /already exists/);
   });
 });
+
+/**
+ * `doctor` against the real CLI, in directories where a start would fail.
+ *
+ * The point of the command is that it answers where every other one refuses: it runs
+ * before the configuration is loaded, so a directory with no configuration file gets a
+ * report rather than the one-line refusal. That is a property of the wiring in
+ * index.ts and cannot be observed by importing anything — only by running it.
+ */
+describe("doctor", () => {
+  let dir;
+  let xdg;
+
+  before(async () => {
+    dir = await realpath(await mkdtemp(path.join(tmpdir(), "pi-outpost-doctor-")));
+    xdg = path.join(dir, "xdg");
+    await mkdir(path.join(xdg, "pi-outpost"), { recursive: true });
+  });
+
+  after(async () => {
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  test("reports a directory with no configuration instead of refusing like every other command", async () => {
+    const empty = path.join(dir, "new-folder");
+    await mkdir(empty, { recursive: true });
+    const { code, out } = await cli(["doctor"], { cwd: empty, env: { XDG_CONFIG_HOME: xdg } });
+
+    assert.equal(code, 1, "something would stop this server, so the exit code says so");
+    // A report, not the bare "no configuration file found" a start prints.
+    assert.match(out, /\[ok {2}\] installation/, "the report was produced at all");
+    assert.match(out, /\[FAIL\] configuration/);
+    assert.match(out, /new-folder[\/\\]pi-outpost\.config\.json/);
+    assert.match(out, /xdg[\/\\]pi-outpost[\/\\]config\.json/);
+    assert.match(out, /pi-outpost init --global/);
+    // The one belief that sends people looking in the wrong place.
+    assert.match(out, /Installing pi-outpost globally does not write either file/);
+    // And it kept going: a failed configuration must not swallow the later checks.
+    assert.match(out, /\] web UI/);
+    assert.match(out, /\] git/);
+  });
+
+  test("names the file a start would read, and the settings it would run with", async () => {
+    const configured = path.join(dir, "configured");
+    await mkdir(configured, { recursive: true });
+    const local = path.join(configured, "pi-outpost.config.json");
+    await writeFile(local, configWithPort(4009));
+
+    const { out } = await cli(["doctor"], { cwd: configured, env: { XDG_CONFIG_HOME: xdg } });
+    assert.match(out, /\[ok {2}\] configuration/);
+    assert.match(out, new RegExp(`→ ${local.replace(/[\\.]/g, "\\$&")}`), "the winner is marked in the search order");
+    assert.match(out, /listens on 127\.0\.0\.1:4009 — open http:\/\/127\.0\.0\.1:4009\//);
+    // Which of the three answers the port gives depends on the machine; that it was
+    // asked about *this* address, and not the default one, is the contract here.
+    assert.match(out, /\] address\s+127\.0\.0\.1:4009 /);
+  });
+
+  test("a --config that does not exist is reported as the path that was typed", async () => {
+    const missing = path.join(dir, "nope.json");
+    const { code, out } = await cli(["doctor", "--config", missing], { cwd: dir, env: { XDG_CONFIG_HOME: xdg } });
+    assert.equal(code, 1);
+    assert.match(out, /\[FAIL\] configuration/);
+    assert.ok(out.includes(missing), "the path the operator typed is in the report");
+  });
+});

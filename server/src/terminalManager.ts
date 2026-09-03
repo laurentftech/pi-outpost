@@ -50,6 +50,22 @@ function ensureSpawnHelperExecutable(): void {
   }
 }
 
+/**
+ * Whether the optional PTY binding can be loaded in this installation.
+ *
+ * `doctor` asks this rather than importing `node-pty` itself, so what it reports is
+ * the same load the terminal actually performs — helper permissions included. A
+ * separate `import()` there would succeed in cases this one fails.
+ */
+export async function probePty(): Promise<{ ok: true } | { ok: false; error: string }> {
+  try {
+    await getPty();
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : String(error) };
+  }
+}
+
 async function getPty(): Promise<typeof pty> {
   if (ptyModule) return ptyModule;
   if (ptyLoadError) throw ptyLoadError;

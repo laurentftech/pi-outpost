@@ -482,6 +482,7 @@ past message. Sessions are not auto-titled there either.
 pi-outpost [options]          start the server
 pi-outpost init [options]     write a starter configuration file
 pi-outpost config [options]   print the configuration that would be used, and where it came from
+pi-outpost doctor [options]   check whether this installation can start and serve, and say what stops it
 pi-outpost login --provider <name>
                               store an API key in <agentDir>/auth.json
 pi-outpost build-exe [options]
@@ -510,6 +511,41 @@ pi-outpost update [--check]   move to the newest published version, or just look
 
 There is deliberately **no `--token` flag**: a secret on the command line is readable by
 anyone who can list processes. Use `PI_OUTPOST_TOKEN` or the file's `server.token`.
+
+### `pi-outpost doctor`
+
+When the page will not load and it is not obvious why, run `doctor` in the directory
+you start the server from. It reports, in one pass and without stopping at the first
+problem:
+
+- **installation** — the version, and whether this is a global install, a checkout, an
+  `npx` run or a standalone executable
+- **configuration** — which file a start would read, or, when there is none, both paths
+  it looked in and the `init` that writes one
+- **settings** — the address to open, the agent's working directory, the runtime,
+  whether a token is set (never its value) and whether the terminal is on
+- **address** — whether the port is free, already serving another Pi Outpost, or taken
+  by something else
+- **web UI** — whether this installation actually has an interface to serve
+- **git**, and **node-pty** when the terminal is enabled
+
+It exits non-zero when something would stop the server from serving, so it can gate a
+script. Unlike `config`, it never needs a configuration file to run — that absence is
+one of the things it is there to report.
+
+**The most common cause of "the page does not connect", in a directory you have not
+used before**: there is no configuration file, so the server prints the paths it
+searched and exits before it ever binds the port. Installing Pi Outpost globally does
+not create one — the install and the configuration are separate acts:
+
+```
+pi-outpost init            # a configuration for this directory
+pi-outpost init --global   # one that every directory falls back to
+```
+
+The global file lives in `<user config dir>/config.json` — `$XDG_CONFIG_HOME/pi-outpost`
+or `~/.config/pi-outpost`, which on Windows means `C:\Users\<you>\.config\pi-outpost`
+and **not** `%APPDATA%`. `doctor` prints the resolved path, so there is nothing to guess.
 
 ## Integrated Terminal
 
