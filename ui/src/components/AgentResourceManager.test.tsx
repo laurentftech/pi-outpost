@@ -186,6 +186,19 @@ describe("AgentResourceManager", () => {
     expect(onCloseServerBrowser).toHaveBeenCalled();
   });
 
+  it("handles adversarial clone paths without regex backtracking", () => {
+    const { onBrowseServerPath } = setup();
+    fireEvent.click(screen.getByRole("button", { name: "Add Git repository…" }));
+    const destination = screen.getByRole("textbox", { name: "Local clone folder" });
+    fireEvent.change(destination, { target: { value: `${"/".repeat(30_000)}resources` } });
+
+    const startedAt = performance.now();
+    fireEvent.click(screen.getByRole("button", { name: "Choose parent…" }));
+
+    expect(performance.now() - startedAt).toBeLessThan(250);
+    expect(onBrowseServerPath).toHaveBeenCalledOnce();
+  });
+
   it("does not overwrite a clone folder edited while a suggestion is pending", () => {
     const { rerenderWith } = setup();
     fireEvent.click(screen.getByRole("button", { name: "Add Git repository…" }));

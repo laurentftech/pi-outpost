@@ -74,17 +74,23 @@ function groupInventory(inventory: AgentResourceInventory | null): Group[] {
   return groups;
 }
 
+function trimTrailingPathSeparators(value: string): string {
+  let end = value.length;
+  while (end > 0 && (value[end - 1] === "/" || value[end - 1] === "\\")) end -= 1;
+  return end === value.length ? value : value.slice(0, end);
+}
+
 function parentPath(value: string): string {
-  const normalized = value.replace(/[\\/]+$/, "");
+  const normalized = trimTrailingPathSeparators(value);
   const index = Math.max(normalized.lastIndexOf("/"), normalized.lastIndexOf("\\"));
   return index <= 0 ? "/" : normalized.slice(0, index);
 }
 
 function joinParent(parent: string, previous: string): string {
-  const normalized = previous.replace(/[\\/]+$/, "");
+  const normalized = trimTrailingPathSeparators(previous);
   const index = Math.max(normalized.lastIndexOf("/"), normalized.lastIndexOf("\\"));
   const name = index >= 0 ? normalized.slice(index + 1) : normalized;
-  return `${parent.replace(/[\\/]+$/, "")}/${name || "agent-resources"}`;
+  return `${trimTrailingPathSeparators(parent)}/${name || "agent-resources"}`;
 }
 
 function ResourceList({ kind, resources, removalLocked = false, onRemove }: { kind: AgentResourceKind; resources: AgentResourceInfo[]; removalLocked?: boolean; onRemove: (resource: AgentResourceInfo) => void }) {
