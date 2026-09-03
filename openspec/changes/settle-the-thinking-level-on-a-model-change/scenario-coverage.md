@@ -26,6 +26,12 @@ Test files:
 |---|---|---|---|
 | AClampedLevelIsReReadAfterAModelChange | covered | `rpc`: "re-reads the level the child clamped when the model changed" — `server/test/pi-rpc.test.ts` | The fake child now clamps inside `set_model` exactly as the real one does (`thinkingLevelsByModel` in `server/test/fixtures/fake-pi-rpc.mjs`) and emits nothing. The test asserts the snapshot reads `high` before and `off` after `setModel("fake","plain")`. Removing the `refreshThinkingLevel()` call leaves the mirror on `high` and the test fails — verified by reverting the two source files and running the suite: 4 failures, this among them. |
 
+## pi-rpc-runtime — AModelKeepsItsReportedCapabilitiesAcrossASelection
+
+| Scenario | Status | Where | What would fail |
+|---|---|---|---|
+| ASilentSetModelAnswerKeepsTheCatalogsCapability | covered | `rpc`: "keeps what the catalog says a model reasons when set_model does not repeat it" — `server/test/pi-rpc.test.ts` | The child is scripted to answer `set_model` with `null`. The test asserts both the returned model and the snapshot report `reasoning: true`. Without the catalog fallback, `toModel(null)` yields nothing, the runtime falls back to `{provider, id}`, and the server reads `reasoning ?? false` — which is how the bench lost the whole 🧠 control on a model change. |
+
 ## components — AModelWithOneLevelIsStatedNotDrawnAsARange
 
 | Scenario | Status | Where | What would fail |

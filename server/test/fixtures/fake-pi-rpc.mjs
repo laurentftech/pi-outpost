@@ -123,6 +123,9 @@ const DATA = {
   get_session_stats: () => config.stats ?? { contextUsage: { tokens: 10, contextWindow: 1000, percent: 1 } },
   get_available_models: () => ({ models: config.models ?? [state.model] }),
   get_commands: () => ({ commands: config.commands ?? [] }),
+  // rpc-mode answers `set_model` with the model itself, `reasoning` included — the
+  // server reads that field to decide whether a thinking control exists at all.
+  set_model: () => ({ ...state.model }),
   get_available_thinking_levels: () => {
     const levels = acceptedThinkingLevels(state.model);
     return levels ? { levels } : undefined;

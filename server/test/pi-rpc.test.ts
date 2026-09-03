@@ -279,6 +279,23 @@ describe("RpcRuntimeStarts", () => {
     assert.deepEqual(runtime.snapshot().thinkingLevels, ["off", "low", "medium", "xhigh"]);
   });
 
+  test("keeps what the catalog says a model reasons when set_model does not repeat it", async () => {
+    // The server reads `reasoning` off this answer to decide whether a thinking
+    // control exists at all. A dialect that answers `set_model` with nothing would
+    // otherwise take the control away from a model that reasons perfectly well.
+    const { runtime } = await startFake({
+      models: [
+        { provider: "fake", id: "one", name: "One", reasoning: true },
+        { provider: "fake", id: "two", name: "Two", reasoning: true },
+      ],
+      commands_: { set_model: { data: null } },
+    });
+
+    const model = await runtime.setModel("fake", "two");
+    assert.equal(model.reasoning, true);
+    assert.equal(runtime.snapshot().model?.reasoning, true);
+  });
+
   test("re-reads the level the child clamped when the model changed", async () => {
     // The child clamps inside `set_model` and emits nothing: RPC has no
     // thinking-level record. A mirror that only updates on `set_thinking_level`

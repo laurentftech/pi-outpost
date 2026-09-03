@@ -643,7 +643,15 @@ class RpcRuntime implements AgentRuntime {
 
   async setModel(provider: string, id: string): Promise<RuntimeModel> {
     const data = await this.command("set_model", { provider, modelId: id });
-    const model = toModel(data) ?? { provider, id };
+    // A dialect that answers `set_model` with nothing, or with a model missing
+    // `reasoning`, must not cost the model its thinking control: the catalog already
+    // says whether it reasons, and the answer does not change with the selection.
+    const answered = toModel(data);
+    const known = this.availableModels.find((choice) => choice.provider === provider && choice.id === id);
+    const model = {
+      ...(answered ?? { provider, id, ...(known?.name ? { name: known.name } : {}) }),
+      ...(answered?.reasoning === undefined && known ? { reasoning: known.reasoning } : {}),
+    };
     this.model = model;
     // A different model accepts a different set of thinking levels.
     await this.refreshThinkingLevels();

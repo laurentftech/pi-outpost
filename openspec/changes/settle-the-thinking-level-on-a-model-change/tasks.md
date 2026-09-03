@@ -3,10 +3,11 @@
 - [x] 1.1 Add `clampThinkingLevel(level, levels)` to `shared/src/protocol.ts`, beside `normalizeThinkingLevels`. Done — steps down first, up only when nothing below is offered, `off` as the floor. `server/test/thinkingLevels.test.ts` covers the accepted level, the two step-down cases, the gap, the step-up, and the empty set.
 - [x] 1.2 Add `settleThinkingLevel(workspace)` to `server/src/index.ts` beside `acceptedThinkingLevels`, and call it after the `model_changed` broadcast in `set_model`. Done — it moves the agent's level through `setThinkingLevel` only when the accepted set excludes it, and broadcasts `thinking_changed` either way.
 
-## 2. The RPC runtime reports the child's level
+## 2. The RPC runtime reports the child's level and the model's capabilities
 
 - [x] 2.1 Re-read `get_state` after `set_model` in `server/src/rpcRuntime.ts`. Done — `refreshThinkingLevel()`, called after `refreshThinkingLevels()`.
-- [x] 2.2 Teach the fake child to clamp on a model change, as the real one does. Done — `thinkingLevelsByModel` in `server/test/fixtures/fake-pi-rpc.mjs` drives both `get_available_thinking_levels` and the silent clamp inside `set_model`. `server/test/pi-rpc.test.ts` "re-reads the level the child clamped when the model changed".
+- [x] 2.2 Keep `reasoning` across a selection: where the `set_model` answer omits it, take it from the catalog `rpcRuntime` already holds. Done — `server/test/pi-rpc.test.ts` "keeps what the catalog says a model reasons when set_model does not repeat it". Found by the running-app pass, where the control disappeared entirely on a model change.
+- [x] 2.3 Teach the fake child to clamp on a model change, as the real one does. Done — `thinkingLevelsByModel` in `server/test/fixtures/fake-pi-rpc.mjs` drives both `get_available_thinking_levels` and the silent clamp inside `set_model`. `server/test/pi-rpc.test.ts` "re-reads the level the child clamped when the model changed".
 
 ## 3. The control stops drawing a range that cannot move
 
@@ -23,4 +24,4 @@
 
 ## 6. Prove it in the running app
 
-- [ ] 6.1 Drive the model switch in the running widget (`npm run bench`) with a declared off-only model, and read back the control after the switch.
+- [x] 6.1 Drive the model switch in the running widget (`npm run bench`), with the bench's thinking server extended to hold a second model declared `["off"]` and a session starting on `high`. Done — see `verification.md`. The pass found two things no suite could: the fake child never answered `set_model` with a model, so the whole 🧠 control vanished on a switch (a real dialect gap, now closed by the catalog fallback in `rpcRuntime.setModel`), and the child's own clamp is now visible in the interface rather than hidden behind a stale label.
