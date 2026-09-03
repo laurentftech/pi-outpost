@@ -152,6 +152,52 @@ export interface TerminalSession {
   ptyProcess: pty.IPty;
   socket: WebSocket;
   cwd: string;
+  /**
+   * The `onData` and `onExit` subscriptions, so closing can take them off.
+   *
+   * `kill()` only *starts* a shutdown — on Windows ConPTY it drains for a while
+   * afterwards, with a helper process of its own. A listener still attached is a
+   * listener still calling back, into a socket the caller has by then given up on:
+   * that is `write EAGAIN`, and, in a test, "asynchronous activity after the test
+   * ended". Detaching first makes the shutdown silent, whatever it takes.
+   */
+  listeners: pty.IDisposable[];
+}
+
+/**
+ * Detach, then kill — in that order, and never the other way.
+ *
+ * A killed pty goes on producing for a while: ConPTY drains asynchronously and keeps a
+ * helper process alive to do it. Killing first and detaching later leaves a window in
+ * which `onData` fires into a socket nobody is reading, which surfaces as `write EAGAIN`
+ * and, under `node:test`, as activity outliving the test that started it.
+ */
+function endSession(session: TerminalSession): void {
+  for (const listener of session.listeners.splice(0)) {
+    try {
+      listener.dispose();
+    } catch {
+      // A subscription the pty has already torn down on its own side.
+    }
+  }
+  try {
+    session.ptyProcess.kill();
+  } catch {
+    // Process might already be dead
+  }
+}
+
+/**
+ * Swap the pty implementation, for tests that have no business spawning a shell.
+ *
+ * `node-pty` is an optional dependency carrying a native build, so a checkout that
+ * skipped its install script has no terminal tests at all — and the ones that do run
+ * spawn real shells whose teardown is exactly the thing being tested. Pass `null` to
+ * restore the real module.
+ */
+export function setPtyModuleForTesting(module: typeof pty | null): void {
+  ptyModule = module;
+  ptyLoadError = null;
 }
 
 export class TerminalManager {
@@ -304,15 +350,16 @@ export class TerminalManager {
         ptyProcess,
         socket,
         cwd: resolvedCwd,
+        listeners: [],
       };
 
       userSessions.set(terminalId, session);
 
-      ptyProcess.onData((data: string) => {
+      session.listeners.push(ptyProcess.onData((data: string) => {
         onData(terminalId, data);
-      });
+      }));
 
-      ptyProcess.onExit(({ exitCode }) => {
+      session.listeners.push(ptyProcess.onExit(({ exitCode }) => {
         // Guard against sequential reopen: only clean up if this session is still the active registered one!
         const currentMap = this.socketSessions.get(socket);
         if (currentMap && currentMap.get(terminalId) === session) {
@@ -322,7 +369,7 @@ export class TerminalManager {
           }
         }
         onExit(terminalId, exitCode);
-      });
+      }));
 
       return session;
     })();
@@ -405,11 +452,7 @@ export class TerminalManager {
     if (!userSessions) return false;
     const session = userSessions.get(terminalId);
     if (!session) return false;
-    try {
-      session.ptyProcess.kill();
-    } catch {
-      // Process might already be dead
-    }
+    endSession(session);
     userSessions.delete(terminalId);
     if (userSessions.size === 0) {
       this.socketSessions.delete(socket);
@@ -423,13 +466,7 @@ export class TerminalManager {
   closeAllForSocket(socket: WebSocket): void {
     const userSessions = this.socketSessions.get(socket);
     if (!userSessions) return;
-    for (const session of userSessions.values()) {
-      try {
-        session.ptyProcess.kill();
-      } catch {
-        // Ignore
-      }
-    }
+    for (const session of userSessions.values()) endSession(session);
     this.socketSessions.delete(socket);
   }
 
@@ -438,13 +475,7 @@ export class TerminalManager {
    */
   closeAll(): void {
     for (const userSessions of this.socketSessions.values()) {
-      for (const session of userSessions.values()) {
-        try {
-          session.ptyProcess.kill();
-        } catch {
-          // Ignore
-        }
-      }
+      for (const session of userSessions.values()) endSession(session);
     }
     this.socketSessions.clear();
   }
