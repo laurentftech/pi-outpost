@@ -12,19 +12,23 @@ import { applyWorkPlanMutation } from "./workPlanStore.ts";
 
 const objectOptions = { additionalProperties: false } as const;
 /**
- * A non-empty string with a ceiling. `minLength` carries the empty case; the
- * whitespace-only case is left to `requireNonEmptyString` in the shared
- * normaliser, which every mutation already passes through and which names the
- * offending field.
+ * A string field, with its ceiling left to the normaliser.
  *
- * It used to carry an anchored `pattern` for that second case. On this schema
- * that is 73 copies of the same regex — 2.5k characters, ~640 tokens on every
- * turn of every conversation — to reject a string the handler rejects anyway,
- * with a message the model can act on rather than a schema error it cannot.
+ * `text()` in the shared normaliser already refuses an empty string, a blank one and
+ * one past its limit — by name ("task.title is longer than 200 characters"), which is
+ * what a model can act on. The schema said the same thing twice over, in `minLength`
+ * and `maxLength` on 92 fields across the two tools: 1 304 characters of every request
+ * to duplicate a check that runs anyway and answers better.
+ *
+ * The same reasoning retired the anchored `pattern` these fields used to carry. What
+ * stays in the schema is what it alone can say: the shape, the enums, and the ceilings
+ * on *collections* (`maxItems`), which bound a plan rather than a word.
+ *
+ * The limit is still passed at every call site: it says which ceiling this field answers
+ * to, so the schema and the normaliser cannot drift apart in a reader's mind even though
+ * only one of them enforces it now.
  */
-const boundedText = (maxLength: number, description?: string) => Type.String({
-  minLength: 1,
-  maxLength,
+const boundedText = (_maxLength: number, description?: string) => Type.String({
   ...(description === undefined ? {} : { description }),
 });
 const identifierSchema = boundedText(WORK_PLAN_LIMITS.title);

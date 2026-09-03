@@ -784,10 +784,47 @@ describe("work_plan tool", () => {
       const recordProperties = record.properties as Record<string, Record<string, unknown>>;
       assert.deepEqual(recordProperties.result.enum, ["passed", "failed", "inconclusive", "informational"]);
       assert.equal(recordProperties.result.anyOf, undefined, "results use one enum node");
-      assert.equal(recordProperties.type.maxLength, WORK_PLAN_LIMITS.evidenceType);
-      assert.equal(recordProperties.summary.maxLength, WORK_PLAN_LIMITS.evidenceSummary);
+      // No length bounds in the schema: `text()` in the normaliser holds every one of
+      // them and says which field broke, where a schema error says only that something
+      // was too long. Asserted below, on the limit rather than on its restatement.
+      assert.equal(recordProperties.type.maxLength, undefined);
+      assert.equal(recordProperties.summary.maxLength, undefined);
       assert.equal((recordProperties.reference as Record<string, unknown>).additionalProperties, false);
     }
+  });
+
+  it("holds every length limit in the normaliser, which names the field it refuses", () => {
+    // What the schema stopped saying, and who says it now. 92 length bounds across the
+    // two tools came to 1 304 characters of every request, restating a check that runs
+    // anyway — and answers better: a schema error tells a model that something was too
+    // long, this tells it which thing.
+    const long = "x".repeat(WORK_PLAN_LIMITS.title + 1);
+    assert.throws(
+      () => mutateWorkPlan(null, { action: "create", title: long, tasks: [{ title: "First" }] } as never),
+      (error: Error) => {
+        assert.match(error.message, /title/);
+        assert.match(error.message, new RegExp(`longer than ${WORK_PLAN_LIMITS.title}`));
+        return true;
+      },
+    );
+    assert.throws(
+      () => mutateWorkPlan(base(), {
+        action: "set_evidence",
+        taskId: "build",
+        evidence: [{ id: "t", type: "x".repeat(WORK_PLAN_LIMITS.evidenceType + 1), result: "passed", summary: "ok" }],
+      } as never),
+      (error: Error) => {
+        assert.match(error.message, /type/);
+        assert.match(error.message, new RegExp(`longer than ${WORK_PLAN_LIMITS.evidenceType}`));
+        return true;
+      },
+    );
+
+    // ...and the collection ceilings stay in the schema, since they bound a plan rather
+    // than a word and nothing else tells a model how many tasks it may write.
+    const tasks = (createWorkPlanToolDefinition().parameters as unknown as Record<string, unknown>)
+      .properties as Record<string, Record<string, unknown>>;
+    assert.equal(tasks.tasks.maxItems, WORK_PLAN_LIMITS.tasks);
   });
 
   it("still normalises a creation draft that carries evidence, though it no longer advertises it", () => {
@@ -848,10 +885,16 @@ describe("work_plan tool", () => {
       }, `blank text refused: ${JSON.stringify(mutation)}`);
     }
 
-    // ...and the schema still rejects the empty string, which costs one keyword.
+    // The empty string goes the same way as the blank one, and for the same reason: the
+    // schema no longer restates a rule the normaliser holds. What it still does is accept
+    // a well-formed call, which is the half only it can answer.
+    assert.throws(
+      () => mutateWorkPlan(null, { action: "create", title: "", tasks: [{ title: "First" }] } as never),
+      /title.*non-empty/,
+    );
     const validator = Compile(createWorkPlanToolDefinition().parameters as never);
-    assert.equal(validator.Check({ action: "create", title: "", tasks: [{ title: "First" }] }), false, "empty title");
     assert.equal(validator.Check({ action: "create", title: "Ship it", tasks: [{ title: "First" }] }), true);
+    assert.equal(validator.Check({ action: "create", title: "Ship it", nonsense: 1 }), false, "an undeclared property is still refused");
   });
 
   it("answers a refused property by naming it, and says nothing about other actions", () => {
