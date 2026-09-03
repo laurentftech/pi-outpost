@@ -41,6 +41,16 @@ interface SingleTerminalViewProps {
   cwd?: string;
   isActive: boolean;
   isPanelOpen: boolean;
+  /**
+   * True while a tab is being renamed anywhere in the panel.
+   *
+   * The terminal takes focus back when it becomes the active tab, 50 ms after the fact.
+   * Double-clicking a tab to rename it also activates it, so that timer lands in the
+   * middle of typing: the rename input blurs, `onBlur` commits, and the field is
+   * unmounted from under the user — with whatever they had typed so far. Focus is worth
+   * having, and not at the price of a name.
+   */
+  renaming: boolean;
   openTerminal?: TerminalPanelProps["openTerminal"];
   sendTerminalInput?: TerminalPanelProps["sendTerminalInput"];
   getTerminalCwd?: TerminalPanelProps["getTerminalCwd"];
@@ -111,6 +121,7 @@ function SingleTerminalView({
   cwd,
   isActive,
   isPanelOpen,
+  renaming,
   openTerminal,
   sendTerminalInput,
   getTerminalCwd,
@@ -268,6 +279,7 @@ function SingleTerminalView({
 
   // When active tab changes or panel becomes visible, refit, focus, and refresh cwd
   useEffect(() => {
+    if (renaming) return;
     if (isPanelOpen && isActive && fitAddonRef.current && terminalRef.current && containerRef.current) {
       callbacksRef.current.getTerminalCwd?.(id);
       const timer = setTimeout(() => {
@@ -280,7 +292,7 @@ function SingleTerminalView({
       }, 50);
       return () => clearTimeout(timer);
     }
-  }, [isPanelOpen, isActive, id]);
+  }, [isPanelOpen, isActive, id, renaming]);
 
   return (
     <div
@@ -557,6 +569,7 @@ export function TerminalPanel({
             cwd={cwd}
             isActive={tab.id === activeTabId}
             isPanelOpen={open}
+            renaming={editingTabId !== null}
             openTerminal={openTerminal}
             sendTerminalInput={sendTerminalInput}
             getTerminalCwd={getTerminalCwd}
