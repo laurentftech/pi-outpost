@@ -223,10 +223,11 @@ interface adds. opencode is a terminal agent of the same family, listed for scal
 | Interface | terminal | browser, installable, embeddable | terminal |
 | Several projects at once | — | yes, each with its own agent and sandbox | — |
 | Files, git, PDF and Office in the interface | — | yes | — |
-| Baseline context (system prompt + tool definitions) | **~2.4k tokens** | **~11k tokens** | not measured |
+| Baseline context (system prompt + tool definitions) | **~2.4k tokens** | **~11k tokens** | **~7.6k tokens** |
 
 That baseline is what every turn carries before you have typed anything, and most of the
-difference is one tool: `work_plan` alone is ~4k tokens. The full table, the per-tool
+difference is one tool: `work_plan` alone is ~4k tokens — where opencode's comparable
+`todowrite` is ~0.7k. The full table, the per-tool
 breakdown and the probe that produced them are in
 [`docs/comparison.md`](docs/comparison.md).
 
