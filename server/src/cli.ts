@@ -51,6 +51,7 @@ Usage
   pi-outpost [options]           start the server
   pi-outpost init [options]      write a starter configuration file
   pi-outpost config [options]    print the configuration that would be used, and where it came from
+  pi-outpost doctor [options]    check whether this installation can start and serve, and say what stops it
   pi-outpost login --provider <name>
                                  store an API key for a provider in <agentDir>/auth.json
   pi-outpost build-exe [options] build a standalone executable from this installation
@@ -161,7 +162,7 @@ Agent runtime
 export class CliError extends Error {}
 
 export interface ParsedCli {
-  command: "serve" | "init" | "config" | "login" | "build-exe" | "update" | "help" | "version";
+  command: "serve" | "init" | "config" | "doctor" | "login" | "build-exe" | "update" | "help" | "version";
   flags: CliOptions;
   init: { global: boolean; force: boolean };
   login: { provider?: string };
@@ -171,8 +172,8 @@ export interface ParsedCli {
   open?: boolean;
 }
 
-type Command = "init" | "config" | "login" | "build-exe" | "update";
-const COMMANDS: readonly string[] = ["init", "config", "login", "build-exe", "update"] satisfies Command[];
+type Command = "init" | "config" | "doctor" | "login" | "build-exe" | "update";
+const COMMANDS: readonly string[] = ["init", "config", "doctor", "login", "build-exe", "update"] satisfies Command[];
 
 function integerFlag(value: string | undefined, name: string): number | undefined {
   if (value === undefined) return undefined;

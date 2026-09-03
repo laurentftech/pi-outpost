@@ -549,6 +549,17 @@ export function userConfigDir(env: NodeJS.ProcessEnv = process.env): string {
   return path.join(base, "pi-outpost");
 }
 
+/**
+ * The two places a configuration is looked for when nothing names one, in order.
+ *
+ * Exported because `doctor` reports this list to an operator whose server refused to
+ * start, and a second copy of it there would eventually describe a search this code
+ * no longer performs — which is the one thing a diagnostic may never do.
+ */
+export function implicitConfigCandidates(launchDir: string, env: NodeJS.ProcessEnv = process.env): string[] {
+  return [path.join(launchDir, "pi-outpost.config.json"), path.join(userConfigDir(env), "config.json")];
+}
+
 /** Profile names are file names, not paths — `../../../etc/evil` must not resolve. */
 const PROFILE_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 
@@ -594,10 +605,7 @@ export function findConfigFile(
   }
   if (env.PI_OUTPOST_PROFILE) return profilePath(env.PI_OUTPOST_PROFILE, env);
 
-  const implicit = [
-    path.join(launchDir, "pi-outpost.config.json"),
-    path.join(userConfigDir(env), "config.json"),
-  ];
+  const implicit = implicitConfigCandidates(launchDir, env);
   const found = implicit.find((candidate) => fs.existsSync(candidate));
   if (!found) throw new NoConfigError(implicit);
   return found;

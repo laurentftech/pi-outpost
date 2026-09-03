@@ -72,6 +72,20 @@ describe("parseCli", () => {
     assert.equal(result.command, "config");
   });
 
+  test("doctor subcommand", () => {
+    const result = parseCli(["doctor"]);
+    assert.equal(result.command, "doctor");
+  });
+
+  test("doctor takes the flags that decide which configuration it would report on", () => {
+    // Without these it would diagnose the default search while the operator's real
+    // start reads something else entirely — a report about a server they never run.
+    const result = parseCli(["doctor", "--config", "/etc/pi.json", "--port", "8080"]);
+    assert.equal(result.command, "doctor");
+    assert.equal(result.flags.config, "/etc/pi.json");
+    assert.equal(result.flags.port, 8080);
+  });
+
   test("login subcommand", () => {
     const result = parseCli(["login", "--provider", "anthropic"]);
     assert.equal(result.command, "login");
