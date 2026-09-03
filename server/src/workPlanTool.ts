@@ -108,9 +108,14 @@ const creationTaskSchema = (depth: number): TSchema => Type.Object({
 /**
  * `update_task` used to advertise a `changes` object beside the flat fields, with
  * exactly the same seven properties. Two ways to say one thing, the second costing
- * 1.2k characters of schema on every turn — and the normaliser already falls back
- * from `changes` to the flat form (`loosenedChanges`), so only the advertisement
- * is gone: a model that still sends `changes` is honoured.
+ * 1.2k characters of schema on every turn.
+ *
+ * The normaliser still reads `changes` (`loosenedChanges`), so a caller reaching
+ * `mutateWorkPlan` directly keeps working. A *model* does not: pi validates a tool
+ * call against the published schema before the handler runs, and this schema refuses
+ * properties it does not declare. Withdrawing an advertisement is therefore a real
+ * narrowing for anything calling through pi — the work-plan provider fixture sent
+ * `changes` and was refused, which is how this was established rather than assumed.
  */
 
 /**

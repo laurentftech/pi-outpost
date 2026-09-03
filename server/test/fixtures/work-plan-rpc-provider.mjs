@@ -96,7 +96,11 @@ function streamWorkPlan(model, context) {
         {
           action: "update_task",
           taskId: createdPlan?.tasks?.[0]?.id,
-          changes: { status: "done" },
+          // Flat, beside taskId. The `changes` wrapper is no longer published, and the
+          // published schema is authoritative: pi validates a tool call against it
+          // before the handler runs, so a wrapper the schema does not declare is
+          // refused whatever the normaliser would have done with it.
+          status: "done",
         },
         { action: "get" },
       ];
