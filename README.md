@@ -182,7 +182,12 @@ one needs, the command that proves it works, and the caution that goes with it.
 - Office documents: `docx_extract`, `xlsx_extract` and `pptx_extract` give the agent Word
   text and tables, one markdown table per spreadsheet sheet, and slide structure with
   speaker notes. Each takes an `output_path`, to write the whole document to a file instead
-  of spending the context on it twice
+  of spending the context on it twice. The four extractors are described to
+  the agent only once a document of that kind is named in the conversation — their schemas
+  are a quarter of a session's prompt floor, and most sessions never open one. Named and never
+  called, an extractor goes again when the turn ends; named and used, it stays through the
+  work around that document and is forgotten after five quiet turns. Naming the document
+  again brings it back
 - Structured results: a tool can hand back **data** — a graph, a sequence, a table — and the
   interface draws it, with an approval gate when the document names a `target`. Files that
   declare the schema open as the diagram they describe, and any diagram exports as a
