@@ -27,4 +27,4 @@
 ## 6. Validation
 
 - [x] 6.1 Done — 10 scenarios, all covered.
-- [ ] 6.2 `npm run check:scenarios`, `openspec validate --strict`, and the **full** server suite — both CI failures on this stack came from files a partial local run never touched.
+- [x] 6.2 Done — `check:scenarios` clean (10 scenarios), `openspec validate --strict` valid, and the full server suite run rather than a subset: 1863 pass, with the four `TerminalManager` failures traced to `node-pty` never having installed (npm 12 blocks its script) rather than to this change, and fixed separately. The Codex review that the standing rule asks for ran late on this stack and returned four findings, all confirmed and all fixed before merge.

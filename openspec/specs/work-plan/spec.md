@@ -120,8 +120,9 @@ The system SHALL provide a persistent or readily accessible Work Plan view along
 - **THEN** the system navigates to it using the existing applicable UI
 
 ### Requirement: Self-describing Work Plan tool contract
-The structured Work Plan interface SHALL expose a single object schema whose `action` property enumerates every operation and whose remaining properties are optional, individually typed, and documented with the actions that use them. Every nested input field, accepted status, and nullable clearing value SHALL be declared. An agent SHALL be able to construct a valid call from the tool name, description, schema, and prompt guidelines without learning required fields from rejected mutations. A refused call SHALL be answered with a diagnosis that names the refused field, and SHALL NOT enumerate the failures of operations the call did not request.
+The structured Work Plan interface SHALL expose object schemas whose `action` property enumerates the operations that schema carries and whose remaining properties are optional, individually typed, and documented with the actions that use them. Every nested input field, accepted status, and nullable clearing value SHALL be declared. An agent SHALL be able to construct a valid call from the tool name, description, schema, and prompt guidelines without learning required fields from rejected mutations. A refused call SHALL be answered with a diagnosis that names the refused field, and SHALL NOT enumerate the failures of operations the call did not request.
 
+The interface SHALL be published as two tools, described under **The Work Plan contract is split by what an operation needs**. Each SHALL be self-describing on its own terms: an agent reading either SHALL be able to call every action that tool carries, and SHALL be told where the others live. The prompt guidelines that accompany an operation SHALL follow the tool that carries it, so what an agent is told matches what it is currently able to call.
 #### Scenario: Creation schema declares its complete input
 - **WHEN** an agent inspects the Work Plan tool schema
 - **THEN** the schema declares the plan title and the recursively nested task shape, including the task dependency list
@@ -353,3 +354,87 @@ The task update operation SHALL accept its changed fields either inside a `chang
 #### Scenario: Identity cannot be changed through either shape
 - **WHEN** an update supplies a task identifier as a changed field
 - **THEN** the operation is rejected
+
+### Requirement: The Work Plan contract is split by what an operation needs
+
+The Work Plan interface SHALL be published as two tools. The first SHALL carry the operations
+that need nothing to exist first — inspecting, creating, adding, updating, moving and removing
+tasks, and clearing the plan — and SHALL be published to every session. The second SHALL carry
+the operations that act on tasks that must already exist: whole-plan replacement, dependency
+sets, resource sets and evidence collections. It SHALL be published only while the session has
+a Work Plan.
+
+The schema is sent on every request of every conversation. The withheld operations are both
+the expensive ones — they carry complete plans, evidence records and resource lists — and the
+impossible ones, since none of them can be called against a session with no plan. A tool that
+cannot be called is one no conversation should be charged for reading.
+
+The task shapes the first tool accepts — at creation and when adding a task — SHALL NOT
+advertise evidence or resource collections; those are set on tasks that exist, through the
+second tool. The persisted representation SHALL be unchanged: a draft carrying those
+collections SHALL still normalise, so stored plans, forks and every non-tool caller keep
+working. Withdrawing them from the schema is nonetheless a narrowing for an agent, since a
+tool call is validated against the published schema before it reaches the handler.
+
+Publication SHALL be derived from the persisted plan rather than from separately held state,
+and a change SHALL take effect within the turn that causes it: an agent that creates a plan
+SHALL be able to record evidence against it without waiting for the next turn.
+
+Each tool SHALL name the other and say what it carries, in its description and its prompt
+guidelines, so an agent that reaches for an operation the tool it is holding does not have
+is told where to find it **before** it calls.
+
+A call naming an action the tool does not carry SHALL be refused. For a model that reaches
+the tool through the runtime, the refusal comes from the published schema, whose `action`
+enumerates only that tool's operations — the runtime validates against it before the tool
+runs, so the tool's own guard never sees such a call. That guard SHALL nevertheless answer
+by name for the callers that bypass validation.
+
+Where a runtime cannot change its published toolset — the RPC dialect has no command for it —
+that runtime SHALL publish both tools at all times rather than emulate the gating. The
+embedded SDK runtime is the supported target for this behaviour.
+
+#### Scenario: A session with no plan publishes only the common operations
+- **GIVEN** a session whose workspace holds no Work Plan
+- **WHEN** the agent's toolset is composed
+- **THEN** the tool carrying creation and task updates is published
+- **AND** the tool carrying evidence, resources, dependencies and replacement is not
+
+#### Scenario: Creating a plan publishes the rest within the same turn
+- **GIVEN** a session with no Work Plan
+- **WHEN** the agent creates one
+- **THEN** the second tool is published
+- **AND** the agent can record evidence against a task in its next call of that same turn
+
+#### Scenario: A session that already has a plan publishes both
+- **GIVEN** a session whose workspace holds a Work Plan
+- **WHEN** the session is bound, resumed, switched to, or forked
+- **THEN** both tools are published
+
+#### Scenario: Clearing a plan withdraws the extended operations
+- **GIVEN** a session publishing both tools
+- **WHEN** the plan is cleared
+- **THEN** only the tool carrying the common operations remains published
+
+#### Scenario: Every action belongs to exactly one tool
+- **WHEN** the published tools are compared against the enumerated Work Plan actions
+- **THEN** each action appears in exactly one of them
+- **AND** none is absent from both
+
+#### Scenario: An action asked of the wrong tool is refused
+- **WHEN** a model asks one tool for an action the other carries
+- **THEN** the call is refused before the tool runs, by the schema that does not enumerate it
+
+#### Scenario: Each tool says where the other operations live
+- **WHEN** an agent reads either tool's description and guidelines
+- **THEN** it is told which tool carries the operations this one does not
+
+#### Scenario: Creation no longer advertises evidence, and the store still accepts it
+- **WHEN** an agent inspects the creation task shape
+- **THEN** it declares no evidence or resource collection
+- **AND** a creation draft that carries them is still normalised into the persisted plan
+
+#### Scenario: A runtime that cannot gate says so rather than pretending
+- **GIVEN** a workspace served by the RPC runtime
+- **WHEN** the agent's toolset is composed for a session with no plan
+- **THEN** both tools are published, as that dialect cannot change its active toolset
