@@ -19,6 +19,7 @@ import fs from "node:fs/promises";
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 import type { AgentRuntime } from "./agentRuntime.ts";
 import type { SandboxConfig } from "./config.ts";
+import { DOCUMENT_TOOLS } from "./documentTools.ts";
 import { type DirectoryWatcher, createDirectoryWatcher } from "./fileWatcher.ts";
 import { resolveBrowserRoot, resolveWritableRoot } from "./fileBrowser.ts";
 import { discoverRepos, whyGitCannotServe, type GitRepo } from "./git.ts";
@@ -137,6 +138,24 @@ export class Workspace {
   gitUnavailable: GitUnavailable | undefined;
   fileWatcher: DirectoryWatcher | undefined;
   sandboxedTools: ToolDefinition[] | undefined;
+
+  /**
+   * How many turns each published document extractor has gone unused, and whether it was
+   * ever used at all.
+   *
+   * A prompt naming `report.pdf` publishes `pdf_extract` before the turn goes out, and
+   * the tool then has to earn its place in every later request. Two thresholds, because
+   * the two silences mean different things: a tool that was **never** called was
+   * published on a wrong guess — a file that does not exist, a document named in passing
+   * — and goes at the end of that turn. One that **was** called is kept while the work
+   * around it continues, since extraction is rarely a single call, and is forgotten only
+   * once the conversation has plainly moved on.
+   *
+   * Naming the document again republishes it: that is the only way back, and it is the
+   * user's to take, since an agent cannot ask for a tool it can no longer see.
+   */
+  documentToolIdleTurns = new Map<string, number>();
+  documentToolsEverUsed = new Set<string>();
 
   /** Loaded from the runtime's session file by the caller; null until then. */
   workPlan: WorkPlan | null = null;
@@ -407,6 +426,22 @@ interface WorkspaceResources {
   sandboxedTools: ToolDefinition[] | undefined;
 }
 
+/**
+ * The document extractors, last, whatever order they were built in.
+ *
+ * They are the tools published mid-session, when a document enters the conversation. A
+ * caching provider re-reads its prompt prefix from the position of whatever changed, so
+ * a tool that arrives late belongs late in the list: registered fifth of fourteen,
+ * `pdf_extract` kept 9.2% of the prefix; last, everything ahead of it survives.
+ *
+ * A stable partition rather than a sort — the order of everything else is someone's
+ * decision and this is not the place to overturn it.
+ */
+function documentToolsLast(tools: ToolDefinition[]): ToolDefinition[] {
+  const documents = new Set<string>(DOCUMENT_TOOLS);
+  return [...tools.filter((tool) => !documents.has(tool.name)), ...tools.filter((tool) => documents.has(tool.name))];
+}
+
 async function buildResources(options: WorkspaceOptions): Promise<WorkspaceResources> {
   const { settings, limits } = options;
   const browserRoot = await resolveBrowserRoot(settings);
@@ -416,7 +451,7 @@ async function buildResources(options: WorkspaceOptions): Promise<WorkspaceResou
   // all", and it is the only thing that notices a repository git will refuse to read
   const gitUnavailable = await whyGitCannotServe(browserRoot, repos);
   const sandboxedTools = settings.sandbox
-    ? [
+    ? documentToolsLast([
         ...(await createSandboxedTools(
           settings.sandbox,
           limits.pdfMaxBytes,
@@ -426,7 +461,7 @@ async function buildResources(options: WorkspaceOptions): Promise<WorkspaceResou
           limits.structuredExchangeMaxBytes,
         )),
         ...options.unconfinedTools,
-      ]
+      ])
     : undefined;
   const fileWatcher = options.watchFiles
     ? createDirectoryWatcher({ root: browserRoot, onChange: options.onDirectoryChanged })
