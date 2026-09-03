@@ -1,69 +1,75 @@
-## The constraint that shapes everything
+## Why two tools rather than one gated tool
 
 `AgentSession` builds its tool registry when the session is created. There is
 `setActiveToolsByName(names)` — which rebuilds the system prompt, so an inactive tool is
-not described — and `getAllTools()`, and nothing that registers a definition afterwards.
+not described — and nothing that registers a definition afterwards. One tool cannot
+therefore have a small schema at rest and a complete one later: whatever is published for
+a name is fixed for the session's life.
 
-So "publish a small `work_plan` at rest and a complete one once there is a plan" cannot be
-one tool with two schemas. Both definitions exist from the start, and only their active
-flag changes. Two definitions mean two names, which is the whole design question: what does
-the agent see when there is no plan?
+An earlier draft of this change worked around that with an *opener*: a tiny tool whose only
+job was to create a plan and switch the full contract on. It works, and it makes the agent
+pay a round trip on the turn it decided to plan, for operations — add a task, move a status
+on — that are the whole point and cost almost nothing to publish.
 
-## What the resting state offers
+Splitting by *what an operation carries* is better on both counts. The common path stays
+published at all times, so nothing is discovered twice; what is withheld is the part that
+is both expensive and unusable without a plan.
 
-**An opener, not a smaller `work_plan`.** One tool, `start_work_plan`, whose parameters are
-a title and nothing else, and whose description says when to reach for it — the same
-sentence the system prompt spends on the subject today. Roughly 300 characters against
-12 480.
+## Where the line falls
 
-The alternatives considered:
+| | `work_plan` | `work_plan_extended` |
+|---|---|---|
+| Actions | `get`, `create`, `add_task`, `update_task`, `move_task`, `remove_task`, `clear` | `replace`, `set_dependencies`, `set_resources`, `set_evidence` |
+| Carries | a title, a task tree of titles, descriptions, statuses and reasons | a complete normalized plan, evidence records, resource lists, dependency sets |
+| Schema | 3 071 characters | 5 894 characters |
+| Published | always | only while the session has a plan |
 
-*Nothing at all, and a line in the prompt.* Cheapest, and it does not work: an agent cannot
-call what is not published, so the plan would only ever be opened by a human asking for
-one. The capability exists precisely for the moments the agent notices the work is
-non-trivial.
+The rule that decides the line is not frequency but **prerequisite**: every operation in the
+extended tool acts on a task that must already exist. `set_evidence` on no plan is not a
+call anyone can make. A tool that cannot be called is a tool nobody needs to read.
 
-*A create-only `work_plan`, renamed to something else once complete.* The name would change
-under the agent mid-conversation, with the earlier name still in the transcript. Names are
-how a model addresses a tool; changing one is worse than adding one.
+That the four are also the least-used operations is what makes the split pay; that they are
+impossible without a plan is what makes it *correct*.
 
-*The full contract, always, and accept the cost.* What we do today, and what this change
-exists to stop.
+## Evidence and resources leave the creation shape
 
-The opener is the pattern opencode uses for skills: a small always-present tool that brings
-the large thing into scope on demand. The cost is one extra round trip, on the turn where
-the agent has already decided it is doing something substantial.
+They are the reason a creation task costs 1 009 characters twice over — once per nesting
+level. Setting them at creation is possible today and rare: a task acquires evidence when
+something has been run, which is not the moment the plan is drawn.
 
-## When the full contract becomes active
+After this change they are set on a task that exists, through the tool whose schema already
+describes them. `mutateWorkPlan` keeps accepting them in a creation draft — nothing stored
+changes, and a plan written by an older client still normalises — but the schema stops
+advertising them, which is where the cost was.
 
-Three moments, all server-side, none requiring the agent to ask twice:
+## When the extended tool becomes active
 
-1. **The opener runs.** It creates the plan and activates `work_plan` before returning, so
-   the agent's next call in the same turn can already use `set_status` or `add_task`.
-2. **A session with a plan is bound.** Restore, resume, switch, fork: `loadWorkPlan` already
-   runs there, and a session that has a plan starts with the contract active. An agent
-   resuming work never sees the opener.
-3. **Never otherwise.** `clear` puts the session back to resting, and a new session starts
-   there.
+Derived from the persisted plan, never from a flag held beside it:
 
-The state is derived from the persisted plan, not from a flag someone has to remember to
-set — the same rule the review state already follows.
+1. **A plan is created** — by `create` on the slim tool. The extended tool is activated
+   before the call returns, so the agent's next call in the same turn can already record
+   evidence.
+2. **A session with a plan is bound** — restore, resume, switch, fork. `loadWorkPlan`
+   already runs there.
+3. **`clear`** puts the session back to publishing the slim tool alone, and a new session
+   starts there.
 
-## What this does not do
+## Two names, and what the agent makes of them
 
-**It does not shrink the contract.** `work_plan` is 12 480 characters and its shape is a
-separate problem: the `plan` and `task` properties each serialise a complete task tree, the
-evidence record appears five times, and eleven actions share one flat object. Gating hides
-that cost from conversations that never open a plan; it does nothing for the ones that do.
-Both are worth doing and they are independent.
+The risk of a split is a model that calls the wrong one, or hunts for an operation in the
+tool that does not have it. Three things keep that in hand:
 
-**It does not reach the RPC runtime.** That dialect has no command for the active toolset,
-so an RPC child publishes the full contract at all times. Stated in the capability, and
-consistent with the embedded SDK runtime being the supported target.
+- The slim tool's description names the extended one and says what lives there.
+- A refusal already names the field it refuses; an action that belongs to the other tool is
+  refused by name, the same way.
+- The extended tool is only ever published beside the slim one, never alone, so "the tool I
+  know does not have this action" always has a visible answer.
 
-## Why this is not a prompt-cache regression
+This is the part no unit test settles. Task 5 drives a real model through opening a plan and
+then recording evidence, and reads the transcript rather than the suite.
 
-Changing the active toolset mid-session changes the system prompt, which invalidates a
-provider's prefix cache for that conversation — once, on the turn a plan is opened. A
-conversation that opens a plan pays one cache miss; a conversation that never opens one
-saves ~3k tokens on every turn. The trade is not close.
+## Prompt-cache cost
+
+Activating the extended tool changes the system prompt, which invalidates a provider's
+prefix cache for that conversation — once, on the turn a plan is created. Conversations that
+never open a plan save ~2.3k tokens on every turn. The trade is not close.

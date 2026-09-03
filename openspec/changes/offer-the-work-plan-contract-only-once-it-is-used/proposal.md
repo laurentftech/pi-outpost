@@ -1,32 +1,34 @@
 ## Why
 
-`work_plan`'s schema is sent to the provider on every turn of every conversation,
-whether or not a plan is ever made. Measured on 2026-09-03: **12 480 characters, ~3.1k
-tokens** — after the 4k-token version was trimmed — against a whole default baseline of
-~9.8k. A conversation that never opens a plan pays about a third of its floor for a
-capability it does not use, on every single turn.
+`work_plan`'s schema is sent to the provider on every request of every conversation,
+whether or not a plan is ever made. Measured 2026-09-03, after the trimming in #162:
+**12 480 characters, ~3.1k tokens**, against a whole default baseline of ~9.8k. A
+conversation that never opens a plan pays a third of its floor for a capability it does
+not use, on every turn. opencode's comparable `todowrite` is 2 686 characters.
 
-Most conversations never open one. The tool's own guidance says so: "trivial exchanges
-need no plan."
-
-The pi SDK can already stop paying for it. `AgentSession.setActiveToolsByName()` changes
-the active toolset and, in the SDK's words, "rebuilds the system prompt to reflect the new
-tool set" — a tool that is not active is not described. What it cannot do is register a
-definition after the session exists, so the resting state cannot simply be a smaller
-`work_plan`: both definitions have to be registered up front, and one of them made active.
+The cost is not spread evenly across what the tool does. Four of its eleven actions carry
+almost all of it — `replace` serialises a complete normalized plan, and `set_evidence`,
+`set_resources` and `set_dependencies` carry collections whose shapes are also inlined
+into every creation task. They are also the four an agent reaches for least: a plan is
+opened, tasks are added, statuses move on. Evidence and dependency edits come later, if at
+all.
 
 ## What Changes
 
-- A session with no Work Plan offers a **small opener** instead of the full contract: one
-  tool, no operations to enumerate, whose only job is to say that this work needs a plan.
-- Calling it activates the full `work_plan` contract for that session, available to the
-  very next call — the agent opens the plan in the same turn it decided to.
-- A session that **already has a plan** — restored, resumed, forked — starts with the full
-  contract active. Nothing is discovered twice.
-- `clear` returns the session to the resting state, and so does starting a new session.
-- The RPC runtime keeps the full contract at all times: its dialect has no command for
-  changing the active toolset. This is stated rather than worked around — the embedded SDK
-  runtime is the supported target and `rpc` is best effort.
+Split the capability in two, and publish the second only when it can be used.
+
+- **`work_plan`** — the common path: `get`, `create`, `add_task`, `update_task`,
+  `move_task`, `remove_task`, `clear`. Creation tasks carry title, description, status,
+  reason and subtasks. **3 071 characters** of schema, measured on the partition.
+- **`work_plan_extended`** — the rest: `replace`, `set_dependencies`, `set_resources`,
+  `set_evidence`, and the collection shapes they need. **5 894 characters**, published
+  only to a session that has a plan, since every one of its operations acts on tasks that
+  must already exist.
+- Evidence and resources leave the creation shape. They are set on a task that exists,
+  through the extended tool, which is where their shapes already live.
+
+Both funnel into `mutateWorkPlan` unchanged: the split is in what is published, not in
+what is validated or stored.
 
 ## Capabilities
 
@@ -36,17 +38,29 @@ definition after the session exists, so the resting state cannot simply be a sma
 
 ### Modified Capabilities
 
-- `work-plan`: the tool contract a session publishes becomes a function of whether that
-  session has a plan. `Self-describing Work Plan tool contract` is amended to say what is
-  published in each state, and a new requirement covers the transition between them.
+- `work-plan`: what a session publishes becomes two tools rather than one, and the second
+  is a function of whether the session has a plan. `Self-describing Work Plan tool
+  contract` is amended to say what each publishes; a new requirement covers the split and
+  the transition.
 
 ## Impact
 
-- **Server** — `server/src/workPlanTool.ts` (the opener definition), `server/src/index.ts`
-  (register both, choose the initially active one), `server/src/embeddedRuntime.ts` (flip
-  on `applyWorkPlanMutation` and on session restore).
-- **Prompt** — `server/src/systemPrompt.ts`: the resting guidance is one sentence, not the
-  work-plan guidance block, which follows the full contract.
-- **No wire change, no client change.** The interface already renders whatever plan exists.
-- **Expected saving** — ~3k tokens per turn on any conversation that never opens a plan,
-  taking the default baseline from ~9.8k to ~7k.
+- **Server** — `server/src/workPlanTool.ts` (two definitions over one action partition),
+  `server/src/index.ts` (register both), `server/src/embeddedRuntime.ts` (activate the
+  extended tool from the persisted plan's existence).
+- **Prompt** — `server/src/systemPrompt.ts`: the guidance for evidence follows the tool
+  that carries it.
+- **No wire change, no client change.**
+- **Expected** — a conversation that never opens a plan: ~3.1k tokens down to ~0.8k. One
+  that does: ~2.2k, still below today's 3.1k, because the creation shape no longer
+  inlines the collections twice.
+
+## What this does not do
+
+- **RPC.** That dialect has no command for the active toolset, so an RPC child publishes
+  both tools at all times. Stated rather than emulated: the embedded SDK runtime is the
+  supported target.
+- **`$defs`/`$ref`.** The resource shape still appears in both tools and the evidence
+  record five times inside the extended one. Factoring them is worth another ~4k
+  characters and needs checking against a constrained-decoding gateway first — separate
+  change.
