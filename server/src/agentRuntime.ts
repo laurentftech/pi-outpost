@@ -229,6 +229,16 @@ export interface AgentRuntime {
   abort(): Promise<void>;
   setModel(provider: string, id: string): Promise<RuntimeModel>;
   setThinkingLevel(level: ThinkingLevel): Promise<void>;
+  /**
+   * Publish or withhold one already-registered tool for the rest of this session,
+   * and say whether it took.
+   *
+   * A runtime that cannot change its published toolset returns `false` rather than
+   * pretending: the RPC dialect has no command for it, so a child there publishes
+   * everything it was registered with. Callers report that, they do not work around
+   * it — the embedded SDK runtime is the supported target.
+   */
+  setToolPublished(name: string, published: boolean): boolean;
   compact(): Promise<void>;
   setSessionName(name: string): Promise<void>;
 

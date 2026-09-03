@@ -22,9 +22,20 @@ function message(model, content, stopReason) {
   };
 }
 
-function assertWorkPlanSchema(context) {
+function assertWorkPlanSchema(context, { expectExtended }) {
   const tool = context.tools?.find((candidate) => candidate.name === "work_plan");
   if (!tool) throw new Error("work_plan was not exposed to the provider");
+  const extended = context.tools?.find((candidate) => candidate.name === "work_plan_extended");
+  // The whole point of the split, seen from where it matters: a provider serving a
+  // session with no plan is never sent the collection shapes.
+  //
+  // Only the embedded runtime can withhold it. Inside a real RPC child both tools are
+  // published at all times — that dialect has no command for the active toolset — so
+  // the absence is asserted only where the test says it should hold.
+  const gated = process.env.WORK_PLAN_EXPECT_GATED === "1";
+  if (expectExtended && !extended) throw new Error("work_plan_extended was not published once a plan existed");
+  if (gated && !expectExtended && extended) throw new Error("work_plan_extended reached a provider before any plan existed");
+
   const empty = [];
   const walk = (value, at) => {
     if (!value || typeof value !== "object" || Array.isArray(value)) return;
@@ -34,17 +45,32 @@ function assertWorkPlanSchema(context) {
       else walk(child, `${at}.${key}`);
     }
   };
-  walk(tool.parameters, "$parameters");
+  for (const published of [tool, ...(extended ? [extended] : [])]) {
+    walk(published.parameters, `$${published.name}`);
+    // One object whose `action` enumerates the operations — not a union of
+    // branches, whose failures pi reports all at once.
+    if (published.parameters.anyOf) throw new Error(`${published.name} provider schema is a union again`);
+  }
   if (empty.length > 0) throw new Error(`unconstrained work_plan schemas reached provider: ${empty.join(", ")}`);
-  // One object whose `action` enumerates the operations — not a union of
-  // branches, whose failures pi reports all at once.
-  if (tool.parameters.anyOf) throw new Error("work_plan provider schema is a union again");
+
   const actions = tool.parameters.properties?.action?.enum;
-  for (const action of ["get", "clear", "create", "replace", "add_task", "update_task", "move_task", "remove_task", "set_dependencies", "set_resources", "set_evidence"]) {
+  for (const action of ["get", "clear", "create", "add_task", "update_task", "move_task", "remove_task"]) {
     if (!actions?.includes(action)) throw new Error(`work_plan provider schema does not offer ${action}`);
   }
-  const evidence = tool.parameters.properties?.evidence;
-  if (evidence?.type !== "array" || evidence.maxItems !== 100) throw new Error("work_plan provider schema does not bound evidence");
+  for (const action of ["replace", "set_dependencies", "set_resources", "set_evidence"]) {
+    if (actions?.includes(action)) throw new Error(`work_plan provider schema still carries ${action}`);
+  }
+  // Creation describes titles and statuses, never the collections a task acquires later.
+  const creationTask = tool.parameters.properties?.tasks?.items?.properties;
+  if (creationTask?.evidence || creationTask?.resources) throw new Error("creation still advertises its collections");
+  if (!extended) return;
+
+  const extendedActions = extended.parameters.properties?.action?.enum;
+  for (const action of ["replace", "set_dependencies", "set_resources", "set_evidence"]) {
+    if (!extendedActions?.includes(action)) throw new Error(`work_plan_extended does not offer ${action}`);
+  }
+  const evidence = extended.parameters.properties?.evidence;
+  if (evidence?.type !== "array" || evidence.maxItems !== 100) throw new Error("work_plan_extended does not bound evidence");
   const record = evidence.items;
   if (record?.additionalProperties !== false) throw new Error("work_plan evidence accepts provider-specific fields");
   const results = record?.properties?.result?.enum;
@@ -61,11 +87,15 @@ function assertWorkPlanGuidance(context) {
 }
 
 function streamWorkPlan(model, context) {
-  assertWorkPlanSchema(context);
+  const results = context.messages.filter(
+    (item) => item.role === "toolResult" && (item.toolName === "work_plan" || item.toolName === "work_plan_extended"),
+  );
+  // Publication follows the plan, and the plan is made by the first call: every
+  // request after it must carry the extended tool, and the first must not.
+  assertWorkPlanSchema(context, { expectExtended: results.length > 0 });
   assertWorkPlanGuidance(context);
   const stream = createAssistantMessageEventStream();
   queueMicrotask(() => {
-    const results = context.messages.filter((item) => item.role === "toolResult" && item.toolName === "work_plan");
     if (results.length >= 5) {
       const output = message(model, [{ type: "text", text: "Plan updated." }], "stop");
       stream.push({ type: "start", partial: output });
@@ -83,9 +113,13 @@ function streamWorkPlan(model, context) {
         },
         {
           action: "add_task",
-          task: { id: "release-note", title: "Write release note", status: "todo", dependsOn: [], resources: [] },
+          // No `resources` here any more: the published schema is authoritative — pi
+          // validates a call against it before the handler ever runs — and the
+          // collections belong to work_plan_extended.
+          task: { id: "release-note", title: "Write release note", status: "todo", dependsOn: [] },
         },
         {
+          tool: "work_plan_extended",
           action: "set_evidence",
           taskId: createdPlan?.tasks?.[0]?.id,
           evidence: [
@@ -104,11 +138,12 @@ function streamWorkPlan(model, context) {
         },
         { action: "get" },
       ];
+      const { tool: calledTool = "work_plan", ...args } = argumentsByStep[results.length];
       const toolCall = {
         type: "toolCall",
         id: `real-rpc-work-plan-${results.length}`,
-        name: "work_plan",
-        arguments: argumentsByStep[results.length],
+        name: calledTool,
+        arguments: args,
       };
       const output = message(model, [toolCall], "toolUse");
       stream.push({ type: "start", partial: output });
