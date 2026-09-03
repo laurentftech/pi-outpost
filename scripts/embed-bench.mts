@@ -246,14 +246,38 @@ const progress = await startServer(
 );
 
 // A server whose model accepts only a subset of the thinking levels — no `high` —
-// so the model-aware thinking slider can be watched by hand.
+// so the model-aware thinking slider can be watched by hand. Its second model is the
+// office case: a deployment declaring that it accepts no thinking at all, reached from
+// a session sitting on a level that model has never heard of.
 const thinkingRoot = await makeWorkspace({ "readme.md": "# thinking\n" });
 const thinkingConfig = path.join(thinkingRoot, "fake-rpc.json");
 await writeFile(
   thinkingConfig,
   JSON.stringify({
-    state: { sessionId: "thinking-1", model: { provider: "local", id: "qwen3.8-27b", name: "Qwen3.8 27B", reasoning: true } },
-    commands_: { get_available_thinking_levels: { data: { levels: ["low", "medium", "xhigh"] } } },
+    state: {
+      sessionId: "thinking-1",
+      thinkingLevel: "high",
+      model: { provider: "local", id: "qwen3.8-27b", name: "Qwen3.8 27B", reasoning: true },
+    },
+    commands_: {
+      get_available_models: {
+        data: {
+          models: [
+            { provider: "local", id: "qwen3.8-27b", name: "Qwen3.8 27B", reasoning: true },
+            { provider: "local", id: "plain-mini", name: "Plain Mini", reasoning: true },
+          ],
+        },
+      },
+    },
+    // What the child answers for each model, and what it silently clamps to on a
+    // model change — the real one does both.
+    thinkingLevelsByModel: {
+      // `off` included, as a real reasoning model's set is: thinking can be turned off
+      // whatever the effort tiers are. Without it the child would step a returning `off`
+      // *up* to `low`, which is a fake's artefact and not what a deployment sees.
+      "local/qwen3.8-27b": ["off", "low", "medium", "high", "xhigh"],
+      "local/plain-mini": ["off", "low", "medium", "high", "xhigh"],
+    },
   }),
 );
 const thinking = await startServer(
@@ -261,6 +285,9 @@ const thinking = await startServer(
   {
     server: { allowedOrigins: [host.url], port: HOST_PORT + 6 },
     branding: { title: "bench thinking" },
+    // The declaration the child knows nothing about: nobody but the server can clamp
+    // a session's level onto this model.
+    thinkingLevels: [{ provider: "local", id: "plain-mini", levels: ["off"] }],
     agentRuntime: {
       mode: "rpc",
       executable: process.execPath,
@@ -315,7 +342,7 @@ console.log(
 );
 console.log(`  seeded transcript           ${link(diagrams.base)}   (diagrams + table)`);
 console.log(`  tool progress bar           ${link(progress.base)}   (send any prompt, watch the tool card)`);
-console.log(`  model-aware thinking slider ${link(thinking.base)}   (open the 🧠 control: off..xhigh, no high)`);
+console.log(`  model-aware thinking slider ${link(thinking.base)}   (🧠: low..xhigh, no off; switch to Plain Mini — declared off-only — and watch it settle)`);
 console.log("\n  embed workspace controls — the same widget under each policy\n");
 console.log(`  settings (the default)      ${link(plain.base)}   no header control; the root lives in Settings`);
 console.log(`  root                        ${link(rootMode.base)}   one root, moved from the header`);

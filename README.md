@@ -450,6 +450,13 @@ setting exists precisely for the models the runtime is guessing about. A `set_th
 naming a level outside a declared set is refused rather than forwarded, whichever client
 sends it.
 
+Changing the model **settles** the level on the new model's scale: a session on `high`
+moving to a model that stops at `low` lands on `low`, and one moving to a model that
+accepts no thinking lands on `off` — never a step up, which would spend more effort than
+was asked for. The interface is told what it settled at, so it cannot go on showing a
+level the agent is not using. A model with a single accepted level says so in the control
+rather than offering a slider with nowhere to go.
+
 ### Theming
 
 Light and dark themes ship with the interface. Precedence: a local pick from the toggle

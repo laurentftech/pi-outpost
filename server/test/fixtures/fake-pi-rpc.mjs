@@ -92,6 +92,29 @@ function applyReplacement(replacement) {
   if (replacement.leafId !== undefined) leafId = replacement.leafId;
 }
 
+const THINKING_ORDER = ["off", "minimal", "low", "medium", "high", "xhigh"];
+
+/** What this child accepts for a model, where the test declares it per model. */
+function acceptedThinkingLevels(model) {
+  return config.thinkingLevelsByModel?.[`${model?.provider}/${model?.id}`];
+}
+
+/**
+ * What the real child does inside `set_model`: the session's level is clamped to
+ * the new model's scale — nearest level below, else the nearest above — and no
+ * record is emitted to say so.
+ */
+function clampToModel() {
+  const levels = acceptedThinkingLevels(state.model);
+  if (!levels || levels.includes(state.thinkingLevel)) return;
+  const index = THINKING_ORDER.indexOf(state.thinkingLevel);
+  state.thinkingLevel =
+    THINKING_ORDER.slice(0, Math.max(0, index)).reverse().find((level) => levels.includes(level)) ??
+    THINKING_ORDER.slice(index + 1).find((level) => levels.includes(level)) ??
+    levels[0] ??
+    "off";
+}
+
 const DATA = {
   get_state: () => ({ ...state }),
   get_messages: () => ({ messages }),
@@ -100,6 +123,13 @@ const DATA = {
   get_session_stats: () => config.stats ?? { contextUsage: { tokens: 10, contextWindow: 1000, percent: 1 } },
   get_available_models: () => ({ models: config.models ?? [state.model] }),
   get_commands: () => ({ commands: config.commands ?? [] }),
+  // rpc-mode answers `set_model` with the model itself, `reasoning` included — the
+  // server reads that field to decide whether a thinking control exists at all.
+  set_model: () => ({ ...state.model }),
+  get_available_thinking_levels: () => {
+    const levels = acceptedThinkingLevels(state.model);
+    return levels ? { levels } : undefined;
+  },
 };
 
 // --- reading ---------------------------------------------------------------
@@ -169,7 +199,10 @@ function handle(command) {
 
 function finishSuccessfulCommand(command, type, script, responseId) {
   // Commands that change what the state queries return
-  if (type === "set_model") state.model = { provider: command.provider, id: command.modelId, name: command.modelId, reasoning: true };
+  if (type === "set_model") {
+    state.model = { provider: command.provider, id: command.modelId, name: command.modelId, reasoning: true };
+    clampToModel();
+  }
   if (type === "set_thinking_level") state.thinkingLevel = command.level;
   if (type === "set_session_name") state.sessionName = command.name;
   if (type === "prompt" || type === "steer") state.isStreaming = true;

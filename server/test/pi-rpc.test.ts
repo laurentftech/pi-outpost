@@ -279,6 +279,45 @@ describe("RpcRuntimeStarts", () => {
     assert.deepEqual(runtime.snapshot().thinkingLevels, ["off", "low", "medium", "xhigh"]);
   });
 
+  test("keeps what the catalog says a model reasons when set_model does not repeat it", async () => {
+    // The server reads `reasoning` off this answer to decide whether a thinking
+    // control exists at all. A dialect that answers `set_model` with nothing would
+    // otherwise take the control away from a model that reasons perfectly well.
+    const { runtime } = await startFake({
+      models: [
+        { provider: "fake", id: "one", name: "One", reasoning: true },
+        { provider: "fake", id: "two", name: "Two", reasoning: true },
+      ],
+      commands_: { set_model: { data: null } },
+    });
+
+    const model = await runtime.setModel("fake", "two");
+    assert.equal(model.reasoning, true);
+    assert.equal(runtime.snapshot().model?.reasoning, true);
+  });
+
+  test("re-reads the level the child clamped when the model changed", async () => {
+    // The child clamps inside `set_model` and emits nothing: RPC has no
+    // thinking-level record. A mirror that only updates on `set_thinking_level`
+    // keeps reporting the previous model's level for a model that never took it.
+    const { runtime } = await startFake({
+      state: {
+        thinkingLevel: "high",
+        model: { provider: "fake", id: "thinker", name: "Thinker", reasoning: true },
+      },
+      models: [
+        { provider: "fake", id: "thinker", name: "Thinker", reasoning: true },
+        { provider: "fake", id: "plain", name: "Plain", reasoning: false },
+      ],
+      thinkingLevelsByModel: { "fake/thinker": ["off", "low", "medium", "high"], "fake/plain": ["off"] },
+    });
+    assert.equal(runtime.snapshot().thinkingLevel, "high");
+
+    await runtime.setModel("fake", "plain");
+    assert.equal(runtime.snapshot().thinkingLevel, "off");
+    assert.deepEqual(runtime.snapshot().thinkingLevels, ["off"]);
+  });
+
   test("omits the accepted levels when the child has no command for them", async () => {
     const { runtime } = await startFake({
       failures: { get_available_thinking_levels: "Unknown command: get_available_thinking_levels" },

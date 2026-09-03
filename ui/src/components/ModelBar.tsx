@@ -147,6 +147,12 @@ function ContextRing({ usage }: { usage: ContextUsage | null }) {
  * accepted set has a gap (`low, medium, xhigh`, no `high`) is presented as three
  * ordered stops, not a range with a dead position. Absent a list, it offers the
  * full set, which is what it did before it was model-aware.
+ *
+ * A model that accepts one level only gets a sentence instead of a slider: a range
+ * whose single stop cannot move reads as a broken control, not as a statement about
+ * the model. And a current level the model does not accept is shown as itself,
+ * never quietly redrawn at another stop — the server settles that, and until it
+ * does the interface should not pretend it already has.
  */
 function ThinkingControl({
   thinkingLevel,
@@ -158,7 +164,8 @@ function ThinkingControl({
   const ref = useRef<HTMLDivElement>(null);
   const active = thinkingLevel !== "off";
   const levels = thinkingLevels && thinkingLevels.length > 0 ? thinkingLevels : THINKING_LEVELS;
-  const index = Math.max(0, levels.indexOf(thinkingLevel as ThinkingLevel));
+  const stop = levels.indexOf(thinkingLevel as ThinkingLevel);
+  const adjustable = levels.length > 1;
 
   useEffect(() => {
     if (!open) return;
@@ -200,21 +207,29 @@ function ThinkingControl({
             <span className="text-zinc-500 dark:text-zinc-400">thinking</span>
             <span className="font-mono text-zinc-700 dark:text-zinc-200">{thinkingLevel}</span>
           </div>
-          <input
-            type="range"
-            min={0}
-            max={levels.length - 1}
-            step={1}
-            value={index}
-            onChange={(e) => onSetThinking(levels[Number(e.target.value)])}
-            aria-label="Thinking level"
-            aria-valuetext={thinkingLevel}
-            className="w-full accent-amber-500"
-          />
-          <div className="mt-0.5 flex justify-between font-mono text-[9px] text-zinc-400 dark:text-zinc-600">
-            <span>{levels[0]}</span>
-            <span>{levels[levels.length - 1]}</span>
-          </div>
+          {adjustable ? (
+            <>
+              <input
+                type="range"
+                min={0}
+                max={levels.length - 1}
+                step={1}
+                value={stop === -1 ? 0 : stop}
+                onChange={(e) => onSetThinking(levels[Number(e.target.value)])}
+                aria-label="Thinking level"
+                aria-valuetext={thinkingLevel}
+                className="w-full accent-amber-500"
+              />
+              <div className="mt-0.5 flex justify-between font-mono text-[9px] text-zinc-400 dark:text-zinc-600">
+                <span>{levels[0]}</span>
+                <span>{levels[levels.length - 1]}</span>
+              </div>
+            </>
+          ) : (
+            <p className="text-[11px] text-zinc-500 dark:text-zinc-400">
+              this model accepts <span className="font-mono">{levels[0]}</span> only
+            </p>
+          )}
         </div>
       )}
     </div>

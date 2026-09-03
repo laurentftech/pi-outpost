@@ -143,6 +143,27 @@ export function normalizeThinkingLevels(levels: unknown): ThinkingLevel[] | unde
   return THINKING_LEVELS.filter((l) => l === "off" || known.has(l));
 }
 
+/**
+ * The level to keep when a model does not accept the current one — after a model
+ * change, where the level the session carries may not be on the new model's scale.
+ *
+ * It steps *down* in effort first: a session on `high` moving to a model that tops
+ * out at `low` should think as hard as that model can, and a silent step up would
+ * bill the user for effort nobody asked for. Only when nothing below is on offer
+ * does it step up, and `off` is always the floor.
+ */
+export function clampThinkingLevel(level: ThinkingLevel, levels: readonly ThinkingLevel[]): ThinkingLevel {
+  if (levels.includes(level)) return level;
+  const index = THINKING_LEVELS.indexOf(level);
+  for (let i = index - 1; i >= 0; i--) {
+    if (levels.includes(THINKING_LEVELS[i])) return THINKING_LEVELS[i];
+  }
+  for (let i = index + 1; i < THINKING_LEVELS.length; i++) {
+    if (levels.includes(THINKING_LEVELS[i])) return THINKING_LEVELS[i];
+  }
+  return levels[0] ?? "off";
+}
+
 /** Slash command available in the composer (extension command, prompt template or skill). */
 export interface CommandInfo {
   /** Invocation name without the leading slash (e.g. "commit", "skill:review"). */

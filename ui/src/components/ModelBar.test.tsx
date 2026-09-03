@@ -162,6 +162,18 @@ describe("ModelBar controls", () => {
     renderFull({ thinkingLevel: "high", thinkingLevels: ["off", "low", "medium", "xhigh"] });
     fireEvent.click(screen.getByTitle("thinking level"));
     expect((screen.getByLabelText("Thinking level") as HTMLInputElement).value).toBe("0");
+    // ...while still naming the level the session actually holds: the server settles
+    // that on a model change, and until it does the control must not claim otherwise.
+    expect(screen.getByTitle("thinking level").textContent).toContain("high");
+  });
+
+  it("states the single level a model accepts instead of an immovable slider", () => {
+    // A one-stop range cannot be dragged anywhere, which reads as a broken control
+    // rather than as a fact about the model.
+    renderFull({ thinkingLevel: "off", thinkingLevels: ["off"] });
+    fireEvent.click(screen.getByTitle("thinking level"));
+    expect(screen.queryByLabelText("Thinking level")).toBeNull();
+    expect(screen.getByText(/accepts/).textContent).toContain("off");
   });
 
   it("falls back to the full set when no accepted-levels list is supplied", () => {
