@@ -4,10 +4,16 @@ import os from "node:os";
 import path from "node:path";
 import { describe, it } from "node:test";
 import { Compile } from "typebox/compile";
-import { isWorkPlanReadyForReview, mutateWorkPlan, normalizeWorkPlanDraft, validateWorkPlan, WORK_PLAN_LIMITS, type WorkPlan } from "@pi-outpost/shared/work-plan";
+import { isWorkPlanReadyForReview, mutateWorkPlan, normalizeWorkPlanDraft, validateWorkPlan, WORK_PLAN_ACTIONS, WORK_PLAN_LIMITS, type WorkPlan } from "@pi-outpost/shared/work-plan";
 import { applyWorkPlanMutation, copyWorkPlan, deleteWorkPlan, loadWorkPlan, sameSessionFile, workPlanPath } from "../src/workPlanStore.ts";
+import { EmbeddedRuntime } from "../src/embeddedRuntime.ts";
 import { WORK_PLAN_SYSTEM_GUIDANCE } from "../src/systemPrompt.ts";
-import { createWorkPlanToolDefinition } from "../src/workPlanTool.ts";
+import {
+  createWorkPlanExtendedToolDefinition,
+  createWorkPlanToolDefinition,
+  WORK_PLAN_COMMON_ACTIONS,
+  WORK_PLAN_EXTENDED_ACTIONS,
+} from "../src/workPlanTool.ts";
 
 const base = (): WorkPlan => ({
   version: 1,
@@ -643,47 +649,51 @@ describe("Work Plan persistence", () => {
 });
 
 describe("work_plan tool", () => {
-  it("publishes a bounded action-specific schema with no unconstrained payload", () => {
-    const schema = createWorkPlanToolDefinition().parameters as unknown as Record<string, unknown>;
-    const emptySchemas: string[] = [];
-    const walk = (value: unknown, at: string): void => {
-      if (typeof value !== "object" || value === null || Array.isArray(value)) return;
-      const record = value as Record<string, unknown>;
-      if (Object.keys(record).length === 0) emptySchemas.push(at);
-      for (const [key, child] of Object.entries(record)) {
-        if (Array.isArray(child)) child.forEach((item, index) => walk(item, `${at}.${key}[${index}]`));
-        else walk(child, `${at}.${key}`);
-      }
-    };
-    walk(schema, "$parameters");
-    assert.deepEqual(emptySchemas, [], `unconstrained schema nodes: ${emptySchemas.join(", ")}`);
+  it("publishes bounded action-specific schemas, in both tools, with no unconstrained payload", () => {
+    for (const definition of [createWorkPlanToolDefinition(), createWorkPlanExtendedToolDefinition()]) {
+      const schema = definition.parameters as unknown as Record<string, unknown>;
+      const emptySchemas: string[] = [];
+      const walk = (value: unknown, at: string): void => {
+        if (typeof value !== "object" || value === null || Array.isArray(value)) return;
+        const record = value as Record<string, unknown>;
+        if (Object.keys(record).length === 0) emptySchemas.push(at);
+        for (const [key, child] of Object.entries(record)) {
+          if (Array.isArray(child)) child.forEach((item, index) => walk(item, `${at}.${key}[${index}]`));
+          else walk(child, `${at}.${key}`);
+        }
+      };
+      walk(schema, `$${definition.name}`);
+      assert.deepEqual(emptySchemas, [], `unconstrained schema nodes: ${emptySchemas.join(", ")}`);
 
-    // One object, not a union: pi validates a call against the whole schema and
-    // reports every branch that rejected it, so a union answers one wrong
-    // property with one "must be equal to constant" per action the caller never
-    // asked for — and never names the property. See the tool's own comment.
-    assert.equal(schema.anyOf, undefined, "the root is a single object, not a union of actions");
-    assert.equal(schema.type, "object");
-    assert.deepEqual(schema.required, ["action"]);
-    assert.equal(schema.additionalProperties, false);
+      // One object, not a union: pi validates a call against the whole schema and
+      // reports every branch that rejected it, so a union answers one wrong
+      // property with one "must be equal to constant" per action the caller never
+      // asked for — and never names the property. See the tool's own comment.
+      assert.equal(schema.anyOf, undefined, "the root is a single object, not a union of actions");
+      assert.equal(schema.type, "object");
+      assert.deepEqual(schema.required, ["action"]);
+      assert.equal(schema.additionalProperties, false);
+    }
 
-    const properties = schema.properties as Record<string, Record<string, unknown>>;
-    assert.deepEqual(
-      properties.action.enum,
-      ["get", "create", "replace", "add_task", "update_task", "move_task", "remove_task", "set_dependencies", "set_resources", "set_evidence", "clear"],
-      "every action is one enum node, so an unknown action fails once",
-    );
-    // Each operation-specific argument says which actions use it, since the
-    // schema no longer separates them into branches.
-    for (const [field, action] of [
-      ["title", /create/], ["tasks", /create/], ["plan", /replace/], ["task", /add_task/],
-      ["taskId", /update_task/], ["parentId", /move_task/],
-      ["dependsOn", /set_dependencies/], ["resources", /set_resources/], ["evidence", /set_evidence/],
+    const common = (createWorkPlanToolDefinition().parameters as unknown as Record<string, unknown>)
+      .properties as Record<string, Record<string, unknown>>;
+    const extended = (createWorkPlanExtendedToolDefinition().parameters as unknown as Record<string, unknown>)
+      .properties as Record<string, Record<string, unknown>>;
+    assert.deepEqual(common.action.enum, [...WORK_PLAN_COMMON_ACTIONS]);
+    assert.deepEqual(extended.action.enum, [...WORK_PLAN_EXTENDED_ACTIONS]);
+
+    // Each operation-specific argument says which actions use it, since neither
+    // schema separates them into branches.
+    for (const [properties, field, action] of [
+      [common, "title", /create/], [common, "tasks", /create/], [common, "task", /add_task/],
+      [common, "taskId", /update_task/], [common, "parentId", /move_task/],
+      [extended, "plan", /replace/], [extended, "dependsOn", /set_dependencies/],
+      [extended, "resources", /set_resources/], [extended, "evidence", /set_evidence/],
     ] as const) {
       assert.match(String(properties[field].description), action, `${field} names the action that uses it`);
     }
 
-    let tasks = properties.tasks;
+    let tasks = common.tasks;
     assert.match(String(tasks.description), /500 tasks total.*65536 serialized bytes/);
     for (let depth = 1; depth <= 2; depth += 1) {
       assert.equal(tasks.maxItems, WORK_PLAN_LIMITS.tasks, `task collection at depth ${depth} exposes its ceiling`);
@@ -691,11 +701,13 @@ describe("work_plan tool", () => {
       assert.deepEqual(draft.required, ["title"]);
       const taskProperties = draft.properties as Record<string, Record<string, unknown>>;
       assert.deepEqual(taskProperties.status.enum, ["todo", "in_progress", "done", "blocked", "needs_review"]);
-      assert.equal(taskProperties.evidence.type, "array");
-      assert.equal(taskProperties.evidence.maxItems, WORK_PLAN_LIMITS.evidencePerTask);
       // A plan that has dependencies says so where it is written, in one call.
       assert.equal(taskProperties.dependsOn.type, "array");
       assert.match(String(taskProperties.dependsOn.description), /same call/);
+      // ...and what a task acquires later is not described here. The collections are
+      // the largest shapes in this schema and they belong to the tool that sets them.
+      assert.equal(taskProperties.evidence, undefined, `creation at depth ${depth} does not advertise evidence`);
+      assert.equal(taskProperties.resources, undefined, `creation at depth ${depth} does not advertise resources`);
       if (depth < 2) tasks = taskProperties.subtasks;
       else assert.equal(taskProperties.subtasks, undefined, "subtasks cannot nest again");
     }
@@ -703,40 +715,67 @@ describe("work_plan tool", () => {
     // `update_task` takes its fields beside `taskId`. The `changes` wrapper said the
     // same thing a second way and is no longer advertised — the normaliser still
     // honours one that arrives, but the schema stops paying 1.2k characters for it.
-    assert.equal(properties.changes, undefined, "the redundant changes wrapper is not published");
+    assert.equal(common.changes, undefined, "the redundant changes wrapper is not published");
     for (const field of ["description", "statusReason", "parentId"]) {
       assert.ok(
-        (properties[field].anyOf as Array<Record<string, unknown>>).some((candidate) => candidate.type === "null"),
+        (common[field].anyOf as Array<Record<string, unknown>>).some((candidate) => candidate.type === "null"),
         `${field} declares JSON null clearing`,
       );
     }
   });
 
-  /**
-   * The schema is sent on every turn of every conversation, whether or not a plan
-   * is ever made. It was 16 160 characters — some 4k tokens, more than everything
-   * pi sends by default and 37% of this deployment's whole baseline — of which 2.5k
-   * was 73 copies of one regex and 1.2k a second way to spell `update_task`.
-   *
-   * The ceiling is what stops that coming back one property at a time. Raising it
-   * is allowed; doing so silently is what this is here to prevent. Re-measure with
-   * `npx tsx server/scripts/probe-context-baseline.mts`.
-   */
-  it("keeps the published definition under its context budget", () => {
-    const definition = createWorkPlanToolDefinition();
-    const size = JSON.stringify(definition).length;
-    assert.ok(
-      size <= 13_000,
-      `work_plan is ${size} characters (~${Math.round(size / 4 / 100) / 10}k tokens), over the 13 000 budget`,
+  it("gives every action exactly one home, and says where when asked of the wrong tool", async () => {
+    // Checked against the enumerated actions rather than a list written here: a new
+    // action must land in one of the tools on purpose, not be forgotten by both.
+    const homes = new Map<string, string[]>();
+    for (const action of WORK_PLAN_ACTIONS) {
+      const carriers = [
+        ...(WORK_PLAN_COMMON_ACTIONS.includes(action as never) ? ["work_plan"] : []),
+        ...(WORK_PLAN_EXTENDED_ACTIONS.includes(action as never) ? ["work_plan_extended"] : []),
+      ];
+      homes.set(action, carriers);
+    }
+    for (const [action, carriers] of homes) {
+      assert.equal(carriers.length, 1, `${action} is carried by exactly one tool, not ${carriers.length}`);
+    }
+
+    const refused = await createWorkPlanToolDefinition().execute(
+      "call-wrong-tool",
+      { action: "set_evidence", taskId: "build", evidence: [] },
+      undefined,
+      undefined,
+      { sessionManager: { getSessionFile: () => "/nowhere/session.jsonl" } } as never,
     );
+    assert.equal(refused.isError, true);
+    const text = (refused.content as Array<{ text: string }>)[0].text;
+    assert.match(text, /set_evidence/, "the refusal names the action");
+    assert.match(text, /work_plan_extended/, "and the tool that carries it");
   });
 
-  it("publishes finite evidence schemas for creation, replacement, addition, and mutation", () => {
-    const schema = createWorkPlanToolDefinition().parameters as unknown as Record<string, unknown>;
+  it("keeps each published definition under its context budget", () => {
+    // The schemas are sent on every request of every conversation. `work_plan` is the
+    // one a session with no plan pays for, so it carries the tighter ceiling; the
+    // extended tool is only published where its actions are possible. Raising either
+    // is allowed, raising one silently is what this prevents. Re-measure with
+    // `npx tsx server/scripts/probe-context-baseline.mts`.
+    for (const [definition, budget] of [
+      [createWorkPlanToolDefinition(), 5_200],
+      [createWorkPlanExtendedToolDefinition(), 6_000],
+    ] as const) {
+      const size = JSON.stringify(definition).length;
+      assert.ok(size <= budget, `${definition.name} is ${size} characters, over its ${budget} budget`);
+    }
+  });
+
+  it("publishes finite evidence schemas where evidence can be set", () => {
+    // Creation and addition no longer describe evidence at all; replacement and
+    // set_evidence do, and both live in the extended tool. Every one of them is
+    // bounded — an unbounded collection is how a plan grows past its own ceiling.
+    const schema = createWorkPlanExtendedToolDefinition().parameters as unknown as Record<string, unknown>;
     const properties = schema.properties as Record<string, Record<string, unknown>>;
-    const creationEvidence = ((properties.tasks.items as Record<string, unknown>).properties as Record<string, Record<string, unknown>>).evidence;
-    const completeEvidence = (((properties.task.properties as Record<string, Record<string, unknown>>).evidence));
-    for (const evidence of [creationEvidence, completeEvidence, properties.evidence]) {
+    const planTasks = (properties.plan.properties as Record<string, Record<string, unknown>>).tasks;
+    const replacementEvidence = ((planTasks.items as Record<string, unknown>).properties as Record<string, Record<string, unknown>>).evidence;
+    for (const evidence of [replacementEvidence, properties.evidence]) {
       assert.equal(evidence.type, "array");
       assert.equal(evidence.maxItems, WORK_PLAN_LIMITS.evidencePerTask);
       const record = evidence.items as Record<string, unknown>;
@@ -749,14 +788,19 @@ describe("work_plan tool", () => {
       assert.equal(recordProperties.summary.maxLength, WORK_PLAN_LIMITS.evidenceSummary);
       assert.equal((recordProperties.reference as Record<string, unknown>).additionalProperties, false);
     }
+  });
 
-    const validator = Compile(createWorkPlanToolDefinition().parameters as never);
-    const summaryOnly = { id: "tests", type: "test", result: "passed", summary: "All pass" };
-    const referenceOnly = { id: "report", type: "file", result: "informational", reference: { uri: "workspace:report.json" } };
-    assert.equal(validator.Check({ action: "create", title: "Evidence", tasks: [{ title: "Verify", evidence: [summaryOnly, referenceOnly] }] }), true);
-    assert.equal(validator.Check({ action: "set_evidence", taskId: "verify", evidence: [summaryOnly, referenceOnly] }), true);
-    assert.equal(validator.Check({ action: "set_evidence", taskId: "verify", evidence: [{ id: "empty", type: "test", result: "passed" }] }), false);
-    assert.equal(validator.Check({ action: "set_evidence", taskId: "verify", evidence: [{ ...summaryOnly, provider: "openlore" }] }), false);
+  it("still normalises a creation draft that carries evidence, though it no longer advertises it", () => {
+    // The advertisement went; the contract did not. A client written against the
+    // previous schema keeps working, which is what makes this a cheaper prompt
+    // rather than a breaking change.
+    const plan = mutateWorkPlan(null, {
+      action: "create",
+      title: "Ship it",
+      tasks: [{ title: "Build", evidence: [{ id: "t", type: "test", result: "passed", summary: "green" }], resources: [{ uri: "workspace:src/index.ts" }] }],
+    } as never);
+    assert.equal(plan?.tasks[0].evidence.length, 1);
+    assert.equal(plan?.tasks[0].resources.length, 1);
   });
 
   it("publishes no pattern at all, so there is none to anchor", () => {
@@ -859,7 +903,9 @@ describe("work_plan tool", () => {
   });
 
   it("ships valid evidence guidance with explicit replacement and status independence", () => {
-    const tool = createWorkPlanToolDefinition();
+    // On the tool that carries evidence: guidance follows the actions it describes,
+    // so a session that cannot set evidence is not told how to.
+    const tool = createWorkPlanExtendedToolDefinition();
     const example = (tool.promptGuidelines ?? []).find((line) => line.includes('"action":"set_evidence"'));
     assert.ok(example, "the guidelines carry a literal evidence call");
     const call = JSON.parse(example.slice(example.indexOf("{"), example.lastIndexOf("}") + 1));
@@ -892,8 +938,11 @@ describe("work_plan tool", () => {
       const sessionFile = path.join(root, "session.jsonl");
       await fs.writeFile(sessionFile, "original conversation\n");
       const tool = createWorkPlanToolDefinition();
+      // `replace` is the extended tool's; both write through the same store, which is
+      // the point of the split being in what is published rather than in what runs.
+      const extended = createWorkPlanExtendedToolDefinition();
       const ctx = { sessionManager: { getSessionFile: () => sessionFile } } as never;
-      const replaced = await tool.execute("call-1", { action: "replace", plan: base() }, undefined, undefined, ctx);
+      const replaced = await extended.execute("call-1", { action: "replace", plan: base() }, undefined, undefined, ctx);
       assert.equal((replaced.details as { type: string }).type, "work_plan");
       await fs.writeFile(sessionFile, "compacted conversation summary\n");
       const restored = await tool.execute("call-resume", { action: "get" }, undefined, undefined, ctx);
@@ -944,5 +993,63 @@ describe("work_plan tool", () => {
     } finally {
       await fs.rm(root, { recursive: true, force: true });
     }
+  });
+});
+
+describe("publishing the extended tool", () => {
+  /**
+   * A stand-in for the SDK session, exposing only what publication touches. The real
+   * `setActiveToolsByName` rebuilds the system prompt around the set it is given —
+   * which is why withholding a tool withholds its schema, and why this is worth doing
+   * at all.
+   */
+  function fakeSession(registered: string[], active: string[]) {
+    let current = [...active];
+    return {
+      calls: [] as string[][],
+      getToolDefinition: (name: string) => (registered.includes(name) ? ({ name } as never) : undefined),
+      getActiveToolNames: () => [...current],
+      setActiveToolsByName(names: string[]) {
+        current = [...names];
+        this.calls.push([...names]);
+      },
+    };
+  }
+
+  /**
+   * The real method, on a real `EmbeddedRuntime`, over a stand-in session. Re-implementing
+   * it here would test the copy: what has to hold is that *this* code adds and removes the
+   * right name and leaves the rest of the set alone.
+   */
+  function setToolPublished(session: ReturnType<typeof fakeSession>, name: string, published: boolean): boolean {
+    const runtime = new EmbeddedRuntime({ session } as never, "/nowhere");
+    return runtime.setToolPublished(name, published);
+  }
+
+  it("adds the extended tool to the active set and takes nothing else out", () => {
+    const session = fakeSession(["read", "work_plan", "work_plan_extended"], ["read", "work_plan"]);
+    assert.equal(setToolPublished(session, "work_plan_extended", true), true);
+    assert.deepEqual(session.calls, [["read", "work_plan", "work_plan_extended"]]);
+  });
+
+  it("withdraws it again when the plan is cleared, leaving the common tool published", () => {
+    const session = fakeSession(["read", "work_plan", "work_plan_extended"], ["read", "work_plan", "work_plan_extended"]);
+    assert.equal(setToolPublished(session, "work_plan_extended", false), true);
+    assert.deepEqual(session.calls, [["read", "work_plan"]]);
+  });
+
+  it("does nothing when the set already says what it should", () => {
+    // Publication is derived from the plan at every point the plan can change, so it
+    // is asked for far more often than it changes. Rebuilding the system prompt each
+    // time would invalidate the provider's prefix cache for no reason.
+    const session = fakeSession(["work_plan", "work_plan_extended"], ["work_plan"]);
+    assert.equal(setToolPublished(session, "work_plan_extended", false), true);
+    assert.deepEqual(session.calls, [], "no toolset rebuild");
+  });
+
+  it("reports that it could not publish a tool the session never registered", () => {
+    const session = fakeSession(["work_plan"], ["work_plan"]);
+    assert.equal(setToolPublished(session, "work_plan_extended", true), false);
+    assert.deepEqual(session.calls, []);
   });
 });

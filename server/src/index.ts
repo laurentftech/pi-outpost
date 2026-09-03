@@ -147,7 +147,7 @@ import { createXlsxExtractToolDefinition } from "./xlsxTool.ts";
 import { createPptxExtractToolDefinition } from "./pptxTool.ts";
 import { createStructuredExchangeToolDefinition } from "./structuredExchangeTool.ts";
 import { createStructuredExchangeFigureToolDefinition } from "./structuredExchangeFigureTool.ts";
-import { createWorkPlanToolDefinition } from "./workPlanTool.ts";
+import { createWorkPlanExtendedToolDefinition, createWorkPlanToolDefinition, WORK_PLAN_EXTENDED_TOOL, WORK_PLAN_TOOL } from "./workPlanTool.ts";
 import { copyWorkPlan, deleteWorkPlan, loadWorkPlan, sameSessionFile } from "./workPlanStore.ts";
 import { composeAppendSystemPrompt } from "./systemPrompt.ts";
 import { createPdfExtractToolDefinition } from "./pdfTool.ts";
@@ -415,6 +415,13 @@ if (cli.command === "login") {
  */
 const structuredExchangeTool = createStructuredExchangeToolDefinition();
 const workPlanTool = createWorkPlanToolDefinition();
+/**
+ * Registered beside it and active only where its actions are possible — see the
+ * runtime's `setToolPublished`. Registration is not publication: the SDK builds its
+ * tool registry once per session, so a definition that might become active has to be
+ * there from the start.
+ */
+const workPlanExtendedTool = createWorkPlanExtendedToolDefinition();
 
 /**
  * Everything a workspace needs that is the server's rather than the project's:
@@ -439,7 +446,7 @@ function workspaceOptions(settings: WorkspaceSettings): Omit<WorkspaceOptions, "
       structuredExchangeMaxBytes: config.structuredExchange.maxBytes,
     },
     watchFiles: config.files.watch,
-    unconfinedTools: [structuredExchangeTool, workPlanTool],
+    unconfinedTools: [structuredExchangeTool, workPlanTool, workPlanExtendedTool],
     // Bound to the workspace being built, so a tree change reaches the clients
     // watching THAT project and no others.
     onDirectoryChanged: () => {},
@@ -1035,6 +1042,7 @@ const makeCreateRuntime =
               }),
               structuredExchangeTool,
               workPlanTool,
+              workPlanExtendedTool,
             ],
           }),
     })),
@@ -1171,6 +1179,9 @@ for (const root of config.openProjects) {
 
 workspace.workPlan = await loadWorkPlan(workspace.agent.snapshot().sessionFile);
 workspace.workPlanSessionFile = workspace.agent.snapshot().sessionFile;
+// The bound session may already have a plan — resumed, or the server restarted under
+// one. An agent that inherits work should inherit the tools for it, not discover them.
+publishWorkPlanTools(workspace, workspace.workPlan);
 
 /**
  * Session replacement events are synchronous, while their sidecar reads are not.
@@ -1178,6 +1189,18 @@ workspace.workPlanSessionFile = workspace.agent.snapshot().sessionFile;
  * copying and announcing its inherited plan. Without the queue, a late ENOENT read
  * could overwrite the copied plan with null.
  */
+/**
+ * The extended Work Plan tool is published exactly while there is a plan to act on.
+ *
+ * Derived from the plan itself at every point where the plan can change — a mutation,
+ * a session replacement, the initial bind — rather than from a flag someone has to
+ * remember to keep in step. The runtime says whether it took: an RPC child publishes
+ * both tools always, which is the documented cost of that dialect.
+ */
+function publishWorkPlanTools(workspace: Workspace, plan: WorkPlan | null): void {
+  workspace.agent.setToolPublished(WORK_PLAN_EXTENDED_TOOL, plan !== null);
+}
+
 function queueWorkPlanSessionSync(workspace: Workspace): Promise<void> {
   const sessionFile = workspace.agent.snapshot().sessionFile;
   workspace.workPlanSync = workspace.workPlanSync.catch(() => {}).then(async () => {
@@ -1194,6 +1217,7 @@ function queueWorkPlanSessionSync(workspace: Workspace): Promise<void> {
     if (!sameSessionFile(workspace.agent.snapshot().sessionFile, sessionFile)) return;
     workspace.workPlan = plan;
     workspace.workPlanSessionFile = sessionFile;
+    publishWorkPlanTools(workspace, plan);
     broadcast(workspace, { type: "session_replaced", ...snapshot(workspace) });
     if (inherited) broadcast(workspace, { type: "work_plan_changed", workPlan: plan });
     announceWorkspaceActivity();
@@ -1215,6 +1239,7 @@ function queueWorkPlanToolSync(workspace: Workspace, sessionFile: string, change
     if (!sameSessionFile(workspace.agent.snapshot().sessionFile, sessionFile)) return;
     workspace.workPlan = plan;
     workspace.workPlanSessionFile = sessionFile;
+    publishWorkPlanTools(workspace, plan);
     if (changed) {
       broadcast(workspace, { type: "work_plan_changed", workPlan: plan });
       announceWorkspaceActivity();
@@ -1726,7 +1751,7 @@ function onRuntimeEvent(workspace: Workspace, event: RuntimeEvent): void {
         | { type?: unknown; sessionFile?: unknown; plan?: WorkPlan | null; changed?: unknown }
         | undefined;
       if (
-        event.toolName === "work_plan" &&
+        (event.toolName === WORK_PLAN_TOOL || event.toolName === WORK_PLAN_EXTENDED_TOOL) &&
         !event.isError &&
         workPlanDetails?.type === "work_plan" &&
         typeof workPlanDetails.sessionFile === "string" &&
@@ -1737,6 +1762,11 @@ function onRuntimeEvent(workspace: Workspace, event: RuntimeEvent): void {
           // the sidecar: persistence, not an extension-supplied event payload,
           // is the authoritative state that must survive resume/compaction.
           if (workPlanDetails.plan !== null) validateWorkPlan(workPlanDetails.plan);
+          // Publish here, from the result in hand, rather than waiting for the queued
+          // reload: the agent's next request goes out before that read finishes, so a
+          // plan created mid-turn would leave the extended tool unpublished for the
+          // very call that needed it — which is the whole promise of "within the turn".
+          publishWorkPlanTools(workspace, workPlanDetails.plan ?? null);
           queueWorkPlanToolSync(workspace, workPlanDetails.sessionFile as string, workPlanDetails.changed === true);
         } catch (error) {
           reportError(new Error(`Ignoring invalid Work Plan tool result: ${error instanceof Error ? error.message : String(error)}`));
@@ -2258,6 +2288,9 @@ async function ensureStarted(target: Workspace): Promise<void> {
     refreshExtensionRender(target);
     target.workPlan = await loadWorkPlan(runtime.snapshot().sessionFile);
     target.workPlanSessionFile = runtime.snapshot().sessionFile;
+    // Same as the boot workspace: a project reopened onto an existing plan publishes
+    // the tools that plan needs, rather than making its agent find them again.
+    publishWorkPlanTools(target, target.workPlan);
     target.lastUsedAt = Date.now();
   })();
   starting.set(target.root, build);

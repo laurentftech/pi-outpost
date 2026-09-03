@@ -404,10 +404,16 @@ test("a real Pi RPC child executes work_plan and synchronizes its persisted resu
 
 test("the embedded SDK provider receives the same fully typed work_plan schema", async () => {
   const root = await makeWorkspace();
-  const server = await startServer(root, {
-    extensionPaths: [WORK_PLAN_PROVIDER],
-    allowedModels: [{ provider: "work-plan-test", id: "work-plan-test" }],
-  });
+  const server = await startServer(
+    root,
+    {
+      extensionPaths: [WORK_PLAN_PROVIDER],
+      allowedModels: [{ provider: "work-plan-test", id: "work-plan-test" }],
+    },
+    // Embedded: this is the runtime that can withhold the extended tool, so this is
+    // where its absence before a plan is a contract rather than an accident.
+    { env: { WORK_PLAN_EXPECT_GATED: "1" } },
+  );
   const client = connect(server.wsUrl());
   try {
     const hello = await client.waitFor("hello", 30_000);
