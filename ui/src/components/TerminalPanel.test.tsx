@@ -80,6 +80,35 @@ describe("TerminalPanel", () => {
     expect(screen.getByText("API Server")).toBeInTheDocument();
   });
 
+  it("does not let the terminal take focus back while a tab is being renamed", async () => {
+    // The flake this fixes, as a defect rather than a race: a tab becoming active
+    // schedules `terminal.focus()` 50 ms later, and double-clicking to rename also
+    // activates. The timer landed mid-typing, the input blurred, `onBlur` committed, and
+    // the field was unmounted from under whoever was typing — with a half-written name.
+    vi.useFakeTimers();
+    const focusSpy = vi.spyOn(Terminal.prototype, "focus").mockImplementation(() => {});
+    try {
+      render(<TerminalPanel {...defaultProps} />);
+      focusSpy.mockClear();
+
+      fireEvent.doubleClick(screen.getByText("terminal 1"));
+      const input = screen.getByDisplayValue("terminal 1");
+      fireEvent.change(input, { target: { value: "Build Ser" } });
+
+      // Everything the focus timer would have fired, while the name is half typed.
+      act(() => void vi.advanceTimersByTime(500));
+      expect(focusSpy).not.toHaveBeenCalled();
+      expect(screen.getByTestId("terminal-tab-rename-input")).toBe(input);
+
+      fireEvent.change(input, { target: { value: "Build Server" } });
+      fireEvent.keyDown(input, { key: "Enter" });
+      expect(screen.getByText("Build Server")).toBeInTheDocument();
+    } finally {
+      focusSpy.mockRestore();
+      vi.useRealTimers();
+    }
+  });
+
   it("calls onSetWorkspaceRoot when clicking open as project button", () => {
     const onSetWorkspaceRoot = vi.fn();
     render(
