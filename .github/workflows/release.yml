@@ -98,17 +98,28 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       
-      # On commence en Node 22 pour les tests et le lint
+      # Node 24 for the tests and the lint — the same version CI runs, so a suite
+      # that passed on a pull request is the suite this job runs.
       - uses: actions/setup-node@v5
         with:
-          node-version: 22
+          node-version: 24
           cache: npm
           registry-url: https://registry.npmjs.org
 
-      # Trusted publishing (OIDC) needs npm >= 11.5.1; Node 22 ships npm 10.
-      - run: npm install -g npm@latest
-
+      # Dependencies first, with the npm this Node ships.
+      #
+      # The upgrade below used to run before this line, and it cost a release.
+      # npm 12 blocks a dependency's install scripts by default (allowScripts), and
+      # `node-pty` publishes prebuilds for darwin and win32 only — on Linux it has to
+      # compile at install time. Blocked, it installs with no binary at all, and the
+      # four TerminalManager tests that spawn a real PTY fail with "Cannot find module
+      # './prebuilds/linux-x64//pty.node'". The same command passes in CI, which never
+      # replaces its npm, so nothing before the tag ever showed it.
       - run: npm ci
+
+      # Trusted publishing (OIDC) needs npm >= 11.5.1. It is wanted for `npm publish`
+      # and for nothing else, so it goes after the install rather than before it.
+      - run: npm install -g npm@latest
 
       # A tag claims a version; at least one package must actually be at it, and none
       # may disagree with it.
