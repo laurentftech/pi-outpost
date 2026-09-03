@@ -148,6 +148,7 @@ import { createPptxExtractToolDefinition } from "./pptxTool.ts";
 import { createStructuredExchangeToolDefinition } from "./structuredExchangeTool.ts";
 import { createStructuredExchangeFigureToolDefinition } from "./structuredExchangeFigureTool.ts";
 import { createWorkPlanExtendedToolDefinition, createWorkPlanToolDefinition, WORK_PLAN_EXTENDED_TOOL, WORK_PLAN_TOOL } from "./workPlanTool.ts";
+import { DOCUMENT_TOOLS, documentToolsFor } from "./documentTools.ts";
 import { copyWorkPlan, deleteWorkPlan, loadWorkPlan, sameSessionFile } from "./workPlanStore.ts";
 import { composeAppendSystemPrompt } from "./systemPrompt.ts";
 import { createPdfExtractToolDefinition } from "./pdfTool.ts";
@@ -1008,12 +1009,26 @@ const makeCreateRuntime =
         ? {}
         : {
             customTools: [
+              createStructuredExchangeFigureToolDefinition({
+                cwd,
+                allowedRoots: [await fs.realpath(cwd)],
+                maxBytes: config.structuredExchange.maxBytes,
+                // No sandbox: anything under the workspace is writable, the same
+                // rule writeFileFromBrowser applies to the browser's own writes.
+                writableRoot: await fs.realpath(cwd),
+              }),
+              structuredExchangeTool,
+              workPlanTool,
+              workPlanExtendedTool,
+              // The extractors go last, and the order is not cosmetic. A tool published
+              // mid-conversation invalidates a caching provider's prefix from its own
+              // position onward; these four are the ones that appear late in a session,
+              // so everything registered before them survives their arrival. Measured:
+              // `pdf_extract` fifth of fourteen kept 9.2% of the prefix.
               createPdfExtractToolDefinition({
                 cwd,
                 allowedRoots: [await fs.realpath(cwd)],
                 maxBytes: config.pdf.maxBytes,
-                // No sandbox: anything under the workspace is writable, the same
-                // rule writeFileFromBrowser applies to the browser's own writes.
                 writableRoot: await fs.realpath(cwd),
               }),
               createDocxExtractToolDefinition({
@@ -1034,15 +1049,6 @@ const makeCreateRuntime =
                 maxBytes: config.pptx.maxBytes,
                 writableRoot: await fs.realpath(cwd),
               }),
-              createStructuredExchangeFigureToolDefinition({
-                cwd,
-                allowedRoots: [await fs.realpath(cwd)],
-                maxBytes: config.structuredExchange.maxBytes,
-                writableRoot: await fs.realpath(cwd),
-              }),
-              structuredExchangeTool,
-              workPlanTool,
-              workPlanExtendedTool,
             ],
           }),
     })),
@@ -1182,6 +1188,7 @@ workspace.workPlanSessionFile = workspace.agent.snapshot().sessionFile;
 // The bound session may already have a plan — resumed, or the server restarted under
 // one. An agent that inherits work should inherit the tools for it, not discover them.
 publishWorkPlanTools(workspace, workspace.workPlan);
+withholdDocumentTools(workspace);
 
 /**
  * Session replacement events are synchronous, while their sidecar reads are not.
@@ -1197,6 +1204,67 @@ publishWorkPlanTools(workspace, workspace.workPlan);
  * remember to keep in step. The runtime says whether it took: an RPC child publishes
  * both tools always, which is the documented cost of that dialect.
  */
+/**
+ * Withhold every document extractor until a document of its kind turns up.
+ *
+ * Their four schemas come to some 8 000 characters — around a quarter of a session's
+ * prompt floor — telling a conversation how to read Word, Excel, PowerPoint and PDF.
+ * Most conversations never open one, and the ones that do say so first.
+ */
+function withholdDocumentTools(workspace: Workspace): void {
+  for (const tool of DOCUMENT_TOOLS) workspace.agent.setToolPublished(tool, false);
+  workspace.documentToolIdleTurns.clear();
+  workspace.documentToolsEverUsed.clear();
+}
+
+/**
+ * Publish the extractors a prompt calls for, before the turn carrying it goes out.
+ *
+ * Sticky: nothing is withdrawn here. A conversation that has handled one PDF usually
+ * handles another, and withdrawing would invalidate a caching provider's prefix a
+ * second time to save what it had already stopped paying for.
+ */
+function publishDocumentTools(workspace: Workspace, text: string): void {
+  for (const tool of documentToolsFor(text)) {
+    // Naming the document is what resets the clock, whether or not the tool was already
+    // there: the conversation has just turned back to a document of that kind.
+    if (workspace.agent.setToolPublished(tool, true)) workspace.documentToolIdleTurns.set(tool, 0);
+  }
+}
+
+/**
+ * How many turns a published extractor may go unused before it is forgotten.
+ *
+ * One, for a tool that has never been called: it was published on a text match that
+ * turned out to be wrong, and every later request would carry the mistake.
+ *
+ * Five, for one that has been used: the work around a document rarely ends with the call
+ * that opened it — a spreadsheet read sheet by sheet, a passage checked again two answers
+ * later — and taking the tool away mid-task would strand an agent that cannot ask for it
+ * back. Five turns of silence is the conversation having moved on.
+ */
+const DOCUMENT_TOOL_IDLE_LIMIT = { unused: 1, used: 5 };
+
+/**
+ * Age every published extractor by one turn, and forget the ones that have gone quiet.
+ *
+ * Called when a turn ends. A tool used during it was reset to zero as it was called, so
+ * what is counted here is silence.
+ */
+function ageDocumentTools(workspace: Workspace): void {
+  for (const [tool, idle] of workspace.documentToolIdleTurns) {
+    const limit = workspace.documentToolsEverUsed.has(tool)
+      ? DOCUMENT_TOOL_IDLE_LIMIT.used
+      : DOCUMENT_TOOL_IDLE_LIMIT.unused;
+    if (idle + 1 < limit) {
+      workspace.documentToolIdleTurns.set(tool, idle + 1);
+      continue;
+    }
+    workspace.agent.setToolPublished(tool, false);
+    workspace.documentToolIdleTurns.delete(tool);
+  }
+}
+
 function publishWorkPlanTools(workspace: Workspace, plan: WorkPlan | null): void {
   workspace.agent.setToolPublished(WORK_PLAN_EXTENDED_TOOL, plan !== null);
 }
@@ -1218,6 +1286,9 @@ function queueWorkPlanSessionSync(workspace: Workspace): Promise<void> {
     workspace.workPlan = plan;
     workspace.workPlanSessionFile = sessionFile;
     publishWorkPlanTools(workspace, plan);
+    // A replaced session is a new conversation: whatever documents the last one saw are
+    // not this one's, and the first prompt naming one publishes what it needs.
+    withholdDocumentTools(workspace);
     broadcast(workspace, { type: "session_replaced", ...snapshot(workspace) });
     if (inherited) broadcast(workspace, { type: "work_plan_changed", workPlan: plan });
     announceWorkspaceActivity();
@@ -1649,6 +1720,7 @@ function onRuntimeEvent(workspace: Workspace, event: RuntimeEvent): void {
       // no question to answer, and a badge that cannot be cleared is worse than
       // no badge at all.
       workspace.pendingDialogs.clear();
+      ageDocumentTools(workspace);
       broadcast(workspace, { type: "agent_end" });
       // Unconditional: the project just went from working to idle, which the
       // selector must show whether or not anything was blocked.
@@ -1696,6 +1768,12 @@ function onRuntimeEvent(workspace: Workspace, event: RuntimeEvent): void {
       broadcast(workspace, { type: "custom_message", item: customMessageToItem(event.message as never, workspace.renderer) });
       break;
     case "tool_start": {
+      // Called, so the clock goes back to zero — and it is no longer a tool nobody has
+      // ever wanted, which is what decides how long it may sit idle from here.
+      if (workspace.documentToolIdleTurns.has(event.toolName)) {
+        workspace.documentToolIdleTurns.set(event.toolName, 0);
+        workspace.documentToolsEverUsed.add(event.toolName);
+      }
       const callHtml = workspace.renderer.renderToolCallHtml(event.toolCallId, event.toolName, event.args);
       broadcast(workspace, {
         type: "tool_start",
@@ -2291,6 +2369,7 @@ async function ensureStarted(target: Workspace): Promise<void> {
     // Same as the boot workspace: a project reopened onto an existing plan publishes
     // the tools that plan needs, rather than making its agent find them again.
     publishWorkPlanTools(target, target.workPlan);
+    withholdDocumentTools(target);
     target.lastUsedAt = Date.now();
   })();
   starting.set(target.root, build);
@@ -2417,6 +2496,10 @@ async function absolutizeMentions(workspace: Workspace, text: string): Promise<s
 
 async function handlePrompt(workspace: Workspace, text: string, images?: WireImage[]): Promise<void> {
   const promptText = await absolutizeMentions(workspace, text);
+  // Before the turn, not after: a tool published once the request is on its way is a
+  // tool the model could not call. The composer references an attached document by
+  // path, so the text naming a document is the same event as one arriving.
+  publishDocumentTools(workspace, promptText);
   await workspace.agent.prompt(promptText, {
     ...(images?.length ? { images } : {}),
     // Echo the user message only once accepted (avoids ghost bubbles on reject).
