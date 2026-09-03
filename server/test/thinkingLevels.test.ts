@@ -5,7 +5,7 @@
  */
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { normalizeThinkingLevels } from "@pi-outpost/shared";
+import { clampThinkingLevel, normalizeThinkingLevels } from "@pi-outpost/shared";
 
 describe("normalizeThinkingLevels", () => {
   test("drops names this build does not know and keeps canonical order", () => {
@@ -37,5 +37,29 @@ describe("normalizeThinkingLevels", () => {
     assert.equal(normalizeThinkingLevels(null), undefined);
     assert.equal(normalizeThinkingLevels("high"), undefined);
     assert.equal(normalizeThinkingLevels(42), undefined);
+  });
+});
+
+describe("clampThinkingLevel", () => {
+  test("keeps a level the model accepts", () => {
+    assert.equal(clampThinkingLevel("medium", ["off", "low", "medium", "xhigh"]), "medium");
+  });
+
+  test("steps down rather than up: a model that tops out below the current level", () => {
+    // The office case: a session on `high` moving to a model that takes nothing.
+    assert.equal(clampThinkingLevel("high", ["off"]), "off");
+    assert.equal(clampThinkingLevel("high", ["off", "low"]), "low");
+  });
+
+  test("steps down over a gap to the nearest level below", () => {
+    assert.equal(clampThinkingLevel("high", ["off", "low", "medium", "xhigh"]), "medium");
+  });
+
+  test("steps up only when nothing below is on offer", () => {
+    assert.equal(clampThinkingLevel("minimal", ["high", "xhigh"]), "high");
+  });
+
+  test("an empty set is off", () => {
+    assert.equal(clampThinkingLevel("high", []), "off");
   });
 });

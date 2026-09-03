@@ -246,6 +246,83 @@ test("a declared set answers for the model, whatever the runtime reports", async
   }
 });
 
+test("a model change settles the thinking level on the new model's scale, and says so", async () => {
+  // The office report: default model on `high`, switch to the model that takes no
+  // thinking, and the control keeps showing `high` on a slider with one stop. The
+  // declared set is the case the child cannot clamp for us — it has never been told
+  // about the declaration.
+  const root = await makeWorkspace();
+  const fakeConfig = path.join(root, "fake-rpc.json");
+  await writeFile(
+    fakeConfig,
+    JSON.stringify({
+      commandLog: path.join(root, "commands.jsonl"),
+      state: {
+        sessionId: "settle-1",
+        thinkingLevel: "high",
+        model: { provider: "local", id: "thinker", name: "Thinker", reasoning: true },
+      },
+      commands_: {
+        get_available_models: {
+          data: {
+            models: [
+              { provider: "local", id: "thinker", name: "Thinker", reasoning: true },
+              { provider: "local", id: "plain", name: "Plain", reasoning: true },
+            ],
+          },
+        },
+      },
+    }),
+  );
+
+  const server = await startServer(
+    root,
+    {
+      sandbox: undefined,
+      agentRuntime: { mode: "rpc", executable: process.execPath, args: [FAKE], startupTimeoutMs: 5_000 },
+      thinkingLevels: [
+        { provider: "local", id: "thinker", levels: ["off", "low", "medium", "high"] },
+        { provider: "local", id: "plain", levels: ["off"] },
+      ],
+    },
+    { env: { FAKE_PI_RPC_CONFIG: fakeConfig } },
+  );
+  const client = connect(server.wsUrl());
+  try {
+    const hello = await client.waitFor("hello");
+    assert.equal(hello.thinkingLevel, "high");
+
+    client.send({ type: "set_model", provider: "local", id: "plain" });
+    const changed = await client.waitFor("model_changed");
+    assert.deepEqual(changed.thinkingLevels, ["off"]);
+
+    const settled = await client.waitFor("thinking_changed");
+    assert.equal(settled.level, "off", "the client is told the level the new model actually holds");
+
+    // Back to the wide-scale model: `off` is on its scale, so the level stays put —
+    // settling is not a reset, and the client is told the level either way.
+    client.send({ type: "set_model", provider: "local", id: "thinker" });
+    await client.waitFor("model_changed");
+    const back = await client.waitFor("thinking_changed");
+    assert.equal(back.level, "off", "an accepted level survives the model change untouched");
+
+    // Not merely a client-side redraw: the agent was moved too, and only when it had to be.
+    const commands = (await readFile(path.join(root, "commands.jsonl"), "utf8").catch(() => ""))
+      .split("\n")
+      .filter(Boolean)
+      .map((line) => JSON.parse(line))
+      .filter((command) => command.type === "set_thinking_level");
+    assert.deepEqual(
+      commands.map((command) => command.level),
+      ["off"],
+      "the child was told to drop to off, once",
+    );
+  } finally {
+    client.close();
+    await server.stop();
+  }
+});
+
 test("the snapshot carries the model's accepted thinking levels, and they follow a model change", async () => {
   const root = await makeWorkspace();
   const fakeConfig = path.join(root, "fake-rpc.json");

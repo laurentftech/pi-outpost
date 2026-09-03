@@ -34,6 +34,7 @@ import {
   type WorkspaceInfo,
   type SessionSummary,
   THINKING_LEVELS,
+  clampThinkingLevel,
   type ThinkingLevel,
   type TreeNode,
   type WireImage,
@@ -1175,6 +1176,28 @@ function modelName(workspace: Workspace): string {
 function acceptedThinkingLevels(workspace: Workspace): ThinkingLevel[] | undefined {
   const state = workspace.agent.snapshot();
   return declaredThinkingLevels(config.thinkingLevels, state.model) ?? state.thinkingLevels;
+}
+
+/**
+ * Settle the thinking level on the model that is now current, and say what it
+ * settled at.
+ *
+ * A model change moves the scale under the level the session is carrying: the new
+ * model may not accept it. The runtime clamps only what it knows — never a
+ * deployment's declaration, which it has never been told about, and over RPC not
+ * observably at all, since that dialect pushes no thinking-level record. Left
+ * alone, a client keeps showing `high` for a model that takes only `off`, on a
+ * slider with one stop it cannot move.
+ */
+async function settleThinkingLevel(workspace: Workspace): Promise<void> {
+  const levels = acceptedThinkingLevels(workspace);
+  const current = workspace.agent.snapshot().thinkingLevel;
+  if (levels && !levels.includes(current)) {
+    await workspace.agent.setThinkingLevel(clampThinkingLevel(current, levels));
+  }
+  // Broadcast either way: the runtime may have clamped on its own during the model
+  // change, and the level the client holds is then already wrong.
+  broadcast(workspace, { type: "thinking_changed", level: workspace.agent.snapshot().thinkingLevel });
 }
 
 function contextUsage(workspace: Workspace): ContextUsage | undefined {
@@ -3189,7 +3212,7 @@ function handleClientMessage(socket: WebSocket, raw: string): void {
       const { provider, id } = message;
       workspace.agent
         .setModel(provider, id)
-        .then((model) => {
+        .then(async (model) => {
           const levels = acceptedThinkingLevels(workspace);
           broadcast(workspace, {
             type: "model_changed",
@@ -3197,6 +3220,7 @@ function handleClientMessage(socket: WebSocket, raw: string): void {
             reasoning: model.reasoning ?? false,
             ...(levels ? { thinkingLevels: levels } : {}),
           });
+          await settleThinkingLevel(workspace);
         })
         .catch((error) => {
           if (!refuseUnsupported(socket, error)) {

@@ -213,6 +213,12 @@ class RpcRuntime implements AgentRuntime {
    * offers the full set. Depends on the model, so it is refreshed on every
    * catalog refresh and after a `set_model`.
    */
+  /** The level the child actually holds — it clamps on a model change, silently. */
+  private async refreshThinkingLevel(): Promise<void> {
+    const state = (await this.process.command("get_state")) as Record<string, unknown> | undefined;
+    if (typeof state?.thinkingLevel === "string") this.thinkingLevel = state.thinkingLevel as ThinkingLevel;
+  }
+
   private async refreshThinkingLevels(): Promise<void> {
     try {
       const answer = (await this.process.command("get_available_thinking_levels")) as { levels?: unknown } | undefined;
@@ -641,6 +647,11 @@ class RpcRuntime implements AgentRuntime {
     this.model = model;
     // A different model accepts a different set of thinking levels.
     await this.refreshThinkingLevels();
+    // ...and the child clamps the session's level to the new model inside `set_model`
+    // without any record to say so — RPC pushes no thinking-level event. Re-read the
+    // state, or this mirror keeps reporting the previous model's level for a model
+    // that never accepted it.
+    await this.refreshThinkingLevel();
     return model;
   }
 
