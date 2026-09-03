@@ -663,6 +663,15 @@ class RpcRuntime implements AgentRuntime {
     return model;
   }
 
+  /**
+   * Not expressible: the RPC dialect has no command for the active toolset, so the
+   * child publishes everything it was launched with. Saying so is the contract —
+   * emulating it here would mean lying about what the agent can see.
+   */
+  setToolPublished(): boolean {
+    return false;
+  }
+
   async setThinkingLevel(level: ThinkingLevel): Promise<void> {
     await this.command("set_thinking_level", { level });
     this.thinkingLevel = level;

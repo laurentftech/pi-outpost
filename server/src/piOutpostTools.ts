@@ -31,7 +31,7 @@ import { createPptxExtractToolDefinition } from "./pptxTool.ts";
 import { createStructuredExchangeFigureToolDefinition } from "./structuredExchangeFigureTool.ts";
 import { createStructuredExchangeToolDefinition } from "./structuredExchangeTool.ts";
 import { createXlsxExtractToolDefinition } from "./xlsxTool.ts";
-import { createWorkPlanToolDefinition } from "./workPlanTool.ts";
+import { createWorkPlanExtendedToolDefinition, createWorkPlanToolDefinition } from "./workPlanTool.ts";
 
 /** What the parent must tell the child. Mirrors the fields index.ts uses embedded. */
 export interface PiOutpostToolsSettings {
@@ -83,6 +83,12 @@ export async function createPiOutpostTools(settings: PiOutpostToolsSettings): Pr
     createStructuredExchangeFigureToolDefinition({ ...common, maxBytes: settings.maxBytes.structuredExchange }),
     createStructuredExchangeToolDefinition(),
     createWorkPlanToolDefinition(),
+    // Both, always. The server withholds the extended half from a session with no
+    // plan through the SDK's active-tool set; the RPC dialect has no command for
+    // that, so a child registers the pair and publishes them both. The cost of the
+    // gating being embedded-only is one extra tool in a child's prompt, stated here
+    // rather than discovered.
+    createWorkPlanExtendedToolDefinition(),
   ];
 }
 

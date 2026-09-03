@@ -61,7 +61,11 @@ export async function createEmbeddedRuntime(options: EmbeddedRuntimeOptions): Pr
 
 type SdkRuntime = Awaited<ReturnType<typeof createAgentSessionRuntime>>;
 
-class EmbeddedRuntime implements AgentRuntime {
+/**
+ * Exported for the tests that drive one method against a stand-in session. Everything
+ * else builds one through `createEmbeddedRuntime`, which needs a real SDK runtime.
+ */
+export class EmbeddedRuntime implements AgentRuntime {
   readonly kind = "embedded";
   readonly ok = true;
 
@@ -332,6 +336,24 @@ class EmbeddedRuntime implements AgentRuntime {
 
   async setThinkingLevel(level: ThinkingLevel): Promise<void> {
     this.session.setThinkingLevel(level as never);
+  }
+
+  /**
+   * `setActiveToolsByName` rebuilds the system prompt around the new set, so a tool
+   * withheld here is not described either — which is the point: the schema is what
+   * costs, and it is sent on every request whether or not anything uses it.
+   *
+   * Idempotent, and silent about a name the session never registered: the caller is
+   * describing what should be published, not asserting what exists.
+   */
+  setToolPublished(name: string, published: boolean): boolean {
+    if (this.session.getToolDefinition(name) === undefined) return false;
+    const active = new Set(this.session.getActiveToolNames());
+    if (active.has(name) === published) return true;
+    if (published) active.add(name);
+    else active.delete(name);
+    this.session.setActiveToolsByName([...active]);
+    return true;
   }
 
   async compact(): Promise<void> {
