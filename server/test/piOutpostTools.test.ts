@@ -5,8 +5,10 @@
  * child. The child builds its own toolset from `PI_OUTPOST_TOOLS`, so a missing
  * or malformed value must stop startup with a message that names the setting,
  * rather than an agent that silently runs with the wrong (or no) extractors.
- * The wiring test guards parity: the seven tools the embedded runtime registers
- * are the same seven the child gets, built the same way.
+ * The wiring test guards parity: the eight tools the embedded runtime registers are
+ * the same eight the child gets, built the same way. `work_plan_extended` is among
+ * them here even though a child never withholds it — the RPC dialect has no command
+ * for the active toolset, so registration is parity and publication is not.
  */
 import assert from "node:assert/strict";
 import { mkdtemp, rm } from "node:fs/promises";
@@ -137,9 +139,9 @@ describe("createPiOutpostTools", () => {
     await Promise.all(roots.map((r) => rm(r, { recursive: true, force: true })));
   });
 
-  test("returns the seven tools the agent needs, in the documented order", async () => {
+  test("returns the eight tools the agent needs, in the documented order", async () => {
     const tools = await createPiOutpostTools({ cwd: root, maxBytes: VALID.maxBytes });
-    assert.equal(tools.length, 7);
+    assert.equal(tools.length, 8);
     const names = tools.map((t) => t.name);
     assert.deepEqual(names, [
       "pdf_extract",
@@ -149,6 +151,10 @@ describe("createPiOutpostTools", () => {
       "write_structure_figure",
       "present_structure",
       "work_plan",
+      // Registered, not necessarily published: the server withholds this one from a
+      // session with no plan through the SDK's active-tool set. A child registers it
+      // and publishes it always, which is the stated cost of that dialect.
+      "work_plan_extended",
     ]);
   });
 
@@ -196,14 +202,14 @@ describe("default export (extension entry)", () => {
     });
   }
 
-  test("registers the seven tools when the env var is set", async () => {
+  test("registers the eight tools when the env var is set", async () => {
     await withEnv(JSON.stringify({ cwd: root, maxBytes: VALID.maxBytes }), async () => {
       const registered: ToolDefinition[] = [];
       const pi = { registerTool: (t: ToolDefinition) => void registered.push(t) } as unknown as ExtensionAPI;
 
       await piOutpostExtension(pi);
 
-      assert.equal(registered.length, 7);
+      assert.equal(registered.length, 8);
       assert.deepEqual(
         registered.map((t) => t.name),
         [
@@ -214,6 +220,7 @@ describe("default export (extension entry)", () => {
           "write_structure_figure",
           "present_structure",
           "work_plan",
+          "work_plan_extended",
         ],
       );
     });

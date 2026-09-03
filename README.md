@@ -730,6 +730,14 @@ or review state can carry a reason, and tasks can link to resources; workspace r
 directly in the file viewer. The panel is read-only for now, so the conversation stays your
 control surface while the agent owns the plan through its `work_plan` tool.
 
+The agent sees that tool in two halves. `work_plan` — creating a plan, adding, updating,
+moving and removing tasks — is always there. `work_plan_extended`, which sets a task's
+dependencies, resources and verification evidence or replaces the plan wholesale, appears
+only once the session has a plan: every one of those operations acts on a task that must
+already exist, and their schemas are the expensive half to send on turns that never use
+them. A supervised `pi --mode rpc` child gets both at all times, having no way to change
+its published toolset.
+
 When a non-empty plan contains at least one `needs_review` task and every other task is either
 `needs_review` or `done`, the project becomes **ready for review** in the project selector.
 This is derived from the persisted plan, not from a turn or tool merely ending. Opening or
