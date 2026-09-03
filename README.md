@@ -291,8 +291,9 @@ a fresh agent session immediately.
 |---|---|
 | Sandbox root and writable root | Browse the server's directories and pick one — no need to know the host's paths by heart |
 | Write and bash permissions | The same switches as `sandbox.allowWrite` / `sandbox.allowBash` |
-| Skill directories | Added under `userSkillPaths` |
-| Extension directories | Added under `userExtensionPaths`; a directory is enough, its extensions are discovered |
+| Agent resources | **Manage agent resources** opens one repository-first view for skills and extensions |
+| Local folders | **Add local folder…** stores skill roots under `userSkillPaths` and extension roots under `userExtensionPaths` |
+| Git repositories | **Add Git repository…** asks for the repository address and an editable local clone folder, previews recognized roots, then activates only the selected ones |
 
 Two lists, deliberately: what the **configuration file** declares (`skillPaths`,
 `extensionPaths`) belongs to the deployment, and the interface can neither rewrite nor
@@ -306,6 +307,30 @@ the server, not merely hidden by the interface.
 
 If the file cannot be written, nothing is applied and the session in front of you is left
 exactly as it was.
+
+The suggested clone location is `<user config dir>/resource-repositories/<name>-<hash>`;
+you may replace it with any local folder whose parent already exists. A preview recognizes
+skills at the repository root, `skills/`, or `.agents/skills/`, and extensions under
+`extensions/`, `.pi/extensions/`, or `.agents/extensions/`. Previewing reads metadata only:
+it does not import extension code. Removing an activated resource path only updates the
+configuration and reloads the agent — it never deletes the cloned repository.
+
+Repositories are checked and updated conservatively. Only a clean branch strictly behind
+its configured upstream can be fast-forwarded. Dirty, detached, ahead, diverged, and
+upstream-less repositories explain why they are blocked; resolve local Git state in an
+external terminal and check again. The updater never commits, stashes, discards, rebases,
+pushes, switches branches, initializes submodules, or runs repository hooks. Updating a
+repository containing extensions requires confirmation of the exact revisions, and
+`extensionLock` blocks the whole mixed repository from updating. If Git advances but one
+workspace cannot reload, the repository remains advanced and the dialog reports the
+per-workspace reload failure.
+
+Clone and fetch are non-interactive: existing credential helpers, SSH agents, and other
+non-prompting Git authentication continue to work, but the server never opens a terminal or
+askpass prompt. Credential-bearing addresses are redacted from browser errors and stored
+origins. An RPC runtime may omit skill paths and does not currently inventory extensions;
+those resources remain visible under **Provenance unavailable** and cannot be Git-managed
+until the runtime reports filesystem provenance.
 
 ## Configuration file
 

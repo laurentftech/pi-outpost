@@ -10,7 +10,7 @@
  * Each subtest boots a server. Keep the count low.
  */
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, test } from "node:test";
@@ -47,10 +47,14 @@ describe("extension paths from the interface", () => {
 
       assert.deepEqual(hello.userExtensionPaths, [], "the snapshot carries the user's own list");
       assert.deepEqual(hello.configuredExtensionPaths, [deployment], "and the deployment's, apart");
+      assert.deepEqual(hello.agentResources?.capabilities, { skills: "available", extensions: "available" });
+      const extensionResource = hello.agentResources?.resources.find((resource) => resource.kind === "extension");
+      assert.ok(extensionResource?.path, "the embedded adapter preserves extension filesystem provenance");
+      assert.equal(await realpath(extensionResource.path), await realpath(deployment));
       assert.ok(commandNames(hello).includes("deployment-hello"), "precondition: the deployment's extension loaded");
       assert.ok(!commandNames(hello).includes("mine-hello"));
 
-      client.send({ type: "update_config", userExtensionPaths: [mine] });
+      client.send({ type: "update_config", userExtensionPaths: [mine, mine] });
       const ack = await client.waitFor("update_config_ack", 30_000);
 
       assert.ok(
@@ -58,10 +62,10 @@ describe("extension paths from the interface", () => {
         "the replacement session loaded the extension discovered in the added directory",
       );
       assert.ok(commandNames(ack).includes("deployment-hello"), "and kept the deployment's");
-      assert.deepEqual(ack.userExtensionPaths, [mine]);
+      assert.deepEqual(ack.userExtensionPaths, [await realpath(mine)]);
 
       const written = JSON.parse(await readFile(server.configFile, "utf8"));
-      assert.deepEqual(written.userExtensionPaths, [mine], "persisted before the acknowledgement");
+      assert.deepEqual(written.userExtensionPaths, [await realpath(mine)], "persisted before the acknowledgement");
       assert.deepEqual(written.extensionPaths, [deployment], "the deployment's list untouched");
 
       // Same configuration, new process: what the user chose has to still be there.
@@ -75,7 +79,7 @@ describe("extension paths from the interface", () => {
         commandNames(helloAgain).includes("mine-hello"),
         "a restarted server loads the extensions discovered in the directory the user chose",
       );
-      assert.deepEqual(helloAgain.userExtensionPaths, [mine]);
+      assert.deepEqual(helloAgain.userExtensionPaths, [await realpath(mine)]);
       assert.deepEqual(helloAgain.configuredExtensionPaths, [deployment]);
       restarted.close();
 
@@ -136,7 +140,7 @@ describe("extension paths from the interface", () => {
       // The lock is about extensions, not about applying settings at all.
       client.send({ type: "update_config", userSkillPaths: [skillDir] });
       const ack = await client.waitFor("update_config_ack", 30_000);
-      assert.deepEqual(ack.userSkillPaths, [skillDir]);
+      assert.deepEqual(ack.userSkillPaths, [await realpath(skillDir)]);
       assert.deepEqual(ack.userExtensionPaths, [], "and the locked list is untouched");
       client.close();
     } finally {
@@ -185,6 +189,7 @@ describe("extension paths from the interface", () => {
         undefined,
         "an empty list would tell the operator the child loaded none, which this server was never told",
       );
+      assert.equal(hello.agentResources?.capabilities.extensions, "unavailable");
     } finally {
       await server.stop();
     }

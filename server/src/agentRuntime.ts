@@ -18,6 +18,7 @@
  * capability is refused with a message naming the runtime, never dropped.
  */
 import type {
+  AgentResourceInfo,
   CommandInfo,
   ContextUsage,
   ExtensionUIRequest,
@@ -84,6 +85,9 @@ export interface RuntimeSnapshot {
   /** Every model the runtime would accept in `setModel`, before `allowedModels` filtering. */
   models: ModelChoice[];
   commands: CommandInfo[];
+  /** Resource provenance known by this runtime; absent entries are never inferred. */
+  resources?: AgentResourceInfo[];
+  resourceCapabilities?: { skills: "available" | "unavailable"; extensions: "available" | "unavailable" };
   contextUsage?: ContextUsage;
   providers: ProviderStatus[];
   /**

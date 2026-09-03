@@ -94,13 +94,13 @@ describe("SettingsMenu", () => {
   });
 
   describe("the sandbox form", () => {
-    it("says when there is no sandbox to configure, and still applies the rest", () => {
+    it("says when there is no sandbox to configure and delegates resource changes", () => {
       const { onUpdateConfig } = setup({ sandbox: null, userSkillPaths: ["/mnt/skills"] });
       openMenu();
       expect(screen.getByText("No sandbox configured")).toBeInTheDocument();
-      // A deployment with no sandbox still has skill paths worth changing.
-      fireEvent.click(applyButton());
-      expect(onUpdateConfig).toHaveBeenCalledWith({ userSkillPaths: ["/mnt/skills"], userExtensionPaths: [] });
+      expect(screen.queryByRole("button", { name: /Apply/ })).not.toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Manage agent resources" })).toBeInTheDocument();
+      expect(onUpdateConfig).not.toHaveBeenCalled();
     });
 
     it("starts from the current configuration", () => {
@@ -128,8 +128,6 @@ describe("SettingsMenu", () => {
       fireEvent.click(applyButton());
       expect(onUpdateConfig).toHaveBeenCalledWith({
         sandbox: { root: "/new-root", allowWrite: true, allowBash: true, writableRoot: undefined },
-        userSkillPaths: [],
-        userExtensionPaths: [],
       });
     });
 
@@ -192,118 +190,41 @@ describe("SettingsMenu", () => {
     });
   });
 
-  describe("skill paths", () => {
-    it("separates configured paths from the built-in inventory", () => {
+  describe("resource management entry point", () => {
+    it("keeps inventory summaries but delegates every path change to the manager", () => {
       setup({
         userSkillPaths: ["/mnt/team-skills"],
-        commands: [
-          { name: "skill:structured-exchange", source: "skill" },
-          { name: "skill:team", source: "skill" },
-        ],
+        commands: [{ name: "skill:structured-exchange", source: "skill" }],
       });
       openMenu();
-      // Built-ins are inventory: listed, never removable.
-      fireEvent.click(screen.getByText("2 skills loaded"));
-      expect(screen.getByText("skill:structured-exchange")).toBeInTheDocument();
-      expect(screen.queryByRole("button", { name: "Remove skill:structured-exchange" })).not.toBeInTheDocument();
-      // The configured path is the editable half.
-      expect(screen.getByText("/mnt/team-skills")).toBeInTheDocument();
-      expect(screen.getByRole("button", { name: "Remove /mnt/team-skills" })).toBeInTheDocument();
-    });
-
-    it("shows only the user's own paths — the configuration file's are not its business", () => {
-      setup({ userSkillPaths: ["/mnt/mine"], commands: [{ name: "skill:from-config", source: "skill" }] });
-      openMenu();
-      expect(screen.getByText("User skill paths")).toBeInTheDocument();
-      expect(screen.getByRole("button", { name: "Remove /mnt/mine" })).toBeInTheDocument();
-      // Skills the configuration file brings in are inventory, not a path list.
       fireEvent.click(screen.getByText("1 skills loaded"));
-      expect(screen.getByText("skill:from-config")).toBeInTheDocument();
-      expect(screen.queryByRole("button", { name: /Remove skill:from-config/ })).not.toBeInTheDocument();
+      expect(screen.getByText("skill:structured-exchange")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Manage agent resources" })).toBeInTheDocument();
+      expect(screen.queryByText("/mnt/team-skills")).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /Add skills directory/ })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /Remove \/mnt\/team-skills/ })).not.toBeInTheDocument();
     });
 
-    it("says when nothing extra is configured", () => {
+    it("restores focus to Settings when the manager closes", () => {
       setup();
-      openMenu();
-      expect(screen.getByText("No skill directories added")).toBeInTheDocument();
-    });
-
-    it("adds a directory chosen from the server and reports it on apply", () => {
-      const { onUpdateConfig, onBrowseServerPath, rerenderWith } = setup();
-      openMenu();
-      fireEvent.click(screen.getByRole("button", { name: "Add skills directory…" }));
-      expect(onBrowseServerPath).toHaveBeenCalledWith("/");
-
-      rerenderWith({ serverBrowse: browse({ entries: [{ name: "mnt", path: "/mnt" }] }) });
-      fireEvent.click(screen.getByRole("button", { name: "mnt/" }));
-      expect(onBrowseServerPath).toHaveBeenLastCalledWith("/mnt");
-
-      rerenderWith({
-        serverBrowse: browse({ path: "/mnt", parent: "/", entries: [{ name: "skills", path: "/mnt/skills" }] }),
-      });
-      fireEvent.click(screen.getByRole("button", { name: "skills/" }));
-      rerenderWith({ serverBrowse: browse({ path: "/mnt/skills", parent: "/mnt", entries: [] }) });
-      fireEvent.click(screen.getByRole("button", { name: "Use this directory" }));
-
-      expect(screen.getByText("/mnt/skills")).toBeInTheDocument();
-      fireEvent.click(applyButton());
-      expect(onUpdateConfig).toHaveBeenCalledWith(expect.objectContaining({ userSkillPaths: ["/mnt/skills"] }));
-    });
-
-    it("removes a configured path", () => {
-      const { onUpdateConfig } = setup({ userSkillPaths: ["/mnt/a", "/mnt/b"] });
-      openMenu();
-      fireEvent.click(screen.getByRole("button", { name: "Remove /mnt/a" }));
-      expect(screen.queryByText("/mnt/a")).not.toBeInTheDocument();
-      fireEvent.click(applyButton());
-      expect(onUpdateConfig).toHaveBeenCalledWith(expect.objectContaining({ userSkillPaths: ["/mnt/b"] }));
-    });
-
-    it("does not add the same directory twice", () => {
-      const { onUpdateConfig, rerenderWith } = setup({ userSkillPaths: ["/mnt/skills"] });
-      openMenu();
-      fireEvent.click(screen.getByRole("button", { name: "Add skills directory…" }));
-      rerenderWith({ serverBrowse: browse({ path: "/mnt/skills", parent: "/mnt" }) });
-      fireEvent.click(screen.getByRole("button", { name: "Use this directory" }));
-      fireEvent.click(applyButton());
-      expect(onUpdateConfig).toHaveBeenCalledWith(expect.objectContaining({ userSkillPaths: ["/mnt/skills"] }));
+      const settings = screen.getByRole("button", { name: "Settings" });
+      fireEvent.click(settings);
+      fireEvent.click(screen.getByRole("button", { name: "Manage agent resources" }));
+      expect(screen.getByRole("button", { name: "Close agent resources" })).toHaveFocus();
+      fireEvent.click(screen.getByRole("button", { name: "Close agent resources" }));
+      expect(settings).toHaveFocus();
     });
   });
 
   describe("extension paths", () => {
-    it("adds a directory chosen from the server and reports it on apply", () => {
-      const { onUpdateConfig, onBrowseServerPath, rerenderWith } = setup();
-      openMenu();
-      fireEvent.click(screen.getByRole("button", { name: "Add extensions directory…" }));
-      expect(onBrowseServerPath).toHaveBeenCalledWith("/");
-
-      rerenderWith({ serverBrowse: browse({ path: "/mnt/ext", parent: "/mnt", entries: [] }) });
-      fireEvent.click(screen.getByRole("button", { name: "Use this directory" }));
-
-      expect(screen.getByText("/mnt/ext")).toBeInTheDocument();
-      fireEvent.click(applyButton());
-      expect(onUpdateConfig).toHaveBeenCalledWith(expect.objectContaining({ userExtensionPaths: ["/mnt/ext"] }));
-    });
-
-    it("removes one, and reports the rest", () => {
-      const { onUpdateConfig } = setup({ userExtensionPaths: ["/mnt/a", "/mnt/b"] });
-      openMenu();
-      fireEvent.click(screen.getByRole("button", { name: "Remove /mnt/a" }));
-      expect(screen.queryByText("/mnt/a")).not.toBeInTheDocument();
-      fireEvent.click(applyButton());
-      expect(onUpdateConfig).toHaveBeenCalledWith(expect.objectContaining({ userExtensionPaths: ["/mnt/b"] }));
-    });
-
-    it("says what adding one means, at the moment of adding and not before", () => {
+    it("moves extension add and remove controls into the manager", () => {
       setup();
       openMenu();
-      expect(screen.queryByTestId("extension-warning")).not.toBeInTheDocument();
-      fireEvent.click(screen.getByRole("button", { name: "Add extensions directory…" }));
-      const warning = screen.getByTestId("extension-warning");
-      // Both facts, because both are non-obvious: what an extension is allowed to do,
-      // and that choosing a directory is choosing everything inside it.
-      expect(warning).toHaveTextContent(/run with the agent's privileges/i);
-      expect(warning).toHaveTextContent(/every extension in the directory/i);
+      expect(screen.queryByRole("button", { name: "Add extensions directory…" })).not.toBeInTheDocument();
+      fireEvent.click(screen.getByRole("button", { name: "Manage agent resources" }));
+      expect(screen.getByRole("dialog", { name: "Agent resources" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Add local folder…" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Add Git repository…" })).toBeInTheDocument();
     });
 
     it("offers nothing to change when the deployment locks them", () => {
@@ -470,7 +391,6 @@ describe("SettingsMenu", () => {
     it("stays open, says why, and leaves the settings as the server still has them", () => {
       const { rerenderWith } = setup({ sandbox: sandbox({ root: "/work" }), userSkillPaths: ["/mnt/a"] });
       openMenu();
-      fireEvent.click(screen.getByRole("button", { name: "Remove /mnt/a" }));
       fireEvent.change(field(/^Root/), { target: { value: "/nowhere" } });
       fireEvent.click(applyButton());
       rerenderWith({ applyState: { status: "applying" } });
@@ -483,7 +403,7 @@ describe("SettingsMenu", () => {
       // The server kept its configuration, so the menu goes back to showing it.
       rerenderWith({ applyState: { status: "error", message: "cannot save" }, sandbox: sandbox({ root: "/work" }), userSkillPaths: ["/mnt/a"] });
       expect(field(/^Root/)).toHaveValue("/work");
-      expect(screen.getByText("/mnt/a")).toBeInTheDocument();
+      expect(screen.queryByText("/mnt/a")).not.toBeInTheDocument();
     });
   });
 

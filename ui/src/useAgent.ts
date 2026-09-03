@@ -2,6 +2,9 @@ import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { bootstrapToken, storedToken, storeToken } from "./authToken";
 import { repoForPath } from "./util/gitRepos";
 import type {
+  AgentResourceInventory,
+  AgentResourceRepositoryPreview,
+  AgentResourceUpdateResult,
   Branding,
   ChatItem,
   ClientMessage,
@@ -203,6 +206,18 @@ export interface ServerBrowseState {
  */
 export type SettingsApplyState = { status: "applying" } | { status: "error"; message: string };
 
+export interface AgentResourceOperationState {
+  clonePath: { requestId: string; status: "loading" | "ready" | "error"; path?: string; message?: string } | null;
+  preview: { requestId: string; status: "loading" | "ready" | "error"; preview?: AgentResourceRepositoryPreview; message?: string } | null;
+  enrollment: { requestId: string; status: "loading" | "ready" | "error"; message?: string } | null;
+  refresh: { requestId: string; repositoryId?: string; status: "loading" | "ready" | "error"; message?: string } | null;
+  updates: Record<string, { requestId: string; status: "loading" | "ready" | "error"; result?: AgentResourceUpdateResult; message?: string }>;
+}
+
+function emptyAgentResourceOperations(): AgentResourceOperationState {
+  return { clonePath: null, preview: null, enrollment: null, refresh: null, updates: {} };
+}
+
 export interface AgentState {
   connected: boolean;
   /**
@@ -317,6 +332,8 @@ export interface AgentState {
   serverBrowse: ServerBrowseState | null;
   /** Outcome of the settings apply the user is waiting on; null when none is in flight. */
   settingsApply: SettingsApplyState | null;
+  agentResources: AgentResourceInventory | null;
+  agentResourceOperations: AgentResourceOperationState;
   versions: { piOutpost: string; piSdk?: string; agent?: string } | null;
   gitAvailable: boolean;
   /** Why git is unavailable, when it is. Null whenever it is available. */
@@ -383,6 +400,8 @@ const initialState: AgentState = {
   userSkillPaths: [],
   serverBrowse: null,
   settingsApply: null,
+  agentResources: null,
+  agentResourceOperations: emptyAgentResourceOperations(),
   versions: null,
   gitAvailable: false,
   gitUnavailable: null,
@@ -426,6 +445,11 @@ type Action =
   | { type: "server_browse_started"; path: string; requestId: string }
   | { type: "server_browse_closed" }
   | { type: "settings_apply_started" }
+  | { type: "resource_clone_path_started"; requestId: string }
+  | { type: "resource_preview_started"; requestId: string }
+  | { type: "resource_enrollment_started"; requestId: string }
+  | { type: "resource_refresh_started"; requestId: string; repositoryId?: string }
+  | { type: "resource_update_started"; requestId: string; repositoryId: string }
   | { type: "outcome_started"; requestId: string; workspaceRoot: string | null; sessionId: string }
   | { type: "branding_settled" }
   | { type: "branding_loaded"; branding: Branding };
@@ -535,6 +559,8 @@ function applySnapshot(state: AgentState, message: ServerMessage & { sessionId: 
     serverBrowse: null,
     settingsApply: null,
     versions: message.versions ?? null,
+    agentResources: message.agentResources ?? null,
+    agentResourceOperations: emptyAgentResourceOperations(),
   };
 }
 
@@ -658,6 +684,36 @@ function reduce(state: AgentState, action: Action): AgentState {
   }
   if (action.type === "server_browse_closed") return { ...state, serverBrowse: null };
   if (action.type === "settings_apply_started") return { ...state, settingsApply: { status: "applying" } };
+  if (action.type === "resource_clone_path_started") {
+    return { ...state, agentResourceOperations: { ...state.agentResourceOperations, clonePath: { requestId: action.requestId, status: "loading" } } };
+  }
+  if (action.type === "resource_preview_started") {
+    return { ...state, agentResourceOperations: { ...state.agentResourceOperations, preview: { requestId: action.requestId, status: "loading" } } };
+  }
+  if (action.type === "resource_enrollment_started") {
+    return { ...state, agentResourceOperations: { ...state.agentResourceOperations, enrollment: { requestId: action.requestId, status: "loading" } } };
+  }
+  if (action.type === "resource_refresh_started") {
+    return {
+      ...state,
+      agentResourceOperations: {
+        ...state.agentResourceOperations,
+        refresh: { requestId: action.requestId, status: "loading", ...(action.repositoryId ? { repositoryId: action.repositoryId } : {}) },
+      },
+    };
+  }
+  if (action.type === "resource_update_started") {
+    return {
+      ...state,
+      agentResourceOperations: {
+        ...state.agentResourceOperations,
+        updates: {
+          ...state.agentResourceOperations.updates,
+          [action.repositoryId]: { requestId: action.requestId, status: "loading" },
+        },
+      },
+    };
+  }
   if (action.type === "outcome_started") {
     return { ...state, outcome: { status: "loading", requestId: action.requestId, workspaceRoot: action.workspaceRoot, sessionId: action.sessionId } };
   }
@@ -688,6 +744,94 @@ function reduce(state: AgentState, action: Action): AgentState {
         workspaces: message.workspaces,
         workspace: message.workspaces.find((w) => w.root === state.workspace?.root) ?? state.workspace,
       };
+    case "agent_resource_clone_path": {
+      const pending = state.agentResourceOperations.clonePath;
+      if (pending?.requestId !== message.requestId) return state;
+      return {
+        ...state,
+        agentResourceOperations: { ...state.agentResourceOperations, clonePath: { ...pending, status: "ready", path: message.path } },
+      };
+    }
+    case "agent_resource_preview": {
+      const pending = state.agentResourceOperations.preview;
+      if (pending?.requestId !== message.requestId) return state;
+      return {
+        ...state,
+        agentResourceOperations: { ...state.agentResourceOperations, preview: { ...pending, status: "ready", preview: message.preview } },
+      };
+    }
+    case "agent_resource_enrolled": {
+      const pending = state.agentResourceOperations.enrollment;
+      if (pending?.requestId !== message.requestId) return state;
+      return {
+        ...state,
+        agentResources: message.inventory,
+        agentResourceOperations: {
+          ...state.agentResourceOperations,
+          preview: null,
+          enrollment: { ...pending, status: "ready" },
+        },
+      };
+    }
+    case "agent_resource_assessments": {
+      const pending = state.agentResourceOperations.refresh;
+      if (pending?.requestId !== message.requestId || !state.agentResources) return state;
+      const assessments = new Map(message.assessments.map((assessment) => [assessment.repositoryId, assessment]));
+      return {
+        ...state,
+        agentResources: {
+          ...state.agentResources,
+          repositories: state.agentResources.repositories.map((repository) => ({
+            ...repository,
+            assessment: assessments.get(repository.id) ?? repository.assessment,
+          })),
+        },
+        agentResourceOperations: { ...state.agentResourceOperations, refresh: { ...pending, status: "ready" } },
+      };
+    }
+    case "agent_resource_inventory":
+      return { ...state, agentResources: message.inventory };
+    case "agent_resource_update_result": {
+      const repositoryId = message.result.repositoryId;
+      if (!repositoryId) return state;
+      const pending = state.agentResourceOperations.updates[repositoryId];
+      if (pending?.requestId !== message.requestId) return state;
+      return {
+        ...state,
+        agentResources: message.inventory,
+        agentResourceOperations: {
+          ...state.agentResourceOperations,
+          updates: {
+            ...state.agentResourceOperations.updates,
+            [repositoryId]: { ...pending, status: "ready", result: message.result },
+          },
+        },
+      };
+    }
+    case "agent_resource_error": {
+      const fail = <T extends { requestId: string }>(pending: T | null): (T & { status: "error"; message: string }) | null =>
+        pending?.requestId === message.requestId ? { ...pending, status: "error", message: message.message } : null;
+      const clonePath = fail(state.agentResourceOperations.clonePath);
+      const preview = fail(state.agentResourceOperations.preview);
+      const enrollment = fail(state.agentResourceOperations.enrollment);
+      const refresh = fail(state.agentResourceOperations.refresh);
+      const updateEntry = Object.entries(state.agentResourceOperations.updates).find(([, value]) => value.requestId === message.requestId);
+      if (!clonePath && !preview && !enrollment && !refresh && !updateEntry) return state;
+      const updates = updateEntry
+        ? { ...state.agentResourceOperations.updates, [updateEntry[0]]: { ...updateEntry[1], status: "error" as const, message: message.message } }
+        : state.agentResourceOperations.updates;
+      return {
+        ...state,
+        agentResourceOperations: {
+          ...state.agentResourceOperations,
+          ...(clonePath ? { clonePath } : {}),
+          ...(preview ? { preview } : {}),
+          ...(enrollment ? { enrollment } : {}),
+          ...(refresh ? { refresh } : {}),
+          updates,
+        },
+      };
+    }
     case "workspace_error":
       return { ...state, switching: false, errors: [...state.errors, message.message] };
     case "sessions":
@@ -1784,6 +1928,45 @@ export function useAgent(serverUrl = "", explicitToken?: string, embedded = fals
       sendMessage({ type: "browse_server_directory", path, requestId });
     },
     closeServerBrowser: () => dispatch({ type: "server_browse_closed" }),
+    suggestAgentResourceClonePath: (repositoryUrl: string) => {
+      const requestId = `resource-clone-path:${crypto.randomUUID()}`;
+      dispatch({ type: "resource_clone_path_started", requestId });
+      sendMessage({ type: "suggest_agent_resource_clone_path", repositoryUrl, requestId });
+    },
+    cloneAgentResourceRepository: (repositoryUrl: string, destinationPath: string) => {
+      const requestId = `resource-preview:${crypto.randomUUID()}`;
+      dispatch({ type: "resource_preview_started", requestId });
+      sendMessage({ type: "clone_agent_resource_repository", repositoryUrl, destinationPath, requestId });
+    },
+    enrollAgentResourceRepository: (previewToken: string, skillRoots: string[], extensionRoots: string[]) => {
+      const requestId = `resource-enroll:${crypto.randomUUID()}`;
+      dispatch({ type: "resource_enrollment_started", requestId });
+      sendMessage({ type: "enroll_agent_resource_repository", previewToken, skillRoots, extensionRoots, requestId });
+    },
+    refreshAgentResourceRepositories: (repositoryId?: string) => {
+      const requestId = `resource-refresh:${crypto.randomUUID()}`;
+      dispatch({ type: "resource_refresh_started", requestId, ...(repositoryId ? { repositoryId } : {}) });
+      sendMessage({ type: "refresh_agent_resource_repositories", ...(repositoryId ? { repositoryId } : {}), requestId });
+    },
+    updateAgentResourceRepository: (
+      repositoryId: string,
+      assessmentToken: string,
+      localRevision: string,
+      upstreamRevision: string,
+      allowExecutableChanges = false,
+    ) => {
+      const requestId = `resource-update:${crypto.randomUUID()}`;
+      dispatch({ type: "resource_update_started", requestId, repositoryId });
+      sendMessage({
+        type: "update_agent_resource_repository",
+        repositoryId,
+        assessmentToken,
+        localRevision,
+        upstreamRevision,
+        ...(allowExecutableChanges ? { allowExecutableChanges: true } : {}),
+        requestId,
+      });
+    },
     /**
      * Apply the editable runtime settings. The server persists them before it
      * acknowledges, so `settingsApply` clears only once they are on disk.

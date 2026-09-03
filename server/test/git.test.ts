@@ -67,6 +67,8 @@ describe("git operations", () => {
     git("config", "user.email", "test@test");
     git("config", "user.name", "Test");
     git("config", "commit.gpgsign", "false");
+    git("config", "tag.gpgsign", "false");
+    git("config", "tag.forceSignAnnotated", "false");
     // A tracked file
     write("README.md", "# Project\n");
     git("add", ".");
@@ -253,6 +255,7 @@ describe("file history", () => {
     git("config", "user.email", "test@test");
     git("config", "user.name", "Test");
     git("config", "commit.gpgsign", "false");
+    git("config", "tag.gpgsign", "false");
 
     write("notes.txt", "1\n");
     commit("create notes");

@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { useClickOutside } from "../util/clickOutside";
 import { ServerPathPicker } from "./ServerPathPicker";
-import type { ServerBrowseState, SettingsApplyState } from "../useAgent";
-import type { GitUnavailable } from "@pi-outpost/shared";
+import { AgentResourceManager } from "./AgentResourceManager";
+import type { AgentResourceOperationState, ServerBrowseState, SettingsApplyState } from "../useAgent";
+import type { AgentResourceInventory, GitUnavailable } from "@pi-outpost/shared";
 
 interface SandboxConfig {
   root: string;
@@ -24,7 +25,7 @@ function sorted(values: string[]): string[] {
 }
 
 /** Which path field the directory picker is currently open for. */
-type PickerField = "root" | "writableRoot" | "skill" | "extension";
+type PickerField = "root" | "writableRoot";
 
 interface SettingsMenuProps {
   /**
@@ -68,6 +69,8 @@ interface SettingsMenuProps {
   onPickerOpened?: () => void;
   /** In-flight apply, so the menu can stay open and say why one was refused. */
   applyState: SettingsApplyState | null;
+  agentResources?: AgentResourceInventory | null;
+  agentResourceOperations?: AgentResourceOperationState;
   versions?: { piOutpost: string; piSdk?: string; agent?: string } | null;
   onBrowseServerPath: (path: string) => void;
   onCloseServerBrowser: () => void;
@@ -76,6 +79,17 @@ interface SettingsMenuProps {
     userSkillPaths?: string[];
     userExtensionPaths?: string[];
   }) => void;
+  onSuggestAgentResourceClonePath?: (repositoryUrl: string) => void;
+  onCloneAgentResourceRepository?: (repositoryUrl: string, destinationPath: string) => void;
+  onEnrollAgentResourceRepository?: (previewToken: string, skillRoots: string[], extensionRoots: string[]) => void;
+  onRefreshAgentResourceRepositories?: (repositoryId?: string) => void;
+  onUpdateAgentResourceRepository?: (
+    repositoryId: string,
+    assessmentToken: string,
+    localRevision: string,
+    upstreamRevision: string,
+    allowExecutableChanges?: boolean,
+  ) => void;
 }
 
 export function SettingsMenu({
@@ -92,18 +106,25 @@ export function SettingsMenu({
   pickerBlocked = false,
   onPickerOpened,
   applyState,
+  agentResources = null,
+  agentResourceOperations = { clonePath: null, preview: null, enrollment: null, refresh: null, updates: {} },
   versions,
   onBrowseServerPath,
   onCloseServerBrowser,
   onUpdateConfig,
+  onSuggestAgentResourceClonePath = () => {},
+  onCloneAgentResourceRepository = () => {},
+  onEnrollAgentResourceRepository = () => {},
+  onRefreshAgentResourceRepositories = () => {},
+  onUpdateAgentResourceRepository = () => {},
 }: SettingsMenuProps) {
   const [open, setOpen] = useState(false);
+  const [resourcesOpen, setResourcesOpen] = useState(false);
+  const settingsButtonRef = useRef<HTMLButtonElement>(null);
   const [sandboxRoot, setSandboxRoot] = useState("");
   const [sandboxWritableRoot, setSandboxWritableRoot] = useState("");
   const [sandboxAllowWrite, setSandboxAllowWrite] = useState(false);
   const [sandboxAllowBash, setSandboxAllowBash] = useState(false);
-  const [draftSkillPaths, setDraftSkillPaths] = useState<string[]>(userSkillPaths);
-  const [draftExtensionPaths, setDraftExtensionPaths] = useState<string[]>(userExtensionPaths);
   const [picking, setPicking] = useState<PickerField | null>(null);
 
   useEffect(() => {
@@ -143,15 +164,6 @@ export function SettingsMenu({
 
   // Same for the skill paths this menu owns: the server's list is the truth, and a
   // refused apply leaves it exactly as it was — which is what the draft resets to.
-  useEffect(() => {
-    setDraftSkillPaths(userSkillPaths);
-  }, [userSkillPaths]);
-
-  // And the same for extension paths, for the same reason.
-  useEffect(() => {
-    setDraftExtensionPaths(userExtensionPaths);
-  }, [userExtensionPaths]);
-
   // Close on a *successful* apply only. A refusal keeps the menu up with the
   // server's reason on it — the previous version closed on send, so the one
   // message explaining why nothing happened landed behind a closed menu.
@@ -177,10 +189,6 @@ export function SettingsMenu({
   function handlePicked(path: string) {
     if (picking === "root") setSandboxRoot(path);
     else if (picking === "writableRoot") setSandboxWritableRoot(path);
-    else if (picking === "skill" && !draftSkillPaths.includes(path)) setDraftSkillPaths([...draftSkillPaths, path]);
-    else if (picking === "extension" && !draftExtensionPaths.includes(path)) {
-      setDraftExtensionPaths([...draftExtensionPaths, path]);
-    }
     setPicking(null);
     onCloseServerBrowser();
   }
@@ -198,24 +206,12 @@ export function SettingsMenu({
       : undefined;
     onUpdateConfig({
       ...(payload ? { sandbox: payload } : {}),
-      userSkillPaths: draftSkillPaths,
-      // Omitted under a lock rather than sent unchanged: the server refuses any
-      // update that carries them, which would take the skill change down with it.
-      ...(extensionLock ? {} : { userExtensionPaths: draftExtensionPaths }),
     });
   }
 
   const picker = picking !== null && (
     <ServerPathPicker
-      label={
-        picking === "skill"
-          ? "Choose a skills directory"
-          : picking === "extension"
-            ? "Choose an extensions directory"
-            : picking === "root"
-              ? "Choose the sandbox root"
-              : "Choose the writable root"
-      }
+      label={picking === "root" ? "Choose the sandbox root" : "Choose the writable root"}
       browse={serverBrowse}
       onBrowse={onBrowseServerPath}
       onSelect={handlePicked}
@@ -229,6 +225,7 @@ export function SettingsMenu({
   return (
     <div className="relative" ref={ref}>
       <button
+        ref={settingsButtonRef}
         type="button"
         onClick={() => setOpen(!open)}
         title="Settings"
@@ -287,43 +284,17 @@ export function SettingsMenu({
                 <ul className="mt-2 space-y-1">{sorted(skills.map((skill) => skill.name)).map((name) => <li key={name} className="rounded bg-zinc-50 px-2 py-1 font-mono text-xs text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400">{name}</li>)}</ul>
               </details>}
 
-              <div className="mt-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs text-zinc-600 dark:text-zinc-400">User skill paths</span>
-                  <button
-                    type="button"
-                    onClick={() => startPicking("skill", draftSkillPaths[draftSkillPaths.length - 1] ?? "/")}
-                    className="rounded border border-zinc-300 px-2 py-0.5 text-xs text-zinc-600 hover:border-zinc-400 dark:border-zinc-700 dark:text-zinc-300"
-                  >
-                    Add skills directory…
-                  </button>
-                </div>
-                {draftSkillPaths.length === 0 ? (
-                  <p className="mt-1 text-xs text-zinc-400 dark:text-zinc-500">No skill directories added</p>
-                ) : (
-                  <ul className="mt-1 space-y-1">
-                    {sorted(draftSkillPaths).map((skillPath) => (
-                      <li
-                        key={skillPath}
-                        className="flex items-center justify-between gap-2 rounded bg-zinc-50 px-2 py-1 dark:bg-zinc-800"
-                      >
-                        <span className="truncate font-mono text-xs text-zinc-600 dark:text-zinc-400" title={skillPath}>
-                          {skillPath}
-                        </span>
-                        <button
-                          type="button"
-                          aria-label={`Remove ${skillPath}`}
-                          onClick={() => setDraftSkillPaths(draftSkillPaths.filter((entry) => entry !== skillPath))}
-                          className="shrink-0 text-xs text-zinc-500 hover:text-red-600 dark:text-zinc-400 dark:hover:text-red-400"
-                        >
-                          Remove
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-                {picking === "skill" && <div className="mt-2">{picker}</div>}
-              </div>
+              <button
+                type="button"
+                aria-label="Manage agent resources"
+                onClick={() => {
+                  setOpen(false);
+                  setResourcesOpen(true);
+                }}
+                className="mt-3 w-full rounded-md border border-zinc-300 px-3 py-2 text-xs font-medium text-zinc-700 hover:bg-zinc-50 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800"
+              >
+                Manage resources…
+              </button>
             </section>
             {/* Extensions section */}
             <section className="mb-4">
@@ -377,60 +348,9 @@ export function SettingsMenu({
 
               {extensionLock ? (
                 <p className="mt-2 text-xs text-zinc-400 dark:text-zinc-500" data-testid="extensions-locked">
-                  Extension paths are locked by this deployment.
+                  Extension paths and repository updates that contain extensions are locked by this deployment.
                 </p>
-              ) : (
-                <div className="mt-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs text-zinc-600 dark:text-zinc-400">User extension paths</span>
-                    <button
-                      type="button"
-                      onClick={() => startPicking("extension", draftExtensionPaths[draftExtensionPaths.length - 1] ?? "/")}
-                      className="rounded border border-zinc-300 px-2 py-0.5 text-xs text-zinc-600 hover:border-zinc-400 dark:border-zinc-700 dark:text-zinc-300"
-                    >
-                      Add extensions directory…
-                    </button>
-                  </div>
-                  {/* Said at the moment of adding, not as a caption above the list: a
-                      permanent caption is read once and then never again, and this is
-                      about an act. Both facts are non-obvious and both are true. */}
-                  {picking === "extension" && (
-                    <p
-                      className="mt-2 rounded border border-amber-300 bg-amber-50 px-2 py-1 text-xs text-amber-800 dark:border-amber-700/60 dark:bg-amber-950/40 dark:text-amber-200"
-                      data-testid="extension-warning"
-                      role="note"
-                    >
-                      Extensions are code, and they run with the agent's privileges. Every extension in
-                      the directory you choose is loaded.
-                    </p>
-                  )}
-                  {draftExtensionPaths.length === 0 ? (
-                    <p className="mt-1 text-xs text-zinc-400 dark:text-zinc-500">No extension directories added</p>
-                  ) : (
-                    <ul className="mt-1 space-y-1">
-                      {sorted(draftExtensionPaths).map((extensionPath) => (
-                        <li
-                          key={extensionPath}
-                          className="flex items-center justify-between gap-2 rounded bg-zinc-50 px-2 py-1 dark:bg-zinc-800"
-                        >
-                          <span className="truncate font-mono text-xs text-zinc-600 dark:text-zinc-400" title={extensionPath}>
-                            {extensionPath}
-                          </span>
-                          <button
-                            type="button"
-                            aria-label={`Remove ${extensionPath}`}
-                            onClick={() => setDraftExtensionPaths(draftExtensionPaths.filter((entry) => entry !== extensionPath))}
-                            className="shrink-0 text-xs text-zinc-500 hover:text-red-600 dark:text-zinc-400 dark:hover:text-red-400"
-                          >
-                            Remove
-                          </button>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                  {picking === "extension" && <div className="mt-2">{picker}</div>}
-                </div>
-              )}
+              ) : null}
             </section>
 
             {/* Sandbox section */}
@@ -520,9 +440,7 @@ export function SettingsMenu({
               <p className="text-xs text-zinc-400 dark:text-zinc-500">No sandbox configured</p>
             )}
 
-            {/* One apply for every editable setting — a deployment with no sandbox
-                still has skill paths to change. */}
-            <div className="mt-4 space-y-2">
+            {sandbox && <div className="mt-4 space-y-2">
               {applyError && (
                 <p role="alert" className="rounded-md border border-red-300 bg-red-50 px-2 py-1 text-xs text-red-700 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-300">
                   {applyError}
@@ -539,7 +457,7 @@ export function SettingsMenu({
               <p className="text-[11px] text-zinc-400 dark:text-zinc-500">
                 Saved to the server's configuration file, then the session is rebuilt — the change survives a restart.
               </p>
-            </div>
+            </div>}
 
             {/* Versions section */}
             {versions && (
@@ -569,6 +487,32 @@ export function SettingsMenu({
           </div>
         </div>
       )}
+      <AgentResourceManager
+        open={resourcesOpen}
+        inventory={agentResources}
+        operations={agentResourceOperations}
+        extensionLock={extensionLock}
+        userSkillPaths={userSkillPaths}
+        userExtensionPaths={userExtensionPaths}
+        serverBrowse={serverBrowse}
+        applyState={applyState}
+        onClose={() => {
+          setResourcesOpen(false);
+          onCloseServerBrowser();
+          settingsButtonRef.current?.focus();
+        }}
+        onBrowseServerPath={(path) => {
+          onPickerOpened?.();
+          onBrowseServerPath(path);
+        }}
+        onCloseServerBrowser={onCloseServerBrowser}
+        onUpdateConfig={onUpdateConfig}
+        onSuggestClonePath={onSuggestAgentResourceClonePath}
+        onCloneRepository={onCloneAgentResourceRepository}
+        onEnrollRepository={onEnrollAgentResourceRepository}
+        onRefresh={onRefreshAgentResourceRepositories}
+        onUpdate={onUpdateAgentResourceRepository}
+      />
     </div>
   );
 }

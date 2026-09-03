@@ -30,4 +30,3 @@ Loading code is not the same act as pointing the agent at more text to read, so 
 - **GIVEN** extension paths are locked and a known resource repository supplies an applicable extension
 - **WHEN** a client opens the inventory or refreshes repository status
 - **THEN** the inventory and read-only assessment remain available while update is reported as locked
-

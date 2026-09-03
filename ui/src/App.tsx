@@ -130,6 +130,11 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
     setCredential,
     declareProvider,
     updateConfig,
+    suggestAgentResourceClonePath,
+    cloneAgentResourceRepository,
+    enrollAgentResourceRepository,
+    refreshAgentResourceRepositories,
+    updateAgentResourceRepository,
     browseServerDirectory,
     closeServerBrowser,
     switchWorkspace,
@@ -880,12 +885,19 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
             userSkillPaths={state.userSkillPaths}
             serverBrowse={state.serverBrowse}
             settingsApply={state.settingsApply}
+            agentResources={state.agentResources}
+            agentResourceOperations={state.agentResourceOperations}
             versions={state.versions}
             onBrowseServerPath={browseServerDirectory}
             onCloseServerBrowser={closeServerBrowser}
             settingsPickerBlocked={headerPicker !== null && headerPicker !== "settings"}
             onSettingsPickerOpened={() => setHeaderPicker("settings")}
             onUpdateConfig={updateConfig}
+            onSuggestAgentResourceClonePath={suggestAgentResourceClonePath}
+            onCloneAgentResourceRepository={cloneAgentResourceRepository}
+            onEnrollAgentResourceRepository={enrollAgentResourceRepository}
+            onRefreshAgentResourceRepositories={refreshAgentResourceRepositories}
+            onUpdateAgentResourceRepository={updateAgentResourceRepository}
             onFetchGitLog={fetchGitLog}
             onShowCommit={fetchGitShow}
             terminalOpen={terminalOpen}

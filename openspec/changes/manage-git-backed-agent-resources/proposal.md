@@ -5,6 +5,7 @@ Skills and extensions can come from several local directories backed by differen
 ## What Changes
 
 - Add a dedicated, repository-first **Agent resources** dialog based on prototype A, with search, filters, attention summaries, and separate skill and extension inventories for the selected repository.
+- Make that dialog the single resource-management entry point with two distinct actions: **Add local folder…** preserves server-directory selection for a skill or extension root, while **Add Git repository…** accepts both a repository address and an editable local clone folder (defaulting under pi-outpost-managed storage), previews discoverable skill and extension roots without executing them, and activates only the roots the user confirms. The Settings resource control opens this dialog instead of maintaining its own add-directory controls.
 - Attribute loaded or configured skill and extension paths to their canonical Git repository, supporting multiple repositories, nested repositories, mixed skill/extension repositories, deduplication, and honest unavailable-provenance states.
 - Check remote state and update eligible repositories on their current tracked branch using fetch plus fast-forward-only integration.
 - Block updates for dirty, detached, ahead, diverged, untracked, unavailable, or otherwise unsafe repositories and direct users to resolve local changes in an external terminal.
@@ -12,6 +13,8 @@ Skills and extensions can come from several local directories backed by differen
 - Revalidate eligibility immediately before mutation, serialize operations per repository, constrain Git execution to server-derived repository roots and fixed arguments, and disable repository hooks during integration.
 - Rebuild every affected started and idle runtime after a successful update; refuse the update while an affected workspace is busy, and report disk-update/reload failures without claiming rollback or success.
 - Keep this feature updater-only: it does not commit, stash, discard, rebase, merge non-fast-forward histories, push, switch branches, or edit repository contents directly.
+- Run every resource-repository git process non-interactively, so a repository needing credentials fails with a readable reason instead of waiting on a prompt, while authentication the deployment already configured keeps working.
+- Leave submodules alone and say so: a fast-forward does not advance them, and a repository whose resources come from one reports that its submodule content was not updated.
 - Preserve the existing read-only workspace Git integration as a distinct concern; resource repository updates use a separate service and authorization boundary.
 
 ## Capabilities
@@ -25,12 +28,13 @@ Skills and extensions can come from several local directories backed by differen
 - `components`: Add the repository-first Agent resources dialog and its inventory, status, filtering, confirmation, blocked-state, and refresh interactions.
 - `git`: Clarify that the existing read-only command restriction applies to workspace Git browsing, while the separate resource updater may run its narrowly specified update command set against trusted resource repositories.
 - `config`: Extend `extensionLock` so it also prevents UI-triggered repository updates that could modify extension code.
+- `api`: Add the correlated agent-resource message family, its workspace binding, its refusal of identifiers the server did not issue, and its credential-free error shape.
 
 ## Impact
 
 - Shared protocol and runtime snapshots gain resource provenance, repository state, check, update, and reload-result data.
 - Embedded and RPC runtime adapters must expose provenance when available and explicitly report unsupported inventory rather than infer it.
 - The server gains a dedicated resource-repository discovery and Git update service plus per-repository coordination and affected-workspace rebuild orchestration.
-- Settings and application UI gain the Agent resources entry point and split-pane dialog while retaining existing path configuration controls.
+- Settings and application UI gain the Agent resources entry point and split-pane dialog; existing configured and user path semantics remain, but their interactive add/remove controls move into the dialog.
 - Tests cover repository attribution, all eligibility states, command confinement, extension confirmation and locking, concurrent requests, busy workspaces, reload outcomes, and running-app UI behavior.
 - User and developer documentation must explain the updater-only boundary, security implications of extension updates, supported runtime provenance, and external handling of local changes.

@@ -173,6 +173,119 @@ export interface CommandInfo {
   source: "extension" | "prompt" | "skill";
 }
 
+/** A loadable agent resource managed by the resource repository surface. */
+export type AgentResourceKind = "skill" | "extension";
+export type AgentResourceOrigin = "runtime" | "configured" | "user" | "built-in";
+
+export interface AgentResourceInfo {
+  /** Stable for the same kind and canonical source path (or runtime name). */
+  id: string;
+  kind: AgentResourceKind;
+  name: string;
+  origin: AgentResourceOrigin;
+  /** Canonical server-side path, absent when the runtime cannot report one. */
+  path?: string;
+  /** Why this entry cannot be attributed to a repository. */
+  unavailableReason?: string;
+  /** User-managed root that can be removed from Settings, when applicable. */
+  userRoot?: string;
+}
+
+export type AgentResourceRepositoryStatus =
+  | "unchecked"
+  | "checking"
+  | "current"
+  | "updateable"
+  | "dirty"
+  | "detached"
+  | "ahead"
+  | "diverged"
+  | "no-upstream"
+  | "locked"
+  | "busy"
+  | "unavailable"
+  | "failed";
+
+interface AgentResourceRepositoryAssessmentBase {
+  repositoryId: string;
+  reason?: string;
+  branch?: string;
+  upstream?: string;
+  localRevision?: string;
+  upstreamRevision?: string;
+  /** Present only when the observed revisions are eligible for an update. */
+  token?: string;
+  /** True when the superproject declares submodules, which the updater leaves untouched. */
+  hasSubmodules?: boolean;
+  checkedAt?: string;
+}
+
+export type AgentResourceRepositoryAssessment = AgentResourceRepositoryAssessmentBase &
+  (
+    | { status: "unchecked" | "checking" }
+    | {
+        status: "updateable";
+        branch: string;
+        upstream: string;
+        localRevision: string;
+        upstreamRevision: string;
+        token: string;
+      }
+    | { status: "current"; branch: string; upstream: string; localRevision: string; upstreamRevision: string }
+    | { status: Exclude<AgentResourceRepositoryStatus, "unchecked" | "checking" | "updateable" | "current">; reason: string }
+  );
+
+export interface AgentResourceRepository {
+  /** Opaque server-issued identity. Clients never send a filesystem path to update. */
+  id: string;
+  name: string;
+  path: string;
+  resourceIds: string[];
+  containsExtensions: boolean;
+  assessment: AgentResourceRepositoryAssessment;
+}
+
+export interface AgentResourceInventory {
+  resources: AgentResourceInfo[];
+  repositories: AgentResourceRepository[];
+  /** Whether the active runtime can provide a complete inventory for each kind. */
+  capabilities: { skills: "available" | "unavailable"; extensions: "available" | "unavailable" };
+}
+
+export interface AgentResourceRepositoryPreview {
+  token: string;
+  repositoryPath: string;
+  repositoryName: string;
+  headRevision: string;
+  repositoryUrl?: string;
+  roots: Array<{ kind: AgentResourceKind; path: string; name: string; locked?: boolean }>;
+}
+
+export interface AgentResourceReloadResult {
+  workspaceRoot: string;
+  status: "reloaded" | "not-started" | "failed";
+  message?: string;
+}
+
+export type AgentResourceUpdateResult =
+  | {
+      status: "updated";
+      repositoryId: string;
+      beforeRevision: string;
+      afterRevision: string;
+      submodulesUpdated: false;
+      reloads: AgentResourceReloadResult[];
+    }
+  | {
+      status: "updated-reload-failed";
+      repositoryId: string;
+      beforeRevision: string;
+      afterRevision: string;
+      submodulesUpdated: false;
+      reloads: AgentResourceReloadResult[];
+    }
+  | { status: "refused"; repositoryId?: string; reason: string; assessment?: AgentResourceRepositoryAssessment };
+
 export const THEMES = ["light", "dark", "system"] as const;
 export type Theme = (typeof THEMES)[number];
 
@@ -489,6 +602,8 @@ export interface SessionSnapshot {
   items: ChatItem[];
   models: ModelChoice[];
   commands: CommandInfo[];
+  /** Git-aware skill and extension inventory. Optional for older servers/clients. */
+  agentResources?: AgentResourceInventory;
   contextUsage?: ContextUsage;
   /** Agent-owned, session-persistent plan; null when this session has none. */
   workPlan?: WorkPlan | null;
@@ -746,6 +861,13 @@ export type ServerMessage =
    */
   | { type: "server_directory"; requestId: string; path: string; parent: string | null; entries: ServerDirEntry[] }
   | { type: "server_directory_error"; requestId: string; path: string; message: string }
+  | { type: "agent_resource_preview"; requestId: string; preview: AgentResourceRepositoryPreview }
+  | { type: "agent_resource_clone_path"; requestId: string; path: string }
+  | { type: "agent_resource_enrolled"; requestId: string; inventory: AgentResourceInventory }
+  | { type: "agent_resource_assessments"; requestId: string; assessments: AgentResourceRepositoryAssessment[] }
+  | { type: "agent_resource_inventory"; inventory: AgentResourceInventory }
+  | { type: "agent_resource_update_result"; requestId: string; result: AgentResourceUpdateResult; inventory: AgentResourceInventory }
+  | { type: "agent_resource_error"; requestId: string; message: string }
   /**
    * Editable runtime settings were persisted and the session rebuilt from them —
    * carries the full new snapshot. Sent only after a successful write: a client
@@ -882,6 +1004,29 @@ export type ClientMessage =
   | { type: "declare_provider"; provider: string; baseUrl: string; apiKey: string; models: string[]; compat?: ProviderCompat }
   /** List the directories under one server-side path (absolute; `/` is the top). */
   | { type: "browse_server_directory"; path: string; requestId: string }
+  /** Clone a repository address into managed storage and inspect it without loading code. */
+  | { type: "clone_agent_resource_repository"; repositoryUrl: string; destinationPath: string; requestId: string }
+  | { type: "suggest_agent_resource_clone_path"; repositoryUrl: string; requestId: string }
+  /** Persist selected roots from a server-issued, revision-bound preview. */
+  | {
+      type: "enroll_agent_resource_repository";
+      previewToken: string;
+      skillRoots: string[];
+      extensionRoots: string[];
+      requestId: string;
+    }
+  /** Refresh one known repository, or every known repository when id is absent. */
+  | { type: "refresh_agent_resource_repositories"; repositoryId?: string; requestId: string }
+  /** Advance one known repository to the exact upstream captured by its assessment. */
+  | {
+      type: "update_agent_resource_repository";
+      repositoryId: string;
+      assessmentToken: string;
+      localRevision: string;
+      upstreamRevision: string;
+      allowExecutableChanges?: boolean;
+      requestId: string;
+    }
   /**
    * Update the editable runtime settings — the server persists them to the
    * configuration file it loaded, then replaces the session so the new toolset

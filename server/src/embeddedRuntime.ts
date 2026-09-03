@@ -9,6 +9,7 @@
 import type { AgentSession, CreateAgentSessionRuntimeFactory, SessionManager } from "@earendil-works/pi-coding-agent";
 import { createAgentSessionRuntime } from "@earendil-works/pi-coding-agent";
 import type {
+  AgentResourceInfo,
   CommandInfo,
   ContextUsage,
   ExtensionUIRequest,
@@ -117,6 +118,8 @@ export class EmbeddedRuntime implements AgentRuntime {
       messages: session.messages as unknown[],
       models: this.models(),
       commands: this.commands(),
+      resources: this.resources(),
+      resourceCapabilities: { skills: "available", extensions: "available" },
       contextUsage: session.getContextUsage() as ContextUsage | undefined,
       providers: this.providers(),
       extensionPaths: session.extensionRunner.getExtensionPaths(),
@@ -192,6 +195,26 @@ export class EmbeddedRuntime implements AgentRuntime {
       });
     }
     return commands.sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  private resources(): AgentResourceInfo[] {
+    const resources: AgentResourceInfo[] = [];
+    const { skills } = this.runtime.services.resourceLoader.getSkills();
+    for (const skill of skills) {
+      const resourcePath = skill.filePath || skill.sourceInfo?.path;
+      resources.push({
+        id: `skill:${resourcePath || skill.name}`,
+        kind: "skill",
+        name: skill.name,
+        origin: /built|bundled/i.test(skill.sourceInfo?.source ?? "") ? "built-in" : "runtime",
+        ...(resourcePath ? { path: resourcePath } : { unavailableReason: "This runtime did not report a skill path" }),
+      });
+    }
+    for (const extensionPath of this.session.extensionRunner.getExtensionPaths()) {
+      const name = extensionPath.split(/[\\/]/).filter(Boolean).at(-1)?.replace(/\.[^.]+$/, "") ?? extensionPath;
+      resources.push({ id: `extension:${extensionPath}`, kind: "extension", name, origin: "runtime", path: extensionPath });
+    }
+    return resources.sort((a, b) => a.kind.localeCompare(b.kind) || a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
   }
 
   tree(): { roots: RuntimeTreeNode[]; leafId: string | null } {

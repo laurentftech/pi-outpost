@@ -71,6 +71,7 @@ export { ModelBar } from "./components/ModelBar";
 export { Onboarding } from "./components/Onboarding";
 export { OutcomePanel } from "./components/OutcomePanel";
 export { SettingsMenu } from "./components/SettingsMenu";
+export { AgentResourceManager } from "./components/AgentResourceManager";
 export { Sidebar } from "./components/Sidebar";
 export { TokenGate } from "./components/TokenGate";
 export { TreeMenu } from "./components/TreeMenu";
