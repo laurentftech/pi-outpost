@@ -104,9 +104,12 @@ test("a document extractor is published when a document is named, and not before
     const afterUse = await nthRequest(log, 4);
     assert.ok(afterUse.includes("docx_extract"), "the tool is still there for the follow-up call in that turn");
 
-    // A tool that has been used survives the quiet turns around the work it belongs to...
+    // A tool that has been used survives the quiet turns around the work it belongs to.
+    // Five of them: the turn that called it is not one of its idle turns, which is a
+    // distinction Codex caught — ageing it at the end of the turn that used it spent the
+    // first of five on the work itself.
     let request = 5;
-    for (let turn = 1; turn <= 4; turn += 1) {
+    for (let turn = 1; turn <= 5; turn += 1) {
       client.send({ type: "prompt", text: `Quiet turn ${turn}.` });
       const during = await nthRequest(log, request++);
       assert.ok(during.includes("docx_extract"), `a used tool survives ${turn} idle turn(s)`);
@@ -114,9 +117,9 @@ test("a document extractor is published when a document is named, and not before
     }
 
     // ...and is forgotten once the conversation has plainly moved on.
-    client.send({ type: "prompt", text: "Quiet turn 5." });
+    client.send({ type: "prompt", text: "Quiet turn 6." });
     const forgotten = await nthRequest(log, request);
-    assert.ok(!forgotten.includes("docx_extract"), "five idle turns and a used tool is forgotten");
+    assert.ok(!forgotten.includes("docx_extract"), "five idle turns after its last call, and a used tool is forgotten");
 
     // Naming the document again brings it back: the only way back, and the user's to take.
     client.send({ type: "prompt", text: "Look at report.docx once more." });
