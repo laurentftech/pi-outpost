@@ -1,5 +1,11 @@
 # Pi Outpost next to pi and opencode
 
+> **Working notes, not a published claim.** The figures are provisional and this page is
+> not linked from the README. It is kept because it is worth maintaining — re-run the
+> probe when a tool or a prompt changes — and it becomes publishable when the numbers have
+> been checked on more than one machine and one run.
+
+
 Measured on **2026-09-03**, against **pi-outpost 0.20.1** and the **pi SDK 0.84.4** it
 bundles. All three columns are measured — opencode **1.18.27**, installed and run for this
 page. The features are read from documentation and behaviour; the context figures come
