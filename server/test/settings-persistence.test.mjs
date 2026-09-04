@@ -10,7 +10,7 @@
  * Each subtest boots a server (the restart test boots two). Keep the count low.
  */
 import assert from "node:assert/strict";
-import { cp, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { cp, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, test } from "node:test";
@@ -25,7 +25,7 @@ const activeTools = (message) => (message.tools ?? []).filter((tool) => tool.act
 
 describe("persistent runtime settings", () => {
   test("an applied skill path reaches the session, the config file, and the next start", async () => {
-    const root = await mkdtemp(path.join(tmpdir(), "pi-outpost-settings-"));
+    const root = await realpath(await mkdtemp(path.join(tmpdir(), "pi-outpost-settings-")));
     const skillDir = path.join(root, "shared", "test-skill");
     await cp(path.join(FIXTURES, "test-skill"), skillDir, { recursive: true });
     // A skill the configuration file names: it must survive every apply, and must

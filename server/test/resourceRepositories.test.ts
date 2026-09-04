@@ -98,6 +98,19 @@ describe("resource repository enrollment", () => {
     assert.equal(run(destination, ["submodule", "status"]), "");
   });
 
+  test("derives a Windows-safe clone slug in linear time", () => {
+    const managed = path.join(tmpdir(), "managed-resources");
+    const service = new ResourceRepositoryService(managed);
+    const separators = "/".repeat(30_000);
+    const hyphens = "-".repeat(30_000);
+    const address = `https://example.test/${separators}${hyphens}resources${hyphens}.git${separators}`;
+    const startedAt = performance.now();
+    const suggested = service.suggestedClonePath(address);
+
+    assert.ok(performance.now() - startedAt < 500, "repository slugging should remain linear for adversarial input");
+    assert.match(path.basename(suggested), /^resources-[a-f0-9]{10}$/);
+  });
+
   test("reuses the same-origin clone and refuses occupied or unsafe destinations before cloning", async () => {
     const { root } = await remotePair();
     const address = pathToFileURL(path.join(root, "remote.git")).toString();

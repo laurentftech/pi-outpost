@@ -813,8 +813,24 @@ function redactSecrets(message: string): string {
   return message.replace(/([a-z][a-z\d+.-]*:\/\/)[^\s/@]+@/gi, "$1***@");
 }
 
+function trimTrailingAddressSeparators(value: string): string {
+  let end = value.length;
+  while (end > 0 && (value[end - 1] === "/" || value[end - 1] === "\\")) end -= 1;
+  return end === value.length ? value : value.slice(0, end);
+}
+
+function trimBoundaryHyphens(value: string): string {
+  let start = 0;
+  let end = value.length;
+  while (start < end && value[start] === "-") start += 1;
+  while (end > start && value[end - 1] === "-") end -= 1;
+  return start === 0 && end === value.length ? value : value.slice(start, end);
+}
+
 function repositorySlug(address: string): string {
-  const tail = address.replace(/[?#].*$/, "").replace(/\/+$/, "").split(/[/:]/).at(-1)?.replace(/\.git$/i, "") ?? "repository";
-  const slug = tail.toLowerCase().replace(/[^a-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "");
+  const suffix = [address.indexOf("?"), address.indexOf("#")].filter((index) => index >= 0).sort((a, b) => a - b)[0];
+  const cleanAddress = trimTrailingAddressSeparators(suffix === undefined ? address : address.slice(0, suffix));
+  const tail = cleanAddress.split(/[\\/:]/).at(-1)?.replace(/\.git$/i, "") ?? "repository";
+  const slug = trimBoundaryHyphens(tail.toLowerCase().replace(/[^a-z0-9._-]+/g, "-"));
   return slug || "repository";
 }

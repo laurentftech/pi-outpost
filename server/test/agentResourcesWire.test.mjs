@@ -279,7 +279,13 @@ test("updating a shared repository reloads every started workspace and broadcast
   alpha.send({ type: "prompt", text: "must not start during a resource update" });
   const blockedPrompt = await alpha.waitFor((message) => message.type === "error" && /Session change already in progress/.test(message.message));
   assert.match(blockedPrompt.message, /Session change already in progress/);
-  const result = await alpha.waitFor((message) => message.type === "agent_resource_update_result" && message.requestId === "shared-update");
+  // Two real embedded runtimes are rebuilt here. Windows runners are materially
+  // slower at loading them, so this cross-workspace integration gets the same
+  // deliberate ceiling as the server test rather than the harness's short UI wait.
+  const result = await alpha.waitFor(
+    (message) => message.type === "agent_resource_update_result" && message.requestId === "shared-update",
+    120_000,
+  );
   assert.equal(result.result.status, "updated");
   assert.deepEqual(
     new Map(result.result.reloads.map((reload) => [reload.workspaceRoot, reload.status])),
