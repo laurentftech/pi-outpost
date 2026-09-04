@@ -39,7 +39,7 @@ Enumerated with `rg '^#### Scenario:' openspec/`. All 61 delta scenarios and the
 | `agent-resource-management / Confirmation becomes stale` | covered | `server/test/resourceRepositories.test.ts` — the revision/expiry test asserts expired and changed-revision confirmations are refused. |
 | `agent-resource-management / Affected workspace is busy` | covered | `server/test/agentResourcesWire.test.mjs` — busy-workspace test asserts refusal occurs before remote HEAD is applied. |
 | `agent-resource-management / Shared repository reloads all affected idle workspaces` | covered | `server/test/agentResourcesWire.test.mjs` — shared-repository test asserts both sessions are rebuilt and both receive inventories with additions/removals. |
-| `agent-resource-management / Reload fails after Git succeeds` | covered | `server/test/agentResourcesWire.test.mjs` — partial-failure test asserts Git stays advanced and the failed workspace is reported. |
+| `agent-resource-management / Reload fails after Git succeeds` | covered | `server/test/agentResourcesWire.test.mjs` — partial-failure test asserts Git stays advanced and the failed workspace is reported; “a vetoed session replacement reports partial failure instead of claiming the runtime reloaded” drives a real extension veto and asserts the outcome is `updated-reload-failed`, that the reload names the refusal, that the worktree stayed advanced, and that a second socket is still told the same session id. |
 | `agent-resource-management / Unstarted workspace loads later` | covered | `server/test/agentResourcesWire.test.mjs` — dormant-workspace test asserts it is not started by update and later loads the new resource. |
 
 ## API delta

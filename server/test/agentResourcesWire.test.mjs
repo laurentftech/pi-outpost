@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { mkdir, readFile, realpath, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import test from "node:test";
 import { connect, makeWorkspace, startServer } from "./harness.mjs";
 import { startScriptedServer } from "./multiProjectHarness.mjs";
@@ -422,4 +422,52 @@ test("a runtime reload failure reports partial failure after preserving the Git 
   assert.equal(result.result.reloads[0].status, "failed");
   assert.match(result.result.reloads[0].message, /unavailable/i);
   assert.equal(run(checkout, ["rev-parse", "HEAD"]), expected);
+});
+
+// openlore: scenario=ReloadFailsAfterGitSucceeds spec=agent-resource-management
+test("a vetoed session replacement reports partial failure instead of claiming the runtime reloaded", async (t) => {
+  const root = await realpath(await makeWorkspace());
+  const { remote, seed } = await makeRemote(root);
+  const checkout = path.join(root, "veto-reload-resources");
+  run(root, ["clone", "-q", remote, checkout]);
+  const server = await startServer(root, {
+    skillPaths: [path.join(checkout, "skills", "review")],
+    extensionPaths: [fileURLToPath(new URL("./fixtures/veto-session-switch.mjs", import.meta.url))],
+  });
+  t.after(() => server.stop());
+  const client = connect(server.wsUrl());
+  t.after(() => client.close());
+  const hello = await client.waitFor("hello", 30_000);
+  const sessionBefore = hello.sessionId;
+  const repository = (await resourceInventory(client, hello)).repositories.find((candidate) => candidate.path === checkout);
+  const expected = await advanceRemote(seed, "Vetoed reload update.\n");
+  client.send({ type: "refresh_agent_resource_repositories", repositoryId: repository.id, requestId: "veto-assess" });
+  const checked = await client.waitFor((message) => message.type === "agent_resource_assessments" && message.requestId === "veto-assess");
+  const assessment = checked.assessments[0];
+  client.send({
+    type: "update_agent_resource_repository",
+    repositoryId: repository.id,
+    assessmentToken: assessment.token,
+    localRevision: assessment.localRevision,
+    upstreamRevision: assessment.upstreamRevision,
+    requestId: "veto-update",
+  });
+  const result = await client.waitFor((message) => message.type === "agent_resource_update_result" && message.requestId === "veto-update", 60_000);
+
+  assert.equal(result.result.status, "updated-reload-failed", "a retained session must not be reported as reloaded");
+  assert.equal(result.result.reloads.length, 1);
+  assert.equal(result.result.reloads[0].status, "failed");
+  assert.match(result.result.reloads[0].message, /cancelled the session replacement/i);
+  // The worktree really did advance: the failure is the runtime's, and the result
+  // must not suggest Git was rolled back.
+  assert.equal(run(checkout, ["rev-parse", "HEAD"]), expected);
+  // The retained session is the whole point of the failure: nothing announced a
+  // replacement, and the session in front of the user is the one that was there.
+  assert.equal(client.received.some((message) => message.type === "session_replaced"), false, "the vetoed session was never replaced");
+  // Asked fresh rather than inferred from the absence of a broadcast: a second
+  // socket is told which session is live now.
+  const observer = connect(server.wsUrl());
+  t.after(() => observer.close());
+  const after = await observer.waitFor("hello", 30_000);
+  assert.equal(after.sessionId, sessionBefore, "the session that refused replacement is still the live one");
 });
