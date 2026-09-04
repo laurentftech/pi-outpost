@@ -57,15 +57,23 @@ function syntheticInventory(): AgentResourceInventory {
     repository("repo-busy", "In use", "busy", { reason: "An update is already running." }),
     repository("repo-stale", "Stale assessment", "updateable"),
   ];
+  const extensionRepository = repositories.find((entry) => entry.id === "repo-extension")!;
+  extensionRepository.resourceIds.push("repo-extension-skill");
   return {
     repositories,
-    resources: repositories.map((entry) => ({
+    resources: [...repositories.map((entry) => ({
       id: entry.resourceIds[0],
       kind: entry.containsExtensions ? "extension" as const : "skill" as const,
       name: `${entry.name} resource`,
       origin: "user" as const,
       path: `${entry.path}/${entry.containsExtensions ? "extensions" : "skills"}`,
-    })),
+    })), {
+      id: "repo-extension-skill",
+      kind: "skill" as const,
+      name: "Companion skill",
+      origin: "user" as const,
+      path: `${extensionRepository.path}/skills/companion/SKILL.md`,
+    }],
     capabilities: { skills: "available", extensions: "available" },
   };
 }
@@ -248,6 +256,15 @@ test("repository states stay correlated through rapid actions and changing inven
   await dialog.getByRole("button", { name: "Needs attention" }).dblclick();
   await search.fill("");
   await dialog.getByRole("button", { name: "Extensions" }).click();
+  await expect(dialog.getByText("Executable tools resource", { exact: true })).toBeVisible();
+  await expect(dialog.getByText("Companion skill", { exact: true })).toHaveCount(0);
+  await expect(dialog.getByRole("button", { name: /Executable tools/ })).toContainText("1");
+  await dialog.getByRole("button", { name: "Skills" }).click();
+  await dialog.getByRole("button", { name: /Executable tools/ }).click();
+  await expect(dialog.getByText("Companion skill", { exact: true })).toBeVisible();
+  await expect(dialog.getByText("Executable tools resource", { exact: true })).toHaveCount(0);
+  await dialog.getByRole("button", { name: "Extensions" }).dblclick();
+  await expect(dialog.getByText("Companion skill", { exact: true })).toHaveCount(0);
   await dialog.getByRole("button", { name: "All", exact: true }).click();
   await expect(dialog.getByRole("button", { name: /Shared skills/ })).toBeVisible();
 

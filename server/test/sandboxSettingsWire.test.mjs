@@ -119,3 +119,91 @@ test("an extension veto rolls back the sandbox instead of acknowledging a split 
   assert.match(toolResult, /original\.txt/, "the retained agent stays paired with the rolled-back browser");
   assert.doesNotMatch(toolResult, /moved\.txt/);
 });
+
+test("ReadConfiguredResourceOutsideRoot: a skill added in Settings is readable by the replacement agent", async (t) => {
+  const project = await realpath(await makeWorkspace());
+  const sandboxRoot = path.join(project, "workspace");
+  const skillDir = path.join(project, "resources", "outside-skill");
+  const skillFile = path.join(skillDir, "SKILL.md");
+  await Promise.all([mkdir(sandboxRoot), mkdir(skillDir, { recursive: true })]);
+  await writeFile(
+    skillFile,
+    "---\nname: outside-skill\ndescription: Proves configured resources remain readable\n---\n\nOUTSIDE_SKILL_BODY\n",
+  );
+  const log = path.join(project, "skill-read.json");
+  const server = await startServer(
+    project,
+    {
+      sandbox: { root: sandboxRoot, allowWrite: false, allowBash: false },
+      extensionPaths: [PROVIDER],
+      allowedModels: [{ provider: "sandbox-settings-test", id: "sandbox-settings-test" }],
+    },
+    { env: { SANDBOX_SETTINGS_LOG: log, SANDBOX_SETTINGS_READ_PATH: skillFile } },
+  );
+  t.after(() => server.stop());
+  const client = connect(server.wsUrl());
+  t.after(() => client.close());
+  await client.waitFor("hello", 30_000);
+
+  client.send({ type: "update_config", userSkillPaths: [skillDir] });
+  const applied = await client.waitFor(
+    (message) => message.type === "update_config_ack" || message.type === "error",
+    30_000,
+  );
+  assert.equal(applied.type, "update_config_ack", applied.message);
+  assert.ok(
+    applied.commands.some((command) => command.name === "skill:outside-skill"),
+    "the replacement session discovers the configured skill",
+  );
+
+  client.send({ type: "set_model", provider: "sandbox-settings-test", id: "sandbox-settings-test" });
+  await client.waitFor("model_changed");
+  client.send({ type: "prompt", text: "Read the matching skill before answering." });
+  const toolResult = await waitForFile(log);
+  assert.match(toolResult, /OUTSIDE_SKILL_BODY/, "the replacement agent can read the external skill body");
+  assert.doesNotMatch(toolResult, /Access denied/);
+});
+
+test("ReadConfiguredResourceOutsideRoot: an extension added in Settings is readable by the replacement agent", async (t) => {
+  const project = await realpath(await makeWorkspace());
+  const sandboxRoot = path.join(project, "workspace");
+  const extensionDir = path.join(project, "resources", "outside-extension");
+  const extensionFile = path.join(extensionDir, "index.js");
+  await Promise.all([mkdir(sandboxRoot), mkdir(extensionDir, { recursive: true })]);
+  await writeFile(
+    extensionFile,
+    "export default function () {}\n// OUTSIDE_EXTENSION_BODY\n",
+  );
+  const log = path.join(project, "extension-read.json");
+  const server = await startServer(
+    project,
+    {
+      sandbox: { root: sandboxRoot, allowWrite: false, allowBash: false },
+      extensionPaths: [PROVIDER],
+      allowedModels: [{ provider: "sandbox-settings-test", id: "sandbox-settings-test" }],
+    },
+    { env: { SANDBOX_SETTINGS_LOG: log, SANDBOX_SETTINGS_READ_PATH: extensionFile } },
+  );
+  t.after(() => server.stop());
+  const client = connect(server.wsUrl());
+  t.after(() => client.close());
+  await client.waitFor("hello", 30_000);
+
+  client.send({ type: "update_config", userExtensionPaths: [extensionDir] });
+  const applied = await client.waitFor(
+    (message) => message.type === "update_config_ack" || message.type === "error",
+    30_000,
+  );
+  assert.equal(applied.type, "update_config_ack", applied.message);
+  assert.ok(
+    applied.extensionPaths.some((loadedPath) => loadedPath === extensionFile || loadedPath === extensionDir),
+    `the replacement session loads the configured extension: ${JSON.stringify(applied.extensionPaths)}`,
+  );
+
+  client.send({ type: "set_model", provider: "sandbox-settings-test", id: "sandbox-settings-test" });
+  await client.waitFor("model_changed");
+  client.send({ type: "prompt", text: "Read the matching extension source before answering." });
+  const toolResult = await waitForFile(log);
+  assert.match(toolResult, /OUTSIDE_EXTENSION_BODY/, "the replacement agent can read the external extension source");
+  assert.doesNotMatch(toolResult, /Access denied/);
+});

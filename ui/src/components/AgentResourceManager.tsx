@@ -167,10 +167,12 @@ export function AgentResourceManager(props: AgentResourceManagerProps) {
   const allGroups = useMemo(() => groupInventory(props.inventory), [props.inventory]);
   const visibleGroups = useMemo(() => {
     const needle = query.trim().toLocaleLowerCase();
-    return allGroups.filter((group) => {
-      if (kind !== "all" && !group.resources.some((resource) => resource.kind === kind)) return false;
-      if (attentionOnly && (!("repository" in group) || !["updateable", "dirty", "failed", "unavailable", "busy"].includes(group.repository.assessment.status))) return false;
-      return !needle || `${group.name} ${"path" in group ? group.path ?? "" : ""} ${group.resources.map((resource) => `${resource.name} ${resource.path ?? ""}`).join(" ")}`.toLocaleLowerCase().includes(needle);
+    return allGroups.flatMap((group): Group[] => {
+      const resources = kind === "all" ? group.resources : group.resources.filter((resource) => resource.kind === kind);
+      if (resources.length === 0) return [];
+      if (attentionOnly && (!("repository" in group) || !["updateable", "dirty", "failed", "unavailable", "busy"].includes(group.repository.assessment.status))) return [];
+      const searchable = `${group.name} ${"path" in group ? group.path ?? "" : ""} ${resources.map((resource) => `${resource.name} ${resource.path ?? ""}`).join(" ")}`.toLocaleLowerCase();
+      return !needle || searchable.includes(needle) ? [{ ...group, resources }] : [];
     });
   }, [allGroups, attentionOnly, kind, query]);
   const selected = visibleGroups.find((group) => group.id === selectedId) ?? visibleGroups[0] ?? null;

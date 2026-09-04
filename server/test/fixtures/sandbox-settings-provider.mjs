@@ -21,11 +21,22 @@ function message(model, content, stopReason) {
 }
 
 function stream(model, context) {
-  const result = [...(context.messages ?? [])].reverse().find((item) => item.role === "toolResult");
+  const messages = context.messages ?? [];
+  const lastUserIndex = messages.findLastIndex((item) => item.role === "user");
+  const result = messages.findLast((item, index) => item.role === "toolResult" && index > lastUserIndex);
   const out = createAssistantMessageEventStream();
 
   if (!result) {
-    const call = { type: "toolCall", id: `ls-${Date.now()}`, name: "ls", arguments: { path: "." } };
+    const userText = lastUserIndex < 0
+      ? ""
+      : messages[lastUserIndex].content
+          .filter?.((part) => part.type === "text")
+          .map((part) => part.text)
+          .join(" ") ?? String(messages[lastUserIndex].content);
+    const readPath = /skill|extension/i.test(userText) ? process.env.SANDBOX_SETTINGS_READ_PATH : undefined;
+    const call = readPath
+      ? { type: "toolCall", id: `read-${Date.now()}`, name: "read", arguments: { path: readPath } }
+      : { type: "toolCall", id: `ls-${Date.now()}`, name: "ls", arguments: { path: "." } };
     const partial = message(model, [call], "toolUse");
     queueMicrotask(() => {
       out.push({ type: "start", partial });

@@ -219,9 +219,14 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
   // child directory to the other, then the fake provider calls the live `ls`
   // tool so the Playwright test can verify the agent moved with it.
   const settingsSandboxRoot = await realpath(
-    await makeWorkspace({ "original/original.txt": "old\n", "moved/moved.txt": "new\n" }),
+    await makeWorkspace({
+      "original/original.txt": "old\n",
+      "moved/moved.txt": "new\n",
+      "resources/outside-skill/SKILL.md": "---\nname: outside-skill\ndescription: Readable outside the sandbox\n---\n\nE2E_OUTSIDE_SKILL_BODY\n",
+    }),
   );
   const settingsSandboxLog = path.join(settingsSandboxRoot, "agent-ls.json");
+  const settingsSandboxSkillDir = path.join(settingsSandboxRoot, "resources", "outside-skill");
   const settingsSandbox = await startServer(
     settingsSandboxRoot,
     {
@@ -236,7 +241,13 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
       extensionPaths: [SANDBOX_SETTINGS_PROVIDER],
       allowedModels: [{ provider: "sandbox-settings-test", id: "sandbox-settings-test" }],
     },
-    { env: { ...onlyOneFakeProvider(), SANDBOX_SETTINGS_LOG: settingsSandboxLog } },
+    {
+      env: {
+        ...onlyOneFakeProvider(),
+        SANDBOX_SETTINGS_LOG: settingsSandboxLog,
+        SANDBOX_SETTINGS_READ_PATH: path.join(settingsSandboxSkillDir, "SKILL.md"),
+      },
+    },
   );
 
   const projectsSecondRoot = await realpath(await makeWorkspace({ "second.md": "# second project\n" }));
@@ -657,6 +668,7 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
   process.env.PI_E2E_SETTINGS_SANDBOX_URL = settingsSandbox.base;
   process.env.PI_E2E_SETTINGS_SANDBOX_ROOT = settingsSandboxRoot;
   process.env.PI_E2E_SETTINGS_SANDBOX_LOG = settingsSandboxLog;
+  process.env.PI_E2E_SETTINGS_SANDBOX_SKILL_DIR = settingsSandboxSkillDir;
   process.env.PI_E2E_EMBED_PROJECTS_URL = embedProjectsMode.base;
   process.env.PI_E2E_EMBED_PROJECTS_SECOND = projectsSecondRoot;
   process.env.PI_E2E_EMBED_LOCKED_URL = embedLockedProjects.base;
