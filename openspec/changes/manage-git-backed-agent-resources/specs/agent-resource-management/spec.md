@@ -14,6 +14,10 @@ After a clone, and before changing runtime settings, the system SHALL inspect th
 
 Confirmed skill roots SHALL be persisted using the existing user skill-path setting and confirmed extension roots using the existing user extension-path setting. Existing deployment-configured paths SHALL remain unchanged. Extension roots SHALL require the same executable-code warning as any other extension-path addition, and `extensionLock` SHALL prevent selecting or confirming extension roots while still permitting skill-only enrollment.
 
+After an activated root is persisted, the replacement session SHALL be created from the same effective sandbox and resource configuration that produced the rebuilt inventory. Every configured skill root, prompt root, extension directory, and extension script SHALL remain a read-only sandbox exception even when it is outside `sandbox.root`; those exceptions MUST NOT widen write access. The system SHALL acknowledge the activation only after the replacement session has taken over with that configuration.
+
+If session replacement is refused before handoff to the new session, the system SHALL restore the previous persisted settings, workspace resources, runtime factory, and file-browser boundary, SHALL keep the prior session active, and SHALL report failure instead of acknowledging the activation. This pre-handoff rollback is distinct from a Git update whose worktree has already advanced: the latter retains its explicit partial-failure semantics under Affected runtime reload.
+
 A preview SHALL be bound to the repository revision and root set it observed, SHALL expire, and SHALL be usable once: a confirmation arriving after expiry, after a second use, or after the observed roots changed SHALL be refused and SHALL require a fresh preview. A cloned worktree with no recognizable resource roots or a selected root that changes before confirmation SHALL be refused without changing settings. Re-enrolling an already represented canonical worktree SHALL merge newly confirmed roots into its existing group without duplicating paths or repositories. Removing its last activated path SHALL stop loading its resources but SHALL NOT delete the managed clone from disk.
 
 #### Scenario: Add a local skill folder
@@ -24,6 +28,18 @@ A preview SHALL be bound to the repository revision and root set it observed, SH
 - **WHEN** the user selects Add local folder and chooses to add an extension root
 - **THEN** the executable-code warning is shown before the directory is persisted
 - **AND** an extension-locked deployment refuses the addition
+
+#### Scenario: Activated external resources remain readable
+- **GIVEN** a skill or extension root is outside the current sandbox root
+- **WHEN** the user activates that root through Add local folder or a Git repository preview
+- **THEN** the replacement session discovers or loads the resource
+- **AND** its read, list, search, and find tools can access that configured root without granting write access there
+
+#### Scenario: Refused replacement rolls enrollment back
+- **GIVEN** activating a resource root requires replacing the current session
+- **WHEN** an extension or lifecycle hook refuses replacement before the new session takes over
+- **THEN** the persisted settings, workspace resources, runtime tool factory, file-browser boundary, and active session remain as they were before the request
+- **AND** the client receives a failure rather than a successful settings acknowledgement
 
 #### Scenario: Add a repository containing skills and extensions
 - **WHEN** the user selects a Git worktree containing recognizable skill and extension roots and confirms both kinds from the preview

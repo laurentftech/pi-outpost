@@ -37,9 +37,11 @@ The component SHALL render only supplied inventory and operation state and SHALL
 - **THEN** the dialog opens the server-directory picker and lets the user choose whether the folder contains skills or extensions
 
 #### Scenario: Search and attention filters preserve repository context
-- **GIVEN** the dialog contains several repositories with different resource kinds and states
+- **GIVEN** the dialog contains several repositories with different resource kinds and states, including a repository that supplies both skills and extensions
 - **WHEN** the user searches or filters by resource kind or attention state
-- **THEN** only matching groups remain and the detail pane either retains a matching selection or selects a visible group
+- **THEN** only groups containing a match remain and the detail pane either retains a matching selection or selects a visible group
+- **AND** each visible group and its detail pane contain only resources matching the active resource-kind filter, while search and attention filters determine group visibility
+- **AND** each visible group count reflects that kind-filtered resource subset rather than the repository's unfiltered total
 
 #### Scenario: Dirty repository directs resolution outside the app
 - **GIVEN** the selected repository is reported as dirty

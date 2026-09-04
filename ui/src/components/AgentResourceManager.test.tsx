@@ -251,7 +251,9 @@ describe("AgentResourceManager", () => {
     setup();
     fireEvent.click(screen.getByRole("button", { name: /extensions/i }));
     expect(screen.getByText("deploy")).toBeInTheDocument();
+    expect(screen.queryByText("review")).not.toBeInTheDocument();
     expect(screen.queryByText("remote-only")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /team-resources/ })).toHaveTextContent("1");
     fireEvent.click(screen.getByRole("button", { name: "Needs attention" }));
     expect(screen.getByRole("button", { name: /team-resources/ })).toBeInTheDocument();
     expect(screen.getByText("deploy")).toBeInTheDocument();

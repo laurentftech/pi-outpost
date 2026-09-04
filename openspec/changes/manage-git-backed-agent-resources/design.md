@@ -38,6 +38,8 @@ After clone, metadata-only discovery recognizes skill roots containing `SKILL.md
 
 The preview groups candidates by kind and lets the user confirm individual roots. Confirmation translates to the existing `userSkillPaths` and `userExtensionPaths` persistence model, followed by the normal resource rebuild. Duplicate canonical paths are removed. If extensions are locked, extension candidates are disabled but skills can still be selected. The preview carries a fingerprint of repository root, HEAD, and candidate paths; confirmation revalidates it so a replaced directory cannot smuggle different roots into the apply.
 
+The rebuild is also the sandbox-policy handoff. Its replacement runtime factory is created from the new effective sandbox plus every effective skill, prompt, and extension location, so configured roots outside the sandbox remain read-only exceptions for the agent that takes over. A refusal before handoff restores the old settings file, workspace resources, file-browser boundary, and runtime factory together and returns an error; only after the new session takes over may the server acknowledge the settings update. This rollback is possible because no repository has been mutated by enrollment, unlike a post-fast-forward reload failure.
+
 Alternatives considered: selecting a local worktree is not adding a repository address and fails the user's mental model; fixing the destination entirely under managed storage hides where the local checkout lives; recursively treating all source files as extensions would be both noisy and unsafe; keeping the old Settings buttons would preserve two competing resource-management surfaces.
 
 ### 2. Model a resource inventory before modeling Git state
@@ -83,6 +85,8 @@ Alternative considered: rebuilding only the requesting workspace leaves other se
 ### 7. Use the repository-first dialog from prototype A
 
 Settings gains one Agent resources entry point opening a dialog large enough for a split view. The left pane shows repository and non-updateable pseudo-groups, counts, status badges, search, kind filters, attention filtering, Add local folder, and Add Git repository. The right pane shows branch/upstream state, actions, status explanation, separate skill/extension lists, and removal controls only for user-added roots. Settings retains summaries but delegates path changes to this dialog.
+
+A kind filter derives a presentation view of every repository group rather than merely deciding whether the unfiltered group remains visible. Mixed repositories stay selectable when they contain the requested kind, but their row count and detail lists contain only that kind. This presentation-only subset never narrows update authorization: Git assessment, extension confirmation, and locking still use the server-issued repository metadata for the whole worktree.
 
 Operation state is normalized by repository id and request id. Changing selection never re-labels an in-flight result. Dirty and history states show the canonical repository path and external-terminal guidance, but no mutation affordances. Extension confirmation names the repository and before/after commits.
 

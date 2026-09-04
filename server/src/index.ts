@@ -2256,6 +2256,28 @@ async function handleUpdateConfig(
     ...(mergedSkillPaths ? { userSkillPaths: mergedSkillPaths } : {}),
     ...(mergedExtensionPaths ? { userExtensionPaths: mergedExtensionPaths } : {}),
   };
+  // Keep an exact rollback projection. Extensions can veto the mandatory fresh
+  // session; accepting the disk/browser half while retaining the old agent would
+  // make the interface claim a sandbox boundary that the live tools do not obey.
+  const previousPersisted: EditableSettings = {
+    ...(mergedSandbox && current
+      ? {
+          sandbox: {
+            root: current.root,
+            allowWrite: current.allowWrite,
+            allowBash: current.allowBash,
+            writableRoot: current.writableRoot,
+          },
+        }
+      : {}),
+    ...(mergedSkillPaths ? { userSkillPaths: [...config.userSkillPaths] } : {}),
+    ...(mergedExtensionPaths ? { userExtensionPaths: [...config.userExtensionPaths] } : {}),
+  };
+  const previousSandbox = current
+    ? { ...current, readExceptions: [...current.readExceptions] }
+    : undefined;
+  const previousSkillPaths = [...config.userSkillPaths];
+  const previousExtensionPaths = [...config.userExtensionPaths];
   try {
     persistEditableSettings(config, persisted);
   } catch (error) {
@@ -2300,7 +2322,23 @@ async function handleUpdateConfig(
     await workspace.rebuildResources({ cwd: workspace.settings.cwd, ...(config.sandbox ? { sandbox: config.sandbox } : {}) });
     // Replace the current session so the new runtime picks up the updated tools
     // and re-runs skill discovery over the new paths.
-    await rebuildTools.call(workspace.agent);
+    const replacement = await rebuildTools.call(workspace.agent, makeCreateRuntime(workspace.sandboxedTools));
+    if (replacement.cancelled) {
+      // newSession did not invalidate the old agent, so restore every other view
+      // of the boundary before reporting the refusal. Runtime first, disk second:
+      // even if the second atomic write unexpectedly fails, this process remains
+      // fail-safe and a restart will build both sides from the on-disk settings.
+      config.userSkillPaths = previousSkillPaths;
+      config.userExtensionPaths = previousExtensionPaths;
+      config.sandbox = previousSandbox;
+      await workspace.rebuildResources({
+        cwd: workspace.settings.cwd,
+        ...(previousSandbox ? { sandbox: previousSandbox } : {}),
+      });
+      persistEditableSettings(config, previousPersisted);
+      refuse("Settings change cancelled by an extension; the previous settings remain active");
+      return undefined;
+    }
     const inventory = await refreshResourceInventory(workspace);
     await workspace.workPlanSync;
     // Only now: the settings are on disk and the session in front of the user was
@@ -2311,7 +2349,7 @@ async function handleUpdateConfig(
     if (!resourceRequestId) reportError(error);
     refuse(`Settings saved, but the session could not be rebuilt: ${error instanceof Error ? error.message : String(error)}`);
     try {
-      await rebuildTools.call(workspace.agent);
+      await rebuildTools.call(workspace.agent, makeCreateRuntime(workspace.sandboxedTools));
     } catch (recoveryError) {
       if (!resourceRequestId) reportError(recoveryError);
     }

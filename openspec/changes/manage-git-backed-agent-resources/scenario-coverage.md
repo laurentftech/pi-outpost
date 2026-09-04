@@ -1,6 +1,6 @@
 # Scenario coverage
 
-Enumerated with `rg '^#### Scenario:' openspec/`. All 59 delta scenarios and the pre-existing main scenarios whose requirements this change modifies are covered by assertions that exercise their observable contract.
+Enumerated with `rg '^#### Scenario:' openspec/`. All 61 delta scenarios and the pre-existing main scenarios whose requirements this change modifies are covered by assertions that exercise their observable contract.
 
 ## Agent resource management delta
 
@@ -8,6 +8,8 @@ Enumerated with `rg '^#### Scenario:' openspec/`. All 59 delta scenarios and the
 |---|---|---|
 | `agent-resource-management / Add a local skill folder` | covered | `ui/src/components/AgentResourceManager.test.tsx` — “adds a local skill folder once through the picker” asserts the chosen directory is added exactly once. |
 | `agent-resource-management / Add a local extension folder` | covered | `ui/src/components/AgentResourceManager.test.tsx` — “requires an executable warning and respects extension lock for local folders” asserts the unlocked, acknowledged extension path is applied. |
+| `agent-resource-management / Activated external resources remain readable` | covered | `server/test/sandboxSettingsWire.test.mjs` — the skill and extension cases add roots outside the sandbox through Settings, then make the replacement agent use its real `read` tool and assert the configured body is returned without an access denial; `e2e/settings-sandbox.spec.ts` repeats the skill path through the running resource manager. |
+| `agent-resource-management / Refused replacement rolls enrollment back` | covered | `server/test/sandboxSettingsWire.test.mjs` — “an extension veto rolls back the sandbox instead of acknowledging a split boundary” asserts the failed replacement leaves persisted settings, browser root, resources, and the retained agent on the prior boundary. |
 | `agent-resource-management / Add a repository containing skills and extensions` | covered | `server/test/resourceRepositories.test.ts` — “clones a validated address into the explicit local folder and previews resources” asserts both recognized kinds; `server/test/agentResourcesWire.test.mjs` — enrollment persists selected roots. |
 | `agent-resource-management / Enrollment does not execute extensions during preview` | covered | `server/test/resourceRepositories.test.ts` — “previews recognized roots without executing extension modules” uses an extension with a side effect and asserts it never occurs. |
 | `agent-resource-management / Extension lock permits skill-only enrollment` | covered | `server/test/agentResourcesWire.test.mjs` — “extension lock filters a mixed preview while allowing skill-only enrollment” asserts skills persist and extensions do not. |
@@ -58,7 +60,7 @@ Enumerated with `rg '^#### Scenario:' openspec/`. All 59 delta scenarios and the
 | `components / Add repository previews roots before applying` | covered | `ui/src/components/AgentResourceManager.test.tsx` — clone workflow test asserts preview is requested before selected roots can be enrolled. |
 | `components / Git repository form suggests but does not fix the destination` | covered | `ui/src/components/AgentResourceManager.test.tsx` — clone test asserts a suggestion is adopted and remains editable; parent-picker test preserves the custom leaf name. |
 | `components / Add local folder remains available` | covered | `ui/src/components/AgentResourceManager.test.tsx` — separate local skill and extension tests drive both picker flows. |
-| `components / Search and attention filters preserve repository context` | covered | `ui/src/components/AgentResourceManager.test.tsx` — filter test asserts matching repository context remains while hidden selection falls back safely. |
+| `components / Search and attention filters preserve repository context` | covered | `ui/src/components/AgentResourceManager.test.tsx` — filter test asserts a mixed repository exposes only matching resources and counts while hidden selection falls back safely; `e2e/settings-extensions.spec.ts` repeats the kind-filter transitions and rapid clicks in the running app. |
 | `components / Dirty repository directs resolution outside the app` | covered | `ui/src/components/AgentResourceManager.test.tsx` — dirty test asserts external-resolution guidance and no update control. |
 | `components / Extension confirmation precedes update callback` | covered | `ui/src/components/AgentResourceManager.test.tsx` — revision-specific confirmation test asserts no update before confirmation and exact acknowledged revision after it. |
 | `components / Selection changes during an operation` | covered | `ui/src/components/AgentResourceManager.test.tsx` — in-flight result test switches selection and asserts the result remains keyed to its repository. |
@@ -95,7 +97,8 @@ These existing contracts are directly touched by the new surface and remain cove
 | `Persist an interactive skill-path update` | covered | `server/test/agentResourcesWire.test.mjs` enrollment and `server/test/extensionPathsWire.test.mjs` locked update assert persisted skill paths and rebuilt inventory. |
 | `TheTwoListsLoadTogether` | covered | `server/test/extensionPathsWire.test.mjs` asserts the restarted server loads configured skills/extensions together. |
 | `ADirectoryIsAValidExtensionPath` | covered | `server/test/extensionPathsWire.test.mjs` loads an extension from the selected directory through the real runtime. |
-| `BothListsAreReadExceptionsToTheSandbox` | covered | `server/test/extensionPathsWire.test.mjs` exercises configured roots outside the workspace through the running server. |
+| `BothListsAreReadExceptionsToTheSandbox` | covered | `server/test/extensionPathsWire.test.mjs` exercises configured roots outside the workspace through the running server; `server/test/sandboxSettingsWire.test.mjs` — the two `ReadConfiguredResourceOutsideRoot` cases assert the replacement agent's real `read` tool returns a skill and an extension configured outside the sandbox root. |
+| `New sandbox governs the replacement session` | covered | `server/test/sandboxSettingsWire.test.mjs` — “moving the sandbox in Settings moves the file browser and the agent's real `ls` tool” asserts the directory listing and the replacement agent's tool output both name the new root and no longer the old one; `server/test/embeddedRuntime.test.ts` pins the factory that survives a post-handoff binding failure; `e2e/settings-sandbox.spec.ts` repeats the move in the running app. |
 | `ALockedServerRefusesTheChange` | covered | `server/test/extensionPathsWire.test.mjs` asserts the server rejects extension mutations under lock. |
 | `TheLockIsReportedToClients` | covered | `server/test/extensionPathsWire.test.mjs` and `ui/src/components/SettingsMenu.test.tsx` assert wire and UI lock state. |
 | `TheLockLeavesSkillPathsAlone` | covered | `server/test/extensionPathsWire.test.mjs` asserts skill updates remain accepted under extension lock. |

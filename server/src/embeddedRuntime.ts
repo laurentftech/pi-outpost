@@ -49,13 +49,21 @@ export interface EmbeddedRuntimeOptions {
 const BIND_STALL_MS = 5000;
 
 export async function createEmbeddedRuntime(options: EmbeddedRuntimeOptions): Promise<AgentRuntime> {
-  const runtime = await createAgentSessionRuntime(options.factory, {
+  // AgentSessionRuntime keeps the factory it is constructed with for every later
+  // new/resume/fork. Keep that factory indirect so a Settings update can replace
+  // the sandboxed toolset before starting the replacement session.
+  let currentFactory = options.factory;
+  const runtime = await createAgentSessionRuntime((factoryOptions) => currentFactory(factoryOptions), {
     cwd: options.cwd,
     agentDir: options.agentDir,
     sessionManager: options.sessionManager,
   });
   if (runtime.modelFallbackMessage) options.onModelFallback?.(runtime.modelFallbackMessage);
-  const embedded = new EmbeddedRuntime(runtime, options.agentDir);
+  const embedded = new EmbeddedRuntime(runtime, options.agentDir, (factory) => {
+    const previous = currentFactory;
+    currentFactory = factory;
+    return previous;
+  });
   await embedded.bind();
   return embedded;
 }
@@ -77,6 +85,7 @@ export class EmbeddedRuntime implements AgentRuntime {
   constructor(
     private readonly runtime: SdkRuntime,
     private readonly agentDir: string,
+    private readonly replaceFactory?: (factory: CreateAgentSessionRuntimeFactory) => CreateAgentSessionRuntimeFactory,
   ) {}
 
   private get session(): AgentSession {
@@ -414,8 +423,30 @@ export class EmbeddedRuntime implements AgentRuntime {
    * sandbox configuration when it constructs a session, so a new one is what makes
    * an updated sandbox take effect.
    */
-  async rebuildTools(): Promise<{ cancelled: boolean }> {
-    return await this.newSession();
+  async rebuildTools(factory?: CreateAgentSessionRuntimeFactory): Promise<{ cancelled: boolean }> {
+    const previousSession = this.session;
+    let previousFactory: CreateAgentSessionRuntimeFactory | undefined;
+    if (factory) {
+      if (!this.replaceFactory) throw new Error("This embedded runtime cannot replace its session factory");
+      previousFactory = this.replaceFactory(factory);
+    }
+    try {
+      const result = await this.newSession();
+      // A session_before_switch extension veto leaves the current session alive.
+      // Its retained factory must stay paired with that session too: otherwise a
+      // later user-created session would unexpectedly adopt settings we refused.
+      if (result.cancelled && previousFactory && this.replaceFactory) this.replaceFactory(previousFactory);
+      return result;
+    } catch (error) {
+      // bindExtensions can throw after the SDK has already installed the new
+      // session. In that case the replacement factory belongs to the live session
+      // and must remain current for recovery and later user-created sessions.
+      // Restore only when the switch failed before the session object changed.
+      if (this.session === previousSession && previousFactory && this.replaceFactory) {
+        this.replaceFactory(previousFactory);
+      }
+      throw error;
+    }
   }
 
   answerExtensionUI(response: ExtensionUIResponse): void {
