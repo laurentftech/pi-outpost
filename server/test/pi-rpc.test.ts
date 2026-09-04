@@ -179,7 +179,7 @@ describe("RpcRuntimeStarts", () => {
       tree: [{ entry, children: [] }],
       leafId: "entry-1",
       models: [{ provider: "omp", id: "little-coder", name: "Little Coder", reasoning: true }],
-      commands: [{ name: "review", description: "Review it", source: "skill" }],
+      commands: [{ name: "review", description: "Review it", source: "skill", sourceInfo: { path: "/agent/skills/review/SKILL.md", source: "user" } }],
     });
 
     assert.deepEqual(runtime.snapshot(), {
@@ -191,6 +191,14 @@ describe("RpcRuntimeStarts", () => {
       messages: [message],
       models: [{ provider: "omp", id: "little-coder", name: "Little Coder", reasoning: true }],
       commands: [{ name: "review", description: "Review it", source: "skill" }],
+      resources: [{
+        id: "skill:/agent/skills/review/SKILL.md",
+        kind: "skill",
+        name: "review",
+        origin: "runtime",
+        path: "/agent/skills/review/SKILL.md",
+      }],
+      resourceCapabilities: { skills: "available", extensions: "unavailable" },
       contextUsage: { tokens: 10, contextWindow: 1000, percent: 1 },
       providers: [],
     });
@@ -268,7 +276,21 @@ describe("RpcRuntimeStarts", () => {
       omitResponseIdsFor: ["get_commands", "get_available_commands"],
     });
     assert.deepEqual(runtime.snapshot().commands, []);
+    assert.deepEqual(runtime.snapshot().resources, []);
+    assert.deepEqual(runtime.snapshot().resourceCapabilities, { skills: "unavailable", extensions: "unavailable" });
     assert.equal(runtime.ok, true);
+  });
+
+  test("keeps a pathless RPC skill visible while reporting incomplete provenance", async () => {
+    const { runtime } = await startFake({ commands: [{ name: "review", source: "skill" }] });
+    assert.deepEqual(runtime.snapshot().resources, [{
+      id: "skill:review",
+      kind: "skill",
+      name: "review",
+      origin: "runtime",
+      unavailableReason: "This RPC runtime did not report a source path",
+    }]);
+    assert.deepEqual(runtime.snapshot().resourceCapabilities, { skills: "available", extensions: "unavailable" });
   });
 
   test("carries the model's accepted thinking levels when the child reports them", async () => {

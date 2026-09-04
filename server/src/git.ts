@@ -105,6 +105,11 @@ export function useGitExecutable(executable: string): void {
   gitResolved = true;
 }
 
+/** Resolved executable for the separate resource-repository service. */
+export function currentGitExecutable(): string {
+  return gitBinary;
+}
+
 /** Test seam: forget the resolved executable, back to the bare name. */
 export function resetGitExecutable(): void {
   gitBinary = "git";

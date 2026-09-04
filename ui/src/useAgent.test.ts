@@ -1995,6 +1995,38 @@ describe("commands on the wire", () => {
       (api) => api.browseServerDirectory("/mnt"),
       { type: "browse_server_directory", path: "/mnt" },
     ],
+    [
+      "suggestAgentResourceClonePath",
+      (api) => api.suggestAgentResourceClonePath("https://example.test/resources.git"),
+      { type: "suggest_agent_resource_clone_path", repositoryUrl: "https://example.test/resources.git" },
+    ],
+    [
+      "cloneAgentResourceRepository",
+      (api) => api.cloneAgentResourceRepository("https://example.test/resources.git", "/srv/resources"),
+      { type: "clone_agent_resource_repository", repositoryUrl: "https://example.test/resources.git", destinationPath: "/srv/resources" },
+    ],
+    [
+      "enrollAgentResourceRepository",
+      (api) => api.enrollAgentResourceRepository("preview", ["/srv/resources/skills"], []),
+      { type: "enroll_agent_resource_repository", previewToken: "preview", skillRoots: ["/srv/resources/skills"], extensionRoots: [] },
+    ],
+    [
+      "refreshAgentResourceRepositories",
+      (api) => api.refreshAgentResourceRepositories("repo-1"),
+      { type: "refresh_agent_resource_repositories", repositoryId: "repo-1" },
+    ],
+    [
+      "updateAgentResourceRepository",
+      (api) => api.updateAgentResourceRepository("repo-1", "assessment", "local", "upstream", true),
+      {
+        type: "update_agent_resource_repository",
+        repositoryId: "repo-1",
+        assessmentToken: "assessment",
+        localRevision: "local",
+        upstreamRevision: "upstream",
+        allowExecutableChanges: true,
+      },
+    ],
   ];
 
   for (const [name, call, expected] of cases) {
@@ -2564,5 +2596,70 @@ describe("integrated terminal in useAgent", () => {
       type: "terminal_close",
       terminalId: "term-1",
     });
+  });
+});
+
+describe("agent resource operations", () => {
+  const inventory = {
+    capabilities: { skills: "available", extensions: "available" },
+    resources: [{ id: "skill:a", kind: "skill", name: "a", origin: "runtime", path: "/repo/a/SKILL.md" }],
+    repositories: [{
+      id: "repo-1",
+      name: "repo",
+      path: "/repo",
+      resourceIds: ["skill:a"],
+      containsExtensions: false,
+      assessment: { repositoryId: "repo-1", status: "unchecked" },
+    }],
+  };
+
+  it("correlates refresh answers and merges only the matching assessment", async () => {
+    const result = await connected([], { agentResources: inventory });
+    act(() => result.current.refreshAgentResourceRepositories("repo-1"));
+    const requestId = lastRequestId();
+    act(() => mockWs!.receive({ type: "agent_resource_assessments", requestId: "stale", assessments: [{ repositoryId: "repo-1", status: "current" }] }));
+    expect(result.current.state.agentResources?.repositories[0].assessment.status).toBe("unchecked");
+    act(() => mockWs!.receive({ type: "agent_resource_assessments", requestId, assessments: [{ repositoryId: "repo-1", status: "dirty", reason: "local changes" }] }));
+    expect(result.current.state.agentResources?.repositories[0].assessment.status).toBe("dirty");
+    expect(result.current.state.agentResourceOperations.refresh?.status).toBe("ready");
+  });
+
+  it("routes a correlated failure into the manager instead of the shared error banner", async () => {
+    const result = await connected([], { agentResources: inventory });
+    act(() => result.current.cloneAgentResourceRepository("https://user:secret@example.test/repo.git", "/repo"));
+    const requestId = lastRequestId();
+    act(() => mockWs!.receive({ type: "agent_resource_error", requestId, message: "Could not clone https://***@example.test/repo.git" }));
+    expect(result.current.state.agentResourceOperations.preview).toMatchObject({ status: "error" });
+    expect(result.current.state.errors).toEqual([]);
+  });
+
+  it("keeps update results keyed by repository and accepts the inventory produced by the operation", async () => {
+    const result = await connected([], { agentResources: inventory });
+    act(() => result.current.updateAgentResourceRepository("repo-1", "token", "one", "two"));
+    const requestId = lastRequestId();
+    const currentInventory = {
+      ...inventory,
+      repositories: [{ ...inventory.repositories[0], assessment: { repositoryId: "repo-1", status: "current" } }],
+    };
+    act(() => mockWs!.receive({
+      type: "agent_resource_update_result",
+      requestId,
+      result: { status: "updated", repositoryId: "repo-1", beforeRevision: "one", afterRevision: "two", submodulesUpdated: false, reloads: [] },
+      inventory: currentInventory,
+    }));
+    expect(result.current.state.agentResourceOperations.updates["repo-1"].result?.status).toBe("updated");
+    expect(result.current.state.agentResources?.repositories[0].assessment.status).toBe("current");
+  });
+
+  it("adopts a workspace-broadcast resource inventory without disturbing operations", async () => {
+    const result = await connected([], { agentResources: inventory });
+    act(() => result.current.refreshAgentResourceRepositories("repo-1"));
+    const currentInventory = {
+      ...inventory,
+      repositories: [{ ...inventory.repositories[0], assessment: { repositoryId: "repo-1", status: "current" } }],
+    };
+    act(() => mockWs!.receive({ type: "agent_resource_inventory", inventory: currentInventory }));
+    expect(result.current.state.agentResources?.repositories[0].assessment.status).toBe("current");
+    expect(result.current.state.agentResourceOperations.refresh?.status).toBe("loading");
   });
 });

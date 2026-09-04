@@ -326,9 +326,33 @@ so it lands in the dock or taskbar with its own icon and opens without an addres
 Paths are resolved against the configuration file's directory, and are automatically
 made readable to the agent even when they sit outside the sandbox root.
 
-Adding a directory from the Settings menu instead writes it under `userSkillPaths` or
-`userExtensionPaths` and rebuilds the session at once — no restart, and what the
-configuration file declares is never touched.
+Open **Settings → Manage agent resources** to add either a local folder or a Git
+repository. A local folder writes to `userSkillPaths` or `userExtensionPaths`. For Git,
+enter the clone address and confirm or edit the suggested local folder, then select the
+recognized skill and extension roots from the metadata-only preview. Managed suggestions
+live under `<user config dir>/resource-repositories/`; removing a resource path later never
+deletes that clone. Recognized layouts are a root `SKILL.md`, `skills/`,
+`.agents/skills/`, `extensions/`, `.pi/extensions/`, and `.agents/extensions/`.
+
+Both flows rebuild the session at once — no server restart — and never alter paths declared
+by the deployment. Extension folders warn that they execute code; an extension-bearing or
+mixed Git repository also requires revision-specific confirmation before updating.
+`extensionLock` still permits skill-only enrollment from a mixed preview, but blocks
+extension activation and updates of the mixed repository as a unit. The enrollment warning
+is browser-side acknowledgement rather than access control; `extensionLock` is the
+server-side boundary. Update confirmation is revision-bound and checked by the server.
+
+The Git updater only performs a clean fast-forward to the assessed upstream revision. Fix
+dirty, detached, ahead, diverged, or missing-upstream states in an external terminal, then
+use **Check** again. It never commits, stashes, discards, rebases, pushes, switches branches,
+runs repository hooks, or initializes/updates submodules. Clone and fetch cannot prompt;
+configured credential helpers or SSH agents may authenticate non-interactively. If Git
+succeeds but a workspace reload fails, the clone stays advanced and the manager reports
+the partial reload instead of attempting a destructive rollback.
+
+With the RPC runtime, missing skill source paths and the unavailable extension inventory
+are shown under **Provenance unavailable**. They stay visible but cannot be grouped or
+updated until the child runtime supplies filesystem provenance.
 
 For real isolation, remember that skills also load from `~/.agents/skills` and from
 `.agents/skills` walked up from `cwd`, neither of which `agentDir` scopes: that is

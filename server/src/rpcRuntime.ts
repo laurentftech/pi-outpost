@@ -15,6 +15,7 @@
  * worse than stopping.
  */
 import type {
+  AgentResourceInfo,
   CommandInfo,
   ContextUsage,
   ExtensionUIRequest,
@@ -92,6 +93,7 @@ class RpcRuntime implements AgentRuntime {
   private leafId: string | null = null;
   private availableModels: ModelChoice[] = [];
   private availableCommands: CommandInfo[] = [];
+  private availableResources: AgentResourceInfo[] = [];
   private usage: ContextUsage | undefined;
   /** Standard Pi names this operation `fork`; OMP's compatible dialect names it `branch`. */
   private forkCommand: "fork" | "branch" = "fork";
@@ -187,10 +189,33 @@ class RpcRuntime implements AgentRuntime {
         commands = { commands: [] };
       }
     }
+    const resourceById = new Map<string, AgentResourceInfo>();
     this.availableCommands = (commands?.commands ?? []).flatMap((entry) => {
-      const command = entry as { name?: unknown; description?: unknown; source?: unknown; argumentHint?: unknown; input?: { hint?: unknown } };
+      const command = entry as {
+        name?: unknown;
+        description?: unknown;
+        source?: unknown;
+        sourceInfo?: { path?: unknown; source?: unknown };
+        argumentHint?: unknown;
+        input?: { hint?: unknown };
+      };
       if (typeof command.name !== "string") return [];
       const source = command.source === "prompt" || command.source === "skill" ? command.source : "extension";
+      if (source !== "prompt") {
+        const resourcePath = typeof command.sourceInfo?.path === "string" ? command.sourceInfo.path : undefined;
+        const kind = source === "skill" ? "skill" : "extension";
+        const resourceName = source === "skill" ? command.name.replace(/^skill:/, "") : command.name;
+        const id = `${kind}:${resourcePath ?? resourceName}`;
+        if (!resourceById.has(id)) {
+          resourceById.set(id, {
+            id,
+            kind,
+            name: resourceName,
+            origin: /built|bundled/i.test(String(command.sourceInfo?.source ?? "")) ? "built-in" : "runtime",
+            ...(resourcePath ? { path: resourcePath } : { unavailableReason: "This RPC runtime did not report a source path" }),
+          });
+        }
+      }
       return [
         {
           name: command.name,
@@ -204,6 +229,9 @@ class RpcRuntime implements AgentRuntime {
         } satisfies CommandInfo,
       ];
     });
+    this.availableResources = [...resourceById.values()].sort(
+      (a, b) => a.kind.localeCompare(b.kind) || a.name.localeCompare(b.name) || a.id.localeCompare(b.id),
+    );
     await this.refreshThinkingLevels();
   }
 
@@ -557,6 +585,13 @@ class RpcRuntime implements AgentRuntime {
       messages: this.messages,
       models: this.availableModels,
       commands: this.availableCommands,
+      resources: this.availableResources,
+      resourceCapabilities: {
+        skills: this.availableResources.some((resource) => resource.kind === "skill") ? "available" : "unavailable",
+        // Standard RPC has no independent extension inventory. Commands provide
+        // provenance for command-bearing extensions only, never a complete list.
+        extensions: "unavailable",
+      },
       contextUsage: this.usage,
       // Pi RPC exposes no provider or credential inventory, so onboarding cannot be
       // driven from here. `usableModel` still answers correctly off the model list.

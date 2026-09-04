@@ -22,6 +22,9 @@ import {
   type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
 import {
+  type AgentResourceInventory,
+  type AgentResourceReloadResult,
+  type AgentResourceUpdateResult,
   type ClientMessage,
   type ContextUsage,
   type CredentialStatus,
@@ -154,6 +157,7 @@ import { composeAppendSystemPrompt } from "./systemPrompt.ts";
 import { createPdfExtractToolDefinition } from "./pdfTool.ts";
 import { Workspace, shouldRetireWorkspace, type WorkspaceOptions, type WorkspaceSettings } from "./workspace.ts";
 import { WorkspaceRegistry } from "./workspaceRegistry.ts";
+import { ResourceRepositoryService } from "./resourceRepositories.ts";
 import { deriveWorkspaceActivity, workspaceActivityNeedsAttention } from "./workspaceActivity.ts";
 import { isWithin, realResolve } from "./sandbox.ts";
 import {
@@ -1151,6 +1155,70 @@ const workspaces = new WorkspaceRegistry();
 // the default, which is what an unnamed connection and a pinned embed both get.
 workspaces.add(workspace);
 
+/** Resource repository state is per workspace; repository mutexes are shared by the service implementation. */
+const resourceServices = new Map<string, ResourceRepositoryService>();
+const resourceInventories = new Map<string, AgentResourceInventory>();
+const resourceWorkspaceRoots = new Map<string, Set<string>>();
+const resourceRefreshHints = new Map<string, string>();
+const resourceReloadSyncs = new Map<string, Promise<AgentResourceInventory>>();
+
+function rebuildResourceWorkspaceIndex(): void {
+  resourceWorkspaceRoots.clear();
+  const repositoryPaths = new Set(
+    [...resourceInventories.values()].flatMap((inventory) => inventory.repositories.map((repository) => repository.path)),
+  );
+  const configuredRoots = [...allSkillPaths(config), ...allExtensionPaths(config)].map((root) => path.resolve(root));
+  for (const repositoryPath of repositoryPaths) {
+    const members = new Set<string>();
+    for (const target of workspaces.all()) {
+      const loaded = resourceInventories.get(target.root)?.repositories.some((repo) => repo.path === repositoryPath) === true;
+      const configured = configuredRoots.some((root) => isWithin(repositoryPath, root));
+      const projectLocal = isWithin(repositoryPath, target.root);
+      if (loaded || configured || projectLocal) members.add(target.root);
+    }
+    resourceWorkspaceRoots.set(repositoryPath, members);
+  }
+}
+
+function resourceService(target: Workspace): ResourceRepositoryService {
+  let service = resourceServices.get(target.root);
+  if (!service) {
+    service = new ResourceRepositoryService();
+    resourceServices.set(target.root, service);
+  }
+  return service;
+}
+
+function resourceInventoryInput(target: Workspace) {
+  const state = target.agent.snapshot();
+  return {
+    resources: state.resources ?? [],
+    capabilities: state.resourceCapabilities ?? { skills: "unavailable" as const, extensions: "unavailable" as const },
+    configuredSkillPaths: config.skillPaths,
+    userSkillPaths: config.userSkillPaths,
+    configuredExtensionPaths: config.extensionPaths,
+    userExtensionPaths: config.userExtensionPaths,
+    extensionLock: config.extensionLock === true,
+  };
+}
+
+async function refreshResourceInventory(target: Workspace, updatedRepositoryPath?: string): Promise<AgentResourceInventory> {
+  const service = resourceService(target);
+  let inventory = await service.buildInventory(resourceInventoryInput(target));
+  if (updatedRepositoryPath) {
+    const repository = inventory.repositories.find((candidate) => candidate.path === updatedRepositoryPath);
+    if (repository) {
+      await service.refresh(repository.id, config.extensionLock === true);
+      inventory = service.inventory(inventory.capabilities);
+    }
+  }
+  resourceInventories.set(target.root, inventory);
+  rebuildResourceWorkspaceIndex();
+  return inventory;
+}
+
+await refreshResourceInventory(workspace);
+
 /**
  * Projects opened in an earlier run. Their resources are built, their sessions are
  * not: startup time must not grow with the number of open projects, and a project
@@ -1178,6 +1246,7 @@ for (const root of config.openProjects) {
       createRuntime: () => { throw new Error("unused: runtimes are built through ensureStarted"); },
     });
     workspaces.add(restored);
+    rebuildResourceWorkspaceIndex();
   } catch (error) {
     console.warn(`[pi] could not reopen ${root}: ${error instanceof Error ? error.message : String(error)}`);
   }
@@ -1553,6 +1622,7 @@ function snapshot(workspace: Workspace): SessionSnapshot {
     ),
     models: availableModels(workspace),
     commands: state.commands,
+    ...(resourceInventories.get(workspace.root) ? { agentResources: resourceInventories.get(workspace.root) } : {}),
     contextUsage: state.contextUsage,
     // A runtime replacement is synchronous but its sidecar read is not. Never
     // combine the new transcript/session id with the previous session's plan.
@@ -1910,7 +1980,24 @@ function onRuntimeEvent(workspace: Workspace, event: RuntimeEvent): void {
       // The runtime has already rebound itself; renderers may belong to a new
       // extension runner, so refresh the HTML bridge before the snapshot goes out.
       refreshExtensionRender(workspace);
-      void queueWorkPlanSessionSync(workspace);
+      const updatedRepositoryPath = resourceRefreshHints.get(workspace.root);
+      resourceRefreshHints.delete(workspace.root);
+      if (updatedRepositoryPath) {
+        // The updater awaits this exact refresh. Running a second inventory scan
+        // here and in the request handler doubled every fetch and made the second
+        // workspace race the first session replacement on slower CI hosts.
+        const sync = refreshResourceInventory(workspace, updatedRepositoryPath)
+          .then(async (inventory) => {
+            await queueWorkPlanSessionSync(workspace);
+            return inventory;
+          });
+        resourceReloadSyncs.set(workspace.root, sync);
+        void sync.catch(reportError);
+      } else {
+        void refreshResourceInventory(workspace)
+          .catch(reportError)
+          .then(() => queueWorkPlanSessionSync(workspace));
+      }
       break;
     case "extension_ui_request":
       // Only the four dialog methods block a turn. notify, setStatus, setWidget,
@@ -2091,33 +2178,35 @@ async function handleUpdateConfig(
     userSkillPaths?: string[];
     userExtensionPaths?: string[];
   },
-): Promise<void> {
+  resourceRequestId?: string,
+): Promise<AgentResourceInventory | undefined> {
+  const refuse = (message: string) => {
+    if (resourceRequestId) send(socket, { type: "agent_resource_error", requestId: resourceRequestId, message });
+    else send(socket, { type: "error", message });
+  };
   if (workspace.replacingSession) {
-    send(socket, { type: "error", message: "Session change already in progress" });
-    return;
+    refuse("Session change already in progress");
+    return undefined;
   }
   const rebuildTools = workspace.agent.rebuildTools;
   if (!rebuildTools) {
     // These settings describe resources this server builds. An RPC child builds its
     // own, so accepting the change would leave the UI showing a boundary nothing
     // enforces and skills the child never loaded.
-    send(socket, { type: "error", message: new RuntimeUnsupportedError("Changing runtime settings", workspace.agent.kind).message });
-    return;
+    refuse(new RuntimeUnsupportedError("Changing runtime settings", workspace.agent.kind).message);
+    return undefined;
   }
   if (update.sandbox && config.sandbox === undefined) {
-    send(socket, { type: "error", message: "No sandbox configured — cannot update" });
-    return;
+    refuse("No sandbox configured — cannot update");
+    return undefined;
   }
   // Refused here rather than merged away like a locked sandbox field: the interface
   // draws no control for this, so a request carrying one did not come from the
   // interface, and silently applying the rest of it would tell that client its
   // extension change succeeded. Nothing is persisted and no session is replaced.
   if (update.userExtensionPaths !== undefined && config.extensionLock) {
-    send(socket, {
-      type: "error",
-      message: "Extension paths are locked by this deployment's configuration",
-    });
-    return;
+    refuse("Extension paths are locked by this deployment's configuration");
+    return undefined;
   }
 
   // Paths typed into Settings resolve like paths written in the config file —
@@ -2141,8 +2230,26 @@ async function handleUpdateConfig(
               : resolve(update.sandbox.writableRoot),
         }
       : undefined;
-  const mergedSkillPaths = update.userSkillPaths?.map(resolve);
-  const mergedExtensionPaths = update.userExtensionPaths?.map(resolve);
+  const canonicalResourcePaths = async (values: string[] | undefined): Promise<string[] | undefined> => {
+    if (!values) return undefined;
+    const canonical = await Promise.all(values.map(async (value) => {
+      const resolved = await fs.realpath(resolve(value));
+      if (!(await fs.stat(resolved)).isDirectory()) throw new Error(`${value} is not a directory`);
+      return resolved;
+    }));
+    return [...new Set(canonical)];
+  };
+  let mergedSkillPaths: string[] | undefined;
+  let mergedExtensionPaths: string[] | undefined;
+  try {
+    [mergedSkillPaths, mergedExtensionPaths] = await Promise.all([
+      canonicalResourcePaths(update.userSkillPaths),
+      canonicalResourcePaths(update.userExtensionPaths),
+    ]);
+  } catch (error) {
+    refuse(`Could not use resource folder: ${error instanceof Error ? error.message : String(error)}`);
+    return undefined;
+  }
 
   const persisted: EditableSettings = {
     ...(mergedSandbox ? { sandbox: mergedSandbox } : {}),
@@ -2154,12 +2261,9 @@ async function handleUpdateConfig(
   } catch (error) {
     // Nothing has been touched: the live configuration, the browser roots and the
     // session are all still the ones the user is looking at.
-    reportError(error);
-    send(socket, {
-      type: "error",
-      message: error instanceof ConfigWriteError ? error.message : `Could not save settings: ${String(error)}`,
-    });
-    return;
+    if (!resourceRequestId) reportError(error);
+    refuse(error instanceof ConfigWriteError ? error.message : `Could not save settings: ${String(error)}`);
+    return undefined;
   }
 
   workspace.replacingSession = true;
@@ -2197,21 +2301,24 @@ async function handleUpdateConfig(
     // Replace the current session so the new runtime picks up the updated tools
     // and re-runs skill discovery over the new paths.
     await rebuildTools.call(workspace.agent);
+    const inventory = await refreshResourceInventory(workspace);
     await workspace.workPlanSync;
     // Only now: the settings are on disk and the session in front of the user was
     // built from them.
-    send(socket, { type: "update_config_ack", ...snapshot(workspace) });
+    if (!resourceRequestId) send(socket, { type: "update_config_ack", ...snapshot(workspace) });
+    return inventory;
   } catch (error) {
-    reportError(error);
-    send(socket, { type: "error", message: `Settings saved, but the session could not be rebuilt: ${error instanceof Error ? error.message : String(error)}` });
+    if (!resourceRequestId) reportError(error);
+    refuse(`Settings saved, but the session could not be rebuilt: ${error instanceof Error ? error.message : String(error)}`);
     try {
       await rebuildTools.call(workspace.agent);
     } catch (recoveryError) {
-      reportError(recoveryError);
+      if (!resourceRequestId) reportError(recoveryError);
     }
   } finally {
     workspace.replacingSession = false;
   }
+  return undefined;
 }
 
 
@@ -2329,7 +2436,7 @@ async function handleCloseProject(socket: WebSocket, rawRoot: string): Promise<v
   }
   // Refused rather than queued behind the turn: cancelling someone's work to
   // satisfy a close is worse than asking them to stop it first.
-  if (target.isBusy()) {
+  if (target.isBusy() || target.replacingSession) {
     send(socket, { type: "workspace_error", message: `${path.basename(target.root)} is working — stop the turn before closing it` });
     return;
   }
@@ -2347,6 +2454,9 @@ async function handleCloseProject(socket: WebSocket, rawRoot: string): Promise<v
   }
   config.openProjects = remaining;
   workspaces.remove(target.root);
+  resourceInventories.delete(target.root);
+  resourceServices.delete(target.root);
+  rebuildResourceWorkspaceIndex();
 
   // Move anyone watching it before the session goes: a client left bound to a
   // stopped workspace would reach `agent` and throw on its next message.
@@ -2377,6 +2487,9 @@ async function handleCloseProject(socket: WebSocket, rawRoot: string): Promise<v
 const starting = new Map<string, Promise<void>>();
 
 async function ensureStarted(target: Workspace): Promise<void> {
+  if (!target.started && target.replacingSession) {
+    throw new Error(`${path.basename(target.root)} has a resource update in progress`);
+  }
   if (target.started) return;
   const inFlight = starting.get(target.root);
   if (inFlight) return inFlight;
@@ -2386,6 +2499,7 @@ async function ensureStarted(target: Workspace): Promise<void> {
     if (target.retired) await target.rebuildResources(target.settings);
     const runtime = await buildRuntimeFor(target);
     target.attachRuntime(runtime);
+    await refreshResourceInventory(target);
     runtime.subscribe((event) => onRuntimeEvent(target, event));
     // A project opened or restored after startup gets its renderers here. Only the
     // boot workspace is refreshed at module level, so without this every other
@@ -3303,6 +3417,202 @@ async function handleGitShow(workspace: Workspace, socket: WebSocket, repo: stri
   }
 }
 
+function sendAgentResourceError(socket: WebSocket, requestId: string, error: unknown): void {
+  const raw = error instanceof Error ? error.message : String(error);
+  // Resource operations accept repository addresses. Never echo URL userinfo back
+  // to the browser (or into its shared error surface), even when Git included the
+  // original address in its diagnostic.
+  const message = raw.replace(/([a-z][a-z0-9+.-]*:\/\/)([^\s/@]+)@/gi, "$1");
+  console.warn(`[pi] agent resource request failed: ${message}`);
+  send(socket, {
+    type: "agent_resource_error",
+    requestId,
+    message,
+  });
+}
+
+async function handleSuggestAgentResourceClonePath(
+  workspace: Workspace,
+  socket: WebSocket,
+  repositoryUrl: string,
+  requestId: string,
+): Promise<void> {
+  try {
+    send(socket, { type: "agent_resource_clone_path", requestId, path: resourceService(workspace).suggestedClonePath(repositoryUrl) });
+  } catch (error) {
+    sendAgentResourceError(socket, requestId, error);
+  }
+}
+
+async function handleCloneAgentResourceRepository(
+  workspace: Workspace,
+  socket: WebSocket,
+  repositoryUrl: string,
+  destinationPath: string,
+  requestId: string,
+): Promise<void> {
+  try {
+    const preview = await resourceService(workspace).cloneAndPreview(repositoryUrl, destinationPath, config.extensionLock === true);
+    send(socket, { type: "agent_resource_preview", requestId, preview });
+  } catch (error) {
+    sendAgentResourceError(socket, requestId, error);
+  }
+}
+
+async function handleEnrollAgentResourceRepository(
+  workspace: Workspace,
+  socket: WebSocket,
+  previewToken: string,
+  skillRoots: string[],
+  extensionRoots: string[],
+  requestId: string,
+): Promise<void> {
+  try {
+    const confirmed = await resourceService(workspace).confirmPreview(
+      previewToken,
+      skillRoots,
+      extensionRoots,
+      config.extensionLock === true,
+    );
+    const unique = (values: string[]) => [...new Set(values)];
+    const inventory = await handleUpdateConfig(
+      workspace,
+      socket,
+      {
+        userSkillPaths: unique([...config.userSkillPaths, ...confirmed.skillRoots]),
+        ...(confirmed.extensionRoots.length > 0
+          ? { userExtensionPaths: unique([...config.userExtensionPaths, ...confirmed.extensionRoots]) }
+          : {}),
+      },
+      requestId,
+    );
+    if (inventory) send(socket, { type: "agent_resource_enrolled", requestId, inventory });
+  } catch (error) {
+    sendAgentResourceError(socket, requestId, error);
+  }
+}
+
+async function handleRefreshAgentResourceRepositories(
+  workspace: Workspace,
+  socket: WebSocket,
+  repositoryId: string | undefined,
+  requestId: string,
+): Promise<void> {
+  try {
+    const service = resourceService(workspace);
+    const assessments = await service.refresh(repositoryId, config.extensionLock === true);
+    const current = resourceInventories.get(workspace.root);
+    if (current) resourceInventories.set(workspace.root, service.inventory(current.capabilities));
+    send(socket, { type: "agent_resource_assessments", requestId, assessments });
+  } catch (error) {
+    sendAgentResourceError(socket, requestId, error);
+  }
+}
+
+function affectedResourceWorkspaces(repositoryPath: string): Workspace[] {
+  const roots = resourceWorkspaceRoots.get(repositoryPath) ?? new Set<string>();
+  return [...roots].map((root) => workspaces.get(root)).filter((target): target is Workspace => target !== undefined);
+}
+
+async function handleUpdateAgentResourceRepository(
+  workspace: Workspace,
+  socket: WebSocket,
+  repositoryId: string,
+  assessmentToken: string,
+  localRevision: string,
+  upstreamRevision: string,
+  allowExecutableChanges: boolean,
+  requestId: string,
+): Promise<void> {
+  const service = resourceService(workspace);
+  const repositoryPath = service.repositoryPath(repositoryId);
+  if (!repositoryPath) {
+    sendAgentResourceError(socket, requestId, new Error("Unknown resource repository"));
+    return;
+  }
+  let affected = affectedResourceWorkspaces(repositoryPath);
+  const reserved = new Set<Workspace>();
+  const reserveAffected = (): string | undefined => {
+    affected = affectedResourceWorkspaces(repositoryPath);
+    const busy = affected.find(
+      (target) => !reserved.has(target) && (starting.has(target.root) || target.replacingSession || (target.started && target.isBusy())),
+    );
+    if (busy) return `${path.basename(busy.root)} is busy; wait for its current turn to finish`;
+    for (const target of affected) {
+      target.replacingSession = true;
+      reserved.add(target);
+    }
+    return undefined;
+  };
+  // Reserve every known consumer before fetch/revalidation begins. Prompts, lazy
+  // starts, session changes, and project removal then observe one lifecycle guard
+  // until Git integration and all required reloads have settled.
+  const initialBlock = reserveAffected();
+  try {
+    const gitResult = await service.update(repositoryId, assessmentToken, {
+      extensionLock: config.extensionLock === true,
+      allowExecutableChanges,
+      localRevision,
+      upstreamRevision,
+      guard: async () => initialBlock ?? reserveAffected(),
+    });
+    if (gitResult.status === "refused") {
+      const current = resourceInventories.get(workspace.root)!;
+      resourceInventories.set(workspace.root, service.inventory(current.capabilities));
+      const result: AgentResourceUpdateResult = {
+        status: "refused",
+        repositoryId,
+        reason: gitResult.reason ?? "The repository could not be updated",
+        ...(gitResult.assessment ? { assessment: gitResult.assessment } : {}),
+      };
+      send(socket, { type: "agent_resource_update_result", requestId, result, inventory: resourceInventories.get(workspace.root)! });
+      return;
+    }
+
+    const reloads: AgentResourceReloadResult[] = [];
+    let requesterInventoryRefreshed = false;
+    for (const target of affected) {
+      if (!target.started) {
+        reloads.push({ workspaceRoot: target.root, status: "not-started" });
+        continue;
+      }
+      const rebuild = target.agent.rebuildTools;
+      if (!rebuild) {
+        reloads.push({ workspaceRoot: target.root, status: "failed", message: `Reload is unavailable with the ${target.agent.kind} runtime` });
+        continue;
+      }
+      try {
+        resourceRefreshHints.set(target.root, repositoryPath);
+        await rebuild.call(target.agent);
+        const inventory = await (resourceReloadSyncs.get(target.root) ?? refreshResourceInventory(target, repositoryPath));
+        broadcast(target, { type: "agent_resource_inventory", inventory });
+        if (target === workspace) requesterInventoryRefreshed = true;
+        reloads.push({ workspaceRoot: target.root, status: "reloaded" });
+      } catch (error) {
+        reloads.push({ workspaceRoot: target.root, status: "failed", message: error instanceof Error ? error.message : String(error) });
+      } finally {
+        resourceRefreshHints.delete(target.root);
+        resourceReloadSyncs.delete(target.root);
+      }
+    }
+    if (!requesterInventoryRefreshed) await refreshResourceInventory(workspace, repositoryPath);
+    const failed = reloads.some((reload) => reload.status === "failed");
+    const result: AgentResourceUpdateResult = {
+      status: failed ? "updated-reload-failed" : "updated",
+      repositoryId,
+      beforeRevision: gitResult.beforeRevision!,
+      afterRevision: gitResult.afterRevision!,
+      submodulesUpdated: false,
+      reloads,
+    };
+    send(socket, { type: "agent_resource_update_result", requestId, result, inventory: resourceInventories.get(workspace.root)! });
+  } catch (error) {
+    sendAgentResourceError(socket, requestId, error);
+  } finally {
+    for (const target of reserved) target.replacingSession = false;
+  }
+}
+
 /** Composer's `@` mention autocomplete: recursive name search, confined to workspace.browserRoot. */
 async function handleSearchFiles(workspace: Workspace, socket: WebSocket, query: string, requestId: string): Promise<void> {
   const results = await searchFiles(workspace.browserRoot, query);
@@ -3331,6 +3641,8 @@ const AGENT_COMMANDS = new Set<ClientMessage["type"]>([
   "set_credential",
   "declare_provider",
   "update_config",
+  "enroll_agent_resource_repository",
+  "update_agent_resource_repository",
 ]);
 
 function handleClientMessage(socket: WebSocket, raw: string): void {
@@ -3661,6 +3973,70 @@ function handleClientMessage(socket: WebSocket, raw: string): void {
     case "browse_server_directory":
       if (typeof message.path !== "string" || typeof message.requestId !== "string") return;
       handleBrowseServerDirectory(socket, message.path, message.requestId).catch(reportError);
+      break;
+    case "suggest_agent_resource_clone_path":
+      if (typeof message.repositoryUrl !== "string" || typeof message.requestId !== "string") return;
+      handleSuggestAgentResourceClonePath(workspace, socket, message.repositoryUrl, message.requestId)
+        .catch((error) => sendAgentResourceError(socket, message.requestId, error));
+      break;
+    case "clone_agent_resource_repository":
+      if (
+        typeof message.repositoryUrl !== "string" ||
+        typeof message.destinationPath !== "string" ||
+        typeof message.requestId !== "string"
+      ) return;
+      handleCloneAgentResourceRepository(
+        workspace,
+        socket,
+        message.repositoryUrl,
+        message.destinationPath,
+        message.requestId,
+      ).catch((error) => sendAgentResourceError(socket, message.requestId, error));
+      break;
+    case "enroll_agent_resource_repository":
+      if (
+        typeof message.previewToken !== "string" ||
+        !Array.isArray(message.skillRoots) ||
+        !Array.isArray(message.extensionRoots) ||
+        message.skillRoots.some((value) => typeof value !== "string") ||
+        message.extensionRoots.some((value) => typeof value !== "string") ||
+        typeof message.requestId !== "string"
+      ) return;
+      handleEnrollAgentResourceRepository(
+        workspace,
+        socket,
+        message.previewToken,
+        message.skillRoots,
+        message.extensionRoots,
+        message.requestId,
+      ).catch((error) => sendAgentResourceError(socket, message.requestId, error));
+      break;
+    case "refresh_agent_resource_repositories":
+      if (
+        (message.repositoryId !== undefined && typeof message.repositoryId !== "string") ||
+        typeof message.requestId !== "string"
+      ) return;
+      handleRefreshAgentResourceRepositories(workspace, socket, message.repositoryId, message.requestId)
+        .catch((error) => sendAgentResourceError(socket, message.requestId, error));
+      break;
+    case "update_agent_resource_repository":
+      if (
+        typeof message.repositoryId !== "string" ||
+        typeof message.assessmentToken !== "string" ||
+        typeof message.localRevision !== "string" ||
+        typeof message.upstreamRevision !== "string" ||
+        typeof message.requestId !== "string"
+      ) return;
+      handleUpdateAgentResourceRepository(
+        workspace,
+        socket,
+        message.repositoryId,
+        message.assessmentToken,
+        message.localRevision,
+        message.upstreamRevision,
+        message.allowExecutableChanges === true,
+        message.requestId,
+      ).catch((error) => sendAgentResourceError(socket, message.requestId, error));
       break;
     case "update_config": {
       if (message.sandbox !== undefined) {

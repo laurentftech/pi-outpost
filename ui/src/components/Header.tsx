@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
-import { MIN_SESSION_QUERY_LENGTH, type GitUnavailable, type SessionSummary, type TreeNode, type WorkspaceInfo } from "@pi-outpost/shared";
+import { MIN_SESSION_QUERY_LENGTH, type AgentResourceInventory, type GitUnavailable, type SessionSummary, type TreeNode, type WorkspaceInfo } from "@pi-outpost/shared";
 import { ProjectMenu } from "./ProjectMenu";
 import { WorkspaceRootControl, type WorkspaceRootSandbox } from "./WorkspaceRootControl";
-import type { GitLogState, GitStatusState, ServerBrowseState, SessionSearch, SettingsApplyState } from "../useAgent";
+import type { AgentResourceOperationState, GitLogState, GitStatusState, ServerBrowseState, SessionSearch, SettingsApplyState } from "../useAgent";
 import { stripAnsi } from "../util/ansi";
 import { useClickOutside } from "../util/clickOutside";
 import { GitMenu } from "./GitMenu";
@@ -68,6 +68,8 @@ interface HeaderProps {
   serverBrowse: ServerBrowseState | null;
   /** In-flight settings apply, so a refusal can be shown where it was requested. */
   settingsApply: SettingsApplyState | null;
+  agentResources: AgentResourceInventory | null;
+  agentResourceOperations: AgentResourceOperationState;
   onBrowseServerPath: (path: string) => void;
   onCloseServerBrowser: () => void;
   /** Another header picker owns the server-browse listing: Settings closes its own. */
@@ -79,6 +81,17 @@ interface HeaderProps {
     userSkillPaths?: string[];
     userExtensionPaths?: string[];
   }) => void;
+  onSuggestAgentResourceClonePath: (repositoryUrl: string) => void;
+  onCloneAgentResourceRepository: (repositoryUrl: string, destinationPath: string) => void;
+  onEnrollAgentResourceRepository: (previewToken: string, skillRoots: string[], extensionRoots: string[]) => void;
+  onRefreshAgentResourceRepositories: (repositoryId?: string) => void;
+  onUpdateAgentResourceRepository: (
+    repositoryId: string,
+    assessmentToken: string,
+    localRevision: string,
+    upstreamRevision: string,
+    allowExecutableChanges?: boolean,
+  ) => void;
   onToggleSidebar: () => void;
   onToggleOutcome: () => void;
   onToggleHideTools: () => void;
@@ -494,12 +507,19 @@ export function Header(props: HeaderProps) {
           userSkillPaths={props.userSkillPaths}
           serverBrowse={props.serverBrowse}
           applyState={props.settingsApply}
+          agentResources={props.agentResources}
+          agentResourceOperations={props.agentResourceOperations}
           versions={props.versions}
           onBrowseServerPath={props.onBrowseServerPath}
           onCloseServerBrowser={props.onCloseServerBrowser}
           pickerBlocked={props.settingsPickerBlocked}
           onPickerOpened={props.onSettingsPickerOpened}
           onUpdateConfig={props.onUpdateConfig}
+          onSuggestAgentResourceClonePath={props.onSuggestAgentResourceClonePath}
+          onCloneAgentResourceRepository={props.onCloneAgentResourceRepository}
+          onEnrollAgentResourceRepository={props.onEnrollAgentResourceRepository}
+          onRefreshAgentResourceRepositories={props.onRefreshAgentResourceRepositories}
+          onUpdateAgentResourceRepository={props.onUpdateAgentResourceRepository}
         />
         <span
           className={`h-2 w-2 rounded-full ${connected ? "bg-emerald-500" : "bg-red-500"}`}

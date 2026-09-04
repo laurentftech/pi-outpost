@@ -30,4 +30,3 @@ The agent-resource updater is a separate capability and MUST NOT broaden the com
 - **WHEN** a workspace Git request names a resource repository outside the browser root or asks for an update command
 - **THEN** the workspace Git integration refuses it exactly as before
 - **AND** the request is not rerouted to the resource updater
-
