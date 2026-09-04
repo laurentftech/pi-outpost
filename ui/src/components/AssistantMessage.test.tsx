@@ -38,6 +38,40 @@ describe("AssistantMessage", () => {
       expect(screen.getByText("second")).toBeInTheDocument();
     });
 
+    it("omits reasoning when its consumer hides it, and keeps the answer", () => {
+      setup({
+        item: item({
+          blocks: [
+            { type: "thinking", text: "weighing the options" },
+            { type: "text", text: "Here is the answer." },
+          ],
+        }),
+        hideReasoning: true,
+      });
+      expect(screen.getByText("Here is the answer.")).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /thinking/ })).not.toBeInTheDocument();
+    });
+
+    it("renders nothing at all when hiding reasoning empties the message", () => {
+      const { container } = render(
+        <AssistantMessage item={item({ blocks: [{ type: "thinking", text: "hmm" }] })} hideReasoning />,
+      );
+      expect(container).toBeEmptyDOMElement();
+    });
+
+    it("does not discard what it hid", () => {
+      const blocks: AssistantItem["blocks"] = [
+        { type: "thinking", text: "weighing the options" },
+        { type: "text", text: "Here is the answer." },
+      ];
+      const { rerender } = render(<AssistantMessage item={item({ blocks })} hideReasoning />);
+      expect(screen.queryByRole("button", { name: /thinking/ })).not.toBeInTheDocument();
+
+      rerender(<AssistantMessage item={item({ blocks })} />);
+      fireEvent.click(screen.getByRole("button", { name: /thinking/ }));
+      expect(screen.getByText("weighing the options")).toBeInTheDocument();
+    });
+
     it("keeps thinking folded away until asked for", () => {
       setup({ item: item({ blocks: [{ type: "thinking", text: "weighing the options" }] }) });
       expect(screen.queryByText("weighing the options")).not.toBeInTheDocument();

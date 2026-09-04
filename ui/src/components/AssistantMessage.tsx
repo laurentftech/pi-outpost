@@ -19,6 +19,11 @@ interface AssistantMessageProps {
   token?: string | null;
   /** Opens a workspace-relative path in the file viewer. */
   onOpenFile?: (path: string) => void;
+  /**
+   * Drop the model's reasoning from the rendering. A view decision only: the
+   * blocks are still here, so clearing the filter shows the message in full.
+   */
+  hideReasoning?: boolean;
 }
 
 function ThinkingBlock({ text }: { text: string }) {
@@ -42,7 +47,8 @@ function ThinkingBlock({ text }: { text: string }) {
   );
 }
 
-export function AssistantMessage({ item, serverUrl = "", token = null, onOpenFile }: AssistantMessageProps) {
+export function AssistantMessage({ item, serverUrl = "", token = null, onOpenFile, hideReasoning = false }: AssistantMessageProps) {
+  const blocks = hideReasoning ? item.blocks.filter((block) => block.type !== "thinking") : item.blocks;
   const fullText = item.blocks
     .filter((b) => b.type === "text")
     .map((b) => b.text)
@@ -93,6 +99,11 @@ export function AssistantMessage({ item, serverUrl = "", token = null, onOpenFil
     return { pre: MarkdownPre, img: MarkdownImg, a: MarkdownLink };
   }, [serverUrl, token]);
 
+  // Nothing left to draw — a filtered-away message must not leave an empty frame
+  // in the conversation. The list still keeps its scroll position: it renders a
+  // bare anchor for this item rather than calling this component at all.
+  if (blocks.length === 0 && !item.errorMessage) return null;
+
   return (
     <div className="group max-w-none">
       {fullText && !item.streaming && (
@@ -100,7 +111,7 @@ export function AssistantMessage({ item, serverUrl = "", token = null, onOpenFil
           <CopyButton text={fullText} />
         </div>
       )}
-      {item.blocks.map((block, i) =>
+      {blocks.map((block, i) =>
         block.type === "thinking" ? (
           <ThinkingBlock key={block.contentIndex ?? i} text={block.text} />
         ) : (

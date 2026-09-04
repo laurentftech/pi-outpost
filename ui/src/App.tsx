@@ -5,6 +5,12 @@ import { CustomMessageCard } from "./components/CustomMessageCard";
 import { SessionAnalysisPanel } from "./components/SessionAnalysis";
 import { ThemeContext } from "./theme/ThemeContext";
 import { useConversationJump } from "./useConversationJump";
+import {
+  persistConversationFilter,
+  readConversationFilters,
+  type ConversationFilterKind,
+  type ConversationFilters,
+} from "./conversationFilters";
 import { analyzeSession } from "./util/sessionAnalysis";
 import { sessionUsage } from "./util/sessionUsage";
 import { repoForPath } from "./util/gitRepos";
@@ -213,25 +219,15 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
   const dismissedPreviewPathRef = useRef<string | null>(null);
   // Badge click in the tree opens the file straight onto its uncommitted diff
   const [diffOnOpen, setDiffOnOpen] = useState(false);
-  // Tool-noise filter: skip tool cards in the list (long sessions drown in them).
-  // Cards aren't CSS-hidden — hidden ones must not cost layout.
-  const [hideTools, setHideTools] = useState(() => {
-    try {
-      return localStorage.getItem("pi-outpost:hide-tools") === "1";
-    } catch {
-      return false;
-    }
-  });
-  function toggleHideTools() {
-    setHideTools((current) => {
-      try {
-        localStorage.setItem("pi-outpost:hide-tools", current ? "0" : "1");
-      } catch {
-        // Storage unavailable — the toggle still works for this session
-      }
-      return !current;
-    });
-  }
+  // Conversation noise filters: tool cards and the model's reasoning (long
+  // sessions drown in both). Nothing is CSS-hidden — filtered content must not
+  // cost layout — and nothing is dropped from state, so clearing a filter
+  // restores everything, including what arrived while it was hidden.
+  const [filters, setFilters] = useState<ConversationFilters>(readConversationFilters);
+  const setFilter = useCallback((kind: ConversationFilterKind, shown: boolean) => {
+    persistConversationFilter(kind, shown);
+    setFilters((current) => ({ ...current, [kind]: shown }));
+  }, []);
   // Session analysis drawer: closed until asked for, from the model bar's usage indicator.
   const [analysisOpen, setAnalysisOpen] = useState(false);
   const [workPlanOpen, setWorkPlanOpen] = useState(true);
@@ -653,7 +649,7 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
       }),
     [readFile, fetchGitFileHistory, searchFiles],
   );
-  const showTools = useCallback(() => setHideTools(false), []);
+  const showTools = useCallback(() => setFilter("tools", true), [setFilter]);
   /**
    * Stop following the bottom, because a jump has taken the reader elsewhere.
    *
@@ -685,7 +681,7 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
   const { jumpToItem, highlightIndex } = useConversationJump({
     items: state.items,
     scrollerRef: mainRef,
-    hideTools,
+    hideTools: !filters.tools,
     onShowTools: showTools,
     onJump: handleJump,
   });
@@ -855,10 +851,10 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
             statuses={state.statuses}
             sidebarOpen={sidebarOpen}
             outcomeOpen={outcomeOpen}
-            hideTools={hideTools}
+            filters={filters}
             onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
             onToggleOutcome={toggleOutcome}
-            onToggleHideTools={toggleHideTools}
+            onFilterChange={setFilter}
             onToggleTheme={toggleTheme}
             onNewSession={newSession}
             onSwitchSession={switchSession}
@@ -1046,7 +1042,7 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
                   );
                 }
                 if (item.kind === "tool") {
-                  if (hideTools) return null;
+                  if (!filters.tools) return null;
                   return anchor(
                     <ToolCard item={item} dispatch={toolActions} />,
                     item.toolCallId ? `${state.sessionId}:${item.toolCallId}` : key,
@@ -1055,15 +1051,23 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
                 if (item.kind === "custom") {
                   return anchor(<CustomMessageCard item={item} />);
                 }
-                // Tool-call-only messages produce empty assistant items — nothing to
-                // show, but they are turns and carry usage, so the analysis can point
-                // at one. A bare anchor keeps that jump from landing nowhere.
-                if (item.blocks.length === 0 && !item.errorMessage) {
+                // Tool-call-only messages produce empty assistant items — and a
+                // reasoning-only message is empty too while reasoning is hidden.
+                // Nothing to show, but they are turns and carry usage, so the
+                // analysis can point at one: a bare anchor keeps that jump from
+                // landing nowhere. Decided per render from the blocks present, never
+                // latched — a turn that holds only reasoning now may grow its answer
+                // a token later.
+                const visibleBlocks = filters.reasoning
+                  ? item.blocks
+                  : item.blocks.filter((block) => block.type !== "thinking");
+                if (visibleBlocks.length === 0 && !item.errorMessage) {
                   return <div key={key} data-item-index={i} className="sr-only" aria-hidden />;
                 }
                 return anchor(
                   <AssistantMessage
                     item={item}
+                    hideReasoning={!filters.reasoning}
                     serverUrl={serverUrl}
                     token={authToken}
                     onOpenFile={(path) => {
