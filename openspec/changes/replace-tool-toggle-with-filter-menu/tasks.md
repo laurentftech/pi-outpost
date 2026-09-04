@@ -24,5 +24,5 @@
 
 ## 5. Exercise it in the running app
 
-- [ ] 5.1 Rebuild `web`, then `@pi-outpost/embed`, then `build:e2e-host`, and drive the feature in the bench (`npm run bench`, host 4321 on 127.0.0.1): open the menu, clear each kind, read the DOM back to confirm what disappeared and that the trigger reports the filtered state, then reload and confirm both preferences survived.
-- [ ] 5.2 Monkey-test the transitions rather than the walkthrough: spam the trigger and the entries, leave the menu open while a turn streams and while the session or project is switched underneath it, clear reasoning mid-stream on a turn that has produced only reasoning so far, and jump to a filtered-away turn from the conversation navigation. Read back the DOM after each burst and report what broke, not that it works.
+- [x] 5.1 Rebuild `web`, then `@pi-outpost/embed`, then `build:e2e-host`, and drive the feature in the bench (`npm run bench`, host 4321 on 127.0.0.1): open the menu, clear each kind, read the DOM back to confirm what disappeared and that the trigger reports the filtered state, then reload and confirm both preferences survived.
+- [x] 5.2 Monkey-test the transitions rather than the walkthrough: spam the trigger and the entries, leave the menu open while a turn streams and while the session or project is switched underneath it, clear reasoning mid-stream on a turn that has produced only reasoning so far, and jump to a filtered-away turn from the conversation navigation. Read back the DOM after each burst and report what broke, not that it works.
