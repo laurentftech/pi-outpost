@@ -1650,19 +1650,15 @@ function snapshot(workspace: Workspace): SessionSnapshot {
       piOutpost: VERSION,
       ...(workspace.agent.agentLabel ? { agent: workspace.agent.agentLabel } : { piSdk: PI_SDK_VERSION }),
     },
-    sandbox: (() => {
-      const v = config.sandbox
-        ? {
-            root: config.sandbox.root,
-            allowWrite: config.sandbox.allowWrite ?? false,
-            allowBash: config.sandbox.allowBash ?? false,
-            writableRoot: config.sandbox.writableRoot,
-            locks: config.sandboxLocks,
-          }
-        : undefined;
-      console.log("[snapshot] sandbox =", JSON.stringify(v));
-      return v;
-    })(),
+    sandbox: config.sandbox
+      ? {
+          root: config.sandbox.root,
+          allowWrite: config.sandbox.allowWrite ?? false,
+          allowBash: config.sandbox.allowBash ?? false,
+          writableRoot: config.sandbox.writableRoot,
+          locks: config.sandboxLocks,
+        }
+      : undefined,
     terminal: {
       enabled: config.terminal?.enabled ?? false,
       ...(config.sandboxLocks?.terminal ? { locked: true } : {}),
@@ -3621,7 +3617,19 @@ async function handleUpdateAgentResourceRepository(
       }
       try {
         resourceRefreshHints.set(target.root, repositoryPath);
-        await rebuild.call(target.agent);
+        // A vetoed replacement is a failed reload, not a silent one: the worktree
+        // has already advanced, and the retained session still holds the resources
+        // of the revision the user just left. Reporting "reloaded" here would make
+        // the interface claim every runtime uses the new ones.
+        const reload = await rebuild.call(target.agent);
+        if (reload.cancelled) {
+          reloads.push({
+            workspaceRoot: target.root,
+            status: "failed",
+            message: "An extension cancelled the session replacement, so this runtime still uses the previous resources",
+          });
+          continue;
+        }
         const inventory = await (resourceReloadSyncs.get(target.root) ?? refreshResourceInventory(target, repositoryPath));
         broadcast(target, { type: "agent_resource_inventory", inventory });
         if (target === workspace) requesterInventoryRefreshed = true;

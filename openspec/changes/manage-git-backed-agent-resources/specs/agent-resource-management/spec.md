@@ -197,7 +197,7 @@ A repository that supplies any applicable extension SHALL be treated as executab
 
 Before changing a repository, the system SHALL identify every started workspace whose configured roots or loaded resource provenance overlap that repository. It SHALL refuse the update while any such workspace is streaming a turn or replacing its session. After a successful fast-forward, it SHALL rebuild the resources for every affected started workspace whose runtime is idle and broadcast the resulting inventories. Workspaces that are not started SHALL discover the new resources when they next start.
 
-An update that succeeds on disk but whose runtime rebuild fails SHALL be reported as an updated-reload-failed outcome, including the affected workspace failures. The system MUST NOT claim that Git was rolled back or that all runtimes use the new resources.
+An update that succeeds on disk but whose runtime rebuild fails SHALL be reported as an updated-reload-failed outcome, including the affected workspace failures. A session replacement that is refused rather than thrown — an extension vetoing the fresh session — SHALL count as such a failure and name that refusal: the worktree has advanced while the retained session still holds the previous revision's resources. The system MUST NOT claim that Git was rolled back or that all runtimes use the new resources.
 
 #### Scenario: Affected workspace is busy
 - **WHEN** any started workspace affected by a repository is streaming a turn or replacing its session
