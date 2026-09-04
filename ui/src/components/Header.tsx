@@ -5,6 +5,13 @@ import { WorkspaceRootControl, type WorkspaceRootSandbox } from "./WorkspaceRoot
 import type { AgentResourceOperationState, GitLogState, GitStatusState, ServerBrowseState, SessionSearch, SettingsApplyState } from "../useAgent";
 import { stripAnsi } from "../util/ansi";
 import { useClickOutside } from "../util/clickOutside";
+import {
+  CONVERSATION_FILTER_KINDS,
+  CONVERSATION_FILTER_LABELS,
+  hiddenCount,
+  type ConversationFilterKind,
+  type ConversationFilters,
+} from "../conversationFilters";
 import { GitMenu } from "./GitMenu";
 import { SettingsMenu } from "./SettingsMenu";
 import { TreeMenu } from "./TreeMenu";
@@ -47,8 +54,8 @@ interface HeaderProps {
   statuses: Record<string, string>;
   sidebarOpen: boolean;
   outcomeOpen: boolean;
-  /** Tool-noise filter: tool cards are hidden from the conversation. */
-  hideTools: boolean;
+  /** What the conversation shows; true means the kind is present. */
+  filters: ConversationFilters;
   gitAvailable: boolean;
   gitStatus: GitStatusState | null;
   gitLog: GitLogState | null;
@@ -94,7 +101,7 @@ interface HeaderProps {
   ) => void;
   onToggleSidebar: () => void;
   onToggleOutcome: () => void;
-  onToggleHideTools: () => void;
+  onFilterChange: (kind: ConversationFilterKind, shown: boolean) => void;
   onToggleTheme: () => void;
   onNewSession: () => void;
   onSwitchSession: (path: string) => void;
@@ -335,6 +342,79 @@ function SessionMenu({
   );
 }
 
+/**
+ * What the conversation shows, as one menu rather than a button per kind.
+ *
+ * Checked means shown. The control this replaced was pressed when it was
+ * *hiding*, which is what nobody could read off it: a row of checkboxes meaning
+ * "hide this" is a double negative on every glance.
+ *
+ * Stateless about filtering — it renders what it is given and reports intent —
+ * so nothing here can disagree with the conversation it sits above.
+ */
+function ConversationFilterMenu({
+  filters,
+  onFilterChange,
+}: {
+  filters: ConversationFilters;
+  onFilterChange: (kind: ConversationFilterKind, shown: boolean) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useClickOutside(() => setOpen(false));
+  const hidden = hiddenCount(filters);
+  // The count is the whole point of the closed state: "am I looking at all of
+  // it?" has to be answerable without opening the menu.
+  const label = hidden > 0 ? `Filter · ${hidden} hidden` : "Filter";
+
+  return (
+    <div
+      className="relative"
+      ref={ref}
+      onKeyDown={(event) => {
+        if (event.key === "Escape" && open) {
+          event.stopPropagation();
+          setOpen(false);
+        }
+      }}
+    >
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        title="Choose what the conversation shows"
+        className={`rounded-md border px-2 py-1 text-xs ${
+          hidden > 0
+            ? "border-zinc-400 bg-zinc-100 text-zinc-700 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-200"
+            : "border-zinc-300 text-zinc-500 hover:border-zinc-400 hover:text-zinc-700 dark:border-zinc-800 dark:text-zinc-400 dark:hover:border-zinc-600 dark:hover:text-zinc-200"
+        }`}
+      >
+        {label}
+      </button>
+      {open && (
+        <div
+          role="menu"
+          className="absolute right-0 z-30 mt-1 w-48 rounded-md border border-zinc-200 bg-white py-1 shadow-lg dark:border-zinc-700 dark:bg-zinc-900"
+        >
+          {CONVERSATION_FILTER_KINDS.map((kind) => (
+            <button
+              key={kind}
+              type="button"
+              role="menuitemcheckbox"
+              aria-checked={filters[kind]}
+              onClick={() => onFilterChange(kind, !filters[kind])}
+              className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-zinc-600 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800"
+            >
+              <span aria-hidden className="w-3">{filters[kind] ? "✓" : ""}</span>
+              <span>{CONVERSATION_FILTER_LABELS[kind]}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ThemeToggle({ theme, onToggle }: { theme: "light" | "dark"; onToggle: () => void }) {
   return (
     <button
@@ -440,19 +520,7 @@ export function Header(props: HeaderProps) {
       ))}
 
       <div className="ml-auto flex items-center gap-2">
-        <button
-          type="button"
-          onClick={props.onToggleHideTools}
-          title={props.hideTools ? "Show tool cards in the conversation" : "Hide tool cards (long sessions read better without them)"}
-          aria-pressed={props.hideTools}
-          className={`rounded-md border px-2 py-1 text-xs ${
-            props.hideTools
-              ? "border-zinc-400 bg-zinc-100 text-zinc-700 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-200"
-              : "border-zinc-300 text-zinc-500 hover:border-zinc-400 hover:text-zinc-700 dark:border-zinc-800 dark:text-zinc-400 dark:hover:border-zinc-600 dark:hover:text-zinc-200"
-          }`}
-        >
-          ⚒ tools
-        </button>
+        <ConversationFilterMenu filters={props.filters} onFilterChange={props.onFilterChange} />
         {props.onToggleTerminal && (
           <button
             type="button"

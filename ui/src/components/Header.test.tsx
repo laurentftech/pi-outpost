@@ -28,7 +28,7 @@ function setup(overrides: Partial<Props> = {}) {
     onCloseServerBrowser: vi.fn(),
     onToggleSidebar: vi.fn(),
     onToggleOutcome: vi.fn(),
-    onToggleHideTools: vi.fn(),
+    onFilterChange: vi.fn(),
     onToggleTheme: vi.fn(),
     onNewSession: vi.fn(),
     onSwitchSession: vi.fn(),
@@ -61,7 +61,7 @@ function setup(overrides: Partial<Props> = {}) {
     statuses: {},
     sidebarOpen: false,
     outcomeOpen: false,
-    hideTools: false,
+    filters: { tools: true, reasoning: true },
     gitAvailable: false,
     gitStatus: null,
     gitLog: null,
@@ -325,15 +325,55 @@ describe("Header", () => {
     });
   });
 
-  describe("tool noise", () => {
-    it("toggles the tool filter and says which state it is in", () => {
-      const { onToggleHideTools, rerenderWith } = setup({ hideTools: false });
-      const toggle = screen.getByRole("button", { name: /tools/ });
-      expect(toggle).toHaveAttribute("aria-pressed", "false");
-      fireEvent.click(toggle);
-      expect(onToggleHideTools).toHaveBeenCalled();
-      rerenderWith({ hideTools: true });
-      expect(screen.getByRole("button", { name: /tools/ })).toHaveAttribute("aria-pressed", "true");
+  describe("conversation filters", () => {
+    const trigger = () => screen.getByRole("button", { name: /^Filter/ });
+    const openMenu = () => fireEvent.click(trigger());
+
+    it("reports the kind that was toggled rather than holding the state", () => {
+      const { onFilterChange, rerenderWith } = setup({ filters: { tools: true, reasoning: true } });
+      openMenu();
+      fireEvent.click(screen.getByRole("menuitemcheckbox", { name: /Tool calls/ }));
+      expect(onFilterChange).toHaveBeenCalledWith("tools", false);
+
+      // The header did not decide anything on its own: it still shows both kinds
+      // until its consumer says otherwise.
+      expect(screen.getByRole("menuitemcheckbox", { name: /Tool calls/ })).toHaveAttribute("aria-checked", "true");
+      rerenderWith({ filters: { tools: false, reasoning: true } });
+      expect(screen.getByRole("menuitemcheckbox", { name: /Tool calls/ })).toHaveAttribute("aria-checked", "false");
+    });
+
+    it("says on the closed trigger whether the conversation is filtered", () => {
+      const { rerenderWith } = setup({ filters: { tools: true, reasoning: true } });
+      expect(trigger()).toHaveTextContent(/^Filter$/);
+
+      rerenderWith({ filters: { tools: false, reasoning: true } });
+      expect(trigger()).toHaveTextContent(/1 hidden/);
+      rerenderWith({ filters: { tools: false, reasoning: false } });
+      expect(trigger()).toHaveTextContent(/2 hidden/);
+    });
+
+    it("exposes each entry as a checkbox carrying whether that kind is shown", () => {
+      setup({ filters: { tools: true, reasoning: false } });
+      openMenu();
+      expect(screen.getByRole("menuitemcheckbox", { name: /Tool calls/ })).toHaveAttribute("aria-checked", "true");
+      expect(screen.getByRole("menuitemcheckbox", { name: /Reasoning/ })).toHaveAttribute("aria-checked", "false");
+    });
+
+    it("closes on an outside click without changing anything", () => {
+      const { onFilterChange } = setup();
+      openMenu();
+      expect(screen.getByRole("menu")).toBeInTheDocument();
+      fireEvent.mouseDown(document.body);
+      expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+      expect(onFilterChange).not.toHaveBeenCalled();
+    });
+
+    it("closes on Escape without changing anything", () => {
+      const { onFilterChange } = setup();
+      openMenu();
+      fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
+      expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+      expect(onFilterChange).not.toHaveBeenCalled();
     });
   });
 

@@ -529,15 +529,153 @@ describe("App — panes and handovers", () => {
     expect(screen.getByText("Proceed?")).toBeInTheDocument();
   });
 
-  it("remembers the tool-noise filter across mounts", () => {
-    localStorage.clear();
+});
+
+// ---------------------------------------------------------------------------
+// Conversation filters: what the list shows. Driven through the header menu the
+// user actually operates, not through the state behind it.
+// ---------------------------------------------------------------------------
+describe("App — conversation filters", () => {
+  // The menu stays open across a selection — both kinds can be set in one visit —
+  // so opening it again would close it.
+  const openFilters = () => {
+    if (!screen.queryByRole("menu")) fireEvent.click(screen.getByRole("button", { name: /^Filter/ }));
+  };
+  const toggleFilter = (name: RegExp) => {
+    openFilters();
+    fireEvent.click(screen.getByRole("menuitemcheckbox", { name }));
+  };
+
+  function mount(overrides: Record<string, unknown> = {}) {
+    mockUseAgent.mockReturnValue(agentApi(agentState(overrides)));
+    return render(<App />);
+  }
+
+  const anchor = (index: number) => document.querySelector(`[data-item-index="${index}"]`);
+
+  afterEach(() => localStorage.clear());
+
+  it("hides tool cards and leaves the messages around them alone", () => {
+    mount({
+      items: [
+        { kind: "user", text: "read the config" },
+        { kind: "tool", toolCallId: "call-1", toolName: "read", args: { path: "a.ts" }, output: "contents" },
+        { kind: "assistant", blocks: [{ type: "text", text: "done" }] },
+      ] as ChatItem[],
+    });
+    expect(screen.getByText("read")).toBeInTheDocument();
+
+    toggleFilter(/Tool calls/);
+    expect(screen.queryByText("read")).not.toBeInTheDocument();
+    expect(screen.getByText("read the config")).toBeInTheDocument();
+    expect(screen.getByText("done")).toBeInTheDocument();
+  });
+
+  it("gives every tool card back, including the ones that arrived while hidden", () => {
+    const { rerender } = mount({
+      items: [{ kind: "tool", toolCallId: "call-1", toolName: "read", args: {}, output: "a" }] as ChatItem[],
+    });
+    toggleFilter(/Tool calls/);
+    expect(screen.queryByText("read")).not.toBeInTheDocument();
+
+    // A second call lands while the filter is on.
+    mockUseAgent.mockReturnValue(
+      agentApi(
+        agentState({
+          items: [
+            { kind: "tool", toolCallId: "call-1", toolName: "read", args: {}, output: "a" },
+            { kind: "tool", toolCallId: "call-2", toolName: "grep", args: {}, output: "b" },
+          ] as ChatItem[],
+        }),
+      ),
+    );
+    rerender(<App />);
+    expect(screen.queryByText("grep")).not.toBeInTheDocument();
+
+    toggleFilter(/Tool calls/);
+    expect(screen.getByText("read")).toBeInTheDocument();
+    expect(screen.getByText("grep")).toBeInTheDocument();
+  });
+
+  it("still shows that the agent is working while tool cards are hidden", () => {
+    mount({ isStreaming: true, items: [{ kind: "user", text: "go" }] as ChatItem[] });
+    toggleFilter(/Tool calls/);
+    expect(screen.getByText("working…")).toBeInTheDocument();
+  });
+
+  it("hides reasoning and keeps the answer that came with it", () => {
+    mount({
+      items: [
+        {
+          kind: "assistant",
+          blocks: [
+            { type: "thinking", text: "weighing the options" },
+            { type: "text", text: "the answer" },
+          ],
+        },
+      ] as ChatItem[],
+    });
+    expect(screen.getByRole("button", { name: /thinking/ })).toBeInTheDocument();
+
+    toggleFilter(/Reasoning/);
+    expect(screen.queryByRole("button", { name: /thinking/ })).not.toBeInTheDocument();
+    expect(screen.getByText("the answer")).toBeInTheDocument();
+  });
+
+  it("leaves no empty card where a reasoning-only turn was, but keeps its place", () => {
+    mount({
+      items: [
+        { kind: "user", text: "go" },
+        { kind: "assistant", blocks: [{ type: "thinking", text: "hmm" }] },
+        { kind: "assistant", blocks: [{ type: "text", text: "the answer" }] },
+      ] as ChatItem[],
+    });
+    toggleFilter(/Reasoning/);
+
+    expect(screen.queryByRole("button", { name: /thinking/ })).not.toBeInTheDocument();
+    expect(screen.queryByText("hmm")).not.toBeInTheDocument();
+    // The turn is still a position the analysis and the jump can point at.
+    expect(anchor(1)).not.toBeNull();
+    expect(anchor(1)?.className).toContain("sr-only");
+  });
+
+  it("shows a reasoning-only turn again as soon as it grows an answer", () => {
+    // The streaming case: emptiness is decided per render, never latched, or a
+    // turn that started with reasoning would stay invisible after its text lands.
+    const { rerender } = mount({
+      items: [{ kind: "assistant", blocks: [{ type: "thinking", text: "hmm" }] }] as ChatItem[],
+    });
+    toggleFilter(/Reasoning/);
+    expect(screen.queryByText("still thinking")).not.toBeInTheDocument();
+
+    mockUseAgent.mockReturnValue(
+      agentApi(
+        agentState({
+          items: [
+            {
+              kind: "assistant",
+              blocks: [
+                { type: "thinking", text: "hmm" },
+                { type: "text", text: "the answer" },
+              ],
+            },
+          ] as ChatItem[],
+        }),
+      ),
+    );
+    rerender(<App />);
+    expect(screen.getByText("the answer")).toBeInTheDocument();
+  });
+
+  it("remembers each filter across mounts, independently", () => {
     const first = mount();
-    fireEvent.click(screen.getByRole("button", { name: /tools/ }));
+    toggleFilter(/Reasoning/);
     first.unmount();
 
     mount();
-    expect(screen.getByRole("button", { name: /tools/ })).toHaveAttribute("aria-pressed", "true");
-    localStorage.clear();
+    openFilters();
+    expect(screen.getByRole("menuitemcheckbox", { name: /Reasoning/ })).toHaveAttribute("aria-checked", "false");
+    expect(screen.getByRole("menuitemcheckbox", { name: /Tool calls/ })).toHaveAttribute("aria-checked", "true");
   });
 });
 
