@@ -292,18 +292,26 @@ test("updating a shared repository reloads every started workspace and broadcast
     new Map([[root, "reloaded"], [beta, "reloaded"]]),
   );
   assert.equal(run(checkout, ["rev-parse", "HEAD"]), expected);
+  const hasResourceWithin = (inventory, ...segments) => {
+    const resourceRoot = path.join(...segments);
+    return inventory.resources.some((resource) => {
+      if (!resource.path) return false;
+      const relative = path.relative(checkout, resource.path);
+      return relative === resourceRoot || relative.startsWith(`${resourceRoot}${path.sep}`);
+    });
+  };
   const refreshedInventory = (message) =>
     message.type === "agent_resource_inventory" &&
     message.inventory.repositories.find((candidate) => candidate.id === repository.id)?.assessment.status === "current" &&
-    message.inventory.resources.some((resource) => resource.path?.includes("/skills/new-resource"));
+    hasResourceWithin(message.inventory, "skills", "new-resource");
   await alpha.waitFor((message) => message.type === "session_replaced" && message.sessionId !== alphaHello.sessionId);
   await betaClient.waitFor((message) => message.type === "session_replaced" && message.sessionId !== betaHello.sessionId);
   const alphaInventory = (await alpha.waitFor(refreshedInventory)).inventory;
   const betaInventory = (await betaClient.waitFor(refreshedInventory)).inventory;
   for (const updatedInventory of [alphaInventory, betaInventory]) {
     assert.equal(updatedInventory.repositories.find((candidate) => candidate.id === repository.id).assessment.status, "current");
-    assert.equal(updatedInventory.resources.some((resource) => resource.path?.includes("/skills/review")), false);
-    assert.equal(updatedInventory.resources.some((resource) => resource.path?.includes("/skills/new-resource")), true);
+    assert.equal(hasResourceWithin(updatedInventory, "skills", "review"), false);
+    assert.equal(hasResourceWithin(updatedInventory, "skills", "new-resource"), true);
   }
 });
 
