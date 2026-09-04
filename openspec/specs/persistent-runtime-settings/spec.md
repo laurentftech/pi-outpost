@@ -40,6 +40,11 @@ The system SHALL replace the agent session after it persists a changed skill pat
 - **WHEN** the user applies a newly selected extension directory
 - **THEN** the replacement session has loaded the extensions discovered in that directory, without a server restart
 
+#### Scenario: New sandbox governs the replacement session
+- **WHEN** the user changes the sandbox root through Settings and applies it
+- **THEN** the file browser and the replacement session's tools are both confined to the new root
+- **AND** the old root is no longer visible to those tools unless it is independently allowed
+
 ### Requirement: Protect configuration-file extension paths
 
 The system SHALL keep the extension paths declared in the configuration file out of

@@ -13,6 +13,7 @@ import { makeWorkspace, startServer } from "../server/test/harness.mjs";
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.join(HERE, "..");
 const HOST_DIST = path.join(HERE, "dist-host");
+const SANDBOX_SETTINGS_PROVIDER = path.join(REPO, "server/test/fixtures/sandbox-settings-provider.mjs");
 
 const TYPES: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
@@ -212,6 +213,30 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
       sandbox: { root: rootModeRoot, allowWrite: true, allowBash: false },
     },
     { env: onlyOneFakeProvider() },
+  );
+
+  // Dedicated to the Settings sandbox regression. The browser moves from one
+  // child directory to the other, then the fake provider calls the live `ls`
+  // tool so the Playwright test can verify the agent moved with it.
+  const settingsSandboxRoot = await realpath(
+    await makeWorkspace({ "original/original.txt": "old\n", "moved/moved.txt": "new\n" }),
+  );
+  const settingsSandboxLog = path.join(settingsSandboxRoot, "agent-ls.json");
+  const settingsSandbox = await startServer(
+    settingsSandboxRoot,
+    {
+      server: { allowedOrigins: [host.url] },
+      branding: { title: "sandbox settings" },
+      sandbox: {
+        root: path.join(settingsSandboxRoot, "original"),
+        allowWrite: true,
+        writableRoot: path.join(settingsSandboxRoot, "original"),
+        allowBash: false,
+      },
+      extensionPaths: [SANDBOX_SETTINGS_PROVIDER],
+      allowedModels: [{ provider: "sandbox-settings-test", id: "sandbox-settings-test" }],
+    },
+    { env: { ...onlyOneFakeProvider(), SANDBOX_SETTINGS_LOG: settingsSandboxLog } },
   );
 
   const projectsSecondRoot = await realpath(await makeWorkspace({ "second.md": "# second project\n" }));
@@ -629,6 +654,9 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
   process.env.PI_E2E_SECOND_PROJECT = secondRoot;
   process.env.PI_E2E_EMBED_ROOT_URL = embedRootMode.base;
   process.env.PI_E2E_EMBED_ROOT_WORKSPACE = rootModeRoot;
+  process.env.PI_E2E_SETTINGS_SANDBOX_URL = settingsSandbox.base;
+  process.env.PI_E2E_SETTINGS_SANDBOX_ROOT = settingsSandboxRoot;
+  process.env.PI_E2E_SETTINGS_SANDBOX_LOG = settingsSandboxLog;
   process.env.PI_E2E_EMBED_PROJECTS_URL = embedProjectsMode.base;
   process.env.PI_E2E_EMBED_PROJECTS_SECOND = projectsSecondRoot;
   process.env.PI_E2E_EMBED_LOCKED_URL = embedLockedProjects.base;
@@ -664,6 +692,7 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
     await extensionsLocked.stop();
     await embedLockedProjects.stop();
     await embedProjectsMode.stop();
+    await settingsSandbox.stop();
     await embedRootMode.stop();
     await server.stop();
     await rm(secondRoot, { recursive: true, force: true });

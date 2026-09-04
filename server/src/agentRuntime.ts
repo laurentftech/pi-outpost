@@ -27,6 +27,7 @@ import type {
   ThinkingLevel,
   WireImage,
 } from "@pi-outpost/shared";
+import type { CreateAgentSessionRuntimeFactory } from "@earendil-works/pi-coding-agent";
 import type { ProviderDeclaration } from "./credentials.ts";
 
 /** Provider identity + whether credentials resolve for it, for the onboarding screen. */
@@ -266,7 +267,7 @@ export interface AgentRuntime {
    * Rebuild the agent's toolset from the current sandbox configuration and start
    * a fresh session. Embedded only: an RPC child owns its own tools.
    */
-  rebuildTools?(): Promise<{ cancelled: boolean }>;
+  rebuildTools?(factory?: CreateAgentSessionRuntimeFactory): Promise<{ cancelled: boolean }>;
 
   dispose(): Promise<void>;
 }
