@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import type { HLJSApi } from "highlight.js";
 
 let hljsPromise: Promise<HLJSApi> | null = null;
@@ -97,11 +97,38 @@ function languageHint(path: string): string | undefined {
   return EXTENSION_HINTS[base.slice(dot + 1).toLowerCase()];
 }
 
-/** Syntax-highlighted code, falling back to plain text until highlight.js has loaded. */
-export function CodeHighlight({ code, path }: { code: string; path: string }) {
+/**
+ * Syntax-highlighted code, falling back to plain text until highlight.js has loaded.
+ *
+ * Memoized: an unmemoized component re-renders whenever its parent does, and
+ * React resets a `dangerouslySetInnerHTML` element's actual DOM on every one
+ * of those re-renders — not only when the HTML string itself changes. A
+ * caller that marks up this component's rendered text directly (find-in-page)
+ * would otherwise see its marks silently wiped by a parent update that has
+ * nothing to do with this file's content (e.g. an unrelated bit of viewer
+ * state changing). Skipping the re-render when `code`/`path`/`onRendered`
+ * haven't changed is what makes `onRendered` a trustworthy "content actually
+ * changed" signal rather than a "something, somewhere, re-rendered" one.
+ */
+export const CodeHighlight = memo(function CodeHighlight({
+  code,
+  path,
+  onRendered,
+}: {
+  code: string;
+  path: string;
+  /** Called once the real highlighted markup replaces the plain-text fallback
+   * (or, more generally, whenever the rendered HTML changes). A caller that
+   * marks up this component's own DOM output (find-in-page) needs to know
+   * when that swap happens, since it silently replaces whatever was there —
+   * fallback text, or a previous highlight's markup — with new nodes. */
+  onRendered?: () => void;
+}) {
   const [html, setHtml] = useState<string | null>(null);
   const codeRef = useRef(code);
   codeRef.current = code;
+  const onRenderedRef = useRef(onRendered);
+  onRenderedRef.current = onRendered;
 
   useEffect(() => {
     let cancelled = false;
@@ -114,6 +141,7 @@ export function CodeHighlight({ code, path }: { code: string; path: string }) {
           ? hljs.highlight(codeRef.current, { language: hint })
           : hljs.highlightAuto(codeRef.current);
       setHtml(result.value);
+      onRenderedRef.current?.();
     });
     return () => {
       cancelled = true;
@@ -130,4 +158,4 @@ export function CodeHighlight({ code, path }: { code: string; path: string }) {
       dangerouslySetInnerHTML={{ __html: html }}
     />
   );
-}
+});

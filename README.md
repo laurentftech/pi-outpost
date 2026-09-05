@@ -170,15 +170,16 @@ one needs, the command that proves it works, and the caution that goes with it.
   get a browser notification when a background project needs an answer or is ready for review
 - File browser: lazy-loaded tree, syntax-highlighted viewer, Markdown rendering, and an
   editor that saves inside the writable zone. Create, rename, move, copy, delete, or open a
-  file with the system's own application; anything outside the writable zone is dimmed
+  file with the system's own application; anything outside the writable zone is dimmed.
+  Ctrl+F (Cmd+F) finds text in the open file — source, rendered Markdown, or a live edit
 - Split view: a Markdown or structured document renders beside the editor, following what
   you type rather than what was last saved
 - Git: uncommitted-change badges in the tree, per-file diffs, log and commit inspection, and
   a per-file history graph (renames followed) that diffs any two revisions, working tree
   included. A directory of independently versioned projects works too — each child
   repository answers for its own files. See [Git](#git)
-- PDF in the viewer (pages, zoom, keyboard paging); the agent reads its text and tables
-  through `pdf_extract` — no shell, no external binary, no OCR
+- PDF in the viewer (pages, zoom, keyboard paging, Ctrl+F search across the whole document);
+  the agent reads its text and tables through `pdf_extract` — no shell, no external binary, no OCR
 - Office documents: `docx_extract`, `xlsx_extract` and `pptx_extract` give the agent Word
   text and tables, one markdown table per spreadsheet sheet, and slide structure with
   speaker notes. Each takes an `output_path`, to write the whole document to a file instead

@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import rehypeKatex from "rehype-katex";
 import remarkGfm from "remark-gfm";
@@ -16,6 +16,9 @@ import { ViewerErrorBoundary } from "./ViewerErrorBoundary";
 import { readStructuredExchangeFile } from "../presentations/structuredExchange";
 import type { ValidatedStructuredExchange } from "@pi-outpost/shared/structured-exchange";
 import { StructuredExchangeDocument } from "../presentations/StructuredExchangeView";
+import { FindBar } from "./FindBar";
+import { findMatchesInText, highlightMatches, type DomMatch } from "../util/findInPage";
+import type { PdfFindState, PdfViewerHandle } from "./PdfViewer";
 
 // pdf.js is over a megabyte: a session that never opens a PDF must not load it.
 const PdfViewer = lazy(() => import("./PdfViewer"));
@@ -305,6 +308,226 @@ export function FileViewer({
    * behaved differently from the test that only exercised the first.
    */
 
+  // --- find-in-page ----------------------------------------------------------
+  /**
+   * What Ctrl+F searches, for the file as currently displayed.
+   *
+   * The split and git-diff views show two things (or a diff) at once and are
+   * not offered find in this version — a file with neither text nor a PDF's
+   * bytes yet (still loading, or an image) has nothing to search either.
+   */
+  type FindMode = "pdf" | "edit" | "dom" | "none";
+  const findMode: FindMode =
+    showGitDiff || splitting
+      ? "none"
+      : pdf
+        ? "pdf"
+        : edit !== null
+          ? "edit"
+          : loaded !== null && !image
+            ? "dom"
+            : "none";
+
+  const [findOpen, setFindOpen] = useState(false);
+  const [findQuery, setFindQuery] = useState("");
+  // Shared position pointer for dom/edit mode (pdf mode tracks its own, inside
+  // PdfViewer, since only it knows which page a match lives on).
+  const [findCurrent, setFindCurrent] = useState(0);
+  const findInputRef = useRef<HTMLInputElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
+  const pdfViewerRef = useRef<PdfViewerHandle>(null);
+  const [pdfFindState, setPdfFindState] = useState<PdfFindState>({ matchCount: 0, currentIndex: -1, searching: false });
+  const [domMatches, setDomMatches] = useState<DomMatch[]>([]);
+  const [domTruncated, setDomTruncated] = useState(false);
+  const domHighlightRef = useRef<ReturnType<typeof highlightMatches> | null>(null);
+  // The imperative source of truth for which elements exist right now — kept
+  // separate from the `domMatches` state (which exists to drive the count
+  // display) because a React effect reacting to that state can run against a
+  // stale, already-discarded snapshot: Strict Mode's dev-only mount → cleanup
+  // → remount cycle tears the marks down and rebuilds them without an
+  // intervening render, so an effect keyed on the *first* build's array
+  // toggles a class on elements already unwrapped back to plain text —
+  // invisible, because they are no longer attached to the document. Found by
+  // driving Ctrl+F in the running app: the count updated on every "next" click
+  // but the highlight never moved, because it was never landing on live DOM.
+  const domMatchesRef = useRef<DomMatch[]>([]);
+
+  /** Marks `index` current among whatever `domMatchesRef` holds *right now*,
+   * scrolling it into view. Called directly at the moment marks are (re)built
+   * or the current index changes — not from an effect watching a snapshot. */
+  function markCurrentDomMatch(index: number) {
+    for (const [i, match] of domMatchesRef.current.entries()) {
+      for (const mark of match.marks) {
+        if (mark.isConnected) mark.classList.toggle("find-match-current", i === index);
+      }
+    }
+    const marks = domMatchesRef.current[index]?.marks;
+    if (marks?.[0]?.isConnected) marks[0].scrollIntoView({ block: "center" });
+  }
+
+  // The query search/highlighting actually run against — "" while the bar is
+  // closed, even though `findQuery` is kept so reopening restores it (rather
+  // than leaving a stale highlight, or a stale PDF match, sitting on screen
+  // after the bar that showed it has closed).
+  const effectiveFindQuery = findOpen ? findQuery : "";
+  const editMatches = useMemo(
+    () => (findMode === "edit" ? findMatchesInText(editedText, effectiveFindQuery) : []),
+    [findMode, editedText, effectiveFindQuery],
+  );
+
+  // A view that stops being searchable (switching to split, to a diff, or to
+  // an image) closes its own find bar rather than leaving one open over
+  // nothing to search.
+  useEffect(() => {
+    if (findOpen && findMode === "none") setFindOpen(false);
+  }, [findOpen, findMode]);
+
+  // Bumped by CodeHighlight's `onRendered` once its async syntax highlighting
+  // actually lands, replacing whatever was in its `<pre>` (the plain-text
+  // fallback, or a previous highlight's marks) with new DOM. That swap must
+  // re-run the effect below, or a highlight applied to the fallback vanishes
+  // the moment the real markup arrives. `onRendered` only means anything as
+  // an "actually changed" signal because CodeHighlight is memoized (see its
+  // own comment) — without that, this effect would need to reapply the
+  // highlight after *any* unrelated re-render of the viewer, since React
+  // resets a `dangerouslySetInnerHTML` element's real DOM on every render of
+  // the component that owns it, not only when the HTML string changes.
+  const [codeRenderTick, setCodeRenderTick] = useState(0);
+  const bumpCodeRenderTick = useCallback(() => setCodeRenderTick((tick) => tick + 1), []);
+
+  /**
+   * Marks every occurrence in whatever is currently mounted at `contentRef` —
+   * the rendered Markdown or the highlighted source, never both, since they
+   * are mutually exclusive views.
+   *
+   * Re-applied whenever the query changes, the view mode changes, or
+   * `codeRenderTick` says the mounted content was just replaced out from
+   * under it. Deliberately *not* driven by a `MutationObserver` on
+   * `contentRef`: this effect's own `highlightMatches`/`clear()` calls mutate
+   * that same container, and no amount of disconnecting or ignore-flagging
+   * around those calls proved reliable — a live run still produced a
+   * self-sustaining apply → mutate → observe → apply loop that hung the tab
+   * (the browser is free to split one synchronous batch of mutations across
+   * more than one callback invocation, and only some of the ways of guarding
+   * against that were tried before this was rewritten to not need it at
+   * all). Depending on an explicit, React-owned signal instead — a counter
+   * only `onRendered` increments — means this effect only ever reacts to a
+   * change *it did not cause itself*, which a DOM observer watching a
+   * container this same effect writes to cannot promise.
+   */
+  useEffect(() => {
+    function clear() {
+      domHighlightRef.current?.clear();
+      domHighlightRef.current = null;
+      domMatchesRef.current = [];
+      setDomMatches([]);
+      setDomTruncated(false);
+    }
+    const container = contentRef.current;
+    if (findMode !== "dom" || effectiveFindQuery === "" || container === null) {
+      clear();
+      return;
+    }
+
+    domHighlightRef.current?.clear();
+    const result = highlightMatches(container, effectiveFindQuery);
+    domHighlightRef.current = result;
+    domMatchesRef.current = result.matches;
+    setDomMatches(result.matches);
+    setDomTruncated(result.truncated);
+    setFindCurrent(0);
+    markCurrentDomMatch(0);
+
+    return clear;
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `mode`/`showRaw`
+    // decide which element is mounted at contentRef; `codeRenderTick` is the
+    // signal that its content was just replaced (see above) — everything
+    // else about what changed inside it is irrelevant to this effect.
+  }, [findMode, effectiveFindQuery, mode, showRaw, codeRenderTick]);
+
+  /** Indicates the match by selection, per the edit-mode requirement — a
+   * textarea's value carries no markup, so this is the only match actually
+   * shown; the count above it stays accurate regardless. Focus moves to the
+   * textarea just long enough for the browser to scroll the selection into
+   * view, then back to the find field so Enter/Shift+Enter keep working. */
+  function selectEditMatch(matches: { start: number; end: number }[], index: number) {
+    const match = matches[index];
+    const textarea = textareaRef.current;
+    if (match === undefined || textarea === null) return;
+    textarea.focus();
+    textarea.setSelectionRange(match.start, match.end);
+    findInputRef.current?.focus();
+  }
+
+  // Jumps to (and selects) the first match when the query changes — but not
+  // on every keystroke typed into the document itself: editMatches recomputes
+  // for those too, and refocusing the textarea on each one would fight typing.
+  useEffect(() => {
+    if (findMode !== "edit" || !findOpen) return;
+    const matches = findMatchesInText(editedText, effectiveFindQuery);
+    setFindCurrent(0);
+    if (matches.length > 0) selectEditMatch(matches, 0);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- reruns on the
+    // query (or entering edit mode with one already set), not on the buffer.
+  }, [effectiveFindQuery, findMode, findOpen]);
+
+  function openFind() {
+    setFindOpen(true);
+  }
+
+  function closeFind() {
+    setFindOpen(false);
+  }
+
+  function findNext() {
+    if (findMode === "pdf") {
+      pdfViewerRef.current?.findNext();
+    } else if (findMode === "edit") {
+      if (editMatches.length === 0) return;
+      const next = (findCurrent + 1) % editMatches.length;
+      setFindCurrent(next);
+      selectEditMatch(editMatches, next);
+    } else {
+      if (domMatches.length === 0) return;
+      const next = (findCurrent + 1) % domMatches.length;
+      setFindCurrent(next);
+      markCurrentDomMatch(next);
+    }
+  }
+
+  function findPrevious() {
+    if (findMode === "pdf") {
+      pdfViewerRef.current?.findPrevious();
+    } else if (findMode === "edit") {
+      if (editMatches.length === 0) return;
+      const next = (findCurrent - 1 + editMatches.length) % editMatches.length;
+      setFindCurrent(next);
+      selectEditMatch(editMatches, next);
+    } else {
+      if (domMatches.length === 0) return;
+      const next = (findCurrent - 1 + domMatches.length) % domMatches.length;
+      setFindCurrent(next);
+      markCurrentDomMatch(next);
+    }
+  }
+
+  const findBarState =
+    findMode === "pdf"
+      ? { matchCount: pdfFindState.matchCount, currentIndex: pdfFindState.currentIndex, truncated: false, searching: pdfFindState.searching }
+      : findMode === "edit"
+        ? {
+            matchCount: editMatches.length,
+            currentIndex: editMatches.length > 0 ? Math.min(findCurrent, editMatches.length - 1) : -1,
+            truncated: false,
+            searching: false,
+          }
+        : {
+            matchCount: domMatches.length,
+            currentIndex: domMatches.length > 0 ? Math.min(findCurrent, domMatches.length - 1) : -1,
+            truncated: domTruncated,
+            searching: false,
+          };
+
   /**
    * The editor, named once.
    *
@@ -462,7 +685,20 @@ export function FileViewer({
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") requestClose();
+      if (event.key === "Escape") {
+        // The find bar closes first — it, not the viewer, is what an open
+        // find bar's Escape means. A second, separate Escape (find bar
+        // already closed) reaches this branch's `else` and closes the viewer,
+        // exactly as it does without this feature.
+        if (findOpen) closeFind();
+        else requestClose();
+        return;
+      }
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "f") {
+        if (findMode === "none") return;
+        event.preventDefault();
+        openFind();
+      }
     }
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
@@ -616,6 +852,21 @@ export function FileViewer({
         </button>
       </div>
 
+      {findOpen && findMode !== "none" && (
+        <FindBar
+          inputRef={findInputRef}
+          query={findQuery}
+          onQueryChange={setFindQuery}
+          matchCount={findBarState.matchCount}
+          currentIndex={findBarState.currentIndex}
+          truncated={findBarState.truncated}
+          searching={findBarState.searching}
+          onNext={findNext}
+          onPrev={findPrevious}
+          onClose={closeFind}
+        />
+      )}
+
       {conflict && edit !== null && (
         <div className="flex items-center gap-3 border-b border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-300">
           <span className="min-w-0 flex-1">File changed on disk since you started editing.</span>
@@ -651,10 +902,13 @@ export function FileViewer({
           <ViewerErrorBoundary label="This PDF">
             <Suspense fallback={<div className="p-4 text-sm text-zinc-400 dark:text-zinc-600">loading…</div>}>
               <PdfViewer
+                ref={pdfViewerRef}
                 path={file.path}
                 serverUrl={serverUrl}
                 token={token}
                 revision={rawRevision}
+                findQuery={findMode === "pdf" ? effectiveFindQuery : ""}
+                onFindStateChange={setPdfFindState}
                 {...(onPdfLoad ? { onLoaded: onPdfLoad } : {})}
               />
             </Suspense>
@@ -679,7 +933,9 @@ export function FileViewer({
         {/* Keyed on `edit`, not `loaded`: the post-save file_changed refetch flips the file
             to "loading" for a moment and must not unmount the textarea (focus/caret loss) */}
         {edit !== null && !splitting && editor}
-        {loaded && edit === null && !splitting && !showGitDiff && markdown && !showRaw && renderedMarkdown(loaded.content)}
+        {loaded && edit === null && !splitting && !showGitDiff && markdown && !showRaw && (
+          <div ref={contentRef}>{renderedMarkdown(loaded.content)}</div>
+        )}
         {splitting && (
           <div className="flex h-full min-h-0" data-testid="file-split">
             {/* Each pane scrolls on its own: a long document must not scroll the
@@ -790,8 +1046,8 @@ export function FileViewer({
           </div>
         )}
         {loaded && edit === null && !splitting && !showGitDiff && (!markdown || showRaw) && (!diagram || showRaw) && (
-          <div className="p-4">
-            <CodeHighlight code={loaded.content} path={file.path} />
+          <div ref={contentRef} className="p-4">
+            <CodeHighlight code={loaded.content} path={file.path} onRendered={bumpCodeRenderTick} />
           </div>
         )}
       </div>

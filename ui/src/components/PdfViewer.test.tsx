@@ -1,18 +1,32 @@
+import { createRef } from "react";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { PdfViewer } from "./PdfViewer";
+import { PdfViewer, type PdfViewerHandle } from "./PdfViewer";
 
 const getPage = vi.fn();
 const getDocument = vi.fn();
 const destroy = vi.fn(async () => {});
 
-const textLayerRender = vi.fn(async () => {});
+interface FakeTextLayerOptions {
+  container: HTMLElement;
+  textContentSource: unknown;
+  viewport: unknown;
+}
+const textLayerRender = vi.fn(async (_options: FakeTextLayerOptions) => {});
 
 vi.mock("pdfjs-dist", () => ({
   GlobalWorkerOptions: { workerSrc: "" },
   getDocument: (...args: unknown[]) => getDocument(...args),
   TextLayer: class {
-    render = textLayerRender;
+    options: FakeTextLayerOptions;
+    constructor(options: FakeTextLayerOptions) {
+      this.options = options;
+    }
+    // Real pdf.js renders spans of the page's own text into `container`. The
+    // mock renders nothing by default (existing tests only check that it was
+    // asked to); a find-in-page test that needs real text in the layer sets
+    // `textLayerRender`'s implementation to populate `options.container` itself.
+    render = () => textLayerRender(this.options);
   },
 }));
 
@@ -389,5 +403,218 @@ describe("PdfViewer scrolling", () => {
     fireEvent.click(screen.getByLabelText("Next page"));
     expect(await screen.findByText("Page 2 / 5")).toBeInTheDocument();
     expect(scrollIntoView).toHaveBeenCalled();
+  });
+});
+
+describe("PdfViewer find-in-page", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    textLayerRender.mockImplementation(async () => {});
+    Element.prototype.scrollIntoView = vi.fn();
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    textLayerRender.mockImplementation(async () => {});
+  });
+
+  /** A page whose rendered text layer (once `textLayerRender` is told to
+   * populate it, see below) reads exactly `text` — real pdf.js text runs are
+   * split across several spans, but one text node is enough to exercise the
+   * same DOM-walking highlight utility a plain text file uses. */
+  function pageWithText(text: string) {
+    return {
+      getViewport: () => ({ width: 600, height: 800 }),
+      render: () => ({ promise: Promise.resolve(), cancel: () => {} }),
+      streamTextContent: async () => text,
+      getTextContent: async () => ({ items: [{ str: text }] }),
+    };
+  }
+
+  /** Makes the mocked text layer actually hold the page's text, so a match can
+   * be found and marked in it — the default mock renders nothing (see the
+   * shared `TextLayer` mock above). */
+  function populateTextLayers() {
+    textLayerRender.mockImplementation(async (options) => {
+      options.container.textContent = typeof options.textContentSource === "string" ? options.textContentSource : "";
+    });
+  }
+
+  function pagesByNumber(pages: Record<number, ReturnType<typeof pageWithText>>) {
+    getPage.mockImplementation(async (page: number) => pages[page] ?? pageWithText(""));
+  }
+
+  it("reports the match count and current index once the document is indexed", async () => {
+    serverReturnsPdf(2);
+    pagesByNumber({ 1: pageWithText("the quick fox"), 2: pageWithText("a fox in the box") });
+    const onFindStateChange = vi.fn();
+
+    render(<PdfViewer path="report.pdf" findQuery="fox" onFindStateChange={onFindStateChange} />);
+    await screen.findByText("Page 1 / 2");
+
+    await waitFor(() =>
+      expect(onFindStateChange).toHaveBeenCalledWith({ matchCount: 2, currentIndex: 0, searching: false }),
+    );
+  });
+
+  it("finds matches on a page that has not been read yet only once indexing reaches it", async () => {
+    serverReturnsPdf(2);
+    pagesByNumber({ 1: pageWithText("nothing here"), 2: pageWithText("a fox") });
+    const onFindStateChange = vi.fn();
+
+    render(<PdfViewer path="report.pdf" findQuery="fox" onFindStateChange={onFindStateChange} />);
+    await screen.findByText("Page 1 / 2");
+
+    await waitFor(() =>
+      expect(onFindStateChange).toHaveBeenCalledWith({ matchCount: 1, currentIndex: 0, searching: false }),
+    );
+  });
+
+  it("shows matches found so far as navigable while indexing still has pages left to read", async () => {
+    serverReturnsPdf(3);
+    pagesByNumber({ 1: pageWithText("has a fox"), 2: pageWithText("nothing"), 3: pageWithText("nothing") });
+    const onFindStateChange = vi.fn();
+
+    render(<PdfViewer path="report.pdf" findQuery="fox" onFindStateChange={onFindStateChange} />);
+    await screen.findByText("Page 1 / 3");
+
+    // The match on page 1 (read first) is reported — and navigable (a real
+    // currentIndex, not -1) — before indexing has read every page.
+    await waitFor(() =>
+      expect(onFindStateChange).toHaveBeenCalledWith({ matchCount: 1, currentIndex: 0, searching: true }),
+    );
+    // Indexing finishes without finding anything further; the count is unchanged.
+    await waitFor(() =>
+      expect(onFindStateChange).toHaveBeenCalledWith({ matchCount: 1, currentIndex: 0, searching: false }),
+    );
+  });
+
+  it("treats a page whose text cannot be read as contributing no matches, not an error", async () => {
+    serverReturnsPdf(2);
+    pagesByNumber({
+      1: { ...pageWithText(""), getTextContent: () => Promise.reject(new Error("scan, no text layer")) },
+      2: pageWithText("a fox"),
+    });
+    const onFindStateChange = vi.fn();
+
+    render(<PdfViewer path="report.pdf" findQuery="fox" onFindStateChange={onFindStateChange} />);
+    await screen.findByText("Page 1 / 2");
+
+    await waitFor(() =>
+      expect(onFindStateChange).toHaveBeenCalledWith({ matchCount: 1, currentIndex: 0, searching: false }),
+    );
+    // The page whose text failed to read still renders normally — reading text
+    // for search is independent of drawing the page.
+    expect(screen.queryByText(/could not be rendered/)).toBeNull();
+  });
+
+  it("highlights the current match at its position on the page once the text layer renders", async () => {
+    serverReturnsPdf(1);
+    pagesByNumber({ 1: pageWithText("has a fox here") });
+    populateTextLayers();
+
+    const { container } = render(<PdfViewer path="report.pdf" findQuery="fox" />);
+    await screen.findByText("Page 1 / 1");
+
+    await waitFor(() => {
+      const mark = container.querySelector(".pdf-text-layer mark.find-match-current");
+      expect(mark).not.toBeNull();
+      expect(mark?.textContent).toBe("fox");
+    });
+  });
+
+  it("jumps to a page containing the next match when it is outside the render window", async () => {
+    serverReturnsPdf(5);
+    pagesByNumber({
+      1: pageWithText("has a fox here"),
+      2: pageWithText("nothing"),
+      3: pageWithText("nothing"),
+      4: pageWithText("nothing"),
+      5: pageWithText("another fox"),
+    });
+    populateTextLayers();
+    const onFindStateChange = vi.fn();
+
+    const ref = createRef<PdfViewerHandle>();
+    const { container } = render(
+      <PdfViewer ref={ref} path="report.pdf" findQuery="fox" onFindStateChange={onFindStateChange} />,
+    );
+    await screen.findByText("Page 1 / 5");
+    // The first match (page 1) is already in view — nothing to jump to yet.
+    await waitFor(() => expect(container.querySelector(".find-match-current")).not.toBeNull());
+    // Both matches must be indexed before "next" has anywhere to go.
+    await waitFor(() =>
+      expect(onFindStateChange).toHaveBeenCalledWith({ matchCount: 2, currentIndex: 0, searching: false }),
+    );
+
+    ref.current?.findNext();
+
+    expect(await screen.findByText("Page 5 / 5")).toBeInTheDocument();
+    await waitFor(() => {
+      const mark = container.querySelector(".pdf-text-layer mark.find-match-current");
+      expect(mark?.textContent).toBe("fox");
+    });
+  });
+
+  it("moves the highlight between matches on the same page without changing page", async () => {
+    serverReturnsPdf(1);
+    pagesByNumber({ 1: pageWithText("fox fox") });
+    populateTextLayers();
+
+    const ref = createRef<PdfViewerHandle>();
+    const { container } = render(<PdfViewer ref={ref} path="report.pdf" findQuery="fox" />);
+    await screen.findByText("Page 1 / 1");
+    await waitFor(() => expect(container.querySelectorAll(".find-match").length).toBe(2));
+
+    ref.current?.findNext();
+
+    await waitFor(() => expect(container.querySelectorAll(".find-match-current")).toHaveLength(1));
+    expect(screen.getByText("Page 1 / 1")).toBeInTheDocument(); // still the same page
+    expect(getPage).not.toHaveBeenCalledWith(2);
+  });
+
+  it("wraps navigation from the last match back to the first", async () => {
+    serverReturnsPdf(1);
+    pagesByNumber({ 1: pageWithText("fox fox") });
+    populateTextLayers();
+    const onFindStateChange = vi.fn();
+
+    const ref = createRef<PdfViewerHandle>();
+    render(<PdfViewer ref={ref} path="report.pdf" findQuery="fox" onFindStateChange={onFindStateChange} />);
+    await screen.findByText("Page 1 / 1");
+    await waitFor(() => expect(onFindStateChange).toHaveBeenCalledWith({ matchCount: 2, currentIndex: 0, searching: false }));
+
+    ref.current?.findNext();
+    await waitFor(() => expect(onFindStateChange).toHaveBeenCalledWith({ matchCount: 2, currentIndex: 1, searching: false }));
+
+    ref.current?.findNext();
+    await waitFor(() => expect(onFindStateChange).toHaveBeenCalledWith({ matchCount: 2, currentIndex: 0, searching: false }));
+
+    ref.current?.findPrevious();
+    await waitFor(() => expect(onFindStateChange).toHaveBeenCalledWith({ matchCount: 2, currentIndex: 1, searching: false }));
+  });
+
+  it("clears matches and highlighting when the document changes", async () => {
+    serverReturnsPdf(1);
+    pagesByNumber({ 1: pageWithText("has a fox") });
+    populateTextLayers();
+    const onFindStateChange = vi.fn();
+
+    const { rerender } = render(
+      <PdfViewer path="a.pdf" findQuery="fox" onFindStateChange={onFindStateChange} revision={1} />,
+    );
+    await screen.findByText("Page 1 / 1");
+    await waitFor(() =>
+      expect(onFindStateChange).toHaveBeenCalledWith({ matchCount: 1, currentIndex: 0, searching: false }),
+    );
+
+    serverReturnsPdf(1);
+    pagesByNumber({ 1: pageWithText("nothing at all") });
+    onFindStateChange.mockClear();
+
+    rerender(<PdfViewer path="b.pdf" findQuery="fox" onFindStateChange={onFindStateChange} revision={1} />);
+
+    await waitFor(() =>
+      expect(onFindStateChange).toHaveBeenCalledWith({ matchCount: 0, currentIndex: -1, searching: false }),
+    );
   });
 });

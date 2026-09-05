@@ -205,3 +205,22 @@ body,
 .pdf-text-layer ::selection {
   background: rgb(56 132 255 / 0.35);
 }
+
+/* Find-in-page marks (ui/src/util/findInPage.ts). One rule set for every
+   container it runs against — rendered code, Markdown, and a PDF's text
+   layer — because the utility itself does not know which of those it is in. */
+.find-match {
+  background-color: rgb(250 204 21 / 0.5); /* yellow-400 */
+  color: inherit;
+}
+.find-match-current {
+  background-color: rgb(249 115 22 / 0.7); /* orange-500 */
+}
+/* Inside the PDF text layer the underlying glyph is already drawn on the
+   canvas beneath; a mark's own (visible) text would draw a second copy of it
+   a few subpixels off. The highlight box is the point — keep the mark's own
+   text as invisible as the layer around it. */
+.pdf-text-layer mark.find-match,
+.pdf-text-layer mark.find-match-current {
+  color: transparent;
+}
