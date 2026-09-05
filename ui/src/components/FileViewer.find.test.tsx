@@ -188,12 +188,7 @@ describe("FileViewer find-in-page", () => {
       expect(screen.getByText("1/2")).toBeInTheDocument();
     });
 
-    it("keeps the reader's place when the content is re-rendered under an active search", async () => {
-      // Re-marking the same query against re-rendered content must not send
-      // the reader back to the first match. A view switch is the deterministic
-      // way to trigger that re-mark; syntax highlighting arriving late reaches
-      // the same code path, and did — CI caught someone stepped to match 3
-      // being dropped back to match 1 the moment highlight.js finished loading.
+    it("keeps the reader's place when switching view with a search active", async () => {
       setup({ file: loadedFile({ path: "notes.md", content: "fox fox fox" }) });
       ctrlF();
       typeQuery("fox");
@@ -204,9 +199,16 @@ describe("FileViewer find-in-page", () => {
 
       fireEvent.click(screen.getByRole("button", { name: /source/ }));
 
-      await waitFor(() => expect(document.querySelectorAll("mark.find-match")).toHaveLength(3));
-      expect(screen.getByText("3/3")).toBeInTheDocument();
-      expect(document.querySelectorAll("mark.find-match-current")).toHaveLength(1);
+      // One waitFor over the whole settled state: the source view mounts its
+      // own highlighter, which re-marks again when it finishes loading, so
+      // asserting between those two passes is asserting on a moment rather
+      // than on an outcome. FileViewer.findRerender.test.tsx drives that
+      // second pass deliberately instead of racing it.
+      await waitFor(() => {
+        expect(document.querySelectorAll("mark.find-match")).toHaveLength(3);
+        expect(document.querySelectorAll("mark.find-match-current")).toHaveLength(1);
+        expect(screen.getByText("3/3")).toBeInTheDocument();
+      });
     });
 
     it("shows no matches, not an error, for a query the file does not contain", async () => {
