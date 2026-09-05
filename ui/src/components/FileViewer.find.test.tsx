@@ -40,7 +40,7 @@ function setup(overrides: Partial<Props> = {}) {
     file: loadedFile(),
     isStreaming: false,
     gitDiff: null as GitDiffState | null,
-    gitAvailable: false,
+    inRepository: false,
     ...handlers,
     ...overrides,
   };
@@ -186,6 +186,27 @@ describe("FileViewer find-in-page", () => {
       // the marks themselves instead.
       await waitFor(() => expect(document.querySelectorAll("mark.find-match")).toHaveLength(2));
       expect(screen.getByText("1/2")).toBeInTheDocument();
+    });
+
+    it("keeps the reader's place when the content is re-rendered under an active search", async () => {
+      // Re-marking the same query against re-rendered content must not send
+      // the reader back to the first match. A view switch is the deterministic
+      // way to trigger that re-mark; syntax highlighting arriving late reaches
+      // the same code path, and did — CI caught someone stepped to match 3
+      // being dropped back to match 1 the moment highlight.js finished loading.
+      setup({ file: loadedFile({ path: "notes.md", content: "fox fox fox" }) });
+      ctrlF();
+      typeQuery("fox");
+      await waitFor(() => expect(screen.getByText("1/3")).toBeInTheDocument());
+      fireEvent.click(screen.getByLabelText("Next match"));
+      fireEvent.click(screen.getByLabelText("Next match"));
+      expect(screen.getByText("3/3")).toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole("button", { name: /source/ }));
+
+      await waitFor(() => expect(document.querySelectorAll("mark.find-match")).toHaveLength(3));
+      expect(screen.getByText("3/3")).toBeInTheDocument();
+      expect(document.querySelectorAll("mark.find-match-current")).toHaveLength(1);
     });
 
     it("shows no matches, not an error, for a query the file does not contain", async () => {

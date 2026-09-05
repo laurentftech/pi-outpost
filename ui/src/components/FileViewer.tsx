@@ -351,11 +351,20 @@ export function FileViewer({
   // driving Ctrl+F in the running app: the count updated on every "next" click
   // but the highlight never moved, because it was never landing on live DOM.
   const domMatchesRef = useRef<DomMatch[]>([]);
+  /** Which match is current, alongside `domMatchesRef` and for the same reason:
+   * navigation has to act on what is true now, not on what the render that
+   * created the click handler happened to see. */
+  const currentDomMatchRef = useRef(0);
+  /** The query the marks in the DOM were built from, so a rebuild can tell
+   * "the reader typed something else" (start again at the first match) from
+   * "the content underneath was re-rendered" (stay where the reader was). */
+  const domQueryRef = useRef("");
 
   /** Marks `index` current among whatever `domMatchesRef` holds *right now*,
    * scrolling it into view. Called directly at the moment marks are (re)built
    * or the current index changes — not from an effect watching a snapshot. */
   function markCurrentDomMatch(index: number) {
+    currentDomMatchRef.current = index;
     for (const [i, match] of domMatchesRef.current.entries()) {
       for (const mark of match.marks) {
         if (mark.isConnected) mark.classList.toggle("find-match-current", i === index);
@@ -422,6 +431,11 @@ export function FileViewer({
       domMatchesRef.current = [];
       setDomMatches([]);
       setDomTruncated(false);
+      // Deliberately not resetting `currentDomMatchRef`: React runs this
+      // cleanup immediately before the effect re-runs, so zeroing it here
+      // would erase the reader's place on every re-mark before the body had a
+      // chance to keep it. A stale index is harmless — the next apply clamps
+      // it to the new match count, and a new query zeroes it explicitly.
     }
     const container = contentRef.current;
     if (findMode !== "dom" || effectiveFindQuery === "" || container === null) {
@@ -435,8 +449,17 @@ export function FileViewer({
     domMatchesRef.current = result.matches;
     setDomMatches(result.matches);
     setDomTruncated(result.truncated);
-    setFindCurrent(0);
-    markCurrentDomMatch(0);
+
+    // A different query starts again at the first match. The *same* query
+    // re-marked because the content underneath was re-rendered (syntax
+    // highlighting arriving late, a view switch) must keep the reader where
+    // they were: resetting here sent someone who had already stepped to match
+    // 4 back to match 1 the moment highlight.js finished loading.
+    const queryChanged = effectiveFindQuery !== domQueryRef.current;
+    domQueryRef.current = effectiveFindQuery;
+    const current = queryChanged ? 0 : Math.min(currentDomMatchRef.current, Math.max(result.matches.length - 1, 0));
+    setFindCurrent(current);
+    markCurrentDomMatch(current);
 
     return clear;
     // eslint-disable-next-line react-hooks/exhaustive-deps -- `mode`/`showRaw`
@@ -488,8 +511,12 @@ export function FileViewer({
       setFindCurrent(next);
       selectEditMatch(editMatches, next);
     } else {
-      if (domMatches.length === 0) return;
-      const next = (findCurrent + 1) % domMatches.length;
+      // From the refs, not the render's state: a rebuild in flight (late
+      // syntax highlighting) can leave the state this handler closed over
+      // momentarily empty, and a click answered with nothing is a click lost.
+      const total = domMatchesRef.current.length;
+      if (total === 0) return;
+      const next = (currentDomMatchRef.current + 1) % total;
       setFindCurrent(next);
       markCurrentDomMatch(next);
     }
@@ -504,8 +531,9 @@ export function FileViewer({
       setFindCurrent(next);
       selectEditMatch(editMatches, next);
     } else {
-      if (domMatches.length === 0) return;
-      const next = (findCurrent - 1 + domMatches.length) % domMatches.length;
+      const total = domMatchesRef.current.length;
+      if (total === 0) return;
+      const next = (currentDomMatchRef.current - 1 + total) % total;
       setFindCurrent(next);
       markCurrentDomMatch(next);
     }
