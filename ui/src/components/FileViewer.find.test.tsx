@@ -180,8 +180,12 @@ describe("FileViewer find-in-page", () => {
 
       fireEvent.click(screen.getByRole("button", { name: /source/ }));
 
-      await waitFor(() => expect(screen.getByText("1/2")).toBeInTheDocument());
-      expect(document.querySelectorAll("mark.find-match")).toHaveLength(2);
+      // The count label reads "1/2" both before and after the switch (same
+      // query, same match count in this fixture) — waiting on it alone could
+      // pass without the source view ever actually being re-marked. Wait on
+      // the marks themselves instead.
+      await waitFor(() => expect(document.querySelectorAll("mark.find-match")).toHaveLength(2));
+      expect(screen.getByText("1/2")).toBeInTheDocument();
     });
 
     it("shows no matches, not an error, for a query the file does not contain", async () => {
