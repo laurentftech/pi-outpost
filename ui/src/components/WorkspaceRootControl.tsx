@@ -111,7 +111,12 @@ export function WorkspaceRootControl(props: WorkspaceRootControlProps) {
         <span className="truncate font-mono">{label}</span>
         {locked ? <span className="text-zinc-400">(locked)</span> : <span aria-hidden="true">▾</span>}
       </button>
-      {picking && (
+      {/* `blocked` is answered in the render, not only by the effect above: an
+          effect runs after the render that scheduled it, so a picker yielding to
+          another one is still on the page for a frame — and two pickers mean two
+          of every control inside them. The effect stays, because the state still
+          has to converge; this only stops the overlap being observable. */}
+      {picking && !blocked && (
         <div className="absolute left-0 top-full z-20 mt-1 w-[380px] rounded-lg border border-zinc-200 bg-white p-2 shadow-xl dark:border-zinc-700 dark:bg-zinc-900">
           {applyState?.status === "error" && (
             <p role="alert" className="mb-2 text-xs text-red-600 dark:text-red-400">

@@ -209,7 +209,17 @@ export function SettingsMenu({
     });
   }
 
-  const picker = picking !== null && (
+  /*
+   * Blocked is answered here, in the render, and not only by the effect below.
+   *
+   * An effect runs *after* the render that scheduled it, so a picker being closed
+   * because another one opened is still on the page for one frame — two pickers,
+   * two "Go" buttons, two of everything a test or a reader can address. The effect
+   * still runs, because the state has to converge: without it this picker would
+   * reappear the moment the other one closed and `pickerBlocked` went false again.
+   * What changes is that the overlap is no longer observable.
+   */
+  const picker = picking !== null && !pickerBlocked && (
     <ServerPathPicker
       label={picking === "root" ? "Choose the sandbox root" : "Choose the writable root"}
       browse={serverBrowse}
