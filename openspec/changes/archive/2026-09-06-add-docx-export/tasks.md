@@ -60,6 +60,6 @@ Unit tests are necessary and not sufficient here (CLAUDE.md — UI and UX change
 
 - [x] 8.1 Write `openspec/changes/add-docx-export/scenario-coverage.md` covering all 38 declared scenarios (28 in `docx-export`, 10 in `file`), each classified `covered`/`partial`/`uncovered` with test file and test name; verify `npm run check:scenarios` passes.
 - [x] 8.2 Read the cited assertions rather than the test names (CLAUDE.md — a scenario is covered only if its contract would fail the test if broken); verify by confirming each Word-observable scenario cites either a package-level assertion or a recorded 7.2/7.3 observation, never a screenshot.
-- [ ] 8.3 Run `npm run lint`, `npm run typecheck`, the `ui` suite and `npm run test:e2e`; verify all pass.
+- [x] 8.3 Run `npm run lint`, `npm run typecheck`, the `ui` suite and `npm run test:e2e`; verify all pass.
 - [x] 8.4 Documentation impact pass (CLAUDE.md): search `README.md`, `docs/` and package READMEs for viewer and export claims, update what the new action makes stale, and record the files updated — or `None` with a reason — in the PR description.
 - [x] 8.5 Run `openspec validate add-docx-export --strict` and `check_spec_drift`; verify both pass before opening the PR.
