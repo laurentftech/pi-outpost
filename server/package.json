@@ -17,7 +17,7 @@
     "pretest:coverage": "node -e \"require('node:fs').mkdirSync('coverage',{recursive:true})\""
   },
   "dependencies": {
-    "@earendil-works/pi-coding-agent": "^0.84.4",
+    "@earendil-works/pi-coding-agent": "^0.85.1",
     "@fastify/static": "^10.1.2",
     "@fastify/websocket": "^11.0.2",
     "@pi-outpost/shared": "*",

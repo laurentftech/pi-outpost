@@ -37,6 +37,31 @@ async function denial(tool: { execute: (...args: never[]) => unknown }, target: 
   return null;
 }
 
+/**
+ * Run a tool with a context that carries a working directory, which `run` above
+ * does not: the built-in tools prefer `ctx.cwd` to the cwd they were built with,
+ * so a call with no context at all exercises a kinder fallback than the server's.
+ * Returns whatever the call produced — result or error — as one string.
+ */
+async function outcome(
+  tool: { execute: (...args: never[]) => unknown },
+  target: string,
+  cwd: string,
+): Promise<string> {
+  const execute = tool.execute as unknown as (
+    id: string,
+    params: unknown,
+    signal: AbortSignal | undefined,
+    onUpdate: undefined,
+    ctx: unknown,
+  ) => unknown;
+  try {
+    return JSON.stringify(await execute("call-1", { path: target }, undefined, undefined, { cwd }));
+  } catch (error) {
+    return (error as Error).message;
+  }
+}
+
 describe("realResolve", () => {
   let base: string;
   /** Windows refuses symlink creation without a privilege CI does not have. */
@@ -196,6 +221,41 @@ describe("createSandboxedTools", () => {
       const tools = await createSandboxedTools(config({ root }));
       for (const tool of tools) {
         assert.match((await denial(tool, "../outside/secret.txt")) ?? "", /outside the sandbox/, `${tool.name} must refuse`);
+      }
+    });
+
+    /**
+     * The guard resolves a relative path against the sandbox root. The tool must
+     * act on that same base. pi-coding-agent 0.85.0 made the built-in tools prefer
+     * `ctx.cwd` (earendil-works/pi#8627), and the server's context cwd is the
+     * project root above the sandbox — so "outside/secret.txt" is admitted as
+     * <root>/outside/secret.txt and would otherwise be served from
+     * <project>/outside/secret.txt, which is not in the sandbox at all.
+     */
+    test("reads an admitted path from the root it was checked against, not the context cwd", async () => {
+      const [read] = await createSandboxedTools(config({ root }));
+      const project = path.dirname(root);
+      assert.doesNotMatch(await outcome(read, "outside/secret.txt", project), /SECRET/);
+    });
+
+    test("lists the sandbox root when the context names another working directory", async () => {
+      const tools = await createSandboxedTools(config({ root }));
+      const ls = tools.find((tool) => tool.name === "ls");
+      assert.ok(ls !== undefined);
+      const listing = await outcome(ls, ".", path.dirname(root));
+      assert.match(listing, /readme\.md/, "the sandbox root is what the model sees");
+      assert.doesNotMatch(listing, /outside/, "the directory above the root is not");
+    });
+
+    test("no read tool takes its working directory from the context", async () => {
+      const tools = await createSandboxedTools(config({ root }));
+      const project = path.dirname(root);
+      for (const tool of tools) {
+        assert.doesNotMatch(
+          await outcome(tool, "outside/secret.txt", project),
+          /SECRET/,
+          `${tool.name} must not act outside the root it was checked against`,
+        );
       }
     });
 

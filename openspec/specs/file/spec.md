@@ -55,6 +55,12 @@ available whenever the read tools are, denied wherever they are denied, and neve
 `allowBash`. A document reader that writes an extraction to a file SHALL be given the writable zone
 for that destination alone; the read-only exceptions SHALL NOT widen it.
 
+A sandboxed tool SHALL act on the same base its path was checked against. A relative path is
+admitted by resolving it against the sandbox root, so the tool SHALL resolve it against that root
+too, whatever working directory the surrounding session reports; bash, which is not path-scoped,
+SHALL still run in the root. Otherwise a path is admitted on one reading and served on another,
+and a path inside the root on paper reaches a file outside it.
+
 #### Scenario: CreateToolsWithValidConfig
 <!-- openlore-test: tags=smoke (auto) -->
 - **GIVEN** A valid SandboxConfig
@@ -77,6 +83,12 @@ for that destination alone; the read-only exceptions SHALL NOT widen it.
 - **GIVEN** a configured read-only exception outside `sandbox.root` and sandbox writes enabled
 - **WHEN** an edit or write tool targets a path inside that exception
 - **THEN** the operation is denied because the path is outside the writable root
+
+#### Scenario: ToolActsOnTheCheckedBase
+- **GIVEN** a sandbox root below the session's working directory, and a relative path that resolves
+  inside the root but names an existing file outside it when resolved against that working directory
+- **WHEN** a read, ls, grep, or find tool is called with that path
+- **THEN** the tool acts inside the sandbox root, and the file outside it is not read
 
 #### Scenario: UnrelatedPathRemainsDenied
 - **GIVEN** one or more configured read-only exceptions
