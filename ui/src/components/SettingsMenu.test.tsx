@@ -387,6 +387,33 @@ describe("SettingsMenu", () => {
       expect(onBrowseServerPath).toHaveBeenLastCalledWith("/srv/projects");
     });
 
+  it("shows no picker at all while another one holds the listing", () => {
+    /*
+     * The invariant, not the timing.
+     *
+     * Two pickers at once is not a cosmetic overlap: everything inside one is
+     * duplicated, so "the Go button" stops naming a single thing — a browser test
+     * failed with `getByRole('button', { name: 'Go' }) resolved to 2 elements`,
+     * which a reader would have seen as a flicker of two stacked panels.
+     *
+     * The overlap itself lasted a single frame, between the render that yielded
+     * and the effect that closed the picker, and it cannot be observed from here:
+     * the test renderer flushes effects synchronously, so this assertion holds
+     * whether the decision is made during the render or one tick later. The frame
+     * is guarded in a real browser, by e2e/settings-sandbox.spec.ts. What is
+     * pinned here is the end state that both must reach.
+     */
+    const { rerenderWith } = setup({ sandbox: sandbox({ root: "/work" }) });
+    fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+    fireEvent.click(screen.getByRole("button", { name: "Browse for sandbox root" }));
+    expect(screen.getAllByRole("button", { name: "Go" })).toHaveLength(1);
+
+    // Another header control opens its own picker and takes the shared listing.
+    rerenderWith({ pickerBlocked: true });
+
+    expect(screen.queryByRole("button", { name: "Go" })).toBeNull();
+  });
+
   describe("a refused apply", () => {
     it("stays open, says why, and leaves the settings as the server still has them", () => {
       const { rerenderWith } = setup({ sandbox: sandbox({ root: "/work" }), userSkillPaths: ["/mnt/a"] });
