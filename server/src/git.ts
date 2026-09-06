@@ -69,7 +69,11 @@ export function standardLocations(): string[] {
 /** Does this path answer as a git? The cheapest question that proves it runs. */
 async function answersAsGit(candidate: string): Promise<boolean> {
   try {
-    const { stdout } = await execFileAsync(candidate, ["--version"], { timeout: GIT_TIMEOUT_MS, encoding: "utf8" });
+    const { stdout } = await execFileAsync(candidate, ["--version"], {
+      timeout: GIT_TIMEOUT_MS,
+      encoding: "utf8",
+      windowsHide: true,
+    });
     return /^git version /i.test(stdout.trim());
   } catch {
     return false;
@@ -130,6 +134,11 @@ async function runGit(root: string, args: string[]): Promise<string> {
       timeout: GIT_TIMEOUT_MS,
       maxBuffer: GIT_MAX_BUFFER,
       encoding: "utf8",
+      // Without this, every git call opens a console window on Windows — and the
+      // repository questions are asked constantly: on each workspace switch, each
+      // tree listing, each status check. The result is a machine that flashes a
+      // black rectangle at its user all day. It changes nothing on other platforms.
+      windowsHide: true,
     });
     return stdout;
   } catch (error) {

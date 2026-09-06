@@ -117,6 +117,9 @@ export async function startServer(root, config = {}, options = {}) {
     env,
     stdio: ["ignore", "pipe", "pipe"],
     detached: true,
+    // No console window per server. A test run starts several, and each one that
+    // flashes is a black rectangle thrown across whatever is on screen.
+    windowsHide: true,
   });
   let log = "";
   child.stdout.on("data", (d) => (log += d));
@@ -150,7 +153,7 @@ export async function startServer(root, config = {}, options = {}) {
       const killGroup = (signal) => {
         try {
           if (process.platform === "win32") {
-            execSync(`taskkill /pid ${child.pid} /T /F`, { stdio: "ignore" });
+            execSync(`taskkill /pid ${child.pid} /T /F`, { stdio: "ignore", windowsHide: true });
           } else {
             process.kill(-child.pid, signal);
           }
