@@ -86,6 +86,7 @@ function answersAsBash(candidate: string): boolean {
       timeout: 3000,
       encoding: "utf8",
       env: { ...process.env, NODE_V8_COVERAGE: "" },
+      windowsHide: true,
     });
     return !res.error && typeof res.stdout === "string" && /GNU bash/i.test(res.stdout);
   } catch {

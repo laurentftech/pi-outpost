@@ -580,7 +580,8 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
   // real repositories with real working-tree changes, and a plan whose statuses
   // and evidence results cover every label the panel can draw.
   const outcomeRoot = await realpath(await makeWorkspace({ "readme.md": "# outcome workspace\n" }));
-  const git = (cwd: string, ...args: string[]) => execFileSync("git", args, { cwd, stdio: "ignore" });
+  const git = (cwd: string, ...args: string[]) =>
+    execFileSync("git", args, { cwd, stdio: "ignore", windowsHide: true });
   const makeRepo = (dir: string) => {
     git(dir, "init");
     git(dir, "branch", "-M", "main");

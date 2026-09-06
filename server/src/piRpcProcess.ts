@@ -76,7 +76,13 @@ export async function probeAgentLabel(executable: string, cwd: string, timeoutMs
     let child: ReturnType<typeof spawn>;
     try {
       // Killed on the timeout path, so it needs the same coverage exclusion.
-      child = spawn(executable, ["--version"], { cwd, shell: false, stdio: ["ignore", "pipe", "pipe"], env: childEnv() });
+      child = spawn(executable, ["--version"], {
+        cwd,
+        shell: false,
+        stdio: ["ignore", "pipe", "pipe"],
+        env: childEnv(),
+        windowsHide: true,
+      });
     } catch {
       return resolve(undefined);
     }
@@ -192,6 +198,9 @@ export class PiRpcProcess {
       cwd: options.cwd,
       shell: false,
       stdio: ["pipe", "pipe", "pipe"],
+      // The agent runs behind the interface, not in a console of its own: without
+      // this, starting a session throws a window across the user's screen.
+      windowsHide: true,
       env: childEnv({
         // A deliberate environment, not an inherited surprise: this is the one way
         // to point the child at pi-outpost's own agent directory.

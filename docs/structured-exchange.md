@@ -146,6 +146,10 @@ Use **download SVG**, then insert the file as a picture. Word does not accept an
 pasted from the clipboard — it wants a file. **copy markup** is there for the places
 that do take it directly: an editor, a wiki, a repository.
 
+(A mermaid diagram inside a Markdown *file* needs none of this: the viewer's Word export
+carries it into the document already, as a vector with a raster fallback. That path does not
+cover structured-exchange documents, which is what this section is about.)
+
 The markup stands on its own. Boxes are `rect` and `text` with colours as attributes
 and an explicit white ground, so what lands in the document is what was on screen. An
 earlier version drew them as HTML inside `foreignObject`, which looks identical in the

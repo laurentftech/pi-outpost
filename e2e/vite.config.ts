@@ -21,5 +21,14 @@ export default defineConfig({
   build: {
     outDir: path.join(HERE, "dist-host"),
     emptyOutDir: true,
+    rollupOptions: {
+      input: {
+        // The embed host page, and beside it a harness that runs the Word export
+        // in a real browser — the only place a diagram can actually be drawn and
+        // rasterised, which jsdom cannot do.
+        index: path.join(HERE, "host/index.html"),
+        export: path.join(HERE, "host/export.html"),
+      },
+    },
   },
 });

@@ -16,6 +16,7 @@ import {
   type StructuredTableData,
 } from "@pi-outpost/shared/structured-exchange";
 import { filterKey, TABLE_ROLE_LABEL, tableDeclaresRoles, tableRowRole } from "./structuredExchange";
+import { save } from "../util/download";
 
 /** The declared column for a row's role — named as the key names it. */
 const ROLE_COLUMN = "change";
@@ -70,16 +71,6 @@ function csvField(cell: StructuredTableCell): string {
 /** CRLF between rows: what the format says, and what a spreadsheet expects. */
 export function toCsv(exported: TableExport): string {
   return [exported.columns, ...exported.rows].map((row) => row.map(csvField).join(",")).join("\r\n");
-}
-
-/** Hands the browser a file to save, the way the diagram download already does. */
-function save(blob: Blob, fileName: string): void {
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = fileName;
-  link.click();
-  URL.revokeObjectURL(url);
 }
 
 export function downloadCsv(exported: TableExport, fileName: string): void {
