@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>docx export harness</title>
+  </head>
+  <body>
+    <!--
+      A page whose only job is to run the Word export in a real browser.
+
+      jsdom has no 2D canvas context and mermaid cannot measure text in it, so the
+      parts of the export that matter most — a diagram drawn, rasterised, and
+      embedded with its fallback — cannot be exercised by the unit tests at all.
+      This is where they are.
+    -->
+    <p id="ready">harness loading</p>
+    <script type="module" src="./export-main.ts"></script>
+  </body>
+</html>

@@ -7,6 +7,7 @@ import type { GitFileState } from "@pi-outpost/shared";
 import type { GitDiffState, OpenFile } from "../useAgent";
 import { CodeHighlight } from "./CodeHighlight";
 import { CopyButton } from "./CopyButton";
+import { DocxExportButton } from "./DocxExportButton";
 import { SplitDiffBlock } from "./DiffBlocks";
 import { diffLines } from "../util/diff";
 import { isImageFile, isPdfFile, rawFileUrl, resolveRelativeHref } from "../util/workspacePath";
@@ -822,6 +823,12 @@ export function FileViewer({
           {file.path}
           {dirty && <span className="ml-1 text-amber-500">●</span>}
         </span>
+        {/* Offered whatever the view mode and whatever the writable zone says: it
+            exports the document rather than the view, and produces a download
+            rather than a workspace write. Not offered for an image or a PDF (there
+            is no text to carry), nor while the diff is showing (the reader is
+            looking at changes, not at the document). */}
+        {loaded && !image && !pdf && !showGitDiff && <DocxExportButton text={editedText} path={file.path} />}
         {loaded && edit === null && <CopyButton text={loaded.content} />}
         {loaded && edit === null && !showGitDiff && writable && (
           <button

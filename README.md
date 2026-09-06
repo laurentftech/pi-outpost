@@ -172,6 +172,12 @@ one needs, the command that proves it works, and the caution that goes with it.
   editor that saves inside the writable zone. Create, rename, move, copy, delete, or open a
   file with the system's own application; anything outside the writable zone is dimmed.
   Ctrl+F (Cmd+F) finds text in the open file — source, rendered Markdown, or a live edit
+- Word export: any text file open in the viewer downloads as a real `.docx`. Markdown becomes
+  Word's own structure — heading styles, lists, tables, hyperlinks — LaTeX becomes native Word
+  equations you can edit in the equation editor, and mermaid diagrams travel as vector images
+  that stay sharp, with a raster behind them for readers that do not draw SVG. Any other text
+  file exports as monospaced lines. It is a download, so a read-only file offers it too, and
+  the writer is fetched only when you first use it
 - Split view: a Markdown or structured document renders beside the editor, following what
   you type rather than what was last saved
 - Git: uncommitted-change badges in the tree, per-file diffs, log and commit inspection, and
