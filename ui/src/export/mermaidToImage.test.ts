@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { diagramSize } from "./markdownToDocx";
 import { buildDocx } from "./docxExport";
 import { documentXml, visibleText } from "./testSupport";
-import { DiagramError, svgDimensions, withExplicitSize } from "./mermaidToImage";
+import { DiagramError, inlineStyles, rasterise, svgDimensions, withExplicitSize } from "./mermaidToImage";
 
 /**
  * What this file can and cannot prove.
@@ -94,6 +94,103 @@ describe("diagramSize", () => {
 
     expect(sized.width).toBe(624);
     expect(sized.width / sized.height).toBeCloseTo(4, 1);
+  });
+});
+
+describe("inlineStyles", () => {
+  it("writes the painting properties onto every shape", () => {
+    /*
+     * The defect this exists for: a mermaid diagram styles its shapes through a
+     * stylesheet inside the SVG. A browser runs that CSS, so the picture looks
+     * right on screen — and a reader that draws SVG without running CSS paints
+     * every shape in the default fill, which is a solid black block.
+     *
+     * What is asserted here is the mechanism: every shape leaves with its own
+     * paint attributes. Whether the *values* are the ones the stylesheet asked for
+     * cannot be checked in jsdom, which does not apply a `<style>` inside an SVG
+     * and simply hands back defaults — so that half is asserted in a real browser,
+     * in `e2e/docx-export.spec.ts`.
+     */
+    const svg =
+      '<svg viewBox="0 0 10 10"><style>.box{fill:rgb(1, 2, 3);stroke:rgb(4, 5, 6)}</style>' +
+      '<rect class="box" width="4" height="4"/></svg>';
+
+    const inlined = inlineStyles(svg);
+
+    const rect = /<rect[^>]*>/.exec(inlined)?.[0] ?? "";
+    for (const property of ["fill", "stroke", "stroke-width", "opacity"]) {
+      expect(rect).toContain(`${property}=`);
+    }
+  });
+
+  it("removes what the appearance used to depend on", () => {
+    const svg = '<svg viewBox="0 0 10 10"><style>.box{fill:rgb(1, 2, 3)}</style><rect class="box"/></svg>';
+
+    const inlined = inlineStyles(svg);
+
+    expect(inlined).not.toContain("<style");
+    expect(inlined).not.toContain("class=");
+  });
+
+  it("keeps the geometry the layout produced", () => {
+    const svg = '<svg viewBox="0 0 10 10"><rect x="1" y="2" width="4" height="6"/></svg>';
+
+    const inlined = inlineStyles(svg);
+
+    expect(inlined).toContain('width="4"');
+    expect(inlined).toContain('height="6"');
+  });
+
+  it("leaves something that is not an SVG alone rather than throwing", () => {
+    expect(inlineStyles("not markup at all")).toBe("not markup at all");
+  });
+
+  it("puts nothing permanent into the page it borrows to resolve the styles", () => {
+    // Resolving computed styles needs the element laid out in a document. What is
+    // borrowed has to be given back, or an export leaves a stray subtree behind it
+    // every time it runs.
+    const before = document.body.childElementCount;
+
+    inlineStyles('<svg viewBox="0 0 10 10"><rect class="box"/></svg>');
+
+    expect(document.body.childElementCount).toBe(before);
+  });
+});
+
+describe("rasterise", () => {
+  it("reports the reason when the browser will not give it a canvas", async () => {
+    // jsdom has no 2D context, which is exactly the shape of a browser that
+    // refuses one — and the caller must fall back rather than write a picture
+    // that is not there.
+    await expect(rasterise(SVG, 800, 400)).rejects.toThrow(DiagramError);
+  });
+
+  it("reports the reason when the drawing cannot be turned into an image", async () => {
+    // A canvas that will draw but produces no blob: `toBlob` handing back null is
+    // a real outcome, and it must not become a zero-byte part in the package.
+    const context = { fillStyle: "", fillRect: () => {}, drawImage: () => {} };
+    vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(context as unknown as CanvasRenderingContext2D);
+    vi.spyOn(HTMLCanvasElement.prototype, "toBlob").mockImplementation((callback) => callback(null));
+    // jsdom never loads an image, so the load is completed here instead.
+    vi.spyOn(window.Image.prototype, "src", "set").mockImplementation(function (this: HTMLImageElement) {
+      queueMicrotask(() => this.onload?.(new Event("load")));
+    });
+
+    await expect(rasterise(SVG, 8, 4)).rejects.toThrow(DiagramError);
+
+    vi.restoreAllMocks();
+  });
+
+  it("reports the reason when the browser refuses to draw the diagram", async () => {
+    const context = { fillStyle: "", fillRect: () => {}, drawImage: () => {} };
+    vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(context as unknown as CanvasRenderingContext2D);
+    vi.spyOn(window.Image.prototype, "src", "set").mockImplementation(function (this: HTMLImageElement) {
+      queueMicrotask(() => this.onerror?.(new Event("error")));
+    });
+
+    await expect(rasterise(SVG, 8, 4)).rejects.toThrow(DiagramError);
+
+    vi.restoreAllMocks();
   });
 });
 
