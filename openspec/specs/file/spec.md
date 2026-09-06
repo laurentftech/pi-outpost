@@ -6,6 +6,7 @@
 ## Purpose
 
 Provides file browsing and search capabilities within a constrained directory structure.
+
 ## Requirements
 
 > `server/src/sandbox.ts`
@@ -248,6 +249,14 @@ file path so a draft can never be saved onto another file. Once a file is succes
 the frontend SHALL expose it as a removable attachment for the active composer — a text file or a
 PDF by path reference, an image by its bytes within the image attachment limit.
 
+A successfully displayed text file SHALL additionally offer an action that downloads it as a Word
+document. This action is independent of the writable zone — it produces a download rather than a
+workspace write, so a read-only file offers it exactly as a writable one does. It SHALL be offered
+whatever the current view mode, since it exports the document rather than the view. It SHALL NOT be
+offered for an image, a PDF, a file that has not loaded, or while the viewer is showing uncommitted
+changes instead of the document. What the export contains is specified by the `docx-export`
+capability.
+
 #### Scenario: OpenFileFullSize
 - **WHEN** a file is selected in the file browser
 - **THEN** Its content is shown in a full-size viewer over the chat pane, closable via ✕ or Escape
@@ -275,6 +284,18 @@ PDF by path reference, an image by its bytes within the image attachment limit.
 #### Scenario: PreviewAttachmentAvailable
 - **WHEN** the selected file has been displayed successfully
 - **THEN** the active composer has a removable attachment for it — the file's path for text and PDFs, the image bytes for an image
+
+#### Scenario: WordDownloadOfferedForText
+- **WHEN** a text file is displayed in the viewer
+- **THEN** an action to download it as a Word document is available
+
+#### Scenario: WordDownloadIgnoresTheWritableZone
+- **GIVEN** a displayed text file outside the writable zone, showing the read-only lock
+- **THEN** the Word download action is still offered
+
+#### Scenario: NoWordDownloadForBinaryOrDiff
+- **WHEN** the viewer is showing an image, a PDF, a file that failed to load, or the uncommitted diff
+- **THEN** no Word download action is offered
 
 ### Requirement: SearchFiles
 
