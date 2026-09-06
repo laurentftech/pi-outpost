@@ -37,8 +37,23 @@ function settings(overrides: Partial<AgentRuntimeConfig> = {}): AgentRuntimeConf
     mode: "rpc",
     executable: process.execPath,
     args: [FAKE],
-    startupTimeoutMs: 2_000,
-    commandTimeoutMs: 500,
+    /*
+     * Generous, because these bound a *failure* and nothing else.
+     *
+     * A command resolves the instant the child answers, so a longer ceiling costs
+     * a passing run nothing at all; it only decides how long a genuinely stuck
+     * command waits before it is called stuck. The old 500 ms had to cover a
+     * spawned Node process reading a record, answering it, and the answer being
+     * parsed back — comfortable on a developer's machine, and not on a CI runner
+     * with three jobs competing for two cores. It failed on Windows, which is the
+     * slowest of the three, with "the get_commands command timed out" in a test
+     * about switching sessions, which is not what that test is about.
+     *
+     * Every test that actually asserts a timeout sets its own short ceiling
+     * (`commandTimeoutMs: 40`), so none of them depends on these numbers.
+     */
+    startupTimeoutMs: 20_000,
+    commandTimeoutMs: 10_000,
     shutdownGraceMs: 100,
     ...overrides,
   };
@@ -76,10 +91,19 @@ async function startFake(config: Record<string, unknown> = {}, overrides: Partia
   }
 }
 
+/**
+ * The event, or a named failure — never a hang.
+ *
+ * Ten seconds to match `waitFor` below, which polls for the same kind of thing
+ * and was already that patient. Two seconds was the odd one out, and when a test
+ * failed for an unrelated reason this timer went on to fire afterwards, turning a
+ * clear assertion failure into "generated asynchronous activity after the test
+ * ended" and pointing the reader at the wrong deadline.
+ */
 function waitForEvent(
   runtime: AgentRuntime,
   matches: (event: RuntimeEvent) => boolean,
-  timeoutMs = 2_000,
+  timeoutMs = 10_000,
 ): Promise<RuntimeEvent> {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
