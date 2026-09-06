@@ -18,6 +18,7 @@ import {
   createLsToolDefinition,
   createReadToolDefinition,
   createWriteToolDefinition,
+  type ExtensionContext,
   type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
 import {
@@ -68,11 +69,34 @@ export function isWithinAny(roots: string[], target: string): boolean {
 }
 
 /**
+ * SECURITY: present `cwd` as the context's working directory for the duration
+ * of one tool call.
+ *
+ * The built-in tools resolve a relative path against `ctx.cwd` in preference to
+ * the `cwd` they were built with (`ctx?.cwd || cwd`, since pi-coding-agent
+ * 0.85.0 — earendil-works/pi#8627). The session's `cwd` is the project root,
+ * which is above the sandbox root, so without this the guard below would check
+ * a path against one base while the tool acted on another: `outside/secret.txt`
+ * resolves to `<root>/outside/secret.txt` — inside the sandbox, so admitted —
+ * and is then read as `<project>/outside/secret.txt`, which is not.
+ *
+ * A Proxy rather than a spread: the context carries accessors and live session
+ * state, and copying it would freeze what it reports.
+ */
+function withCwd(ctx: ExtensionContext, cwd: string): ExtensionContext {
+  if (!ctx) return ctx;
+  return new Proxy(ctx, {
+    get: (target, prop, receiver) => (prop === "cwd" ? cwd : Reflect.get(target, prop, receiver)),
+  });
+}
+
+/**
  * Wrap `def` so every `path` argument — resolved relative to `cwd`, symlinks
  * included — must land inside `allowedRoot`. `cwd` is always the sandbox root
- * (paths the model sees are relative to it); `allowedRoot` is the zone this
- * particular tool is confined to (the full root for read tools, `writableRoot`
- * for edit/write).
+ * (paths the model sees are relative to it), and the call executes against that
+ * same root, so the path checked is the path acted on; `allowedRoot` is the zone
+ * this particular tool is confined to (the full root for read tools,
+ * `writableRoot` for edit/write).
  *
  * When `readExceptions` is provided, read tools additionally allow paths
  * inside any of those directories — useful for skill/prompt directories
@@ -96,7 +120,7 @@ function scopeToRoot(
           throw new Error(`Access denied: "${target}" is outside the sandbox (${allowedRoot})`);
         }
       }
-      return def.execute(toolCallId, params, signal, onUpdate, ctx);
+      return def.execute(toolCallId, params, signal, onUpdate, withCwd(ctx, cwd));
     },
   };
 }
@@ -175,8 +199,15 @@ export async function createSandboxedTools(
   }
 
   if (sandbox.allowBash) {
-    // Explicit opt-in: bash runs in the root but is NOT path-confined
-    tools.push(createBashToolDefinition(realRoot) as ToolDefinition);
+    // Explicit opt-in: bash runs in the root but is NOT path-confined. The root
+    // still has to be pinned onto the context, or the shell starts in the
+    // project root instead — see `withCwd`.
+    const bash = createBashToolDefinition(realRoot) as ToolDefinition;
+    tools.push({
+      ...bash,
+      execute: (toolCallId, params, signal, onUpdate, ctx) =>
+        bash.execute(toolCallId, params, signal, onUpdate, withCwd(ctx, realRoot)),
+    });
   }
   return tools;
 }

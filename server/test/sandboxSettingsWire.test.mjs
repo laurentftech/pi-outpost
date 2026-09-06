@@ -207,3 +207,46 @@ test("ReadConfiguredResourceOutsideRoot: an extension added in Settings is reada
   assert.match(toolResult, /OUTSIDE_EXTENSION_BODY/, "the replacement agent can read the external extension source");
   assert.doesNotMatch(toolResult, /Access denied/);
 });
+
+/**
+ * The guard in `scopeToRoot` resolves a relative path against the sandbox root.
+ * The tool has to act on that same base, or a path is admitted on one reading
+ * and served on another. pi-coding-agent 0.85.0 made the built-in tools prefer
+ * `ctx.cwd` (earendil-works/pi#8627), and the session's cwd is the project root
+ * above the sandbox — which turned "outside/secret.txt" into a read of a file
+ * the sandbox exists to keep out. Driven over the socket because the unit tests
+ * pass no context at all, and so never saw the base the server really supplies.
+ */
+test("a relative path the sandbox admits is not served from the session's working directory", async (t) => {
+  const project = await realpath(await makeWorkspace());
+  const inside = path.join(project, "inside");
+  const outside = path.join(project, "outside");
+  await Promise.all([mkdir(inside), mkdir(outside)]);
+  await Promise.all([
+    writeFile(path.join(inside, "allowed.txt"), "in-sandbox\n"),
+    writeFile(path.join(outside, "secret.txt"), "OUTSIDE_SANDBOX_BODY\n"),
+  ]);
+  const log = path.join(project, "agent-read.json");
+  const server = await startServer(
+    project,
+    {
+      sandbox: { root: inside, allowWrite: false, allowBash: false },
+      extensionPaths: [PROVIDER],
+      allowedModels: [{ provider: "sandbox-settings-test", id: "sandbox-settings-test" }],
+    },
+    // Admitted by the guard as <inside>/outside/secret.txt — a non-existent tail
+    // inside the root. It must not be read as <project>/outside/secret.txt.
+    { env: { SANDBOX_SETTINGS_LOG: log, SANDBOX_SETTINGS_READ_PATH: "outside/secret.txt" } },
+  );
+  t.after(() => server.stop());
+  const client = connect(server.wsUrl());
+  t.after(() => client.close());
+  await client.waitFor("hello", 30_000);
+
+  client.send({ type: "set_model", provider: "sandbox-settings-test", id: "sandbox-settings-test" });
+  await client.waitFor("model_changed");
+  client.send({ type: "prompt", text: "Read the skill file." });
+  const toolResult = await waitForFile(log);
+
+  assert.doesNotMatch(toolResult, /OUTSIDE_SANDBOX_BODY/, "the agent read a file outside its sandbox root");
+});
