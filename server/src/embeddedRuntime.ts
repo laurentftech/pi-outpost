@@ -45,27 +45,87 @@ export interface EmbeddedRuntimeOptions {
   onModelFallback?: (message: string) => void;
 }
 
-/** Milliseconds before we say out loud that `bindExtensions` has not settled. */
+/**
+ * How long a caller waits on `bindExtensions` before it stops holding everything
+ * else behind it.
+ *
+ * Startup treats it as a grace period — past it the interface comes up and the
+ * binding finishes behind it. A rebind, which happens with clients already
+ * watching, keeps waiting and only says out loud that it is still going.
+ */
 const BIND_STALL_MS = 5000;
+
+/** Total build time past which startup says where the time went, rather than only being slow. */
+const SLOW_BUILD_MS = 2000;
+
+/** How many events are held for a subscriber that has not arrived yet. */
+const MAX_BUFFERED_EVENTS = 100;
+
+/** One decimal is the resolution anyone acts on here. */
+function seconds(ms: number): string {
+  return `${(ms / 1000).toFixed(1)}s`;
+}
 
 export async function createEmbeddedRuntime(options: EmbeddedRuntimeOptions): Promise<AgentRuntime> {
   // AgentSessionRuntime keeps the factory it is constructed with for every later
   // new/resume/fork. Keep that factory indirect so a Settings update can replace
   // the sandboxed toolset before starting the replacement session.
   let currentFactory = options.factory;
+  const sessionStartedAt = Date.now();
   const runtime = await createAgentSessionRuntime((factoryOptions) => currentFactory(factoryOptions), {
     cwd: options.cwd,
     agentDir: options.agentDir,
     sessionManager: options.sessionManager,
   });
+  const loadMs = Date.now() - sessionStartedAt;
   if (runtime.modelFallbackMessage) options.onModelFallback?.(runtime.modelFallbackMessage);
   const embedded = new EmbeddedRuntime(runtime, options.agentDir, (factory) => {
     const previous = currentFactory;
     currentFactory = factory;
     return previous;
   });
-  await embedded.bind();
+  const bindStartedAt = Date.now();
+  await embedded.bind({ graceMs: BIND_STALL_MS });
+  const bindMs = Date.now() - bindStartedAt;
+  // A slow start was previously indistinguishable from a wedged one, and the two
+  // halves fail for unrelated reasons: loading is the SDK compiling and evaluating
+  // every extension, binding is those extensions' own `session_start` handlers —
+  // a language server starting, a repository being indexed, a question nobody can
+  // answer yet. Only the second can be served around, so name both.
+  if (loadMs + bindMs >= SLOW_BUILD_MS) {
+    console.warn(
+      `[pi] agent runtime built in ${seconds(loadMs + bindMs)} — session and extension load ${seconds(loadMs)}, extension bind ${seconds(bindMs)}`,
+    );
+  }
   return embedded;
+}
+
+/**
+ * Whether `work` settles within `ms`.
+ *
+ * A rejection inside the window is re-thrown, because that is the caller's failure
+ * to handle exactly as if it had awaited directly. A rejection *after* the window
+ * belongs to whoever kept the original promise: this must not leave a second,
+ * unobserved promise rejecting on its own, so the race observes an outcome rather
+ * than reproducing it.
+ */
+async function settlesWithin(work: Promise<unknown>, ms: number): Promise<boolean> {
+  const observed = work.then(
+    () => true as const,
+    (error: unknown) => ({ error }),
+  );
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  // Not unref'd: the timer is the only thing holding this wait together, and it is
+  // always cleared below — an unref'd one lets a process with nothing else running
+  // resolve its loop out from under the await.
+  const timedOut = new Promise<false>((resolve) => {
+    timer = setTimeout(() => resolve(false), ms);
+  });
+  const outcome = await Promise.race([observed, timedOut]);
+  if (timer) clearTimeout(timer);
+  if (outcome === false) return false;
+  if (outcome !== true) throw outcome.error;
+  return true;
 }
 
 type SdkRuntime = Awaited<ReturnType<typeof createAgentSessionRuntime>>;
@@ -81,6 +141,20 @@ export class EmbeddedRuntime implements AgentRuntime {
   private readonly listeners = new Set<(event: RuntimeEvent) => void>();
   private readonly bridge = new ExtensionUiBridge((request) => this.emit({ type: "extension_ui_request", request }));
   private unsubscribe: () => void = () => {};
+  /**
+   * Events emitted before anything subscribed.
+   *
+   * Binding starts inside `createEmbeddedRuntime`, before the server holds the
+   * runtime it subscribes to — so an extension that asks a question from its
+   * `session_start` handler emitted into an empty listener set and the dialog was
+   * dropped. Its handler then waited on an answer nobody could be shown how to
+   * give, and the whole startup stood behind that wait. Held here instead and
+   * replayed to the first subscriber, which is the same moment any event arriving
+   * a millisecond later would reach.
+   */
+  private readonly buffered: RuntimeEvent[] = [];
+  /** Whether the replay has happened; after it, an empty listener set means nobody is listening. */
+  private replayed = false;
 
   constructor(
     private readonly runtime: SdkRuntime,
@@ -93,11 +167,22 @@ export class EmbeddedRuntime implements AgentRuntime {
   }
 
   private emit(event: RuntimeEvent): void {
+    if (!this.replayed) {
+      // Bounded: the buffer exists for a dialog and the handful of notifications
+      // around it. A binding that emits more than this before anyone is listening
+      // is not a stream anyone is going to read back.
+      if (this.buffered.length < MAX_BUFFERED_EVENTS) this.buffered.push(event);
+      return;
+    }
     for (const listener of this.listeners) listener(event);
   }
 
   subscribe(listener: (event: RuntimeEvent) => void): () => void {
     this.listeners.add(listener);
+    if (!this.replayed) {
+      this.replayed = true;
+      for (const event of this.buffered.splice(0)) listener(event);
+    }
     return () => this.listeners.delete(listener);
   }
 
@@ -241,10 +326,47 @@ export class EmbeddedRuntime implements AgentRuntime {
 
   // --- binding -------------------------------------------------------------
 
-  /** Event subscriptions attach to one AgentSession — rebind after replacement. */
-  async bind(): Promise<void> {
+  /**
+   * Event subscriptions attach to one AgentSession — rebind after replacement.
+   *
+   * `graceMs` bounds how long the caller waits for the extensions themselves.
+   * `bindExtensions` runs every extension's `session_start` handler, and there is
+   * no bound on what one of those may do: start a language server, index a
+   * repository, ask the user something. pi's own interactive mode renders and
+   * subscribes before it awaits that call (`rebindCurrentSession({
+   * renderBeforeBind: true })`); the server awaited it before it would serve at
+   * all, so each of those seconds was a browser reconnecting against a socket
+   * answering 1013 "starting up", with nothing in the log but the stall warning.
+   *
+   * Without a grace — a rebind, where clients are already watching — the wait is
+   * kept and only reported, because there the session being replaced is the thing
+   * the client is waiting for.
+   */
+  async bind(options?: { graceMs?: number }): Promise<void> {
     this.unsubscribe = this.session.subscribe((event: any) => this.translate(event));
-    await this.bindExtensions();
+    const startedAt = Date.now();
+    const binding = this.bindExtensions();
+    if (options?.graceMs === undefined) {
+      const stallWarning = setTimeout(() => {
+        console.warn(`[pi] bindExtensions has not resolved after ${seconds(BIND_STALL_MS)} — extensions may be unavailable this session`);
+      }, BIND_STALL_MS);
+      try {
+        await binding;
+      } finally {
+        clearTimeout(stallWarning);
+      }
+      return;
+    }
+    if (await settlesWithin(binding, options.graceMs)) return;
+    console.warn(
+      `[pi] extensions have not bound after ${seconds(options.graceMs)} — serving the interface without them; they attach when they finish`,
+    );
+    void binding.then(
+      () => this.emit({ type: "extensions_bound", elapsedMs: Date.now() - startedAt }),
+      // Not fatal the way a failure inside the grace is: the session is already
+      // serving, so this is reported and the runtime keeps the tools it has.
+      (error: unknown) => this.emit({ type: "error", message: `[extensions] ${error instanceof Error ? error.message : String(error)}` }),
+    );
   }
 
   private translate(event: any): void {
@@ -307,32 +429,29 @@ export class EmbeddedRuntime implements AgentRuntime {
     }
   }
 
-  /** (Re)bind the extension runtime — UI bridge, mode, error reporting — to the current session. */
+  /**
+   * (Re)bind the extension runtime — UI bridge, mode, error reporting — to the
+   * current session.
+   *
+   * This has been observed never to settle: an extension whose `session_start`
+   * handler asks a question waits for an answer, and until a client is listening
+   * there is nobody to ask. Whether the caller waits for it is `bind()`'s decision.
+   */
   private async bindExtensions(): Promise<void> {
-    // `bindExtensions()` has been observed never to settle in some process contexts
-    // (spawned under `concurrently` / Start-Process, where stdout isn't a TTY).
-    // This warning surfaces that case instead of hanging silently.
-    const stallWarning = setTimeout(() => {
-      console.warn("[pi] bindExtensions has not resolved after 5s — extensions may be unavailable this session");
-    }, BIND_STALL_MS);
-    try {
-      await this.session.bindExtensions({
-        // Cast: structurally satisfies ExtensionUIContext (verified against the SDK's
-        // own RPC-mode implementation); see the `theme` getter for the one gap.
-        uiContext: this.bridge.createContext() as any,
-        mode: "rpc",
-        shutdownHandler: () => {
-          // Unlike pi's one-shot RPC subprocess, this server is long-lived and shared
-          // across tabs/sessions — an extension asking to "shut down" shouldn't kill it.
-          console.warn("[pi] extension requested shutdown — ignored (pi-outpost is a persistent server)");
-        },
-        onError: (err) => {
-          this.emit({ type: "error", message: `[extension ${err.extensionPath}] ${err.error}` });
-        },
-      });
-    } finally {
-      clearTimeout(stallWarning);
-    }
+    await this.session.bindExtensions({
+      // Cast: structurally satisfies ExtensionUIContext (verified against the SDK's
+      // own RPC-mode implementation); see the `theme` getter for the one gap.
+      uiContext: this.bridge.createContext() as any,
+      mode: "rpc",
+      shutdownHandler: () => {
+        // Unlike pi's one-shot RPC subprocess, this server is long-lived and shared
+        // across tabs/sessions — an extension asking to "shut down" shouldn't kill it.
+        console.warn("[pi] extension requested shutdown — ignored (pi-outpost is a persistent server)");
+      },
+      onError: (err) => {
+        this.emit({ type: "error", message: `[extension ${err.extensionPath}] ${err.error}` });
+      },
+    });
   }
 
   /** After a session replacement, `runtime.session` is a new object — rewire everything to it. */
