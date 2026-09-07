@@ -11,7 +11,8 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, test } from "node:test";
-import { DocxError, extractDocx, parseBlockRange, parseBody, renderBlock } from "../src/docx.ts";
+import { DocxError, extractDocx, parseBlockRange, parseBody, renderBlock, toggleOn } from "../src/docx.ts";
+import { BOLD, ITALIC, STRIKE, renderSpans, struckThroughNotice } from "../src/markdownSpans.ts";
 
 const FIXTURES = path.join(path.dirname(fileURLToPath(import.meta.url)), "fixtures");
 
@@ -261,6 +262,33 @@ describe("parseBody", () => {
     assert.deepEqual(blocks, [{ kind: "paragraph", text: "Title page" }]);
   });
 
+  test("reads run properties from the run, not from the paragraph mark", () => {
+    // `<w:pPr><w:rPr>` describes the pilcrow. Word writes one on most paragraphs,
+    // so reading it as a run's would mark documents that carry no formatting.
+    const blocks = parseBody(
+      wrap(
+        `<w:p><w:pPr><w:rPr><w:strike/><w:b/></w:rPr></w:pPr><w:r><w:t>Bare</w:t></w:r></w:p>` +
+          `<w:p><w:r><w:rPr><w:strike/></w:rPr><w:t>Struck</w:t></w:r></w:p>`,
+      ),
+    );
+
+    assert.deepEqual(blocks, [
+      { kind: "paragraph", text: "Bare" },
+      { kind: "paragraph", text: "~~Struck~~" },
+    ]);
+  });
+
+  test("formatting stops at the end of the run that declared it", () => {
+    const blocks = parseBody(
+      wrap(
+        `<w:p><w:r><w:rPr><w:i/></w:rPr><w:t>penche</w:t></w:r>` +
+          `<w:r><w:t xml:space="preserve"> droit</w:t></w:r></w:p>`,
+      ),
+    );
+
+    assert.deepEqual(blocks, [{ kind: "paragraph", text: "*penche* droit" }]);
+  });
+
   test("keeps a table's declared shape even when a cell is empty", () => {
     const blocks = parseBody(
       wrap(`<w:tbl><w:tr><w:tc><w:p><w:r><w:t>a</w:t></w:r></w:p></w:tc><w:tc/></w:tr></w:tbl>`),
@@ -271,6 +299,168 @@ describe("parseBody", () => {
   });
 });
 
+describe("toggleOn", () => {
+  test("the element alone, and every spelling of true, is on", () => {
+    for (const value of [undefined, "true", "1", "on", "True", " on "]) {
+      assert.equal(toggleOn(value), true, `${String(value)} should read as on`);
+    }
+  });
+
+  test("a run that inherits formatting can switch it off", () => {
+    for (const value of ["false", "0", "off", "False", " off "]) {
+      assert.equal(toggleOn(value), false, `${value} should read as off`);
+    }
+  });
+});
+
+describe("renderSpans", () => {
+  test("merges adjacent spans before wrapping, so a split sentence is one span", () => {
+    const markdown = renderSpans([
+      { text: "Cette phrase", format: STRIKE },
+      { text: " est barree", format: STRIKE },
+      { text: " en trois.", format: STRIKE },
+    ]);
+
+    assert.equal(markdown, "~~Cette phrase est barree en trois.~~");
+  });
+
+  test("moves whitespace outside the markers, where GFM can parse them", () => {
+    const markdown = renderSpans([
+      { text: "avant", format: 0 },
+      { text: " barre ", format: STRIKE },
+      { text: "apres", format: 0 },
+    ]);
+
+    assert.equal(markdown, "avant ~~barre~~ apres");
+  });
+
+  test("a span with nothing visible in it contributes its whitespace and no markers", () => {
+    const markdown = renderSpans([
+      { text: "a", format: 0 },
+      { text: "   ", format: STRIKE },
+      { text: "b", format: 0 },
+    ]);
+
+    assert.equal(markdown, "a   b");
+    assert.equal(renderSpans([{ text: "", format: STRIKE }]), "");
+  });
+
+  test("nests combined formatting in one fixed order", () => {
+    assert.equal(renderSpans([{ text: "x", format: STRIKE | BOLD }]), "~~**x**~~");
+    assert.equal(renderSpans([{ text: "x", format: STRIKE | BOLD | ITALIC }]), "~~***x***~~");
+    assert.equal(renderSpans([{ text: "x", format: BOLD | ITALIC }]), "***x***");
+  });
+
+  test("leaves unformatted spans exactly as they were", () => {
+    assert.equal(renderSpans([{ text: "plain ", format: 0 }, { text: "text", format: 0 }]), "plain text");
+  });
+});
+
+describe("extractDocx and run formatting", () => {
+  /** The fixture's paragraphs, in order, with the table rendered as markdown. */
+  async function formatting(): Promise<string> {
+    const { markdown } = await extractDocx(await fixture("docx-formatting"));
+    return markdown;
+  }
+
+  test("StruckTextIsAnnouncedBeforeTheContent: the warning leads, it does not trail", async () => {
+    // A trailing note arrives after the answer has been written. This one was
+    // added because a model asked to transcribe the document read the markers,
+    // transcribed the text without them, and reported the strikethrough only
+    // when asked about it afterwards.
+    const markdown = await formatting();
+    const [first] = markdown.split("\n\n");
+
+    assert.match(first, /^> This document crosses out 8 passages/);
+    assert.match(first, /report what is struck out/);
+    assert.ok(markdown.indexOf(first) === 0, "the notice comes before the document's own text");
+  });
+
+  test("NothingStruckAnnouncesNothing: a document with nothing crossed out carries no notice", async () => {
+    const { markdown } = await extractDocx(await fixture("docx-mixed"));
+
+    assert.doesNotMatch(markdown, /crosses out/);
+  });
+
+  test("StruckRunIsMarked: a struck run is marked and its neighbours are not", async () => {
+    assert.match(await formatting(), /^Le prix est de ~~cent euros~~ deux cents euros\.$/m);
+  });
+
+  test("DoubleStrikeIsMarked: a double strikethrough reads as a strikethrough", async () => {
+    assert.match(await formatting(), /^~~Clause retiree~~$/m);
+  });
+
+  test("FormattingTurnedOffIsNotMarked: every spelling of false leaves the text bare", async () => {
+    const markdown = await formatting();
+
+    assert.match(markdown, /^faux zero inactif$/m);
+    assert.match(markdown, /^~~vrai un actif~~$/m);
+  });
+
+  test("BoldAndItalicAreMarked: bold and italic runs carry their markers", async () => {
+    assert.match(await formatting(), /^\*\*gras\*\* normal \*italique\*$/m);
+  });
+
+  test("UnderlineIsNotMarked: an underlined paragraph is bare text, not a heading", async () => {
+    const markdown = await formatting();
+
+    assert.match(markdown, /^Titre souligne$/m);
+    assert.doesNotMatch(markdown, /^#+ Titre souligne$/m);
+  });
+
+  test("CombinedFormattingNestsWithoutAmbiguity: struck and bold nest one way", async () => {
+    assert.match(await formatting(), /^~~\*\*barre et gras\*\*~~$/m);
+  });
+
+  test("AdjacentRunsWithTheSameFormattingBecomeOneSpan: one sentence, one span", async () => {
+    const markdown = await formatting();
+
+    assert.match(markdown, /^~~Cette phrase est barree en trois morceaux\.~~$/m);
+    assert.doesNotMatch(markdown, /~~~~/);
+  });
+
+  test("WhitespaceStaysOutsideTheMarkers: no space sits against a marker", async () => {
+    const markdown = await formatting();
+
+    assert.match(markdown, /^avant ~~espaces autour~~ apres$/m);
+    // A marker with a space against it is a marker GFM does not parse, so no
+    // span anywhere in the document may open or close on whitespace.
+    for (const [, content] of markdown.matchAll(/~~([\s\S]*?)~~/g)) {
+      assert.equal(content, content.trim(), `span holds its own whitespace: "${content}"`);
+    }
+  });
+
+  test("RunWithNoVisibleTextEmitsNoMarkers: whitespace and empty runs mark nothing", async () => {
+    assert.match(await formatting(), /^debut fin$/m);
+  });
+
+  test("ParagraphMarkFormattingDoesNotReachTheRuns: the pilcrow's own formatting is ignored", async () => {
+    assert.match(await formatting(), /^Le pilcrow est barre, pas le texte\.$/m);
+  });
+
+  test("MarkedTextInATableCell: the span survives the cell and the row keeps its columns", async () => {
+    const markdown = await formatting();
+
+    assert.match(markdown, /\| Offre \| ~~retiree~~ \|/);
+    for (const row of markdown.split("\n").filter((line) => line.startsWith("|"))) {
+      assert.equal(row.split(" | ").length, 2, `every row keeps two columns: ${row}`);
+    }
+  });
+
+  test("StrikethroughIsNotATrackedDeletion: one is marked, the other is gone", async () => {
+    const markdown = await formatting();
+
+    assert.match(markdown, /^Garde ~~barre~~ fin\.$/m);
+    assert.doesNotMatch(markdown, /SUPPRIME/);
+  });
+
+  test("a document with no formatted run is untouched by any of this", async () => {
+    const { markdown } = await extractDocx(await fixture("docx-mixed"));
+
+    assert.doesNotMatch(markdown, /[~*]/);
+  });
+});
+
 describe("renderBlock", () => {
   test("emits a headerless table when the first row does not fill every column", () => {
     const markdown = renderBlock({ kind: "table", rows: [["a", ""], ["b", "c"]] }, "both");
@@ -278,5 +468,22 @@ describe("renderBlock", () => {
     const [header, separator] = markdown.split("\n");
     assert.equal(header, "|  |  |");
     assert.equal(separator, "| --- | --- |");
+  });
+});
+
+describe("struckThroughNotice", () => {
+  test("counts the spans and says what the markers mean", () => {
+    const notice = struckThroughNotice("a ~~one~~ b ~~two~~ c");
+
+    assert.match(notice, /crosses out 2 passages/);
+    assert.match(notice, /do not present it as current/);
+  });
+
+  test("says one passage in the singular", () => {
+    assert.match(struckThroughNotice("~~only~~"), /crosses out 1 passage,/);
+  });
+
+  test("says nothing at all when nothing is struck", () => {
+    assert.equal(struckThroughNotice("plain text with **bold** in it"), "");
   });
 });

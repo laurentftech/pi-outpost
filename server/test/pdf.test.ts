@@ -15,18 +15,24 @@ import { describe, test } from "node:test";
 import { promisify } from "node:util";
 import {
   buildLines,
+  collectShapes,
   DEFAULT_TIMEOUT_MS,
   detectTableBlocks,
+  type DrawnShape,
   extractPdf,
   FallbackDOMMatrix,
   lineCells,
   linesToMarkdownTable,
   loadPdfjs,
+  markStruckPieces,
+  pageShapes,
   parsePageRange,
   pdfjsAssetDirs,
   PdfError,
   type TextPiece,
+  wordBoundaryNear,
 } from "../src/pdf.ts";
+import { STRIKE } from "../src/markdownSpans.ts";
 
 const FIXTURES = path.join(path.dirname(fileURLToPath(import.meta.url)), "fixtures");
 const execFile = promisify(execFileCallback);
@@ -417,5 +423,253 @@ describe("line and table geometry", () => {
 
     assert.equal(blocks.length, 1);
     assert.deepEqual(blocks[0].columns, [72, 300]);
+  });
+});
+
+describe("collectShapes", () => {
+  /** The page's drawn shapes, read the way extraction reads them. */
+  async function shapesOf(name: string, pageNumber = 1): Promise<DrawnShape[]> {
+    const pdfjs = await loadPdfjs();
+    const task = pdfjs.getDocument({
+      data: new Uint8Array(await fixture(name)),
+      useWorkerFetch: false,
+      useSystemFonts: false,
+    });
+    try {
+      const doc = await task.promise;
+      const page = await doc.getPage(pageNumber);
+      const operators = await page.getOperatorList();
+      return collectShapes(operators, pdfjs.OPS as unknown as Record<string, number>);
+    } finally {
+      await task.destroy();
+    }
+  }
+
+  test("reports each path in page space, where the generator put it", async () => {
+    const shapes = await shapesOf("pdf-strike");
+
+    // The fixture strikes "cent euros" at x 147.4 and the first half of the line
+    // below it, both 0.5 high and 0.31 * 12 above their baselines.
+    assert.equal(shapes.length, 2);
+    const [strike, partial] = shapes;
+    assert.ok(Math.abs(strike.x - 147.4) < 0.5, `x was ${strike.x}`);
+    assert.ok(Math.abs(strike.xEnd - 203.4) < 0.5, `xEnd was ${strike.xEnd}`);
+    assert.ok(Math.abs(strike.y - 703.97) < 0.1, `y was ${strike.y}`);
+    assert.ok(Math.abs(strike.height - 0.5) < 0.01, `height was ${strike.height}`);
+    assert.equal(strike.filled, true);
+    assert.ok(Math.abs(partial.x - 72) < 0.5, `x was ${partial.x}`);
+  });
+
+  test("says which shapes were filled and which were only stroked", async () => {
+    const shapes = await shapesOf("pdf-strike-underline");
+
+    // An underline, a bar well above a line, the page rule, then the ruled
+    // table's own lines and its filled outer rule.
+    assert.ok(shapes.length >= 4, `expected the decoys, got ${shapes.length}`);
+    assert.deepEqual(shapes.slice(0, 3).map((shape) => shape.filled), [true, true, false]);
+    const rule = shapes[2];
+    assert.equal(rule.height, 0);
+    assert.ok(rule.xEnd - rule.x > 400, `a page rule spans the page: ${rule.xEnd - rule.x}`);
+    assert.ok(
+      shapes.some((shape) => !shape.filled && shape.xEnd - shape.x < 1),
+      "the ruled table's vertical lines are read too",
+    );
+  });
+});
+
+describe("markStruckPieces", () => {
+  const piece: TextPiece = { text: "cent euros", x: 100, y: 700, width: 60, height: 12 };
+  const shape = (over: Partial<DrawnShape>): DrawnShape => ({
+    x: 100,
+    xEnd: 160,
+    y: 700 + 0.31 * 12,
+    height: 0.5,
+    filled: true,
+    ...over,
+  });
+
+  test("marks a piece a filled hairline crosses at strike height", () => {
+    const [marked] = markStruckPieces([piece], [shape({})]);
+
+    assert.deepEqual(marked.spans, [{ text: "cent euros", format: STRIKE }]);
+    assert.equal(marked.text, "cent euros");
+  });
+
+  test("leaves the piece alone when the shape is an underline", () => {
+    // Measured on a Word document: hyperlink underlines sit 0.07 to 0.13 em below
+    // the baseline, where a strike sits 0.31 above it.
+    const [marked] = markStruckPieces([piece], [shape({ y: 700 - 0.1 * 12 })]);
+
+    assert.equal(marked.spans, undefined);
+  });
+
+  test("leaves the piece alone for a rule far above it, or a stroked line, or a thick bar", () => {
+    for (const decoy of [
+      shape({ y: 700 + 0.8 * 12 }),
+      shape({ filled: false }),
+      shape({ height: 6 }),
+      shape({ x: 300, xEnd: 400 }),
+    ]) {
+      const [marked] = markStruckPieces([piece], [decoy]);
+      assert.equal(marked.spans, undefined, `${JSON.stringify(decoy)} should mark nothing`);
+    }
+  });
+
+  test("splits a piece the strike covers only part of, at a word boundary", () => {
+    const line: TextPiece = { text: "aaaa bbbb cccc dddd", x: 100, y: 700, width: 100, height: 12 };
+    const [marked] = markStruckPieces([line], [shape({ x: 100, xEnd: 152 })]);
+
+    assert.deepEqual(marked.spans, [
+      { text: "aaaa bbbb ", format: STRIKE },
+      { text: "cccc dddd", format: 0 },
+    ]);
+    // Nothing is invented and nothing is lost: the runs still spell the line
+    assert.equal(marked.spans?.map((span) => span.text).join(""), line.text);
+    // …and the piece keeps the geometry the producer drew
+    assert.equal(marked.x, line.x);
+    assert.equal(marked.width, line.width);
+  });
+
+  test("marks two strikes on one piece separately, not the live words between them", () => {
+    const line: TextPiece = { text: "aaaa bbbb cccc dddd", x: 100, y: 700, width: 100, height: 12 };
+    const [marked] = markStruckPieces([line], [
+      shape({ x: 100, xEnd: 126 }),
+      shape({ x: 179, xEnd: 200 }),
+    ]);
+
+    assert.deepEqual(marked.spans, [
+      { text: "aaaa ", format: STRIKE },
+      { text: "bbbb cccc ", format: 0 },
+      { text: "dddd", format: STRIKE },
+    ]);
+    assert.equal(marked.spans?.map((span) => span.text).join(""), line.text);
+  });
+
+  test("does not read two rectangles over the same words as covering it twice", () => {
+    // Summed rather than merged, these two would report 96 of the piece's 100
+    // points as covered — past the full-coverage threshold — and strike the
+    // second half of a line the page never drew over.
+    const line: TextPiece = { text: "aaaa bbbb cccc dddd", x: 100, y: 700, width: 100, height: 12 };
+    const [marked] = markStruckPieces([line], [
+      shape({ x: 100, xEnd: 148 }),
+      shape({ x: 100, xEnd: 148 }),
+    ]);
+
+    assert.deepEqual(marked.spans, [
+      { text: "aaaa bbbb", format: STRIKE },
+      { text: " cccc dddd", format: 0 },
+    ]);
+  });
+
+  test("keeps the whitespace inside a piece it splits", () => {
+    // Stripping the markers back out has to give the text extraction returned
+    // before, runs of spaces included.
+    const line: TextPiece = { text: "old   current", x: 100, y: 700, width: 100, height: 12 };
+    const [marked] = markStruckPieces([line], [shape({ x: 100, xEnd: 124 })]);
+
+    assert.equal(marked.spans?.map((span) => span.text).join(""), "old   current");
+    assert.equal(lineCells({ y: 700, height: 12, pieces: [marked] })[0].text, "~~old~~   current");
+  });
+
+  test("marks the whole piece rather than splitting when the strike all but covers it", () => {
+    const marked = markStruckPieces([piece], [shape({ xEnd: 158 })]);
+
+    assert.equal(marked.length, 1);
+    assert.deepEqual(marked[0].spans, [{ text: "cent euros", format: STRIKE }]);
+  });
+
+  test("returns the pieces untouched when the page drew nothing", () => {
+    assert.deepEqual(markStruckPieces([piece], []), [piece]);
+  });
+});
+
+describe("wordBoundaryNear", () => {
+  test("snaps to the nearest edge of a word, never into one", () => {
+    assert.equal(wordBoundaryNear("aaaa bbbb cccc", 10), 10);
+    assert.equal(wordBoundaryNear("aaaa bbbb cccc", 11), 10);
+    assert.equal(wordBoundaryNear("aaaa bbbb cccc", 7), 5);
+    assert.equal(wordBoundaryNear("aaaa bbbb cccc", 0), 0);
+    assert.equal(wordBoundaryNear("aaaa bbbb cccc", 99), 14);
+  });
+});
+
+describe("pageShapes", () => {
+  const ops = { save: 1, restore: 2, transform: 3, constructPath: 4, fill: 5 };
+
+  test("UnreadableDrawingOperations: a page whose drawing cannot be read loses no text", async () => {
+    const page = { getTextContent: async () => ({ items: [] }), getOperatorList: async () => { throw new Error("no"); } };
+
+    assert.deepEqual(await pageShapes(page, ops, 1000, 1), []);
+  });
+
+  test("DetectionStaysWithinTheBudget: a drawing read that outruns the budget still fails", async () => {
+    const page = {
+      getTextContent: async () => ({ items: [] }),
+      getOperatorList: () => new Promise<never>(() => {}),
+    };
+
+    await assert.rejects(
+      () => pageShapes(page, ops, 1, 1),
+      (error: unknown) => error instanceof PdfError && error.reason === "budget",
+    );
+  });
+});
+
+describe("extractPdf and struck-through text", () => {
+  test("StruckTextIsAnnouncedBeforeTheContent: the warning leads, it does not trail", async () => {
+    const { markdown } = await extractPdf(await fixture("pdf-strike"), { pages: "1", mode: "text" });
+
+    assert.match(markdown, /^> This document crosses out 2 passages/);
+    assert.ok(markdown.indexOf("## Page 1") > 0, "the notice comes before the first page");
+  });
+
+  test("NothingStruckAnnouncesNothing: a page that draws no strike carries no notice", async () => {
+    const { markdown } = await extractPdf(await fixture("pdf-strike-underline"), { mode: "text" });
+
+    assert.doesNotMatch(markdown, /crosses out/);
+  });
+
+  test("WordStrikethroughIsMarked: the struck run comes back as a span", async () => {
+    const { markdown } = await extractPdf(await fixture("pdf-strike"), { pages: "1", mode: "text" });
+
+    assert.match(markdown, /Le prix est de ~~cent euros~~ deux cents euros\./);
+  });
+
+  test("PartiallyStruckLine: the markers cover the struck words, not the line", async () => {
+    const { markdown } = await extractPdf(await fixture("pdf-strike"), { pages: "1", mode: "text" });
+
+    assert.match(markdown, /~~aaaa bbbb~~ cccc dddd/);
+  });
+
+  test("NothingIsLostToDetection: stripping the markers gives the page back whole", async () => {
+    const { markdown } = await extractPdf(await fixture("pdf-strike"), { pages: "1", mode: "text" });
+    const bare = markdown.replaceAll("~~", "");
+
+    assert.match(bare, /^Le prix est de cent euros deux cents euros\.$/m);
+    assert.match(bare, /^aaaa bbbb cccc dddd$/m);
+  });
+
+  test("StruckTextInsideAReconstructedTable: the cell keeps its span and the row its columns", async () => {
+    const { markdown } = await extractPdf(await fixture("pdf-strike"), { pages: "2", mode: "tables" });
+
+    assert.match(markdown, /\| ~~South~~ \| 900 \| 36500 \|/);
+    for (const row of markdown.split("\n").filter((line) => line.startsWith("|"))) {
+      assert.equal(row.split(" | ").length, 3, `every row keeps three columns: ${row}`);
+    }
+  });
+
+  test("UnderlineIsNotAStrike and PageRulesAndBordersAreNotStrikes: decoys mark nothing", async () => {
+    const { markdown } = await extractPdf(await fixture("pdf-strike-underline"), { mode: "text" });
+
+    assert.match(markdown, /Cliquez ici/);
+    assert.match(markdown, /Texte sous une barre lointaine/);
+    assert.match(markdown, /Sous le filet de page\./);
+    assert.doesNotMatch(markdown, /~~/);
+  });
+
+  test("a document that draws nothing over its text is untouched by any of this", async () => {
+    const { markdown } = await extractPdf(await fixture("pdf-mixed"));
+
+    assert.doesNotMatch(markdown, /~~/);
   });
 });

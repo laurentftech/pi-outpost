@@ -102,10 +102,10 @@ Per tool, largest first, in the state each is actually sent in:
 | `bash` (OpenCode) | 5 319 | ~1.3k | always |
 | `work_plan_extended` | 4 602 | ~1.2k | once the session has a plan, then kept |
 | `work_plan` | 4 331 | ~1.1k | always |
+| `docx_extract` | 2 475 | ~0.6k | while a Word file is in play |
 | `xlsx_extract` | 2 345 | ~0.6k | while a spreadsheet is in play |
+| `pdf_extract` | 2 322 | ~0.6k | while a PDF is in play |
 | `write_structure_figure` | 2 195 | ~0.5k | always |
-| `docx_extract` | 2 027 | ~0.5k | while a Word file is in play |
-| `pdf_extract` | 1 944 | ~0.5k | while a PDF is in play |
 | `pptx_extract` | 1 933 | ~0.5k | while a deck is in play |
 | `edit` | 1 773 | ~0.4k | always |
 | `present_structure` | 1 535 | ~0.4k | always |

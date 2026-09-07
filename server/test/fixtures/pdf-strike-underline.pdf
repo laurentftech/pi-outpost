@@ -1,0 +1,48 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [4 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+4 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R >> >> /Contents 5 0 R >>
+endobj
+5 0 obj
+<< /Length 529 >>
+stream
+BT /F1 12 Tf 72 700 Td (Cliquez ici) Tj ET
+BT /F1 12 Tf 72 660 Td (Texte sous une barre lointaine) Tj ET
+BT /F1 12 Tf 72 560 Td (Sous le filet de page.) Tj ET
+72 698.8 54.672 0.25 re f
+72 669.6 161.412 0.5 re f
+72 600 m 540 600 l S
+BT /F1 12 Tf 80 504 Td (Poste) Tj ET
+BT /F1 12 Tf 248 504 Td (Montant) Tj ET
+BT /F1 12 Tf 80 480 Td (Total) Tj ET
+BT /F1 12 Tf 248 480 Td (1200) Tj ET
+72 520 m 400 520 l S
+72 496 m 400 496 l S
+72 472 m 400 472 l S
+72 520 m 72 472 l S
+240 520 m 240 472 l S
+400 520 m 400 472 l S
+72 471 328 0.5 re f
+endstream
+endobj
+xref
+0 6
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000115 00000 n 
+0000000185 00000 n 
+0000000311 00000 n 
+trailer
+<< /Size 6 /Root 1 0 R >>
+startxref
+891
+%%EOF

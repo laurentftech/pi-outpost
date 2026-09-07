@@ -59,6 +59,9 @@ const DESCRIPTION = [
   "Do not return the content and then write it yourself — that spends the context twice.",
   "Otherwise output is capped per call — when it is truncated it says so and names the block range to ask for next, or pass full:true to get everything at once.",
   "Tracked changes are resolved to the accepted text: insertions are kept, deletions are not returned.",
+  "Text the document crosses out is returned as ~~struck through~~ and means the document withdrew it — do not treat it as current, and say which passages are struck when you transcribe, quote or summarise the document.",
+  "Bold and italic runs are returned as markdown emphasis; underline has no markdown equivalent and is not marked.",
+  "Only formatting written on the run itself is read, so strikethrough applied through a character style is not detected.",
   "Headers, footers, footnotes, comments, text boxes and images are not read.",
 ].join(" ");
 

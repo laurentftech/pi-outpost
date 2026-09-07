@@ -188,8 +188,10 @@ one needs, the command that proves it works, and the caution that goes with it.
   the agent reads its text and tables through `pdf_extract` — no shell, no external binary, no OCR
 - Office documents: `docx_extract`, `xlsx_extract` and `pptx_extract` give the agent Word
   text and tables, one markdown table per spreadsheet sheet, and slide structure with
-  speaker notes. Each takes an `output_path`, to write the whole document to a file instead
-  of spending the context on it twice. The four extractors are described to
+  speaker notes. Text a document crosses out comes back as `~~struck through~~` rather than
+  as live content — in a `.docx` from the run's own formatting, in a PDF from the strike the
+  page draws over the glyphs. Each takes an `output_path`, to write the whole document to a
+  file instead of spending the context on it twice. The four extractors are described to
   the agent only once a document of that kind is named in the conversation — their schemas
   are a quarter of a session's prompt floor, and most sessions never open one. Named and never
   called, an extractor goes again when the turn ends; named and used, it stays through the
