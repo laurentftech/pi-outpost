@@ -14,6 +14,7 @@
  */
 import { createRequire } from "node:module";
 import path from "node:path";
+import { renderSpans, STRIKE, type Span } from "./markdownSpans.ts";
 import { escapeCell } from "./markdownTable.ts";
 
 export type PdfMode = "text" | "tables" | "both";
@@ -85,6 +86,26 @@ export interface TextPiece {
   y: number;
   width: number;
   height: number;
+  /**
+   * The piece's text broken into formatted runs, when a strike covers part of it
+   * or all of it. Absent means the whole text is unformatted.
+   *
+   * Kept *inside* the piece rather than split across several: the piece's x and
+   * width are what line building and column detection read, and a strike is no
+   * reason to hand them a different geometry than the producer drew.
+   */
+  spans?: Span[];
+}
+
+/** A shape the page drew, in page space, with the paint that finished it. */
+export interface DrawnShape {
+  x: number;
+  xEnd: number;
+  /** Vertical centre. A strike and an underline differ by where this sits. */
+  y: number;
+  height: number;
+  /** Filled shapes can be strikes; a stroked line is a rule or a border. */
+  filled: boolean;
 }
 
 export interface Line {
@@ -138,24 +159,52 @@ export function buildLines(pieces: TextPiece[]): Line[] {
   return lines;
 }
 
+/**
+ * One piece's runs, with the whitespace at its outer edges removed.
+ *
+ * The trim is the old per-piece `.trim()`, kept because pdf.js hands out items
+ * with stray edge spaces and cells put their own separators between them. It
+ * applies to the piece's two ends, never between its runs.
+ */
+function pieceSpans(piece: TextPiece): Span[] {
+  const spans = (piece.spans ?? [{ text: piece.text, format: 0 }]).map((span) => ({ ...span }));
+  if (spans.length === 0) return spans;
+  spans[0].text = spans[0].text.replace(/^\s+/, "");
+  spans[spans.length - 1].text = spans[spans.length - 1].text.replace(/\s+$/, "");
+  return spans.filter((span) => span.text !== "");
+}
+
 /** Split a line at its wide gaps. One cell for a paragraph; several for a table row. */
 export function lineCells(line: Line): Cell[] {
-  const cells: Cell[] = [];
-  let current: Cell | null = null;
+  const cells: { x: number; spans: Span[] }[] = [];
+  let current: { x: number; spans: Span[] } | null = null;
   let previousEnd = 0;
 
   for (const piece of line.pieces) {
     const gap = current === null ? 0 : piece.x - previousEnd;
+    // The piece's own runs, trimmed at its two outer edges only. Whitespace
+    // *inside* a piece is the producer's and stays exactly as it was: stripping
+    // the markers back out has to give the text this tool returned before.
+    const spans = pieceSpans(piece);
     if (current === null || gap > gapThreshold(line.height)) {
-      current = { x: piece.x, text: piece.text.trim() };
+      current = { x: piece.x, spans };
       cells.push(current);
     } else {
       // Sub-point gaps are glyph positioning inside one word, not a space.
-      current.text += (gap > 1 ? " " : "") + piece.text.trim();
+      if (gap > 1) {
+        // A gap between two struck pieces was struck too — the producer drew one
+        // rectangle across both — so it must not break the span in half.
+        const before = current.spans[current.spans.length - 1]?.format ?? 0;
+        const after = spans[0]?.format ?? 0;
+        current.spans.push({ text: " ", format: before === after ? before : 0 });
+      }
+      current.spans.push(...spans);
     }
     previousEnd = piece.x + piece.width;
   }
-  return cells.filter((cell) => cell.text !== "");
+  return cells
+    .map((cell) => ({ x: cell.x, text: renderSpans(cell.spans) }))
+    .filter((cell) => cell.text !== "");
 }
 
 /** The whole line as text, wide gaps collapsed to single spaces. */
@@ -163,6 +212,188 @@ export function lineText(line: Line): string {
   return lineCells(line)
     .map((cell) => cell.text)
     .join(" ");
+}
+
+/* ── Struck text ────────────────────────────────────────────────────────────── */
+
+/**
+ * A PDF has no struck-through text. A producer draws the strike as a thin filled
+ * shape over the glyphs and the text layer records only the glyphs, so the
+ * document's "this no longer applies" is invisible to anything reading text
+ * alone. What follows reads the page's drawing operations and puts it back.
+ *
+ * The thresholds are measured, not guessed. On a Word-produced PDF the strikes
+ * sit at +0.31 × the font size above the baseline and the hyperlink underlines at
+ * −0.07 to −0.13, so the two are separated by a wide empty band; the page rules
+ * are stroked where the strikes are filled. Every number below sits inside that
+ * band or on the safe side of that distinction.
+ */
+
+/** Below this, the shape is under the text: an underline, not a strike. */
+export const STRIKE_MIN_OFFSET = 0.1;
+/** Above this, the shape is too high to be crossing this line out. */
+export const STRIKE_MAX_OFFSET = 0.55;
+/** A strike is a hairline. Anything thicker is a highlight, a box or a bar. */
+export const STRIKE_MAX_THICKNESS = 0.25;
+/** Cover this much of a piece and the whole piece is struck; below it, split. */
+export const STRIKE_FULL_COVERAGE = 0.9;
+
+/** The paint operators that leave a filled shape. A stroked path is a rule or a border. */
+const FILLING_PAINTS = ["fill", "eoFill", "fillStroke", "eoFillStroke", "closeFillStroke", "closeEOFillStroke"];
+
+interface OperatorList {
+  fnArray: number[];
+  argsArray: unknown[];
+}
+
+/**
+ * The shapes a page draws, in page space.
+ *
+ * Path bounding boxes arrive in the current path space while text arrives in page
+ * space, so nothing can be compared until the CTM has been composed — hence the
+ * save/restore stack. Only the six components and post-multiplication are needed,
+ * the same slice of a matrix `FallbackDOMMatrix` covers.
+ *
+ * `constructPath` carries its paint operator as its first argument in pdf.js 6,
+ * which is what says whether a shape was filled or merely stroked.
+ */
+export function collectShapes(operators: OperatorList, ops: Record<string, number>): DrawnShape[] {
+  const filling = new Set(FILLING_PAINTS.map((name) => ops[name]).filter((op) => op !== undefined));
+  const shapes: DrawnShape[] = [];
+
+  let ctm: number[] = [1, 0, 0, 1, 0, 0];
+  const stack: number[][] = [];
+  const multiply = (m: number[], n: number[]): number[] => [
+    m[0] * n[0] + m[2] * n[1],
+    m[1] * n[0] + m[3] * n[1],
+    m[0] * n[2] + m[2] * n[3],
+    m[1] * n[2] + m[3] * n[3],
+    m[0] * n[4] + m[2] * n[5] + m[4],
+    m[1] * n[4] + m[3] * n[5] + m[5],
+  ];
+  const apply = (m: number[], x: number, y: number): [number, number] => [
+    m[0] * x + m[2] * y + m[4],
+    m[1] * x + m[3] * y + m[5],
+  ];
+
+  for (const [index, op] of operators.fnArray.entries()) {
+    if (op === ops.save) {
+      stack.push(ctm);
+    } else if (op === ops.restore) {
+      ctm = stack.pop() ?? ctm;
+    } else if (op === ops.transform) {
+      const args = operators.argsArray[index];
+      if (Array.isArray(args) && args.length >= 6) ctm = multiply(ctm, args as number[]);
+    } else if (op === ops.constructPath) {
+      const args = operators.argsArray[index] as [number, unknown, ArrayLike<number>] | undefined;
+      if (args === undefined) continue;
+      const box = args[2];
+      if (box === undefined || box.length < 4) continue;
+      const [x0, y0] = apply(ctm, box[0], box[1]);
+      const [x1, y1] = apply(ctm, box[2], box[3]);
+      shapes.push({
+        x: Math.min(x0, x1),
+        xEnd: Math.max(x0, x1),
+        y: (y0 + y1) / 2,
+        height: Math.abs(y1 - y0),
+        filled: filling.has(args[0]),
+      });
+    }
+  }
+  return shapes;
+}
+
+/** How much of `[x, xEnd)` a shape covers, clipped to it. */
+function overlapWidth(shape: DrawnShape, x: number, xEnd: number): number {
+  return Math.max(0, Math.min(shape.xEnd, xEnd) - Math.max(shape.x, x));
+}
+
+/**
+ * The index nearest `target` at which the text can be cut without cutting a word.
+ *
+ * A producer that emits a whole line as one string — every browser does — gives
+ * no per-glyph positions, so where a strike stops inside that string is known
+ * only in proportion. A word boundary is the most precise honest answer: rounding
+ * to it can move the marker by part of a word, never into the middle of one.
+ */
+export function wordBoundaryNear(text: string, target: number): number {
+  const boundaries = [0, text.length];
+  for (let i = 1; i < text.length; i++) {
+    if (/\s/.test(text[i - 1]) !== /\s/.test(text[i])) boundaries.push(i);
+  }
+  let best = boundaries[0];
+  for (const boundary of boundaries) {
+    if (Math.abs(boundary - target) < Math.abs(best - target)) best = boundary;
+  }
+  return best;
+}
+
+/**
+ * Mark the pieces a strike was drawn across, splitting one only when the producer
+ * gave us no finer unit to mark.
+ *
+ * Nothing here changes what text comes back: a piece is marked, or it is cut into
+ * pieces whose texts still concatenate to the original. A missed or spurious
+ * strike therefore costs a marker, never content.
+ */
+export function markStruckPieces(pieces: TextPiece[], shapes: DrawnShape[]): TextPiece[] {
+  if (shapes.length === 0) return pieces;
+
+  return pieces.map((piece) => {
+    const size = piece.height;
+    const end = piece.x + piece.width;
+    if (piece.width <= 0 || size <= 0 || piece.text.trim() === "") return piece;
+
+    const covering: [number, number][] = [];
+    for (const shape of shapes) {
+      if (!shape.filled) continue;
+      if (shape.height > STRIKE_MAX_THICKNESS * size) continue;
+      const offset = (shape.y - piece.y) / size;
+      if (offset < STRIKE_MIN_OFFSET || offset > STRIKE_MAX_OFFSET) continue;
+      if (overlapWidth(shape, piece.x, end) <= 0) continue;
+      covering.push([Math.max(shape.x, piece.x), Math.min(shape.xEnd, end)]);
+    }
+
+    // Merged, not summed: two rectangles over the same words are one strike, and
+    // adding their widths would report more coverage than the piece even has.
+    const intervals = mergeIntervals(covering);
+    if (intervals.length === 0) return piece;
+
+    const covered = intervals.reduce((total, [from, to]) => total + (to - from), 0);
+    if (covered / piece.width >= STRIKE_FULL_COVERAGE) {
+      return { ...piece, spans: [{ text: piece.text, format: STRIKE }] };
+    }
+
+    // Each interval is marked on its own. Collapsing them into one envelope would
+    // strike the live words sitting between two struck phrases.
+    const length = piece.text.length;
+    const index = (x: number) => wordBoundaryNear(piece.text, ((x - piece.x) / piece.width) * length);
+    const spans: Span[] = [];
+    let at = 0;
+    for (const [from, to] of intervals) {
+      const start = Math.max(at, index(from));
+      const stop = Math.max(start, index(to));
+      if (stop <= start) continue;
+      if (start > at) spans.push({ text: piece.text.slice(at, start), format: 0 });
+      spans.push({ text: piece.text.slice(start, stop), format: STRIKE });
+      at = stop;
+    }
+    if (spans.length === 0) return piece;
+    if (at < length) spans.push({ text: piece.text.slice(at), format: 0 });
+    return { ...piece, spans };
+  });
+}
+
+/** Overlapping and touching ranges joined into one, in ascending order. */
+function mergeIntervals(intervals: [number, number][]): [number, number][] {
+  const sorted = [...intervals].sort((a, b) => a[0] - b[0]);
+  const merged: [number, number][] = [];
+  for (const [from, to] of sorted) {
+    const last = merged[merged.length - 1];
+    if (last !== undefined && from <= last[1]) last[1] = Math.max(last[1], to);
+    else merged.push([from, to]);
+  }
+  return merged;
 }
 
 /**
@@ -459,6 +690,7 @@ interface PdfJsTextItem {
 
 interface PdfJsPage {
   getTextContent(): Promise<{ items: unknown[] }>;
+  getOperatorList(): Promise<OperatorList>;
 }
 
 interface PdfJsDocument {
@@ -572,6 +804,37 @@ function toPieces(items: unknown[]): TextPiece[] {
   return pieces;
 }
 
+/**
+ * The shapes drawn on one page, or none.
+ *
+ * A page whose drawing operations cannot be walked still has text, and text is
+ * what this tool is for: a broken operator list costs the markers, not the page.
+ * The budget is the one failure that still propagates — it bounds the document,
+ * and swallowing it here would let a hostile file spend the whole deadline
+ * failing quietly, once per page.
+ *
+ * Exported for the tests: a page whose operator list rejects is not a state any
+ * fixture can produce, and it is exactly the state that must not lose the text.
+ */
+export async function pageShapes(
+  page: PdfJsPage,
+  ops: Record<string, number>,
+  timeoutMs: number,
+  pageNumber: number,
+): Promise<DrawnShape[]> {
+  try {
+    const operators = await withDeadline(
+      page.getOperatorList(),
+      timeoutMs,
+      `reading the drawing on page ${pageNumber}`,
+    );
+    return collectShapes(operators, ops);
+  } catch (error) {
+    if (error instanceof PdfError && error.reason === "budget") throw error;
+    return [];
+  }
+}
+
 /* ── Extraction ─────────────────────────────────────────────────────────────── */
 
 /**
@@ -590,7 +853,7 @@ export async function extractPdf(bytes: Uint8Array, options: PdfExtractOptions =
 
   // The clock starts once the parser is in hand: the budget bounds this
   // document, not the one-time cost of loading pdf.js.
-  await loadPdfjs();
+  const pdfjs = await loadPdfjs();
   const started = Date.now();
 
   const { doc, destroy } = await openDocument(bytes, timeoutMs);
@@ -623,7 +886,12 @@ export async function extractPdf(bytes: Uint8Array, options: PdfExtractOptions =
 
       const page = await withDeadline(doc.getPage(pageNumber), remaining, `reading page ${pageNumber}`);
       const content = await withDeadline(page.getTextContent(), remaining, `reading page ${pageNumber}`);
-      const lines = buildLines(toPieces(content.items));
+      // Recomputed, not reused: the two reads share one page's budget rather than
+      // getting one each, or a single page could spend twice what it is allowed.
+      const left = timeoutMs - (Date.now() - started);
+      if (left <= 0) throw new PdfError("budget", `extraction exceeded the ${timeoutMs} ms budget`);
+      const shapes = await pageShapes(page, pdfjs.OPS as unknown as Record<string, number>, left, pageNumber);
+      const lines = buildLines(markStruckPieces(toPieces(content.items), shapes));
 
       covered.push(pageNumber);
       if (lines.length === 0) {

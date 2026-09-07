@@ -12,6 +12,7 @@
  * all capped, and the XML scanner refuses a DOCTYPE outright so entity expansion
  * is unreachable rather than merely disabled.
  */
+import { renderSpans, BOLD, ITALIC, STRIKE, type Span } from "./markdownSpans.ts";
 import { escapeCell, renderMarkdownTable } from "./markdownTable.ts";
 import { scanXml, XmlError } from "./xml.ts";
 import { readZipEntry, ZipError, type ZipLimits } from "./zip.ts";
@@ -90,6 +91,24 @@ export type DocxBlock =
   | { kind: "paragraph"; text: string; heading?: number }
   | { kind: "table"; rows: string[][] };
 
+/* ── Run formatting ─────────────────────────────────────────────────────────── */
+
+/**
+ * OOXML toggle semantics: the element alone means on, and an explicit false
+ * value means off.
+ *
+ * The off case is not hypothetical. A run that inherits strikethrough from its
+ * style switches it off exactly this way, so reading the element's presence
+ * alone would mark text the document shows unstruck. Word writes the on case as
+ * `<w:strike w:val="1"/>` rather than the bare element, so neither spelling can
+ * be treated as the only one.
+ */
+export function toggleOn(value: string | undefined): boolean {
+  if (value === undefined) return true;
+  const normalized = value.trim().toLowerCase();
+  return normalized !== "false" && normalized !== "0" && normalized !== "off";
+}
+
 /** A style id or outline level that names a heading, or undefined. */
 function headingLevel(styleId: string | undefined, outlineLevel: string | undefined): number | undefined {
   if (styleId !== undefined) {
@@ -111,12 +130,17 @@ function headingLevel(styleId: string | undefined, outlineLevel: string | undefi
  * Tracked deletions are skipped as the walk passes them (`<w:del>` wraps deleted
  * runs, whose text sits in `<w:delText>`), so deleted text is absent by
  * construction rather than filtered out afterwards — there is no mode or flag
- * that could let it through.
+ * that could let it through. A manual strikethrough is a different statement and
+ * gets different treatment: the author left that text in the document, crossed
+ * out, so it is kept and marked.
+ *
+ * Text accumulates as spans rather than strings because the markers cannot be
+ * decided run by run — see `renderSpans`.
  */
 export function parseBody(xml: string, deadline?: () => void): DocxBlock[] {
   const blocks: DocxBlock[] = [];
 
-  let paragraph: string[] = [];
+  let paragraph: Span[] = [];
   let paragraphHeading: number | undefined;
   let styleId: string | undefined;
   let outlineLevel: string | undefined;
@@ -124,15 +148,31 @@ export function parseBody(xml: string, deadline?: () => void): DocxBlock[] {
   let tableDepth = 0;
   let rows: string[][] = [];
   let row: string[] = [];
-  let cell: string[] = [];
+  let cell: Span[] = [];
   let inCell = false;
 
   let deletionDepth = 0;
   let textTarget: "paragraph" | "cell" | null = null;
   let events = 0;
 
+  /** The formatting of the run being walked, rebuilt at every `<w:r>`. */
+  let runFormat = 0;
+  /**
+   * `<w:rPr>` describes a run — except inside `<w:pPr>`, where it describes the
+   * paragraph *mark*, the pilcrow. Word writes one there routinely, and reading
+   * it as a run's would mark a paragraph whose text carries no formatting at all.
+   */
+  let runPropertiesDepth = 0;
+  let paragraphPropertiesDepth = 0;
+
+  const applyToggle = (flag: number, value: string | undefined) => {
+    if (runPropertiesDepth === 0) return;
+    if (toggleOn(value)) runFormat |= flag;
+    else runFormat &= ~flag;
+  };
+
   const flushParagraph = () => {
-    const text = paragraph.join("").replace(/\s+/g, " ").trim();
+    const text = renderSpans(paragraph).replace(/\s+/g, " ").trim();
     paragraph = [];
     const heading = paragraphHeading;
     paragraphHeading = undefined;
@@ -179,15 +219,34 @@ export function parseBody(xml: string, deadline?: () => void): DocxBlock[] {
         case "w:outlineLvl":
           outlineLevel = event.attributes["w:val"];
           break;
+        case "w:pPr":
+          paragraphPropertiesDepth++;
+          break;
+        case "w:rPr":
+          if (paragraphPropertiesDepth === 0) runPropertiesDepth++;
+          break;
+        case "w:r":
+          runFormat = 0;
+          break;
+        case "w:strike":
+        case "w:dstrike":
+          applyToggle(STRIKE, event.attributes["w:val"]);
+          break;
+        case "w:b":
+          applyToggle(BOLD, event.attributes["w:val"]);
+          break;
+        case "w:i":
+          applyToggle(ITALIC, event.attributes["w:val"]);
+          break;
         case "w:t":
           if (deletionDepth === 0) textTarget = inCell ? "cell" : "paragraph";
           break;
         case "w:tab":
-          (inCell ? cell : paragraph).push(" ");
+          (inCell ? cell : paragraph).push({ text: " ", format: runFormat });
           break;
         case "w:br":
         case "w:cr":
-          (inCell ? cell : paragraph).push(" ");
+          (inCell ? cell : paragraph).push({ text: " ", format: runFormat });
           break;
         default:
           break;
@@ -198,8 +257,8 @@ export function parseBody(xml: string, deadline?: () => void): DocxBlock[] {
     }
 
     if (event.kind === "text") {
-      if (textTarget === "paragraph") paragraph.push(event.text);
-      else if (textTarget === "cell") cell.push(event.text);
+      if (textTarget === "paragraph") paragraph.push({ text: event.text, format: runFormat });
+      else if (textTarget === "cell") cell.push({ text: event.text, format: runFormat });
       return;
     }
 
@@ -219,8 +278,19 @@ export function parseBody(xml: string, deadline?: () => void): DocxBlock[] {
       case "w:del":
         if (deletionDepth > 0) deletionDepth--;
         break;
+      case "w:pPr":
+        if (paragraphPropertiesDepth > 0) paragraphPropertiesDepth--;
+        break;
+      case "w:rPr":
+        // Guarded the same way the open is, so the pair a `<w:pPr>` contains is
+        // ignored at both ends rather than decrementing a run's count.
+        if (paragraphPropertiesDepth === 0 && runPropertiesDepth > 0) runPropertiesDepth--;
+        break;
+      case "w:r":
+        runFormat = 0;
+        break;
       case "w:p":
-        if (inCell) cell.push(" ");
+        if (inCell) cell.push({ text: " ", format: 0 });
         else {
           paragraphHeading = headingLevel(styleId, outlineLevel);
           flushParagraph();
@@ -228,7 +298,7 @@ export function parseBody(xml: string, deadline?: () => void): DocxBlock[] {
         break;
       case "w:tc":
         if (tableDepth === 1) {
-          row.push(cell.join("").replace(/\s+/g, " ").trim());
+          row.push(renderSpans(cell).replace(/\s+/g, " ").trim());
           inCell = false;
         }
         break;

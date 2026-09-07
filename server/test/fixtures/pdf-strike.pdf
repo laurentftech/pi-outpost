@@ -1,0 +1,86 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [4 0 R 6 0 R] /Count 2 >>
+endobj
+3 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+4 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R /F2 30 0 R >> >> /Contents 5 0 R >>
+endobj
+5 0 obj
+<< /Length 254 >>
+stream
+BT /F1 12 Tf 72 700 Td (Le prix est de ) Tj ET
+BT /F2 12 Tf 147.372 700 Td (cent euros) Tj ET
+BT /F1 12 Tf 203.4 700 Td ( deux cents euros.) Tj ET
+BT /F1 12 Tf 72 670 Td (aaaa bbbb cccc dddd) Tj ET
+147.372 703.72 56.028 0.5 re f
+72 673.72 60.048 0.5 re f
+endstream
+endobj
+6 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R /F2 30 0 R >> >> /Contents 7 0 R >>
+endobj
+7 0 obj
+<< /Length 475 >>
+stream
+BT /F1 12 Tf 72 700 Td (Region) Tj ET
+BT /F1 12 Tf 222 700 Td (Units) Tj ET
+BT /F1 12 Tf 372 700 Td (Revenue) Tj ET
+BT /F1 12 Tf 72 680 Td (North) Tj ET
+BT /F1 12 Tf 222 680 Td (1200) Tj ET
+BT /F1 12 Tf 372 680 Td (48000) Tj ET
+BT /F1 12 Tf 72 660 Td (South) Tj ET
+BT /F1 12 Tf 222 660 Td (900) Tj ET
+BT /F1 12 Tf 372 660 Td (36500) Tj ET
+BT /F1 12 Tf 72 640 Td (East) Tj ET
+BT /F1 12 Tf 222 640 Td (1500) Tj ET
+BT /F1 12 Tf 372 640 Td (61000) Tj ET
+72 663.72 31.356 0.5 re f
+endstream
+endobj
+30 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Oblique >>
+endobj
+xref
+0 31
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000121 00000 n 
+0000000191 00000 n 
+0000000328 00000 n 
+0000000633 00000 n 
+0000000770 00000 n 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000001296 00000 n 
+trailer
+<< /Size 31 /Root 1 0 R >>
+startxref
+1375
+%%EOF

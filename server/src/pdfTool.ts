@@ -58,6 +58,8 @@ const DESCRIPTION = [
   "Do not return the content and then write it yourself — that spends the context twice.",
   "Otherwise output is capped per call — when it is truncated it says so and names the page range to ask for next, or pass full:true to get everything at once.",
   "Table reconstruction is best-effort; use mode=\"text\" to see a page exactly as its text layer reads.",
+  "Text the page draws a strike across is returned as ~~struck through~~ and means the document withdrew it — do not treat it as current.",
+  "A PDF records a strike as a drawn shape, not as a property of the text, so detection is best-effort: it can miss one, and it never removes or alters text.",
   "A scanned PDF has no text layer and is reported as such: there is no OCR.",
 ].join(" ");
 

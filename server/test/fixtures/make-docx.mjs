@@ -40,6 +40,20 @@ const cell = (text) => `<w:tc><w:p><w:r><w:t>${text}</w:t></w:r></w:p></w:tc>`;
 const rowOf = (cells) => `<w:tr>${cells.map(cell).join("")}</w:tr>`;
 const table = (rows) => `<w:tbl>${rows.map(rowOf).join("")}</w:tbl>`;
 
+/**
+ * A run carrying run properties. `props` is the raw `<w:rPr>` children, so a
+ * fixture can say `<w:strike w:val="off"/>` and mean that spelling exactly —
+ * toggle values are half of what the reader has to get right.
+ */
+const run = (text, props = "") =>
+  `<w:r>${props ? `<w:rPr>${props}</w:rPr>` : ""}<w:t xml:space="preserve">${text}</w:t></w:r>`;
+
+/** A paragraph of runs, optionally with formatting on the paragraph mark itself. */
+const runs = (parts, markProps = "") =>
+  `<w:p>${markProps ? `<w:pPr><w:rPr>${markProps}</w:rPr></w:pPr>` : ""}${parts.join("")}</w:p>`;
+
+const formattedCell = (inner) => `<w:tc><w:p>${inner}</w:p></w:tc>`;
+
 /** A zip written by hand: stored or deflated entries, local headers, central directory. */
 function zip(entries, { compress = true } = {}) {
   const files = [];
@@ -133,6 +147,56 @@ const fixtures = {
       `<w:del w:id="2" w:author="Ada"><w:r><w:delText>SEVENTY-NINE</w:delText></w:r></w:del>` +
       `<w:r><w:t xml:space="preserve"> percent.</w:t></w:r></w:p>` +
       `<w:del w:id="3" w:author="Ada"><w:p><w:r><w:delText>DELETED PARAGRAPH</w:delText></w:r></w:p></w:del>`,
+  ),
+
+  // Run-level formatting: strikethrough, bold, italic, and everything that must
+  // *not* be mistaken for them. One paragraph per contract so a failing test
+  // names the case it broke.
+  "docx-formatting.docx": docx(
+    [
+      // A struck run between two plain ones
+      runs([run("Le prix est de "), run("cent euros", "<w:strike/>"), run(" deux cents euros.")]),
+      // Double strikethrough reads the same as single
+      runs([run("Clause retiree", "<w:dstrike/>")]),
+      // Toggle spellings that mean "on"
+      runs([
+        run("vrai", '<w:strike w:val="true"/>'),
+        run(" un", '<w:strike w:val="1"/>'),
+        run(" actif", '<w:strike w:val="on"/>'),
+      ]),
+      // Toggle spellings that mean "off" — a run may inherit and switch off
+      runs([
+        run("faux", '<w:strike w:val="false"/>'),
+        run(" zero", '<w:strike w:val="0"/>'),
+        run(" inactif", '<w:strike w:val="off"/>'),
+      ]),
+      // Bold and italic
+      runs([run("gras", "<w:b/>"), run(" normal "), run("italique", "<w:i/>")]),
+      // Underline: carried by nothing, and never a heading
+      runs([run("Titre souligne", '<w:u w:val="single"/>')]),
+      // Struck and bold at once
+      runs([run("barre et gras", "<w:strike/><w:b/>")]),
+      // One struck sentence, split the way Word splits runs
+      runs([
+        run("Cette phrase", "<w:strike/>"),
+        run(" est barree", "<w:strike/>"),
+        run(" en trois morceaux.", "<w:strike/>"),
+      ]),
+      // Whitespace inside the struck run's own text
+      runs([run("avant"), run(" espaces autour ", "<w:strike/>"), run("apres")]),
+      // Nothing visible to mark: whitespace only, then a run with no text at all
+      runs([run("debut"), run("   ", "<w:strike/>"), `<w:r><w:rPr><w:strike/></w:rPr></w:r>`, run("fin")]),
+      // Formatting on the paragraph mark, not on the runs
+      runs([run("Le pilcrow est barre, pas le texte.")], "<w:strike/>"),
+      // A struck run inside a table cell, beside a plain one
+      `<w:tbl><w:tr>${formattedCell(run("Offre", ""))}${formattedCell(run("retiree", "<w:strike/>"))}</w:tr>` +
+        `<w:tr>${formattedCell(run("Suite"))}${formattedCell(run("active"))}</w:tr></w:tbl>`,
+      // A manual strike and a tracked deletion in one paragraph: different things
+      `<w:p>${run("Garde ")}` +
+        `<w:r><w:rPr><w:strike/></w:rPr><w:t>barre</w:t></w:r>` +
+        `<w:del w:id="9" w:author="Ada"><w:r><w:delText>SUPPRIME</w:delText></w:r></w:del>` +
+        `${run(" fin.")}</w:p>`,
+    ].join(""),
   ),
 
   // Body text only in a header part: the body itself has nothing
