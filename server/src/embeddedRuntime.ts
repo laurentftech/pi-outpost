@@ -46,12 +46,11 @@ export interface EmbeddedRuntimeOptions {
 }
 
 /**
- * How long a caller waits on `bindExtensions` before it stops holding everything
- * else behind it.
+ * How long a caller waits on `bindExtensions` before it stops holding the session
+ * it has behind the extensions it does not have yet.
  *
- * Startup treats it as a grace period — past it the interface comes up and the
- * binding finishes behind it. A rebind, which happens with clients already
- * watching, keeps waiting and only says out loud that it is still going.
+ * Past it, startup serves the interface and a `/new` hands over its session; the
+ * binding finishes behind either, and says so when it lands.
  */
 const BIND_STALL_MS = 5000;
 
@@ -85,7 +84,7 @@ export async function createEmbeddedRuntime(options: EmbeddedRuntimeOptions): Pr
     return previous;
   });
   const bindStartedAt = Date.now();
-  await embedded.bind({ graceMs: BIND_STALL_MS });
+  await embedded.bind();
   const bindMs = Date.now() - bindStartedAt;
   // A slow start was previously indistinguishable from a wedged one, and the two
   // halves fail for unrelated reasons: loading is the SDK compiling and evaluating
@@ -338,34 +337,36 @@ export class EmbeddedRuntime implements AgentRuntime {
    * all, so each of those seconds was a browser reconnecting against a socket
    * answering 1013 "starting up", with nothing in the log but the stall warning.
    *
-   * Without a grace — a rebind, where clients are already watching — the wait is
-   * kept and only reported, because there the session being replaced is the thing
-   * the client is waiting for.
+   * The same bound covers a session replacement, where the identical wait sat
+   * between `/new` and a usable session. The session object exists either way
+   * before its extensions have finished starting up, and it is the session the
+   * caller is waiting for: the tools were registered when the extensions loaded,
+   * and what binding adds — contributed skills, a `session_start` handler's own
+   * work — arrives afterwards through `extensions_bound`.
    */
   async bind(options?: { graceMs?: number }): Promise<void> {
     this.unsubscribe = this.session.subscribe((event: any) => this.translate(event));
+    const bound = this.session;
     const startedAt = Date.now();
     const binding = this.bindExtensions();
-    if (options?.graceMs === undefined) {
-      const stallWarning = setTimeout(() => {
-        console.warn(`[pi] bindExtensions has not resolved after ${seconds(BIND_STALL_MS)} — extensions may be unavailable this session`);
-      }, BIND_STALL_MS);
-      try {
-        await binding;
-      } finally {
-        clearTimeout(stallWarning);
-      }
-      return;
-    }
-    if (await settlesWithin(binding, options.graceMs)) return;
+    if (await settlesWithin(binding, options?.graceMs ?? BIND_STALL_MS)) return;
     console.warn(
-      `[pi] extensions have not bound after ${seconds(options.graceMs)} — serving the interface without them; they attach when they finish`,
+      `[pi] extensions have not bound after ${seconds(options?.graceMs ?? BIND_STALL_MS)} — the session is usable now; they attach when they finish`,
     );
     void binding.then(
-      () => this.emit({ type: "extensions_bound", elapsedMs: Date.now() - startedAt }),
-      // Not fatal the way a failure inside the grace is: the session is already
-      // serving, so this is reported and the runtime keeps the tools it has.
-      (error: unknown) => this.emit({ type: "error", message: `[extensions] ${error instanceof Error ? error.message : String(error)}` }),
+      () => {
+        // A binding left behind by a session that has since been replaced has
+        // nothing to announce: its skills went with it, and the snapshot the
+        // announcement refreshes describes the session that took its place.
+        if (this.session !== bound) return;
+        this.emit({ type: "extensions_bound", elapsedMs: Date.now() - startedAt });
+      },
+      (error: unknown) => {
+        // Not fatal the way a failure inside the grace is: the session is already
+        // serving, so this is reported and the runtime keeps the tools it has.
+        if (this.session !== bound) return;
+        this.emit({ type: "error", message: `[extensions] ${error instanceof Error ? error.message : String(error)}` });
+      },
     );
   }
 

@@ -873,6 +873,12 @@ function reduce(state: AgentState, action: Action): AgentState {
         // case sends an error *and* this message — clearing them would eat it
       };
     }
+    case "extensions_bound":
+      // Extensions that bound after the session was already in use. Their commands
+      // and tools exist now; everything else — the transcript, the open file, a
+      // dialog one of them raised while binding — is untouched on purpose, which is
+      // why this is not a snapshot.
+      return { ...state, commands: message.commands, tools: message.tools ?? state.tools };
     case "thinking_changed":
       return { ...state, thinkingLevel: message.level };
     case "work_plan_changed":

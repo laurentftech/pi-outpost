@@ -1797,17 +1797,6 @@ async function announceFileChange(workspace: Workspace, args: unknown): Promise<
  * session emits through this too, and a closure over the boot workspace would send
  * its stream to the wrong audience — or to nobody.
  */
-/**
- * Projects whose snapshot grew while a turn was streaming, and which owe their
- * clients one once it ends.
- *
- * A snapshot lands on a client as a state replacement, so one sent between two
- * deltas discards the reply being streamed into. Late-bound extensions are the
- * only thing that can move the snapshot mid-turn, and they are worth showing, so
- * the update waits for the turn rather than being dropped.
- */
-const snapshotOwedAfterTurn = new Set<string>();
-
 function onRuntimeEvent(workspace: Workspace, event: RuntimeEvent): void {
   switch (event.type) {
     case "agent_start":
@@ -1831,10 +1820,6 @@ function onRuntimeEvent(workspace: Workspace, event: RuntimeEvent): void {
       // The turn is persisted now: hand the client the entries so the bubbles it
       // echoed optimistically become editable (edit_prompt targets an entry id).
       broadcast(workspace, { type: "user_entries", entries: branchUserEntries(workspace) });
-      // Nothing is streaming into now, so a snapshot held back for that reason can go.
-      if (snapshotOwedAfterTurn.delete(workspace.root)) {
-        broadcast(workspace, { type: "session_replaced", ...snapshot(workspace) });
-      }
       broadcast(workspace, { type: "tree", roots: buildTree(workspace) });
       // Off the prompt path on purpose: a slow title must never delay a reply
       void maybeNameSession(workspace);
@@ -2011,18 +1996,23 @@ function onRuntimeEvent(workspace: Workspace, event: RuntimeEvent): void {
       }
       break;
     case "extensions_bound": {
+      const state = workspace.agent.snapshot();
       // The startup banner named the skills that existed when it printed. Say what
-      // the wait was, and name them again only when the binding actually added some.
+      // the wait cost, and name them again only when the binding actually added some.
       console.log(`[pi] extensions bound after ${(event.elapsedMs / 1000).toFixed(1)}s`);
-      const skills = workspace.agent
-        .snapshot()
-        .commands.filter((command) => command.source === "skill")
-        .map((command) => command.name);
+      const skills = state.commands.filter((command) => command.source === "skill").map((command) => command.name);
       if (skills.length > 0) console.log(`[pi] skills: ${skills.join(", ")}`);
       // Renderers can come from an extension that only registered them now.
       refreshExtensionRender(workspace);
-      if (workspace.agent.snapshot().isStreaming) snapshotOwedAfterTurn.add(workspace.root);
-      else broadcast(workspace, { type: "session_replaced", ...snapshot(workspace) });
+      // Commands and tools only. A snapshot would be the easy way to say "things
+      // changed" and the wrong one: clients treat it as a session change and close
+      // the file the user opened while waiting.
+      broadcast(workspace, { type: "extensions_bound", commands: state.commands, ...(state.tools ? { tools: state.tools } : {}) });
+      // Skills an extension contributed are inventory too, and the panel showing
+      // them has its own message. Nothing else here waits on it.
+      void refreshResourceInventory(workspace)
+        .then((inventory) => broadcast(workspace, { type: "agent_resource_inventory", inventory }))
+        .catch(reportError);
       break;
     }
     case "extension_ui_request":
