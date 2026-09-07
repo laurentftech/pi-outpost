@@ -102,6 +102,24 @@ invisible and the model received an undifferentiated wall of paragraphs. This is
 the case that justifies carrying bold across, and it is why the extra `*`
 characters in unrelated prose are worth their cost.
 
+## In the running app — the check that found a defect
+
+Markers in the output are not the same thing as a model that reports them. Asked to read the Word
+document aloud, the agent transcribed the struck sentence as ordinary text and said nothing about
+it. Asked immediately afterwards whether anything was crossed out, it found it.
+
+So the mechanism was right and the behaviour was not — the failure this project's own guidance says
+unit tests cannot see. Two changes followed:
+
+- the extraction now opens with a line naming how many passages are struck and what the markers
+  mean, before any of the document's text, because a note at the end arrives after the answer has
+  been written;
+- both tool descriptions now say to report struck passages when transcribing, quoting or
+  summarising, not merely to avoid treating them as current.
+
+This has to be re-observed in the running app; a test in this repository can only prove the notice
+is emitted and placed first, never that a model acts on it.
+
 ## Cost of the second read
 
 `getOperatorList()` is a second pass over the same content stream. Median of

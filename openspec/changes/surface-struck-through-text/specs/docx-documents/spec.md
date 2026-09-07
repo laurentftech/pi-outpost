@@ -23,6 +23,21 @@ at all.
 Formatting SHALL NOT change what text is returned. It adds markers around text the system already
 returned; it never adds, drops or reorders content.
 
+Markers alone are not enough to be noticed. When a document crosses anything out, the extraction
+SHALL say so *before* the content, naming how many passages are struck and what the markers mean, so
+a reader that works top to bottom cannot answer from the text without having read the warning. A
+document that crosses nothing out SHALL carry no such line.
+
+#### Scenario: StruckTextIsAnnouncedBeforeTheContent
+- **GIVEN** a document containing struck-through runs
+- **WHEN** it is extracted
+- **THEN** the result opens with a line saying how many passages are struck out and what the markers mean, before any of the document's own text
+
+#### Scenario: NothingStruckAnnouncesNothing
+- **GIVEN** a document that crosses nothing out
+- **WHEN** it is extracted
+- **THEN** the result carries no such line
+
 #### Scenario: StruckRunIsMarked
 - **GIVEN** a paragraph whose middle run is struck through
 - **WHEN** the document is extracted

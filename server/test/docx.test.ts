@@ -12,7 +12,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, test } from "node:test";
 import { DocxError, extractDocx, parseBlockRange, parseBody, renderBlock, toggleOn } from "../src/docx.ts";
-import { BOLD, ITALIC, STRIKE, renderSpans } from "../src/markdownSpans.ts";
+import { BOLD, ITALIC, STRIKE, renderSpans, struckThroughNotice } from "../src/markdownSpans.ts";
 
 const FIXTURES = path.join(path.dirname(fileURLToPath(import.meta.url)), "fixtures");
 
@@ -363,6 +363,25 @@ describe("extractDocx and run formatting", () => {
     return markdown;
   }
 
+  test("StruckTextIsAnnouncedBeforeTheContent: the warning leads, it does not trail", async () => {
+    // A trailing note arrives after the answer has been written. This one was
+    // added because a model asked to transcribe the document read the markers,
+    // transcribed the text without them, and reported the strikethrough only
+    // when asked about it afterwards.
+    const markdown = await formatting();
+    const [first] = markdown.split("\n\n");
+
+    assert.match(first, /^> This document crosses out 8 passages/);
+    assert.match(first, /report what is struck out/);
+    assert.ok(markdown.indexOf(first) === 0, "the notice comes before the document's own text");
+  });
+
+  test("NothingStruckAnnouncesNothing: a document with nothing crossed out carries no notice", async () => {
+    const { markdown } = await extractDocx(await fixture("docx-mixed"));
+
+    assert.doesNotMatch(markdown, /crosses out/);
+  });
+
   test("StruckRunIsMarked: a struck run is marked and its neighbours are not", async () => {
     assert.match(await formatting(), /^Le prix est de ~~cent euros~~ deux cents euros\.$/m);
   });
@@ -449,5 +468,22 @@ describe("renderBlock", () => {
     const [header, separator] = markdown.split("\n");
     assert.equal(header, "|  |  |");
     assert.equal(separator, "| --- | --- |");
+  });
+});
+
+describe("struckThroughNotice", () => {
+  test("counts the spans and says what the markers mean", () => {
+    const notice = struckThroughNotice("a ~~one~~ b ~~two~~ c");
+
+    assert.match(notice, /crosses out 2 passages/);
+    assert.match(notice, /do not present it as current/);
+  });
+
+  test("says one passage in the singular", () => {
+    assert.match(struckThroughNotice("~~only~~"), /crosses out 1 passage,/);
+  });
+
+  test("says nothing at all when nothing is struck", () => {
+    assert.equal(struckThroughNotice("plain text with **bold** in it"), "");
   });
 });

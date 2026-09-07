@@ -69,3 +69,34 @@ export function renderSpans(spans: Span[]): string {
     })
     .join("");
 }
+
+/**
+ * How many struck spans a rendered document holds.
+ *
+ * Counted from the rendered markdown rather than tracked through the readers:
+ * both of them assemble their output from independent pieces, and the thing worth
+ * announcing is what the caller will actually see.
+ */
+export function countStruckSpans(markdown: string): number {
+  return Math.floor((markdown.match(/~~/g)?.length ?? 0) / 2);
+}
+
+/**
+ * The line that tells a reader the document has crossed something out, or "" when
+ * it has not.
+ *
+ * It leads the extraction rather than trailing it, which is where every other
+ * note in these readers sits. That is deliberate and was learned the hard way: a
+ * model asked to transcribe a document read the markers, transcribed the text
+ * without them, and only reported the strikethrough when asked directly
+ * afterwards. A note at the end arrives after the answer has been written.
+ */
+export function struckThroughNotice(markdown: string): string {
+  const count = countStruckSpans(markdown);
+  if (count === 0) return "";
+  return (
+    `> This document crosses out ${count} passage${count === 1 ? "" : "s"}, marked \`~~like this~~\` below. ` +
+    `The document has withdrawn them: report what is struck out when you transcribe, quote or summarise it, ` +
+    `and do not present it as current.`
+  );
+}

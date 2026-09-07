@@ -1,7 +1,7 @@
 # Scenario coverage — surface-struck-through-text
 
 Every `#### Scenario:` declared by this change's delta specs, matched to the assertion that would
-fail if the contract broke. 20 scenarios: 12 in `docx-documents`, 8 in `pdf-documents`.
+fail if the contract broke. 24 scenarios: 14 in `docx-documents`, 10 in `pdf-documents`.
 
 Enumerated with `rg '^#### Scenario:' openspec/changes/surface-struck-through-text/specs/`.
 
@@ -19,6 +19,8 @@ confirms the fixtures describe the real producer.
 
 | Scenario | Coverage | Assertion evidence |
 | --- | --- | --- |
+| StruckTextIsAnnouncedBeforeTheContent | covered | `server/test/docx.test.ts` — "StruckTextIsAnnouncedBeforeTheContent: the warning leads, it does not trail" splits the result on the first blank line and asserts the notice is that first block, so moving it after the content fails. `struckThroughNotice` — "counts the spans and says what the markers mean" and "says one passage in the singular" pin the wording and the count. |
+| NothingStruckAnnouncesNothing | covered | `server/test/docx.test.ts` — "NothingStruckAnnouncesNothing: a document with nothing crossed out carries no notice" asserts `doesNotMatch(/crosses out/)` on an unrelated fixture. `struckThroughNotice` — "says nothing at all when nothing is struck" covers the helper, bold markers included. |
 | StruckRunIsMarked | covered | `server/test/docx.test.ts` — "StruckRunIsMarked: a struck run is marked and its neighbours are not" asserts the whole line `Le prix est de ~~cent euros~~ deux cents euros.`, so marking the wrong run, or the whole paragraph, fails. |
 | DoubleStrikeIsMarked | covered | `server/test/docx.test.ts` — "DoubleStrikeIsMarked: a double strikethrough reads as a strikethrough" asserts `~~Clause retiree~~` for a run carrying `<w:dstrike/>`. Dropping `w:dstrike` from the reader leaves the line bare and fails. |
 | FormattingTurnedOffIsNotMarked | covered | `server/test/docx.test.ts` — "FormattingTurnedOffIsNotMarked: every spelling of false leaves the text bare" asserts `faux zero inactif` unmarked *and* `~~vrai un actif~~` marked, so a reader that ignores `w:val` fails on the first and one that inverts it fails on the second. Also `toggleOn` directly: "the element alone, and every spelling of true, is on" and "a run that inherits formatting can switch it off". |
@@ -36,6 +38,8 @@ confirms the fixtures describe the real producer.
 
 | Scenario | Coverage | Assertion evidence |
 | --- | --- | --- |
+| StruckTextIsAnnouncedBeforeTheContent | covered | `server/test/pdf.test.ts` — "StruckTextIsAnnouncedBeforeTheContent: the warning leads, it does not trail" asserts the markdown *starts* with the notice and that `## Page 1` comes after it. |
+| NothingStruckAnnouncesNothing | covered | `server/test/pdf.test.ts` — "NothingStruckAnnouncesNothing: a page that draws no strike carries no notice" asserts `doesNotMatch(/crosses out/)` on the decoy page, which draws an underline, a page rule and a ruled table. |
 | WordStrikethroughIsMarked | covered | `server/test/pdf.test.ts` — "WordStrikethroughIsMarked: the struck run comes back as a span" asserts `Le prix est de ~~cent euros~~ deux cents euros.` against a fixture whose strike rectangle is placed at the height measured on real Word output. Confirmed against that real Word PDF in `verification.md`. |
 | UnderlineIsNotAStrike | covered | `server/test/pdf.test.ts` — "UnderlineIsNotAStrike and PageRulesAndBordersAreNotStrikes: decoys mark nothing" asserts the underlined text is returned and `doesNotMatch(/~~/)` over the whole page. `markStruckPieces` — "leaves the piece alone when the shape is an underline" pins the discriminator itself at −0.1 em. |
 | PageRulesAndBordersAreNotStrikes | covered | `server/test/pdf.test.ts` — same decoy test: the fixture carries a stroked full-width page rule, a thin filled rectangle 0.8 em above a line, and a two-row table drawn with ruling lines — verticals crossing the text's own band, horizontals in the row padding, plus an outer rule drawn filled rather than stroked — and the page comes back with no markers at all. `markStruckPieces` — "leaves the piece alone for a rule far above it, or a stroked line, or a thick bar" covers each rejection reason separately, so removing any one of the three filters fails. `collectShapes` — "says which shapes were filled and which were only stroked" pins the fill/stroke reading the last of those depends on. |

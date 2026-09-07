@@ -157,6 +157,25 @@ content in the repo and give a test whose geometry we cannot vary.
 The real Word PDF stays what it has been: the thing the thresholds were measured against, and the
 file to re-check against by hand if the discriminator is ever changed.
 
+### D8 — The strikethrough notice leads the extraction
+
+Every other note these readers emit — no text layer, truncated, no table found — trails the content.
+The strikethrough notice does not: it is the first thing in the markdown.
+
+That is not symmetry for its own sake, it is a defect report. With the markers in place and the tool
+descriptions updated, the change was tried in the running app: asked to read a document aloud, the
+model transcribed the struck sentence as ordinary text and said nothing about it. Asked afterwards
+whether anything was struck out, it found it immediately. The information was present and arrived
+too late to change the answer.
+
+A model answering a "read this" request works top to bottom and commits to its answer as it goes, so
+a warning at the end is read after the answer exists. Leading with it costs one line of output on
+documents that cross something out, and nothing at all on documents that do not.
+
+The tool descriptions now also say to report struck passages when transcribing, quoting or
+summarising. Both were changed together deliberately: the description is read once at session start,
+the notice arrives with the content, and the failure was that neither existed.
+
 ## Risks / Trade-offs
 
 - **A producer that draws strikes differently defeats detection** (a stroked line rather than a
@@ -173,6 +192,10 @@ file to re-check against by hand if the discriminator is ever changed.
 - **Bold and italic markers change output for documents that already extracted cleanly** → they add
   `*` characters into prose the caller may be diffing. Accepted: the markers are what a reader needs
   to see the document's own emphasis, and the alternative is to keep flattening it.
+- **A model may still not mention struck text** → the notice and the tool descriptions push against
+  it, and neither can compel it. This is the one part of the change that cannot be closed by a test
+  in this repository: it has to be re-observed in the running app after every change to either
+  wording.
 - **Character-style strikethrough stays invisible** → a document that crosses text out through a
   style, not a direct run property, extracts as it does today, with no warning. This is the one gap
   the change leaves open in its own subject; recorded here so it is a known limitation rather than a

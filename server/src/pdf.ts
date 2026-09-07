@@ -14,7 +14,7 @@
  */
 import { createRequire } from "node:module";
 import path from "node:path";
-import { renderSpans, STRIKE, type Span } from "./markdownSpans.ts";
+import { renderSpans, struckThroughNotice, STRIKE, type Span } from "./markdownSpans.ts";
 import { escapeCell } from "./markdownTable.ts";
 
 export type PdfMode = "text" | "tables" | "both";
@@ -922,8 +922,12 @@ export async function extractPdf(bytes: Uint8Array, options: PdfExtractOptions =
       );
     }
 
+    // The strikethrough notice leads; everything else trails. See
+    // `struckThroughNotice` for why that one is not a trailing note.
+    const lead = struckThroughNotice(sections.join("\n\n"));
+
     return {
-      markdown: [...sections, ...notes].join("\n\n"),
+      markdown: [...(lead ? [lead] : []), ...sections, ...notes].join("\n\n"),
       pages: covered,
       ...(nextPage === undefined ? {} : { nextPage }),
       pageCount,

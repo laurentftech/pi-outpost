@@ -616,6 +616,19 @@ describe("pageShapes", () => {
 });
 
 describe("extractPdf and struck-through text", () => {
+  test("StruckTextIsAnnouncedBeforeTheContent: the warning leads, it does not trail", async () => {
+    const { markdown } = await extractPdf(await fixture("pdf-strike"), { pages: "1", mode: "text" });
+
+    assert.match(markdown, /^> This document crosses out 2 passages/);
+    assert.ok(markdown.indexOf("## Page 1") > 0, "the notice comes before the first page");
+  });
+
+  test("NothingStruckAnnouncesNothing: a page that draws no strike carries no notice", async () => {
+    const { markdown } = await extractPdf(await fixture("pdf-strike-underline"), { mode: "text" });
+
+    assert.doesNotMatch(markdown, /crosses out/);
+  });
+
   test("WordStrikethroughIsMarked: the struck run comes back as a span", async () => {
     const { markdown } = await extractPdf(await fixture("pdf-strike"), { pages: "1", mode: "text" });
 

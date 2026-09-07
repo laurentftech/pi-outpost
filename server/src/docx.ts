@@ -12,7 +12,7 @@
  * all capped, and the XML scanner refuses a DOCTYPE outright so entity expansion
  * is unreachable rather than merely disabled.
  */
-import { renderSpans, BOLD, ITALIC, STRIKE, type Span } from "./markdownSpans.ts";
+import { renderSpans, struckThroughNotice, BOLD, ITALIC, STRIKE, type Span } from "./markdownSpans.ts";
 import { escapeCell, renderMarkdownTable } from "./markdownTable.ts";
 import { scanXml, XmlError } from "./xml.ts";
 import { readZipEntry, ZipError, type ZipLimits } from "./zip.ts";
@@ -492,8 +492,12 @@ export async function extractDocx(bytes: Uint8Array, options: DocxExtractOptions
     );
   }
 
+  // The strikethrough notice leads; everything else trails. See
+  // `struckThroughNotice` for why that one is not a trailing note.
+  const lead = struckThroughNotice(pieces.join("\n\n"));
+
   return {
-    markdown: [...pieces, ...notes].join("\n\n"),
+    markdown: [...(lead ? [lead] : []), ...pieces, ...notes].join("\n\n"),
     blocks: covered,
     ...(nextBlock === undefined ? {} : { nextBlock }),
     blockCount,

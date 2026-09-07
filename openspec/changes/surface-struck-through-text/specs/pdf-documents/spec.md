@@ -27,6 +27,21 @@ Reading the drawing operations SHALL stay inside the extraction's existing time 
 caps, and a page whose drawing operations cannot be read SHALL still return its text, unmarked,
 rather than failing the extraction.
 
+Markers alone are not enough to be noticed. When a document crosses anything out, the extraction
+SHALL say so *before* the content, naming how many passages are struck and what the markers mean, so
+a reader that works top to bottom cannot answer from the text without having read the warning. A
+document that crosses nothing out SHALL carry no such line.
+
+#### Scenario: StruckTextIsAnnouncedBeforeTheContent
+- **GIVEN** a PDF whose pages draw strikes across some of their text
+- **WHEN** it is extracted
+- **THEN** the result opens with a line saying how many passages are struck out and what the markers mean, before the first page's content
+
+#### Scenario: NothingStruckAnnouncesNothing
+- **GIVEN** a PDF that draws no strike over any text
+- **WHEN** it is extracted
+- **THEN** the result carries no such line
+
 #### Scenario: WordStrikethroughIsMarked
 - **GIVEN** a PDF produced by a word processor in which a sentence is struck through
 - **WHEN** the page is extracted
