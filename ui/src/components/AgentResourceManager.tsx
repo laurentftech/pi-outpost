@@ -150,6 +150,7 @@ function PreviewForm({ preview, busy, error, onApply }: { preview: AgentResource
 
 export function AgentResourceManager(props: AgentResourceManagerProps) {
   const closeRef = useRef<HTMLButtonElement>(null);
+  const closeHandler = useRef(props.onClose);
   const localApplyStarted = useRef(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
@@ -163,6 +164,14 @@ export function AgentResourceManager(props: AgentResourceManagerProps) {
   const [repositoryUrl, setRepositoryUrl] = useState("");
   const [destinationPath, setDestinationPath] = useState("");
   const [destinationEdited, setDestinationEdited] = useState(false);
+  /**
+   * The address the last suggestion was asked for.
+   *
+   * A refused address is only news while the field still holds it. Without this,
+   * an error raised for a half-typed address stayed under the field, contradicting
+   * what the user was in the middle of typing.
+   */
+  const [suggestedFor, setSuggestedFor] = useState("");
   const [confirmRepository, setConfirmRepository] = useState<AgentResourceRepository | null>(null);
   const allGroups = useMemo(() => groupInventory(props.inventory), [props.inventory]);
   const visibleGroups = useMemo(() => {
@@ -177,13 +186,28 @@ export function AgentResourceManager(props: AgentResourceManagerProps) {
   }, [allGroups, attentionOnly, kind, query]);
   const selected = visibleGroups.find((group) => group.id === selectedId) ?? visibleGroups[0] ?? null;
 
+  useEffect(() => { closeHandler.current = props.onClose; }, [props.onClose]);
+  /**
+   * Focus enters the dialog when it opens, and never again.
+   *
+   * This used to depend on `props.onClose` as well, which the parent recreates on
+   * every one of its renders — so every inventory push, every assessment tick,
+   * re-ran the effect and pulled the focus back onto the close button. Anyone
+   * typing into the dialog lost the caret mid-word, and the address field's blur
+   * then validated a half-typed address and called it invalid.
+   */
   useEffect(() => {
     if (!props.open) return;
     closeRef.current?.focus();
-    const onKeyDown = (event: KeyboardEvent) => { if (event.key === "Escape") props.onClose(); };
+  }, [props.open]);
+  useEffect(() => {
+    if (!props.open) return;
+    // Through the ref, so a new `onClose` identity does not re-register this and
+    // does not drag the focus effect along with it.
+    const onKeyDown = (event: KeyboardEvent) => { if (event.key === "Escape") closeHandler.current(); };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [props.open, props.onClose]);
+  }, [props.open]);
   useEffect(() => {
     const result = props.operations.clonePath;
     if (result?.status === "ready" && result.path && !destinationEdited) setDestinationPath(result.path);
@@ -262,10 +286,10 @@ export function AgentResourceManager(props: AgentResourceManagerProps) {
             </div> : addMode === "git" ? <div className="max-w-2xl space-y-4" data-testid="add-git-repository">
               <div><h3 className="text-lg font-semibold">Add Git repository</h3><p className="text-xs text-zinc-500">Clone it to a visible local folder, then choose the resources to activate.</p></div>
               {props.operations.preview?.status === "ready" && props.operations.preview.preview ? <PreviewForm preview={props.operations.preview.preview} busy={props.operations.enrollment?.status === "loading"} error={props.operations.enrollment?.status === "error" ? props.operations.enrollment.message : undefined} onApply={(skills, extensions) => props.onEnrollRepository(props.operations.preview!.preview!.token, skills, extensions)} /> : <>
-                <label className="block"><span className="text-xs font-medium">Repository address</span><input aria-label="Repository address" value={repositoryUrl} onChange={(event) => setRepositoryUrl(event.target.value)} onBlur={() => { if (repositoryUrl.trim()) { setDestinationEdited(false); props.onSuggestClonePath(repositoryUrl); } }} placeholder="https://github.com/team/resources.git" className="mt-1 w-full rounded-md border bg-transparent px-3 py-2 text-sm" /></label>
+                <label className="block"><span className="text-xs font-medium">Repository address</span><input aria-label="Repository address" value={repositoryUrl} onChange={(event) => setRepositoryUrl(event.target.value)} onBlur={() => { const address = repositoryUrl.trim(); if (address) { setDestinationEdited(false); setSuggestedFor(address); props.onSuggestClonePath(repositoryUrl); } }} placeholder="https://github.com/team/resources.git" className="mt-1 w-full rounded-md border bg-transparent px-3 py-2 text-sm" /></label>
                 <label className="block"><span className="text-xs font-medium">Local folder</span><div className="mt-1 flex gap-2"><input aria-label="Local clone folder" value={destinationPath} onChange={(event) => { setDestinationEdited(true); setDestinationPath(event.target.value); }} placeholder="/path/to/resource-repositories/team-resources-ab12cd" className="min-w-0 flex-1 rounded-md border bg-transparent px-3 py-2 text-sm" /><button type="button" onClick={() => { setPicker("clone-parent"); props.onBrowseServerPath(parentPath(destinationPath)); }} className="rounded-md border px-3 text-xs">Choose parent…</button></div></label>
                 {props.operations.clonePath?.status === "loading" ? <p className="text-xs text-zinc-500">Suggesting a managed folder…</p> : null}
-                {props.operations.clonePath?.status === "error" ? <p role="alert" className="text-xs text-red-600">{props.operations.clonePath.message}</p> : null}
+                {props.operations.clonePath?.status === "error" && repositoryUrl.trim() === suggestedFor ? <p role="alert" className="text-xs text-red-600">{props.operations.clonePath.message}</p> : null}
                 {picker === "clone-parent" ? <ServerPathPicker label="Choose the clone's parent folder" browse={props.serverBrowse} onBrowse={props.onBrowseServerPath} onSelect={(value) => { setDestinationPath(joinParent(value, destinationPath)); setPicker(null); props.onCloseServerBrowser(); }} onCancel={() => { setPicker(null); props.onCloseServerBrowser(); }} /> : null}
                 {props.operations.preview?.status === "error" ? <p role="alert" className="text-xs text-red-600">{props.operations.preview.message}</p> : null}
                 <div className="flex gap-2"><button type="button" onClick={() => { setAddMode(null); setPicker(null); props.onCloseServerBrowser(); }} className="rounded-md border px-3 py-1.5 text-xs">Cancel</button><button type="button" disabled={!repositoryUrl.trim() || !destinationPath.trim() || props.operations.preview?.status === "loading"} onClick={() => props.onCloneRepository(repositoryUrl, destinationPath)} className="rounded-md bg-zinc-900 px-3 py-1.5 text-xs text-white disabled:opacity-50">{props.operations.preview?.status === "loading" ? "Cloning…" : "Clone and inspect"}</button></div>

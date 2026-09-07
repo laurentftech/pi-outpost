@@ -211,6 +211,52 @@ describe("AgentResourceManager", () => {
     expect(destination).toHaveValue("/srv/my-choice");
   });
 
+  it("keeps focus where the user put it when the parent re-renders", () => {
+    // SettingsMenu passes a fresh onClose on every one of its renders, and the
+    // server pushes inventory and assessment updates while the dialog is open.
+    // The focus effect used to depend on that identity, so every push pulled the
+    // caret out of whatever the user was typing into.
+    const { rerenderWith } = setup();
+    fireEvent.click(screen.getByRole("button", { name: "Add Git repository…" }));
+    const address = screen.getByRole("textbox", { name: "Repository address" });
+    address.focus();
+    fireEvent.change(address, { target: { value: "https://exam" } });
+
+    rerenderWith({ onClose: () => {}, inventory: inventory("current") });
+
+    expect(document.activeElement).toBe(address);
+    expect(address).toHaveValue("https://exam");
+  });
+
+  it("still moves focus into the dialog when it opens", () => {
+    setup();
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: "Close agent resources" }));
+  });
+
+  it("still closes on Escape after the parent has re-rendered", () => {
+    const { rerenderWith } = setup();
+    const laterClose = vi.fn();
+    rerenderWith({ onClose: laterClose });
+
+    fireEvent.keyDown(window, { key: "Escape" });
+
+    expect(laterClose).toHaveBeenCalled();
+  });
+
+  it("stops showing a refused address once the field no longer holds it", () => {
+    const { rerenderWith } = setup();
+    fireEvent.click(screen.getByRole("button", { name: "Add Git repository…" }));
+    const address = screen.getByRole("textbox", { name: "Repository address" });
+    fireEvent.change(address, { target: { value: "https:" } });
+    fireEvent.blur(address);
+    rerenderWith({ operations: operations({ clonePath: { requestId: "one", status: "error", message: "Use an HTTPS, SSH, Git, file, or user@host:path repository address" } }) });
+    expect(screen.getByRole("alert")).toHaveTextContent("Use an HTTPS");
+
+    fireEvent.change(screen.getByRole("textbox", { name: "Repository address" }), { target: { value: "https://example.test/team/resources.git" } });
+
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
   it("removes only the selected user-owned root", () => {
     const { onUpdateConfig } = setup({ userSkillPaths: ["/repos/team/skills", "/other"] });
     fireEvent.click(screen.getByRole("button", { name: "Remove /repos/team/skills" }));
