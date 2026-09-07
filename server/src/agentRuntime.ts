@@ -125,6 +125,14 @@ export type RuntimeEvent =
   | { type: "compaction_end"; errorMessage?: string }
   /** The runtime replaced its session object and has finished re-binding to it. */
   | { type: "session_replaced" }
+  /**
+   * Extensions finished binding after startup had stopped waiting for them.
+   *
+   * Only emitted on that late path: a `session_start` handler can contribute
+   * skills, prompt templates and commands, so a client holding the snapshot taken
+   * during the wait is holding one from before they existed.
+   */
+  | { type: "extensions_bound"; elapsedMs: number }
   /** An extension asked the user something; the answer comes back via `answerExtensionUI`. */
   | { type: "extension_ui_request"; request: ExtensionUIRequest }
   /** Something went wrong but the runtime is still usable (an extension threw, a command failed). */
