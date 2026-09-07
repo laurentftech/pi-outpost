@@ -1526,6 +1526,46 @@ describe("extension UI", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Late-binding extensions
+// ---------------------------------------------------------------------------
+describe("extensions_bound", () => {
+  it("adopts the commands and tools that arrived late", async () => {
+    const result = await connected([], { commands: [{ name: "skill:one", source: "skill" }] });
+
+    act(() =>
+      mockWs!.receive({
+        type: "extensions_bound",
+        commands: [
+          { name: "skill:one", source: "skill" },
+          { name: "skill:two", source: "skill" },
+        ],
+        tools: [{ name: "lens_diagnostics", active: true }],
+      }),
+    );
+
+    await waitFor(() => expect(result.current.state.commands).toHaveLength(2));
+    expect(result.current.state.tools).toEqual([{ name: "lens_diagnostics", active: true }]);
+  });
+
+  it("keeps the file the user opened while waiting", async () => {
+    // The reason this message exists rather than a snapshot: binding can land long
+    // after the session became usable, and the user has been using it.
+    const result = await connected();
+
+    act(() => result.current.readFile("notes.md"));
+    const requestId = (JSON.parse(mockWs!.sent[mockWs!.sent.length - 1]) as { requestId: string }).requestId;
+    act(() => mockWs!.receive({ type: "file_content", requestId, path: "notes.md", content: "hi", size: 2, mtimeMs: 1 }));
+    await waitFor(() => expect(result.current.state.openFile?.status).toBe("loaded"));
+
+    act(() => mockWs!.receive({ type: "extensions_bound", commands: [{ name: "skill:late", source: "skill" }] }));
+
+    await waitFor(() => expect(result.current.state.commands).toHaveLength(1));
+    expect(result.current.state.openFile?.path).toBe("notes.md");
+    expect(result.current.state.tools).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Credentials
 // ---------------------------------------------------------------------------
 describe("credentials_changed", () => {

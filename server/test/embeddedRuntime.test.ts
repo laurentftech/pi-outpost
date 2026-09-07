@@ -114,6 +114,37 @@ describe("EmbeddedRuntime startup binding", () => {
     assert.equal(asked.request.title, "Reload openlore?");
   });
 
+  it("says nothing for a binding whose session has since been replaced", async () => {
+    let release: () => void = () => {};
+    const first = {
+      subscribe: () => () => {},
+      bindExtensions: async () => {
+        await new Promise<void>((resolve) => (release = resolve));
+      },
+    };
+    const second = { subscribe: () => () => {}, bindExtensions: async () => {} };
+    let session: unknown = first;
+    const runtime = new EmbeddedRuntime({ get session() { return session; } } as never, "/nowhere");
+    const warnings = captureWarnings();
+    try {
+      await runtime.bind({ graceMs: 10 });
+    } finally {
+      warnings.restore();
+    }
+
+    const events: RuntimeEvent[] = [];
+    runtime.subscribe((event) => events.push(event));
+    // What a `/new` does while the previous session's extensions are still binding.
+    session = second;
+    release();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    assert.equal(
+      events.some((event) => event.type === "extensions_bound"),
+      false,
+      "the announcement would refresh the snapshot of a session that never waited for it",
+    );
+  });
+
   it("keeps a binding failure inside the grace fatal, and a later one merely reported", async () => {
     const immediate = {
       subscribe: () => () => {},

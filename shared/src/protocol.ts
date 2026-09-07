@@ -723,6 +723,16 @@ export type ServerMessage =
    * live extension dialogs, notifications, statuses and widgets the server still holds.
    */
   | { type: "credentials_changed"; models: ModelChoice[]; model: string; credentials: CredentialStatus }
+  /**
+   * Extensions finished binding after the session was already in use — their
+   * `session_start` handlers ran late, and the commands and skills they contribute
+   * exist only now.
+   *
+   * Narrow for the same reason `credentials_changed` is: the session is the one the
+   * user is already in. A snapshot here would close the file they opened while
+   * waiting, drop their file tree and diff, and wipe live extension dialogs.
+   */
+  | { type: "extensions_bound"; commands: CommandInfo[]; tools?: { name: string; active: boolean }[] }
   | { type: "thinking_changed"; level: string }
   | { type: "user"; text: string; images?: WireImage[] }
   /**
