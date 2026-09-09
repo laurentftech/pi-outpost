@@ -232,8 +232,36 @@ describe("ExtensionDialog", () => {
     });
   });
 
+  describe("refusing to answer", () => {
+    it("cancels a select whose options none of fit", () => {
+      const request: DialogRequest = {
+        type: "extension_ui_request",
+        id: "refuse1",
+        method: "select",
+        title: "Pick one",
+        options: ["A", "B"],
+      };
+      render(<ExtensionDialog request={request} onRespond={mockOnRespond} />);
+      fireEvent.click(screen.getByLabelText("Refuse to answer"));
+      expect(mockOnRespond).toHaveBeenCalledWith({ id: "refuse1", cancelled: true });
+    });
+
+    it("cancels a confirm, which otherwise only offers Yes and No", () => {
+      const request: DialogRequest = {
+        type: "extension_ui_request",
+        id: "refuse2",
+        method: "confirm",
+        title: "Sure?",
+        message: "This deletes the branch.",
+      };
+      render(<ExtensionDialog request={request} onRespond={mockOnRespond} />);
+      fireEvent.click(screen.getByLabelText("Refuse to answer"));
+      expect(mockOnRespond).toHaveBeenCalledWith({ id: "refuse2", cancelled: true });
+    });
+  });
+
   describe("backdrop interaction", () => {
-    it("cancels dialog when clicking backdrop overlay", () => {
+    it("keeps the dialog up when clicking backdrop overlay", () => {
       const request: DialogRequest = {
         type: "extension_ui_request",
         id: "backdrop1",
@@ -245,7 +273,27 @@ describe("ExtensionDialog", () => {
       const overlay = container.firstChild;
       expect(overlay).toBeInTheDocument();
       if (overlay) fireEvent.click(overlay);
-      expect(mockOnRespond).toHaveBeenCalledWith({ id: "backdrop1", cancelled: true });
+      expect(mockOnRespond).not.toHaveBeenCalled();
+      // Still answerable: the question survives the stray click.
+      expect(screen.getByText("A")).toBeInTheDocument();
+      fireEvent.click(screen.getByText("A"));
+      expect(mockOnRespond).toHaveBeenCalledWith({ id: "backdrop1", value: "A" });
+    });
+
+    it("flashes the panel so a backdrop click is not silently swallowed", () => {
+      const request: DialogRequest = {
+        type: "extension_ui_request",
+        id: "backdrop2",
+        method: "select",
+        title: "Test",
+        options: ["A"],
+      };
+      const { container } = render(<ExtensionDialog request={request} onRespond={mockOnRespond} />);
+      const overlay = container.firstChild as HTMLElement;
+      const panel = overlay.firstChild as HTMLElement;
+      expect(panel.className).not.toMatch(/ring-2/);
+      fireEvent.click(overlay);
+      expect(panel.className).toMatch(/ring-2/);
     });
 
     it("does not cancel when clicking inside modal content", () => {
