@@ -80,6 +80,8 @@ export function parseMultiSelect(request: DialogRequest): { heading: string; opt
 export function ExtensionDialog({ request, onRespond }: ExtensionDialogProps) {
   const [text, setText] = useState(request.method === "editor" ? (request.prefill ?? "") : "");
   const [checked, setChecked] = useState<number[]>([]);
+  /** Set by a click on the backdrop; cleared shortly after, so the flash repeats on every try. */
+  const [nudged, setNudged] = useState(false);
   const hasTimeout = (request.method === "select" || request.method === "confirm" || request.method === "input") && request.timeout;
   const [remaining, setRemaining] = useState<number | null>(hasTimeout ? Math.ceil(hasTimeout / 1000) : null);
 
@@ -101,6 +103,12 @@ export function ExtensionDialog({ request, onRespond }: ExtensionDialogProps) {
   }
 
   useEffect(() => {
+    if (!nudged) return;
+    const timer = setTimeout(() => setNudged(false), 400);
+    return () => clearTimeout(timer);
+  }, [nudged]);
+
+  useEffect(() => {
     if (remaining === null) return;
     if (remaining <= 0) {
       onRespond({ id: request.id, cancelled: true });
@@ -111,12 +119,36 @@ export function ExtensionDialog({ request, onRespond }: ExtensionDialogProps) {
   }, [remaining, request.id, onRespond]);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={cancel}>
+    // The agent is blocked on this answer, so the backdrop does not dismiss: a
+    // stray click outside used to send `cancelled` and lose the question. It
+    // only flashes the panel to say "the answer is in here" — refusing is the
+    // ✕ in the corner, which nobody presses by accident.
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+      onClick={() => setNudged(true)}
+    >
       <div
-        className={`w-full ${body ? "max-w-2xl" : "max-w-md"} rounded-xl border border-zinc-200 bg-white p-4 shadow-2xl dark:border-zinc-700 dark:bg-zinc-900`}
+        className={`w-full ${body ? "max-w-2xl" : "max-w-md"} rounded-xl border bg-white p-4 shadow-2xl transition-shadow dark:bg-zinc-900 ${
+          nudged
+            ? "border-zinc-400 ring-2 ring-zinc-400/60 dark:border-zinc-500 dark:ring-zinc-500/60"
+            : "border-zinc-200 dark:border-zinc-700"
+        }`}
         onClick={(e) => e.stopPropagation()}
       >
-        <h2 className="mb-3 text-sm font-semibold text-zinc-900 dark:text-zinc-100">{heading}</h2>
+        {/* The one deliberate refusal: none of the options fit, and the extension
+            hears "cancelled" rather than an answer nobody meant to give. */}
+        <div className="mb-3 flex items-start gap-3">
+          <h2 className="flex-1 text-sm font-semibold text-zinc-900 dark:text-zinc-100">{heading}</h2>
+          <button
+            type="button"
+            onClick={cancel}
+            aria-label="Refuse to answer"
+            title="Refuse to answer"
+            className="-mr-1 -mt-1 rounded-md px-1.5 py-0.5 text-sm leading-none text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700 dark:text-zinc-500 dark:hover:bg-zinc-800 dark:hover:text-zinc-200"
+          >
+            ✕
+          </button>
+        </div>
 
         {/* Option lists and previews the walker folded into the title: the host lays them out. */}
         {body && !multiSelect && (

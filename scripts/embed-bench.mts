@@ -299,6 +299,49 @@ const thinking = await startServer(
   { env: { ...onlyOneFakeProvider(), FAKE_PI_RPC_CONFIG: thinkingConfig } },
 );
 
+// A server whose scripted RPC child asks a question and then holds the turn until
+// it is answered — the shape a stray click outside the panel used to cancel. Send
+// any prompt to raise it.
+const questionRoot = await makeWorkspace({ "readme.md": "# question\n" });
+const questionConfig = path.join(questionRoot, "fake-rpc.json");
+await writeFile(
+  questionConfig,
+  JSON.stringify({
+    state: { sessionId: "question-1" },
+    commands_: {
+      prompt: {
+        before: [
+          {
+            type: "extension_ui_request",
+            id: "bench-question-1",
+            method: "select",
+            title: "Which branch should I cut from?\n1. main — the released line\n2. next — where the risky work lands",
+            options: ["1. main — the released line", "2. next — where the risky work lands"],
+          },
+        ],
+      },
+    },
+    // The child keeps the turn open until the answer comes back, as a real
+    // extension blocked on a dialog does.
+    dialogBlocksCommand: "prompt",
+  }),
+);
+const question = await startServer(
+  questionRoot,
+  {
+    server: { allowedOrigins: [host.url], port: HOST_PORT + 7 },
+    branding: { title: "bench question" },
+    agentRuntime: {
+      mode: "rpc",
+      executable: process.execPath,
+      args: [path.join(REPO, "server/test/fixtures/fake-pi-rpc.mjs")],
+      startupTimeoutMs: 20_000,
+    },
+    sandbox: undefined,
+  },
+  { env: { ...onlyOneFakeProvider(), FAKE_PI_RPC_CONFIG: questionConfig } },
+);
+
 // The three embed workspace-control policies, each on its own server, because the
 // policy is loaded configuration rather than a mount option: the only way to see
 // what a deployment would show is to run a server configured that way.
@@ -342,6 +385,7 @@ console.log(
 );
 console.log(`  seeded transcript           ${link(diagrams.base)}   (diagrams + table)`);
 console.log(`  tool progress bar           ${link(progress.base)}   (send any prompt, watch the tool card)`);
+console.log(`  agent question panel        ${link(question.base)}   (send any prompt; the panel holds until answered)`);
 console.log(`  model-aware thinking slider ${link(thinking.base)}   (🧠: low..xhigh, no off; switch to Plain Mini — declared off-only — and watch it settle)`);
 console.log("\n  embed workspace controls — the same widget under each policy\n");
 console.log(`  settings (the default)      ${link(plain.base)}   no header control; the root lives in Settings`);
@@ -355,6 +399,7 @@ const stop = async () => {
   stopping = true;
   await projectsMode.stop();
   await rootMode.stop();
+  await question.stop();
   await thinking.stop();
   await progress.stop();
   await diagrams.stop();
