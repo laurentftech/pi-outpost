@@ -56,6 +56,18 @@ describe("buildDocx", () => {
     expect(types).toContain("wordprocessingml.document.main+xml");
   });
 
+  it("produces a valid package with markdown content and no options", async () => {
+    const markdown = "# Heading\n\nSome **bold** text.";
+    const zip = await openDocx(await buildDocx(markdown, "test.md"));
+
+    // Verify the package structure is valid
+    expect(zip.file("[Content_Types].xml")).not.toBeNull();
+    expect(zip.file("word/document.xml")).not.toBeNull();
+
+    const types = await partText(zip, "[Content_Types].xml");
+    expect(types).toContain("wordprocessingml.document.main+xml");
+  });
+
   it("declares the document part in the package relationships", async () => {
     // A package whose root relationships do not name the document opens as nothing:
     // the part can be present and still unreachable.

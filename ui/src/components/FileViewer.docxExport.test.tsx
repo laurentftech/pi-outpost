@@ -11,11 +11,13 @@ import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { FileViewer } from "./FileViewer";
 import type { OpenFile } from "../useAgent";
 
-const exported = vi.hoisted(() => ({ calls: [] as { text: string; path: string }[], fail: null as Error | null }));
+type ExportCall = { text: string; path: string; options?: { serverUrl?: string; token?: string | null } };
+
+const exported = vi.hoisted(() => ({ calls: [] as ExportCall[], fail: null as Error | null }));
 
 vi.mock("../export/docxExport", () => ({
-  downloadDocx: async (text: string, path: string) => {
-    exported.calls.push({ text, path });
+  downloadDocx: async (text: string, path: string, options?: ExportCall["options"]) => {
+    exported.calls.push({ text, path, options });
     if (exported.fail !== null) throw exported.fail;
   },
 }));
@@ -131,7 +133,19 @@ describe("what the export carries", () => {
     fireEvent.click(exportButton()!);
 
     await waitFor(() => expect(exported.calls).toHaveLength(1));
-    expect(exported.calls[0]).toEqual({ text: "# Title\n\nBody.\n", path: "notes.md" });
+    expect(exported.calls[0]).toMatchObject({ text: "# Title\n\nBody.\n", path: "notes.md" });
+  });
+
+  it("sends the origin and token the viewer reads this file through", async () => {
+    // Without these the export has no way to fetch the figures the document
+    // references, and every one of them would come out as its alt text — which is
+    // exactly what it did before they were passed.
+    setup({ serverUrl: "http://localhost:3141", token: "t0ken" });
+
+    fireEvent.click(exportButton()!);
+
+    await waitFor(() => expect(exported.calls).toHaveLength(1));
+    expect(exported.calls[0].options).toEqual({ serverUrl: "http://localhost:3141", token: "t0ken" });
   });
 
   it("sends the unsaved draft, not the text on disk", async () => {

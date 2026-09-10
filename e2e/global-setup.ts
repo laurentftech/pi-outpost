@@ -140,6 +140,16 @@ async function assertFresh(artifact: string, sources: readonly string[], command
   }
 }
 
+/** A figure of the kind the agent writes for a document to reference. */
+function figureSvg(label: string): string {
+  return [
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 200" width="100%">',
+    '<rect x="10" y="10" width="380" height="180" fill="#dde7ff" stroke="#2244aa"/>',
+    `<text x="24" y="60" font-family="sans-serif" font-size="18">${label}</text>`,
+    "</svg>",
+  ].join("");
+}
+
 /**
  * Boots what both specs need and hands the URLs to the workers through the
  * environment. Returning a function registers it as the teardown.
@@ -167,6 +177,22 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
 
   const root = await makeWorkspace({
     "readme.md": "# workspace\n\nA file the browser is allowed to see.\n",
+    // A document with figures beside it, below it and above it — the three shapes
+    // a reference takes on disk, so the export's resolution is exercised against a
+    // real workspace and the server's own /files/raw rather than a stub.
+    "docs/report.md": [
+      "# Report",
+      "",
+      "![the whole architecture](whole.svg)",
+      "",
+      "![power only](figures/power.svg)",
+      "",
+      "![the shared legend](../shared/legend.svg)",
+      "",
+    ].join("\n"),
+    "docs/whole.svg": figureSvg("The whole architecture"),
+    "docs/figures/power.svg": figureSvg("Power only"),
+    "shared/legend.svg": figureSvg("The shared legend"),
     // A prompt template, so `/` has something to autocomplete. Discovered from
     // the workspace's own .pi/prompts, the same way a real project's are.
     ".pi/prompts/greet.md": "---\ndescription: say hello\n---\n\nSay hello.\n",

@@ -11,6 +11,7 @@
  */
 import { expect, test } from "@playwright/test";
 import JSZip from "jszip";
+import { pngBytes } from "../ui/src/export/testImages";
 
 const HOST = process.env.PI_E2E_HOST_URL ?? "";
 
@@ -41,12 +42,58 @@ const RICH = [
 ].join("\n");
 
 /** Runs the export in the page and opens the package here. */
-async function exportInBrowser(page: import("@playwright/test").Page, markdown: string, path = "doc.md") {
+async function exportInBrowser(
+  page: import("@playwright/test").Page,
+  markdown: string,
+  path = "doc.md",
+  options?: { serverUrl?: string; token?: string | null },
+) {
   const base64 = await page.evaluate(
-    ([source, name]) => window.__docxExport.build(source, name),
-    [markdown, path] as const,
+    ([source, name, opts]) => window.__docxExport.build(source, name, opts as never),
+    [markdown, path, options] as const,
   );
   return JSZip.loadAsync(Buffer.from(base64, "base64"));
+}
+
+/** A figure of the kind the agent writes beside a document it is drafting. */
+function figureSvg(label: string): string {
+  return [
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 200" width="100%">',
+    '<rect x="10" y="10" width="380" height="180" fill="#dde7ff" stroke="#2244aa"/>',
+    `<text x="24" y="60" font-family="sans-serif" font-size="18">${label}</text>`,
+    "</svg>",
+  ].join("");
+}
+
+/**
+ * The workspace, as the page can read it.
+ *
+ * The export fetches a reference through `/files/raw`, which is the server's
+ * route; this page has no server behind it, so the route is answered here. The
+ * requests are still made, still same-origin, and still recorded — which is what
+ * the offline test needs to remain a real assertion rather than a vacuous one.
+ */
+async function serveWorkspace(
+  page: import("@playwright/test").Page,
+  files: Record<string, { body: string | Buffer; contentType: string }>,
+): Promise<string[]> {
+  const asked: string[] = [];
+  await page.route("**/files/raw*", async (route) => {
+    const path = new URL(route.request().url()).searchParams.get("path") ?? "";
+    asked.push(path);
+    const file = files[path];
+    if (file === undefined) {
+      await route.fulfill({ status: 404, contentType: "text/plain", body: "no such file" });
+      return;
+    }
+    await route.fulfill({ status: 200, contentType: file.contentType, body: file.body });
+  });
+  return asked;
+}
+
+/** The media parts of a package, ignoring the folder entry the zip carries. */
+function media(zip: JSZip): string[] {
+  return Object.keys(zip.files).filter((name) => name.startsWith("word/media/") && !name.endsWith("/"));
 }
 
 async function partText(zip: JSZip, name: string): Promise<string> {
@@ -245,14 +292,113 @@ test("a large document exports without hanging the page", async ({ page }) => {
   expect(duration).toBeLessThan(20_000);
 });
 
-test("exporting reaches the network for nothing", async ({ page }) => {
-  // The capability says the document's own text is the only input. A font, a CDN
-  // script or a diagram theme fetched at export time would all break that.
+test("exporting stays on the origin that served the application", async ({ page }) => {
+  /*
+   * The capability's inputs are the document's text and the workspace files it
+   * references — and nothing else. A font, a CDN script or a diagram theme
+   * fetched at export time would all break that, and so would reaching for an
+   * image somebody wrote an absolute URL to.
+   *
+   * A document that references a figure is used deliberately: with only text, the
+   * assertion would hold for an export that fetched nothing at all, which is no
+   * longer what is being claimed.
+   */
   const requests: string[] = [];
   page.on("request", (request) => requests.push(request.url()));
+  await serveWorkspace(page, { "figures/whole.svg": { body: figureSvg("Whole"), contentType: "image/svg+xml" } });
 
-  await exportInBrowser(page, RICH);
+  const zip = await exportInBrowser(page, `${RICH}\n![the whole architecture](figures/whole.svg)\n`, "doc.md", {
+    serverUrl: "",
+    token: null,
+  });
+
+  // Requests were made, and the figure did arrive: otherwise this proves nothing.
+  expect(requests.some((url) => url.includes("/files/raw"))).toBe(true);
+  expect(media(zip).filter((name) => name.endsWith(".svg"))).toHaveLength(2);
 
   const offSite = requests.filter((url) => !url.startsWith(HOST) && !url.startsWith("data:") && !url.startsWith("blob:"));
   expect(offSite).toEqual([]);
+});
+
+test("a referenced figure is carried as a vector, with a raster behind it", async ({ page }) => {
+  // The observation that opened this change: a figure the agent wrote beside a
+  // document arrived in Word as the words "The whole architecture".
+  await serveWorkspace(page, {
+    "figures/whole.svg": { body: figureSvg("The whole architecture"), contentType: "image/svg+xml" },
+  });
+
+  const zip = await exportInBrowser(page, "# Report\n\n![The whole architecture](figures/whole.svg)\n", "doc.md", {
+    serverUrl: "",
+    token: null,
+  });
+
+  expect(media(zip).filter((name) => name.endsWith(".svg"))).toHaveLength(1);
+  expect(media(zip).filter((name) => name.endsWith(".png"))).toHaveLength(1);
+
+  const document = await partText(zip, "word/document.xml");
+  expect(document).toContain("svgBlip");
+  // The picture is there instead of the alt text, which is the whole point.
+  expect(document).not.toContain("The whole architecture</w:t>");
+
+  // The vector that travels is the figure itself, drawn from the file on disk.
+  const svg = await partText(zip, media(zip).find((name) => name.endsWith(".svg"))!);
+  expect(svg).toContain("The whole architecture");
+});
+
+test("a referenced raster travels as the file it already is", async ({ page }) => {
+  const bytes = pngBytes(300, 150);
+  await serveWorkspace(page, { "plot.png": { body: Buffer.from(bytes), contentType: "image/png" } });
+
+  const zip = await exportInBrowser(page, "![a plot](plot.png)\n", "doc.md", { serverUrl: "", token: null });
+
+  const parts = media(zip);
+  expect(parts).toHaveLength(1);
+  expect(parts[0]).toMatch(/\.png$/);
+  expect(Buffer.from(await zip.file(parts[0])!.async("uint8array"))).toEqual(Buffer.from(bytes));
+});
+
+test("a figure beside the document, below it, and above it all resolve", async ({ page }) => {
+  const asked = await serveWorkspace(page, {
+    "docs/guide/beside.svg": { body: figureSvg("Beside"), contentType: "image/svg+xml" },
+    "docs/guide/figures/below.svg": { body: figureSvg("Below"), contentType: "image/svg+xml" },
+    "docs/shared/above.svg": { body: figureSvg("Above"), contentType: "image/svg+xml" },
+  });
+
+  const markdown = "![a](beside.svg)\n\n![b](figures/below.svg)\n\n![c](../shared/above.svg)\n";
+  const zip = await exportInBrowser(page, markdown, "docs/guide/report.md", { serverUrl: "", token: null });
+
+  // Resolved against the document's own directory, exactly as the viewer resolves
+  // them on screen.
+  expect(asked).toEqual(["docs/guide/beside.svg", "docs/guide/figures/below.svg", "docs/shared/above.svg"]);
+  expect(media(zip).filter((name) => name.endsWith(".svg"))).toHaveLength(3);
+});
+
+test("a reference the workspace cannot answer keeps its words and breaks nothing", async ({ page }) => {
+  await serveWorkspace(page, {});
+
+  const zip = await exportInBrowser(page, "Before.\n\n![the missing figure](gone.svg)\n\nAfter.\n", "doc.md", {
+    serverUrl: "",
+    token: null,
+  });
+  const document = await partText(zip, "word/document.xml");
+
+  expect(media(zip)).toEqual([]);
+  expect(document).toContain("the missing figure");
+  expect(document).toContain("Before.");
+  expect(document).toContain("After.");
+});
+
+test("an absolute URL is not fetched, however plausible it looks", async ({ page }) => {
+  const requests: string[] = [];
+  page.on("request", (request) => requests.push(request.url()));
+
+  const zip = await exportInBrowser(page, "![a remote chart](https://example.com/x.png)\n", "doc.md", {
+    serverUrl: "",
+    token: null,
+  });
+  const document = await partText(zip, "word/document.xml");
+
+  expect(requests.filter((url) => url.includes("example.com"))).toEqual([]);
+  expect(media(zip)).toEqual([]);
+  expect(document).toContain("a remote chart");
 });

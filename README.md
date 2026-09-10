@@ -175,7 +175,10 @@ one needs, the command that proves it works, and the caution that goes with it.
 - Word export: any text file open in the viewer downloads as a real `.docx`. Markdown becomes
   Word's own structure — heading styles, lists, tables, hyperlinks — LaTeX becomes native Word
   equations you can edit in the equation editor, and mermaid diagrams travel as vector images
-  that stay sharp, with a raster behind them for readers that do not draw SVG. Any other text
+  that stay sharp, with a raster behind them for readers that do not draw SVG. A figure the
+  document references — beside it, below it or above it — is carried as a picture under the same
+  rule; one that cannot be read keeps its alt text, and an image referenced by an absolute URL is
+  never fetched. Any other text
   file exports as monospaced lines. It is a download, so a read-only file offers it too, and
   the writer is fetched only when you first use it
 - Split view: a Markdown or structured document renders beside the editor, following what
