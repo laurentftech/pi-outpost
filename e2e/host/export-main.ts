@@ -9,12 +9,12 @@
  * JSON — a `Uint8Array` would arrive as an object with numeric keys, and a `Blob`
  * would not arrive at all.
  */
-import { buildDocx } from "../../ui/src/export/docxExport";
+import { buildDocx, type ExportOptions } from "../../ui/src/export/docxExport";
 
 declare global {
   interface Window {
     __docxExport: {
-      build(markdown: string, path: string): Promise<string>;
+      build(markdown: string, path: string, options?: ExportOptions): Promise<string>;
       /** How long one export took, so a test can assert the page stayed usable. */
       lastDurationMs: number;
     };
@@ -34,9 +34,11 @@ function toBase64(bytes: Uint8Array): string {
 
 window.__docxExport = {
   lastDurationMs: 0,
-  async build(markdown: string, path: string): Promise<string> {
+  async build(markdown: string, path: string, options?: ExportOptions): Promise<string> {
     const started = performance.now();
-    const blob = await buildDocx(markdown, path);
+    // The origin and token the viewer would hold. Same-origin here, which is what
+    // lets a test serve the workspace files this page's exports reference.
+    const blob = await buildDocx(markdown, path, options);
     window.__docxExport.lastDurationMs = performance.now() - started;
     return toBase64(new Uint8Array(await blob.arrayBuffer()));
   },

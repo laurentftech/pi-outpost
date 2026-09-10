@@ -17,6 +17,13 @@ import { markdownToDocx, ORDERED_NUMBERING, type DocxBlock } from "./markdownToD
 import { plainTextToDocx } from "./plainTextToDocx";
 
 /**
+ * What the export needs beyond the text: where to reach the workspace files the
+ * document references. Both are absent when nothing is referenced, and `""` with
+ * a `null` token is the standalone, same-origin case.
+ */
+export type ExportOptions = { serverUrl?: string; token?: string | null };
+
+/**
  * What the download is called.
  *
  * The source's own extension is replaced rather than appended: `report.md` becomes
@@ -47,10 +54,10 @@ export function isMarkdownPath(path: string): boolean {
  * given above — though within this module that is a formality, since the module
  * itself is only ever reached by `import()`.
  */
-export async function buildDocx(text: string, path: string): Promise<Blob> {
+export async function buildDocx(text: string, path: string, options?: ExportOptions): Promise<Blob> {
   const document = new Document({
     numbering: { config: [orderedNumbering()] },
-    sections: [{ children: await documentChildren(text, path) }],
+    sections: [{ children: await documentChildren(text, path, options) }],
   });
   return Packer.toBlob(document);
 }
@@ -90,11 +97,13 @@ function orderedNumbering() {
  * Which of the two is decided by the file's name and nothing else — a `.log` that
  * happens to open with `# ` is a log, not a document with a heading.
  */
-async function documentChildren(text: string, path: string): Promise<DocxBlock[]> {
-  return isMarkdownPath(path) ? markdownToDocx(text) : plainTextToDocx(text);
+async function documentChildren(text: string, path: string, options?: ExportOptions): Promise<DocxBlock[]> {
+  // The document's own path travels with it: a reference in it resolves against
+  // the directory it lives in, exactly as the viewer resolves one on screen.
+  return isMarkdownPath(path) ? markdownToDocx(text, { ...options, path }) : plainTextToDocx(text);
 }
 
 /** Builds the document and hands it to the browser. */
-export async function downloadDocx(text: string, path: string): Promise<void> {
-  save(await buildDocx(text, path), docxFileName(path));
+export async function downloadDocx(text: string, path: string, options?: ExportOptions): Promise<void> {
+  save(await buildDocx(text, path, options), docxFileName(path));
 }

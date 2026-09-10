@@ -59,18 +59,35 @@ reach the export: `FileViewer` → `DocxExportButton` → `downloadDocx` → `ma
 resolution rule away from the one the viewer uses, which is precisely the drift this decision
 exists to prevent, and it adds a route for something `/files/raw` already serves.
 
-*Trade-off:* `buildDocx`'s signature grows. It is called by `downloadDocx` and by tests only, so an
-options object (`{ path, serverUrl, token }`) keeps the call sites honest and lets a test pass a
-stub loader.
+*Trade-off:* `buildDocx`'s signature grows. The path stays where it already was —
+`buildDocx(text, path, options)` — and the options object carries only what is new
+(`{ serverUrl, token }`), which `documentChildren` folds back together as
+`markdownToDocx(text, { ...options, path })`. Every existing call site and test keeps working, and
+the plain-text path ignores the options entirely.
 
 ### D3 — A vector reference goes through the diagram path; a raster is embedded as-is
 
-For an SVG: `inlineStyles` (a figure written by `write_structure_figure` is already
-attribute-painted, but a hand-written SVG in the workspace may not be, and the requirement that a
-non-CSS reader sees the real picture applies to both), then `svgDimensions` + `withExplicitSize`,
-then `rasterise` for the fallback — after which it is a `DiagramImage` and `diagramBlock` draws it.
-For PNG/JPEG/GIF/WebP: the bytes go in as they are, with dimensions read by decoding the image once
-(`loadImage`, already in `mermaidToImage.ts`).
+For an SVG, the order `renderDiagram` already uses, for the reasons it already has: size it
+(`svgDimensions` + `withExplicitSize`), rasterise the *styled* original — a browser applies the CSS,
+so the fallback is right either way — and run `inlineStyles` over the vector alone, which is the
+copy that travels to readers that do not run a stylesheet (a figure written by
+`write_structure_figure` is already attribute-painted; a hand-written workspace SVG may not be, and
+the requirement applies to both). After that it is a `DiagramImage` and the diagram's own picture
+run draws it. A workspace SVG that states no viewBox but does state a root `width` and `height`
+draws perfectly well in the viewer, so `svgSize` reads those rather than refusing a picture the
+reader can see.
+
+For a raster: the bytes go in as they are, with the format and pixel size read from the file's own
+header — PNG's IHDR, a JPEG's frame header, the GIF and BMP headers. Read rather than decoded,
+which is the one departure from what this decision first said. Decoding through `loadImage` needs a
+browser, and the export's other picture code already cannot be tested in jsdom for exactly that
+reason; a header read is a pure function over bytes, so the raster path is *real* in the unit tests
+instead of mocked. It also costs nothing at export time.
+
+*Consequence:* the formats that can travel are the four the writer has part types for — PNG, JPEG,
+GIF and BMP. A WebP or an AVIF is an image the viewer draws happily and the package has no part it
+could become, so it degrades to its alt text under D5 rather than producing a part no reader could
+open. The requirement says so explicitly.
 
 *Alternative rejected — rasterise everything.* It would throw away the vector for the one case the
 `structured-exchange` figure exists to serve.
@@ -108,7 +125,14 @@ already behaves this way.
   duration assertion in `e2e/docx-export.spec.ts` covers the shape.
 - **The export now depends on the server being reachable.** A document exported while the connection
   is down loses its pictures rather than failing. → That is the specified degradation (D5), and the
-  reader sees alt text rather than a corrupt file.
+  reader sees alt text rather than a corrupt file. Observed on the bench: with the server killed
+  underneath a loaded page, the export succeeds and every figure arrives as its alt text.
+- **With the server unreachable *before* the export has ever run, it fails outright.** The button
+  reports "export failed" rather than degrading. → Not the reference path: the whole export module
+  is fetched by `import()` on first use, so with nothing served there is no writer either, and this
+  is how the export behaved before this change. Once the chunk is loaded, the degradation above is
+  what happens. Worth knowing when reading a failure report; not worth pre-loading a document
+  writer into every session to fix.
 - **`buildDocx` gains parameters that only matter for Markdown.** → Grouped into one options object
   so the plain-text path ignores them.
 

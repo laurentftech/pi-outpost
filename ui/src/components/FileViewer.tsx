@@ -828,7 +828,7 @@ export function FileViewer({
             rather than a workspace write. Not offered for an image or a PDF (there
             is no text to carry), nor while the diff is showing (the reader is
             looking at changes, not at the document). */}
-        {loaded && !image && !pdf && !showGitDiff && <DocxExportButton text={editedText} path={file.path} />}
+        {loaded && !image && !pdf && !showGitDiff && <DocxExportButton text={editedText} path={file.path} serverUrl={serverUrl} token={token} />}
         {loaded && edit === null && <CopyButton text={loaded.content} />}
         {loaded && edit === null && !showGitDiff && writable && (
           <button

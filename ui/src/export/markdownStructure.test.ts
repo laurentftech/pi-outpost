@@ -194,9 +194,11 @@ describe("quotes, rules and unmapped nodes", () => {
     expect(text).not.toContain("---");
   });
 
-  it("carries an image's alt text rather than dropping the node", async () => {
-    // Pictures from Markdown are out of scope, but the words the author wrote about
-    // one are content, and silently losing content is the failure to avoid.
+  it("carries an image's alt text when the picture cannot be had", async () => {
+    // A reference the export cannot load — here there is no server behind it at
+    // all — degrades to the words the author wrote about the picture. Silently
+    // losing those is the failure to avoid; the picture itself, when it can be
+    // loaded, is covered in `referencedImages.test.ts`.
     const xml = await exportMarkdown("![a diagram of the flow](diagram.png)\n");
 
     expect(visibleText(xml)).toContain("a diagram of the flow");

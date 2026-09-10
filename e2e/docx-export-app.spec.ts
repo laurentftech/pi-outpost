@@ -122,6 +122,81 @@ test("survives the project changing under a running export", async ({ page }) =>
   expect(errors).toEqual([]);
 });
 
+/** The package a download carries, opened here. */
+async function openDownload(download: import("@playwright/test").Download) {
+  const JSZip = (await import("jszip")).default;
+  const { readFile } = await import("node:fs/promises");
+  return JSZip.loadAsync(await readFile(await download.path()));
+}
+
+test("carries the figures the document references, wherever they sit on disk", async ({ page }) => {
+  /*
+   * The observation that opened this change, driven through the real thing: a
+   * report the agent wrote, with the figures it was given a tool to produce,
+   * exported as Word. Every one of them used to arrive as its alt text.
+   *
+   * Three references, in the three shapes a document writes one: beside the file,
+   * in a subdirectory, and above it. They are read through the server's own
+   * /files/raw — the same confined route the viewer draws them through.
+   */
+  const errors = watchConsole(page);
+  await page.goto(process.env.PI_E2E_SERVER_URL!);
+  await expect(page.getByTitle("connected")).toBeVisible();
+  await page.getByTitle("Show files").click();
+  await page.getByText("docs", { exact: true }).click();
+  await page.getByText("report.md").click();
+
+  const download = page.waitForEvent("download");
+  await page.getByRole("button", { name: /download as a word document/i }).click();
+  const zip = await openDownload(await download);
+
+  const media = Object.keys(zip.files).filter((name) => name.startsWith("word/media/") && !name.endsWith("/"));
+  // Three pictures, each a vector with the raster a reader without the Office
+  // extension is shown instead.
+  expect(media.filter((name) => name.endsWith(".svg"))).toHaveLength(3);
+  expect(media.filter((name) => name.endsWith(".png"))).toHaveLength(3);
+
+  const xml = await zip.file("word/document.xml")!.async("string");
+  const visible = [...xml.matchAll(/<w:t(?:\s[^>]*)?>([\s\S]*?)<\/w:t>/g)].map((match) => match[1]).join("");
+  for (const alt of ["the whole architecture", "power only", "the shared legend"]) {
+    expect(visible).not.toContain(alt);
+  }
+  expect(errors).toEqual([]);
+});
+
+test("falls back to the words when a referenced figure has gone from disk", async ({ page }) => {
+  // Removed underneath the running application, which is the shape these tests
+  // exist for: the document is worth more than the picture.
+  const errors = watchConsole(page);
+  await page.goto(process.env.PI_E2E_SERVER_URL!);
+  await expect(page.getByTitle("connected")).toBeVisible();
+  await page.getByTitle("Show files").click();
+  await page.getByText("docs", { exact: true }).click();
+  await page.getByText("report.md").click();
+  await expect(page.getByRole("button", { name: /download as a word document/i })).toBeVisible();
+
+  const { rename } = await import("node:fs/promises");
+  const path = await import("node:path");
+  const figure = path.join(process.env.PI_E2E_PRIMARY_PROJECT!, "docs/whole.svg");
+  await rename(figure, `${figure}.gone`);
+  try {
+    const download = page.waitForEvent("download");
+    await page.getByRole("button", { name: /download as a word document/i }).click();
+    const zip = await openDownload(await download);
+
+    const media = Object.keys(zip.files).filter((name) => name.startsWith("word/media/") && !name.endsWith("/"));
+    // The other two still travel; the missing one is its alt text and nothing else.
+    expect(media.filter((name) => name.endsWith(".svg"))).toHaveLength(2);
+    const xml = await zip.file("word/document.xml")!.async("string");
+    expect(xml).toContain("the whole architecture");
+  } finally {
+    await rename(`${figure}.gone`, figure);
+  }
+  // The browser logs the 404 for the file that is genuinely gone — the viewer's
+  // own `img` asks for it too. Anything else would be the application failing.
+  expect(errors.filter((message) => !/404 \(Not Found\)/.test(message))).toEqual([]);
+});
+
 test("offers the export for a file it cannot render, and not for the diff view", async ({ page }) => {
   const errors = watchConsole(page);
   await openReadme(page);

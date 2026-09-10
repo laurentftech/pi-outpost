@@ -70,5 +70,12 @@ None.
   cannot drift apart.
 - `e2e/docx-export.spec.ts` — the offline test's assertion stays as it is; the fixture grows a
   document that references a figure on disk.
+- `e2e/global-setup.ts` — the workspace the app spec drives grows a document with a figure beside
+  it, one below it and one above it, so the resolution rule is exercised against the server's own
+  `/files/raw` rather than a stub.
+- `package.json` — `pretest:e2e` resets the embedded UI bundle, as `dev`, `start` and `bench`
+  already do. Without it a filled `server/src/embedded-web.ts` is served in preference to
+  `web/dist`, and the app spec silently exercises whatever was last packaged instead of what was
+  just built.
 - No server change: `/files/raw` already serves workspace files and already refuses a path outside
   the confinement.

@@ -31,11 +31,12 @@ import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import remarkParse from "remark-parse";
 import { unified } from "unified";
-import type { Code, Heading, List, PhrasingContent, Root, RootContent, Table as MdTable } from "mdast";
+import type { Code, Heading, Image, List, PhrasingContent, Root, RootContent, Table as MdTable } from "mdast";
 import { normalizeMathDelimiters } from "../util/markdownMath";
 import { latexToOmml } from "./mathmlToOmml";
 import { xmlSafe } from "./xmlText";
 import { renderDiagram, type DiagramImage } from "./mermaidToImage";
+import { loadReference, referenceUrl, type ReferencedImage } from "./loadReferencedImage";
 
 /** A block Word understands: everything here reduces to one of these two. */
 export type DocxBlock = Paragraph | Table;
@@ -93,7 +94,7 @@ function runOf(text: string, marks: Marks): TextRun {
  * hyperlink, not a hyperlink containing bold. The marks therefore travel down the
  * tree as a value and are applied at each leaf.
  */
-function inlineRuns(nodes: readonly PhrasingContent[], marks: Marks = {}): InlineContent[] {
+function inlineRuns(nodes: readonly PhrasingContent[], refs: Refs, marks: Marks = {}): InlineContent[] {
   const out: InlineContent[] = [];
   for (const node of nodes) {
     switch (node.type) {
@@ -101,13 +102,13 @@ function inlineRuns(nodes: readonly PhrasingContent[], marks: Marks = {}): Inlin
         out.push(runOf(node.value, marks));
         break;
       case "strong":
-        out.push(...inlineRuns(node.children, { ...marks, bold: true }));
+        out.push(...inlineRuns(node.children, refs, { ...marks, bold: true }));
         break;
       case "emphasis":
-        out.push(...inlineRuns(node.children, { ...marks, italics: true }));
+        out.push(...inlineRuns(node.children, refs, { ...marks, italics: true }));
         break;
       case "delete":
-        out.push(...inlineRuns(node.children, { ...marks, strike: true }));
+        out.push(...inlineRuns(node.children, refs, { ...marks, strike: true }));
         break;
       case "inlineCode":
         out.push(runOf(node.value, { ...marks, code: true }));
@@ -117,7 +118,7 @@ function inlineRuns(nodes: readonly PhrasingContent[], marks: Marks = {}): Inlin
         // whose runs were dropped would leave a target with nothing to click.
         out.push(
           new ExternalHyperlink({
-            children: inlineRuns(node.children, marks),
+            children: inlineRuns(node.children, refs, marks),
             link: node.url,
           }),
         );
@@ -125,19 +126,23 @@ function inlineRuns(nodes: readonly PhrasingContent[], marks: Marks = {}): Inlin
       case "break":
         out.push(new TextRun({ text: "", break: 1 }));
         break;
-      case "image":
-        // A Markdown image is not carried as a picture (see the capability's scope);
-        // its alt text is the readable thing it has, and dropping it silently would
-        // lose content the author wrote.
-        out.push(runOf(node.alt ?? node.url, marks));
+      case "image": {
+        // A reference the export could load is the picture the reader saw; one it
+        // could not — a file that is gone, a path the server refuses, an absolute
+        // URL it will not reach for — falls back to the words the author wrote
+        // about it, because losing those silently would lose content.
+        const picture = refs.get(node);
+        if (picture === undefined) out.push(runOf(node.alt ?? node.url, marks));
+        else out.push(pictureRun(picture));
         break;
+      }
       case "inlineMath":
         out.push(...equationRuns(node.value, false, marks));
         break;
       default:
         // Anything the mapping does not know is still content: carry whatever text
         // hangs beneath it rather than dropping the node on the floor.
-        out.push(...inlineRuns(childPhrasing(node), marks));
+        out.push(...inlineRuns(childPhrasing(node), refs, marks));
         break;
     }
   }
@@ -176,10 +181,10 @@ const HEADING_FOR_DEPTH = [
   HeadingLevel.HEADING_6,
 ] as const;
 
-function headingBlock(node: Heading): Paragraph {
+function headingBlock(node: Heading, refs: Refs): Paragraph {
   return new Paragraph({
     heading: HEADING_FOR_DEPTH[Math.min(node.depth, 6) - 1],
-    children: inlineRuns(node.children),
+    children: inlineRuns(node.children, refs),
   });
 }
 
@@ -252,27 +257,84 @@ async function renderDiagrams(root: Root): Promise<Map<Code, DiagramImage>> {
   return drawn;
 }
 
+/** Where a loaded picture is looked up during the walk. */
+type Refs = Map<Image, ReferencedImage>;
+
 /**
- * A diagram as a picture, vector with a raster behind it.
+ * Every referenced picture in the document, loaded before the tree is walked.
+ *
+ * The same shape of answer diagrams take, for the same reason: fetching is
+ * asynchronous and the walk is not. Keyed by node rather than by path, because
+ * two references to one file are two nodes with two alt texts — and deduplicated
+ * by path before fetching, so that file is asked for once. A reference that will
+ * not load is simply absent from the map, and the walk falls back to its alt text.
+ */
+async function loadReferences(
+  root: Root,
+  docPath: string,
+  serverUrl: string,
+  token: string | null,
+): Promise<Refs> {
+  const nodes: Image[] = [];
+  const walk = (node: { type: string; children?: unknown[] }) => {
+    if (node.type === "image") nodes.push(node as Image);
+    for (const child of (node.children ?? []) as { type: string; children?: unknown[] }[]) walk(child);
+  };
+  walk(root);
+
+  const refs: Refs = new Map();
+  // Keyed by the URL the reference resolves to, and holding the misses as well as
+  // the hits: a file that is not there must not be asked for once per mention.
+  const byUrl = new Map<string, ReferencedImage | undefined>();
+  for (const node of nodes) {
+    const url = referenceUrl(docPath, node.url, serverUrl, token);
+    // Not ours to fetch — an absolute URL, a data URI, a protocol-relative host.
+    if (url === undefined) continue;
+    if (!byUrl.has(url)) byUrl.set(url, await loadReference(docPath, node.url, serverUrl, token));
+    const picture = byUrl.get(url);
+    if (picture !== undefined) refs.set(node, picture);
+  }
+  return refs;
+}
+
+/**
+ * A vector as a picture run, with a raster behind it.
  *
  * The raster is not optional — it is what a reader without SVG support sees, and
- * the writer's own type requires it. Word draws the vector.
+ * the writer's own type requires it. Word draws the vector. A rendered diagram
+ * and a referenced figure go through this one function, so a reader cannot get a
+ * sharp diagram and a soft figure out of the same document.
  */
+function vectorRun(image: DiagramImage): ImageRun {
+  return new ImageRun({
+    type: "svg",
+    // Bytes, not the markup string: the writer reads a `string` here as base64
+    // and tries to decode it, so handing it SVG source throws before a single
+    // diagram is written. Encoding it makes the intent unambiguous.
+    data: new TextEncoder().encode(image.svg),
+    fallback: { type: "png", data: image.png },
+    transformation: diagramSize(image.width, image.height),
+  });
+}
+
+/** A diagram, centred in a paragraph of its own. */
 function diagramBlock(image: DiagramImage): Paragraph {
-  const transformation = diagramSize(image.width, image.height);
-  return new Paragraph({
-    alignment: AlignmentType.CENTER,
-    children: [
-      new ImageRun({
-        type: "svg",
-        // Bytes, not the markup string: the writer reads a `string` here as base64
-        // and tries to decode it, so handing it SVG source throws before a single
-        // diagram is written. Encoding it makes the intent unambiguous.
-        data: new TextEncoder().encode(image.svg),
-        fallback: { type: "png", data: image.png },
-        transformation,
-      }),
-    ],
+  return new Paragraph({ alignment: AlignmentType.CENTER, children: [vectorRun(image)] });
+}
+
+/**
+ * A referenced picture, as the run that draws it.
+ *
+ * A raster travels as the format it already is — the bytes that were on disk, not
+ * a redrawing of them — carrying the physical size its own pixels imply, scaled
+ * down to the text width when it would otherwise run off the page.
+ */
+function pictureRun(reference: ReferencedImage): ImageRun {
+  if (reference.kind === "vector") return vectorRun(reference.image);
+  return new ImageRun({
+    type: reference.type,
+    data: reference.bytes,
+    transformation: diagramSize(reference.width, reference.height),
   });
 }
 
@@ -283,7 +345,7 @@ function diagramBlock(image: DiagramImage): Paragraph {
  * built from its options and cannot be re-styled once made, so the indent and the
  * rule have to be known at the point each paragraph is constructed.
  */
-type ListState = { instance: number; quoteDepth: number; diagrams: Map<Code, DiagramImage> };
+type ListState = { instance: number; quoteDepth: number; diagrams: Map<Code, DiagramImage>; images: Refs };
 
 /** Indented and ruled on the left, which is what a quotation looks like in Word. */
 function quoteStyle(depth: number) {
@@ -318,7 +380,7 @@ function listBlocks(node: List, state: ListState, level = 0): DocxBlock[] {
       if (child.type === "paragraph") {
         out.push(
           new Paragraph({
-            children: inlineRuns(child.children),
+            children: inlineRuns(child.children, state.images),
             // Only the item's first paragraph carries the marker; a second one is a
             // continuation of the same item and must not be numbered again.
             ...(first
@@ -337,7 +399,7 @@ function listBlocks(node: List, state: ListState, level = 0): DocxBlock[] {
   return out;
 }
 
-function tableBlock(node: MdTable): Table {
+function tableBlock(node: MdTable, refs: Refs): Table {
   const rows = node.children.map(
     (row, index) =>
       new TableRow({
@@ -347,7 +409,7 @@ function tableBlock(node: MdTable): Table {
         children: row.children.map(
           (cell) =>
             new TableCell({
-              children: [new Paragraph({ children: inlineRuns(cell.children) })],
+              children: [new Paragraph({ children: inlineRuns(cell.children, refs) })],
             }),
         ),
       }),
@@ -368,16 +430,16 @@ function blocksFrom(nodes: readonly RootContent[], state: ListState): DocxBlock[
   for (const node of nodes) {
     switch (node.type) {
       case "heading":
-        out.push(headingBlock(node));
+        out.push(headingBlock(node, state.images));
         break;
       case "paragraph":
-        out.push(new Paragraph({ children: inlineRuns(node.children), ...quoteStyle(state.quoteDepth) }));
+        out.push(new Paragraph({ children: inlineRuns(node.children, state.images), ...quoteStyle(state.quoteDepth) }));
         break;
       case "list":
         out.push(...listBlocks(node, state));
         break;
       case "table":
-        out.push(tableBlock(node));
+        out.push(tableBlock(node, state.images));
         break;
       case "code": {
         // A diagram that drew becomes a picture; one that did not falls back to its
@@ -406,7 +468,7 @@ function blocksFrom(nodes: readonly RootContent[], state: ListState): DocxBlock[
         break;
       default: {
         // Unknown block: keep whatever text it holds rather than losing it.
-        const runs = inlineRuns(childPhrasing(node));
+        const runs = inlineRuns(childPhrasing(node), state.images);
         if (runs.length > 0) out.push(new Paragraph({ children: runs }));
         break;
       }
@@ -418,13 +480,21 @@ function blocksFrom(nodes: readonly RootContent[], state: ListState): DocxBlock[
 /**
  * The document's blocks, in the order it declares them.
  *
- * Asynchronous only because diagrams have to be drawn, which happens once up front
- * rather than during the walk: the mapping itself stays a plain recursive function
- * over the tree, which is much easier to reason about than one that awaits inside
- * itself.
+ * Asynchronous only because pictures have to be produced — diagrams drawn,
+ * references fetched — which happens once up front rather than during the walk:
+ * the mapping itself stays a plain recursive function over the tree, which is
+ * much easier to reason about than one that awaits inside itself.
+ *
+ * `path` is the document's own location, and a reference resolves against its
+ * directory. Without it every relative reference would resolve from the workspace
+ * root, and a figure beside the document would be looked for somewhere else.
  */
-export async function markdownToDocx(text: string): Promise<DocxBlock[]> {
+export async function markdownToDocx(
+  text: string,
+  options?: { path?: string; serverUrl?: string; token?: string | null },
+): Promise<DocxBlock[]> {
   const root = parseMarkdown(text);
   const diagrams = await renderDiagrams(root);
-  return blocksFrom(root.children, { instance: 0, quoteDepth: 0, diagrams });
+  const images = await loadReferences(root, options?.path ?? "", options?.serverUrl ?? "", options?.token ?? null);
+  return blocksFrom(root.children, { instance: 0, quoteDepth: 0, diagrams, images });
 }

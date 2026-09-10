@@ -30,6 +30,7 @@
     "test:scripts": "node --test scripts/*.test.mjs",
     "test:linux": "node scripts/test-linux.mjs",
     "build:e2e-host": "vite build --config e2e/vite.config.ts",
+    "pretest:e2e": "node scripts/ensure-embedded-web.mjs --reset",
     "test:e2e": "npm run build:e2e-host && playwright test --config e2e/playwright.config.ts",
     "bench": "tsx scripts/embed-bench.mts",
     "check:export-chunk": "node scripts/check-export-chunk.mjs"

@@ -11,7 +11,7 @@ import { useRef, useState } from "react";
  * Independent of the writable zone — this produces a download, not a workspace
  * write — so a read-only file offers it exactly as a writable one does.
  */
-export function DocxExportButton({ text, path }: { text: string; path: string }) {
+export function DocxExportButton({ text, path, serverUrl, token }: { text: string; path: string; serverUrl?: string; token?: string | null }) {
   const [state, setState] = useState<"idle" | "working" | "failed">("idle");
   const [reason, setReason] = useState<string | null>(null);
   /**
@@ -41,7 +41,9 @@ export function DocxExportButton({ text, path }: { text: string; path: string })
     setReason(null);
     try {
       const { downloadDocx } = await import("../export/docxExport");
-      await downloadDocx(text, path);
+      // The origin and token the viewer reads this file through: the export
+      // fetches the pictures the document references the same way.
+      await downloadDocx(text, path, { serverUrl, token });
       setState("idle");
     } catch (cause) {
       // Said out loud rather than swallowed: a download that silently does nothing

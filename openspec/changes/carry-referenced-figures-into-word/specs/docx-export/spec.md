@@ -16,8 +16,10 @@ A referenced vector image SHALL be embedded under the same rule a rendered diagr
 `DiagramsAreEmbeddedAsVectorWithRasterFallback` governs it, so Word draws the vector at any zoom and
 a reader without the Office extension is shown a raster of the same picture rather than a broken
 one. A referenced raster image SHALL be embedded as the format it already is, without being
-redrawn. Every embedded picture SHALL declare a physical size derived from the image's own
-dimensions and SHALL be constrained to the page's text width when it would otherwise exceed it.
+redrawn. The formats a package can carry as pictures are PNG, JPEG, GIF and BMP; a raster in any
+other format has no part it could become, and degrades to its alt text under the rule below. Every
+embedded picture SHALL declare a physical size derived from the image's own dimensions and SHALL be
+constrained to the page's text width when it would otherwise exceed it.
 
 An image the export cannot obtain SHALL degrade to the reference's alt text, exactly as an
 unreferenced image does today: a file that no longer exists, a path the server refuses, and a
