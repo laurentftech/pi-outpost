@@ -139,6 +139,8 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
     suggestAgentResourceClonePath,
     cloneAgentResourceRepository,
     enrollAgentResourceRepository,
+    setAgentResourceSkills,
+    removeAgentResourceRepository,
     refreshAgentResourceRepositories,
     updateAgentResourceRepository,
     browseServerDirectory,
@@ -892,6 +894,8 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
             onSuggestAgentResourceClonePath={suggestAgentResourceClonePath}
             onCloneAgentResourceRepository={cloneAgentResourceRepository}
             onEnrollAgentResourceRepository={enrollAgentResourceRepository}
+            onSetAgentResourceSkills={setAgentResourceSkills}
+            onRemoveAgentResourceRepository={removeAgentResourceRepository}
             onRefreshAgentResourceRepositories={refreshAgentResourceRepositories}
             onUpdateAgentResourceRepository={updateAgentResourceRepository}
             onFetchGitLog={fetchGitLog}

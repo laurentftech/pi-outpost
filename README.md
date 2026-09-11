@@ -305,7 +305,8 @@ a fresh agent session immediately.
 | Write and bash permissions | The same switches as `sandbox.allowWrite` / `sandbox.allowBash` |
 | Agent resources | **Manage agent resources** opens one repository-first view for skills and extensions |
 | Local folders | **Add local folder…** stores skill roots under `userSkillPaths` and extension roots under `userExtensionPaths` |
-| Git repositories | **Add Git repository…** asks for the repository address and an editable local clone folder, previews recognized roots, then activates only the selected ones |
+| Git repositories | **Add Git repository…** asks for the repository address and an editable local clone folder, then lists its skills grouped by folder, **all off**: turn skills on one by one or with **All on** / **All off**, then **Save**; later changes take effect with **Apply**. Extension roots are selected as before |
+| Removing a repository | **Remove repository** unregisters it as a whole and, for a clone pi-outpost manages, deletes it from disk after a confirmation. Files you pointed it at elsewhere are kept |
 
 Two lists, deliberately: what the **configuration file** declares (`skillPaths`,
 `extensionPaths`) belongs to the deployment, and the interface can neither rewrite nor
@@ -411,6 +412,7 @@ in [`pi-outpost.config.example.json`](pi-outpost.config.example.json).
 | `extensionLock` | Forbid adding or removing extension paths from Settings |
 | `noSkills` / `skillPaths` | Disable skill discovery, or name skill files and directories. `skillPaths` loads even under `noSkills`. Disabling matters for real isolation: skills otherwise also load from `~/.agents/skills` and from `.agents/skills` walked up from `cwd`, neither of which `agentDir` scopes |
 | `userSkillPaths` | Skill directories added from Settings, loaded after `skillPaths` |
+| `userSkillCollections` | Git repositories added as skill collections: `[{ "path", "managed", "enabledSkills": ["folder/skill", …] }]`. Only the listed skill directories load, after `userSkillPaths`. Written by the server |
 | `noPromptTemplates` / `promptPaths` | Same for prompt templates (`agentDir` and the project's `cwd/.pi/prompts`) |
 | `allowedModels` | Restrict the model switcher to these `{ "provider", "id" }` pairs. Without it, every built-in model whose provider has auth is listed — often more variants than a deployment actually serves |
 | `thinkingLevels` | Declare what thinking levels a model accepts, for one the runtime cannot describe. See [Thinking levels](#thinking-levels) |

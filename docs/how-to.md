@@ -327,12 +327,30 @@ Paths are resolved against the configuration file's directory, and are automatic
 made readable to the agent even when they sit outside the sandbox root.
 
 Open **Settings → Manage agent resources** to add either a local folder or a Git
-repository. A local folder writes to `userSkillPaths` or `userExtensionPaths`. For Git,
-enter the clone address and confirm or edit the suggested local folder, then select the
-recognized skill and extension roots from the metadata-only preview. Managed suggestions
-live under `<user config dir>/resource-repositories/`; removing a resource path later never
-deletes that clone. Recognized layouts are a root `SKILL.md`, `skills/`,
-`.agents/skills/`, `extensions/`, `.pi/extensions/`, and `.agents/extensions/`.
+repository. A local folder writes to `userSkillPaths` or `userExtensionPaths`, and loads
+everything in it. For Git, enter the clone address and confirm or edit the suggested local
+folder. Managed suggestions live under `<user config dir>/resource-repositories/`.
+
+A Git repository is added as a **skill collection**: the preview lists every `SKILL.md` in
+it, grouped by the folders the repository keeps them in, and **every skill starts off**.
+Turn on the ones you want — one switch per skill, **All on** / **All off** for the whole
+repository or for one folder — then **Save** to add the repository. Later changes in the
+repository's pane are staged and take effect with **Apply**; either way the session is
+replaced once with exactly those skills. Nothing from the repository is loaded until a skill is turned on, and a skill
+that arrives later through an update stays off. The skills that are on are listed at the top
+of the repository, each with **Turn off**; **Search skills** and **Only on** narrow a large
+collection, and the repository list shows how many are on. A repository is named after its
+`origin`, not after the local folder it was cloned into. Copies of the same skill in different
+folders are listed as the repository ships them. The selection is stored under
+`userSkillCollections`. Extension roots (`extensions/`, `.pi/extensions/`,
+`.agents/extensions/`) are still selected as roots. A repository added before collections
+existed keeps loading everything under its skill roots.
+
+**Remove repository** unregisters a repository as a whole — its skills, extensions and
+selection — after a confirmation. For a clone pi-outpost made, or one inside the managed
+folder, it also **deletes the clone from disk**, local changes included; that cannot be
+undone. A repository you pointed at elsewhere is unregistered and its files are kept. A
+repository that supplies a path from the configuration file cannot be removed here.
 
 Both flows rebuild the session at once — no server restart — and never alter paths declared
 by the deployment. Extension folders warn that they execute code; an extension-bearing or

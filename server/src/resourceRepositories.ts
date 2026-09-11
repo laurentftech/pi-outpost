@@ -13,6 +13,9 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import type {
+  AgentCollectionSkill,
+  AgentResourceCollection,
+  AgentResourceRemoval,
   AgentResourceInfo,
   AgentResourceInventory,
   AgentResourceKind,
@@ -20,9 +23,12 @@ import type {
   AgentResourceRepositoryAssessment,
   AgentResourceRepositoryPreview,
   AgentResourceRepositoryStatus,
+  AgentSkillCatalogueBound,
+  AgentSkillCatalogueEntry,
 } from "@pi-outpost/shared";
+import { parseFrontmatter } from "@earendil-works/pi-coding-agent";
 import { currentGitExecutable } from "./git.ts";
-import { userConfigDir } from "./config.ts";
+import { type SkillCollection, userConfigDir } from "./config.ts";
 import { isWithin } from "./sandbox.ts";
 
 const execFileAsync = promisify(execFile);
@@ -66,6 +72,42 @@ type ResourceGitObserver = (event: {
 }) => void;
 let resourceGitObserver: ResourceGitObserver | undefined;
 
+/**
+ * Git marks its object files read-only, and on Windows a read-only file cannot be
+ * unlinked, so the first `rm` of a clone there fails with EPERM. Clearing the
+ * read-only bits (never following a link) and trying once more is what makes
+ * removal work on that platform; anything still failing is reported.
+ */
+async function removeTreeForcefully(target: string): Promise<void> {
+  try {
+    await fs.rm(target, { recursive: true, force: true, maxRetries: 3 });
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code !== "EPERM" && code !== "EACCES") throw error;
+    await makeWritable(target);
+    await fs.rm(target, { recursive: true, force: true, maxRetries: 3 });
+  }
+}
+
+async function makeWritable(target: string): Promise<void> {
+  const entry = await fs.lstat(target).catch(() => undefined);
+  if (!entry || entry.isSymbolicLink()) return;
+  if (entry.isDirectory()) {
+    await fs.chmod(target, 0o700).catch(() => undefined);
+    const children = await fs.readdir(target).catch(() => [] as string[]);
+    for (const child of children) await makeWritable(path.join(target, child));
+  } else {
+    await fs.chmod(target, 0o600).catch(() => undefined);
+  }
+}
+
+let resourceRemover: (target: string) => Promise<void> = removeTreeForcefully;
+
+/** Test seam: make deletion fail on demand, which no portable fixture can force. */
+export function useResourceRemover(remover?: (target: string) => Promise<void>): void {
+  resourceRemover = remover ?? removeTreeForcefully;
+}
+
 /** Test seam for proving command shape and concurrency without replacing Git. */
 export function useResourceGitObserver(observer?: ResourceGitObserver): void {
   resourceGitObserver = observer;
@@ -79,12 +121,25 @@ interface KnownRepository {
   resources: AgentResourceInfo[];
   containsExtensions: boolean;
   assessment: AgentResourceRepositoryAssessment;
+  collection?: AgentResourceCollection;
+  removal: AgentResourceRemoval;
 }
 
 interface PreviewRecord {
   preview: AgentResourceRepositoryPreview;
   rootsKey: string;
   expiresAt: number;
+  /** pi-outpost created this clone, or it lies in managed storage. */
+  managed: boolean;
+}
+
+export interface ConfirmedEnrollment {
+  repositoryPath: string;
+  mode: AgentResourceRepositoryPreview["mode"];
+  managed: boolean;
+  skillRoots: string[];
+  extensionRoots: string[];
+  enabledSkills: string[];
 }
 
 interface AssessmentRecord {
@@ -103,6 +158,7 @@ export interface ResourceInventoryInput {
   userSkillPaths: string[];
   configuredExtensionPaths: string[];
   userExtensionPaths: string[];
+  userSkillCollections?: readonly SkillCollection[];
   extensionLock: boolean;
 }
 
@@ -166,6 +222,24 @@ export class ResourceRepositoryService {
       byRoot.set(root, list);
     }
 
+    // A collection is a repository even when none of its skills is loaded: its
+    // catalogue is what the user turns skills on from. One whose folder vanished
+    // stays listed, so it can still be seen and removed.
+    const collectionsByRoot = new Map<string, SkillCollection>();
+    const missingCollections: SkillCollection[] = [];
+    for (const collection of input.userSkillCollections ?? []) {
+      const canonical = await canonicalExisting(collection.path);
+      const root = canonical ? await enclosingRepository(canonical) : undefined;
+      if (!root) {
+        missingCollections.push(collection);
+        continue;
+      }
+      collectionsByRoot.set(root, collection);
+      if (!byRoot.has(root)) byRoot.set(root, []);
+    }
+    const removalFor = await removalPolicy(input, await canonicalExisting(this.managedRoot));
+    const loadedSkills = resources.filter((resource) => resource.kind === "skill" && resource.path);
+
     const next = new Map<string, KnownRepository>();
     for (const [root, repoResources] of byRoot) {
       const filesystemIdentity = await repositoryFilesystemIdentity(root);
@@ -178,14 +252,35 @@ export class ResourceRepositoryService {
           : previous?.assessment.status === "locked"
             ? blockedAssessment(id, "unchecked")
             : previous?.assessment ?? blockedAssessment(id, "unchecked");
+      const collection = collectionsByRoot.get(root);
+      const name = await repositoryDisplayName(root);
       next.set(id, {
         id,
         path: root,
         filesystemIdentity,
-        name: path.basename(root) || root,
+        name,
         resources: repoResources,
         containsExtensions,
         assessment,
+        ...(collection ? { collection: await collectionView(root, name, collection, loadedSkills) } : {}),
+        removal: removalFor(root, collection),
+      });
+    }
+    for (const collection of missingCollections) {
+      const where = path.resolve(collection.path);
+      const filesystemIdentity = `missing:${where}`;
+      const id = repositoryId(where, filesystemIdentity);
+      const name = path.basename(where) || where;
+      next.set(id, {
+        id,
+        path: where,
+        filesystemIdentity,
+        name,
+        resources: [],
+        containsExtensions: false,
+        assessment: blockedAssessment(id, "unavailable", "The repository's folder no longer exists"),
+        collection: withGroups(name, collection.enabledSkills.map(missingSkill)),
+        removal: { allowed: true, deletesFiles: false, path: where },
       });
     }
     this.repositories = next;
@@ -214,22 +309,43 @@ export class ResourceRepositoryService {
     return this.buildInventory(input);
   }
 
-  async preview(selectedPath: string, extensionLock: boolean): Promise<AgentResourceRepositoryPreview> {
+  /**
+   * A worktree already registered through one of the user's skill roots keeps that
+   * load-everything enrollment ("roots"); every other repository is enrolled as a
+   * collection whose skills start off.
+   */
+  async preview(
+    selectedPath: string,
+    extensionLock: boolean,
+    options: { userSkillPaths?: readonly string[]; managed?: boolean } = {},
+  ): Promise<AgentResourceRepositoryPreview> {
     const selected = await canonicalDirectory(selectedPath);
     const root = await enclosingRepository(selected);
     if (!root) throw new ResourceRepositoryError("The selected directory is not inside a Git worktree");
-    const roots = await discoverResourceRoots(root, extensionLock);
-    if (roots.length === 0) throw new ResourceRepositoryError("No recognizable skill or extension roots were found in this repository");
+    const mode = (await enrolledThroughSkillRoots(root, options.userSkillPaths ?? [])) ? "roots" : "collection";
+    const observed = await observeRepository(root, extensionLock, mode);
+    if (observed.roots.length === 0 && observed.skills.length === 0) {
+      throw new ResourceRepositoryError("No recognizable skill or extension roots were found in this repository");
+    }
     const headRevision = (await runGit(root, ["rev-parse", "HEAD"])).trim();
     const token = randomUUID();
     const preview: AgentResourceRepositoryPreview = {
       token,
       repositoryPath: root,
-      repositoryName: path.basename(root) || root,
+      repositoryName: await repositoryDisplayName(root),
       headRevision,
-      roots,
+      mode,
+      roots: observed.roots,
+      skills: observed.skills,
+      ...(observed.bound ? { bound: observed.bound } : {}),
     };
-    this.previews.set(token, { preview, rootsKey: rootsFingerprint(roots), expiresAt: this.now() + PREVIEW_TTL_MS });
+    const managedRoot = await canonicalExisting(this.managedRoot);
+    this.previews.set(token, {
+      preview,
+      rootsKey: observed.key,
+      expiresAt: this.now() + PREVIEW_TTL_MS,
+      managed: options.managed === true || (managedRoot !== undefined && managedRoot !== root && isWithin(managedRoot, root)),
+    });
     return preview;
   }
 
@@ -243,7 +359,12 @@ export class ResourceRepositoryService {
     );
   }
 
-  async cloneAndPreview(repositoryUrl: string, destinationPath: string, extensionLock: boolean): Promise<AgentResourceRepositoryPreview> {
+  async cloneAndPreview(
+    repositoryUrl: string,
+    destinationPath: string,
+    extensionLock: boolean,
+    userSkillPaths: readonly string[] = [],
+  ): Promise<AgentResourceRepositoryPreview> {
     const address = validateRepositoryAddress(repositoryUrl);
     const identity = repositoryAddressIdentity(address);
     await fs.mkdir(this.managedRoot, { recursive: true });
@@ -288,7 +409,9 @@ export class ResourceRepositoryService {
     }
     const credentialFreeAddress = repositoryAddressWithoutCredentials(address);
     if (credentialFreeAddress !== address) await runGit(destination, ["remote", "set-url", "origin", credentialFreeAddress]);
-    const preview = await this.preview(destination, extensionLock);
+    // Only a folder this clone created is pi-outpost's to delete later; a reused
+    // existing clone may be someone's working copy (unless it sits in managed storage).
+    const preview = await this.preview(destination, extensionLock, { userSkillPaths, managed: !existing });
     preview.repositoryUrl = redactRepositoryAddress(address);
     const record = this.previews.get(preview.token);
     if (record) record.preview = preview;
@@ -300,27 +423,44 @@ export class ResourceRepositoryService {
     skillRoots: string[],
     extensionRoots: string[],
     extensionLock: boolean,
-  ): Promise<{ repositoryPath: string; skillRoots: string[]; extensionRoots: string[] }> {
+    enabledSkills: string[] = [],
+  ): Promise<ConfirmedEnrollment> {
     const record = this.previews.get(token);
     this.previews.delete(token);
     if (!record) throw new ResourceRepositoryError("This repository preview is no longer valid; preview it again");
     if (this.now() > record.expiresAt) throw new ResourceRepositoryError("This repository preview has expired; preview it again");
-    const fresh = await discoverResourceRoots(record.preview.repositoryPath, extensionLock);
-    const head = (await runGit(record.preview.repositoryPath, ["rev-parse", "HEAD"])).trim();
-    if (head !== record.preview.headRevision || rootsFingerprint(fresh) !== record.rootsKey) {
+    const { preview } = record;
+    const fresh = await observeRepository(preview.repositoryPath, extensionLock, preview.mode);
+    const head = (await runGit(preview.repositoryPath, ["rev-parse", "HEAD"])).trim();
+    if (head !== preview.headRevision || fresh.key !== record.rootsKey) {
       throw new ResourceRepositoryError("The repository changed after preview; preview it again");
     }
-    const permitted = new Map(fresh.map((root) => [`${root.kind}:${root.path}`, root]));
+    const permitted = new Map(fresh.roots.map((root) => [`${root.kind}:${root.path}`, root]));
     const select = (kind: AgentResourceKind, values: string[]) =>
       [...new Set(values)].map((value) => {
         const candidate = permitted.get(`${kind}:${value}`);
         if (!candidate || candidate.locked) throw new ResourceRepositoryError(`The selected ${kind} root is unavailable`);
         return candidate.path;
       });
+    // In a collection preview `fresh.roots` holds no skill root, so a skill root sent
+    // for one is refused here as unavailable: its skills are chosen one by one.
     const skills = select("skill", skillRoots);
     const extensions = select("extension", extensionRoots);
-    if (skills.length + extensions.length === 0) throw new ResourceRepositoryError("Select at least one resource root");
-    return { repositoryPath: record.preview.repositoryPath, skillRoots: skills, extensionRoots: extensions };
+    const base = { repositoryPath: preview.repositoryPath, managed: record.managed, extensionRoots: extensions };
+    if (preview.mode === "roots") {
+      if (enabledSkills.length > 0) {
+        throw new ResourceRepositoryError("This repository is registered through skill roots; select roots rather than individual skills");
+      }
+      if (skills.length + extensions.length === 0) throw new ResourceRepositoryError("Select at least one resource root");
+      return { ...base, mode: "roots", skillRoots: skills, enabledSkills: [] };
+    }
+    const catalogued = new Set(fresh.skills.map((entry) => entry.relativePath));
+    const chosen = [...new Set(enabledSkills)];
+    const stranger = chosen.find((relative) => !catalogued.has(relative));
+    if (stranger !== undefined) throw new ResourceRepositoryError(`The selected skill ${stranger} is not in this repository`);
+    // An empty selection is a valid enrollment: the catalogue is registered and
+    // nothing from it loads until a skill is turned on.
+    return { ...base, mode: "collection", skillRoots: [], enabledSkills: chosen };
   }
 
   async refresh(repositoryIdValue?: string, extensionLock = false): Promise<AgentResourceRepositoryAssessment[]> {
@@ -417,6 +557,46 @@ export class ResourceRepositoryService {
 
   repositoryResources(repositoryIdValue: string): AgentResourceInfo[] {
     return this.repositories.get(repositoryIdValue)?.resources ?? [];
+  }
+
+  /** Where a known repository is and what removing it may do, or undefined for an unissued id. */
+  repositoryRemoval(repositoryIdValue: string): { path: string; removal: AgentResourceRemoval } | undefined {
+    const repo = this.repositories.get(repositoryIdValue);
+    return repo ? { path: repo.path, removal: repo.removal } : undefined;
+  }
+
+  /**
+   * Delete a clone that removing its repository has already unregistered.
+   *
+   * Every condition is checked again here, under the repository's lock, rather
+   * than trusted from the inventory that offered the action: the folder must still
+   * be the canonical top level of a Git worktree, must be pi-outpost's (created by
+   * its clone, or inside managed storage), and must be neither a filesystem root
+   * nor managed storage itself. Symbolic links inside it are unlinked, never
+   * followed. A failure is returned as a reason, never thrown past the caller: the
+   * repository is already unregistered, and that must still be reported.
+   */
+  async deleteManagedClone(root: string, managed: boolean): Promise<{ deleted: true } | { deleted: false; failed: boolean; reason: string }> {
+    return this.withLock(root, async () => {
+      const kept = (reason: string) => ({ deleted: false as const, failed: false, reason });
+      const canonical = await canonicalExisting(root);
+      if (!canonical) return { deleted: true as const };
+      if (canonical !== root) return kept("The repository folder moved or became a link; its files were kept");
+      if (path.parse(canonical).root === canonical) return kept("A filesystem root is never deleted");
+      const managedRoot = await canonicalExisting(this.managedRoot);
+      if (managedRoot === canonical) return kept("Managed resource storage itself is never deleted");
+      const inManagedStorage = managedRoot !== undefined && isWithin(managedRoot, canonical);
+      if (!managed && !inManagedStorage) return kept("pi-outpost does not manage this folder; its files were kept");
+      const topLevel = await tryGit(canonical, ["rev-parse", "--show-toplevel"]);
+      const canonicalTopLevel = topLevel ? await canonicalExisting(topLevel.trim()) : undefined;
+      if (canonicalTopLevel !== canonical) return kept("The folder is no longer the top of a Git repository; its files were kept");
+      try {
+        await resourceRemover(canonical);
+        return { deleted: true as const };
+      } catch (error) {
+        return { deleted: false as const, failed: true, reason: `Could not delete every file: ${firstLine(error)}` };
+      }
+    });
   }
 
   private requireRepository(id: string): KnownRepository {
@@ -518,7 +698,95 @@ function toWireRepository(repo: KnownRepository): AgentResourceRepository {
     resourceIds: repo.resources.map((resource) => resource.id).sort(),
     containsExtensions: repo.containsExtensions,
     assessment: repo.assessment,
+    ...(repo.collection ? { collection: repo.collection } : {}),
+    removal: repo.removal,
   };
+}
+
+/**
+ * Who may remove a repository, and whether removing it deletes files. A
+ * repository supplying a configuration-file path is the operator's; one nobody
+ * added through Agent resources is not the dialog's to remove; files are deleted
+ * only for a clone pi-outpost made or keeps in its managed storage.
+ */
+async function removalPolicy(
+  input: ResourceInventoryInput,
+  managedRoot: string | undefined,
+): Promise<(root: string, collection?: SkillCollection) => AgentResourceRemoval> {
+  const canonical = async (values: readonly string[]) =>
+    (await Promise.all(values.map(canonicalExisting))).filter((value): value is string => value !== undefined);
+  const configured = await canonical([...input.configuredSkillPaths, ...input.configuredExtensionPaths]);
+  const user = await canonical([...input.userSkillPaths, ...input.userExtensionPaths]);
+  return (root, collection) => {
+    if (configured.some((entry) => isWithin(root, entry))) {
+      return { allowed: false, deletesFiles: false, path: root, reason: "This repository supplies a path from the configuration file, so it can only be removed there" };
+    }
+    if (!collection && !user.some((entry) => isWithin(root, entry))) {
+      return { allowed: false, deletesFiles: false, path: root, reason: "This repository was not added through Agent resources" };
+    }
+    const inManagedStorage = managedRoot !== undefined && managedRoot !== root && isWithin(managedRoot, root);
+    return { allowed: true, deletesFiles: collection?.managed === true || inManagedStorage, path: root };
+  };
+}
+
+/**
+ * Join a repository's catalogue, the selection that is on, and what the runtime
+ * actually loaded. A skill that is on but was not loaded says why when it can be
+ * told: another skill of the same name reached the loader first.
+ */
+async function collectionView(
+  root: string,
+  repositoryName: string,
+  collection: SkillCollection,
+  loadedSkills: readonly AgentResourceInfo[],
+): Promise<AgentResourceCollection> {
+  const catalogue = await discoverSkillCatalogue(root);
+  const enabled = new Set(collection.enabledSkills);
+  const loadedDirs = new Set(loadedSkills.map((resource) => skillDirectoryOf(resource.path!)));
+  const skills: AgentCollectionSkill[] = catalogue.skills.map((entry) => {
+    if (!enabled.has(entry.relativePath)) return { ...entry, state: "off" };
+    const dir = entry.relativePath ? path.join(root, ...entry.relativePath.split("/")) : root;
+    if (loadedDirs.has(dir)) return { ...entry, state: "on-loaded" };
+    const winner = loadedSkills.find((resource) => resource.name === entry.name);
+    return {
+      ...entry,
+      state: "on-not-loaded",
+      reason: winner
+        ? `Another skill named "${entry.name}" was loaded first, from ${winner.path}`
+        : "The session did not load this skill",
+    };
+  });
+  const catalogued = new Set(catalogue.skills.map((entry) => entry.relativePath));
+  for (const relative of collection.enabledSkills) {
+    if (!catalogued.has(relative)) skills.push(missingSkill(relative));
+  }
+  return withGroups(repositoryName, skills, catalogue.bound);
+}
+
+function missingSkill(relative: string): AgentCollectionSkill {
+  const at = relative.lastIndexOf("/");
+  return {
+    relativePath: relative,
+    name: relative.slice(at + 1) || relative,
+    group: at === -1 ? "" : relative.slice(0, at),
+    state: "on-missing",
+    reason: "This skill is no longer in the repository",
+  };
+}
+
+function withGroups(
+  repositoryName: string,
+  skills: AgentCollectionSkill[],
+  bound?: AgentResourceCollection["bound"],
+): AgentResourceCollection {
+  skills.sort((a, b) => a.group.localeCompare(b.group) || a.relativePath.localeCompare(b.relativePath));
+  const groups = [...new Set(skills.map((skill) => skill.group))].map((group) => ({ path: group, label: group || repositoryName }));
+  return { skills, groups, ...(bound ? { bound } : {}) };
+}
+
+/** The runtime reports a skill by its SKILL.md; the catalogue by its directory. */
+function skillDirectoryOf(resourcePath: string): string {
+  return path.basename(resourcePath) === "SKILL.md" ? path.dirname(resourcePath) : resourcePath;
 }
 
 function blockedAssessment(repositoryIdValue: string, status: "unchecked" | "checking"): AgentResourceRepositoryAssessment;
@@ -676,6 +944,88 @@ async function containsNamedFile(root: string, name: string, maxDepth: number): 
   return walk(root, 0);
 }
 
+export const SKILL_CATALOGUE_MAX_DEPTH = 8;
+export const SKILL_CATALOGUE_MAX_SKILLS = 2_000;
+const SKILL_CATALOGUE_MAX_BYTES = 16 * 1024;
+
+export interface SkillCatalogue {
+  skills: AgentSkillCatalogueEntry[];
+  bound?: AgentSkillCatalogueBound;
+}
+
+/**
+ * Every skill a worktree carries, found by its own folder tree.
+ *
+ * The walk follows pi's discovery rule — a directory holding `SKILL.md` is one
+ * skill and is not descended into — so each entry is exactly what the loader
+ * will build from that directory. It reads files and nothing else: no module is
+ * imported, no symlink followed, `.git` and `node_modules` are skipped. Depth,
+ * count and bytes per file are bounded, and hitting a bound is reported rather
+ * than passed off as the whole repository.
+ */
+export async function discoverSkillCatalogue(
+  worktree: string,
+  limits: { maxDepth?: number; maxSkills?: number } = {},
+): Promise<SkillCatalogue> {
+  const maxDepth = limits.maxDepth ?? SKILL_CATALOGUE_MAX_DEPTH;
+  const maxSkills = limits.maxSkills ?? SKILL_CATALOGUE_MAX_SKILLS;
+  const skills: AgentSkillCatalogueEntry[] = [];
+  let bound: AgentSkillCatalogueBound | undefined;
+  const walk = async (dir: string, depth: number): Promise<void> => {
+    if (bound?.kind === "count") return;
+    let entries;
+    try { entries = await fs.readdir(dir, { withFileTypes: true }); } catch { return; }
+    if (entries.some((entry) => entry.isFile() && entry.name === "SKILL.md")) {
+      if (skills.length >= maxSkills) {
+        bound = { kind: "count", limit: maxSkills };
+        return;
+      }
+      skills.push(await catalogueEntry(worktree, dir));
+      return;
+    }
+    const children = entries
+      .filter((entry) => entry.isDirectory() && entry.name !== ".git" && entry.name !== "node_modules")
+      .map((entry) => entry.name)
+      .sort();
+    if (children.length === 0) return;
+    if (depth >= maxDepth) {
+      bound ??= { kind: "depth", limit: maxDepth };
+      return;
+    }
+    for (const child of children) await walk(path.join(dir, child), depth + 1);
+  };
+  await walk(worktree, 0);
+  skills.sort((a, b) => a.group.localeCompare(b.group) || a.relativePath.localeCompare(b.relativePath));
+  return bound ? { skills, bound } : { skills };
+}
+
+async function catalogueEntry(worktree: string, dir: string): Promise<AgentSkillCatalogueEntry> {
+  const relativePath = path.relative(worktree, dir).split(path.sep).join("/");
+  const group = relativePath.includes("/") ? relativePath.slice(0, relativePath.lastIndexOf("/")) : "";
+  let name: string | undefined;
+  let description: string | undefined;
+  try {
+    const handle = await fs.open(path.join(dir, "SKILL.md"), "r");
+    try {
+      const buffer = Buffer.alloc(SKILL_CATALOGUE_MAX_BYTES);
+      const { bytesRead } = await handle.read(buffer, 0, buffer.length, 0);
+      const { frontmatter } = parseFrontmatter<Record<string, unknown>>(buffer.subarray(0, bytesRead).toString("utf8"));
+      if (typeof frontmatter.name === "string" && frontmatter.name.trim()) name = frontmatter.name.trim();
+      if (typeof frontmatter.description === "string" && frontmatter.description.trim()) description = frontmatter.description.trim();
+    } finally {
+      await handle.close();
+    }
+  } catch {
+    // Unreadable or malformed frontmatter: still a skill directory, named by its folder.
+  }
+  return {
+    relativePath,
+    name: name ?? (path.basename(dir) || relativePath),
+    ...(description ? { description } : {}),
+    group,
+  };
+}
+
 async function containsExtension(root: string): Promise<boolean> {
   let entries;
   try { entries = await fs.readdir(root, { withFileTypes: true }); } catch { return false; }
@@ -695,8 +1045,30 @@ function dedupeRoots(roots: AgentResourceRepositoryPreview["roots"]): AgentResou
   return [...new Map(roots.map((root) => [`${root.kind}:${root.path}`, root])).values()];
 }
 
-function rootsFingerprint(roots: AgentResourceRepositoryPreview["roots"]): string {
-  return createHash("sha256").update(JSON.stringify(roots)).digest("hex");
+/**
+ * What a preview shows, and the fingerprint a confirmation must match: the roots
+ * it can register and, for a collection, the whole catalogue — a skill added or
+ * renamed between preview and confirmation invalidates the preview.
+ */
+async function observeRepository(
+  root: string,
+  extensionLock: boolean,
+  mode: AgentResourceRepositoryPreview["mode"],
+): Promise<{ roots: AgentResourceRepositoryPreview["roots"]; skills: AgentSkillCatalogueEntry[]; bound?: AgentSkillCatalogueBound; key: string }> {
+  const discovered = await discoverResourceRoots(root, extensionLock);
+  const roots = mode === "collection" ? discovered.filter((candidate) => candidate.kind === "extension") : discovered;
+  const catalogue = mode === "collection" ? await discoverSkillCatalogue(root) : { skills: [] };
+  const key = createHash("sha256").update(JSON.stringify({ mode, roots, catalogue })).digest("hex");
+  return { roots, skills: catalogue.skills, ...(catalogue.bound ? { bound: catalogue.bound } : {}), key };
+}
+
+/** Whether one of the user's skill roots lies inside this worktree. */
+async function enrolledThroughSkillRoots(root: string, userSkillPaths: readonly string[]): Promise<boolean> {
+  for (const candidate of userSkillPaths) {
+    const canonical = await canonicalExisting(candidate);
+    if (canonical && isWithin(root, canonical)) return true;
+  }
+  return false;
 }
 
 function resourceSort(a: AgentResourceInfo, b: AgentResourceInfo): number {
@@ -825,6 +1197,23 @@ function trimBoundaryHyphens(value: string): string {
   while (start < end && value[start] === "-") start += 1;
   while (end > start && value[end - 1] === "-") end -= 1;
   return start === 0 && end === value.length ? value : value.slice(start, end);
+}
+
+/**
+ * The name a repository goes by: the last segment of its `origin` address, as its
+ * owner spelled it. The folder is a local choice — a suggested clone folder carries
+ * a hash suffix, and the user may have named it anything — so it is only the
+ * fallback, for a worktree with no origin.
+ */
+async function repositoryDisplayName(root: string): Promise<string> {
+  const origin = (await tryGit(root, ["remote", "get-url", "origin"]))?.trim();
+  if (origin) {
+    const suffix = [origin.indexOf("?"), origin.indexOf("#")].filter((index) => index >= 0).sort((a, b) => a - b)[0];
+    const clean = trimTrailingAddressSeparators(suffix === undefined ? origin : origin.slice(0, suffix));
+    const tail = clean.split(/[\\/:]/).at(-1)?.replace(/\.git$/i, "");
+    if (tail) return tail;
+  }
+  return path.basename(root) || root;
 }
 
 function repositorySlug(address: string): string {

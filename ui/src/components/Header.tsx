@@ -90,7 +90,9 @@ interface HeaderProps {
   }) => void;
   onSuggestAgentResourceClonePath: (repositoryUrl: string) => void;
   onCloneAgentResourceRepository: (repositoryUrl: string, destinationPath: string) => void;
-  onEnrollAgentResourceRepository: (previewToken: string, skillRoots: string[], extensionRoots: string[]) => void;
+  onEnrollAgentResourceRepository: (previewToken: string, skillRoots: string[], extensionRoots: string[], enabledSkills?: string[]) => void;
+  onSetAgentResourceSkills?: (repositoryId: string, enabledSkills: string[]) => void;
+  onRemoveAgentResourceRepository?: (repositoryId: string) => void;
   onRefreshAgentResourceRepositories: (repositoryId?: string) => void;
   onUpdateAgentResourceRepository: (
     repositoryId: string,
@@ -586,6 +588,8 @@ export function Header(props: HeaderProps) {
           onSuggestAgentResourceClonePath={props.onSuggestAgentResourceClonePath}
           onCloneAgentResourceRepository={props.onCloneAgentResourceRepository}
           onEnrollAgentResourceRepository={props.onEnrollAgentResourceRepository}
+          onSetAgentResourceSkills={props.onSetAgentResourceSkills}
+          onRemoveAgentResourceRepository={props.onRemoveAgentResourceRepository}
           onRefreshAgentResourceRepositories={props.onRefreshAgentResourceRepositories}
           onUpdateAgentResourceRepository={props.onUpdateAgentResourceRepository}
         />

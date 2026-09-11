@@ -94,7 +94,11 @@ describe("resource repository enrollment", () => {
     assert.match(path.basename(suggested), /^remote-[a-f0-9]{10}$/);
     const preview = await service.cloneAndPreview(address, destination, false);
     assert.equal(await realpath(preview.repositoryPath), await realpath(destination));
-    assert.deepEqual(new Set(preview.roots.map((entry) => entry.kind)), new Set(["skill", "extension"]));
+    // A repository enrolled from now on is a collection: its skills are listed one
+    // by one, and only extension roots are offered as roots.
+    assert.equal(preview.mode, "collection");
+    assert.deepEqual(preview.roots.map((entry) => entry.kind), ["extension"]);
+    assert.deepEqual(preview.skills.map((entry) => entry.relativePath), ["skills/review"]);
     assert.equal(run(destination, ["submodule", "status"]), "");
   });
 
@@ -200,7 +204,7 @@ describe("resource repository enrollment", () => {
       destination,
       false,
     );
-    assert.ok(preview.roots.some((entry) => entry.kind === "skill"));
+    assert.deepEqual(preview.skills.map((entry) => entry.relativePath), ["skills/safe"]);
     await assert.rejects(access(path.join(destination, "extensions", "vendor", "extension.ts")));
   });
 
@@ -221,8 +225,8 @@ describe("resource repository enrollment", () => {
     const preview = await service.preview(root, false);
     assert.deepEqual(preview.roots.map((entry) => [entry.kind, path.relative(root, entry.path)]), [
       ["extension", "extensions"],
-      ["skill", "skills"],
     ]);
+    assert.deepEqual(preview.skills.map((entry) => entry.relativePath), ["skills/ship"]);
     await assert.rejects(access(marker));
   });
 
@@ -256,9 +260,9 @@ describe("resource repository enrollment", () => {
     const service = new ResourceRepositoryService();
     const preview = await service.preview(root, true);
     assert.equal(preview.roots.find((entry) => entry.kind === "extension")?.locked, true);
-    const skillPath = preview.roots.find((entry) => entry.kind === "skill")!.path;
-    const selected = await service.confirmPreview(preview.token, [skillPath], [], true);
-    assert.deepEqual(selected.skillRoots, [skillPath]);
+    const selected = await service.confirmPreview(preview.token, [], [], true, ["skills/one"]);
+    assert.deepEqual(selected.enabledSkills, ["skills/one"]);
+    assert.deepEqual(selected.skillRoots, []);
     assert.deepEqual(selected.extensionRoots, []);
   });
 
@@ -272,8 +276,8 @@ describe("resource repository enrollment", () => {
     const service = new ResourceRepositoryService(path.join(root, "managed"), () => now);
     const expired = await service.preview(root, false);
     now += 11 * 60_000;
-    await assert.rejects(() => service.confirmPreview(expired.token, [expired.roots[0].path], [], false), /expired/);
-    await assert.rejects(() => service.confirmPreview(expired.token, [expired.roots[0].path], [], false), /no longer valid/);
+    await assert.rejects(() => service.confirmPreview(expired.token, [], [], false, ["skills/one"]), /expired/);
+    await assert.rejects(() => service.confirmPreview(expired.token, [], [], false, ["skills/one"]), /no longer valid/);
   });
 
   test("refuses non-repositories and stale candidate sets", async () => {
@@ -289,8 +293,8 @@ describe("resource repository enrollment", () => {
     const preview = await service.preview(root, false);
     await mkdir(path.join(root, "extensions"));
     await writeFile(path.join(root, "extensions", "later.ts"), "export default () => {};\n");
-    await assert.rejects(() => service.confirmPreview(preview.token, [preview.roots[0].path], [], false), /changed after preview/);
-    await assert.rejects(() => service.confirmPreview(preview.token, [preview.roots[0].path], [], false), /no longer valid/);
+    await assert.rejects(() => service.confirmPreview(preview.token, [], [], false, ["skills/one"]), /changed after preview/);
+    await assert.rejects(() => service.confirmPreview(preview.token, [], [], false, ["skills/one"]), /no longer valid/);
   });
 });
 
