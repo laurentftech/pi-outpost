@@ -2067,6 +2067,21 @@ describe("commands on the wire", () => {
         allowExecutableChanges: true,
       },
     ],
+    [
+      "enrollAgentResourceRepository with a collection selection",
+      (api) => api.enrollAgentResourceRepository("preview", [], [], ["dev-skills/react"]),
+      { type: "enroll_agent_resource_repository", previewToken: "preview", skillRoots: [], extensionRoots: [], enabledSkills: ["dev-skills/react"] },
+    ],
+    [
+      "setAgentResourceSkills",
+      (api) => api.setAgentResourceSkills("repo-1", ["dev-skills/react", "agent-skills/a2a"]),
+      { type: "set_agent_resource_skills", repositoryId: "repo-1", enabledSkills: ["dev-skills/react", "agent-skills/a2a"] },
+    ],
+    [
+      "removeAgentResourceRepository",
+      (api) => api.removeAgentResourceRepository("repo-1"),
+      { type: "remove_agent_resource_repository", repositoryId: "repo-1" },
+    ],
   ];
 
   for (const [name, call, expected] of cases) {
@@ -2701,5 +2716,78 @@ describe("agent resource operations", () => {
     act(() => mockWs!.receive({ type: "agent_resource_inventory", inventory: currentInventory }));
     expect(result.current.state.agentResources?.repositories[0].assessment.status).toBe("current");
     expect(result.current.state.agentResourceOperations.refresh?.status).toBe("loading");
+  });
+
+  it("correlates a skill selection by request and repository, and adopts its inventory", async () => {
+    const result = await connected([], { agentResources: inventory });
+    act(() => result.current.setAgentResourceSkills("repo-1", ["a"]));
+    const requestId = lastRequestId();
+    expect(result.current.state.agentResourceOperations.skills["repo-1"]).toMatchObject({ status: "loading", requestId });
+    const applied = { ...inventory, repositories: [{ ...inventory.repositories[0], name: "applied" }] };
+    act(() => mockWs!.receive({ type: "agent_resource_skills_applied", requestId: "stale", repositoryId: "repo-1", inventory: applied }));
+    expect(result.current.state.agentResourceOperations.skills["repo-1"].status).toBe("loading");
+    expect(result.current.state.agentResources?.repositories[0].name).toBe("repo");
+    act(() => mockWs!.receive({ type: "agent_resource_skills_applied", requestId, repositoryId: "repo-1", inventory: applied }));
+    expect(result.current.state.agentResourceOperations.skills["repo-1"].status).toBe("ready");
+    expect(result.current.state.agentResources?.repositories[0].name).toBe("applied");
+  });
+
+  it("routes a refused selection and a refused removal to their own entries, not the shared banner", async () => {
+    const result = await connected([], { agentResources: inventory });
+    act(() => result.current.setAgentResourceSkills("repo-1", ["a"]));
+    const selection = lastRequestId();
+    act(() => result.current.removeAgentResourceRepository("repo-1"));
+    const removal = lastRequestId();
+    act(() => mockWs!.receive({ type: "agent_resource_error", requestId: selection, message: "other is busy" }));
+    act(() => mockWs!.receive({ type: "agent_resource_error", requestId: removal, message: "configuration file" }));
+    expect(result.current.state.agentResourceOperations.skills["repo-1"]).toMatchObject({ status: "error", message: "other is busy" });
+    expect(result.current.state.agentResourceOperations.removals["repo-1"]).toMatchObject({ status: "error", message: "configuration file" });
+    expect(result.current.state.errors).toEqual([]);
+  });
+
+  it("keeps a removal's result after its repository leaves the inventory", async () => {
+    const result = await connected([], { agentResources: inventory });
+    act(() => result.current.removeAgentResourceRepository("repo-1"));
+    const requestId = lastRequestId();
+    act(() => mockWs!.receive({
+      type: "agent_resource_removed",
+      requestId,
+      repositoryId: "repo-1",
+      result: { status: "removed", path: "/repo" },
+      inventory: { ...inventory, repositories: [] },
+    }));
+    expect(result.current.state.agentResources?.repositories).toEqual([]);
+    expect(result.current.state.agentResourceOperations.removals["repo-1"]).toMatchObject({ status: "ready", result: { status: "removed", path: "/repo" } });
+  });
+
+  it("keeps a resource request through the session replacement it causes, and drops it on reconnect", async () => {
+    // Removing a repository or applying skills replaces the session, and the
+    // replacement's snapshot reaches the client before the operation's own answer.
+    // Clearing pending requests on that snapshot dropped the answer on the floor.
+    const workspace = { root: "/a", name: "a", activity: "idle" };
+    const frame = (type: string) => ({
+      type, sessionId: "sess_replaced", workspace, workspaces: [], branding: {}, model: "", thinkingLevel: "off",
+      models: [], commands: [], isStreaming: false, items: [], agentResources: inventory,
+    });
+    const result = await connected([], { agentResources: inventory, workspace });
+    act(() => result.current.removeAgentResourceRepository("repo-1"));
+    const requestId = lastRequestId();
+    act(() => mockWs!.receive(frame("session_replaced")));
+    expect(result.current.state.agentResourceOperations.removals["repo-1"]).toMatchObject({ status: "loading", requestId });
+    act(() => mockWs!.receive({
+      type: "agent_resource_removed",
+      requestId,
+      repositoryId: "repo-1",
+      result: { status: "removed", path: "/repo" },
+      inventory: { ...inventory, repositories: [] },
+    }));
+    expect(result.current.state.agentResourceOperations.removals["repo-1"]).toMatchObject({ status: "ready", result: { status: "removed" } });
+
+    act(() => result.current.setAgentResourceSkills("repo-1", ["a"]));
+    act(() => mockWs!.receive(frame("update_config_ack")));
+    expect(result.current.state.agentResourceOperations.skills["repo-1"]?.status).toBe("loading");
+    act(() => mockWs!.receive(frame("hello")));
+    expect(result.current.state.agentResourceOperations.skills).toEqual({});
+    expect(result.current.state.agentResourceOperations.removals).toEqual({});
   });
 });

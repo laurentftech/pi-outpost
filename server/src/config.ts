@@ -398,6 +398,14 @@ export interface AppConfig {
    */
   userSkillPaths: string[];
   /**
+   * Git repositories enrolled as skill collections through the Agent resources
+   * dialog. Unlike a skill path, a collection loads nothing by itself: only the
+   * skill directories named in `enabledSkills` reach the session. Held under its
+   * own key so the root-enrolled repositories in `userSkillPaths` keep loading
+   * everything, and so a repository can be removed as one entry.
+   */
+  userSkillCollections: SkillCollection[];
+  /**
    * Skip auto-discovering prompt templates entirely (both agentDir and the
    * project's cwd/.pi/prompts). Like noSkills, cwd doubles as both the
    * agent's working directory and a resource-discovery root, so pointing
@@ -635,6 +643,42 @@ export function optionalStringArray(raw: Record<string, unknown>, key: string): 
   return value as string[];
 }
 
+/**
+ * `userSkillCollections`: written by the interface, but a file is a file and a
+ * hand edit must fail loudly rather than load a skill from outside its worktree.
+ * Entries naming the same repository merge — the set of skills that are on is
+ * what matters, not how many times it was written.
+ */
+export function optionalSkillCollections(
+  raw: Record<string, unknown>,
+  resolve: (p: string) => string,
+): SkillCollection[] {
+  const value = raw.userSkillCollections;
+  if (value === undefined) return [];
+  if (!Array.isArray(value)) fail(`"userSkillCollections" must be an array`);
+  const merged = new Map<string, SkillCollection>();
+  value.forEach((entry, index) => {
+    const label = `userSkillCollections[${index}]`;
+    const item = asObject(entry, label);
+    const where = optionalString(item, "path", `${label}.path`);
+    if (!where) fail(`"${label}.path" is required`);
+    const root = resolve(where);
+    const enabled = optionalStringArray(item, "enabledSkills") ?? [];
+    for (const relative of enabled) {
+      if (!collectionSkillDir(root, relative)) {
+        fail(`"${label}.enabledSkills" entry "${relative}" must be a relative path inside the repository`);
+      }
+    }
+    const previous = merged.get(root);
+    merged.set(root, {
+      path: root,
+      managed: optionalBoolean(item, "managed", false) || (previous?.managed ?? false),
+      enabledSkills: [...new Set([...(previous?.enabledSkills ?? []), ...enabled])],
+    });
+  });
+  return [...merged.values()];
+}
+
 export function optionalModelList(
   raw: Record<string, unknown>,
   key: string,
@@ -746,6 +790,7 @@ export function loadConfig(
     noSkills: false,
     skillPaths: [],
     userSkillPaths: [],
+    userSkillCollections: [],
     noPromptTemplates: false,
     promptPaths: [],
     appendSystemPrompt: [],
@@ -827,6 +872,7 @@ export function loadConfig(
       readExceptions: [
         ...(optionalStringArray(raw, "skillPaths") ?? []).map(resolve),
         ...(optionalStringArray(raw, "userSkillPaths") ?? []).map(resolve),
+        ...enabledCollectionSkillDirs(optionalSkillCollections(raw, resolve)),
         ...(optionalStringArray(raw, "promptPaths") ?? []).map(resolve),
         ...(optionalStringArray(raw, "extensionPaths") ?? []).map(resolve),
         ...(optionalStringArray(raw, "userExtensionPaths") ?? []).map(resolve),
@@ -928,6 +974,7 @@ export function loadConfig(
   config.noSkills = optionalBoolean(raw, "noSkills", false);
   config.skillPaths = (optionalStringArray(raw, "skillPaths") ?? []).map(resolve);
   config.userSkillPaths = (optionalStringArray(raw, "userSkillPaths") ?? []).map(resolve);
+  config.userSkillCollections = optionalSkillCollections(raw, resolve);
   config.noPromptTemplates = optionalBoolean(raw, "noPromptTemplates", false);
   config.promptPaths = (optionalStringArray(raw, "promptPaths") ?? []).map(resolve);
   config.allowedModels = optionalModelList(raw, "allowedModels");
@@ -1236,6 +1283,8 @@ export interface EditableSettings {
    * The operator's `skillPaths` are never written here and never removed.
    */
   userSkillPaths?: string[];
+  /** Skill collections and their enabled skills. Absent leaves them untouched. */
+  userSkillCollections?: SkillCollection[];
   /**
    * Extension paths the interface manages (absolute). Absent leaves them untouched.
    * The operator's `extensionPaths` are never written here and never removed.
@@ -1252,7 +1301,62 @@ export interface EditableSettings {
  * against a directory someone added from the interface.
  */
 export function allSkillPaths(config: AppConfig): string[] {
-  return [...config.skillPaths, ...config.userSkillPaths];
+  return [...config.skillPaths, ...config.userSkillPaths, ...enabledCollectionSkillDirs(config.userSkillCollections ?? [])];
+}
+
+/**
+ * A repository enrolled as a skill collection, and which of its skills are on.
+ * `enabledSkills` are POSIX paths relative to `path`, one per skill directory.
+ * `managed` records that pi-outpost's own clone created the folder, which is
+ * what allows removing the repository to delete it.
+ */
+export interface SkillCollection {
+  path: string;
+  managed: boolean;
+  enabledSkills: string[];
+}
+
+/** Resolve one enabled entry to its directory, or undefined when it cannot be inside `root`. */
+export function collectionSkillDir(root: string, relative: string): string | undefined {
+  if (!relative || relative.includes("\\") || path.posix.isAbsolute(relative)) return undefined;
+  const segments = relative.split("/");
+  if (segments.some((segment) => segment === "" || segment === "." || segment === "..")) return undefined;
+  return path.join(root, ...segments);
+}
+
+/**
+ * The skill directories the session should load from collections: each enabled
+ * entry that still resolves inside its worktree — symlinks included, so a link
+ * cannot smuggle an outside directory in — and still holds a `SKILL.md`. A skill
+ * that vanished in an update is dropped here rather than handed to the loader.
+ *
+ * Last in `allSkillPaths` on purpose: the loader keeps the first skill under a
+ * name, so the configuration file's and the user's own paths keep winning.
+ */
+export function enabledCollectionSkillDirs(collections: readonly SkillCollection[]): string[] {
+  const dirs: string[] = [];
+  for (const collection of collections) {
+    let root: string;
+    try {
+      root = fs.realpathSync(collection.path);
+    } catch {
+      continue;
+    }
+    for (const relative of collection.enabledSkills) {
+      const dir = collectionSkillDir(root, relative);
+      if (!dir) continue;
+      try {
+        const canonical = fs.realpathSync(dir);
+        const rel = path.relative(root, canonical);
+        if (rel === "" || rel.startsWith("..") || path.isAbsolute(rel)) continue;
+        if (!fs.statSync(path.join(canonical, "SKILL.md")).isFile()) continue;
+        dirs.push(canonical);
+      } catch {
+        // Gone or unreadable: not loaded, reported as missing by the inventory.
+      }
+    }
+  }
+  return [...new Set(dirs)];
 }
 
 /**
@@ -1333,6 +1437,13 @@ export function persistEditableSettings(
   // Written under its own key: `skillPaths` belongs to whoever wrote the file, and
   // an apply must never be able to drop one of theirs.
   if (update.userSkillPaths) raw.userSkillPaths = update.userSkillPaths.map((p) => path.resolve(p));
+  if (update.userSkillCollections) {
+    raw.userSkillCollections = update.userSkillCollections.map((collection) => ({
+      path: path.resolve(collection.path),
+      managed: collection.managed,
+      enabledSkills: [...new Set(collection.enabledSkills)],
+    }));
+  }
   // Same reasoning one kind over: `extensionPaths` and `extensionLock` belong to
   // whoever wrote the file, and neither is read or rewritten here. Only the keys
   // named in this function are touched; everything else survives the write as it was.

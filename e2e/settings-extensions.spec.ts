@@ -221,7 +221,8 @@ test("repository states stay correlated through rapid actions and changing inven
   await dialog.getByRole("button", { name: /Locally edited/ }).click();
   await expect(dialog.getByText("Uncommitted files are present.")).toBeVisible();
   await expect(dialog.getByText(/external terminal/)).toBeVisible();
-  await expect(dialog.getByRole("button", { name: "Update repository" })).toBeDisabled();
+  // Nothing to apply, so nothing is offered: no update action at all, not a dead one.
+  await expect(dialog.getByRole("button", { name: "Update repository" })).toHaveCount(0);
   await expect.poll(() => requests.update).toBe(1);
   await expect(dialog.getByText("Repository updated and runtimes reloaded.")).toHaveCount(0);
   await dialog.getByRole("button", { name: /Shared skills/ }).click();
@@ -236,7 +237,7 @@ test("repository states stay correlated through rapid actions and changing inven
 
   await dialog.getByRole("button", { name: /In use/ }).click();
   await expect(dialog.getByText("Workspace busy", { exact: true }).last()).toBeVisible();
-  await expect(dialog.getByRole("button", { name: "Update repository" })).toBeDisabled();
+  await expect(dialog.getByRole("button", { name: "Update repository" })).toHaveCount(0);
 
   await dialog.getByRole("button", { name: /Stale assessment/ }).click();
   await dialog.getByRole("button", { name: "Update repository" }).click();

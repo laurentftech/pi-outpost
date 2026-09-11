@@ -235,6 +235,33 @@ export type AgentResourceRepositoryAssessment = AgentResourceRepositoryAssessmen
     | { status: Exclude<AgentResourceRepositoryStatus, "unchecked" | "checking" | "updateable" | "current">; reason: string }
   );
 
+/**
+ * A collection skill as the user sees it: off, or on — and when on, whether the
+ * session actually loaded it, and why not when it did not.
+ */
+export type AgentCollectionSkillState = "off" | "on-loaded" | "on-not-loaded" | "on-missing";
+
+export interface AgentCollectionSkill extends AgentSkillCatalogueEntry {
+  state: AgentCollectionSkillState;
+  reason?: string;
+}
+
+export interface AgentResourceCollection {
+  skills: AgentCollectionSkill[];
+  /** Folder groups in display order; `label` is the repository name for the root group. */
+  groups: Array<{ path: string; label: string }>;
+  bound?: AgentSkillCatalogueBound;
+}
+
+/** Whether Remove repository is offered, and what it would do to the files. */
+export interface AgentResourceRemoval {
+  allowed: boolean;
+  /** True only for a clone pi-outpost manages; otherwise the files are kept. */
+  deletesFiles: boolean;
+  path: string;
+  reason?: string;
+}
+
 export interface AgentResourceRepository {
   /** Opaque server-issued identity. Clients never send a filesystem path to update. */
   id: string;
@@ -243,6 +270,9 @@ export interface AgentResourceRepository {
   resourceIds: string[];
   containsExtensions: boolean;
   assessment: AgentResourceRepositoryAssessment;
+  /** Present for a repository enrolled as a skill collection. */
+  collection?: AgentResourceCollection;
+  removal?: AgentResourceRemoval;
 }
 
 export interface AgentResourceInventory {
@@ -252,13 +282,51 @@ export interface AgentResourceInventory {
   capabilities: { skills: "available" | "unavailable"; extensions: "available" | "unavailable" };
 }
 
+/** One skill found in a repository's own folder tree, whether or not it is loaded. */
+export interface AgentSkillCatalogueEntry {
+  /** POSIX path of the skill directory, relative to the repository root. */
+  relativePath: string;
+  /** The frontmatter name the runtime will use, or the directory name. */
+  name: string;
+  description?: string;
+  /** POSIX path of the folder holding the skill directory; "" for the repository root. */
+  group: string;
+}
+
+/** A catalogue walk stopped at one of its bounds, so the list is not the whole repository. */
+export interface AgentSkillCatalogueBound {
+  kind: "depth" | "count";
+  limit: number;
+}
+
 export interface AgentResourceRepositoryPreview {
   token: string;
   repositoryPath: string;
   repositoryName: string;
   headRevision: string;
   repositoryUrl?: string;
+  /**
+   * "collection": a repository enrolled from now on — its skills are listed one by
+   * one in `skills`, all off, and `roots` holds only extension roots.
+   * "roots": a worktree already registered through skill roots, which keeps
+   * loading everything under the roots it selects.
+   */
+  mode: "collection" | "roots";
   roots: Array<{ kind: AgentResourceKind; path: string; name: string; locked?: boolean }>;
+  skills: AgentSkillCatalogueEntry[];
+  bound?: AgentSkillCatalogueBound;
+}
+
+/**
+ * What removing a repository did. "removed": unregistered and its clone deleted.
+ * "removed-files-kept": unregistered, files left in place (not pi-outpost's, or
+ * still in use) — `reason` says which. "removed-delete-failed": unregistered, but
+ * the deletion stopped part-way; files remain at `path`.
+ */
+export interface AgentResourceRemovalResult {
+  status: "removed" | "removed-files-kept" | "removed-delete-failed";
+  path: string;
+  reason?: string;
 }
 
 export interface AgentResourceReloadResult {
@@ -877,6 +945,14 @@ export type ServerMessage =
   | { type: "agent_resource_assessments"; requestId: string; assessments: AgentResourceRepositoryAssessment[] }
   | { type: "agent_resource_inventory"; inventory: AgentResourceInventory }
   | { type: "agent_resource_update_result"; requestId: string; result: AgentResourceUpdateResult; inventory: AgentResourceInventory }
+  | { type: "agent_resource_skills_applied"; requestId: string; repositoryId: string; inventory: AgentResourceInventory }
+  | {
+      type: "agent_resource_removed";
+      requestId: string;
+      repositoryId: string;
+      result: AgentResourceRemovalResult;
+      inventory: AgentResourceInventory;
+    }
   | { type: "agent_resource_error"; requestId: string; message: string }
   /**
    * Editable runtime settings were persisted and the session rebuilt from them —
@@ -1023,8 +1099,14 @@ export type ClientMessage =
       previewToken: string;
       skillRoots: string[];
       extensionRoots: string[];
+      /** Collection previews only: the skills to turn on, as catalogue relative paths. */
+      enabledSkills?: string[];
       requestId: string;
     }
+  /** The complete set of a collection's skills that should be on; applied through a session replacement. */
+  | { type: "set_agent_resource_skills"; repositoryId: string; enabledSkills: string[]; requestId: string }
+  /** Unregister a repository as a whole, and delete its clone when pi-outpost manages it. */
+  | { type: "remove_agent_resource_repository"; repositoryId: string; requestId: string }
   /** Refresh one known repository, or every known repository when id is absent. */
   | { type: "refresh_agent_resource_repositories"; repositoryId?: string; requestId: string }
   /** Advance one known repository to the exact upstream captured by its assessment. */

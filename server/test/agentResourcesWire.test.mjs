@@ -92,15 +92,17 @@ test("repository enrollment is composed for the requesting socket workspace only
     requestId: "clone-alpha",
   });
   const previewMessage = await alphaClient.waitFor((message) => message.type === "agent_resource_preview" && message.requestId === "clone-alpha");
-  const skillRoot = previewMessage.preview.roots.find((candidate) => candidate.kind === "skill");
+  assert.equal(previewMessage.preview.mode, "collection");
+  assert.deepEqual(previewMessage.preview.skills.map((entry) => entry.relativePath), ["skills/review"]);
+  assert.equal(previewMessage.preview.roots.some((candidate) => candidate.kind === "skill"), false);
   const extensionRoot = previewMessage.preview.roots.find((candidate) => candidate.kind === "extension");
-  assert.ok(skillRoot);
   assert.ok(extensionRoot);
   alphaClient.send({
     type: "enroll_agent_resource_repository",
     previewToken: previewMessage.preview.token,
-    skillRoots: [skillRoot.path],
+    skillRoots: [],
     extensionRoots: [extensionRoot.path],
+    enabledSkills: ["skills/review"],
     requestId: "enroll-alpha",
   });
   const enrolled = await alphaClient.waitFor((message) => message.type === "agent_resource_enrolled" && message.requestId === "enroll-alpha");
@@ -126,7 +128,9 @@ test("repository enrollment is composed for the requesting socket workspace only
   alphaClient.send({
     type: "enroll_agent_resource_repository",
     previewToken: again.preview.token,
-    skillRoots: [again.preview.roots.find((candidate) => candidate.kind === "skill").path],
+    // Re-enrolling with no skill chosen keeps the one already on.
+    skillRoots: [],
+    enabledSkills: [],
     extensionRoots: [again.preview.roots.find((candidate) => candidate.kind === "extension").path],
     requestId: "enroll-again",
   });
@@ -150,15 +154,15 @@ test("extension lock filters a mixed preview while allowing skill-only enrollmen
     requestId: "locked-preview",
   });
   const preview = await client.waitFor((message) => message.type === "agent_resource_preview" && message.requestId === "locked-preview");
-  const skillRoot = preview.preview.roots.find((candidate) => candidate.kind === "skill");
+  assert.deepEqual(preview.preview.skills.map((entry) => entry.relativePath), ["skills/review"]);
   const extensionRoot = preview.preview.roots.find((candidate) => candidate.kind === "extension");
-  assert.ok(skillRoot);
   assert.equal(extensionRoot.locked, true);
   client.send({
     type: "enroll_agent_resource_repository",
     previewToken: preview.preview.token,
-    skillRoots: [skillRoot.path],
+    skillRoots: [],
     extensionRoots: [],
+    enabledSkills: ["skills/review"],
     requestId: "locked-enroll",
   });
   const enrolled = await client.waitFor((message) => message.type === "agent_resource_enrolled" && message.requestId === "locked-enroll");

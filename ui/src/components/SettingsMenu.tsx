@@ -81,7 +81,9 @@ interface SettingsMenuProps {
   }) => void;
   onSuggestAgentResourceClonePath?: (repositoryUrl: string) => void;
   onCloneAgentResourceRepository?: (repositoryUrl: string, destinationPath: string) => void;
-  onEnrollAgentResourceRepository?: (previewToken: string, skillRoots: string[], extensionRoots: string[]) => void;
+  onEnrollAgentResourceRepository?: (previewToken: string, skillRoots: string[], extensionRoots: string[], enabledSkills?: string[]) => void;
+  onSetAgentResourceSkills?: (repositoryId: string, enabledSkills: string[]) => void;
+  onRemoveAgentResourceRepository?: (repositoryId: string) => void;
   onRefreshAgentResourceRepositories?: (repositoryId?: string) => void;
   onUpdateAgentResourceRepository?: (
     repositoryId: string,
@@ -107,7 +109,7 @@ export function SettingsMenu({
   onPickerOpened,
   applyState,
   agentResources = null,
-  agentResourceOperations = { clonePath: null, preview: null, enrollment: null, refresh: null, updates: {} },
+  agentResourceOperations = { clonePath: null, preview: null, enrollment: null, refresh: null, updates: {}, skills: {}, removals: {} },
   versions,
   onBrowseServerPath,
   onCloseServerBrowser,
@@ -115,6 +117,8 @@ export function SettingsMenu({
   onSuggestAgentResourceClonePath = () => {},
   onCloneAgentResourceRepository = () => {},
   onEnrollAgentResourceRepository = () => {},
+  onSetAgentResourceSkills = () => {},
+  onRemoveAgentResourceRepository = () => {},
   onRefreshAgentResourceRepositories = () => {},
   onUpdateAgentResourceRepository = () => {},
 }: SettingsMenuProps) {
@@ -520,6 +524,8 @@ export function SettingsMenu({
         onSuggestClonePath={onSuggestAgentResourceClonePath}
         onCloneRepository={onCloneAgentResourceRepository}
         onEnrollRepository={onEnrollAgentResourceRepository}
+        onSetSkills={onSetAgentResourceSkills}
+        onRemoveRepository={onRemoveAgentResourceRepository}
         onRefresh={onRefreshAgentResourceRepositories}
         onUpdate={onUpdateAgentResourceRepository}
       />

@@ -4,6 +4,7 @@ import { repoForPath } from "./util/gitRepos";
 import type {
   AgentResourceInventory,
   AgentResourceRepositoryPreview,
+  AgentResourceRemovalResult,
   AgentResourceUpdateResult,
   Branding,
   ChatItem,
@@ -212,10 +213,14 @@ export interface AgentResourceOperationState {
   enrollment: { requestId: string; status: "loading" | "ready" | "error"; message?: string } | null;
   refresh: { requestId: string; repositoryId?: string; status: "loading" | "ready" | "error"; message?: string } | null;
   updates: Record<string, { requestId: string; status: "loading" | "ready" | "error"; result?: AgentResourceUpdateResult; message?: string }>;
+  /** Collection selections being applied, keyed by repository. */
+  skills: Record<string, { requestId: string; status: "loading" | "ready" | "error"; message?: string }>;
+  /** Repository removals, keyed by repository: the result outlives the repository's entry. */
+  removals: Record<string, { requestId: string; status: "loading" | "ready" | "error"; result?: AgentResourceRemovalResult; message?: string }>;
 }
 
 function emptyAgentResourceOperations(): AgentResourceOperationState {
-  return { clonePath: null, preview: null, enrollment: null, refresh: null, updates: {} };
+  return { clonePath: null, preview: null, enrollment: null, refresh: null, updates: {}, skills: {}, removals: {} };
 }
 
 export interface AgentState {
@@ -450,6 +455,8 @@ type Action =
   | { type: "resource_enrollment_started"; requestId: string }
   | { type: "resource_refresh_started"; requestId: string; repositoryId?: string }
   | { type: "resource_update_started"; requestId: string; repositoryId: string }
+  | { type: "resource_skills_started"; requestId: string; repositoryId: string }
+  | { type: "resource_removal_started"; requestId: string; repositoryId: string }
   | { type: "outcome_started"; requestId: string; workspaceRoot: string | null; sessionId: string }
   | { type: "branding_settled" }
   | { type: "branding_loaded"; branding: Branding };
@@ -560,7 +567,14 @@ function applySnapshot(state: AgentState, message: ServerMessage & { sessionId: 
     settingsApply: null,
     versions: message.versions ?? null,
     agentResources: message.agentResources ?? null,
-    agentResourceOperations: emptyAgentResourceOperations(),
+    // A resource operation is what replaces the session: applying skills, enrolling,
+    // removing a repository. Its result arrives after the replacement's snapshot, so
+    // clearing here would drop the answer to the very request that caused it. Only a
+    // reconnect or another project makes the pending requests meaningless.
+    agentResourceOperations:
+      message.type === "hello" || message.type === "workspace_switched"
+        ? emptyAgentResourceOperations()
+        : state.agentResourceOperations,
   };
 }
 
@@ -714,6 +728,20 @@ function reduce(state: AgentState, action: Action): AgentState {
       },
     };
   }
+  if (action.type === "resource_skills_started") {
+    const operations = state.agentResourceOperations;
+    return {
+      ...state,
+      agentResourceOperations: { ...operations, skills: { ...operations.skills, [action.repositoryId]: { requestId: action.requestId, status: "loading" } } },
+    };
+  }
+  if (action.type === "resource_removal_started") {
+    const operations = state.agentResourceOperations;
+    return {
+      ...state,
+      agentResourceOperations: { ...operations, removals: { ...operations.removals, [action.repositoryId]: { requestId: action.requestId, status: "loading" } } },
+    };
+  }
   if (action.type === "outcome_started") {
     return { ...state, outcome: { status: "loading", requestId: action.requestId, workspaceRoot: action.workspaceRoot, sessionId: action.sessionId } };
   }
@@ -808,6 +836,29 @@ function reduce(state: AgentState, action: Action): AgentState {
         },
       };
     }
+    case "agent_resource_skills_applied": {
+      const operations = state.agentResourceOperations;
+      const pending = operations.skills[message.repositoryId];
+      if (pending?.requestId !== message.requestId) return state;
+      return {
+        ...state,
+        agentResources: message.inventory,
+        agentResourceOperations: { ...operations, skills: { ...operations.skills, [message.repositoryId]: { ...pending, status: "ready" } } },
+      };
+    }
+    case "agent_resource_removed": {
+      const operations = state.agentResourceOperations;
+      const pending = operations.removals[message.repositoryId];
+      if (pending?.requestId !== message.requestId) return state;
+      return {
+        ...state,
+        agentResources: message.inventory,
+        agentResourceOperations: {
+          ...operations,
+          removals: { ...operations.removals, [message.repositoryId]: { ...pending, status: "ready", result: message.result } },
+        },
+      };
+    }
     case "agent_resource_error": {
       const fail = <T extends { requestId: string }>(pending: T | null): (T & { status: "error"; message: string }) | null =>
         pending?.requestId === message.requestId ? { ...pending, status: "error", message: message.message } : null;
@@ -815,11 +866,14 @@ function reduce(state: AgentState, action: Action): AgentState {
       const preview = fail(state.agentResourceOperations.preview);
       const enrollment = fail(state.agentResourceOperations.enrollment);
       const refresh = fail(state.agentResourceOperations.refresh);
-      const updateEntry = Object.entries(state.agentResourceOperations.updates).find(([, value]) => value.requestId === message.requestId);
-      if (!clonePath && !preview && !enrollment && !refresh && !updateEntry) return state;
-      const updates = updateEntry
-        ? { ...state.agentResourceOperations.updates, [updateEntry[0]]: { ...updateEntry[1], status: "error" as const, message: message.message } }
-        : state.agentResourceOperations.updates;
+      const failKeyed = <T extends { requestId: string }>(entries: Record<string, T>): Record<string, T> | null => {
+        const hit = Object.entries(entries).find(([, value]) => value.requestId === message.requestId);
+        return hit ? { ...entries, [hit[0]]: { ...hit[1], status: "error" as const, message: message.message } } : null;
+      };
+      const updates = failKeyed(state.agentResourceOperations.updates);
+      const skills = failKeyed(state.agentResourceOperations.skills);
+      const removals = failKeyed(state.agentResourceOperations.removals);
+      if (!clonePath && !preview && !enrollment && !refresh && !updates && !skills && !removals) return state;
       return {
         ...state,
         agentResourceOperations: {
@@ -828,7 +882,9 @@ function reduce(state: AgentState, action: Action): AgentState {
           ...(preview ? { preview } : {}),
           ...(enrollment ? { enrollment } : {}),
           ...(refresh ? { refresh } : {}),
-          updates,
+          ...(updates ? { updates } : {}),
+          ...(skills ? { skills } : {}),
+          ...(removals ? { removals } : {}),
         },
       };
     }
@@ -1944,10 +2000,28 @@ export function useAgent(serverUrl = "", explicitToken?: string, embedded = fals
       dispatch({ type: "resource_preview_started", requestId });
       sendMessage({ type: "clone_agent_resource_repository", repositoryUrl, destinationPath, requestId });
     },
-    enrollAgentResourceRepository: (previewToken: string, skillRoots: string[], extensionRoots: string[]) => {
+    enrollAgentResourceRepository: (previewToken: string, skillRoots: string[], extensionRoots: string[], enabledSkills?: string[]) => {
       const requestId = `resource-enroll:${crypto.randomUUID()}`;
       dispatch({ type: "resource_enrollment_started", requestId });
-      sendMessage({ type: "enroll_agent_resource_repository", previewToken, skillRoots, extensionRoots, requestId });
+      sendMessage({
+        type: "enroll_agent_resource_repository",
+        previewToken,
+        skillRoots,
+        extensionRoots,
+        ...(enabledSkills ? { enabledSkills } : {}),
+        requestId,
+      });
+    },
+    /** Apply a collection's complete selection: every skill that should be on. */
+    setAgentResourceSkills: (repositoryId: string, enabledSkills: string[]) => {
+      const requestId = `resource-skills:${crypto.randomUUID()}`;
+      dispatch({ type: "resource_skills_started", requestId, repositoryId });
+      sendMessage({ type: "set_agent_resource_skills", repositoryId, enabledSkills, requestId });
+    },
+    removeAgentResourceRepository: (repositoryId: string) => {
+      const requestId = `resource-remove:${crypto.randomUUID()}`;
+      dispatch({ type: "resource_removal_started", requestId, repositoryId });
+      sendMessage({ type: "remove_agent_resource_repository", repositoryId, requestId });
     },
     refreshAgentResourceRepositories: (repositoryId?: string) => {
       const requestId = `resource-refresh:${crypto.randomUUID()}`;

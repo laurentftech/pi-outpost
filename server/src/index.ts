@@ -24,6 +24,7 @@ import {
 import {
   type AgentResourceInventory,
   type AgentResourceReloadResult,
+  AgentResourceRemovalResult,
   type AgentResourceUpdateResult,
   type ClientMessage,
   type ContextUsage,
@@ -86,6 +87,8 @@ import {
   loadConfig,
   NoConfigError,
   persistEditableSettings,
+  collectionSkillDir,
+  type SkillCollection,
 } from "./config.ts";
 import {
   carriesIndexHtml,
@@ -157,7 +160,7 @@ import { composeAppendSystemPrompt } from "./systemPrompt.ts";
 import { createPdfExtractToolDefinition } from "./pdfTool.ts";
 import { Workspace, shouldRetireWorkspace, type WorkspaceOptions, type WorkspaceSettings } from "./workspace.ts";
 import { WorkspaceRegistry } from "./workspaceRegistry.ts";
-import { ResourceRepositoryService } from "./resourceRepositories.ts";
+import { discoverSkillCatalogue, ResourceRepositoryService } from "./resourceRepositories.ts";
 import { deriveWorkspaceActivity, workspaceActivityNeedsAttention } from "./workspaceActivity.ts";
 import { isWithin, realResolve } from "./sandbox.ts";
 import {
@@ -1198,6 +1201,7 @@ function resourceInventoryInput(target: Workspace) {
     userSkillPaths: config.userSkillPaths,
     configuredExtensionPaths: config.extensionPaths,
     userExtensionPaths: config.userExtensionPaths,
+    userSkillCollections: config.userSkillCollections,
     extensionLock: config.extensionLock === true,
   };
 }
@@ -1362,9 +1366,17 @@ function publishWorkPlanTools(workspace: Workspace, plan: WorkPlan | null): void
   workspace.agent.setToolPublished(WORK_PLAN_EXTENDED_TOOL, plan !== null);
 }
 
-function queueWorkPlanSessionSync(workspace: Workspace): Promise<void> {
+/**
+ * `after` is work the snapshot must reflect — the resource inventory — and is
+ * awaited inside the chain rather than before calling this: `workPlanSync` has to
+ * cover the whole replacement from the moment the event arrives. Chained only
+ * after the inventory, a replacement awaiting `workPlanSync` in the meantime saw
+ * the previous, settled promise and went on before the inherited plan loaded.
+ */
+function queueWorkPlanSessionSync(workspace: Workspace, after?: Promise<unknown>): Promise<void> {
   const sessionFile = workspace.agent.snapshot().sessionFile;
   workspace.workPlanSync = workspace.workPlanSync.catch(() => {}).then(async () => {
+    if (after) await after.catch(() => {});
     const inheritanceSource = workspace.workPlanInheritanceSource;
     const inherited =
       inheritanceSource !== undefined && !sameSessionFile(inheritanceSource, sessionFile);
@@ -1982,17 +1994,14 @@ function onRuntimeEvent(workspace: Workspace, event: RuntimeEvent): void {
         // The updater awaits this exact refresh. Running a second inventory scan
         // here and in the request handler doubled every fetch and made the second
         // workspace race the first session replacement on slower CI hosts.
-        const sync = refreshResourceInventory(workspace, updatedRepositoryPath)
-          .then(async (inventory) => {
-            await queueWorkPlanSessionSync(workspace);
-            return inventory;
-          });
+        const refreshed = refreshResourceInventory(workspace, updatedRepositoryPath);
+        const sync = queueWorkPlanSessionSync(workspace, refreshed).then(() => refreshed);
         resourceReloadSyncs.set(workspace.root, sync);
         void sync.catch(reportError);
       } else {
-        void refreshResourceInventory(workspace)
-          .catch(reportError)
-          .then(() => queueWorkPlanSessionSync(workspace));
+        const refreshed = refreshResourceInventory(workspace);
+        void refreshed.catch(reportError);
+        void queueWorkPlanSessionSync(workspace, refreshed);
       }
       break;
     case "extensions_bound": {
@@ -2191,6 +2200,7 @@ async function handleUpdateConfig(
   update: {
     sandbox?: { root: string; allowWrite: boolean; allowBash: boolean; writableRoot?: string };
     userSkillPaths?: string[];
+    userSkillCollections?: SkillCollection[];
     userExtensionPaths?: string[];
   },
   resourceRequestId?: string,
@@ -2265,11 +2275,33 @@ async function handleUpdateConfig(
     refuse(`Could not use resource folder: ${error instanceof Error ? error.message : String(error)}`);
     return undefined;
   }
+  // A collection whose clone vanished outside the app is kept as written: refusing
+  // it would make every later collection change — its own removal included —
+  // impossible. The loader already skips skills that no longer exist.
+  let mergedCollections: SkillCollection[] | undefined;
+  if (update.userSkillCollections) {
+    try {
+      mergedCollections = await Promise.all(update.userSkillCollections.map(async (collection) => {
+        const resolved = resolve(collection.path);
+        const root = await fs.realpath(resolved).catch(() => resolved);
+        const stats = await fs.stat(root).catch(() => undefined);
+        if (stats && !stats.isDirectory()) throw new Error(`${collection.path} is not a directory`);
+        const enabled = [...new Set(collection.enabledSkills)];
+        const outside = enabled.find((relative) => !collectionSkillDir(root, relative));
+        if (outside !== undefined) throw new Error(`${outside} is not a skill path inside ${collection.path}`);
+        return { path: root, managed: collection.managed === true, enabledSkills: enabled };
+      }));
+    } catch (error) {
+      refuse(`Could not use skill collection: ${error instanceof Error ? error.message : String(error)}`);
+      return undefined;
+    }
+  }
 
   const persisted: EditableSettings = {
     ...(mergedSandbox ? { sandbox: mergedSandbox } : {}),
     ...(mergedSkillPaths ? { userSkillPaths: mergedSkillPaths } : {}),
     ...(mergedExtensionPaths ? { userExtensionPaths: mergedExtensionPaths } : {}),
+    ...(mergedCollections ? { userSkillCollections: mergedCollections } : {}),
   };
   // Keep an exact rollback projection. Extensions can veto the mandatory fresh
   // session; accepting the disk/browser half while retaining the old agent would
@@ -2287,12 +2319,14 @@ async function handleUpdateConfig(
       : {}),
     ...(mergedSkillPaths ? { userSkillPaths: [...config.userSkillPaths] } : {}),
     ...(mergedExtensionPaths ? { userExtensionPaths: [...config.userExtensionPaths] } : {}),
+    ...(mergedCollections ? { userSkillCollections: cloneCollections(config.userSkillCollections) } : {}),
   };
   const previousSandbox = current
     ? { ...current, readExceptions: [...current.readExceptions] }
     : undefined;
   const previousSkillPaths = [...config.userSkillPaths];
   const previousExtensionPaths = [...config.userExtensionPaths];
+  const previousCollections = cloneCollections(config.userSkillCollections);
   try {
     persistEditableSettings(config, persisted);
   } catch (error) {
@@ -2307,6 +2341,7 @@ async function handleUpdateConfig(
   try {
     if (mergedSkillPaths) config.userSkillPaths = mergedSkillPaths;
     if (mergedExtensionPaths) config.userExtensionPaths = mergedExtensionPaths;
+    if (mergedCollections) config.userSkillCollections = mergedCollections;
     if (mergedSandbox) {
       config.sandbox = {
         root: mergedSandbox.root,
@@ -2345,6 +2380,7 @@ async function handleUpdateConfig(
       // fail-safe and a restart will build both sides from the on-disk settings.
       config.userSkillPaths = previousSkillPaths;
       config.userExtensionPaths = previousExtensionPaths;
+      config.userSkillCollections = previousCollections;
       config.sandbox = previousSandbox;
       await workspace.rebuildResources({
         cwd: workspace.settings.cwd,
@@ -3505,7 +3541,12 @@ async function handleCloneAgentResourceRepository(
   requestId: string,
 ): Promise<void> {
   try {
-    const preview = await resourceService(workspace).cloneAndPreview(repositoryUrl, destinationPath, config.extensionLock === true);
+    const preview = await resourceService(workspace).cloneAndPreview(
+      repositoryUrl,
+      destinationPath,
+      config.extensionLock === true,
+      config.userSkillPaths,
+    );
     send(socket, { type: "agent_resource_preview", requestId, preview });
   } catch (error) {
     sendAgentResourceError(socket, requestId, error);
@@ -3518,6 +3559,7 @@ async function handleEnrollAgentResourceRepository(
   previewToken: string,
   skillRoots: string[],
   extensionRoots: string[],
+  enabledSkills: string[],
   requestId: string,
 ): Promise<void> {
   try {
@@ -3526,23 +3568,54 @@ async function handleEnrollAgentResourceRepository(
       skillRoots,
       extensionRoots,
       config.extensionLock === true,
+      enabledSkills,
     );
     const unique = (values: string[]) => [...new Set(values)];
+    const extensionUpdate = confirmed.extensionRoots.length > 0
+      ? { userExtensionPaths: unique([...config.userExtensionPaths, ...confirmed.extensionRoots]) }
+      : {};
     const inventory = await handleUpdateConfig(
       workspace,
       socket,
-      {
-        userSkillPaths: unique([...config.userSkillPaths, ...confirmed.skillRoots]),
-        ...(confirmed.extensionRoots.length > 0
-          ? { userExtensionPaths: unique([...config.userExtensionPaths, ...confirmed.extensionRoots]) }
-          : {}),
-      },
+      confirmed.mode === "collection"
+        ? {
+            userSkillCollections: withCollection(config.userSkillCollections, {
+              path: confirmed.repositoryPath,
+              managed: confirmed.managed,
+              enabledSkills: confirmed.enabledSkills,
+            }),
+            ...extensionUpdate,
+          }
+        : { userSkillPaths: unique([...config.userSkillPaths, ...confirmed.skillRoots]), ...extensionUpdate },
       requestId,
     );
     if (inventory) send(socket, { type: "agent_resource_enrolled", requestId, inventory });
   } catch (error) {
     sendAgentResourceError(socket, requestId, error);
   }
+}
+
+function cloneCollections(collections: readonly SkillCollection[]): SkillCollection[] {
+  return collections.map((collection) => ({ ...collection, enabledSkills: [...collection.enabledSkills] }));
+}
+
+/**
+ * Merge an enrollment into the collections: re-enrolling a repository adds the
+ * newly chosen skills to those already on — it never turns one off — and a
+ * repository once known to be pi-outpost's clone stays so.
+ */
+function withCollection(collections: readonly SkillCollection[], entry: SkillCollection): SkillCollection[] {
+  const existing = collections.find((candidate) => path.resolve(candidate.path) === path.resolve(entry.path));
+  if (!existing) return [...collections, entry];
+  return collections.map((candidate) =>
+    candidate === existing
+      ? {
+          path: existing.path,
+          managed: existing.managed || entry.managed,
+          enabledSkills: [...new Set([...existing.enabledSkills, ...entry.enabledSkills])],
+        }
+      : candidate,
+  );
 }
 
 async function handleRefreshAgentResourceRepositories(
@@ -3567,6 +3640,164 @@ function affectedResourceWorkspaces(repositoryPath: string): Workspace[] {
   return [...roots].map((root) => workspaces.get(root)).filter((target): target is Workspace => target !== undefined);
 }
 
+/**
+ * Why a change to a repository's resources must wait: the first of its consumers
+ * that is starting, replacing its session, or streaming a turn. Workspaces already
+ * reserved by the caller are its own and do not count.
+ */
+function busyResourceConsumer(targets: readonly Workspace[], reserved: ReadonlySet<Workspace> = new Set()): string | undefined {
+  const busy = targets.find(
+    (target) => !reserved.has(target) && (starting.has(target.root) || target.replacingSession || (target.started && target.isBusy())),
+  );
+  return busy ? `${path.basename(busy.root)} is busy; wait for its current turn to finish` : undefined;
+}
+
+async function canonicalOrResolved(value: string): Promise<string> {
+  return fs.realpath(value).catch(() => path.resolve(value));
+}
+
+/**
+ * Turn a collection's skills on or off: `enabledSkills` is the complete set that
+ * should be on. Checked against a catalogue built now — not the one the dialog
+ * was shown — and applied through the settings path, so persistence, the session
+ * replacement and its rollback are the same as for any skill path.
+ */
+async function handleSetAgentResourceSkills(
+  workspace: Workspace,
+  socket: WebSocket,
+  repositoryId: string,
+  enabledSkills: string[],
+  requestId: string,
+): Promise<void> {
+  try {
+    const repositoryPath = resourceService(workspace).repositoryPath(repositoryId);
+    if (!repositoryPath) throw new Error("Unknown resource repository");
+    let collection: SkillCollection | undefined;
+    for (const candidate of config.userSkillCollections) {
+      if ((await canonicalOrResolved(candidate.path)) === repositoryPath) collection = candidate;
+    }
+    if (!collection) throw new Error("This repository is not a skill collection");
+    const catalogued = new Set((await discoverSkillCatalogue(repositoryPath)).skills.map((entry) => entry.relativePath));
+    const chosen = [...new Set(enabledSkills)];
+    const stranger = chosen.find((relative) => !catalogued.has(relative));
+    if (stranger !== undefined) throw new Error(`The selected skill ${stranger} is not in this repository`);
+    const busy = busyResourceConsumer([...new Set([workspace, ...affectedResourceWorkspaces(repositoryPath)])]);
+    if (busy) throw new Error(busy);
+    const inventory = await handleUpdateConfig(
+      workspace,
+      socket,
+      {
+        userSkillCollections: config.userSkillCollections.map((candidate) =>
+          candidate === collection ? { ...candidate, enabledSkills: chosen } : candidate,
+        ),
+      },
+      requestId,
+    );
+    if (inventory) send(socket, { type: "agent_resource_skills_applied", requestId, repositoryId, inventory });
+  } catch (error) {
+    sendAgentResourceError(socket, requestId, error);
+  }
+}
+
+/**
+ * Remove a repository as a whole: unregister every path and selection inside it,
+ * then — only once no session loads from it any more — delete a clone pi-outpost
+ * manages. Unregistering goes through the settings path and its rollback; if that
+ * is refused nothing is deleted. Other projects loading the repository are held
+ * and rebuilt first, because the requester's replacement alone would leave them
+ * reading files that are about to disappear.
+ */
+async function handleRemoveAgentResourceRepository(
+  workspace: Workspace,
+  socket: WebSocket,
+  repositoryId: string,
+  requestId: string,
+): Promise<void> {
+  const service = resourceService(workspace);
+  const known = service.repositoryRemoval(repositoryId);
+  if (!known) {
+    sendAgentResourceError(socket, requestId, new Error("Unknown resource repository"));
+    return;
+  }
+  const { path: root, removal } = known;
+  if (!removal.allowed) {
+    sendAgentResourceError(socket, requestId, new Error(removal.reason ?? "This repository cannot be removed here"));
+    return;
+  }
+  const others = affectedResourceWorkspaces(root).filter((target) => target !== workspace);
+  const busy = busyResourceConsumer([workspace, ...others]);
+  if (busy) {
+    sendAgentResourceError(socket, requestId, new Error(busy));
+    return;
+  }
+  const reserved = new Set<Workspace>();
+  for (const target of others) {
+    target.replacingSession = true;
+    reserved.add(target);
+  }
+  try {
+    const inside = async (value: string) => {
+      const canonical = await canonicalOrResolved(value);
+      return canonical === root || isWithin(root, canonical);
+    };
+    const keep = async (values: readonly string[]) => {
+      const kept: string[] = [];
+      for (const value of values) if (!(await inside(value))) kept.push(value);
+      return kept;
+    };
+    const collections: SkillCollection[] = [];
+    for (const collection of config.userSkillCollections) {
+      if ((await canonicalOrResolved(collection.path)) !== root) collections.push(collection);
+    }
+    const skillPaths = await keep(config.userSkillPaths);
+    const extensionPaths = await keep(config.userExtensionPaths);
+    const inventory = await handleUpdateConfig(
+      workspace,
+      socket,
+      {
+        userSkillCollections: collections,
+        userSkillPaths: skillPaths,
+        ...(extensionPaths.length !== config.userExtensionPaths.length ? { userExtensionPaths: extensionPaths } : {}),
+      },
+      requestId,
+    );
+    // Refused or failed: handleUpdateConfig has reported it and restored the
+    // previous settings, so the repository is still registered and untouched.
+    if (!inventory) return;
+
+    let stillLoading: string | undefined;
+    for (const target of others) {
+      if (!target.started) continue;
+      const rebuild = target.agent.rebuildTools;
+      try {
+        const reload = rebuild ? await rebuild.call(target.agent) : { cancelled: true };
+        if (reload.cancelled) stillLoading ??= target.root;
+        else broadcast(target, { type: "agent_resource_inventory", inventory: await refreshResourceInventory(target) });
+      } catch {
+        stillLoading ??= target.root;
+      }
+    }
+
+    let result: AgentResourceRemovalResult;
+    if (!removal.deletesFiles) {
+      result = { status: "removed-files-kept", path: root, reason: "pi-outpost does not manage this folder, so its files were kept" };
+    } else if (stillLoading) {
+      result = { status: "removed-files-kept", path: root, reason: `${path.basename(stillLoading)} still loads resources from it, so its files were kept` };
+    } else {
+      const deletion = await service.deleteManagedClone(root, removal.deletesFiles);
+      result = deletion.deleted
+        ? { status: "removed", path: root }
+        : { status: deletion.failed ? "removed-delete-failed" : "removed-files-kept", path: root, reason: deletion.reason };
+    }
+    const fresh = await refreshResourceInventory(workspace);
+    send(socket, { type: "agent_resource_removed", requestId, repositoryId, result, inventory: fresh });
+  } catch (error) {
+    sendAgentResourceError(socket, requestId, error);
+  } finally {
+    for (const target of reserved) target.replacingSession = false;
+  }
+}
+
 async function handleUpdateAgentResourceRepository(
   workspace: Workspace,
   socket: WebSocket,
@@ -3587,10 +3818,8 @@ async function handleUpdateAgentResourceRepository(
   const reserved = new Set<Workspace>();
   const reserveAffected = (): string | undefined => {
     affected = affectedResourceWorkspaces(repositoryPath);
-    const busy = affected.find(
-      (target) => !reserved.has(target) && (starting.has(target.root) || target.replacingSession || (target.started && target.isBusy())),
-    );
-    if (busy) return `${path.basename(busy.root)} is busy; wait for its current turn to finish`;
+    const busy = busyResourceConsumer(affected, reserved);
+    if (busy) return busy;
     for (const target of affected) {
       target.replacingSession = true;
       reserved.add(target);
@@ -3708,6 +3937,8 @@ const AGENT_COMMANDS = new Set<ClientMessage["type"]>([
   "update_config",
   "enroll_agent_resource_repository",
   "update_agent_resource_repository",
+  "set_agent_resource_skills",
+  "remove_agent_resource_repository",
 ]);
 
 function handleClientMessage(socket: WebSocket, raw: string): void {
@@ -4065,6 +4296,8 @@ function handleClientMessage(socket: WebSocket, raw: string): void {
         !Array.isArray(message.extensionRoots) ||
         message.skillRoots.some((value) => typeof value !== "string") ||
         message.extensionRoots.some((value) => typeof value !== "string") ||
+        (message.enabledSkills !== undefined &&
+          (!Array.isArray(message.enabledSkills) || message.enabledSkills.some((value) => typeof value !== "string"))) ||
         typeof message.requestId !== "string"
       ) return;
       handleEnrollAgentResourceRepository(
@@ -4073,8 +4306,24 @@ function handleClientMessage(socket: WebSocket, raw: string): void {
         message.previewToken,
         message.skillRoots,
         message.extensionRoots,
+        message.enabledSkills ?? [],
         message.requestId,
       ).catch((error) => sendAgentResourceError(socket, message.requestId, error));
+      break;
+    case "set_agent_resource_skills":
+      if (
+        typeof message.repositoryId !== "string" ||
+        !Array.isArray(message.enabledSkills) ||
+        message.enabledSkills.some((value) => typeof value !== "string") ||
+        typeof message.requestId !== "string"
+      ) return;
+      handleSetAgentResourceSkills(workspace, socket, message.repositoryId, message.enabledSkills, message.requestId)
+        .catch((error) => sendAgentResourceError(socket, message.requestId, error));
+      break;
+    case "remove_agent_resource_repository":
+      if (typeof message.repositoryId !== "string" || typeof message.requestId !== "string") return;
+      handleRemoveAgentResourceRepository(workspace, socket, message.repositoryId, message.requestId)
+        .catch((error) => sendAgentResourceError(socket, message.requestId, error));
       break;
     case "refresh_agent_resource_repositories":
       if (
