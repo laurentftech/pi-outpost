@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { mkdir, readFile, realpath, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import test from "node:test";
 import { connect, makeWorkspace, startServer } from "./harness.mjs";
 
@@ -116,7 +116,9 @@ test("a worktree already registered through a skill root is previewed in root mo
   const root = await realpath(await makeWorkspace());
   const address = await collectionRemote(root);
   const checkout = path.join(root, "legacy-checkout");
-  run(root, ["clone", "-q", new URL(address).pathname, checkout]);
+  // fileURLToPath, not URL.pathname: on Windows the pathname is "/D:/…", which Git
+  // records as a different origin than the one the server derives from the URL.
+  run(root, ["clone", "-q", fileURLToPath(address), checkout]);
   const { client } = await boot(t, root, { userSkillPaths: [path.join(checkout, "skills")] });
   const preview = await previewClone(client, address, checkout, "legacy");
   assert.equal(preview.mode, "roots");
