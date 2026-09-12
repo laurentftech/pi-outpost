@@ -860,10 +860,29 @@ function TableView({
     rows?.[index]?.role ?? tableRowRole(row, declaresRoles);
   const rolesPresent = [...new Set(data.rows.map(roleOf).filter((role): role is StructuredTableRowRole => role !== undefined))]
     .sort((a, b) => TABLE_ROLES.indexOf(a) - TABLE_ROLES.indexOf(b));
-  const shown = data.rows.filter((row, index) => {
-    const role = roleOf(row, index);
-    return role === undefined || !hidden.has(filterKey("role", role));
-  });
+  // Carried, not recovered. `data.rows.indexOf(row)` inside the render below was a
+  // scan per row — at the five-thousand-row ceiling, some twelve million identity
+  // comparisons on every column drag and every filter toggle, for an index the
+  // filter already had in its hand.
+  const shown = data.rows
+    .map((row, index) => ({ row, index }))
+    .filter(({ row, index }) => {
+      const role = roleOf(row, index);
+      return role === undefined || !hidden.has(filterKey("role", role));
+    });
+
+  // Relations by the row they touch, built once. Filtering every relation per row is
+  // the same shape of cost: two thousand relations across five thousand rows is ten
+  // million comparisons to draw one table.
+  const tracesByRow = new Map<string, DescribedTrace[]>();
+  for (const trace of traces) {
+    for (const end of [trace.fromRow, trace.toRow]) {
+      if (end === undefined) continue;
+      const held = tracesByRow.get(end);
+      if (held === undefined) tracesByRow.set(end, [trace]);
+      else if (!held.includes(trace)) held.push(trace);
+    }
+  }
 
   const toggle = (role: StructuredTableRowRole) => {
     const next = new Set(hidden);
@@ -927,9 +946,9 @@ function TableView({
           </tr>
         </thead>
         <tbody>
-          {shown.map((row, rowIndex) => {
+          {shown.map(({ row, index }, rowIndex) => {
             const { cells, heading } = readTableRow(row);
-            const described = rows?.[data.rows.indexOf(row)];
+            const described = rows?.[index];
             // The described role, not the declared one. A proposal marks its own
             // rows — a reference with a change is a change, one without a reference
             // is an addition — and reading the declaration alone drew every row of a
@@ -937,9 +956,7 @@ function TableView({
             // prevent. The declaration still wins where a producer made one, because
             // `describeStructure` prefers it.
             const role = described?.role ?? tableRowRole(row, declaresRoles);
-            const related = described?.id === undefined
-              ? []
-              : traces.filter((trace) => trace.fromRow === described.id || trace.toRow === described.id);
+            const related = described?.id === undefined ? [] : (tracesByRow.get(described.id) ?? []);
 
             if (heading !== undefined) {
               // A chapter spans the table rather than filling its columns: it is not

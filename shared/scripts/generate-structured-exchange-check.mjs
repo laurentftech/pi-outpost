@@ -78,8 +78,6 @@ export function generate(version = "1") {
   return `${header(version)}${compiled.Code}\n${externalsLiteral(compiled.External.variables)}`;
 }
 
-export const GENERATED_CHECK_PATH = GENERATED_CHECKS[0].output;
-
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   for (const { version, output } of GENERATED_CHECKS) {
     writeFileSync(output, generate(version));
