@@ -85,6 +85,20 @@ function roleTally(envelope: ValidatedStructuredExchange): string {
   } else if (envelope.kind === "sequence") {
     const data = envelope.data as StructuredSequenceData;
     subjects.push(...data.participants, ...data.messages);
+  } else {
+    // A table is proposable under the enriched contract, and its rows are what a
+    // proposal addresses. Counting only graphs and sequences told the agent that a
+    // five-row amendment "changes nothing" — a sentence written to correct one
+    // specific mistake, fired at a document that had made none, which is an
+    // instruction to go and break it.
+    const data = envelope.data as StructuredTableData;
+    for (const row of data.rows as unknown[]) {
+      if (row === null || typeof row !== "object" || Array.isArray(row)) continue;
+      const item = row as { ref?: string; set?: object; heading?: string };
+      // A chapter is not proposed: it organises the rows around it.
+      if (item.heading !== undefined) continue;
+      subjects.push({ ...(item.ref === undefined ? {} : { ref: item.ref }), ...(item.set === undefined ? {} : { set: item.set }) });
+    }
   }
   const added = subjects.filter((subject) => subject.ref === undefined).length;
   const changed = subjects.filter((subject) => subject.set !== undefined).length;

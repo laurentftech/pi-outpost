@@ -114,5 +114,17 @@ export function readStructuredExchangeDocument(
   if (supportedSchemaOf(schema) === undefined) return { status: "unsupported-version", schema };
 
   const verdict = parseStructuredExchange(document, checkSchema);
-  return verdict.valid ? { status: "valid", envelope: verdict.envelope } : { status: "invalid", issues: verdict.issues };
+  if (!verdict.valid) return { status: "invalid", issues: verdict.issues };
+
+  // The version's own byte ceiling, now that the document has declared one. The
+  // gate above could only apply the widest of them, since reading the declaration
+  // is the parse it exists to avoid — and without this the file path and the tool
+  // path answered differently about the same document: a five-megabyte version 1
+  // table opened in the viewer while the tool refused it for passing version 1's
+  // published four. One document, two answers, and the looser one relaxing a
+  // ceiling version 1 producers were given.
+  const pastItsVersion = checkDocumentBytes(serialized, limits, verdict.envelope.schema);
+  if (pastItsVersion !== undefined) return { status: "too-large", issue: pastItsVersion };
+
+  return { status: "valid", envelope: verdict.envelope };
 }

@@ -132,6 +132,32 @@ function enrichedItemsOf(envelope: StructuredExchangeEnvelope): EnrichedItem[] {
   return items;
 }
 
+/**
+ * The rows of a table, as things a proposal can address.
+ *
+ * Version 2 made a table proposable and gave its rows a `ref` and a `set`. Every
+ * rule about addressing — one intention per thing, a change needs something to
+ * change, a change needs a target — was built from `elementsOf` and
+ * `relationshipsOf`, both of which answer `[]` for a table. So the one item type
+ * this contract exists to make patchable was the one nothing checked.
+ */
+function addressableRowsOf(envelope: StructuredExchangeEnvelope): { at: string; ref?: string; set?: object }[] {
+  if (envelope.kind !== "table") return [];
+  const rows = (envelope.data as StructuredTableData).rows as unknown[];
+  const addressable: { at: string; ref?: string; set?: object }[] = [];
+  rows.forEach((row, index) => {
+    if (row === null || typeof row !== "object" || Array.isArray(row)) return;
+    const item = row as { ref?: unknown; set?: unknown };
+    if (item.ref === undefined && item.set === undefined) return;
+    addressable.push({
+      at: `/data/rows/${index}`,
+      ...(typeof item.ref === "string" ? { ref: item.ref } : {}),
+      ...(item.set !== undefined ? { set: item.set as object } : {}),
+    });
+  });
+  return addressable;
+}
+
 /** The rows of a table that carry an identity, and can therefore be pointed at. */
 function identifiedRowsOf(envelope: StructuredExchangeEnvelope): { id: string; at: string }[] {
   if (envelope.kind !== "table") return [];
@@ -265,7 +291,7 @@ export function validateStructuredExchangeSemantics(envelope: StructuredExchange
   // both changed and removed is the same ambiguity spelled differently, and is
   // refused here rather than resolved by precedence.
   const claimed = new Map<string, string>();
-  const claim = (type: "element" | "relationship", ref: string | undefined, at: string) => {
+  const claim = (type: "element" | "relationship" | "row", ref: string | undefined, at: string) => {
     if (ref === undefined) return;
     const key = `${type}:${ref}`;
     const first = claimed.get(key);
@@ -280,6 +306,7 @@ export function validateStructuredExchangeSemantics(envelope: StructuredExchange
   };
   elements.forEach((element, index) => claim("element", element.ref, `${elementsAt}/${index}`));
   relationshipsOf(envelope).forEach((relationship, index) => claim("relationship", relationship.ref, `${relationshipsAt}/${index}`));
+  addressableRowsOf(envelope).forEach((row) => claim("row", row.ref, row.at));
   (envelope.removals ?? []).forEach((removal, index) => claim(removal.type, removal.ref, `/removals/${index}`));
 
   // A change has to have something to change. `set` without a `ref` names no
@@ -292,6 +319,7 @@ export function validateStructuredExchangeSemantics(envelope: StructuredExchange
       ref: relationship.ref,
       set: relationship.set,
     })),
+    ...addressableRowsOf(envelope),
   ];
   for (const candidate of changeables) {
     if (candidate.set === undefined) continue;

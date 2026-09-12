@@ -362,3 +362,52 @@ describe("what the contract deliberately does not do", () => {
     assert.equal(described.rows?.[1].ref, "REQ-2");
   });
 });
+
+describe("the rules a proposal is held to reach its rows", () => {
+  // Found by review, and all of one shape: every rule about *addressing* something
+  // was built from the elements and relationships of a graph, both of which answer
+  // empty for a table. Version 2 made a table proposable and gave rows a `ref` and
+  // a `set` — so the one item type this contract exists to make patchable was the
+  // one nothing checked.
+  const proposing = (over: Record<string, unknown>, envelope: Record<string, unknown> = {}) =>
+    verdict({ schema: "urn:structured-exchange:2", kind: "table", ...envelope, data: { columns: ["id"], ...over } });
+
+  test("two rows addressing the same reference are refused", () => {
+    // One intention per thing. Two patches on one requirement leave an authority
+    // with no way to say which wins, and picking one is the guess this stage refuses.
+    const outcome = proposing(
+      { rows: [{ cells: ["R-1"], ref: "REQ-1", set: { label: "a" } }, { cells: ["R-2"], ref: "REQ-1", set: { label: "b" } }] },
+      { target: { ref: "DOC-1" } },
+    );
+    assert.ok(outcome.rules.includes("duplicate-reference"), outcome.rules.join(", "));
+  });
+
+  test("a row changed and removed at once is refused", () => {
+    const outcome = proposing(
+      { rows: [{ cells: ["R-1"], ref: "REQ-1", set: { label: "renamed" } }] },
+      { target: { ref: "DOC-1" }, removals: [{ type: "row", ref: "REQ-1" }] },
+    );
+    assert.ok(outcome.rules.includes("duplicate-reference"), outcome.rules.join(", "));
+  });
+
+  test("a row that changes nothing it names is refused", () => {
+    const outcome = proposing({ rows: [{ cells: ["R-1"], set: { label: "a" } }] }, { target: { ref: "DOC-1" } });
+    assert.ok(outcome.rules.includes("change-without-reference"), outcome.rules.join(", "));
+  });
+
+  test("a row patched in a document that targets nothing is refused", () => {
+    const outcome = proposing({ rows: [{ cells: ["R-1"], ref: "REQ-1", set: { label: "a" } }] });
+    assert.ok(outcome.rules.includes("change-without-target"), outcome.rules.join(", "));
+  });
+
+  test("an honest proposal and an honest extraction still pass", () => {
+    assert.equal(
+      proposing(
+        { rows: [{ cells: ["R-1"], ref: "REQ-1", set: { attributes: { status: "x" } } }, { cells: ["R-2"] }] },
+        { target: { ref: "DOC-1" }, removals: [{ type: "row", ref: "REQ-9" }] },
+      ).valid,
+      true,
+    );
+    assert.equal(proposing({ rows: [{ cells: ["R-1"], ref: "REQ-1" }, { cells: ["R-2"], ref: "REQ-2" }] }).valid, true);
+  });
+});

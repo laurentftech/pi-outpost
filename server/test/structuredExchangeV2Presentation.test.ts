@@ -148,6 +148,9 @@ describe("described, expected, and asked for are kept apart", () => {
   });
 
   test("an extraction asks for nothing at all", () => {
+    // `extraction` carries no target, no removals and no `set` on any row — which
+    // the contract now enforces rather than merely expects: a `set` in a document
+    // that targets nothing is refused.
     const described_ = described(extraction).rows?.[1];
     assert.deepEqual(described_?.assignments, []);
     assert.deepEqual(described_?.removedAttributes, []);
@@ -284,8 +287,18 @@ describe("a proposed table marks itself from what it proposes", () => {
   });
 
   test("an extraction marks nothing at all", () => {
+    // Stripping the target is not enough to make a proposal an extraction: the rows
+    // keep their patches, and a patch without a target is refused. What an
+    // extraction is, is a document that asks for nothing.
     const { target: _target, removals: _removals, ...extracted } = proposed;
-    const structure = described(extracted);
+    const asExtracted = {
+      ...extracted,
+      data: {
+        ...extracted.data,
+        rows: (extracted.data.rows as Record<string, unknown>[]).map(({ set: _set, expect: _expect, ...row }) => row),
+      },
+    };
+    const structure = described(asExtracted);
     assert.deepEqual(structure.rows?.map((row) => row.role), [undefined, undefined, undefined, undefined]);
   });
 
@@ -296,5 +309,63 @@ describe("a proposed table marks itself from what it proposes", () => {
       data: { columns: ["id"], rows: [{ role: "removed", cells: ["REQ-3"] }, { cells: ["REQ-1"] }] },
     };
     assert.deepEqual(described(reporting).rows?.map((row) => row.role), ["removed", "context"]);
+  });
+});
+
+describe("a declared role does not disarm the derived ones", () => {
+  test("one row reporting a role leaves the rest marked by what they propose", () => {
+    // Found by review: `tableRowRole` reads *any* undeclared row as context once any
+    // row declares one, so asking it first turned every derived mark in a proposal
+    // back into context — a change shown as unchanged, in the view whose only job is
+    // telling those apart. The contract allows the mix: it refuses a role and a
+    // change on the same row, not in the same table.
+    const mixed = {
+      schema: "urn:structured-exchange:2",
+      kind: "table",
+      target: { ref: "DOC-1" },
+      data: {
+        columns: ["id", "text"],
+        rows: [
+          { cells: ["REQ-0", "reported"], role: "context" },
+          { cells: ["REQ-1", "amended"], ref: "REQ-1", set: { attributes: { status: "in review" } } },
+          { cells: ["REQ-2", "new"] },
+        ],
+      },
+    };
+    assert.deepEqual(described(mixed).rows?.map((row) => row.role), ["context", "changed", "added"]);
+  });
+
+  test("a table that proposes nothing still reads an undeclared row as context", () => {
+    // The version 1 reading, untouched: among rows that declare a role, one that
+    // declares none is context rather than an ordinary row of data.
+    const report = {
+      schema: "urn:structured-exchange:1",
+      kind: "table",
+      data: { columns: ["id"], rows: [{ cells: ["A"], role: "added" }, { cells: ["B"] }] },
+    };
+    assert.deepEqual(described(report).rows?.map((row) => row.role), ["added", "context"]);
+  });
+});
+
+describe("a patch's attributes do not leak into the picture", () => {
+  test("a figure shows the fields it can draw, and not the maps it cannot", () => {
+    // `attributes: [object Object]` was going into the element box of a diagram
+    // someone was about to approve, and `removeAttributes: draft` read as setting a
+    // field by that name. Both belong to the detail panel, which renders them
+    // properly; a picture of structure shows neither.
+    const graph = {
+      schema: "urn:structured-exchange:2",
+      kind: "graph",
+      target: { ref: "architecture-v4" },
+      data: {
+        nodes: [{ id: "a", ref: "EL-1", label: "Ledger", set: { label: "General Ledger", attributes: { status: "approved" }, removeAttributes: ["draft"] } }],
+        edges: [],
+      },
+    };
+    const thing = described(graph).things[0];
+    assert.deepEqual(thing.changes, [{ field: "label", from: "Ledger", to: "General Ledger" }]);
+    // Not dropped — moved to where a reader can read them.
+    assert.deepEqual(thing.assignments, [["status", "approved"]]);
+    assert.deepEqual(thing.removedAttributes, ["draft"]);
   });
 });

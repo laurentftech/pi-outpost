@@ -112,13 +112,22 @@ export interface FieldChange {
 }
 
 export function fieldChanges(subject: StructuredElement | StructuredEdge | StructuredMessage): FieldChange[] {
-  const set = subject.set as Record<string, string> | undefined;
+  const set = subject.set as Record<string, unknown> | undefined;
   if (set === undefined) return [];
   const described = subject as unknown as Record<string, unknown>;
-  return Object.entries(set).map(([field, to]) => {
-    const from = described[field];
-    return { field, ...(typeof from === "string" ? { from } : {}), to };
-  });
+  return Object.entries(set)
+    // The enriched contract puts attribute changes in `set` too, as a map and a
+    // list. They are not fields whose value is a string, and stringifying them put
+    // `attributes: [object Object]` inside the box of a diagram someone was about
+    // to approve — and `removeAttributes: draft`, which reads as *setting* a field
+    // called removeAttributes. They have their own rows in the detail panel and
+    // their own lines in the textual equivalent; a picture of structure shows
+    // neither, and showing nothing is the honest answer here.
+    .filter(([field]) => field !== "attributes" && field !== "removeAttributes")
+    .map(([field, to]) => {
+      const from = described[field];
+      return { field, ...(typeof from === "string" ? { from } : {}), to: String(to) };
+    });
 }
 
 /** Human wording for a role, used in the approval view and its textual equivalent. */
@@ -580,12 +589,14 @@ export function describeStructure(
     const declaresRoles = tableDeclaresRoles(data);
     const rows: DescribedRow[] = data.rows.map((row) => {
       const carrierRow = Array.isArray(row) ? {} : (row as unknown as Record<string, unknown>);
-      const declared = tableRowRole(row, declaresRoles);
-      // Declared wins where a producer stated one; otherwise a proposal marks its
-      // own rows. Without this a proposed table renders three identical lines where
-      // one is changed, one is added and one is only there for context.
+      // The row's *own* declaration, not what `tableRowRole` infers: that function
+      // reads any undeclared row as context once any row declares a role, so asking
+      // it first meant a single declared row silently turned every derived mark in a
+      // proposal back into context — the change shown as unchanged, which is the one
+      // reading this view must never produce.
+      const ownRole = Array.isArray(row) ? undefined : (row as { role?: StructuredTableRowRole }).role;
       const role =
-        declared ??
+        ownRole ??
         proposedRowRole(
           {
             ref: typeof carrierRow.ref === "string" ? carrierRow.ref : undefined,
@@ -593,7 +604,8 @@ export function describeStructure(
             heading: typeof carrierRow.heading === "string" ? carrierRow.heading : undefined,
           },
           isProposal,
-        );
+        ) ??
+        tableRowRole(row, declaresRoles);
       const { cells, heading } = readTableRow(row);
       const carrier = Array.isArray(row) ? {} : (row as unknown as Record<string, unknown>);
       return {
