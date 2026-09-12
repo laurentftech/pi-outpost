@@ -186,11 +186,16 @@ describe("the reference validator as it ships", () => {
 
   test("says how to use it, and documents its exit codes where a caller will look", () => {
     const help = run(process.execPath, [cli, "--help"], { cwd: away, encoding: "utf8" });
-    for (const stated of ["0", "1", "2", "3", "standard input"]) assert.match(help, new RegExp(stated));
+    // Plain substring checks. These were regular expressions built from strings that
+    // then had to be escaped — an escape that only handled colons, which is both a
+    // sharp edge and a question this assertion never needed to ask.
+    for (const stated of ["0", "1", "2", "3", "standard input"]) {
+      assert.ok(help.includes(stated), `the help text does not mention ${stated}`);
+    }
     // And which contracts it actually knows, since that is the first thing a
     // producer writing against it has to decide.
     for (const version of ["urn:structured-exchange:1", "urn:structured-exchange:2"]) {
-      assert.match(help, new RegExp(version.replace(/:/g, "\\:")));
+      assert.ok(help.includes(version), `the help text does not name ${version}`);
     }
   });
 
