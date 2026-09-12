@@ -187,16 +187,19 @@ export function Mermaid({ code }: { code: string }) {
             <button
               type="button"
               data-testid="mermaid-orientation"
-              onClick={() => setChosen(otherOrientation(drawn.orientation))}
+              // From the previous choice rather than from what is on screen: a second
+              // click while the first turn is still being drawn has to queue the other
+              // way round, not recompute the same answer and do nothing.
+              onClick={() => setChosen((current) => otherOrientation(current ?? drawn.orientation))}
               title={
                 drawn.orientation === "portrait"
-                  ? "Drawn down the page — switch to across"
-                  : "Drawn across the page — switch to down"
+                  ? "Turn it across the page — it is drawn down"
+                  : "Turn it down the page — it is drawn across"
               }
-              aria-label={`Diagram drawn ${drawn.orientation}; switch to ${otherOrientation(drawn.orientation)}`}
+              aria-label={`Turn the diagram ${otherOrientation(drawn.orientation)}`}
               className="rounded px-1.5 py-0.5 text-xs text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700 dark:text-zinc-600 dark:hover:bg-zinc-800 dark:hover:text-zinc-300"
             >
-              {drawn.orientation === "portrait" ? "↕ portrait" : "↔ landscape"}
+              {drawn.orientation === "portrait" ? "↔ landscape" : "↕ portrait"}
             </button>
           )}
           {!showCode && (

@@ -1358,7 +1358,10 @@ export function StructuredExchangeDocument({ envelope, source, rawOutput, dispat
    * they were measured against.
    */
   const turn = () => {
-    setChosenOrientation(otherOrientation(orientation));
+    // Updated from the previous value rather than from this render's, so two clicks
+    // landing in one batch turn twice rather than computing the same answer twice and
+    // leaving the second one inert.
+    setChosenOrientation((current) => otherOrientation(current ?? chooses));
     setNudges(new Map());
   };
   const view =
@@ -1614,17 +1617,18 @@ export function StructuredExchangeDocument({ envelope, source, rawOutput, dispat
             type="button"
             className="text-zinc-500 underline"
             data-testid="diagram-orientation"
-            // Names what is on screen, not what the click would do: the reader has to
-            // be able to tell which way it is currently drawn without counting boxes.
+            // Named for what the click does, the way every other control here is. The
+            // state it would otherwise have announced is in the title, and in the
+            // picture itself.
             title={
               orientation === "portrait"
-                ? "Drawn down the page — switch to across"
-                : "Drawn across the page — switch to down"
+                ? "Turn it across the page — it is drawn down"
+                : "Turn it down the page — it is drawn across"
             }
-            aria-label={`Diagram drawn ${orientation}; switch to ${otherOrientation(orientation)}`}
+            aria-label={`Turn the diagram ${otherOrientation(orientation)}`}
             onClick={turn}
           >
-            {orientation === "portrait" ? "↕ portrait" : "↔ landscape"}
+            {orientation === "portrait" ? "↔ landscape" : "↕ portrait"}
           </button>
         )}
         {envelope.kind === "table" ? (

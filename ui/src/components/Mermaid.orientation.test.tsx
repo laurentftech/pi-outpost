@@ -58,7 +58,8 @@ describe("a diagram too wide to read is turned, whatever its source asks for", (
     await waitFor(() => expect(rendered().length).toBe(2));
     expect(rendered()[0]).toBe(ACROSS);
     expect(rendered()[1]).toBe("flowchart TB\n  a[Start] --> b[End]");
-    await waitFor(() => expect(control()!.textContent).toContain("portrait"));
+    // Drawn down the page, so the control offers the way back across.
+    await waitFor(() => expect(control()!.textContent).toContain("landscape"));
   });
 
   it("keeps the authored direction when what it draws fits", async () => {
@@ -69,7 +70,8 @@ describe("a diagram too wide to read is turned, whatever its source asks for", (
     // One render: a diagram that fits is never laid out a second time to find out
     // whether it might have fitted better.
     expect(rendered()).toEqual([ACROSS]);
-    expect(control()!.textContent).toContain("landscape");
+    expect(control()!.textContent).toContain("portrait");
+    expect(control()!.getAttribute("aria-label")).toBe("Turn the diagram portrait");
   });
 
   it("keeps the authored direction when turning would not actually help", async () => {
@@ -79,7 +81,7 @@ describe("a diagram too wide to read is turned, whatever its source asks for", (
     render(<Mermaid code={ACROSS} />);
     await settle();
     await waitFor(() => expect(rendered().length).toBe(2));
-    await waitFor(() => expect(control()!.textContent).toContain("landscape"));
+    await waitFor(() => expect(control()!.textContent).toContain("portrait"));
   });
 
   it("turns a source authored down the page, when across is what fits", async () => {
@@ -88,7 +90,7 @@ describe("a diagram too wide to read is turned, whatever its source asks for", (
     await settle();
     await waitFor(() => expect(rendered().length).toBe(2));
     expect(rendered()[1]).toBe("flowchart LR\n  a[Start] --> b[End]");
-    await waitFor(() => expect(control()!.textContent).toContain("landscape"));
+    await waitFor(() => expect(control()!.textContent).toContain("portrait"));
   });
 
   it("says on the block that it is not drawn the way its source asks", async () => {
@@ -137,21 +139,21 @@ describe("the reader decides last, and keeps what the agent wrote", () => {
     await settle();
     await waitFor(() => expect(rendered().length).toBe(2));
     expect(rendered()[1]).toBe("flowchart TB\n  a[Start] --> b[End]");
-    await waitFor(() => expect(control()!.textContent).toContain("portrait"));
+    await waitFor(() => expect(control()!.textContent).toContain("landscape"));
   });
 
   it("overrides a diagram the system turned, and stays overridden", async () => {
     renderDiagram.mockResolvedValueOnce(drawing(WIDE)).mockResolvedValueOnce(drawing(NARROW));
     render(<Mermaid code={ACROSS} />);
     await settle();
-    await waitFor(() => expect(control()!.textContent).toContain("portrait"));
+    await waitFor(() => expect(control()!.textContent).toContain("landscape"));
 
     renderDiagram.mockResolvedValue(drawing(WIDE));
     fireEvent.click(control()!);
     await settle();
     // Back to the authored source, drawn as written — and it stays there rather than
     // being measured and turned again on the next pass.
-    await waitFor(() => expect(control()!.textContent).toContain("landscape"));
+    await waitFor(() => expect(control()!.textContent).toContain("portrait"));
     expect(rendered().at(-1)).toBe(ACROSS);
     expect(screen.queryByTestId("mermaid-turned")).toBeNull();
   });

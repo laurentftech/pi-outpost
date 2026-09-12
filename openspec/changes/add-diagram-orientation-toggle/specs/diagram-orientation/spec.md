@@ -37,15 +37,16 @@ oriented the same way wherever it is drawn, including where it is drawn with no 
 ### Requirement: TheReaderDecidesLast
 
 A reader MAY switch an orientable diagram between landscape and portrait, and their choice SHALL
-override the automatic one for as long as they are looking at that diagram. The control SHALL say
-which orientation the diagram is currently drawn in, and switching SHALL be reversible.
+override the automatic one for as long as they are looking at that diagram. The control SHALL name
+the orientation it would switch to — it states an action, as every other control does — and
+switching SHALL be reversible.
 
 The choice SHALL be presentation only: it SHALL NOT alter the document or the source the diagram was
 drawn from, SHALL NOT be carried back to any authority, and SHALL NOT be persisted.
 
 #### Scenario: TheReaderTurnsADiagram
 - **WHEN** a reader switches an orientable diagram to the other orientation
-- **THEN** the diagram is redrawn that way and the control offers to switch back
+- **THEN** the diagram is redrawn that way and the control now names the orientation it came from
 
 #### Scenario: TheReaderOverridesTheAutomaticChoice
 - **GIVEN** a diagram the system drew portrait because landscape was unreadable

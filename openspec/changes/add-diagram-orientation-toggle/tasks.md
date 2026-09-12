@@ -29,9 +29,9 @@
 
 ## 5. Coverage, documentation and proof in the running app
 
-- [ ] 5.1 Write `openspec/changes/add-diagram-orientation-toggle/scenario-coverage.md` mapping all 18 scenarios of `diagram-orientation` plus the amended `ReaderMayAdjustAndNarrowTheView` to their tests, and verify with `npm run check:scenarios`.
-- [ ] 5.2 Run `npm run lint`, `npm run tsc` (or the repo's typecheck script) and the full unit suites for `shared`, `ui` and `server`, and report the counts.
-- [ ] 5.3 Review the diff for documented behaviour — `README.md`, `docs/`, the structured-exchange skill — update what the orientation control changes, and record the `Documentation impact` note for the PR.
-- [ ] 5.4 Rebuild `web`, then `@pi-outpost/embed`, then `build:e2e-host`; run `npm run bench` and drive both surfaces in the widget: a wide graph arrives portrait, turning it works inline and enlarged, a Mermaid `flowchart LR` too wide to read arrives turned and says so, and the copied source is the authored one. Read back the DOM, not a screenshot.
-- [ ] 5.5 Second pass in the bench with the aim of breaking it: turn while dragging a box, turn while a narrowing is applied, turn in the enlarged view then close it, spam the control, turn a diagram that is still streaming, and turn one whose source is invalid. Report what broke rather than that it works.
-- [ ] 5.6 Add a Playwright spec covering the turn on both surfaces in the seeded transcript, scoped by content rather than by position, and verify it passes in `browser`.
+- [x] 5.1 Write `openspec/changes/add-diagram-orientation-toggle/scenario-coverage.md` mapping all 18 scenarios of `diagram-orientation` plus the amended `ReaderMayAdjustAndNarrowTheView` to their tests, and verify with `npm run check:scenarios`.
+- [x] 5.2 Run `npm run lint`, `npm run tsc` (or the repo's typecheck script) and the full unit suites for `shared`, `ui` and `server`, and report the counts.
+- [x] 5.3 Review the diff for documented behaviour — `README.md`, `docs/`, the structured-exchange skill — update what the orientation control changes, and record the `Documentation impact` note for the PR.
+- [x] 5.4 Rebuild `web`, then `@pi-outpost/embed`, then `build:e2e-host`; run `npm run bench` and drive both surfaces in the widget: a wide graph arrives portrait, turning it works inline and enlarged, a Mermaid `flowchart LR` too wide to read arrives turned and says so, and the copied source is the authored one. Read back the DOM, not a screenshot.
+- [x] 5.5 Second pass in the bench with the aim of breaking it: turn while dragging a box, turn while a narrowing is applied, turn in the enlarged view then close it, spam the control, turn a diagram that is still streaming, and turn one whose source is invalid. Report what broke rather than that it works.
+- [x] 5.6 Add a Playwright spec covering the turn on both surfaces in the seeded transcript, scoped by content rather than by position, and verify it passes in `browser`.
