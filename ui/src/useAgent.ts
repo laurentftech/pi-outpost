@@ -458,6 +458,7 @@ type Action =
   | { type: "resource_skills_started"; requestId: string; repositoryId: string }
   | { type: "resource_removal_started"; requestId: string; repositoryId: string }
   | { type: "outcome_started"; requestId: string; workspaceRoot: string | null; sessionId: string }
+  | { type: "outcome_failed"; requestId: string; message: string }
   | { type: "branding_settled" }
   | { type: "branding_loaded"; branding: Branding };
 
@@ -745,6 +746,13 @@ function reduce(state: AgentState, action: Action): AgentState {
   if (action.type === "outcome_started") {
     return { ...state, outcome: { status: "loading", requestId: action.requestId, workspaceRoot: action.workspaceRoot, sessionId: action.sessionId } };
   }
+  if (action.type === "outcome_failed") {
+    const pending = state.outcome;
+    // Same correlation as a successful answer: a failure for a request this
+    // drawer is no longer waiting on says nothing about the one it is.
+    if (pending === null || pending.status !== "loading" || pending.requestId !== action.requestId) return state;
+    return { ...state, outcome: { ...pending, status: "error", message: action.message } };
+  }
 
   const message = action.message;
   switch (message.type) {
@@ -945,6 +953,11 @@ function reduce(state: AgentState, action: Action): AgentState {
       if (pending.sessionId !== state.sessionId || message.outcome.sessionId !== state.sessionId) return state;
       if (pending.workspaceRoot !== null && message.outcome.workspaceRoot !== pending.workspaceRoot) return state;
       return { ...state, outcome: { ...pending, status: "loaded", outcome: message.outcome } };
+    }
+    case "workspace_outcome_error": {
+      const pending = state.outcome;
+      if (pending === null || pending.status !== "loading" || pending.requestId !== message.requestId) return state;
+      return { ...state, outcome: { ...pending, status: "error", message: message.message } };
     }
     case "user":
       return {
@@ -1359,6 +1372,16 @@ function wsUrlFor(serverUrl: string, token: string | null, workspace?: string): 
  */
 const UPLOAD_TIMEOUT_MS = 120_000;
 
+/**
+ * How long the Outcome drawer waits for an answer before saying so.
+ *
+ * Comfortably above what composing costs — a git status per repository, each
+ * bounded at 10s server-side — because a false timeout on a large workspace
+ * would replace a slow panel with a wrong one. It is a backstop for a backend
+ * that has stopped answering, not a performance budget.
+ */
+const OUTCOME_TIMEOUT_MS = 45_000;
+
 /** WS close code the server sends for a bad/missing token (see WS_CLOSE_UNAUTHORIZED server-side). */
 const WS_CLOSE_UNAUTHORIZED = 4401;
 
@@ -1424,7 +1447,20 @@ export function useAgent(serverUrl = "", explicitToken?: string, embedded = fals
   const outcomeActiveRef = useRef(false);
   const outcomeInFlightRef = useRef<string | null>(null);
   const outcomeQueuedRef = useRef(false);
+  const outcomeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const requestOutcomeRef = useRef<() => void>(() => {});
+  /**
+   * Nothing outstanding any more — whatever the reason. One request is allowed at
+   * a time, so this is also what re-arms Refresh: while a request counts as
+   * outstanding the button is a no-op.
+   */
+  const settleOutcome = useCallback(() => {
+    outcomeInFlightRef.current = null;
+    if (outcomeTimerRef.current !== null) {
+      clearTimeout(outcomeTimerRef.current);
+      outcomeTimerRef.current = null;
+    }
+  }, []);
   const requestOutcome = useCallback(() => {
     const socket = socketRef.current;
     if (!socket || socket.readyState !== WebSocket.OPEN) return;
@@ -1437,7 +1473,18 @@ export function useAgent(serverUrl = "", explicitToken?: string, embedded = fals
     const identity = outcomeIdentityRef.current;
     dispatch({ type: "outcome_started", requestId, ...identity });
     sendMessage({ type: "get_outcome", requestId });
-  }, [sendMessage]);
+    // The server answers every request, success or failure — but it can only do
+    // that while it is answering at all. A wedged or paused backend leaves a
+    // socket that is still OPEN and silent, and without this the drawer would sit
+    // on "Loading Outcome…" with Refresh disarmed until the connection dropped.
+    // Say so instead, and let the button work.
+    outcomeTimerRef.current = setTimeout(() => {
+      if (outcomeInFlightRef.current !== requestId) return;
+      settleOutcome();
+      outcomeQueuedRef.current = false;
+      dispatch({ type: "outcome_failed", requestId, message: "The Outcome took too long to answer — try again." });
+    }, OUTCOME_TIMEOUT_MS);
+  }, [sendMessage, settleOutcome]);
   requestOutcomeRef.current = requestOutcome;
   const invalidateOutcome = useCallback(() => {
     if (outcomeActiveRef.current) requestOutcomeRef.current();
@@ -1722,10 +1769,38 @@ export function useAgent(serverUrl = "", explicitToken?: string, embedded = fals
           gitStatusSettled(message.requestId);
         }
         if (message.type === "work_plan_changed") invalidateOutcome();
-        if (message.type === "workspace_outcome" && outcomeInFlightRef.current === message.requestId) {
-          outcomeInFlightRef.current = null;
+        if (
+          (message.type === "workspace_outcome" || message.type === "workspace_outcome_error") &&
+          outcomeInFlightRef.current === message.requestId
+        ) {
+          settleOutcome();
           if (outcomeQueuedRef.current) {
             outcomeQueuedRef.current = false;
+            queueMicrotask(() => requestOutcomeRef.current());
+          }
+        }
+        // A snapshot discards the Outcome on screen (it belongs to the session or
+        // project being left), so a request outstanding for that one is owed to
+        // nobody. Forgetting it is the point: held, it blocks every later request
+        // — including the drawer's own Refresh — while the answer it waits for
+        // would be discarded on arrival anyway.
+        if (
+          message.type === "hello" ||
+          message.type === "session_replaced" ||
+          message.type === "workspace_switched" ||
+          message.type === "update_config_ack"
+        ) {
+          settleOutcome();
+          outcomeQueuedRef.current = false;
+          // Asking again is the drawer's own effect, which fires when the session
+          // or project it shows changes. A snapshot that changes neither — a
+          // settings save — leaves nobody to ask, and an open drawer would render
+          // its loading state until the user hit Refresh. Cover exactly that gap:
+          // the identity ref still holds what was on screen a moment ago.
+          const identity = outcomeIdentityRef.current;
+          const sameSession = message.sessionId === identity.sessionId;
+          const sameWorkspace = (message.workspace?.root ?? null) === identity.workspaceRoot;
+          if (outcomeActiveRef.current && sameSession && sameWorkspace) {
             queueMicrotask(() => requestOutcomeRef.current());
           }
         }
@@ -1755,7 +1830,7 @@ export function useAgent(serverUrl = "", explicitToken?: string, embedded = fals
         gitStatusInFlight.current.clear();
         gitStatusQueued.current.clear();
         gitStatusScopes.current.clear();
-        outcomeInFlightRef.current = null;
+        settleOutcome();
         outcomeQueuedRef.current = false;
         // Same reasoning, but a stuck upload is worse than a stale badge: the
         // composer blocks submission while one is in flight, so an unanswered
@@ -1782,7 +1857,7 @@ export function useAgent(serverUrl = "", explicitToken?: string, embedded = fals
       socketRef.current = null;
       socket?.close();
     };
-  }, [sendMessage, serverUrl, refreshGitStatus, gitStatusSettled, relistDirectory, requestDirectory, invalidateOutcome, authNonce, workspaceRoot]);
+  }, [sendMessage, serverUrl, refreshGitStatus, gitStatusSettled, relistDirectory, requestDirectory, invalidateOutcome, settleOutcome, authNonce, workspaceRoot]);
 
   return {
     state,

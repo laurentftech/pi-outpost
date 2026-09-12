@@ -845,6 +845,14 @@ export type ServerMessage =
   | { type: "context_usage"; usage: ContextUsage }
   | { type: "work_plan_changed"; workPlan: WorkPlan | null }
   | { type: "workspace_outcome"; requestId: string; outcome: WorkspaceOutcome }
+  /**
+   * Composing the Outcome failed. Every `get_outcome` is answered by exactly one
+   * of these two messages: the client shows one request at a time and refuses to
+   * start another while one is outstanding, so a request that goes unanswered
+   * does not merely lose an answer — it leaves the drawer on "Loading Outcome…"
+   * with its own Refresh button disarmed, for the life of the connection.
+   */
+  | { type: "workspace_outcome_error"; requestId: string; message: string }
   | { type: "compaction_start" }
   | { type: "compaction_end"; errorMessage?: string }
   | { type: "error"; message: string }

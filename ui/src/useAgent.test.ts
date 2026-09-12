@@ -153,6 +153,96 @@ describe("workspace Outcome", () => {
     expect(result.current.state.outcome).toBeNull();
   });
 
+  it("forgets a request the snapshot orphaned, so the drawer can ask again", async () => {
+    // The answer to a request made before a switch is discarded on arrival — and
+    // while it counted as outstanding it blocked every later request, Refresh
+    // included. The drawer then sat on "Loading Outcome…" for the life of the
+    // connection, because the answer that would have released it never came.
+    const result = await connected([], { workspace: { root: "/a", name: "a", activity: "idle" } });
+    act(() => result.current.setOutcomeActive(true));
+    const orphaned = lastRequestId();
+    const before = mockWs!.sent.filter((frame) => JSON.parse(frame).type === "get_outcome").length;
+    act(() => mockWs!.receive({
+      type: "session_replaced",
+      sessionId: "sess_9",
+      workspace: { root: "/a", name: "a", activity: "idle" },
+      workspaces: [], branding: {}, model: "", thinkingLevel: "off", models: [], commands: [], isStreaming: false, items: [],
+    }));
+
+    act(() => result.current.refreshOutcome());
+    await waitFor(() => expect(mockWs!.sent.filter((frame) => JSON.parse(frame).type === "get_outcome")).toHaveLength(before + 1));
+    const asked = lastRequestId();
+    expect(asked).not.toBe(orphaned);
+    act(() => mockWs!.receive({ type: "workspace_outcome", requestId: asked, outcome: outcome("/a", "sess_9") }));
+    await waitFor(() => expect(result.current.state.outcome?.status).toBe("loaded"));
+  });
+
+  it("asks again after a snapshot that changes neither the session nor the project", async () => {
+    // Saving settings replaces the snapshot without changing what the drawer is
+    // looking at, so the effect that re-asks on a session or project change never
+    // fires. The Outcome on screen is dropped all the same — and nobody was left
+    // to ask for its replacement.
+    const result = await connected([], { workspace: { root: "/a", name: "a", activity: "idle" } });
+    act(() => result.current.setOutcomeActive(true));
+    act(() => mockWs!.receive({ type: "workspace_outcome", requestId: lastRequestId(), outcome: outcome() }));
+    await waitFor(() => expect(result.current.state.outcome?.status).toBe("loaded"));
+
+    const before = mockWs!.sent.filter((frame) => JSON.parse(frame).type === "get_outcome").length;
+    act(() => mockWs!.receive({
+      type: "update_config_ack",
+      sessionId: "sess_1",
+      workspace: { root: "/a", name: "a", activity: "idle" },
+      workspaces: [], branding: {}, model: "", thinkingLevel: "off", models: [], commands: [], isStreaming: false, items: [],
+    }));
+    await waitFor(() => expect(mockWs!.sent.filter((frame) => JSON.parse(frame).type === "get_outcome")).toHaveLength(before + 1));
+    act(() => mockWs!.receive({ type: "workspace_outcome", requestId: lastRequestId(), outcome: outcome() }));
+    await waitFor(() => expect(result.current.state.outcome?.status).toBe("loaded"));
+  });
+
+  it("answers a composition failure with the reason, and stays refreshable", async () => {
+    // The server answers every request, and a refusal is an answer: without one
+    // the drawer sits on "Loading Outcome…" and its own Refresh button is a
+    // no-op, because a request still counts as outstanding.
+    const result = await connected([], { workspace: { root: "/a", name: "a", activity: "idle" } });
+    act(() => result.current.setOutcomeActive(true));
+    const requestId = lastRequestId();
+    act(() => mockWs!.receive({ type: "workspace_outcome_error", requestId, message: "Cannot load the Work Plan" }));
+    const failed = result.current.state.outcome;
+    expect(failed?.status).toBe("error");
+    expect(failed?.status === "error" && failed.message).toBe("Cannot load the Work Plan");
+
+    const before = mockWs!.sent.filter((frame) => JSON.parse(frame).type === "get_outcome").length;
+    act(() => result.current.refreshOutcome());
+    await waitFor(() => expect(mockWs!.sent.filter((frame) => JSON.parse(frame).type === "get_outcome")).toHaveLength(before + 1));
+    await waitFor(() => expect(result.current.state.outcome?.status).toBe("loading"));
+  });
+
+  it("gives up on a request the server never answers instead of loading forever", async () => {
+    // A backend that has stopped answering leaves a socket that is still open and
+    // silent, so nothing here ever closes and nothing ever arrives. Say so, and
+    // re-arm Refresh: the alternative is a spinner for the life of the connection.
+    const result = await connected([], { workspace: { root: "/a", name: "a", activity: "idle" } });
+    // Fake timers only from here: connecting the hook runs on real ones.
+    vi.useFakeTimers();
+    try {
+      act(() => result.current.setOutcomeActive(true));
+      const before = mockWs!.sent.filter((frame) => JSON.parse(frame).type === "get_outcome").length;
+      expect(result.current.state.outcome?.status).toBe("loading");
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(45_000);
+      });
+      const failed = result.current.state.outcome;
+      expect(failed?.status).toBe("error");
+      expect(failed?.status === "error" && failed.message).toMatch(/too long/i);
+
+      act(() => result.current.refreshOutcome());
+      expect(mockWs!.sent.filter((frame) => JSON.parse(frame).type === "get_outcome")).toHaveLength(before + 1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("drops a loaded Outcome when the workspace or the session it describes is replaced", async () => {
     // Correlation only discards late answers. A result already on screen has to
     // go too: it is a claim about one workspace and one session, and the drawer

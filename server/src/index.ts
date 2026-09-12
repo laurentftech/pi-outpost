@@ -111,7 +111,7 @@ import {
   validBaseUrl,
   validProviderId,
 } from "./credentials.ts";
-import { assistantToItem, contentText, customMessageToItem, historyToItems, structuredExchangeField, toProgressFraction, truncate } from "./convert.ts";
+import { assistantToItem, contentText, customMessageToItem, historyToItems, structuredExchangeField, toProgressFraction, truncate, userMessageText } from "./convert.ts";
 
 import { isStackExhaustion, noteCompaction, noteToolOutcome, noteTurnOutcome, recordTurnFailure } from "./turnFailureLog.ts";
 import {
@@ -1399,7 +1399,13 @@ function queueWorkPlanSessionSync(workspace: Workspace, after?: Promise<unknown>
     announceWorkspaceActivity();
     console.log(`[pi] session ${workspace.agent.snapshot().sessionId}`);
   });
-  workspace.workPlanSync.catch(reportError);
+  // Stored settled, never rejected. This promise is a sequencer — `get_outcome`
+  // and the prompt path await it to mean "the plan for this session has landed" —
+  // and a rejection left in it is not a one-off failure: every later awaiter
+  // inherits the same rejection, so one throw in this body (a snapshot that an
+  // extension renderer made throw, say) silently broke Outcome for the life of
+  // the workspace. Report it once here instead.
+  workspace.workPlanSync = workspace.workPlanSync.catch(reportError);
   return workspace.workPlanSync;
 }
 
@@ -1421,7 +1427,8 @@ function queueWorkPlanToolSync(workspace: Workspace, sessionFile: string, change
       announceWorkspaceActivity();
     }
   });
-  workspace.workPlanSync.catch(reportError);
+  // Settled, for the reason given in queueWorkPlanSessionSync.
+  workspace.workPlanSync = workspace.workPlanSync.catch(reportError);
 }
 
 function modelName(workspace: Workspace): string {
@@ -1501,12 +1508,19 @@ function credentialStatus(workspace: Workspace, ): CredentialStatus {
  * message_start, and historyToItems adds running tool cards for toolCalls
  * without a result yet.
  */
-/** User messages persisted on the current branch, oldest first — lets the UI edit a past prompt. */
+/**
+ * User messages persisted on the current branch, oldest first — lets the UI edit a past prompt.
+ *
+ * The text is the bubble's own spelling (`userMessageText`), not `contentText`:
+ * the client pairs these onto its bubbles by text, so a message whose `@` mention
+ * was absolutized — or that carried an image — would not match the bubble it
+ * belongs to, and the mismatch drops the id of every bubble above it too.
+ */
 function branchUserEntries(workspace: Workspace): { entryId: string; text: string }[] {
   return workspace.agent
     .contextEntries()
     .filter((e) => e.type === "message" && e.message?.role === "user")
-    .map((e) => ({ entryId: e.id, text: contentText(e.message!.content as never) }));
+    .map((e) => ({ entryId: e.id, text: userMessageText(e.message!.content as never, workspace.browserRoot) }));
 }
 
 /**
@@ -3398,16 +3412,34 @@ async function handleGitStatus(workspace: Workspace, socket: WebSocket, scope: s
   }
 }
 
-/** Compose only from the workspace bound to this socket; never broadcast Outcome content. */
+/**
+ * Compose only from the workspace bound to this socket; never broadcast Outcome content.
+ *
+ * Answers whatever happens. `composeWorkspaceOutcome` already turns a failing
+ * contributor into an unavailable section, but everything around it — the work
+ * plan sync this awaits, the runtime snapshot — can throw, and a throw here used
+ * to reach `reportError` and stop. The client has no timeout and starts no second
+ * request while one is outstanding, so that silence wedged the drawer on
+ * "Loading Outcome…" until the connection was replaced.
+ */
 async function handleGetOutcome(workspace: Workspace, socket: WebSocket, requestId: string): Promise<void> {
-  await workspace.workPlanSync;
-  const snapshot = workspace.agent.snapshot();
-  const plan = sameSessionFile(snapshot.sessionFile, workspace.workPlanSessionFile) ? workspace.workPlan : null;
-  const outcome = await composeWorkspaceOutcome(
-    { workspaceRoot: workspace.root, sessionId: snapshot.sessionId },
-    [workPlanContributor(plan), evidenceContributor(plan), repositoryContributor({ repos: workspace.repos, gitUnavailable: workspace.gitUnavailable })],
-  );
-  send(socket, { type: "workspace_outcome", requestId, outcome });
+  try {
+    await workspace.workPlanSync;
+    const snapshot = workspace.agent.snapshot();
+    const plan = sameSessionFile(snapshot.sessionFile, workspace.workPlanSessionFile) ? workspace.workPlan : null;
+    const outcome = await composeWorkspaceOutcome(
+      { workspaceRoot: workspace.root, sessionId: snapshot.sessionId },
+      [workPlanContributor(plan), evidenceContributor(plan), repositoryContributor({ repos: workspace.repos, gitUnavailable: workspace.gitUnavailable })],
+    );
+    send(socket, { type: "workspace_outcome", requestId, outcome });
+  } catch (error) {
+    reportError(error);
+    send(socket, {
+      type: "workspace_outcome_error",
+      requestId,
+      message: error instanceof Error && error.message ? error.message : "The Outcome could not be composed.",
+    });
+  }
 }
 
 /** Worktree-vs-HEAD contents of one file; missing sides (untracked/deleted) are "". */

@@ -839,7 +839,10 @@ Outcome data never crosses workspace boundaries. Refreshes are correlated with t
 workspace and session, so an older response is discarded after a project or session switch, and a
 result already on screen is dropped rather than carried into the next one. Switching project
 closes the drawer with the project it described; reopening it asks the workspace now bound. An
-Outcome left open across a dropped connection is asked for again once the connection is back. The
+Outcome left open across a dropped connection is asked for again once the connection is back.
+Every request is answered: a composition that fails says why in the drawer, and one the server
+never answers is given up on, so **Refresh** always works rather than being disarmed by a request
+that stayed outstanding. The
 section contract is extensible: future structured sources can add sections without changing the
 existing plan, verification, or changed-file sections.
 
