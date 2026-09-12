@@ -922,8 +922,14 @@ function TableView({
         <tbody>
           {shown.map((row, rowIndex) => {
             const { cells, heading } = readTableRow(row);
-            const role = tableRowRole(row, declaresRoles);
             const described = rows?.[data.rows.indexOf(row)];
+            // The described role, not the declared one. A proposal marks its own
+            // rows — a reference with a change is a change, one without a reference
+            // is an addition — and reading the declaration alone drew every row of a
+            // proposed table identically, which is the one thing this view exists to
+            // prevent. The declaration still wins where a producer made one, because
+            // `describeStructure` prefers it.
+            const role = described?.role ?? tableRowRole(row, declaresRoles);
             const related = described?.id === undefined
               ? []
               : traces.filter((trace) => trace.fromRow === described.id || trace.toRow === described.id);

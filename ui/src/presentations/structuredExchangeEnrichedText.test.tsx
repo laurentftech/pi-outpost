@@ -169,6 +169,33 @@ describe("the visual presentation of an enriched table", () => {
     expect(headings[1].getAttribute("data-row-heading")).toBe("2");
   });
 
+  it("marks a proposed table's rows from what the proposal proposes", () => {
+    // Found in the running widget, not here: the model derived these marks and the
+    // table read the *declared* role instead, so a proposal drew three identical
+    // rows where one was changed, one added and one only context. The one view
+    // whose job is telling them apart was the one that could not.
+    const proposal = {
+      schema: "urn:structured-exchange:2",
+      kind: "table",
+      target: { ref: "doors://module/42", revision: "baseline-7" },
+      data: {
+        columns: ["id", "requirement"],
+        rows: [
+          { heading: "1. Braking", depth: 1 },
+          { id: "r1", ref: "REQ-1", kind: "requirement", cells: ["REQ-1", "Stop within 40 m"], set: { attributes: { status: "in review" } } },
+          { id: "r2", cells: ["", "Warn the driver at 20 m"] },
+          { id: "r3", ref: "REQ-3", kind: "requirement", cells: ["REQ-3", "Read wheel speed"] },
+        ],
+      },
+    };
+    const serialized = JSON.stringify(proposal);
+    const envelope = validStructuredExchange(serialized);
+    expect(envelope, "the fixture itself does not validate").toBeDefined();
+    const { container } = render(<StructuredExchangeDocument envelope={envelope!} source={serialized} />);
+    const roles = [...container.querySelectorAll("tbody tr")].map((row) => row.getAttribute("data-row-role"));
+    expect(roles).toEqual([null, "changed", "added", "context"]);
+  });
+
   it("keeps a row's type and reference on the row", () => {
     const { container } = renderEnriched();
     const row = container.querySelector('tr[data-row-ref="REQ-1"]');
