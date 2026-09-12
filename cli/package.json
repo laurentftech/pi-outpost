@@ -29,8 +29,12 @@
     "web-interface",
     "frontend",
     "self-hosted",
-    "cli"
+    "cli",
+    "pi-package"
   ],
+  "pi": {
+    "image": "https://raw.githubusercontent.com/laurentftech/pi-outpost/main/docs/screenshots/chat-light.png"
+  },
   "bin": {
     "pi-outpost": "dist/pi-outpost.mjs"
   },
