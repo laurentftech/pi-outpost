@@ -230,6 +230,13 @@ const REQUIREMENTS_CHANGE_TABLE = {
 
 
 /**
+ * The artifact the seeded proposal is bound to, written into the bench workspace
+ * so a reader can actually open it — and so the mismatching case is a real refusal
+ * rather than a missing file.
+ */
+export const VERIFICATION_REPORT = "Verification report for REQ-1\nBrake distance: 38.4 m over 12 runs.\nVerdict: pass\n";
+
+/**
  * A specification extracted from an external requirements authority, of the shape
  * the enriched contract exists for: typed rows that *are* the requirements,
  * chapters that organise them, traceability that leaves the document, and a profile
@@ -254,14 +261,26 @@ const DOORS_EXTRACTION = {
         kind: "requirement",
         cells: ["REQ-1", "The vehicle shall stop within 40 m from 100 km/h.", "test"],
         attributes: { status: "approved", safetyLevel: "ASIL-D", owner: { ref: "TEAM-BRAKES" } },
-        locations: [{ uri: "workspace:notes/architecture-modele-electrique.md", range: { startLine: 4, endLine: 9 } }],
+        locations: [{ uri: "workspace:notes/braking.md", range: { startLine: 0, endLine: 2 } }],
         artifacts: [
+          // The digest of the file that is really there: opening this hands the
+          // reader the bytes the approval is bound to.
           {
             rel: "verifiedBy",
-            uri: "https://ci.example/reports/brake-distance.json",
-            sha256: "sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
-            mediaType: "application/json",
+            uri: "workspace:evidence/brake-distance.txt",
+            sha256: "sha256:6d3ce5ed76cad820034d0747f1166f119d3b091786013ac116fdabbba79c5978",
+            mediaType: "text/plain",
             label: "Bench run 412",
+          },
+          // The same file under a digest that is not its own — a link whose target
+          // moved on since the extraction. Opening it must refuse rather than show
+          // bytes nobody approved.
+          {
+            rel: "supersededReport",
+            uri: "workspace:evidence/brake-distance.txt",
+            sha256: "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+            mediaType: "text/plain",
+            label: "Run 411 (stale)",
           },
         ],
       },

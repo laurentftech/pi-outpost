@@ -52,7 +52,7 @@
 - [x] 6.2 Build an explicit scenario-to-test matrix from `rg '^#### Scenario:' openspec/`, classifying every base and delta scenario as covered, partial, or uncovered and reading each cited assertion before accepting it as coverage.
 - [ ] 6.3 Run focused tests, relevant complete suites, type checking, schema/type drift checks, package smoke tests, and strict OpenSpec validation.
 - [x] 6.4 Exercise an unknown-profile version 2 document in the running application with Playwright and verify profile, typed attributes, locations, and artifact metadata through the DOM and accessible text.
-- [ ] 6.5 Exercise a revision-bound proposal in the running application with Playwright and verify descriptions, expectations, assignments, removals, approval, and byte-preserving recovery through the actual transcript and handover boundary.
+- [x] 6.5 Exercise a revision-bound proposal in the running application with Playwright and verify descriptions, expectations, assignments, removals, approval, and byte-preserving recovery through the actual transcript and handover boundary.
 - [x] 6.8 Exercise a chaptered requirements table carrying traceability in the running application: verify headings, row kinds, both directions of each relation, the key, the derived matrix, and that the chapters and relations survive the data export and the written document.
-- [ ] 6.6 Exercise explicit safe navigation and one matching and one mismatching artifact digest in the running application, verifying observable outcomes rather than relying on screenshots.
+- [x] 6.6 Exercise explicit safe navigation and one matching and one mismatching artifact digest in the running application, verifying observable outcomes rather than relying on screenshots.
 - [ ] 6.7 Run `git diff HEAD`, invoke the required `code-reviewer` agent with the complete task diff, resolve every CRITICAL/HIGH finding, and report non-blocking findings.
