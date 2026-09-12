@@ -16,6 +16,7 @@
  * implementation the environment chooses, so it stays with the caller.
  */
 import dagre from "@dagrejs/dagre";
+import type { Orientation } from "./diagramOrientation.ts";
 import {
   readTableRow,
   type StructuredArtifact,
@@ -277,13 +278,25 @@ const EMPTY_CONTAINER_HEIGHT = 52;
 export function layoutGraph(
   data: StructuredGraphData,
   size: (node: StructuredElement) => { width: number; height: number },
+  /**
+   * Which way the ranks run. Landscape is the house default and what every caller
+   * got before there was a choice; portrait is what a diagram too wide to be read in
+   * a column is turned to.
+   */
+  orientation: Orientation = "landscape",
 ): GraphLayout {
   // `compound` so a container can be a node that holds other nodes. Dagre then
   // places the members together and reports the enclosing box it computed, which
   // is the whole of what a container costs this layout: no second engine, and the
   // elements and relationships come out placed exactly as they would ungrouped.
   const graph = new dagre.graphlib.Graph({ compound: true, multigraph: true });
-  graph.setGraph({ rankdir: "LR", ranksep: RANK_GAP, nodesep: NODE_GAP, marginx: MARGIN, marginy: MARGIN });
+  graph.setGraph({
+    rankdir: orientation === "portrait" ? "TB" : "LR",
+    ranksep: RANK_GAP,
+    nodesep: NODE_GAP,
+    marginx: MARGIN,
+    marginy: MARGIN,
+  });
   graph.setDefaultEdgeLabel(() => ({}));
 
   for (const node of data.nodes) graph.setNode(node.id, size(node));

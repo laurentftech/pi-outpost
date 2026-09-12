@@ -152,6 +152,27 @@ describe("layout", () => {
     expect(layoutGraph(chain, uniform)).toEqual(layoutGraph(chain, uniform));
   });
 
+  it("places the same chain in successive layers down the page when turned", () => {
+    const yOf = (layout: ReturnType<typeof layoutGraph>, node: string) =>
+      layout.nodes.find((n) => n.id === node)!.y;
+    const turned = layoutGraph(chain, uniform, "portrait");
+    expect(yOf(turned, "a")).toBeLessThan(yOf(turned, "b"));
+    expect(yOf(turned, "b")).toBeLessThan(yOf(turned, "c"));
+    // The ranks moved onto the other axis rather than merely being reordered: every
+    // box of a chain shares a column, which is the whole point of turning it.
+    expect(new Set(turned.nodes.map((n) => n.x)).size).toBe(1);
+  });
+
+  it("swaps which way the same chain is longer", () => {
+    // What the reading column cares about: three boxes across overflow it, three
+    // stacked do not.
+    const flat = layoutGraph(chain, uniform);
+    const tall = layoutGraph(chain, uniform, "portrait");
+    expect(flat.width).toBeGreaterThan(flat.height);
+    expect(tall.height).toBeGreaterThan(tall.width);
+    expect(tall.width).toBeLessThan(flat.width);
+  });
+
   it("sizes each box to its own contents rather than to the widest", () => {
     // One long label used to widen every box in the diagram, because the layout
     // took a single width for all of them.
