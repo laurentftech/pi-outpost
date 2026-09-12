@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { EnlargedView } from "../components/EnlargedView";
 import {
   readTableRow,
@@ -11,6 +11,9 @@ import {
 } from "@pi-outpost/shared/structured-exchange";
 import {
   describeStructure,
+  type DescribedEnrichment,
+  type DescribedRow,
+  type DescribedTrace,
   filterKey,
   displayLabel,
   type Nudge,
@@ -36,7 +39,11 @@ import {
 import { downloadCsv, downloadXlsx, tableExport } from "./tableExport";
 import type { PresentationProps, ToolItem } from "./types";
 import {
+  artifactText,
+  attributeText,
+  attributeValueText,
   changeText,
+  locationText,
 } from "@pi-outpost/shared/structured-exchange/text";
 // Re-exported because the rendering suite and the legend both reach for them here.
 export { KIND_PRESENTATIONS, KIND_TINT_COUNT, assignTints, kindsPresent } from "@pi-outpost/shared/structured-exchange/palette";
@@ -587,14 +594,116 @@ const COLUMN_STEP = 16;
  * what the browser worked out and only then switches to `fixed` — from that
  * point the columns hold their size and the wrapper scrolls.
  */
+
+/**
+ * How each kind of claim is shown, and why they cannot share a style.
+ *
+ * Four things arrive on one row and a reader has to tell them apart at a glance:
+ * what is true now, what the producer expected to find, what it asks to become
+ * true, and what it asks to unset. Rendered alike they read as one list of facts —
+ * which would present an unchecked assumption as something established, and a
+ * request as a description.
+ *
+ * Never colour alone: each carries its own word, because the distinction has to
+ * survive a reader who cannot see the tint.
+ */
+const CLAIM_STYLE: Record<string, { label: string; className: string }> = {
+  attribute: { label: "is", className: "text-zinc-600 dark:text-zinc-300" },
+  expects: { label: "expects", className: "text-amber-700 dark:text-amber-400" },
+  assigns: { label: "asks to set", className: "text-blue-700 dark:text-blue-400" },
+  removes: { label: "asks to unset", className: "text-rose-700 line-through dark:text-rose-400" },
+};
+
+/**
+ * Everything an item carries beyond its own text, as a panel under it.
+ *
+ * Collapsed by default and never omitted: a requirements table where every row
+ * expands its attributes is a wall, and a reader looking for one thing cannot find
+ * it. What is folded is still in the accessible text, whole — see
+ * `textualEquivalent`, which is what makes folding a display choice rather than a
+ * quiet removal.
+ *
+ * Everything here is rendered as text. A URI, a profile, a digest and an attribute
+ * value are all producer-controlled, and none of them becomes a control by
+ * resembling one.
+ */
+function EnrichmentDetail({ item, traces }: { item: DescribedEnrichment; traces?: DescribedTrace[] }) {
+  const claims: [keyof typeof CLAIM_STYLE, string, string][] = [
+    ...item.attributes.map(([name, value]) => ["attribute", name, attributeValueText(value)] as [string, string, string]),
+    ...item.expectations.map(([name, value]) => ["expects", name, attributeValueText(value)] as [string, string, string]),
+    ...item.assignments.map(([name, value]) => ["assigns", name, attributeValueText(value)] as [string, string, string]),
+    ...item.removedAttributes.map((name) => ["removes", name, ""] as [string, string, string]),
+  ];
+  const related = traces ?? [];
+  if (claims.length === 0 && item.locations.length === 0 && item.artifacts.length === 0 && related.length === 0) {
+    return null;
+  }
+
+  const counted = [
+    claims.length > 0 ? `${claims.length} attribute${claims.length === 1 ? "" : "s"}` : "",
+    related.length > 0 ? `${related.length} relation${related.length === 1 ? "" : "s"}` : "",
+    item.locations.length > 0 ? `${item.locations.length} location${item.locations.length === 1 ? "" : "s"}` : "",
+    item.artifacts.length > 0 ? `${item.artifacts.length} artifact${item.artifacts.length === 1 ? "" : "s"}` : "",
+  ].filter(Boolean);
+
+  return (
+    <details className="mt-1 text-[11px]" data-testid="structured-enrichment">
+      <summary className="cursor-pointer text-zinc-500 dark:text-zinc-400">{counted.join(", ")}</summary>
+      <dl className="mt-1 grid grid-cols-[auto_auto_1fr] gap-x-2 gap-y-0.5">
+        {claims.map(([claim, name, value], index) => (
+          <Fragment key={`${claim}-${name}-${index}`}>
+            <dt className={`font-medium ${CLAIM_STYLE[claim].className}`} data-claim={claim}>
+              {CLAIM_STYLE[claim].label}
+            </dt>
+            <dd className="font-mono text-zinc-700 dark:text-zinc-200">{name}</dd>
+            <dd className="break-words text-zinc-600 dark:text-zinc-300">{value}</dd>
+          </Fragment>
+        ))}
+        {related.map((trace, index) => (
+          <Fragment key={`trace-${index}`}>
+            <dt className="font-medium text-violet-700 dark:text-violet-400" data-claim="relates">
+              {trace.kind}
+            </dt>
+            <dd className="col-span-2 break-words text-zinc-600 dark:text-zinc-300">
+              {trace.fromLabel} → {trace.toLabel}
+              {trace.toRow === undefined && trace.toRef !== undefined ? " (outside this document)" : ""}
+            </dd>
+          </Fragment>
+        ))}
+        {item.locations.map((location, index) => (
+          <Fragment key={`location-${index}`}>
+            <dt className="font-medium text-zinc-500 dark:text-zinc-400" data-claim="location">
+              at
+            </dt>
+            <dd className="col-span-2 break-all font-mono text-zinc-600 dark:text-zinc-300">{locationText(location)}</dd>
+          </Fragment>
+        ))}
+        {item.artifacts.map((artifact, index) => (
+          <Fragment key={`artifact-${index}`}>
+            <dt className="font-medium text-zinc-500 dark:text-zinc-400" data-claim="artifact">
+              {artifact.rel}
+            </dt>
+            <dd className="col-span-2 break-all font-mono text-zinc-600 dark:text-zinc-300">{artifactText(artifact)}</dd>
+          </Fragment>
+        ))}
+      </dl>
+    </details>
+  );
+}
+
 function TableView({
   data,
   hidden,
   setHidden,
+  rows,
+  traces = [],
 }: {
   data: StructuredTableData;
   hidden: Narrowing;
   setHidden: (hidden: Narrowing) => void;
+  /** The same rows, described: identity, kind, headings and enrichment. */
+  rows?: DescribedRow[];
+  traces?: DescribedTrace[];
 }) {
   const [widths, setWidths] = useState<number[] | null>(null);
   const headRef = useRef<HTMLTableRowElement>(null);
@@ -743,13 +852,41 @@ function TableView({
         </thead>
         <tbody>
           {shown.map((row, rowIndex) => {
-            const { cells } = readTableRow(row);
+            const { cells, heading } = readTableRow(row);
             const role = tableRowRole(row, declaresRoles);
+            const described = rows?.[data.rows.indexOf(row)];
+            const related = described?.id === undefined
+              ? []
+              : traces.filter((trace) => trace.fromRow === described.id || trace.toRow === described.id);
+
+            if (heading !== undefined) {
+              // A chapter spans the table rather than filling its columns: it is not
+              // data, and aligning it to the grid would make it look like a row whose
+              // other cells went missing.
+              const depth = Math.min(Math.max(described?.depth ?? 1, 1), 6);
+              return (
+                <tr key={rowIndex} data-row-heading={depth} className={role === undefined ? undefined : ROW_ROLE_STYLE[role]}>
+                  <th
+                    scope="colgroup"
+                    colSpan={data.columns.length}
+                    style={{ paddingLeft: `${0.5 + (depth - 1) * 0.75}rem` }}
+                    className={`border border-zinc-200 bg-zinc-50 py-1 text-left font-semibold dark:border-zinc-800 dark:bg-zinc-900 ${
+                      depth === 1 ? "text-xs" : "text-[11px] font-medium"
+                    } ${role === "removed" ? "line-through" : ""}`}
+                  >
+                    {heading}
+                  </th>
+                </tr>
+              );
+            }
+
             return (
               <tr
                 key={rowIndex}
                 className={role === undefined ? undefined : ROW_ROLE_STYLE[role]}
                 data-row-role={role}
+                data-row-kind={described?.kind}
+                data-row-ref={described?.ref}
               >
                 {cells.map((cell, cellIndex) => (
                   <td
@@ -763,6 +900,11 @@ function TableView({
                     }`}
                   >
                     {cell === null ? <span className="opacity-40">—</span> : String(cell)}
+                    {/* Under the first cell, where a reader's eye already is, rather
+                        than in a column of its own that would be empty on most rows. */}
+                    {cellIndex === 0 && described !== undefined ? (
+                      <EnrichmentDetail item={described} traces={related} />
+                    ) : null}
                     {divider(cellIndex, data.columns[cellIndex] ?? "", false)}
                   </td>
                 ))}
@@ -803,6 +945,30 @@ function envelopeSource(structured: string | undefined, envelope: ValidatedStruc
  * is not data. This is the same information in a form that does not depend on
  * seeing it.
  */
+
+/**
+ * Everything the enriched contract lets an item carry, as lines under it.
+ *
+ * Indented and labelled rather than run together: a reader on the words is reading
+ * them because they cannot see the panel, and four kinds of claim — what is true,
+ * what the producer expects to find, what it asks to become true, and what it asks
+ * to unset — collapse into noise if they arrive as one list. The labels are the
+ * same ones the visual presentation uses, so the two can be compared.
+ */
+function enrichmentLines(item: DescribedEnrichment, indent = "  "): string[] {
+  const lines: string[] = [];
+  const group = (label: string, entries: string[]) => {
+    for (const entry of entries) lines.push(`${indent}${label}: ${entry}`);
+  };
+  group("attribute", item.attributes.map(([name, value]) => attributeText(name, value)));
+  group("expects", item.expectations.map(([name, value]) => attributeText(name, value)));
+  group("asks to set", item.assignments.map(([name, value]) => attributeText(name, value)));
+  group("asks to unset", item.removedAttributes);
+  group("at", item.locations.map((location) => locationText(location)));
+  group("artifact", item.artifacts.map((artifact) => artifactText(artifact)));
+  return lines;
+}
+
 function textualEquivalent(
   envelope: ValidatedStructuredExchange,
   isProposal: boolean,
@@ -810,6 +976,21 @@ function textualEquivalent(
 ): string {
   const described = describeStructure(envelope, isProposal);
   const lines: string[] = [];
+
+  // What the document is, before what it holds. The profile names the vocabulary
+  // its kinds and attribute names belong to, and a reader who does not recognise it
+  // still needs to be told there is one — it is the difference between "status" as
+  // a word and "status" as somebody's defined term.
+  if (described.profile !== undefined) lines.push(`Profile: ${described.profile}`);
+  if (described.target !== undefined) {
+    const revision = described.target.revision === undefined ? "" : `, prepared against ${described.target.revision}`;
+    lines.push(`Proposes changes to ${described.target.ref}${revision}`);
+    // Said once, here, rather than after every expectation: the conditions below are
+    // the producer's, and this application has checked none of them.
+    lines.push("Expectations below are the producer's; the receiving authority checks them before applying.");
+  }
+  for (const artifact of described.artifacts) lines.push(`Artifact — ${artifactText(artifact)}`);
+  if (lines.length > 0) lines.push("");
 
   if (described.columns !== undefined && described.rows !== undefined) {
     // A table leaves this application as these words — there is no figure to
@@ -826,10 +1007,28 @@ function textualEquivalent(
     lines.push(described.columns.join(" | "));
     for (const row of described.rows) {
       if (roleHidden(row.role)) continue;
+      if (row.heading !== undefined) {
+        // A chapter, kept in its place among the rows it introduces. Depth is stated
+        // rather than drawn, since indentation alone does not survive being read out.
+        lines.push("");
+        lines.push(`${"#".repeat(row.depth ?? 1)} ${row.heading}${row.role === undefined ? "" : `  (${TABLE_ROLE_LABEL[row.role]})`}`);
+        continue;
+      }
       const cells = row.cells.map((cell) => (cell === null ? "" : String(cell))).join(" | ");
-      // The role after the cells, in the words the key uses: a reader on the text
-      // is reading it because they cannot see the colour that carries it.
-      lines.push(row.role === undefined ? cells : `${cells}  (${TABLE_ROLE_LABEL[row.role]})`);
+      const named = row.kind === undefined ? "" : ` [${row.kind}]`;
+      lines.push(`${cells}${named}${row.role === undefined ? "" : `  (${TABLE_ROLE_LABEL[row.role]})`}`);
+      for (const change of row.changes) lines.push(`  ${changeText(change)}`);
+      lines.push(...enrichmentLines(row));
+    }
+
+    // Traceability, after the rows it connects: a relation read before either end
+    // exists is two identifiers and no meaning.
+    if (described.traces.length > 0) {
+      lines.push("");
+      for (const trace of described.traces) {
+        const label = trace.label === undefined ? "" : `: ${trace.label}`;
+        lines.push(`${trace.fromLabel} —${trace.kind}${label}→ ${trace.toLabel}`);
+      }
     }
   } else {
     // Named and counted, so a reader who cannot see the picture knows how much of it
@@ -866,6 +1065,7 @@ function textualEquivalent(
           thing.changes.length === 0 ? "" : ` — ${thing.changes.map(changeText).join(", ")}`,
         ].join(""),
       );
+      lines.push(...enrichmentLines(thing));
     }
 
     if (described.links.length > 0) lines.push("");
@@ -883,6 +1083,7 @@ function textualEquivalent(
           link.changes.length === 0 ? "" : ` — ${link.changes.map(changeText).join(", ")}`,
         ].join(""),
       );
+      lines.push(...enrichmentLines(link));
     });
   }
 
@@ -971,6 +1172,32 @@ export interface StructuredExchangeDocumentProps {
  * text equivalent. A reader who narrowed a diagram in a conversation finds the
  * same controls over a file, because they are the same controls.
  */
+/**
+ * What a proposal targets, whichever version stated it.
+ *
+ * Version 1 wrote a bare string; version 2 writes an object so it can also name the
+ * revision. Three places here read the field directly and assumed the older shape —
+ * one rendered it, which under version 2 is an object handed to React as a child
+ * and takes the whole panel down, and two built filenames that would have read
+ * `[object Object]`.
+ */
+/** The revision a version 2 proposal was prepared against, when it names one. */
+function revisionOf(envelope: ValidatedStructuredExchange): string | undefined {
+  const target = (envelope as { target?: unknown }).target;
+  if (target === null || typeof target !== "object") return undefined;
+  const revision = (target as { revision?: unknown }).revision;
+  return typeof revision === "string" ? revision : undefined;
+}
+
+function targetRef(envelope: ValidatedStructuredExchange): string | undefined {
+  const target = (envelope as { target?: unknown }).target;
+  if (typeof target === "string") return target;
+  if (target !== null && typeof target === "object" && typeof (target as { ref?: unknown }).ref === "string") {
+    return (target as { ref: string }).ref;
+  }
+  return undefined;
+}
+
 export function StructuredExchangeDocument({ envelope, source, rawOutput }: StructuredExchangeDocumentProps) {
   const [enlarged, setEnlarged] = useState(false);
   const [showText, setShowText] = useState(false);
@@ -986,6 +1213,7 @@ export function StructuredExchangeDocument({ envelope, source, rawOutput }: Stru
 
   const isProposal = envelope.target !== undefined;
   const removals = envelope.removals ?? [];
+  const described = useMemo(() => describeStructure(envelope, isProposal), [envelope, isProposal]);
   const view =
     envelope.kind === "graph" ? (
       <GraphView
@@ -999,11 +1227,17 @@ export function StructuredExchangeDocument({ envelope, source, rawOutput }: Stru
     ) : envelope.kind === "sequence" ? (
       <SequenceView data={envelope.data as StructuredSequenceData} isProposal={isProposal} />
     ) : (
-      <TableView data={envelope.data as StructuredTableData} hidden={hidden} setHidden={setHidden} />
+      <TableView
+        data={envelope.data as StructuredTableData}
+        hidden={hidden}
+        setHidden={setHidden}
+        rows={described.rows}
+        traces={described.traces}
+      />
     );
 
-  const fileName = `${envelope.kind}-${envelope.target ?? "diagram"}.svg`.replace(/[^\w.-]+/g, "-");
-  const exportBaseName = `${envelope.kind}-${envelope.target ?? "data"}`.replace(/[^\w.-]+/g, "-");
+  const fileName = `${envelope.kind}-${targetRef(envelope) ?? "diagram"}.svg`.replace(/[^\w.-]+/g, "-");
+  const exportBaseName = `${envelope.kind}-${targetRef(envelope) ?? "data"}`.replace(/[^\w.-]+/g, "-");
   // Taken at the moment of export rather than held in state: what leaves is what
   // the reader is looking at, and what they are looking at is what `hidden` says.
   const exportedTable = () => tableExport(envelope.data as StructuredTableData, hidden);
@@ -1089,8 +1323,50 @@ export function StructuredExchangeDocument({ envelope, source, rawOutput }: Stru
         // mixture, and the sentence has to say which half is which, or a box drawn
         // plainly reads as a change nobody marked.
         <p className="text-xs text-zinc-500" data-testid="structured-proposal-note">
-          Proposed changes to <span className="font-mono">{envelope.target}</span>. Anything not mentioned is left as it
-          is; anything shown without a change is here for context.
+          Proposed changes to <span className="font-mono">{targetRef(envelope)}</span>
+          {revisionOf(envelope) === undefined ? null : (
+            <>
+              , prepared against <span className="font-mono">{revisionOf(envelope)}</span>
+            </>
+          )}
+          . Anything not mentioned is left as it is; anything shown without a change is here for context.
+        </p>
+      )}
+
+      {described.profile === undefined ? null : (
+        // Named, never interpreted. A reader who does not recognise the vocabulary
+        // still has to be told there is one — it is the difference between "status"
+        // as a word and "status" as somebody's defined term. Shown as text: a
+        // profile that looks like a URL is not thereby a link.
+        <p className="text-xs text-zinc-500" data-testid="structured-profile">
+          Vocabulary: <span className="font-mono">{described.profile}</span>
+          <span className="ml-1 text-zinc-400">— names what the kinds and attributes mean; not resolved here</span>
+        </p>
+      )}
+
+      {described.artifacts.length > 0 && (
+        <ul className="text-xs text-zinc-500" data-testid="structured-document-artifacts">
+          {described.artifacts.map((artifact, index) => (
+            <li key={index} className="break-all font-mono">
+              {artifactText(artifact)}
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {described.traces.length > 0 && (
+        // A key, for the same reason roles have one: a reader meeting `verifiedBy`
+        // for the first time needs to see the vocabulary in use, and the colour of a
+        // relation says nothing on its own.
+        <p className="text-xs text-zinc-500" data-testid="structured-relation-key">
+          Relations:{" "}
+          {[...new Set(described.traces.map((trace) => trace.kind))].map((kind, index) => (
+            <span key={kind} className="font-mono">
+              {index > 0 ? ", " : ""}
+              {kind}
+            </span>
+          ))}
+          <span className="ml-1 text-zinc-400">— declared by the producer; nothing is inferred about what is missing</span>
         </p>
       )}
 

@@ -119,3 +119,55 @@ export function changeText(change: FieldChange): string {
   return `${change.field}: ${change.from === undefined ? "" : `${change.from} → `}${change.to}`;
 }
 
+
+/**
+ * One attribute, as a reader meets it.
+ *
+ * A reference is shown as the identifier it is, in angle brackets, rather than as
+ * the bare string: a value that happens to read like a label would otherwise be
+ * indistinguishable from one, and the difference is exactly what a reference is
+ * for. A list is joined rather than bulleted, because these lines are read in a
+ * sentence and a list of three things is not a document structure.
+ */
+export function attributeText(name: string, value: unknown): string {
+  return `${name}: ${attributeValueText(value)}`;
+}
+
+export function attributeValueText(value: unknown): string {
+  if (Array.isArray(value)) return value.map((entry) => attributeValueText(entry)).join(", ");
+  if (value === null) return "null";
+  if (value !== null && typeof value === "object" && typeof (value as { ref?: unknown }).ref === "string") {
+    return `<${(value as { ref: string }).ref}>`;
+  }
+  return String(value);
+}
+
+/** Where something can be found, with the range when it names one. */
+export function locationText(location: {
+  uri: string;
+  revision?: string;
+  range?: { startLine: number; endLine: number };
+}): string {
+  const range = location.range === undefined ? "" : ` lines ${location.range.startLine}–${location.range.endLine}`;
+  const revision = location.revision === undefined ? "" : ` at ${location.revision}`;
+  return `${location.uri}${range}${revision}`;
+}
+
+/**
+ * An artifact link, digest included.
+ *
+ * The digest is shortened for reading and never hidden: it is what an approval is
+ * bound to, so a reader who cannot see that one is present cannot tell a link that
+ * will be verified from one that will not.
+ */
+export function artifactText(artifact: {
+  rel: string;
+  uri: string;
+  sha256: string;
+  mediaType?: string;
+  label?: string;
+}): string {
+  const named = artifact.label === undefined ? artifact.uri : `${artifact.label} (${artifact.uri})`;
+  const type = artifact.mediaType === undefined ? "" : `, ${artifact.mediaType}`;
+  return `${artifact.rel}: ${named}${type} — ${artifact.sha256.slice(0, 14)}…`;
+}

@@ -21,6 +21,22 @@ import { save } from "../util/download";
 /** The declared column for a row's role — named as the key names it. */
 const ROLE_COLUMN = "change";
 
+/**
+ * The declared columns for a chapter, present only in a table that has chapters.
+ *
+ * A structural row has no cells, so without these it leaves as a blank line and the
+ * document loses its sections — which is most of what makes a specification
+ * readable. Level travels as a number rather than as indentation or a `#` prefix:
+ * a spreadsheet sorts and filters on a column, and neither of those survives a
+ * convention invented here.
+ *
+ * The section is *not* copied onto the rows beneath it. A row follows a heading; it
+ * does not declare that it belongs to one, and writing membership into every row
+ * would state something the document never said.
+ */
+const SECTION_COLUMN = "section";
+const LEVEL_COLUMN = "level";
+
 export type TableExport = {
   columns: string[];
   rows: StructuredTableCell[][];
@@ -38,17 +54,33 @@ export type TableExport = {
  */
 export function tableExport(data: StructuredTableData, hidden: ReadonlySet<string>): TableExport {
   const declaresRoles = tableDeclaresRoles(data);
+  const hasChapters = data.rows.some((row) => readTableRow(row).heading !== undefined);
   const shown = data.rows.filter((row) => {
     const role = tableRowRole(row, declaresRoles);
     return role === undefined || !hidden.has(filterKey("role", role));
   });
 
+  const columns = [
+    ...(hasChapters ? [SECTION_COLUMN, LEVEL_COLUMN] : []),
+    ...data.columns,
+    ...(declaresRoles ? [ROLE_COLUMN] : []),
+  ];
+
   return {
-    columns: declaresRoles ? [...data.columns, ROLE_COLUMN] : [...data.columns],
+    columns,
     rows: shown.map((row) => {
-      const cells = readTableRow(row).cells;
+      const { cells, heading } = readTableRow(row);
       const role = tableRowRole(row, declaresRoles);
-      return role === undefined ? cells : [...cells, TABLE_ROLE_LABEL[role]];
+      const depth = Array.isArray(row) ? undefined : (row as { depth?: number }).depth;
+      // A chapter keeps its place in the sequence and fills the columns it has:
+      // its own, and none of the data ones, because it has no data.
+      const leading = hasChapters
+        ? heading === undefined
+          ? [null, null]
+          : [heading, depth ?? 1]
+        : [];
+      const body = heading === undefined ? cells : data.columns.map(() => null);
+      return [...leading, ...body, ...(role === undefined ? [] : [TABLE_ROLE_LABEL[role]])];
     }),
     withheld: data.rows.length - shown.length,
   };
