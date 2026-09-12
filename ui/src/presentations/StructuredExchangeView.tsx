@@ -37,7 +37,8 @@ import {
   type Primitive,
 } from "@pi-outpost/shared/structured-exchange/figure";
 import { downloadCsv, downloadXlsx, tableExport } from "./tableExport";
-import type { PresentationProps, ToolItem } from "./types";
+import type { ActionDispatch, PresentationProps, ToolItem } from "./types";
+import { resourceTargetFor } from "@pi-outpost/shared/resource-target";
 import {
   artifactText,
   attributeText,
@@ -627,7 +628,58 @@ const CLAIM_STYLE: Record<string, { label: string; className: string }> = {
  * value are all producer-controlled, and none of them becomes a control by
  * resembling one.
  */
-function EnrichmentDetail({ item, traces }: { item: DescribedEnrichment; traces?: DescribedTrace[] }) {
+/**
+ * A location or an artifact, as text — and a way to follow it only where the
+ * application's own safety policy already says a reader may be taken.
+ *
+ * Nothing is opened, fetched or resolved to draw this. The reader's click is the
+ * first thing that touches the other end, which is what keeps a producer's URI from
+ * being a request this application makes on their behalf the moment a document
+ * arrives.
+ *
+ * A URI with nowhere safe to go is still shown in full and still selectable. It is
+ * information the reader may need; a scheme simply does not become trusted by
+ * appearing in a document that validated.
+ */
+function FollowableUri({ uri, text, dispatch }: { uri: string; text: string; dispatch?: ActionDispatch }) {
+  const target = resourceTargetFor(uri);
+  if (target === undefined || dispatch === undefined) {
+    return <span data-followable="no">{text}</span>;
+  }
+  if (target.kind === "workspace-file") {
+    return (
+      <button
+        type="button"
+        data-followable="workspace-file"
+        className="text-left underline decoration-dotted underline-offset-2 hover:decoration-solid"
+        onClick={() => dispatch({ kind: "openFile", path: target.path })}
+      >
+        {text}
+      </button>
+    );
+  }
+  return (
+    <a
+      data-followable="external-url"
+      className="underline decoration-dotted underline-offset-2 hover:decoration-solid"
+      href={target.url}
+      target="_blank"
+      rel="noreferrer"
+    >
+      {text}
+    </a>
+  );
+}
+
+function EnrichmentDetail({
+  item,
+  traces,
+  dispatch,
+}: {
+  item: DescribedEnrichment;
+  traces?: DescribedTrace[];
+  dispatch?: ActionDispatch;
+}) {
   const claims: [keyof typeof CLAIM_STYLE, string, string][] = [
     ...item.attributes.map(([name, value]) => ["attribute", name, attributeValueText(value)] as [string, string, string]),
     ...item.expectations.map(([name, value]) => ["expects", name, attributeValueText(value)] as [string, string, string]),
@@ -675,7 +727,9 @@ function EnrichmentDetail({ item, traces }: { item: DescribedEnrichment; traces?
             <dt className="font-medium text-zinc-500 dark:text-zinc-400" data-claim="location">
               at
             </dt>
-            <dd className="col-span-2 break-all font-mono text-zinc-600 dark:text-zinc-300">{locationText(location)}</dd>
+            <dd className="col-span-2 break-all font-mono text-zinc-600 dark:text-zinc-300">
+              <FollowableUri uri={location.uri} text={locationText(location)} dispatch={dispatch} />
+            </dd>
           </Fragment>
         ))}
         {item.artifacts.map((artifact, index) => (
@@ -683,7 +737,9 @@ function EnrichmentDetail({ item, traces }: { item: DescribedEnrichment; traces?
             <dt className="font-medium text-zinc-500 dark:text-zinc-400" data-claim="artifact">
               {artifact.rel}
             </dt>
-            <dd className="col-span-2 break-all font-mono text-zinc-600 dark:text-zinc-300">{artifactText(artifact)}</dd>
+            <dd className="col-span-2 break-all font-mono text-zinc-600 dark:text-zinc-300">
+              <FollowableUri uri={artifact.uri} text={artifactText(artifact)} dispatch={dispatch} />
+            </dd>
           </Fragment>
         ))}
       </dl>
@@ -697,10 +753,12 @@ function TableView({
   setHidden,
   rows,
   traces = [],
+  dispatch,
 }: {
   data: StructuredTableData;
   hidden: Narrowing;
   setHidden: (hidden: Narrowing) => void;
+  dispatch?: ActionDispatch;
   /** The same rows, described: identity, kind, headings and enrichment. */
   rows?: DescribedRow[];
   traces?: DescribedTrace[];
@@ -903,7 +961,7 @@ function TableView({
                     {/* Under the first cell, where a reader's eye already is, rather
                         than in a column of its own that would be empty on most rows. */}
                     {cellIndex === 0 && described !== undefined ? (
-                      <EnrichmentDetail item={described} traces={related} />
+                      <EnrichmentDetail item={described} traces={related} dispatch={dispatch} />
                     ) : null}
                     {divider(cellIndex, data.columns[cellIndex] ?? "", false)}
                   </td>
@@ -1162,6 +1220,15 @@ export interface StructuredExchangeDocumentProps {
    * reveal with nothing behind it.
    */
   rawOutput?: string;
+  /**
+   * How a reader asks to be taken somewhere — the closed set of actions a
+   * presentation may request, and nothing wider.
+   *
+   * Optional, because the file viewer renders a document with no conversation
+   * behind it to act on. Without it a location is shown and not followable, which
+   * is the same answer this gives for a scheme the safety policy does not allow.
+   */
+  dispatch?: ActionDispatch;
 }
 
 /**
@@ -1198,7 +1265,7 @@ function targetRef(envelope: ValidatedStructuredExchange): string | undefined {
   return undefined;
 }
 
-export function StructuredExchangeDocument({ envelope, source, rawOutput }: StructuredExchangeDocumentProps) {
+export function StructuredExchangeDocument({ envelope, source, rawOutput, dispatch }: StructuredExchangeDocumentProps) {
   const [enlarged, setEnlarged] = useState(false);
   const [showText, setShowText] = useState(false);
   const [showExport, setShowExport] = useState(false);
@@ -1233,6 +1300,7 @@ export function StructuredExchangeDocument({ envelope, source, rawOutput }: Stru
         setHidden={setHidden}
         rows={described.rows}
         traces={described.traces}
+        dispatch={dispatch}
       />
     );
 
@@ -1572,7 +1640,7 @@ export function StructuredExchangeDocument({ envelope, source, rawOutput }: Stru
 }
 
 /** The presentation entry’s body: validate the tool result, then render it. */
-function StructuredExchangeBody({ item }: PresentationProps) {
+function StructuredExchangeBody({ item, dispatch }: PresentationProps) {
   const envelope = validStructuredExchange(item.structured);
   // Defensive: the registry only selects this entry for a validated envelope, so
   // reaching here without one would be a bug in selection rather than in data.
@@ -1582,6 +1650,7 @@ function StructuredExchangeBody({ item }: PresentationProps) {
       envelope={envelope}
       source={envelopeSource(item.structured, envelope)}
       rawOutput={item.output}
+      dispatch={dispatch}
     />
   );
 }

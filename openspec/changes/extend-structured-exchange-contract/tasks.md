@@ -41,8 +41,8 @@
 
 ## 5. Safe Navigation and Artifact Use
 
-- [ ] 5.1 Add explicit location navigation only for schemes and workspace targets already allowed by the application's resource safety policy; leave unsupported locations visible and copyable.
-- [ ] 5.2 Ensure no location or artifact resource is opened, fetched, rendered, or executed before a reader action.
+- [x] 5.1 Add explicit location navigation only for schemes and workspace targets already allowed by the application's resource safety policy; leave unsupported locations visible and copyable.
+- [x] 5.2 Ensure no location or artifact resource is opened, fetched, rendered, or executed before a reader action.
 - [ ] 5.3 For supported artifact retrieval, stream bytes through a bounded path, compute SHA-256 before use, and refuse opening or applying bytes whose digest does not match the validated link.
 - [ ] 5.4 Test duplicate locations, stale location revisions, unsafe schemes, missing resources, oversized resources, valid digests, and digest mismatches at the real resource boundary.
 

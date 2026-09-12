@@ -28,7 +28,7 @@ const chaptered: StructuredTableData = {
     { id: "r1", ref: "REQ-1", kind: "requirement", cells: ["REQ-1", "Stop within 40 m."] },
     { heading: "1.1 Sensing", depth: 2 },
     { id: "r2", ref: "REQ-2", kind: "requirement", cells: ["REQ-2", "Read wheel speed."] },
-  ] as StructuredTableData["rows"],
+  ] as unknown as StructuredTableData["rows"],
 };
 
 const nothingHidden: ReadonlySet<string> = new Set();
@@ -92,7 +92,7 @@ describe("a specification keeps its chapters", () => {
       rows: [
         { heading: "1. Braking", depth: 1 },
         { role: "added", cells: ["REQ-5"] },
-      ] as StructuredTableData["rows"],
+      ] as unknown as StructuredTableData["rows"],
     };
     const exported = tableExport(both, nothingHidden);
     expect(exported.columns).toEqual(["section", "level", "ID", "change"]);

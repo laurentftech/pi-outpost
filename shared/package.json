@@ -8,6 +8,7 @@
     "./provider-error": "./src/providerError.ts",
     "./work-plan": "./src/workPlan.ts",
     "./outcome": "./src/outcome.ts",
+    "./resource-target": "./src/resourceTarget.ts",
     "./structured-exchange": "./src/structuredExchange.ts",
     "./structured-exchange/validation": "./src/structuredExchangeValidation.ts",
     "./structured-exchange/parse": "./src/structuredExchangeParse.ts",
