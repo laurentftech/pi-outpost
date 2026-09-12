@@ -1425,7 +1425,11 @@ export function StructuredExchangeDocument({ envelope, source, rawOutput, dispat
   }
 
   return (
-    <div className="space-y-3 text-sm">
+    // Named so a test can say *which* document it means. The transcript a browser
+    // suite drives holds several, and picking "the last one" is an assumption that
+    // holds only until somebody adds another — which is exactly how three specs
+    // came to be reading a table they were never written about.
+    <div className="space-y-3 text-sm" data-testid="structured-document">
       {isProposal && (
         // Not "only what changes is shown" — that stopped being true the moment a
         // producer could include an element for context. The reader is looking at a
