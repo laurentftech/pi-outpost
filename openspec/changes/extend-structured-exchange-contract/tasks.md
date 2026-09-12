@@ -49,7 +49,7 @@
 ## 6. Scenario Coverage and Running-App Proof
 
 - [ ] 6.1 Add focused schema, semantic, bounds, dispatch, packaging, producer-CLI, presentation, accessibility, navigation, and recovery tests whose assertions cover every applicable scenario in `structured-exchange-context`.
-- [ ] 6.2 Build an explicit scenario-to-test matrix from `rg '^#### Scenario:' openspec/`, classifying every base and delta scenario as covered, partial, or uncovered and reading each cited assertion before accepting it as coverage.
+- [x] 6.2 Build an explicit scenario-to-test matrix from `rg '^#### Scenario:' openspec/`, classifying every base and delta scenario as covered, partial, or uncovered and reading each cited assertion before accepting it as coverage.
 - [ ] 6.3 Run focused tests, relevant complete suites, type checking, schema/type drift checks, package smoke tests, and strict OpenSpec validation.
 - [ ] 6.4 Exercise an unknown-profile version 2 document in the running application with Playwright and verify profile, typed attributes, locations, and artifact metadata through the DOM and accessible text.
 - [ ] 6.5 Exercise a revision-bound proposal in the running application with Playwright and verify descriptions, expectations, assignments, removals, approval, and byte-preserving recovery through the actual transcript and handover boundary.

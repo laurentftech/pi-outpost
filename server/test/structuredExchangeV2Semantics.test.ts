@@ -16,6 +16,7 @@
  */
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
+import { describeStructure } from "@pi-outpost/shared/structured-exchange/model";
 import { parseStructuredExchange } from "@pi-outpost/shared/structured-exchange/parse";
 import { checkStructuredExchangeSchema } from "@pi-outpost/shared/structured-exchange/schema-node";
 import { STRUCTURED_EXCHANGE_SCHEMA_V2 as V2 } from "@pi-outpost/shared/structured-exchange";
@@ -42,6 +43,7 @@ function verdict(document: unknown) {
     valid: outcome.valid,
     rules: outcome.valid ? [] : outcome.issues.map((issue) => issue.rule),
     issues: outcome.valid ? [] : outcome.issues,
+    envelope: outcome.valid ? outcome.envelope : undefined,
   };
 }
 
@@ -255,5 +257,108 @@ describe("version 1 tables are untouched by any of this", () => {
   test("a version 2 table carrying a target is accepted", () => {
     const outcome = verdict(table({ rows: [row()] }, { target: { ref: "DOC-1", revision: "baseline-7" } }));
     assert.equal(outcome.valid, true, outcome.rules.join(", "));
+  });
+});
+
+describe("what the contract deliberately does not do", () => {
+  // Written while building the scenario-coverage matrix: each of these was a
+  // scenario the delta declares and nothing asserted. They are the rules that are
+  // easiest to lose, because each one is about something *not* happening.
+
+  test("an attribute the patch does not mention is not touched", () => {
+    // The rule every other patch rule leans on. A `set` naming one attribute must
+    // not read as a statement about the rest, or a producer correcting a status
+    // would silently clear everything else the authority holds.
+    const outcome = verdict(
+      table(
+        { rows: [row({ attributes: { status: "approved", owner: "braking", margin: 0.2 }, set: { attributes: { status: "in review" } } })] },
+        { target: { ref: "DOC-1" } },
+      ),
+    );
+    assert.equal(outcome.valid, true, outcome.rules.join(", "));
+    const described = describeStructure(outcome.envelope!, true);
+    assert.deepEqual(described.rows?.[0].assignments, [["status", "in review"]]);
+    assert.deepEqual(described.rows?.[0].removedAttributes, []);
+    // The others are still described, and are not proposed for anything.
+    assert.deepEqual(
+      described.rows?.[0].attributes.map(([name]) => name),
+      ["status", "owner", "margin"],
+    );
+  });
+
+  test("a target is what makes a proposal, and a revision alone is not one", () => {
+    // The revision rides inside the target, so it cannot be stated without one —
+    // the discriminator stays the presence of `target` and nothing else.
+    const loose = verdict(table({ rows: [row()] }, { revision: "baseline-7" }));
+    assert.equal(loose.valid, false, "a revision outside a target was accepted");
+
+    const proposal = verdict(table({ rows: [row()] }, { target: { ref: "DOC-1", revision: "baseline-7" } }));
+    assert.equal(proposal.valid, true, proposal.rules.join(", "));
+    const plain = verdict(table({ rows: [row()] }, { target: { ref: "DOC-1" } }));
+    assert.equal(plain.valid, true, "a proposal must not need a revision to be one");
+  });
+
+  test("attributes need no profile to be carried", () => {
+    const outcome = verdict(table({ rows: [row({ attributes: { status: "approved" } })] }));
+    assert.equal(outcome.valid, true, outcome.rules.join(", "));
+    const described = describeStructure(outcome.envelope!, false);
+    assert.equal(described.profile, undefined, "a profile was invented for a document that named none");
+    assert.deepEqual(described.rows?.[0].attributes, [["status", "approved"]]);
+  });
+
+  test("a location takes no part in identity", () => {
+    // Two different requirements may well be documented in the same file. If a
+    // location were an identity, one of them would be read as the other.
+    const here = [{ uri: "file:///specs/brakes.md", range: { startLine: 1, endLine: 2 } }];
+    const outcome = verdict(
+      table({
+        rows: [
+          row({ id: "r1", ref: "REQ-1", locations: here }),
+          row({ id: "r2", ref: "REQ-2", cells: ["REQ-2", "Read wheel speed"], locations: here }),
+        ],
+      }),
+    );
+    assert.equal(outcome.valid, true, outcome.rules.join(", "));
+  });
+
+  test("a location whose revision has moved on changes nothing about the reference", () => {
+    // A hint going stale is not a change of identity: the row still names REQ-1 in
+    // the authority, whatever the file did since.
+    const outcome = verdict(
+      table({ rows: [row({ locations: [{ uri: "file:///specs/brakes.md", revision: "an-old-commit" }] })] }),
+    );
+    assert.equal(outcome.valid, true, outcome.rules.join(", "));
+    assert.equal(describeStructure(outcome.envelope!, false).rows?.[0].ref, "REQ-1");
+  });
+
+  test("a row's kind is never inferred from what a column says", () => {
+    // A producer's "type" column is data. Reading it as the contract's `kind` would
+    // make a spreadsheet's vocabulary silently become this application's.
+    const outcome = verdict(
+      table({
+        columns: ["id", "type"],
+        rows: [{ cells: ["REQ-1", "requirement"] }, { cells: ["REQ-2", "heading"] }],
+      }),
+    );
+    assert.equal(outcome.valid, true, outcome.rules.join(", "));
+    const described = describeStructure(outcome.envelope!, false);
+    assert.deepEqual(described.rows?.map((entry) => entry.kind), [undefined, undefined]);
+    assert.deepEqual(described.rows?.map((entry) => entry.heading), [undefined, undefined]);
+  });
+
+  test("a row in no relation is accepted, and nothing is said about its coverage", () => {
+    // Whether a requirement ought to be verified is the authority's judgement. This
+    // application reports the relations a document declares and infers no gap.
+    const outcome = verdict(
+      table({
+        rows: [row(), row({ id: "r2", ref: "REQ-2", cells: ["REQ-2", "Read wheel speed"] })],
+        relations: [{ from: { id: "r1" }, to: { ref: "TEST-9" }, kind: "verifiedBy" }],
+      }),
+    );
+    assert.equal(outcome.valid, true, outcome.rules.join(", "));
+    const described = describeStructure(outcome.envelope!, false);
+    assert.equal(described.traces.length, 1);
+    // The unrelated row is described exactly like the related one.
+    assert.equal(described.rows?.[1].ref, "REQ-2");
   });
 });

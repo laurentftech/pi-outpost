@@ -256,10 +256,6 @@ NOT be an instruction. A row that declares an identity SHALL still align to the 
 - **WHEN** an enriched table names a target and patches one of its rows by reference
 - **THEN** the proposal is accepted and the row's change is presented for approval
 
-#### Scenario: AVersionOneTableStillCannotBeProposed
-- **WHEN** a version 1 table carries a target
-- **THEN** it is refused, as it was before rows could be addressed
-
 #### Scenario: ARowKindIsNotInferredFromData
 - **WHEN** a table carries a column whose values name row types and no row declares a `kind`
 - **THEN** those values are rendered as data and no row is treated as typed

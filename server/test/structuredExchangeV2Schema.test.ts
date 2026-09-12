@@ -158,6 +158,27 @@ describe("the enriched schema", () => {
     assert.deepEqual(defs.relation.required, ["from", "to", "kind"]);
   });
 
+  test("an artifact names bytes and never carries them", () => {
+    // Payloads stay outside the envelope, which is what keeps the document
+    // ceilings meaningful and the rendering surface small. An inline one would
+    // also be bytes nobody could verify against the digest beside it.
+    assert.deepEqual(defs.artifact.required, ["rel", "uri", "sha256"]);
+    assert.equal(defs.artifact.additionalProperties, false);
+    for (const carrier of ["content", "data", "bytes", "payload", "base64"]) {
+      assert.equal(defs.artifact.properties[carrier], undefined, `an artifact may carry ${carrier}`);
+    }
+    const compiled = Compile(schema);
+    const withPayload = {
+      schema: STRUCTURED_EXCHANGE_SCHEMA_V2,
+      kind: "table",
+      data: {
+        columns: ["a"],
+        rows: [{ cells: ["x"], artifacts: [{ rel: "r", uri: "u", sha256: `sha256:${"a".repeat(64)}`, content: "aGVsbG8=" }] }],
+      },
+    };
+    assert.ok([...compiled.Errors(withPayload)].length > 0, "an inline payload was accepted");
+  });
+
   test("a heading is a row of its own, never data wearing a heading", () => {
     assert.deepEqual(structuralRow.required, ["heading"]);
     assert.equal(structuralRow.properties.cells, undefined);
