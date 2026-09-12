@@ -31,11 +31,13 @@ export { filterKey, type FilterScope } from "./structuredExchange";
 import {
   entryWidth,
   graphFigure,
+  graphOrientationFor,
   sequenceFigure,
   type FigureGroup,
   type FigureMarker,
   type Primitive,
 } from "@pi-outpost/shared/structured-exchange/figure";
+import { otherOrientation, type Orientation } from "@pi-outpost/shared/diagram-orientation";
 import { downloadCsv, downloadXlsx, tableExport } from "./tableExport";
 import type { ActionDispatch, PresentationProps, ToolItem } from "./types";
 import { resourceTargetFor } from "@pi-outpost/shared/resource-target";
@@ -254,6 +256,7 @@ function GraphView({
   setNudges,
   hidden,
   setHidden,
+  orientation,
 }: {
   data: StructuredGraphData;
   isProposal: boolean;
@@ -276,6 +279,14 @@ function GraphView({
    */
   hidden: Narrowing;
   setHidden: (hidden: Narrowing) => void;
+  /**
+   * Which way to draw it — always a decided one, never "work it out".
+   *
+   * Resolved by the parent so the inline rendering and the enlarged one cannot reach
+   * different answers, and so the control that names the current orientation is
+   * naming the same thing both of them drew.
+   */
+  orientation: Orientation;
 }) {
   const svgRef = useRef<SVGSVGElement | null>(null);
   const [dragging, setDragging] = useState<string | undefined>(undefined);
@@ -300,8 +311,8 @@ function GraphView({
    * file cannot carry: pointing, dragging and panning.
    */
   const figure = useMemo(
-    () => graphFigure(data, { isProposal, hidden, nudges }),
-    [data, isProposal, hidden, nudges],
+    () => graphFigure(data, { isProposal, hidden, nudges, orientation }),
+    [data, isProposal, hidden, nudges, orientation],
   );
 
   /**
@@ -1317,11 +1328,39 @@ export function StructuredExchangeDocument({ envelope, source, rawOutput, dispat
   const enlargedRef = useRef<HTMLDivElement>(null);
   const [nudges, setNudges] = useState<ReadonlyMap<string, Nudge>>(new Map());
   const [hidden, setHidden] = useState<Narrowing>(NOTHING_HIDDEN);
+  /** What the reader chose, when they chose. Undefined means "however it comes out". */
+  const [chosenOrientation, setChosenOrientation] = useState<Orientation | undefined>(undefined);
   const mermaid = useMemo(() => toMermaid(envelope), [envelope]);
 
   const isProposal = envelope.target !== undefined;
   const removals = envelope.removals ?? [];
   const described = useMemo(() => describeStructure(envelope, isProposal), [envelope, isProposal]);
+  /**
+   * Which way the diagram is drawn: what the reader asked for, or what the figure
+   * would choose for itself. Computed here rather than inside the rendering because
+   * the control below names it, and because both renderings have to be told the same
+   * answer rather than each deciding.
+   */
+  const chooses = useMemo(
+    () =>
+      envelope.kind === "graph"
+        ? graphOrientationFor(envelope.data as StructuredGraphData, hidden)
+        : ("landscape" as Orientation),
+    [envelope, hidden],
+  );
+  const orientation = chosenOrientation ?? chooses;
+  /**
+   * Turning starts the arrangement again.
+   *
+   * A nudge is an offset against a layout that stops existing the moment the graph is
+   * turned. Carried across, it moves a box away from where the reader put it, in a
+   * picture they never arranged — so the honest thing is to drop them with the layout
+   * they were measured against.
+   */
+  const turn = () => {
+    setChosenOrientation(otherOrientation(orientation));
+    setNudges(new Map());
+  };
   const view =
     envelope.kind === "graph" ? (
       <GraphView
@@ -1331,6 +1370,7 @@ export function StructuredExchangeDocument({ envelope, source, rawOutput, dispat
         setNudges={setNudges}
         hidden={hidden}
         setHidden={setHidden}
+        orientation={orientation}
       />
     ) : envelope.kind === "sequence" ? (
       <SequenceView data={envelope.data as StructuredSequenceData} isProposal={isProposal} />
@@ -1565,6 +1605,28 @@ export function StructuredExchangeDocument({ envelope, source, rawOutput, dispat
         >
           ⤢ enlarge
         </button>
+        {/* A graph is the only rendering here with an orientation to choose: a
+            sequence's lifelines run down and its messages across, and a table has
+            neither. Offering the control on those would be a switch that does
+            nothing. */}
+        {envelope.kind === "graph" && (
+          <button
+            type="button"
+            className="text-zinc-500 underline"
+            data-testid="diagram-orientation"
+            // Names what is on screen, not what the click would do: the reader has to
+            // be able to tell which way it is currently drawn without counting boxes.
+            title={
+              orientation === "portrait"
+                ? "Drawn down the page — switch to across"
+                : "Drawn across the page — switch to down"
+            }
+            aria-label={`Diagram drawn ${orientation}; switch to ${otherOrientation(orientation)}`}
+            onClick={turn}
+          >
+            {orientation === "portrait" ? "↕ portrait" : "↔ landscape"}
+          </button>
+        )}
         {envelope.kind === "table" ? (
           <>
             <button

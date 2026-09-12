@@ -682,6 +682,18 @@ function laidOutGraph(
 }
 
 /**
+ * Which way this graph would be drawn with nobody to ask.
+ *
+ * Offered separately because the control that lets a reader turn a diagram has to
+ * name what is currently on screen, and it lives above the component that computes
+ * the figure. Asking here and passing the answer down also means the two renderings
+ * of one document — the inline one and the enlarged one — cannot decide differently.
+ */
+export function graphOrientationFor(data: StructuredGraphData, hidden: Narrowing = NOTHING_HIDDEN): Orientation {
+  return laidOutGraph(shownGraph(data, hidden), undefined).orientation;
+}
+
+/**
  * The graph as a figure.
  *
  * Everything below was computed inside the component that drew it. None of it needed

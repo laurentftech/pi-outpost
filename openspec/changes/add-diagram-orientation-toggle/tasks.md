@@ -13,11 +13,11 @@
 
 ## 3. The reader's control on the structured-exchange view
 
-- [ ] 3.1 Hold the reader's orientation in `StructuredExchangeDocument` beside `nudges` and `hidden` (`ui/src/presentations/StructuredExchangeView.tsx`), pass it to both the inline and the enlarged rendering, and verify with a test that turning the inline one turns the enlarged one.
-- [ ] 3.2 Add the control beside `⤢ enlarge`, shown only for a graph, naming the orientation currently drawn; verify a table and a sequence offer no control (`ASequenceOffersNoOrientation`, `ATableOffersNoOrientation`).
-- [ ] 3.3 Clear the nudges when the orientation changes, and verify `TurningStartsFromTheComputedLayout`: a repositioned box, turned, is drawn where the new layout puts it.
-- [ ] 3.4 Verify `TheExportIsWhatIsShown`: the downloaded SVG and the copied markup of a turned rendering are the turned figure.
-- [ ] 3.5 Verify `SwitchingDoesNotAlterTheDocument`: the envelope recovered for handover after turning is byte-identical to the one before.
+- [x] 3.1 Hold the reader's orientation in `StructuredExchangeDocument` beside `nudges` and `hidden` (`ui/src/presentations/StructuredExchangeView.tsx`), pass it to both the inline and the enlarged rendering, and verify with a test that turning the inline one turns the enlarged one.
+- [x] 3.2 Add the control beside `⤢ enlarge`, shown only for a graph, naming the orientation currently drawn; verify a table and a sequence offer no control (`ASequenceOffersNoOrientation`, `ATableOffersNoOrientation`).
+- [x] 3.3 Clear the nudges when the orientation changes, and verify `TurningStartsFromTheComputedLayout`: a repositioned box, turned, is drawn where the new layout puts it.
+- [x] 3.4 Verify `TheExportIsWhatIsShown`: the downloaded SVG and the copied markup of a turned rendering are the turned figure.
+- [x] 3.5 Verify `SwitchingDoesNotAlterTheDocument`: the envelope recovered for handover after turning is byte-identical to the one before.
 
 ## 4. Mermaid
 
