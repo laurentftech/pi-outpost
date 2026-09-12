@@ -34,10 +34,10 @@
 - [x] 4.4 Extend the accessible textual equivalent so it contains every enrichment available in the native presentation, including items whose detail panels are visually collapsed.
 - [x] 4.10 Mark a proposed table from what it proposes — a referenced row carrying a change reads as changed, one with no reference as an addition, one with a reference and no change as context, and a chapter as neither — and show the target artifact with the revision it was read at. There is deliberately no approval action and no handover step in this system: approval is a person reading the screen, so the whole of the work is that what they see is derived from what would be applied.
 - [x] 4.5 Preserve all version 2 fields through live transport, history restoration, approval, and recovery without normalization or replacement by a derived export.
-- [ ] 4.6 Keep diagram exports structural and deterministic, and prove attributes or profile text cannot inject diagram structure or change the document recovered for handover.
+- [x] 4.6 Keep diagram exports structural and deterministic, and prove attributes or profile text cannot inject diagram structure or change the document recovered for handover.
 - [x] 4.7 Render a typed row's kind and identity, and present each row's relations in both directions with a key naming every relation kind shown; derive a traceability matrix view from the declared relations alone, reporting no judgement about missing ones.
 - [x] 4.8 Render structural rows as headings spanning the table at their declared depth and position, and carry every heading, depth and position through the accessible textual equivalent, the data export, and the document a table is written into.
-- [ ] 4.9 Make figures and data exports treat an enriched document as they treat its version 1 equivalent, and state inside a derived view when it shows less than the document holds.
+- [x] 4.9 Make figures and data exports treat an enriched document as they treat its version 1 equivalent, and state inside a derived view when it shows less than the document holds.
 
 ## 5. Safe Navigation and Artifact Use
 

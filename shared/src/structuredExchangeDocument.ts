@@ -18,7 +18,7 @@
 import type { StructuredExchangeLimits } from "./structuredExchangeBounds.ts";
 import { checkDocumentBytes } from "./structuredExchangeBounds.ts";
 import { parseStructuredExchange, type StructuredExchangeSchemaCheck } from "./structuredExchangeParse.ts";
-import { STRUCTURED_EXCHANGE_SCHEMA_V1, type ValidatedStructuredExchange } from "./structuredExchange.ts";
+import { supportedSchemaOf, type ValidatedStructuredExchange } from "./structuredExchange.ts";
 import type { StructuredExchangeIssue } from "./structuredExchangeValidation.ts";
 
 /**
@@ -102,10 +102,16 @@ export function readStructuredExchangeDocument(
 
   const schema = declaredSchemaOf(document);
   if (schema === undefined) return { status: "not-a-document", why: "undeclared" };
-  // A version we do not implement is not validated against the one we do: the
-  // issues that would come back describe a contract the document never claimed
-  // to satisfy, and reporting them would blame a producer who did nothing wrong.
-  if (schema !== STRUCTURED_EXCHANGE_SCHEMA_V1) return { status: "unsupported-version", schema };
+  // A version we do not implement is not validated against one we do: the issues
+  // that would come back describe a contract the document never claimed to satisfy,
+  // and reporting them would blame a producer who did nothing wrong.
+  //
+  // Every version this build *does* implement goes through — the check below
+  // dispatches on the same declaration. Left as "version 1 only", publishing the
+  // enriched contract would have made a valid enriched document unreadable by
+  // everything that reads a file rather than a tool result: the viewer, and the
+  // figure a report embeds.
+  if (supportedSchemaOf(schema) === undefined) return { status: "unsupported-version", schema };
 
   const verdict = parseStructuredExchange(document, checkSchema);
   return verdict.valid ? { status: "valid", envelope: verdict.envelope } : { status: "invalid", issues: verdict.issues };
