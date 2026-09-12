@@ -13,7 +13,15 @@ import { Compile } from "typebox/compile";
 // copy wherever it is deployed, and this product ships as a bundle: a path
 // relative to this module resolves inside the repository and nowhere else, so a
 // filesystem read works in every test and fails on the first real install.
-import schemaModule from "../schemas/structured-exchange-1.json" with { type: "json" };
+import schemaModuleV1 from "../schemas/structured-exchange-1.json" with { type: "json" };
+import schemaModuleV2 from "../schemas/structured-exchange-2.json" with { type: "json" };
+import { declaredSchemaOf } from "./structuredExchangeDocument.ts";
+import {
+  STRUCTURED_EXCHANGE_SCHEMA_V1,
+  STRUCTURED_EXCHANGE_SUPPORTED_SCHEMAS,
+  supportedSchemaOf,
+  type StructuredExchangeSchemaId,
+} from "./structuredExchange.ts";
 import type { StructuredExchangeSchemaCheck } from "./structuredExchangeParse.ts";
 import type { StructuredExchangeIssue } from "./structuredExchangeValidation.ts";
 
@@ -42,24 +50,86 @@ export function unwrapSchemaModule(module: unknown): Record<string, unknown> {
   return rest;
 }
 
-const schema: Record<string, unknown> = unwrapSchemaModule(schemaModule);
+const schemas: Record<StructuredExchangeSchemaId, Record<string, unknown>> = {
+  "urn:structured-exchange:1": unwrapSchemaModule(schemaModuleV1),
+  "urn:structured-exchange:2": unwrapSchemaModule(schemaModuleV2),
+};
+
+const schema: Record<string, unknown> = schemas[STRUCTURED_EXCHANGE_SCHEMA_V1];
 
 /** The committed schema itself, bundled with the code that validates against it. */
 export const STRUCTURED_EXCHANGE_SCHEMA: unknown = schema;
 
-/**
- * Compiled once. The compiler is the expensive part; the check it produces is
- * not, and every document pays only for the check.
- */
-let compiled: ReturnType<typeof Compile> | undefined;
+/** Every committed schema, by the identifier a document declares to select it. */
+export const STRUCTURED_EXCHANGE_SCHEMAS: Readonly<Record<string, unknown>> = schemas;
 
-function validator(): ReturnType<typeof Compile> {
-  if (compiled === undefined) {
-    // The committed copy, never fetched: validation must not depend on the network
-    // being there or on what is at the other end of it.
-    compiled = Compile(schema);
-  }
-  return compiled;
+/**
+ * Compiled once, per version. The compiler is the expensive part; the check it
+ * produces is not, and every document pays only for the check — including the
+ * cost of a version it never uses, which is why these are compiled on first
+ * demand rather than at import.
+ */
+const compiled = new Map<string, ReturnType<typeof Compile>>();
+
+/**
+ * The schema with `data` narrowed to the single variant the document's `kind`
+ * declares — or the schema as published, when it declares no kind this contract
+ * knows.
+ *
+ * Used to *explain* a refusal, never to decide one. `data` is a `oneOf` across
+ * graph, sequence and table: when one branch fails they all do, and TypeBox
+ * reports every branch's complaint, so a table whose cell ran past its ceiling was
+ * answered with "must have required properties nodes, edges" — a sentence about a
+ * diagram nobody sent.
+ *
+ * Deciding with it would change answers that are already published. A document
+ * whose `kind` disagrees with its `data` passes the published schema (the data
+ * does match *a* branch) and is refused afterwards by the semantic rule that
+ * exists to name exactly that — `kind-data-mismatch`. Narrowed, the schema would
+ * refuse it first, and a producer who had been told one thing for a year would be
+ * told another.
+ */
+function schemaFor(version: StructuredExchangeSchemaId, kind: unknown): Record<string, unknown> {
+  const published = schemas[version];
+  const variants = ((published.properties as Record<string, { oneOf?: unknown[] }>).data?.oneOf ?? []) as Record<
+    string,
+    { properties?: Record<string, unknown> }
+  >[];
+  const required: Record<string, string> = { graph: "nodes", sequence: "participants", table: "columns" };
+  const marker = typeof kind === "string" ? required[kind] : undefined;
+  const variant =
+    marker === undefined
+      ? undefined
+      : variants.find((candidate) => (candidate.properties as Record<string, unknown> | undefined)?.[marker] !== undefined);
+  if (variant === undefined) return published;
+  return {
+    ...published,
+    properties: { ...(published.properties as Record<string, unknown>), data: variant },
+  };
+}
+
+/**
+ * The kinds a document may narrow to. Anything else compiles the whole schema.
+ *
+ * The narrowing exists to sharpen a diagnostic, and it is keyed on a value the
+ * producer writes. Cached on that value directly, a document declaring
+ * `kind: "<anything>"` minted a compiled validator of its own and kept it: three
+ * hundred distinct kinds cost about thirty-eight megabytes that nothing evicts,
+ * and every invalid document — a tool result, any workspace file declaring the
+ * family — can reach this. Narrow only to a kind that is really one.
+ */
+const NARROWABLE_KINDS: readonly string[] = ["graph", "sequence", "table"];
+
+function validator(version: StructuredExchangeSchemaId, kind: unknown): ReturnType<typeof Compile> {
+  const narrowable = typeof kind === "string" && NARROWABLE_KINDS.includes(kind);
+  const key = `${version}:${narrowable ? kind : "*"}`;
+  const existing = compiled.get(key);
+  if (existing !== undefined) return existing;
+  // The committed copy, never fetched: validation must not depend on the network
+  // being there or on what is at the other end of it.
+  const built = Compile(schemaFor(version, narrowable ? kind : undefined));
+  compiled.set(key, built);
+  return built;
 }
 
 /**
@@ -86,8 +156,44 @@ function at(document: unknown, pointer: string): unknown {
 }
 
 export const checkStructuredExchangeSchema: StructuredExchangeSchemaCheck = (document) => {
+  const declared = declaredSchemaOf(document);
+  const version = supportedSchemaOf(declared);
+  if (version === undefined && declared !== undefined) {
+    // A version of this contract that this build does not have. Refused by name
+    // rather than by the oldest schema's `const` keyword failing to match: a
+    // producer reading "must be equal to constant" learns that one identifier was
+    // expected, while this says which contracts exist here — the question they
+    // were actually asking.
+    //
+    // Only for the contract's own family. Anything else is not a structured
+    // exchange at all, and is refused exactly as it was before there was a second
+    // version to choose between.
+    return [
+      {
+        rule: "unsupported-version",
+        path: "/schema",
+        message: `this build validates ${STRUCTURED_EXCHANGE_SUPPORTED_SCHEMAS.join(" and ")}`,
+      },
+    ];
+  }
   const issues: StructuredExchangeIssue[] = [];
-  for (const error of validator().Errors(document)) {
+  const contract = version ?? STRUCTURED_EXCHANGE_SCHEMA_V1;
+  // The verdict is the published schema's, always. Only when it refuses is the
+  // narrowed one asked, and only for something better to say about it.
+  const published = [...validator(contract, undefined).Errors(document)];
+  if (published.length === 0) return issues;
+  const kind = (document as { kind?: unknown } | null)?.kind;
+  const narrowed = [...validator(contract, kind).Errors(document)];
+  // Both lists, not the narrower one: a rule a producer has been keying on since
+  // the contract was published must not vanish because a second way of asking the
+  // same question phrases it differently. The narrowed errors come first and the
+  // published ones add whatever rule and place they name that narrowing did not.
+  const seen = new Set(narrowed.map((error) => `${error.keyword}@${error.instancePath}`));
+  const combined = [
+    ...narrowed,
+    ...published.filter((error) => !seen.has(`${error.keyword}@${error.instancePath}`)),
+  ];
+  for (const error of combined) {
     const keyword = String(error.keyword ?? "schema");
     const limit = (error.params as { limit?: number } | undefined)?.limit;
     issues.push({
@@ -101,5 +207,11 @@ export const checkStructuredExchangeSchema: StructuredExchangeSchemaCheck = (doc
       })(),
     });
   }
-  return issues;
+  // Most specific first. A row is itself a union — an array of cells, a row that
+  // carries an identity, or a heading — so a fault inside one still draws a
+  // complaint from each shape it is not. Every one of them is kept, because a
+  // validator that decides which of its own reasons to show is a validator that
+  // can hide the true one; they are ordered instead, so the deepest path — the one
+  // naming the value the producer actually got wrong — is the line they read first.
+  return issues.sort((left, right) => right.path.split("/").length - left.path.split("/").length);
 };

@@ -61,7 +61,16 @@ function digest(envelope: ValidatedStructuredExchange): string {
     parts.push(`table: ${data.columns.length} columns, ${data.rows.length} rows`);
   }
   if (envelope.target !== undefined) {
-    parts.push(`proposing changes to "${envelope.target}"`);
+    // Version 1 states a bare reference, version 2 an object carrying the revision
+    // it was prepared against. Interpolated as-is, the enriched form read
+    // `proposing changes to "[object Object]"` — in the one account of the document
+    // the model still has on a later turn, once the structured payload is gone.
+    const target = envelope.target as string | { ref?: string; revision?: string };
+    const named = typeof target === "string" ? target : (target.ref ?? "");
+    const revision = typeof target === "string" ? undefined : target.revision;
+    parts.push(
+      `proposing changes to "${named}"${revision === undefined ? "" : `, prepared against "${revision}"`}`,
+    );
     parts.push(roleTally(envelope));
   }
   return parts.join("; ");
@@ -85,6 +94,20 @@ function roleTally(envelope: ValidatedStructuredExchange): string {
   } else if (envelope.kind === "sequence") {
     const data = envelope.data as StructuredSequenceData;
     subjects.push(...data.participants, ...data.messages);
+  } else {
+    // A table is proposable under the enriched contract, and its rows are what a
+    // proposal addresses. Counting only graphs and sequences told the agent that a
+    // five-row amendment "changes nothing" — a sentence written to correct one
+    // specific mistake, fired at a document that had made none, which is an
+    // instruction to go and break it.
+    const data = envelope.data as StructuredTableData;
+    for (const row of data.rows as unknown[]) {
+      if (row === null || typeof row !== "object" || Array.isArray(row)) continue;
+      const item = row as { ref?: string; set?: object; heading?: string };
+      // A chapter is not proposed: it organises the rows around it.
+      if (item.heading !== undefined) continue;
+      subjects.push({ ...(item.ref === undefined ? {} : { ref: item.ref }), ...(item.set === undefined ? {} : { set: item.set }) });
+    }
   }
   const added = subjects.filter((subject) => subject.ref === undefined).length;
   const changed = subjects.filter((subject) => subject.set !== undefined).length;

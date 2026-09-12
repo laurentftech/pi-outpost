@@ -56,9 +56,9 @@ describe("a document that is not fit to draw yields no figure", () => {
   });
 
   test("a version this build does not implement is named, not validated", () => {
-    const result = figure({ schema: "urn:structured-exchange:2", kind: "constellation" });
+    const result = figure({ schema: "urn:structured-exchange:3", kind: "constellation" });
     if (result.ok || result.reason !== "unsupported-version") return assert.fail(`got ${JSON.stringify(result)}`);
-    assert.match(describeFigureRefusal(result), /urn:structured-exchange:2/);
+    assert.match(describeFigureRefusal(result), /urn:structured-exchange:3/);
   });
 
   test("JSON that declares nothing is refused as what it is", () => {

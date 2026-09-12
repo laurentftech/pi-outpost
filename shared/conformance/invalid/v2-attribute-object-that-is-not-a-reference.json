@@ -1,0 +1,21 @@
+{
+  "schema": "urn:structured-exchange:2",
+  "kind": "table",
+  "data": {
+    "columns": [
+      "a"
+    ],
+    "rows": [
+      {
+        "cells": [
+          "x"
+        ],
+        "attributes": {
+          "owner": {
+            "name": "someone"
+          }
+        }
+      }
+    ]
+  }
+}

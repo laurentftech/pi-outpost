@@ -95,6 +95,12 @@ export function parseSerializedStructuredExchange(
   const verdict = parseStructuredExchange(document, checkSchema);
   if (!verdict.valid) return verdict;
 
+  // The document has now said which contract it claims, so the ceiling that
+  // contract promises can be applied. The gate above used the widest any version
+  // allows, because reading the declaration means parsing — see its comment.
+  const pastItsVersion = checkDocumentBytes(serialized, limits, verdict.envelope.schema);
+  if (pastItsVersion !== undefined) return { valid: false, issues: [pastItsVersion] };
+
   const deploymentIssues = checkDeploymentLimits(verdict.envelope, limits);
   if (deploymentIssues.length > 0) return { valid: false, issues: deploymentIssues };
 

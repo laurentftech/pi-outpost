@@ -228,6 +228,121 @@ const REQUIREMENTS_CHANGE_TABLE = {
   },
 };
 
+
+/**
+ * The artifact the seeded proposal is bound to, written into the bench workspace
+ * so a reader can actually open it — and so the mismatching case is a real refusal
+ * rather than a missing file.
+ */
+export const VERIFICATION_REPORT = "Verification report for REQ-1\nBrake distance: 38.4 m over 12 runs.\nVerdict: pass\n";
+
+/**
+ * A specification extracted from an external requirements authority, of the shape
+ * the enriched contract exists for: typed rows that *are* the requirements,
+ * chapters that organise them, traceability that leaves the document, and a profile
+ * this application has never heard of.
+ *
+ * Deliberately not minimal. The things that break in a browser and in no unit test
+ * are the ones that need a real document under them: a detail panel inside a table
+ * cell, a heading spanning columns whose widths the reader can drag, a relation
+ * rendered on both of the rows it connects.
+ */
+const SPEC_EXTRACTION = {
+  schema: "urn:structured-exchange:2",
+  kind: "table",
+  profile: "acme/requirements",
+  data: {
+    columns: ["id", "requirement", "verification"],
+    rows: [
+      { heading: "1. Braking", depth: 1 },
+      {
+        id: "r1",
+        ref: "REQ-1",
+        kind: "requirement",
+        cells: ["REQ-1", "The vehicle shall stop within 40 m from 100 km/h.", "test"],
+        attributes: { status: "approved", safetyLevel: "ASIL-D", owner: { ref: "TEAM-BRAKES" } },
+        locations: [{ uri: "workspace:notes/braking.md", range: { startLine: 0, endLine: 2 } }],
+        artifacts: [
+          // The digest of the file that is really there: opening this hands the
+          // reader the bytes the approval is bound to.
+          {
+            rel: "verifiedBy",
+            uri: "workspace:evidence/brake-distance.txt",
+            sha256: "sha256:6d3ce5ed76cad820034d0747f1166f119d3b091786013ac116fdabbba79c5978",
+            mediaType: "text/plain",
+            label: "Bench run 412",
+          },
+          // The same file under a digest that is not its own — a link whose target
+          // moved on since the extraction. Opening it must refuse rather than show
+          // bytes nobody approved.
+          {
+            rel: "supersededReport",
+            uri: "workspace:evidence/brake-distance.txt",
+            sha256: "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+            mediaType: "text/plain",
+            label: "Run 411 (stale)",
+          },
+        ],
+      },
+      { heading: "1.1 Sensing", depth: 2 },
+      {
+        id: "r2",
+        ref: "REQ-2",
+        kind: "requirement",
+        cells: ["REQ-2", "Wheel speed shall be read at 100 Hz.", "analysis"],
+        attributes: { status: "approved", safetyLevel: "ASIL-B" },
+      },
+      {
+        id: "r3",
+        ref: "REQ-3",
+        kind: "requirement",
+        cells: ["REQ-3", "A sensor fault shall be signalled within 200 ms.", "test"],
+        attributes: { status: "in review", safetyLevel: "ASIL-D" },
+      },
+    ],
+    relations: [
+      { from: { id: "r2" }, to: { id: "r1" }, kind: "derives" },
+      { from: { id: "r3" }, to: { id: "r1" }, kind: "derives" },
+      { from: { id: "r1" }, to: { ref: "TEST-412" }, kind: "verifiedBy", label: "bench" },
+    ],
+  },
+};
+
+/**
+ * The same specification, amended — what would be written back.
+ *
+ * It carries all four claims at once on one row, which is the case a reader must be
+ * able to read at a glance and the one a merged rendering would ruin: what is true
+ * now, what the producer expected to find, what it asks to set, what it asks to
+ * unset. Plus a new requirement with no reference, and a withdrawal.
+ */
+const SPEC_PROPOSAL = {
+  ...SPEC_EXTRACTION,
+  target: { ref: "reqs://module/42", revision: "baseline-7" },
+  removals: [
+    { type: "row", ref: "REQ-9", label: "Battery voltage shall be read at 10 Hz.", kind: "requirement" },
+  ],
+  data: {
+    ...SPEC_EXTRACTION.data,
+    rows: [
+      SPEC_EXTRACTION.data.rows[0],
+      {
+        ...SPEC_EXTRACTION.data.rows[1],
+        expect: { attributes: { status: "approved" }, revision: "obj-rev-3" },
+        set: { attributes: { status: "in review" }, removeAttributes: ["owner"] },
+      },
+      SPEC_EXTRACTION.data.rows[2],
+      SPEC_EXTRACTION.data.rows[3],
+      {
+        id: "r4",
+        kind: "requirement",
+        cells: ["", "The driver shall be warned 20 m before the stopping point.", "test"],
+      },
+      SPEC_EXTRACTION.data.rows[4],
+    ],
+  },
+};
+
 export const SEEDED_MESSAGES = [
   { role: "user", content: "Draw me the architecture." },
   { role: "assistant", content: [{ type: "text", text: SEEDED_MERMAID }] },
@@ -308,5 +423,27 @@ export const SEEDED_MESSAGES = [
     toolName: "structured_exchange",
     content: "proposal: add a search service and its index, shard the order store, drop the catalogue's direct read",
     details: TYPED_PROPOSAL,
+  },
+  {
+    role: "assistant",
+    content: [{ type: "toolCall", id: "call-8", name: "structured_exchange", arguments: { kind: "table" } }],
+  },
+  {
+    role: "toolResult",
+    toolCallId: "call-8",
+    toolName: "structured_exchange",
+    content: "extracted module 42: three requirements under two chapters, with traceability",
+    details: SPEC_EXTRACTION,
+  },
+  {
+    role: "assistant",
+    content: [{ type: "toolCall", id: "call-9", name: "structured_exchange", arguments: { kind: "table" } }],
+  },
+  {
+    role: "toolResult",
+    toolCallId: "call-9",
+    toolName: "structured_exchange",
+    content: "proposal against baseline-7: amend REQ-2, add a warning requirement, withdraw REQ-9",
+    details: SPEC_PROPOSAL,
   },
 ];

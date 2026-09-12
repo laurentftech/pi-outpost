@@ -1,0 +1,20 @@
+{
+  "schema": "urn:structured-exchange:2",
+  "kind": "table",
+  "data": {
+    "columns": [
+      "a"
+    ],
+    "rows": [
+      [
+        "x"
+      ]
+    ]
+  },
+  "artifacts": [
+    {
+      "rel": "verifies",
+      "uri": "https://example.invalid/r.json"
+    }
+  ]
+}

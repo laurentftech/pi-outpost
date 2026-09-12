@@ -12,7 +12,7 @@ import { describe, test } from "node:test";
 import { parseSerializedStructuredExchange } from "@pi-outpost/shared/structured-exchange/parse";
 import { checkStructuredExchangeSchema } from "@pi-outpost/shared/structured-exchange/schema-node";
 import {
-  STRUCTURED_EXCHANGE_BYTES_CEILING,
+  STRUCTURED_EXCHANGE_BYTES_CEILING_ANY,
   effectiveLimit,
 } from "@pi-outpost/shared/structured-exchange/bounds";
 import { STRUCTURED_EXCHANGE_CEILINGS, STRUCTURED_EXCHANGE_SCHEMA_V1 as S } from "@pi-outpost/shared/structured-exchange";
@@ -36,8 +36,12 @@ describe("structured-exchange bounds", () => {
         limit: STRUCTURED_EXCHANGE_CEILINGS.nodes,
         level: "ceiling",
       });
+      // The byte ceiling the gate before the parse can apply is the widest any
+      // supported version allows — it has not read the document, so it does not yet
+      // know which version's promise to hold it to. Each version's own ceiling is
+      // applied once it has said; see structuredExchangeV2Bounds.test.ts.
       assert.deepEqual(effectiveLimit("bytes", { bytes: Number.MAX_SAFE_INTEGER }), {
-        limit: STRUCTURED_EXCHANGE_BYTES_CEILING,
+        limit: STRUCTURED_EXCHANGE_BYTES_CEILING_ANY,
         level: "ceiling",
       });
     });
@@ -58,7 +62,7 @@ describe("structured-exchange bounds", () => {
     test("an oversized document is refused without being parsed", () => {
       // Deliberately not valid JSON past the opening brace: if this were parsed,
       // the refusal would be "not-json" rather than the size.
-      const oversized = `{"schema":"${S}","junk":"${"x".repeat(STRUCTURED_EXCHANGE_BYTES_CEILING)}`;
+      const oversized = `{"schema":"${S}","junk":"${"x".repeat(STRUCTURED_EXCHANGE_BYTES_CEILING_ANY)}`;
 
       const verdict = parseSerializedStructuredExchange(oversized, checkStructuredExchangeSchema);
 

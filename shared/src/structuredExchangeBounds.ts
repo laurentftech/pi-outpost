@@ -10,7 +10,12 @@
  * A limit above its ceiling has no effect. The contract is the outer edge; a
  * deployment can only be more careful than it, never less.
  */
-import { STRUCTURED_EXCHANGE_CEILINGS } from "./structuredExchange.ts";
+import {
+  STRUCTURED_EXCHANGE_BYTES_CEILING_2,
+  STRUCTURED_EXCHANGE_CEILINGS,
+  STRUCTURED_EXCHANGE_CEILINGS_2,
+  STRUCTURED_EXCHANGE_SCHEMA_V2,
+} from "./structuredExchange.ts";
 import type { StructuredExchangeIssue } from "./structuredExchangeValidation.ts";
 
 /**
@@ -26,6 +31,28 @@ import type { StructuredExchangeIssue } from "./structuredExchangeValidation.ts"
  */
 export const STRUCTURED_EXCHANGE_BYTES_CEILING = 4_000_000;
 
+/**
+ * The outer edge, across every version this build validates.
+ *
+ * The pre-parse gate cannot know which contract a document declares — reading that
+ * means parsing it, which is the thing the gate exists to avoid doing to something
+ * oversized. So it applies the widest ceiling any supported version allows, and the
+ * version's own ceiling is applied once the document is in memory and has said what
+ * it is. A version 1 document is still held to version 1's four megabytes; what it
+ * loses is only the promise that the refusal arrives before the parse.
+ */
+export const STRUCTURED_EXCHANGE_BYTES_CEILING_ANY = Math.max(
+  STRUCTURED_EXCHANGE_BYTES_CEILING,
+  STRUCTURED_EXCHANGE_BYTES_CEILING_2,
+);
+
+/** The byte ceiling the declared version promises its producers. */
+export function bytesCeilingFor(declared: string | undefined): number {
+  return declared === STRUCTURED_EXCHANGE_SCHEMA_V2
+    ? STRUCTURED_EXCHANGE_BYTES_CEILING_2
+    : STRUCTURED_EXCHANGE_BYTES_CEILING;
+}
+
 /** Byte length without Node's Buffer: this module runs in the browser too. */
 const utf8Bytes = (value: string): number => new TextEncoder().encode(value).length;
 
@@ -38,13 +65,17 @@ export interface StructuredExchangeLimits {
   messages?: number;
   columns?: number;
   rows?: number;
+  /** Traceability between a table's rows, which only the enriched contract carries. */
+  relations?: number;
 }
 
 type BoundedCollection = keyof StructuredExchangeLimits;
 
 /** The ceiling for a bound, including the byte bound the schema cannot express. */
 export function ceilingFor(bound: BoundedCollection): number {
-  return bound === "bytes" ? STRUCTURED_EXCHANGE_BYTES_CEILING : STRUCTURED_EXCHANGE_CEILINGS[bound];
+  if (bound === "bytes") return STRUCTURED_EXCHANGE_BYTES_CEILING_ANY;
+  if (bound === "relations") return STRUCTURED_EXCHANGE_CEILINGS_2.relations;
+  return STRUCTURED_EXCHANGE_CEILINGS[bound];
 }
 
 /**
@@ -73,9 +104,24 @@ export function effectiveLimit(
 export function checkDocumentBytes(
   serialized: string,
   limits?: StructuredExchangeLimits,
+  /** The version's own ceiling, once it is known. Absent before the parse. */
+  declared?: string,
 ): StructuredExchangeIssue | undefined {
   const observed = utf8Bytes(serialized);
-  const { limit, level } = effectiveLimit("bytes", limits);
+  const outer = effectiveLimit("bytes", limits);
+  // Before the parse the ceiling is the widest any version allows; after it, the
+  // one the document's own version promises. A deployment limit is stricter than
+  // either and wins over both.
+  // Before the parse there is no version to hold the document to, so only the outer
+  // edge and the deployment's own limit apply.
+  const versioned = declared === undefined ? Number.POSITIVE_INFINITY : bytesCeilingFor(declared);
+  const limit = Math.min(outer.limit, versioned);
+  // Whose number refused it — the only thing that tells an operator whether to
+  // change their configuration or accept the contract. A deployment limit sitting
+  // between the two ceilings used to be reported as the deployment's own while
+  // quoting the *contract's* smaller number, sending someone to raise a limit they
+  // had never set.
+  const level = limit === versioned && versioned < outer.limit ? "ceiling" : outer.level;
   if (observed <= limit) return undefined;
   return {
     rule: "document-too-large",
@@ -91,7 +137,7 @@ export function checkDocumentBytes(
 const COLLECTIONS_BY_KIND: Record<string, BoundedCollection[]> = {
   graph: ["nodes", "edges"],
   sequence: ["participants", "messages"],
-  table: ["columns", "rows"],
+  table: ["columns", "rows", "relations"],
 };
 
 /**

@@ -7,6 +7,7 @@
  */
 import { constants, type Dirent } from "node:fs";
 import fs from "node:fs/promises";
+import { createHash } from "node:crypto";
 import path from "node:path";
 import { spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
@@ -158,6 +159,16 @@ export async function readFileForPreview(
   root: string,
   relPath: string,
   structuredExchangeMaxBytes = MAX_PREVIEW_BYTES,
+  /**
+   * The digest an artifact link bound its approval to, when the path came from one.
+   *
+   * Verified here rather than by a caller reading the file a second time: hashing
+   * one buffer and serving another means the bytes shown are never the bytes
+   * checked, and in an application whose premise is an agent writing this workspace
+   * while someone reads it, a file replaced between the two reads would be
+   * displayed as verified.
+   */
+  expectedDigest?: string,
 ): Promise<{ content: string; size: number; mtimeMs: number }> {
   const resolved = await resolveConfined(root, relPath);
   let stat: Awaited<ReturnType<typeof fs.stat>>;
@@ -180,6 +191,16 @@ export async function readFileForPreview(
     throw new FileBrowserError("too-large", describeUnmeasured(stat.size, structuredExchangeMaxBytes));
   }
   const buffer = await fs.readFile(resolved);
+  if (expectedDigest !== undefined) {
+    const observed = `sha256:${createHash("sha256").update(buffer).digest("hex")}`;
+    if (observed !== expectedDigest) {
+      throw new FileBrowserError(
+        "digest-mismatch",
+        `This artifact is not the one the document was approved against — it declares ${expectedDigest}, ` +
+          `and the file here is ${observed}.`,
+      );
+    }
+  }
   if (looksBinary(buffer)) {
     throw new FileBrowserError("binary", "Binary file — preview not supported");
   }

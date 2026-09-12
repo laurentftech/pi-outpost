@@ -15,7 +15,8 @@ export function isToolAction(action: { kind: string }): action is ToolAction {
 }
 
 export interface ActionTargets {
-  readFile: (path: string) => void;
+  /** `sha256` verifies the bytes before they are shown — see the `openFile` action. */
+  readFile: (path: string, sha256?: string) => void;
   fetchGitFileHistory: (path: string) => void;
   fetchGitDiff: (path: string) => void;
   searchFiles: (query: string) => void;
@@ -31,7 +32,7 @@ export function createActionDispatch(targets: ActionTargets): ActionDispatch {
     if (!isToolAction(action)) return;
     switch (action.kind) {
       case "openFile":
-        targets.readFile(action.path);
+        targets.readFile(action.path, action.sha256);
         return;
       case "openFileHistory":
         targets.fetchGitFileHistory(action.path);

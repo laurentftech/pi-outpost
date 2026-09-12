@@ -198,3 +198,162 @@ document handed to the receiving authority.
 #### Scenario: ProducerTextRemainsInert
 - **WHEN** an enriched field contains markup-like or diagram-like text
 - **THEN** it is displayed as text and neither executed nor interpreted as presentation syntax
+
+### Requirement: EnrichedContractCarriesTheWholeVersionOneVocabulary
+
+The enriched schema SHALL carry forward every construct the version 1 contract defines — including
+containers, declared element and relationship kinds, removals, `set` patches, and the change role a
+table row may declare — so that anything expressible under version 1 is expressible under the
+enriched contract without loss. The enriched contract SHALL only add.
+
+Every view derived from a document SHALL treat the two versions alike: a figure written for an
+enriched document SHALL draw the same structure it draws for the version 1 equivalent, and a table
+SHALL leave as data on the same terms. A derived view MAY omit non-structural enrichment it has no
+place for, and SHALL say inside the view that it shows less than the document holds.
+
+#### Scenario: AVersionOneDocumentReExpressedLosesNothing
+- **WHEN** a version 1 document declaring containers, kinds, removals and row roles is re-expressed under the enriched schema with only its schema identifier changed
+- **THEN** it is valid, and its containers, kinds, removals and row roles carry the same meaning
+
+#### Scenario: AnEnrichedFigureDrawsTheSameStructure
+- **WHEN** a figure is produced from an enriched document and from its version 1 equivalent
+- **THEN** both show the same elements, relationships and containers
+
+#### Scenario: AnEnrichedTableLeavesAsData
+- **WHEN** an enriched table is exported as data
+- **THEN** its columns, rows and declared roles leave as they do under version 1
+
+### Requirement: AddressableTypedTableRows
+
+A row of an enriched table MAY declare an identity of its own: a document-local `id`, an opaque `ref`
+owned by an external authority, and an opaque `kind` naming what the row is — a requirement, a test,
+a chapter's content, whatever the profile owns. A row MAY carry attributes, expectations, locations,
+artifact links and a `set` patch on the same terms as any other addressable item.
+
+Because a row can now be addressed, an enriched table MAY be proposed: it may carry a target, its
+rows may carry `set` patches, and a removal may name a row. Version 1 keeps its own answer — a table
+whose rows are anonymous tuples has nothing for a change to address, and a version 1 table carrying a
+target SHALL still be refused.
+
+Row identity SHALL be governed by the rules identity already has: `id` SHALL be unique within the
+document, `ref` SHALL be treated as opaque and never parsed, and a row carrying no `ref` SHALL read as
+new. A row's declared `kind` SHALL NOT be inferred from a cell's value or a column's name, and SHALL
+NOT be an instruction. A row that declares an identity SHALL still align to the table's columns.
+
+#### Scenario: ARequirementRowIsAddressable
+- **WHEN** a table declares a row with `id`, `ref` and `kind` of `requirement`
+- **THEN** the row is validated, presented with its kind, and recovered with its identity unchanged
+
+#### Scenario: DuplicateRowIdsAreRejected
+- **WHEN** two rows of the same document declare the same `id`
+- **THEN** the envelope is rejected, naming the repeated identifier
+
+#### Scenario: ATypedRowStillAlignsToItsColumns
+- **WHEN** a row declaring an identity carries more or fewer cells than the table declares columns
+- **THEN** it is rejected, naming the row, the count of cells and the count of columns
+
+#### Scenario: AnEnrichedTableCanBeProposed
+- **WHEN** an enriched table names a target and patches one of its rows by reference
+- **THEN** the proposal is accepted and the row's change is presented for approval
+
+#### Scenario: ARowKindIsNotInferredFromData
+- **WHEN** a table carries a column whose values name row types and no row declares a `kind`
+- **THEN** those values are rendered as data and no row is treated as typed
+
+### Requirement: TraceabilityRelationsBetweenRows
+
+An enriched table MAY declare relations between its rows: each relation declares `from`, `to`, and an
+opaque `kind` — `satisfies`, `verifies`, `derives`, whatever the profile owns — on the same terms as a
+relationship between graph elements. An endpoint SHALL name a row's document-local `id` or an opaque
+`ref`; an endpoint naming neither a declared row nor a `ref` SHALL be rejected, naming the relation and
+the endpoint that does not resolve. A relation MAY point at a `ref` the document does not itself carry,
+so traceability MAY cross documents and authorities.
+
+The presentation SHALL make every declared relation perceptible without a reader hunting for it: a row
+SHALL show the relations it takes part in, in both directions, and the accessible textual equivalent
+SHALL carry the same relations. A rendering carrying relations SHALL provide a key naming every
+relation kind it shows. The application SHALL NOT infer, complete, or act on a relation, and SHALL NOT
+treat an absent relation as a finding about coverage.
+
+#### Scenario: ARequirementIsLinkedToWhatSatisfiesIt
+- **WHEN** a table declares a relation of kind `satisfies` from one requirement row to another
+- **THEN** both rows show the relation, naming its kind and its other end
+
+#### Scenario: ARelationMayLeaveTheDocument
+- **WHEN** a relation names a `ref` no row in the document declares
+- **THEN** it is accepted and presented as pointing outside the document
+
+#### Scenario: AnUnresolvableEndpointIsRejected
+- **WHEN** a relation names a document-local id no row declares
+- **THEN** the envelope is rejected, naming the relation and the endpoint
+
+#### Scenario: TheKeyNamesEveryRelationKindShown
+- **WHEN** a table carrying relations is rendered
+- **THEN** a key names every relation kind present, and the textual equivalent names the same kinds the same way
+
+#### Scenario: MissingTraceabilityIsNotAFinding
+- **WHEN** a requirement row takes part in no relation
+- **THEN** it is presented as it is, and the application states nothing about its coverage
+
+### Requirement: StructuralRowsOrganiseATable
+
+A row of an enriched table MAY be structural rather than data: it declares a heading and an optional
+nesting level, and SHALL NOT be required to align to the table's columns. A structural row SHALL be
+presented as a heading spanning the table, at its declared depth, in document order among the rows it
+introduces. A structural row MAY declare a change role and an identity on the same terms as any other
+row.
+
+Every representation of the table SHALL carry its structural rows: the accessible textual equivalent,
+the data export, and any document the table is written into SHALL preserve each heading, its depth,
+and its position among the rows. A structural row SHALL NOT be counted as a row of data, and SHALL NOT
+be inferred from a data row whose cells happen to be empty or repeated.
+
+#### Scenario: ChaptersDivideARequirementsTable
+- **WHEN** a table declares structural rows between groups of requirement rows
+- **THEN** each is presented as a heading spanning the table, in its declared position and depth
+
+#### Scenario: AStructuralRowNeedsNoCells
+- **WHEN** a structural row declares a heading and no cells
+- **THEN** it is accepted, and the column-alignment rule is not applied to it
+
+#### Scenario: ExportsKeepTheChapters
+- **WHEN** a table carrying structural rows leaves as data or is written into a document
+- **THEN** every heading, its depth and its position among the rows are preserved
+
+#### Scenario: AnEmptyDataRowIsNotAChapter
+- **WHEN** a data row carries empty cells
+- **THEN** it remains a row of data and is not presented as a heading
+
+### Requirement: AnEnrichedTableMayBeProposed
+
+Under the enriched contract a table SHALL be permitted to name a target and declare removals, which
+version 1 refuses. Version 1 called a table a projection because its rows were anonymous tuples:
+there was nothing in one for a change to address. An enriched row carries the two identities every
+other addressable item has, so a change to it addresses a thing rather than a position.
+
+A version 1 table SHALL continue to be refused when it names a target or declares a removal. The
+permission belongs to the enriched contract alone, and a producer who wrote against version 1 SHALL
+find its rule unchanged.
+
+A row SHALL NOT both declare a change role and carry a change. A declared role states what the
+producer observed in the authority it projected and is acted on by nobody; a change states what the
+producer asks for. On one row the two may disagree, and the system SHALL refuse rather than decide
+which prevails. In a proposal the role of a row SHALL be derived from the proposal itself — a
+referenced row carrying a change is a change, a row carrying no reference is an addition, and a row
+named in `removals` is a removal.
+
+#### Scenario: AnEnrichedTableCarriesATargetAndRevision
+- **WHEN** an enriched table names the artifact it was extracted from and the revision it was read at
+- **THEN** it is accepted as a proposal, and the revision is carried through approval unchanged
+
+#### Scenario: AVersionOneTableStillCannotBeProposed
+- **WHEN** a version 1 table names a target or declares a removal
+- **THEN** it is rejected, as it was before the enriched contract existed
+
+#### Scenario: ARowThatReportsAndAsksAtOnceIsRefused
+- **WHEN** a row declares a change role and also carries a change
+- **THEN** the envelope is rejected, naming that row
+
+#### Scenario: AProposedRowIsMarkedFromWhatItProposes
+- **WHEN** an enriched proposal changes one row, adds another, and names a third among its removals
+- **THEN** each is marked as a change, an addition and a removal without any of them declaring a role

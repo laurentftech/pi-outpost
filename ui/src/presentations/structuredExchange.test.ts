@@ -10,6 +10,7 @@ import {
   validStructuredExchange,
 } from "./structuredExchange";
 import { STRUCTURED_EXCHANGE_SCHEMA_V1 as S } from "@pi-outpost/shared/structured-exchange";
+import { STRUCTURED_EXCHANGE_BYTES_CEILING_ANY } from "@pi-outpost/shared/structured-exchange/bounds";
 
 const graph = (over: Record<string, unknown> = {}) => ({
   schema: S,
@@ -49,7 +50,12 @@ describe("readStructuredExchange", () => {
     // The browser has to apply the byte bound too: routing straight to a parse
     // let an oversized result materialise, which is the one thing the bound exists
     // to prevent.
-    const oversized = `{"schema":"${S}","junk":"${"x".repeat(5_000_000)}`;
+    //
+    // Sized from the ceiling rather than a number written here: the gate before the
+    // parse applies the widest any supported version allows, so a literal chosen
+    // when there was one version silently stopped being oversized when there were
+    // two, and this test went on passing for the wrong reason.
+    const oversized = `{"schema":"${S}","junk":"${"x".repeat(STRUCTURED_EXCHANGE_BYTES_CEILING_ANY + 1)}`;
 
     const verdict = readStructuredExchange(oversized);
 

@@ -18,7 +18,7 @@
 import type { StructuredExchangeLimits } from "./structuredExchangeBounds.ts";
 import { checkDocumentBytes } from "./structuredExchangeBounds.ts";
 import { parseStructuredExchange, type StructuredExchangeSchemaCheck } from "./structuredExchangeParse.ts";
-import { STRUCTURED_EXCHANGE_SCHEMA_V1, type ValidatedStructuredExchange } from "./structuredExchange.ts";
+import { supportedSchemaOf, type ValidatedStructuredExchange } from "./structuredExchange.ts";
 import type { StructuredExchangeIssue } from "./structuredExchangeValidation.ts";
 
 /**
@@ -48,7 +48,7 @@ export function declaredStructuredExchangeSchema(serialized: string): string | u
 }
 
 /** Same question, for a caller that already parsed. */
-function declaredSchemaOf(document: unknown): string | undefined {
+export function declaredSchemaOf(document: unknown): string | undefined {
   if (typeof document !== "object" || document === null || Array.isArray(document)) return undefined;
   const schema = (document as { schema?: unknown }).schema;
   if (typeof schema !== "string" || !schema.startsWith(STRUCTURED_EXCHANGE_SCHEMA_PREFIX)) return undefined;
@@ -102,11 +102,29 @@ export function readStructuredExchangeDocument(
 
   const schema = declaredSchemaOf(document);
   if (schema === undefined) return { status: "not-a-document", why: "undeclared" };
-  // A version we do not implement is not validated against the one we do: the
-  // issues that would come back describe a contract the document never claimed
-  // to satisfy, and reporting them would blame a producer who did nothing wrong.
-  if (schema !== STRUCTURED_EXCHANGE_SCHEMA_V1) return { status: "unsupported-version", schema };
+  // A version we do not implement is not validated against one we do: the issues
+  // that would come back describe a contract the document never claimed to satisfy,
+  // and reporting them would blame a producer who did nothing wrong.
+  //
+  // Every version this build *does* implement goes through — the check below
+  // dispatches on the same declaration. Left as "version 1 only", publishing the
+  // enriched contract would have made a valid enriched document unreadable by
+  // everything that reads a file rather than a tool result: the viewer, and the
+  // figure a report embeds.
+  if (supportedSchemaOf(schema) === undefined) return { status: "unsupported-version", schema };
 
   const verdict = parseStructuredExchange(document, checkSchema);
-  return verdict.valid ? { status: "valid", envelope: verdict.envelope } : { status: "invalid", issues: verdict.issues };
+  if (!verdict.valid) return { status: "invalid", issues: verdict.issues };
+
+  // The version's own byte ceiling, now that the document has declared one. The
+  // gate above could only apply the widest of them, since reading the declaration
+  // is the parse it exists to avoid — and without this the file path and the tool
+  // path answered differently about the same document: a five-megabyte version 1
+  // table opened in the viewer while the tool refused it for passing version 1's
+  // published four. One document, two answers, and the looser one relaxing a
+  // ceiling version 1 producers were given.
+  const pastItsVersion = checkDocumentBytes(serialized, limits, verdict.envelope.schema);
+  if (pastItsVersion !== undefined) return { status: "too-large", issue: pastItsVersion };
+
+  return { status: "valid", envelope: verdict.envelope };
 }

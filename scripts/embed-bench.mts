@@ -16,7 +16,7 @@ import { createServer } from "node:http";
 import { readFile, realpath, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { SEEDED_MESSAGES } from "../e2e/fixtures/seeded-transcript";
+import { SEEDED_MESSAGES, VERIFICATION_REPORT } from "../e2e/fixtures/seeded-transcript";
 import { createStructuredExchangeFigureToolDefinition } from "../server/src/structuredExchangeFigureTool.ts";
 // @ts-expect-error -- .mjs harness, no types
 import { makeWorkspace, startServer } from "../server/test/harness.mjs";
@@ -201,7 +201,15 @@ const plain = await startServer(
   { env: onlyOneFakeProvider() },
 );
 
-const diagramRoot = await makeWorkspace({ "readme.md": "# diagrams\n" });
+const diagramRoot = await makeWorkspace({
+  "readme.md": "# diagrams\n",
+  // The artifact the seeded proposal binds its approval to, and the file its
+  // locations point at. Both have to exist here or the reader is driving a
+  // document whose links all lead nowhere — which proves only that nothing
+  // crashed.
+  "evidence/brake-distance.txt": VERIFICATION_REPORT,
+  "notes/braking.md": "# Braking\n\nThe vehicle shall stop within 40 m from 100 km/h.\n",
+});
 const fakeConfig = path.join(diagramRoot, "fake-rpc.json");
 await writeFile(fakeConfig, JSON.stringify({ messages: SEEDED_MESSAGES, state: { sessionId: "diagrams-1" } }));
 const diagrams = await startServer(

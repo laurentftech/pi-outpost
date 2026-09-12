@@ -18,10 +18,13 @@
 import dagre from "@dagrejs/dagre";
 import {
   readTableRow,
+  type StructuredArtifact,
+  type StructuredAttributeValue,
   type StructuredContainer,
   type StructuredElement,
   type StructuredEdge,
   type StructuredGraphData,
+  type StructuredLocation,
   type StructuredMessage,
   type StructuredSequenceData,
   type StructuredTableCell,
@@ -57,6 +60,33 @@ export function elementRole(element: StructuredElement, isProposal: boolean): Ch
 }
 
 /**
+ * The same rule for a row of a proposed table.
+ *
+ * A row may not declare a role and carry a change at once — the contract refuses
+ * that, because a report and an instruction on one row can disagree. So in a
+ * proposal the mark is *derived* from what the row proposes, exactly as an
+ * element's is, and a reader who has learnt what an addition looks like in a
+ * diagram recognises one in a requirements table without learning a second
+ * vocabulary.
+ *
+ * A row that declared a role in a document proposing nothing keeps it: that is the
+ * other use, a table reporting a change made elsewhere, and nothing here is derived
+ * for it.
+ */
+export function proposedRowRole(
+  row: { ref?: string; set?: unknown; heading?: string },
+  isProposal: boolean,
+): StructuredTableRowRole | undefined {
+  if (!isProposal) return undefined;
+  // A chapter is not proposed: it organises the rows around it, and marking every
+  // heading of an extracted specification as an addition would drown the handful of
+  // rows that really are new.
+  if (row.heading !== undefined) return undefined;
+  if (row.ref === undefined) return "added";
+  return row.set === undefined ? "context" : "changed";
+}
+
+/**
  * The same rule for a relationship. Its endpoints are identity and its other
  * declared fields describe it; only `set` states an intention.
  */
@@ -82,13 +112,22 @@ export interface FieldChange {
 }
 
 export function fieldChanges(subject: StructuredElement | StructuredEdge | StructuredMessage): FieldChange[] {
-  const set = subject.set as Record<string, string> | undefined;
+  const set = subject.set as Record<string, unknown> | undefined;
   if (set === undefined) return [];
   const described = subject as unknown as Record<string, unknown>;
-  return Object.entries(set).map(([field, to]) => {
-    const from = described[field];
-    return { field, ...(typeof from === "string" ? { from } : {}), to };
-  });
+  return Object.entries(set)
+    // The enriched contract puts attribute changes in `set` too, as a map and a
+    // list. They are not fields whose value is a string, and stringifying them put
+    // `attributes: [object Object]` inside the box of a diagram someone was about
+    // to approve — and `removeAttributes: draft`, which reads as *setting* a field
+    // called removeAttributes. They have their own rows in the detail panel and
+    // their own lines in the textual equivalent; a picture of structure shows
+    // neither, and showing nothing is the honest answer here.
+    .filter(([field]) => field !== "attributes" && field !== "removeAttributes")
+    .map(([field, to]) => {
+      const from = described[field];
+      return { field, ...(typeof from === "string" ? { from } : {}), to: String(to) };
+    });
 }
 
 /** Human wording for a role, used in the approval view and its textual equivalent. */
@@ -378,6 +417,31 @@ export function layoutGraph(
  * A reader on the text equivalent is reading it *because* they cannot see the
  * diagram. Anything only the diagram says is, for them, not said at all.
  */
+/**
+ * The enrichment an item carries, flattened for a reader and interpreted by nobody.
+ *
+ * Four separate things that a reader must not confuse, which is why they are four
+ * fields rather than one merged map:
+ *
+ * - `attributes` — what the producer says is true of this item now. Description.
+ * - `expectations` — what the producer believes the authority holds, for the
+ *   authority to check before applying. A condition, not an established fact.
+ * - `assignments` — what the proposal asks to become true. An instruction.
+ * - `removedAttributes` — what the proposal asks to unset. Also an instruction, and
+ *   separate from `assignments` because `null` is an ordinary value here.
+ *
+ * Merged, a reader approving a proposal could not tell what they were approving
+ * from what was merely shown to them for context.
+ */
+export type DescribedEnrichment = {
+  attributes: [string, StructuredAttributeValue][];
+  expectations: [string, StructuredAttributeValue][];
+  assignments: [string, StructuredAttributeValue][];
+  removedAttributes: string[];
+  locations: StructuredLocation[];
+  artifacts: StructuredArtifact[];
+};
+
 export type DescribedThing = {
   id: string;
   label: string;
@@ -386,7 +450,7 @@ export type DescribedThing = {
   changes: FieldChange[];
   /** The container it belongs to, by identifier, when it names one. */
   container?: string;
-};
+} & DescribedEnrichment;
 
 export type DescribedLink = {
   from: string;
@@ -399,6 +463,41 @@ export type DescribedLink = {
   role: ChangeRole;
   changes: FieldChange[];
   isLoop: boolean;
+} & DescribedEnrichment;
+
+/**
+ * A row of a table, as a reader meets it.
+ *
+ * `heading` makes it a chapter rather than data: it spans the table instead of
+ * filling its columns, and every representation has to keep it in place, because a
+ * requirements document whose sections vanish reads as one long undifferentiated
+ * list.
+ */
+export type DescribedRow = {
+  cells: StructuredTableCell[];
+  role?: StructuredTableRowRole;
+  /** Present on a structural row. Data rows never carry one. */
+  heading?: string;
+  depth?: number;
+  id?: string;
+  ref?: string;
+  kind?: string;
+  changes: FieldChange[];
+} & DescribedEnrichment;
+
+/** Traceability between rows, with each end resolved as far as this document can. */
+export type DescribedTrace = {
+  kind: string;
+  label?: string;
+  /** The row this end names, when it is one this document declares. */
+  fromRow?: string;
+  toRow?: string;
+  /** The identifier an end carries when it points outside this document. */
+  fromRef?: string;
+  toRef?: string;
+  /** What a reader should see for each end: a row's own text, or the bare reference. */
+  fromLabel: string;
+  toLabel: string;
 };
 
 export type StructureDescription = {
@@ -408,34 +507,162 @@ export type StructureDescription = {
   things: DescribedThing[];
   links: DescribedLink[];
   columns?: string[];
-  /** A row's cells, and what it says it plays — `undefined` in a table that reports no change. */
-  rows?: { cells: StructuredTableCell[]; role?: StructuredTableRowRole }[];
+  rows?: DescribedRow[];
   /** Every declared container, including one no member names. */
   containers: { id: string; label: string }[];
   removals: { type: string; ref: string }[];
+  /** The vocabulary that owns this document's kinds and attribute names, if it names one. */
+  profile?: string;
+  /** What a proposal targets, and the revision it was prepared against. */
+  target?: { ref: string; revision?: string };
+  /** Artifact links carried by the document itself rather than by one of its items. */
+  artifacts: StructuredArtifact[];
+  /** Relations between the rows of a table. Empty for every other kind. */
+  traces: DescribedTrace[];
 };
+
+
+/** Nothing carried, for an item the enriched contract has no extra word about. */
+const NO_ENRICHMENT: DescribedEnrichment = {
+  attributes: [],
+  expectations: [],
+  assignments: [],
+  removedAttributes: [],
+  locations: [],
+  artifacts: [],
+};
+
+/**
+ * The enrichment an item carries, in the document's own order.
+ *
+ * Order is the producer's, never sorted: an attribute list a reader compares
+ * between two renderings has to come back the same way round, and the producer's
+ * order is the only one both sides can agree on without inventing a rule.
+ */
+function describeEnrichment(item: unknown): DescribedEnrichment {
+  if (item === null || typeof item !== "object") return NO_ENRICHMENT;
+  const carrier = item as Record<string, unknown>;
+  const entriesOf = (value: unknown): [string, StructuredAttributeValue][] =>
+    value !== null && typeof value === "object" && !Array.isArray(value)
+      ? (Object.entries(value as Record<string, StructuredAttributeValue>))
+      : [];
+  const set = carrier.set as Record<string, unknown> | undefined;
+  const removed = set?.removeAttributes;
+  return {
+    attributes: entriesOf(carrier.attributes),
+    expectations: entriesOf((carrier.expect as Record<string, unknown> | undefined)?.attributes),
+    assignments: entriesOf(set?.attributes),
+    removedAttributes: Array.isArray(removed) ? removed.filter((name): name is string => typeof name === "string") : [],
+    locations: Array.isArray(carrier.locations) ? (carrier.locations as StructuredLocation[]) : [],
+    artifacts: Array.isArray(carrier.artifacts) ? (carrier.artifacts as StructuredArtifact[]) : [],
+  };
+}
+
+/** What a proposal targets. Version 1 states a bare reference; version 2 an object. */
+function describeTarget(envelope: ValidatedStructuredExchange): { ref: string; revision?: string } | undefined {
+  const target = (envelope as { target?: unknown }).target;
+  if (typeof target === "string") return { ref: target };
+  if (target === null || typeof target !== "object") return undefined;
+  const named = target as { ref?: unknown; revision?: unknown };
+  if (typeof named.ref !== "string") return undefined;
+  return { ref: named.ref, ...(typeof named.revision === "string" ? { revision: named.revision } : {}) };
+}
 
 export function describeStructure(
   envelope: ValidatedStructuredExchange,
   isProposal: boolean,
 ): StructureDescription {
   const removals = (envelope.removals ?? []).map((removal) => ({ type: removal.type, ref: removal.ref }));
+  const profile = (envelope as { profile?: unknown }).profile;
+  const documentArtifacts = (envelope as { artifacts?: unknown }).artifacts;
+  const shared = {
+    ...(typeof profile === "string" ? { profile } : {}),
+    ...((): { target?: { ref: string; revision?: string } } => {
+      const target = describeTarget(envelope);
+      return target === undefined ? {} : { target };
+    })(),
+    artifacts: Array.isArray(documentArtifacts) ? (documentArtifacts as StructuredArtifact[]) : [],
+  };
 
   if (envelope.kind === "table") {
     const data = envelope.data as StructuredTableData;
     const declaresRoles = tableDeclaresRoles(data);
+    const rows: DescribedRow[] = data.rows.map((row) => {
+      const carrierRow = Array.isArray(row) ? {} : (row as unknown as Record<string, unknown>);
+      // The row's *own* declaration, not what `tableRowRole` infers: that function
+      // reads any undeclared row as context once any row declares a role, so asking
+      // it first meant a single declared row silently turned every derived mark in a
+      // proposal back into context — the change shown as unchanged, which is the one
+      // reading this view must never produce.
+      const ownRole = Array.isArray(row) ? undefined : (row as { role?: StructuredTableRowRole }).role;
+      const role =
+        ownRole ??
+        proposedRowRole(
+          {
+            ref: typeof carrierRow.ref === "string" ? carrierRow.ref : undefined,
+            set: carrierRow.set,
+            heading: typeof carrierRow.heading === "string" ? carrierRow.heading : undefined,
+          },
+          isProposal,
+        ) ??
+        tableRowRole(row, declaresRoles);
+      const { cells, heading } = readTableRow(row);
+      const carrier = Array.isArray(row) ? {} : (row as unknown as Record<string, unknown>);
+      return {
+        cells,
+        ...(role === undefined ? {} : { role }),
+        ...(heading === undefined ? {} : { heading }),
+        ...(typeof carrier.depth === "number" ? { depth: carrier.depth } : {}),
+        ...(typeof carrier.id === "string" ? { id: carrier.id } : {}),
+        ...(typeof carrier.ref === "string" ? { ref: carrier.ref } : {}),
+        ...(typeof carrier.kind === "string" ? { kind: carrier.kind } : {}),
+        changes: fieldChanges(carrier as never),
+        ...describeEnrichment(row),
+      };
+    });
+
+    // A row a relation can point at, and the text a reader should see for that end.
+    const rowText = new Map<string, string>();
+    for (const row of rows) {
+      if (row.id === undefined) continue;
+      const first = row.cells.find((cell) => typeof cell === "string" && cell !== "");
+      rowText.set(row.id, (typeof first === "string" ? first : undefined) ?? row.ref ?? row.id);
+    }
+    const declaredRelations = (data as { relations?: unknown }).relations;
+    const traces: DescribedTrace[] = (Array.isArray(declaredRelations) ? declaredRelations : []).map((relation) => {
+      const link = relation as { from?: { id?: string; ref?: string }; to?: { id?: string; ref?: string }; kind?: string; label?: string };
+      const end = (side: { id?: string; ref?: string } | undefined) => {
+        const id = typeof side?.id === "string" ? side.id : undefined;
+        const ref = typeof side?.ref === "string" ? side.ref : undefined;
+        // A row's own text when we have it, the bare reference when the end leaves
+        // the document — never an invented label for something we cannot see.
+        return { id, ref, label: (id !== undefined ? rowText.get(id) : undefined) ?? ref ?? id ?? "" };
+      };
+      const from = end(link.from);
+      const to = end(link.to);
+      return {
+        kind: link.kind ?? "",
+        ...(typeof link.label === "string" ? { label: link.label } : {}),
+        ...(from.id === undefined ? {} : { fromRow: from.id }),
+        ...(to.id === undefined ? {} : { toRow: to.id }),
+        ...(from.ref === undefined ? {} : { fromRef: from.ref }),
+        ...(to.ref === undefined ? {} : { toRef: to.ref }),
+        fromLabel: from.label,
+        toLabel: to.label,
+      };
+    });
+
     return {
       thingNoun: "column",
       linkNoun: "row",
       things: [],
       links: [],
       columns: data.columns,
-      rows: data.rows.map((row) => {
-        const role = tableRowRole(row, declaresRoles);
-        return { cells: readTableRow(row).cells, ...(role === undefined ? {} : { role }) };
-      }),
+      rows,
       containers: [],
       removals,
+      traces,
+      ...shared,
     };
   }
 
@@ -460,6 +687,7 @@ export function describeStructure(
       role: elementRole(thing, isProposal),
       changes: fieldChanges(thing),
       container: thing.container,
+      ...describeEnrichment(thing),
     })),
     links: connections.map((link) => ({
       from: link.from,
@@ -473,11 +701,14 @@ export function describeStructure(
       role: relationshipRole(link, isProposal),
       changes: fieldChanges(link),
       isLoop: link.from === link.to,
+      ...describeEnrichment(link),
     })),
     containers: (isGraph
       ? (envelope.data as StructuredGraphData).containers
       : (envelope.data as StructuredSequenceData).containers) ?? [],
     removals,
+    traces: [],
+    ...shared,
   };
 }
 

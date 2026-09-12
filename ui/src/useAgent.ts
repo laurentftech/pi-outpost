@@ -1932,11 +1932,17 @@ export function useAgent(serverUrl = "", explicitToken?: string, embedded = fals
     listDirectory: (path: string) => requestDirectory(path),
     /** Re-list every directory the tree is holding (the tree's manual refresh). */
     refreshFileTree,
-    /** Open a file's read-only preview. */
-    readFile: (path: string) => {
+    /**
+     * Open a file's read-only preview.
+     *
+     * `sha256` is passed when the path came from an artifact link: the server hashes
+     * the bytes where it reads them and refuses content that is not what the
+     * document was approved against, rather than showing it.
+     */
+    readFile: (path: string, sha256?: string) => {
       const requestId = `file:${crypto.randomUUID()}`;
       dispatch({ type: "file_read_started", path, requestId });
-      sendMessage({ type: "read_file", path, requestId });
+      sendMessage({ type: "read_file", path, requestId, ...(sha256 === undefined ? {} : { sha256 }) });
     },
     closeFilePreview: () => dispatch({ type: "close_file_preview" }),
     /** Save the editor buffer back to disk; answered by file_written or a "write:" file_browser_error. */

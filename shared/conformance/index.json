@@ -56,12 +56,30 @@
     },
     {
       "file": "valid/table-rows-partly-roled.json"
+    },
+    {
+      "file": "valid/v2-graph-minimal.json"
+    },
+    {
+      "file": "valid/v2-profile-and-attributes.json"
+    },
+    {
+      "file": "valid/v2-requirements-with-chapters-and-traceability.json"
+    },
+    {
+      "file": "valid/v2-proposal-with-revision-and-expectations.json"
+    },
+    {
+      "file": "valid/v2-locations-and-artifacts.json"
+    },
+    {
+      "file": "valid/v2-table-at-the-heading-depth-ceiling.json"
     }
   ],
   "invalid": [
     {
       "file": "invalid/unknown-version.json",
-      "expectedRule": "schema/const"
+      "expectedRule": "unsupported-version"
     },
     {
       "file": "invalid/undeclared-property.json",
@@ -178,6 +196,38 @@
     {
       "file": "invalid/table-row-object-column-mismatch.json",
       "expectedRule": "row-column-mismatch"
+    },
+    {
+      "file": "invalid/v2-nested-list-attribute.json",
+      "expectedRule": "schema/additionalProperties"
+    },
+    {
+      "file": "invalid/v2-attribute-object-that-is-not-a-reference.json",
+      "expectedRule": "schema/additionalProperties"
+    },
+    {
+      "file": "invalid/v2-artifact-without-a-digest.json",
+      "expectedRule": "schema/required"
+    },
+    {
+      "file": "invalid/v2-artifact-digest-not-sha256.json",
+      "expectedRule": "schema/pattern"
+    },
+    {
+      "file": "invalid/v2-heading-deeper-than-headings-go.json",
+      "expectedRule": "schema/maximum"
+    },
+    {
+      "file": "invalid/v2-heading-carrying-cells.json",
+      "expectedRule": "schema/type"
+    },
+    {
+      "file": "invalid/v2-relation-endpoint-naming-both.json",
+      "expectedRule": "schema/maxProperties"
+    },
+    {
+      "file": "invalid/v2-relation-without-a-kind.json",
+      "expectedRule": "schema/required"
     }
   ]
 }

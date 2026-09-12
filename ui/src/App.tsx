@@ -636,9 +636,9 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
   const toolActions = useMemo(
     () =>
       createActionDispatch({
-        readFile: (path) => {
+        readFile: (path, sha256) => {
           setDiffOnOpen(false);
-          readFile(path);
+          readFile(path, sha256);
         },
         fetchGitFileHistory: (path) => fetchGitFileHistory(path),
         // Same route the tree's diff badge takes: open the viewer already on the

@@ -1,6 +1,7 @@
 import type { GitUnavailable, OutcomeEntry, OutcomeSection, WorkspaceOutcome, WorkPlan, WorkPlanResource } from "@pi-outpost/shared";
 import { outcomeVerification, workPlanProgress } from "@pi-outpost/shared/outcome";
 import { gitStatus, repoFor, type GitRepo, type GitStatusResult } from "./git.ts";
+import { resourceTargetFor } from "@pi-outpost/shared/resource-target";
 
 export interface OutcomeContext {
   workspaceRoot: string;
@@ -42,19 +43,11 @@ export async function composeWorkspaceOutcome(context: OutcomeContext, contribut
   return { workspaceRoot: context.workspaceRoot, sessionId: context.sessionId, sections };
 }
 
-function relativeWorkspacePath(uri: string): string | null {
-  const candidate = uri.startsWith("workspace:") ? uri.slice("workspace:".length) : !/^[a-z][a-z0-9+.-]*:/i.test(uri) ? uri : null;
-  if (candidate === null || candidate === "" || /^(?:[\\/]|[a-z]:[\\/])/i.test(candidate)) return null;
-  const normalized = candidate.replaceAll("\\", "/");
-  if (normalized.split("/").includes("..")) return null;
-  return normalized;
-}
-
 export function outcomeTargetForResource(resource: WorkPlanResource): OutcomeEntry["target"] {
-  const workspacePath = relativeWorkspacePath(resource.uri);
-  if (workspacePath !== null) return { kind: "workspace-file", path: workspacePath };
-  if (/^https?:\/\//i.test(resource.uri)) return { kind: "external-url", url: resource.uri };
-  return undefined;
+  // The application's one answer to "may a reader be taken there", shared with the
+  // structured exchange's locations and artifact links. Two copies of this rule
+  // drift, and the copy that drifts open is a navigation nobody sanctioned.
+  return resourceTargetFor(resource.uri);
 }
 
 export function workPlanContributor(plan: WorkPlan | null): OutcomeContributor {

@@ -427,7 +427,7 @@ in [`pi-outpost.config.example.json`](pi-outpost.config.example.json).
 |-----|--------|
 | `pdf.maxBytes` | Largest PDF the viewer may load and `pdf_extract` may read (default `26214400` — 25 MB). Every other file keeps the 1 MB limit |
 | `docx.maxBytes` / `xlsx.maxBytes` / `pptx.maxBytes` | The same ceiling, per format, for the Office extractors |
-| `structuredExchange.maxBytes` | Largest structured-exchange document the viewer may open (default `4000000`, the contract's own ceiling for schema version 1). Recognition is by the document's declared `schema`, never by its extension, so other JSON keeps the 1 MB preview limit. A larger value is clamped to the contract's |
+| `structuredExchange.maxBytes` | Largest structured-exchange document the viewer may open (default `8000000`, the widest ceiling any supported schema version declares). Each version's own ceiling is applied after the document says which one it claims, so a version 1 document is still bounded at its published 4 MB. Recognition is by the document's declared `schema`, never by its extension, so other JSON keeps the 1 MB preview limit. A larger value is clamped to the contract's |
 
 ### Server and interface
 

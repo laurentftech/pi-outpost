@@ -1,0 +1,71 @@
+{
+  "schema": "urn:structured-exchange:2",
+  "kind": "table",
+  "profile": "acme/requirements",
+  "data": {
+    "columns": [
+      "id",
+      "requirement",
+      "status"
+    ],
+    "rows": [
+      {
+        "heading": "1. Braking",
+        "depth": 1
+      },
+      {
+        "id": "r1",
+        "ref": "REQ-1",
+        "kind": "requirement",
+        "cells": [
+          "REQ-1",
+          "Stop within 40 m",
+          "approved"
+        ]
+      },
+      {
+        "heading": "1.1 Sensing",
+        "depth": 2
+      },
+      {
+        "id": "r2",
+        "ref": "REQ-2",
+        "kind": "requirement",
+        "cells": [
+          "REQ-2",
+          "Read wheel speed at 100 Hz",
+          "approved"
+        ],
+        "attributes": {
+          "verification": "test"
+        }
+      },
+      [
+        "REQ-3",
+        "A row that declares nothing is still a row",
+        "draft"
+      ]
+    ],
+    "relations": [
+      {
+        "from": {
+          "id": "r1"
+        },
+        "to": {
+          "id": "r2"
+        },
+        "kind": "derives"
+      },
+      {
+        "from": {
+          "id": "r2"
+        },
+        "to": {
+          "ref": "TEST-9"
+        },
+        "kind": "verifiedBy",
+        "label": "wheel speed bench test"
+      }
+    ]
+  }
+}

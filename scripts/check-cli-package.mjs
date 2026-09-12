@@ -84,4 +84,32 @@ if (missing.length > 0) {
   );
 }
 
-console.log(`[check-cli-package] ok — the tarball carries ${required.length} build inputs`);
+/**
+ * What a producer built elsewhere reads, and why the package is not a contract without it.
+ *
+ * The schema is inlined in the bundle, so validation works whether or not these ship —
+ * which is exactly why their absence is invisible here and total for the producer: they
+ * would have a validator that judges their document and nothing that says what to send.
+ * Both versions ship, because version 1 remains supported and a producer targeting it
+ * must keep finding it.
+ */
+const contract = [
+  ["dist/contract/schemas/structured-exchange-1.json", "the version 1 contract, still supported"],
+  ["dist/contract/schemas/structured-exchange-2.json", "the enriched contract"],
+  ["dist/contract/conformance/index.json", "the conformance suite's manifest — the executable half of the contract"],
+  ["dist/contract/validate-structured-exchange.mjs", "the reference validator, runnable without a checkout"],
+];
+
+const absent = contract.filter(([relative]) => !packed.has(relative));
+if (absent.length > 0) {
+  fail(
+    "the tarball is missing what a producer needs to write against the contract:",
+    absent.map(([relative, why]) => `  ${relative} — ${why}`).join("\n") +
+      `\n\nRun \`npm run build --workspace cli\`, then re-check.` +
+      `\nPublished as-is, the package validates a producer's document and cannot tell them what shape it should have.`,
+  );
+}
+
+console.log(
+  `[check-cli-package] ok — the tarball carries ${required.length} build inputs and ${contract.length} contract files`,
+);

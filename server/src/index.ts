@@ -3209,9 +3209,25 @@ function documentIssuesFor(content: string): { rule: string; path: string; messa
 }
 
 /** File-browser sidebar: read a file for preview, confined to workspace.browserRoot. */
-async function handleReadFile(workspace: Workspace, socket: WebSocket, filePath: string, requestId: string): Promise<void> {
+async function handleReadFile(
+  workspace: Workspace,
+  socket: WebSocket,
+  filePath: string,
+  requestId: string,
+  /** The digest an artifact link bound its approval to, when the path came from one. */
+  expectedDigest?: string,
+): Promise<void> {
   try {
-    const { content, size, mtimeMs } = await readFileForPreview(workspace.browserRoot, filePath, config.structuredExchange.maxBytes);
+    // The digest travels into the read rather than being checked beside it: the
+    // bytes hashed have to be the bytes served, and the file limit that applies has
+    // to be the document's own — a separate raw read charged an artifact the 1 MB
+    // preview cap, refusing one the file tree would have opened.
+    const { content, size, mtimeMs } = await readFileForPreview(
+      workspace.browserRoot,
+      filePath,
+      config.structuredExchange.maxBytes,
+      expectedDigest,
+    );
     const documentIssues = documentIssuesFor(content);
     send(socket, {
       type: "file_content",
@@ -4150,10 +4166,17 @@ function handleClientMessage(socket: WebSocket, raw: string): void {
       if (typeof message.path !== "string" || typeof message.requestId !== "string") return;
       handleListDirectory(workspace, socket, message.path, message.requestId).catch(reportError);
       break;
-    case "read_file":
+    case "read_file": {
       if (typeof message.path !== "string" || typeof message.requestId !== "string") return;
-      handleReadFile(workspace, socket, message.path, message.requestId).catch(reportError);
+      // A digest only means something in the shape the contract publishes. Anything
+      // else is dropped rather than compared: a malformed one would never match, and
+      // refusing every read against it would look like a corrupt file.
+      const expected = typeof message.sha256 === "string" && /^sha256:[0-9a-f]{64}$/.test(message.sha256)
+        ? message.sha256
+        : undefined;
+      handleReadFile(workspace, socket, message.path, message.requestId, expected).catch(reportError);
       break;
+    }
     case "write_file":
       if (
         typeof message.path !== "string" ||

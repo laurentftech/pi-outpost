@@ -316,6 +316,11 @@ test.describe("diagrams in the widget", () => {
     const diagram = page.locator("#widget").locator("svg[id^='mermaid-']").first();
     await expect(diagram).toBeVisible();
 
+    // Polled rather than read straight after `toBeVisible`: mermaid renders
+    // asynchronously, so a diagram can be visible and not yet laid out — and
+    // `boundingBox()` answers null for the moment in between. Read as a fact, that
+    // is a null-dereference in CI and three green runs locally.
+    await expect.poll(async () => (await diagram.boundingBox())?.width ?? 0).toBeGreaterThan(0);
     const inlineWidth = (await diagram.boundingBox())!.width;
 
     await page.getByRole("button", { name: /Show diagram at full size/ }).click();
@@ -469,9 +474,10 @@ test.describe("diagrams in the widget", () => {
     expect(painted.every((row) => row.background !== "rgba(0, 0, 0, 0)")).toBe(true);
     expect(painted[2]!.decoration).toContain("line-through");
 
-    // The key is the filter, as it is for a diagram
-    const key = page.getByTestId("table-role-key").last();
-    await key.getByRole("button", { name: "removed" }).click();
+    // The key is the filter, as it is for a diagram — on the document this test is
+    // about, named by its content rather than by its position among the others.
+    const roled = page.getByTestId("structured-document").filter({ hasText: "REQ-005" });
+    await roled.getByTestId("table-role-key").getByRole("button", { name: "removed" }).click();
 
     const afterHiding = await page.evaluate(() => {
       const shadow = document.querySelector("#widget")!.shadowRoot!;
@@ -497,9 +503,10 @@ test.describe("diagrams in the widget", () => {
     await openHost(page, { ...withDiagrams(), theme: "light" });
     await expect(page.getByTitle("connected")).toBeVisible();
 
-    // The last of the two tables in the transcript is the one that reports roles
+    // The document that reports roles, named by a requirement only it carries.
+    const roled = page.getByTestId("structured-document").filter({ hasText: "REQ-005" });
     const csvDownload = page.waitForEvent("download");
-    await page.getByRole("button", { name: /download CSV/ }).last().click();
+    await roled.getByRole("button", { name: /download CSV/ }).click();
     const csv = await csvDownload;
     const csvText = await (await csv.createReadStream()).toArray();
     const text = Buffer.concat(csvText).toString("utf8");
@@ -513,7 +520,7 @@ test.describe("diagrams in the widget", () => {
     expect(text).toContain('"The system shall log every actuation, with a monotonic timestamp.",draft,added');
 
     const xlsxDownload = page.waitForEvent("download");
-    await page.getByRole("button", { name: /download XLSX/ }).last().click();
+    await roled.getByRole("button", { name: /download XLSX/ }).click();
     const xlsx = await xlsxDownload;
     const bytes = Buffer.concat(await (await xlsx.createReadStream()).toArray());
 
@@ -531,11 +538,12 @@ test.describe("diagrams in the widget", () => {
     await openHost(page, { ...withDiagrams(), theme: "light" });
     await expect(page.getByTitle("connected")).toBeVisible();
 
-    await page.getByTestId("table-role-key").last().getByRole("button", { name: "removed" }).click();
-    await expect(page.getByTestId("table-export-narrowed").last()).toContainText("1 rows fewer");
+    const roled = page.getByTestId("structured-document").filter({ hasText: "REQ-005" });
+    await roled.getByTestId("table-role-key").getByRole("button", { name: "removed" }).click();
+    await expect(roled.getByTestId("table-export-narrowed")).toContainText("1 rows fewer");
 
     const download = page.waitForEvent("download");
-    await page.getByRole("button", { name: /download CSV/ }).last().click();
+    await roled.getByRole("button", { name: /download CSV/ }).click();
     const text = Buffer.concat(await (await (await download).createReadStream()).toArray()).toString("utf8");
 
     expect(text).toContain("REQ-005");

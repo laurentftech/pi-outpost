@@ -20,6 +20,17 @@ const plain: StructuredTableData = {
   ],
 };
 
+/** A specification: chapters, and the requirements that sit under them. */
+const chaptered: StructuredTableData = {
+  columns: ["ID", "Requirement"],
+  rows: [
+    { heading: "1. Braking", depth: 1 },
+    { id: "r1", ref: "REQ-1", kind: "requirement", cells: ["REQ-1", "Stop within 40 m."] },
+    { heading: "1.1 Sensing", depth: 2 },
+    { id: "r2", ref: "REQ-2", kind: "requirement", cells: ["REQ-2", "Read wheel speed."] },
+  ] as unknown as StructuredTableData["rows"],
+};
+
 const nothingHidden: ReadonlySet<string> = new Set();
 
 describe("what an export carries", () => {
@@ -41,6 +52,54 @@ describe("what an export carries", () => {
     const exported = tableExport(roled, new Set([filterKey("role", "removed")]));
     expect(exported.rows.map((row) => row[0])).toEqual(["REQ-5", "REQ-1"]);
     expect(exported.withheld).toBe(1);
+  });
+});
+
+describe("a specification keeps its chapters", () => {
+  it("gives a chaptered table columns for the section and its level", () => {
+    // Without them a heading has no cells to occupy and leaves as a blank line:
+    // the export would hand back a flat list of requirements with the structure
+    // of the document silently gone.
+    const exported = tableExport(chaptered, nothingHidden);
+    expect(exported.columns).toEqual(["section", "level", "ID", "Requirement"]);
+  });
+
+  it("keeps each heading in its place among the rows it introduces", () => {
+    const exported = tableExport(chaptered, nothingHidden);
+    expect(exported.rows).toEqual([
+      ["1. Braking", 1, null, null],
+      [null, null, "REQ-1", "Stop within 40 m."],
+      ["1.1 Sensing", 2, null, null],
+      [null, null, "REQ-2", "Read wheel speed."],
+    ]);
+  });
+
+  it("does not write a section onto the rows that follow it", () => {
+    // A row follows a heading; it never declares that it belongs to one. Filling
+    // the column down would state a membership the document does not.
+    const exported = tableExport(chaptered, nothingHidden);
+    expect(exported.rows[1][0]).toBeNull();
+    expect(exported.rows[3][0]).toBeNull();
+  });
+
+  it("invents no section column for a table that has no chapters", () => {
+    expect(tableExport(plain, nothingHidden).columns).toEqual(["ID", "Status"]);
+  });
+
+  it("carries chapters and roles together, each in its own column", () => {
+    const both: StructuredTableData = {
+      columns: ["ID"],
+      rows: [
+        { heading: "1. Braking", depth: 1 },
+        { role: "added", cells: ["REQ-5"] },
+      ] as unknown as StructuredTableData["rows"],
+    };
+    const exported = tableExport(both, nothingHidden);
+    expect(exported.columns).toEqual(["section", "level", "ID", "change"]);
+    expect(exported.rows).toEqual([
+      ["1. Braking", 1, null, "existing"],
+      [null, null, "REQ-5", "added"],
+    ]);
   });
 });
 
@@ -164,5 +223,38 @@ describe("handing the browser a file", () => {
     expect(row[3]).toEqual({ value: undefined });
     expect(anchors[0].download).toBe("requirements.xlsx");
     vi.doUnmock("write-excel-file/browser");
+  });
+});
+
+describe("a proposal's derived roles leave with it", () => {
+  // A proposed table declares no role on any row — declaring one beside a change is
+  // refused — so asking the data alone dropped the role column from the export of
+  // the one table where it carries most: which requirements the amendment touches.
+  const proposed: StructuredTableData = {
+    columns: ["ID", "Requirement"],
+    rows: [
+      { id: "r1", ref: "REQ-1", cells: ["REQ-1", "Stop within 40 m."] },
+      { id: "r2", cells: ["", "Warn the driver at 20 m."] },
+    ] as unknown as StructuredTableData["rows"],
+  };
+  const described = [{ role: "changed" as const }, { role: "added" as const }];
+
+  it("carries the role column when the roles were derived", () => {
+    const exported = tableExport(proposed, nothingHidden, described);
+    expect(exported.columns).toEqual(["ID", "Requirement", "change"]);
+    expect(exported.rows.map((row) => row.at(-1))).toEqual(["changed", "added"]);
+  });
+
+  it("invents no column when there is no role at all", () => {
+    expect(tableExport(proposed, nothingHidden).columns).toEqual(["ID", "Requirement"]);
+  });
+
+  it("leaves behind what the reader has narrowed away", () => {
+    // What leaves is what the reader is looking at — including when the role they
+    // filtered on was derived rather than declared.
+    const exported = tableExport(proposed, new Set([filterKey("role", "added")]), described);
+    expect(exported.rows).toHaveLength(1);
+    expect(exported.rows[0].at(-1)).toBe("changed");
+    expect(exported.withheld).toBe(1);
   });
 });

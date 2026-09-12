@@ -44,7 +44,7 @@ describe("structured-exchange two-stage validation", () => {
   // -------------------------------------------------------------------------
   describe("never repairs or guesses", () => {
     test("refuses an unsupported schema version rather than assuming version 1", () => {
-      assert.ok(rules(graph({ schema: "urn:structured-exchange:2" })).length > 0);
+      assert.ok(rules(graph({ schema: "urn:structured-exchange:3" })).length > 0);
     });
 
     test("refuses arbitrary JSON that merely resembles an envelope", () => {

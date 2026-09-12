@@ -1,0 +1,42 @@
+{
+  "schema": "urn:structured-exchange:2",
+  "kind": "graph",
+  "artifacts": [
+    {
+      "rel": "specification",
+      "uri": "https://example.invalid/spec.pdf",
+      "sha256": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "mediaType": "application/pdf",
+      "label": "System specification"
+    }
+  ],
+  "data": {
+    "nodes": [
+      {
+        "id": "ctrl",
+        "label": "Controller",
+        "kind": "software",
+        "locations": [
+          {
+            "uri": "file:///src/controller.ts",
+            "revision": "abc123",
+            "range": {
+              "startLine": 10,
+              "startCharacter": 0,
+              "endLine": 42,
+              "endCharacter": 1
+            }
+          }
+        ],
+        "artifacts": [
+          {
+            "rel": "verifies",
+            "uri": "https://example.invalid/report.json",
+            "sha256": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+          }
+        ]
+      }
+    ],
+    "edges": []
+  }
+}

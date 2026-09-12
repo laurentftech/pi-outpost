@@ -48,6 +48,31 @@ function validate(args: string[], input?: string): { code: number; verdict: Reco
   }
 }
 
+/**
+ * A requirements table of the shape the enriched contract exists for: typed rows,
+ * a chapter, and traceability leaving the document.
+ */
+const enriched = (attributes?: Record<string, unknown>, relations?: unknown[]) =>
+  JSON.stringify({
+    schema: "urn:structured-exchange:2",
+    kind: "table",
+    profile: "acme/requirements",
+    data: {
+      columns: ["id", "requirement"],
+      rows: [
+        { heading: "1. Braking", depth: 1 },
+        {
+          id: "r1",
+          ref: "REQ-1",
+          kind: "requirement",
+          cells: ["REQ-1", "Stop within 40 m"],
+          ...(attributes ? { attributes } : {}),
+        },
+      ],
+      relations: relations ?? [{ from: { id: "r1" }, to: { ref: "TEST-9" }, kind: "verifiedBy" }],
+    },
+  });
+
 describe("the reference validator as it ships", () => {
   before(() => {
     if (!existsSync(BUNDLE)) {
@@ -63,6 +88,16 @@ describe("the reference validator as it ships", () => {
       path.join(away, "unconforming.json"),
       graph({ data: { nodes: [{ id: "a", ref: "R", set: { label: "New" } }], edges: [] } }),
     );
+    writeFileSync(path.join(away, "enriched.json"), enriched());
+    writeFileSync(
+      path.join(away, "enriched-bad-attribute.json"),
+      enriched({ attributes: { owner: { name: "someone" } } }),
+    );
+    writeFileSync(
+      path.join(away, "enriched-dangling-relation.json"),
+      enriched(undefined, [{ from: { id: "nobody" }, to: { ref: "TEST-9" }, kind: "verifiedBy" }]),
+    );
+    writeFileSync(path.join(away, "future.json"), enriched().replace("exchange:2", "exchange:3"));
   });
 
   test("runs at all, outside the repository, with nothing installed", () => {
@@ -105,9 +140,63 @@ describe("the reference validator as it ships", () => {
     assert.equal((verdict.issues as { rule: string }[])[0].rule, "not-json");
   });
 
+  // The enriched contract, through the artifact a producer actually runs. The
+  // application validating version 2 is worth nothing to them if the thing they
+  // were handed still only knows version 1.
+  describe("the enriched contract", () => {
+    test("validates from a file, and reports what it measured", () => {
+      const { code, verdict } = validate(["enriched.json"]);
+      assert.equal(code, 0, `refused: ${JSON.stringify(verdict.issues)}`);
+      assert.equal(verdict.valid, true);
+      assert.equal(verdict.kind, "table");
+      const counts = (verdict.measurement as { counts: Record<string, number> }).counts;
+      assert.equal(counts.relations, 1, "a producer sizing its traceability needs it counted");
+    });
+
+    test("validates from standard input on the same terms", () => {
+      const { code, verdict } = validate([], enriched());
+      assert.equal(code, 0);
+      assert.equal(verdict.valid, true);
+    });
+
+    test("refuses a bad value where the value is, not where the reader is not looking", () => {
+      const { code, verdict } = validate(["enriched-bad-attribute.json"]);
+      assert.equal(code, 1);
+      const [issue] = verdict.issues as { rule: string; path: string }[];
+      assert.equal(issue.path, "/data/rows/1/attributes");
+    });
+
+    test("applies the semantic rules too, not only the schema", () => {
+      // A relation pointing at a row that is not there: shape alone cannot see it.
+      const { code, verdict } = validate(["enriched-dangling-relation.json"]);
+      assert.equal(code, 1);
+      const [issue] = verdict.issues as { rule: string; path: string }[];
+      assert.equal(issue.rule, "unresolved-endpoint");
+      assert.equal(issue.path, "/data/relations/0/from");
+    });
+
+    test("names a version it does not have rather than judging it by the wrong one", () => {
+      const { code, verdict } = validate(["future.json"]);
+      assert.equal(code, 1);
+      const [issue] = verdict.issues as { rule: string; message: string }[];
+      assert.equal(issue.rule, "unsupported-version");
+      assert.match(issue.message, /urn:structured-exchange:1 and urn:structured-exchange:2/);
+    });
+  });
+
   test("says how to use it, and documents its exit codes where a caller will look", () => {
     const help = run(process.execPath, [cli, "--help"], { cwd: away, encoding: "utf8" });
-    for (const stated of ["0", "1", "2", "3", "standard input"]) assert.match(help, new RegExp(stated));
+    // Plain substring checks. These were regular expressions built from strings that
+    // then had to be escaped — an escape that only handled colons, which is both a
+    // sharp edge and a question this assertion never needed to ask.
+    for (const stated of ["0", "1", "2", "3", "standard input"]) {
+      assert.ok(help.includes(stated), `the help text does not mention ${stated}`);
+    }
+    // And which contracts it actually knows, since that is the first thing a
+    // producer writing against it has to decide.
+    for (const version of ["urn:structured-exchange:1", "urn:structured-exchange:2"]) {
+      assert.ok(help.includes(version), `the help text does not name ${version}`);
+    }
   });
 
   test("agrees with the application on every conformance case", () => {

@@ -38,7 +38,7 @@ describe("a structured-exchange document read over the socket", () => {
         data: { nodes: [{ id: "a", label: "A" }], edges: [{ from: "a", to: "ghost" }] },
       }),
       "plain.json": JSON.stringify({ kind: "graph", data: { nodes: [{}], edges: [] } }),
-      "future.json": JSON.stringify({ schema: "urn:structured-exchange:2", kind: "constellation" }),
+      "future.json": JSON.stringify({ schema: "urn:structured-exchange:3", kind: "constellation" }),
       "notes.md": "# not json at all\n",
     });
     server = await startServer(root, { sandbox: { root, allowWrite: true, allowBash: false } });

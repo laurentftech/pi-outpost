@@ -1,0 +1,819 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:structured-exchange:2",
+  "title": "Structured exchange envelope v2",
+  "description": "The enriched contract. Everything version 1 declares is carried forward unchanged; everything added here is optional, so a version 1 document is a version 2 document once its identifier is changed.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "kind",
+    "data"
+  ],
+  "$defs": {
+    "ref": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200
+    },
+    "localId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200
+    },
+    "label": {
+      "type": "string",
+      "maxLength": 500
+    },
+    "kind": {
+      "description": "The producing tool's type or stereotype for this thing \u2014 'block', 'sensor', 'requirement', 'power'. Free text, because the vocabulary belongs to the domain and not to this contract; a profile names which domain owns it.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 100
+    },
+    "reference": {
+      "description": "Something owned elsewhere, named by the identifier its authority knows it by. Opaque: never parsed, resolved or fetched.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ref"
+      ],
+      "properties": {
+        "ref": {
+          "$ref": "#/$defs/ref"
+        }
+      }
+    },
+    "attributeScalar": {
+      "type": [
+        "string",
+        "number",
+        "boolean",
+        "null"
+      ],
+      "maxLength": 1000
+    },
+    "attributeValue": {
+      "description": "A scalar, an opaque reference, or one flat list of those. Lists never nest and no other object shape is allowed: recursive values would weaken size analysis, generic rendering and deterministic comparison.",
+      "oneOf": [
+        {
+          "$ref": "#/$defs/attributeScalar"
+        },
+        {
+          "$ref": "#/$defs/reference"
+        },
+        {
+          "type": "array",
+          "maxItems": 50,
+          "items": {
+            "oneOf": [
+              {
+                "$ref": "#/$defs/attributeScalar"
+              },
+              {
+                "$ref": "#/$defs/reference"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "attributes": {
+      "description": "Domain-owned properties of this item. Names belong to the profile's vocabulary; this contract bounds them and reads none of them.",
+      "type": "object",
+      "maxProperties": 50,
+      "propertyNames": {
+        "minLength": 1,
+        "maxLength": 200
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/attributeValue"
+      }
+    },
+    "removeAttributes": {
+      "description": "Attribute names this proposal takes away. Deletion is explicit because null is an ordinary value: a producer that means 'unset' says so here.",
+      "type": "array",
+      "maxItems": 50,
+      "items": {
+        "$ref": "#/$defs/localId"
+      }
+    },
+    "revision": {
+      "description": "The revision an authority knows its state by. Opaque: compared by the authority, never interpreted here.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200
+    },
+    "position": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 1000000
+    },
+    "location": {
+      "description": "Where this item can be found, as a hint for a reader. Never an identity: locations take no part in endpoint resolution, duplicate detection, or what a proposal addresses, and moving the thing does not change what it is.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "uri"
+      ],
+      "properties": {
+        "uri": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        },
+        "revision": {
+          "$ref": "#/$defs/revision"
+        },
+        "range": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "startLine",
+            "endLine"
+          ],
+          "description": "A zero-based range inside the resource. Ordering is checked after the schema, which cannot conveniently compare two positions.",
+          "properties": {
+            "startLine": {
+              "$ref": "#/$defs/position"
+            },
+            "startCharacter": {
+              "$ref": "#/$defs/position"
+            },
+            "endLine": {
+              "$ref": "#/$defs/position"
+            },
+            "endCharacter": {
+              "$ref": "#/$defs/position"
+            }
+          }
+        }
+      }
+    },
+    "locations": {
+      "type": "array",
+      "maxItems": 10,
+      "items": {
+        "$ref": "#/$defs/location"
+      }
+    },
+    "artifact": {
+      "description": "A related artifact \u2014 an implementation, a report, a piece of evidence \u2014 named rather than carried. The digest is mandatory so an approval refers to stable bytes even when the URI is not: nothing here is retrieved by validation or by rendering.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "rel",
+        "uri",
+        "sha256"
+      ],
+      "properties": {
+        "rel": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "uri": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "mediaType": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "label": {
+          "$ref": "#/$defs/label"
+        }
+      }
+    },
+    "artifacts": {
+      "type": "array",
+      "maxItems": 20,
+      "items": {
+        "$ref": "#/$defs/artifact"
+      }
+    },
+    "expect": {
+      "description": "What the producer believes is true of this item right now. A declaration for the receiving authority to check immediately before applying, never a claim this application has established.",
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "label": {
+          "$ref": "#/$defs/label"
+        },
+        "kind": {
+          "$ref": "#/$defs/kind"
+        },
+        "container": {
+          "$ref": "#/$defs/localId"
+        },
+        "revision": {
+          "$ref": "#/$defs/revision"
+        },
+        "attributes": {
+          "$ref": "#/$defs/attributes"
+        }
+      }
+    },
+    "elementChange": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "label": {
+          "$ref": "#/$defs/label"
+        },
+        "kind": {
+          "$ref": "#/$defs/kind"
+        },
+        "container": {
+          "$ref": "#/$defs/localId"
+        },
+        "attributes": {
+          "$ref": "#/$defs/attributes"
+        },
+        "removeAttributes": {
+          "$ref": "#/$defs/removeAttributes"
+        }
+      }
+    },
+    "edgeChange": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/kind"
+        },
+        "label": {
+          "$ref": "#/$defs/label"
+        },
+        "attributes": {
+          "$ref": "#/$defs/attributes"
+        },
+        "removeAttributes": {
+          "$ref": "#/$defs/removeAttributes"
+        }
+      }
+    },
+    "messageChange": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "label": {
+          "$ref": "#/$defs/label"
+        },
+        "attributes": {
+          "$ref": "#/$defs/attributes"
+        },
+        "removeAttributes": {
+          "$ref": "#/$defs/removeAttributes"
+        }
+      }
+    },
+    "rowChange": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "label": {
+          "$ref": "#/$defs/label"
+        },
+        "kind": {
+          "$ref": "#/$defs/kind"
+        },
+        "cells": {
+          "$ref": "#/$defs/cells"
+        },
+        "attributes": {
+          "$ref": "#/$defs/attributes"
+        },
+        "removeAttributes": {
+          "$ref": "#/$defs/removeAttributes"
+        }
+      }
+    },
+    "container": {
+      "description": "A named group of elements or participants. Grouping only: relationships connect elements and cross container boundaries freely, and a container carries no relationship of its own.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "label"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/localId"
+        },
+        "label": {
+          "$ref": "#/$defs/label"
+        },
+        "kind": {
+          "$ref": "#/$defs/kind"
+        }
+      }
+    },
+    "element": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/localId"
+        },
+        "ref": {
+          "$ref": "#/$defs/ref"
+        },
+        "label": {
+          "$ref": "#/$defs/label"
+        },
+        "kind": {
+          "$ref": "#/$defs/kind"
+        },
+        "set": {
+          "$ref": "#/$defs/elementChange"
+        },
+        "container": {
+          "$ref": "#/$defs/localId"
+        },
+        "attributes": {
+          "$ref": "#/$defs/attributes"
+        },
+        "expect": {
+          "$ref": "#/$defs/expect"
+        },
+        "locations": {
+          "$ref": "#/$defs/locations"
+        },
+        "artifacts": {
+          "$ref": "#/$defs/artifacts"
+        }
+      },
+      "if": {
+        "not": {
+          "required": [
+            "ref"
+          ]
+        }
+      },
+      "then": {
+        "required": [
+          "label"
+        ]
+      }
+    },
+    "edge": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "from",
+        "to"
+      ],
+      "properties": {
+        "from": {
+          "$ref": "#/$defs/localId"
+        },
+        "to": {
+          "$ref": "#/$defs/localId"
+        },
+        "kind": {
+          "$ref": "#/$defs/kind"
+        },
+        "ref": {
+          "$ref": "#/$defs/ref"
+        },
+        "label": {
+          "$ref": "#/$defs/label"
+        },
+        "set": {
+          "$ref": "#/$defs/edgeChange"
+        },
+        "attributes": {
+          "$ref": "#/$defs/attributes"
+        },
+        "expect": {
+          "$ref": "#/$defs/expect"
+        },
+        "locations": {
+          "$ref": "#/$defs/locations"
+        },
+        "artifacts": {
+          "$ref": "#/$defs/artifacts"
+        }
+      },
+      "if": {
+        "not": {
+          "required": [
+            "ref"
+          ]
+        }
+      },
+      "then": {
+        "required": [
+          "kind"
+        ]
+      }
+    },
+    "message": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "from",
+        "to"
+      ],
+      "properties": {
+        "from": {
+          "$ref": "#/$defs/localId"
+        },
+        "to": {
+          "$ref": "#/$defs/localId"
+        },
+        "ref": {
+          "$ref": "#/$defs/ref"
+        },
+        "label": {
+          "$ref": "#/$defs/label"
+        },
+        "set": {
+          "$ref": "#/$defs/messageChange"
+        },
+        "attributes": {
+          "$ref": "#/$defs/attributes"
+        },
+        "expect": {
+          "$ref": "#/$defs/expect"
+        },
+        "locations": {
+          "$ref": "#/$defs/locations"
+        },
+        "artifacts": {
+          "$ref": "#/$defs/artifacts"
+        }
+      },
+      "if": {
+        "not": {
+          "required": [
+            "ref"
+          ]
+        }
+      },
+      "then": {
+        "required": [
+          "label"
+        ]
+      }
+    },
+    "removal": {
+      "description": "Something to take out of the target, named by the reference the authority knows it by. The other fields describe it and never identify it: they exist so a reader can see what they are approving the removal of.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "ref"
+      ],
+      "properties": {
+        "type": {
+          "enum": [
+            "element",
+            "relationship",
+            "row"
+          ]
+        },
+        "ref": {
+          "$ref": "#/$defs/ref"
+        },
+        "label": {
+          "$ref": "#/$defs/label"
+        },
+        "kind": {
+          "$ref": "#/$defs/kind"
+        },
+        "from": {
+          "$ref": "#/$defs/localId"
+        },
+        "to": {
+          "$ref": "#/$defs/localId"
+        }
+      }
+    },
+    "cells": {
+      "type": "array",
+      "items": {
+        "type": [
+          "string",
+          "number",
+          "boolean",
+          "null"
+        ],
+        "maxLength": 1000
+      },
+      "maxItems": 50
+    },
+    "role": {
+      "enum": [
+        "added",
+        "changed",
+        "context",
+        "removed"
+      ]
+    },
+    "dataRow": {
+      "description": "A row of the table. It may carry an identity of its own \u2014 a document-local id, the reference its authority knows it by, and the kind of thing it is \u2014 which is what lets a relation point at it and a patch address it.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "cells"
+      ],
+      "properties": {
+        "cells": {
+          "$ref": "#/$defs/cells"
+        },
+        "role": {
+          "$ref": "#/$defs/role"
+        },
+        "id": {
+          "$ref": "#/$defs/localId"
+        },
+        "ref": {
+          "$ref": "#/$defs/ref"
+        },
+        "kind": {
+          "$ref": "#/$defs/kind"
+        },
+        "label": {
+          "$ref": "#/$defs/label"
+        },
+        "set": {
+          "$ref": "#/$defs/rowChange"
+        },
+        "attributes": {
+          "$ref": "#/$defs/attributes"
+        },
+        "expect": {
+          "$ref": "#/$defs/expect"
+        },
+        "locations": {
+          "$ref": "#/$defs/locations"
+        },
+        "artifacts": {
+          "$ref": "#/$defs/artifacts"
+        }
+      }
+    },
+    "structuralRow": {
+      "description": "A heading that organises the table \u2014 a chapter, a section \u2014 rather than a row of data. It spans the table and is not aligned to its columns; it is never inferred from a data row whose cells are empty.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "heading"
+      ],
+      "properties": {
+        "heading": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500
+        },
+        "depth": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 6
+        },
+        "role": {
+          "$ref": "#/$defs/role"
+        },
+        "id": {
+          "$ref": "#/$defs/localId"
+        },
+        "ref": {
+          "$ref": "#/$defs/ref"
+        }
+      }
+    },
+    "endpoint": {
+      "description": "One end of a relation: a row of this document by its local id, or something outside it by the reference its authority knows. Stated explicitly so an unresolvable local endpoint is an error rather than silently reread as external.",
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "maxProperties": 1,
+      "oneOf": [
+        {
+          "required": [
+            "id"
+          ]
+        },
+        {
+          "required": [
+            "ref"
+          ]
+        }
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/localId"
+        },
+        "ref": {
+          "$ref": "#/$defs/ref"
+        }
+      }
+    },
+    "relation": {
+      "description": "A relation between rows \u2014 traceability. Carries an opaque kind from the profile's vocabulary, exactly as a relationship between graph elements does; unlike one, an end may leave the document, because the test that verifies a requirement usually lives elsewhere.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "from",
+        "to",
+        "kind"
+      ],
+      "properties": {
+        "from": {
+          "$ref": "#/$defs/endpoint"
+        },
+        "to": {
+          "$ref": "#/$defs/endpoint"
+        },
+        "kind": {
+          "$ref": "#/$defs/kind"
+        },
+        "ref": {
+          "$ref": "#/$defs/ref"
+        },
+        "label": {
+          "$ref": "#/$defs/label"
+        },
+        "attributes": {
+          "$ref": "#/$defs/attributes"
+        }
+      }
+    }
+  },
+  "properties": {
+    "schema": {
+      "const": "urn:structured-exchange:2"
+    },
+    "kind": {
+      "enum": [
+        "graph",
+        "sequence",
+        "table"
+      ]
+    },
+    "profile": {
+      "description": "The vocabulary that owns the kinds and attribute names in this document. Opaque: never fetched, executed, or required to be known \u2014 an unknown profile is presented generically, not refused.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200
+    },
+    "target": {
+      "description": "The artifact this document proposes a change to, and the revision it was prepared against. Its presence is what makes the document a proposal.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ref"
+      ],
+      "properties": {
+        "ref": {
+          "$ref": "#/$defs/ref"
+        },
+        "revision": {
+          "$ref": "#/$defs/revision"
+        }
+      }
+    },
+    "removals": {
+      "type": "array",
+      "maxItems": 500,
+      "items": {
+        "$ref": "#/$defs/removal"
+      }
+    },
+    "artifacts": {
+      "type": "array",
+      "maxItems": 50,
+      "items": {
+        "$ref": "#/$defs/artifact"
+      }
+    },
+    "data": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "nodes",
+            "edges"
+          ],
+          "properties": {
+            "nodes": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 500,
+              "items": {
+                "$ref": "#/$defs/element"
+              }
+            },
+            "edges": {
+              "type": "array",
+              "maxItems": 2000,
+              "items": {
+                "$ref": "#/$defs/edge"
+              }
+            },
+            "containers": {
+              "type": "array",
+              "maxItems": 50,
+              "items": {
+                "$ref": "#/$defs/container"
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "participants",
+            "messages"
+          ],
+          "properties": {
+            "participants": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 100,
+              "items": {
+                "$ref": "#/$defs/element"
+              }
+            },
+            "messages": {
+              "type": "array",
+              "maxItems": 1000,
+              "items": {
+                "$ref": "#/$defs/message"
+              }
+            },
+            "containers": {
+              "type": "array",
+              "maxItems": 50,
+              "items": {
+                "$ref": "#/$defs/container"
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "columns",
+            "rows"
+          ],
+          "properties": {
+            "columns": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 50,
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              }
+            },
+            "rows": {
+              "type": "array",
+              "maxItems": 5000,
+              "items": {
+                "oneOf": [
+                  {
+                    "$ref": "#/$defs/cells"
+                  },
+                  {
+                    "$ref": "#/$defs/dataRow"
+                  },
+                  {
+                    "$ref": "#/$defs/structuralRow"
+                  }
+                ]
+              }
+            },
+            "relations": {
+              "type": "array",
+              "maxItems": 2000,
+              "items": {
+                "$ref": "#/$defs/relation"
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}

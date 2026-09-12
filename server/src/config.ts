@@ -23,7 +23,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { normalizeThinkingLevels, THEMES, type Theme, type ThinkingLevel } from "@pi-outpost/shared";
-import { STRUCTURED_EXCHANGE_BYTES_CEILING } from "@pi-outpost/shared/structured-exchange/bounds";
+import { STRUCTURED_EXCHANGE_BYTES_CEILING_ANY } from "@pi-outpost/shared/structured-exchange/bounds";
 import { OPEN_SHAPES, type OpenShape } from "./openBrowser.ts";
 
 export interface BrandingConfig {
@@ -177,8 +177,17 @@ export interface StructuredExchangeConfig {
   maxBytes: number;
 }
 
-/** Default document ceiling — the contract's, so the viewer accepts what the schema does. */
-export const DEFAULT_STRUCTURED_EXCHANGE_MAX_BYTES = STRUCTURED_EXCHANGE_BYTES_CEILING;
+/**
+ * Default document ceiling — the widest any supported version allows, so the viewer
+ * accepts what the schema does.
+ *
+ * Not version 1's: an enriched document may legally reach eight megabytes, and a
+ * viewer capped at four would refuse one the contract calls valid and show the
+ * reader raw JSON. Each version's own ceiling is applied after the parse, where the
+ * document has said which one it claims — so a version 1 document is still held to
+ * four, with a refusal that names that number.
+ */
+export const DEFAULT_STRUCTURED_EXCHANGE_MAX_BYTES = STRUCTURED_EXCHANGE_BYTES_CEILING_ANY;
 
 /**
  * Which workspace affordances a mounted widget presents.
@@ -1121,7 +1130,7 @@ export function loadConfig(
       // the published ceiling, never less. Without this the server would serve a
       // document the browser's own bound then refuses, and the reader would be
       // shown raw JSON with nothing said about why.
-      config.structuredExchange.maxBytes = Math.min(structuredExchange.maxBytes, STRUCTURED_EXCHANGE_BYTES_CEILING);
+      config.structuredExchange.maxBytes = Math.min(structuredExchange.maxBytes, STRUCTURED_EXCHANGE_BYTES_CEILING_ANY);
     }
   }
 
