@@ -44,10 +44,13 @@ Mermaid.
 fixed `READING_WIDTH`, and portrait only when the portrait layout is narrower than the landscape one
 by a clear margin. Nothing else enters it.
 
-Rationale: the rendering is width-constrained and scrolls vertically, so the on-screen scale is
-`min(1, column / extentWidth)` — width alone decides how small the boxes get. While landscape fits,
-scale is 1 and turning gains nothing but surprise. Once it overflows, turning is only worth the
-surprise if it actually buys width back.
+Rationale: width alone decides whether the diagram can be taken in, and the two surfaces punish
+overflow differently. Measured in the bench: the structured-exchange rendering draws at natural size
+inside a 710 px `overflow-x-auto` box, so past that width the reader no longer sees the whole diagram
+at once and has to scroll sideways through it; a Mermaid block carries `[&_svg]:max-w-full`, so it
+shrinks instead, and its boxes go below reading size. Either way, while the landscape layout fits the
+reading width nothing is lost and turning gains nothing but surprise. Once it overflows, turning is
+only worth that surprise if it actually buys the width back.
 
 Alternatives considered. *Pick whichever layout is narrower*: turns almost everything portrait,
 including a three-box chain that was perfectly readable, because a chain is always narrower stacked.
@@ -67,7 +70,9 @@ and a wide monitor.
 The cost is honest and worth stating: on a very wide screen a diagram may be turned that would have
 fitted. The reader's switch is the answer to that, and it is one click.
 
-The value is to be measured against the real reading column in the bench, not guessed.
+The value is measured, not guessed: `READING_WIDTH = 710`, the content width of a structured-exchange
+block in the conversation column at its maximum (a `max-w-3xl` column of 768 px, less the column's and
+the tool card's padding), read off the running bench.
 
 ### Orientation flows as data, not as a flag read from somewhere
 

@@ -1,7 +1,7 @@
 ## 1. The rule, written once
 
-- [ ] 1.1 Measure the real reading column in the bench (`npm run bench`, seeded transcript on 4323) and record the value `READING_WIDTH` takes, so the constant is measured rather than guessed.
-- [ ] 1.2 Add `Orientation` (`"landscape" | "portrait"`) and `orientationFor(widthLandscape, widthPortrait)` to `shared/src`, implementing the predicate from design.md — landscape while it fits `READING_WIDTH`, portrait only when it is clearly narrower — and verify with unit tests covering: a layout that fits, one that overflows and gains by turning, one that overflows and gains nothing, and the same inputs twice (`ChoiceIsDeterministic`).
+- [x] 1.1 Measured the reading column in the running bench: a structured-exchange block is 710 px wide inside the `max-w-3xl` conversation column, drawn at natural size in an `overflow-x-auto` box (a Mermaid block shrinks instead, `[&_svg]:max-w-full`). `READING_WIDTH = 710`, recorded in design.md.
+- [x] 1.2 Add `Orientation` (`"landscape" | "portrait"`) and `orientationFor(widthLandscape, widthPortrait)` to `shared/src`, implementing the predicate from design.md — landscape while it fits `READING_WIDTH`, portrait only when it is clearly narrower — and verify with unit tests covering: a layout that fits, one that overflows and gains by turning, one that overflows and gains nothing, and the same inputs twice (`ChoiceIsDeterministic`).
 
 ## 2. The graph rendering
 
