@@ -5,11 +5,11 @@
 
 ## 2. The graph rendering
 
-- [ ] 2.1 `layoutGraph` in `shared/src/structuredExchangeModel.ts` takes the orientation and passes the matching `rankdir` to dagre, defaulting to landscape; verify the existing `structuredExchange.test.ts` layout tests still pass unchanged.
-- [ ] 2.2 Add a portrait test for `layoutGraph`: the same graph laid out portrait places its ranks down rather than across, and its extent is taller than wide where landscape's was wider than tall.
-- [ ] 2.3 `graphFigure` in `shared/src/structuredExchangeFigure.ts` accepts `orientation` in `GraphFigureOptions`; when none is given it lays out both ways and applies `orientationFor` (`OrientationIsChosenForLegibility`). Verify with a figure test: a wide graph comes out portrait, a small one landscape, with no caller passing anything.
-- [ ] 2.4 Verify the routing holds portrait — edges connect box borders, self-loops still draw, containers still enclose their members — with a figure test over a graph that has a container, two edges between one pair, and a self-loop.
-- [ ] 2.5 Verify `TheSameContentEitherWay` and `NarrowingSurvivesTheTurn` at the figure level: the same document drawn both ways carries the same elements, relationships, containers, labels, colours and key, and a narrowed figure still states what it is not showing.
+- [x] 2.1 `layoutGraph` in `shared/src/structuredExchangeModel.ts` takes the orientation and passes the matching `rankdir` to dagre, defaulting to landscape; verify the existing `structuredExchange.test.ts` layout tests still pass unchanged.
+- [x] 2.2 Add a portrait test for `layoutGraph`: the same graph laid out portrait places its ranks down rather than across, and its extent is taller than wide where landscape's was wider than tall.
+- [x] 2.3 `graphFigure` in `shared/src/structuredExchangeFigure.ts` accepts `orientation` in `GraphFigureOptions`; when none is given it lays out both ways and applies `orientationFor` (`OrientationIsChosenForLegibility`). Verify with a figure test: a wide graph comes out portrait, a small one landscape, with no caller passing anything.
+- [x] 2.4 Verify the routing holds portrait — edges connect box borders, self-loops still draw, containers still enclose their members — with a figure test over a graph that has a container, two edges between one pair, and a self-loop.
+- [x] 2.5 Verify `TheSameContentEitherWay` and `NarrowingSurvivesTheTurn` at the figure level: the same document drawn both ways carries the same elements, relationships, containers, labels, colours and key, and a narrowed figure still states what it is not showing.
 
 ## 3. The reader's control on the structured-exchange view
 

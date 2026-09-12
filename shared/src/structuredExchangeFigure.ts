@@ -31,6 +31,7 @@ import {
   type Tint,
 } from "./structuredExchangePalette.ts";
 import { boxHeight, boxWidthWithChanges, changeText } from "./structuredExchangeText.ts";
+import { orientationFor, READING_WIDTH, type Orientation } from "./diagramOrientation.ts";
 import {
   displayLabel,
   edgePath,
@@ -174,6 +175,15 @@ export type Figure = {
    * the interactive export, and a figure written to a file is no different.
    */
   narrowing?: string;
+  /**
+   * Which way this figure was drawn, when it had a choice.
+   *
+   * Reported rather than inferred from the extent: a control has to say what the
+   * diagram is currently drawn in, and a tall landscape diagram would read as
+   * portrait to anything that guessed from the shape. Absent for a figure with no
+   * orientation to choose — a sequence.
+   */
+  orientation?: Orientation;
 };
 
 export const FIGURE_FONT = "system-ui, sans-serif";
@@ -643,7 +653,33 @@ export type GraphFigureOptions = {
   hidden?: Narrowing;
   /** Where the reader has moved boxes, when there is a reader. */
   nudges?: ReadonlyMap<string, Nudge>;
+  /**
+   * Which way to draw it. Omitted, the figure decides — and every caller that has no
+   * reader to ask omits it, which is what makes the figure an agent writes to a path
+   * the same one the reader was shown.
+   */
+  orientation?: Orientation;
 };
+
+/**
+ * The layout to draw, and which way it turned out.
+ *
+ * Laid out landscape first and measured, because that is the answer most of the time
+ * and the second layout is then never computed. Only a diagram that already overflows
+ * pays for being laid out twice, and it is the one with something to gain.
+ */
+function laidOutGraph(
+  data: StructuredGraphData,
+  asked: Orientation | undefined,
+): { layout: ReturnType<typeof layoutGraph>; orientation: Orientation } {
+  if (asked !== undefined) return { layout: layoutGraph(data, graphNodeSize, asked), orientation: asked };
+  const landscape = layoutGraph(data, graphNodeSize, "landscape");
+  if (landscape.width <= READING_WIDTH) return { layout: landscape, orientation: "landscape" };
+  const portrait = layoutGraph(data, graphNodeSize, "portrait");
+  return orientationFor(landscape.width, portrait.width) === "portrait"
+    ? { layout: portrait, orientation: "portrait" }
+    : { layout: landscape, orientation: "landscape" };
+}
 
 /**
  * The graph as a figure.
@@ -658,7 +694,7 @@ export function graphFigure(data: StructuredGraphData, options: GraphFigureOptio
   const isProposal = options.isProposal;
 
   const shown = shownGraph(data, hidden);
-  const layout = layoutGraph(shown, graphNodeSize);
+  const { layout, orientation } = laidOutGraph(shown, options.orientation);
   const at = new Map(layout.nodes.map((node) => [node.id, node]));
 
   const boxFor = (id: string): Box | undefined => {
@@ -1002,6 +1038,7 @@ export function graphFigure(data: StructuredGraphData, options: GraphFigureOptio
     markers: arrowPaints.map((paint) => ({ id: markerId("se-arrow", paint), paint })),
     groups,
     ...(narrowing === undefined ? {} : { narrowing }),
+    orientation,
   };
 }
 
