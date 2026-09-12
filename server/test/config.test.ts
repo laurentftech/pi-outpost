@@ -18,7 +18,7 @@ import {
 } from "../src/config.ts";
 import type { AppConfig, CliOptions } from "../src/config.ts";
 import { parseCli } from "../src/cli.ts";
-import { STRUCTURED_EXCHANGE_BYTES_CEILING } from "@pi-outpost/shared/structured-exchange/bounds";
+import { STRUCTURED_EXCHANGE_BYTES_CEILING_ANY } from "@pi-outpost/shared/structured-exchange/bounds";
 
 // ---------------------------------------------------------------------------
 // fail
@@ -768,14 +768,19 @@ describe("loadConfig — resource path resolution", () => {
 
   test("structuredExchange.maxBytes defaults to the contract's ceiling and can be tightened", async () => {
     // The default is not a guess about what people open, the way the document
-    // ceilings above are: version 1 of the contract bounds a conforming document,
-    // and accepting more would promise something the schema does not.
+    // ceilings above are: the contract bounds a conforming document, and accepting
+    // more would promise something no schema does.
+    //
+    // It follows the widest supported version rather than the oldest. Capped at
+    // version 1's four megabytes, the viewer would refuse an enriched document the
+    // contract calls valid — and each version's own ceiling is applied after the
+    // parse anyway, where the document has said which one it claims.
     await withTempDir(async (dir) => {
       const configPath = path.join(dir, "config.json");
       await writeFile(configPath, JSON.stringify({}, null, 2));
       assert.equal(
         loadConfig(dir, { config: configPath }).structuredExchange.maxBytes,
-        STRUCTURED_EXCHANGE_BYTES_CEILING,
+        STRUCTURED_EXCHANGE_BYTES_CEILING_ANY,
       );
 
       await writeFile(configPath, JSON.stringify({ structuredExchange: { maxBytes: 500_000 } }, null, 2));
@@ -793,7 +798,7 @@ describe("loadConfig — resource path resolution", () => {
       await writeFile(configPath, JSON.stringify({ structuredExchange: { maxBytes: 26_214_400 } }, null, 2));
       assert.equal(
         loadConfig(dir, { config: configPath }).structuredExchange.maxBytes,
-        STRUCTURED_EXCHANGE_BYTES_CEILING,
+        STRUCTURED_EXCHANGE_BYTES_CEILING_ANY,
       );
     });
   });
