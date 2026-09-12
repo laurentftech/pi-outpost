@@ -60,6 +60,33 @@ export function elementRole(element: StructuredElement, isProposal: boolean): Ch
 }
 
 /**
+ * The same rule for a row of a proposed table.
+ *
+ * A row may not declare a role and carry a change at once — the contract refuses
+ * that, because a report and an instruction on one row can disagree. So in a
+ * proposal the mark is *derived* from what the row proposes, exactly as an
+ * element's is, and a reader who has learnt what an addition looks like in a
+ * diagram recognises one in a requirements table without learning a second
+ * vocabulary.
+ *
+ * A row that declared a role in a document proposing nothing keeps it: that is the
+ * other use, a table reporting a change made elsewhere, and nothing here is derived
+ * for it.
+ */
+export function proposedRowRole(
+  row: { ref?: string; set?: unknown; heading?: string },
+  isProposal: boolean,
+): StructuredTableRowRole | undefined {
+  if (!isProposal) return undefined;
+  // A chapter is not proposed: it organises the rows around it, and marking every
+  // heading of an extracted specification as an addition would drown the handful of
+  // rows that really are new.
+  if (row.heading !== undefined) return undefined;
+  if (row.ref === undefined) return "added";
+  return row.set === undefined ? "context" : "changed";
+}
+
+/**
  * The same rule for a relationship. Its endpoints are identity and its other
  * declared fields describe it; only `set` states an intention.
  */
@@ -552,7 +579,21 @@ export function describeStructure(
     const data = envelope.data as StructuredTableData;
     const declaresRoles = tableDeclaresRoles(data);
     const rows: DescribedRow[] = data.rows.map((row) => {
-      const role = tableRowRole(row, declaresRoles);
+      const carrierRow = Array.isArray(row) ? {} : (row as unknown as Record<string, unknown>);
+      const declared = tableRowRole(row, declaresRoles);
+      // Declared wins where a producer stated one; otherwise a proposal marks its
+      // own rows. Without this a proposed table renders three identical lines where
+      // one is changed, one is added and one is only there for context.
+      const role =
+        declared ??
+        proposedRowRole(
+          {
+            ref: typeof carrierRow.ref === "string" ? carrierRow.ref : undefined,
+            set: carrierRow.set,
+            heading: typeof carrierRow.heading === "string" ? carrierRow.heading : undefined,
+          },
+          isProposal,
+        );
       const { cells, heading } = readTableRow(row);
       const carrier = Array.isArray(row) ? {} : (row as unknown as Record<string, unknown>);
       return {

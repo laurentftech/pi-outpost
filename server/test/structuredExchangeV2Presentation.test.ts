@@ -235,3 +235,66 @@ describe("a graph carries the same enrichment, through the same fields", () => {
     assert.deepEqual(structure.things[1].attributes, []);
   });
 });
+
+describe("a proposed table marks itself from what it proposes", () => {
+  // Approval here is a person reading the screen — the contract states there is no
+  // approval action and no handover step, and that is deliberate. So the whole of
+  // this application's job is that what the reader sees is derived from what would
+  // actually be applied, and that the document they judged is the one an
+  // integration later fetches.
+  const rows = [
+    { heading: "1. Braking", depth: 1 },
+    { id: "r1", ref: "REQ-1", cells: ["REQ-1", "Stop within 40 m"], set: { attributes: { status: "in review" } } },
+    { id: "r2", cells: ["REQ-2", "Warn the driver at 20 m"] },
+    { id: "r3", ref: "REQ-3", cells: ["REQ-3", "Read wheel speed"] },
+  ];
+  const proposed = {
+    schema: "urn:structured-exchange:2",
+    kind: "table",
+    target: { ref: "DOORS://module/42", revision: "baseline-7" },
+    removals: [{ type: "row", ref: "REQ-9", label: "Withdrawn requirement" }],
+    data: { columns: ["id", "requirement"], rows },
+  };
+
+  test("a referenced row carrying a change reads as changed", () => {
+    assert.equal(described(proposed).rows?.[1].role, "changed");
+  });
+
+  test("a row with no reference reads as an addition", () => {
+    // The authority does not hold it yet, which is the whole of what "added" means.
+    assert.equal(described(proposed).rows?.[2].role, "added");
+  });
+
+  test("a referenced row with no change reads as context, not as a rewrite", () => {
+    // Every requirement of a module comes back in the extraction. Marking them all
+    // as changed would make a two-line amendment look like a rewritten specification.
+    assert.equal(described(proposed).rows?.[3].role, "context");
+  });
+
+  test("a chapter is not marked as proposed", () => {
+    // It organises the rows around it. Marking every heading of an extracted
+    // specification as an addition would drown the rows that really are new.
+    assert.equal(described(proposed).rows?.[0].role, undefined);
+  });
+
+  test("what is withdrawn is named with enough to recognise it", () => {
+    // The reader holds this document and not the authority's model, so a removal
+    // that is only an identifier asks them to approve deleting something unseen.
+    assert.deepEqual(described(proposed).removals, [{ type: "row", ref: "REQ-9" }]);
+  });
+
+  test("an extraction marks nothing at all", () => {
+    const { target: _target, removals: _removals, ...extracted } = proposed;
+    const structure = described(extracted);
+    assert.deepEqual(structure.rows?.map((row) => row.role), [undefined, undefined, undefined, undefined]);
+  });
+
+  test("a declared role still wins, for the table that reports rather than asks", () => {
+    const reporting = {
+      schema: "urn:structured-exchange:2",
+      kind: "table",
+      data: { columns: ["id"], rows: [{ role: "removed", cells: ["REQ-3"] }, { cells: ["REQ-1"] }] },
+    };
+    assert.deepEqual(described(reporting).rows?.map((row) => row.role), ["removed", "context"]);
+  });
+});
