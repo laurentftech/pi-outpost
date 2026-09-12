@@ -1,0 +1,19 @@
+{
+  "schema": "urn:structured-exchange:1",
+  "kind": "graph",
+  "data": {
+    "nodes": [
+      { "id": "battery", "label": "Batterie", "kind": "source" },
+      { "id": "converter", "label": "Convertisseur", "kind": "component" },
+      { "id": "motor", "label": "Moteur", "kind": "component" },
+      { "id": "controller", "label": "Contrôleur", "kind": "component" },
+      { "id": "sensor", "label": "Capteur", "kind": "component" }
+    ],
+    "edges": [
+      { "from": "battery", "to": "converter", "kind": "power" },
+      { "from": "converter", "to": "motor", "kind": "power" },
+      { "from": "controller", "to": "motor", "kind": "control" },
+      { "from": "sensor", "to": "controller", "kind": "data" }
+    ]
+  }
+}
