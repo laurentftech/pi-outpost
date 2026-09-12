@@ -345,6 +345,61 @@ test.describe("diagrams in the widget", () => {
     expect(enlargedWidth).toBeGreaterThanOrEqual(inlineWidth);
   });
 
+  test("a graph too wide for the column is drawn down it, and the reader can turn it back", async ({ page }) => {
+    await openHost(page, { ...withDiagrams(), theme: "light" });
+    await expect(page.getByTitle("connected")).toBeVisible();
+
+    // Named by content rather than by position: the transcript carries several
+    // structured documents and the order they arrive in is not this test's business.
+    const document = page.getByTestId("structured-document").filter({ hasText: "HTTP branding request" }).first();
+    await expect(document).toBeVisible();
+    const control = document.getByTestId("diagram-orientation");
+    // Nine boxes in a chain: too wide to read across the reading column, so it
+    // arrives turned without anyone asking — and the control offers the way back,
+    // because a button names its action.
+    await expect(control).toHaveText(/landscape/);
+
+    const shape = async () => {
+      const box = await document.locator("svg[aria-label^='Graph of']").first().boundingBox();
+      return { width: box?.width ?? 0, height: box?.height ?? 0 };
+    };
+    await expect.poll(async () => (await shape()).width).toBeGreaterThan(0);
+    const down = await shape();
+    expect(down.height).toBeGreaterThan(down.width);
+
+    await control.click();
+    await expect(control).toHaveText(/portrait/);
+    await expect.poll(async () => (await shape()).width).toBeGreaterThan(down.width);
+    const across = await shape();
+    expect(across.width).toBeGreaterThan(across.height);
+  });
+
+  test("a Mermaid diagram too wide to read is turned, says so, and keeps its source", async ({ page }) => {
+    await openHost(page, { ...withDiagrams(), theme: "light" });
+    await expect(page.getByTitle("connected")).toBeVisible();
+
+    const diagram = page.locator("#widget").locator("svg[id^='mermaid-']").first();
+    await expect(diagram).toBeVisible();
+    // Mermaid renders asynchronously, so a diagram can be visible and not yet laid
+    // out; and this one is laid out twice, the second time to fit.
+    await expect.poll(async () => (await diagram.boundingBox())?.width ?? 0).toBeGreaterThan(0);
+
+    const block = page.locator("#widget").getByTestId("mermaid-turned");
+    await expect(block).toHaveText(/the source asks for landscape/);
+    const control = page.locator("#widget").getByTestId("mermaid-orientation");
+    await expect(control).toHaveText(/landscape/);
+
+    // The rewritten source went to mermaid and nowhere else.
+    await page.locator("#widget").getByTitle("Show code").first().click();
+    await expect(page.locator("#widget").locator("pre").first()).toContainText("graph LR");
+
+    await page.locator("#widget").getByTitle("Show diagram").first().click();
+    await control.click();
+    await expect(control).toHaveText(/portrait/);
+    // Turned back by hand, it is no longer drawn against its source, so the note goes.
+    await expect(block).toHaveCount(0);
+  });
+
   test("Escape closes an overlay opened inside the widget", async ({ page }) => {
     await openHost(page, { ...withDiagrams(), theme: "light" });
     await expect(page.getByTitle("connected")).toBeVisible();

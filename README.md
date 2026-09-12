@@ -144,7 +144,9 @@ one needs, the command that proves it works, and the caution that goes with it.
 ### The conversation
 
 - Streaming answers in markdown, with collapsible thinking blocks, mermaid diagrams, math,
-  inline images and clickable workspace file links
+  inline images and clickable workspace file links. A diagram too wide to read in the column
+  is drawn down the page instead, whichever direction its source asked for, and says so — one
+  click puts it back
 - Tool cards with live output and, for tools that report it, a progress bar. One toggle
   hides them all when they drown the conversation, and the preference sticks
 - Results rendered by what they are, not by which tool produced them: a `git diff` becomes
@@ -203,7 +205,8 @@ one needs, the command that proves it works, and the caution that goes with it.
 - Structured results: a tool can hand back **data** — a graph, a sequence, a table — and the
   interface draws it, with an approval gate when the document names a `target`. Files that
   declare the schema open as the diagram they describe, and any diagram exports as a
-  self-contained SVG. See [`docs/structured-exchange.md`](docs/structured-exchange.md)
+  self-contained SVG. A graph with too many boxes to read across is laid out down the page,
+  and the reader can turn it either way. See [`docs/structured-exchange.md`](docs/structured-exchange.md)
 - [Work Plans](#work-plans): for non-trivial work the agent keeps an explicit hierarchy of
   objectives, dependencies and verification state beside the conversation
 - [Workspace Outcome](#workspace-outcome): review plan progress, recorded verification, and

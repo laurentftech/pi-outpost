@@ -156,6 +156,14 @@ and an explicit white ground, so what lands in the document is what was on scree
 earlier version drew them as HTML inside `foreignObject`, which looks identical in the
 browser and loses everything the moment it is serialized.
 
+**You do not choose which way a graph runs.** A graph is laid out across the page while it
+fits the reading column, and down the page when it does not — a picture nobody can read is
+not a picture of your model. The reader can turn it either way, and what they export is the
+way they were shown. The choice is made from the graph alone against a fixed width, never
+from the size of anyone's window, so a figure written by `write_structure_figure` is turned
+the same way the reader's is. Nothing about this reaches the document: the orientation is not
+part of what you emit and not part of what comes back.
+
 ## A table that reports a change
 
 A table cannot be proposed — it has no identity per row for a patch to join against,

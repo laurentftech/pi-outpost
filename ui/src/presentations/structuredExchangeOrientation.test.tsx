@@ -7,7 +7,7 @@
  * rendering agree, and whether what leaves the page is what the reader was looking at.
  */
 import { describe, it, expect, vi } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, act } from "@testing-library/react";
 import type { ChatItem } from "@pi-outpost/shared";
 import { STRUCTURED_EXCHANGE_SCHEMA_V1 as S } from "@pi-outpost/shared/structured-exchange";
 import { structuredExchangePresentation } from "./StructuredExchangeView";
@@ -113,17 +113,21 @@ describe("the orientation control appears where there is an orientation to choos
     expect(control()).toBeNull();
   });
 
-  it("names the orientation the diagram is currently drawn in", () => {
+  it("names what the click would do, not what is already on screen", () => {
     renderBody(withStructured(smallGraph));
-    // A small graph fits, so it is across; the control says so rather than saying
-    // what the click would do.
-    expect(control()!.textContent).toContain("landscape");
-    expect(control()!.getAttribute("aria-label")).toBe("Diagram drawn landscape; switch to portrait");
+    // A small graph fits, so it is drawn across — and the control offers the other
+    // one, the way a button names its action rather than its state. What it is drawn
+    // in now is in the title, and in the picture.
+    expect(control()!.textContent).toContain("portrait");
+    expect(control()!.getAttribute("aria-label")).toBe("Turn the diagram portrait");
+    expect(control()!.getAttribute("title")).toContain("it is drawn across");
   });
 
   it("arrives turned when landscape would be too wide to read", () => {
     renderBody(withStructured(wideGraph));
-    expect(control()!.textContent).toContain("portrait");
+    // Drawn portrait, so the control offers the way back.
+    expect(control()!.textContent).toContain("landscape");
+    expect(control()!.getAttribute("title")).toContain("it is drawn down");
     const { width, height } = extent();
     expect(height).toBeGreaterThan(width);
   });
@@ -137,13 +141,13 @@ describe("the reader decides last", () => {
     expect(flat.down).toBe(0);
 
     fireEvent.click(control()!);
-    expect(control()!.textContent).toContain("portrait");
+    expect(control()!.textContent).toContain("landscape");
     const tall = spread(boxes());
     expect(tall.down).toBeGreaterThan(0);
     expect(tall.across).toBe(0);
 
     fireEvent.click(control()!);
-    expect(control()!.textContent).toContain("landscape");
+    expect(control()!.textContent).toContain("portrait");
     expect(spread(boxes())).toEqual(flat);
   });
 
@@ -151,9 +155,9 @@ describe("the reader decides last", () => {
     // The one that matters: a diagram the system turned, turned back by the reader,
     // stays back. An auto-choice recomputed on every render would undo this.
     renderBody(withStructured(wideGraph));
-    expect(control()!.textContent).toContain("portrait");
-    fireEvent.click(control()!);
     expect(control()!.textContent).toContain("landscape");
+    fireEvent.click(control()!);
+    expect(control()!.textContent).toContain("portrait");
     const { width, height } = extent();
     expect(width).toBeGreaterThan(height);
   });
@@ -171,6 +175,23 @@ describe("the reader decides last", () => {
       expect(placed.down, `copy ${index} was not turned`).toBeGreaterThan(0);
       expect(placed.across, `copy ${index} was not turned`).toBe(0);
     }
+  });
+
+  it("turns twice on a double click rather than computing the same answer twice", () => {
+    // Found by hammering the control in the running widget. Handlers that read the
+    // current orientation out of their own render see the same value for both clicks
+    // of a double click, so the second one lands inert — the control stops responding
+    // for exactly as long as a render takes.
+    renderBody(withStructured(smallGraph));
+    const flat = spread(boxes());
+    act(() => {
+      control()!.click();
+      control()!.click();
+    });
+    // Back where it started: the control offers portrait again, and the boxes are
+    // where they were.
+    expect(control()!.textContent).toContain("portrait");
+    expect(spread(boxes())).toEqual(flat);
   });
 
   it("starts the arrangement again rather than carrying offsets across", () => {

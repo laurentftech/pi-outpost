@@ -274,6 +274,11 @@ summarise what the structure says, well enough that the next question can be ans
 without it. A document with a rich diagram and a one-line text is a document you
 cannot reason about afterwards.
 
+You also do not choose how a graph is arranged. It is laid out across the page while it
+fits the reading column and down the page when it does not, and the reader can turn it
+either way. Do not describe a diagram's direction in your summary — say what it shows, not
+which way it runs.
+
 ## Putting a diagram in a document you are writing
 
 `present_structure` shows a document in the conversation. When you are *writing* a
