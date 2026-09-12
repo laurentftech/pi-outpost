@@ -61,7 +61,16 @@ function digest(envelope: ValidatedStructuredExchange): string {
     parts.push(`table: ${data.columns.length} columns, ${data.rows.length} rows`);
   }
   if (envelope.target !== undefined) {
-    parts.push(`proposing changes to "${envelope.target}"`);
+    // Version 1 states a bare reference, version 2 an object carrying the revision
+    // it was prepared against. Interpolated as-is, the enriched form read
+    // `proposing changes to "[object Object]"` — in the one account of the document
+    // the model still has on a later turn, once the structured payload is gone.
+    const target = envelope.target as string | { ref?: string; revision?: string };
+    const named = typeof target === "string" ? target : (target.ref ?? "");
+    const revision = typeof target === "string" ? undefined : target.revision;
+    parts.push(
+      `proposing changes to "${named}"${revision === undefined ? "" : `, prepared against "${revision}"`}`,
+    );
     parts.push(roleTally(envelope));
   }
   return parts.join("; ");

@@ -465,6 +465,13 @@ export type FileBrowserErrorReason =
   | "denied"
   | "conflict"
   | "launcher-failed"
+  /**
+   * The bytes are not the ones an artifact link bound its approval to. Its own
+   * reason because it is neither a missing file nor a corrupt one: most often the
+   * path is mutable and its content moved on, which is the case a digest exists to
+   * catch.
+   */
+  | "digest-mismatch"
   /** The request itself is malformed — a name that is a path, an undecodable body. */
   | "invalid";
 

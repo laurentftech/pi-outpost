@@ -108,13 +108,26 @@ function schemaFor(version: StructuredExchangeSchemaId, kind: unknown): Record<s
   };
 }
 
+/**
+ * The kinds a document may narrow to. Anything else compiles the whole schema.
+ *
+ * The narrowing exists to sharpen a diagnostic, and it is keyed on a value the
+ * producer writes. Cached on that value directly, a document declaring
+ * `kind: "<anything>"` minted a compiled validator of its own and kept it: three
+ * hundred distinct kinds cost about thirty-eight megabytes that nothing evicts,
+ * and every invalid document — a tool result, any workspace file declaring the
+ * family — can reach this. Narrow only to a kind that is really one.
+ */
+const NARROWABLE_KINDS: readonly string[] = ["graph", "sequence", "table"];
+
 function validator(version: StructuredExchangeSchemaId, kind: unknown): ReturnType<typeof Compile> {
-  const key = `${version}:${typeof kind === "string" ? kind : "*"}`;
+  const narrowable = typeof kind === "string" && NARROWABLE_KINDS.includes(kind);
+  const key = `${version}:${narrowable ? kind : "*"}`;
   const existing = compiled.get(key);
   if (existing !== undefined) return existing;
   // The committed copy, never fetched: validation must not depend on the network
   // being there or on what is at the other end of it.
-  const built = Compile(schemaFor(version, kind));
+  const built = Compile(schemaFor(version, narrowable ? kind : undefined));
   compiled.set(key, built);
   return built;
 }

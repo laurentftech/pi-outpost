@@ -128,4 +128,29 @@ describe("narrowing changed what is said, not what is accepted", () => {
       assert.ok(issues.length > 0, `${file} was accepted by the schema`);
     });
   }
+
+  test("a kind nobody declared compiles nothing of its own", () => {
+    // The narrowing is keyed on a value the producer writes. Cached on it directly,
+    // a document could mint a compiled validator per invented kind and keep it —
+    // thirty-eight megabytes for three hundred of them, evicted by nothing, and
+    // reachable from any invalid document.
+    const heapBefore = process.memoryUsage().heapUsed;
+    for (let index = 0; index < 200; index += 1) {
+      checkStructuredExchangeSchema({ schema: "urn:structured-exchange:2", kind: `invented-${index}`, data: {} });
+    }
+    const grown = process.memoryUsage().heapUsed - heapBefore;
+    // Generous: this is about unbounded growth, not about a number.
+    assert.ok(grown < 8_000_000, `${Math.round(grown / 1024)} KB retained for 200 invented kinds`);
+  });
+
+  test("and a kind that is one still narrows", () => {
+    const issues = checkStructuredExchangeSchema({
+      schema: "urn:structured-exchange:2",
+      kind: "table",
+      data: { columns: ["a"], rows: [{ heading: "h", cells: ["x"] }] },
+    });
+    assert.ok(issues.length > 0);
+    // The table's own variant, not a report about the graph and sequence it is not.
+    assert.ok(issues.every((issue) => !issue.path.includes("nodes") && !issue.path.includes("participants")), JSON.stringify(issues));
+  });
 });

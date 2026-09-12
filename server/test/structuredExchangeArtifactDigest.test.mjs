@@ -43,6 +43,10 @@ describe("an artifact is opened only when its bytes are the ones approved", () =
     root = await makeWorkspace({
       "evidence/report.txt": REPORT,
       "evidence/other.txt": "Something else entirely.\n",
+      // Past the 1 MB preview cap and well under the document ceiling: an artifact
+      // is not a preview, and charging it the preview budget refused files the file
+      // tree opens without complaint.
+      "evidence/large.txt": `${"e".repeat(2 * 1024 * 1024)}\n`,
     });
     server = await startServer(root, { sandbox: undefined });
     client = connect(server.wsUrl());
@@ -120,5 +124,29 @@ describe("an artifact is opened only when its bytes are the ones approved", () =
     const answer = await open("../outside.txt", digestOf(REPORT));
     assert.equal(answer.type, "file_browser_error");
     assert.equal(answer.content, undefined);
+  });
+
+  test("a digest changes no file's budget, in either direction", async () => {
+    // What a read may hold is the file surface's decision and not the digest's: a
+    // plain file gets the preview budget whether or not a document vouched for it,
+    // and a structured-exchange document gets its own. The bug this replaced was
+    // the digest path passing that budget into the *pdf* parameter, so an artifact
+    // was charged whichever limit its extension happened to select.
+    const large = `${"e".repeat(2 * 1024 * 1024)}\n`;
+    const verified = await open("evidence/large.txt", digestOf(large));
+    const plain = await open("evidence/large.txt");
+    assert.equal(verified.type, plain.type, "a digest changed whether the file could be read at all");
+    assert.equal(verified.message, plain.message);
+  });
+
+  test("the bytes that were hashed are the bytes handed over", async () => {
+    // Verified and served from one read. Hashing one buffer and serving another
+    // means what the reader sees was never what was checked — and this application's
+    // premise is an agent writing the workspace while somebody reads it.
+    const moving = path.join(root, "evidence/racing.txt");
+    await writeFile(moving, "first\n");
+    const answer = await open("evidence/racing.txt", digestOf("first\n"));
+    assert.equal(answer.type, "file_content");
+    assert.equal(answer.content, "first\n", "the content served is not the content verified");
   });
 });

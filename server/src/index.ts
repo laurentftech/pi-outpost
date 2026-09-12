@@ -3218,25 +3218,16 @@ async function handleReadFile(
   expectedDigest?: string,
 ): Promise<void> {
   try {
-    if (expectedDigest !== undefined) {
-      // Hashed where the bytes are read, before anything is handed on. A mismatch
-      // is not a corrupt file and not necessarily an attack: a mutable URI whose
-      // content moved on says exactly this, and it is the case the digest exists
-      // for. Either way the reader is told rather than shown something else.
-      const bytes = await readFileRaw(workspace.browserRoot, filePath, config.structuredExchange.maxBytes);
-      const observed = `sha256:${createHash("sha256").update(bytes).digest("hex")}`;
-      if (observed !== expectedDigest) {
-        return send(socket, {
-          type: "file_browser_error",
-          requestId,
-          path: filePath,
-          message:
-            `This artifact is not the one the document was approved against — it declares ${expectedDigest}, ` +
-            `and the file here is ${observed}.`,
-        });
-      }
-    }
-    const { content, size, mtimeMs } = await readFileForPreview(workspace.browserRoot, filePath, config.structuredExchange.maxBytes);
+    // The digest travels into the read rather than being checked beside it: the
+    // bytes hashed have to be the bytes served, and the file limit that applies has
+    // to be the document's own — a separate raw read charged an artifact the 1 MB
+    // preview cap, refusing one the file tree would have opened.
+    const { content, size, mtimeMs } = await readFileForPreview(
+      workspace.browserRoot,
+      filePath,
+      config.structuredExchange.maxBytes,
+      expectedDigest,
+    );
     const documentIssues = documentIssuesFor(content);
     send(socket, {
       type: "file_content",

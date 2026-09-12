@@ -219,4 +219,54 @@ describe("what survives from the tool to the interface", () => {
     assert.equal(typeof details, "object", "the tool hands on a parsed value, not the text it was given");
     assert.deepEqual(details, JSON.parse(document));
   });
+
+  test("names an enriched proposal's target and the revision it was prepared against", async () => {
+    // Version 2's target is an object. Interpolated as-is it read `proposing
+    // changes to "[object Object]"` — in the one account of the document the model
+    // still has on a later turn, once the structured payload is gone.
+    const result = await call({
+      schema: "urn:structured-exchange:2",
+      kind: "table",
+      target: { ref: "doors://module/42", revision: "baseline-7" },
+      removals: [{ type: "row", ref: "REQ-9" }],
+      data: {
+        columns: ["id"],
+        rows: [
+          { heading: "1. Braking", depth: 1 },
+          { cells: ["REQ-1"], ref: "REQ-1", set: { attributes: { status: "in review" } } },
+          { cells: ["REQ-2"] },
+          { cells: ["REQ-3"], ref: "REQ-3" },
+        ],
+      },
+    });
+    const text = result.content[0].text;
+    assert.ok(!text.includes("[object Object]"), text);
+    assert.match(text, /proposing changes to "doors:\/\/module\/42"/);
+    assert.match(text, /prepared against "baseline-7"/);
+  });
+
+  test("counts a table proposal's rows, which it used to call a proposal that changes nothing", async () => {
+    // The tally read only graphs and sequences, so a real amendment came back
+    // "0 changed … this proposal changes nothing" — a sentence written to correct
+    // one specific mistake, aimed at a document that had not made it. A chapter is
+    // not counted: it organises the rows around it.
+    const result = await call({
+      schema: "urn:structured-exchange:2",
+      kind: "table",
+      target: { ref: "doors://module/42" },
+      removals: [{ type: "row", ref: "REQ-9" }],
+      data: {
+        columns: ["id"],
+        rows: [
+          { heading: "1. Braking", depth: 1 },
+          { cells: ["REQ-1"], ref: "REQ-1", set: { attributes: { status: "in review" } } },
+          { cells: ["REQ-2"] },
+          { cells: ["REQ-3"], ref: "REQ-3" },
+        ],
+      },
+    });
+    const text = result.content[0].text;
+    assert.match(text, /1 added, 1 changed, 1 shown as unchanged context, 1 removed/);
+    assert.ok(!text.includes("changes nothing"), text);
+  });
 });

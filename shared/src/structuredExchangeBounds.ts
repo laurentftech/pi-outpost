@@ -112,9 +112,16 @@ export function checkDocumentBytes(
   // Before the parse the ceiling is the widest any version allows; after it, the
   // one the document's own version promises. A deployment limit is stricter than
   // either and wins over both.
-  const versioned = declared === undefined ? outer.limit : Math.min(outer.limit, bytesCeilingFor(declared));
+  // Before the parse there is no version to hold the document to, so only the outer
+  // edge and the deployment's own limit apply.
+  const versioned = declared === undefined ? Number.POSITIVE_INFINITY : bytesCeilingFor(declared);
   const limit = Math.min(outer.limit, versioned);
-  const level = limit === outer.limit && outer.level === "deployment" ? "deployment" : outer.level;
+  // Whose number refused it — the only thing that tells an operator whether to
+  // change their configuration or accept the contract. A deployment limit sitting
+  // between the two ceilings used to be reported as the deployment's own while
+  // quoting the *contract's* smaller number, sending someone to raise a limit they
+  // had never set.
+  const level = limit === versioned && versioned < outer.limit ? "ceiling" : outer.level;
   if (observed <= limit) return undefined;
   return {
     rule: "document-too-large",
