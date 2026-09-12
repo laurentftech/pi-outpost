@@ -196,6 +196,41 @@ describe("the visual presentation of an enriched table", () => {
     expect(roles).toEqual([null, "changed", "added", "context"]);
   });
 
+  it("keys and filters a proposal by the roles it derived", () => {
+    // The tints were there; the key beside them was not, because the legend and the
+    // filter both asked whether a role had been *declared* — which a proposal never
+    // does. Colour carrying a meaning with no word attached is the one thing this
+    // rendering promises never to do.
+    const proposal = {
+      schema: "urn:structured-exchange:2",
+      kind: "table",
+      target: { ref: "doors://module/42" },
+      data: {
+        columns: ["id", "requirement"],
+        rows: [
+          { id: "r1", ref: "REQ-1", cells: ["REQ-1", "Stop within 40 m"], set: { attributes: { status: "in review" } } },
+          { id: "r2", cells: ["", "Warn the driver at 20 m"] },
+          { id: "r3", ref: "REQ-3", cells: ["REQ-3", "Read wheel speed"] },
+        ],
+      },
+    };
+    const serialized = JSON.stringify(proposal);
+    const envelope = validStructuredExchange(serialized);
+    expect(envelope, "the fixture itself does not validate").toBeDefined();
+    const { container } = render(<StructuredExchangeDocument envelope={envelope!} source={serialized} />);
+
+    // Every role on screen has its word in the key.
+    for (const word of ["changed", "added", "existing"]) {
+      expect(screen.getAllByText(new RegExp(word, "i")).length).toBeGreaterThan(0);
+    }
+
+    // And the reader can narrow by one: hiding additions leaves the other two.
+    fireEvent.click(screen.getByRole("button", { name: /added/i }));
+    const visible = [...container.querySelectorAll("tbody tr")].map((row) => row.getAttribute("data-row-role"));
+    expect(visible).not.toContain("added");
+    expect(visible).toContain("changed");
+  });
+
   it("keeps a row's type and reference on the row", () => {
     const { container } = renderEnriched();
     const row = container.querySelector('tr[data-row-ref="REQ-1"]');

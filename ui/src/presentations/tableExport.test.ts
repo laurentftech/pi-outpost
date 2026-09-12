@@ -225,3 +225,36 @@ describe("handing the browser a file", () => {
     vi.doUnmock("write-excel-file/browser");
   });
 });
+
+describe("a proposal's derived roles leave with it", () => {
+  // A proposed table declares no role on any row — declaring one beside a change is
+  // refused — so asking the data alone dropped the role column from the export of
+  // the one table where it carries most: which requirements the amendment touches.
+  const proposed: StructuredTableData = {
+    columns: ["ID", "Requirement"],
+    rows: [
+      { id: "r1", ref: "REQ-1", cells: ["REQ-1", "Stop within 40 m."] },
+      { id: "r2", cells: ["", "Warn the driver at 20 m."] },
+    ] as unknown as StructuredTableData["rows"],
+  };
+  const described = [{ role: "changed" as const }, { role: "added" as const }];
+
+  it("carries the role column when the roles were derived", () => {
+    const exported = tableExport(proposed, nothingHidden, described);
+    expect(exported.columns).toEqual(["ID", "Requirement", "change"]);
+    expect(exported.rows.map((row) => row.at(-1))).toEqual(["changed", "added"]);
+  });
+
+  it("invents no column when there is no role at all", () => {
+    expect(tableExport(proposed, nothingHidden).columns).toEqual(["ID", "Requirement"]);
+  });
+
+  it("leaves behind what the reader has narrowed away", () => {
+    // What leaves is what the reader is looking at — including when the role they
+    // filtered on was derived rather than declared.
+    const exported = tableExport(proposed, new Set([filterKey("role", "added")]), described);
+    expect(exported.rows).toHaveLength(1);
+    expect(exported.rows[0].at(-1)).toBe("changed");
+    expect(exported.withheld).toBe(1);
+  });
+});

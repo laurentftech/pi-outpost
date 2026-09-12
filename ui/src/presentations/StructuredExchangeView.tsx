@@ -19,8 +19,8 @@ import {
   type Nudge,
   ROLE_LABEL,
   TABLE_ROLE_LABEL,
+  TABLE_ROLES,
   tableDeclaresRoles,
-  tableRolesPresent,
   tableRowRole,
   toMermaid,
   validStructuredExchange,
@@ -852,9 +852,16 @@ function TableView({
   );
 
   const declaresRoles = tableDeclaresRoles(data);
-  const rolesPresent = tableRolesPresent(data);
-  const shown = data.rows.filter((row) => {
-    const role = tableRowRole(row, declaresRoles);
+  // What the reader is actually looking at, which in a proposal is derived rather
+  // than declared. Asking the declaration instead left a proposed table tinted with
+  // no key beside it and no way to filter it — colour carrying a meaning with no
+  // word attached, which is the one thing this rendering promises never to do.
+  const roleOf = (row: StructuredTableData["rows"][number], index: number): StructuredTableRowRole | undefined =>
+    rows?.[index]?.role ?? tableRowRole(row, declaresRoles);
+  const rolesPresent = [...new Set(data.rows.map(roleOf).filter((role): role is StructuredTableRowRole => role !== undefined))]
+    .sort((a, b) => TABLE_ROLES.indexOf(a) - TABLE_ROLES.indexOf(b));
+  const shown = data.rows.filter((row, index) => {
+    const role = roleOf(row, index);
     return role === undefined || !hidden.has(filterKey("role", role));
   });
 
@@ -1325,7 +1332,7 @@ export function StructuredExchangeDocument({ envelope, source, rawOutput, dispat
   const exportBaseName = `${envelope.kind}-${targetRef(envelope) ?? "data"}`.replace(/[^\w.-]+/g, "-");
   // Taken at the moment of export rather than held in state: what leaves is what
   // the reader is looking at, and what they are looking at is what `hidden` says.
-  const exportedTable = () => tableExport(envelope.data as StructuredTableData, hidden);
+  const exportedTable = () => tableExport(envelope.data as StructuredTableData, hidden, described.rows);
   const narrowedExport = envelope.kind === "table" ? exportedTable().withheld : 0;
 
   /**

@@ -14,6 +14,7 @@ import {
   readTableRow,
   type StructuredTableCell,
   type StructuredTableData,
+  type StructuredTableRowRole,
 } from "@pi-outpost/shared/structured-exchange";
 import { filterKey, TABLE_ROLE_LABEL, tableDeclaresRoles, tableRowRole } from "./structuredExchange";
 import { save } from "../util/download";
@@ -52,25 +53,43 @@ export type TableExport = {
  * the table declares roles at all — a plain table exports the columns its producer
  * declared and nothing this application invented.
  */
-export function tableExport(data: StructuredTableData, hidden: ReadonlySet<string>): TableExport {
+export function tableExport(
+  data: StructuredTableData,
+  hidden: ReadonlySet<string>,
+  /**
+   * The rows as the reader sees them, when a proposal derived their roles.
+   *
+   * A proposed table declares no role on any row — declaring one beside a change is
+   * refused — so asking the data alone dropped the role column from the export of
+   * the one table where it carries the most: which requirements the amendment
+   * touches. What leaves has to be what the reader is looking at.
+   */
+  described?: { role?: StructuredTableRowRole }[],
+): TableExport {
   const declaresRoles = tableDeclaresRoles(data);
+  const roleOf = (row: StructuredTableData["rows"][number], index: number): StructuredTableRowRole | undefined =>
+    described?.[index]?.role ?? tableRowRole(row, declaresRoles);
+  const anyRole = data.rows.some((row, index) => roleOf(row, index) !== undefined);
   const hasChapters = data.rows.some((row) => readTableRow(row).heading !== undefined);
-  const shown = data.rows.filter((row) => {
-    const role = tableRowRole(row, declaresRoles);
-    return role === undefined || !hidden.has(filterKey("role", role));
-  });
+  const shownIndexes = data.rows
+    .map((_row, index) => index)
+    .filter((index) => {
+      const role = roleOf(data.rows[index], index);
+      return role === undefined || !hidden.has(filterKey("role", role));
+    });
+  const shown = shownIndexes.map((index) => data.rows[index]);
 
   const columns = [
     ...(hasChapters ? [SECTION_COLUMN, LEVEL_COLUMN] : []),
     ...data.columns,
-    ...(declaresRoles ? [ROLE_COLUMN] : []),
+    ...(anyRole ? [ROLE_COLUMN] : []),
   ];
 
   return {
     columns,
-    rows: shown.map((row) => {
+    rows: shown.map((row, position) => {
       const { cells, heading } = readTableRow(row);
-      const role = tableRowRole(row, declaresRoles);
+      const role = roleOf(row, shownIndexes[position]);
       const depth = Array.isArray(row) ? undefined : (row as { depth?: number }).depth;
       // A chapter keeps its place in the sequence and fills the columns it has:
       // its own, and none of the data ones, because it has no data.
@@ -80,7 +99,7 @@ export function tableExport(data: StructuredTableData, hidden: ReadonlySet<strin
           : [heading, depth ?? 1]
         : [];
       const body = heading === undefined ? cells : data.columns.map(() => null);
-      return [...leading, ...body, ...(role === undefined ? [] : [TABLE_ROLE_LABEL[role]])];
+      return [...leading, ...body, ...(anyRole ? [role === undefined ? null : TABLE_ROLE_LABEL[role]] : [])];
     }),
     withheld: data.rows.length - shown.length,
   };
