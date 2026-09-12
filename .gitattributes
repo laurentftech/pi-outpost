@@ -1,0 +1,11 @@
+# The published contract is bytes, so its bytes must not depend on who checked it
+# out. Without this, Git hands a Windows working tree CRLF copies of the schemas and
+# the conformance corpus — and `npm pack` ships the working tree, so a release built
+# there would send producers a different corpus from the one built anywhere else.
+#
+# Deliberately narrow. A repository-wide line-ending policy is a decision for the
+# whole tree and everyone working in it; this is the surface that is *distributed*
+# as an exact artifact, and it is the only one that needs settling here.
+shared/schemas/*.json          text eol=lf
+shared/conformance/**/*.json   text eol=lf
+skills/structured-exchange/*   text eol=lf

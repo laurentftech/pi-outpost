@@ -24,7 +24,10 @@ const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..")
 function envelopes(file: string): { at: number; document: Record<string, unknown> }[] {
   const text = readFileSync(path.join(REPO, file), "utf8");
   const found: { at: number; document: Record<string, unknown> }[] = [];
-  for (const match of text.matchAll(/```json\n([\s\S]*?)```/g)) {
+  // `\r?` because a Windows checkout ends these lines with CRLF, and a fence regex
+  // that misses every block does not fail loudly — it reports a document with no
+  // examples, which is why the suite refuses to pass by finding none.
+  for (const match of text.matchAll(/```json\r?\n([\s\S]*?)```/g)) {
     let document: unknown;
     try {
       document = JSON.parse(match[1]);

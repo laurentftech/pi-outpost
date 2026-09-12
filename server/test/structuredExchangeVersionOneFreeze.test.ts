@@ -46,7 +46,16 @@ const index = JSON.parse(readFileSync(path.join(SUITE, "index.json"), "utf8")) a
   invalid: { file: string; expectedRule: string }[];
 };
 
-const digest = (file: string) => createHash("sha256").update(readFileSync(path.join(SUITE, file))).digest("hex");
+/**
+ * The digest of a case's content, with line endings normalised.
+ *
+ * Git is free to hand a Windows working tree CRLF, which changed every digest here
+ * and reported the whole corpus as altered — a checkout setting reading as "the
+ * published contract moved". What the freeze is about is the content; `.gitattributes`
+ * is what holds the bytes themselves to LF where they are distributed.
+ */
+const digest = (file: string) =>
+  createHash("sha256").update(readFileSync(path.join(SUITE, file), "utf8").replace(/\r\n/g, "\n")).digest("hex");
 
 describe("the version 1 conformance corpus is frozen", () => {
   test("the lock covers the corpus that existed before the extension", () => {
@@ -55,7 +64,7 @@ describe("the version 1 conformance corpus is frozen", () => {
   });
 
   for (const locked of lock.cases) {
-    test(`${locked.file} is byte-for-byte what it was`, () => {
+    test(`${locked.file} is character-for-character what it was`, () => {
       assert.equal(digest(locked.file), locked.sha256);
     });
 
