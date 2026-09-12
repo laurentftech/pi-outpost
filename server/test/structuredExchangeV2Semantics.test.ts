@@ -218,7 +218,7 @@ describe("a table becomes proposable when its rows have identity", () => {
 });
 
 describe("a row reports or it asks, never both", () => {
-  // The DOORS round trip this contract is for: an extraction states what is there,
+  // The round trip this contract is for: an extraction states what is there,
   // a proposal states what should change, and the reader is shown which of the two
   // they are approving. A row carrying a declared role beside a patch is both at
   // once, and the mark a reader sees would not be derived from what would be applied.

@@ -227,7 +227,7 @@ describe("what survives from the tool to the interface", () => {
     const result = await call({
       schema: "urn:structured-exchange:2",
       kind: "table",
-      target: { ref: "doors://module/42", revision: "baseline-7" },
+      target: { ref: "reqs://module/42", revision: "baseline-7" },
       removals: [{ type: "row", ref: "REQ-9" }],
       data: {
         columns: ["id"],
@@ -241,7 +241,7 @@ describe("what survives from the tool to the interface", () => {
     });
     const text = result.content[0].text;
     assert.ok(!text.includes("[object Object]"), text);
-    assert.match(text, /proposing changes to "doors:\/\/module\/42"/);
+    assert.match(text, /proposing changes to "reqs:\/\/module\/42"/);
     assert.match(text, /prepared against "baseline-7"/);
   });
 
@@ -253,7 +253,7 @@ describe("what survives from the tool to the interface", () => {
     const result = await call({
       schema: "urn:structured-exchange:2",
       kind: "table",
-      target: { ref: "doors://module/42" },
+      target: { ref: "reqs://module/42" },
       removals: [{ type: "row", ref: "REQ-9" }],
       data: {
         columns: ["id"],

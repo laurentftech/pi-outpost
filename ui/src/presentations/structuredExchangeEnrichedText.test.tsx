@@ -177,7 +177,7 @@ describe("the visual presentation of an enriched table", () => {
     const proposal = {
       schema: "urn:structured-exchange:2",
       kind: "table",
-      target: { ref: "doors://module/42", revision: "baseline-7" },
+      target: { ref: "reqs://module/42", revision: "baseline-7" },
       data: {
         columns: ["id", "requirement"],
         rows: [
@@ -204,7 +204,7 @@ describe("the visual presentation of an enriched table", () => {
     const proposal = {
       schema: "urn:structured-exchange:2",
       kind: "table",
-      target: { ref: "doors://module/42" },
+      target: { ref: "reqs://module/42" },
       data: {
         columns: ["id", "requirement"],
         rows: [

@@ -247,10 +247,10 @@ export const VERIFICATION_REPORT = "Verification report for REQ-1\nBrake distanc
  * cell, a heading spanning columns whose widths the reader can drag, a relation
  * rendered on both of the rows it connects.
  */
-const DOORS_EXTRACTION = {
+const SPEC_EXTRACTION = {
   schema: "urn:structured-exchange:2",
   kind: "table",
-  profile: "acme/doors-requirements",
+  profile: "acme/requirements",
   data: {
     columns: ["id", "requirement", "verification"],
     rows: [
@@ -316,29 +316,29 @@ const DOORS_EXTRACTION = {
  * now, what the producer expected to find, what it asks to set, what it asks to
  * unset. Plus a new requirement with no reference, and a withdrawal.
  */
-const DOORS_PROPOSAL = {
-  ...DOORS_EXTRACTION,
-  target: { ref: "doors://module/42", revision: "baseline-7" },
+const SPEC_PROPOSAL = {
+  ...SPEC_EXTRACTION,
+  target: { ref: "reqs://module/42", revision: "baseline-7" },
   removals: [
     { type: "row", ref: "REQ-9", label: "Battery voltage shall be read at 10 Hz.", kind: "requirement" },
   ],
   data: {
-    ...DOORS_EXTRACTION.data,
+    ...SPEC_EXTRACTION.data,
     rows: [
-      DOORS_EXTRACTION.data.rows[0],
+      SPEC_EXTRACTION.data.rows[0],
       {
-        ...DOORS_EXTRACTION.data.rows[1],
+        ...SPEC_EXTRACTION.data.rows[1],
         expect: { attributes: { status: "approved" }, revision: "obj-rev-3" },
         set: { attributes: { status: "in review" }, removeAttributes: ["owner"] },
       },
-      DOORS_EXTRACTION.data.rows[2],
-      DOORS_EXTRACTION.data.rows[3],
+      SPEC_EXTRACTION.data.rows[2],
+      SPEC_EXTRACTION.data.rows[3],
       {
         id: "r4",
         kind: "requirement",
         cells: ["", "The driver shall be warned 20 m before the stopping point.", "test"],
       },
-      DOORS_EXTRACTION.data.rows[4],
+      SPEC_EXTRACTION.data.rows[4],
     ],
   },
 };
@@ -433,7 +433,7 @@ export const SEEDED_MESSAGES = [
     toolCallId: "call-8",
     toolName: "structured_exchange",
     content: "extracted module 42: three requirements under two chapters, with traceability",
-    details: DOORS_EXTRACTION,
+    details: SPEC_EXTRACTION,
   },
   {
     role: "assistant",
@@ -444,6 +444,6 @@ export const SEEDED_MESSAGES = [
     toolCallId: "call-9",
     toolName: "structured_exchange",
     content: "proposal against baseline-7: amend REQ-2, add a warning requirement, withdraw REQ-9",
-    details: DOORS_PROPOSAL,
+    details: SPEC_PROPOSAL,
   },
 ];

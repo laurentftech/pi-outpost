@@ -2,8 +2,8 @@
  * The document a reader judged is the document an integration later fetches.
  *
  * There is deliberately no approval action here and no handover step: approval is a
- * person reading the screen, and carrying their decision into DOORS — or wherever
- * the requirements live — belongs to whatever integrates this. Which is exactly why
+ * person reading the screen, and carrying their decision into the
+ * requirements manager it came from belongs to whatever integrates this. Which is exactly why
  * recovery has to be exact. The reader's "yes" refers to what they were shown, and
  * if the field they weighed is not in what comes back out, their judgement was
  * about a document that no longer exists.
@@ -22,10 +22,10 @@ import { checkStructuredExchangeSchema } from "@pi-outpost/shared/structured-exc
 const proposal = {
   schema: "urn:structured-exchange:2",
   kind: "table",
-  profile: "acme/doors",
-  target: { ref: "DOORS://module/42", revision: "baseline-7" },
+  profile: "acme/requirements",
+  target: { ref: "reqs://module/42", revision: "baseline-7" },
   removals: [{ type: "row", ref: "REQ-9", label: "Withdrawn requirement", kind: "requirement" }],
-  artifacts: [{ rel: "extractedFrom", uri: "https://doors/module/42", sha256: `sha256:${"b".repeat(64)}`, label: "Extraction" }],
+  artifacts: [{ rel: "extractedFrom", uri: "https://requirements.example/module/42", sha256: `sha256:${"b".repeat(64)}`, label: "Extraction" }],
   data: {
     columns: ["id", "requirement"],
     rows: [

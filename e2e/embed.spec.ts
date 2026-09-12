@@ -316,6 +316,11 @@ test.describe("diagrams in the widget", () => {
     const diagram = page.locator("#widget").locator("svg[id^='mermaid-']").first();
     await expect(diagram).toBeVisible();
 
+    // Polled rather than read straight after `toBeVisible`: mermaid renders
+    // asynchronously, so a diagram can be visible and not yet laid out — and
+    // `boundingBox()` answers null for the moment in between. Read as a fact, that
+    // is a null-dereference in CI and three green runs locally.
+    await expect.poll(async () => (await diagram.boundingBox())?.width ?? 0).toBeGreaterThan(0);
     const inlineWidth = (await diagram.boundingBox())!.width;
 
     await page.getByRole("button", { name: /Show diagram at full size/ }).click();

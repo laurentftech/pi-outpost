@@ -12,7 +12,7 @@
  * - a path inside the workspace, which the confined file surface already governs;
  * - an `http(s)` address, which leaves through the browser's own external-link path.
  *
- * Everything else — `file:`, `doors:`, `javascript:`, a Windows absolute path, a
+ * Everything else — `file:`, `reqs:`, `javascript:`, a Windows absolute path, a
  * path climbing out with `..` — resolves to no target at all. That is not the same
  * as hiding it: the caller still shows the URI and lets the reader copy it. A
  * producer's link that this application cannot safely open is information the

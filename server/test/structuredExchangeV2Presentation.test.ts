@@ -8,7 +8,7 @@
  * The distinction the enriched contract turns on, and the reason these are four
  * fields rather than one merged map: what is *described* (attributes), what is
  * *believed* of the authority (expectations), what is *asked for* (assignments and
- * removals). A reader approving a DOORS proposal has to be able to tell what they
+ * removals). A reader approving a proposal has to be able to tell what they
  * are approving from what was shown for context — and a merge would make the two
  * indistinguishable at exactly the moment it matters.
  */
@@ -32,7 +32,7 @@ function described(document: unknown) {
 const extraction = {
   schema: "urn:structured-exchange:2",
   kind: "table",
-  profile: "acme/doors",
+  profile: "acme/requirements",
   data: {
     columns: ["id", "requirement"],
     rows: [
@@ -59,7 +59,7 @@ const extraction = {
 /** The same specification, amended: what the agent proposes writing back. */
 const proposal = {
   ...extraction,
-  target: { ref: "DOORS://module/42", revision: "baseline-7" },
+  target: { ref: "reqs://module/42", revision: "baseline-7" },
   removals: [{ type: "row", ref: "REQ-9", label: "Withdrawn requirement" }],
   data: {
     ...extraction.data,
@@ -78,11 +78,11 @@ const proposal = {
 
 describe("the document says what it is and what it came from", () => {
   test("the profile reaches the reader, unread", () => {
-    assert.equal(described(extraction).profile, "acme/doors");
+    assert.equal(described(extraction).profile, "acme/requirements");
   });
 
   test("a proposal carries the artifact it targets and the revision it was read at", () => {
-    assert.deepEqual(described(proposal).target, { ref: "DOORS://module/42", revision: "baseline-7" });
+    assert.deepEqual(described(proposal).target, { ref: "reqs://module/42", revision: "baseline-7" });
   });
 
   test("an extraction targets nothing, and says so by carrying no target", () => {
@@ -254,7 +254,7 @@ describe("a proposed table marks itself from what it proposes", () => {
   const proposed = {
     schema: "urn:structured-exchange:2",
     kind: "table",
-    target: { ref: "DOORS://module/42", revision: "baseline-7" },
+    target: { ref: "reqs://module/42", revision: "baseline-7" },
     removals: [{ type: "row", ref: "REQ-9", label: "Withdrawn requirement" }],
     data: { columns: ["id", "requirement"], rows },
   };

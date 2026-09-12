@@ -118,7 +118,7 @@ describe("where a reader may not", () => {
   const refused = [
     ["a scheme the policy does not allow", "file:///etc/passwd"],
     ["one that would execute", "javascript:alert(1)"],
-    ["an authority of its own", "doors://module/42"],
+    ["an authority of its own", "reqs://module/42"],
     ["an absolute path", "/etc/passwd"],
     ["a windows path", "C:\\\\Windows\\\\system32"],
     ["a path climbing out of the workspace", "../../etc/passwd"],
