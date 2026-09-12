@@ -55,4 +55,4 @@
 - [x] 6.5 Exercise a revision-bound proposal in the running application with Playwright and verify descriptions, expectations, assignments, removals, approval, and byte-preserving recovery through the actual transcript and handover boundary.
 - [x] 6.8 Exercise a chaptered requirements table carrying traceability in the running application: verify headings, row kinds, both directions of each relation, the key, the derived matrix, and that the chapters and relations survive the data export and the written document.
 - [x] 6.6 Exercise explicit safe navigation and one matching and one mismatching artifact digest in the running application, verifying observable outcomes rather than relying on screenshots.
-- [ ] 6.7 Run `git diff HEAD`, invoke the required `code-reviewer` agent with the complete task diff, resolve every CRITICAL/HIGH finding, and report non-blocking findings.
+- [x] 6.7 Run `git diff HEAD`, invoke the required `code-reviewer` agent with the complete task diff, resolve every CRITICAL/HIGH finding, and report non-blocking findings.
