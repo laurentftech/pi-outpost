@@ -257,6 +257,29 @@ so a reader learns it once.
 *Alternative considered:* accept both and let the rendering show them separately. Rejected because the
 mark a reader approves would then be able to differ from what would be applied.
 
+### Integrity is verified where it can be, and nothing is fetched outward
+
+An artifact link binds an approval to stable bytes even when its URI is mutable. Verifying that means
+holding the bytes and hashing them — and the question is who goes and gets them.
+
+The browser cannot fetch an arbitrary address, and should not: the request would leave the reader's
+own machine. The server could, and that is the door this declines to open. Nothing in this product
+makes an outbound request on a producer's instruction today, and adding one so that a digest can be
+checked would buy a convenience with a capability — a document could then name any address and have
+this server reach it, which is a far larger thing than the check it enables.
+
+So retrieval is bounded to what is already reachable without a new capability: an artifact inside the
+workspace, read through the confined file surface that governs every other read, hashed before it is
+opened or applied, and refused when the digest does not match. An `https` artifact stays visible,
+copyable and openable by the reader in their own browser — the link is honest about what it is, and
+the judgement stays with the person, which is where this contract puts approval anyway.
+
+The promise is therefore exact rather than broad: where this application will open an artifact for
+you, it has verified the bytes; where it will not, it says so and does not pretend.
+
+*Alternative considered:* a server-side fetch-and-hash proxy. Rejected as a capability the product
+does not have and should not acquire for this.
+
 ## Risks / Trade-offs
 
 - **[Two supported schema versions increase maintenance cost]** → Keep version dispatch explicit and
@@ -271,6 +294,8 @@ mark a reader approves would then be able to differ from what would be applied.
   existing explicit-action safety boundary and verify artifact digests before use.
 - **[Attribute rendering can overwhelm a diagram]** → Keep the full accessible representation and use
   expandable detail in the visual presentation without silently dropping data.
+- **[A digest that is never checked reads as a guarantee]** → The interface distinguishes an artifact
+  this application can verify from one it can only show; it never opens bytes it has not hashed.
 - **[Mandatory artifact digests add work for producers]** → Provide digest guidance and validation
   diagnostics; retain locations for mutable navigation targets that are not immutable artifacts.
 - **[The base change may evolve before integration]** → Implement only after its schema and proposal

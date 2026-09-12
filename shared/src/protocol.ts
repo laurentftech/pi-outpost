@@ -1027,7 +1027,16 @@ export type ClientMessage =
   | { type: "search_sessions"; query: string; requestId: string }
   | { type: "compact" }
   | { type: "list_directory"; path: string; requestId: string }
-  | { type: "read_file"; path: string; requestId: string }
+  /**
+   * Read a file for the viewer.
+   *
+   * `sha256` is present when the path came from an artifact link, and turns the
+   * read into a verification: the bytes are hashed before anything is handed back,
+   * and content that does not match is refused rather than shown. A digest a
+   * document carries is what an approval is bound to, so opening bytes that are no
+   * longer those bytes would quietly break the binding.
+   */
+  | { type: "read_file"; path: string; requestId: string; sha256?: string }
   | {
       type: "write_file";
       path: string;

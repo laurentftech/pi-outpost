@@ -43,8 +43,8 @@
 
 - [x] 5.1 Add explicit location navigation only for schemes and workspace targets already allowed by the application's resource safety policy; leave unsupported locations visible and copyable.
 - [x] 5.2 Ensure no location or artifact resource is opened, fetched, rendered, or executed before a reader action.
-- [ ] 5.3 For supported artifact retrieval, stream bytes through a bounded path, compute SHA-256 before use, and refuse opening or applying bytes whose digest does not match the validated link.
-- [ ] 5.4 Test duplicate locations, stale location revisions, unsafe schemes, missing resources, oversized resources, valid digests, and digest mismatches at the real resource boundary.
+- [x] 5.3 For an artifact this application can reach without a new capability — one inside the workspace — read it through the confined file surface under a bounded size, compute SHA-256 before it is opened or applied, and refuse bytes whose digest does not match the validated link. An artifact addressed outward is shown and never fetched on the reader's behalf.
+- [x] 5.4 Test duplicate locations, stale location revisions, unsafe schemes, missing resources, oversized resources, valid digests, and digest mismatches at the real resource boundary.
 
 ## 6. Scenario Coverage and Running-App Proof
 

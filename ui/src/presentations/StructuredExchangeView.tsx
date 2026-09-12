@@ -641,7 +641,18 @@ const CLAIM_STYLE: Record<string, { label: string; className: string }> = {
  * information the reader may need; a scheme simply does not become trusted by
  * appearing in a document that validated.
  */
-function FollowableUri({ uri, text, dispatch }: { uri: string; text: string; dispatch?: ActionDispatch }) {
+function FollowableUri({
+  uri,
+  text,
+  dispatch,
+  sha256,
+}: {
+  uri: string;
+  text: string;
+  dispatch?: ActionDispatch;
+  /** An artifact's digest. A location has none: it points at a place, not at bytes. */
+  sha256?: string;
+}) {
   const target = resourceTargetFor(uri);
   if (target === undefined || dispatch === undefined) {
     return <span data-followable="no">{text}</span>;
@@ -652,7 +663,7 @@ function FollowableUri({ uri, text, dispatch }: { uri: string; text: string; dis
         type="button"
         data-followable="workspace-file"
         className="text-left underline decoration-dotted underline-offset-2 hover:decoration-solid"
-        onClick={() => dispatch({ kind: "openFile", path: target.path })}
+        onClick={() => dispatch({ kind: "openFile", path: target.path, ...(sha256 === undefined ? {} : { sha256 }) })}
       >
         {text}
       </button>
@@ -738,7 +749,7 @@ function EnrichmentDetail({
               {artifact.rel}
             </dt>
             <dd className="col-span-2 break-all font-mono text-zinc-600 dark:text-zinc-300">
-              <FollowableUri uri={artifact.uri} text={artifactText(artifact)} dispatch={dispatch} />
+              <FollowableUri uri={artifact.uri} text={artifactText(artifact)} dispatch={dispatch} sha256={artifact.sha256} />
             </dd>
           </Fragment>
         ))}

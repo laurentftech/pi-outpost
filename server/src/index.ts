@@ -3209,8 +3209,33 @@ function documentIssuesFor(content: string): { rule: string; path: string; messa
 }
 
 /** File-browser sidebar: read a file for preview, confined to workspace.browserRoot. */
-async function handleReadFile(workspace: Workspace, socket: WebSocket, filePath: string, requestId: string): Promise<void> {
+async function handleReadFile(
+  workspace: Workspace,
+  socket: WebSocket,
+  filePath: string,
+  requestId: string,
+  /** The digest an artifact link bound its approval to, when the path came from one. */
+  expectedDigest?: string,
+): Promise<void> {
   try {
+    if (expectedDigest !== undefined) {
+      // Hashed where the bytes are read, before anything is handed on. A mismatch
+      // is not a corrupt file and not necessarily an attack: a mutable URI whose
+      // content moved on says exactly this, and it is the case the digest exists
+      // for. Either way the reader is told rather than shown something else.
+      const bytes = await readFileRaw(workspace.browserRoot, filePath, config.structuredExchange.maxBytes);
+      const observed = `sha256:${createHash("sha256").update(bytes).digest("hex")}`;
+      if (observed !== expectedDigest) {
+        return send(socket, {
+          type: "file_browser_error",
+          requestId,
+          path: filePath,
+          message:
+            `This artifact is not the one the document was approved against — it declares ${expectedDigest}, ` +
+            `and the file here is ${observed}.`,
+        });
+      }
+    }
     const { content, size, mtimeMs } = await readFileForPreview(workspace.browserRoot, filePath, config.structuredExchange.maxBytes);
     const documentIssues = documentIssuesFor(content);
     send(socket, {
@@ -4150,10 +4175,17 @@ function handleClientMessage(socket: WebSocket, raw: string): void {
       if (typeof message.path !== "string" || typeof message.requestId !== "string") return;
       handleListDirectory(workspace, socket, message.path, message.requestId).catch(reportError);
       break;
-    case "read_file":
+    case "read_file": {
       if (typeof message.path !== "string" || typeof message.requestId !== "string") return;
-      handleReadFile(workspace, socket, message.path, message.requestId).catch(reportError);
+      // A digest only means something in the shape the contract publishes. Anything
+      // else is dropped rather than compared: a malformed one would never match, and
+      // refusing every read against it would look like a corrupt file.
+      const expected = typeof message.sha256 === "string" && /^sha256:[0-9a-f]{64}$/.test(message.sha256)
+        ? message.sha256
+        : undefined;
+      handleReadFile(workspace, socket, message.path, message.requestId, expected).catch(reportError);
       break;
+    }
     case "write_file":
       if (
         typeof message.path !== "string" ||

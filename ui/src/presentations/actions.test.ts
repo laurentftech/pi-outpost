@@ -21,7 +21,8 @@ describe("createActionDispatch", () => {
     dispatch({ kind: "openWorktreeDiff", path: "src/c.ts" });
     dispatch({ kind: "searchWorkspace", query: "needle" });
 
-    expect(t.readFile).toHaveBeenCalledWith("src/a.ts");
+    // An open with no digest verifies nothing, and says so by carrying none.
+    expect(t.readFile).toHaveBeenCalledWith("src/a.ts", undefined);
     expect(t.fetchGitFileHistory).toHaveBeenCalledWith("src/b.ts");
     expect(t.fetchGitDiff).toHaveBeenCalledWith("src/c.ts");
     expect(t.searchFiles).toHaveBeenCalledWith("needle");
@@ -57,5 +58,12 @@ describe("createActionDispatch", () => {
 
   it("has a no-op dispatch for cards rendered without an application", () => {
     expect(() => noopDispatch({ kind: "openFile", path: "a" })).not.toThrow();
+  });
+  it("carries the digest an artifact bound its approval to", () => {
+    // The path alone would open whatever is at it now. The digest is what makes an
+    // approval refer to bytes rather than to a location.
+    const t = targets();
+    createActionDispatch(t)({ kind: "openFile", path: "evidence/report.txt", sha256: `sha256:${"a".repeat(64)}` });
+    expect(t.readFile).toHaveBeenCalledWith("evidence/report.txt", `sha256:${"a".repeat(64)}`);
   });
 });

@@ -152,9 +152,9 @@ describe("a structured-exchange document opened as a file", () => {
   });
 
   it("falls back to text for a version it does not implement, without validating it", () => {
-    const future = JSON.stringify({ schema: "urn:structured-exchange:2", kind: "constellation", data: {} });
+    const future = JSON.stringify({ schema: "urn:structured-exchange:3", kind: "constellation", data: {} });
     setup(future);
-    expect(screen.getByTestId("file-structured-exchange-unsupported")).toHaveTextContent("urn:structured-exchange:2");
+    expect(screen.getByTestId("file-structured-exchange-unsupported")).toHaveTextContent("urn:structured-exchange:3");
     // Not reported as invalid: it never claimed to satisfy the schema we hold.
     expect(screen.queryByTestId("file-structured-exchange-invalid")).toBeNull();
     expect(screen.queryByTestId("file-structured-exchange")).toBeNull();

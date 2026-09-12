@@ -10,7 +10,12 @@ export type ToolItem = Extract<ChatItem, { kind: "tool" }>;
  * by construction rather than by an approval prompt (see design.md, decision 4).
  */
 export type ToolAction =
-  | { kind: "openFile"; path: string }
+  /**
+   * `sha256` is present when the path came from an artifact link. It turns the open
+   * into a verification: the bytes are hashed where they are read and refused if
+   * they are not the ones the document was approved against.
+   */
+  | { kind: "openFile"; path: string; sha256?: string }
   | { kind: "openFileHistory"; path: string }
   | { kind: "openWorktreeDiff"; path: string }
   | { kind: "searchWorkspace"; query: string };
