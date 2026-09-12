@@ -1,0 +1,21 @@
+{
+  "schema": "urn:structured-exchange:2",
+  "kind": "table",
+  "data": {
+    "columns": [
+      "a"
+    ],
+    "rows": [
+      [
+        "x"
+      ]
+    ]
+  },
+  "artifacts": [
+    {
+      "rel": "verifies",
+      "uri": "u",
+      "sha256": "md5:00000000000000000000000000000000"
+    }
+  ]
+}

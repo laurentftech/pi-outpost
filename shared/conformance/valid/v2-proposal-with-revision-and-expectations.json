@@ -1,0 +1,52 @@
+{
+  "schema": "urn:structured-exchange:2",
+  "kind": "table",
+  "profile": "acme/requirements",
+  "target": {
+    "ref": "DOC-1",
+    "revision": "rev-9"
+  },
+  "removals": [
+    {
+      "type": "row",
+      "ref": "REQ-8",
+      "label": "Withdrawn requirement"
+    }
+  ],
+  "data": {
+    "columns": [
+      "id",
+      "requirement"
+    ],
+    "rows": [
+      {
+        "id": "r1",
+        "ref": "REQ-1",
+        "kind": "requirement",
+        "cells": [
+          "REQ-1",
+          "Stop within 40 m"
+        ],
+        "expect": {
+          "label": "Stop within 40 m",
+          "revision": "rev-9",
+          "attributes": {
+            "status": "approved"
+          }
+        },
+        "set": {
+          "cells": [
+            "REQ-1",
+            "Stop within 35 m"
+          ],
+          "attributes": {
+            "status": "in review"
+          },
+          "removeAttributes": [
+            "waiver"
+          ]
+        }
+      }
+    ]
+  }
+}

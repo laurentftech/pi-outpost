@@ -21,11 +21,27 @@ import { fileURLToPath } from "node:url";
 import { Code } from "typebox/compile";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const SCHEMA = path.resolve(HERE, "../schemas/structured-exchange-1.json");
-const OUTPUT = path.resolve(HERE, "../src/generated/structuredExchangeCheck.ts");
+/**
+ * One generated check per published version, because the browser dispatches too:
+ * a document is judged by the contract it declares, and a build that shipped only
+ * the newest check would quietly re-judge every version 1 document by version 2's
+ * rules — accepting fields version 1 refuses.
+ */
+export const GENERATED_CHECKS = [
+  {
+    version: "1",
+    schema: path.resolve(HERE, "../schemas/structured-exchange-1.json"),
+    output: path.resolve(HERE, "../src/generated/structuredExchangeCheck.ts"),
+  },
+  {
+    version: "2",
+    schema: path.resolve(HERE, "../schemas/structured-exchange-2.json"),
+    output: path.resolve(HERE, "../src/generated/structuredExchangeCheck2.ts"),
+  },
+];
 
-const HEADER = `/**
- * GENERATED from shared/schemas/structured-exchange-1.json — do not edit.
+const header = (version) => `/**
+ * GENERATED from shared/schemas/structured-exchange-${version}.json — do not edit.
  *
  * Regenerate with:
  *   node --import tsx/esm shared/scripts/generate-structured-exchange-check.mjs
@@ -54,15 +70,19 @@ function externalsLiteral(variables) {
   return `\nSetExternal({ variables: [\n${sources.join("\n")}\n] })\n`;
 }
 
-export function generate() {
-  const schema = JSON.parse(readFileSync(SCHEMA, "utf8"));
+export function generate(version = "1") {
+  const target = GENERATED_CHECKS.find((candidate) => candidate.version === version);
+  if (target === undefined) throw new Error(`no generated check is declared for version ${version}`);
+  const schema = JSON.parse(readFileSync(target.schema, "utf8"));
   const compiled = Code(schema);
-  return `${HEADER}${compiled.Code}\n${externalsLiteral(compiled.External.variables)}`;
+  return `${header(version)}${compiled.Code}\n${externalsLiteral(compiled.External.variables)}`;
 }
 
-export const GENERATED_CHECK_PATH = OUTPUT;
+export const GENERATED_CHECK_PATH = GENERATED_CHECKS[0].output;
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  writeFileSync(OUTPUT, generate());
-  console.log(`wrote ${path.relative(process.cwd(), OUTPUT)}`);
+  for (const { version, output } of GENERATED_CHECKS) {
+    writeFileSync(output, generate(version));
+    console.log(`wrote ${path.relative(process.cwd(), output)}`);
+  }
 }

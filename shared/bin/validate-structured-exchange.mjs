@@ -32,7 +32,9 @@ import { checkStructuredExchangeSchema } from "../src/structuredExchangeSchemaNo
 
 const USAGE = `validate-structured-exchange [file]
 
-Validates a structured-exchange document against urn:structured-exchange:1.
+Validates a structured-exchange document against the contract it declares:
+urn:structured-exchange:1 or urn:structured-exchange:2. A document naming any
+other version is refused as unsupported rather than judged by the wrong one.
 Reads standard input when no file is given. Prints a JSON verdict on stdout.
 
 Exit codes: 0 conforms, 1 does not conform, 2 unreadable input, 3 not JSON.`;

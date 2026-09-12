@@ -48,7 +48,7 @@ export function declaredStructuredExchangeSchema(serialized: string): string | u
 }
 
 /** Same question, for a caller that already parsed. */
-function declaredSchemaOf(document: unknown): string | undefined {
+export function declaredSchemaOf(document: unknown): string | undefined {
   if (typeof document !== "object" || document === null || Array.isArray(document)) return undefined;
   const schema = (document as { schema?: unknown }).schema;
   if (typeof schema !== "string" || !schema.startsWith(STRUCTURED_EXCHANGE_SCHEMA_PREFIX)) return undefined;

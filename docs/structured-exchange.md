@@ -192,6 +192,146 @@ Old consumers: a copy of the widget published before roles existed validates aga
 its own committed schema, so a role-carrying table is refused there and the tool
 result falls back to raw output. It degrades; it does not break.
 
+## The enriched contract, `urn:structured-exchange:2`
+
+Everything above is version 1 and stays exactly as it is. Version 2 adds, and adds
+only: change the identifier on a version 1 document and it is a version 2 document,
+with one exception — `target` becomes an object, so a proposal can say which revision
+it was prepared against.
+
+Which one you emit is your choice, declared in the envelope. The application reads the
+identifier and nothing else: a document carrying enriched fields under the version 1
+identifier is refused, and a version 2 document that uses none of them is judged by
+version 2 anyway, because that is what it says.
+
+### What it adds
+
+| | |
+|---|---|
+| `profile` | one opaque identifier naming the vocabulary that owns your kinds and attribute names |
+| `attributes` | bounded, typed properties on any addressable element, relationship or row |
+| `target.revision`, `expect` | what you prepared against, and what you believe is currently true |
+| `locations` | where a thing can be found — a hint, never an identity |
+| `artifacts` | links to related files, bound to a `sha256:` digest |
+| typed rows | a table row may carry `id`, `ref` and `kind`, so it can be pointed at and patched |
+| `relations` | traceability between rows, with endpoints that may leave the document |
+| headings | structural rows that organise a table into chapters |
+
+### A new artifact, described
+
+```json
+{
+  "schema": "urn:structured-exchange:2",
+  "kind": "graph",
+  "profile": "acme/electrical",
+  "data": {
+    "nodes": [
+      { "id": "battery", "label": "Battery", "kind": "source",
+        "attributes": { "voltage": 400, "chemistry": "LFP", "suppliedBy": [{ "ref": "ORG-3" }] },
+        "locations": [{ "uri": "file:///models/power.json", "range": { "startLine": 12, "endLine": 40 } }] },
+      { "id": "motor", "label": "Traction motor", "kind": "actuator" }
+    ],
+    "edges": [{ "from": "battery", "to": "motor", "kind": "power", "attributes": { "peakKw": 150 } }]
+  }
+}
+```
+
+An attribute value is a string, a finite number, a boolean, `null`, a reference
+(`{ "ref": "…" }`), or one flat list of those. Lists do not nest, and no other object
+shape is allowed — a value the reader cannot render generically is a value that would
+arrive as a shrug.
+
+### A profile nobody recognises
+
+```json
+{
+  "schema": "urn:structured-exchange:2",
+  "kind": "graph",
+  "profile": "https://vendor.example/profiles/sysml-ish/v4",
+  "data": { "nodes": [{ "id": "b", "label": "Brake", "kind": "part",
+                        "attributes": { "stereotype": "«block»", "mass_kg": 3.4 } }], "edges": [] }
+}
+```
+
+This is valid, and it renders. The profile is **never fetched, resolved or executed** —
+it is a name, for a reader or an authority that knows it. An unknown profile is shown
+generically with its attributes as ordinary labelled values; it is not a reason to
+refuse a document, and it grants no behaviour to whatever the string resembles.
+
+### A revision-bound proposal, with expectations
+
+```json
+{
+  "schema": "urn:structured-exchange:2",
+  "kind": "table",
+  "profile": "acme/requirements",
+  "target": { "ref": "REQ-DOC-1", "revision": "rev-9" },
+  "removals": [{ "type": "row", "ref": "REQ-8", "label": "Withdrawn: superseded by REQ-1" }],
+  "data": {
+    "columns": ["id", "requirement", "status"],
+    "rows": [
+      { "heading": "1. Braking", "depth": 1 },
+      { "id": "r1", "ref": "REQ-1", "kind": "requirement",
+        "cells": ["REQ-1", "Stop within 40 m", "approved"],
+        "expect": { "revision": "rev-9", "attributes": { "status": "approved" } },
+        "set": { "cells": ["REQ-1", "Stop within 35 m"],
+                 "attributes": { "status": "in review" },
+                 "removeAttributes": ["waiver"] } },
+      { "id": "r2", "ref": "REQ-2", "kind": "requirement",
+        "cells": ["REQ-2", "Read wheel speed at 100 Hz", "approved"] }
+    ],
+    "relations": [
+      { "from": { "id": "r1" }, "to": { "id": "r2" }, "kind": "derives" },
+      { "from": { "id": "r1" }, "to": { "ref": "TEST-9" }, "kind": "verifiedBy" }
+    ]
+  }
+}
+```
+
+Four things in one row, and they are four different claims:
+
+- **the fields beside `ref`** say what the thing is called *now*. They are how a reader
+  recognises it. They are never applied.
+- **`expect`** says what you believe is currently true. It is a condition for the
+  receiving authority to check, not something this application has established.
+- **`set`** is the only thing that changes anything.
+- **`removeAttributes`** takes properties away. Deletion is explicit because `null` is
+  an ordinary value: writing `null` sets a property to null, it does not unset it.
+
+A relation's ends are stated explicitly — `{ "id": … }` for a row of this document,
+`{ "ref": … }` for something outside it. An `id` that names no row is refused; a `ref`
+is accepted and shown as leaving the document, because the test that verifies a
+requirement usually lives somewhere else, and traceability that stopped at the document
+boundary would stop exactly where it is needed.
+
+### Locations and artifacts are addresses, not content
+
+A `location` is navigational: a URI, optionally a revision and a zero-based line/character
+range. It takes no part in identity, in endpoint resolution, or in what a proposal
+addresses — move the thing and its location changes while its `ref` does not.
+
+An `artifact` link carries `rel`, `uri`, a mandatory `sha256:` digest, and optionally a
+media type and label. The digest is what makes an approval refer to stable bytes even
+when the URI is mutable. **Nothing is retrieved by validation or by rendering.** A reader
+who later asks to open one gets it through the application's existing resource rules,
+and the bytes are hashed before use: a digest that does not match is refused rather than
+shown.
+
+### What is yours, and what is the authority's
+
+The core validates the structural contract and the relational rules above it. It does
+not, and will not:
+
+- **check your profile's own rules.** Whether `mass_kg` is required on a `part`, or what
+  `derives` may connect, belongs to the profile. Validate it in your producer, and again
+  in the authority that applies the result.
+- **establish that an expectation holds.** It can see that an expectation is well-formed
+  and show it to a reader; only the authority holding the artifact can compare it with
+  what is actually there, and it must do so immediately before applying. Approval means
+  the reader approved the proposal *subject to* those conditions.
+- **resolve anything you name.** Profiles, locations and artifact URIs are inert text
+  until a person acts on them.
+
 ## If you are not building in this repository
 
 You do not need our command-line interface, and you do not need this repository. The
@@ -200,6 +340,7 @@ contract ships with the package, under `contract/`:
 ```
 node_modules/pi-outpost/dist/contract/
   schemas/structured-exchange-1.json    the normative schema — any validator runs it
+  schemas/structured-exchange-2.json    the enriched contract, published beside it
   conformance/                          documents and the verdict each should get
   validate-structured-exchange.mjs      the reference validator, self-contained
   README.md                             this page
@@ -244,9 +385,12 @@ that authority reports back, is a separate contract. What this one guarantees is
 an approved proposal survives unaltered and can be recovered exactly as it was
 validated — the precondition any delivery mechanism needs.
 
-**Concurrency.** A document names *which* artifact it targets, not which revision. A
-proposal built from a stale export and applied late is the receiving authority's to
-detect; this contract does not carry what it would need to do so.
+**Concurrency, as a guarantee.** Version 2 carries what an authority needs to *detect* a
+stale proposal — the revision it was prepared against, and the values it expected to
+find — but detecting is the authority's act, performed against its own state at the
+moment it applies. This contract transports the conditions and shows them to the reader;
+it never checks them, and an approval is never evidence that they hold. Version 1 does
+not carry them at all.
 
 **A vocabulary.** Relationship kinds are opaque strings. What `calls`, `composition`,
 or anything else means belongs to your domain, and enumerating it here would make a

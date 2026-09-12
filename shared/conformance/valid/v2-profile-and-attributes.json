@@ -1,0 +1,41 @@
+{
+  "schema": "urn:structured-exchange:2",
+  "kind": "graph",
+  "profile": "acme/electrical",
+  "data": {
+    "nodes": [
+      {
+        "id": "battery",
+        "label": "Battery",
+        "kind": "source",
+        "attributes": {
+          "voltage": 400,
+          "chemistry": "LFP",
+          "serviceable": true,
+          "retiredOn": null,
+          "suppliedBy": [
+            {
+              "ref": "ORG-3"
+            },
+            "internal"
+          ]
+        }
+      },
+      {
+        "id": "motor",
+        "label": "Motor",
+        "kind": "actuator"
+      }
+    ],
+    "edges": [
+      {
+        "from": "battery",
+        "to": "motor",
+        "kind": "power",
+        "attributes": {
+          "peakKw": 150
+        }
+      }
+    ]
+  }
+}

@@ -15,7 +15,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, test } from "node:test";
-import { generate, GENERATED_CHECK_PATH } from "../../shared/scripts/generate-structured-exchange-check.mjs";
+import { generate, GENERATED_CHECKS } from "../../shared/scripts/generate-structured-exchange-check.mjs";
 import { checkStructuredExchangeSchemaInBrowser } from "@pi-outpost/shared/structured-exchange/schema-browser";
 import { checkStructuredExchangeSchema } from "@pi-outpost/shared/structured-exchange/schema-node";
 
@@ -26,18 +26,23 @@ const index = JSON.parse(readFileSync(path.join(SUITE, "index.json"), "utf8")) a
 };
 
 describe("generated browser check", () => {
-  test("is up to date with the committed schema", () => {
-    // Compared without line endings: the generator writes LF, and a Windows checkout
-    // hands back CRLF, so the literal comparison reported a file that had not changed
-    // as stale — on that platform only, and only in CI.
-    const withoutLineEndings = (text: string) => text.replace(/\r\n/g, "\n");
+  // Every published version, not only the newest: the browser dispatches on what a
+  // document declares, so a stale check for an older version is a build that judges
+  // those documents by rules nobody published.
+  for (const { version, output } of GENERATED_CHECKS as { version: string; output: string }[]) {
+    test(`version ${version} is up to date with the committed schema`, () => {
+      // Compared without line endings: the generator writes LF, and a Windows checkout
+      // hands back CRLF, so the literal comparison reported a file that had not changed
+      // as stale — on that platform only, and only in CI.
+      const withoutLineEndings = (text: string) => text.replace(/\r\n/g, "\n");
 
-    assert.equal(
-      withoutLineEndings(readFileSync(GENERATED_CHECK_PATH, "utf8")),
-      withoutLineEndings(generate()),
-      "the generated check is stale — run: node --import tsx/esm shared/scripts/generate-structured-exchange-check.mjs",
-    );
-  });
+      assert.equal(
+        withoutLineEndings(readFileSync(output, "utf8")),
+        withoutLineEndings(generate(version)),
+        "the generated check is stale — run: node --import tsx/esm shared/scripts/generate-structured-exchange-check.mjs",
+      );
+    });
+  }
 
   describe("agrees with the Node validator on every conformance case", () => {
     for (const { file } of index.valid) {
@@ -55,7 +60,10 @@ describe("generated browser check", () => {
 
         // Cases refused by a semantic rule pass *schema* validation in both, and
         // are caught by the shared semantic validator that runs after it.
-        const schemaRefused = expectedRule.startsWith("schema/");
+        // Both stages of the schema gate count here: a version this build has no
+        // check for is refused before any schema is consulted, and the browser has
+        // to reach the same answer as Node or it would render what Node refused.
+        const schemaRefused = expectedRule.startsWith("schema/") || expectedRule === "unsupported-version";
         assert.equal(
           browserIssues.length > 0,
           schemaRefused,

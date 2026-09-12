@@ -1,0 +1,17 @@
+{
+  "schema": "urn:structured-exchange:2",
+  "kind": "table",
+  "data": {
+    "columns": [
+      "a"
+    ],
+    "rows": [
+      {
+        "heading": "h",
+        "cells": [
+          "x"
+        ]
+      }
+    ]
+  }
+}

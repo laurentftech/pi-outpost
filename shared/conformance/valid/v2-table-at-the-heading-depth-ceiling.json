@@ -1,0 +1,18 @@
+{
+  "schema": "urn:structured-exchange:2",
+  "kind": "table",
+  "data": {
+    "columns": [
+      "a"
+    ],
+    "rows": [
+      {
+        "heading": "deepest",
+        "depth": 6
+      },
+      [
+        "x"
+      ]
+    ]
+  }
+}

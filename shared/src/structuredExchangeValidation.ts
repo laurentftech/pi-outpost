@@ -13,7 +13,7 @@
  * fix it and try again.
  */
 import {
-  PROPOSABLE_KINDS,
+  proposableKinds,
   readTableRow,
   STRUCTURED_EXCHANGE_CEILINGS,
   type StructuredContainer,
@@ -92,6 +92,66 @@ function relationshipsPointer(envelope: StructuredExchangeEnvelope): string {
  * is told about all of them. A producer fixing one issue at a time and being
  * refused again for the next is a producer that gives up.
  */
+
+
+/**
+ * Everything in this envelope that can carry enrichment, with the pointer naming it.
+ *
+ * The enriched contract hangs the same five things — attributes, a patch, an
+ * expectation, locations, artifact links — off items that were unrelated in
+ * version 1: an element, a relationship, a row, a relation between rows. Walking
+ * them through one list is what keeps a rule from applying to three of the four
+ * because the fourth was added later.
+ */
+interface EnrichedItem {
+  at: string;
+  ref?: string;
+  set?: { attributes?: Record<string, unknown>; removeAttributes?: unknown };
+  expect?: unknown;
+  locations?: unknown;
+}
+
+function enrichedItemsOf(envelope: StructuredExchangeEnvelope): EnrichedItem[] {
+  const data = envelope.data as unknown as Record<string, unknown>;
+  const items: EnrichedItem[] = [];
+  for (const collection of ["nodes", "edges", "participants", "messages", "rows", "relations"]) {
+    const held = data[collection];
+    if (!Array.isArray(held)) continue;
+    held.forEach((entry, index) => {
+      if (entry === null || typeof entry !== "object" || Array.isArray(entry)) return;
+      const item = entry as Record<string, unknown>;
+      items.push({
+        at: `/data/${collection}/${index}`,
+        ref: typeof item.ref === "string" ? item.ref : undefined,
+        set: item.set as EnrichedItem["set"],
+        expect: item.expect,
+        locations: item.locations,
+      });
+    });
+  }
+  return items;
+}
+
+/** The rows of a table that carry an identity, and can therefore be pointed at. */
+function identifiedRowsOf(envelope: StructuredExchangeEnvelope): { id: string; at: string }[] {
+  if (envelope.kind !== "table") return [];
+  const rows = (envelope.data as StructuredTableData).rows as unknown[];
+  const identified: { id: string; at: string }[] = [];
+  rows.forEach((row, index) => {
+    if (row === null || typeof row !== "object" || Array.isArray(row)) return;
+    const id = (row as { id?: unknown }).id;
+    if (typeof id === "string") identified.push({ id, at: `/data/rows/${index}` });
+  });
+  return identified;
+}
+
+/** The relations a table declares between its rows. */
+function rowRelationsOf(envelope: StructuredExchangeEnvelope): { from?: unknown; to?: unknown }[] {
+  if (envelope.kind !== "table") return [];
+  const relations = (envelope.data as { relations?: unknown }).relations;
+  return Array.isArray(relations) ? (relations as { from?: unknown; to?: unknown }[]) : [];
+}
+
 export function validateStructuredExchangeSemantics(envelope: StructuredExchangeEnvelope): StructuredExchangeIssue[] {
   const issues: StructuredExchangeIssue[] = [];
 
@@ -106,7 +166,7 @@ export function validateStructuredExchangeSemantics(envelope: StructuredExchange
     return issues;
   }
 
-  const proposable = PROPOSABLE_KINDS.includes(envelope.kind);
+  const proposable = proposableKinds(envelope.schema).includes(envelope.kind);
   if (envelope.target !== undefined && !proposable) {
     issues.push({
       rule: "kind-not-proposable",
@@ -302,7 +362,11 @@ export function validateStructuredExchangeSemantics(envelope: StructuredExchange
       // Through the reader, not off the row: a row carrying a role is an object,
       // and `.length` on one is `undefined`, which compares unequal to every
       // column count and refused every role-carrying table ever written.
-      const { cells } = readTableRow(row);
+      const { cells, heading } = readTableRow(row);
+      // A heading is not a row of data: it spans the table, so it has nothing to
+      // align to its columns. Exempting it here is what lets a table carry the
+      // chapters of a document without every one of them being refused.
+      if (heading !== undefined) return;
       if (cells.length !== columns.length) {
         issues.push({
           rule: "row-column-mismatch",
@@ -314,6 +378,143 @@ export function validateStructuredExchangeSemantics(envelope: StructuredExchange
       }
     });
   }
+
+  // ---------------------------------------------------------------------------
+  // The enriched contract's own rules
+  // ---------------------------------------------------------------------------
+
+  for (const item of enrichedItemsOf(envelope)) {
+    // An expectation is a claim about what the authority holds right now, for it to
+    // check before applying. With no target there is no authority to check it, and
+    // with no reference there is nothing there to compare it against — in both cases
+    // the producer has written a condition nobody can evaluate.
+    if (item.expect !== undefined) {
+      if (envelope.target === undefined) {
+        issues.push({
+          rule: "expectation-without-target",
+          path: `${item.at}/expect`,
+          message:
+            "an expectation is checked by the authority a proposal targets; a document that targets nothing has nobody to check it",
+        });
+      } else if (item.ref === undefined) {
+        issues.push({
+          rule: "expectation-without-reference",
+          path: `${item.at}/expect`,
+          message: "an expectation describes something that already exists, and this item carries no reference to one",
+        });
+      }
+    }
+
+    const removals = item.set?.removeAttributes;
+    if (Array.isArray(removals)) {
+      const assigned = item.set?.attributes ?? {};
+      const seen = new Map<string, number>();
+      removals.forEach((name, index) => {
+        if (typeof name !== "string") return;
+        const first = seen.get(name);
+        if (first === undefined) seen.set(name, index);
+        else {
+          issues.push({
+            rule: "duplicate-attribute-removal",
+            path: `${item.at}/set/removeAttributes/${index}`,
+            message: `"${name}" is already removed at ${item.at}/set/removeAttributes/${first}`,
+          });
+        }
+        // Assigned and removed at once states two intentions about one property, and
+        // resolving it by precedence would be this stage guessing.
+        if (Object.prototype.hasOwnProperty.call(assigned, name)) {
+          issues.push({
+            rule: "attribute-set-and-removed",
+            path: `${item.at}/set/removeAttributes/${index}`,
+            message: `"${name}" is both assigned and removed; a proposal states one intention per property`,
+          });
+        }
+      });
+    }
+
+    // A range that ends before it starts points at nothing. JSON Schema can bound
+    // each position and cannot compare two of them, which is why this is here.
+    if (Array.isArray(item.locations)) {
+      item.locations.forEach((location, index) => {
+        if (location === null || typeof location !== "object") return;
+        const range = (location as { range?: Record<string, number> }).range;
+        if (range === undefined) return;
+        const startsAfter =
+          range.endLine < range.startLine ||
+          (range.endLine === range.startLine &&
+            range.endCharacter !== undefined &&
+            range.startCharacter !== undefined &&
+            range.endCharacter < range.startCharacter);
+        if (startsAfter) {
+          issues.push({
+            rule: "location-range-reversed",
+            path: `${item.at}/locations/${index}/range`,
+            message: "a range ends before it begins, so it selects nothing a reader could be taken to",
+          });
+        }
+      });
+    }
+  }
+
+  // A row reports or it asks, never both.
+  //
+  // `role` says what the producer observed in the authority it projected: a record,
+  // which nothing here acts on. `set` says what the producer wants done: an
+  // instruction, which an authority will apply. On one row the two can disagree —
+  // "I saw this unchanged" beside "change it" — and deciding which wins would be
+  // this stage inventing a precedence nobody published. In a proposal the role is
+  // a consequence anyway: a reference with a patch is a change, one without a
+  // reference is an addition, and a removal is named in `removals`.
+  if (envelope.kind === "table") {
+    const rows = (envelope.data as StructuredTableData).rows as unknown[];
+    rows.forEach((entry, index) => {
+      if (entry === null || typeof entry !== "object" || Array.isArray(entry)) return;
+      const rowItem = entry as { role?: unknown; set?: unknown };
+      if (rowItem.role !== undefined && rowItem.set !== undefined) {
+        issues.push({
+          rule: "role-with-change",
+          path: `/data/rows/${index}/role`,
+          message:
+            "a row states what it observed or what it asks for, not both: a declared role beside a change is a report and an instruction at once",
+        });
+      }
+    });
+  }
+
+  // A row that carries an identity is addressable, and two rows sharing one make
+  // every relation that names it ambiguous — the same reason elements are unique.
+  const rowIds = new Map<string, string>();
+  for (const row of identifiedRowsOf(envelope)) {
+    const first = rowIds.get(row.id);
+    if (first === undefined) rowIds.set(row.id, row.at);
+    else {
+      issues.push({
+        rule: "duplicate-identifier",
+        path: `${row.at}/id`,
+        message: `identifier "${row.id}" is already declared at ${first}`,
+      });
+    }
+  }
+
+  // Traceability resolves, or says plainly that it does not. An end naming a row of
+  // this document must find it; an end naming a `ref` belongs to another authority
+  // and is accepted unresolved, because the test that verifies a requirement
+  // usually lives somewhere this document cannot see.
+  rowRelationsOf(envelope).forEach((relation, index) => {
+    for (const side of ["from", "to"] as const) {
+      const endpoint = relation[side];
+      if (endpoint === null || typeof endpoint !== "object") continue;
+      const named = (endpoint as { id?: unknown }).id;
+      if (typeof named !== "string") continue;
+      if (!rowIds.has(named)) {
+        issues.push({
+          rule: "unresolved-endpoint",
+          path: `/data/relations/${index}/${side}`,
+          message: `"${named}" is not the identifier of any row this document declares`,
+        });
+      }
+    }
+  });
 
   return issues;
 }

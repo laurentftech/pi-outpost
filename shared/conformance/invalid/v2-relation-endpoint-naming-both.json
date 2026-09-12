@@ -1,0 +1,29 @@
+{
+  "schema": "urn:structured-exchange:2",
+  "kind": "table",
+  "data": {
+    "columns": [
+      "a"
+    ],
+    "rows": [
+      {
+        "id": "r1",
+        "cells": [
+          "x"
+        ]
+      }
+    ],
+    "relations": [
+      {
+        "from": {
+          "id": "r1",
+          "ref": "REQ-1"
+        },
+        "to": {
+          "ref": "T"
+        },
+        "kind": "k"
+      }
+    ]
+  }
+}
