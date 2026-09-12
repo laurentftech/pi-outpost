@@ -24,6 +24,29 @@ function relativizeUnderRoot(root: string, maybePath: string): string | undefine
   return rel.split(path.sep).join("/");
 }
 
+/**
+ * The text a user message is shown as — and therefore the only string anything
+ * may pair a bubble on. `user_entries` matches the client's bubbles by text, so
+ * the entry it sends has to be spelled the way the bubble is: images contribute
+ * nothing (they render as thumbnails), and an absolutized `@` mention goes back
+ * to the relative path the user typed. Computed in two places, the two spellings
+ * drifted the moment mentions were absolutized, and every bubble above the first
+ * `@` mention silently lost its ✎.
+ */
+export function userMessageText(content: string | AnyContent[] | undefined, browserRoot?: string): string {
+  const text =
+    typeof content === "string"
+      ? content
+      : Array.isArray(content)
+        ? content
+            .filter((c) => c.type === "text")
+            .map((c) => c.text ?? "")
+            .filter(Boolean)
+            .join("\n")
+        : "";
+  return browserRoot ? rewriteMentionedPathsSync(text, (p) => relativizeUnderRoot(browserRoot, p)) : text;
+}
+
 interface AnyContent {
   type: string;
   text?: string;
@@ -190,16 +213,7 @@ export function historyToItems(
     switch (message.role) {
       case "user": {
         // Text only — images render as thumbnails, no "[image]" marker needed
-        const text =
-          typeof message.content === "string"
-            ? message.content
-            : Array.isArray(message.content)
-              ? message.content
-                  .filter((c) => c.type === "text")
-                  .map((c) => c.text ?? "")
-                  .filter(Boolean)
-                  .join("\n")
-              : "";
+        const text = userMessageText(message.content, browserRoot);
         const images: WireImage[] = Array.isArray(message.content)
           ? message.content
               .filter((c) => c.type === "image" && c.data && c.mimeType)
@@ -208,7 +222,7 @@ export function historyToItems(
         if (text || images.length > 0) {
           const item: Extract<ChatItem, { kind: "user" }> = {
             kind: "user",
-            text: browserRoot ? rewriteMentionedPathsSync(text, (p) => relativizeUnderRoot(browserRoot, p)) : text,
+            text,
             ...(images.length > 0 ? { images } : {}),
           };
           items.push(item);

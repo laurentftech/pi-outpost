@@ -50,7 +50,13 @@ test("an @-mentioned path reaches the model absolute, and the user still sees it
           // persists the prompt it was given; the server replaces its in-memory
           // messages with this on every completed turn, so a fixture that answers
           // nothing makes a reconnect replay nothing.
-          replacement: { messages: [{ role: "user", content: absolutized, timestamp: 1 }] },
+          replacement: {
+            messages: [{ role: "user", content: absolutized, timestamp: 1 }],
+            // The branch the server reads `user_entries` from. Like the messages
+            // above, it holds what reached the runtime: the absolutized text.
+            tree: [{ entry: { id: "entry-1", type: "message", message: { role: "user", content: absolutized } }, children: [] }],
+            leafId: "entry-1",
+          },
           after: [
             { type: "message_end", message: { role: "user", content: absolutized } },
             // The turn has to *end*, not merely be accepted. The server persists
@@ -94,7 +100,17 @@ test("an @-mentioned path reaches the model absolute, and the user still sees it
     // true the moment the tab reloads.
     // `user_entries` is broadcast once the turn is persisted — the server saying
     // the history now holds what a reconnect would replay.
-    await client.waitFor("user_entries");
+    const entries = await client.waitFor("user_entries");
+
+    // And it must be broadcast the way the bubble is spelled. The client pairs
+    // these entries onto its bubbles by text and stops at the first mismatch, so
+    // an absolutized entry here does not merely fail to match its own bubble: it
+    // drops the entry id of every bubble above it, and the whole conversation
+    // loses its ✎ — no editing, no branching — until the tab is reloaded.
+    assert.deepEqual(
+      entries.entries.map((entry) => entry.text),
+      ["please check @notes/todo.md"],
+    );
 
     const reconnected = connect(server.wsUrl());
     try {
