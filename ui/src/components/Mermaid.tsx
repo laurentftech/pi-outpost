@@ -1,7 +1,14 @@
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { useThemeContext } from "../theme/ThemeContext";
 import { CopyButton } from "./CopyButton";
 import { EnlargedView } from "./EnlargedView";
+import {
+  orientationFor,
+  otherOrientation,
+  READING_WIDTH,
+  type Orientation,
+} from "@pi-outpost/shared/diagram-orientation";
+import { orientableMermaid, orientationOfDirection } from "./mermaidDirection";
 
 type MermaidTheme = "dark" | "default";
 
@@ -70,10 +77,28 @@ export function Mermaid({ code }: { code: string }) {
   const id = useId().replace(/[^a-zA-Z0-9]/g, "");
   const theme = useThemeContext();
   const mermaidTheme: MermaidTheme = theme === "light" ? "default" : "dark";
-  const [svg, setSvg] = useState<string | null>(null);
+  const [drawn, setDrawn] = useState<{ svg: string; orientation: Orientation } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showCode, setShowCode] = useState(false);
   const [enlarged, setEnlarged] = useState(false);
+  /**
+   * How this source says it runs, and how to say the other — undefined for a notation
+   * with no direction of its own, which is how the control knows not to appear.
+   */
+  const authored = useMemo(() => orientableMermaid(code), [code]);
+  const authoredOrientation: Orientation =
+    authored === undefined ? "landscape" : orientationOfDirection(authored.direction);
+  /** What the reader chose, when they chose. Undefined means "whatever reads better". */
+  const [chosen, setChosen] = useState<Orientation | undefined>(undefined);
+  const svg = drawn?.svg ?? null;
+  /**
+   * Drawn against what the source asks for.
+   *
+   * Said on the block whoever decided it. A reader comparing the picture with the
+   * source under `⌗ code` would otherwise find them disagreeing about which way the
+   * diagram runs, and have no way to tell which of the two is lying.
+   */
+  const turnedFromAuthored = drawn !== null && drawn.orientation !== authoredOrientation;
   // The block, not the diagram: it stays mounted whichever face is showing, so
   // the overlay can always tell which tree it belongs to.
   const blockRef = useRef<HTMLDivElement>(null);
@@ -87,9 +112,43 @@ export function Mermaid({ code }: { code: string }) {
     const timer = setTimeout(async () => {
       try {
         const mermaid = (await loadMermaid(mermaidTheme)).default;
-        const { svg } = await mermaid.render(`mermaid-${id}`, codeRef.current);
+        const source = codeRef.current;
+        const read = orientableMermaid(source);
+        const asWritten: Orientation = read === undefined ? "landscape" : orientationOfDirection(read.direction);
+
+        // A reader who has chosen is not asking to be measured. Their direction is
+        // drawn, once, and nothing about the size of it changes that.
+        if (chosen !== undefined && read !== undefined) {
+          const wanted = chosen === asWritten ? source : read.turned;
+          const { svg } = await mermaid.render(`mermaid-${id}`, wanted);
+          if (!cancelled) {
+            setDrawn({ svg, orientation: chosen });
+            setError(null);
+          }
+          return;
+        }
+
+        const first = await mermaid.render(`mermaid-${id}`, source);
+        let result = { svg: first.svg, orientation: asWritten };
+        const asDrawn = naturalWidth(first.svg);
+        // The second render is what it costs to know whether turning would help, and
+        // it is paid only by a diagram that is already too wide to read — never by
+        // the ones that arrived fine, which is nearly all of them.
+        if (read !== undefined && asDrawn !== undefined && asDrawn > READING_WIDTH) {
+          const second = await mermaid.render(`mermaid-${id}-turned`, read.turned);
+          const turnedWidth = naturalWidth(second.svg);
+          if (turnedWidth !== undefined) {
+            // The rule takes the landscape width first, whichever of the two that is
+            // here: the source may have been written either way round.
+            const better =
+              asWritten === "landscape"
+                ? orientationFor(asDrawn, turnedWidth)
+                : orientationFor(turnedWidth, asDrawn);
+            if (better !== asWritten) result = { svg: second.svg, orientation: better };
+          }
+        }
         if (!cancelled) {
-          setSvg(svg);
+          setDrawn(result);
           setError(null);
         }
       } catch (e) {
@@ -100,7 +159,7 @@ export function Mermaid({ code }: { code: string }) {
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [code, id, mermaidTheme]);
+  }, [code, id, mermaidTheme, chosen]);
 
   if (svg) {
     return (
@@ -122,6 +181,24 @@ export function Mermaid({ code }: { code: string }) {
           {/* Same reason the structured-exchange view has one: a wide diagram in a
               narrow column arrives as a sliver, and scrolling it sideways is not
               reading it. */}
+          {/* Only a notation that carries a direction has one to choose. A sequence,
+              a pie or a gantt offers nothing here, and its source is never rewritten. */}
+          {!showCode && authored !== undefined && drawn !== null && (
+            <button
+              type="button"
+              data-testid="mermaid-orientation"
+              onClick={() => setChosen(otherOrientation(drawn.orientation))}
+              title={
+                drawn.orientation === "portrait"
+                  ? "Drawn down the page — switch to across"
+                  : "Drawn across the page — switch to down"
+              }
+              aria-label={`Diagram drawn ${drawn.orientation}; switch to ${otherOrientation(drawn.orientation)}`}
+              className="rounded px-1.5 py-0.5 text-xs text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700 dark:text-zinc-600 dark:hover:bg-zinc-800 dark:hover:text-zinc-300"
+            >
+              {drawn.orientation === "portrait" ? "↕ portrait" : "↔ landscape"}
+            </button>
+          )}
           {!showCode && (
             <button
               type="button"
@@ -138,6 +215,9 @@ export function Mermaid({ code }: { code: string }) {
           <CopyButton text={code} />
         </div>
         {showCode ? (
+          // The authored source, always. What was handed to mermaid may have had its
+          // direction rewritten; showing that as the agent's own words would be this
+          // application putting words in its mouth.
           <pre className="overflow-x-auto font-mono text-xs text-zinc-500 dark:text-zinc-400">{code}</pre>
         ) : (
           <div
@@ -145,6 +225,15 @@ export function Mermaid({ code }: { code: string }) {
             // eslint-disable-next-line react/no-danger — SVG produced by mermaid with securityLevel strict
             dangerouslySetInnerHTML={{ __html: svg }}
           />
+        )}
+        {turnedFromAuthored && !showCode && (
+          // Under the picture rather than over it: a footnote about how the diagram is
+          // drawn, not a warning about the diagram. A reader comparing it with the
+          // source would otherwise find the two disagreeing and no way to tell which
+          // of them is lying.
+          <div className="mt-1 text-center text-xs text-zinc-400 dark:text-zinc-600" data-testid="mermaid-turned">
+            drawn {drawn?.orientation} to fit — the source asks for {authoredOrientation}
+          </div>
         )}
         <EnlargedView
           label="diagram"

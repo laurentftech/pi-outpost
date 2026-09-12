@@ -21,11 +21,11 @@
 
 ## 4. Mermaid
 
-- [ ] 4.1 Add direction rewriting to `ui/src/components/Mermaid.tsx`'s module: recognise a `flowchart`/`graph` header direction and a top-level `stateDiagram-v2` `direction` statement (inserting one when absent), map `LR`↔`TB`, `RL`↔`BT`, treat `TD` as `TB`, and leave a `direction` inside a `subgraph` untouched. Verify with unit tests over each shape, including a source it does not recognise, which must come back unchanged.
-- [ ] 4.2 Report orientability from the same module — `flowchart`, `graph`, `stateDiagram-v2` yes; `sequenceDiagram`, `pie`, `gantt`, `classDiagram` and anything unrecognised no — and verify `ANotationWithNoDirectionIsLeftAlone` with a test per notation.
-- [ ] 4.3 Measure the rendered diagram from its `viewBox` (width and height, extending `naturalWidth`'s reader) and re-render with the direction swapped when `orientationFor` says the drawn one loses, keeping the second render only when it is actually narrower. Verify `AnUnreadableAuthoredDirectionIsOverridden` and `AReadableAuthoredDirectionIsKept` against a stubbed renderer that returns a wide and a narrow `viewBox`.
-- [ ] 4.4 Add the orientation control to the Mermaid block, shown only for an orientable source, and verify `TheReaderOverridesTheAutomaticChoice` — an auto-turned diagram switched back is rendered from the authored direction.
-- [ ] 4.5 State on the block when the diagram is drawn against the direction its source asks for (`AnOverriddenDiagramSaysSo`), and verify `TheAuthoredSourceIsWhatTheReaderGets`: `⌗ code` and the copy button still carry the authored source with its original direction.
+- [x] 4.1 Add direction rewriting to `ui/src/components/Mermaid.tsx`'s module: recognise a `flowchart`/`graph` header direction and a top-level `stateDiagram-v2` `direction` statement (inserting one when absent), map `LR`↔`TB`, `RL`↔`BT`, treat `TD` as `TB`, and leave a `direction` inside a `subgraph` untouched. Verify with unit tests over each shape, including a source it does not recognise, which must come back unchanged.
+- [x] 4.2 Report orientability from the same module — `flowchart`, `graph`, `stateDiagram-v2` yes; `sequenceDiagram`, `pie`, `gantt`, `classDiagram` and anything unrecognised no — and verify `ANotationWithNoDirectionIsLeftAlone` with a test per notation.
+- [x] 4.3 Measure the rendered diagram from its `viewBox` (width and height, extending `naturalWidth`'s reader) and re-render with the direction swapped when `orientationFor` says the drawn one loses, keeping the second render only when it is actually narrower. Verify `AnUnreadableAuthoredDirectionIsOverridden` and `AReadableAuthoredDirectionIsKept` against a stubbed renderer that returns a wide and a narrow `viewBox`.
+- [x] 4.4 Add the orientation control to the Mermaid block, shown only for an orientable source, and verify `TheReaderOverridesTheAutomaticChoice` — an auto-turned diagram switched back is rendered from the authored direction.
+- [x] 4.5 State on the block when the diagram is drawn against the direction its source asks for (`AnOverriddenDiagramSaysSo`), and verify `TheAuthoredSourceIsWhatTheReaderGets`: `⌗ code` and the copy button still carry the authored source with its original direction.
 
 ## 5. Coverage, documentation and proof in the running app
 
