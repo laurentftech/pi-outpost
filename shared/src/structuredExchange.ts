@@ -24,6 +24,23 @@ export type StructuredExchangeKind = "graph" | "sequence" | "table";
 export const PROPOSABLE_KINDS: readonly StructuredExchangeKind[] = ["graph", "sequence"];
 
 /**
+ * What may be proposed, per version.
+ *
+ * Version 1 calls a table a projection: its rows are anonymous tuples, so there is
+ * nothing in one for a change to address, and a producer asking to change "the
+ * third row" would be asking about a position rather than a thing. The enriched
+ * contract gives a row the two identities every other addressable item has, and a
+ * requirements table whose rows can be patched is the reason it does — so under
+ * version 2 a table is proposable like anything else.
+ *
+ * Version 1 documents are unaffected: a version 1 table carrying a target is
+ * refused exactly as it was.
+ */
+export function proposableKinds(schema: string): readonly StructuredExchangeKind[] {
+  return schema === STRUCTURED_EXCHANGE_SCHEMA_V2 ? ["graph", "sequence", "table"] : PROPOSABLE_KINDS;
+}
+
+/**
  * An element of a graph or a sequence.
  *
  * On an element carrying a `ref`, the declared fields **describe what already
@@ -158,8 +175,16 @@ export interface StructuredTableData {
 export function readTableRow(row: StructuredTableRow): {
   cells: StructuredTableCell[];
   role?: StructuredTableRowRole;
+  /** A heading that organises the table. It spans the columns rather than filling them. */
+  heading?: string;
 } {
-  return Array.isArray(row) ? { cells: row } : { cells: row.cells, role: row.role };
+  if (Array.isArray(row)) return { cells: row };
+  // A structural row carries a heading and no cells at all. Reading it as a row of
+  // zero values would refuse it against every table that declares a column, which
+  // is the alignment rule punishing a row it was never about.
+  const heading = (row as { heading?: unknown }).heading;
+  if (typeof heading === "string") return { cells: [], role: row.role, heading };
+  return { cells: row.cells, role: row.role };
 }
 
 export type StructuredExchangeData = StructuredGraphData | StructuredSequenceData | StructuredTableData;
@@ -251,3 +276,210 @@ export const STRUCTURED_EXCHANGE_CEILINGS = {
   columnName: 200,
   cell: 1000,
 } as const;
+
+/** The enriched contract's identifier. Version 1 documents keep theirs untouched. */
+export const STRUCTURED_EXCHANGE_SCHEMA_V2 = "urn:structured-exchange:2";
+
+/**
+ * What the enriched contract adds to the ceilings above.
+ *
+ * Version 1's ceilings carry over unchanged — the enriched contract only adds, so
+ * a bound that already exists keeps the number producers were told. Everything
+ * here bounds something version 1 had no word for.
+ *
+ * The values are not new judgements where an old one fits: an opaque identifier is
+ * bounded like `ref`, a name like `localId`, a free string like `cell`, a type like
+ * `kind`, a heading like `label`. A reader learns one set of magnitudes, not two.
+ */
+export const STRUCTURED_EXCHANGE_CEILINGS_2 = {
+  /** The vocabulary's opaque identifier, bounded like any other opaque reference. */
+  profile: 200,
+  /** Attributes one addressable item may carry, and one may propose to remove. */
+  attributesPerItem: 50,
+  removeAttributesPerItem: 50,
+  attributeName: 200,
+  /** A string attribute value, bounded like a table cell. */
+  attributeString: 1000,
+  /** A list attribute holds scalars or references, and never another list. */
+  attributeListItems: 50,
+  /** The revision a target names, and the one a location may pin — opaque both. */
+  revision: 200,
+  /** Locations are navigation hints; a handful per item is a hint, fifty is a file listing. */
+  locationsPerItem: 10,
+  uri: 2000,
+  /**
+   * A zero-based position inside a resource. Bounded so a range is a number rather
+   * than an assertion about a file nobody has opened — a million lines is past any
+   * source file a reader is going to navigate into.
+   */
+  position: 1_000_000,
+  artifactsPerItem: 20,
+  artifactsPerDocument: 50,
+  /** What the link is to the item, in the profile's words: bounded like a kind. */
+  artifactRel: 100,
+  artifactMediaType: 100,
+  artifactLabel: 500,
+  /** `sha256:` and sixty-four hexadecimal characters. Fixed, not a maximum. */
+  artifactDigest: 71,
+  /** Relations between the rows of one table, bounded like a graph's relationships. */
+  relations: 2000,
+  /** A structural row's heading, bounded like a label, and how deep they may nest. */
+  heading: 500,
+  headingDepth: 6,
+} as const;
+
+/**
+ * Largest enriched document, in bytes of its serialized form.
+ *
+ * Twice version 1's, because enrichment is per item: a table at the row ceiling
+ * whose rows carry an identity, a kind and a few attributes passes every
+ * collection ceiling the schema declares and lands past four megabytes. A schema
+ * that calls such a document legal while the gate in front of it refuses to read
+ * one is not one contract but two that disagree.
+ *
+ * It remains the binding constraint, and the only one applied before parsing —
+ * which is the whole reason it exists.
+ */
+export const STRUCTURED_EXCHANGE_BYTES_CEILING_2 = 8_000_000;
+
+// ---------------------------------------------------------------------------
+// The enriched contract's shapes
+//
+// Mirrored from `shared/schemas/structured-exchange-2.json`, which is normative,
+// the way version 1's shapes above are mirrored from its own schema — and held to
+// it by the same drift tests. A generator would be the other way to keep these in
+// step; it would add a build step this repository does not have, to produce
+// declarations no wider than these, and the drift test is what actually does the
+// proving either way.
+// ---------------------------------------------------------------------------
+
+/** Something owned elsewhere, named by the identifier its authority knows. Never parsed. */
+export interface StructuredReference {
+  ref: string;
+}
+
+export type StructuredAttributeScalar = string | number | boolean | null;
+
+/** A scalar, an opaque reference, or one flat list of those. Lists never nest. */
+export type StructuredAttributeValue =
+  | StructuredAttributeScalar
+  | StructuredReference
+  | (StructuredAttributeScalar | StructuredReference)[];
+
+/** Domain-owned properties. The names belong to the profile's vocabulary, not to this contract. */
+export type StructuredAttributes = Record<string, StructuredAttributeValue>;
+
+/** A zero-based range inside a resource. Ordering is checked after the schema. */
+export interface StructuredRange {
+  startLine: number;
+  startCharacter?: number;
+  endLine: number;
+  endCharacter?: number;
+}
+
+/** Where an item can be found — a hint for a reader, never an identity. */
+export interface StructuredLocation {
+  uri: string;
+  revision?: string;
+  range?: StructuredRange;
+}
+
+/** A related artifact, named rather than carried, and bound to the bytes it was approved against. */
+export interface StructuredArtifact {
+  rel: string;
+  uri: string;
+  /** `sha256:` and sixty-four hexadecimal characters. */
+  sha256: string;
+  mediaType?: string;
+  label?: string;
+}
+
+/** What the producer believes is true right now, for the receiving authority to check. */
+export interface StructuredExpectation {
+  label?: string;
+  kind?: string;
+  container?: string;
+  revision?: string;
+  attributes?: StructuredAttributes;
+}
+
+/** The enrichment every addressable item may carry. */
+export interface StructuredEnrichment {
+  attributes?: StructuredAttributes;
+  expect?: StructuredExpectation;
+  locations?: StructuredLocation[];
+  artifacts?: StructuredArtifact[];
+}
+
+/** The artifact a proposal changes, and the revision it was prepared against. */
+export interface StructuredTarget {
+  ref: string;
+  revision?: string;
+}
+
+/**
+ * One end of a relation: a row of this document, or something outside it.
+ *
+ * Stated explicitly rather than as a bare string, so an endpoint naming a row that
+ * does not exist is an error rather than silently reread as a reference to
+ * somewhere else.
+ */
+export type StructuredEndpoint = { id: string; ref?: never } | { ref: string; id?: never };
+
+/** Traceability between rows: the same relationship vocabulary, allowed to leave the document. */
+export interface StructuredRelation {
+  from: StructuredEndpoint;
+  to: StructuredEndpoint;
+  kind: string;
+  ref?: string;
+  label?: string;
+  attributes?: StructuredAttributes;
+}
+
+/** A row of data, which may carry an identity of its own and everything that follows from one. */
+export interface StructuredDataRow extends StructuredEnrichment {
+  cells: StructuredTableCell[];
+  role?: StructuredTableRowRole;
+  id?: string;
+  ref?: string;
+  kind?: string;
+  label?: string;
+  set?: Record<string, unknown>;
+}
+
+/** A heading that organises the table — a chapter — rather than a row of data. */
+export interface StructuredStructuralRow {
+  heading: string;
+  depth?: number;
+  role?: StructuredTableRowRole;
+  id?: string;
+  ref?: string;
+}
+
+export type StructuredEnrichedTableRow = StructuredTableCell[] | StructuredDataRow | StructuredStructuralRow;
+
+/** True for the row variant that is a heading rather than data. */
+export function isStructuralRow(row: StructuredEnrichedTableRow): row is StructuredStructuralRow {
+  return !Array.isArray(row) && typeof (row as StructuredStructuralRow).heading === "string";
+}
+
+/** Every version of the contract this build validates against, newest last. */
+export const STRUCTURED_EXCHANGE_SUPPORTED_SCHEMAS = [
+  STRUCTURED_EXCHANGE_SCHEMA_V1,
+  STRUCTURED_EXCHANGE_SCHEMA_V2,
+] as const;
+
+export type StructuredExchangeSchemaId = (typeof STRUCTURED_EXCHANGE_SUPPORTED_SCHEMAS)[number];
+
+/**
+ * Which contract a document asks to be judged by — its own declaration, and
+ * nothing else.
+ *
+ * Not the shape it appears to have: a document carrying `relations` is not
+ * thereby version 2, and one carrying none is not thereby version 1. Inferring
+ * the version from the content would make the identifier decorative and would
+ * let a document be accepted under a contract its producer never claimed.
+ */
+export function supportedSchemaOf(declared: string | undefined): StructuredExchangeSchemaId | undefined {
+  return STRUCTURED_EXCHANGE_SUPPORTED_SCHEMAS.find((supported) => supported === declared);
+}

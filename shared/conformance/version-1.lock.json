@@ -1,0 +1,282 @@
+{
+  "schema": "urn:structured-exchange:1",
+  "note": "Frozen before version 2 work. See shared/conformance/README.md and the freeze test. A case carrying changedAfterFreeze was altered deliberately, for the reason it states.",
+  "cases": [
+    {
+      "file": "invalid/change-without-reference.json",
+      "sha256": "e63b33091bd753d0af40fa95631e28b68dedd23a41456d351b3b7ed673559a3d",
+      "verdict": "invalid",
+      "expectedRule": "change-without-reference"
+    },
+    {
+      "file": "invalid/change-without-target.json",
+      "sha256": "557ca3ac73f6fd8f5e9a845eb9a4753ee2931d7a28fe6cc27e34c35d224d548c",
+      "verdict": "invalid",
+      "expectedRule": "change-without-target"
+    },
+    {
+      "file": "invalid/container-as-endpoint.json",
+      "sha256": "bba755fd4945019bf930ece62b67e61a6ef34b495a6f667fe9fb02eea5027803",
+      "verdict": "invalid",
+      "expectedRule": "unresolved-endpoint"
+    },
+    {
+      "file": "invalid/container-duplicate-id.json",
+      "sha256": "9645854d166cc5da6cab8499bc1ce14c04740b48d3e19989a007be740d6e234a",
+      "verdict": "invalid",
+      "expectedRule": "duplicate-container-identifier"
+    },
+    {
+      "file": "invalid/container-unknown-membership.json",
+      "sha256": "cb66c46d9e9c3d616dd5fee2638c4b211dfcf721f3fd6dff409ed9dab373c524",
+      "verdict": "invalid",
+      "expectedRule": "unresolved-container"
+    },
+    {
+      "file": "invalid/containers-over-the-ceiling.json",
+      "sha256": "1e543d3974032f846ac58a3e401ef5c9abd36a5a04cc1495635cb0de0e392e17",
+      "verdict": "invalid",
+      "expectedRule": "schema/maxItems"
+    },
+    {
+      "file": "invalid/duplicate-identifier.json",
+      "sha256": "487e81ed577d6eda2aa838569cfd7a15b925a3f826da7d8ed96e84311c6fbef7",
+      "verdict": "invalid",
+      "expectedRule": "duplicate-identifier"
+    },
+    {
+      "file": "invalid/duplicate-reference-twice.json",
+      "sha256": "7fe4dbcf7de0c5bb9f44bc13680447a4d298d1e0afe4dcd3916d7aef4e540740",
+      "verdict": "invalid",
+      "expectedRule": "duplicate-reference"
+    },
+    {
+      "file": "invalid/duplicate-reference.json",
+      "sha256": "0da34603bbb225b0908a376043cb1d19a80db47a1c3db45f3fb55004598bdd32",
+      "verdict": "invalid",
+      "expectedRule": "duplicate-reference"
+    },
+    {
+      "file": "invalid/empty-change.json",
+      "sha256": "6a7fcd75b9fee5915e6c82ec21445a78932bf921e5551b8858fd9b2986df3f36",
+      "verdict": "invalid",
+      "expectedRule": "schema/minProperties"
+    },
+    {
+      "file": "invalid/kind-data-mismatch.json",
+      "sha256": "7e23ddeefb53895ebd085533a0b269cfdc5c8d406b5a886410b0998dddc00bb8",
+      "verdict": "invalid",
+      "expectedRule": "kind-data-mismatch"
+    },
+    {
+      "file": "invalid/label-past-ceiling.json",
+      "sha256": "9337e24f2c3b30f48bc5d64dce631775315fca935ade694602a98b410670fbd6",
+      "verdict": "invalid",
+      "expectedRule": "schema/maxLength"
+    },
+    {
+      "file": "invalid/new-element-without-label.json",
+      "sha256": "897e73c9ffe0ceb2965d3ca6f26fde449b8c30aec9865a8feb78c9b3c37af8c8",
+      "verdict": "invalid",
+      "expectedRule": "schema/required"
+    },
+    {
+      "file": "invalid/new-relationship-without-kind.json",
+      "sha256": "4bd38412c16f6e7bdd2ce2347cef6c13e81d391a815dc098fedd617bfc4f88e6",
+      "verdict": "invalid",
+      "expectedRule": "schema/required"
+    },
+    {
+      "file": "invalid/relationship-change-without-target.json",
+      "sha256": "a23e942db77150396a2a3b54f36a86d9db97af3b4f3234c07ccbbc4078b78aa4",
+      "verdict": "invalid",
+      "expectedRule": "change-without-target"
+    },
+    {
+      "file": "invalid/relationship-without-endpoints.json",
+      "sha256": "eb557d06e0a03a653c2089cb3e0329ee317795ce79db70acc07f5f1490edb357",
+      "verdict": "invalid",
+      "expectedRule": "schema/required"
+    },
+    {
+      "file": "invalid/removal-without-target.json",
+      "sha256": "b4aaa286016bd0e047b74d2c87488da8fa403383510244a5498fe495352b3e42",
+      "verdict": "invalid",
+      "expectedRule": "removal-without-target"
+    },
+    {
+      "file": "invalid/removal-without-type.json",
+      "sha256": "ce40e588a51687c142a75e746ad135fefa67dfb1a8be9c03fd909a75d931dda0",
+      "verdict": "invalid",
+      "expectedRule": "schema/required"
+    },
+    {
+      "file": "invalid/row-column-mismatch.json",
+      "sha256": "a1f2668ddf53a07307fe1517caf4efde231f8e8c193db13ff4e55fc2a503c836",
+      "verdict": "invalid",
+      "expectedRule": "row-column-mismatch"
+    },
+    {
+      "file": "invalid/table-row-object-column-mismatch.json",
+      "sha256": "794b203fc880730a8b4216cf44bd68980064d701d1770f1042e551cdba4cc662",
+      "verdict": "invalid",
+      "expectedRule": "row-column-mismatch"
+    },
+    {
+      "file": "invalid/table-row-unknown-role.json",
+      "sha256": "9424586274efbdf197c25653e0edfeded55debf993630e17451290761998245f",
+      "verdict": "invalid",
+      "expectedRule": "schema/enum"
+    },
+    {
+      "file": "invalid/table-row-without-cells.json",
+      "sha256": "4d8059217cb2f3fa1de4aba71c60a379581a78fdd87f330f10b87a4774eb54b1",
+      "verdict": "invalid",
+      "expectedRule": "schema/required"
+    },
+    {
+      "file": "invalid/table-with-empty-removals.json",
+      "sha256": "90eab753339fda064032734a7b83eaa7ac78a076841186c59ea041238d2e1a9d",
+      "verdict": "invalid",
+      "expectedRule": "kind-not-proposable"
+    },
+    {
+      "file": "invalid/table-with-removal.json",
+      "sha256": "1437d383fb99067f75d7f88c8f17f04474fa928614338fd7b6e34da6c7e11a58",
+      "verdict": "invalid",
+      "expectedRule": "kind-not-proposable"
+    },
+    {
+      "file": "invalid/table-with-target.json",
+      "sha256": "dafcd9e46c14461fc5ed67c1e055b6966c7f8693942f266650e402bae6472a39",
+      "verdict": "invalid",
+      "expectedRule": "kind-not-proposable"
+    },
+    {
+      "file": "invalid/too-many-element-kinds.json",
+      "sha256": "8dae03ba23578722d110282da9700a657a00812358afcd7a9c62bda04aedcc92",
+      "verdict": "invalid",
+      "expectedRule": "too-many-kinds"
+    },
+    {
+      "file": "invalid/too-many-relationship-kinds.json",
+      "sha256": "5e725dd6139003152d4115f4d4b02f4bb67582ea06167663fb5971e72e0d1970",
+      "verdict": "invalid",
+      "expectedRule": "too-many-kinds"
+    },
+    {
+      "file": "invalid/undeclared-property.json",
+      "sha256": "91a186570328f0d5a8b7cde5bd7a40701c86eabe61799a33670943155c951b2f",
+      "verdict": "invalid",
+      "expectedRule": "schema/additionalProperties"
+    },
+    {
+      "file": "invalid/unknown-version.json",
+      "sha256": "2e581c8a8a3ee8e9f9d0e41591a017fcdbc48698a146e32d0e23c973bbc88c72",
+      "verdict": "invalid",
+      "expectedRule": "unsupported-version",
+      "changedAfterFreeze": "Declared urn:structured-exchange:2 to make the point that an unsupported version is refused. Publishing version 2 made that document valid, so the case now names version 3 \u2014 the intent is unchanged, and the rule it expects is the one version dispatch reports."
+    },
+    {
+      "file": "invalid/unresolved-endpoint.json",
+      "sha256": "0525ef3a29cdfe2899327ca61e4d21eec8737da3b6fb3cbaea44e5e723636926",
+      "verdict": "invalid",
+      "expectedRule": "unresolved-endpoint"
+    },
+    {
+      "file": "valid/graph-at-the-kind-ceiling.json",
+      "sha256": "fd3254ea129f33cb4fd1a7d81e9adba5a058804ec7e2137a7f2b4bb2bc08f8de",
+      "verdict": "valid"
+    },
+    {
+      "file": "valid/graph-containers-at-the-ceiling.json",
+      "sha256": "d2b50b2e2ecb873327a1c2971a3f125a7ac69bdd815cf13ccb5325f0e1285c3e",
+      "verdict": "valid"
+    },
+    {
+      "file": "valid/graph-minimal.json",
+      "sha256": "3f0cf17795febc44b53a49e0483114307998ded658b3e88977fa4590131278f3",
+      "verdict": "valid"
+    },
+    {
+      "file": "valid/graph-proposal-addition-only.json",
+      "sha256": "ea46d15bffd1e39630f9b71de635ca953ccd3388df929cb2db4789be534f4d0b",
+      "verdict": "valid"
+    },
+    {
+      "file": "valid/graph-proposal-context-element.json",
+      "sha256": "b3726f155305c8434a6b940b69643f184053f9d74a194b289a42f7b7318c4592",
+      "verdict": "valid"
+    },
+    {
+      "file": "valid/graph-proposal-declared-change.json",
+      "sha256": "46d3f8aea7ebfc2491e965b67339e64fceeb61a76376132c0871760a3d38f338",
+      "verdict": "valid"
+    },
+    {
+      "file": "valid/graph-proposal-field-patch.json",
+      "sha256": "d1fd8a32a768368582dacba068ebea2835438c9f0c1fdaf820b7e9e80110dd25",
+      "verdict": "valid"
+    },
+    {
+      "file": "valid/graph-proposal-moves-a-member.json",
+      "sha256": "53793994a88a7b14fa066214fce863c6c51719dd62be591a9a88e5e41e67499e",
+      "verdict": "valid"
+    },
+    {
+      "file": "valid/graph-proposal-named-context.json",
+      "sha256": "f24f54e57885a9bb7a470f4879d88bc1bb75aa065e0ff5f69604534aa6e7ef01",
+      "verdict": "valid"
+    },
+    {
+      "file": "valid/graph-proposal-reattachment.json",
+      "sha256": "4fbed17bd8019e5d6d377d68d61f436afc08ece6dff6621b041684fba10de757",
+      "verdict": "valid"
+    },
+    {
+      "file": "valid/graph-with-containers.json",
+      "sha256": "f9597c03f76f88fb236ea8934f5d6588ad5e713dad9bba4094923e39deb60080",
+      "verdict": "valid"
+    },
+    {
+      "file": "valid/graph-with-empty-container.json",
+      "sha256": "5b169c8613bac515e752420cea4464f4df37f1a919b0ba27685c24eda4b3c175",
+      "verdict": "valid"
+    },
+    {
+      "file": "valid/graph-with-typed-relationship.json",
+      "sha256": "1c7c2514ed6b086279733cdf2f4d20f2ab711c550baf3e14aaf20a38ea488de9",
+      "verdict": "valid"
+    },
+    {
+      "file": "valid/sequence-minimal.json",
+      "sha256": "a776cff12a7b2e9dd3aeac091cd8a2377d1779482f39ef2dc547b440cdf2067f",
+      "verdict": "valid"
+    },
+    {
+      "file": "valid/sequence-ordered.json",
+      "sha256": "71d947da6948104f3148279f28325fcc5b65fa86fb564ca1eb0b80f756206e51",
+      "verdict": "valid"
+    },
+    {
+      "file": "valid/sequence-with-containers.json",
+      "sha256": "ab70ea76d570d7d9bb5c94b170d91222db870372a62069a2439b684e6b5b438f",
+      "verdict": "valid"
+    },
+    {
+      "file": "valid/table-minimal.json",
+      "sha256": "b78d1ce299e60ba5afffd6f112c7561f22844efb0903c2172402352b81c366bd",
+      "verdict": "valid"
+    },
+    {
+      "file": "valid/table-rows-partly-roled.json",
+      "sha256": "2a5e938de96ef566f5cf16c3dd8dc97302788985519021dae8761d1cdca882fc",
+      "verdict": "valid"
+    },
+    {
+      "file": "valid/table-rows-with-roles.json",
+      "sha256": "fdd8b0098ed88383ab06c62b47ef6695dba800e7ae49df3c8286766cf6cfe3c2",
+      "verdict": "valid"
+    }
+  ]
+}
