@@ -30,9 +30,9 @@
 
 ## 6. Batch validation and the report
 
-- [ ] 6.1 Implement the batch reader (D6): JSON Lines of heading and document lines, stated subjects, bare documents, unreadable lines recorded with their number without stopping, columns mismatch reported; verify Node tests for `EachRequirementIsCheckedWithItsNeighbours` and `AnUnreadableLineDoesNotStopTheBatch`
-- [ ] 6.2 Build the report table (D7): columns plus `conformity` and `violations`, subject rows in input order with id/ref/kind/cells, heading rows, the summary chapter with counts, per-rule counts deduplicated by relation identity, unreadable lines, date and version, artifacts with `sha256` digests, violations cells truncated with a count past the cell ceiling; verify Node tests for every `TheConformityReportIsAStructuredExchangeTable` scenario, including that the report passes the core contract
-- [ ] 6.3 Render the report as Markdown with `tableMarkdown`, untruncated, whatever its size; refuse to write the JSON report past the ceilings with a message; verify tests for `AReviewerReadsTheReportAsMarkdown` and the over-ceiling case
+- [x] 6.1 Implement the batch reader (D6): JSON Lines of heading and document lines, stated subjects, bare documents, unreadable lines recorded with their number without stopping, columns mismatch reported; verify Node tests for `EachRequirementIsCheckedWithItsNeighbours` and `AnUnreadableLineDoesNotStopTheBatch`
+- [x] 6.2 Build the report table (D7): columns plus `conformity` and `violations`, subject rows in input order with id/ref/kind/cells, heading rows, the summary chapter with counts, per-rule counts deduplicated by relation identity, unreadable lines, date and version, artifacts with `sha256` digests, violations cells truncated with a count past the cell ceiling; verify Node tests for every `TheConformityReportIsAStructuredExchangeTable` scenario, including that the report passes the core contract
+- [x] 6.3 Render the report as Markdown with `tableMarkdown`, untruncated, whatever its size; refuse to write the JSON report past the ceilings with a message; verify tests for `AReviewerReadsTheReportAsMarkdown` and the over-ceiling case
 
 ## 7. Reference validator
 
