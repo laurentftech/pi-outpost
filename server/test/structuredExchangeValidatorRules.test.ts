@@ -396,3 +396,52 @@ describe("a table exported as Markdown by the validator", () => {
     assert.equal(verdictOf(outcome).issues?.[0].rule, "markdown/not-a-table");
   });
 });
+
+describe("the documented batch example, as it ships", () => {
+  before(() => {
+    execFileSync(process.execPath, [path.join(REPO, "shared/scripts/build-validator.mjs")], { cwd: REPO, stdio: "ignore" });
+    copyFileSync(BUNDLE, cli);
+  });
+
+  test("runs through the bundle against the documented registry, profile and rules, with the exit status the page states", () => {
+    const docs = readFileSync(path.join(REPO, "docs/structured-exchange.md"), "utf8");
+    const blocks = [...docs.matchAll(/```json\r?\n([\s\S]*?)```/g)].flatMap((match) => {
+      try {
+        return [JSON.parse(match[1]) as Record<string, unknown>];
+      } catch {
+        return [];
+      }
+    });
+    const bySchema = (schema: string) => blocks.filter((block) => block.schema === schema);
+    const [documentedRegistry] = bySchema("urn:structured-exchange-profile-registry:1") as { profiles: string[]; rules: string[]; default: string }[];
+    assert.ok(documentedRegistry, "the page shows a registry");
+    const documentedProfile = bySchema("urn:structured-exchange-profile:1").find((block) => block.id === documentedRegistry.default);
+    const documentedRules = bySchema("urn:structured-exchange-rules:1");
+    assert.ok(documentedProfile, "the page shows the registry's default profile");
+    assert.equal(documentedRegistry.profiles.length, 1);
+    assert.equal(documentedRegistry.rules.length, documentedRules.length);
+
+    const root = path.join(away, "documented");
+    const place = (relative: string, value: unknown) => {
+      mkdirSync(path.dirname(path.join(root, relative)), { recursive: true });
+      writeFileSync(path.join(root, relative), JSON.stringify(value, null, 2));
+    };
+    place(documentedRegistry.profiles[0], documentedProfile);
+    documentedRegistry.rules.forEach((relative, index) => place(relative, documentedRules[index]));
+    place(".pi-outpost/structured-exchange.json", documentedRegistry);
+
+    const section = docs.slice(docs.indexOf("### Validating a whole specification"));
+    const batch = /```jsonl\r?\n([\s\S]*?)```/.exec(section)?.[1];
+    assert.ok(batch, "the page shows a batch");
+    assert.equal(batch.trim().split(/\r?\n/).length, 2, "the documented batch is two lines");
+    const stated = /It exits \*\*(\d)\*\*/.exec(section);
+    assert.ok(stated, "the page states the batch's exit status");
+
+    const outcome = run(["--registry", path.join(root, ".pi-outpost/structured-exchange.json"), "--batch", write("documented.jsonl", batch)]);
+    assert.equal(outcome.code, Number(stated[1]), outcome.stdout);
+    const verdict = verdictOf(outcome);
+    assert.deepEqual(verdict.unreadable, []);
+    assert.deepEqual(verdict.counts, { conforms: 1, "non-conforming": 1, "to check": 0 });
+    assert.deepEqual(verdict.perRule, { "ARP4754A-derived-no-satisfy": 1 });
+  });
+});
