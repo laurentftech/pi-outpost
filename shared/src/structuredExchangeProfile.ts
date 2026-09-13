@@ -158,6 +158,82 @@ export interface StructuredExchangeProfileRegistry {
   schema: typeof STRUCTURED_EXCHANGE_PROFILE_REGISTRY_SCHEMA_V1;
   /** Profile files, relative to the project directory. */
   profiles: string[];
+  /** Rules files, relative to the project directory; each names the profile it applies to. */
+  rules?: string[];
   /** A registered profile's identifier. */
   default?: string;
+}
+
+export const STRUCTURED_EXCHANGE_RULES_SCHEMA_V1 = "urn:structured-exchange-rules:1";
+
+/**
+ * The bounds of a rules file.
+ *
+ * Borrowed where a magnitude already exists: a value is bounded like an enumeration
+ * value, a list of values like an enumeration, an attribute name like one. Rules per
+ * file is generous for human-written rules — a file past it is a vocabulary written as
+ * rules, not a set of review rules.
+ */
+export const STRUCTURED_EXCHANGE_RULES_CEILINGS = {
+  rulesPerFile: 200,
+  ruleId: 200,
+  statement: 2000,
+  source: 500,
+  /** Conditions in one set — `when`, `then`, or one end of a link. */
+  conditionsPerSet: 20,
+  /** Values one condition allows, as `enumerationValues`. */
+  valuesPerCondition: 500,
+  /** One value, as `enumerationValue`. */
+  value: 1000,
+  attributeName: 200,
+  kind: 100,
+  /** Rules files one registry lists. */
+  rulesFilesPerRegistry: 20,
+  /** Bytes read from a rules file before it is parsed. */
+  rulesBytes: 1_048_576,
+} as const;
+
+export type RuleValue = string | number | boolean;
+
+/** Attribute name to the values it may take; every condition of a set must hold. */
+export type RuleConditions = Record<string, RuleValue[]>;
+
+export type RuleLevel = "refuse" | "report";
+
+interface RuleCommon {
+  id: string;
+  statement: string;
+  source?: string;
+  level: RuleLevel;
+}
+
+/** A rule on items of one element kind. */
+export interface ItemRule extends RuleCommon {
+  element: string;
+  relationship?: never;
+  when?: RuleConditions;
+  then: RuleConditions | "forbidden";
+}
+
+/** Conditions on a relationship's source and target. */
+export interface LinkConditions {
+  from?: RuleConditions;
+  to?: RuleConditions;
+}
+
+/** A rule on relationships of one kind, conditioned by the attributes at either end. */
+export interface LinkRule extends RuleCommon {
+  relationship: string;
+  element?: never;
+  when?: LinkConditions;
+  then: LinkConditions | "forbidden";
+}
+
+export type ProfileRule = ItemRule | LinkRule;
+
+export interface StructuredExchangeRules {
+  schema: typeof STRUCTURED_EXCHANGE_RULES_SCHEMA_V1;
+  /** The registered profile these rules apply to. */
+  profile: string;
+  rules: ProfileRule[];
 }

@@ -1,0 +1,102 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:structured-exchange-rules:1",
+  "title": "Structured exchange rules v1",
+  "description": "Rules a project's specifications are reviewed against, for one profile: which attribute values fit together on an item, and across a relationship. Written and validated by people, in the project's own language. Checked against the profile's vocabulary whenever read; never fetched or executed.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "profile", "rules"],
+  "properties": {
+    "schema": {
+      "description": "Which rules format this is.",
+      "const": "urn:structured-exchange-rules:1"
+    },
+    "profile": {
+      "description": "The identifier of the registered profile these rules apply to.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200
+    },
+    "rules": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 200,
+      "items": { "$ref": "#/$defs/rule" }
+    }
+  },
+  "$defs": {
+    "value": {
+      "description": "One value an attribute may carry: a string, a number or a boolean.",
+      "type": ["string", "number", "boolean"],
+      "maxLength": 1000
+    },
+    "values": {
+      "description": "The values an attribute may take for the condition to hold.",
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 500,
+      "items": { "$ref": "#/$defs/value" }
+    },
+    "conditions": {
+      "description": "Attribute name to allowed values. Every condition of the set must hold.",
+      "type": "object",
+      "maxProperties": 20,
+      "propertyNames": { "minLength": 1, "maxLength": 200 },
+      "additionalProperties": { "$ref": "#/$defs/values" }
+    },
+    "clause": {
+      "description": "An item rule's conditions, or a link rule's conditions on its source (`from`) and target (`to`). Which one is checked against the rule's form.",
+      "type": "object",
+      "maxProperties": 20,
+      "propertyNames": { "minLength": 1, "maxLength": 200 },
+      "additionalProperties": {
+        "anyOf": [{ "$ref": "#/$defs/values" }, { "$ref": "#/$defs/conditions" }]
+      }
+    },
+    "rule": {
+      "description": "An item rule names `element`; a link rule names `relationship`. `when` selects what the rule applies to; `then` is what must hold, or \"forbidden\".",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "statement", "level", "then"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "statement": {
+          "description": "What the rule says, in the project's language — shown in every refusal and report.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        },
+        "source": {
+          "description": "Where the rule comes from: a standard, a clause, a project convention.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500
+        },
+        "level": {
+          "description": "refuse: a violation refuses the document. report: a violation is listed to check.",
+          "enum": ["refuse", "report"]
+        },
+        "element": {
+          "description": "The element kind an item rule applies to.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "relationship": {
+          "description": "The relationship kind a link rule applies to.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "when": { "$ref": "#/$defs/clause" },
+        "then": {
+          "anyOf": [{ "const": "forbidden" }, { "$ref": "#/$defs/clause" }]
+        }
+      }
+    }
+  }
+}
