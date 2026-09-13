@@ -14,6 +14,14 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest]
     runs-on: ${{ matrix.os }}
+    # A healthy run takes under fifteen minutes on either platform, Windows being the
+    # slower. Without a ceiling a hang is not a failure, it is six hours: GitHub's own
+    # limit is what finally cancelled a coverage run whose tests had all reported and
+    # whose process never exited, with an orphaned `bash` still alive underneath it.
+    # Thirty minutes is twice the slowest healthy run — enough that a slow runner is
+    # not mistaken for a stuck one, short enough that a stuck one says so the same
+    # afternoon. It bounds the cost; it does not explain the hang.
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
