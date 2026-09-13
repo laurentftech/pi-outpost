@@ -16,8 +16,9 @@
  * reader's statement all reach the same verdict because they call the same code.
  */
 import { STRUCTURED_EXCHANGE_SCHEMA_V1, readTableRow, type StructuredTableRow } from "./structuredExchange.ts";
-import type { ProfileAttribute, ProfileKind, StructuredExchangeProfile } from "./structuredExchangeProfile.ts";
+import type { ProfileAttribute, ProfileKind, ProfileRule, StructuredExchangeProfile } from "./structuredExchangeProfile.ts";
 import type { StructuredExchangeIssue } from "./structuredExchangeValidation.ts";
+import { evaluateRules, type RuleEvaluationOptions, type RuleFinding } from "./structuredExchangeRuleEvaluation.ts";
 
 /** A value outside an open enumeration: accepted, and reported so a typo is not taken for a new value. */
 export interface ProfileNote {
@@ -38,6 +39,8 @@ export interface ProfileContext {
   profiles: ReadonlyMap<string, StructuredExchangeProfile>;
   /** A registered profile's identifier. */
   default?: string;
+  /** The rules registered for each profile, by profile identifier, in the registry's order. */
+  rules?: ReadonlyMap<string, readonly ProfileRule[]>;
 }
 
 export type ProfileSelection =
@@ -48,7 +51,16 @@ export type ProfileSelection =
 export type ProfileVerdictForDocument =
   | { outcome: "unconstrained" }
   | { outcome: "refused"; issues: StructuredExchangeIssue[]; profile?: string }
-  | { outcome: "conforms"; profile: string; notes: ProfileNote[] };
+  | {
+      outcome: "conforms";
+      profile: string;
+      notes: ProfileNote[];
+      /**
+       * What the profile's rules leave to check: violated report rules and rules not
+       * verifiable here. Present only when rules are registered for the profile.
+       */
+      findings?: RuleFinding[];
+    };
 
 type Vocabulary = "element" | "relationship";
 
@@ -322,12 +334,32 @@ export function checkAgainstProfile(envelope: unknown, profile: StructuredExchan
   return { issues, notes };
 }
 
-/** Selection and check together: the verdict both tools and the reader's statement act on. */
-export function holdToProfile(envelope: unknown, context: ProfileContext): ProfileVerdictForDocument {
+/**
+ * Selection, vocabulary and rules together: the verdict both tools, the reader's
+ * statement and the reference validator act on.
+ *
+ * Rules run only once the vocabulary conforms. A rule condition on a value the profile
+ * does not allow would otherwise be judged on a word that is itself the problem, and
+ * the producer would be sent to fix a rule's consequence before its cause.
+ */
+export function holdToProfile(
+  envelope: unknown,
+  context: ProfileContext,
+  options: RuleEvaluationOptions = {},
+): ProfileVerdictForDocument {
   const selection = selectProfile(envelope, context);
   if (selection.outcome !== "held") return selection;
   const { issues, notes } = checkAgainstProfile(envelope, selection.profile);
-  return issues.length > 0
-    ? { outcome: "refused", issues, profile: selection.profile.id }
-    : { outcome: "conforms", profile: selection.profile.id, notes };
+  if (issues.length > 0) return { outcome: "refused", issues, profile: selection.profile.id };
+
+  const rules = context.rules?.get(selection.profile.id);
+  if (rules === undefined || rules.length === 0) return { outcome: "conforms", profile: selection.profile.id, notes };
+
+  const evaluated = evaluateRules(envelope, rules, options);
+  const refusals = evaluated
+    .filter((finding) => finding.level === "refuse" && finding.outcome === "violated")
+    .map((finding) => ({ rule: `rule/${finding.ruleId}`, path: finding.path, message: finding.message }));
+  if (refusals.length > 0) return { outcome: "refused", issues: refusals, profile: selection.profile.id };
+  const findings = evaluated.filter((finding) => !(finding.level === "refuse" && finding.outcome === "violated"));
+  return { outcome: "conforms", profile: selection.profile.id, notes, findings };
 }

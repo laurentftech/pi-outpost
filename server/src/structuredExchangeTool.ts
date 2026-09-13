@@ -22,6 +22,7 @@ import { parseSerializedStructuredExchange } from "@pi-outpost/shared/structured
 import { checkStructuredExchangeSchema } from "@pi-outpost/shared/structured-exchange/schema-node";
 import type { StructuredExchangeLimits } from "@pi-outpost/shared/structured-exchange/bounds";
 import { holdToProfile, type ProfileNote } from "@pi-outpost/shared/structured-exchange/profile-check";
+import type { RuleFinding } from "@pi-outpost/shared/structured-exchange/rule-evaluation";
 import type {
   StructuredGraphData,
   StructuredSequenceData,
@@ -169,6 +170,21 @@ function describeNotes(notes: readonly ProfileNote[]): string {
   return lines.join("\n");
 }
 
+/**
+ * What the project's rules leave to check, said to the agent — which will not see the
+ * rendering. A violated report rule is accepted but may be a mistake; a rule not
+ * verifiable here is a gap in what the document carries, not a verdict.
+ */
+function describeFindings(findings: readonly RuleFinding[]): string {
+  if (findings.length === 0) return "";
+  const lines = ["", "Findings to check — the document was presented, but these rules did not pass:"];
+  for (const finding of findings) {
+    const kind = finding.outcome === "not-verifiable" ? "not verifiable here" : "report rule violated";
+    lines.push(`- ${finding.path} (${kind}): ${finding.message}`);
+  }
+  return lines.join("\n");
+}
+
 export function createStructuredExchangeToolDefinition(options: StructuredExchangeToolOptions): ToolDefinition {
   return {
     name: "present_structure",
@@ -221,8 +237,13 @@ export function createStructuredExchangeToolDefinition(options: StructuredExchan
           return { content: [{ type: "text", text: explain(held.issues, heading) }], details: undefined, isError: true };
         }
         if (held.outcome === "conforms") {
-          conformance = `; conforms to this project's profile "${held.profile}"${describeNotes(held.notes) === "" ? "" : `, with ${held.notes.length} value${held.notes.length === 1 ? "" : "s"} outside open enumerations`}`;
-          conformance += `)${describeNotes(held.notes)}`;
+          const findings = held.findings ?? [];
+          const counts = [
+            held.notes.length === 0 ? undefined : `${held.notes.length} value${held.notes.length === 1 ? "" : "s"} outside open enumerations`,
+            findings.length === 0 ? undefined : `${findings.length} finding${findings.length === 1 ? "" : "s"} to check`,
+          ].filter((part) => part !== undefined);
+          conformance = `; conforms to this project's profile "${held.profile}"${counts.length === 0 ? "" : `, with ${counts.join(" and ")}`}`;
+          conformance += `)${describeNotes(held.notes)}${describeFindings(findings)}`;
         }
       }
 

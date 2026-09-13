@@ -20,9 +20,17 @@ import path from "node:path";
 import {
   STRUCTURED_EXCHANGE_PROFILE_CEILINGS,
   STRUCTURED_EXCHANGE_PROFILE_REGISTRY_PATH,
+  STRUCTURED_EXCHANGE_RULES_CEILINGS,
+  type ProfileRule,
   type StructuredConformance,
   type StructuredExchangeProfile,
 } from "@pi-outpost/shared/structured-exchange/profile";
+import {
+  registryRulesIssues,
+  rulesAgainstProfile,
+  validateRules,
+  type LoadedRules,
+} from "@pi-outpost/shared/structured-exchange/rules-validation";
 import { holdToProfile, type ProfileContext } from "@pi-outpost/shared/structured-exchange/profile-check";
 import { parseSerializedStructuredExchange } from "@pi-outpost/shared/structured-exchange/parse";
 import { checkStructuredExchangeSchema } from "@pi-outpost/shared/structured-exchange/schema-node";
@@ -146,7 +154,49 @@ export async function readProjectProfiles(projectRoot: string): Promise<ProjectP
   if (consistency.length > 0) return { state: "unusable", issues: consistency.map((issue) => ({ ...issue, file: registryFile })) };
 
   const profiles = new Map<string, StructuredExchangeProfile>(loaded.map((entry) => [entry.profile.id, entry.profile]));
-  return { state: "usable", context: { profiles, ...(registry.default !== undefined ? { default: registry.default } : {}) } };
+
+  // Rules files, read like profiles and judged against the profile each names. A rule
+  // that cannot fire because a value was renamed makes the registry unusable rather than
+  // quietly checking nothing — the same answer a broken profile gets.
+  const loadedRules: LoadedRules[] = [];
+  for (const [index, listed] of (registry.rules ?? []).entries()) {
+    const read = await readConfinedJson(root, listed, STRUCTURED_EXCHANGE_RULES_CEILINGS.rulesBytes, "rules-format");
+    if (read.ok === "missing") {
+      issues.push({ rule: "registry/missing-rules", path: `/rules/${index}`, message: `"${listed}" does not exist`, file: registryFile });
+      continue;
+    }
+    if (read.ok === false) {
+      issues.push(
+        read.issue.rule === "rules-format/outside-project"
+          ? { ...read.issue, rule: "registry/rules-outside-project", path: `/rules/${index}`, file: registryFile }
+          : { ...read.issue, file: listed },
+      );
+      continue;
+    }
+    const verdict = validateRules(read.value);
+    if (!verdict.valid) {
+      issues.push(...verdict.issues.map((issue) => ({ ...issue, file: listed })));
+      continue;
+    }
+    const profile = profiles.get(verdict.rules.profile);
+    if (profile !== undefined) {
+      issues.push(...rulesAgainstProfile(verdict.rules, profile).map((issue) => ({ ...issue, file: listed })));
+    }
+    loadedRules.push({ path: listed, rules: verdict.rules });
+  }
+  // Only once every file read cleanly: a file for an unregistered profile, or a rule id
+  // claimed twice, is judged over the whole set, and reported against the registry.
+  if (issues.length === 0) {
+    issues.push(...registryRulesIssues(loadedRules, profiles).map((issue) => ({ ...issue, file: registryFile })));
+  }
+  if (issues.length > 0) return { state: "unusable", issues };
+
+  const rules = new Map<string, ProfileRule[]>();
+  for (const entry of loadedRules) rules.set(entry.rules.profile, [...(rules.get(entry.rules.profile) ?? []), ...entry.rules.rules]);
+  return {
+    state: "usable",
+    context: { profiles, ...(registry.default !== undefined ? { default: registry.default } : {}), ...(rules.size > 0 ? { rules } : {}) },
+  };
 }
 
 /**
