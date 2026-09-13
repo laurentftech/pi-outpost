@@ -14,6 +14,7 @@ import { fileURLToPath } from "node:url";
 import { after, describe, test } from "node:test";
 import { promisify } from "node:util";
 import { createDirectoryWatcher, DEFAULT_COALESCE_MS, MAX_WATCHED_DIRECTORIES } from "../src/fileWatcher.ts";
+import { envWithoutCoverageSink } from "./childEnv.mjs";
 
 const execFile = promisify(execFileCallback);
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -282,7 +283,7 @@ describe("createDirectoryWatcher", () => {
     const { stdout } = await execFile(
       process.execPath,
       ["--import", "tsx/esm", path.join(HERE, "fixtures/watcher-exits.mjs")],
-      { timeout: 20_000 },
+      { timeout: 20_000, env: envWithoutCoverageSink() },
     );
     assert.match(stdout, /watching/);
   });

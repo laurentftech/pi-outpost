@@ -25,10 +25,12 @@ import { startServer } from "./harness.mjs";
 
 const SERVER_SRC = fileURLToPath(new URL("../src", import.meta.url));
 
-/** The parent's environment, minus the coverage sink a child must not write into. */
+/**
+ * The parent's environment with the coverage sink blanked. Blanked, not removed: node's
+ * child_process puts a removed NODE_V8_COVERAGE straight back (see childEnv.mjs).
+ */
 function envWithoutCoverageSink() {
-  const { NODE_V8_COVERAGE: _sink, ...rest } = process.env;
-  return rest;
+  return { ...process.env, NODE_V8_COVERAGE: "" };
 }
 
 /**

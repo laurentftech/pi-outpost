@@ -131,20 +131,23 @@ export const RELEASES_URL = "https://github.com/laurentftech/pi-outpost/releases
 export const PUBLIC_REGISTRY = "https://registry.npmjs.org";
 
 /**
- * The environment for a short-lived npm child, without the parent's coverage sink.
+ * The environment for a short-lived npm child, with the parent's coverage sink blanked.
  *
  * Under `--experimental-test-coverage` node exports NODE_V8_COVERAGE, and any child
- * that inherits it writes its own coverage file into the same directory. npm is a
- * large program and these calls have a five-second ceiling, so a slow one is killed
- * partway through writing — and the parent's reporter then dies on the truncated file
- * with "failed to parse coverage". Every test passes and the job fails anyway, naming
- * nothing. The same reasoning as server/test/harness.mjs, at the other spawn site.
+ * that has it writes its own coverage file into the same directory. npm is a large
+ * program and these calls have a five-second ceiling, so a slow one is killed partway
+ * through writing — and the parent's reporter then dies on the truncated file with
+ * "failed to parse coverage". Every test passes and the job fails anyway, naming
+ * nothing. The same reasoning as server/test/childEnv.mjs, at the other spawn site.
+ *
+ * Blanked, not removed: node's child_process copies the parent's NODE_V8_COVERAGE
+ * into any child environment that does not name it, so a removed key comes straight
+ * back. An empty value is kept, and turns coverage off in the child.
  *
  * Nothing is lost: npm's own coverage was never attributable to this project.
  */
 function envForNpm(): NodeJS.ProcessEnv {
-  const { NODE_V8_COVERAGE: _sink, ...rest } = process.env;
-  return rest;
+  return { ...process.env, NODE_V8_COVERAGE: "" };
 }
 
 /**
