@@ -45,8 +45,21 @@ test("a presented document is followed by what is true of it against the project
   await mkdir(path.join(root, "profiles"), { recursive: true });
   const registryFile = path.join(root, ".pi-outpost/structured-exchange.json");
   const profileFile = path.join(root, "profiles/requirements.json");
-  await writeFile(registryFile, JSON.stringify({ schema: "urn:structured-exchange-profile-registry:1", profiles: ["profiles/requirements.json"] }));
+  await writeFile(
+    registryFile,
+    JSON.stringify({ schema: "urn:structured-exchange-profile-registry:1", profiles: ["profiles/requirements.json"], rules: ["rules.json"] }),
+  );
   await writeFile(profileFile, JSON.stringify(profile(["draft", "approved", "in review"])));
+  // A report rule the live document breaks (approved, yet not a must) and the replayed one
+  // does not reach (in review): the live statement counts one finding, the replay none.
+  await writeFile(
+    path.join(root, "rules.json"),
+    JSON.stringify({
+      schema: "urn:structured-exchange-rules:1",
+      profile: "acme/requirements",
+      rules: [{ id: "R-approved-must", statement: "Approved requirements are musts.", level: "report", element: "requirement", when: { status: ["approved"] }, then: { priority: ["must"] } }],
+    }),
+  );
 
   const sessionFile = path.join(root, "conformance.jsonl");
   const fakeConfig = path.join(root, "fake-rpc.json");
@@ -110,7 +123,7 @@ test("a presented document is followed by what is true of it against the project
     assert.ok(toolEnd.structured, "the live document did not reach the client");
     assert.equal(toolEnd.structuredConformance, undefined, "the statement was put inside the tool_end");
     const liveStatement = await reader.waitFor(isStatementAbout("live-1"), 10_000);
-    assert.deepEqual(liveStatement.conformance, { profile: "acme/requirements", state: "conforms", openValues: 1 });
+    assert.deepEqual(liveStatement.conformance, { profile: "acme/requirements", state: "conforms", openValues: 1, findings: 1 });
     // The document is exactly what the tool produced — the statement changed nothing in it.
     assert.deepEqual(JSON.parse(toolEnd.structured), table({ status: "approved", priority: "urgent" }));
 

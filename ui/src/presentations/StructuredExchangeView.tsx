@@ -1102,7 +1102,12 @@ export function conformanceStatement(conformance: StructuredConformance): string
     return `Does not conform to this project's profile${profile} as it stands now.`;
   }
   const open = conformance.openValues;
-  return `Conforms to this project's profile${profile}${open === 0 ? "" : `, with ${open} value${open === 1 ? "" : "s"} outside its open enumerations`}.`;
+  const findings = conformance.findings ?? 0;
+  const counts = [
+    open === 0 ? undefined : `${open} value${open === 1 ? "" : "s"} outside its open enumerations`,
+    findings === 0 ? undefined : `${findings} finding${findings === 1 ? "" : "s"} to check`,
+  ].filter((part) => part !== undefined);
+  return `Conforms to this project's profile${profile}${counts.length === 0 ? "" : `, with ${counts.join(" and ")}`}.`;
 }
 
 function textualEquivalent(
