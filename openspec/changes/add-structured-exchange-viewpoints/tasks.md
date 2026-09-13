@@ -29,7 +29,7 @@
 
 - [x] 5.1 Add the optional `viewpoint` parameter to `write_structure_figure` (D9): refuse an undeclared id listing the declared ones, refuse any id for a document declaring none, union hide lists on top, write nothing on refusal, and name the viewpoint in the result. Verify each through the tool (`AFigureIsWrittenForADeclaredViewpoint`, `AnUndeclaredViewpointIsRefusedWithTheDeclaredOnes`, `ADocumentWithoutViewpointsRefusesOne`, `HiddenKindsApplyOnTopOfAViewpoint`, `TheResultNamesTheViewpoint`, `ARequestMayNameADeclaredViewpoint`).
 - [ ] 5.2 Verify the reader's exported figure and the agent's written figure for the same viewpoint of the same document show the same elements, relationships, labels and statement (`TheReaderAndTheAgentProduceTheSameViewpointFigure`).
-- [ ] 5.3 Update the contract text the agent reads — `present_structure`'s document description and `write_structure_figure`'s description — to show a viewpoint and teach one figure per viewpoint, and verify the tool definition tests.
+- [x] 5.3 Update the contract text the agent reads — `present_structure`'s document description and `write_structure_figure`'s description — to show a viewpoint and teach one figure per viewpoint, and verify the tool definition tests.
 
 ## 6. Documentation, coverage and running-app proof
 

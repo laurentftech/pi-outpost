@@ -34,7 +34,7 @@ const DESCRIPTION = [
 const parameters = Type.Object({
   document: Type.String({
     description:
-      'The structured-exchange document as JSON: {"schema":"urn:structured-exchange:1","kind":"graph"|"sequence"|"table",...}. Include "target" only when proposing a change to something that already exists.',
+      'The structured-exchange document as JSON: {"schema":"urn:structured-exchange:1","kind":"graph"|"sequence"|"table",...}. Include "target" only when proposing a change to something that already exists. A version 2 graph may declare "viewpoints" — named readings, each an id, a label, the concern it frames, and the elementKinds and relationshipKinds it retains — so a reader can select one and a figure can be written for one.',
   }),
   summary: Type.String({
     description:

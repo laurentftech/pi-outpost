@@ -79,6 +79,7 @@ const DESCRIPTION = [
   "Reference it from Markdown as a relative path — `![Power train](figures/power.svg)` — and the interface renders it in the preview.",
   "The two hide lists are separate vocabularies: hide_element_kinds hides boxes by their `kind`, hide_relationship_kinds hides arrows by theirs, and the same name in both means two different things. Omit them to draw the whole document.",
   "Write one figure per view worth having rather than one figure of everything: a narrowed figure is the reason this takes narrowing at all.",
+  "When the document declares viewpoints, name one with `viewpoint` instead of rebuilding its selection from hide lists: the figure then states which viewpoint it shows and the concern it frames, so a report can carry one figure per viewpoint.",
   "A relationship whose endpoint is hidden goes with it — an arrow to a box that is not drawn cannot be drawn.",
   "A table has no figure; export it as a spreadsheet instead.",
 ].join(" ");

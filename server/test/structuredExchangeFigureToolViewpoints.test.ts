@@ -74,6 +74,10 @@ describe("write_structure_figure with a viewpoint", () => {
     const schema = tool.parameters as unknown as { properties: Record<string, { description?: string }> };
     assert.ok(schema.properties.viewpoint, "the tool takes no viewpoint");
     assert.match(schema.properties.viewpoint.description ?? "", /declares/);
+    // The description is what teaches an agent to reach for it instead of rebuilding a
+    // viewpoint's selection from hide lists, one figure at a time.
+    assert.match(tool.description, /viewpoint/);
+    assert.match(tool.description, /one figure per viewpoint/);
   });
 
   test("writes the figure a declared viewpoint describes", async () => {
