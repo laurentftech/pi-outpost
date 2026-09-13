@@ -21,7 +21,7 @@
 
 ## 5. The agent's tools
 
-- [x] 5.1 Make `present_structure` per workspace (D7): take the workspace root, build it beside the figure tool in `sandbox.ts`, the unsandboxed branch of `index.ts` and `piOutpostTools.ts`, and remove the module-level singleton; verify the tool-definition and sandbox suites pass and a test asserts two workspaces with different registries get different verdicts for the same document
+- [x] 5.1 Make `present_structure` per workspace (D7): take a required `projectRoot`, build it per workspace wherever the singleton was used (`workspaceOptions`, the unsandboxed branch of `makeCreateRuntime`, `piOutpostTools.ts`) while it stays an unconfined tool, pass the project directory to the figure tool through `createSandboxedTools`, and remove the module-level singleton; verify the tool-definition and sandbox suites pass and a test asserts two workspaces with different registries get different verdicts for the same document
 - [x] 5.2 Apply the profile in `present_structure` after core validation: refusals in the existing format, success text naming the profile and listing open-enumeration notes, every document refused while the registry is unusable; update its description; verify tool tests for `AConformingDocumentIsPresented`, `AnUnusableRegistryNeverDegradesToTheCoreContract`, `CoreViolationsAreReportedFirst` and the open-enumeration report
 - [x] 5.3 Apply the profile in `write_structure_figure`, refusing a stray document or any document under an unusable registry with nothing written; verify `AStrayDocumentIsNotDrawn` with an existence check on the output path
 - [x] 5.4 Resolve viewpoints from the document, then its profile (D10): the result says where the viewpoint came from, refusals list both sets, a profile viewpoint retaining nothing present is refused; verify one tool test per `TheAgentCanWriteAFigureForAViewpoint` scenario, and the existing viewpoint tool tests still pass
@@ -34,13 +34,13 @@
 ## 7. Reference validator
 
 - [x] 7.1 Add `--check-profile`, `--profile` and `--describe-profile` to `shared/bin/validate-structured-exchange.mjs` with exit code 4 for an unusable profile, documented in its usage text; rebuild the bundle with `npm run build:validator`; verify tests run against the bundle copied to a directory with no repository access, for every `TheReferenceValidatorChecksProfiles` scenario, including a forty-value enumeration listed in full
-- [ ] 7.2 Ship the profile and registry schemas in the packaged contract; verify `npm run check:cli` passes
+- [x] 7.2 Ship the profile and registry schemas in the packaged contract; verify `npm run check:cli` passes
 
 ## 8. Documentation and skill
 
-- [ ] 8.1 Document the registry, the profile format, what is refused and reported, the default's consequences and the validator's profile options in `docs/structured-exchange.md`, and correct "will not check your profile's own rules" to be about the core; verify every JSON example in it passes the documented-examples suite
-- [ ] 8.2 Add a section to `skills/structured-exchange/SKILL.md` telling the agent that a project may hold its documents to a profile, how refusals read, and what open-enumeration notes mean; copy the profile schema beside the skill's other schemas; verify the skill schema copy test passes
-- [ ] 8.3 Add a section for a profile author — someone building one from DOORS or with an agent, outside this application — covering the format, `--check-profile` and `--describe-profile` for the review by hand; verify its example profile passes `--check-profile` with the bundle
+- [x] 8.1 Document the registry, the profile format, what is refused and reported, the default's consequences and the validator's profile options in `docs/structured-exchange.md`, and correct "will not check your profile's own rules" to be about the core; verify every JSON example in it passes the documented-examples suite
+- [x] 8.2 Add a section to `skills/structured-exchange/SKILL.md` telling the agent that a project may hold its documents to a profile, how refusals read, and what open-enumeration notes mean; copy the profile schema beside the skill's other schemas; verify the skill schema copy test passes
+- [x] 8.3 Add a section for a profile author — someone building one from DOORS or with an agent, outside this application — covering the format, `--check-profile` and `--describe-profile` for the review by hand; verify its example profile passes `--check-profile` with the bundle
 
 ## 9. Verification
 

@@ -8,7 +8,7 @@
  */
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { copyFileSync, mkdtempSync, writeFileSync } from "node:fs";
+import { copyFileSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -169,6 +169,23 @@ describe("the reference validator's profile checks, as they ship", () => {
     const lastValue = listing.indexOf("      - component-40");
     const testKindAt = listing.indexOf("  test\n");
     assert.ok(requirementAt < componentAt && componentAt < firstValue && firstValue < lastValue && lastValue < testKindAt);
+  });
+
+  test("the profile the documentation shows a profile author passes the shipped check", () => {
+    // The example a profile author copies first: it has to be a profile the bundle accepts.
+    const docs = readFileSync(path.join(REPO, "docs/structured-exchange.md"), "utf8");
+    const examples = [...docs.matchAll(/```json\r?\n([\s\S]*?)```/g)]
+      .map((match) => {
+        try {
+          return JSON.parse(match[1]) as { schema?: string };
+        } catch {
+          return undefined;
+        }
+      })
+      .filter((example) => example?.schema === "urn:structured-exchange-profile:1");
+    assert.equal(examples.length, 1, "the documentation should show exactly one complete profile");
+    const outcome = run(["--check-profile", write("documented-profile.json", examples[0])]);
+    assert.equal(outcome.code, 0, outcome.stdout);
   });
 
   test("refuses arguments it cannot act on, with status 2", () => {

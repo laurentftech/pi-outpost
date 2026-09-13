@@ -1,0 +1,158 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:structured-exchange-profile:1",
+  "title": "Structured exchange profile v1",
+  "description": "A project's data model, as structured-exchange documents must follow it: the kinds that exist, the attributes each kind carries, and the values each enumeration allows. Read from the project's own files and matched to a document by exact identifier; never fetched. Flat on purpose: profiles are built outside the application that applies them, and reviewed by hand.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "id", "label"],
+  "properties": {
+    "schema": {
+      "description": "Which profile format this is.",
+      "const": "urn:structured-exchange-profile:1"
+    },
+    "id": {
+      "description": "The identifier a document names in its `profile` to be held to this profile. Compared as an exact string, never resolved.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200
+    },
+    "label": {
+      "description": "What a reader calls this model.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 500
+    },
+    "description": {
+      "description": "Where the model comes from, for whoever reviews the profile.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 2000
+    },
+    "elementKinds": {
+      "description": "The kinds graph elements and table rows may carry. A document held to this profile may use no other.",
+      "type": "array",
+      "maxItems": 64,
+      "items": { "$ref": "#/$defs/kindDeclaration" }
+    },
+    "relationshipKinds": {
+      "description": "The kinds graph relationships and table relations may carry. A document held to this profile may use no other.",
+      "type": "array",
+      "maxItems": 64,
+      "items": { "$ref": "#/$defs/kindDeclaration" }
+    },
+    "viewpoints": {
+      "description": "The readings this domain's models are made for, available to every document held to this profile. Same shape as a document's own viewpoints; the kinds they retain must be declared above.",
+      "type": "array",
+      "maxItems": 20,
+      "items": { "$ref": "#/$defs/viewpoint" }
+    }
+  },
+  "$defs": {
+    "kindName": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 100
+    },
+    "kindDeclaration": {
+      "description": "One kind and the attributes an item of that kind may carry. An item may carry no attribute this does not declare.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind"],
+      "properties": {
+        "kind": { "$ref": "#/$defs/kindName" },
+        "description": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        },
+        "attributes": {
+          "type": "array",
+          "maxItems": 50,
+          "items": { "$ref": "#/$defs/attribute" }
+        }
+      }
+    },
+    "attribute": {
+      "description": "One attribute of a kind. An enumeration lists its values and says whether they are the only ones allowed (closed) or the known ones (open); no other type carries values.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "type"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "type": {
+          "enum": ["string", "number", "boolean", "reference", "enumeration"]
+        },
+        "required": {
+          "description": "An item of this kind must carry a value for it. Null is not a value. Enforced on complete documents; a proposal is refused only for removing it.",
+          "type": "boolean"
+        },
+        "list": {
+          "description": "The value is a list of this type rather than one value.",
+          "type": "boolean"
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        },
+        "values": {
+          "description": "An enumeration's values, in the order a reviewer should read them.",
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 500,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000
+          }
+        },
+        "closed": {
+          "description": "True: a value outside `values` is refused. False: it is accepted and reported.",
+          "type": "boolean"
+        }
+      }
+    },
+    "viewpoint": {
+      "description": "A named reading, as a version 2 document declares one.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "label", "concern"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500
+        },
+        "concern": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500
+        },
+        "elementKinds": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 64,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/kindName" }
+        },
+        "relationshipKinds": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 64,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/kindName" }
+        }
+      }
+    }
+  }
+}

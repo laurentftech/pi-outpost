@@ -403,6 +403,34 @@ and a reader who does not know it still sees every attribute, rendered generical
 not invent one to look official; use the identifier your domain actually uses, or omit
 it.
 
+### When the project holds you to a profile
+
+A project may register profiles — its own data model: the kinds that exist, the attributes
+each kind carries, the values each enumeration allows. Then `present_structure` and
+`write_structure_figure` refuse a document that strays from its profile, exactly as they
+refuse one that breaks the contract, and the refusal says **what the profile allows** at the
+place it points. Act on it:
+
+- **Use the words the refusal lists.** A kind, an attribute name or an enumeration value
+  outside the profile is refused, and a near-miss is not corrected for you. Never invent a
+  value to make a document pass; if none of the allowed values is true, say so to the user.
+- **Omitting `profile` does not step around it.** When the project declares a default, a
+  document naming no profile is held to the default; naming a profile the project does not
+  register, or writing version 1, is refused.
+- **In a proposal**, a changed item still states its `kind` so its attributes can be
+  checked; an item you add (no `ref`) carries every required attribute; you cannot remove a
+  required attribute, and `null` is not a value for one.
+- **Values outside an open enumeration are accepted** and listed back to you with the values
+  the enumeration declares. Look at each: a new value you meant is fine; a typo is not —
+  present the document again, corrected.
+- **"The project's profile registry cannot be used"** is not about your document. Nothing
+  can be presented until the project's files are fixed: tell the user which file and rule,
+  rather than reshaping the document around it.
+
+A profile may declare **viewpoints** too. `write_structure_figure` accepts one by its `id`
+even when the document does not declare it, and its result says whether the viewpoint came
+from the document or from the profile.
+
 ### Description, expectation, change: three different claims
 
 Version 1 already separates *describing* a referenced thing from *changing* it. Version

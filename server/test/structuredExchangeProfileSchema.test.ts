@@ -125,6 +125,18 @@ describe("the registry schema", () => {
   });
 });
 
+describe("the copies shipped with the skill are the same documents", () => {
+  // A profile author reading the skill's copy and a project validated against ours
+  // must be reading one format, or the author builds to a contract nobody enforces.
+  for (const name of ["structured-exchange-profile-1.json", "structured-exchange-profile-registry-1.json"]) {
+    test(`${name} in skills/ matches shared/schemas`, () => {
+      const source = readFileSync(path.join(ROOT, "shared/schemas", name), "utf8");
+      const shipped = readFileSync(path.join(ROOT, "skills/structured-exchange", name), "utf8");
+      assert.equal(shipped, source, "the copy shipped with the skill has drifted from the schema");
+    });
+  }
+});
+
 describe("both bound every collection and string they declare", () => {
   /** Walks a schema and names every string without maxLength and array without maxItems. */
   function unbounded(node: any, where: string, found: string[]): string[] {
