@@ -89,9 +89,10 @@ file:
 
 **No Node, no npm?** Each release carries a single executable per platform under
 [Releases](https://github.com/laurentftech/pi-outpost/releases), server and interface
-inside. They are unsigned, so macOS and Windows warn on first launch; see
-[docs/sea-packaging.md](docs/sea-packaging.md), which also covers building one yourself with
-`npx pi-outpost build-exe`.
+inside. On macOS and Linux, `chmod +x` it first — a release download carries no execute
+bit. Unsigned, so macOS blocks a fresh download outright and Windows SmartScreen warns on
+first launch — both clear in a step; see [docs/sea-packaging.md](docs/sea-packaging.md), which
+also covers building one yourself with `npx pi-outpost build-exe`.
 
 ### Why it insists on a configuration file
 

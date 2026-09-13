@@ -296,8 +296,10 @@ sessions and credentials should not mix.
 
 Download the executable for their platform from
 [Releases](https://github.com/laurentftech/pi-outpost/releases) — server and interface
-are inside it, nothing to install. It is unsigned, so macOS and Windows warn on first
-launch; [`sea-packaging.md`](sea-packaging.md) covers that, and building one yourself
+are inside it, nothing to install. On macOS and Linux it needs `chmod +x` first, since a
+release download carries no execute bit. It is unsigned, so macOS blocks a fresh download
+outright and Windows SmartScreen warns on first launch;
+[`sea-packaging.md`](sea-packaging.md) covers clearing both, and building one yourself
 with `pi-outpost build-exe`.
 
 Ship a configuration file beside it (`pi-outpost.config.json` in the directory they
