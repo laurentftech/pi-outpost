@@ -140,6 +140,74 @@ Container identifiers must be unique, and every `container` reference must resol
 declared in the same document. Moving an existing element between containers is a change, so
 put the new container id under `set.container` beside that element's `ref`.
 
+## Naming the readings a graph is made for
+
+A model is rarely read whole. An architecture is read for its power distribution, then for its data
+flows, then for what is safety-relevant. A version 2 graph can name those readings as **viewpoints**,
+so a reader selects one instead of rebuilding it type by type, and an agent writing a report draws a
+figure for one instead of repeating hide lists:
+
+```json
+{
+  "schema": "urn:structured-exchange:2",
+  "kind": "graph",
+  "viewpoints": [
+    {
+      "id": "power",
+      "label": "Power distribution",
+      "concern": "Where energy is stored, converted and consumed",
+      "elementKinds": ["source", "converter", "load"],
+      "relationshipKinds": ["power"]
+    },
+    {
+      "id": "parts",
+      "label": "Parts",
+      "concern": "What the system is made of",
+      "elementKinds": ["source", "converter", "load", "controller"]
+    }
+  ],
+  "data": {
+    "nodes": [
+      { "id": "battery", "label": "Battery", "kind": "source" },
+      { "id": "inverter", "label": "Inverter", "kind": "converter" },
+      { "id": "motor", "label": "Motor", "kind": "load" },
+      { "id": "ecu", "label": "ECU", "kind": "controller" }
+    ],
+    "edges": [
+      { "from": "battery", "to": "inverter", "kind": "power" },
+      { "from": "inverter", "to": "motor", "kind": "power" },
+      { "from": "ecu", "to": "inverter", "kind": "signal" }
+    ]
+  }
+}
+```
+
+The name is ISO/IEC/IEEE 42010's: a viewpoint frames one **concern** and retains the kinds that
+address it. The concern is required, because every figure drawn for a viewpoint states it — a figure
+taken out of its report still says what it is a reading of.
+
+**A viewpoint is an inclusion.** It shows the elements and relationships whose kinds it retains, and
+hides the rest. That is what keeps a kind you add to the model later out of the power viewpoint: it was
+never named there. A vocabulary you name no kinds for is left whole, so `parts` above still shows every
+relationship between the parts it shows. Two things it does not hide: an element or relationship that
+declares no kind, exactly as no narrowing by kind hides one; and nothing about the document itself —
+selecting a viewpoint is presentation only.
+
+**What is refused, and why:**
+
+- a viewpoint retaining a kind the document does not have — checked per vocabulary, so `power` as an
+  element kind is not `power` as a relationship kind, and a kind one character off is refused rather
+  than matched to the one you probably meant (`unresolved-viewpoint-kind`);
+- two viewpoints sharing an `id` (`duplicate-viewpoint-identifier`);
+- a viewpoint naming no kind at all (`empty-viewpoint`);
+- viewpoints on a sequence or a table, which have no element and relationship kinds for one to retain
+  (`viewpoints-without-graph`).
+
+A document may declare up to twenty viewpoints, each with a concern of up to 500 characters.
+
+To write a figure for one, name it: `write_structure_figure` with `viewpoint: "power"`. Hide lists
+still apply on top, and a viewpoint the document does not declare is refused with the ones it does.
+
 ## Getting a diagram into a document
 
 Use **download SVG**, then insert the file as a picture. Word does not accept an SVG

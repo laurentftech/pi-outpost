@@ -28,12 +28,12 @@
 ## 5. The agent
 
 - [x] 5.1 Add the optional `viewpoint` parameter to `write_structure_figure` (D9): refuse an undeclared id listing the declared ones, refuse any id for a document declaring none, union hide lists on top, write nothing on refusal, and name the viewpoint in the result. Verify each through the tool (`AFigureIsWrittenForADeclaredViewpoint`, `AnUndeclaredViewpointIsRefusedWithTheDeclaredOnes`, `ADocumentWithoutViewpointsRefusesOne`, `HiddenKindsApplyOnTopOfAViewpoint`, `TheResultNamesTheViewpoint`, `ARequestMayNameADeclaredViewpoint`).
-- [ ] 5.2 Verify the reader's exported figure and the agent's written figure for the same viewpoint of the same document show the same elements, relationships, labels and statement (`TheReaderAndTheAgentProduceTheSameViewpointFigure`).
+- [x] 5.2 Verify the reader's exported figure and the agent's written figure for the same viewpoint of the same document show the same elements, relationships, labels and statement (`TheReaderAndTheAgentProduceTheSameViewpointFigure`).
 - [x] 5.3 Update the contract text the agent reads — `present_structure`'s document description and `write_structure_figure`'s description — to show a viewpoint and teach one figure per viewpoint, and verify the tool definition tests.
 
 ## 6. Documentation, coverage and running-app proof
 
-- [ ] 6.1 Document viewpoints in `skills/structured-exchange/SKILL.md` and `docs/structured-exchange.md` with a worked example, including that a kind-less element survives every viewpoint; verify the fenced JSON validates with the standalone check and the packaged contract still passes `scripts/check-cli-package.mjs`.
+- [x] 6.1 Document viewpoints in `skills/structured-exchange/SKILL.md` and `docs/structured-exchange.md` with a worked example, including that a kind-less element survives every viewpoint; verify the fenced JSON validates with the standalone check and the packaged contract still passes `scripts/check-cli-package.mjs`.
 - [ ] 6.2 Write `openspec/changes/add-structured-exchange-viewpoints/scenario-coverage.md` mapping all 31 scenarios of `structured-exchange-viewpoints` and the amended `ReaderMayAdjustAndNarrowTheView` and `TheAgentCanWriteAFigureToAPath`, and verify with `npm run check:scenarios`.
 - [ ] 6.3 Run `npm run lint`, `npm run typecheck`, and the full `shared`, `ui` and `server` suites, and report the counts.
 - [ ] 6.4 Add a viewpoint-declaring graph to the seeded transcript, rebuild `web`, `@pi-outpost/embed` and `build:e2e-host`, run `npm run bench`, and drive it: select a viewpoint, adjust with the key, return to the whole document, download the figure. Read back the DOM and the SVG, not a screenshot.

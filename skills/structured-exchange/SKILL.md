@@ -136,6 +136,54 @@ the first member of a container met brings the rest of that container with it,
 and anything belonging to no container keeps its place. Declare participants in
 the order you want them read.
 
+## Viewpoints: the readings a graph is made for
+
+When a graph will be read in more than one way — power, then control, then what is
+safety-relevant — declare those readings as `viewpoints` on the envelope, rather than
+leaving the reader to rebuild each one from the key:
+
+```json
+{
+  "schema": "urn:structured-exchange:2",
+  "kind": "graph",
+  "viewpoints": [
+    {
+      "id": "power",
+      "label": "Power distribution",
+      "concern": "Where energy is stored, converted and consumed",
+      "elementKinds": ["source", "load"],
+      "relationshipKinds": ["power"]
+    }
+  ],
+  "data": {
+    "nodes": [
+      { "id": "battery", "label": "Battery", "kind": "source" },
+      { "id": "motor", "label": "Motor", "kind": "load" },
+      { "id": "ecu", "label": "ECU", "kind": "controller" }
+    ],
+    "edges": [
+      { "from": "battery", "to": "motor", "kind": "power" },
+      { "from": "ecu", "to": "motor", "kind": "signal" }
+    ]
+  }
+}
+```
+
+- **A viewpoint says what it retains.** Name the element kinds, the relationship kinds,
+  or both — at least one list. A list you leave out keeps that whole vocabulary.
+- **Only kinds the document has.** Every kind you retain must be the kind of some
+  element (or, for `relationshipKinds`, some relationship) in this document. A typo is
+  refused, not corrected, and the refusal says when the word exists in the other list.
+- **Always give the concern.** It is printed inside every figure drawn for the
+  viewpoint — write it as the question that reading answers.
+- **Graphs only**, and at most twenty per document.
+- **Something with no kind survives every viewpoint.** If an element must drop out of a
+  reading, give it a kind.
+
+When you write a report with one chapter per reading, write one figure per viewpoint:
+`write_structure_figure` with `viewpoint: "power"`. Do not rebuild the same selection
+from hide lists — the viewpoint carries both the selection and the reason for it.
+
 ## Two identities, never confused
 
 Every element carries an `id`, and may carry a `ref`.

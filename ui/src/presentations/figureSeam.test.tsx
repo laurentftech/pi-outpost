@@ -173,6 +173,58 @@ describe("the browser and the serializer draw one picture", () => {
   });
 });
 
+describe("a viewpoint's figure is the same whoever draws it", () => {
+  /** A graph declaring a viewpoint, so the reader and the agent can each ask for it. */
+  const withViewpoint = {
+    schema: "urn:structured-exchange:2",
+    kind: "graph",
+    viewpoints: [
+      {
+        id: "power",
+        label: "Power distribution",
+        concern: "Where energy is stored, converted and consumed",
+        elementKinds: ["power", "compute"],
+        relationshipKinds: ["power"],
+      },
+    ],
+    data: {
+      nodes: [
+        { id: "batt", label: "Batterie", kind: "power" },
+        { id: "ecu", label: "Calculateur", kind: "compute" },
+        { id: "sensor", label: "Capteur", kind: "sensor" },
+      ],
+      edges: [
+        { from: "batt", to: "ecu", label: "400V", kind: "power" },
+        { from: "sensor", to: "ecu", label: "mesure", kind: "signal" },
+      ],
+    },
+  } as unknown as ValidatedStructuredExchange;
+
+  it("draws what the reader selects exactly as the agent writes it", () => {
+    // TheReaderAndTheAgentProduceTheSameViewpointFigure. The reader reaches the
+    // viewpoint through the selector it is actually offered; the agent names it to the
+    // export the figure tool calls. Nothing else is adjusted on either side.
+    const result = figureForEnvelope(withViewpoint, { viewpoint: "power" });
+    if (!result.ok) throw new Error(result.reason);
+    const written = new DOMParser().parseFromString(result.svg, "image/svg+xml").documentElement;
+
+    const { container } = render(<StructuredExchangeDocument envelope={withViewpoint} source="{}" />);
+    fireEvent.change(within(container).getByTestId("viewpoint-select"), { target: { value: "power" } });
+    const drawn = container.querySelector("svg")!;
+
+    // The comparison would pass on two unnarrowed figures, so first prove both are
+    // really drawn for the viewpoint: the sensor is not in it, and both say so.
+    expect(drawn.querySelector('[data-element-id="sensor"]')).toBeNull();
+    expect(written.textContent).toContain("Viewpoint: Power distribution");
+    expect(drawn.textContent).toContain("Viewpoint: Power distribution");
+
+    expect(shapesOf(written)).toEqual(shapesOf(drawn));
+    for (const attribute of ["viewBox", "width", "height", "aria-label"]) {
+      expect(written.getAttribute(attribute)).toBe(drawn.getAttribute(attribute));
+    }
+  });
+});
+
 describe("what only exists for pointing does not travel", () => {
   it("the browser adds hit areas and the figure has none", () => {
     // Both halves matter: without the first, the second passes for a picture that
