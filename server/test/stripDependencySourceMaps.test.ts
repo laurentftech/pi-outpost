@@ -59,13 +59,17 @@ describe("the coverage run", () => {
       ["--import", "tsx/esm", "--import", "./test/stripDependencySourceMaps.mjs", "--input-type=module", "--eval", `const { loadPdfjs } = await import(${JSON.stringify(loader)}); await loadPdfjs();`],
       { cwd: SERVER, env: { ...process.env, NODE_V8_COVERAGE: sink }, encoding: "utf8" },
     );
+    // One file per thread the child ran: judged together, since only the thread that loaded
+    // our code stores its map, and each on its own for what no file may carry.
     const files = readdirSync(sink).map((name) => path.join(sink, name));
     assert.ok(files.length > 0, "the child wrote no coverage file");
+    const cached: string[] = [];
     for (const file of files) {
-      const cache = JSON.parse(readFileSync(file, "utf8"))["source-map-cache"] ?? {};
-      assert.deepEqual(Object.keys(cache).filter((url) => url.includes("/node_modules/")), [], "a dependency's source map reached the coverage file");
-      assert.ok(Object.keys(cache).some((url) => url.endsWith("/server/src/pdf.ts")), "our own source map was dropped too");
+      const urls = Object.keys(JSON.parse(readFileSync(file, "utf8"))["source-map-cache"] ?? {});
+      assert.deepEqual(urls.filter((url) => url.includes("/node_modules/")), [], `a dependency's source map reached ${path.basename(file)}`);
       assert.ok(statSync(file).size < 4 * 1024 * 1024, `${path.basename(file)} is ${statSync(file).size} bytes`);
+      cached.push(...urls);
     }
+    assert.ok(cached.some((url) => url.endsWith("/server/src/pdf.ts")), `our own source map was dropped too; cached: ${cached.join(", ") || "nothing"}`);
   });
 });
