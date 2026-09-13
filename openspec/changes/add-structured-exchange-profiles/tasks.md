@@ -24,7 +24,7 @@
 - [x] 5.1 Make `present_structure` per workspace (D7): take the workspace root, build it beside the figure tool in `sandbox.ts`, the unsandboxed branch of `index.ts` and `piOutpostTools.ts`, and remove the module-level singleton; verify the tool-definition and sandbox suites pass and a test asserts two workspaces with different registries get different verdicts for the same document
 - [x] 5.2 Apply the profile in `present_structure` after core validation: refusals in the existing format, success text naming the profile and listing open-enumeration notes, every document refused while the registry is unusable; update its description; verify tool tests for `AConformingDocumentIsPresented`, `AnUnusableRegistryNeverDegradesToTheCoreContract`, `CoreViolationsAreReportedFirst` and the open-enumeration report
 - [x] 5.3 Apply the profile in `write_structure_figure`, refusing a stray document or any document under an unusable registry with nothing written; verify `AStrayDocumentIsNotDrawn` with an existence check on the output path
-- [ ] 5.4 Resolve viewpoints from the document, then its profile (D10): the result says where the viewpoint came from, refusals list both sets, a profile viewpoint retaining nothing present is refused; verify one tool test per `TheAgentCanWriteAFigureForAViewpoint` scenario, and the existing viewpoint tool tests still pass
+- [x] 5.4 Resolve viewpoints from the document, then its profile (D10): the result says where the viewpoint came from, refusals list both sets, a profile viewpoint retaining nothing present is refused; verify one tool test per `TheAgentCanWriteAFigureForAViewpoint` scenario, and the existing viewpoint tool tests still pass
 
 ## 6. The reader's statement
 

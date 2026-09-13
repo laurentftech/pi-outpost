@@ -25,6 +25,7 @@ import type { StructuredExchangeIssue } from "./structuredExchangeValidation.ts"
 import type {
   StructuredGraphData,
   StructuredSequenceData,
+  StructuredViewpoint,
   ValidatedStructuredExchange,
 } from "./structuredExchange.ts";
 import { graphFigure, sequenceFigure, serializeFigure, shownGraph } from "./structuredExchangeFigure.ts";
@@ -50,8 +51,11 @@ export interface FigureExport {
    * Undefined when it shows all of it — there is then nothing to say.
    */
   narrowing?: string;
-  /** The viewpoint the figure was drawn for, when one was named. */
-  viewpoint?: { id: string; label: string };
+  /**
+   * The viewpoint the figure was drawn for, when one was named, and who declared it:
+   * the document, or the profile the document is held to.
+   */
+  viewpoint?: { id: string; label: string; source: "document" | "profile"; profile?: string };
 }
 
 export type FigureRefusal = { ok: false } & (
@@ -63,10 +67,19 @@ export type FigureRefusal = { ok: false } & (
   | { reason: "not-drawable"; kind: string }
   /** The narrowing selected nothing, or the document declares nothing. */
   | { reason: "nothing-to-draw"; coverage: FigureCoverage }
-  /** A viewpoint was named for a document that declares none. */
-  | { reason: "no-viewpoints"; viewpoint: string }
-  /** A viewpoint was named that the document does not declare; `declared` is what it does. */
-  | { reason: "unknown-viewpoint"; viewpoint: string; declared: string[] }
+  /** A viewpoint was named, and neither the document nor its profile declares any. */
+  | { reason: "no-viewpoints"; viewpoint: string; profile?: string }
+  /**
+   * A viewpoint was named that neither declares; `declared` is what the document does,
+   * `profileDeclared` what its profile does, when it is held to one.
+   */
+  | { reason: "unknown-viewpoint"; viewpoint: string; declared: string[]; profile?: string; profileDeclared?: string[] }
+  /**
+   * A profile's viewpoint none of whose kinds occur in this document. A document's own
+   * viewpoint cannot be this — validation refuses it — but a profile's is written for
+   * every document, so the question is only answerable here.
+   */
+  | { reason: "profile-viewpoint-absent"; viewpoint: string; profile: string }
 );
 
 /** What a caller names when it narrows: the reader's own vocabulary, as two lists. */
@@ -78,6 +91,11 @@ export interface FigureNarrowing {
    * any hidden kinds named beside it apply on top — the reader's key works the same way.
    */
   viewpoint?: string;
+  /**
+   * The profile the document is held to, when the caller holds one. Its viewpoints are
+   * looked up after the document's own — the document is the more specific author.
+   */
+  profile?: { id: string; viewpoints: readonly StructuredViewpoint[] };
 }
 
 /** The refusal a document verdict maps to, or undefined when it validated. */
@@ -112,11 +130,23 @@ export function figureForEnvelope(
   // cannot have it is refused rather than ignored. Only a graph may declare viewpoints,
   // so a sequence is refused here too instead of quietly drawn whole.
   const declared = viewpointsOf(envelope);
+  const profile = narrowing.profile;
+  const fromProfile = profile?.viewpoints ?? [];
   const named = narrowing.viewpoint;
-  if (named !== undefined && declared.length === 0) return { ok: false, reason: "no-viewpoints", viewpoint: named };
-  const viewpoint = named === undefined ? undefined : declared.find((candidate) => candidate.id === named);
+  if (named !== undefined && declared.length === 0 && fromProfile.length === 0) {
+    return { ok: false, reason: "no-viewpoints", viewpoint: named, ...(profile === undefined ? {} : { profile: profile.id }) };
+  }
+  const own = named === undefined ? undefined : declared.find((candidate) => candidate.id === named);
+  const inherited = named === undefined || own !== undefined ? undefined : fromProfile.find((candidate) => candidate.id === named);
+  const viewpoint = own ?? inherited;
   if (named !== undefined && viewpoint === undefined) {
-    return { ok: false, reason: "unknown-viewpoint", viewpoint: named, declared: declared.map((candidate) => candidate.id) };
+    return {
+      ok: false,
+      reason: "unknown-viewpoint",
+      viewpoint: named,
+      declared: declared.map((candidate) => candidate.id),
+      ...(profile === undefined ? {} : { profile: profile.id, profileDeclared: fromProfile.map((candidate) => candidate.id) }),
+    };
   }
 
   if (envelope.kind === "sequence") {
@@ -138,6 +168,14 @@ export function figureForEnvelope(
   if (envelope.kind !== "graph") return { ok: false, reason: "not-drawable", kind: envelope.kind };
 
   const data = envelope.data as StructuredGraphData;
+  if (inherited !== undefined && profile !== undefined) {
+    const elementKinds = new Set(data.nodes.map((node) => node.kind));
+    const relationshipKinds = new Set(data.edges.map((edge) => edge.kind));
+    const touches =
+      (inherited.elementKinds ?? []).some((kind) => elementKinds.has(kind)) ||
+      (inherited.relationshipKinds ?? []).some((kind) => relationshipKinds.has(kind));
+    if (!touches) return { ok: false, reason: "profile-viewpoint-absent", viewpoint: inherited.id, profile: profile.id };
+  }
   const requested: Narrowing =
     narrowing.hiddenElementKinds === undefined && narrowing.hiddenRelationshipKinds === undefined
       ? NOTHING_HIDDEN
@@ -166,7 +204,16 @@ export function figureForEnvelope(
     svg: serializeFigure(figure),
     coverage,
     ...(figure.narrowing === undefined ? {} : { narrowing: figure.narrowing }),
-    ...(viewpoint === undefined ? {} : { viewpoint: { id: viewpoint.id, label: viewpoint.label } }),
+    ...(viewpoint === undefined
+      ? {}
+      : {
+          viewpoint: {
+            id: viewpoint.id,
+            label: viewpoint.label,
+            source: inherited === undefined ? ("document" as const) : ("profile" as const),
+            ...(inherited === undefined || profile === undefined ? {} : { profile: profile.id }),
+          },
+        }),
   };
 }
 
@@ -216,11 +263,20 @@ export function describeFigureRefusal(refusal: FigureRefusal): string {
         ? "the document declares nothing to draw"
         : `the narrowing hides all ${refusal.coverage.ofElements} elements, leaving nothing to draw`;
     case "no-viewpoints":
-      return `the document declares no viewpoints, so it has no viewpoint "${refusal.viewpoint}" to draw`;
-    case "unknown-viewpoint":
-      return `the document declares no viewpoint "${refusal.viewpoint}"; it declares ${refusal.declared
-        .map((id) => `"${id}"`)
-        .join(", ")}`;
+      return (
+        `the document declares no viewpoints` +
+        (refusal.profile === undefined ? "" : `, and neither does its profile "${refusal.profile}"`) +
+        `, so it has no viewpoint "${refusal.viewpoint}" to draw`
+      );
+    case "unknown-viewpoint": {
+      const list = (ids: readonly string[]) => (ids.length === 0 ? "none" : ids.map((id) => `"${id}"`).join(", "));
+      return (
+        `the document declares no viewpoint "${refusal.viewpoint}"; it declares ${list(refusal.declared)}` +
+        (refusal.profile === undefined ? "" : `, and its profile "${refusal.profile}" declares ${list(refusal.profileDeclared ?? [])}`)
+      );
+    }
+    case "profile-viewpoint-absent":
+      return `viewpoint "${refusal.viewpoint}" of profile "${refusal.profile}" retains no kind that occurs in this document, so it would draw nothing of it`;
   }
 }
 

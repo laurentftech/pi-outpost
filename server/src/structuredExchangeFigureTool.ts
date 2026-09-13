@@ -30,6 +30,7 @@ import { checkStructuredExchangeSchema } from "@pi-outpost/shared/structured-exc
 import { parseSerializedStructuredExchange } from "@pi-outpost/shared/structured-exchange/parse";
 import { holdToProfile } from "@pi-outpost/shared/structured-exchange/profile-check";
 import type { StructuredExchangeLimits } from "@pi-outpost/shared/structured-exchange/bounds";
+import type { StructuredViewpoint } from "@pi-outpost/shared/structured-exchange";
 import { assertWritableDestination } from "./extractionOutput.ts";
 import { isWithinAny, realResolve } from "./sandbox.ts";
 import { describeUnusableProfiles, readProjectProfiles } from "./structuredExchangeProfiles.ts";
@@ -78,7 +79,7 @@ const parameters = Type.Object({
   viewpoint: Type.Optional(
     Type.String({
       description:
-        'The `id` of a viewpoint the document declares, e.g. "power". The figure shows what that viewpoint retains and states its concern inside the drawing; the hide lists still apply on top. Refused, listing the declared ones, when the document does not declare it.',
+        'The `id` of a viewpoint the document declares, or one the project\'s profile for the document declares, e.g. "power". The figure shows what that viewpoint retains and states its concern inside the drawing; the hide lists still apply on top. Refused, listing the declared ones, when neither declares it.',
     }),
   ),
 });
@@ -88,7 +89,7 @@ const DESCRIPTION = [
   "Reference it from Markdown as a relative path — `![Power train](figures/power.svg)` — and the interface renders it in the preview.",
   "The two hide lists are separate vocabularies: hide_element_kinds hides boxes by their `kind`, hide_relationship_kinds hides arrows by theirs, and the same name in both means two different things. Omit them to draw the whole document.",
   "Write one figure per view worth having rather than one figure of everything: a narrowed figure is the reason this takes narrowing at all.",
-  "When the document declares viewpoints, name one with `viewpoint` instead of rebuilding its selection from hide lists: the figure then states which viewpoint it shows and the concern it frames, so a report can carry one figure per viewpoint.",
+  "When the document declares viewpoints — or the project holds it to a profile that does — name one with `viewpoint` instead of rebuilding its selection from hide lists: the figure then states which viewpoint it shows and the concern it frames, so a report can carry one figure per viewpoint.",
   "A relationship whose endpoint is hidden goes with it — an arrow to a box that is not drawn cannot be drawn.",
   "A table has no figure; export it as a spreadsheet instead.",
 ].join(" ");
@@ -158,6 +159,8 @@ export function createStructuredExchangeFigureToolDefinition(
       // this way when it could not be presented. A document the core contract refuses
       // falls through, so its refusal reads as it always has.
       const parsed = parseSerializedStructuredExchange(text, checkStructuredExchangeSchema, options.limits);
+      // The profile the document is held to, whose viewpoints the figure may be drawn for.
+      let heldTo: { id: string; viewpoints: readonly StructuredViewpoint[] } | undefined;
       if (parsed.valid) {
         const project = await readProjectProfiles(options.projectRoot);
         if (project.state === "unusable") {
@@ -193,6 +196,9 @@ export function createStructuredExchangeFigureToolDefinition(
               isError: true,
             };
           }
+          if (held.outcome === "conforms") {
+            heldTo = { id: held.profile, viewpoints: project.context.profiles.get(held.profile)?.viewpoints ?? [] };
+          }
         }
       }
 
@@ -203,6 +209,7 @@ export function createStructuredExchangeFigureToolDefinition(
           ...(hiddenElementKinds === undefined ? {} : { hiddenElementKinds }),
           ...(hiddenRelationshipKinds === undefined ? {} : { hiddenRelationshipKinds }),
           ...(viewpoint === undefined ? {} : { viewpoint }),
+          ...(heldTo === undefined ? {} : { profile: heldTo }),
         },
         options.limits,
       );
@@ -251,7 +258,9 @@ export function createStructuredExchangeFigureToolDefinition(
               // document can tell which chapter each belongs to without opening them.
               result.viewpoint === undefined
                 ? undefined
-                : `Drawn for viewpoint \`${result.viewpoint.id}\` (${result.viewpoint.label}).`,
+                : `Drawn for viewpoint \`${result.viewpoint.id}\` (${result.viewpoint.label}), declared by ${
+                    result.viewpoint.source === "profile" ? `this project's profile "${result.viewpoint.profile}"` : "the document"
+                  }.`,
               result.narrowing === undefined ? undefined : `The figure states: "${result.narrowing}"`,
               `Reference it from Markdown as a relative path, e.g. \`![${path.basename(destination, ".svg")}](${destination})\`.`,
             ]
