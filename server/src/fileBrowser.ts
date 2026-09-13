@@ -150,6 +150,25 @@ export async function listDirectory(root: string, relPath: string): Promise<DirE
   return entries;
 }
 
+/**
+ * Read a file that was measured a moment ago.
+ *
+ * The workspace is written by an agent while someone reads it, so the file can be
+ * renamed or deleted between the `stat` and the read. That is the same answer as a
+ * file that was never there — not an unknown error the HTTP route turns into a 500.
+ */
+async function readMeasuredFile(resolved: string, relPath: string): Promise<Buffer> {
+  try {
+    return await fs.readFile(resolved);
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === "ENOENT" || code === "ENOTDIR") {
+      throw new FileBrowserError("not-found", `"${relPath}" does not exist`);
+    }
+    throw error;
+  }
+}
+
 /** Cheap binary heuristic: presence of a NUL byte (same check git/grep -I use). */
 function looksBinary(buffer: Buffer): boolean {
   return buffer.includes(0);
@@ -190,7 +209,7 @@ export async function readFileForPreview(
   if (stat.size > outer) {
     throw new FileBrowserError("too-large", describeUnmeasured(stat.size, structuredExchangeMaxBytes));
   }
-  const buffer = await fs.readFile(resolved);
+  const buffer = await readMeasuredFile(resolved, relPath);
   if (expectedDigest !== undefined) {
     const observed = `sha256:${createHash("sha256").update(buffer).digest("hex")}`;
     if (observed !== expectedDigest) {
@@ -276,7 +295,7 @@ export async function readFileRaw(
     const mb = (limit / (1024 * 1024)).toFixed(0);
     throw new FileBrowserError("too-large", `File is larger than the ${mb} MB limit`);
   }
-  return fs.readFile(resolved);
+  return readMeasuredFile(resolved, relPath);
 }
 
 /**

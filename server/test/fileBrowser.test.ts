@@ -12,7 +12,8 @@ import assert from "node:assert/strict";
 import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { after, before, describe, test } from "node:test";
+import fsPromises from "node:fs/promises";
+import { after, before, describe, mock, test } from "node:test";
 import {
   assertWithinRoot,
   FileBrowserError,
@@ -298,6 +299,48 @@ describe("file browser", () => {
 
     test("still refuses an oversized file", async () => {
       assert.equal(await reasonOf(() => readFileRaw(root, "big.txt")), "too-large");
+    });
+  });
+
+  /**
+   * A file removed between the size check and the read.
+   *
+   * The workspace is written by an agent while someone reads it, so this is not
+   * hypothetical: a figure renamed while the page still fetches it once surfaced as
+   * a 500 from `/files/raw`, because the read's ENOENT escaped as an unknown error.
+   * The race is reproduced for real — the file is deleted right after it is measured.
+   */
+  describe("a file that vanishes between measuring and reading", () => {
+    function vanishAfterStat(relPath: string) {
+      const target = path.join(root, relPath);
+      const realStat = fsPromises.stat.bind(fsPromises);
+      return mock.method(fsPromises, "stat", async (...args: Parameters<typeof fsPromises.stat>) => {
+        const stats = await realStat(...args);
+        if (String(args[0]) === target) rmSync(target);
+        return stats;
+      });
+    }
+
+    test("is not-found for the raw bytes", async () => {
+      write("vanishing-raw.svg", "<svg/>");
+      const stat = vanishAfterStat("vanishing-raw.svg");
+      try {
+        assert.equal(await reasonOf(() => readFileRaw(root, "vanishing-raw.svg")), "not-found");
+        assert.ok(stat.mock.callCount() > 0, "the race was never staged");
+      } finally {
+        stat.mock.restore();
+      }
+    });
+
+    test("is not-found for the preview", async () => {
+      write("vanishing-preview.txt", "hello\n");
+      const stat = vanishAfterStat("vanishing-preview.txt");
+      try {
+        assert.equal(await reasonOf(() => readFileForPreview(root, "vanishing-preview.txt")), "not-found");
+        assert.ok(stat.mock.callCount() > 0, "the race was never staged");
+      } finally {
+        stat.mock.restore();
+      }
     });
   });
 
