@@ -91,6 +91,15 @@ turns coverage off in the child. So a child a test starts gets `envWithoutCovera
 size made it likely rather than rare: a child that loads pdf.js writes about ten megabytes of
 coverage, nearly all of it source maps, and node writes that file in a single write.
 
+The same weight sat in every test process that loads pdf.js itself. With `NODE_V8_COVERAGE`
+set, node stores each loaded module's source map in the coverage file: tsx inlines a
+word-by-word map for the dynamic imports it rewrites in pdf.js, and pdf.js ships its own `.map`
+files besides — about 8 MiB of a 9.7 MiB file, for code the report never shows. So
+`test:coverage` loads `server/test/stripDependencySourceMaps.mjs` after tsx: a load hook that
+removes every `sourceMappingURL` comment from modules under `node_modules`, and nothing else.
+Our own maps stay, since the report reads lines through them. The largest coverage file of the
+unit suites went from 9.7 MiB to under 5 MiB.
+
 It runs as a non-root user on purpose: as root, every "refuses an unwritable path"
 assertion in this repository passes for the wrong reason. Dependencies are cached in a
 Docker volume and reinstalled only when `package-lock.json` changes, so a second run costs
