@@ -970,9 +970,10 @@ key naming every kind it distinguishes, and that key SHALL be part of what an ex
 
 ### Requirement: ReaderMayAdjustAndNarrowTheView
 
-A reader MAY adjust a rendering for legibility — repositioning what it draws, moving around it, and
-narrowing it to selected kinds. For a table, the same narrowing SHALL be offered over the roles its
-rows declare. Every kind and every role SHALL be shown by default, and the control SHALL be the key
+A reader MAY adjust a rendering for legibility — repositioning what it draws, moving around it,
+turning it between landscape and portrait where it has an orientation to choose, and narrowing it to
+selected kinds. For a table, the same narrowing SHALL be offered over the roles its rows declare.
+Every kind and every role SHALL be shown by default, and the control SHALL be the key
 itself, so what a reader reads a colour from is what they switch.
 
 An adjustment SHALL be presentation only: it SHALL NOT alter the document, and SHALL NOT be carried
@@ -1000,7 +1001,7 @@ way the same rendering uses for a removal.
 - **THEN** only the one they hid is hidden
 
 #### Scenario: AdjustmentDoesNotAlterTheDocument
-- **WHEN** a reader repositions or narrows a rendering
+- **WHEN** a reader repositions, turns or narrows a rendering
 - **THEN** the document recovered for handover is unchanged
 
 #### Scenario: ATableNarrowsByRole
