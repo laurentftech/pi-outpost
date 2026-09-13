@@ -416,12 +416,6 @@ if (cli.command === "login") {
   }
 }
 
-/**
- * Reads nothing and writes nothing: it validates a document the agent composed and
- * hands it to the interface. There is no path argument to confine, so unlike every
- * other custom tool it is the same tool on both sides of the sandbox.
- */
-const structuredExchangeTool = createStructuredExchangeToolDefinition();
 const workPlanTool = createWorkPlanToolDefinition();
 /**
  * Registered beside it and active only where its actions are possible — see the
@@ -454,7 +448,14 @@ function workspaceOptions(settings: WorkspaceSettings): Omit<WorkspaceOptions, "
       structuredExchangeMaxBytes: config.structuredExchange.maxBytes,
     },
     watchFiles: config.files.watch,
-    unconfinedTools: [structuredExchangeTool, workPlanTool, workPlanExtendedTool],
+    // `present_structure` has no path argument to confine, so it is unconfined on both
+    // sides of the sandbox — but it is built per project, because the project's own
+    // profile registry is what it holds a document to.
+    unconfinedTools: [
+      createStructuredExchangeToolDefinition({ projectRoot: settings.cwd }),
+      workPlanTool,
+      workPlanExtendedTool,
+    ],
     // Bound to the workspace being built, so a tree change reaches the clients
     // watching THAT project and no others.
     onDirectoryChanged: () => {},
@@ -1023,8 +1024,9 @@ const makeCreateRuntime =
                 // No sandbox: anything under the workspace is writable, the same
                 // rule writeFileFromBrowser applies to the browser's own writes.
                 writableRoot: await fs.realpath(cwd),
+                projectRoot: cwd,
               }),
-              structuredExchangeTool,
+              createStructuredExchangeToolDefinition({ projectRoot: cwd }),
               workPlanTool,
               workPlanExtendedTool,
               // The extractors go last, and the order is not cosmetic. A tool published

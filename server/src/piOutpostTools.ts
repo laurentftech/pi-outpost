@@ -80,8 +80,8 @@ export async function createPiOutpostTools(settings: PiOutpostToolsSettings): Pr
     createDocxExtractToolDefinition({ ...common, maxBytes: settings.maxBytes.docx }),
     createXlsxExtractToolDefinition({ ...common, maxBytes: settings.maxBytes.xlsx }),
     createPptxExtractToolDefinition({ ...common, maxBytes: settings.maxBytes.pptx }),
-    createStructuredExchangeFigureToolDefinition({ ...common, maxBytes: settings.maxBytes.structuredExchange }),
-    createStructuredExchangeToolDefinition(),
+    createStructuredExchangeFigureToolDefinition({ ...common, maxBytes: settings.maxBytes.structuredExchange, projectRoot: root }),
+    createStructuredExchangeToolDefinition({ projectRoot: root }),
     createWorkPlanToolDefinition(),
     // Both, always. The server withholds the extended half from a session with no
     // plan through the SDK's active-tool set; the RPC dialect has no command for

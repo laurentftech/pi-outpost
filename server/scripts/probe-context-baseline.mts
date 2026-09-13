@@ -74,8 +74,8 @@ async function measure(label: string, options: { outpost: boolean; withheld?: st
         createPptxExtractToolDefinition({ cwd, allowedRoots: [cwd], maxBytes: 26214400, writableRoot: cwd }),
         createWorkPlanToolDefinition(),
         createWorkPlanExtendedToolDefinition(),
-        createStructuredExchangeToolDefinition(),
-        createStructuredExchangeFigureToolDefinition({ cwd, allowedRoots: [cwd], writableRoot: cwd }),
+        createStructuredExchangeToolDefinition({ projectRoot: cwd }),
+        createStructuredExchangeFigureToolDefinition({ cwd, allowedRoots: [cwd], writableRoot: cwd, projectRoot: cwd }),
       ]
     : [];
   const session = await createAgentSessionFromServices({

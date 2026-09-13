@@ -136,6 +136,12 @@ export async function createSandboxedTools(
   xlsxMaxBytes: number = DEFAULT_XLSX_MAX_BYTES,
   pptxMaxBytes: number = DEFAULT_PPTX_MAX_BYTES,
   structuredExchangeMaxBytes: number = DEFAULT_STRUCTURED_EXCHANGE_MAX_BYTES,
+  /**
+   * The project whose structured-exchange profiles apply. The workspace always passes
+   * its project directory; the default serves a sandbox rooted at the project, which
+   * is what every caller that omits it builds.
+   */
+  projectRoot: string = sandbox.root,
 ): Promise<ToolDefinition[]> {
   const realRoot = await fs.realpath(sandbox.root);
   const readFactories: Array<(cwd: string) => ToolDefinition> = [
@@ -184,6 +190,7 @@ export async function createSandboxedTools(
       allowedRoots: documentRoots,
       maxBytes: structuredExchangeMaxBytes,
       writableRoot: realWritableRoot,
+      projectRoot,
     }),
   );
   const tools = readFactories.map((create) =>

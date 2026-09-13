@@ -11,30 +11,37 @@
  * the value, so the agent corrects and calls again without leaving the turn. That
  * is what makes a strict contract usable by a producer that writes plausible-but-
  * wrong JSON, which is what a language model is.
+ *
+ * The same loop holds a document to the project's own data model, when the project
+ * registers one: after the core contract, the profile — so an invented enumeration
+ * value is refused exactly as a dangling endpoint is.
  */
 import { Type } from "typebox";
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { parseSerializedStructuredExchange } from "@pi-outpost/shared/structured-exchange/parse";
 import { checkStructuredExchangeSchema } from "@pi-outpost/shared/structured-exchange/schema-node";
 import type { StructuredExchangeLimits } from "@pi-outpost/shared/structured-exchange/bounds";
+import { holdToProfile, type ProfileNote } from "@pi-outpost/shared/structured-exchange/profile-check";
 import type {
   StructuredGraphData,
   StructuredSequenceData,
   StructuredTableData,
   ValidatedStructuredExchange,
 } from "@pi-outpost/shared/structured-exchange";
+import { describeUnusableProfiles, readProjectProfiles } from "./structuredExchangeProfiles.ts";
 
 const DESCRIPTION = [
   "Present a structured-exchange document — a graph, sequence, or table — so the interface renders it natively.",
   "Emit data, never hand-drawn diagram syntax: what you pass here is validated, shown to the user for approval when it proposes a change, and can be handed on to whatever applies it.",
   "The document is checked against the published schema. If it is refused you get the rule and a pointer to the offending value back; fix it and call again.",
+  "A project may also hold its documents to a profile of its own — the kinds, attributes and enumeration values its data model has. A document that strays from it is refused the same way, and the refusal says what the profile allows at that point: use those words, never invent one.",
   "The structured document does NOT reach you on a later turn — only `summary` does. Write a summary that stands on its own.",
 ].join(" ");
 
 const parameters = Type.Object({
   document: Type.String({
     description:
-      'The structured-exchange document as JSON: {"schema":"urn:structured-exchange:1","kind":"graph"|"sequence"|"table",...}. Include "target" only when proposing a change to something that already exists. A version 2 graph may declare "viewpoints" — named readings, each an id, a label, the concern it frames, and the elementKinds and relationshipKinds it retains — so a reader can select one and a figure can be written for one.',
+      'The structured-exchange document as JSON: {"schema":"urn:structured-exchange:1","kind":"graph"|"sequence"|"table",...}. Include "target" only when proposing a change to something that already exists. A version 2 graph may declare "viewpoints" — named readings, each an id, a label, the concern it frames, and the elementKinds and relationshipKinds it retains — so a reader can select one and a figure can be written for one. A version 2 document may name the "profile" its kinds and attributes come from; in a project that registers profiles, that profile is enforced.',
   }),
   summary: Type.String({
     description:
@@ -43,6 +50,11 @@ const parameters = Type.Object({
 });
 
 export interface StructuredExchangeToolOptions {
+  /**
+   * The project whose profile registry applies. Required: a construction site that
+   * forgot it would present every document unchecked, and nothing would say so.
+   */
+  projectRoot: string;
   /** Deployment limits, at or below the schema's ceilings. */
   limits?: StructuredExchangeLimits;
 }
@@ -119,14 +131,29 @@ function roleTally(envelope: ValidatedStructuredExchange): string {
 }
 
 /** Diagnostics the agent can act on, in the order it should read them. */
-function explain(issues: { rule: string; path: string; message: string }[]): string {
-  const lines = ["The document was refused. Nothing was presented. Fix these and call again:"];
+function explain(
+  issues: { rule: string; path: string; message: string }[],
+  heading = "The document was refused. Nothing was presented. Fix these and call again:",
+): string {
+  const lines = [heading];
   for (const issue of issues) lines.push(`- ${issue.rule} at ${issue.path === "" ? "(document)" : issue.path}: ${issue.message}`);
   lines.push("Nothing is corrected for you: a near-miss identifier is refused, not guessed at.");
   return lines.join("\n");
 }
 
-export function createStructuredExchangeToolDefinition(options: StructuredExchangeToolOptions = {}): ToolDefinition {
+/**
+ * Values the profile's open enumerations do not list. Accepted — that is what open
+ * means — but said out loud, because the agent is the only one who knows whether
+ * `"urgnet"` was a new value or a typo, and it will not see the rendering.
+ */
+function describeNotes(notes: readonly ProfileNote[]): string {
+  if (notes.length === 0) return "";
+  const lines = ["", "Values outside open enumerations, accepted — make sure each is meant and not a typo:"];
+  for (const note of notes) lines.push(`- ${note.path}: ${note.message}`);
+  return lines.join("\n");
+}
+
+export function createStructuredExchangeToolDefinition(options: StructuredExchangeToolOptions): ToolDefinition {
   return {
     name: "present_structure",
     label: "Structure",
@@ -147,8 +174,41 @@ export function createStructuredExchangeToolDefinition(options: StructuredExchan
         return { content: [{ type: "text", text: explain(verdict.issues) }], details: undefined, isError: true };
       }
 
+      // Read now, not at construction: an edited profile applies to this very call.
+      const project = await readProjectProfiles(options.projectRoot);
+      if (project.state === "unusable") {
+        // Never degraded to the core contract alone: a registry the project wrote and
+        // got wrong would otherwise remove every guarantee while everything looked fine.
+        const text = [
+          "The document was not presented: this project's structured-exchange profile registry cannot be used, so no document can be checked against it. These project files need fixing — tell the user if that is not yours to do:",
+          ...describeUnusableProfiles(project.issues),
+        ].join("\n");
+        return { content: [{ type: "text", text }], details: undefined, isError: true };
+      }
+
+      let conformance = "";
+      if (project.state === "usable") {
+        const held = holdToProfile(verdict.envelope, project.context);
+        if (held.outcome === "refused") {
+          const heading =
+            held.profile === undefined
+              ? "The document was refused by this project's profile rules. Nothing was presented. Fix these and call again:"
+              : `The document was refused by this project's profile "${held.profile}". Nothing was presented. Fix these and call again:`;
+          return { content: [{ type: "text", text: explain(held.issues, heading) }], details: undefined, isError: true };
+        }
+        if (held.outcome === "conforms") {
+          conformance = `; conforms to this project's profile "${held.profile}"${describeNotes(held.notes) === "" ? "" : `, with ${held.notes.length} value${held.notes.length === 1 ? "" : "s"} outside open enumerations`}`;
+          conformance += `)${describeNotes(held.notes)}`;
+        }
+      }
+
       return {
-        content: [{ type: "text", text: `${summary}\n\n(${digest(verdict.envelope)})` }],
+        content: [
+          {
+            type: "text",
+            text: `${summary}\n\n(${digest(verdict.envelope)}${conformance === "" ? ")" : conformance}`,
+          },
+        ],
         // The channel the interface reads. Not sent to the model, which is why the
         // summary above has to carry the meaning forward on its own.
         details: verdict.envelope,

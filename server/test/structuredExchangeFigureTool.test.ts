@@ -74,6 +74,7 @@ describe("write_structure_figure", () => {
       allowedRoots: [root],
       maxBytes: 4_000_000,
       writableRoot: root,
+      projectRoot: root,
     });
   });
 
@@ -194,6 +195,7 @@ describe("write_structure_figure", () => {
       allowedRoots: [root],
       maxBytes: 4_000_000,
       writableRoot: null,
+      projectRoot: root,
     });
     await assert.rejects(
       () =>

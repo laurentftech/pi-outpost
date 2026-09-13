@@ -146,6 +146,7 @@ async function seedFigures(): Promise<void> {
     allowedRoots: [await realpath(root)],
     maxBytes: 4_000_000,
     writableRoot: await realpath(root),
+    projectRoot: root,
   });
   const write = (params: Record<string, unknown>) =>
     (tool.execute as (id: string, params: unknown) => Promise<{ content: { text: string }[]; isError?: boolean }>)(

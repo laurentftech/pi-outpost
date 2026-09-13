@@ -157,9 +157,16 @@ deleting `profile` or downgrading `schema`, and the loop would teach it to.
 
 ### D7. `present_structure` becomes a per-workspace tool
 
-`createStructuredExchangeToolDefinition` takes the workspace root and joins the figure tool in
-`readFactories` (sandbox), the unsandboxed branch of `index.ts`, and `createPiOutpostTools`. The
-module-level singleton and its comment go. Its success text gains the profile checked against and the
+`createStructuredExchangeToolDefinition` takes a **required** `projectRoot` and is built per workspace
+wherever the singleton was used: `workspaceOptions` (its `unconfinedTools`), the unsandboxed branch of
+`makeCreateRuntime`, and `createPiOutpostTools`. It stays an unconfined tool — it still takes no path
+argument — so it does not join `readFactories`. The module-level singleton and its comment go.
+
+The figure tool takes the same required `projectRoot`, separate from its `cwd`. Under a sandbox the two
+differ: the figure tool is built with the sandbox root, which sits inside the project, while the registry
+is the project's, at the project directory. `createSandboxedTools` passes the workspace's project
+directory through. Required, not defaulted: a construction site that forgot it would otherwise be an
+agent held to nothing, with every test still green. Its success text gains the profile checked against and the
 open-enumeration notes; its description tells the agent the project may hold documents to a profile.
 
 ### D8. The reader's statement travels beside `structured`, and is re-established

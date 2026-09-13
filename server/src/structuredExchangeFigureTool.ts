@@ -27,13 +27,22 @@ import {
   figureForDocument,
 } from "@pi-outpost/shared/structured-exchange/export";
 import { checkStructuredExchangeSchema } from "@pi-outpost/shared/structured-exchange/schema-node";
+import { parseSerializedStructuredExchange } from "@pi-outpost/shared/structured-exchange/parse";
+import { holdToProfile } from "@pi-outpost/shared/structured-exchange/profile-check";
 import type { StructuredExchangeLimits } from "@pi-outpost/shared/structured-exchange/bounds";
 import { assertWritableDestination } from "./extractionOutput.ts";
 import { isWithinAny, realResolve } from "./sandbox.ts";
+import { describeUnusableProfiles, readProjectProfiles } from "./structuredExchangeProfiles.ts";
 
 export interface StructuredExchangeFigureToolOptions {
   /** Paths the model gives are resolved against this. */
   cwd: string;
+  /**
+   * The project whose profile registry applies — not `cwd`, which under a sandbox is
+   * the sandbox root inside the project. Required, so no construction site can leave
+   * a figure unchecked by omission.
+   */
+  projectRoot: string;
   /** Zones the resolved document path must land in (root plus any read exceptions). */
   allowedRoots: string[];
   /** Largest document this tool will open, in bytes. */
@@ -142,8 +151,53 @@ export function createStructuredExchangeFigureToolDefinition(
         throw new Error(`"${target}" is larger than the ${describeSize(options.maxBytes)} document limit`);
       }
 
+      const text = await fs.readFile(resolved, "utf8");
+
+      // Held to the project's profile exactly as presenting it would be: a figure is a
+      // way for a document to leave, and one that strays from the model must not leave
+      // this way when it could not be presented. A document the core contract refuses
+      // falls through, so its refusal reads as it always has.
+      const parsed = parseSerializedStructuredExchange(text, checkStructuredExchangeSchema, options.limits);
+      if (parsed.valid) {
+        const project = await readProjectProfiles(options.projectRoot);
+        if (project.state === "unusable") {
+          return {
+            content: [
+              {
+                type: "text",
+                text: [
+                  "No figure was written. This project's structured-exchange profile registry cannot be used, so no document can be checked against it:",
+                  ...describeUnusableProfiles(project.issues),
+                ].join("\n"),
+              },
+            ],
+            details: undefined,
+            isError: true,
+          };
+        }
+        if (project.state === "usable") {
+          const held = holdToProfile(parsed.envelope, project.context);
+          if (held.outcome === "refused") {
+            const against = held.profile === undefined ? "this project's profile rules" : `this project's profile "${held.profile}"`;
+            return {
+              content: [
+                {
+                  type: "text",
+                  text: [
+                    `No figure was written. \`${target}\` strays from ${against}:`,
+                    ...held.issues.map((issue) => `- ${issue.rule} at ${issue.path === "" ? "(document)" : issue.path}: ${issue.message}`),
+                  ].join("\n"),
+                },
+              ],
+              details: undefined,
+              isError: true,
+            };
+          }
+        }
+      }
+
       const result = figureForDocument(
-        await fs.readFile(resolved, "utf8"),
+        text,
         checkStructuredExchangeSchema,
         {
           ...(hiddenElementKinds === undefined ? {} : { hiddenElementKinds }),

@@ -85,12 +85,14 @@ async function readConfinedJson(root: string, relative: string, maxBytes: number
 }
 
 /**
- * The profiles the project at `root` declares.
+ * The profiles the project at `projectRoot` declares.
  *
- * `root` is the workspace root as the server resolved it — a real path, as the
- * confinement comparison requires.
+ * Resolved to a real path first: the confinement comparison is between real paths,
+ * and on macOS a project under /tmp is reached through a link — compared unresolved,
+ * every file in it would be "outside the project".
  */
-export async function readProjectProfiles(root: string): Promise<ProjectProfiles> {
+export async function readProjectProfiles(projectRoot: string): Promise<ProjectProfiles> {
+  const root = await fs.realpath(projectRoot).catch(() => projectRoot);
   const registryFile = STRUCTURED_EXCHANGE_PROFILE_REGISTRY_PATH;
   const registryRead = await readConfinedJson(root, registryFile, STRUCTURED_EXCHANGE_PROFILE_CEILINGS.registryBytes, "registry");
   if (registryRead.ok === "missing") return { state: "none" };
