@@ -10,7 +10,7 @@
  * on any machine.
  */
 import { build } from "esbuild";
-import { chmod, mkdir } from "node:fs/promises";
+import { chmod, mkdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -18,6 +18,8 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const OUT = path.resolve(HERE, "../dist/validate-structured-exchange.mjs");
 
 await mkdir(path.dirname(OUT), { recursive: true });
+// The version a conformity report states: the CLI that ships this bundle.
+const { version } = JSON.parse(await readFile(path.resolve(HERE, "../../cli/package.json"), "utf8"));
 
 const result = await build({
   entryPoints: [path.resolve(HERE, "../bin/validate-structured-exchange.mjs")],
@@ -30,6 +32,7 @@ const result = await build({
   // the module is what broke the last time this shipped: the path resolves inside
   // this repository and nowhere else.
   loader: { ".json": "json" },
+  define: { __VALIDATOR_VERSION__: JSON.stringify(version) },
   // No banner: the entry point already carries a shebang, and esbuild keeps it.
   // A second one lands on line two, where it is a syntax error rather than a
   // comment — which every test inside the repository was blind to, because none of
