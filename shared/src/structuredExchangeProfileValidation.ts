@@ -50,7 +50,7 @@ function segment(name: string): string {
  * of a forty-kind profile is told "somewhere in here"; pointed at the field, they
  * are told which word to delete.
  */
-function schemaIssues(check: ReturnType<typeof Compile>, value: unknown, namespace: string): StructuredExchangeIssue[] {
+export function schemaIssues(check: ReturnType<typeof Compile>, value: unknown, namespace: string): StructuredExchangeIssue[] {
   const issues: StructuredExchangeIssue[] = [];
   for (const error of check.Errors(value)) {
     const keyword = String(error.keyword ?? "schema");

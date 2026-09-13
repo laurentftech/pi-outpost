@@ -5,13 +5,13 @@
 
 ## 2. Rules checked against their profile
 
-- [ ] 2.1 Implement rules-file validation (D3): schema, duplicate rule identifiers, kinds declared in the vocabulary the rule uses, attributes declared by the kind and scalar, enumeration values listed, value types matching; each refusal with a `rules-format/*` rule and pointer; verify one Node test per `RulesAreWrittenForAProfile` scenario, asserting rule and pointer
-- [ ] 2.2 Extend registry consistency: a rules file naming an unregistered profile, and rule identifiers repeated across files for one profile; verify Node tests at the validation level for `ARulesFileForAnUnregisteredProfileRefusesEveryDocument` and the duplicate case
+- [x] 2.1 Implement rules-file validation (D3): schema, duplicate rule identifiers, kinds declared in the vocabulary the rule uses, attributes declared by the kind and scalar, enumeration values listed, value types matching; each refusal with a `rules-format/*` rule and pointer; verify one Node test per `RulesAreWrittenForAProfile` scenario, asserting rule and pointer
+- [x] 2.2 Extend registry consistency: a rules file naming an unregistered profile, and rule identifiers repeated across files for one profile; verify Node tests at the validation level for `ARulesFileForAnUnregisteredProfileRefusesEveryDocument` and the duplicate case
 
 ## 3. Evaluating rules
 
-- [ ] 3.1 Implement `evaluateRules` (D4): item rules on subject items, link rules on graph edges and table relations with a subject end, selecting and required conditions, forbidden, absent attributes on subjects, not-verifiable ends outside the document or on non-subjects lacking the attribute; results in document order with pointer, rule and other end; verify one Node test per `ADocumentIsHeldToItsProfilesRules` scenario, every document first passing the core contract and the profile
-- [ ] 3.2 Make stated subjects an input of evaluation, defaulting to every item; verify a test that a non-subject neighbour is never judged by an item rule yet serves a link rule
+- [x] 3.1 Implement `evaluateRules` (D4): item rules on subject items, link rules on graph edges and table relations with a subject end, selecting and required conditions, forbidden, absent attributes on subjects, not-verifiable ends outside the document or on non-subjects lacking the attribute; results in document order with pointer, rule and other end; verify one Node test per `ADocumentIsHeldToItsProfilesRules` scenario, every document first passing the core contract and the profile
+- [x] 3.2 Make stated subjects an input of evaluation, defaulting to every item; verify a test that a non-subject neighbour is never judged by an item rule yet serves a link rule
 
 ## 4. The project registry and the agent's tools
 
