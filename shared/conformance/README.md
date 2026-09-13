@@ -40,6 +40,14 @@ now makes the same point with version 3. The lock records such a case with a
 `changedAfterFreeze` reason rather than quietly taking the new bytes, so the one thing
 the freeze cannot prevent is at least written down where the next reader will find it.
 
+## The version 2 freeze
+
+`version-2.lock.json` does the same for every case added after the version 1 freeze, taken
+at v0.25.0 — the first release to publish version 2. Until then version 2 grew in place
+(viewpoints were added to it rather than opening a version 3) because no producer could have
+written against it. From that release on, a change to what a version 2 envelope may say is a
+new version, and the two locks together are the floor the suite may not sink below.
+
 ## Rules that are not in the schema
 
 JSON Schema decides shape. These are the relational rules that follow it, and the

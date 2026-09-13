@@ -1,0 +1,125 @@
+{
+  "schema": "urn:structured-exchange:2",
+  "note": "Frozen at v0.25.0, the first release to publish version 2: every case added after the version 1 freeze. See shared/conformance/README.md and the freeze test. A case carrying changedAfterFreeze was altered deliberately, for the reason it states.",
+  "cases": [
+    {
+      "file": "invalid/v2-artifact-digest-not-sha256.json",
+      "sha256": "9d77218f2216e410dfc11a8542b09f327360c8543cd8a96528c0706b335a4849",
+      "verdict": "invalid",
+      "expectedRule": "schema/pattern"
+    },
+    {
+      "file": "invalid/v2-artifact-without-a-digest.json",
+      "sha256": "7f8d71334a82c480a69abb2f6c46d20f5e6c2402e6e401b363584fb73354ce54",
+      "verdict": "invalid",
+      "expectedRule": "schema/required"
+    },
+    {
+      "file": "invalid/v2-attribute-object-that-is-not-a-reference.json",
+      "sha256": "ba266e98b39b766730089e8f30412cd51cec7a233f5230e5445168cfce6f256b",
+      "verdict": "invalid",
+      "expectedRule": "schema/additionalProperties"
+    },
+    {
+      "file": "invalid/v2-heading-carrying-cells.json",
+      "sha256": "ef35b19dd0288233f88f0d9ea696f03b37d10986fc0dbd10bc1be1dc8e901e6c",
+      "verdict": "invalid",
+      "expectedRule": "schema/type"
+    },
+    {
+      "file": "invalid/v2-heading-deeper-than-headings-go.json",
+      "sha256": "3d9b15dbaeaade0ca08e19e4609391e520fb9122b5f1468ac3e7bee8142a1dfe",
+      "verdict": "invalid",
+      "expectedRule": "schema/maximum"
+    },
+    {
+      "file": "invalid/v2-nested-list-attribute.json",
+      "sha256": "4fad025d34958f73b6e9e637c503ab4977bdd1039d8db174919f8d13c7ae8898",
+      "verdict": "invalid",
+      "expectedRule": "schema/additionalProperties"
+    },
+    {
+      "file": "invalid/v2-relation-endpoint-naming-both.json",
+      "sha256": "ccae20f51324f6e9977f51ea957d16b2e867daeebc5a3bbcb766267d7426cc29",
+      "verdict": "invalid",
+      "expectedRule": "schema/maxProperties"
+    },
+    {
+      "file": "invalid/v2-relation-without-a-kind.json",
+      "sha256": "8b700af7e509c4f31de32119028bc80cca193cb17dbb87913387790a4d551f37",
+      "verdict": "invalid",
+      "expectedRule": "schema/required"
+    },
+    {
+      "file": "invalid/v2-viewpoint-listing-a-kind-twice.json",
+      "sha256": "a47bbf86f005d5e9acf7d308912ee6bbeaeb31b7c87bc1d07e0937c28df99c51",
+      "verdict": "invalid",
+      "expectedRule": "schema/uniqueItems"
+    },
+    {
+      "file": "invalid/v2-viewpoint-retaining-an-absent-kind.json",
+      "sha256": "dd4e8aaf4eeac0aeb58252acfb5cf5c3171b2ba43e771f99212dbb3225c24053",
+      "verdict": "invalid",
+      "expectedRule": "unresolved-viewpoint-kind"
+    },
+    {
+      "file": "invalid/v2-viewpoint-retaining-nothing.json",
+      "sha256": "fa5576c1b2ebc772423d1eef260d2aa2c94c7d48e154e257e2118b15f2aed727",
+      "verdict": "invalid",
+      "expectedRule": "empty-viewpoint"
+    },
+    {
+      "file": "invalid/v2-viewpoints-on-a-table.json",
+      "sha256": "b8f4541e6bc686d3ba2c357a233a5c4bb7ca03e9bdd8b57a9af3dbb31fea7504",
+      "verdict": "invalid",
+      "expectedRule": "viewpoints-without-graph"
+    },
+    {
+      "file": "invalid/v2-viewpoints-sharing-an-identifier.json",
+      "sha256": "a92e8395261d9e6d2bd4238e3c10a9ea99fed3e560f835b9d91f12dfdd8c18f7",
+      "verdict": "invalid",
+      "expectedRule": "duplicate-viewpoint-identifier"
+    },
+    {
+      "file": "invalid/viewpoints-under-version-1.json",
+      "sha256": "29df91a798062e9b307871ac5b05f78d1b88a332346dac72d0f7312495122fc8",
+      "verdict": "invalid",
+      "expectedRule": "schema/additionalProperties"
+    },
+    {
+      "file": "valid/v2-graph-minimal.json",
+      "sha256": "d4543620a7048018f366f7f6e046a3d0cb4c00619f42fcbe92396b11b87c3bbf",
+      "verdict": "valid"
+    },
+    {
+      "file": "valid/v2-graph-with-viewpoints.json",
+      "sha256": "88a472dc22e5a11d4d000d183bc40307b1ca445bfe76476f4b106cd92f7111f0",
+      "verdict": "valid"
+    },
+    {
+      "file": "valid/v2-locations-and-artifacts.json",
+      "sha256": "2b0724890469193b58472d04fd418d252587a8ce73ffd3bcf0680af0bc09374a",
+      "verdict": "valid"
+    },
+    {
+      "file": "valid/v2-profile-and-attributes.json",
+      "sha256": "1b391ab073affd6c64fb2f60bceebf71ca491b00995f01b1fbc90932690f954c",
+      "verdict": "valid"
+    },
+    {
+      "file": "valid/v2-proposal-with-revision-and-expectations.json",
+      "sha256": "e04c644d1662dac252abc4ab673e0bd8650809409dc5a2935872250eeb5b1af3",
+      "verdict": "valid"
+    },
+    {
+      "file": "valid/v2-requirements-with-chapters-and-traceability.json",
+      "sha256": "1bb465642eed422d6a10a0b7b9ba950491c6b5f92b7167f7c290c8b9f50ed8c2",
+      "verdict": "valid"
+    },
+    {
+      "file": "valid/v2-table-at-the-heading-depth-ceiling.json",
+      "sha256": "8cdc181a0ff39fbe73deaddf43c239a296c4e76725d124ce2a12f333cf42b05d",
+      "verdict": "valid"
+    }
+  ]
+}
