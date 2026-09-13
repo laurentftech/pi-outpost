@@ -22,6 +22,7 @@
     "./structured-exchange/figure": "./src/structuredExchangeFigure.ts",
     "./structured-exchange/document": "./src/structuredExchangeDocument.ts",
     "./structured-exchange/export": "./src/structuredExchangeExport.ts",
+    "./structured-exchange/profile": "./src/structuredExchangeProfile.ts",
     "./diagram-orientation": "./src/diagramOrientation.ts"
   },
   "dependencies": {

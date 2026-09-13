@@ -1,7 +1,7 @@
 ## 1. Formats
 
-- [ ] 1.1 Write `shared/schemas/structured-exchange-profile-1.json` and `shared/schemas/structured-exchange-profile-registry-1.json` (D1, D2), with ceilings mirrored in a `STRUCTURED_EXCHANGE_PROFILE_CEILINGS` constant; verify with a schema test that the example profile and registry in design.md are accepted and that each ceiling in the constant equals the schema's bound
-- [ ] 1.2 Add the profile, registry and viewpoint-reuse types to `shared/src/structuredExchangeProfile.ts` and export them from `@pi-outpost/shared/structured-exchange/profile`; verify `npm run typecheck` passes
+- [x] 1.1 Write `shared/schemas/structured-exchange-profile-1.json` and `shared/schemas/structured-exchange-profile-registry-1.json` (D1, D2), with ceilings mirrored in a `STRUCTURED_EXCHANGE_PROFILE_CEILINGS` constant; verify with a schema test that the example profile and registry in design.md are accepted and that each ceiling in the constant equals the schema's bound
+- [x] 1.2 Add the profile, registry and viewpoint-reuse types to `shared/src/structuredExchangeProfile.ts` and export them from `@pi-outpost/shared/structured-exchange/profile`; verify `npm run typecheck` passes
 
 ## 2. Profile validation (the profile itself)
 

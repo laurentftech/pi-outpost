@@ -45,6 +45,7 @@ See proposal.md for why. The facts that shape the approach:
 
 ```json
 {
+  "schema": "urn:structured-exchange-profile-registry:1",
   "profiles": ["profiles/requirements.json"],
   "default": "acme/requirements"
 }
@@ -67,22 +68,32 @@ rejected above.
   "schema": "urn:structured-exchange-profile:1",
   "id": "acme/requirements",
   "label": "ACME requirements model",
-  "elementKinds": {
-    "requirement": {
-      "attributes": {
-        "status":   { "type": "enumeration", "values": ["draft", "approved", "withdrawn"], "closed": true, "required": true },
-        "priority": { "type": "enumeration", "values": ["must", "should", "could"], "closed": false },
-        "owner":    { "type": "string" },
-        "verifiedBy": { "type": "reference", "list": true }
-      }
+  "elementKinds": [
+    {
+      "kind": "requirement",
+      "attributes": [
+        { "name": "status", "type": "enumeration", "values": ["draft", "approved", "withdrawn"], "closed": true, "required": true },
+        { "name": "priority", "type": "enumeration", "values": ["must", "should", "could"], "closed": false },
+        { "name": "owner", "type": "string" },
+        { "name": "verifiedBy", "type": "reference", "list": true }
+      ]
     }
-  },
-  "relationshipKinds": { "derives": {}, "satisfies": {} },
+  ],
+  "relationshipKinds": [{ "kind": "derives" }, { "kind": "satisfies" }],
   "viewpoints": [
     { "id": "safety", "label": "Safety", "concern": "What is safety-relevant", "elementKinds": ["requirement"] }
   ]
 }
 ```
+
+- Kinds and attributes are **arrays of named entries, not maps keyed by name**. `JSON.parse` keeps the
+  last of two equal keys without a word, and reorders integer-like keys: a profile that declared
+  `status` twice would silently lose one, and "declared twice" could never be refused. Arrays keep
+  both, so the duplicate is refused with a pointer, and keep the author's order for the listing.
+- Whether an enumeration has `values` and `closed`, and that no other type carries them, is a semantic
+  rule rather than `if`/`then` in the schema, so its refusal points at the attribute and says which.
+  Repeated values are likewise a semantic rule pointing at the repeated value, not `uniqueItems`
+  pointing at the list.
 
 - `elementKinds` govern graph elements **and** table rows; `relationshipKinds` govern graph relationships
   **and** table relations. A requirement is the same thing drawn as a box or listed as a row, and these are
