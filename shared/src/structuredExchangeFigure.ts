@@ -655,6 +655,20 @@ export function wrapNote(text: string, width: number): string[] {
 }
 
 /**
+ * A concern without the full stops and spaces it may end in, so the statement adds its
+ * own stop exactly once.
+ *
+ * A scan from the end, not `replace(/[.\s]+$/)`: the concern is producer text, and that
+ * pattern backtracks quadratically on a long run of whitespace that does not reach the
+ * end — a document could make drawing its own figure slow.
+ */
+function withoutTrailingStop(text: string): string {
+  let end = text.length;
+  while (end > 0 && (text[end - 1] === "." || /\s/.test(text[end - 1]))) end -= 1;
+  return text.slice(0, end);
+}
+
+/**
  * What a figure says about itself, or undefined when there is nothing to say.
  *
  * Without a viewpoint this is the sentence narrowed figures have always carried, word
@@ -677,7 +691,7 @@ function figureStatement(
   if (viewpoint === undefined) return hidden.size === 0 ? undefined : `Filtered view: ${counts}`;
   const adjusted = !sameNarrowing(hidden, resolveViewpoint(data, viewpoint));
   return (
-    `Viewpoint: ${viewpoint.label} — ${viewpoint.concern.replace(/[.\s]+$/, "")}` +
+    `Viewpoint: ${viewpoint.label} — ${withoutTrailingStop(viewpoint.concern)}` +
     (adjusted ? " (adjusted)." : ".") +
     (hidden.size === 0 ? "" : ` ${counts}`)
   );
