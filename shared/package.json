@@ -28,6 +28,7 @@
     "./structured-exchange/rules-validation": "./src/structuredExchangeRulesValidation.ts",
     "./structured-exchange/rule-evaluation": "./src/structuredExchangeRuleEvaluation.ts",
     "./structured-exchange/table-export": "./src/structuredExchangeTableExport.ts",
+    "./structured-exchange/conformity-report": "./src/structuredExchangeConformityReport.ts",
     "./diagram-orientation": "./src/diagramOrientation.ts"
   },
   "dependencies": {
