@@ -1,9 +1,9 @@
 ## 1. Contract
 
-- [ ] 1.1 Add the optional `viewpoints` envelope property to `shared/schemas/structured-exchange-2.json` (D3): `id` reusing `localId`, `label` reusing `label`, a required bounded `concern`, optional `elementKinds` and `relationshipKinds` reusing `kind`, strict object shape. Verify the existing valid version 2 conformance cases still validate unchanged.
-- [ ] 1.2 Regenerate the version 2 validator with `node --import tsx/esm shared/scripts/generate-structured-exchange-check.mjs`, and verify `server/test/structuredExchangeGenerated.test.ts`, which fails when `shared/src/generated/structuredExchangeCheck2.ts` drifts from the committed schema, passes.
-- [ ] 1.3 Add the viewpoint ceilings to `STRUCTURED_EXCHANGE_CEILINGS_2` (D6: 20 per document, kinds per viewpoint bounded by `kindsPerVocabulary`, `concern` 500) and the mirrored `StructuredViewpoint` type in `shared/src/structuredExchange.ts`; enforce them pre- and post-parse in `structuredExchangeBounds.ts`. Verify with bounds tests at each ceiling and one past it (`ViewpointsAreBounded`).
-- [ ] 1.4 Prove version 1 is untouched: a version 1 document carrying `viewpoints` is refused, and the frozen corpus still passes `structuredExchangeVersionOneFreeze.test.ts` unchanged (`VersionOneDoesNotAcquireViewpoints`, `VersionOneIsUntouched`).
+- [x] 1.1 Add the optional `viewpoints` envelope property to `shared/schemas/structured-exchange-2.json` (D3): `id` reusing `localId`, `label` reusing `label`, a required bounded `concern`, optional `elementKinds` and `relationshipKinds` reusing `kind`, strict object shape. Verify the existing valid version 2 conformance cases still validate unchanged.
+- [x] 1.2 Regenerate the version 2 validator with `node --import tsx/esm shared/scripts/generate-structured-exchange-check.mjs`, and verify `server/test/structuredExchangeGenerated.test.ts`, which fails when `shared/src/generated/structuredExchangeCheck2.ts` drifts from the committed schema, passes.
+- [x] 1.3 Add the viewpoint ceilings to `STRUCTURED_EXCHANGE_CEILINGS_2` (D6: 20 per document, kinds per viewpoint bounded by `kindsPerVocabulary`, `concern` 500) and the mirrored `StructuredViewpoint` type in `shared/src/structuredExchange.ts`; enforce them pre- and post-parse in `structuredExchangeBounds.ts`. Verify with bounds tests at each ceiling and one past it (`ViewpointsAreBounded`).
+- [x] 1.4 Prove version 1 is untouched: a version 1 document carrying `viewpoints` is refused, and the frozen corpus still passes `structuredExchangeVersionOneFreeze.test.ts` unchanged (`VersionOneDoesNotAcquireViewpoints`, `VersionOneIsUntouched`).
 
 ## 2. Semantic rules
 

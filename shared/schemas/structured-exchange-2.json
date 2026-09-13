@@ -654,6 +654,53 @@
           "$ref": "#/$defs/attributes"
         }
       }
+    },
+    "viewpoint": {
+      "description": "A named reading of a graph: the concern it frames, and the element and relationship kinds that address it. An inclusion \u2014 showing it shows what it retains and hides the rest, so a kind added to the model later is not shown unannounced. A vocabulary it names no kinds for is left whole. The term is ISO/IEC/IEEE 42010's.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "label",
+        "concern"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/localId"
+        },
+        "label": {
+          "description": "What a reader selects it by.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500
+        },
+        "concern": {
+          "description": "What this reading is for \u2014 stated inside every figure drawn for it, so a figure taken out of its report still says what it is a reading of.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500
+        },
+        "elementKinds": {
+          "description": "Element kinds this viewpoint retains. Absent leaves the element vocabulary whole.",
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 64,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/kind"
+          }
+        },
+        "relationshipKinds": {
+          "description": "Relationship kinds this viewpoint retains. Absent leaves the relationship vocabulary whole.",
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 64,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/kind"
+          }
+        }
+      }
     }
   },
   "properties": {
@@ -701,6 +748,14 @@
       "maxItems": 50,
       "items": {
         "$ref": "#/$defs/artifact"
+      }
+    },
+    "viewpoints": {
+      "description": "Named readings of this document. Only a graph may declare them. Presentation only: selecting one never alters the document.",
+      "type": "array",
+      "maxItems": 20,
+      "items": {
+        "$ref": "#/$defs/viewpoint"
       }
     },
     "data": {

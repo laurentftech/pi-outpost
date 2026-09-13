@@ -326,6 +326,15 @@ export const STRUCTURED_EXCHANGE_CEILINGS_2 = {
   /** A structural row's heading, bounded like a label, and how deep they may nest. */
   heading: 500,
   headingDepth: 6,
+  /**
+   * Named readings a graph may declare. Generous for choices a reader makes from a
+   * control; a document past it is using viewpoints as data. The kinds one viewpoint
+   * retains are bounded by `kindsPerVocabulary`, since it cannot retain more kinds than
+   * a vocabulary can hold apart, and its label by `label`.
+   */
+  viewpoints: 20,
+  /** What a viewpoint is for, stated inside every figure drawn for it. */
+  viewpointConcern: 500,
 } as const;
 
 /**
@@ -457,6 +466,22 @@ export interface StructuredStructuralRow {
 }
 
 export type StructuredEnrichedTableRow = StructuredTableCell[] | StructuredDataRow | StructuredStructuralRow;
+
+/**
+ * A named reading of a graph: the concern it frames, and the kinds that address it.
+ *
+ * An inclusion rather than a list of things to hide, so a kind added to the model
+ * later is not shown in it unannounced. A vocabulary it names no kinds for is left
+ * whole — a viewpoint retaining only element kinds still shows the relationships
+ * among what it shows.
+ */
+export interface StructuredViewpoint {
+  id: string;
+  label: string;
+  concern: string;
+  elementKinds?: string[];
+  relationshipKinds?: string[];
+}
 
 /** True for the row variant that is a heading rather than data. */
 export function isStructuralRow(row: StructuredEnrichedTableRow): row is StructuredStructuralRow {
