@@ -127,6 +127,37 @@ export const MAX_PATCH_BYTES = 256 * 1024;
 
 export class GitError extends Error {}
 
+/**
+ * Every git call this application makes is a question, never an instruction — and a
+ * question has no business taking the lock that answering it would normally update.
+ *
+ * `git status` rewrites `.git/index` to cache the `stat` of each file it looked at,
+ * which means taking `.git/index.lock` for the few milliseconds that takes. This
+ * application asks for a status on every file change, every directory change and the
+ * end of every agent turn, which is precisely while an agent is running `git add` and
+ * `git commit` in the same repository. Those fail outright when the lock is held:
+ *
+ *     fatal: Unable to create '.../.git/index.lock': File exists.
+ *     Another git process seems to be running in this repository
+ *
+ * Intermittently, and never reproducibly, because the window is milliseconds wide.
+ *
+ * `GIT_OPTIONAL_LOCKS=0` tells git to skip the work it would need the lock for rather
+ * than wait for it. The answer is unchanged; only the caching of it is given up, so
+ * the next status re-reads a few `stat`s. Set on the environment rather than passed as
+ * `--no-optional-locks` so it covers every call made through here, including ones
+ * added later by someone who has not read this comment.
+ *
+ * This gives up no real protection. A genuine conflict — two processes both writing
+ * the index — still fails, and still should. What goes away is a lock a *reader* had
+ * no reason to take.
+ *
+ * Read per call rather than captured once: `process.env` is mutable, the test suite
+ * does mutate it, and a snapshot taken at import would hand git an environment that
+ * stopped being this process's some time ago.
+ */
+const gitEnv = () => ({ ...process.env, GIT_OPTIONAL_LOCKS: "0" });
+
 async function runGit(root: string, args: string[]): Promise<string> {
   try {
     const { stdout } = await execFileAsync(gitBinary, args, {
@@ -134,6 +165,7 @@ async function runGit(root: string, args: string[]): Promise<string> {
       timeout: GIT_TIMEOUT_MS,
       maxBuffer: GIT_MAX_BUFFER,
       encoding: "utf8",
+      env: gitEnv(),
       // Without this, every git call opens a console window on Windows — and the
       // repository questions are asked constantly: on each workspace switch, each
       // tree listing, each status check. The result is a machine that flashes a
