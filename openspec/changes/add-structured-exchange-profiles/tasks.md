@@ -17,7 +17,7 @@
 
 ## 4. The project registry on the server
 
-- [ ] 4.1 Read `.pi-outpost/structured-exchange.json` and its profiles from the workspace root on every call, confined with `realResolve` + `isWithin`, size-capped, returning either a usable registry, an unusable one with rule, file and pointer, or none; verify server tests for `ARegistryPathLeavingTheProjectIsRefused` (including a symlink escape, skipped where symlinks are unavailable), `AMissingProfileFileRefusesEveryDocument`, `AMalformedProfileRefusesEveryDocument`, `AnEditedProfileAppliesToTheNextCheck` and `AProjectWithoutARegistryIsUnconstrained`
+- [x] 4.1 Read `.pi-outpost/structured-exchange.json` and its profiles from the workspace root on every call, confined with `realResolve` + `isWithin`, size-capped, returning either a usable registry, an unusable one with rule, file and pointer, or none; verify server tests for `ARegistryPathLeavingTheProjectIsRefused` (including a symlink escape, skipped where symlinks are unavailable), `AMissingProfileFileRefusesEveryDocument`, `AMalformedProfileRefusesEveryDocument`, `AnEditedProfileAppliesToTheNextCheck` and `AProjectWithoutARegistryIsUnconstrained`
 
 ## 5. The agent's tools
 
