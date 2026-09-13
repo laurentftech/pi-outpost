@@ -184,8 +184,52 @@ describe("the agent's tools in a project with profiles", () => {
     });
 
     test("a project without a registry is judged by the core contract alone", async () => {
+      // AProjectWithoutARegistryIsUnconstrained
       const result = await present(project({ "README.md": "nothing" }), requirementsGraph("anything at all"));
       assert.notEqual(result.isError, true, result.content[0].text);
+      assert.doesNotMatch(result.content[0].text, /conforms to/);
+      assert.equal((result.details as { profile?: string }).profile, "acme/requirements", "the profile identifier did not survive");
+    });
+
+    test("an edited profile applies to the very next call of the same tool", async () => {
+      // AnEditedProfileAppliesToTheNextCheck
+      const root = withProfile({}, requirementsProfile(["draft", "approved"]));
+      const tool = createStructuredExchangeToolDefinition({ projectRoot: root });
+      const call = () =>
+        (tool.execute as unknown as (id: string, params: unknown) => Promise<ToolResult>)("call-1", {
+          document: JSON.stringify(requirementsGraph("in review")),
+          summary: "Requirements.",
+        });
+      assert.equal((await call()).isError, true);
+      writeFileSync(path.join(root, "profiles/requirements.json"), JSON.stringify(requirementsProfile(["draft", "approved", "in review"])));
+      const again = await call();
+      assert.notEqual(again.isError, true, again.content[0].text);
+      assert.ok(again.details, "the accepted document did not reach the interface");
+    });
+
+    test("under a default, an unregistered profile and a version 1 document are refused, presenting nothing", async () => {
+      // AnUnregisteredProfileIsRefusedUnderADefault, AVersionOneDocumentIsRefusedUnderADefault
+      const root = withProfile({ default: "acme/requirements" });
+      const other = { ...requirementsGraph(), profile: "acme/other" };
+      const unregistered = await present(root, other);
+      assert.equal(unregistered.isError, true);
+      assert.equal(unregistered.details, undefined);
+      assert.match(unregistered.content[0].text, /profile\/unregistered-profile at \/profile/);
+      assert.match(unregistered.content[0].text, /registered: "acme\/requirements"/);
+
+      const versionOne = await present(root, { schema: "urn:structured-exchange:1", kind: "graph", data: { nodes: [{ id: "a", label: "A" }], edges: [] } });
+      assert.equal(versionOne.isError, true);
+      assert.equal(versionOne.details, undefined);
+      assert.match(versionOne.content[0].text, /profile\/version-1-under-default at \/schema/);
+      assert.match(versionOne.content[0].text, /urn:structured-exchange:2/);
+    });
+
+    test("without a default, a document naming an unregistered profile is presented generically, its identifier intact", async () => {
+      // WithoutADefaultAnUnregisteredProfileIsPresentedGenerically, UnknownProfileUsesGenericPresentation
+      const document = { ...requirementsGraph("anything at all"), profile: "https://vendor.example/profiles/other" };
+      const result = await present(withProfile(), document);
+      assert.notEqual(result.isError, true, result.content[0].text);
+      assert.equal((result.details as { profile?: string }).profile, "https://vendor.example/profiles/other");
       assert.doesNotMatch(result.content[0].text, /conforms to/);
     });
 
