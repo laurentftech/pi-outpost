@@ -23,6 +23,17 @@ export const STRUCTURED_EXCHANGE_PROFILE_REGISTRY_SCHEMA_V1 = "urn:structured-ex
 export const STRUCTURED_EXCHANGE_PROFILE_REGISTRY_PATH = ".pi-outpost/structured-exchange.json";
 
 /**
+ * The profile a conformity report names. Reserved: it says what the document is — a
+ * verdict on requirements, not requirements — so no project's profile holds it, and no
+ * profile may claim it. Held to a project's default, a report would be refused for
+ * lacking the very attributes it reports on.
+ */
+export const STRUCTURED_EXCHANGE_CONFORMITY_REPORT_PROFILE = "urn:structured-exchange-conformity-report:1";
+
+/** Profile identifiers the contract reserves; a document naming one is never held to a project's profile. */
+export const RESERVED_PROFILE_IDENTIFIERS: ReadonlySet<string> = new Set([STRUCTURED_EXCHANGE_CONFORMITY_REPORT_PROFILE]);
+
+/**
  * The bounds of a profile and of a registry.
  *
  * Magnitudes are borrowed from the document contract wherever one fits: a profile

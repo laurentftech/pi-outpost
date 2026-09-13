@@ -193,6 +193,19 @@ every project, profile or not. It reuses what the figure tool already proves: co
 profile and rules held before anything is written. The Markdown is `tableMarkdown` over every row, the text the
 reader downloads. It is registered wherever the figure tool is.
 
+### D12. A conformity report names a reserved profile
+
+Found at the bench: a report presented in a project with a default profile was held to that default and read as
+not conforming — the agent's tools would have refused to present or write it. Its summary rows have no kind, and
+its requirement rows deliberately carry no attributes (D7). A report is a verdict on requirements, not
+requirements.
+
+So it names `urn:structured-exchange-conformity-report:1`, an identifier the contract reserves. Profile
+selection leaves a document naming it unconstrained, in every project and under any default; a profile declaring
+it is refused (`profile-format/reserved-identifier`), so a project cannot turn the exemption into a rule of its
+own. Copying kinds and attributes into the report was rejected: its summary would still have rows no project's
+profile declares a kind for, and the report would become a second copy of the specification.
+
 ## Risks / Trade-offs
 
 - [A rules file written against an old vocabulary] → refused on read (D3), naming the value; the reviewer sees it

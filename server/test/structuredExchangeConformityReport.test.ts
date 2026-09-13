@@ -200,3 +200,37 @@ describe("the conformity report", () => {
     assert.match(report.markdown, new RegExp(`REQ-${STRUCTURED_EXCHANGE_CEILINGS.rows + 4}`));
   });
 });
+
+describe("a report in a project with a default profile", () => {
+  test("names the reserved identifier, and is never held to the project's profile", async () => {
+    // AReportIsNeverHeldToAProjectsProfile, at the check the agent's tools apply
+    const { holdToProfile } = await import("@pi-outpost/shared/structured-exchange/profile-check");
+    const { STRUCTURED_EXCHANGE_CONFORMITY_REPORT_PROFILE } = await import("@pi-outpost/shared/structured-exchange/profile");
+    const report = buildConformityReport(readBatch(batch), context, options);
+    assert.ok(report.table, report.tableRefused);
+    assert.equal(report.table.profile, STRUCTURED_EXCHANGE_CONFORMITY_REPORT_PROFILE);
+    assert.equal(context.default, profile.id, "the fixture must hold documents to a default");
+    assert.deepEqual(holdToProfile(report.table, context), { outcome: "unconstrained" });
+  });
+
+  test("carries no conformance statement where the reader sees one, while the same table unnamed would not conform", async () => {
+    // AReportIsNeverHeldToAProjectsProfile, as the reader is told
+    const { mkdtempSync, mkdirSync, writeFileSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const path = (await import("node:path")).default;
+    const { structuredConformanceFor } = await import("../src/structuredExchangeProfiles.ts");
+    const root = mkdtempSync(path.join(tmpdir(), "conformity-report-default-"));
+    mkdirSync(path.join(root, ".pi-outpost"));
+    writeFileSync(path.join(root, "requirements.json"), JSON.stringify(profile));
+    writeFileSync(
+      path.join(root, ".pi-outpost/structured-exchange.json"),
+      JSON.stringify({ schema: "urn:structured-exchange-profile-registry:1", profiles: ["requirements.json"], default: profile.id }),
+    );
+    const report = buildConformityReport(readBatch(batch), context, options);
+    assert.ok(report.table, report.tableRefused);
+
+    assert.deepEqual(await structuredConformanceFor(root, [{ toolCallId: "report", structured: JSON.stringify(report.table) }]), []);
+    const unnamed = JSON.stringify({ ...report.table, profile: undefined });
+    assert.equal((await structuredConformanceFor(root, [{ toolCallId: "unnamed", structured: unnamed }]))[0]?.conformance.state, "strays");
+  });
+});

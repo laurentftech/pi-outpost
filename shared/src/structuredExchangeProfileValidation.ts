@@ -11,6 +11,7 @@
  * Node-only, like the document schema check: it carries the compiler. The browser
  * never validates a profile; it is shown the server's verdict.
  */
+import { RESERVED_PROFILE_IDENTIFIERS } from "./structuredExchangeProfile.ts";
 import { Compile } from "typebox/compile";
 import profileSchemaModule from "../schemas/structured-exchange-profile-1.json" with { type: "json" };
 import registrySchemaModule from "../schemas/structured-exchange-profile-registry-1.json" with { type: "json" };
@@ -195,7 +196,12 @@ export function validateProfile(value: unknown): ProfileVerdict {
   const schema = schemaIssues(profileCheck, value, "profile-format");
   if (schema.length > 0) return { valid: false, issues: schema };
   const profile = value as StructuredExchangeProfile;
-  const rules = profileRuleIssues(profile);
+  // A profile claiming a reserved identifier would turn the contract's exemption into a
+  // project's rule, and a report held to it would be refused for what it reports on.
+  const reserved: StructuredExchangeIssue[] = RESERVED_PROFILE_IDENTIFIERS.has(profile.id)
+    ? [{ rule: "profile-format/reserved-identifier", path: "/id", message: '"' + profile.id + '" is reserved by the structured-exchange contract: a document naming it is never held to a profile' }]
+    : [];
+  const rules = [...reserved, ...profileRuleIssues(profile)];
   return rules.length > 0 ? { valid: false, issues: rules } : { valid: true, profile, issues: [] };
 }
 

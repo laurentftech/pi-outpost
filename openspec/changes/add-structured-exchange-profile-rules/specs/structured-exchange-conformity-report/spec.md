@@ -49,7 +49,8 @@ of both, and SHALL be counted once.
 The report SHALL open with a summary chapter stating the number of requirements in each conformity state, the
 number of violations of each rule counted once, the unreadable lines, the date of the run and the version of
 the interface. The report SHALL record the profile and rules files it was checked against as artifacts carrying
-their `sha256` digests.
+their `sha256` digests. The report SHALL name the profile identifier `urn:structured-exchange-conformity-report:1`,
+which the contract reserves, so that no project's profile holds a report, whatever its registry's default.
 
 A report that would exceed the contract's ceilings SHALL NOT be written as a table; the interface SHALL say so,
 and the Markdown report SHALL still be written.
@@ -73,6 +74,10 @@ and the Markdown report SHALL still be written.
 #### Scenario: TheReportIsAValidTable
 - **WHEN** a report is produced for a batch within the ceilings
 - **THEN** it is accepted by the core contract as a version 2 table
+
+#### Scenario: AReportIsNeverHeldToAProjectsProfile
+- **WHEN** a conformity report is presented in a project whose registry declares a default profile
+- **THEN** it is presented without refusal and carries no conformance statement
 
 ### Requirement: TheReportIsReadableAsMarkdown
 

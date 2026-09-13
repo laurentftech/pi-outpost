@@ -174,3 +174,80 @@ conform, and documented.
 #### Scenario: RulesAreListedBesideTheirStatements
 - **WHEN** a producer asks for a readable listing of a registry whose rules file holds three rules
 - **THEN** the listing shows each rule's identifier, level, source and statement beside the conditions it checks
+
+### Requirement: AProjectWithADefaultAdmitsNoWayAround
+
+In a project whose registry declares a default profile, the agent SHALL NOT be able to step around the
+model by what a document declares. A document naming a profile the registry does not register SHALL be
+refused, listing the registered profiles, and a version 1 document, which cannot name a profile, SHALL be
+refused saying the project's documents follow its default profile under version 2.
+
+In a project whose registry declares no default, a document naming an unregistered profile or no profile,
+and a version 1 document, SHALL be validated by the core contract alone.
+
+A document naming a profile identifier the contract reserves — `urn:structured-exchange-conformity-report:1`,
+which a conformity report names — SHALL be validated by the core contract alone in every project, whatever
+its registry's default: the identifier states what the document is, and no project's model governs it.
+
+#### Scenario: AnUnregisteredProfileIsRefusedUnderADefault
+- **WHEN** a document names `acme/other` in a project whose registry declares a default and does not register `acme/other`
+- **THEN** the document is refused, the refusal lists the registered profiles, and nothing is presented
+
+#### Scenario: AVersionOneDocumentIsRefusedUnderADefault
+- **WHEN** a version 1 document is presented in a project whose registry declares a default
+- **THEN** the document is refused saying the project's documents follow its default profile under version 2
+
+#### Scenario: WithoutADefaultAnUnregisteredProfileIsPresentedGenerically
+- **WHEN** a document names an unregistered profile in a project whose registry declares no default
+- **THEN** the document is validated by the core contract alone and presented generically
+
+#### Scenario: AReservedIdentifierIsNeverHeldToAProfile
+- **WHEN** a document names `urn:structured-exchange-conformity-report:1` in a project whose registry declares a default
+- **THEN** the document is validated by the core contract alone
+
+### Requirement: APublishedProfileFormat
+
+The system SHALL publish a profile format with the stable identifier `urn:structured-exchange-profile:1`
+and a committed, Git-tracked JSON Schema. A profile SHALL declare its identifier, a label, and:
+
+- the element kinds it allows, which govern graph elements and table rows;
+- the relationship kinds it allows, which govern graph relationships and table relations;
+- for each kind, the attributes that kind may carry, each with a type — string, number, boolean,
+  reference, or enumeration — whether it is required, and whether it holds a list;
+- for each enumeration, its allowed values and whether it is closed or open;
+- optionally, viewpoints in the same shape a version 2 document declares them.
+
+The format SHALL be flat: no inheritance between kinds and no references between profiles. A profile
+SHALL be refused when it does not conform to its schema, when it declares a kind or an attribute of a
+kind twice, when an enumeration has no values or repeats one, when a viewpoint retains a kind the profile
+does not declare, when two of its viewpoints share an identifier, when its identifier is one the contract
+reserves, or when it exceeds the published ceilings on kinds, attributes, enumeration values and
+viewpoints. Every refusal SHALL name a rule and point at the offending value.
+
+#### Scenario: AProfileDeclaresKindsAttributesAndEnumerations
+- **WHEN** a profile declares a `requirement` element kind with a required closed enumeration `status` of `draft`, `approved` and `withdrawn`
+- **THEN** the profile is usable and those constraints apply to documents held to it
+
+#### Scenario: AnUnknownProfileFieldIsRefused
+- **WHEN** a profile carries a field its schema does not define
+- **THEN** the profile is refused with the rule and a pointer to the field
+
+#### Scenario: AnEnumerationWithoutValuesIsRefused
+- **WHEN** a profile declares an enumeration attribute with no allowed values
+- **THEN** the profile is refused with the rule and a pointer to the attribute
+
+#### Scenario: ARepeatedEnumerationValueIsRefused
+- **WHEN** a profile lists the same enumeration value twice
+- **THEN** the profile is refused with the rule and a pointer to the repeated value
+
+#### Scenario: AProfileViewpointRetainingAnUndeclaredKindIsRefused
+- **WHEN** a profile's viewpoint retains a kind the profile does not declare
+- **THEN** the profile is refused with the rule and a pointer to that kind
+
+#### Scenario: AProfileBeyondItsCeilingsIsRefused
+- **WHEN** a profile declares more enumeration values for one attribute than the published ceiling allows
+- **THEN** the profile is refused naming the ceiling
+
+#### Scenario: AProfileClaimingAReservedIdentifierIsRefused
+- **WHEN** a profile declares the identifier `urn:structured-exchange-conformity-report:1`
+- **THEN** the profile is refused with the rule and a pointer to its identifier

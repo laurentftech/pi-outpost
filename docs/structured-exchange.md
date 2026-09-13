@@ -517,7 +517,9 @@ Without `default`, profiles are opt-in: a document naming a registered profile i
 it, and anything else — no profile, an unknown one, version 1 — is judged by the core
 contract alone. With a default, the project has said its documents follow a model, and a
 document may not step around it: one naming no profile is held to the default, one naming a
-profile the project does not register is refused, and a version 1 document is refused.
+profile the project does not register is refused, and a version 1 document is refused. The one exception is
+a conformity report, which names the reserved `urn:structured-exchange-conformity-report:1` and is never held to
+a project's profile.
 
 ### When the registry is wrong
 
@@ -698,6 +700,9 @@ followed by:
 - `violations`: one per line, `rule-id: statement`, with the other end of a link by its identifier (`→ sys-1`). A
   link between two requirements of the batch shows on both rows and counts once.
 
+It names the reserved profile `urn:structured-exchange-conformity-report:1`: a report is a verdict on
+requirements, not requirements, so no project's profile holds it — it can be presented, and written as Markdown,
+in a project with a default — and no profile may claim that identifier (`profile-format/reserved-identifier`).
 It carries each profile and rules file as an artifact, `rel: "checkedAgainst"` with its
 `sha256` digest, so a report says exactly which rules it was checked against. A violations cell
 past the contract's 1000-character bound ends with `… and N more (see the Markdown report)`; a

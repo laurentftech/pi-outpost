@@ -445,3 +445,22 @@ describe("the documented batch example, as it ships", () => {
     assert.deepEqual(verdict.perRule, { "ARP4754A-derived-no-satisfy": 1 });
   });
 });
+
+describe("a conformity report held to the registry it was checked against, as it ships", () => {
+  before(() => {
+    execFileSync(process.execPath, [path.join(REPO, "shared/scripts/build-validator.mjs")], { cwd: REPO, stdio: "ignore" });
+    copyFileSync(BUNDLE, cli);
+  });
+
+  test("passes, never held to the project's default profile", () => {
+    // AReportIsNeverHeldToAProjectsProfile, through the check the agent's tools share
+    const registry = project("report-under-default");
+    const report = path.join(away, "report-under-default.json");
+    const batch = write("report-under-default.jsonl", line("req-1", table([{ id: "req-1", text: "Stop within 40 m", attributes: { category: "direct", safety: "yes" } }])));
+    assert.equal(run(["--registry", registry, "--batch", batch, "--report", report]).code, 0);
+
+    const outcome = run(["--registry", registry, report]);
+    assert.equal(outcome.code, 0, outcome.stdout);
+    assert.deepEqual(verdictOf(outcome).profile, { applied: false });
+  });
+});
