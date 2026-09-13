@@ -48,5 +48,5 @@
 ## 9. Verification
 
 - [x] 9.1 Write `scenario-coverage.md` mapping every scenario of the four deltas to its test, read each cited assertion, check cited titles verbatim, and run `npm run check:scenarios`; verify every scenario is `covered`
-- [ ] 9.2 Run the full server and UI suites, typecheck, lint and `openspec validate add-structured-exchange-profile-rules --strict`; verify all pass
+- [x] 9.2 Run the full server and UI suites, typecheck, lint and `openspec validate add-structured-exchange-profile-rules --strict`; verify all pass
 - [ ] 9.3 Rebuild `web`, `@pi-outpost/embed` and the e2e host, then drive the running widget: a table with a rule violation refused, a report finding counted in the statement, a rules file edited then the session reloaded, a conformity report opened and exported as Markdown; destructive pass — a rules file broken, deleted, pointed at another profile; verify each by reading back the DOM and files, and record what broke

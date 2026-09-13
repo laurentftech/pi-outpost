@@ -695,7 +695,7 @@ followed by:
 - `conformity`: `non-conforming` when a `refuse` rule or the profile's vocabulary is violated
   for the requirement; otherwise `to check` when a `report` rule is violated or a rule is not
   verifiable for it; otherwise `conforms`;
-- `violations`: one per line, `rule-id: statement`, with the other end of a link (`→ SYS-1`). A
+- `violations`: one per line, `rule-id: statement`, with the other end of a link by its identifier (`→ sys-1`). A
   link between two requirements of the batch shows on both rows and counts once.
 
 It carries each profile and rules file as an artifact, `rel: "checkedAgainst"` with its
