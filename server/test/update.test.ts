@@ -444,6 +444,34 @@ describe("npmCommand", () => {
     assert.equal(invocation.env.npm_config_registry, registry);
     assert.ok(!invocation.args.some((arg) => arg.includes(registry)));
   });
+
+  test("asks npm for its global root through cmd.exe on Windows, with a fixed shell command", async () => {
+    // The global root decides whether this copy is a global install. Run as a bare
+    // npm.cmd, current Node refuses the batch file, the root stays unknown, and update
+    // refuses the install it has just found a newer version for — reported from Windows.
+    const { npmRootInvocation } = await import("../src/update.ts");
+    const invocation = npmRootInvocation("win32", "");
+    assert.match(invocation.command.toLowerCase(), /cmd(?:\.exe)?$/);
+    assert.deepEqual(invocation.args, ["/d", "/s", "/c", "npm.cmd root -g"]);
+    assert.deepEqual(npmRootInvocation("darwin", "").args, ["root", "-g"]);
+    assert.equal(npmRootInvocation("darwin", "").command, "npm");
+    // npm's own exported path still wins, run by this node — no batch file in the way.
+    assert.deepEqual(npmRootInvocation("win32", "/npm/bin/npm-cli.js").args, ["/npm/bin/npm-cli.js", "root", "-g"]);
+  });
+
+  test(
+    "the Windows global-root invocation really answers with npm's node_modules",
+    { skip: process.platform !== "win32" && "cmd.exe exists only on Windows" },
+    async () => {
+      // Against the real batch file: the unit test above pins the argv, this one proves
+      // Windows runs it, which is the part that was broken.
+      const { execFileSync } = await import("node:child_process");
+      const { npmRootInvocation } = await import("../src/update.ts");
+      const { command, args, env } = npmRootInvocation("win32", "");
+      const root = execFileSync(command, args, { encoding: "utf8", env, windowsHide: true, timeout: 60_000 }).trim();
+      assert.match(root, /node_modules$/i);
+    },
+  );
 });
 
 describe("update --check", () => {
@@ -607,6 +635,8 @@ describe("update, by channel", () => {
     assert.equal(run.code, 1);
     assert.ok(run.said(/cannot tell how this copy was installed/));
     assert.ok(run.said(/entry:/));
+    // What a global install is recognised by: when npm could not say, the reader is told.
+    assert.ok(run.said(/npm global node_modules: /));
     assert.ok(run.said(/runtime:/));
     assert.deepEqual(run.installs, []);
   });
