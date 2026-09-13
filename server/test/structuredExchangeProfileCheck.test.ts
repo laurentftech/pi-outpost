@@ -351,3 +351,23 @@ describe("viewpoints and the profile", () => {
     assert.deepEqual(refusals(envelope), ["profile/viewpoint-declared-twice @ /viewpoints/0/id"]);
   });
 });
+
+describe("a reserved profile identifier", () => {
+  test("a document naming the conformity report's identifier is never held to a profile, even under a default", () => {
+    // AReservedIdentifierIsNeverHeldToAProfile
+    const report = valid({
+      schema: "urn:structured-exchange:2",
+      kind: "table",
+      profile: "urn:structured-exchange-conformity-report:1",
+      data: {
+        columns: ["id", "text", "conformity"],
+        rows: [{ heading: "Summary", depth: 1 }, ["requirements", "1", null], { id: "r1", kind: "requirement", cells: ["R1", "Stop", "conforms"] }],
+      },
+    });
+    const underDefault = registered({ default: "acme/requirements" });
+    assert.deepEqual(selectProfile(report, underDefault), { outcome: "unconstrained" });
+    assert.deepEqual(holdToProfile(report, underDefault), { outcome: "unconstrained" });
+    // The same table naming the default is refused: the exemption is the identifier and nothing else.
+    assert.equal(holdToProfile({ ...(report as object), profile: "acme/requirements" }, underDefault).outcome, "refused");
+  });
+});

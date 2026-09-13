@@ -212,3 +212,10 @@ describe("a registry", () => {
     assert.deepEqual(issues, []);
   });
 });
+
+describe("a reserved identifier", () => {
+  test("a profile claiming the conformity report's identifier is refused at its identifier", () => {
+    // AProfileClaimingAReservedIdentifierIsRefused
+    assert.deepEqual(refusal({ ...requirements(), id: "urn:structured-exchange-conformity-report:1" }), ["profile-format/reserved-identifier @ /id"]);
+  });
+});

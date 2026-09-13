@@ -15,6 +15,7 @@
  * Pure: no compiler, no filesystem. The server, the reference validator and the
  * reader's statement all reach the same verdict because they call the same code.
  */
+import { RESERVED_PROFILE_IDENTIFIERS } from "./structuredExchangeProfile.ts";
 import { STRUCTURED_EXCHANGE_SCHEMA_V1, readTableRow, type StructuredTableRow } from "./structuredExchange.ts";
 import type { ProfileAttribute, ProfileKind, ProfileRule, StructuredExchangeProfile } from "./structuredExchangeProfile.ts";
 import type { StructuredExchangeIssue } from "./structuredExchangeValidation.ts";
@@ -90,6 +91,10 @@ export function selectProfile(envelope: unknown, context: ProfileContext): Profi
   const { schema, kind, profile: named } = envelope as { schema?: unknown; kind?: unknown; profile?: unknown };
   const fallback = context.default === undefined ? undefined : context.profiles.get(context.default);
   const registered = quoted([...context.profiles.keys()]);
+
+  // A reserved identifier says what the document is, and no project's model governs it —
+  // not even through a default.
+  if (typeof named === "string" && RESERVED_PROFILE_IDENTIFIERS.has(named)) return { outcome: "unconstrained" };
 
   if (schema === STRUCTURED_EXCHANGE_SCHEMA_V1) {
     if (context.default === undefined) return { outcome: "unconstrained" };

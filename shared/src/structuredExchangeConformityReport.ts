@@ -13,6 +13,7 @@
  *
  * Node-only: it validates documents against the committed schema, as the validator does.
  */
+import { STRUCTURED_EXCHANGE_CONFORMITY_REPORT_PROFILE } from "./structuredExchangeProfile.ts";
 import { parseStructuredExchange } from "./structuredExchangeParse.ts";
 import { checkStructuredExchangeSchema } from "./structuredExchangeSchemaNode.ts";
 import {
@@ -293,6 +294,8 @@ export function buildConformityReport(
   const envelope = (rows: unknown[]) => ({
     schema: STRUCTURED_EXCHANGE_SCHEMA_V2,
     kind: "table",
+    // Reserved: a report is a verdict on requirements, and is never held to the project's profile.
+    profile: STRUCTURED_EXCHANGE_CONFORMITY_REPORT_PROFILE,
     ...(options.checkedAgainst.length === 0
       ? {}
       : { artifacts: options.checkedAgainst.map((file) => ({ rel: "checkedAgainst", uri: file.uri, sha256: file.sha256 })) }),
