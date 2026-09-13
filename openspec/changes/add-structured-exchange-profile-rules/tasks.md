@@ -25,6 +25,9 @@
 - [x] 5.2 Implement `tableMarkdown` in `shared` (D8): headings at depth + 1, one GFM table per chapter, role column when roles are declared, `|`, `\` and newlines escaped; verify Node tests for `ATableIsTakenAwayAsMarkdown`, `MarkdownEscapesWhatWouldBreakTheTable` (parsing the output back), roles and narrowing
 - [x] 5.3 Add "download Markdown" beside CSV and XLSX in the table rendering, narrowed like them; verify a UI test that the downloaded text equals `tableMarkdown` for the shown rows (`MarkdownExportRunsWithoutABrowser` from the reader's side)
 
+- [x] 5.4 Implement `write_structure_table` (D11) in `server/src/structuredExchangeTableTool.ts` and register it wherever `write_structure_figure` is (`index.ts`, `sandbox.ts`, `piOutpostTools.ts`, the context probe); verify the tool-definition, sandbox and `piOutpostTools` suites pass with the new tool listed
+- [x] 5.5 Test `write_structure_table` as the agent calls it: a table written equal to `tableMarkdown`, a graph refused naming the figure tool, an existing path and a non-`.md` path refused with the file unchanged, a destination outside the writable zone and a read-only sandbox refused, a table breaking a refuse rule not written; verify one test per `TheAgentCanWriteATableToAPath` scenario with existence checks on the output path
+
 ## 6. Batch validation and the report
 
 - [ ] 6.1 Implement the batch reader (D6): JSON Lines of heading and document lines, stated subjects, bare documents, unreadable lines recorded with their number without stopping, columns mismatch reported; verify Node tests for `EachRequirementIsCheckedWithItsNeighbours` and `AnUnreadableLineDoesNotStopTheBatch`
@@ -40,7 +43,7 @@
 
 - [ ] 8.1 Document rules files, the when/then grammar, levels, not-verifiable ends, and the conformance statement's findings in `docs/structured-exchange.md`; verify every JSON example passes the documented-examples suite, extended to route rules files to their validator
 - [ ] 8.2 Document batch validation, the report, and the document shape an exporter such as ISAI must produce (D9), with a two-line batch example; verify the example batch runs through the bundle with the documented exit status
-- [ ] 8.3 Tell the agent in `skills/structured-exchange/SKILL.md`, and in `present_structure`'s refusal text, how to act on a rule refusal and on findings to check; verify the bundled-skill and tool tests
+- [ ] 8.3 Tell the agent in `skills/structured-exchange/SKILL.md`, and in `present_structure`'s refusal text, how to act on a rule refusal and on findings to check, and that a table can be written to the workspace with `write_structure_table`; verify the bundled-skill and tool tests
 
 ## 9. Verification
 

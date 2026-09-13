@@ -183,6 +183,16 @@ relations, and every object those relations name as a row carrying at least the 
 or as a `{ ref }` end when it cannot. A requirement's neighbours are therefore sometimes rows and sometimes
 references, and the report says which rules could not be verified.
 
+### D11. `write_structure_table`: a basic tool, the figure tool's twin
+
+The agent writes a table as a new `.md` file with a tool of its own rather than by teaching
+`write_structure_figure` a second output: a tool named for figures that writes Markdown would mislead exactly
+the model it describes. It is deliberately minimal — `path` and `output_path`, no narrowing — and available in
+every project, profile or not. It reuses what the figure tool already proves: confinement of `path` by
+`scopeToRoot`, `assertWritableDestination` for `output_path`, `wx` so nothing is overwritten, and the project's
+profile and rules held before anything is written. The Markdown is `tableMarkdown` over every row, the text the
+reader downloads. It is registered wherever the figure tool is.
+
 ## Risks / Trade-offs
 
 - [A rules file written against an old vocabulary] → refused on read (D3), naming the value; the reviewer sees it

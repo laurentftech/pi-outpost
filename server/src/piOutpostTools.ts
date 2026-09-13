@@ -29,6 +29,7 @@ import { createDocxExtractToolDefinition } from "./docxTool.ts";
 import { createPdfExtractToolDefinition } from "./pdfTool.ts";
 import { createPptxExtractToolDefinition } from "./pptxTool.ts";
 import { createStructuredExchangeFigureToolDefinition } from "./structuredExchangeFigureTool.ts";
+import { createStructuredExchangeTableToolDefinition } from "./structuredExchangeTableTool.ts";
 import { createStructuredExchangeToolDefinition } from "./structuredExchangeTool.ts";
 import { createXlsxExtractToolDefinition } from "./xlsxTool.ts";
 import { createWorkPlanExtendedToolDefinition, createWorkPlanToolDefinition } from "./workPlanTool.ts";
@@ -81,6 +82,7 @@ export async function createPiOutpostTools(settings: PiOutpostToolsSettings): Pr
     createXlsxExtractToolDefinition({ ...common, maxBytes: settings.maxBytes.xlsx }),
     createPptxExtractToolDefinition({ ...common, maxBytes: settings.maxBytes.pptx }),
     createStructuredExchangeFigureToolDefinition({ ...common, maxBytes: settings.maxBytes.structuredExchange, projectRoot: root }),
+    createStructuredExchangeTableToolDefinition({ ...common, maxBytes: settings.maxBytes.structuredExchange, projectRoot: root }),
     createStructuredExchangeToolDefinition({ projectRoot: root }),
     createWorkPlanToolDefinition(),
     // Both, always. The server withholds the extended half from a session with no

@@ -152,6 +152,7 @@ import { createDocxExtractToolDefinition } from "./docxTool.ts";
 import { createXlsxExtractToolDefinition } from "./xlsxTool.ts";
 import { createPptxExtractToolDefinition } from "./pptxTool.ts";
 import { createStructuredExchangeToolDefinition } from "./structuredExchangeTool.ts";
+import { createStructuredExchangeTableToolDefinition } from "./structuredExchangeTableTool.ts";
 import { structuredConformanceFor } from "./structuredExchangeProfiles.ts";
 import { createStructuredExchangeFigureToolDefinition } from "./structuredExchangeFigureTool.ts";
 import { createWorkPlanExtendedToolDefinition, createWorkPlanToolDefinition, WORK_PLAN_EXTENDED_TOOL, WORK_PLAN_TOOL } from "./workPlanTool.ts";
@@ -1024,6 +1025,13 @@ const makeCreateRuntime =
                 maxBytes: config.structuredExchange.maxBytes,
                 // No sandbox: anything under the workspace is writable, the same
                 // rule writeFileFromBrowser applies to the browser's own writes.
+                writableRoot: await fs.realpath(cwd),
+                projectRoot: cwd,
+              }),
+              createStructuredExchangeTableToolDefinition({
+                cwd,
+                allowedRoots: [await fs.realpath(cwd)],
+                maxBytes: config.structuredExchange.maxBytes,
                 writableRoot: await fs.realpath(cwd),
                 projectRoot: cwd,
               }),

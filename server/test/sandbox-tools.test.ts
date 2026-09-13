@@ -148,6 +148,7 @@ describe("createSandboxedTools", () => {
         "pptx_extract",
         "read",
         "write_structure_figure",
+        "write_structure_table",
         "xlsx_extract",
       ]);
     });
@@ -165,6 +166,7 @@ describe("createSandboxedTools", () => {
         "read",
         "write",
         "write_structure_figure",
+        "write_structure_table",
         "xlsx_extract",
       ]);
     });

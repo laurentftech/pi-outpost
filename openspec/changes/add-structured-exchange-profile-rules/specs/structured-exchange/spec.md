@@ -1,3 +1,37 @@
+## ADDED Requirements
+
+### Requirement: TheAgentCanWriteATableToAPath
+
+The agent SHALL be able to write a structured-exchange table it can read to a new Markdown file in the
+workspace, in every project, with or without a profile registry. The file SHALL hold exactly the Markdown the
+table's Markdown export produces for all of its rows, so a document the agent writes can include the table
+and be carried to Word like any Markdown.
+
+The document SHALL be read from where the agent may read and written only inside the writable zone; the
+destination SHALL end in `.md` and SHALL NOT already exist, and nothing SHALL be overwritten. A document that
+is not a table, that does not satisfy the core contract, or that strays from the project's profile or its
+rules when the project holds documents to one, SHALL be refused, and nothing SHALL be written.
+
+#### Scenario: TheAgentWritesATableAsMarkdown
+- **WHEN** the agent asks to write a table with two chapters to `docs/specification.md`
+- **THEN** the file holds the table's Markdown export, each chapter a heading followed by its rows
+
+#### Scenario: OnlyATableIsWrittenAsMarkdown
+- **WHEN** the agent asks to write a graph as Markdown
+- **THEN** the request is refused, naming the figure tool for a graph, and nothing is written
+
+#### Scenario: AnExistingFileIsNeverOverwritten
+- **WHEN** the agent asks to write a table to a path that already exists, or to a path not ending in `.md`
+- **THEN** the request is refused, and the existing file is unchanged
+
+#### Scenario: ATableIsWrittenOnlyInsideTheWritableZone
+- **WHEN** the agent asks to write a table outside the writable zone, or the sandbox is read-only
+- **THEN** the request is refused, and nothing is written
+
+#### Scenario: ATableStrayingFromItsProfileIsNotWritten
+- **WHEN** the project holds documents to a profile and the table violates one of its refuse rules
+- **THEN** the request is refused with the rule, and nothing is written
+
 ## MODIFIED Requirements
 
 ### Requirement: ATableLeavesAsData

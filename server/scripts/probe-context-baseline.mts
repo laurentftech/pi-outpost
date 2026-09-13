@@ -39,6 +39,7 @@ import { createXlsxExtractToolDefinition } from "../src/xlsxTool.ts";
 import { createPptxExtractToolDefinition } from "../src/pptxTool.ts";
 import { createWorkPlanExtendedToolDefinition, createWorkPlanToolDefinition } from "../src/workPlanTool.ts";
 import { createStructuredExchangeToolDefinition } from "../src/structuredExchangeTool.ts";
+import { createStructuredExchangeTableToolDefinition } from "../src/structuredExchangeTableTool.ts";
 import { createStructuredExchangeFigureToolDefinition } from "../src/structuredExchangeFigureTool.ts";
 import { composeAppendSystemPrompt } from "../src/systemPrompt.ts";
 
@@ -76,6 +77,7 @@ async function measure(label: string, options: { outpost: boolean; withheld?: st
         createWorkPlanExtendedToolDefinition(),
         createStructuredExchangeToolDefinition({ projectRoot: cwd }),
         createStructuredExchangeFigureToolDefinition({ cwd, allowedRoots: [cwd], writableRoot: cwd, projectRoot: cwd }),
+        createStructuredExchangeTableToolDefinition({ cwd, allowedRoots: [cwd], maxBytes: 26214400, writableRoot: cwd, projectRoot: cwd }),
       ]
     : [];
   const session = await createAgentSessionFromServices({
