@@ -971,8 +971,8 @@ key naming every kind it distinguishes, and that key SHALL be part of what an ex
 ### Requirement: ReaderMayAdjustAndNarrowTheView
 
 A reader MAY adjust a rendering for legibility — repositioning what it draws, moving around it,
-turning it between landscape and portrait where it has an orientation to choose, and narrowing it to
-selected kinds. For a table, the same narrowing SHALL be offered over the roles its rows declare.
+turning it between landscape and portrait where it has an orientation to choose, selecting a viewpoint
+the document declares, and narrowing it to selected kinds. For a table, the same narrowing SHALL be offered over the roles its rows declare.
 Every kind and every role SHALL be shown by default, and the control SHALL be the key
 itself, so what a reader reads a colour from is what they switch.
 
@@ -1001,7 +1001,7 @@ way the same rendering uses for a removal.
 - **THEN** only the one they hid is hidden
 
 #### Scenario: AdjustmentDoesNotAlterTheDocument
-- **WHEN** a reader repositions, turns or narrows a rendering
+- **WHEN** a reader repositions, turns, narrows or selects a viewpoint of a rendering
 - **THEN** the document recovered for handover is unchanged
 
 #### Scenario: ATableNarrowsByRole
@@ -1263,7 +1263,9 @@ figure.
 The system SHALL offer the agent a way to write a figure for a validated document to a path, so that
 the agent can reference that figure from a document it is writing.
 
-The request SHALL carry the document, the narrowing to apply, and the path to write. The narrowing
+The request SHALL carry the document, the narrowing to apply, and the path to write. It MAY name a
+viewpoint the document declares, in which case the figure is narrowed to that viewpoint and any
+hidden kinds the request also names apply on top of it. The narrowing
 SHALL be expressed in the same terms a reader narrows by — hidden kinds, with element and
 relationship vocabularies independent of each other — and an empty narrowing SHALL mean the whole
 document, as it does for a reader.
@@ -1272,7 +1274,8 @@ Writing SHALL be confined exactly as every other agent write is confined: a path
 writable zone SHALL be refused, and refusal SHALL name the confinement rather than the underlying
 filesystem error.
 
-The result SHALL tell the agent what was written and how much of the document it shows, so that a
+The result SHALL tell the agent what was written, which viewpoint it shows when one was named, and how
+much of the document it shows, so that a
 narrowing which selected nothing is visible as such rather than delivered as an empty picture.
 
 #### Scenario: AFigureIsWrittenWhereTheAgentAsked
@@ -1299,3 +1302,8 @@ narrowing which selected nothing is visible as such rather than delivered as an 
 #### Scenario: ANarrowingThatHidesEverythingIsReportedNotDrawn
 - **WHEN** a narrowing leaves no element to draw
 - **THEN** the result says so rather than reporting an empty figure as a success
+
+#### Scenario: ARequestMayNameADeclaredViewpoint
+- **GIVEN** a document that declares a viewpoint
+- **WHEN** the agent requests a figure naming that viewpoint
+- **THEN** the figure shows that viewpoint, and the result names it
