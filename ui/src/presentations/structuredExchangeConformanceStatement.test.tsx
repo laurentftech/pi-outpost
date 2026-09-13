@@ -62,6 +62,22 @@ describe("the conformance statement", () => {
     expect(textEquivalent()).toContain("with 2 values outside its open enumerations");
   });
 
+  it("counts the findings the project's rules leave to check", () => {
+    // FindingsToCheckAreCounted
+    renderItem(toolItem({ profile: "acme/requirements", state: "conforms", openValues: 0, findings: 2 }));
+    expect(screen.getByTestId("structured-conformance").textContent).toBe(
+      'Conforms to this project\'s profile "acme/requirements", with 2 findings to check.',
+    );
+    expect(textEquivalent()).toContain("with 2 findings to check");
+  });
+
+  it("joins open values and findings in one sentence", () => {
+    renderItem(toolItem({ profile: "acme/requirements", state: "conforms", openValues: 1, findings: 1 }));
+    expect(screen.getByTestId("structured-conformance").textContent).toBe(
+      'Conforms to this project\'s profile "acme/requirements", with 1 value outside its open enumerations and 1 finding to check.',
+    );
+  });
+
   it("says a document no longer conforms when the profile has changed under it", () => {
     // ARestoredDocumentIsCheckedAgainstTheProfileAsItIsNow, as the reader reads it
     renderItem(toolItem({ profile: "acme/requirements", state: "strays", openValues: 0 }));

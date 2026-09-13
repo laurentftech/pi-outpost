@@ -229,7 +229,11 @@ export async function structuredConformanceFor(
     const held = holdToProfile(verdict.envelope, project.context);
     if (held.outcome === "unconstrained") continue;
     if (held.outcome === "conforms") {
-      statements.push({ toolCallId, conformance: { profile: held.profile, state: "conforms", openValues: held.notes.length } });
+      const findings = held.findings?.length ?? 0;
+      statements.push({
+        toolCallId,
+        conformance: { profile: held.profile, state: "conforms", openValues: held.notes.length, ...(findings === 0 ? {} : { findings }) },
+      });
       continue;
     }
     const profile = held.profile ?? (typeof named === "string" ? named : project.context.default);

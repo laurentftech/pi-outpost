@@ -105,6 +105,11 @@ export interface StructuredConformance {
   state: "conforms" | "strays" | "unchecked";
   /** Values outside open enumerations, accepted and counted. */
   openValues: number;
+  /**
+   * What the profile's rules leave to check — violated report rules and rules not
+   * verifiable here. Absent when there are none.
+   */
+  findings?: number;
 }
 
 /**

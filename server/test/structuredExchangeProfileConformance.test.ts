@@ -78,6 +78,41 @@ describe("the conformance statement", () => {
     ]);
   });
 
+  test("findings to check are counted beside a conforming verdict", async () => {
+    // FindingsToCheckAreCounted, at the server
+    writeProfile(["draft", "approved"]);
+    writeFileSync(
+      path.join(root, "rules.json"),
+      JSON.stringify({
+        schema: "urn:structured-exchange-rules:1",
+        profile: "acme/requirements",
+        rules: [
+          // Violated by the document below: approved but only "should".
+          { id: "R-approved-must", statement: "Approved requirements are musts.", level: "report", element: "requirement", when: { status: ["approved"] }, then: { priority: ["must"] } },
+          // Not verifiable: the relation leaves the document.
+          { id: "R-derives-from-approved", statement: "Derive only from approved requirements.", level: "refuse", relationship: "derives", when: {}, then: { to: { status: ["approved"] } } },
+        ],
+      }),
+    );
+    const profileWithRelations = { ...profile(["draft", "approved"]), relationshipKinds: [{ kind: "derives" }] };
+    writeFileSync(path.join(root, "profiles/requirements.json"), JSON.stringify(profileWithRelations));
+    writeRegistry({ ...registry, rules: ["rules.json"] });
+    const document = JSON.stringify({
+      schema: "urn:structured-exchange:2",
+      kind: "table",
+      profile: "acme/requirements",
+      data: {
+        columns: ["id"],
+        rows: [{ id: "r1", kind: "requirement", cells: ["R1"], attributes: { status: "approved", priority: "should" } }],
+        relations: [{ from: { id: "r1" }, to: { ref: "REQ-99" }, kind: "derives" }],
+      },
+    });
+    assert.deepEqual(await structuredConformanceFor(root, [{ toolCallId: "f", structured: document }]), [
+      { toolCallId: "f", conformance: { profile: "acme/requirements", state: "conforms", openValues: 0, findings: 2 } },
+    ]);
+    writeRegistry(registry);
+  });
+
   test("an unusable registry says the document could not be checked", async () => {
     writeRegistry("{ not json");
     assert.deepEqual(await structuredConformanceFor(root, [{ toolCallId: "u", structured: table({ status: "approved" }) }]), [
