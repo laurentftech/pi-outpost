@@ -98,6 +98,7 @@ const contract = [
   ["dist/contract/schemas/structured-exchange-2.json", "the enriched contract"],
   ["dist/contract/schemas/structured-exchange-profile-1.json", "the profile format a project declares its data model in"],
   ["dist/contract/schemas/structured-exchange-profile-registry-1.json", "the registry a project lists its profiles in"],
+  ["dist/contract/schemas/structured-exchange-rules-1.json", "the rules a project reviews its specifications against"],
   ["dist/contract/conformance/index.json", "the conformance suite's manifest — the executable half of the contract"],
   ["dist/contract/validate-structured-exchange.mjs", "the reference validator, runnable without a checkout"],
 ];

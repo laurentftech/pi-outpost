@@ -169,6 +169,39 @@ export interface StructuredExchangeProfileRegistry {
   default?: string;
 }
 
+/**
+ * A profile's rules as plain text, each statement beside what it checks.
+ *
+ * A rule is only as good as the match between the sentence a reviewer approved and the
+ * conditions the machine applies; this is the page on which the two can be compared.
+ * Nothing is elided and nothing reordered.
+ */
+export function rulesListing(profileId: string, rules: readonly ProfileRule[]): string {
+  const conditions = (set: RuleConditions | undefined): string =>
+    Object.entries(set ?? {})
+      .map(([name, values]) => `${name} ∈ {${values.map((value) => JSON.stringify(value)).join(", ")}}`)
+      .join(" and ") || "always";
+  const ends = (set: LinkConditions | undefined): string => {
+    const parts = [
+      set?.from === undefined ? undefined : `source ${conditions(set.from)}`,
+      set?.to === undefined ? undefined : `target ${conditions(set.to)}`,
+    ].filter((part): part is string => part !== undefined);
+    return parts.length === 0 ? "always" : parts.join(" and ");
+  };
+  const lines: string[] = [`Rules for ${profileId}: ${rules.length}`];
+  for (const rule of rules) {
+    lines.push("", `  ${rule.id} — ${rule.level}${rule.source === undefined ? "" : ` — ${rule.source}`}`, `    ${rule.statement}`);
+    if (rule.element !== undefined) {
+      lines.push(`    applies to: element ${rule.element}`, `    when: ${conditions(rule.when)}`);
+      lines.push(`    then: ${rule.then === "forbidden" ? "forbidden" : conditions(rule.then)}`);
+    } else {
+      lines.push(`    applies to: relationship ${rule.relationship}`, `    when: ${ends(rule.when)}`);
+      lines.push(`    then: ${rule.then === "forbidden" ? "forbidden" : ends(rule.then)}`);
+    }
+  }
+  return `${lines.join("\n")}\n`;
+}
+
 export const STRUCTURED_EXCHANGE_RULES_SCHEMA_V1 = "urn:structured-exchange-rules:1";
 
 /**

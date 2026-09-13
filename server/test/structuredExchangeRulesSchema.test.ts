@@ -125,6 +125,14 @@ describe("the rules schema", () => {
   });
 });
 
+describe("the copy shipped with the skill is the same document", () => {
+  test("structured-exchange-rules-1.json in skills/ matches shared/schemas", () => {
+    const source = readFileSync(path.join(ROOT, "shared/schemas/structured-exchange-rules-1.json"), "utf8");
+    const shipped = readFileSync(path.join(ROOT, "skills/structured-exchange/structured-exchange-rules-1.json"), "utf8");
+    assert.equal(shipped, source, "the copy shipped with the skill has drifted from the schema");
+  });
+});
+
 describe("the registry schema, with rules", () => {
   const check = Compile(registrySchema);
 
