@@ -15,10 +15,11 @@
  */
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { readdirSync, readFileSync } from "node:fs";
+import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { describe, test } from "node:test";
+import { after, describe, test } from "node:test";
 import { envWithoutCoverageSink } from "./childEnv.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -78,7 +79,11 @@ describe("children launched by the server tests", () => {
 
 describe("the rule the guard enforces", () => {
   const probe = ["--input-type=module", "--eval", "process.stdout.write(JSON.stringify(process.env.NODE_V8_COVERAGE ?? null))"];
-  const withSink = { ...process.env, NODE_V8_COVERAGE: path.join(HERE, "never-written") };
+  // A real sink: the probes that keep it do write coverage there, so it is a throwaway
+  // directory outside the repository, removed afterwards.
+  const sink = mkdtempSync(path.join(tmpdir(), "pi-outpost-coverage-sink-"));
+  const withSink = { ...process.env, NODE_V8_COVERAGE: sink };
+  after(() => rmSync(sink, { recursive: true, force: true }));
 
   test("a deleted sink comes back in the child, and a blanked one does not", () => {
     // Asked of node itself, from a parent that has the sink: what the child is handed.
