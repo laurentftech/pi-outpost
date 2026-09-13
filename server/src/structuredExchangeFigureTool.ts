@@ -66,6 +66,12 @@ const parameters = Type.Object({
         'Relationship `kind` values to leave out, e.g. ["signal"]. This is the relationship vocabulary only: an element of the same name is unaffected. Omit to draw every relationship.',
     }),
   ),
+  viewpoint: Type.Optional(
+    Type.String({
+      description:
+        'The `id` of a viewpoint the document declares, e.g. "power". The figure shows what that viewpoint retains and states its concern inside the drawing; the hide lists still apply on top. Refused, listing the declared ones, when the document does not declare it.',
+    }),
+  ),
 });
 
 const DESCRIPTION = [
@@ -101,11 +107,13 @@ export function createStructuredExchangeFigureToolDefinition(
         output_path: destination,
         hide_element_kinds: hiddenElementKinds,
         hide_relationship_kinds: hiddenRelationshipKinds,
+        viewpoint,
       } = params as {
         path: string;
         output_path: string;
         hide_element_kinds?: string[];
         hide_relationship_kinds?: string[];
+        viewpoint?: string;
       };
 
       // SECURITY: two arguments, two zones. The read zone never grants a write.
@@ -139,6 +147,7 @@ export function createStructuredExchangeFigureToolDefinition(
         {
           ...(hiddenElementKinds === undefined ? {} : { hiddenElementKinds }),
           ...(hiddenRelationshipKinds === undefined ? {} : { hiddenRelationshipKinds }),
+          ...(viewpoint === undefined ? {} : { viewpoint }),
         },
         options.limits,
       );
@@ -183,6 +192,11 @@ export function createStructuredExchangeFigureToolDefinition(
             type: "text",
             text: [
               `Wrote \`${destination}\` (${Buffer.byteLength(result.svg, "utf8")} bytes), showing ${describeCoverage(result.coverage)}.`,
+              // Named before the statement, so an agent writing several figures from one
+              // document can tell which chapter each belongs to without opening them.
+              result.viewpoint === undefined
+                ? undefined
+                : `Drawn for viewpoint \`${result.viewpoint.id}\` (${result.viewpoint.label}).`,
               result.narrowing === undefined ? undefined : `The figure states: "${result.narrowing}"`,
               `Reference it from Markdown as a relative path, e.g. \`![${path.basename(destination, ".svg")}](${destination})\`.`,
             ]
