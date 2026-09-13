@@ -1,3 +1,4 @@
+import type { StructuredConformance } from "@pi-outpost/shared";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { EnlargedView } from "../components/EnlargedView";
 import {
@@ -1084,10 +1085,31 @@ function enrichmentLines(item: DescribedEnrichment, indent = "  "): string[] {
   return lines;
 }
 
+/**
+ * What the server established about a document and its project's profile, in one
+ * sentence — the same sentence on the page and in the textual equivalent.
+ *
+ * Worded as what is true now, because it is: the statement is re-established each
+ * time the document is shown, so "does not conform" on a restored proposal means the
+ * profile changed under it, which is what a reviewer about to approve needs to hear.
+ */
+export function conformanceStatement(conformance: StructuredConformance): string {
+  const profile = conformance.profile === undefined ? "" : ` "${conformance.profile}"`;
+  if (conformance.state === "unchecked") {
+    return `Could not be checked against this project's profile${profile}: the project's profile registry cannot be used right now.`;
+  }
+  if (conformance.state === "strays") {
+    return `Does not conform to this project's profile${profile} as it stands now.`;
+  }
+  const open = conformance.openValues;
+  return `Conforms to this project's profile${profile}${open === 0 ? "" : `, with ${open} value${open === 1 ? "" : "s"} outside its open enumerations`}.`;
+}
+
 function textualEquivalent(
   envelope: ValidatedStructuredExchange,
   isProposal: boolean,
   hidden: Narrowing = NOTHING_HIDDEN,
+  conformance?: StructuredConformance,
 ): string {
   const described = describeStructure(envelope, isProposal);
   const lines: string[] = [];
@@ -1097,6 +1119,9 @@ function textualEquivalent(
   // still needs to be told there is one — it is the difference between "status" as
   // a word and "status" as somebody's defined term.
   if (described.profile !== undefined) lines.push(`Profile: ${described.profile}`);
+  // Whatever the page says about conformance, the text says too: a reader using the
+  // equivalent has no other way to learn it.
+  if (conformance !== undefined) lines.push(`Conformance: ${conformanceStatement(conformance)}`);
   if (described.target !== undefined) {
     const revision = described.target.revision === undefined ? "" : `, prepared against ${described.target.revision}`;
     lines.push(`Proposes changes to ${described.target.ref}${revision}`);
@@ -1278,6 +1303,12 @@ export interface StructuredExchangeDocumentProps {
    */
   rawOutput?: string;
   /**
+   * What the server established about this document and its project's profile, when
+   * it is held to one. Beside the document, never read from it, and never written into
+   * it: `source` stays exactly what was validated.
+   */
+  conformance?: StructuredConformance;
+  /**
    * How a reader asks to be taken somewhere — the closed set of actions a
    * presentation may request, and nothing wider.
    *
@@ -1322,7 +1353,7 @@ function targetRef(envelope: ValidatedStructuredExchange): string | undefined {
   return undefined;
 }
 
-export function StructuredExchangeDocument({ envelope, source, rawOutput, dispatch }: StructuredExchangeDocumentProps) {
+export function StructuredExchangeDocument({ envelope, source, rawOutput, dispatch, conformance }: StructuredExchangeDocumentProps) {
   const [enlarged, setEnlarged] = useState(false);
   const [showText, setShowText] = useState(false);
   const [showExport, setShowExport] = useState(false);
@@ -1522,6 +1553,22 @@ export function StructuredExchangeDocument({ envelope, source, rawOutput, dispat
         <p className="text-xs text-zinc-500" data-testid="structured-profile">
           Vocabulary: <span className="font-mono">{described.profile}</span>
           <span className="ml-1 text-zinc-400">— names what the kinds and attributes mean; not resolved here</span>
+        </p>
+      )}
+
+      {conformance === undefined ? null : (
+        // Beside the vocabulary it is about. Not a verdict this page reached — the
+        // server held the document to the project's own profile files, as they are now.
+        <p
+          className={
+            conformance.state === "conforms"
+              ? "text-xs text-emerald-700 dark:text-emerald-400"
+              : "text-xs text-amber-700 dark:text-amber-400"
+          }
+          data-testid="structured-conformance"
+          data-state={conformance.state}
+        >
+          {conformanceStatement(conformance)}
         </p>
       )}
 
@@ -1767,7 +1814,7 @@ export function StructuredExchangeDocument({ envelope, source, rawOutput, dispat
 
       {showText && (
         <pre data-testid="structured-text-equivalent" className="overflow-x-auto rounded bg-zinc-100 p-2 text-xs dark:bg-zinc-800">
-          {textualEquivalent(envelope, isProposal, hidden)}
+          {textualEquivalent(envelope, isProposal, hidden, conformance)}
         </pre>
       )}
       {showExport && mermaid !== undefined && (
@@ -1818,6 +1865,7 @@ function StructuredExchangeBody({ item, dispatch }: PresentationProps) {
       source={envelopeSource(item.structured, envelope)}
       rawOutput={item.output}
       dispatch={dispatch}
+      {...(item.structuredConformance === undefined ? {} : { conformance: item.structuredConformance })}
     />
   );
 }

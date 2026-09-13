@@ -107,6 +107,53 @@ export interface StructuredConformance {
   openValues: number;
 }
 
+/**
+ * A profile as plain text, for the review no machine can do.
+ *
+ * Whoever built the profile — from a requirements tool's export, or by asking an
+ * agent — has to compare it with the model it came from, and the enumerations above
+ * all. So this elides nothing and reorders nothing: every kind, every attribute with
+ * its type and whether it is required or a list, every enumeration value on its own
+ * line under whether the enumeration is closed or open, in the author's order.
+ */
+export function profileListing(profile: StructuredExchangeProfile): string {
+  const lines: string[] = [`Profile ${profile.id} — ${profile.label}`];
+  if (profile.description !== undefined) lines.push(profile.description);
+
+  const vocabulary = (heading: string, kinds: readonly ProfileKind[] | undefined) => {
+    const declared = kinds ?? [];
+    lines.push("", `${heading}: ${declared.length}`);
+    for (const declaration of declared) {
+      lines.push(`  ${declaration.kind}`);
+      if (declaration.description !== undefined) lines.push(`    ${declaration.description}`);
+      const attributes = declaration.attributes ?? [];
+      if (attributes.length === 0) lines.push("    (no attributes)");
+      for (const attribute of attributes) {
+        const traits = [
+          attribute.list === true ? `list of ${attribute.type}` : attribute.type,
+          ...(attribute.type === "enumeration" ? [attribute.closed === true ? "closed" : "open"] : []),
+          attribute.required === true ? "required" : "optional",
+        ];
+        const count = attribute.type === "enumeration" ? ` — ${(attribute.values ?? []).length} values` : "";
+        lines.push(`    ${attribute.name}: ${traits.join(", ")}${count}`);
+        if (attribute.description !== undefined) lines.push(`      ${attribute.description}`);
+        for (const value of attribute.values ?? []) lines.push(`      - ${value}`);
+      }
+    }
+  };
+  vocabulary("Element kinds (graph elements and table rows)", profile.elementKinds);
+  vocabulary("Relationship kinds (graph relationships and table relations)", profile.relationshipKinds);
+
+  const viewpoints = profile.viewpoints ?? [];
+  lines.push("", `Viewpoints: ${viewpoints.length}`);
+  for (const viewpoint of viewpoints) {
+    lines.push(`  ${viewpoint.id} — ${viewpoint.label}: ${viewpoint.concern}`);
+    if (viewpoint.elementKinds !== undefined) lines.push(`    element kinds: ${viewpoint.elementKinds.join(", ")}`);
+    if (viewpoint.relationshipKinds !== undefined) lines.push(`    relationship kinds: ${viewpoint.relationshipKinds.join(", ")}`);
+  }
+  return `${lines.join("\n")}\n`;
+}
+
 export interface StructuredExchangeProfileRegistry {
   schema: typeof STRUCTURED_EXCHANGE_PROFILE_REGISTRY_SCHEMA_V1;
   /** Profile files, relative to the project directory. */

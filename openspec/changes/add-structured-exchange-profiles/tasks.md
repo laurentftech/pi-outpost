@@ -29,11 +29,11 @@
 ## 6. The reader's statement
 
 - [x] 6.1 Add optional `structuredConformance` to the tool chat item and a `structured_conformance` server message in `shared/src/protocol.ts`, sent by `index.ts` after a `tool_end` carrying a document and after every snapshot whose items carry documents, computed against the registry as it is then (D8); merge it in `useAgent.ts` into the item it names, ignoring unknown calls; verify server tests that a live result and a replayed result carry it, that it reads `strays` after the profile is tightened (`ARestoredDocumentIsCheckedAgainstTheProfileAsItIsNow`), `unchecked` under an unusable registry, and is absent without a registry
-- [ ] 6.2 Render the statement in `StructuredExchangeView.tsx` and its accessible textual equivalent: profile, conforms / no longer conforms / could not be checked, open-value count; verify UI tests for `AConformingDocumentSaysSo`, `OpenEnumerationValuesAreCounted`, `ADocumentNotHeldToAProfileCarriesNoStatement`, and that approval hands on a byte-identical `structured` (`TheStatementDoesNotAlterTheDocument`)
+- [x] 6.2 Render the statement in `StructuredExchangeView.tsx` and its accessible textual equivalent: profile, conforms / no longer conforms / could not be checked, open-value count; verify UI tests for `AConformingDocumentSaysSo`, `OpenEnumerationValuesAreCounted`, `ADocumentNotHeldToAProfileCarriesNoStatement`, and that approval hands on a byte-identical `structured` (`TheStatementDoesNotAlterTheDocument`)
 
 ## 7. Reference validator
 
-- [ ] 7.1 Add `--check-profile`, `--profile` and `--describe-profile` to `shared/bin/validate-structured-exchange.mjs` with exit code 4 for an unusable profile, documented in its usage text; rebuild the bundle with `npm run build:validator`; verify tests run against the bundle copied to a directory with no repository access, for every `TheReferenceValidatorChecksProfiles` scenario, including a forty-value enumeration listed in full
+- [x] 7.1 Add `--check-profile`, `--profile` and `--describe-profile` to `shared/bin/validate-structured-exchange.mjs` with exit code 4 for an unusable profile, documented in its usage text; rebuild the bundle with `npm run build:validator`; verify tests run against the bundle copied to a directory with no repository access, for every `TheReferenceValidatorChecksProfiles` scenario, including a forty-value enumeration listed in full
 - [ ] 7.2 Ship the profile and registry schemas in the packaged contract; verify `npm run check:cli` passes
 
 ## 8. Documentation and skill
