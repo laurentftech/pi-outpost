@@ -644,6 +644,7 @@ asking:
 | Source checkout | Refuses, and tells you to `git pull` — installing would put a *second* copy elsewhere and leave the one you are running untouched |
 | `npx pi-outpost` | Explains that your next `npx` already fetches the newest version |
 | Standalone executable | Refuses to overwrite itself, and points at the [releases](https://github.com/laurentftech/pi-outpost/releases) |
+| Anything it cannot recognise | Refuses rather than guessing, and prints what it compared: the entry it runs from, npm's global `node_modules` (or that `npm root -g` gave no answer), and the runtime |
 
 A check that fails is never reported as "up to date": `update --check` says it could not
 check, and why, and exits non-zero.

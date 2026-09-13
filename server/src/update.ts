@@ -230,6 +230,29 @@ export function npmViewInvocation(
   };
 }
 
+/**
+ * Build the process that asks npm where its global `node_modules` is.
+ *
+ * The same rule as `npmViewInvocation`, for the same reason. Run as a bare `npm.cmd`,
+ * current Node refuses to start a batch file without a shell (CVE-2024-27980); the
+ * error was swallowed, the global root stayed unknown, and on Windows `pi-outpost
+ * update` refused a global install it had just found a newer version for.
+ */
+export function npmRootInvocation(
+  platform: NodeJS.Platform = process.platform,
+  npmExecPath = process.env.npm_execpath,
+): NpmViewInvocation {
+  if (platform === "win32" && !npmExecPath?.trim()) {
+    return {
+      command: process.env.ComSpec?.trim() || "cmd.exe",
+      args: ["/d", "/s", "/c", "npm.cmd root -g"],
+      env: envForNpm(),
+    };
+  }
+  const [command, prefix] = npmCommand(platform, npmExecPath);
+  return { command, args: [...prefix, "root", "-g"], env: envForNpm() };
+}
+
 export interface NpmInstallInvocation extends NpmViewInvocation {
   displayCommand: string;
   displayArgs: string[];
@@ -590,8 +613,12 @@ export async function runUpdateCommand(options: UpdateCommandOptions): Promise<n
       // A command reached through a symlink is classified by what it points at, so
       // the target belongs in the evidence whenever it is not the path itself.
       {
-        const resolved = currentEvidence(options.version).entryPath;
+        const evidence = currentEvidence(options.version);
+        const resolved = evidence.entryPath;
         if (resolved !== undefined && resolved !== process.argv[1]) say(`[pi]   resolves to: ${resolved}`);
+        // The comparison a global install is recognised by. Without it, a copy under
+        // npm's own node_modules reads as unknown, and nothing said why.
+        say(`[pi]   npm global node_modules: ${evidence.globalRoot ?? "unknown — npm root -g gave no answer"}`);
       }
       say(`[pi]   runtime: ${process.execPath}`);
       return 1;
@@ -824,13 +851,16 @@ function globalNodeModules(): string | undefined {
   }
   try {
     const { execFileSync } = process.getBuiltinModule("node:child_process");
-    const [command, argv] = npmCommand();
-    const out = execFileSync(command, [...argv, "root", "-g"], {
+    // Through cmd.exe on Windows: a bare npm.cmd is refused by current Node, and a
+    // refusal here reads, two calls later, as "cannot tell how this copy was installed".
+    const { command, args, env } = npmRootInvocation();
+    const out = execFileSync(command, args, {
       encoding: "utf8",
       timeout: 5_000,
       stdio: ["ignore", "pipe", "ignore"],
       shell: false,
-      env: envForNpm(),
+      windowsHide: true,
+      env,
     }).trim();
     globalRootMemo.value = out && out !== "undefined" ? out : undefined;
     return globalRootMemo.value;
