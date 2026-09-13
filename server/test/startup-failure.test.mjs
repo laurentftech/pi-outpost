@@ -49,8 +49,8 @@ async function startAndWaitForExit(root, port) {
       server: { host: "127.0.0.1", port },
     }),
   );
-  const env = { ...process.env, PI_OUTPOST_CONFIG: configPath, PI_OFFLINE: "1" };
-  delete env.NODE_V8_COVERAGE;
+  // Blanked, not deleted: node's child_process puts a deleted NODE_V8_COVERAGE back.
+  const env = { ...process.env, PI_OUTPOST_CONFIG: configPath, PI_OFFLINE: "1", NODE_V8_COVERAGE: "" };
   const child = spawn(process.execPath, ["--import=tsx/esm", ENTRY], {
     cwd: SERVER_DIR,
     env,
@@ -105,7 +105,8 @@ describe("a start that fails before it ever reaches listen", () => {
     const env = { ...process.env, INIT_CWD: emptyLaunchDir, XDG_CONFIG_HOME: emptyXdg, PI_OFFLINE: "1" };
     delete env.PI_OUTPOST_CONFIG;
     delete env.PI_OUTPOST_PROFILE;
-    delete env.NODE_V8_COVERAGE;
+    // Blanked, not deleted: node's child_process puts a deleted NODE_V8_COVERAGE back.
+    env.NODE_V8_COVERAGE = "";
 
     const child = spawn(process.execPath, ["--import=tsx/esm", ENTRY], {
       cwd: SERVER_DIR,

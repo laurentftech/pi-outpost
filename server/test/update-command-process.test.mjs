@@ -24,10 +24,12 @@ import { describe, test } from "node:test";
 const UPDATE_MODULE = pathToFileURL(fileURLToPath(new URL("../src/update.ts", import.meta.url))).href;
 const SERVER_DIR = fileURLToPath(new URL("..", import.meta.url));
 
-/** The parent's environment, minus the coverage sink a child must not write into. */
+/**
+ * The parent's environment with the coverage sink blanked. Blanked, not removed: node's
+ * child_process puts a removed NODE_V8_COVERAGE straight back (see childEnv.mjs).
+ */
 function envWithoutCoverageSink() {
-  const { NODE_V8_COVERAGE: _sink, ...rest } = process.env;
-  return rest;
+  return { ...process.env, NODE_V8_COVERAGE: "" };
 }
 
 /** Awaits the command at top level, as index.ts does, and exits with what it returned. */

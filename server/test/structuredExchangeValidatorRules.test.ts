@@ -15,6 +15,7 @@ import { fileURLToPath } from "node:url";
 import { before, describe, test } from "node:test";
 import { tableMarkdown } from "@pi-outpost/shared/structured-exchange/table-export";
 import type { StructuredTableData } from "@pi-outpost/shared/structured-exchange";
+import { envWithoutCoverageSink } from "./childEnv.mjs";
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const BUNDLE = path.join(REPO, "shared/dist/validate-structured-exchange.mjs");
@@ -29,7 +30,7 @@ function run(args: string[]): Outcome {
       cwd: away,
       input: "",
       encoding: "utf8",
-      env: { PATH: process.env.PATH ?? "" },
+      env: { PATH: process.env.PATH ?? "", NODE_V8_COVERAGE: "" },
       maxBuffer: 64 * 1024 * 1024,
     });
     return { code: 0, stdout };
@@ -151,7 +152,7 @@ const write = (name: string, value: unknown) => {
 
 describe("the reference validator's registry and rules checks, as they ship", () => {
   before(() => {
-    execFileSync(process.execPath, [path.join(REPO, "shared/scripts/build-validator.mjs")], { cwd: REPO, stdio: "ignore" });
+    execFileSync(process.execPath, [path.join(REPO, "shared/scripts/build-validator.mjs")], { cwd: REPO, stdio: "ignore", env: envWithoutCoverageSink() });
     copyFileSync(BUNDLE, cli);
   });
 
@@ -272,7 +273,7 @@ describe("the reference validator's registry and rules checks, as they ship", ()
 
 describe("a specification validated requirement by requirement, as it ships", () => {
   before(() => {
-    execFileSync(process.execPath, [path.join(REPO, "shared/scripts/build-validator.mjs")], { cwd: REPO, stdio: "ignore" });
+    execFileSync(process.execPath, [path.join(REPO, "shared/scripts/build-validator.mjs")], { cwd: REPO, stdio: "ignore", env: envWithoutCoverageSink() });
     copyFileSync(BUNDLE, cli);
   });
 
@@ -366,7 +367,7 @@ describe("a specification validated requirement by requirement, as it ships", ()
 
 describe("a table exported as Markdown by the validator", () => {
   before(() => {
-    execFileSync(process.execPath, [path.join(REPO, "shared/scripts/build-validator.mjs")], { cwd: REPO, stdio: "ignore" });
+    execFileSync(process.execPath, [path.join(REPO, "shared/scripts/build-validator.mjs")], { cwd: REPO, stdio: "ignore", env: envWithoutCoverageSink() });
     copyFileSync(BUNDLE, cli);
   });
 
@@ -399,7 +400,7 @@ describe("a table exported as Markdown by the validator", () => {
 
 describe("the documented batch example, as it ships", () => {
   before(() => {
-    execFileSync(process.execPath, [path.join(REPO, "shared/scripts/build-validator.mjs")], { cwd: REPO, stdio: "ignore" });
+    execFileSync(process.execPath, [path.join(REPO, "shared/scripts/build-validator.mjs")], { cwd: REPO, stdio: "ignore", env: envWithoutCoverageSink() });
     copyFileSync(BUNDLE, cli);
   });
 
@@ -448,7 +449,7 @@ describe("the documented batch example, as it ships", () => {
 
 describe("a conformity report held to the registry it was checked against, as it ships", () => {
   before(() => {
-    execFileSync(process.execPath, [path.join(REPO, "shared/scripts/build-validator.mjs")], { cwd: REPO, stdio: "ignore" });
+    execFileSync(process.execPath, [path.join(REPO, "shared/scripts/build-validator.mjs")], { cwd: REPO, stdio: "ignore", env: envWithoutCoverageSink() });
     copyFileSync(BUNDLE, cli);
   });
 

@@ -31,6 +31,7 @@ import {
   rowFromRef,
   XlsxError,
 } from "../src/xlsx.ts";
+import { envWithoutCoverageSink } from "./childEnv.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const FIXTURES = path.join(HERE, "fixtures");
@@ -422,7 +423,7 @@ async function renderIn(env: Record<string, string>): Promise<string> {
   const { stdout } = await promisify(execFile)(
     process.execPath,
     ["--import", "tsx/esm", "--input-type=module", "--eval", script],
-    { env: { ...process.env, ...env }, cwd: path.join(HERE, "..") },
+    { env: envWithoutCoverageSink(env), cwd: path.join(HERE, "..") },
   );
   return stdout;
 }

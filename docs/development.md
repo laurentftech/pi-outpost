@@ -82,6 +82,15 @@ npm children spawned by the code under test inherited `NODE_V8_COVERAGE`, were k
 their timeout mid-write, and the parent's reporter died parsing the truncated file. Nothing
 short of running the real step would have shown it.
 
+The fix for that was incomplete, and the job kept failing the same way now and then. Deleting
+`NODE_V8_COVERAGE` from a child's environment does nothing: node's `child_process` copies the
+parent's value into any environment that does not name the key. Only an explicit empty value
+turns coverage off in the child. So a child a test starts gets `envWithoutCoverageSink()` from
+`server/test/childEnv.mjs`, or names `NODE_V8_COVERAGE: ""` itself, and
+`testChildEnvironment.test.ts` refuses any launch of `process.execPath` that does neither. The
+size made it likely rather than rare: a child that loads pdf.js writes about ten megabytes of
+coverage, nearly all of it source maps, and node writes that file in a single write.
+
 It runs as a non-root user on purpose: as root, every "refuses an unwritable path"
 assertion in this repository passes for the wrong reason. Dependencies are cached in a
 Docker volume and reinstalled only when `package-lock.json` changes, so a second run costs

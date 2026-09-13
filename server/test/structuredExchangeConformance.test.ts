@@ -19,6 +19,7 @@ import {
   STRUCTURED_EXCHANGE_SCHEMA,
   unwrapSchemaModule,
 } from "@pi-outpost/shared/structured-exchange/schema-node";
+import { envWithoutCoverageSink } from "./childEnv.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const SUITE = path.resolve(HERE, "../../shared/conformance");
@@ -35,6 +36,7 @@ function cliVerdict(file: string): { status: number; body: { valid: boolean; iss
   try {
     const stdout = execFileSync(process.execPath, ["--import", "tsx/esm", CLI, path.join(SUITE, file)], {
       encoding: "utf8",
+      env: envWithoutCoverageSink(),
       stdio: ["ignore", "pipe", "pipe"],
     });
     return { status: 0, body: JSON.parse(stdout) };
@@ -105,6 +107,7 @@ describe("structured-exchange conformance suite", () => {
     try {
       execFileSync(process.execPath, ["--import", "tsx/esm", CLI, path.join(SUITE, "does-not-exist.json")], {
         encoding: "utf8",
+        env: envWithoutCoverageSink(),
         stdio: ["ignore", "pipe", "pipe"],
       });
       assert.fail("expected a non-zero exit");

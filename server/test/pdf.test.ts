@@ -33,6 +33,7 @@ import {
   wordBoundaryNear,
 } from "../src/pdf.ts";
 import { STRIKE } from "../src/markdownSpans.ts";
+import { envWithoutCoverageSink } from "./childEnv.mjs";
 
 const FIXTURES = path.join(path.dirname(fileURLToPath(import.meta.url)), "fixtures");
 const execFile = promisify(execFileCallback);
@@ -291,7 +292,7 @@ describe("extraction without a native canvas", () => {
         "pdf-text",
         "pdf-type3",
       ],
-      { cwd: path.dirname(FIXTURES) },
+      { cwd: path.dirname(FIXTURES), env: envWithoutCoverageSink() },
     );
     const { results, domMatrix } = JSON.parse(stdout.trim().split("\n").at(-1) ?? "{}");
 

@@ -15,6 +15,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { before, describe, test } from "node:test";
+import { envWithoutCoverageSink } from "./childEnv.mjs";
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const BUNDLE = path.join(REPO, "shared/dist/validate-structured-exchange.mjs");
@@ -38,7 +39,7 @@ function validate(args: string[], input?: string): { code: number; verdict: Reco
       cwd: away,
       input: input ?? "",
       encoding: "utf8",
-      env: { PATH: process.env.PATH ?? "" },
+      env: { PATH: process.env.PATH ?? "", NODE_V8_COVERAGE: "" },
     });
     return { code: 0, verdict: JSON.parse(stdout) };
   } catch (error) {
@@ -79,6 +80,7 @@ describe("the reference validator as it ships", () => {
       execFileSync(process.execPath, [path.join(REPO, "shared/scripts/build-validator.mjs")], {
         cwd: REPO,
         stdio: "ignore",
+        env: envWithoutCoverageSink(),
       });
     }
     copyFileSync(BUNDLE, cli);
