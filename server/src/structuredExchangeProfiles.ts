@@ -20,9 +20,12 @@ import path from "node:path";
 import {
   STRUCTURED_EXCHANGE_PROFILE_CEILINGS,
   STRUCTURED_EXCHANGE_PROFILE_REGISTRY_PATH,
+  type StructuredConformance,
   type StructuredExchangeProfile,
 } from "@pi-outpost/shared/structured-exchange/profile";
-import type { ProfileContext } from "@pi-outpost/shared/structured-exchange/profile-check";
+import { holdToProfile, type ProfileContext } from "@pi-outpost/shared/structured-exchange/profile-check";
+import { parseSerializedStructuredExchange } from "@pi-outpost/shared/structured-exchange/parse";
+import { checkStructuredExchangeSchema } from "@pi-outpost/shared/structured-exchange/schema-node";
 import {
   registryConsistencyIssues,
   validateProfile,
@@ -144,6 +147,45 @@ export async function readProjectProfiles(projectRoot: string): Promise<ProjectP
 
   const profiles = new Map<string, StructuredExchangeProfile>(loaded.map((entry) => [entry.profile.id, entry.profile]));
   return { state: "usable", context: { profiles, ...(registry.default !== undefined ? { default: registry.default } : {}) } };
+}
+
+/**
+ * What a reader is told about each presented document, against the project's registry
+ * as it is now.
+ *
+ * Recomputed rather than recorded, deliberately: a profile tightened since a proposal
+ * was made should make that proposal say "no longer conforms" to the person about to
+ * approve it. The registry is read once for the whole batch. A document the project
+ * holds to no profile gets no statement; one that no longer passes the core contract
+ * gets none either — the reader's own validation says what is wrong with it.
+ */
+export async function structuredConformanceFor(
+  projectRoot: string,
+  documents: readonly { toolCallId: string; structured: string }[],
+): Promise<{ toolCallId: string; conformance: StructuredConformance }[]> {
+  if (documents.length === 0) return [];
+  const project = await readProjectProfiles(projectRoot);
+  if (project.state === "none") return [];
+  const statements: { toolCallId: string; conformance: StructuredConformance }[] = [];
+  for (const { toolCallId, structured } of documents) {
+    const verdict = parseSerializedStructuredExchange(structured, checkStructuredExchangeSchema);
+    if (!verdict.valid) continue;
+    const named = (verdict.envelope as { profile?: unknown }).profile;
+    const namedProfile = typeof named === "string" ? { profile: named } : {};
+    if (project.state === "unusable") {
+      statements.push({ toolCallId, conformance: { state: "unchecked", openValues: 0, ...namedProfile } });
+      continue;
+    }
+    const held = holdToProfile(verdict.envelope, project.context);
+    if (held.outcome === "unconstrained") continue;
+    if (held.outcome === "conforms") {
+      statements.push({ toolCallId, conformance: { profile: held.profile, state: "conforms", openValues: held.notes.length } });
+      continue;
+    }
+    const profile = held.profile ?? (typeof named === "string" ? named : project.context.default);
+    statements.push({ toolCallId, conformance: { state: "strays", openValues: 0, ...(profile === undefined ? {} : { profile }) } });
+  }
+  return statements;
 }
 
 /** An unusable registry, as the lines a refusal carries. */

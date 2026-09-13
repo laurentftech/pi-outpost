@@ -91,6 +91,22 @@ export interface StructuredExchangeProfile {
   viewpoints?: StructuredViewpoint[];
 }
 
+/**
+ * What a reader is told about a presented document and its project's profile.
+ *
+ * Established against the registry as it is when the document is shown, so a replay
+ * after the profile changed says so. Carried beside the document, never in it: the
+ * document handed on for approval stays the one that was validated.
+ */
+export interface StructuredConformance {
+  /** The profile it was checked against; absent when the registry could not say. */
+  profile?: string;
+  /** `unchecked`: the project's registry cannot be used right now. */
+  state: "conforms" | "strays" | "unchecked";
+  /** Values outside open enumerations, accepted and counted. */
+  openValues: number;
+}
+
 export interface StructuredExchangeProfileRegistry {
   schema: typeof STRUCTURED_EXCHANGE_PROFILE_REGISTRY_SCHEMA_V1;
   /** Profile files, relative to the project directory. */

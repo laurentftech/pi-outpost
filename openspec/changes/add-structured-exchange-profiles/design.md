@@ -171,9 +171,18 @@ open-enumeration notes; its description tells the agent the project may hold doc
 
 ### D8. The reader's statement travels beside `structured`, and is re-established
 
-`tool_end` and the tool chat item gain an optional `structuredConformance`:
-`{ profile: string; state: "conforms" | "strays" | "unchecked"; openValues: number }`. It is computed where
-`structured` is built, live and on replay, against the registry as it is then.
+The tool chat item gains an optional `structuredConformance`:
+`{ profile?: string; state: "conforms" | "strays" | "unchecked"; openValues: number }`. It reaches the client
+in a message of its own, `structured_conformance { toolCallId, conformance }`, sent right after the
+`tool_end` that carried the document and right after every snapshot (`hello`, `session_replaced`,
+`workspace_switched`, `update_config_ack`) whose items carry documents — computed against the registry as
+it is then.
+
+A separate message, not a field on `tool_end` or on the snapshot's items: both are built synchronously —
+`snapshot()` has a dozen callers, and the event handler must not await a file read between two events it
+forwards in order — while reading a registry is not. Sending it after keeps every existing message exactly
+as it is and gives live results and replays one path. The client merges it into the tool item it names,
+and ignores one naming a call it does not hold rather than inventing a card for it.
 
 Putting it in `details` would change the channel whose one property is carrying the validated envelope;
 putting it in the tool's text would make it prose the interface has to parse. Recomputing on replay rather

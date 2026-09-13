@@ -17,6 +17,8 @@ export type {
 } from "./outcome.ts";
 export { outcomeVerification, workPlanProgress } from "./outcome.ts";
 import type { WorkspaceOutcome } from "./outcome.ts";
+import type { StructuredConformance } from "./structuredExchangeProfile.ts";
+export type { StructuredConformance } from "./structuredExchangeProfile.ts";
 
 export interface WireImage {
   data: string;
@@ -77,6 +79,12 @@ export type ChatItem =
        * validated and shown.
        */
       structured?: string;
+      /**
+       * Whether `structured` conforms to its project's profile, established against the
+       * registry as it is when shown. Beside the document, never in it; absent when the
+       * document is held to no profile. Arrives after the item, in its own message.
+       */
+      structuredConformance?: StructuredConformance;
     }
   | {
       /** Extension-defined message (pi.sendMessage() with a customType) — see extensions.md#message-and-entry-rendering. */
@@ -848,6 +856,12 @@ export type ServerMessage =
       /** Serialized structured-exchange document, when the tool declared one. */
       structured?: string;
     }
+  /**
+   * Whether a document already sent — by a `tool_end`, or in a snapshot's items —
+   * conforms to its project's profile. Its own message because it needs a registry
+   * read, and the messages that carry documents are built without I/O.
+   */
+  | { type: "structured_conformance"; toolCallId: string; conformance: StructuredConformance }
   | { type: "queue"; steering: string[]; followUp: string[] }
   | { type: "context_usage"; usage: ContextUsage }
   | { type: "work_plan_changed"; workPlan: WorkPlan | null }
