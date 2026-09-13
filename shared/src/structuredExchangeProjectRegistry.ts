@@ -19,6 +19,7 @@
  *
  * Node-only.
  */
+import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import {
@@ -82,8 +83,7 @@ async function realResolve(target: string): Promise<string> {
 
 const isWithin = (root: string, target: string): boolean => target === root || target.startsWith(root + path.sep);
 
-async function digestOf(text: string): Promise<string> {
-  const { createHash } = await import("node:crypto");
+function digestOf(text: string): string {
   return `sha256:${createHash("sha256").update(text, "utf8").digest("hex")}`;
 }
 
@@ -123,7 +123,7 @@ async function readConfinedJson(root: string, relative: string, maxBytes: number
     return { ok: false, issue: { rule: `${namespace}/unreadable`, path: "", message: `"${relative}" cannot be read: ${(error as Error).message}` } };
   }
   try {
-    return { ok: true, value: JSON.parse(text), sha256: await digestOf(text) };
+    return { ok: true, value: JSON.parse(text), sha256: digestOf(text) };
   } catch (error) {
     return { ok: false, issue: { rule: `${namespace}/not-json`, path: "", message: `"${relative}" is not JSON: ${(error as Error).message}` } };
   }
@@ -140,7 +140,9 @@ export async function readProjectRegistry(
   projectRoot: string,
   registryPath: string = STRUCTURED_EXCHANGE_PROFILE_REGISTRY_PATH,
 ): Promise<ProjectProfiles> {
-  const root = await fs.realpath(projectRoot).catch(() => projectRoot);
+  // Through the deepest existing ancestor, so a project directory that does not exist is
+  // still compared as a real path — and reads as no registry, not as one outside it.
+  const root = await realResolve(path.resolve(projectRoot));
   const registryFile = registryPath;
   const registryRead = await readConfinedJson(root, registryFile, STRUCTURED_EXCHANGE_PROFILE_CEILINGS.registryBytes, "registry");
   if (registryRead.ok === "missing") return { state: "none" };

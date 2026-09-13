@@ -36,7 +36,7 @@
 
 ## 7. Reference validator
 
-- [ ] 7.1 Add `--registry` (check a registry, or validate a document against it), rules in `--describe-profile` when given a registry, `--batch` with `--report` and `--report-markdown`, and `--markdown` for any valid table; exit statuses per D6, documented in the usage text; rebuild the bundle; verify tests against the bundle copied away from the repository for `ARulesFileIsCheckedAgainstItsProfile`, `ADocumentIsValidatedAgainstARegistry`, `RulesAreListedBesideTheirStatements`, `FindingsToCheckDoNotFailTheRun`, `ANonConformingRequirementFailsTheRun`, `MarkdownExportRunsWithoutABrowser`, and a ten-thousand-line batch run in one invocation (`ALargeBatchRunsInOneProcess`) with its duration recorded
+- [x] 7.1 Add `--registry` (check a registry, or validate a document against it), rules in `--describe-profile` when given a registry, `--batch` with `--report` and `--report-markdown`, and `--markdown` for any valid table; exit statuses per D6, documented in the usage text; rebuild the bundle; verify tests against the bundle copied away from the repository for `ARulesFileIsCheckedAgainstItsProfile`, `ADocumentIsValidatedAgainstARegistry`, `RulesAreListedBesideTheirStatements`, `FindingsToCheckDoNotFailTheRun`, `ANonConformingRequirementFailsTheRun`, `MarkdownExportRunsWithoutABrowser`, and a ten-thousand-line batch run in one invocation (`ALargeBatchRunsInOneProcess`) with its duration recorded
 - [ ] 7.2 Ship the rules schema in the packaged contract and beside the skill; verify `npm run check:cli` and the skill schema copy test pass
 
 ## 8. Documentation and skill
