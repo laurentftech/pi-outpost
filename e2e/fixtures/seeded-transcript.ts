@@ -343,6 +343,50 @@ const SPEC_PROPOSAL = {
   },
 };
 
+/**
+ * A power-train architecture that declares the readings it is made for.
+ *
+ * Seeded last so it moves no document the other specs find by position. Two viewpoints
+ * over one graph, one retaining both vocabularies and one only elements, so a reader
+ * can select each, adjust with the key, and return to the whole document.
+ */
+const VIEWPOINT_GRAPH = {
+  schema: "urn:structured-exchange:2",
+  kind: "graph",
+  viewpoints: [
+    {
+      id: "power",
+      label: "Power distribution",
+      concern: "Where energy is stored, converted and consumed",
+      elementKinds: ["source", "converter", "load"],
+      relationshipKinds: ["power"],
+    },
+    {
+      id: "control",
+      label: "Control chain",
+      concern: "Which computer commands which component",
+      elementKinds: ["controller", "converter", "load"],
+      relationshipKinds: ["signal"],
+    },
+  ],
+  data: {
+    nodes: [
+      { id: "vp-battery", label: "Traction battery", kind: "source" },
+      { id: "vp-inverter", label: "Inverter", kind: "converter" },
+      { id: "vp-motor", label: "Drive motor", kind: "load" },
+      { id: "vp-vcu", label: "Vehicle control unit", kind: "controller" },
+      { id: "vp-bms", label: "Battery management", kind: "controller" },
+    ],
+    edges: [
+      { from: "vp-battery", to: "vp-inverter", kind: "power" },
+      { from: "vp-inverter", to: "vp-motor", kind: "power" },
+      { from: "vp-vcu", to: "vp-inverter", kind: "signal" },
+      { from: "vp-bms", to: "vp-battery", kind: "signal" },
+      { from: "vp-vcu", to: "vp-motor", kind: "signal" },
+    ],
+  },
+};
+
 export const SEEDED_MESSAGES = [
   { role: "user", content: "Draw me the architecture." },
   { role: "assistant", content: [{ type: "text", text: SEEDED_MERMAID }] },
@@ -445,5 +489,17 @@ export const SEEDED_MESSAGES = [
     toolName: "structured_exchange",
     content: "proposal against baseline-7: amend REQ-2, add a warning requirement, withdraw REQ-9",
     details: SPEC_PROPOSAL,
+  },
+  { role: "user", content: "Show me the power train, with the readings it is made for." },
+  {
+    role: "assistant",
+    content: [{ type: "toolCall", id: "call-viewpoints", name: "structured_exchange", arguments: { kind: "graph" } }],
+  },
+  {
+    role: "toolResult",
+    toolCallId: "call-viewpoints",
+    toolName: "structured_exchange",
+    content: "graph with 5 elements and 2 viewpoints",
+    details: VIEWPOINT_GRAPH,
   },
 ];

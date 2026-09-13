@@ -87,6 +87,10 @@ describe("every valid version 1 document is valid, and means the same, under ver
  * version 1 its rows are anonymous tuples and it may not.
  */
 const DELIBERATE: Record<string, string> = {
+  // Viewpoints exist only in version 2. The case refuses them under version 1, which is
+  // the point it makes; re-expressed under version 2 it carries nothing that contract
+  // lacks, so accepting it is the contract working, not the refusal being lost.
+  "invalid/viewpoints-under-version-1.json": "viewpoints are part of the version 2 contract",
   "invalid/table-with-target.json":
     "a table may be proposed under version 2, because its rows can now be addressed",
 };

@@ -31,6 +31,7 @@ import {
   type StructuredTableCell,
   type StructuredTableData,
   type StructuredTableRowRole,
+  type StructuredViewpoint,
   type ValidatedStructuredExchange,
 } from "./structuredExchange.ts";
 import {
@@ -898,6 +899,50 @@ export function narrowingOf(hidden: {
   for (const kind of hidden.elementKinds ?? []) if (kind !== "") keys.add(filterKey("element", kind));
   for (const kind of hidden.relationshipKinds ?? []) if (kind !== "") keys.add(filterKey("relationship", kind));
   return keys;
+}
+
+/** The viewpoints a document declares, in the producer's order; none when it declares none. */
+export function viewpointsOf(envelope: unknown): StructuredViewpoint[] {
+  const declared = (envelope as { viewpoints?: unknown } | null)?.viewpoints;
+  return Array.isArray(declared) ? (declared as StructuredViewpoint[]) : [];
+}
+
+/**
+ * What a viewpoint hides, as the narrowing every consumer already applies.
+ *
+ * A viewpoint is written as an inclusion — the kinds it is about — but the reader, the
+ * export and the figure tool all narrow by exclusion. Resolving here, once, is what
+ * keeps the three from disagreeing about what a viewpoint shows.
+ *
+ * Resolved against the kinds *present*: every present kind a constrained vocabulary
+ * does not retain is hidden, so a kind added to the model after the viewpoint was
+ * written is hidden too rather than slipping in. A vocabulary the viewpoint names no
+ * kinds for contributes nothing, and a thing with no kind is never hidden — the same
+ * as for any narrowing by kind, so a viewpoint and a hand-built narrowing selecting
+ * the same kinds draw the same picture.
+ */
+export function resolveViewpoint(
+  data: { nodes: { kind?: string }[]; edges: { kind?: string }[] },
+  viewpoint: Pick<StructuredViewpoint, "elementKinds" | "relationshipKinds">,
+): Narrowing {
+  const hidden = new Set<string>();
+  const exclude = (things: { kind?: string }[], retained: string[] | undefined, scope: FilterScope) => {
+    if (retained === undefined) return;
+    const keep = new Set(retained);
+    for (const thing of things) {
+      if (thing.kind !== undefined && thing.kind !== "" && !keep.has(thing.kind)) hidden.add(filterKey(scope, thing.kind));
+    }
+  };
+  exclude(data.nodes, viewpoint.elementKinds, "element");
+  exclude(data.edges, viewpoint.relationshipKinds, "relationship");
+  return hidden;
+}
+
+/** Whether two narrowings hide exactly the same things. */
+export function sameNarrowing(a: Narrowing, b: Narrowing): boolean {
+  if (a.size !== b.size) return false;
+  for (const key of a) if (!b.has(key)) return false;
+  return true;
 }
 
 /* ── Sequence layout ────────────────────────────────────────────────────────── */

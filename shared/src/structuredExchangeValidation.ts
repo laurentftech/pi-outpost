@@ -382,6 +382,70 @@ export function validateStructuredExchangeSemantics(envelope: StructuredExchange
     }
   }
 
+  // Viewpoints are readings of a graph, checked against the graph they read. Each
+  // rule refuses something a producer cannot have meant, and none of them corrects:
+  // a kind one character off the one present is refused, not matched to it, for the
+  // same reason a near-miss identifier is.
+  const viewpoints = (envelope as { viewpoints?: unknown }).viewpoints;
+  if (Array.isArray(viewpoints)) {
+    if (envelope.kind !== "graph") {
+      issues.push({
+        rule: "viewpoints-without-graph",
+        path: "/viewpoints",
+        message: `only a graph declares viewpoints; a ${envelope.kind} has no element and relationship kinds for one to retain`,
+      });
+    } else {
+      const elementKinds = new Set(elements.map((element) => element.kind).filter((kind): kind is string => !!kind));
+      const relationshipKinds = new Set(
+        (relationshipsOf(envelope) as { kind?: string }[]).map((edge) => edge.kind).filter((kind): kind is string => !!kind),
+      );
+      const seenViewpoints = new Map<string, number>();
+      viewpoints.forEach((viewpoint, index) => {
+        const at = `/viewpoints/${index}`;
+        const { id, elementKinds: retainedElements, relationshipKinds: retainedRelationships } = viewpoint as {
+          id: string;
+          elementKinds?: string[];
+          relationshipKinds?: string[];
+        };
+        const first = seenViewpoints.get(id);
+        if (first === undefined) seenViewpoints.set(id, index);
+        else {
+          issues.push({
+            rule: "duplicate-viewpoint-identifier",
+            path: `${at}/id`,
+            message: `viewpoint "${id}" is already declared at /viewpoints/${first}`,
+          });
+        }
+        if (retainedElements === undefined && retainedRelationships === undefined) {
+          issues.push({
+            rule: "empty-viewpoint",
+            path: at,
+            message: `viewpoint "${id}" retains no kind, so it would show nothing it was not already showing; name elementKinds, relationshipKinds, or both`,
+          });
+        }
+        // Per vocabulary: an element kind has to be the kind of some element, and a
+        // relationship kind the kind of some relationship. The same word in the other
+        // vocabulary is a different kind, and is named so the producer sees which.
+        const checks: [string[] | undefined, Set<string>, Set<string>, string, string, string][] = [
+          [retainedElements, elementKinds, relationshipKinds, "elementKinds", "element", "relationship"],
+          [retainedRelationships, relationshipKinds, elementKinds, "relationshipKinds", "relationship", "element"],
+        ];
+        for (const [retained, present, other, list, noun, otherNoun] of checks) {
+          retained?.forEach((kind, position) => {
+            if (present.has(kind)) return;
+            issues.push({
+              rule: "unresolved-viewpoint-kind",
+              path: `${at}/${list}/${position}`,
+              message:
+                `viewpoint "${id}" retains ${noun} kind "${kind}", and no ${noun} of this document has it` +
+                (other.has(kind) ? ` (it is a ${otherNoun} kind here, which is a different vocabulary)` : ""),
+            });
+          });
+        }
+      });
+    }
+  }
+
   // Rows align to the columns they declare. A short row is not padded and a long
   // one is not trimmed; either would invent data the producer did not send.
   if (envelope.kind === "table") {

@@ -28,7 +28,7 @@ import type {
   ValidatedStructuredExchange,
 } from "./structuredExchange.ts";
 import { graphFigure, sequenceFigure, serializeFigure, shownGraph } from "./structuredExchangeFigure.ts";
-import { narrowingOf, NOTHING_HIDDEN, type Narrowing } from "./structuredExchangeModel.ts";
+import { narrowingOf, NOTHING_HIDDEN, resolveViewpoint, viewpointsOf, type Narrowing } from "./structuredExchangeModel.ts";
 
 /** How much of the document the figure draws, in the document's own terms. */
 export interface FigureCoverage {
@@ -50,6 +50,8 @@ export interface FigureExport {
    * Undefined when it shows all of it — there is then nothing to say.
    */
   narrowing?: string;
+  /** The viewpoint the figure was drawn for, when one was named. */
+  viewpoint?: { id: string; label: string };
 }
 
 export type FigureRefusal = { ok: false } & (
@@ -61,12 +63,21 @@ export type FigureRefusal = { ok: false } & (
   | { reason: "not-drawable"; kind: string }
   /** The narrowing selected nothing, or the document declares nothing. */
   | { reason: "nothing-to-draw"; coverage: FigureCoverage }
+  /** A viewpoint was named for a document that declares none. */
+  | { reason: "no-viewpoints"; viewpoint: string }
+  /** A viewpoint was named that the document does not declare; `declared` is what it does. */
+  | { reason: "unknown-viewpoint"; viewpoint: string; declared: string[] }
 );
 
 /** What a caller names when it narrows: the reader's own vocabulary, as two lists. */
 export interface FigureNarrowing {
   hiddenElementKinds?: readonly string[];
   hiddenRelationshipKinds?: readonly string[];
+  /**
+   * A viewpoint the document declares, by identifier. The figure is narrowed to it, and
+   * any hidden kinds named beside it apply on top — the reader's key works the same way.
+   */
+  viewpoint?: string;
 }
 
 /** The refusal a document verdict maps to, or undefined when it validated. */
@@ -97,6 +108,17 @@ export function figureForEnvelope(
 ): FigureExport | FigureRefusal {
   const isProposal = envelope.target !== undefined;
 
+  // Before anything is drawn, and for every kind: a viewpoint named for a document that
+  // cannot have it is refused rather than ignored. Only a graph may declare viewpoints,
+  // so a sequence is refused here too instead of quietly drawn whole.
+  const declared = viewpointsOf(envelope);
+  const named = narrowing.viewpoint;
+  if (named !== undefined && declared.length === 0) return { ok: false, reason: "no-viewpoints", viewpoint: named };
+  const viewpoint = named === undefined ? undefined : declared.find((candidate) => candidate.id === named);
+  if (named !== undefined && viewpoint === undefined) {
+    return { ok: false, reason: "unknown-viewpoint", viewpoint: named, declared: declared.map((candidate) => candidate.id) };
+  }
+
   if (envelope.kind === "sequence") {
     const data = envelope.data as StructuredSequenceData;
     const coverage: FigureCoverage = {
@@ -116,7 +138,7 @@ export function figureForEnvelope(
   if (envelope.kind !== "graph") return { ok: false, reason: "not-drawable", kind: envelope.kind };
 
   const data = envelope.data as StructuredGraphData;
-  const hidden: Narrowing =
+  const requested: Narrowing =
     narrowing.hiddenElementKinds === undefined && narrowing.hiddenRelationshipKinds === undefined
       ? NOTHING_HIDDEN
       : narrowingOf({
@@ -125,6 +147,8 @@ export function figureForEnvelope(
             ? {}
             : { relationshipKinds: narrowing.hiddenRelationshipKinds }),
         });
+  const hidden: Narrowing =
+    viewpoint === undefined ? requested : new Set([...resolveViewpoint(data, viewpoint), ...requested]);
   const shown = shownGraph(data, hidden);
   const coverage: FigureCoverage = {
     elements: shown.nodes.length,
@@ -136,12 +160,13 @@ export function figureForEnvelope(
   // caller only discovers is worthless when somebody opens the file.
   if (shown.nodes.length === 0) return { ok: false, reason: "nothing-to-draw", coverage };
 
-  const figure = graphFigure(data, { isProposal, hidden });
+  const figure = graphFigure(data, { isProposal, hidden, ...(viewpoint === undefined ? {} : { viewpoint }) });
   return {
     ok: true,
     svg: serializeFigure(figure),
     coverage,
     ...(figure.narrowing === undefined ? {} : { narrowing: figure.narrowing }),
+    ...(viewpoint === undefined ? {} : { viewpoint: { id: viewpoint.id, label: viewpoint.label } }),
   };
 }
 
@@ -190,6 +215,12 @@ export function describeFigureRefusal(refusal: FigureRefusal): string {
       return refusal.coverage.ofElements === 0
         ? "the document declares nothing to draw"
         : `the narrowing hides all ${refusal.coverage.ofElements} elements, leaving nothing to draw`;
+    case "no-viewpoints":
+      return `the document declares no viewpoints, so it has no viewpoint "${refusal.viewpoint}" to draw`;
+    case "unknown-viewpoint":
+      return `the document declares no viewpoint "${refusal.viewpoint}"; it declares ${refusal.declared
+        .map((id) => `"${id}"`)
+        .join(", ")}`;
   }
 }
 

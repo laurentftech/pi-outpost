@@ -66,6 +66,12 @@ const parameters = Type.Object({
         'Relationship `kind` values to leave out, e.g. ["signal"]. This is the relationship vocabulary only: an element of the same name is unaffected. Omit to draw every relationship.',
     }),
   ),
+  viewpoint: Type.Optional(
+    Type.String({
+      description:
+        'The `id` of a viewpoint the document declares, e.g. "power". The figure shows what that viewpoint retains and states its concern inside the drawing; the hide lists still apply on top. Refused, listing the declared ones, when the document does not declare it.',
+    }),
+  ),
 });
 
 const DESCRIPTION = [
@@ -73,6 +79,7 @@ const DESCRIPTION = [
   "Reference it from Markdown as a relative path — `![Power train](figures/power.svg)` — and the interface renders it in the preview.",
   "The two hide lists are separate vocabularies: hide_element_kinds hides boxes by their `kind`, hide_relationship_kinds hides arrows by theirs, and the same name in both means two different things. Omit them to draw the whole document.",
   "Write one figure per view worth having rather than one figure of everything: a narrowed figure is the reason this takes narrowing at all.",
+  "When the document declares viewpoints, name one with `viewpoint` instead of rebuilding its selection from hide lists: the figure then states which viewpoint it shows and the concern it frames, so a report can carry one figure per viewpoint.",
   "A relationship whose endpoint is hidden goes with it — an arrow to a box that is not drawn cannot be drawn.",
   "A table has no figure; export it as a spreadsheet instead.",
 ].join(" ");
@@ -101,11 +108,13 @@ export function createStructuredExchangeFigureToolDefinition(
         output_path: destination,
         hide_element_kinds: hiddenElementKinds,
         hide_relationship_kinds: hiddenRelationshipKinds,
+        viewpoint,
       } = params as {
         path: string;
         output_path: string;
         hide_element_kinds?: string[];
         hide_relationship_kinds?: string[];
+        viewpoint?: string;
       };
 
       // SECURITY: two arguments, two zones. The read zone never grants a write.
@@ -139,6 +148,7 @@ export function createStructuredExchangeFigureToolDefinition(
         {
           ...(hiddenElementKinds === undefined ? {} : { hiddenElementKinds }),
           ...(hiddenRelationshipKinds === undefined ? {} : { hiddenRelationshipKinds }),
+          ...(viewpoint === undefined ? {} : { viewpoint }),
         },
         options.limits,
       );
@@ -183,6 +193,11 @@ export function createStructuredExchangeFigureToolDefinition(
             type: "text",
             text: [
               `Wrote \`${destination}\` (${Buffer.byteLength(result.svg, "utf8")} bytes), showing ${describeCoverage(result.coverage)}.`,
+              // Named before the statement, so an agent writing several figures from one
+              // document can tell which chapter each belongs to without opening them.
+              result.viewpoint === undefined
+                ? undefined
+                : `Drawn for viewpoint \`${result.viewpoint.id}\` (${result.viewpoint.label}).`,
               result.narrowing === undefined ? undefined : `The figure states: "${result.narrowing}"`,
               `Reference it from Markdown as a relative path, e.g. \`![${path.basename(destination, ".svg")}](${destination})\`.`,
             ]

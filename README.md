@@ -207,7 +207,9 @@ one needs, the command that proves it works, and the caution that goes with it.
   interface draws it, with an approval gate when the document names a `target`. Files that
   declare the schema open as the diagram they describe, and any diagram exports as a
   self-contained SVG. A graph with too many boxes to read across is laid out down the page,
-  and the reader can turn it either way. See [`docs/structured-exchange.md`](docs/structured-exchange.md)
+  and the reader can turn it either way. A graph may name the readings it is made for as
+  viewpoints — power, control, safety — which a reader selects and the agent writes one figure
+  for. See [`docs/structured-exchange.md`](docs/structured-exchange.md)
 - [Work Plans](#work-plans): for non-trivial work the agent keeps an explicit hierarchy of
   objectives, dependencies and verification state beside the conversation
 - [Workspace Outcome](#workspace-outcome): review plan progress, recorded verification, and

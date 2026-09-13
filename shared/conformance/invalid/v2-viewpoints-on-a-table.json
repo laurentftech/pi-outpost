@@ -1,0 +1,29 @@
+{
+  "schema": "urn:structured-exchange:2",
+  "kind": "table",
+  "viewpoints": [
+    {
+      "id": "power",
+      "label": "Power distribution",
+      "concern": "Where energy is stored, converted and consumed",
+      "elementKinds": [
+        "source",
+        "converter",
+        "load"
+      ],
+      "relationshipKinds": [
+        "power"
+      ]
+    }
+  ],
+  "data": {
+    "columns": [
+      "a"
+    ],
+    "rows": [
+      [
+        "x"
+      ]
+    ]
+  }
+}

@@ -1,0 +1,52 @@
+{
+  "schema": "urn:structured-exchange:2",
+  "kind": "graph",
+  "viewpoints": [
+    {
+      "id": "empty",
+      "label": "Nothing",
+      "concern": "Nothing in particular"
+    }
+  ],
+  "data": {
+    "nodes": [
+      {
+        "id": "battery",
+        "label": "Battery",
+        "kind": "source"
+      },
+      {
+        "id": "inverter",
+        "label": "Inverter",
+        "kind": "converter"
+      },
+      {
+        "id": "motor",
+        "label": "Motor",
+        "kind": "load"
+      },
+      {
+        "id": "ecu",
+        "label": "ECU",
+        "kind": "controller"
+      }
+    ],
+    "edges": [
+      {
+        "from": "battery",
+        "to": "inverter",
+        "kind": "power"
+      },
+      {
+        "from": "inverter",
+        "to": "motor",
+        "kind": "power"
+      },
+      {
+        "from": "ecu",
+        "to": "inverter",
+        "kind": "signal"
+      }
+    ]
+  }
+}

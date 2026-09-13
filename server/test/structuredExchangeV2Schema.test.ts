@@ -107,12 +107,23 @@ describe("the enriched schema", () => {
       ["relations", tableVariant.properties.relations.maxItems],
       ["heading", structuralRow.properties.heading.maxLength],
       ["headingDepth", structuralRow.properties.depth.maximum],
+      ["viewpoints", schema.properties.viewpoints.maxItems],
+      ["viewpointConcern", defs.viewpoint.properties.concern.maxLength],
     ];
     for (const [name, declared] of pairs) {
       test(`${name}`, () => {
         assert.equal(STRUCTURED_EXCHANGE_CEILINGS_2[name], declared, `${name} ceiling drifted from the schema`);
       });
     }
+
+    test("a viewpoint retains no more kinds than a vocabulary can hold apart", () => {
+      // Not a ceiling of its own: a viewpoint cannot usefully retain more kinds than a
+      // rendering can tell apart, so it borrows that number rather than inventing one.
+      for (const list of ["elementKinds", "relationshipKinds"]) {
+        assert.equal(defs.viewpoint.properties[list].maxItems, STRUCTURED_EXCHANGE_CEILINGS.kindsPerVocabulary, list);
+      }
+      assert.equal(defs.viewpoint.properties.label.maxLength, STRUCTURED_EXCHANGE_CEILINGS.label);
+    });
 
     test("the digest ceiling is the length the pattern can produce", () => {
       const pattern = defs.artifact.properties.sha256.pattern as string;
