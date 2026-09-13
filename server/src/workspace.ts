@@ -461,6 +461,8 @@ async function buildResources(options: WorkspaceOptions): Promise<WorkspaceResou
           limits.xlsxMaxBytes,
           limits.pptxMaxBytes,
           limits.structuredExchangeMaxBytes,
+          // The project, not the sandbox root: the profile registry is the project's.
+          settings.cwd,
         )),
         ...options.unconfinedTools,
       ])

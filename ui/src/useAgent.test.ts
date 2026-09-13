@@ -1830,6 +1830,38 @@ describe("assembling a turn", () => {
     expect(result.current.state.items[0]).toMatchObject({ running: false });
   });
 
+  it("merges a document's conformance statement into the card it names, leaving the document as it arrived", async () => {
+    const result = await connected();
+    const document = '{"schema":"urn:structured-exchange:2","kind":"table"}';
+    act(() => mockWs!.receive({ type: "tool_start", toolCallId: "s1", toolName: "present_structure", args: {} }));
+    act(() => mockWs!.receive({ type: "tool_end", toolCallId: "s1", text: "presented", isError: false, structured: document }));
+    act(() =>
+      mockWs!.receive({
+        type: "structured_conformance",
+        toolCallId: "s1",
+        conformance: { profile: "acme/requirements", state: "conforms", openValues: 2 },
+      }),
+    );
+    await waitFor(() =>
+      expect(result.current.state.items[0]).toMatchObject({
+        structuredConformance: { profile: "acme/requirements", state: "conforms", openValues: 2 },
+      }),
+    );
+    expect(result.current.state.items[0]).toMatchObject({ kind: "tool", structured: document, running: false });
+  });
+
+  it("drops a conformance statement about a card this transcript does not hold", async () => {
+    const result = await connected([userItem("hello")]);
+    act(() =>
+      mockWs!.receive({ type: "structured_conformance", toolCallId: "elsewhere", conformance: { state: "unchecked", openValues: 0 } }),
+    );
+    // A later message proves the statement was processed before this assertion.
+    act(() => mockWs!.receive({ type: "queue", steering: ["later"], followUp: [] }));
+    await waitFor(() => expect(result.current.state.queue.steering).toEqual(["later"]));
+    expect(result.current.state.items.some((item) => item.kind === "tool")).toBe(false);
+    expect(result.current.state.items).toHaveLength(1);
+  });
+
   it("does not set progress from a text-only tool_update", async () => {
     const result = await connected();
     act(() => mockWs!.receive({ type: "tool_start", toolCallId: "t1", toolName: "crawl", args: {} }));

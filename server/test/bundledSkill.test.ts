@@ -55,6 +55,12 @@ describe("the skill that ships with the tool", () => {
     // A skill with no description is loaded and never chosen.
     const [skill] = load(bundledSkillPaths()).skills;
     assert.ok(skill.description !== undefined && skill.description.length > 0);
+    // Only the name and this description reach the prompt, so they decide whether the skill
+    // is read at all. A model presenting a table of requirements under a project profile was
+    // seen never opening it while the description spoke only of diagrams and proposals.
+    assert.match(skill.description, /requirements/);
+    assert.match(skill.description, /profile/);
+    assert.match(skill.description, /before calling present_structure/);
   });
 
   test("still loads when the whole directory is handed over instead", () => {

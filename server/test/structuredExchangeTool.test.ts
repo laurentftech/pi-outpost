@@ -7,12 +7,17 @@
  * read and act on inside the same turn.
  */
 import assert from "node:assert/strict";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { describe, test } from "node:test";
 import { createStructuredExchangeToolDefinition } from "../src/structuredExchangeTool.ts";
 import { STRUCTURED_EXCHANGE_SCHEMA_V1 as S, STRUCTURED_EXCHANGE_SCHEMA_V1 } from "@pi-outpost/shared/structured-exchange";
 import { structuredExchangeField } from "../src/convert.ts";
 
-const tool = createStructuredExchangeToolDefinition();
+// A project with no profile registry: these are the core contract's tests, and a
+// registry would make them tests of a profile instead.
+const tool = createStructuredExchangeToolDefinition({ projectRoot: mkdtempSync(path.join(tmpdir(), "pi-present-")) });
 
 const call = (document: unknown, summary = "a summary") =>
   tool.execute("call-1", { document: typeof document === "string" ? document : JSON.stringify(document), summary }) as Promise<{

@@ -184,7 +184,7 @@ describe("a figure drawn for a viewpoint says so", () => {
   test("the export draws a declared viewpoint, and names it", () => {
     const result = figureForEnvelope(envelope(), { viewpoint: "power" });
     assert.ok(result.ok, result.ok ? "" : describeFigureRefusal(result));
-    assert.deepEqual(result.viewpoint, { id: "power", label: "Power distribution" });
+    assert.deepEqual(result.viewpoint, { id: "power", label: "Power distribution", source: "document" });
     assert.equal(result.coverage.elements, 4);
     assert.match(result.svg, /Viewpoint: Power distribution/);
   });

@@ -152,6 +152,7 @@ import { createDocxExtractToolDefinition } from "./docxTool.ts";
 import { createXlsxExtractToolDefinition } from "./xlsxTool.ts";
 import { createPptxExtractToolDefinition } from "./pptxTool.ts";
 import { createStructuredExchangeToolDefinition } from "./structuredExchangeTool.ts";
+import { structuredConformanceFor } from "./structuredExchangeProfiles.ts";
 import { createStructuredExchangeFigureToolDefinition } from "./structuredExchangeFigureTool.ts";
 import { createWorkPlanExtendedToolDefinition, createWorkPlanToolDefinition, WORK_PLAN_EXTENDED_TOOL, WORK_PLAN_TOOL } from "./workPlanTool.ts";
 import { DOCUMENT_TOOLS, documentToolsFor } from "./documentTools.ts";
@@ -416,12 +417,6 @@ if (cli.command === "login") {
   }
 }
 
-/**
- * Reads nothing and writes nothing: it validates a document the agent composed and
- * hands it to the interface. There is no path argument to confine, so unlike every
- * other custom tool it is the same tool on both sides of the sandbox.
- */
-const structuredExchangeTool = createStructuredExchangeToolDefinition();
 const workPlanTool = createWorkPlanToolDefinition();
 /**
  * Registered beside it and active only where its actions are possible — see the
@@ -454,7 +449,14 @@ function workspaceOptions(settings: WorkspaceSettings): Omit<WorkspaceOptions, "
       structuredExchangeMaxBytes: config.structuredExchange.maxBytes,
     },
     watchFiles: config.files.watch,
-    unconfinedTools: [structuredExchangeTool, workPlanTool, workPlanExtendedTool],
+    // `present_structure` has no path argument to confine, so it is unconfined on both
+    // sides of the sandbox — but it is built per project, because the project's own
+    // profile registry is what it holds a document to.
+    unconfinedTools: [
+      createStructuredExchangeToolDefinition({ projectRoot: settings.cwd }),
+      workPlanTool,
+      workPlanExtendedTool,
+    ],
     // Bound to the workspace being built, so a tree change reaches the clients
     // watching THAT project and no others.
     onDirectoryChanged: () => {},
@@ -1023,8 +1025,9 @@ const makeCreateRuntime =
                 // No sandbox: anything under the workspace is writable, the same
                 // rule writeFileFromBrowser applies to the browser's own writes.
                 writableRoot: await fs.realpath(cwd),
+                projectRoot: cwd,
               }),
-              structuredExchangeTool,
+              createStructuredExchangeToolDefinition({ projectRoot: cwd }),
               workPlanTool,
               workPlanExtendedTool,
               // The extractors go last, and the order is not cosmetic. A tool published
@@ -1615,8 +1618,48 @@ let lastAnnouncedSandbox: { root: string; allowWrite: boolean; allowBash: boolea
  * answer to "what is THIS connection looking at", and the two come apart as soon
  * as the server holds a second project.
  */
+/**
+ * Tell a workspace's readers whether the documents they were just sent conform to the
+ * project's profile.
+ *
+ * After, never inside, the message that carried them: that message is built without
+ * I/O and forwarded in order, and a registry read is I/O. The first `await` hands the
+ * caller back its turn, so the snapshot or `tool_end` goes out before any statement
+ * about it; a client merges a statement into the card it names and drops one naming a
+ * card it does not hold.
+ */
+async function announceStructuredConformance(
+  workspace: Workspace,
+  documents: readonly { toolCallId: string; structured?: string }[],
+): Promise<void> {
+  await Promise.resolve();
+  const carried = documents.filter(
+    (document): document is { toolCallId: string; structured: string } => typeof document.structured === "string",
+  );
+  if (carried.length === 0) return;
+  try {
+    for (const { toolCallId, conformance } of await structuredConformanceFor(workspace.root, carried)) {
+      broadcast(workspace, { type: "structured_conformance", toolCallId, conformance });
+    }
+  } catch (error) {
+    // A statement that cannot be made is not a reason to disturb the session it is about.
+    console.error("[pi-outpost] structured-exchange conformance could not be established:", error);
+  }
+}
+
 function snapshot(workspace: Workspace): SessionSnapshot {
   const state = workspace.agent.snapshot();
+  const items = historyToItems(
+    state.messages as never,
+    state.isStreaming,
+    branchUserEntries(workspace).map((entry) => entry.entryId),
+    workspace.browserRoot,
+    workspace.renderer,
+  );
+  void announceStructuredConformance(
+    workspace,
+    items.flatMap((item) => (item.kind === "tool" && item.structured !== undefined ? [{ toolCallId: item.toolCallId, structured: item.structured }] : [])),
+  );
   return {
     branding: config.branding,
     // Always, whatever the number open. A selector's first job is to say where the
@@ -1931,14 +1974,16 @@ function onRuntimeEvent(workspace: Workspace, event: RuntimeEvent): void {
         event.details,
         event.isError,
       );
+      const structured = structuredExchangeField(event.details);
       broadcast(workspace, {
         type: "tool_end",
         toolCallId: event.toolCallId,
         isError: event.isError,
         text: truncate(contentText(event.content as never)),
         ...(rendered ? { outputHtml: rendered.expanded, outputHtmlCollapsed: rendered.collapsed } : {}),
-        ...structuredExchangeField(event.details),
+        ...structured,
       });
+      void announceStructuredConformance(workspace, [{ toolCallId: event.toolCallId, ...structured }]);
       const args = pendingFileMutations.get(event.toolCallId);
       pendingFileMutations.delete(event.toolCallId);
       // Only announce once the write has actually landed on disk — the client

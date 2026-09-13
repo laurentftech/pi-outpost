@@ -67,6 +67,7 @@ describe("write_structure_figure with a viewpoint", () => {
       allowedRoots: [root],
       maxBytes: 4_000_000,
       writableRoot: root,
+      projectRoot: root,
     });
   });
 

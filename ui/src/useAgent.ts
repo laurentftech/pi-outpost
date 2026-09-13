@@ -490,6 +490,26 @@ function upsertTool(items: ChatItem[], toolCallId: string, toolName: string, pat
   return [...items, { kind: "tool", toolCallId, toolName, args: {}, output: "", running: true, ...patch }];
 }
 
+/**
+ * Patch a tool card that is already here, and only that.
+ *
+ * For facts that arrive about a card rather than with it. A message naming a call
+ * this transcript does not hold — a replay still on its way, another session's —
+ * is dropped: inventing an empty running card for it would show a tool call that
+ * never happened.
+ */
+function patchExistingTool(items: ChatItem[], toolCallId: string, patch: Partial<ToolItem>): ChatItem[] {
+  for (let i = items.length - 1; i >= 0; i--) {
+    const item = items[i];
+    if (item.kind === "tool" && item.toolCallId === toolCallId) {
+      const next = [...items];
+      next[i] = { ...item, ...patch };
+      return next;
+    }
+  }
+  return items;
+}
+
 function applySnapshot(state: AgentState, message: ServerMessage & { sessionId: string }): AgentState {
   if (
     message.type !== "hello" &&
@@ -1063,6 +1083,11 @@ function reduce(state: AgentState, action: Action): AgentState {
           outputHtmlCollapsed: message.outputHtmlCollapsed,
           structured: message.structured,
         }),
+      };
+    case "structured_conformance":
+      return {
+        ...state,
+        items: patchExistingTool(state.items, message.toolCallId, { structuredConformance: message.conformance }),
       };
     case "queue":
       return { ...state, queue: { steering: message.steering, followUp: message.followUp } };

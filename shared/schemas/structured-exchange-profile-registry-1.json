@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:structured-exchange-profile-registry:1",
+  "title": "Structured exchange profile registry v1",
+  "description": "The profiles a project holds its structured-exchange documents to, kept at .pi-outpost/structured-exchange.json in the project. Lists files rather than scanning a directory, so a stray file is never a rule and a missing one is an error.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "profiles"],
+  "properties": {
+    "schema": {
+      "description": "Which registry format this is.",
+      "const": "urn:structured-exchange-profile-registry:1"
+    },
+    "profiles": {
+      "description": "Profile files, by path relative to the project directory. Each must stay inside the project.",
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 20,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 500
+      }
+    },
+    "default": {
+      "description": "The identifier of a registered profile that documents naming no profile are held to. Declaring one also refuses documents that name an unregistered profile, and version 1 documents.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200
+    }
+  }
+}

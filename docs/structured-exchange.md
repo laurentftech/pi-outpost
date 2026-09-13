@@ -398,15 +398,164 @@ shown.
 The core validates the structural contract and the relational rules above it. It does
 not, and will not:
 
-- **check your profile's own rules.** Whether `mass_kg` is required on a `part`, or what
-  `derives` may connect, belongs to the profile. Validate it in your producer, and again
-  in the authority that applies the result.
+- **check your profile's own rules.** Whether `mass_kg` is required on a `part`, which
+  values `status` may take, or what `derives` may connect belongs to the profile, and the
+  core contract checks none of it. A project running this application can hold the agent's
+  documents to the kinds, attributes and enumeration values it declares — see
+  [Holding documents to a project's data model](#holding-documents-to-a-projects-data-model)
+  — but not to endpoint rules. Validate in your producer too, and again in the authority
+  that applies the result.
 - **establish that an expectation holds.** It can see that an expectation is well-formed
   and show it to a reader; only the authority holding the artifact can compare it with
   what is actually there, and it must do so immediately before applying. Approval means
   the reader approved the proposal *subject to* those conditions.
 - **resolve anything you name.** Profiles, locations and artifact URIs are inert text
   until a person acts on them.
+
+## Holding documents to a project's data model
+
+The core contract treats `profile` as a name. A project can go further: declare its data
+model — the kinds that exist, the attributes each carries, the values each enumeration
+allows — in files it keeps, and this application's agent tools then refuse a document that
+strays from it exactly as they refuse one that breaks the contract: with the rule, a pointer
+to the value, and what the model allows there. The agent corrects and presents again within
+the same turn; an invented enumeration value never reaches the reader.
+
+Nothing is fetched. The registry and its profiles are files in the project, read on every
+call — an edited profile applies to the next document — and a document's `profile` is
+matched against them as an exact string, never resolved.
+
+### The registry
+
+`.pi-outpost/structured-exchange.json`, at the project root:
+
+```json
+{
+  "schema": "urn:structured-exchange-profile-registry:1",
+  "profiles": ["profiles/requirements.json"],
+  "default": "acme/requirements"
+}
+```
+
+Profile paths are relative to the project directory and must stay inside it, links
+included. Files are listed rather than discovered, so a stray file is never a rule and a
+missing one is an error. A project with no registry is unconstrained, as before.
+
+### A profile
+
+Its format is `urn:structured-exchange-profile:1`, published with the other schemas:
+
+```json
+{
+  "schema": "urn:structured-exchange-profile:1",
+  "id": "acme/requirements",
+  "label": "ACME requirements model",
+  "elementKinds": [
+    {
+      "kind": "requirement",
+      "attributes": [
+        { "name": "status", "type": "enumeration", "values": ["draft", "approved", "withdrawn"], "closed": true, "required": true },
+        { "name": "priority", "type": "enumeration", "values": ["must", "should", "could"], "closed": false },
+        { "name": "owner", "type": "string" },
+        { "name": "verifiedBy", "type": "reference", "list": true }
+      ]
+    },
+    { "kind": "test" }
+  ],
+  "relationshipKinds": [{ "kind": "derives" }, { "kind": "verifies" }],
+  "viewpoints": [
+    { "id": "verification", "label": "Verification", "concern": "What verifies each requirement", "elementKinds": ["requirement", "test"], "relationshipKinds": ["verifies"] }
+  ]
+}
+```
+
+- `elementKinds` govern graph elements **and** table rows; `relationshipKinds` govern graph
+  relationships **and** table relations. A requirement is the same thing drawn as a box or
+  listed as a row.
+- An attribute is a `string`, `number`, `boolean`, `reference` or `enumeration`; `list`
+  makes it a list of that type. `required` means *has a value*: `null` is not one.
+- An enumeration lists its `values` and must say whether it is `closed` — a value outside
+  it refused — or open, where such a value is accepted and reported.
+- Kinds and attributes are arrays of named entries, not maps: a kind or attribute declared
+  twice is refused instead of silently keeping the last.
+- `viewpoints` are the readings the domain's models are made for, in the shape a document
+  declares them; the agent can draw a figure for one of them from any document held to the
+  profile.
+
+### What is refused, and what is only reported
+
+A version 2 graph or table held to a profile is refused when it breaks one of these, and
+each refusal states what the profile allows at the place it points:
+
+| Rule | When |
+|---|---|
+| `profile/undeclared-kind` | a kind the profile does not declare in that vocabulary |
+| `profile/missing-kind` | an element, relationship, relation or non-heading row with no kind — a changed item states its kind too |
+| `profile/undeclared-attribute` | an attribute the item's kind does not declare |
+| `profile/attribute-type` | a value of the wrong type, or a list where one value is declared, or the reverse |
+| `profile/closed-enumeration` | a value outside a closed enumeration |
+| `profile/missing-required-attribute` | an item of a complete document, or one a proposal adds, without a required attribute |
+| `profile/null-required-attribute` | a required attribute set to `null` |
+| `profile/required-attribute-removed` | a proposal removing a required attribute |
+| `profile/unregistered-profile` | under a default, a document naming a profile the project does not register |
+| `profile/version-1-under-default` | under a default, a version 1 document, which cannot name a profile |
+| `profile/viewpoint-declared-twice` | a document declaring a viewpoint its profile also declares |
+
+A proposal is not refused for required attributes it does not mention on an item it
+changes: it describes only what changes. A value outside an **open** enumeration is not
+refused; the agent is told each one with the values the enumeration lists, so it can tell a
+new value from a typo. Structural heading rows and sequence documents are not held to a
+profile.
+
+### What a default changes
+
+Without `default`, profiles are opt-in: a document naming a registered profile is held to
+it, and anything else — no profile, an unknown one, version 1 — is judged by the core
+contract alone. With a default, the project has said its documents follow a model, and a
+document may not step around it: one naming no profile is held to the default, one naming a
+profile the project does not register is refused, and a version 1 document is refused.
+
+### When the registry is wrong
+
+A registry that is not JSON or not a registry, a listed file that is missing, outside the
+project or not a usable profile, two files declaring one identifier, or a default nothing
+registers: the agent's tools then refuse **every** document, naming the rule (`registry/…`
+or `profile-format/…`), the file and a pointer into it. They never fall back to the core
+contract alone — a mistake in the registry would otherwise remove every guarantee while
+everything looked fine.
+
+### What the reader sees
+
+A presented document held to a profile says so beside its vocabulary, and in its text
+equivalent: that it conforms (with how many values fell outside open enumerations), that it
+does not conform to the profile as it stands now, or that it could not be checked because
+the registry cannot be used. The statement is re-established each time the document is
+shown, so a proposal restored after the profile was tightened says it no longer conforms. It
+travels beside the document and never changes it.
+
+### Building a profile outside this application
+
+A profile is usually built where the model lives — exported from a requirements tool, or
+composed by an agent from one — and checked there, with the reference validator that ships
+in the package:
+
+```
+node validate-structured-exchange.mjs --check-profile profiles/requirements.json
+node validate-structured-exchange.mjs --describe-profile profiles/requirements.json
+node validate-structured-exchange.mjs --profile profiles/requirements.json extraction.json
+```
+
+`--check-profile` judges the file against the format, with a rule and a pointer for every
+problem. `--profile` validates a document against the contract and then the profile. Both
+exit **4** when the profile itself is unreadable, not JSON or not a usable profile —
+distinct from **1**, a document that strays from a good one.
+
+No check can tell whether a profile is *complete*. `--describe-profile` exists for that
+review: it prints every kind, every attribute with its type and whether it is required or a
+list, and every enumeration value on its own line under whether it is closed or open, in the
+author's order. Compare it with the source model, enumerations above all — a value the model
+has and the profile lacks is a correct document refused. Decide closed or open deliberately:
+a closed enumeration refuses the typo and the legitimately new value alike.
 
 ## If you are not building in this repository
 

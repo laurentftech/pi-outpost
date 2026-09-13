@@ -17,6 +17,20 @@ import { fileURLToPath } from "node:url";
 import { describe, test } from "node:test";
 import { parseStructuredExchange } from "@pi-outpost/shared/structured-exchange/parse";
 import { checkStructuredExchangeSchema } from "@pi-outpost/shared/structured-exchange/schema-node";
+import { validateProfile, validateRegistry } from "@pi-outpost/shared/structured-exchange/profile-validation";
+
+/**
+ * Each example judged by the format it declares. A profile or a registry shown in the
+ * documentation is copied by a profile author exactly as an envelope is copied by a
+ * producer, so it is held to its own format rather than skipped — and rather than
+ * refused as a document it never claimed to be.
+ */
+function verdictFor(document: Record<string, unknown>): { valid: boolean; issues: { rule: string; path: string }[] } {
+  const schema = String(document.schema);
+  if (schema.startsWith("urn:structured-exchange-profile-registry:")) return validateRegistry(document);
+  if (schema.startsWith("urn:structured-exchange-profile:")) return validateProfile(document);
+  return parseStructuredExchange(document, checkStructuredExchangeSchema);
+}
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 
@@ -52,8 +66,8 @@ for (const file of ["docs/structured-exchange.md", "skills/structured-exchange/S
     });
 
     for (const { at, document } of found) {
-      test(`the envelope at line ${at} (${String(document.schema).slice(-1)}) validates`, () => {
-        const verdict = parseStructuredExchange(document, checkStructuredExchangeSchema);
+      test(`the example at line ${at} (${String(document.schema)}) validates`, () => {
+        const verdict = verdictFor(document);
         assert.equal(
           verdict.valid,
           true,

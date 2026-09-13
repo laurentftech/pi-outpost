@@ -209,7 +209,8 @@ one needs, the command that proves it works, and the caution that goes with it.
   self-contained SVG. A graph with too many boxes to read across is laid out down the page,
   and the reader can turn it either way. A graph may name the readings it is made for as
   viewpoints — power, control, safety — which a reader selects and the agent writes one figure
-  for. See [`docs/structured-exchange.md`](docs/structured-exchange.md)
+  for. A project can hold the agent's documents to its own data model — kinds, attributes,
+  enumeration values — declared in local profile files. See [`docs/structured-exchange.md`](docs/structured-exchange.md)
 - [Work Plans](#work-plans): for non-trivial work the agent keeps an explicit hierarchy of
   objectives, dependencies and verification state beside the conversation
 - [Workspace Outcome](#workspace-outcome): review plan progress, recorded verification, and
