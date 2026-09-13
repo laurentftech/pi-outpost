@@ -126,8 +126,13 @@ Rule identifiers are namespaced so they cannot be mistaken for contract rules: `
 `profile/viewpoint-declared-twice`; and `registry/*` and `profile-format/*` for unusable registries and
 profiles. Every refusal message states what is allowed at the pointer (D2's reason for existing).
 
-Proposals: required attributes are enforced only on complete documents; a proposal is checked on the values
-it carries and refused when its `removeAttributes` names a required one.
+Proposals: required attributes are enforced on complete documents and on items a proposal adds (no `ref`) —
+an added item has nothing to leave unchanged. An item a proposal changes is checked on the values it
+carries and `set`s, and refused when its `removeAttributes` names a required one. It must still state its
+kind, or its attributes could not be checked. The kind checked is the one the item will have (`set.kind`
+before `kind`): the `kind` beside a retyping describes what is being left, and refusing it would forbid
+moving an item out of a kind the model no longer has. `null` is refused for a required attribute wherever
+it is given (`profile/null-required-attribute`).
 
 ### D4. Read on every check, confined, bounded
 

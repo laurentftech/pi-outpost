@@ -104,11 +104,15 @@ A document held to a profile SHALL be refused when:
 - an attribute's value does not have the declared type, or is a list where the attribute is not one, or
   a single value where it is;
 - a value of a closed enumeration is not one of its allowed values;
-- a complete document omits an attribute its kind requires, or sets it to null;
+- an item of a complete document, or an item a proposal adds, omits an attribute its kind requires;
+- any item sets an attribute its kind requires to null;
 - a proposal removes an attribute its kind requires.
 
-A proposal SHALL NOT be refused for required attributes it does not mention, because it describes only
-what changes. Structural heading rows SHALL NOT be held to kinds or attributes.
+An item a proposal adds is one that carries no reference: nothing exists yet for it to leave unchanged, so
+it must carry every required attribute, exactly as in a complete document. A proposal SHALL NOT be refused
+for required attributes it does not mention on an item it changes, because it describes only what
+changes. A changed item SHALL still state its kind, so that its attributes can be checked. Structural
+heading rows SHALL NOT be held to kinds or attributes.
 
 Each refusal SHALL name the rule, point at the offending value, and state what the profile allows at that
 point — for a kind, the kinds declared in that vocabulary; for an attribute, the attributes the kind
@@ -160,6 +164,10 @@ Sequence documents SHALL NOT be held to a profile.
 #### Scenario: AProposalIsNotRefusedForAttributesItDoesNotMention
 - **WHEN** a proposal changes one attribute of an item whose kind requires others the proposal does not mention
 - **THEN** the proposal is not refused for the attributes it does not mention
+
+#### Scenario: AnItemAProposalAddsCarriesItsRequiredAttributes
+- **WHEN** a proposal adds a row with no reference whose kind requires an attribute the row does not carry
+- **THEN** the proposal is refused with the rule and a pointer to the row
 
 #### Scenario: AProposalMayNotRemoveARequiredAttribute
 - **WHEN** a proposal removes an attribute the item's kind requires

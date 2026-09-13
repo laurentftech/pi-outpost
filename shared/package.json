@@ -24,6 +24,7 @@
     "./structured-exchange/export": "./src/structuredExchangeExport.ts",
     "./structured-exchange/profile": "./src/structuredExchangeProfile.ts",
     "./structured-exchange/profile-validation": "./src/structuredExchangeProfileValidation.ts",
+    "./structured-exchange/profile-check": "./src/structuredExchangeProfileCheck.ts",
     "./diagram-orientation": "./src/diagramOrientation.ts"
   },
   "dependencies": {

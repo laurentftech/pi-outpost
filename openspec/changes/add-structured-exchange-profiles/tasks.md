@@ -10,10 +10,10 @@
 
 ## 3. Holding a document to a profile
 
-- [ ] 3.1 Implement `checkAgainstProfile` for graphs and tables: kinds per vocabulary, missing kinds with heading rows exempt, undeclared attributes, types and list-ness, closed enumerations, required and null-required on complete documents, required removals in proposals; each refusal states what is allowed; verify one Node test per `ADocumentIsHeldToItsProfile` scenario, asserting rule, pointer and the listed allowed values
-- [ ] 3.2 Report open-enumeration values as notes with pointer and declared values; verify `AValueOutsideAnOpenEnumerationIsAcceptedAndReported` at the check level
-- [ ] 3.3 Implement profile selection: registered profile by exact identifier, default for a document naming none, `profile/unregistered-profile` and `profile/version-1-under-default` under a default, core-only without a default, sequences exempt; verify Node tests for every `AProjectWithADefaultAdmitsNoWayAround` scenario, `ASequenceIsNotHeldToAProfile`, `ProfilesAreNeverRetrieved` and `CoreValidationIgnoresRegisteredProfiles`
-- [ ] 3.4 Refuse a document viewpoint whose identifier its profile also declares (`profile/viewpoint-declared-twice`); verify a Node test
+- [x] 3.1 Implement `checkAgainstProfile` for graphs and tables: kinds per vocabulary, missing kinds with heading rows exempt, undeclared attributes, types and list-ness, closed enumerations, required and null-required on complete documents, required removals in proposals; each refusal states what is allowed; verify one Node test per `ADocumentIsHeldToItsProfile` scenario, asserting rule, pointer and the listed allowed values
+- [x] 3.2 Report open-enumeration values as notes with pointer and declared values; verify `AValueOutsideAnOpenEnumerationIsAcceptedAndReported` at the check level
+- [x] 3.3 Implement profile selection: registered profile by exact identifier, default for a document naming none, `profile/unregistered-profile` and `profile/version-1-under-default` under a default, core-only without a default, sequences exempt; verify Node tests for every `AProjectWithADefaultAdmitsNoWayAround` scenario, `ASequenceIsNotHeldToAProfile`, `ProfilesAreNeverRetrieved` and `CoreValidationIgnoresRegisteredProfiles`
+- [x] 3.4 Refuse a document viewpoint whose identifier its profile also declares (`profile/viewpoint-declared-twice`); verify a Node test
 
 ## 4. The project registry on the server
 
