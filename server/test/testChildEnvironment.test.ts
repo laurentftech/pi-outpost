@@ -9,9 +9,10 @@
  * nothing. node's child_process copies the parent's NODE_V8_COVERAGE into any child
  * environment that does not name it, so `delete env.NODE_V8_COVERAGE`, a destructured
  * `{ NODE_V8_COVERAGE: _sink, ...rest }` and an `env: { PATH }` all hand the sink back.
- * Only an explicit empty value turns coverage off in the child. So every launch of
- * `process.execPath` under server/test is read here, and each must blank it — through
- * `envWithoutCoverageSink` or by naming `NODE_V8_COVERAGE: ""`.
+ * Only an explicit value survives: empty turns coverage off in the child, a directory is a
+ * sink the test chose. So every launch of `process.execPath` under server/test is read here,
+ * and each must name it — through `envWithoutCoverageSink`, `NODE_V8_COVERAGE: ""`, or a
+ * deliberate sink of its own.
  */
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
@@ -42,7 +43,9 @@ function launches(): { file: string; line: number; call: string }[] {
 /** How a launch blanks the sink for its child, or undefined when it does not. */
 function guard(call: string, source: string): string | undefined {
   if (/envWithoutCoverageSink\(/.test(call)) return "envWithoutCoverageSink";
+  // Named, the parent value is not copied: blank to turn coverage off, or a deliberate sink.
   if (/NODE_V8_COVERAGE:\s*""/.test(call)) return "blanks it inline";
+  if (/NODE_V8_COVERAGE:\s*[A-Za-z_$]/.test(call)) return "names its own sink";
   // An environment held in a variable, named or spread: the file must build it blanked.
   const variable = /env:\s*\{\s*\.\.\.([A-Za-z_$][\w$]*)/.exec(call)?.[1] ?? /env:\s*([A-Za-z_$][\w$]*)\b/.exec(call)?.[1] ?? (/\benv\s*[,}]/.test(call) ? "env" : undefined);
   if (variable === undefined) return undefined;
