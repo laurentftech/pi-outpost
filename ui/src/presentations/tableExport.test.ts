@@ -238,6 +238,26 @@ describe("handing the browser a file", () => {
     expect(anchors[0].download).toBe("requirements.xlsx");
     vi.doUnmock("write-excel-file/browser");
   });
+
+  it("writes a workbook a spreadsheet opens: one sheet, its header naming the declared columns", async () => {
+    // ATableIsTakenAwayAsAWorkbook, on the bytes. The typing test above hands the writer
+    // a fake, so only this one notices a package that no longer holds together.
+    vi.resetModules();
+    const { default: JSZip } = await import("jszip");
+    const { downloadXlsx: realDownloadXlsx } = await import("./tableExport");
+    const { anchors, blobs } = captureDownload();
+
+    await realDownloadXlsx(tableExport(plain, nothingHidden), "requirements.xlsx");
+
+    expect(anchors[0].download).toBe("requirements.xlsx");
+    const zip = await JSZip.loadAsync(await blobs[0].arrayBuffer());
+    expect(zip.file("[Content_Types].xml")).not.toBeNull();
+    const workbook = await zip.file("xl/workbook.xml")!.async("string");
+    expect(workbook.match(/<sheet\b/g)).toHaveLength(1);
+    const sheet = await zip.file("xl/worksheets/sheet1.xml")!.async("string");
+    const strings = (await zip.file("xl/sharedStrings.xml")?.async("string")) ?? "";
+    for (const column of ["ID", "Status"]) expect(sheet + strings).toContain(`>${column}<`);
+  });
 });
 
 describe("a proposal's derived roles leave with it", () => {
