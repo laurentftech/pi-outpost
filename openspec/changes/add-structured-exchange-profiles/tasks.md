@@ -5,8 +5,8 @@
 
 ## 2. Profile validation (the profile itself)
 
-- [ ] 2.1 Implement profile validation: schema, then `profile-format/*` rules for duplicate kinds and attributes, empty and repeated enumeration values, viewpoints retaining undeclared kinds, viewpoints sharing an identifier; verify a Node test per rule covers `APublishedProfileFormat` scenarios, each asserting rule and pointer
-- [ ] 2.2 Implement registry validation: schema, duplicate profile identifiers across files, a default that is not registered; verify Node tests for `TwoProfilesSharingAnIdentifierRefuseEveryDocument` and `AnUnregisteredDefaultRefusesEveryDocument` at the validation level
+- [x] 2.1 Implement profile validation: schema, then `profile-format/*` rules for duplicate kinds and attributes, empty and repeated enumeration values, viewpoints retaining undeclared kinds, viewpoints sharing an identifier; verify a Node test per rule covers `APublishedProfileFormat` scenarios, each asserting rule and pointer
+- [x] 2.2 Implement registry validation: schema, duplicate profile identifiers across files, a default that is not registered; verify Node tests for `TwoProfilesSharingAnIdentifierRefuseEveryDocument` and `AnUnregisteredDefaultRefusesEveryDocument` at the validation level
 
 ## 3. Holding a document to a profile
 
