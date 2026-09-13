@@ -48,7 +48,9 @@ import {
   NOTHING_HIDDEN,
   pathExtent,
   relationshipRole,
+  resolveViewpoint,
   ROLE_LABEL,
+  sameNarrowing,
   SELF_LOOP,
   type Box,
   type ChangeRole,
@@ -56,7 +58,12 @@ import {
   type Narrowing,
   type Nudge,
 } from "./structuredExchangeModel.ts";
-import type { StructuredElement, StructuredGraphData, StructuredSequenceData } from "./structuredExchange.ts";
+import type {
+  StructuredElement,
+  StructuredGraphData,
+  StructuredSequenceData,
+  StructuredViewpoint,
+} from "./structuredExchange.ts";
 
 /** A shape, with everything needed to draw it and nothing else. */
 export type Primitive = PrimitiveShape & {
@@ -614,6 +621,68 @@ export function legendGroups(
   return [{ id: "diagram-legend", testId: "diagram-legend", primitives: [], groups: inner }];
 }
 
+/** The statement a figure makes about itself is set smaller than a label, and lined as such. */
+const NOTE_LINE_HEIGHT = 12;
+const NOTE_CHAR_WIDTH = 5.2;
+
+/**
+ * A statement broken into lines that fit the canvas, at word boundaries, and never
+ * shortened.
+ *
+ * Not `wrapLabel`: a label is capped at a few lines and ellipsised, which is right for a
+ * box and wrong here — a viewpoint's concern is what the figure is required to state,
+ * and a figure that cut it off would say less than it was drawn for.
+ */
+export function wrapNote(text: string, width: number): string[] {
+  const perLine = Math.max(Math.floor((width - 24) / NOTE_CHAR_WIDTH), 20);
+  const lines: string[] = [];
+  let current = "";
+  for (const word of text.split(/\s+/).filter((part) => part !== "")) {
+    if (current === "") current = word;
+    else if (current.length + 1 + word.length <= perLine) current = `${current} ${word}`;
+    else {
+      lines.push(current);
+      current = word;
+    }
+    // A single word longer than the line is broken rather than allowed to run off.
+    while (current.length > perLine) {
+      lines.push(current.slice(0, perLine));
+      current = current.slice(perLine);
+    }
+  }
+  if (current !== "") lines.push(current);
+  return lines;
+}
+
+/**
+ * What a figure says about itself, or undefined when there is nothing to say.
+ *
+ * Without a viewpoint this is the sentence narrowed figures have always carried, word
+ * for word: a figure that declares no viewpoint must not change because viewpoints
+ * exist. With one, the figure names it and the concern it frames first, so a figure
+ * lifted out of its report still says what it is a reading of — and says so when what
+ * it shows has been adjusted beyond what the viewpoint alone would hide.
+ */
+function figureStatement(
+  data: StructuredGraphData,
+  shown: StructuredGraphData,
+  hidden: Narrowing,
+  isProposal: boolean,
+  viewpoint: StructuredViewpoint | undefined,
+): string | undefined {
+  const counts =
+    `${shown.nodes.length} of ${data.nodes.length} elements and ` +
+    `${shown.edges.length} of ${data.edges.length} relationships shown.` +
+    (isProposal ? " Hidden types are still part of the proposal." : "");
+  if (viewpoint === undefined) return hidden.size === 0 ? undefined : `Filtered view: ${counts}`;
+  const adjusted = !sameNarrowing(hidden, resolveViewpoint(data, viewpoint));
+  return (
+    `Viewpoint: ${viewpoint.label} — ${viewpoint.concern.replace(/[.\s]+$/, "")}` +
+    (adjusted ? " (adjusted)." : ".") +
+    (hidden.size === 0 ? "" : ` ${counts}`)
+  );
+}
+
 /* ── The graph ──────────────────────────────────────────────────────────────── */
 
 /** A marker id for a colour, since a hex is not a valid id on its own. */
@@ -659,6 +728,15 @@ export type GraphFigureOptions = {
    * the same one the reader was shown.
    */
   orientation?: Orientation;
+  /**
+   * The viewpoint this figure is drawn for, when it is drawn for one.
+   *
+   * Carried whole rather than as a name, because the figure has to be able to say
+   * when what it shows has been adjusted beyond the viewpoint, and that is a
+   * comparison with what the viewpoint alone would hide. The narrowing itself still
+   * arrives in `hidden`: the caller resolves the viewpoint and adds anything further.
+   */
+  viewpoint?: StructuredViewpoint;
 };
 
 /**
@@ -863,7 +941,12 @@ export function graphFigure(data: StructuredGraphData, options: GraphFigureOptio
 
   const legendTop = bottom + 4;
   const width = Math.max(right - left, legendMinimumWidth(legend));
-  const height = bottom - top + legendHeight(legend, width);
+  // A viewpoint's statement is wrapped below the key and needs its own height; a
+  // figure without one keeps exactly the height it always had.
+  const statement = figureStatement(data, shown, hidden, isProposal, options.viewpoint);
+  const viewpointNoteHeight =
+    options.viewpoint === undefined || statement === undefined ? 0 : wrapNote(statement, width).length * NOTE_LINE_HEIGHT + 4;
+  const height = bottom - top + legendHeight(legend, width) + viewpointNoteHeight;
 
   const groups: FigureGroup[] = [];
 
@@ -1004,14 +1087,31 @@ export function graphFigure(data: StructuredGraphData, options: GraphFigureOptio
     });
   }
 
-  const narrowing =
-    hidden.size === 0
-      ? undefined
-      : `Filtered view: ${shown.nodes.length} of ${data.nodes.length} elements and ` +
-        `${shown.edges.length} of ${data.edges.length} relationships shown.` +
-        (isProposal ? " Hidden types are still part of the proposal." : "");
+  const viewpoint = options.viewpoint;
+  const narrowing = statement;
 
-  if (narrowing !== undefined) {
+  if (narrowing !== undefined && viewpoint !== undefined) {
+    // Wrapped to the canvas and given room of its own, because a concern runs to
+    // hundreds of characters and one line of it would leave the picture.
+    const lines = wrapNote(narrowing, width);
+    groups.push({
+      id: "filter-note",
+      testId: "diagram-filter-note",
+      data: { viewpoint: viewpoint.id },
+      primitives: lines.map((line, index) => ({
+        shape: "text" as const,
+        x: left + 12,
+        y: legendTop + legendHeight(legend, width) + NOTE_LINE_HEIGHT * index + NOTE_LINE_HEIGHT - 4,
+        // A trailing space on every line but the last, so the group's text reads as the
+        // sentence it is rather than words run together at each wrap.
+        text: index < lines.length - 1 ? `${line} ` : line,
+        fontSize: 9,
+        fontWeight: 600,
+        fill: "#92400e",
+        fontFamily: FIGURE_FONT,
+      })),
+    });
+  } else if (narrowing !== undefined) {
     groups.push({
       id: "filter-note",
       primitives: [

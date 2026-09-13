@@ -92,6 +92,50 @@ describe("every enriched field survives the crossing", () => {
   });
 });
 
+/** A graph declaring the readings it is made for — the other shape the enriched contract carries. */
+const withViewpoints = {
+  schema: "urn:structured-exchange:2",
+  kind: "graph",
+  profile: "acme/physical",
+  viewpoints: [
+    {
+      id: "power",
+      label: "Power distribution",
+      concern: "Where energy is stored, converted and consumed",
+      elementKinds: ["source", "load"],
+      relationshipKinds: ["power"],
+    },
+    { id: "parts", label: "Parts", concern: "What the system is made of", elementKinds: ["source", "load", "controller"] },
+  ],
+  data: {
+    nodes: [
+      { id: "battery", label: "Battery", kind: "source" },
+      { id: "motor", label: "Motor", kind: "load" },
+      { id: "ecu", label: "ECU", kind: "controller" },
+    ],
+    edges: [
+      { from: "battery", to: "motor", kind: "power" },
+      { from: "ecu", to: "motor", kind: "signal" },
+    ],
+  },
+};
+
+describe("viewpoints survive the crossing", () => {
+  test("they arrive exactly as they were sent, in the producer's order", () => {
+    // AnEnrichedDocumentMayDeclareViewpoints. Order matters beyond tidiness: it is
+    // the order a reader is offered them in.
+    const arrived = acrossTheWire(withViewpoints) as typeof withViewpoints;
+    assert.deepEqual(arrived, withViewpoints);
+    assert.deepEqual(arrived.viewpoints.map((viewpoint) => viewpoint.id), ["power", "parts"]);
+    assert.deepEqual(Object.keys(arrived.viewpoints[0]), ["id", "label", "concern", "elementKinds", "relationshipKinds"]);
+  });
+
+  test("and the document is still valid on the far side", () => {
+    const verdict = parseStructuredExchange(acrossTheWire(withViewpoints), checkStructuredExchangeSchema);
+    assert.equal(verdict.valid, true, verdict.valid ? "" : verdict.issues.map((issue) => issue.rule).join(", "));
+  });
+});
+
 describe("restoring the conversation restores the document", () => {
   /** A reopened session: history replayed, exactly as a reconnect replays it. */
   function replayed(document: unknown) {
@@ -124,6 +168,12 @@ describe("restoring the conversation restores the document", () => {
     const card = replayed(sound);
     const verdict = parseStructuredExchange(JSON.parse(card.structured!), checkStructuredExchangeSchema);
     assert.equal(verdict.valid, true, verdict.valid ? "" : verdict.issues.map((issue) => issue.rule).join(", "));
+  });
+
+  test("a reopened session carries the viewpoints a document declared", () => {
+    const card = replayed(withViewpoints);
+    assert.ok(card.structured !== undefined, "the structured document was dropped on replay");
+    assert.deepEqual(JSON.parse(card.structured), withViewpoints);
   });
 
   test("a version 1 document replays exactly as it did before", () => {
