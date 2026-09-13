@@ -383,11 +383,13 @@ const projectsMode = await startServer(
   { env: onlyOneFakeProvider() },
 );
 
-// A project that holds its structured-exchange documents to a profile of its own. The
-// transcript replays two requirement tables the project's profile accepts — one with a
-// value outside an open enumeration — and every prompt presents a third, live. Edit
-// profiles/requirements.json (drop "in review" from status) or break the registry, then
-// reload: the statement beside each table follows the files as they are now.
+// A project that holds its structured-exchange documents to a profile of its own, and
+// reviews them against rules. The transcript replays requirement tables the profile
+// accepts — one with a value outside an open enumeration, one leaving two rule findings
+// to check — one breaking a refuse rule, and a conformity report built from a batch by the
+// reference validator's own code (also written to reports/). Every prompt presents another
+// table, live. Edit profiles/requirements.json or rules/review.json, or break the
+// registry, then reload: the statement beside each table follows the files as they are now.
 const requirementsProfile = {
   schema: "urn:structured-exchange-profile:1",
   id: "acme/requirements",
@@ -398,12 +400,41 @@ const requirementsProfile = {
       attributes: [
         { name: "status", type: "enumeration", values: ["draft", "in review", "approved", "withdrawn"], closed: true, required: true },
         { name: "priority", type: "enumeration", values: ["must", "should", "could"], closed: false },
+        { name: "category", type: "enumeration", values: ["derived", "refined", "direct"], closed: true },
+        { name: "safety", type: "enumeration", values: ["yes", "no"], closed: true },
       ],
     },
   ],
-  relationshipKinds: [{ kind: "derives" }],
+  relationshipKinds: [{ kind: "derives" }, { kind: "satisfies" }],
 };
-const requirementsTable = (rows: { id: string; text: string; status: string; priority?: string }[]) => ({
+const reviewRules = {
+  schema: "urn:structured-exchange-rules:1",
+  profile: "acme/requirements",
+  rules: [
+    {
+      id: "ARP4754A-derived-no-satisfy",
+      source: "ARP4754A",
+      statement: "Une exigence dérivée ne satisfait pas une exigence amont.",
+      level: "refuse",
+      relationship: "satisfies",
+      when: { from: { category: ["derived"] } },
+      then: "forbidden",
+    },
+    {
+      id: "SAF-satisfied-by-safety",
+      source: "Safety plan",
+      statement: "Une exigence safety n'est satisfaite que par des exigences safety.",
+      level: "refuse",
+      relationship: "satisfies",
+      when: { to: { safety: ["yes"] } },
+      then: { from: { safety: ["yes"] } },
+    },
+    { id: "SAF-approved", statement: "A safety requirement is approved.", level: "report", element: "requirement", when: { safety: ["yes"] }, then: { status: ["approved"] } },
+  ],
+};
+type BenchRequirement = { id: string; text: string; status: string; priority?: string; category?: string; safety?: string };
+type BenchRelation = { from: Record<string, string>; to: Record<string, string> };
+const requirementsTable = (rows: BenchRequirement[], relations: BenchRelation[] = []) => ({
   schema: "urn:structured-exchange:2",
   kind: "table",
   profile: "acme/requirements",
@@ -413,10 +444,17 @@ const requirementsTable = (rows: { id: string; text: string; status: string; pri
       id: row.id.toLowerCase(),
       kind: "requirement",
       cells: [row.id, row.text],
-      attributes: { status: row.status, ...(row.priority === undefined ? {} : { priority: row.priority }) },
+      attributes: {
+        status: row.status,
+        ...(row.priority === undefined ? {} : { priority: row.priority }),
+        ...(row.category === undefined ? {} : { category: row.category }),
+        ...(row.safety === undefined ? {} : { safety: row.safety }),
+      },
     })),
+    ...(relations.length === 0 ? {} : { relations: relations.map((relation) => ({ ...relation, kind: "satisfies" })) }),
   },
 });
+const upstream: BenchRequirement = { id: "SYS-1", text: "The vehicle stops within 40 m", status: "approved", category: "direct", safety: "yes" };
 const presented = (toolCallId: string, details: unknown, timestamp: number) => ({
   role: "toolResult",
   toolCallId,
@@ -429,12 +467,48 @@ const presented = (toolCallId: string, details: unknown, timestamp: number) => (
 const profilesRoot = await makeWorkspace({
   "readme.md": "# profiles\n",
   ".pi-outpost/structured-exchange.json": JSON.stringify(
-    { schema: "urn:structured-exchange-profile-registry:1", profiles: ["profiles/requirements.json"], default: "acme/requirements" },
+    {
+      schema: "urn:structured-exchange-profile-registry:1",
+      profiles: ["profiles/requirements.json"],
+      rules: ["rules/review.json"],
+      default: "acme/requirements",
+    },
     null,
     2,
   ),
   "profiles/requirements.json": JSON.stringify(requirementsProfile, null, 2),
+  "rules/review.json": JSON.stringify(reviewRules, null, 2),
 });
+
+// The conformity report a reviewer gets from the reference validator, built by the same
+// code from a three-requirement batch against this very registry.
+const { readProjectRegistry } = await import("../shared/src/structuredExchangeProjectRegistry.ts");
+const { buildConformityReport, readBatch } = await import("../shared/src/structuredExchangeConformityReport.ts");
+const benchRegistry = await readProjectRegistry(profilesRoot);
+if (benchRegistry.state !== "usable") throw new Error(`the bench's registry is unusable: ${JSON.stringify(benchRegistry)}`);
+const batchLine = (rows: BenchRequirement[], relations: BenchRelation[] = []) =>
+  JSON.stringify({ subjects: [rows[0].id.toLowerCase()], document: requirementsTable(rows, relations) });
+const conformityReport = buildConformityReport(
+  readBatch(
+    [
+      JSON.stringify({ heading: "1. Braking", depth: 1 }),
+      batchLine([upstream]),
+      batchLine([{ id: "REQ-7", text: "Brake pressure rises within 150 ms", status: "approved", category: "derived", safety: "yes" }, upstream], [
+        { from: { id: "req-7" }, to: { id: "sys-1" } },
+      ]),
+      JSON.stringify({ heading: "2. Warning", depth: 1 }),
+      batchLine([{ id: "REQ-8", text: "Warn the driver | twice", status: "draft", category: "refined", safety: "yes" }]),
+    ].join("\n"),
+  ),
+  benchRegistry.context,
+  { date: "2026-09-13", version: "validate-structured-exchange (bench)", checkedAgainst: benchRegistry.files.map((file) => ({ uri: file.path, sha256: file.sha256 })) },
+);
+if (conformityReport.table === undefined) throw new Error(`the bench's report is not a table: ${conformityReport.tableRefused}`);
+const { mkdir: makeDirectory } = await import("node:fs/promises");
+await makeDirectory(path.join(profilesRoot, "reports"), { recursive: true });
+await writeFile(path.join(profilesRoot, "reports/conformity.json"), JSON.stringify(conformityReport.table, null, 2));
+await writeFile(path.join(profilesRoot, "reports/conformity.md"), conformityReport.markdown);
+
 const profilesConfig = path.join(profilesRoot, "fake-rpc.json");
 await writeFile(
   profilesConfig,
@@ -443,6 +517,21 @@ await writeFile(
     messages: [
       presented("profiles-in-review", requirementsTable([{ id: "REQ-1", text: "Stop within 40 m", status: "in review" }, { id: "REQ-2", text: "Warn the driver", status: "approved" }]), 1),
       presented("profiles-open-value", requirementsTable([{ id: "REQ-3", text: "Log every stop", status: "draft", priority: "urgent" }]), 2),
+      // Derived, and satisfying an upstream requirement: breaks a refuse rule.
+      presented(
+        "profiles-rule-violation",
+        requirementsTable([{ id: "REQ-5", text: "Brake pressure rises within 150 ms", status: "approved", category: "derived", safety: "yes" }, upstream], [
+          { from: { id: "req-5" }, to: { id: "sys-1" } },
+        ]),
+        3,
+      ),
+      // A draft safety requirement (report rule), satisfying something the table does not carry (not verifiable).
+      presented(
+        "profiles-findings",
+        requirementsTable([{ id: "REQ-6", text: "Hold the brake on a slope", status: "draft", category: "direct", safety: "yes" }], [{ from: { id: "req-6" }, to: { ref: "SYS-9" } }]),
+        4,
+      ),
+      presented("profiles-conformity-report", conformityReport.table, 5),
     ],
     commands_: {
       prompt: {
