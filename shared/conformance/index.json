@@ -74,6 +74,9 @@
     },
     {
       "file": "valid/v2-table-at-the-heading-depth-ceiling.json"
+    },
+    {
+      "file": "valid/v2-graph-with-viewpoints.json"
     }
   ],
   "invalid": [
@@ -228,6 +231,30 @@
     {
       "file": "invalid/v2-relation-without-a-kind.json",
       "expectedRule": "schema/required"
+    },
+    {
+      "file": "invalid/v2-viewpoint-retaining-an-absent-kind.json",
+      "expectedRule": "unresolved-viewpoint-kind"
+    },
+    {
+      "file": "invalid/v2-viewpoints-sharing-an-identifier.json",
+      "expectedRule": "duplicate-viewpoint-identifier"
+    },
+    {
+      "file": "invalid/v2-viewpoint-retaining-nothing.json",
+      "expectedRule": "empty-viewpoint"
+    },
+    {
+      "file": "invalid/v2-viewpoints-on-a-table.json",
+      "expectedRule": "viewpoints-without-graph"
+    },
+    {
+      "file": "invalid/v2-viewpoint-listing-a-kind-twice.json",
+      "expectedRule": "schema/uniqueItems"
+    },
+    {
+      "file": "invalid/viewpoints-under-version-1.json",
+      "expectedRule": "schema/additionalProperties"
     }
   ]
 }

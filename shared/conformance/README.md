@@ -60,6 +60,10 @@ JSON Schema decides shape. These are the relational rules that follow it, and th
 | `too-many-kinds` | more distinct element or relationship kinds than the rendering can distinguish |
 | `row-column-mismatch` | a row whose length differs from the declared columns |
 | `unsupported-version` | a schema identifier in the contract's family that this build has no validator for |
+| `viewpoints-without-graph` | viewpoints declared on a document that is not a graph |
+| `duplicate-viewpoint-identifier` | two viewpoints of one document sharing an `id` |
+| `empty-viewpoint` | a viewpoint that retains no element kind and no relationship kind |
+| `unresolved-viewpoint-kind` | a viewpoint retaining a kind no element, or no relationship, of the document has — checked per vocabulary, and never corrected to a near miss |
 
 Rules prefixed `schema/` come from the JSON Schema itself; the suffix is the keyword
 that refused it.

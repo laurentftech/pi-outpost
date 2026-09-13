@@ -7,10 +7,10 @@
 
 ## 2. Semantic rules
 
-- [ ] 2.1 Add `unresolved-viewpoint-kind` to `validateStructuredExchangeSemantics`, checked per vocabulary, pointing at the offending kind; verify with tests for an absent element kind, an absent relationship kind, a name present only in the other vocabulary, and a one-character near miss that is refused and never substituted (`AViewpointNamingAnAbsentKindIsRefused`, `ANearMissKindIsNotCorrected`).
-- [ ] 2.2 Add `duplicate-viewpoint-identifier` (pointing at the second), `empty-viewpoint`, and `viewpoints-without-graph`; verify each with a test naming the rule and pointer (`DuplicateViewpointIdentifiersAreRefused`, `AViewpointRetainingNothingIsRefused`, `ViewpointsOutsideAGraphAreRefused`).
-- [ ] 2.3 Add valid and invalid version 2 conformance cases for viewpoints under `shared/conformance/valid` and `invalid`, registered in `index.json` with their expected rules, and verify the conformance suite passes with the version 1 lock unchanged.
-- [ ] 2.4 Verify the standalone producer check reaches the same verdicts and diagnostics as the application on those cases: `shared/bin/validate-structured-exchange.mjs` through `server/test/structuredExchangeConformance.test.ts`, and the bundled validator through `npm run build:validator` and `server/test/structuredExchangeValidatorCli.test.ts` (`AProducerChecksViewpointsOutsideTheApplication`).
+- [x] 2.1 Add `unresolved-viewpoint-kind` to `validateStructuredExchangeSemantics`, checked per vocabulary, pointing at the offending kind; verify with tests for an absent element kind, an absent relationship kind, a name present only in the other vocabulary, and a one-character near miss that is refused and never substituted (`AViewpointNamingAnAbsentKindIsRefused`, `ANearMissKindIsNotCorrected`).
+- [x] 2.2 Add `duplicate-viewpoint-identifier` (pointing at the second), `empty-viewpoint`, and `viewpoints-without-graph`; verify each with a test naming the rule and pointer (`DuplicateViewpointIdentifiersAreRefused`, `AViewpointRetainingNothingIsRefused`, `ViewpointsOutsideAGraphAreRefused`).
+- [x] 2.3 Add valid and invalid version 2 conformance cases for viewpoints under `shared/conformance/valid` and `invalid`, registered in `index.json` with their expected rules, and verify the conformance suite passes with the version 1 lock unchanged.
+- [x] 2.4 Verify the standalone producer check reaches the same verdicts and diagnostics as the application on those cases: `shared/bin/validate-structured-exchange.mjs` through `server/test/structuredExchangeConformance.test.ts`, and the bundled validator through `npm run build:validator` and `server/test/structuredExchangeValidatorCli.test.ts` (`AProducerChecksViewpointsOutsideTheApplication`).
 
 ## 3. One resolution for every consumer
 

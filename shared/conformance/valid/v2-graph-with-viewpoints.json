@@ -1,0 +1,83 @@
+{
+  "schema": "urn:structured-exchange:2",
+  "kind": "graph",
+  "viewpoints": [
+    {
+      "id": "power",
+      "label": "Power distribution",
+      "concern": "Where energy is stored, converted and consumed",
+      "elementKinds": [
+        "source",
+        "converter",
+        "load"
+      ],
+      "relationshipKinds": [
+        "power"
+      ]
+    },
+    {
+      "id": "control",
+      "label": "Control",
+      "concern": "What commands what",
+      "elementKinds": [
+        "controller",
+        "converter"
+      ],
+      "relationshipKinds": [
+        "signal"
+      ]
+    },
+    {
+      "id": "parts",
+      "label": "Parts",
+      "concern": "What the system is made of",
+      "elementKinds": [
+        "source",
+        "converter",
+        "load",
+        "controller"
+      ]
+    }
+  ],
+  "data": {
+    "nodes": [
+      {
+        "id": "battery",
+        "label": "Battery",
+        "kind": "source"
+      },
+      {
+        "id": "inverter",
+        "label": "Inverter",
+        "kind": "converter"
+      },
+      {
+        "id": "motor",
+        "label": "Motor",
+        "kind": "load"
+      },
+      {
+        "id": "ecu",
+        "label": "ECU",
+        "kind": "controller"
+      }
+    ],
+    "edges": [
+      {
+        "from": "battery",
+        "to": "inverter",
+        "kind": "power"
+      },
+      {
+        "from": "inverter",
+        "to": "motor",
+        "kind": "power"
+      },
+      {
+        "from": "ecu",
+        "to": "inverter",
+        "kind": "signal"
+      }
+    ]
+  }
+}

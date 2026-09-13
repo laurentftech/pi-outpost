@@ -156,3 +156,82 @@ describe("viewpoints are bounded", () => {
     assert.ok(past.issues.some((issue) => issue.rule === "schema/maxLength" && issue.limit === at));
   });
 });
+
+describe("a viewpoint that cannot be meant is refused", () => {
+  const withViewpoints = (...viewpoints: Record<string, unknown>[]) => verdict(architecture({ viewpoints }));
+
+  test("a viewpoint naming an element kind no element has", () => {
+    // AViewpointNamingAnAbsentKindIsRefused
+    const outcome = withViewpoints({ ...power, elementKinds: ["source", "storage"] });
+    const issue = outcome.issues.find((candidate) => candidate.rule === "unresolved-viewpoint-kind");
+    assert.ok(issue, `expected unresolved-viewpoint-kind, got ${outcome.rules.join(", ")}`);
+    assert.equal(issue.path, "/viewpoints/0/elementKinds/1", "the refusal does not point at the kind");
+    assert.match(issue.message, /"storage"/);
+  });
+
+  test("a viewpoint naming a relationship kind no relationship has", () => {
+    const outcome = withViewpoints({ ...power, relationshipKinds: ["fluid"] });
+    const issue = outcome.issues.find((candidate) => candidate.rule === "unresolved-viewpoint-kind");
+    assert.ok(issue);
+    assert.equal(issue.path, "/viewpoints/0/relationshipKinds/0");
+  });
+
+  test("a name that exists only in the other vocabulary is not the same kind", () => {
+    // "power" is a relationship kind here. Retaining it as an element kind retains
+    // nothing, and saying which vocabulary it does belong to is what makes the
+    // refusal actionable.
+    const { id, label, concern } = power;
+    const outcome = withViewpoints({ id, label, concern, elementKinds: ["power"] });
+    const issue = outcome.issues.find((candidate) => candidate.rule === "unresolved-viewpoint-kind");
+    assert.ok(issue);
+    assert.match(issue.message, /relationship kind here/);
+  });
+
+  test("a near-miss kind is refused, and nothing is substituted for it", () => {
+    // ANearMissKindIsNotCorrected: "sources" is one character from "source".
+    const outcome = withViewpoints({ ...power, elementKinds: ["sources"] });
+    assert.equal(outcome.valid, false);
+    assert.deepEqual(outcome.rules, ["unresolved-viewpoint-kind"]);
+    assert.doesNotMatch(outcome.issues[0].message, /did you mean|"source"/);
+  });
+
+  test("two viewpoints sharing an identifier, pointing at the second", () => {
+    // DuplicateViewpointIdentifiersAreRefused
+    const outcome = withViewpoints(power, { ...power, label: "Also power" });
+    const issue = outcome.issues.find((candidate) => candidate.rule === "duplicate-viewpoint-identifier");
+    assert.ok(issue, `expected duplicate-viewpoint-identifier, got ${outcome.rules.join(", ")}`);
+    assert.equal(issue.path, "/viewpoints/1/id");
+    assert.match(issue.message, /\/viewpoints\/0/);
+  });
+
+  test("a viewpoint retaining no kind at all", () => {
+    // AViewpointRetainingNothingIsRefused
+    const outcome = withViewpoints({ id: "empty", label: "Nothing", concern: "Nothing in particular" });
+    const issue = outcome.issues.find((candidate) => candidate.rule === "empty-viewpoint");
+    assert.ok(issue, `expected empty-viewpoint, got ${outcome.rules.join(", ")}`);
+    assert.equal(issue.path, "/viewpoints/0");
+  });
+
+  test("viewpoints on a document that is not a graph", () => {
+    // ViewpointsOutsideAGraphAreRefused
+    const sequence = {
+      schema: V2,
+      kind: "sequence",
+      viewpoints: [power],
+      data: { participants: [{ id: "a", label: "A" }, { id: "b", label: "B" }], messages: [{ from: "a", to: "b", label: "go" }] },
+    };
+    const table = { schema: V2, kind: "table", viewpoints: [power], data: { columns: ["a"], rows: [["x"]] } };
+    for (const document of [sequence, table]) {
+      const outcome = verdict(document);
+      const issue = outcome.issues.find((candidate) => candidate.rule === "viewpoints-without-graph");
+      assert.ok(issue, `${document.kind}: expected viewpoints-without-graph, got ${outcome.rules.join(", ")}`);
+      assert.equal(issue.path, "/viewpoints");
+    }
+  });
+
+  test("a well-formed set of viewpoints raises nothing", () => {
+    const signals = { id: "control", label: "Control", concern: "What commands what", elementKinds: ["controller", "converter"], relationshipKinds: ["signal"] };
+    const outcome = withViewpoints(power, signals, { id: "elements-only", label: "Parts", concern: "What is there", elementKinds: ["load"] });
+    assert.equal(outcome.valid, true, `refused: ${JSON.stringify(outcome.issues)}`);
+  });
+});
