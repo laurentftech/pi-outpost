@@ -168,14 +168,22 @@ export function createStructuredExchangeToolDefinition(options: StructuredExchan
       const { document, summary } = params as { document: string; summary: string };
 
       const verdict = parseSerializedStructuredExchange(document, checkStructuredExchangeSchema, options.limits);
+      // Read now, not at construction: an edited profile applies to this very call.
+      const project = await readProjectProfiles(options.projectRoot);
       if (!verdict.valid) {
         // An error result, so the agent sees this as something to act on rather
         // than as a presentation that happened to be empty.
-        return { content: [{ type: "text", text: explain(verdict.issues) }], details: undefined, isError: true };
+        //
+        // In a project that registers profiles, said to be the contract's refusal. Once
+        // an agent has met one profile refusal it reads every later refusal as the
+        // profile's, and a model driven that way was seen deciding the profile imposed
+        // a "hybrid schema" and abandoning a table it had nearly right.
+        const heading =
+          project.state === "none"
+            ? undefined
+            : "The document was refused by the structured-exchange contract itself — not by this project's profile, which is only applied once the contract is satisfied. Nothing was presented. Fix these and call again:";
+        return { content: [{ type: "text", text: explain(verdict.issues, heading) }], details: undefined, isError: true };
       }
-
-      // Read now, not at construction: an edited profile applies to this very call.
-      const project = await readProjectProfiles(options.projectRoot);
       if (project.state === "unusable") {
         // Never degraded to the core contract alone: a registry the project wrote and
         // got wrong would otherwise remove every guarantee while everything looked fine.

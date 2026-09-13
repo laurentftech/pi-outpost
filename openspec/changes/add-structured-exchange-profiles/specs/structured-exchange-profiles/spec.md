@@ -94,6 +94,10 @@ when it names none in a project whose registry declares a default, in which case
 default. Holding a document to its profile SHALL happen only after the document satisfies the core
 contract.
 
+In a project that registers profiles, a refusal by the core contract SHALL say that it comes from the
+contract and not from the project's profile, so that the producer does not look for the cause in the
+profile.
+
 A document held to a profile SHALL be refused when:
 
 - an element, row, relationship or relation carries a kind the profile does not declare in the
@@ -180,6 +184,10 @@ Sequence documents SHALL NOT be held to a profile.
 #### Scenario: CoreViolationsAreReportedFirst
 - **WHEN** a document both breaks the core contract and strays from its profile
 - **THEN** the refusal reports the core violations, and the profile is applied once they are fixed
+
+#### Scenario: ACoreRefusalSaysItIsNotTheProfile
+- **WHEN** a document breaks the core contract in a project that registers profiles
+- **THEN** the refusal says it comes from the structured-exchange contract and not from the project's profile
 
 #### Scenario: ASequenceIsNotHeldToAProfile
 - **WHEN** a sequence document names a registered profile

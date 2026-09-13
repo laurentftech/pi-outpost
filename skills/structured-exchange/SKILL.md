@@ -414,6 +414,9 @@ place it points. Act on it:
 - **Use the words the refusal lists.** A kind, an attribute name or an enumeration value
   outside the profile is refused, and a near-miss is not corrected for you. Never invent a
   value to make a document pass; if none of the allowed values is true, say so to the user.
+- **Tell the two refusals apart.** A refusal headed "by the structured-exchange contract itself" is about
+  the document's shape — rows, endpoints, fields — and says nothing about the profile, which is only
+  applied once the contract is satisfied. Fix the shape; do not go looking for a stricter profile.
 - **Omitting `profile` does not step around it.** When the project declares a default, a
   document naming no profile is held to the default; naming a profile the project does not
   register, or writing version 1, is refused.

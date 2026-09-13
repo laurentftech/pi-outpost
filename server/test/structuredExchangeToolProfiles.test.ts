@@ -119,6 +119,8 @@ describe("the agent's tools in a project with profiles", () => {
       assert.equal(first.isError, true);
       assert.doesNotMatch(first.content[0].text, /profile\//, "profile rules were applied to a document the core contract refused");
       assert.match(first.content[0].text, /nowhere/);
+      // ACoreRefusalSaysItIsNotTheProfile: the agent is told where the cause is not.
+      assert.match(first.content[0].text, /refused by the structured-exchange contract itself — not by this project's profile/);
 
       broken.data.edges = [{ from: "t1", to: "r1", kind: "verifies" }];
       const second = await present(root, broken);
@@ -189,6 +191,19 @@ describe("the agent's tools in a project with profiles", () => {
       assert.notEqual(result.isError, true, result.content[0].text);
       assert.doesNotMatch(result.content[0].text, /conforms to/);
       assert.equal((result.details as { profile?: string }).profile, "acme/requirements", "the profile identifier did not survive");
+    });
+
+    test("says a contract refusal is not the profile's even under an unusable registry, and says nothing of profiles without one", async () => {
+      // ACoreRefusalSaysItIsNotTheProfile
+      const broken = { schema: "urn:structured-exchange:2", kind: "graph", data: { nodes: [{ id: "a", label: "A" }], edges: [{ from: "a", to: "ghost" }] } };
+      const underBrokenRegistry = await present(project({ ".pi-outpost/structured-exchange.json": "{ nope" }), broken);
+      assert.equal(underBrokenRegistry.isError, true);
+      assert.match(underBrokenRegistry.content[0].text, /not by this project's profile/);
+
+      const withoutRegistry = await present(project({ "README.md": "nothing" }), broken);
+      assert.equal(withoutRegistry.isError, true);
+      assert.match(withoutRegistry.content[0].text, /^The document was refused\. Nothing was presented\./);
+      assert.doesNotMatch(withoutRegistry.content[0].text, /profile/, "a project with no profiles was told about one");
     });
 
     test("an edited profile applies to the very next call of the same tool", async () => {
