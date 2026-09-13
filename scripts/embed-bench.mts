@@ -383,6 +383,101 @@ const projectsMode = await startServer(
   { env: onlyOneFakeProvider() },
 );
 
+// A project that holds its structured-exchange documents to a profile of its own. The
+// transcript replays two requirement tables the project's profile accepts — one with a
+// value outside an open enumeration — and every prompt presents a third, live. Edit
+// profiles/requirements.json (drop "in review" from status) or break the registry, then
+// reload: the statement beside each table follows the files as they are now.
+const requirementsProfile = {
+  schema: "urn:structured-exchange-profile:1",
+  id: "acme/requirements",
+  label: "ACME requirements model",
+  elementKinds: [
+    {
+      kind: "requirement",
+      attributes: [
+        { name: "status", type: "enumeration", values: ["draft", "in review", "approved", "withdrawn"], closed: true, required: true },
+        { name: "priority", type: "enumeration", values: ["must", "should", "could"], closed: false },
+      ],
+    },
+  ],
+  relationshipKinds: [{ kind: "derives" }],
+};
+const requirementsTable = (rows: { id: string; text: string; status: string; priority?: string }[]) => ({
+  schema: "urn:structured-exchange:2",
+  kind: "table",
+  profile: "acme/requirements",
+  data: {
+    columns: ["id", "requirement"],
+    rows: rows.map((row) => ({
+      id: row.id.toLowerCase(),
+      kind: "requirement",
+      cells: [row.id, row.text],
+      attributes: { status: row.status, ...(row.priority === undefined ? {} : { priority: row.priority }) },
+    })),
+  },
+});
+const presented = (toolCallId: string, details: unknown, timestamp: number) => ({
+  role: "toolResult",
+  toolCallId,
+  toolName: "present_structure",
+  content: [{ type: "text", text: "Requirements presented." }],
+  details,
+  isError: false,
+  timestamp,
+});
+const profilesRoot = await makeWorkspace({
+  "readme.md": "# profiles\n",
+  ".pi-outpost/structured-exchange.json": JSON.stringify(
+    { schema: "urn:structured-exchange-profile-registry:1", profiles: ["profiles/requirements.json"], default: "acme/requirements" },
+    null,
+    2,
+  ),
+  "profiles/requirements.json": JSON.stringify(requirementsProfile, null, 2),
+});
+const profilesConfig = path.join(profilesRoot, "fake-rpc.json");
+await writeFile(
+  profilesConfig,
+  JSON.stringify({
+    state: { sessionId: "profiles-1" },
+    messages: [
+      presented("profiles-in-review", requirementsTable([{ id: "REQ-1", text: "Stop within 40 m", status: "in review" }, { id: "REQ-2", text: "Warn the driver", status: "approved" }]), 1),
+      presented("profiles-open-value", requirementsTable([{ id: "REQ-3", text: "Log every stop", status: "draft", priority: "urgent" }]), 2),
+    ],
+    commands_: {
+      prompt: {
+        after: [
+          { type: "agent_start" },
+          { type: "tool_execution_start", toolCallId: "profiles-live", toolName: "present_structure", args: {} },
+          {
+            type: "tool_execution_end",
+            toolCallId: "profiles-live",
+            toolName: "present_structure",
+            result: { content: [{ type: "text", text: "Requirements presented." }], details: requirementsTable([{ id: "REQ-4", text: "Hold on a slope", status: "approved", priority: "must" }]) },
+            isError: false,
+          },
+          { type: "agent_end" },
+        ],
+      },
+    },
+  }),
+);
+const profiles = await startServer(
+  profilesRoot,
+  {
+    server: { allowedOrigins: [host.url], port: HOST_PORT + 8 },
+    branding: { title: "bench profiles", defaultTheme: "light" },
+    agentRuntime: {
+      mode: "rpc",
+      executable: process.execPath,
+      args: [path.join(REPO, "server/test/fixtures/fake-pi-rpc.mjs")],
+      startupTimeoutMs: 20_000,
+    },
+    sandbox: undefined,
+  },
+  { env: { ...onlyOneFakeProvider(), FAKE_PI_RPC_CONFIG: profilesConfig } },
+);
+
 const link = (server: string) => `${host.url}/?server=${encodeURIComponent(server)}&theme=light`;
 console.log("\n  embed bench — the widget inside a host page that fights it\n");
 console.log(`  settings, files, sessions   ${link(plain.base)}`);
@@ -395,6 +490,7 @@ console.log(
 console.log(`  seeded transcript           ${link(diagrams.base)}   (diagrams + table)`);
 console.log(`  tool progress bar           ${link(progress.base)}   (send any prompt, watch the tool card)`);
 console.log(`  agent question panel        ${link(question.base)}   (send any prompt; the panel holds until answered)`);
+console.log(`  project profiles            ${link(profiles.base)}   (statements beside each table; edit ${profilesRoot}/profiles/requirements.json and reload)`);
 console.log(`  model-aware thinking slider ${link(thinking.base)}   (🧠: low..xhigh, no off; switch to Plain Mini — declared off-only — and watch it settle)`);
 console.log("\n  embed workspace controls — the same widget under each policy\n");
 console.log(`  settings (the default)      ${link(plain.base)}   no header control; the root lives in Settings`);
@@ -406,6 +502,7 @@ let stopping = false;
 const stop = async () => {
   if (stopping) return;
   stopping = true;
+  await profiles.stop();
   await projectsMode.stop();
   await rootMode.stop();
   await question.stop();
