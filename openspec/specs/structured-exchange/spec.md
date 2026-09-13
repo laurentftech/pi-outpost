@@ -1167,15 +1167,24 @@ projected, and nothing in this application SHALL act on it.
 ### Requirement: ATableLeavesAsData
 
 A graph and a sequence leave this application as a figure. A table SHALL leave it as
-data: the reader SHALL be able to take the table away as a comma-separated file and
-as a spreadsheet workbook, in a form a spreadsheet application opens without
-repair.
+data: the reader SHALL be able to take the table away as a comma-separated file, as a
+spreadsheet workbook, in a form a spreadsheet application opens without repair, and as
+Markdown.
 
 An export SHALL carry what the reader is looking at: the declared columns in their
 declared order, every row currently shown, and each cell's declared value — a
 number as a number, an empty cell where the document declares null. Where rows
 declare roles, the export SHALL carry each row's role as a column of its own, since
 the colour that states it in the rendering cannot survive the crossing.
+
+In Markdown, a structural heading SHALL become a Markdown heading at its depth, and the
+rows beneath it a table of their own, so that a table organised into chapters reads as
+chapters. A value containing a character that would break a Markdown table — a pipe, a
+backslash, a newline — SHALL be escaped so the value reads as it was declared.
+
+The Markdown export SHALL be available without a browser, to the reference validation
+interface and to code in this application, and SHALL produce the same Markdown for the
+same rows wherever it runs.
 
 Where a rendering is narrowed, its export SHALL carry only the rows shown, and the
 application SHALL say so at the moment of export rather than letting a reader
@@ -1189,8 +1198,20 @@ believe they took the whole table away.
 - **WHEN** a reader exports a table as a spreadsheet workbook
 - **THEN** a spreadsheet application opens it without repair, with one sheet whose header row names the declared columns
 
+#### Scenario: ATableIsTakenAwayAsMarkdown
+- **WHEN** a reader exports a table with two chapters as Markdown
+- **THEN** the file holds each chapter's heading followed by a table of its rows under the declared columns
+
+#### Scenario: MarkdownEscapesWhatWouldBreakTheTable
+- **WHEN** a cell's value contains a pipe and a newline
+- **THEN** the Markdown table keeps its shape and the value reads as declared
+
+#### Scenario: MarkdownExportRunsWithoutABrowser
+- **WHEN** the reference validation interface exports a valid table as Markdown
+- **THEN** it writes the same Markdown the reader's export produces for the same rows
+
 #### Scenario: TheExportCarriesTheRolesTheColourCarried
-- **WHEN** a table whose rows declare roles is exported in either form
+- **WHEN** a table whose rows declare roles is exported in any form
 - **THEN** each row's role travels as a value, using the same words the key displays
 
 #### Scenario: ANarrowedTableExportsWhatItShows
@@ -1307,3 +1328,35 @@ narrowing which selected nothing is visible as such rather than delivered as an 
 - **GIVEN** a document that declares a viewpoint
 - **WHEN** the agent requests a figure naming that viewpoint
 - **THEN** the figure shows that viewpoint, and the result names it
+
+### Requirement: TheAgentCanWriteATableToAPath
+
+The agent SHALL be able to write a structured-exchange table it can read to a new Markdown file in the
+workspace, in every project, with or without a profile registry. The file SHALL hold exactly the Markdown the
+table's Markdown export produces for all of its rows, so a document the agent writes can include the table
+and be carried to Word like any Markdown.
+
+The document SHALL be read from where the agent may read and written only inside the writable zone; the
+destination SHALL end in `.md` and SHALL NOT already exist, and nothing SHALL be overwritten. A document that
+is not a table, that does not satisfy the core contract, or that strays from the project's profile or its
+rules when the project holds documents to one, SHALL be refused, and nothing SHALL be written.
+
+#### Scenario: TheAgentWritesATableAsMarkdown
+- **WHEN** the agent asks to write a table with two chapters to `docs/specification.md`
+- **THEN** the file holds the table's Markdown export, each chapter a heading followed by its rows
+
+#### Scenario: OnlyATableIsWrittenAsMarkdown
+- **WHEN** the agent asks to write a graph as Markdown
+- **THEN** the request is refused, naming the figure tool for a graph, and nothing is written
+
+#### Scenario: AnExistingFileIsNeverOverwritten
+- **WHEN** the agent asks to write a table to a path that already exists, or to a path not ending in `.md`
+- **THEN** the request is refused, and the existing file is unchanged
+
+#### Scenario: ATableIsWrittenOnlyInsideTheWritableZone
+- **WHEN** the agent asks to write a table outside the writable zone, or the sandbox is read-only
+- **THEN** the request is refused, and nothing is written
+
+#### Scenario: ATableStrayingFromItsProfileIsNotWritten
+- **WHEN** the project holds documents to a profile and the table violates one of its refuse rules
+- **THEN** the request is refused with the rule, and nothing is written
