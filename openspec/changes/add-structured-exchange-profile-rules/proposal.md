@@ -42,6 +42,10 @@ the result is a **review aid**, not certification evidence.
 - **Any structured-exchange table exports as Markdown**, headless: the validator writes the report as
   Markdown, and a reader can export any table as Markdown beside CSV and XLSX. Headings become Markdown
   headings with one table per chapter. The existing Markdown-to-Word export then carries it to Word.
+- **The agent can write a table to the workspace as Markdown.** A basic tool, beside `write_structure_figure`
+  and available in every project: `write_structure_table` reads a table document and writes a new `.md` file
+  in the writable zone — the same Markdown as the reader's export. When the project holds documents to a
+  profile, a table that strays from it is not written.
 
 Out of scope, each named so it is not mistaken for forgotten:
 - Converting DOORS exports. ISAI produces the documents; this change documents the shape it must produce.
@@ -71,7 +75,8 @@ Out of scope, each named so it is not mistaken for forgotten:
   counts findings to check; `TheReferenceValidatorChecksProfiles` — the validator checks rules files and a
   whole registry.
 - `structured-exchange`: `ATableLeavesAsData` — a table also leaves as Markdown, and that export is
-  available without a browser.
+  available without a browser; new `TheAgentCanWriteATableToAPath` — the agent writes a table as a Markdown
+  file in the workspace.
 
 ## Impact
 
@@ -79,6 +84,8 @@ Out of scope, each named so it is not mistaken for forgotten:
   the skill and in the packaged contract.
 - `shared/src/` — rules types, rules validation against a profile, rule evaluation (item and link, subjects,
   unverifiable), the report model, and a Markdown table export; the profile check calls rule evaluation.
+- `server/src/structuredExchangeTableTool.ts` — the new `write_structure_table` tool, registered where
+  `write_structure_figure` is (`index.ts`, `sandbox.ts`, `piOutpostTools.ts`).
 - `server/src/structuredExchangeProfiles.ts` — reading rules files; `structuredExchangeTool.ts` and
   `structuredExchangeFigureTool.ts` — rule refusals and findings; the conformance statement's count.
 - `shared/src/protocol.ts`, `ui/src/presentations/StructuredExchangeView.tsx` — the findings count in the

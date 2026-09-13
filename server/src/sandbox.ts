@@ -34,6 +34,7 @@ import { createXlsxExtractToolDefinition } from "./xlsxTool.ts";
 import { createPptxExtractToolDefinition } from "./pptxTool.ts";
 import { createPdfExtractToolDefinition } from "./pdfTool.ts";
 import { createStructuredExchangeFigureToolDefinition } from "./structuredExchangeFigureTool.ts";
+import { createStructuredExchangeTableToolDefinition } from "./structuredExchangeTableTool.ts";
 
 /**
  * Resolve `target` following symlinks in its deepest existing ancestor, so a
@@ -186,6 +187,16 @@ export async function createSandboxedTools(
   // one exactly as theirs is.
   readFactories.push((cwd) =>
     createStructuredExchangeFigureToolDefinition({
+      cwd,
+      allowedRoots: documentRoots,
+      maxBytes: structuredExchangeMaxBytes,
+      writableRoot: realWritableRoot,
+      projectRoot,
+    }),
+  );
+  // Writing a table as Markdown reads a document and writes one file: the figure tool's twin.
+  readFactories.push((cwd) =>
+    createStructuredExchangeTableToolDefinition({
       cwd,
       allowedRoots: documentRoots,
       maxBytes: structuredExchangeMaxBytes,
