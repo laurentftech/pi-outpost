@@ -363,7 +363,20 @@ drawn cannot be drawn. The result tells you how much of the document the figure 
 so a narrowing that took more than you meant is visible in the answer rather than in
 the file.
 
-A table has no figure — it is data. Export it as a spreadsheet.
+A table has no figure — it is data. To put one in a document you are writing,
+`write_structure_table` writes it as Markdown:
+
+```
+write_structure_table(
+  path: "requirements/braking.json",
+  output_path: "reports/braking-requirements.md"
+)
+```
+
+It reads a table from the workspace and writes a new `.md` file — each chapter a heading
+followed by a Markdown table of its rows — which you can include in the document or hand on.
+It never overwrites an existing file, and a table the project's profile or rules refuse is not
+written. The reader can also export a table they are shown as a spreadsheet or as Markdown.
 
 ## The enriched contract: `urn:structured-exchange:2`
 
@@ -426,6 +439,14 @@ place it points. Act on it:
 - **Values outside an open enumeration are accepted** and listed back to you with the values
   the enumeration declares. Look at each: a new value you meant is fine; a typo is not —
   present the document again, corrected.
+- **A `rule/…` refusal quotes a rule the project wrote** — for example that a derived
+  requirement does not satisfy an upstream one. If your document says what your source says,
+  the source breaks the rule: do not change a link or a value just to make it pass. Tell the
+  user which item and which rule, and let them decide.
+- **Findings to check come back with an accepted document**: a `report` rule was violated, or
+  a rule is not verifiable because a linked item is missing from the document or lacks the
+  attribute the rule reads. Tell the user about each. If you have the linked item, add it with
+  its attributes and present again; never invent a value to clear a finding.
 - **"The project's profile registry cannot be used"** is not about your document. Nothing
   can be presented until the project's files are fixed: tell the user which file and rule,
   rather than reshaping the document around it.

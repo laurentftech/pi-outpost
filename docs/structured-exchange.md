@@ -433,11 +433,13 @@ matched against them as an exact string, never resolved.
 {
   "schema": "urn:structured-exchange-profile-registry:1",
   "profiles": ["profiles/requirements.json"],
+  "rules": ["rules/review.json"],
   "default": "acme/requirements"
 }
 ```
 
-Profile paths are relative to the project directory and must stay inside it, links
+`rules` is optional; see [Rules a project reviews against](#rules-a-project-reviews-against).
+Profile and rules paths are relative to the project directory and must stay inside it, links
 included. Files are listed rather than discovered, so a stray file is never a rule and a
 missing one is an error. A project with no registry is unconstrained, as before.
 
@@ -457,12 +459,14 @@ Its format is `urn:structured-exchange-profile:1`, published with the other sche
         { "name": "status", "type": "enumeration", "values": ["draft", "approved", "withdrawn"], "closed": true, "required": true },
         { "name": "priority", "type": "enumeration", "values": ["must", "should", "could"], "closed": false },
         { "name": "owner", "type": "string" },
-        { "name": "verifiedBy", "type": "reference", "list": true }
+        { "name": "verifiedBy", "type": "reference", "list": true },
+        { "name": "category", "type": "enumeration", "values": ["derived", "refined", "direct"], "closed": true },
+        { "name": "safety", "type": "enumeration", "values": ["yes", "no"], "closed": true }
       ]
     },
     { "kind": "test" }
   ],
-  "relationshipKinds": [{ "kind": "derives" }, { "kind": "verifies" }],
+  "relationshipKinds": [{ "kind": "derives" }, { "kind": "verifies" }, { "kind": "satisfies" }],
   "viewpoints": [
     { "id": "verification", "label": "Verification", "concern": "What verifies each requirement", "elementKinds": ["requirement", "test"], "relationshipKinds": ["verifies"] }
   ]
@@ -527,7 +531,8 @@ everything looked fine.
 ### What the reader sees
 
 A presented document held to a profile says so beside its vocabulary, and in its text
-equivalent: that it conforms (with how many values fell outside open enumerations), that it
+equivalent: that it conforms (with how many values fell outside open enumerations, and how
+many findings its rules leave to check), that it
 does not conform to the profile as it stands now, or that it could not be checked because
 the registry cannot be used. The statement is re-established each time the document is
 shown, so a proposal restored after the profile was tightened says it no longer conforms. It
@@ -557,6 +562,159 @@ author's order. Compare it with the source model, enumerations above all — a v
 has and the profile lacks is a correct document refused. Decide closed or open deliberately:
 a closed enumeration refuses the typo and the legitimately new value alike.
 
+### Rules a project reviews against
+
+A profile says which words exist. Some of a project's constraints are between words: under
+ARP4754A a derived requirement does not satisfy an upstream requirement; a safety requirement
+is satisfied only by safety requirements. A project writes these as **rules**, in files the
+registry lists beside its profiles, each file for one registered profile:
+
+```json
+{
+  "schema": "urn:structured-exchange-rules:1",
+  "profile": "acme/requirements",
+  "rules": [
+    {
+      "id": "ARP4754A-derived-no-satisfy",
+      "source": "ARP4754A",
+      "statement": "A derived requirement does not satisfy an upstream requirement.",
+      "level": "refuse",
+      "relationship": "satisfies",
+      "when": { "from": { "category": ["derived"] } },
+      "then": "forbidden"
+    },
+    {
+      "id": "SAF-satisfied-by-safety",
+      "source": "Safety plan",
+      "statement": "A safety requirement is satisfied only by safety requirements.",
+      "level": "refuse",
+      "relationship": "satisfies",
+      "when": { "to": { "safety": ["yes"] } },
+      "then": { "from": { "safety": ["yes"] } }
+    },
+    {
+      "id": "SAF-approved",
+      "statement": "A safety requirement is approved.",
+      "level": "report",
+      "element": "requirement",
+      "when": { "safety": ["yes"] },
+      "then": { "status": ["approved"] }
+    }
+  ]
+}
+```
+
+Rules are written, or at least validated, by people. `statement` is the rule in the project's
+own words and language — French on one project, English on another — and is what every
+refusal, finding and report quotes; `id` and the optional `source` say where it comes from.
+
+**One grammar: when, then.**
+
+- A rule applies to one `element` kind — graph elements and table rows of that kind — or to one
+  `relationship` kind — graph relationships and table relations. A changed item in a proposal
+  is judged with the kind and attributes the change leaves it with.
+- `when` selects what the rule is about; without it, every item or link of the kind. `then`
+  is what must hold for those, or `"forbidden"`: nothing selected may exist.
+- A set of conditions maps an attribute name to the values it may take, and holds when every
+  one of its conditions does. For a link, `from` and `to` put conditions on the source and on
+  the target.
+
+A rules file is checked against its profile whenever the registry is read. A rule naming a
+kind, an attribute or a value the profile does not declare could never fire, so it makes the
+registry unusable — `rules-format/undeclared-kind`, `rules-format/undeclared-attribute`,
+`rules-format/undeclared-value`, `rules-format/value-type`, or
+`rules-format/unsupported-attribute` for a list or a reference, which conditions do not compare — instead of
+quietly checking nothing after a value was renamed. So do two files giving one rule `id`
+(`registry/duplicate-rule-identifier`), a rules file for a profile the registry does not list
+(`registry/rules-for-unregistered-profile`), and a listed file that is missing or outside the
+project.
+
+**Two levels.**
+
+- `refuse`: `present_structure`, `write_structure_figure` and `write_structure_table` refuse a
+  document that violates the rule, as they refuse a stray kind — with `rule/<id>`, a pointer to
+  the item or link, and the statement.
+- `report`: the document is accepted, and the violation is a **finding to check**: told to the
+  agent, and counted in the reader's conformance statement.
+
+**Not verifiable is not a pass.** A link rule reads the attributes at both ends. When an end is
+not in the document — a `{ "ref": … }` to something it does not carry — or is carried without
+the attribute the rule reads, the rule is *not verifiable here*: a finding to check, whatever
+its level, never a refusal and never a silent pass. Only the items a document is about are held
+to their own attributes: when a batch line names its `subjects`, a subject lacking the
+attribute simply fails the condition, while the linked items carried beside it are read, not
+judged.
+
+Rules are **a review aid**. A run with no finding says that the rules somebody wrote found
+nothing; it is not evidence that a specification is correct, and a finding is not a verdict —
+a person decides.
+
+### Validating a whole specification
+
+A specification exported from a requirements tool — whole, or an extract — is checked against
+the project's registry, requirement by requirement, with the reference validator:
+
+```
+node validate-structured-exchange.mjs --registry project/.pi-outpost/structured-exchange.json \
+  --batch spec.jsonl --report report.json --report-markdown report.md
+```
+
+The registry is given rather than a profile, so the specification is checked by exactly what
+the agent's tools read; its paths resolve against the project directory — the parent of
+`.pi-outpost/`. The input is JSON Lines, in the specification's order. This batch is two lines:
+SYS-1, then REQ-2 carrying the link to SYS-1 and SYS-1 itself, so the rules can read both ends:
+
+```jsonl
+{"subjects": ["sys-1"], "document": {"schema": "urn:structured-exchange:2", "kind": "table", "profile": "acme/requirements", "data": {"columns": ["id", "text"], "rows": [{"id": "sys-1", "ref": "SYS-1", "kind": "requirement", "cells": ["SYS-1", "The vehicle stops within 40 m."], "attributes": {"status": "approved", "category": "direct", "safety": "yes"}}]}}}
+{"subjects": ["req-2"], "document": {"schema": "urn:structured-exchange:2", "kind": "table", "profile": "acme/requirements", "data": {"columns": ["id", "text"], "rows": [{"id": "req-2", "ref": "REQ-2", "kind": "requirement", "cells": ["REQ-2", "Brake pressure rises within 150 ms."], "attributes": {"status": "approved", "category": "derived", "safety": "yes"}}, {"id": "sys-1", "ref": "SYS-1", "kind": "requirement", "cells": ["SYS-1", "The vehicle stops within 40 m."], "attributes": {"status": "approved", "category": "direct", "safety": "yes"}}], "relations": [{"from": {"id": "req-2"}, "to": {"id": "sys-1"}, "kind": "satisfies"}]}}}
+```
+
+It exits **1**: SYS-1 conforms, and REQ-2 is non-conforming — derived, it satisfies an upstream
+requirement.
+
+**What an exporter produces.** A converter such as ISAI writes, for each requirement in order:
+
+- a heading line, `{"heading": "1. Braking", "depth": 1}`, where a chapter starts;
+- a document line: a version 2 table naming the profile (or relying on the registry's
+  default), with the **same `columns` on every line**; the requirement as a row with its `id`,
+  `ref`, `kind`, cells and the attributes the rules read; and its identifier in `subjects`;
+- in the same table, its links as `relations`, and each requirement they reach as a row with
+  the attributes the rules read. Those rows are not reported on. A link whose other end is left
+  out is not verifiable, and is reported as a finding to check.
+
+A line that is not JSON, not a valid table, has other columns, is held to no registered profile,
+or reports a requirement an earlier line already reported is **unreadable**: named with its line
+number, while the rest of the batch is still checked. A line with no `subjects` treats every
+row as a subject. Ten thousand lines run in one process in seconds.
+
+**The report** is itself a version 2 table, shaped like the specification: a summary chapter —
+requirements per state, violations per rule counted once, unreadable lines, date, validator
+version — then each chapter heading and its requirements, with the specification's columns
+followed by:
+
+- `conformity`: `non-conforming` when a `refuse` rule or the profile's vocabulary is violated
+  for the requirement; otherwise `to check` when a `report` rule is violated or a rule is not
+  verifiable for it; otherwise `conforms`;
+- `violations`: one per line, `rule-id: statement`, with the other end of a link (`→ SYS-1`). A
+  link between two requirements of the batch shows on both rows and counts once.
+
+It carries each profile and rules file as an artifact, `rel: "checkedAgainst"` with its
+`sha256` digest, so a report says exactly which rules it was checked against. A violations cell
+past the contract's 1000-character bound ends with `… and N more (see the Markdown report)`; a
+report past the contract's row or size bounds is not written as JSON (`reportRefused` says
+why). `--report-markdown` writes the same report as Markdown — a heading per chapter, a table
+of its requirements — always, and complete.
+
+The standard output is a JSON summary. The exit status is **0** when no requirement is
+non-conforming and no line is unreadable — findings to check never fail a run; **1** otherwise;
+**2** when the batch cannot be read or the arguments are unusable; **4** when the registry is.
+
+The same validator also checks a registry on its own (`--registry` alone), holds one document to
+it as the agent's tools do (`--registry … doc.json`), prints every profile of a registry followed
+by each rule's statement beside the conditions it checks (`--registry … --describe-profile`,
+optionally with a profile identifier) so each statement can be read against what the machine
+applies, and prints any valid table as the reader's Markdown export (`--markdown table.json`).
+
 ## If you are not building in this repository
 
 You do not need our command-line interface, and you do not need this repository. The
@@ -566,6 +724,8 @@ contract ships with the package, under `contract/`:
 node_modules/pi-outpost/dist/contract/
   schemas/structured-exchange-1.json    the normative schema — any validator runs it
   schemas/structured-exchange-2.json    the enriched contract, published beside it
+  schemas/structured-exchange-rules-1.json
+                                        the rules a project reviews its specifications against
   conformance/                          documents and the verdict each should get
   validate-structured-exchange.mjs      the reference validator, self-contained
   README.md                             this page

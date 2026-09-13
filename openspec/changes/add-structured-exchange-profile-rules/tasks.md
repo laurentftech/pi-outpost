@@ -37,13 +37,13 @@
 ## 7. Reference validator
 
 - [x] 7.1 Add `--registry` (check a registry, or validate a document against it), rules in `--describe-profile` when given a registry, `--batch` with `--report` and `--report-markdown`, and `--markdown` for any valid table; exit statuses per D6, documented in the usage text; rebuild the bundle; verify tests against the bundle copied away from the repository for `ARulesFileIsCheckedAgainstItsProfile`, `ADocumentIsValidatedAgainstARegistry`, `RulesAreListedBesideTheirStatements`, `FindingsToCheckDoNotFailTheRun`, `ANonConformingRequirementFailsTheRun`, `MarkdownExportRunsWithoutABrowser`, and a ten-thousand-line batch run in one invocation (`ALargeBatchRunsInOneProcess`) with its duration recorded
-- [ ] 7.2 Ship the rules schema in the packaged contract and beside the skill; verify `npm run check:cli` and the skill schema copy test pass
+- [x] 7.2 Ship the rules schema in the packaged contract and beside the skill; verify `npm run check:cli` and the skill schema copy test pass
 
 ## 8. Documentation and skill
 
-- [ ] 8.1 Document rules files, the when/then grammar, levels, not-verifiable ends, and the conformance statement's findings in `docs/structured-exchange.md`; verify every JSON example passes the documented-examples suite, extended to route rules files to their validator
-- [ ] 8.2 Document batch validation, the report, and the document shape an exporter such as ISAI must produce (D9), with a two-line batch example; verify the example batch runs through the bundle with the documented exit status
-- [ ] 8.3 Tell the agent in `skills/structured-exchange/SKILL.md`, and in `present_structure`'s refusal text, how to act on a rule refusal and on findings to check, and that a table can be written to the workspace with `write_structure_table`; verify the bundled-skill and tool tests
+- [x] 8.1 Document rules files, the when/then grammar, levels, not-verifiable ends, and the conformance statement's findings in `docs/structured-exchange.md`; verify every JSON example passes the documented-examples suite, extended to route rules files to their validator
+- [x] 8.2 Document batch validation, the report, and the document shape an exporter such as ISAI must produce (D9), with a two-line batch example; verify the example batch runs through the bundle with the documented exit status
+- [x] 8.3 Tell the agent in `skills/structured-exchange/SKILL.md`, and in `present_structure`'s refusal text, how to act on a rule refusal and on findings to check, and that a table can be written to the workspace with `write_structure_table`; verify the bundled-skill and tool tests
 
 ## 9. Verification
 

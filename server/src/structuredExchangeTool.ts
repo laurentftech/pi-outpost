@@ -148,6 +148,13 @@ function explain(
       "If the source you were given uses a word the profile does not allow, do not replace it with an allowed one you have no grounds for: ask the user which value is true, or whether the profile should change.",
     );
   }
+  // A rule violation in a faithful document is a finding about the source. An agent told
+  // only "fix these" would rewire the link to pass, and hide the one thing a review is for.
+  if (issues.some((issue) => issue.rule.startsWith("rule/"))) {
+    lines.push(
+      "A rule/… refusal quotes a rule the project wrote. If your document states what your source says, the source breaks that rule: do not change a link or a value just to make it pass — tell the user which item and which rule, and let them decide.",
+    );
+  }
   return lines.join("\n");
 }
 
@@ -182,6 +189,9 @@ function describeFindings(findings: readonly RuleFinding[]): string {
     const kind = finding.outcome === "not-verifiable" ? "not verifiable here" : "report rule violated";
     lines.push(`- ${finding.path} (${kind}): ${finding.message}`);
   }
+  lines.push(
+    "Tell the user about each. A rule not verifiable here needs the linked item in the document: add it with its attributes if you have it. Never invent a value to clear a finding.",
+  );
   return lines.join("\n");
 }
 
