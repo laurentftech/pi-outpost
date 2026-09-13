@@ -1,7 +1,7 @@
 ## 1. Formats
 
-- [ ] 1.1 Write `shared/schemas/structured-exchange-rules-1.json` (D2) and add the optional `rules` list to `structured-exchange-profile-registry-1.json`, with ceilings (rules per file, conditions per set, values per condition, statement and source lengths) mirrored in a constant; verify with a schema test that the design's three example rules and example registry are accepted, that every ceiling equals the schema's bound, and that every string and array is bounded
-- [ ] 1.2 Add the rules types to `shared/src/structuredExchangeProfile.ts` (or a sibling module) and export them; verify `npm run typecheck` passes
+- [x] 1.1 Write `shared/schemas/structured-exchange-rules-1.json` (D2) and add the optional `rules` list to `structured-exchange-profile-registry-1.json`, with ceilings (rules per file, conditions per set, values per condition, statement and source lengths) mirrored in a constant; verify with a schema test that the design's three example rules and example registry are accepted, that every ceiling equals the schema's bound, and that every string and array is bounded
+- [x] 1.2 Add the rules types to `shared/src/structuredExchangeProfile.ts` (or a sibling module) and export them; verify `npm run typecheck` passes
 
 ## 2. Rules checked against their profile
 

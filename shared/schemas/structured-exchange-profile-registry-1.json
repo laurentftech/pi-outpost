@@ -22,6 +22,16 @@
         "maxLength": 500
       }
     },
+    "rules": {
+      "description": "Rules files, by path relative to the project directory. Each names the registered profile it applies to, and is checked against that profile's vocabulary whenever it is read.",
+      "type": "array",
+      "maxItems": 20,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 500
+      }
+    },
     "default": {
       "description": "The identifier of a registered profile that documents naming no profile are held to. Declaring one also refuses documents that name an unregistered profile, and version 1 documents.",
       "type": "string",
