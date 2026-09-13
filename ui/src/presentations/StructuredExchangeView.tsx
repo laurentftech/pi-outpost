@@ -38,6 +38,8 @@ import {
   type Primitive,
 } from "@pi-outpost/shared/structured-exchange/figure";
 import { otherOrientation, type Orientation } from "@pi-outpost/shared/diagram-orientation";
+import { resolveViewpoint, sameNarrowing, viewpointsOf } from "@pi-outpost/shared/structured-exchange/model";
+import type { StructuredViewpoint } from "@pi-outpost/shared/structured-exchange";
 import { downloadCsv, downloadXlsx, tableExport } from "./tableExport";
 import type { ActionDispatch, PresentationProps, ToolItem } from "./types";
 import { resourceTargetFor } from "@pi-outpost/shared/resource-target";
@@ -257,6 +259,7 @@ function GraphView({
   hidden,
   setHidden,
   orientation,
+  viewpoint,
 }: {
   data: StructuredGraphData;
   isProposal: boolean;
@@ -287,6 +290,8 @@ function GraphView({
    * naming the same thing both of them drew.
    */
   orientation: Orientation;
+  /** The viewpoint the reader selected, which the figure names inside itself. */
+  viewpoint?: StructuredViewpoint;
 }) {
   const svgRef = useRef<SVGSVGElement | null>(null);
   const [dragging, setDragging] = useState<string | undefined>(undefined);
@@ -311,8 +316,8 @@ function GraphView({
    * file cannot carry: pointing, dragging and panning.
    */
   const figure = useMemo(
-    () => graphFigure(data, { isProposal, hidden, nudges, orientation }),
-    [data, isProposal, hidden, nudges, orientation],
+    () => graphFigure(data, { isProposal, hidden, nudges, orientation, ...(viewpoint === undefined ? {} : { viewpoint }) }),
+    [data, isProposal, hidden, nudges, orientation, viewpoint],
   );
 
   /**
@@ -1330,6 +1335,8 @@ export function StructuredExchangeDocument({ envelope, source, rawOutput, dispat
   const [hidden, setHidden] = useState<Narrowing>(NOTHING_HIDDEN);
   /** What the reader chose, when they chose. Undefined means "however it comes out". */
   const [chosenOrientation, setChosenOrientation] = useState<Orientation | undefined>(undefined);
+  /** The viewpoint the reader selected, by identifier. Undefined is the whole document. */
+  const [selectedViewpoint, setSelectedViewpoint] = useState<string | undefined>(undefined);
   const mermaid = useMemo(() => toMermaid(envelope), [envelope]);
 
   const isProposal = envelope.target !== undefined;
@@ -1349,6 +1356,23 @@ export function StructuredExchangeDocument({ envelope, source, rawOutput, dispat
     [envelope, hidden],
   );
   const orientation = chosenOrientation ?? chooses;
+  /**
+   * The readings the document declares, and the one selected.
+   *
+   * Selecting a viewpoint *seeds* the narrowing rather than locking it: `hidden` becomes
+   * what the viewpoint hides, and the key goes on editing `hidden` as it always has.
+   * Whether the reader has since adjusted it is a comparison with the viewpoint's own
+   * resolution, not a second piece of state that could fall out of step with the first.
+   */
+  const declaredViewpoints = useMemo(() => (envelope.kind === "graph" ? viewpointsOf(envelope) : []), [envelope]);
+  const viewpoint = declaredViewpoints.find((candidate) => candidate.id === selectedViewpoint);
+  const viewpointAdjusted =
+    viewpoint !== undefined && !sameNarrowing(hidden, resolveViewpoint(envelope.data as StructuredGraphData, viewpoint));
+  const selectViewpoint = (id: string) => {
+    const chosen = declaredViewpoints.find((candidate) => candidate.id === id);
+    setSelectedViewpoint(chosen?.id);
+    setHidden(chosen === undefined ? NOTHING_HIDDEN : resolveViewpoint(envelope.data as StructuredGraphData, chosen));
+  };
   /**
    * Turning starts the arrangement again.
    *
@@ -1374,6 +1398,7 @@ export function StructuredExchangeDocument({ envelope, source, rawOutput, dispat
         hidden={hidden}
         setHidden={setHidden}
         orientation={orientation}
+        viewpoint={viewpoint}
       />
     ) : envelope.kind === "sequence" ? (
       <SequenceView data={envelope.data as StructuredSequenceData} isProposal={isProposal} />
@@ -1530,16 +1555,26 @@ export function StructuredExchangeDocument({ envelope, source, rawOutput, dispat
           to be told, plainly and while they are looking, that the picture in front of
           them is no longer the whole document. The key inside the SVG carries the same
           news to anywhere the figure is exported to. */}
-      {hidden.size > 0 && (
+      {(hidden.size > 0 || viewpoint !== undefined) && (
         <p
           data-testid="structured-filtered"
           className="flex flex-wrap items-center gap-2 rounded border border-amber-300 bg-amber-50 px-2 py-1 text-xs text-amber-900 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-200"
         >
-          <span>
-            Filtered view — {[...hidden].map((key) => key.replace(/^(element|relationship|role):/, "")).join(", ")} hidden.{" "}
-            {isProposal ? "The full proposal still applies." : ""}
-          </span>
-          <button type="button" className="underline" onClick={() => setHidden(new Set())}>
+          {viewpoint !== undefined && (
+            // Named first, with what it is for: a reader looking at a narrowed approval
+            // gate needs the reason it is narrowed as much as the fact.
+            <span data-testid="structured-viewpoint">
+              Viewpoint: <strong>{viewpoint.label}</strong> — {viewpoint.concern}
+              {viewpointAdjusted ? " Adjusted with the key." : ""}
+            </span>
+          )}
+          {hidden.size > 0 && (
+            <span>
+              Filtered view — {[...hidden].map((key) => key.replace(/^(element|relationship|role):/, "")).join(", ")} hidden.{" "}
+              {isProposal ? "The full proposal still applies." : ""}
+            </span>
+          )}
+          <button type="button" className="underline" onClick={() => selectViewpoint("")}>
             show everything
           </button>
         </p>
@@ -1600,6 +1635,27 @@ export function StructuredExchangeDocument({ envelope, source, rawOutput, dispat
       )}
 
       <div className="flex flex-wrap items-center gap-3 text-xs">
+        {/* Offered only when the document declares readings: an empty selector is a
+            control that does nothing, and a native one is keyboard-reachable and states
+            its current value without any focus handling of our own. */}
+        {declaredViewpoints.length > 0 && (
+          <label className="flex items-center gap-1 text-zinc-500">
+            viewpoint
+            <select
+              data-testid="viewpoint-select"
+              className="rounded border border-zinc-300 bg-white px-1 py-0.5 text-xs text-zinc-700 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300"
+              value={viewpoint?.id ?? ""}
+              onChange={(event) => selectViewpoint(event.target.value)}
+            >
+              <option value="">Whole document</option>
+              {declaredViewpoints.map((candidate) => (
+                <option key={candidate.id} value={candidate.id}>
+                  {candidate.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
         <button
           type="button"
           className="text-zinc-500 underline"

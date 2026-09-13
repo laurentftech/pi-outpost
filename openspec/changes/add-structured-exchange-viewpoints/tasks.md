@@ -20,10 +20,10 @@
 
 ## 4. The reader
 
-- [ ] 4.1 Add `selectedViewpoint` beside `hidden` in `StructuredExchangeDocument` and a native `<select>` offering "Whole document" and each declared viewpoint, only when viewpoints exist (D7). Verify in jsdom: the whole document shown first, no control without viewpoints (`TheWholeDocumentIsShownUntilAViewpointIsSelected`, `ADocumentWithoutViewpointsOffersNoSelection`).
-- [ ] 4.2 Make selecting a viewpoint replace `hidden` with its resolution, keep the key's toggles editing `hidden` on top, and derive "adjusted" by comparing `hidden` with the resolution. Verify selecting, adjusting with the key, and returning to the whole document (`SelectingAViewpointNarrowsToIt`, `TheKeyStillAppliesOnTopOfAViewpoint`, `ReturningToTheWholeDocument`).
-- [ ] 4.3 State the selected viewpoint's label and concern in the rendering, and verify it along with the document recovered for handover being unchanged after selection (`TheRenderingSaysWhichViewpointItShows`, `SelectingAViewpointDoesNotAlterTheDocument`).
-- [ ] 4.4 Verify the downloaded and copied SVG of a selected viewpoint state it (`AnExportedFigureNamesItsViewpoint`).
+- [x] 4.1 Add `selectedViewpoint` beside `hidden` in `StructuredExchangeDocument` and a native `<select>` offering "Whole document" and each declared viewpoint, only when viewpoints exist (D7). Verify in jsdom: the whole document shown first, no control without viewpoints (`TheWholeDocumentIsShownUntilAViewpointIsSelected`, `ADocumentWithoutViewpointsOffersNoSelection`).
+- [x] 4.2 Make selecting a viewpoint replace `hidden` with its resolution, keep the key's toggles editing `hidden` on top, and derive "adjusted" by comparing `hidden` with the resolution. Verify selecting, adjusting with the key, and returning to the whole document (`SelectingAViewpointNarrowsToIt`, `TheKeyStillAppliesOnTopOfAViewpoint`, `ReturningToTheWholeDocument`).
+- [x] 4.3 State the selected viewpoint's label and concern in the rendering, and verify it along with the document recovered for handover being unchanged after selection (`TheRenderingSaysWhichViewpointItShows`, `SelectingAViewpointDoesNotAlterTheDocument`).
+- [x] 4.4 Verify the downloaded and copied SVG of a selected viewpoint state it (`AnExportedFigureNamesItsViewpoint`).
 
 ## 5. The agent
 
