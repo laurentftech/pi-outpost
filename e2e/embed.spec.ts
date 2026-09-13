@@ -400,6 +400,37 @@ test.describe("diagrams in the widget", () => {
     await expect(block).toHaveCount(0);
   });
 
+  test("a reader selects a viewpoint, adjusts it with the key, and returns to the whole document", async ({ page }) => {
+    await openHost(page, { ...withDiagrams(), theme: "light" });
+    await expect(page.getByTitle("connected")).toBeVisible();
+
+    // Found by what it contains, not where it sits in the transcript.
+    const document = page.getByTestId("structured-document").filter({ hasText: "Traction battery" }).first();
+    await expect(document).toBeVisible();
+    const drawn = document.locator("svg[aria-label^='Graph of'] [data-element-id]");
+    await expect(drawn).toHaveCount(5);
+
+    const select = document.getByTestId("viewpoint-select");
+    await expect(select).toHaveValue("");
+    await select.selectOption("power");
+
+    // The power viewpoint retains the battery, the inverter and the motor.
+    await expect(drawn).toHaveCount(3);
+    await expect(document.getByTestId("structured-viewpoint")).toContainText(
+      "Power distribution — Where energy is stored, converted and consumed",
+    );
+    await expect(document.locator('[data-testid="diagram-filter-note"]')).toContainText("Viewpoint: Power distribution");
+
+    // A real pointer on the key, which is where a synthetic click once hid a break.
+    await document.locator('[data-legend-entry="element:load"]').click();
+    await expect(drawn).toHaveCount(2);
+    await expect(document.getByTestId("structured-viewpoint")).toContainText("Adjusted with the key");
+
+    await select.selectOption("");
+    await expect(drawn).toHaveCount(5);
+    await expect(document.getByTestId("structured-filtered")).toHaveCount(0);
+  });
+
   test("Escape closes an overlay opened inside the widget", async ({ page }) => {
     await openHost(page, { ...withDiagrams(), theme: "light" });
     await expect(page.getByTitle("connected")).toBeVisible();
