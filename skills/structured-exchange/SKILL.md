@@ -1,6 +1,6 @@
 ---
 name: structured-exchange
-description: Author a structured-exchange document — a graph, sequence, or table the interface renders natively, or a proposal to change one an external authority holds — and write figures of one into a document you are authoring. Use when asked to draw or diagram a structure, to propose an evolution of an existing model, to illustrate a report you are writing, or when a result would otherwise be a hand-written diagram.
+description: Author a structured-exchange document — a graph, sequence, or table the interface renders natively, such as a table of requirements with their attributes, or a proposal to change one an external authority holds — and write figures of one into a document you are authoring. Read it before calling present_structure or write_structure_figure. Use when asked to draw or diagram a structure, to present requirements or other typed items, to propose an evolution of an existing model, to illustrate a report you are writing, when a project's profile refuses a kind, attribute or value, or when a result would otherwise be a hand-written diagram.
 allowed-tools: Bash(node:*)
 license: MIT
 metadata:

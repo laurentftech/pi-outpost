@@ -35,6 +35,7 @@ const DESCRIPTION = [
   "Emit data, never hand-drawn diagram syntax: what you pass here is validated, shown to the user for approval when it proposes a change, and can be handed on to whatever applies it.",
   "The document is checked against the published schema. If it is refused you get the rule and a pointer to the offending value back; fix it and call again.",
   "A project may also hold its documents to a profile of its own — the kinds, attributes and enumeration values its data model has. A document that strays from it is refused the same way, and the refusal says what the profile allows at that point: use those words, never invent one.",
+  "Before authoring a document, read the structured-exchange skill: it shows the shape of each kind of document, how a proposal differs from a description, and what to do when a profile refuses a value.",
   "The structured document does NOT reach you on a later turn — only `summary` does. Write a summary that stands on its own.",
 ].join(" ");
 
@@ -138,8 +139,23 @@ function explain(
   const lines = [heading];
   for (const issue of issues) lines.push(`- ${issue.rule} at ${issue.path === "" ? "(document)" : issue.path}: ${issue.message}`);
   lines.push("Nothing is corrected for you: a near-miss identifier is refused, not guessed at.");
+  // Said in the refusal because it is the one text an agent reliably reads. A model shown
+  // "allows draft, approved, withdrawn" for a status the user gave as "in review" was seen
+  // choosing "draft" and presenting it — a value nobody said was true.
+  if (issues.some((issue) => VOCABULARY_RULES.has(issue.rule))) {
+    lines.push(
+      "If the source you were given uses a word the profile does not allow, do not replace it with an allowed one you have no grounds for: ask the user which value is true, or whether the profile should change.",
+    );
+  }
   return lines.join("\n");
 }
+
+/** Refusals of a word the profile does not have — the ones an agent is tempted to paper over. */
+const VOCABULARY_RULES: ReadonlySet<string> = new Set([
+  "profile/closed-enumeration",
+  "profile/undeclared-kind",
+  "profile/undeclared-attribute",
+]);
 
 /**
  * Values the profile's open enumerations do not list. Accepted — that is what open

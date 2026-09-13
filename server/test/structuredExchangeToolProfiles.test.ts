@@ -248,10 +248,27 @@ describe("the agent's tools in a project with profiles", () => {
       assert.doesNotMatch(result.content[0].text, /conforms to/);
     });
 
-    test("tells the agent that a project may hold its documents to a profile", () => {
+    test("tells the agent that a project may hold its documents to a profile, and to read the skill first", () => {
       const tool = createStructuredExchangeToolDefinition({ projectRoot: base });
       assert.match(tool.description, /profile of its own/);
       assert.match(tool.description, /never invent one/);
+      assert.match(tool.description, /Before authoring a document, read the structured-exchange skill/);
+    });
+
+    test("a refused word tells the agent to ask rather than pick an allowed one; a missing attribute does not", async () => {
+      // AVocabularyRefusalTellsTheAgentToAskRatherThanPick
+      const root = withProfile();
+      const outsideClosed = await present(root, requirementsGraph("in review"));
+      assert.equal(outsideClosed.isError, true);
+      assert.match(outsideClosed.content[0].text, /profile\/closed-enumeration/);
+      assert.match(outsideClosed.content[0].text, /do not replace it with an allowed one you have no grounds for: ask the user which value is true/);
+
+      const missing = requirementsGraph() as { data: { nodes: { attributes?: Record<string, unknown> }[] } };
+      delete missing.data.nodes[0].attributes;
+      const missingRequired = await present(root, missing);
+      assert.equal(missingRequired.isError, true);
+      assert.match(missingRequired.content[0].text, /profile\/missing-required-attribute/);
+      assert.doesNotMatch(missingRequired.content[0].text, /ask the user which value is true/, "the guidance fired for a refusal that is not about a word");
     });
   });
 

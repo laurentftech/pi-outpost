@@ -118,6 +118,10 @@ for required attributes it does not mention on an item it changes, because it de
 changes. A changed item SHALL still state its kind, so that its attributes can be checked. Structural
 heading rows SHALL NOT be held to kinds or attributes.
 
+When the agent is refused a kind, an attribute or a closed-enumeration value the profile does not have, the
+refusal SHALL also tell it not to substitute an allowed one it has no grounds for, and to ask the user which
+value is true or whether the profile should change.
+
 Each refusal SHALL name the rule, point at the offending value, and state what the profile allows at that
 point — for a kind, the kinds declared in that vocabulary; for an attribute, the attributes the kind
 declares; for a closed enumeration, its allowed values. Nothing SHALL be presented when a document is
@@ -184,6 +188,10 @@ Sequence documents SHALL NOT be held to a profile.
 #### Scenario: CoreViolationsAreReportedFirst
 - **WHEN** a document both breaks the core contract and strays from its profile
 - **THEN** the refusal reports the core violations, and the profile is applied once they are fixed
+
+#### Scenario: AVocabularyRefusalTellsTheAgentToAskRatherThanPick
+- **WHEN** the agent presents a requirement whose status is a value outside the profile's closed enumeration
+- **THEN** the refusal tells it to ask the user rather than replace the value with an allowed one
 
 #### Scenario: ACoreRefusalSaysItIsNotTheProfile
 - **WHEN** a document breaks the core contract in a project that registers profiles
