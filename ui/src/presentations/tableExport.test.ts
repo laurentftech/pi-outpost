@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import type { StructuredTableData } from "@pi-outpost/shared/structured-exchange";
 import { filterKey } from "./structuredExchange";
-import { downloadCsv, tableExport, toCsv } from "./tableExport";
+import { downloadCsv, downloadMarkdown, tableExport, tableMarkdown, toCsv } from "./tableExport";
 
 const roled: StructuredTableData = {
   columns: ["ID", "Requirement", "Weight"],
@@ -175,6 +175,20 @@ describe("handing the browser a file", () => {
     // Not leaked: a blob url held for the life of the page holds the file with it.
     expect(revoked).toEqual(["blob:table"]);
     expect(blobs[0].type).toBe("text/csv;charset=utf-8");
+  });
+
+  it("saves the Markdown of the rows shown, under the name it was given", async () => {
+    const { anchors, blobs, revoked } = captureDownload();
+
+    downloadMarkdown(chaptered, nothingHidden, undefined, "specification.md");
+
+    expect(anchors).toHaveLength(1);
+    expect(anchors[0].download).toBe("specification.md");
+    expect(revoked).toEqual(["blob:table"]);
+    expect(blobs[0].type).toBe("text/markdown;charset=utf-8");
+    // The same text the reference validator writes: one function, wherever it runs.
+    expect(await blobs[0].text()).toBe(tableMarkdown(chaptered, nothingHidden));
+    expect(await blobs[0].text()).toContain("## 1. Braking");
   });
 
   it("writes the byte-order mark Excel needs, ahead of the rows", async () => {

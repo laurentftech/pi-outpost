@@ -3,126 +3,18 @@
  *
  * A graph leaves this application as a picture, because a picture is what it is.
  * A table is not: a reader who wants to keep one wants it where they keep tables,
- * which is a spreadsheet. Offering them an SVG of a table would be offering a
- * photograph of a document.
+ * which is a spreadsheet — or, for a specification, a document. Offering them an SVG
+ * of a table would be offering a photograph of a document.
  *
- * Everything here is pure except the two functions that hand the browser a file —
- * the shape of an export is decided in one place and both formats are written
- * from it, so a CSV and a workbook of the same table can never disagree.
+ * What leaves is decided in `shared` (`structured-exchange/table-export`), so the
+ * reference validator writes the same Markdown a reader downloads. Only the functions
+ * that hand the browser a file live here.
  */
-import {
-  readTableRow,
-  type StructuredTableCell,
-  type StructuredTableData,
-  type StructuredTableRowRole,
-} from "@pi-outpost/shared/structured-exchange";
-import { filterKey, TABLE_ROLE_LABEL, tableDeclaresRoles, tableRowRole } from "./structuredExchange";
+import type { StructuredTableData, StructuredTableRowRole } from "@pi-outpost/shared/structured-exchange";
+import { tableMarkdown, toCsv, type TableExport } from "@pi-outpost/shared/structured-exchange/table-export";
 import { save } from "../util/download";
 
-/** The declared column for a row's role — named as the key names it. */
-const ROLE_COLUMN = "change";
-
-/**
- * The declared columns for a chapter, present only in a table that has chapters.
- *
- * A structural row has no cells, so without these it leaves as a blank line and the
- * document loses its sections — which is most of what makes a specification
- * readable. Level travels as a number rather than as indentation or a `#` prefix:
- * a spreadsheet sorts and filters on a column, and neither of those survives a
- * convention invented here.
- *
- * The section is *not* copied onto the rows beneath it. A row follows a heading; it
- * does not declare that it belongs to one, and writing membership into every row
- * would state something the document never said.
- */
-const SECTION_COLUMN = "section";
-const LEVEL_COLUMN = "level";
-
-export type TableExport = {
-  columns: string[];
-  rows: StructuredTableCell[][];
-  /** Rows the reader has narrowed away, and which the export therefore leaves out. */
-  withheld: number;
-};
-
-/**
- * What an export carries: the columns as declared, the rows as shown.
- *
- * The role travels as a column of its own, because the thing that states it in
- * the rendering is a colour and a colour does not survive the crossing. Only when
- * the table declares roles at all — a plain table exports the columns its producer
- * declared and nothing this application invented.
- */
-export function tableExport(
-  data: StructuredTableData,
-  hidden: ReadonlySet<string>,
-  /**
-   * The rows as the reader sees them, when a proposal derived their roles.
-   *
-   * A proposed table declares no role on any row — declaring one beside a change is
-   * refused — so asking the data alone dropped the role column from the export of
-   * the one table where it carries the most: which requirements the amendment
-   * touches. What leaves has to be what the reader is looking at.
-   */
-  described?: { role?: StructuredTableRowRole }[],
-): TableExport {
-  const declaresRoles = tableDeclaresRoles(data);
-  const roleOf = (row: StructuredTableData["rows"][number], index: number): StructuredTableRowRole | undefined =>
-    described?.[index]?.role ?? tableRowRole(row, declaresRoles);
-  const anyRole = data.rows.some((row, index) => roleOf(row, index) !== undefined);
-  const hasChapters = data.rows.some((row) => readTableRow(row).heading !== undefined);
-  const shownIndexes = data.rows
-    .map((_row, index) => index)
-    .filter((index) => {
-      const role = roleOf(data.rows[index], index);
-      return role === undefined || !hidden.has(filterKey("role", role));
-    });
-  const shown = shownIndexes.map((index) => data.rows[index]);
-
-  const columns = [
-    ...(hasChapters ? [SECTION_COLUMN, LEVEL_COLUMN] : []),
-    ...data.columns,
-    ...(anyRole ? [ROLE_COLUMN] : []),
-  ];
-
-  return {
-    columns,
-    rows: shown.map((row, position) => {
-      const { cells, heading } = readTableRow(row);
-      const role = roleOf(row, shownIndexes[position]);
-      const depth = Array.isArray(row) ? undefined : (row as { depth?: number }).depth;
-      // A chapter keeps its place in the sequence and fills the columns it has:
-      // its own, and none of the data ones, because it has no data.
-      const leading = hasChapters
-        ? heading === undefined
-          ? [null, null]
-          : [heading, depth ?? 1]
-        : [];
-      const body = heading === undefined ? cells : data.columns.map(() => null);
-      return [...leading, ...body, ...(anyRole ? [role === undefined ? null : TABLE_ROLE_LABEL[role]] : [])];
-    }),
-    withheld: data.rows.length - shown.length,
-  };
-}
-
-/**
- * One field of a comma-separated file.
- *
- * A requirement is prose, and prose carries commas, quotation marks and the
- * occasional newline — written raw, any one of them turns one row into two or
- * shifts every column after it. `null` is an empty field rather than the word
- * "null", which is a value a spreadsheet would then sort and filter on.
- */
-function csvField(cell: StructuredTableCell): string {
-  if (cell === null) return "";
-  const text = String(cell);
-  return /[",\n\r]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
-}
-
-/** CRLF between rows: what the format says, and what a spreadsheet expects. */
-export function toCsv(exported: TableExport): string {
-  return [exported.columns, ...exported.rows].map((row) => row.map(csvField).join(",")).join("\r\n");
-}
+export { tableExport, tableMarkdown, toCsv, type TableExport } from "@pi-outpost/shared/structured-exchange/table-export";
 
 export function downloadCsv(exported: TableExport, fileName: string): void {
   // The BOM is for Excel and only for Excel: without it, it reads a UTF-8 file as
@@ -156,4 +48,14 @@ export async function downloadXlsx(exported: TableExport, fileName: string): Pro
   // one save path below hands it over — its own `toFile` would be a second.
   const blob = await writeXlsxFile([header, ...rows]).toBlob();
   save(blob, fileName);
+}
+
+/** The same table as Markdown: chapters as headings, the rows shown beneath each. */
+export function downloadMarkdown(
+  data: StructuredTableData,
+  hidden: ReadonlySet<string>,
+  described: { role?: StructuredTableRowRole }[] | undefined,
+  fileName: string,
+): void {
+  save(new Blob([tableMarkdown(data, hidden, described)], { type: "text/markdown;charset=utf-8" }), fileName);
 }

@@ -41,7 +41,7 @@ import {
 import { otherOrientation, type Orientation } from "@pi-outpost/shared/diagram-orientation";
 import { resolveViewpoint, sameNarrowing, viewpointsOf } from "@pi-outpost/shared/structured-exchange/model";
 import type { StructuredViewpoint } from "@pi-outpost/shared/structured-exchange";
-import { downloadCsv, downloadXlsx, tableExport } from "./tableExport";
+import { downloadCsv, downloadMarkdown, downloadXlsx, tableExport } from "./tableExport";
 import type { ActionDispatch, PresentationProps, ToolItem } from "./types";
 import { resourceTargetFor } from "@pi-outpost/shared/resource-target";
 import {
@@ -1764,6 +1764,20 @@ export function StructuredExchangeDocument({ envelope, source, rawOutput, dispat
               onClick={() => void downloadXlsx(exportedTable(), `${exportBaseName}.xlsx`)}
             >
               ⤓ download XLSX
+            </button>
+            <button
+              type="button"
+              className="text-zinc-500 underline"
+              title={
+                narrowedExport === 0
+                  ? "Save as .md — each chapter a heading, its rows a table"
+                  : `Save as .md — ${narrowedExport} hidden rows are left out`
+              }
+              onClick={() =>
+                downloadMarkdown(envelope.data as StructuredTableData, hidden, described.rows, `${exportBaseName}.md`)
+              }
+            >
+              ⤓ download Markdown
             </button>
             {narrowedExport > 0 && (
               // Said on the controls, not after the fact: a reader who has hidden a

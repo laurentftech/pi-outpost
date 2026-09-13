@@ -21,9 +21,9 @@
 
 ## 5. Markdown export of a table
 
-- [ ] 5.1 Move the row shaping of `ui/src/presentations/tableExport.ts` (roles, narrowing, headings) to `shared` without changing its behaviour; verify the existing CSV and XLSX export tests pass unchanged
-- [ ] 5.2 Implement `tableMarkdown` in `shared` (D8): headings at depth + 1, one GFM table per chapter, role column when roles are declared, `|`, `\` and newlines escaped; verify Node tests for `ATableIsTakenAwayAsMarkdown`, `MarkdownEscapesWhatWouldBreakTheTable` (parsing the output back), roles and narrowing
-- [ ] 5.3 Add "download Markdown" beside CSV and XLSX in the table rendering, narrowed like them; verify a UI test that the downloaded text equals `tableMarkdown` for the shown rows (`MarkdownExportRunsWithoutABrowser` from the reader's side)
+- [x] 5.1 Move the row shaping of `ui/src/presentations/tableExport.ts` (roles, narrowing, headings) to `shared` without changing its behaviour; verify the existing CSV and XLSX export tests pass unchanged
+- [x] 5.2 Implement `tableMarkdown` in `shared` (D8): headings at depth + 1, one GFM table per chapter, role column when roles are declared, `|`, `\` and newlines escaped; verify Node tests for `ATableIsTakenAwayAsMarkdown`, `MarkdownEscapesWhatWouldBreakTheTable` (parsing the output back), roles and narrowing
+- [x] 5.3 Add "download Markdown" beside CSV and XLSX in the table rendering, narrowed like them; verify a UI test that the downloaded text equals `tableMarkdown` for the shown rows (`MarkdownExportRunsWithoutABrowser` from the reader's side)
 
 ## 6. Batch validation and the report
 
