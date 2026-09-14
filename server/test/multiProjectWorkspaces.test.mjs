@@ -267,6 +267,24 @@ test("a connection names the project it binds to, and an unknown one falls back"
   assert.equal(fellBack.workspace.root, root, "an unknown root falls back to the default project");
 });
 
+// openlore: scenario=DifferentlySpelledRootStillBindsToTheOpenProject spec=api
+test("a workspace name spelled differently from the registry key still binds, not falls back", async (t) => {
+  const beta = await secondProject();
+  const root = await realpath(await makeWorkspace({ "a.md": "alpha\n" }));
+  const server = await startServer(root, { openProjects: [beta] });
+  t.after(() => server.stop());
+
+  // The embed client sends whatever string the host app passed to `mount({ workspace })`
+  // verbatim (ui/src/useAgent.ts's wsUrlFor does no normalization), while a project is
+  // registered under its `fs.realpath()`'d root. A trailing separator — trivial for an
+  // integrator to add by accident, on every platform — must not read as "unknown project"
+  // and silently serve the wrong one.
+  const spelled = connect(`${server.wsUrl()}?workspace=${encodeURIComponent(beta + path.sep)}`);
+  t.after(() => spelled.close());
+  const hello = await spelled.waitFor((m) => m.type === "hello");
+  assert.equal(hello.workspace.root, beta, "the differently-spelled root still resolves to the open project");
+});
+
 test("a streaming turn reaches its own project's clients and no others", async (t) => {
   const beta = await secondProject();
   const root = await realpath(await makeWorkspace({ "a.md": "alpha\n" }));

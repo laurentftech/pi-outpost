@@ -4567,16 +4567,36 @@ function handleClientMessage(socket: WebSocket, raw: string): void {
 // --- Wire up the real /ws and /health handlers, now that the runtime is ready ------
 
 handleWsConnection = (socket, workspaceRoot) => {
-  const bound = (workspaceRoot ? workspaces.get(workspaceRoot) : undefined) ?? workspaces.default ?? workspace;
-  clients.set(socket, bound);
-  // A named project restored from the persisted set has no session yet. Build it
-  // before the snapshot, which is what asks the runtime for its state.
-  ensureStarted(bound)
-    .then(() => bindClient(socket, bound, "hello"))
-    .catch((error: unknown) => {
-      reportError(error);
-      send(socket, { type: "workspace_error", message: `Could not start ${path.basename(bound.root)}: ${error instanceof Error ? error.message : String(error)}` });
-    });
+  // `workspaceRoot` is whatever the embed host typed into `mount({ workspace })`
+  // (ui/src/useAgent.ts sends it on the wire completely unmodified), while
+  // `workspaces` is keyed by `fs.realpath()`'d roots (see Workspace.create and
+  // WorkspaceRegistry). Those two only ever match by character-for-character luck:
+  // a lowercase drive letter, "/" instead of "\", or a trailing separator — all
+  // trivial to produce on Windows — miss the lookup and silently fall back to the
+  // default project, with no error the host or the person using the widget can see.
+  // Canonicalize the same way a workspace's own root is computed before comparing.
+  const resolveBound = async (): Promise<Workspace> => {
+    if (!workspaceRoot) return workspaces.default ?? workspace;
+    try {
+      const canonical = await fs.realpath(path.resolve(workspaceRoot));
+      return workspaces.get(canonical) ?? workspaces.default ?? workspace;
+    } catch {
+      // Doesn't exist, or isn't reachable right now — same fallback as a name that
+      // was never opened; there is nothing more specific to canonicalize it against.
+      return workspaces.default ?? workspace;
+    }
+  };
+  resolveBound().then((bound) => {
+    clients.set(socket, bound);
+    // A named project restored from the persisted set has no session yet. Build it
+    // before the snapshot, which is what asks the runtime for its state.
+    ensureStarted(bound)
+      .then(() => bindClient(socket, bound, "hello"))
+      .catch((error: unknown) => {
+        reportError(error);
+        send(socket, { type: "workspace_error", message: `Could not start ${path.basename(bound.root)}: ${error instanceof Error ? error.message : String(error)}` });
+      });
+  });
   socket.on("message", (data: Buffer) => handleClientMessage(socket, data.toString()));
   socket.on("close", () => {
     terminalManager.closeAllForSocket(socket);
