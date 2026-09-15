@@ -148,6 +148,10 @@ one needs, the command that proves it works, and the caution that goes with it.
   inline images and clickable workspace file links. A diagram too wide to read in the column
   is drawn down the page instead, whichever direction its source asked for, and says so — one
   click puts it back
+- Sections an extension appends to an answer render as real markup — a `<details>` block of
+  sources folds away, and its classes reach a host page's CSS. Reply text is untrusted whoever
+  wrote it, so all of it is filtered first: scripts, event handlers, `javascript:` links, styles,
+  frames and forms never reach the page
 - Tool cards with live output and, for tools that report it, a progress bar. One toggle
   hides them all when they drown the conversation, and the preference sticks
 - Results rendered by what they are, not by which tool produced them: a `git diff` becomes
