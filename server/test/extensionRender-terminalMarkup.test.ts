@@ -12,7 +12,7 @@ process.env.PI_HYPERLINKS = "1";
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import { createEditToolDefinition, createReadToolDefinition } from "@earendil-works/pi-coding-agent";
-import { ExtensionRenderer, withoutBlankEdges, withoutTerminalMarkup } from "../src/extensionRender.ts";
+import { ExtensionRenderer, withLightCounterparts, withoutBlankEdges, withoutTerminalMarkup } from "../src/extensionRender.ts";
 
 const cwd = process.cwd();
 const definitions = new Map([
@@ -51,6 +51,28 @@ describe("a built-in tool's card, rendered in a server started from a terminal w
     // The panel's padding rows go with its background: the header is its text line alone.
     assert.equal((edit.match(/class="ansi-line"/g) ?? []).length, 1, edit);
     assert.match(edit, /docs\/notes\.md/);
+  });
+});
+
+describe("text colours for a light widget", () => {
+  test("a built-in card's text colours carry the light theme's colour beside the dark one", () => {
+    const read = renderer().renderToolCallHtml("c3", "read", { path: "docs/notes.md" });
+    assert.ok(read);
+    const colours = [...read.matchAll(/(?:^|[;"\s])color:([^;"]+)/g)].map((match) => match[1]);
+    assert.ok(colours.length > 0, read);
+    for (const colour of colours) assert.match(colour, /^light-dark\(.+, .+\)$/, `${colour} has no light counterpart`);
+    // The pale tool title of the dark theme is not what a light widget shows.
+    const [light, dark] = /^light-dark\((.+), (.+)\)$/.exec(colours[0])!.slice(1);
+    assert.notEqual(light, dark);
+  });
+
+  test("pairs only the colours it knows, and never a background", () => {
+    const pairs = new Map([["rgb(128,128,128)", "rgb(90,90,90)"]]);
+    const html = '<span style="color:rgb(128,128,128)">a</span><span style="color:rgb(1,2,3)">b</span><span style="background-color:rgb(128,128,128)">c</span>';
+    assert.equal(
+      withLightCounterparts(html, pairs),
+      '<span style="color:light-dark(rgb(90,90,90), rgb(128,128,128))">a</span><span style="color:rgb(1,2,3)">b</span><span style="background-color:rgb(128,128,128)">c</span>',
+    );
   });
 });
 
