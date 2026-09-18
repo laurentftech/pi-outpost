@@ -38,6 +38,34 @@ function cssBackground(ansi: string): string | undefined {
   return /background-color:([^;"]+)/.exec(ansiLinesToHtml([`${ansi}x`]))?.[1];
 }
 
+/** The CSS value the HTML conversion writes for a text colour escape, found the same way. */
+function cssColor(ansi: string): string | undefined {
+  return /style="(?:[^"]*;)?color:([^;"]+)/.exec(ansiLinesToHtml([`${ansi}x`]))?.[1];
+}
+
+/**
+ * Each dark-theme text colour, and the light theme's colour for the same role.
+ *
+ * The cards are rendered once, with the dark theme, for every client: a light widget got
+ * the dark theme's pale greys and was left with a tool name barely readable. Pairing the
+ * two themes role by role lets the HTML carry both — `light-dark()` picks by the widget's
+ * `color-scheme`. Where two roles share a dark colour, the first role's light colour is kept.
+ */
+function lightCounterparts(dark: Theme, light: Theme | undefined): Map<string, string> {
+  const pairs = new Map<string, string>();
+  if (light === undefined) return pairs;
+  const darkColors = (dark as unknown as { fgColors: Map<string, string> }).fgColors;
+  const lightColors = (light as unknown as { fgColors: Map<string, string> }).fgColors;
+  for (const [role, ansi] of darkColors) {
+    const darkCss = cssColor(ansi);
+    const lightAnsi = lightColors.get(role);
+    const lightCss = lightAnsi === undefined ? undefined : cssColor(lightAnsi);
+    if (darkCss === undefined || lightCss === undefined || darkCss === lightCss || pairs.has(darkCss)) continue;
+    pairs.set(darkCss, lightCss);
+  }
+  return pairs;
+}
+
 /** Minimal pi-tui Component surface used by renderers. */
 interface RenderComponent {
   render(width: number): string[];
@@ -74,6 +102,8 @@ export class ExtensionRenderer {
   private toolRenderer?: ReturnType<typeof createToolHtmlRenderer>;
   /** The CSS values of the theme's panel backgrounds, to be dropped from what is rendered. */
   private panelBackgrounds = new Set<string>();
+  /** Each text colour of the rendering theme, and its counterpart for a light widget. */
+  private lightColors = new Map<string, string>();
 
   configure(next: ExtensionRenderDeps | undefined): void {
     this.deps = next;
@@ -87,6 +117,11 @@ export class ExtensionRenderer {
         }
       }).filter((value): value is string => value !== undefined),
     );
+    try {
+      this.lightColors = this.theme ? lightCounterparts(this.theme, getThemeByName("light")) : new Map();
+    } catch {
+      this.lightColors = new Map();
+    }
     this.toolRenderer =
       next && this.theme
         ? createToolHtmlRenderer({
@@ -99,7 +134,7 @@ export class ExtensionRenderer {
   }
 
   private forTheWidget(html: string | undefined): string | undefined {
-    return html === undefined ? undefined : withoutTerminalMarkup(html, this.panelBackgrounds);
+    return html === undefined ? undefined : withLightCounterparts(withoutTerminalMarkup(html, this.panelBackgrounds), this.lightColors);
   }
 
   /** Render an extension's compact call header, if it provides one. */
@@ -179,6 +214,19 @@ export function withoutTerminalMarkup(html: string, panelBackgrounds: ReadonlySe
     const kept = body.split(";").map((part) => part.trim()).filter(Boolean).join(";");
     return kept === "" ? "" : `style="${kept}"`;
   }).replace(/<span >/g, "<span>");
+}
+
+/**
+ * Every text colour that has a light counterpart, written as `light-dark(light, dark)`:
+ * one HTML for every client, each showing the theme its widget is in. A background is
+ * left alone — `background-color` is not a text colour.
+ */
+export function withLightCounterparts(html: string, lightColors: ReadonlyMap<string, string>): string {
+  if (lightColors.size === 0) return html;
+  return html.replace(/(^|[;"\s])color:([^;"]+)/g, (whole, before: string, value: string) => {
+    const light = lightColors.get(value.trim());
+    return light === undefined ? whole : `${before}color:light-dark(${light}, ${value.trim()})`;
+  });
 }
 
 /** A rendered line holding nothing but spaces, or the placeholder the conversion writes for an empty one. */

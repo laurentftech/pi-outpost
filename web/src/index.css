@@ -33,10 +33,14 @@
 :root,
 :host {
   --accent: #1d4ed8;
+  /* Also what `light-dark()` picks by: the tool cards the server renders carry both a
+     light and a dark colour for their text (server/src/extensionRender.ts). */
+  color-scheme: light;
 }
 :root[data-theme="dark"],
 :host([data-theme="dark"]) {
   --accent: #60a5fa;
+  color-scheme: dark;
 }
 
 /* Sizing for the widget's shadow host — the standalone app's html/body/#root rule
