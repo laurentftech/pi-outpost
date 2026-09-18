@@ -404,8 +404,15 @@ const requirementsProfile = {
         { name: "safety", type: "enumeration", values: ["yes", "no"], closed: true },
       ],
     },
+    { kind: "test", attributes: [{ name: "bench", type: "enumeration", values: ["hil", "vehicle", "simulation"], closed: true }] },
   ],
-  relationshipKinds: [{ kind: "derives" }, { kind: "satisfies" }],
+  // Declared ends: a requirement satisfies a requirement, a test verifies a requirement.
+  // `derives` leaves its ends open.
+  relationshipKinds: [
+    { kind: "derives" },
+    { kind: "satisfies", from: ["requirement"], to: ["requirement"] },
+    { kind: "verifies", from: ["test"], to: ["requirement"] },
+  ],
 };
 const reviewRules = {
   schema: "urn:structured-exchange-rules:1",
@@ -430,6 +437,15 @@ const reviewRules = {
       then: { from: { safety: ["yes"] } },
     },
     { id: "SAF-approved", statement: "A safety requirement is approved.", level: "report", element: "requirement", when: { safety: ["yes"] }, then: { status: ["approved"] } },
+    {
+      id: "VER-safety-on-hil",
+      source: "Verification plan",
+      statement: "Une exigence safety est vérifiée sur banc HIL.",
+      level: "report",
+      relationship: "verifies",
+      when: { to: { safety: ["yes"] } },
+      then: { from: { bench: ["hil"] } },
+    },
   ],
 };
 type BenchRequirement = { id: string; text: string; status: string; priority?: string; category?: string; safety?: string };
@@ -509,6 +525,37 @@ await makeDirectory(path.join(profilesRoot, "reports"), { recursive: true });
 await writeFile(path.join(profilesRoot, "reports/conformity.json"), JSON.stringify(conformityReport.table, null, 2));
 await writeFile(path.join(profilesRoot, "reports/conformity.md"), conformityReport.markdown);
 
+// The rules register and the rule patterns, presented by the agent's own tool against this
+// registry — and written by the same generators to reports/, where the file viewer opens them.
+const { createStructuredExchangeProjectModelToolDefinition } = await import("../server/src/structuredExchangeProjectModelTool.ts");
+const { createStructuredExchangeToolDefinition } = await import("../server/src/structuredExchangeTool.ts");
+type BenchToolResult = { content: { type: "text"; text: string }[]; details?: unknown; isError?: boolean };
+const projectModelTool = createStructuredExchangeProjectModelToolDefinition({ projectRoot: profilesRoot });
+const presentModel = (view: string) =>
+  (projectModelTool.execute as unknown as (id: string, params: unknown) => Promise<BenchToolResult>)("bench", { view });
+const rulesRegisterResult = await presentModel("rules-register");
+const rulePatternsResult = await presentModel("rule-patterns");
+for (const result of [rulesRegisterResult, rulePatternsResult]) {
+  if (result.isError) throw new Error(`the bench's project model was refused: ${result.content[0]?.text}`);
+}
+await writeFile(path.join(profilesRoot, "reports/rules-register.json"), JSON.stringify(rulesRegisterResult.details, null, 2));
+await writeFile(path.join(profilesRoot, "reports/rule-patterns.json"), JSON.stringify(rulePatternsResult.details, null, 2));
+// A requirement "verifying" a requirement, refused by the declared ends — the refusal text is the real tool's.
+const endsRefusal = await (createStructuredExchangeToolDefinition({ projectRoot: profilesRoot }).execute as unknown as (
+  id: string,
+  params: unknown,
+) => Promise<BenchToolResult>)("bench", {
+  document: JSON.stringify({
+    ...requirementsTable([{ id: "REQ-9", text: "Measure the stopping distance", status: "draft" }, { ...upstream }]),
+    data: {
+      ...requirementsTable([{ id: "REQ-9", text: "Measure the stopping distance", status: "draft" }, { ...upstream }]).data,
+      relations: [{ from: { id: "req-9" }, to: { id: "sys-1" }, kind: "verifies" }],
+    },
+  }),
+  summary: "A requirement verifying a requirement.",
+});
+if (!endsRefusal.isError) throw new Error("the bench expected the declared ends to refuse a requirement verifying a requirement");
+
 const profilesConfig = path.join(profilesRoot, "fake-rpc.json");
 await writeFile(
   profilesConfig,
@@ -532,6 +579,9 @@ await writeFile(
         4,
       ),
       presented("profiles-conformity-report", conformityReport.table, 5),
+      { role: "toolResult", toolCallId: "profiles-ends-refused", toolName: "present_structure", content: endsRefusal.content, isError: true, timestamp: 6 },
+      { role: "toolResult", toolCallId: "profiles-rules-register", toolName: "present_project_model", content: rulesRegisterResult.content, details: rulesRegisterResult.details, isError: false, timestamp: 7 },
+      { role: "toolResult", toolCallId: "profiles-rule-patterns", toolName: "present_project_model", content: rulePatternsResult.content, details: rulePatternsResult.details, isError: false, timestamp: 8 },
     ],
     commands_: {
       prompt: {
@@ -579,7 +629,7 @@ console.log(
 console.log(`  seeded transcript           ${link(diagrams.base)}   (diagrams + table)`);
 console.log(`  tool progress bar           ${link(progress.base)}   (send any prompt, watch the tool card)`);
 console.log(`  agent question panel        ${link(question.base)}   (send any prompt; the panel holds until answered)`);
-console.log(`  project profiles            ${link(profiles.base)}   (statements beside each table; edit ${profilesRoot}/profiles/requirements.json and reload)`);
+console.log(`  project profiles            ${link(profiles.base)}   (statements beside each table, then the rules register and the rule patterns; edit ${profilesRoot}/profiles/requirements.json and reload)`);
 console.log(`  model-aware thinking slider ${link(thinking.base)}   (🧠: low..xhigh, no off; switch to Plain Mini — declared off-only — and watch it settle)`);
 console.log("\n  embed workspace controls — the same widget under each policy\n");
 console.log(`  settings (the default)      ${link(plain.base)}   no header control; the root lives in Settings`);

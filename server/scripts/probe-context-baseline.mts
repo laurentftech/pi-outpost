@@ -41,15 +41,16 @@ import { createWorkPlanExtendedToolDefinition, createWorkPlanToolDefinition } fr
 import { createStructuredExchangeToolDefinition } from "../src/structuredExchangeTool.ts";
 import { createStructuredExchangeTableToolDefinition } from "../src/structuredExchangeTableTool.ts";
 import { createStructuredExchangeFigureToolDefinition } from "../src/structuredExchangeFigureTool.ts";
+import { createStructuredExchangeProjectModelToolDefinition } from "../src/structuredExchangeProjectModelTool.ts";
 import { composeAppendSystemPrompt } from "../src/systemPrompt.ts";
 
 const chars = (s: string) => s.length;
 const tok = (n: number) => `${(n / 4 / 1000).toFixed(1)}k`;
 
 /** What a session withholds until something asks for it. */
-const ON_DEMAND = ["work_plan_extended", "pdf_extract", "docx_extract", "xlsx_extract", "pptx_extract"];
-/** The document extractors alone: transient, forgotten five turns after their last call. */
-const EXTRACTORS = ["pdf_extract", "docx_extract", "xlsx_extract", "pptx_extract"];
+const ON_DEMAND = ["work_plan_extended", "pdf_extract", "docx_extract", "xlsx_extract", "pptx_extract", "present_project_model"];
+/** The transient ones — the document extractors and the project model tool — forgotten five turns after their last call. */
+const EXTRACTORS = ["pdf_extract", "docx_extract", "xlsx_extract", "pptx_extract", "present_project_model"];
 
 async function measure(label: string, options: { outpost: boolean; withheld?: string[] }) {
   const cwd = await realpath(await mkdtemp(path.join(tmpdir(), "baseline-")));
@@ -76,6 +77,7 @@ async function measure(label: string, options: { outpost: boolean; withheld?: st
         createWorkPlanToolDefinition(),
         createWorkPlanExtendedToolDefinition(),
         createStructuredExchangeToolDefinition({ projectRoot: cwd }),
+        createStructuredExchangeProjectModelToolDefinition({ projectRoot: cwd }),
         createStructuredExchangeFigureToolDefinition({ cwd, allowedRoots: [cwd], writableRoot: cwd, projectRoot: cwd }),
         createStructuredExchangeTableToolDefinition({ cwd, allowedRoots: [cwd], maxBytes: 26214400, writableRoot: cwd, projectRoot: cwd }),
       ]

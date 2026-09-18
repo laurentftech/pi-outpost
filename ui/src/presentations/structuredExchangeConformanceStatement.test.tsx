@@ -71,6 +71,16 @@ describe("the conformance statement", () => {
     expect(textEquivalent()).toContain("with 2 findings to check");
   });
 
+  it("counts a single finding in the singular, whatever left it to check", () => {
+    // UnverifiableEndsAreCounted — the server counts a relationship end whose kind cannot
+    // be read among the findings; the page says the count it is given.
+    renderItem(toolItem({ profile: "acme/requirements", state: "conforms", openValues: 0, findings: 1 }));
+    expect(screen.getByTestId("structured-conformance").textContent).toBe(
+      'Conforms to this project\'s profile "acme/requirements", with 1 finding to check.',
+    );
+    expect(textEquivalent()).toContain("with 1 finding to check");
+  });
+
   it("joins open values and findings in one sentence", () => {
     renderItem(toolItem({ profile: "acme/requirements", state: "conforms", openValues: 1, findings: 1 }));
     expect(screen.getByTestId("structured-conformance").textContent).toBe(

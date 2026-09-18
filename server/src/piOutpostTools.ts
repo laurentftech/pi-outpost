@@ -31,6 +31,7 @@ import { createPptxExtractToolDefinition } from "./pptxTool.ts";
 import { createStructuredExchangeFigureToolDefinition } from "./structuredExchangeFigureTool.ts";
 import { createStructuredExchangeTableToolDefinition } from "./structuredExchangeTableTool.ts";
 import { createStructuredExchangeToolDefinition } from "./structuredExchangeTool.ts";
+import { createStructuredExchangeProjectModelToolDefinition } from "./structuredExchangeProjectModelTool.ts";
 import { createXlsxExtractToolDefinition } from "./xlsxTool.ts";
 import { createWorkPlanExtendedToolDefinition, createWorkPlanToolDefinition } from "./workPlanTool.ts";
 
@@ -68,7 +69,7 @@ export function parseToolsSettings(raw: string | undefined): PiOutpostToolsSetti
 }
 
 /**
- * The same six tools, built the same way as the unsandboxed branch of index.ts.
+ * The same tools, built the same way as the unsandboxed branch of index.ts.
  * `realpath` matters: the confinement checks compare resolved paths, and on macOS
  * a workspace under /tmp is reached through a symlink.
  */
@@ -84,6 +85,7 @@ export async function createPiOutpostTools(settings: PiOutpostToolsSettings): Pr
     createStructuredExchangeFigureToolDefinition({ ...common, maxBytes: settings.maxBytes.structuredExchange, projectRoot: root }),
     createStructuredExchangeTableToolDefinition({ ...common, maxBytes: settings.maxBytes.structuredExchange, projectRoot: root }),
     createStructuredExchangeToolDefinition({ projectRoot: root }),
+    createStructuredExchangeProjectModelToolDefinition({ projectRoot: root }),
     createWorkPlanToolDefinition(),
     // Both, always. The server withholds the extended half from a session with no
     // plan through the SDK's active-tool set; the RPC dialect has no command for

@@ -145,3 +145,43 @@ describe("the registry schema, with rules", () => {
     assert.equal(STRUCTURED_EXCHANGE_PROFILE_CEILINGS.profilePath, registrySchema.properties.rules.items.maxLength);
   });
 });
+
+describe("the examples the published schemas carry", () => {
+  const profileSchema: any = JSON.parse(readFileSync(path.join(ROOT, "shared/schemas/structured-exchange-profile-1.json"), "utf8"));
+
+  test("each is valid against its schema, and the rules example is usable with the profile example", async () => {
+    // TheExamplesAreValid
+    const { validateProfile } = await import("@pi-outpost/shared/structured-exchange/profile-validation");
+    const { rulesAgainstProfile, validateRules } = await import("@pi-outpost/shared/structured-exchange/rules-validation");
+    assert.equal(profileSchema.examples.length, 1);
+    assert.equal(rulesSchema.examples.length, 1);
+    const [profile] = profileSchema.examples;
+    const [rules] = rulesSchema.examples;
+    assert.deepEqual([...Compile(profileSchema).Errors(profile)], []);
+    assert.deepEqual([...Compile(rulesSchema).Errors(rules)], []);
+
+    const profileVerdict = validateProfile(profile);
+    assert.deepEqual(profileVerdict.issues, []);
+    assert.ok(profileVerdict.valid);
+    // What the examples are there to show: a relationship kind with its ends, an item rule and a link rule.
+    assert.ok(profileVerdict.profile.relationshipKinds?.some((kind) => kind.from !== undefined && kind.to !== undefined));
+    const rulesVerdict = validateRules(rules);
+    assert.deepEqual(rulesVerdict.issues, []);
+    assert.ok(rulesVerdict.valid);
+    assert.equal(rulesVerdict.rules.profile, profileVerdict.profile.id);
+    assert.ok(rulesVerdict.rules.rules.some((rule) => rule.element !== undefined));
+    assert.ok(rulesVerdict.rules.rules.some((rule) => rule.relationship !== undefined));
+    assert.deepEqual(rulesAgainstProfile(rulesVerdict.rules, profileVerdict.profile), []);
+  });
+
+  test("every field of a rule is described", () => {
+    // EveryRuleFieldIsDescribed
+    const rule = rulesSchema.$defs.rule.properties;
+    for (const field of ["id", "statement", "source", "level", "element", "relationship", "when", "then"]) {
+      assert.equal(typeof rule[field].description, "string", `${field} has no description`);
+      assert.ok(rule[field].description.length > 20, `${field}'s description says nothing`);
+    }
+    assert.match(rule.when.description, /alternatives/);
+    assert.match(rule.when.description, /escapes the rule/);
+  });
+});

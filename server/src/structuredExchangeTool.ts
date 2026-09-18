@@ -145,7 +145,7 @@ function explain(
   // choosing "draft" and presenting it — a value nobody said was true.
   if (issues.some((issue) => VOCABULARY_RULES.has(issue.rule))) {
     lines.push(
-      "If the source you were given uses a word the profile does not allow, do not replace it with an allowed one you have no grounds for: ask the user which value is true, or whether the profile should change.",
+      "If the source you were given uses a word, or links kinds, the profile does not allow, do not replace it with an allowed one you have no grounds for: ask the user which value is true (for a link, which kinds it really joins), or whether the profile should change.",
     );
   }
   // A rule violation in a faithful document is a finding about the source. An agent told
@@ -163,6 +163,7 @@ const VOCABULARY_RULES: ReadonlySet<string> = new Set([
   "profile/closed-enumeration",
   "profile/undeclared-kind",
   "profile/undeclared-attribute",
+  "profile/end-kind",
 ]);
 
 /**
@@ -184,13 +185,18 @@ function describeNotes(notes: readonly ProfileNote[]): string {
  */
 function describeFindings(findings: readonly RuleFinding[]): string {
   if (findings.length === 0) return "";
-  const lines = ["", "Findings to check — the document was presented, but these rules did not pass:"];
+  const lines = ["", "Findings to check — the document was presented, but these checks did not pass:"];
   for (const finding of findings) {
-    const kind = finding.outcome === "not-verifiable" ? "not verifiable here" : "report rule violated";
+    const kind =
+      finding.ruleId === "profile/end-not-verifiable"
+        ? "relationship end not verifiable here"
+        : finding.outcome === "not-verifiable"
+          ? "not verifiable here"
+          : "report rule violated";
     lines.push(`- ${finding.path} (${kind}): ${finding.message}`);
   }
   lines.push(
-    "Tell the user about each. A rule not verifiable here needs the linked item in the document: add it with its attributes if you have it. Never invent a value to clear a finding.",
+    "Tell the user about each. Something not verifiable here needs the linked item in the document: add it with its kind and attributes if you have it. Never invent a value to clear a finding.",
   );
   return lines.join("\n");
 }
@@ -230,7 +236,7 @@ export function createStructuredExchangeToolDefinition(options: StructuredExchan
         // Never degraded to the core contract alone: a registry the project wrote and
         // got wrong would otherwise remove every guarantee while everything looked fine.
         const text = [
-          "The document was not presented: this project's structured-exchange profile registry cannot be used, so no document can be checked against it. These project files need fixing — tell the user if that is not yours to do:",
+          "The document was not presented: this project's structured-exchange profile registry cannot be used, so no document can be checked against it. These project files need fixing — tell the user if that is not yours to do; present_project_model lists every issue again after each fix:",
           ...describeUnusableProfiles(project.issues),
         ].join("\n");
         return { content: [{ type: "text", text }], details: undefined, isError: true };

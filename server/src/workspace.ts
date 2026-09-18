@@ -20,6 +20,8 @@ import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 import type { AgentRuntime } from "./agentRuntime.ts";
 import type { SandboxConfig } from "./config.ts";
 import { DOCUMENT_TOOLS } from "./documentTools.ts";
+import { PROJECT_MODEL_TOOL } from "./projectModelTool.ts";
+import { STRUCTURED_EXCHANGE_PROFILE_REGISTRY_PATH } from "@pi-outpost/shared/structured-exchange/profile";
 import { type DirectoryWatcher, createDirectoryWatcher } from "./fileWatcher.ts";
 import { resolveBrowserRoot, resolveWritableRoot } from "./fileBrowser.ts";
 import { discoverRepos, whyGitCannotServe, type GitRepo } from "./git.ts";
@@ -158,6 +160,12 @@ export class Workspace {
   documentToolsEverUsed = new Set<string>();
   /** Called during the turn now running, so the end of it does not count as idle. */
   documentToolsUsedThisTurn = new Set<string>();
+  /**
+   * The project's model files — its structured-exchange registry and the paths it lists —
+   * as last read, relative to the project. Naming, reading or writing one of them is what
+   * publishes `present_project_model`, aged by the same maps as the extractors.
+   */
+  projectModelFiles: string[] = [STRUCTURED_EXCHANGE_PROFILE_REGISTRY_PATH];
 
   /** Loaded from the runtime's session file by the caller; null until then. */
   workPlan: WorkPlan | null = null;
@@ -440,7 +448,9 @@ interface WorkspaceResources {
  * decision and this is not the place to overturn it.
  */
 function documentToolsLast(tools: ToolDefinition[]): ToolDefinition[] {
-  const documents = new Set<string>(DOCUMENT_TOOLS);
+  // Every tool published mid-session, not only the extractors: each one's arrival
+  // invalidates a caching provider's prefix from its own position onward.
+  const documents = new Set<string>([...DOCUMENT_TOOLS, PROJECT_MODEL_TOOL]);
   return [...tools.filter((tool) => !documents.has(tool.name)), ...tools.filter((tool) => documents.has(tool.name))];
 }
 

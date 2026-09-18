@@ -170,6 +170,8 @@ console.log("[build] copying the structured-exchange contract …");
 await cp(resolve(REPO_ROOT, "shared/schemas"), resolve(OUT_DIR, "contract/schemas"), { recursive: true });
 await cp(resolve(REPO_ROOT, "shared/conformance"), resolve(OUT_DIR, "contract/conformance"), { recursive: true });
 await cp(resolve(REPO_ROOT, "docs/structured-exchange.md"), resolve(OUT_DIR, "contract/README.md"));
+// Beside it under its own name, so the README's link to it resolves inside the package.
+await cp(resolve(REPO_ROOT, "docs/structured-exchange-project-setup.md"), resolve(OUT_DIR, "contract/structured-exchange-project-setup.md"));
 
 // The reference validator, as one file that runs anywhere Node does. The script it
 // is built from imports this repository's TypeScript, so shipping that would be

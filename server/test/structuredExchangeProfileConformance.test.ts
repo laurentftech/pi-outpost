@@ -113,6 +113,53 @@ describe("the conformance statement", () => {
     writeRegistry(registry);
   });
 
+  describe("a relationship kind declaring its ends", () => {
+    const withEnds = (to: string[]) => ({
+      ...profile(["draft", "approved"]),
+      elementKinds: [...profile(["draft", "approved"]).elementKinds, { kind: "test" }],
+      relationshipKinds: [{ kind: "verifies", from: ["test"], to }],
+    });
+    const verified = (relation: Record<string, unknown>, rows: unknown[] = []) =>
+      JSON.stringify({
+        schema: "urn:structured-exchange:2",
+        kind: "table",
+        profile: "acme/requirements",
+        data: {
+          columns: ["id"],
+          rows: [{ id: "r1", kind: "requirement", cells: ["R1"], attributes: { status: "approved" } }, ...rows],
+          relations: [{ kind: "verifies", ...relation }],
+        },
+      });
+
+    test("an end outside the document is counted as a finding to check", async () => {
+      // UnverifiableEndsAreCounted, at the server
+      writeRegistry(registry);
+      writeFileSync(path.join(root, "profiles/requirements.json"), JSON.stringify(withEnds(["requirement"])));
+      const document = verified({ from: { ref: "TST-4" }, to: { id: "r1" } });
+      assert.deepEqual(await structuredConformanceFor(root, [{ toolCallId: "e", structured: document }]), [
+        { toolCallId: "e", conformance: { profile: "acme/requirements", state: "conforms", openValues: 0, findings: 1 } },
+      ]);
+    });
+
+    test("narrowing an end makes a restored document say it no longer conforms", async () => {
+      // NarrowedEndsApplyToARestoredDocument, at the server
+      writeRegistry(registry);
+      writeFileSync(path.join(root, "profiles/requirements.json"), JSON.stringify(withEnds(["requirement", "test"])));
+      const document = [
+        { toolCallId: "n", structured: verified({ from: { id: "t1" }, to: { id: "t2" } }, [
+          { id: "t1", kind: "test", cells: ["T1"] },
+          { id: "t2", kind: "test", cells: ["T2"] },
+        ]) },
+      ];
+      assert.equal((await structuredConformanceFor(root, document))[0].conformance.state, "conforms");
+      writeFileSync(path.join(root, "profiles/requirements.json"), JSON.stringify(withEnds(["requirement"])));
+      assert.deepEqual(await structuredConformanceFor(root, document), [
+        { toolCallId: "n", conformance: { profile: "acme/requirements", state: "strays", openValues: 0 } },
+      ]);
+      writeProfile(["draft", "approved"]);
+    });
+  });
+
   test("an unusable registry says the document could not be checked", async () => {
     writeRegistry("{ not json");
     assert.deepEqual(await structuredConformanceFor(root, [{ toolCallId: "u", structured: table({ status: "approved" }) }]), [

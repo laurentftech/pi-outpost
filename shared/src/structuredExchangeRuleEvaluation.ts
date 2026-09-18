@@ -15,7 +15,7 @@
  * Pure: the same verdict in the agent's loop, the reader's statement and the reference
  * validator.
  */
-import { readTableRow, type StructuredTableRow } from "./structuredExchange.ts";
+import { endName, readDocument, type DocumentItem } from "./structuredExchangeDocumentItems.ts";
 import type { LinkConditions, ProfileRule, RuleConditions, RuleLevel } from "./structuredExchangeProfile.ts";
 
 export interface RuleFinding {
@@ -43,87 +43,17 @@ export interface RuleEvaluationOptions {
   subjects?: ReadonlySet<string>;
 }
 
-interface Item {
-  id?: string;
-  kind?: string;
-  attributes: Record<string, unknown>;
-  path: string;
-}
-
-interface Relationship {
-  kind?: string;
-  from: { id?: string; ref?: string };
-  to: { id?: string; ref?: string };
-  ref?: string;
-  path: string;
-}
-
 type Truth = "holds" | "fails" | "unknown";
 
-/**
- * The attributes an item will have. A proposal's `set` changes them and its
- * `removeAttributes` takes some away; a rule is about the result, not about the value
- * being replaced.
- */
-function effective(raw: Record<string, unknown>, path: string): Item {
-  const set = (raw.set ?? undefined) as Record<string, unknown> | undefined;
-  const attributes: Record<string, unknown> = { ...((raw.attributes ?? {}) as Record<string, unknown>) };
-  Object.assign(attributes, (set?.attributes ?? {}) as Record<string, unknown>);
-  for (const name of (set?.removeAttributes ?? []) as string[]) delete attributes[name];
-  const kind = typeof set?.kind === "string" ? set.kind : typeof raw.kind === "string" ? raw.kind : undefined;
-  return { ...(typeof raw.id === "string" ? { id: raw.id } : {}), ...(kind === undefined ? {} : { kind }), attributes, path };
-}
-
-function itemsAndRelationships(envelope: unknown): { items: Item[]; relationships: Relationship[] } {
-  const document = envelope as { kind?: unknown; data?: Record<string, unknown> };
-  const data = document.data ?? {};
-  const items: Item[] = [];
-  const relationships: Relationship[] = [];
-  if (document.kind === "graph") {
-    ((data.nodes ?? []) as Record<string, unknown>[]).forEach((node, index) => items.push(effective(node, `/data/nodes/${index}`)));
-    ((data.edges ?? []) as Record<string, unknown>[]).forEach((edge, index) => {
-      const set = (edge.set ?? undefined) as Record<string, unknown> | undefined;
-      const kind = typeof set?.kind === "string" ? set.kind : (edge.kind as string | undefined);
-      relationships.push({
-        ...(kind === undefined ? {} : { kind }),
-        from: { id: String(edge.from) },
-        to: { id: String(edge.to) },
-        ...(typeof edge.ref === "string" ? { ref: edge.ref } : {}),
-        path: `/data/edges/${index}`,
-      });
-    });
-  } else if (document.kind === "table") {
-    ((data.rows ?? []) as StructuredTableRow[]).forEach((row, index) => {
-      if (readTableRow(row).heading !== undefined || Array.isArray(row)) return;
-      items.push(effective(row as unknown as Record<string, unknown>, `/data/rows/${index}`));
-    });
-    ((data.relations ?? []) as Record<string, unknown>[]).forEach((relation, index) => {
-      relationships.push({
-        kind: relation.kind as string,
-        from: relation.from as { id?: string; ref?: string },
-        to: relation.to as { id?: string; ref?: string },
-        ...(typeof relation.ref === "string" ? { ref: relation.ref } : {}),
-        path: `/data/relations/${index}`,
-      });
-    });
-  }
-  return { items, relationships };
-}
-
-const endName = (end: { id?: string; ref?: string }): string => end.id ?? end.ref ?? "?";
-
 export function evaluateRules(envelope: unknown, rules: readonly ProfileRule[], options: RuleEvaluationOptions = {}): RuleFinding[] {
-  const { items, relationships } = itemsAndRelationships(envelope);
-  const byId = new Map(items.filter((item) => item.id !== undefined).map((item) => [item.id as string, item]));
-  const isSubject = (item: Item): boolean =>
-    options.subjects === undefined ? true : item.id !== undefined && options.subjects.has(item.id);
+  const { items, relationships, isSubject, endItem, concernsSubjects } = readDocument(envelope, options.subjects);
 
   /**
    * Whether a set of conditions holds for an item. On a subject, a missing attribute
    * simply does not match. On an item carried only for context, or an end outside the
    * document, what cannot be read is unknown.
    */
-  const judge = (conditions: RuleConditions | undefined, item: Item | undefined): Truth => {
+  const judge = (conditions: RuleConditions | undefined, item: DocumentItem | undefined): Truth => {
     const entries = Object.entries(conditions ?? {});
     if (entries.length === 0) return "holds";
     if (item === undefined) return "unknown";
@@ -168,9 +98,9 @@ export function evaluateRules(envelope: unknown, rules: readonly ProfileRule[], 
 
     for (const relationship of relationships) {
       if (relationship.kind !== rule.relationship) continue;
-      const fromItem = relationship.from.id === undefined ? undefined : byId.get(relationship.from.id);
-      const toItem = relationship.to.id === undefined ? undefined : byId.get(relationship.to.id);
-      if (!((fromItem !== undefined && isSubject(fromItem)) || (toItem !== undefined && isSubject(toItem)))) continue;
+      if (!concernsSubjects(relationship)) continue;
+      const fromItem = endItem(relationship.from);
+      const toItem = endItem(relationship.to);
 
       const ends = (clause: LinkConditions | undefined): Truth => {
         const truths = [judge(clause?.from, fromItem), judge(clause?.to, toItem)];

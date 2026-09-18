@@ -150,6 +150,37 @@ function profileRuleIssues(profile: StructuredExchangeProfile): StructuredExchan
     });
   }
 
+  // A relationship kind's ends name element kinds. One this profile does not declare
+  // would refuse every relationship of the kind, which reads as a strict model and is a
+  // typo; one named twice is harmless but says the list was not read.
+  const declaredElementKinds = [...declared.elementKinds].map((kind) => `"${kind}"`).join(", ") || "none";
+  (profile.relationshipKinds ?? []).forEach((declaration, k) => {
+    for (const end of ["from", "to"] as const) {
+      const seen = new Map<string, number>();
+      declaration[end]?.forEach((kind, position) => {
+        const at = `/relationshipKinds/${k}/${end}/${position}`;
+        const first = seen.get(kind);
+        if (first !== undefined) {
+          issues.push({
+            rule: "profile-format/repeated-end-kind",
+            path: at,
+            message: `relationship kind "${declaration.kind}" already names "${kind}" at /relationshipKinds/${k}/${end}/${first}`,
+          });
+          return;
+        }
+        seen.set(kind, position);
+        if (declared.elementKinds.has(kind)) return;
+        issues.push({
+          rule: "profile-format/unresolved-end-kind",
+          path: at,
+          message:
+            `relationship kind "${declaration.kind}" allows element kind "${kind}" at its ${end === "from" ? "source" : "target"}, which this profile does not declare; it declares ${declaredElementKinds}` +
+            (declared.relationshipKinds.has(kind) ? ` ("${kind}" is a relationship kind here, and a relationship joins elements)` : ""),
+        });
+      });
+    }
+  });
+
   const seenViewpoints = new Map<string, number>();
   (profile.viewpoints ?? []).forEach((viewpoint: StructuredViewpoint, index) => {
     const at = `/viewpoints/${index}`;

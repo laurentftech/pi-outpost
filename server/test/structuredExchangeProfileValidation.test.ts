@@ -159,6 +159,49 @@ describe("a profile", () => {
   });
 });
 
+describe("a relationship kind's ends", () => {
+  test("declaring the element kinds at its source and target is usable", () => {
+    // ARelationshipKindDeclaresItsEnds
+    const profile = requirements();
+    profile.relationshipKinds = [{ kind: "verifies", from: ["test"], to: ["requirement"] }];
+    const verdict = validateProfile(profile);
+    assert.deepEqual(verdict.issues, []);
+    assert.ok(verdict.valid);
+    assert.deepEqual(verdict.profile.relationshipKinds?.[0].from, ["test"]);
+    assert.deepEqual(verdict.profile.relationshipKinds?.[0].to, ["requirement"]);
+  });
+
+  test("naming an element kind the profile does not declare is refused at that name, listing the declared ones", () => {
+    // AnEndNamingAnUndeclaredKindIsRefused
+    const profile = requirements();
+    profile.relationshipKinds = [{ kind: "verifies", from: ["tset"], to: ["requirement"] }];
+    const verdict = validateProfile(profile);
+    assert.ok(!verdict.valid);
+    assert.deepEqual(
+      verdict.issues.map((issue) => `${issue.rule} @ ${issue.path}`),
+      ["profile-format/unresolved-end-kind @ /relationshipKinds/0/from/0"],
+    );
+    assert.match(verdict.issues[0].message, /"tset"/);
+    assert.match(verdict.issues[0].message, /"requirement", "test"/);
+  });
+
+  test("naming a relationship kind as an end says it is the wrong vocabulary", () => {
+    const profile = requirements();
+    profile.relationshipKinds = [{ kind: "verifies", to: ["verifies"] }];
+    const verdict = validateProfile(profile);
+    assert.ok(!verdict.valid);
+    assert.equal(verdict.issues[0].path, "/relationshipKinds/0/to/0");
+    assert.match(verdict.issues[0].message, /is a relationship kind here/);
+  });
+
+  test("naming an element kind twice is refused at the second", () => {
+    // AnEndNamingAKindTwiceIsRefused
+    const profile = requirements();
+    profile.relationshipKinds = [{ kind: "verifies", to: ["requirement", "test", "requirement"] }];
+    assert.deepEqual(refusal(profile), ["profile-format/repeated-end-kind @ /relationshipKinds/0/to/2"]);
+  });
+});
+
 describe("a registry", () => {
   const registry = { schema: "urn:structured-exchange-profile-registry:1", profiles: ["profiles/a.json", "profiles/b.json"] };
   const profile = (id: string) => ({ ...requirements(), id });
@@ -217,5 +260,11 @@ describe("a reserved identifier", () => {
   test("a profile claiming the conformity report's identifier is refused at its identifier", () => {
     // AProfileClaimingAReservedIdentifierIsRefused
     assert.deepEqual(refusal({ ...requirements(), id: "urn:structured-exchange-conformity-report:1" }), ["profile-format/reserved-identifier @ /id"]);
+  });
+
+  test("a profile claiming a view's identifier is refused at its identifier", () => {
+    // AProfileClaimingAViewIdentifierIsRefused
+    assert.deepEqual(refusal({ ...requirements(), id: "urn:structured-exchange-rule-patterns:1" }), ["profile-format/reserved-identifier @ /id"]);
+    assert.deepEqual(refusal({ ...requirements(), id: "urn:structured-exchange-rules-register:1" }), ["profile-format/reserved-identifier @ /id"]);
   });
 });

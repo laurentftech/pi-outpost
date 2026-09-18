@@ -150,10 +150,10 @@ function acceptable(attribute: ProfileAttribute, value: unknown): boolean {
 export function rulesAgainstProfile(file: StructuredExchangeRules, profile: StructuredExchangeProfile): StructuredExchangeIssue[] {
   const issues: StructuredExchangeIssue[] = [];
   const elementKinds = new Map((profile.elementKinds ?? []).map((declaration) => [declaration.kind, declaration]));
-  const relationshipKinds = new Set((profile.relationshipKinds ?? []).map((declaration) => declaration.kind));
+  const relationshipKinds = new Map((profile.relationshipKinds ?? []).map((declaration) => [declaration.kind, declaration]));
 
   /** Conditions on attributes of `kinds` (one kind for an item rule, any element kind for a link end). */
-  const checkConditions = (rule: ProfileRule, conditions: RuleConditions | undefined, at: string, kinds: string[]) => {
+  const checkConditions = (rule: ProfileRule, conditions: RuleConditions | undefined, at: string, kinds: string[], declaredEnd?: string) => {
     for (const [name, values] of Object.entries(conditions ?? {})) {
       const attributeAt = `${at}/${segment(name)}`;
       const declarations = kinds
@@ -164,9 +164,11 @@ export function rulesAgainstProfile(file: StructuredExchangeRules, profile: Stru
           rule: "rules-format/undeclared-attribute",
           path: attributeAt,
           message:
-            kinds.length === 1
-              ? `rule "${rule.id}" names attribute "${name}", which kind "${kinds[0]}" of profile "${profile.id}" does not declare`
-              : `rule "${rule.id}" names attribute "${name}", which no element kind of profile "${profile.id}" declares`,
+            declaredEnd !== undefined
+              ? `rule "${rule.id}" names attribute "${name}" at the ${declaredEnd}, where profile "${profile.id}" allows only ${quoted(kinds)}, and none of them declares it`
+              : kinds.length === 1
+                ? `rule "${rule.id}" names attribute "${name}", which kind "${kinds[0]}" of profile "${profile.id}" does not declare`
+                : `rule "${rule.id}" names attribute "${name}", which no element kind of profile "${profile.id}" declares`,
         });
         continue;
       }
@@ -213,10 +215,14 @@ export function rulesAgainstProfile(file: StructuredExchangeRules, profile: Stru
       issues.push({
         rule: "rules-format/undeclared-kind",
         path: `${at}/relationship`,
-        message: `rule "${rule.id}" applies to relationship kind "${rule.relationship}", which profile "${profile.id}" does not declare; it declares ${quoted([...relationshipKinds])}`,
+        message: `rule "${rule.id}" applies to relationship kind "${rule.relationship}", which profile "${profile.id}" does not declare; it declares ${quoted([...relationshipKinds.keys()])}`,
       });
       return;
     }
+    // An end's conditions are read on the element kinds the relationship kind allows
+    // there, and on every element kind where it allows any. An attribute only another
+    // kind declares would otherwise pass here and never select anything.
+    const declaration = relationshipKinds.get(rule.relationship);
     const anyElement = [...elementKinds.keys()];
     const clauses: [string, LinkConditions | "forbidden" | undefined][] = [
       ["when", rule.when],
@@ -224,8 +230,11 @@ export function rulesAgainstProfile(file: StructuredExchangeRules, profile: Stru
     ];
     for (const [name, clause] of clauses) {
       if (clause === undefined || clause === "forbidden") continue;
-      checkConditions(rule, clause.from, `${at}/${name}/from`, anyElement);
-      checkConditions(rule, clause.to, `${at}/${name}/to`, anyElement);
+      for (const [side, position] of [["from", "source"], ["to", "target"]] as const) {
+        const allowed = declaration?.[side];
+        const described = allowed === undefined ? undefined : `${position} of "${rule.relationship}"`;
+        checkConditions(rule, clause[side], `${at}/${name}/${side}`, allowed ?? anyElement, described);
+      }
     }
   });
   return issues;

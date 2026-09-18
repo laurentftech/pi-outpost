@@ -96,6 +96,32 @@ describe("a project's rules files", () => {
     );
   });
 
+  test("each profile's own files are known apart: its profile file, then the rules files naming it", async () => {
+    const other = { ...profile, id: "acme/tests", label: "ACME tests" };
+    const root = project({
+      ".pi-outpost/structured-exchange.json": {
+        schema: "urn:structured-exchange-profile-registry:1",
+        profiles: ["profiles/requirements.json", "profiles/tests.json"],
+        rules: ["rules/tests.json", "rules/arp.json", "rules/safety.json"],
+      },
+      "profiles/requirements.json": profile,
+      "profiles/tests.json": other,
+      "rules/tests.json": rulesFile([{ ...forbidDerived, id: "TST-derived" }], "acme/tests"),
+      "rules/arp.json": rulesFile([forbidDerived]),
+      "rules/safety.json": rulesFile([safetyBySafety]),
+    });
+    const outcome = await readProjectProfiles(root);
+    assert.ok(outcome.state === "usable");
+    const paths = (id: string) => outcome.filesByProfile.get(id)?.map((file) => file.path);
+    assert.deepEqual(paths("acme/requirements"), ["profiles/requirements.json", "rules/arp.json", "rules/safety.json"]);
+    assert.deepEqual(paths("acme/tests"), ["profiles/tests.json", "rules/tests.json"]);
+    // The same digests the whole registry records, not a second reading.
+    for (const file of outcome.filesByProfile.get("acme/tests") ?? []) {
+      assert.deepEqual(file, outcome.files.find((each) => each.path === file.path));
+      assert.match(file.sha256, /^sha256:[0-9a-f]{64}$/);
+    }
+  });
+
   test("a registry listing no rules has none", async () => {
     const root = project({ ".pi-outpost/structured-exchange.json": { schema: "urn:structured-exchange-profile-registry:1", profiles: ["profiles/requirements.json"] }, "profiles/requirements.json": profile });
     const outcome = await readProjectProfiles(root);

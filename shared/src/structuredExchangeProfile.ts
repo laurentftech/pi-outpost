@@ -30,8 +30,20 @@ export const STRUCTURED_EXCHANGE_PROFILE_REGISTRY_PATH = ".pi-outpost/structured
  */
 export const STRUCTURED_EXCHANGE_CONFORMITY_REPORT_PROFILE = "urn:structured-exchange-conformity-report:1";
 
+/**
+ * The profiles a rules register and rule patterns name. Reserved for the same reason as a
+ * report's: they describe a project's model rather than being things of it, and a view of
+ * the rules held to the default profile would be refused for not being a requirement.
+ */
+export const STRUCTURED_EXCHANGE_RULES_REGISTER_PROFILE = "urn:structured-exchange-rules-register:1";
+export const STRUCTURED_EXCHANGE_RULE_PATTERNS_PROFILE = "urn:structured-exchange-rule-patterns:1";
+
 /** Profile identifiers the contract reserves; a document naming one is never held to a project's profile. */
-export const RESERVED_PROFILE_IDENTIFIERS: ReadonlySet<string> = new Set([STRUCTURED_EXCHANGE_CONFORMITY_REPORT_PROFILE]);
+export const RESERVED_PROFILE_IDENTIFIERS: ReadonlySet<string> = new Set([
+  STRUCTURED_EXCHANGE_CONFORMITY_REPORT_PROFILE,
+  STRUCTURED_EXCHANGE_RULES_REGISTER_PROFILE,
+  STRUCTURED_EXCHANGE_RULE_PATTERNS_PROFILE,
+]);
 
 /**
  * The bounds of a profile and of a registry.
@@ -90,6 +102,17 @@ export interface ProfileKind {
   attributes?: ProfileAttribute[];
 }
 
+/**
+ * A relationship kind, and the element kinds it may join. A side left undeclared allows
+ * any element kind: a profile written before ends existed keeps its meaning.
+ */
+export interface ProfileRelationshipKind extends ProfileKind {
+  /** The element kinds allowed at the source. */
+  from?: string[];
+  /** The element kinds allowed at the target. */
+  to?: string[];
+}
+
 export interface StructuredExchangeProfile {
   schema: typeof STRUCTURED_EXCHANGE_PROFILE_SCHEMA_V1;
   id: string;
@@ -98,7 +121,7 @@ export interface StructuredExchangeProfile {
   /** Govern graph elements and table rows. */
   elementKinds?: ProfileKind[];
   /** Govern graph relationships and table relations. */
-  relationshipKinds?: ProfileKind[];
+  relationshipKinds?: ProfileRelationshipKind[];
   viewpoints?: StructuredViewpoint[];
 }
 
@@ -136,12 +159,18 @@ export function profileListing(profile: StructuredExchangeProfile): string {
   const lines: string[] = [`Profile ${profile.id} — ${profile.label}`];
   if (profile.description !== undefined) lines.push(profile.description);
 
-  const vocabulary = (heading: string, kinds: readonly ProfileKind[] | undefined) => {
+  const vocabulary = (heading: string, kinds: readonly ProfileRelationshipKind[] | undefined, relationships: boolean) => {
     const declared = kinds ?? [];
     lines.push("", `${heading}: ${declared.length}`);
     for (const declaration of declared) {
       lines.push(`  ${declaration.kind}`);
       if (declaration.description !== undefined) lines.push(`    ${declaration.description}`);
+      // Said for every relationship kind, declared or not: "any element kind" is a
+      // property of the model a reviewer should see, not an absence to infer.
+      if (relationships) {
+        lines.push(`    source: ${declaration.from?.join(", ") ?? "any element kind"}`);
+        lines.push(`    target: ${declaration.to?.join(", ") ?? "any element kind"}`);
+      }
       const attributes = declaration.attributes ?? [];
       if (attributes.length === 0) lines.push("    (no attributes)");
       for (const attribute of attributes) {
@@ -157,8 +186,8 @@ export function profileListing(profile: StructuredExchangeProfile): string {
       }
     }
   };
-  vocabulary("Element kinds (graph elements and table rows)", profile.elementKinds);
-  vocabulary("Relationship kinds (graph relationships and table relations)", profile.relationshipKinds);
+  vocabulary("Element kinds (graph elements and table rows)", profile.elementKinds, false);
+  vocabulary("Relationship kinds (graph relationships and table relations)", profile.relationshipKinds, true);
 
   const viewpoints = profile.viewpoints ?? [];
   lines.push("", `Viewpoints: ${viewpoints.length}`);
@@ -181,6 +210,28 @@ export interface StructuredExchangeProfileRegistry {
 }
 
 /**
+ * A set of conditions as it is checked: each attribute with the values any one of which it
+ * accepts, all of them holding together. The listing and the rules register read the same
+ * way because they both read this.
+ */
+export function describeConditions(set: RuleConditions | undefined): string {
+  return (
+    Object.entries(set ?? {})
+      .map(([name, values]) => `${name} ∈ {${values.map((value) => JSON.stringify(value)).join(", ")}}`)
+      .join(" and ") || "always"
+  );
+}
+
+/** A link rule's conditions, labelled by the end they are read on. */
+export function describeLinkConditions(set: LinkConditions | undefined): string {
+  const parts = [
+    set?.from === undefined ? undefined : `source ${describeConditions(set.from)}`,
+    set?.to === undefined ? undefined : `target ${describeConditions(set.to)}`,
+  ].filter((part): part is string => part !== undefined);
+  return parts.length === 0 ? "always" : parts.join(" and ");
+}
+
+/**
  * A profile's rules as plain text, each statement beside what it checks.
  *
  * A rule is only as good as the match between the sentence a reviewer approved and the
@@ -188,17 +239,8 @@ export interface StructuredExchangeProfileRegistry {
  * Nothing is elided and nothing reordered.
  */
 export function rulesListing(profileId: string, rules: readonly ProfileRule[]): string {
-  const conditions = (set: RuleConditions | undefined): string =>
-    Object.entries(set ?? {})
-      .map(([name, values]) => `${name} ∈ {${values.map((value) => JSON.stringify(value)).join(", ")}}`)
-      .join(" and ") || "always";
-  const ends = (set: LinkConditions | undefined): string => {
-    const parts = [
-      set?.from === undefined ? undefined : `source ${conditions(set.from)}`,
-      set?.to === undefined ? undefined : `target ${conditions(set.to)}`,
-    ].filter((part): part is string => part !== undefined);
-    return parts.length === 0 ? "always" : parts.join(" and ");
-  };
+  const conditions = describeConditions;
+  const ends = describeLinkConditions;
   const lines: string[] = [`Rules for ${profileId}: ${rules.length}`];
   for (const rule of rules) {
     lines.push("", `  ${rule.id} — ${rule.level}${rule.source === undefined ? "" : ` — ${rule.source}`}`, `    ${rule.statement}`);

@@ -27,9 +27,11 @@
     "./structured-exchange/profile-check": "./src/structuredExchangeProfileCheck.ts",
     "./structured-exchange/rules-validation": "./src/structuredExchangeRulesValidation.ts",
     "./structured-exchange/rule-evaluation": "./src/structuredExchangeRuleEvaluation.ts",
+    "./structured-exchange/document-items": "./src/structuredExchangeDocumentItems.ts",
     "./structured-exchange/table-export": "./src/structuredExchangeTableExport.ts",
     "./structured-exchange/conformity-report": "./src/structuredExchangeConformityReport.ts",
     "./structured-exchange/project-registry": "./src/structuredExchangeProjectRegistry.ts",
+    "./structured-exchange/project-views": "./src/structuredExchangeProjectViews.ts",
     "./diagram-orientation": "./src/diagramOrientation.ts"
   },
   "dependencies": {
