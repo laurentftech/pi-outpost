@@ -18,7 +18,7 @@ import { describe, test } from "node:test";
 import { parseStructuredExchange } from "@pi-outpost/shared/structured-exchange/parse";
 import { checkStructuredExchangeSchema } from "@pi-outpost/shared/structured-exchange/schema-node";
 import { validateProfile, validateRegistry } from "@pi-outpost/shared/structured-exchange/profile-validation";
-import { validateRules } from "@pi-outpost/shared/structured-exchange/rules-validation";
+import { rulesAgainstProfile, validateRules } from "@pi-outpost/shared/structured-exchange/rules-validation";
 
 /**
  * Each example judged by the format it declares. A profile, a rules file or a registry shown in the
@@ -59,13 +59,36 @@ function envelopes(file: string): { at: number; document: Record<string, unknown
   return found;
 }
 
-for (const file of ["docs/structured-exchange.md", "skills/structured-exchange/SKILL.md"]) {
+for (const file of [
+  "docs/structured-exchange.md",
+  "docs/structured-exchange-project-setup.md",
+  "skills/structured-exchange/SKILL.md",
+  "skills/structured-exchange-project/SKILL.md",
+]) {
   describe(`${file} shows documents that validate`, () => {
     const found = envelopes(file);
 
     test("has examples at all, so this suite cannot pass by finding none", () => {
       assert.ok(found.length > 0, `no complete envelope found in ${file}`);
     });
+
+    // A rules file shown beside the profile it names is copied with it: it must also be
+    // usable against that profile, not merely well-formed.
+    const profiles = new Map(
+      found
+        .map(({ document }) => validateProfile(document))
+        .filter((verdict) => verdict.valid)
+        .map((verdict) => [verdict.profile.id, verdict.profile] as const),
+    );
+    for (const { at, document } of found) {
+      if (!String(document.schema).startsWith("urn:structured-exchange-rules:")) continue;
+      const verdict = validateRules(document);
+      if (!verdict.valid || !profiles.has(verdict.rules.profile)) continue;
+      test(`the rules at line ${at} are usable against the profile shown beside them`, () => {
+        const issues = rulesAgainstProfile(verdict.rules, profiles.get(verdict.rules.profile)!);
+        assert.deepEqual(issues.map((issue) => `${issue.rule}@${issue.path}`), []);
+      });
+    }
 
     for (const { at, document } of found) {
       test(`the example at line ${at} (${String(document.schema)}) validates`, () => {

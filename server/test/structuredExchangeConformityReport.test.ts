@@ -234,3 +234,54 @@ describe("a report in a project with a default profile", () => {
     assert.equal((await structuredConformanceFor(root, [{ toolCallId: "unnamed", structured: unnamed }]))[0]?.conformance.state, "strays");
   });
 });
+
+describe("a report under a profile declaring relationship ends", () => {
+  /** `verifies` goes from a requirement to a test, and nowhere else. */
+  const withEnds: StructuredExchangeProfile = {
+    ...profile,
+    elementKinds: [...(profile.elementKinds ?? []), { kind: "test" }],
+    relationshipKinds: [{ kind: "satisfies" }, { kind: "verifies", from: ["requirement"], to: ["test"] }],
+  };
+  const endsContext = { profiles: new Map([[withEnds.id, withEnds]]), default: withEnds.id };
+
+  const verifying = (subject: string, rows: { id: string; kind: string }[], to: Record<string, string>) =>
+    JSON.stringify({
+      subjects: [subject],
+      document: {
+        schema: "urn:structured-exchange:2",
+        kind: "table",
+        profile: "acme/requirements",
+        data: {
+          columns: ["id", "requirement"],
+          rows: rows.map((row) => ({ id: row.id, kind: row.kind, cells: [row.id.toUpperCase(), row.id] })),
+          relations: [{ from: { id: subject }, to, kind: "verifies" }],
+        },
+      },
+    });
+
+  const reportOf = (lines: string[]) => buildConformityReport(readBatch(lines.join("\n")), endsContext, options);
+  const violationsOf = (table: Record<string, unknown>, id: string) =>
+    String(((table.data as { rows: Record<string, unknown>[] }).rows.find((row) => row.id === id)?.cells as unknown[]).at(-1));
+
+  test("a relation joining a kind its end does not allow makes the subject non-conforming, naming the other end", () => {
+    // ARelationBetweenDisallowedKindsIsNonConforming
+    const report = reportOf([
+      verifying("req-1", [{ id: "req-1", kind: "requirement" }, { id: "req-2", kind: "requirement" }], { id: "req-2" }),
+      verifying("req-3", [{ id: "req-3", kind: "requirement" }, { id: "tst-1", kind: "test" }], { id: "tst-1" }),
+    ]);
+    assert.ok(report.table, report.tableRefused);
+    assert.deepEqual(verdicts(report.table), ["req-1 non-conforming", "req-3 conforms"]);
+    const violations = violationsOf(report.table, "req-1");
+    assert.match(violations, /^profile\/end-kind: relationship kind "verifies" of profile "acme\/requirements" allows at its target only "test" \(→ req-2\)$/);
+    assert.equal(report.perRule["profile/end-kind"], 1);
+  });
+
+  test("a relation whose declared end is outside the line leaves the subject to check", () => {
+    // AnEndOfUnknownKindIsToCheck
+    const report = reportOf([verifying("req-4", [{ id: "req-4", kind: "requirement" }], { ref: "TST-9" })]);
+    assert.ok(report.table, report.tableRefused);
+    assert.deepEqual(verdicts(report.table), ["req-4 to check"]);
+    assert.match(violationsOf(report.table, "req-4"), /^profile\/end-not-verifiable: .* \(not verifiable here, → TST-9\)$/);
+    assert.deepEqual(report.counts, { conforms: 0, "non-conforming": 0, "to check": 1 });
+  });
+});

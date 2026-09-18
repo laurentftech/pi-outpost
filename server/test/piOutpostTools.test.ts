@@ -141,7 +141,7 @@ describe("createPiOutpostTools", () => {
 
   test("returns the nine tools the agent needs, in the documented order", async () => {
     const tools = await createPiOutpostTools({ cwd: root, maxBytes: VALID.maxBytes });
-    assert.equal(tools.length, 9);
+    assert.equal(tools.length, 10);
     const names = tools.map((t) => t.name);
     assert.deepEqual(names, [
       "pdf_extract",
@@ -151,6 +151,7 @@ describe("createPiOutpostTools", () => {
       "write_structure_figure",
       "write_structure_table",
       "present_structure",
+      "present_project_model",
       "work_plan",
       // Registered, not necessarily published: the server withholds this one from a
       // session with no plan through the SDK's active-tool set. A child registers it
@@ -210,7 +211,7 @@ describe("default export (extension entry)", () => {
 
       await piOutpostExtension(pi);
 
-      assert.equal(registered.length, 9);
+      assert.equal(registered.length, 10);
       assert.deepEqual(
         registered.map((t) => t.name),
         [
@@ -221,6 +222,7 @@ describe("default export (extension entry)", () => {
           "write_structure_figure",
           "write_structure_table",
           "present_structure",
+          "present_project_model",
           "work_plan",
           "work_plan_extended",
         ],

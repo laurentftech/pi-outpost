@@ -55,6 +55,12 @@ export type ProjectProfiles =
       context: ProfileContext;
       /** The profile and rules files read, in the registry's order — what a report is checked against. */
       files: RegistryFile[];
+      /**
+       * Each registered profile's own files, by profile identifier: its profile file, then
+       * the rules files naming it in the registry's order — what a view of one profile is
+       * generated from.
+       */
+      filesByProfile: ReadonlyMap<string, readonly RegistryFile[]>;
     }
   | { state: "unusable"; issues: ProjectProfileIssue[] };
 
@@ -230,10 +236,14 @@ export async function readProjectRegistry(
 
   const rules = new Map<string, ProfileRule[]>();
   for (const entry of loadedRules) rules.set(entry.rules.profile, [...(rules.get(entry.rules.profile) ?? []), ...entry.rules.rules]);
+  const digestByPath = new Map(files.map((file) => [file.path, file]));
+  const filesByProfile = new Map<string, RegistryFile[]>(loaded.map((entry) => [entry.profile.id, [digestByPath.get(entry.path) as RegistryFile]]));
+  for (const entry of loadedRules) filesByProfile.get(entry.rules.profile)?.push(digestByPath.get(entry.path) as RegistryFile);
   return {
     state: "usable",
     context: { profiles, ...(registry.default !== undefined ? { default: registry.default } : {}), ...(rules.size > 0 ? { rules } : {}) },
     files,
+    filesByProfile,
   };
 }
 

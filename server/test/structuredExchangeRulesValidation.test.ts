@@ -177,6 +177,51 @@ describe("a rules file", () => {
   });
 });
 
+describe("a link rule under a profile declaring relationship ends", () => {
+  /** Only a test declares `bench`; `satisfies` joins requirements, `traces` leaves its ends open. */
+  const withEnds: StructuredExchangeProfile = {
+    ...profile,
+    elementKinds: [profile.elementKinds![0], { kind: "test", attributes: [{ name: "bench", type: "enumeration", values: ["hil", "vehicle"], closed: true }] }],
+    relationshipKinds: [{ kind: "satisfies", from: ["requirement"], to: ["requirement"] }, { kind: "traces" }],
+  };
+  const benchRule = (relationship: string) => ({
+    id: `BENCH-${relationship}`,
+    statement: "Only hardware-in-the-loop evidence counts.",
+    level: "report",
+    relationship,
+    when: { from: { bench: ["vehicle"] } },
+    then: "forbidden",
+  });
+  const against = (rules: unknown[]) => {
+    const verdict = validateRules(rulesFile(rules));
+    assert.ok(verdict.valid, `refused on its own: ${JSON.stringify(verdict.issues)}`);
+    return rulesAgainstProfile(verdict.rules, withEnds);
+  };
+
+  test("a condition is read on the kinds allowed at that end, and refused when none of them declares the attribute", () => {
+    // ALinkRuleConditionIsReadOnTheDeclaredEnds
+    const issues = against([benchRule("satisfies")]);
+    assert.deepEqual(
+      issues.map((issue) => `${issue.rule} @ ${issue.path}`),
+      ["rules-format/undeclared-attribute @ /rules/0/when/from/bench"],
+    );
+    assert.match(issues[0].message, /at the source of "satisfies", where profile "acme\/requirements" allows only "requirement"/);
+  });
+
+  test("an end the relationship kind leaves open reads every element kind", () => {
+    // AnUndeclaredEndReadsEveryElementKind
+    assert.deepEqual(against([benchRule("traces")]), []);
+  });
+
+  test("a value is checked against the attribute as the allowed kinds declare it", () => {
+    const wrongValue = { ...benchRule("traces"), when: { from: { bench: ["track"] } } };
+    assert.deepEqual(
+      against([wrongValue]).map((issue) => `${issue.rule} @ ${issue.path}`),
+      ["rules-format/undeclared-value @ /rules/0/when/from/bench/0"],
+    );
+  });
+});
+
 describe("rules files together, in a registry", () => {
   const profiles = new Map([[profile.id, profile]]);
 

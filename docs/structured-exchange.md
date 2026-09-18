@@ -466,7 +466,11 @@ Its format is `urn:structured-exchange-profile:1`, published with the other sche
     },
     { "kind": "test" }
   ],
-  "relationshipKinds": [{ "kind": "derives" }, { "kind": "verifies" }, { "kind": "satisfies" }],
+  "relationshipKinds": [
+    { "kind": "derives" },
+    { "kind": "verifies", "from": ["test"], "to": ["requirement"] },
+    { "kind": "satisfies", "from": ["requirement"], "to": ["requirement"] }
+  ],
   "viewpoints": [
     { "id": "verification", "label": "Verification", "concern": "What verifies each requirement", "elementKinds": ["requirement", "test"], "relationshipKinds": ["verifies"] }
   ]
@@ -480,6 +484,12 @@ Its format is `urn:structured-exchange-profile:1`, published with the other sche
   makes it a list of that type. `required` means *has a value*: `null` is not one.
 - An enumeration lists its `values` and must say whether it is `closed` — a value outside
   it refused — or open, where such a value is accepted and reported.
+- A relationship kind may say which element kinds it joins: `from` lists those allowed at its
+  source, `to` those allowed at its target. A side left out allows any element kind, so a
+  profile without ends means what it always meant. Ends must name declared element kinds
+  (`profile-format/unresolved-end-kind`), each once (`profile-format/repeated-end-kind`).
+  Ends are newer than the format's first release: a pi-outpost or a reference validator
+  older than them refuses a profile that declares them.
 - Kinds and attributes are arrays of named entries, not maps: a kind or attribute declared
   twice is refused instead of silently keeping the last.
 - `viewpoints` are the readings the domain's models are made for, in the shape a document
@@ -504,6 +514,7 @@ each refusal states what the profile allows at the place it points:
 | `profile/unregistered-profile` | under a default, a document naming a profile the project does not register |
 | `profile/version-1-under-default` | under a default, a version 1 document, which cannot name a profile |
 | `profile/viewpoint-declared-twice` | a document declaring a viewpoint its profile also declares |
+| `profile/end-kind` | a relationship or relation joining, at an end its kind declares, an item of a kind that end does not allow |
 
 A proposal is not refused for required attributes it does not mention on an item it
 changes: it describes only what changes. A value outside an **open** enumeration is not
@@ -511,15 +522,22 @@ refused; the agent is told each one with the values the enumeration lists, so it
 new value from a typo. Structural heading rows and sequence documents are not held to a
 profile.
 
+A relationship's ends are judged by the kinds its items have — for a proposal, the kinds it
+leaves them with. An end that is not in the document, or carries no kind, is not refused and
+not passed either: it is a finding to check (`profile/end-not-verifiable`), counted with the
+rules' findings. Tightening a relationship's ends makes documents presented earlier say they no
+longer conform, as removing a value from a closed enumeration does.
+
 ### What a default changes
 
 Without `default`, profiles are opt-in: a document naming a registered profile is held to
 it, and anything else — no profile, an unknown one, version 1 — is judged by the core
 contract alone. With a default, the project has said its documents follow a model, and a
 document may not step around it: one naming no profile is held to the default, one naming a
-profile the project does not register is refused, and a version 1 document is refused. The one exception is
-a conformity report, which names the reserved `urn:structured-exchange-conformity-report:1` and is never held to
-a project's profile.
+profile the project does not register is refused, and a version 1 document is refused. The exceptions are the
+documents that describe a project rather than belong to it, each naming an identifier the contract reserves and
+never held to a project's profile: a conformity report (`urn:structured-exchange-conformity-report:1`), a rules
+register (`urn:structured-exchange-rules-register:1`) and rule patterns (`urn:structured-exchange-rule-patterns:1`).
 
 ### When the registry is wrong
 
@@ -534,7 +552,7 @@ everything looked fine.
 
 A presented document held to a profile says so beside its vocabulary, and in its text
 equivalent: that it conforms (with how many values fell outside open enumerations, and how
-many findings its rules leave to check), that it
+many findings its rules and its relationships' ends leave to check), that it
 does not conform to the profile as it stands now, or that it could not be checked because
 the registry cannot be used. The statement is re-established each time the document is
 shown, so a proposal restored after the profile was tightened says it no longer conforms. It
@@ -565,6 +583,10 @@ has and the profile lacks is a correct document refused. Decide closed or open d
 a closed enumeration refuses the typo and the legitimately new value alike.
 
 ### Rules a project reviews against
+
+Writing these files — from a requirements model to rules a person has confirmed — is walked
+through in [Setting up a project's model and rules](structured-exchange-project-setup.md). This
+section is the format.
 
 A profile says which words exist. Some of a project's constraints are between words: under
 ARP4754A a derived requirement does not satisfy an upstream requirement; a safety requirement
@@ -619,7 +641,9 @@ refusal, finding and report quotes; `id` and the optional `source` say where it 
   is what must hold for those, or `"forbidden"`: nothing selected may exist.
 - A set of conditions maps an attribute name to the values it may take, and holds when every
   one of its conditions does. For a link, `from` and `to` put conditions on the source and on
-  the target.
+  the target. A link's conditions are checked, when the rules file is read, against the element
+  kinds its relationship kind allows at that end — or every element kind, where the end is not
+  declared.
 
 A rules file is checked against its profile whenever the registry is read. A rule naming a
 kind, an attribute or a value the profile does not declare could never fire, so it makes the
@@ -720,6 +744,40 @@ by each rule's statement beside the conditions it checks (`--registry … --desc
 optionally with a profile identifier) so each statement can be read against what the machine
 applies, and prints any valid table as the reader's Markdown export (`--markdown table.json`).
 
+### Reviewing a project's rules
+
+Two views are generated from a profile and its rules files — never drawn by a model — so a person
+can confirm that each rule checks what its statement says:
+
+- the **rules register**, a version 2 table: one chapter per kind a rule targets, a row per rule
+  with its identifier, level, what it applies to, `when`, `then`, statement, source, and the
+  attributes without which an item is not selected;
+- the **rule patterns**, a version 2 graph: one frame per rule, labelled with its level,
+  identifier and statement, drawing what it checks — a link rule's source and target, each typed
+  by the element kinds its end allows and by the conditions that select it (`when`) or that it
+  must meet (`must have`), joined by the relationship, marked forbidden where it is; an item rule
+  as one element with its conditions. A statement too long for a frame's label is shortened
+  there; the register holds it whole.
+
+Both record the profile and rules files they came from as artifacts, `rel: "generatedFrom"` with
+their digests; the same files give the same document. In this application the agent presents
+them with `present_project_model` (`view: "rules-register"` or `"rule-patterns"`), which also
+returns the text listing — and, while the project's files cannot be used, every issue with its
+file and pointer. The tool is offered to the model only once a conversation touches the project's
+model — a prompt naming the registry or a file it lists or opening the setup skill
+(`/skill:structured-exchange-project`), the agent reading or writing one of those files, reading the
+setup skill, or a refusal because the registry cannot be used — and withdrawn again after
+turns without a call, as the document extractors are. Outside it:
+
+```
+node validate-structured-exchange.mjs --registry project/.pi-outpost/structured-exchange.json \
+  --rules-register register.json --rule-patterns patterns.json
+```
+
+The profile is the one `--describe-profile <id>` names, else the registry's default, else its only
+profile. Nothing is written when the registry cannot be used (**4**), when no profile can be chosen
+(**2**), or when a view does not fit the contract — rule patterns hold at most 50 frames — (**1**).
+
 ## If you are not building in this repository
 
 You do not need our command-line interface, and you do not need this repository. The
@@ -734,6 +792,7 @@ node_modules/pi-outpost/dist/contract/
   conformance/                          documents and the verdict each should get
   validate-structured-exchange.mjs      the reference validator, self-contained
   README.md                             this page
+  structured-exchange-project-setup.md  writing a project's profiles and rules
 ```
 
 - The **schema** is what the application validates against, byte for byte: it is the

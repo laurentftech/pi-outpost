@@ -8,7 +8,7 @@
  * What stays here is what only a server does — telling readers whether the documents
  * they were shown conform, against the files as they are now.
  */
-import type { StructuredConformance } from "@pi-outpost/shared/structured-exchange/profile";
+import { RESERVED_PROFILE_IDENTIFIERS, type StructuredConformance } from "@pi-outpost/shared/structured-exchange/profile";
 import { holdToProfile } from "@pi-outpost/shared/structured-exchange/profile-check";
 import { parseSerializedStructuredExchange } from "@pi-outpost/shared/structured-exchange/parse";
 import { checkStructuredExchangeSchema } from "@pi-outpost/shared/structured-exchange/schema-node";
@@ -47,6 +47,9 @@ export async function structuredConformanceFor(
     const verdict = parseSerializedStructuredExchange(structured, checkStructuredExchangeSchema);
     if (!verdict.valid) continue;
     const named = (verdict.envelope as { profile?: unknown }).profile;
+    // A report or a view of the project's rules is never held to a profile, so nothing is
+    // said about it — not even that it could not be checked while the registry is broken.
+    if (typeof named === "string" && RESERVED_PROFILE_IDENTIFIERS.has(named)) continue;
     const namedProfile = typeof named === "string" ? { profile: named } : {};
     if (project.state === "unusable") {
       statements.push({ toolCallId, conformance: { state: "unchecked", openValues: 0, ...namedProfile } });

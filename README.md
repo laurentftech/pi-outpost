@@ -214,7 +214,10 @@ one needs, the command that proves it works, and the caution that goes with it.
   and the reader can turn it either way. A graph may name the readings it is made for as
   viewpoints — power, control, safety — which a reader selects and the agent writes one figure
   for. A project can hold the agent's documents to its own data model — kinds, attributes,
-  enumeration values — declared in local profile files. See [`docs/structured-exchange.md`](docs/structured-exchange.md)
+  enumeration values, the kinds each relationship joins — declared in local profile files, and
+  review them against rules written on top of it; the agent shows those rules back as a register
+  and as one small pattern per rule. See [`docs/structured-exchange.md`](docs/structured-exchange.md)
+  and [`docs/structured-exchange-project-setup.md`](docs/structured-exchange-project-setup.md)
 - [Work Plans](#work-plans): for non-trivial work the agent keeps an explicit hierarchy of
   objectives, dependencies and verification state beside the conversation
 - [Workspace Outcome](#workspace-outcome): review plan progress, recorded verification, and
