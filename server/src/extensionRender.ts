@@ -16,6 +16,28 @@ import type { Theme } from "@earendil-works/pi-coding-agent";
 
 const RENDER_WIDTH = 100;
 
+/**
+ * The theme's panel backgrounds: the boxes pi paints behind a tool card or a custom
+ * message in a terminal. The widget draws its own cards, in light or dark, and the HTML
+ * rendered here is shared by every client whatever its theme — so a dark panel painted
+ * in by the server shows up as a black band on a light widget. They are dropped; the
+ * text colours, which carry the meaning, are kept.
+ */
+const PANEL_BACKGROUNDS = ["toolPendingBg", "toolSuccessBg", "toolErrorBg", "customMessageBg", "userMessageBg"] as const;
+
+/**
+ * Any OSC sequence: a terminal's out-of-band control, such as the OSC 8 hyperlink pi
+ * wraps around a path when it believes its terminal supports one. The HTML conversion
+ * reads colours only, so it would leave `]8;;file:///…` in the text; and a `file:` URL
+ * of the server's machine is no link for a browser elsewhere. The linked text stays.
+ */
+const OSC_SEQUENCE = /\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g;
+
+/** The CSS value the HTML conversion writes for a background escape, found by converting one. */
+function cssBackground(ansi: string): string | undefined {
+  return /background-color:([^;"]+)/.exec(ansiLinesToHtml([`${ansi}x`]))?.[1];
+}
+
 /** Minimal pi-tui Component surface used by renderers. */
 interface RenderComponent {
   render(width: number): string[];
@@ -50,10 +72,21 @@ export class ExtensionRenderer {
   private deps?: ExtensionRenderDeps;
   private theme?: Theme;
   private toolRenderer?: ReturnType<typeof createToolHtmlRenderer>;
+  /** The CSS values of the theme's panel backgrounds, to be dropped from what is rendered. */
+  private panelBackgrounds = new Set<string>();
 
   configure(next: ExtensionRenderDeps | undefined): void {
     this.deps = next;
     this.theme = next ? (getThemeByName(next.themeName ?? "dark") ?? getThemeByName("dark")) : undefined;
+    this.panelBackgrounds = new Set(
+      PANEL_BACKGROUNDS.map((key) => {
+        try {
+          return cssBackground(this.theme?.getBgAnsi(key as never) ?? "");
+        } catch {
+          return undefined;
+        }
+      }).filter((value): value is string => value !== undefined),
+    );
     this.toolRenderer =
       next && this.theme
         ? createToolHtmlRenderer({
@@ -65,12 +98,16 @@ export class ExtensionRenderer {
         : undefined;
   }
 
+  private forTheWidget(html: string | undefined): string | undefined {
+    return html === undefined ? undefined : withoutTerminalMarkup(html, this.panelBackgrounds);
+  }
+
   /** Render an extension's compact call header, if it provides one. */
   renderToolCallHtml(toolCallId: string, toolName: string, args: unknown): string | undefined {
     if (!this.toolRenderer) return undefined;
     try {
-      const html = this.toolRenderer.renderCall(toolCallId, toolName, args);
-      return html?.trim() || undefined;
+      const html = this.forTheWidget(this.toolRenderer.renderCall(toolCallId, toolName, args));
+      return html === undefined ? undefined : withoutBlankEdges(html).trim() || undefined;
     } catch {
       return undefined;
     }
@@ -87,10 +124,12 @@ export class ExtensionRenderer {
     try {
       const blocks = normalizeToolContent(content);
       const rendered = this.toolRenderer.renderResult(toolCallId, toolName, blocks, details, isError);
-      if (!rendered?.expanded?.trim()) return undefined;
+      const expanded = this.forTheWidget(rendered?.expanded);
+      const collapsed = this.forTheWidget(rendered?.collapsed);
+      if (!expanded?.trim()) return undefined;
       return {
-        expanded: rendered.expanded,
-        ...(rendered.collapsed && rendered.collapsed !== rendered.expanded ? { collapsed: rendered.collapsed } : {}),
+        expanded,
+        ...(collapsed && collapsed !== expanded ? { collapsed } : {}),
       };
     } catch {
       return undefined;
@@ -115,8 +154,8 @@ export class ExtensionRenderer {
         details,
         new Date().toISOString(),
       );
-      const collapsed = componentToHtml(msgRenderer(message, { expanded: false, outputPad: 0 }, this.theme) as RenderComponent);
-      const expanded = componentToHtml(msgRenderer(message, { expanded: true, outputPad: 0 }, this.theme) as RenderComponent);
+      const collapsed = this.forTheWidget(componentToHtml(msgRenderer(message, { expanded: false, outputPad: 0 }, this.theme) as RenderComponent));
+      const expanded = this.forTheWidget(componentToHtml(msgRenderer(message, { expanded: true, outputPad: 0 }, this.theme) as RenderComponent));
       if (!expanded) return undefined;
       return {
         expanded,
@@ -126,6 +165,37 @@ export class ExtensionRenderer {
       return undefined;
     }
   }
+}
+
+/**
+ * What a terminal needs and a browser does not: OSC sequences, and the panel
+ * backgrounds of the theme. Whatever else the HTML carries is left alone.
+ */
+export function withoutTerminalMarkup(html: string, panelBackgrounds: ReadonlySet<string>): string {
+  let cleaned = html.replace(OSC_SEQUENCE, "");
+  for (const background of panelBackgrounds) cleaned = cleaned.split(`background-color:${background}`).join("");
+  // A style left with only separators, or nothing at all, is dropped with its attribute.
+  return cleaned.replace(/style="([^"]*)"/g, (whole, body: string) => {
+    const kept = body.split(";").map((part) => part.trim()).filter(Boolean).join(";");
+    return kept === "" ? "" : `style="${kept}"`;
+  }).replace(/<span >/g, "<span>");
+}
+
+/** A rendered line holding nothing but spaces, or the placeholder the conversion writes for an empty one. */
+const BLANK_LINE = /^<div class="ansi-line">(?:\s|&nbsp;|<span[^>]*>(?:\s|&nbsp;)*<\/span>)*<\/div>/;
+
+/**
+ * A call header without the blank rows around it: the padding of the panel pi draws in
+ * a terminal, which, once its background is gone, only makes one card taller than the next.
+ */
+export function withoutBlankEdges(html: string): string {
+  const lines = html.match(/<div class="ansi-line">[\s\S]*?<\/div>/g);
+  if (lines === null || lines.join("") !== html) return html;
+  let start = 0;
+  let end = lines.length;
+  while (start < end && BLANK_LINE.test(lines[start])) start += 1;
+  while (end > start && BLANK_LINE.test(lines[end - 1])) end -= 1;
+  return lines.slice(start, end).join("");
 }
 
 function componentToHtml(component: RenderComponent | undefined): string | undefined {
