@@ -47,17 +47,24 @@ export function naturalWidth(svg: string): number | undefined {
   return Number.isFinite(width) && width > 0 ? width : undefined;
 }
 
-function mermaidCode(children: React.ReactNode): string | null {
-  if (
-    children !== null &&
-    typeof children === "object" &&
-    "props" in children &&
-    typeof (children.props as { className?: string }).className === "string" &&
-    /language-mermaid\b/.test((children.props as { className: string }).className)
-  ) {
-    return String((children.props as { children?: React.ReactNode }).children ?? "").trim();
-  }
+/**
+ * The text of a fenced block, when `children` is the `code` element Markdown puts in
+ * a `pre` — and, given a language, only when the fence named it. Null for anything
+ * else. The text is as written, trailing newline included.
+ */
+export function fencedCode(children: React.ReactNode, language?: string): string | null {
+  if (children === null || typeof children !== "object" || !("props" in children)) return null;
+  const props = children.props as { className?: string; children?: React.ReactNode };
+  if (language !== undefined && !new RegExp(`\\blanguage-${language}\\b`).test(props.className ?? "")) return null;
+  const content = props.children;
+  if (typeof content === "string") return content;
+  if (Array.isArray(content) && content.every((part) => typeof part === "string")) return content.join("");
   return null;
+}
+
+function mermaidCode(children: React.ReactNode): string | null {
+  const code = fencedCode(children, "mermaid");
+  return code === null ? null : code.trim();
 }
 
 /**
@@ -70,7 +77,20 @@ export function MarkdownPre(props: React.HTMLAttributes<HTMLPreElement>) {
   const { children, ...rest } = props;
   const code = mermaidCode(children);
   if (code !== null) return <Mermaid code={code} />;
-  return <pre {...rest}>{children}</pre>;
+  const text = fencedCode(children);
+  // The copy control sits in the block's corner, always shown: a hover-only one
+  // cannot be found on a touch screen.
+  if (text === null) return <pre {...rest}>{children}</pre>;
+  return (
+    <div className="code-block relative" data-testid="code-block">
+      <pre {...rest}>{children}</pre>
+      <CopyButton
+        iconOnly
+        text={text.replace(/\n$/, "")}
+        className="absolute right-1.5 top-1.5 rounded border border-zinc-300 bg-white/80 px-1.5 py-0.5 text-xs text-zinc-500 hover:text-zinc-800 dark:border-zinc-700 dark:bg-zinc-900/80 dark:text-zinc-400 dark:hover:text-zinc-100"
+      />
+    </div>
+  );
 }
 
 export function Mermaid({ code }: { code: string }) {

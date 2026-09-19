@@ -84,6 +84,15 @@ It presents one through the `present_structure` tool, which validates before sho
 anything and hands back the diagnostics when it refuses, so a document can be corrected
 without leaving the exchange.
 
+Some models write the document straight into their reply instead, as a ```` ```json ````
+block. Such a block is drawn in place, provided it declares the contract's `schema` and
+validates against the same rules as a presented document; in a project that registers
+profiles it also states whether it conforms, as a presented one does. A block that
+declares the schema and fails is left as code, under one line naming the first rule it
+breaks; any other JSON is left as code. The difference that remains is the agent's: it is
+never told that an inline document was refused, so the tool is still the way to get a
+document corrected within the exchange.
+
 ## Validating before you emit
 
 ```

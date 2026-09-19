@@ -1,4 +1,5 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
+import { ReplyConformanceContext } from "./components/ReplyStructuredExchange";
 import { workspaceKey } from "./util/workspaceKey";
 import type { OutcomeTarget, Theme, WireImage } from "@pi-outpost/shared";
 import { AssistantMessage } from "./components/AssistantMessage";
@@ -738,6 +739,7 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
 
   return (
     <ThemeContext.Provider value={theme}>
+    <ReplyConformanceContext.Provider value={state.replyConformance}>
       <div
         className="relative flex h-full"
         onDragEnter={(e) => {
@@ -1267,6 +1269,7 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
 
       {state.dialogQueue[0] && <ExtensionDialog request={state.dialogQueue[0]} onRespond={respondToDialog} />}
       <ExtensionNotifications notifications={state.notifications} onDismiss={dismissNotification} />
+    </ReplyConformanceContext.Provider>
     </ThemeContext.Provider>
   );
 });

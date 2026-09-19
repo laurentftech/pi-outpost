@@ -517,6 +517,22 @@ describe("switching projects", () => {
     expect(result.current.state.workspace?.root).toBe("/srv/beta");
   });
 
+  it("keeps each reply block's profile statement by key, until the next snapshot restates them", async () => {
+    const { result } = renderHook(() => useAgent());
+    act(() => mockWs!.open());
+    act(() => mockWs!.receive(switched("/srv/alpha")));
+    await waitFor(() => expect(result.current.state.workspace?.root).toBe("/srv/alpha"));
+
+    const conformance = { profile: "acme/requirements", state: "conforms", openValues: 0 };
+    act(() => mockWs!.receive({ type: "reply_structured_conformance", key: "sx-1", conformance }));
+    expect(result.current.state.replyConformance).toEqual({ "sx-1": conformance });
+
+    // Another project's registry says nothing about this one's blocks.
+    act(() => mockWs!.receive(switched("/srv/beta")));
+    await waitFor(() => expect(result.current.state.workspace?.root).toBe("/srv/beta"));
+    expect(result.current.state.replyConformance).toEqual({});
+  });
+
   it("starts, reaches and closes a side session by its id, and a project by its root", async () => {
     const { result } = renderHook(() => useAgent());
     act(() => mockWs!.open());

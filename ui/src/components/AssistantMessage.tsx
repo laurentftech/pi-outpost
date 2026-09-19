@@ -1,4 +1,5 @@
 import { useMemo, useRef, useState } from "react";
+import { ReplyMarkdownPre } from "./ReplyStructuredExchange";
 import ReactMarkdown from "react-markdown";
 import rehypeKatex from "rehype-katex";
 import rehypeRaw from "rehype-raw";
@@ -11,7 +12,6 @@ import type { ChatItem } from "@pi-outpost/shared";
 import { normalizeMathDelimiters } from "../util/markdownMath";
 import { isExternalRef, rawFileUrl, resolveRelativeHref } from "../util/workspacePath";
 import { CopyButton } from "./CopyButton";
-import { MarkdownPre } from "./Mermaid";
 
 type AttributeSchema = NonNullable<Schema["attributes"]>;
 type PropertyDefinition = AttributeSchema[string][number];
@@ -170,7 +170,7 @@ export function AssistantMessage({ item, serverUrl = "", token = null, onOpenFil
       );
     }
 
-    return { pre: MarkdownPre, img: MarkdownImg, a: MarkdownLink };
+    return { pre: ReplyMarkdownPre, img: MarkdownImg, a: MarkdownLink };
   }, [serverUrl, token]);
 
   // Nothing left to draw — a filtered-away message must not leave an empty frame
