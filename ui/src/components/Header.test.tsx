@@ -136,6 +136,18 @@ describe("Header", () => {
   });
 
   describe("the session menu", () => {
+    it("says where a conversation open in another session is, and offers no delete for it", () => {
+      const held = session({ path: "/sessions/c.jsonl", id: "c", name: "held elsewhere", liveIn: "fix typo (alpha)" });
+      const { onSwitchSession } = setup({ sessions: [...SESSIONS, held] });
+      openSessions();
+      const row = screen.getByText("held elsewhere").closest("div.group") as HTMLElement;
+      expect(within(row).getByTestId("session-live-in")).toHaveTextContent("open in fix typo (alpha)");
+      expect(within(row).queryByRole("button", { name: "Delete session" })).toBeNull();
+      // Still clickable: the server refuses it and says where it is open.
+      fireEvent.click(within(row).getByText("held elsewhere"));
+      expect(onSwitchSession).toHaveBeenCalledWith("/sessions/c.jsonl");
+    });
+
     it("asks for the list when it opens, from a clean slate", () => {
       const { onListSessions, onClearSessionSearch } = setup();
       openSessions();

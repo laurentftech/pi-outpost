@@ -516,6 +516,27 @@ describe("switching projects", () => {
     expect(result.current.state.switching).toBe(false);
     expect(result.current.state.workspace?.root).toBe("/srv/beta");
   });
+
+  it("starts, reaches and closes a side session by its id, and a project by its root", async () => {
+    const { result } = renderHook(() => useAgent());
+    act(() => mockWs!.open());
+    act(() => mockWs!.receive(switched("/srv/alpha")));
+    await waitFor(() => expect(result.current.state.workspace?.root).toBe("/srv/alpha"));
+
+    act(() => result.current.openSideSession("/srv/alpha"));
+    expect(sentFrames().at(-1)).toEqual({ type: "open_side_session", root: "/srv/alpha" });
+    expect(result.current.state.switching).toBe(true);
+
+    const side = { root: "/srv/alpha", id: "/srv/alpha#side-1", sideOf: "/srv/alpha", label: "side session 1", name: "alpha · side session 1", activity: "idle", needsAttention: false };
+    act(() => mockWs!.receive({ ...switched("/srv/alpha"), workspace: side }));
+    await waitFor(() => expect(result.current.state.workspace?.id).toBe("/srv/alpha#side-1"));
+
+    // Same root, other workspace: this is a switch, not a no-op.
+    act(() => result.current.switchWorkspace("/srv/alpha"));
+    expect(sentFrames().at(-1)).toEqual({ type: "switch_workspace", root: "/srv/alpha" });
+    act(() => result.current.closeProject("/srv/alpha", "/srv/alpha#side-1"));
+    expect(sentFrames().at(-1)).toEqual({ type: "close_project", root: "/srv/alpha", id: "/srv/alpha#side-1" });
+  });
 });
 
 describe("hello message handling", () => {

@@ -100,7 +100,7 @@ test("workspace review readiness follows only persisted Work Plan transitions", 
     const ready = await after("first ready activity", readyActivity, activityCount);
     const readySummary = ready.workspaces.find((workspace) => workspace.root === workspaceRoot);
     assert.equal(readySummary.needsAttention, true);
-    assert.deepEqual(Object.keys(readySummary).sort(), ["activity", "name", "needsAttention", "root"]);
+    assert.deepEqual(Object.keys(readySummary).sort(), ["activity", "id", "name", "needsAttention", "root"]);
 
     endCount = client.received.filter(ended).length;
     planCount = client.received.filter(activePlanChanged).length;

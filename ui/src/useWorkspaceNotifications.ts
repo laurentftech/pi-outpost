@@ -14,21 +14,23 @@
  */
 import { useEffect, useRef } from "react";
 import type { WorkspaceInfo } from "@pi-outpost/shared";
+import { workspaceKey } from "./util/workspaceKey";
 
-export function useWorkspaceNotifications(workspaces: WorkspaceInfo[], activeRoot: string | null): void {
-  /** Last attention kind notified per root; selecting a root does not clear it. */
+/** `activeKey` is the bound workspace's `workspaceKey`: a side session is its own workspace. */
+export function useWorkspaceNotifications(workspaces: WorkspaceInfo[], activeKey: string | null): void {
+  /** Last attention kind notified per workspace; selecting one does not clear it. */
   const notified = useRef<Map<string, WorkspaceInfo["activity"]>>(new Map());
 
   useEffect(() => {
     if (typeof Notification === "undefined") return;
 
     const attention = workspaces.filter((workspace) => workspace.needsAttention);
-    const backgroundAttention = attention.filter((workspace) => workspace.root !== activeRoot);
+    const backgroundAttention = attention.filter((workspace) => workspaceKey(workspace) !== activeKey);
 
     // Cleared only by an authoritative activity update that ends attention. Merely
     // selecting the project removes it from `backgroundAttention`, not from here.
-    for (const root of [...notified.current.keys()]) {
-      if (!attention.some((workspace) => workspace.root === root)) notified.current.delete(root);
+    for (const key of [...notified.current.keys()]) {
+      if (!attention.some((workspace) => workspaceKey(workspace) === key)) notified.current.delete(key);
     }
 
     // Asking is the user's call to make; never prompt for permission on our own.
@@ -38,20 +40,20 @@ export function useWorkspaceNotifications(workspaces: WorkspaceInfo[], activeRoo
     if (typeof document !== "undefined" && document.visibilityState === "visible") return;
 
     for (const workspace of backgroundAttention) {
-      if (notified.current.get(workspace.root) === workspace.activity) continue;
-      notified.current.set(workspace.root, workspace.activity);
+      if (notified.current.get(workspaceKey(workspace)) === workspace.activity) continue;
+      notified.current.set(workspaceKey(workspace), workspace.activity);
       try {
         const readyForReview = workspace.activity === "ready-for-review";
         new Notification(readyForReview ? `${workspace.name} is ready for review` : `${workspace.name} needs you`, {
           body: readyForReview ? "Background work is ready for review." : "The agent needs an answer to continue.",
           // One notification per project, replaced rather than stacked if that
           // project asks again.
-          tag: `pi-outpost:${workspace.root}`,
+          tag: `pi-outpost:${workspaceKey(workspace)}`,
         });
       } catch {
         // A browser that refuses to construct one is not a failure worth surfacing:
         // the badge is still there, and it is the level that always works.
       }
     }
-  }, [workspaces, activeRoot]);
+  }, [workspaces, activeKey]);
 }

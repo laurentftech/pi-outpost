@@ -302,10 +302,21 @@ projects you are not looking at.
 - Projects that nobody is using are retired after `workspaceIdleTimeoutMs` (30 minutes by
   default, `0` disables it) and rebuilt transparently on next use. A project running a turn,
   waiting for you, or ready for review is never retired
+- **Start a side session** with the **+** on a project's row: a second agent on the same
+  project, in a fresh conversation, running at the same time as the first — for a quick
+  question or fix while a long task works. It is listed under its project, named after its
+  conversation, and closed like a project; its conversation stays in the project's history.
+  Both agents work in the same directory with the same sandbox, and nothing keeps their edits
+  apart. A conversation is open in one session at a time, Settings applied to a project wait
+  for its other sessions' turns and then reach all of them, and side sessions are not reopened
+  after a restart
 
 A configuration where no project has ever been opened behaves exactly as a single-project
 server: `cwd` alone. `"workspaceLock": true` pins the server to one project and removes the
-open/switch/close controls entirely.
+open/switch/close controls — and side sessions — entirely.
+
+The browser tab is titled with the project shown, and the side session when it is one
+(`pi-outpost · fix typo — pi`), so several tabs on one server can be told apart.
 
 ## Settings from the browser
 

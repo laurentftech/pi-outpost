@@ -273,3 +273,61 @@ describe("naming a project never resurrects a control a deployment refused", () 
     expect(container).toBeEmptyDOMElement();
   });
 });
+
+describe("side sessions", () => {
+  const side = (overrides: Partial<WorkspaceInfo> = {}) =>
+    workspace({ id: "/srv/alpha#side-1", sideOf: "/srv/alpha", label: "fix typo", name: "alpha · fix typo", ...overrides });
+  const open = () => fireEvent.click(screen.getByTitle(/^Project:/));
+
+  it("offers a visible side-session control on each project, and none on a side session", () => {
+    // TheProjectControlsOfferASideSession
+    setup({ workspaces: [workspace(), side(), workspace({ root: "/srv/beta", name: "beta" })], onOpenSide: vi.fn() });
+    open();
+    const projects = screen.getAllByTestId("project-row");
+    expect(projects).toHaveLength(2);
+    for (const row of projects) {
+      const control = within(row).getByRole("button", { name: /^New side session on / });
+      // Always shown: not hidden until hover, as the close button is.
+      expect(control.className).not.toMatch(/opacity-0/);
+    }
+    const sideRow = screen.getByTestId("side-session-row");
+    expect(within(sideRow).queryByRole("button", { name: /New side session/ })).toBeNull();
+  });
+
+  it("starts a side session on the row's project, even when it is not the one shown", () => {
+    // TheProjectRowStartsASideSession
+    const { props } = setup({ onOpenSide: vi.fn() });
+    open();
+    fireEvent.click(screen.getByRole("button", { name: "New side session on beta" }));
+    expect(props.onOpenSide).toHaveBeenCalledWith("/srv/beta");
+    expect(props.onSwitch).not.toHaveBeenCalled();
+    expect(screen.queryByRole("menu")).toBeNull();
+  });
+
+  it("lists a side session under its project, by its label, and switches and closes it by id", () => {
+    const { props } = setup({ workspaces: [side(), workspace({ root: "/srv/beta", name: "beta" }), workspace()] });
+    open();
+    const rows = screen.getAllByRole("menuitem").map((item) => item.textContent ?? "");
+    const alpha = rows.findIndex((text) => text.startsWith("alpha"));
+    expect(rows[alpha + 1]).toMatch(/^fix typo/);
+
+    const sideRow = screen.getByTestId("side-session-row");
+    fireEvent.click(within(sideRow).getByRole("button", { name: "Close fix typo" }));
+    expect(props.onClose).toHaveBeenCalledWith("/srv/alpha", "/srv/alpha#side-1");
+    fireEvent.click(within(sideRow).getByRole("menuitem"));
+    expect(props.onSwitch).toHaveBeenCalledWith("/srv/alpha", "/srv/alpha#side-1");
+  });
+
+  it("closes a side session even when its project is the only one open", () => {
+    setup({ workspaces: [workspace(), side()] });
+    open();
+    expect(within(screen.getByTestId("side-session-row")).getByRole("button", { name: "Close fix typo" })).toBeInTheDocument();
+    expect(within(screen.getByTestId("project-row")).queryByRole("button", { name: /^Close/ })).toBeNull();
+  });
+
+  it("offers no side session where none was wired", () => {
+    setup();
+    open();
+    expect(screen.queryByRole("button", { name: /New side session/ })).toBeNull();
+  });
+});
