@@ -324,7 +324,7 @@ export interface AgentState {
   /** Whether the deployment forbids editing extension paths from the interface. */
   extensionLock: boolean;
   tools: { name: string; active: boolean }[];
-  sandbox: { root: string; allowWrite: boolean; allowBash: boolean; writableRoot?: string } | null;
+  sandbox: { root: string; allowWrite: boolean; allowBash: boolean; writableRoot?: string; projectRoot?: string; rootEditable?: boolean } | null;
   /** Terminal configuration — whether the terminal is enabled and locked. */
   terminal?: { enabled: boolean; locked?: boolean } | null;
   /**

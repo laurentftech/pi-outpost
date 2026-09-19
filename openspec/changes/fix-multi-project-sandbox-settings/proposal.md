@@ -4,9 +4,9 @@ With several projects open, Settings shows one "Sandbox" section holding the ser
 
 ## What Changes
 
-- **Each project keeps its own directory.** Applying Settings from a project other than the server's own, or with several projects open, takes only the permissions (write, bash); the roots are left as they are, and the project is rebuilt inside its own directory.
+- **Each project keeps its own directory.** Applying Settings from a project other than the server's own takes only the permissions (write, bash); the roots are left as they are, and the project is rebuilt inside its own directory.
 - **An unchanged sandbox is not a change.** The server neither writes nor reapplies a sandbox sent back unchanged, and the Settings panel offers Apply only once something in the section has changed.
-- **Settings shows what applies.** With several projects open — or from a project that is not the server's own — the section reads "Agent permissions", states the folder this project is confined to, and offers no root or writable root to edit. A single project keeps the full section, `writableRoot` included.
+- **Settings shows what applies.** With several projects open in the standalone app — or from a project that is not the server's own — the section reads "Agent permissions", states the folder this project is confined to, and offers no root or writable root to edit. A single project keeps the full section, `writableRoot` included, and so does an embedded widget bound to the server's project, as the embed spec requires.
 
 ## Capabilities
 

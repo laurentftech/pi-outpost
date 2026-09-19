@@ -2,7 +2,7 @@
 
 ### Requirement: EachProjectKeepsItsOwnDirectoryWhenSettingsApply
 
-The sandbox root and writable root SHALL belong to the server's own project, and SHALL be editable from Settings only while it is the only project open. A writable root SHALL be kept, and ignored, while write is off, so that write can be turned off from a project that cannot edit the roots. Settings applied from any other project, or while several projects are open, SHALL take only the agent's permissions — write and bash — and SHALL leave the roots as they are. A project rebuilt after Settings apply SHALL be confined to its own directory: the server's sandbox root for the server's own project, its own directory for any other.
+The sandbox root and writable root SHALL belong to the server's own project, and SHALL be editable from Settings only from that project; moving them SHALL leave every other open project in its own directory. A writable root SHALL be kept, and ignored, while write is off, so that write can be turned off from a project that cannot edit the roots. Settings applied from any other project SHALL take only the agent's permissions — write and bash — and SHALL leave the roots as they are. A project rebuilt after Settings apply SHALL be confined to its own directory: the server's sandbox root for the server's own project, its own directory for any other.
 
 #### Scenario: ApplyFromASecondProjectKeepsItsDirectory
 - **GIVEN** two open projects, and Settings showing the server's sandbox
@@ -24,6 +24,11 @@ The sandbox root and writable root SHALL belong to the server's own project, and
 - **WHEN** Settings moves the sandbox root to one of its subdirectories
 - **THEN** the file browser and tools are confined to that subdirectory
 
+#### Scenario: TheServersProjectMovesItsRootWhileAnotherIsOpen
+- **GIVEN** the server's own project, and a second project open on the same server
+- **WHEN** Settings moves the sandbox root from the server's own project to one of its subdirectories
+- **THEN** that project is confined to the subdirectory, and the second project is still confined to its own directory
+
 ### Requirement: AnUnchangedSandboxIsNotAChange
 
 A sandbox sent back with the same root, writable root and permissions as the one in force SHALL be neither written to the configuration file nor reapplied, and an update carrying nothing else SHALL be acknowledged without replacing the session. The Settings panel SHALL offer Apply for the sandbox only once one of its fields differs from the one in force.
@@ -34,10 +39,10 @@ A sandbox sent back with the same root, writable root and permissions as the one
 
 ### Requirement: SettingsShowTheAgentsPermissionsWithSeveralProjects
 
-When the roots cannot be edited from the project being looked at, the Settings section SHALL be titled for the agent's permissions, SHALL name the directory this project is confined to, and SHALL offer no root or writable root to edit. A server that does not say whether the roots are editable SHALL be treated as allowing it.
+When the roots cannot be edited from the project being looked at — or when the standalone app, which offers several projects, has more than one open — the Settings section SHALL be titled for the agent's permissions, SHALL name the directory this project is confined to, and SHALL offer no root or writable root to edit. A server that does not say whether the roots are editable SHALL be treated as allowing it. An embedded widget bound to one project SHALL keep the root controls its embed policy gives it, whatever else the server holds.
 
 #### Scenario: SeveralProjectsShowPermissionsOnly
-- **GIVEN** several projects open
+- **GIVEN** several projects open in the standalone app
 - **WHEN** Settings is opened on one of them
 - **THEN** the section reads "Agent permissions", names that project's own directory, and has no root or writable root control, while write and bash remain editable
 
@@ -45,3 +50,8 @@ When the roots cannot be edited from the project being looked at, the Settings s
 - **GIVEN** a server that does not report whether the roots are editable
 - **WHEN** Settings is opened
 - **THEN** the section reads "Sandbox" with the root and writable root controls
+
+#### Scenario: AWidgetBoundToOneProjectKeepsItsRoot
+- **GIVEN** an embedded widget bound to the server's own project, whose server also holds another project
+- **WHEN** Settings is opened
+- **THEN** the section reads "Sandbox" with the root control, as the embed policy offers

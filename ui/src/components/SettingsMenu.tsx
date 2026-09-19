@@ -50,6 +50,11 @@ interface SettingsMenuProps {
   commands: { name: string; source: string }[];
   sandbox: SandboxConfig | null;
   /**
+   * Whether this interface shows the roots at all. The standalone app with several
+   * projects open says no: a root there reads as every project's, and is not.
+   */
+  showRoots?: boolean;
+  /**
    * Why git is unavailable, or null when it is available.
    *
    * Shown here because this is where a user goes when a feature is missing, and
@@ -106,6 +111,7 @@ export function SettingsMenu({
   tools,
   commands,
   sandbox,
+  showRoots = true,
   gitUnavailable,
   userSkillPaths,
   serverBrowse,
@@ -225,7 +231,7 @@ export function SettingsMenu({
   }
 
   /** Whether the roots are this project's to edit; an older server that does not say keeps them editable. */
-  const rootEditable = sandbox?.rootEditable !== false;
+  const rootEditable = showRoots && sandbox?.rootEditable !== false;
 
   /*
    * Blocked is answered here, in the render, and not only by the effect below.

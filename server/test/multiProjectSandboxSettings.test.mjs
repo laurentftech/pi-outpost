@@ -74,7 +74,7 @@ test("changing a permission from a second project rebuilds it inside its own dir
   assert.ok(after.includes("b.md") && !after.includes("a.md"), JSON.stringify(after));
 });
 
-test("the server's own project, open alone, still edits its root", async (t) => {
+test("the server's own project, open alone, edits its root", async (t) => {
   const alpha = await realpath(await makeWorkspace({ "a.md": "alpha\n", "inner/c.md": "inner\n" }));
   const server = await startServer(alpha, { sandbox: { root: alpha, allowWrite: false, allowBash: false } });
   t.after(() => server.stop());
@@ -121,4 +121,31 @@ test("write can be turned off and on again from a second project while the serve
   );
   assert.equal(on.type, "update_config_ack", on.message);
   assert.equal(on.writableRoot, "", "this project is writable in its own directory again");
+});
+
+test("the server's own project moves its root while another is open, and the other keeps its own", async (t) => {
+  // An embedded widget in settings mode is bound to the server's project and offers its
+  // root even when the server holds other projects (embed spec).
+  const alpha = await realpath(await makeWorkspace({ "a.md": "alpha\n", "inner/c.md": "inner\n" }));
+  const beta = await realpath(await makeWorkspace({ "b.md": "beta\n" }));
+  const server = await startServer(alpha, {
+    openProjects: [beta],
+    sandbox: { root: alpha, allowWrite: false, allowBash: false },
+  });
+  t.after(() => server.stop());
+  const client = connect(server.wsUrl());
+  t.after(() => client.close());
+  const hello = await client.waitFor((message) => message.type === "hello");
+  assert.equal(hello.sandbox.rootEditable, true);
+
+  client.send({ type: "update_config", sandbox: { root: `${alpha}/inner`, allowWrite: false, allowBash: false } });
+  const ack = await client.waitFor((message) => message.type === "update_config_ack" || message.type === "error");
+  assert.equal(ack.type, "update_config_ack", ack.message);
+  assert.equal(ack.sandbox.root, `${alpha}/inner`);
+  assert.deepEqual(await listRoot(client, "inner"), ["c.md"]);
+
+  client.send({ type: "switch_workspace", root: beta });
+  await client.waitFor((message) => message.type === "workspace_switched");
+  const other = await listRoot(client, "other");
+  assert.ok(other.includes("b.md") && !other.includes("c.md"), JSON.stringify(other));
 });

@@ -1195,9 +1195,14 @@ function sandboxFor(target: Workspace): SandboxConfig | undefined {
   };
 }
 
-/** Whether Settings may move the sandbox root from this project: the server's own, open alone. */
+/**
+ * Whether Settings may move the sandbox root from this project: only from the server's
+ * own. Other open projects are unaffected when it moves — each has its own directory —
+ * and an embedded widget in `settings` mode, bound to this project, keeps its root
+ * control even while the server holds others (see the embed spec).
+ */
 function rootEditableFrom(target: Workspace): boolean {
-  return target === serverProject && [...workspaces.all()].length === 1;
+  return target === serverProject;
 }
 
 /** Resource repository state is per workspace; repository mutexes are shared by the service implementation. */
