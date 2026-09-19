@@ -216,6 +216,24 @@ that is the origin the server allows.
 bench serves `dist/`, so an unbuilt fix is invisible and you will debug a fix that
 is already correct.
 
+## Tests must pass on Windows too
+
+CI runs every suite on Windows, and no developer machine here does. The failures that
+reach it are always the same few, and each costs a full CI round trip:
+
+- **Paths built as strings.** The server resolves the paths it is sent, so on Windows
+  `` `${root}/inner` `` comes back as `…\inner`. Build expected filesystem paths with
+  `path.join` / `path.resolve`, and compare paths after the same resolution the server
+  applies — never by concatenating `/`.
+- **Line endings.** A checked-in text file is checked out with CRLF on Windows. Split what
+  you read on `/\r?\n/`, or normalise `\r\n` first, before parsing it.
+- **Spawning.** On Windows `npm` is `npm.cmd`, a batch file that `spawn`/`execFile` cannot
+  run directly. Follow what `server/src/update.ts` does (`npmViewInvocation`) rather than a
+  bare `spawn("npm", …)`.
+
+No lint rule catches these: a template `${x}/y` is as often a URL or a JSON pointer as a
+file path. Reread every new test for them before pushing.
+
 ## Releasing
 
 Follow [`docs/development.md` § Releasing](docs/development.md#releasing) step by step —
