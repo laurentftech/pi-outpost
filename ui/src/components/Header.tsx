@@ -1,4 +1,6 @@
 import { useEffect, useState } from "react";
+import type { PiPackageInfo } from "@pi-outpost/shared";
+import type { AgentState } from "../useAgent";
 import { MIN_SESSION_QUERY_LENGTH, type AgentResourceInventory, type GitUnavailable, type SessionSummary, type TreeNode, type WorkspaceInfo } from "@pi-outpost/shared";
 import { ProjectMenu } from "./ProjectMenu";
 import { WorkspaceRootControl, type WorkspaceRootSandbox } from "./WorkspaceRootControl";
@@ -50,6 +52,15 @@ interface HeaderProps {
   onCloseProject: (root: string, id?: string) => void;
   /** Start a side session on an open project. Absent, the project menu offers none. */
   onOpenSideSession?: (root: string) => void;
+  /** The npm pi packages the agent loads, and the update and restart they offer. */
+  piPackages?: PiPackageInfo[] | null;
+  piPackageUpdate?: AgentState["piPackageUpdate"];
+  /** The standalone interface may restart the server; a widget may not. */
+  canRestartServer?: boolean;
+  serverRestarting?: boolean;
+  onCheckPiPackages?: () => void;
+  onUpdatePiPackage?: (source: string) => void;
+  onRestartServer?: () => void;
   theme: "light" | "dark";
   showThemeToggle: boolean;
   /** Extension setStatus() key/text pairs — see extensions.md#custom-ui. */
@@ -576,6 +587,13 @@ export function Header(props: HeaderProps) {
           configuredExtensionPaths={props.configuredExtensionPaths}
           userExtensionPaths={props.userExtensionPaths}
           extensionLock={props.extensionLock}
+          piPackages={props.piPackages ?? null}
+          piPackageUpdate={props.piPackageUpdate ?? null}
+          canRestartServer={props.canRestartServer ?? false}
+          serverRestarting={props.serverRestarting ?? false}
+          {...(props.onCheckPiPackages ? { onCheckPiPackages: props.onCheckPiPackages } : {})}
+          {...(props.onUpdatePiPackage ? { onUpdatePiPackage: props.onUpdatePiPackage } : {})}
+          {...(props.onRestartServer ? { onRestartServer: props.onRestartServer } : {})}
           tools={props.tools ?? []}
           commands={props.commands ?? []}
           sandbox={props.sandbox}

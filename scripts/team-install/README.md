@@ -42,8 +42,8 @@ another agent directory; the script installs into the same one.
   being recognised by the policy, that is the place to look.
 - **Running the script again is safe**: each step can be repeated, and the policy file is
   overwritten with the one next to the script — which is how a policy change reaches
-  everyone. To update the extension itself, use pi's updater:
-  `npx -y @earendil-works/pi-coding-agent update npm:@gotgenes/pi-permission-system`.
+  everyone. The extensions themselves are updated from pi-outpost's Settings, which says when
+  a newer version is published, installs it, and restarts pi-outpost to load it.
 - **The extension decides** what `ask`, `allow` and `deny` mean — see its
   [configuration reference](https://github.com/gotgenes/pi-packages/tree/main/packages/pi-permission-system).
   pi-outpost shows its questions as it shows any extension dialog. It stacks with
@@ -68,6 +68,6 @@ file watcher and stops itself after 15 minutes without use.
   them back on keyword search:
   `npm i @lancedb/lancedb@0.22.4-beta.3 --no-save --legacy-peer-deps`, run in
   `~/.pi/agent/npm/node_modules/openlore`. An OpenLore update undoes it.
-- **Updating** is pi's updater, as for any pi package:
-  `npx -y @earendil-works/pi-coding-agent update npm:openlore`.
+- **Updating** is done from pi-outpost's Settings, as for any pi package — or with pi's
+  updater, `npx -y @earendil-works/pi-coding-agent update npm:openlore`, then a restart.
 

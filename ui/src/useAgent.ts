@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
+import type { OutpostUpdateNotice, PiPackageInfo } from "@pi-outpost/shared";
 import type { StructuredConformance } from "@pi-outpost/shared/structured-exchange/profile";
 import { workspaceKey } from "./util/workspaceKey";
 import { bootstrapToken, storedToken, storeToken } from "./authToken";
@@ -286,6 +287,17 @@ export interface AgentState {
    * each one after it, against the registry as it is then.
    */
   replyConformance: Record<string, StructuredConformance>;
+  /** A newer pi-outpost, when the server's startup check found one. */
+  outpostUpdate: OutpostUpdateNotice | null;
+  /** The npm pi packages this project's agent loads. Null until the server lists them. */
+  piPackages: PiPackageInfo[] | null;
+  /** The one package update in flight, or the last one's answer. */
+  piPackageUpdate:
+    | { requestId: string; source: string; status: "pending" }
+    | { requestId: string; source: string; status: "installed" | "failed" | "refused"; message: string }
+    | null;
+  /** The server said it is restarting; cleared by the next snapshot. */
+  serverRestarting: boolean;
   /** Latest workspace Outcome request/result; null until the drawer is opened. */
   outcome: OutcomeState | null;
   queue: { steering: string[]; followUp: string[] };
@@ -386,6 +398,10 @@ const initialState: AgentState = {
   pendingPrompt: null,
   workPlan: null,
   replyConformance: {},
+  outpostUpdate: null,
+  piPackages: null,
+  piPackageUpdate: null,
+  serverRestarting: false,
   outcome: null,
   queue: { steering: [], followUp: [] },
   errors: [],
@@ -431,6 +447,7 @@ const initialState: AgentState = {
 type Action =
   | { type: "connected" }
   | { type: "workspace_switching" }
+  | { type: "pi_package_update_started"; requestId: string; source: string }
   | { type: "disconnected" }
   | { type: "auth_required" }
   | { type: "auth_retrying" }
@@ -531,6 +548,10 @@ function applySnapshot(state: AgentState, message: ServerMessage & { sessionId: 
   return {
     ...state,
     replyConformance: {},
+    outpostUpdate: message.outpostUpdate ?? state.outpostUpdate,
+    // Absent from a snapshot the server built before listing: keep what is known.
+    piPackages: message.piPackages ?? state.piPackages,
+    serverRestarting: false,
     connected: true,
     brandingReady: true,
     workspace: message.workspace ?? null,
@@ -612,6 +633,9 @@ function applySnapshot(state: AgentState, message: ServerMessage & { sessionId: 
 function reduce(state: AgentState, action: Action): AgentState {
   if (action.type === "connected") return { ...state, connected: true, authRequired: false };
   if (action.type === "workspace_switching") return { ...state, switching: true };
+  if (action.type === "pi_package_update_started") {
+    return { ...state, piPackageUpdate: { requestId: action.requestId, source: action.source, status: "pending" } };
+  }
   if (action.type === "auth_required") return { ...state, connected: false, authRequired: true };
   if (action.type === "auth_retrying") return { ...state, authRequired: false };
   if (action.type === "disconnected") {
@@ -1099,6 +1123,18 @@ function reduce(state: AgentState, action: Action): AgentState {
         ...state,
         items: patchExistingTool(state.items, message.toolCallId, { structuredConformance: message.conformance }),
       };
+    case "outpost_update":
+      return { ...state, outpostUpdate: message.notice };
+    case "pi_packages":
+      return { ...state, piPackages: message.packages };
+    case "pi_package_update_result": {
+      const pending = state.piPackageUpdate;
+      if (pending?.requestId !== message.requestId) return state;
+      return { ...state, piPackageUpdate: { requestId: message.requestId, source: pending.source, status: message.outcome, message: message.message } };
+    }
+    case "server_restarting":
+      // The answer that asked for this restart has served its purpose.
+      return { ...state, serverRestarting: true, piPackageUpdate: null };
     case "reply_structured_conformance":
       return { ...state, replyConformance: { ...state.replyConformance, [message.key]: message.conformance } };
     case "queue":
@@ -1929,6 +1965,16 @@ export function useAgent(serverUrl = "", explicitToken?: string, embedded = fals
     closeProject: (root: string, id?: string) =>
       sendMessage({ type: "close_project", root, ...(id !== undefined && id !== root ? { id } : {}) }),
     /** Start a side session on an open project; the server moves this client to it. */
+    /** Look up newer versions of this project's pi packages now. */
+    checkPiPackages: () => sendMessage({ type: "check_pi_packages" }),
+    /** Install the newest version of one pi package. The caller has had the user confirm. */
+    updatePiPackage: (source: string) => {
+      const requestId = `pkg:${crypto.randomUUID()}`;
+      dispatch({ type: "pi_package_update_started", requestId, source });
+      sendMessage({ type: "update_pi_package", source, requestId });
+    },
+    /** Restart pi-outpost to load updated packages. The caller has had the user confirm. */
+    restartServer: () => sendMessage({ type: "restart_server" }),
     openSideSession: (root: string) => {
       dispatch({ type: "workspace_switching" });
       sendMessage({ type: "open_side_session", root });
