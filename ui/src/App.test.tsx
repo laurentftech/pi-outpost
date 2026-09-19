@@ -128,6 +128,7 @@ function agentApi(state: ReturnType<typeof agentState>) {
     switchWorkspace: vi.fn(),
     openProject: vi.fn(),
     closeProject: vi.fn(),
+    openSideSession: vi.fn(),
     setOutcomeActive: vi.fn(),
     refreshOutcome: vi.fn(),
     closeServerBrowser: vi.fn(),
@@ -1909,3 +1910,77 @@ describe("Terminal integration in App", () => {
     });
   });
 });
+
+describe("the browser tab title", () => {
+  const titled = (overrides: Record<string, unknown>) => {
+    const api = agentApi(agentState({ branding: { title: "pi" }, ...overrides }));
+    mockUseAgent.mockImplementation(() => api);
+    return api;
+  };
+
+  it("names the project, then the title", () => {
+    // TheTabNamesTheProject
+    const alpha = workspace("/srv/pi-outpost");
+    titled({ workspace: alpha, workspaces: [alpha] });
+    render(<App />);
+    expect(document.title).toBe("pi-outpost — pi");
+  });
+
+  it("follows the project being shown", () => {
+    // TheTabFollowsTheProject
+    const alpha = workspace("/srv/alpha");
+    const beta = workspace("/srv/beta");
+    titled({ workspace: alpha, workspaces: [alpha, beta] });
+    const view = render(<App />);
+    expect(document.title).toBe("alpha — pi");
+    titled({ workspace: beta, workspaces: [alpha, beta] });
+    view.rerender(<App />);
+    expect(document.title).toBe("beta — pi");
+  });
+
+  it("names the side session too", () => {
+    // TheTabNamesTheSideSession
+    const project = workspace("/srv/pi-outpost");
+    const side = { ...project, id: "/srv/pi-outpost#side-1", sideOf: "/srv/pi-outpost", label: "fix typo", name: "pi-outpost · fix typo" };
+    titled({ workspace: side, workspaces: [project, side] });
+    render(<App />);
+    expect(document.title).toBe("pi-outpost · fix typo — pi");
+  });
+
+  it("keeps the project in front of an extension's title", () => {
+    // AnExtensionTitleKeepsTheProjectName
+    const alpha = workspace("/srv/pi-outpost");
+    titled({ workspace: alpha, workspaces: [alpha], extensionTitle: "Review" });
+    render(<App />);
+    expect(document.title).toBe("pi-outpost — Review");
+  });
+
+  it("leaves the host page's title alone in a widget", () => {
+    // TheWidgetLeavesTheHostTitleAlone
+    document.title = "Docs";
+    embedded();
+    expect(document.title).toBe("Docs");
+  });
+});
+
+describe("where a side session is offered", () => {
+  it("on each project of the standalone app's project menu", () => {
+    // TheProjectControlsOfferASideSession
+    const alpha = workspace("/srv/alpha");
+    const api = agentApi(agentState({ workspace: alpha, workspaces: [alpha] }));
+    mockUseAgent.mockImplementation(() => api);
+    render(<App />);
+    fireEvent.click(screen.getByTitle(/^Project:/));
+    fireEvent.click(screen.getByRole("button", { name: "New side session on alpha" }));
+    expect(api.openSideSession).toHaveBeenCalledWith("/srv/alpha");
+  });
+
+  it("nowhere in a widget bound to one project", () => {
+    // AWidgetBoundToOneProjectOffersNoSideSession
+    embedded();
+    expect(screen.queryByRole("button", { name: /New side session/ })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+    expect(screen.queryByRole("button", { name: /New side session/ })).not.toBeInTheDocument();
+  });
+});
+

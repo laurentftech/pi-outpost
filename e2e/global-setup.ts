@@ -558,6 +558,18 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
     { env: { ...onlyOneFakeProvider(), FAKE_PI_RPC_CONFIG: thinkingFakeConfig } },
   );
 
+  // Side sessions get a server of their own: a side session left open by a failing
+  // test would otherwise appear in every other suite's project selector.
+  const sideSessionsRoot = await realpath(await makeWorkspace({ "readme.md": "# side sessions\n" }));
+  const sideSessions = await startServer(
+    sideSessionsRoot,
+    {
+      extensionPaths: [path.join(REPO, "server/test/fixtures/side-sessions-provider.mjs")],
+      allowedModels: [{ provider: "side-sessions-test", id: "side-sessions-test" }],
+    },
+    { env: onlyOneFakeProvider() },
+  );
+
   // A dedicated multi-project server with two independently authoritative
   // review-ready sidecars. Distinct private markers catch plan mix-ups as well as
   // content leaking through the server-wide summary.
@@ -705,6 +717,7 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
   process.env.PI_E2E_NOTIFY_URL = notifications.base;
   process.env.PI_E2E_PROGRESS_URL = progress.base;
   process.env.PI_E2E_THINKING_URL = thinking.base;
+  process.env.PI_E2E_SIDE_SESSIONS_URL = sideSessions.base;
   process.env.PI_E2E_OUTCOME_URL = outcome.base;
   process.env.PI_E2E_OUTCOME_WORKSPACE = outcomeRoot;
   process.env.PI_E2E_OUTCOME_SECOND = outcomeSecond;
@@ -723,6 +736,7 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
     await outcome.stop();
     await reviewReady.stop();
     await thinking.stop();
+    await sideSessions.stop();
     await progress.stop();
     await notifications.stop();
     await plans.stop();

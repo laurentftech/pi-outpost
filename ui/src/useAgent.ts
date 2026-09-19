@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
+import { workspaceKey } from "./util/workspaceKey";
 import { bootstrapToken, storedToken, storeToken } from "./authToken";
 import { repoForPath } from "./util/gitRepos";
 import type {
@@ -798,7 +799,7 @@ function reduce(state: AgentState, action: Action): AgentState {
       return {
         ...state,
         workspaces: message.workspaces,
-        workspace: message.workspaces.find((w) => w.root === state.workspace?.root) ?? state.workspace,
+        workspace: (state.workspace && message.workspaces.find((w) => workspaceKey(w) === workspaceKey(state.workspace!))) ?? state.workspace,
       };
     case "agent_resource_clone_path": {
       const pending = state.agentResourceOperations.clonePath;
@@ -1457,10 +1458,11 @@ export function useAgent(serverUrl = "", explicitToken?: string, embedded = fals
   // keeps the root listed across reconnects and snapshots — see its comment.
   const rootListingRequestedRef = useRef(false);
   const terminalListenersRef = useRef(new Map<string, TerminalListeners>());
-  const outcomeIdentityRef = useRef({ workspaceRoot: state.workspace?.root ?? null, sessionId: state.sessionId });
+  const boundKey = state.workspace ? workspaceKey(state.workspace) : null;
+  const outcomeIdentityRef = useRef({ workspaceRoot: boundKey, sessionId: state.sessionId });
   useEffect(() => {
-    outcomeIdentityRef.current = { workspaceRoot: state.workspace?.root ?? null, sessionId: state.sessionId };
-  }, [state.workspace?.root, state.sessionId]);
+    outcomeIdentityRef.current = { workspaceRoot: boundKey, sessionId: state.sessionId };
+  }, [boundKey, state.sessionId]);
 
   const sendMessage = useCallback((message: ClientMessage) => {
     const socket = socketRef.current;
@@ -1824,7 +1826,7 @@ export function useAgent(serverUrl = "", explicitToken?: string, embedded = fals
           // the identity ref still holds what was on screen a moment ago.
           const identity = outcomeIdentityRef.current;
           const sameSession = message.sessionId === identity.sessionId;
-          const sameWorkspace = (message.workspace?.root ?? null) === identity.workspaceRoot;
+          const sameWorkspace = (message.workspace ? workspaceKey(message.workspace) : null) === identity.workspaceRoot;
           if (outcomeActiveRef.current && sameSession && sameWorkspace) {
             queueMicrotask(() => requestOutcomeRef.current());
           }
@@ -1899,18 +1901,27 @@ export function useAgent(serverUrl = "", explicitToken?: string, embedded = fals
      * position and diff pane are deliberately NOT preserved; the composer draft is,
      * because losing typed text destroys work rather than resetting a view.
      */
-    switchWorkspace: (root: string) => {
-      if (root === state.workspace?.root) return;
+    switchWorkspace: (root: string, id?: string) => {
+      if ((id ?? root) === boundKey) return;
       dispatch({ type: "workspace_switching" });
-      sendMessage({ type: "switch_workspace", root });
+      sendMessage({ type: "switch_workspace", root, ...(id !== undefined && id !== root ? { id } : {}) });
     },
     /** Open a directory as a project, from the server-side directory picker. */
     openProject: (root: string) => {
       dispatch({ type: "workspace_switching" });
       sendMessage({ type: "open_project", root });
     },
-    /** Close an open project. Refused server-side while its agent is streaming. */
-    closeProject: (root: string) => sendMessage({ type: "close_project", root }),
+    /**
+     * Close an open project with its side sessions, or — given a side session's id —
+     * that side session alone. Refused server-side while an agent it would stop is streaming.
+     */
+    closeProject: (root: string, id?: string) =>
+      sendMessage({ type: "close_project", root, ...(id !== undefined && id !== root ? { id } : {}) }),
+    /** Start a side session on an open project; the server moves this client to it. */
+    openSideSession: (root: string) => {
+      dispatch({ type: "workspace_switching" });
+      sendMessage({ type: "open_side_session", root });
+    },
     /** TokenGate submission: persist the token and reconnect with it. */
     submitToken: (token: string) => {
       storeToken(token);

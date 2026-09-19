@@ -110,6 +110,11 @@ export interface WorkspaceOptions {
   createRuntime: (settings: WorkspaceSettings, sandboxedTools: ToolDefinition[] | undefined) => Promise<AgentRuntime>;
 }
 
+/** The identity of a project's `index`th side session. */
+export function sideSessionId(root: string, index: number): string {
+  return `${root}#side-${index}`;
+}
+
 export class Workspace {
   /**
    * Identity is the resolved root path — no generated id to persist and reconcile.
@@ -118,6 +123,24 @@ export class Workspace {
    * is already keyed by cwd.
    */
   readonly root: string;
+
+  /**
+   * Identity among the open workspaces. A project's main session is identified by its
+   * root, as it always was; a side session — a second agent on the same directory —
+   * by `<root>#side-<n>`. Everything that is about the directory keys on `root`;
+   * everything that is about one conversation and its runtime keys on this.
+   */
+  readonly id: string;
+
+  /** For a side session, its rank among the project's side sessions; undefined for a main session. */
+  readonly sideIndex: number | undefined;
+
+  /**
+   * A side session's label: its conversation's name once it has one. Kept here
+   * because the selector is built synchronously and the name lives in the session
+   * file; the server refreshes it whenever it names or renames a conversation.
+   */
+  sideLabel: string | undefined;
 
   settings: WorkspaceSettings;
 
@@ -242,8 +265,11 @@ export class Workspace {
     runtime: AgentRuntime | undefined,
     resources: WorkspaceResources,
     options: WorkspaceOptions,
+    sideIndex?: number,
   ) {
     this.root = root;
+    this.sideIndex = sideIndex;
+    this.id = sideIndex === undefined ? root : sideSessionId(root, sideIndex);
     this._runtime = runtime;
     this.settings = options.settings;
     this.browserRoot = resources.browserRoot;
@@ -259,14 +285,19 @@ export class Workspace {
    * Build every resource, then the runtime on top of them — the toolset has to
    * exist before the session that is given it.
    */
-  static async create(options: WorkspaceOptions): Promise<Workspace> {
+  static async create(options: WorkspaceOptions, sideIndex?: number): Promise<Workspace> {
     // Identity is the PROJECT directory, never the browser root: a sandbox may be
     // rooted somewhere else entirely, and keying on that would make a workspace
     // answer to a path its sessions are not stored under — SessionManager is keyed
     // by cwd — and let two different projects collide on one sandbox subtree.
     const root = await fs.realpath(options.settings.cwd);
     const resources = await buildResources(options);
-    return new Workspace(root, undefined, resources, options);
+    return new Workspace(root, undefined, resources, options, sideIndex);
+  }
+
+  /** Whether this is a side session rather than a project's main session. */
+  get isSide(): boolean {
+    return this.sideIndex !== undefined;
   }
 
   /** Resources first, then the session built on top of them. */

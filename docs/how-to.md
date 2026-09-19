@@ -90,6 +90,18 @@ is ready for review, but never includes plan or workspace content. Switching to 
 project does not clear the state; acknowledge the result in the conversation, or ask
 for meaningful follow-up work.
 
+For a small side action while a long task runs — a question about the code, a quick
+fix — use the **+** on the project's row to start a **side session**: a second agent on
+the same project, in a fresh conversation on the model the project is using, working at
+the same time. It sits under its
+project in the selector and is closed the same way. It shares the project's directory,
+sandbox and resources, like a second terminal on the same repository: nothing keeps the
+two agents' edits apart, so give them separate files. A conversation can be open in only
+one session at a time — the session list says where it is — and a side session nobody has
+used for the idle period is closed rather than retired, its conversation kept. Settings
+applied from any session reach every session of the project, and wait while another of
+them is running a turn.
+
 Use **Outcome** in the header to review the selected project's recorded result without
 reconstructing it from the conversation. It shows Work Plan progress, explicit evidence, and
 changed files for that project only. A partial repository read or missing verification stays

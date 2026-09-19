@@ -1199,7 +1199,8 @@ const serverProject = workspace;
  */
 function sandboxFor(target: Workspace): SandboxConfig | undefined {
   if (!config.sandbox) return undefined;
-  if (target === serverProject) return config.sandbox;
+  // By root, not identity: a side session of the server's project is confined like it.
+  if (target.root === serverProject.root) return config.sandbox;
   const own = target.settings.sandbox;
   return {
     ...config.sandbox,
@@ -1604,12 +1605,26 @@ function branchUserEntries(workspace: Workspace): { entryId: string; text: strin
  */
 function workspaceInfo(target: Workspace): WorkspaceInfo {
   const activity = workspaceActivity(target);
+  const project = path.basename(target.root);
   return {
     root: target.root,
-    name: path.basename(target.root),
+    id: target.id,
+    // A side session's `name` carries its label too: it is what a client that
+    // predates side sessions shows, and what tells two entries on one root apart.
+    ...(target.isSide ? { sideOf: target.root, label: sideLabel(target), name: `${project} · ${sideLabel(target)}` } : { name: project }),
     activity,
     ...(workspaceActivityNeedsAttention(activity) ? { needsAttention: true } : {}),
   };
+}
+
+/** How a side session is called: its conversation's name, or its rank until it has one. */
+function sideLabel(target: Workspace): string {
+  return target.sideLabel ?? `side session ${target.sideIndex ?? ""}`.trim();
+}
+
+/** How a workspace is named in a message: the project, and the side session when it is one. */
+function workspaceTitle(target: Workspace): string {
+  return target.isSide ? `${sideLabel(target)} (${path.basename(target.root)})` : path.basename(target.root);
 }
 
 function workspaceWorkPlanReadyForReview(target: Workspace): boolean {
@@ -1627,7 +1642,7 @@ function workspaceActivity(target: Workspace): WorkspaceActivity {
   return deriveWorkspaceActivity({
     // Building right now is checked before `started`, which remains false for the
     // build: otherwise starting would be announced and immediately read stopped.
-    starting: starting.has(target.root),
+    starting: starting.has(target.id),
     started,
     waiting: target.needsAttention,
     busy: target.isBusy(),
@@ -2133,15 +2148,15 @@ function onRuntimeEvent(workspace: Workspace, event: RuntimeEvent): void {
       // The runtime has already rebound itself; renderers may belong to a new
       // extension runner, so refresh the HTML bridge before the snapshot goes out.
       refreshExtensionRender(workspace);
-      const updatedRepositoryPath = resourceRefreshHints.get(workspace.root);
-      resourceRefreshHints.delete(workspace.root);
+      const updatedRepositoryPath = resourceRefreshHints.get(workspace.id);
+      resourceRefreshHints.delete(workspace.id);
       if (updatedRepositoryPath) {
         // The updater awaits this exact refresh. Running a second inventory scan
         // here and in the request handler doubled every fetch and made the second
         // workspace race the first session replacement on slower CI hosts.
         const refreshed = refreshResourceInventory(workspace, updatedRepositoryPath);
         const sync = queueWorkPlanSessionSync(workspace, refreshed).then(() => refreshed);
-        resourceReloadSyncs.set(workspace.root, sync);
+        resourceReloadSyncs.set(workspace.id, sync);
         void sync.catch(reportError);
       } else {
         const refreshed = refreshResourceInventory(workspace);
@@ -2238,6 +2253,12 @@ async function replaceSession(workspace: Workspace, socket: WebSocket, action: (
     }
   } finally {
     workspace.replacingSession = false;
+    // The project's other sessions list this conversation, and the one just left,
+    // differently now; a side session's label follows its conversation.
+    if (workspaces.sessionsOf(workspace.root).length > 1) {
+      invalidateSessionScan(workspace);
+      void broadcastSessions(workspace).catch(reportError);
+    }
   }
 }
 
@@ -2339,6 +2360,36 @@ async function handleSetCredential(workspace: Workspace, socket: WebSocket, prov
  *
  * The running turn (if any) continues under the old sandbox.
  */
+/**
+ * Rebuild another session of the project after Settings applied elsewhere in it.
+ *
+ * The session Settings are applied from restarts, as it always has: the user asked for
+ * it. The others did not, so each is put back on the conversation it was showing once
+ * its tools are rebuilt — a side action should not lose its thread because the
+ * project's permissions changed.
+ */
+async function rebuildSibling(sibling: Workspace): Promise<void> {
+  const sandbox = sandboxFor(sibling);
+  await sibling.rebuildResources({ cwd: sibling.settings.cwd, ...(sandbox ? { sandbox } : {}) });
+  if (!sibling.started) return;
+  const rebuild = sibling.agent.rebuildTools;
+  if (!rebuild) return;
+  const conversation = sibling.agent.snapshot().sessionFile;
+  sibling.replacingSession = true;
+  try {
+    const result = await rebuild.call(sibling.agent, makeCreateRuntime(sibling.sandboxedTools));
+    if (result.cancelled || conversation === undefined) return;
+    // A conversation with nothing in it yet has no file to go back to.
+    if (!(await fs.stat(conversation).then(() => true, () => false))) return;
+    await sibling.agent.switchSession(conversation);
+    await sibling.workPlanSync;
+  } catch (error) {
+    reportError(error);
+  } finally {
+    sibling.replacingSession = false;
+  }
+}
+
 async function handleUpdateConfig(
   workspace: Workspace,
   socket: WebSocket,
@@ -2422,6 +2473,14 @@ async function handleUpdateConfig(
   ) {
     // Nothing changed: no file write, no replaced session, nothing to roll back.
     if (!resourceRequestId) send(socket, { type: "update_config_ack", ...snapshot(workspace) });
+    return undefined;
+  }
+  // The project's other sessions are rebuilt with these settings too, and rebuilding
+  // one mid-turn would throw its output away: wait for them, and say which.
+  const siblings = workspaces.sessionsOf(workspace.root).filter((open) => open !== workspace);
+  const busySibling = siblings.find((open) => starting.has(open.id) || open.replacingSession || (open.started && open.isBusy()));
+  if (busySibling) {
+    refuse(`${workspaceTitle(busySibling)} is working — wait for its turn to finish before applying settings`);
     return undefined;
   }
   const canonicalResourcePaths = async (values: string[] | undefined): Promise<string[] | undefined> => {
@@ -2561,6 +2620,7 @@ async function handleUpdateConfig(
       refuse("Settings change cancelled by an extension; the previous settings remain active");
       return undefined;
     }
+    for (const sibling of siblings) await rebuildSibling(sibling);
     const inventory = await refreshResourceInventory(workspace);
     await workspace.workPlanSync;
     // Only now: the settings are on disk and the session in front of the user was
@@ -2677,17 +2737,25 @@ async function handleOpenProject(socket: WebSocket, rawRoot: string): Promise<vo
 }
 
 /**
- * Close an open project. Its sessions on disk are left alone, so reopening the
- * same directory finds them again.
+ * Close an open project, or one of its side sessions. Its sessions on disk are left
+ * alone, so reopening the same directory finds them again.
+ *
+ * A project closes with its side sessions: they run on its directory, its sandbox and
+ * its resources, and would otherwise be left serving a project the user closed.
  */
-async function handleCloseProject(socket: WebSocket, rawRoot: string): Promise<void> {
+async function handleCloseProject(socket: WebSocket, rawRoot: string, id?: string): Promise<void> {
   if (config.workspaceLock) {
     send(socket, { type: "workspace_error", message: "This server is pinned to one project" });
     return;
   }
-  const target = workspaces.get(path.resolve(rawRoot));
+  const target = workspaces.get(id ?? path.resolve(rawRoot));
   if (!target) {
-    send(socket, { type: "workspace_error", message: `No open project at ${rawRoot}` });
+    send(socket, { type: "workspace_error", message: `No open project at ${id ?? rawRoot}` });
+    return;
+  }
+  if (target.isSide) {
+    const refusal = await closeSideSession(target);
+    if (refusal) send(socket, { type: "workspace_error", message: refusal });
     return;
   }
   if (workspaces.size < 2) {
@@ -2695,9 +2763,18 @@ async function handleCloseProject(socket: WebSocket, rawRoot: string): Promise<v
     return;
   }
   // Refused rather than queued behind the turn: cancelling someone's work to
-  // satisfy a close is worse than asking them to stop it first.
-  if (target.isBusy() || target.replacingSession) {
-    send(socket, { type: "workspace_error", message: `${path.basename(target.root)} is working — stop the turn before closing it` });
+  // satisfy a close is worse than asking them to stop it first. Any of the project's
+  // sessions counts — closing the project would stop all of them.
+  const sessions = workspaces.sessionsOf(target.root);
+  const working = sessions.find((open) => open.isBusy() || open.replacingSession);
+  if (working) {
+    send(socket, {
+      type: "workspace_error",
+      message:
+        working === target
+          ? `${path.basename(target.root)} is working — stop the turn before closing it`
+          : `${workspaceTitle(working)} is working — stop its turn before closing the project`,
+    });
     return;
   }
 
@@ -2713,7 +2790,7 @@ async function handleCloseProject(socket: WebSocket, rawRoot: string): Promise<v
     return;
   }
   config.openProjects = remaining;
-  workspaces.remove(target.root);
+  for (const open of sessions) workspaces.remove(open.id);
   resourceInventories.delete(target.root);
   resourceServices.delete(target.root);
   rebuildResourceWorkspaceIndex();
@@ -2724,14 +2801,116 @@ async function handleCloseProject(socket: WebSocket, rawRoot: string): Promise<v
   if (fallback) {
     await ensureStarted(fallback);
     for (const [socketOnIt, bound] of clients) {
-      if (bound !== target) continue;
+      if (!sessions.includes(bound)) continue;
       bindClient(socketOnIt, fallback, "workspace_switched");
     }
   }
-  await target.stop();
+  await Promise.all(sessions.map((open) => open.stop()));
   announceWorkspaceActivity();
 }
 
+/**
+ * Start a side session on an open project: a second agent on the same directory, with
+ * the project's settings and a fresh conversation. Nothing else is touched — the
+ * project's other sessions keep running whatever they are running.
+ */
+async function handleOpenSideSession(socket: WebSocket, rawRoot: string): Promise<void> {
+  if (config.workspaceLock) {
+    send(socket, { type: "workspace_error", message: "This server is pinned to one project" });
+    return;
+  }
+  const project = workspaces.get(path.resolve(rawRoot));
+  if (!project || project.isSide) {
+    send(socket, { type: "workspace_error", message: `No open project at ${rawRoot}` });
+    return;
+  }
+  // Where the client was when it asked. Building takes a moment, and a client that
+  // switched elsewhere meanwhile chose where to be after asking: it is not pulled
+  // back when the side session is ready — the selector lists it.
+  const boundWhenAsked = clients.get(socket);
+
+  let side: Workspace;
+  try {
+    // The project's own settings, so the side session is confined exactly as the
+    // project is — including the server's sandbox when this is the server's project.
+    side = await Workspace.create(
+      {
+        ...workspaceOptions(project.settings),
+        onDirectoryChanged: (relPath) => {
+          side.noteDirectoryChange();
+          broadcast(side, { type: "directory_changed", path: relPath });
+        },
+        onRepositoriesChanged: () =>
+          broadcast(side, {
+            type: "git_repositories_changed",
+            available: side.repos.length > 0 && side.gitUnavailable === undefined,
+            ...(side.gitUnavailable ? { unavailable: side.gitUnavailable } : {}),
+          }),
+        createRuntime: () => { throw new Error("unused: runtimes are built through ensureStarted"); },
+      },
+      workspaces.nextSideIndex(project.root),
+    );
+  } catch (error) {
+    reportError(error);
+    send(socket, { type: "workspace_error", message: `Could not start a side session on ${path.basename(project.root)}: ${error instanceof Error ? error.message : String(error)}` });
+    return;
+  }
+
+  workspaces.add(side);
+  try {
+    await ensureStarted(side);
+  } catch (error) {
+    workspaces.remove(side.id);
+    await side.stop();
+    reportError(error);
+    send(socket, { type: "workspace_error", message: `Could not start a side session on ${path.basename(project.root)}: ${error instanceof Error ? error.message : String(error)}` });
+    announceWorkspaceActivity();
+    return;
+  }
+  await adoptProjectModel(side, project);
+  if (clients.get(socket) === boundWhenAsked) bindClient(socket, side, "workspace_switched");
+  announceWorkspaceActivity();
+}
+
+/**
+ * Put a new side session on the model and thinking level the project's main session is
+ * using. A side action is a continuation of the user's work on the project, and a
+ * session that came up on the configured default instead had to be set by hand every
+ * time. Best effort: a model the side session cannot take leaves it on the default.
+ */
+async function adoptProjectModel(side: Workspace, project: Workspace): Promise<void> {
+  if (!project.started || !project.agent.ok) return;
+  const { model, thinkingLevel } = project.agent.snapshot();
+  try {
+    if (model) await side.agent.setModel(model.provider, model.id);
+    await side.agent.setThinkingLevel(thinkingLevel);
+  } catch (error) {
+    console.warn(`[pi] ${workspaceTitle(side)} kept its default model: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
+/**
+ * Close a side session: its agent stops, its conversation stays in the project's
+ * history, and whoever was watching it is moved to the project's main session.
+ * Returns why it cannot be closed, when it cannot.
+ */
+async function closeSideSession(target: Workspace): Promise<string | undefined> {
+  if (target.isBusy() || target.replacingSession) {
+    return `${workspaceTitle(target)} is working — stop the turn before closing it`;
+  }
+  workspaces.remove(target.id);
+  const project = workspaces.get(target.root) ?? workspaces.default;
+  const watching = [...clients].filter(([, bound]) => bound === target).map(([socketOnIt]) => socketOnIt);
+  if (project && watching.length > 0) {
+    await ensureStarted(project);
+    for (const socketOnIt of watching) bindClient(socketOnIt, project, "workspace_switched");
+  }
+  await target.stop();
+  announceWorkspaceActivity();
+  // Its conversation is now an ordinary saved one: the project's lists stop marking it.
+  if (project) void broadcastSessions(project).catch(reportError);
+  return undefined;
+}
 
 /**
  * Make sure a project has a session, building it on first use.
@@ -2751,7 +2930,7 @@ async function ensureStarted(target: Workspace): Promise<void> {
     throw new Error(`${path.basename(target.root)} has a resource update in progress`);
   }
   if (target.started) return;
-  const inFlight = starting.get(target.root);
+  const inFlight = starting.get(target.id);
   if (inFlight) return inFlight;
   const build = (async () => {
     // A retired project released its watcher along with its session; rebuild both,
@@ -2773,13 +2952,13 @@ async function ensureStarted(target: Workspace): Promise<void> {
     withholdDocumentTools(target);
     target.lastUsedAt = Date.now();
   })();
-  starting.set(target.root, build);
+  starting.set(target.id, build);
   // Tell everyone it is starting, and again when it is ready or failed.
   announceWorkspaceActivity();
   try {
     await build;
   } finally {
-    starting.delete(target.root);
+    starting.delete(target.id);
     announceWorkspaceActivity();
   }
 }
@@ -2982,6 +3161,11 @@ async function deleteSession(workspace: Workspace, socket: WebSocket, path: stri
     send(socket, { type: "error", message: `${UNKNOWN_LIVE_SESSION} — deleting it could remove the running conversation` });
     return;
   }
+  const holder = liveElsewhere(workspace, path);
+  if (holder) {
+    send(socket, { type: "error", message: `Cannot delete a conversation open in ${workspaceTitle(holder)}` });
+    return;
+  }
   if (!(await isKnownSessionPath(workspace, path))) {
     send(socket, { type: "error", message: "Unknown session" });
     return;
@@ -2995,6 +3179,12 @@ async function deleteSession(workspace: Workspace, socket: WebSocket, path: stri
 async function switchSession(workspace: Workspace, socket: WebSocket, path: string): Promise<void> {
   if (!(await isKnownSessionPath(workspace, path))) {
     send(socket, { type: "error", message: "Unknown session" });
+    return;
+  }
+  // Two runtimes appending to one file would interleave two conversations in it.
+  const holder = liveElsewhere(workspace, path);
+  if (holder) {
+    send(socket, { type: "error", message: `This conversation is open in ${workspaceTitle(holder)} — switch there to continue it` });
     return;
   }
   await replaceSession(workspace, socket, () => workspace.agent.switchSession(path));
@@ -3032,16 +3222,65 @@ async function sessionList(workspace: Workspace, ): Promise<SessionSummary[]> {
   return [...sessions]
     .sort((a, b) => b.modified.getTime() - a.modified.getTime())
     .slice(0, SESSION_LIST_LIMIT)
-    .map((info) => toSummary(info));
+    .map((info) => {
+      const holder = liveElsewhere(workspace, info.path);
+      return holder ? { ...toSummary(info), liveIn: workspaceTitle(holder) } : toSummary(info);
+    });
+}
+
+/**
+ * The other session of this project in which a conversation is live, if any.
+ *
+ * Side sessions share their project's session store, so a conversation can be opened
+ * from several of them; only one runtime may append to its file at a time. A runtime
+ * that does not report its file cannot be matched, and is not claimed to hold one.
+ */
+function liveElsewhere(workspace: Workspace, candidate: string): Workspace | undefined {
+  const wanted = path.resolve(candidate);
+  return workspaces.sessionsOf(workspace.root).find((other) => {
+    if (other === workspace || !other.started) return false;
+    const live = other.agent.snapshot().sessionFile;
+    return live !== undefined && path.resolve(live) === wanted;
+  });
+}
+
+/**
+ * Bring each side session's label in line with its conversation's name.
+ *
+ * The selector is built synchronously and the name lives in the session file, so the
+ * label is refreshed here — after a conversation is named, renamed or replaced —
+ * rather than read at announcement time. Announces only when a label changed.
+ */
+async function refreshSideLabels(root: string): Promise<void> {
+  const sides = workspaces.sessionsOf(root).filter((open) => open.isSide && open.started);
+  if (sides.length === 0) return;
+  const saved = await scanSessions(sides[0]);
+  let changed = false;
+  for (const side of sides) {
+    const live = side.agent.snapshot().sessionFile;
+    const name = live === undefined ? undefined : saved.find((info) => path.resolve(info.path) === path.resolve(live))?.name;
+    const label = name?.trim() || undefined;
+    if (label === side.sideLabel) continue;
+    side.sideLabel = label;
+    changed = true;
+  }
+  if (changed) announceWorkspaceActivity();
 }
 
 async function listSessions(workspace: Workspace, socket: WebSocket): Promise<void> {
   send(socket, { type: "sessions", sessions: await sessionList(workspace) });
 }
 
-/** A name change is visible to everyone: all clients watch the same agent. */
+/**
+ * A name change is visible to everyone watching the project: all its sessions share
+ * one history. Each gets its own list, since what is live elsewhere depends on where
+ * one stands.
+ */
 async function broadcastSessions(workspace: Workspace): Promise<void> {
-  broadcast(workspace, { type: "sessions", sessions: await sessionList(workspace) });
+  await refreshSideLabels(workspace.root);
+  for (const open of workspaces.sessionsOf(workspace.root)) {
+    broadcast(open, { type: "sessions", sessions: await sessionList(open) });
+  }
 }
 
 /**
@@ -3060,11 +3299,16 @@ async function renameSession(workspace: Workspace, socket: WebSocket, path: stri
     send(socket, { type: "error", message: `${UNKNOWN_LIVE_SESSION} — renaming could corrupt the running conversation` });
     return;
   }
+  // Live in another session of the project: that session's runtime is the one
+  // writing the file, so the name goes through it, for the same reason as below.
+  const holder = live === "live" ? undefined : liveElsewhere(workspace, path);
   if (live === "live") {
     // Through the live runtime, so the running session and its file agree. A second
     // SessionManager over the live file would be a disaster: opening one can rewrite
     // the file wholesale (version migration), racing the live appends.
     await workspace.agent.setSessionName(name);
+  } else if (holder) {
+    await holder.agent.setSessionName(name);
   } else {
     SessionManager.open(path, SESSION_DIR, workspace.settings.cwd).appendSessionInfo(name);
   }
@@ -3844,7 +4088,8 @@ async function handleRefreshAgentResourceRepositories(
 
 function affectedResourceWorkspaces(repositoryPath: string): Workspace[] {
   const roots = resourceWorkspaceRoots.get(repositoryPath) ?? new Set<string>();
-  return [...roots].map((root) => workspaces.get(root)).filter((target): target is Workspace => target !== undefined);
+  // Every session open on each directory: a side session loads the same resources as its project.
+  return [...roots].flatMap((root) => workspaces.sessionsOf(root));
 }
 
 /**
@@ -3854,7 +4099,7 @@ function affectedResourceWorkspaces(repositoryPath: string): Workspace[] {
  */
 function busyResourceConsumer(targets: readonly Workspace[], reserved: ReadonlySet<Workspace> = new Set()): string | undefined {
   const busy = targets.find(
-    (target) => !reserved.has(target) && (starting.has(target.root) || target.replacingSession || (target.started && target.isBusy())),
+    (target) => !reserved.has(target) && (starting.has(target.id) || target.replacingSession || (target.started && target.isBusy())),
   );
   return busy ? `${path.basename(busy.root)} is busy; wait for its current turn to finish` : undefined;
 }
@@ -4071,7 +4316,7 @@ async function handleUpdateAgentResourceRepository(
         continue;
       }
       try {
-        resourceRefreshHints.set(target.root, repositoryPath);
+        resourceRefreshHints.set(target.id, repositoryPath);
         // A vetoed replacement is a failed reload, not a silent one: the worktree
         // has already advanced, and the retained session still holds the resources
         // of the revision the user just left. Reporting "reloaded" here would make
@@ -4085,15 +4330,15 @@ async function handleUpdateAgentResourceRepository(
           });
           continue;
         }
-        const inventory = await (resourceReloadSyncs.get(target.root) ?? refreshResourceInventory(target, repositoryPath));
+        const inventory = await (resourceReloadSyncs.get(target.id) ?? refreshResourceInventory(target, repositoryPath));
         broadcast(target, { type: "agent_resource_inventory", inventory });
         if (target === workspace) requesterInventoryRefreshed = true;
         reloads.push({ workspaceRoot: target.root, status: "reloaded" });
       } catch (error) {
         reloads.push({ workspaceRoot: target.root, status: "failed", message: error instanceof Error ? error.message : String(error) });
       } finally {
-        resourceRefreshHints.delete(target.root);
-        resourceReloadSyncs.delete(target.root);
+        resourceRefreshHints.delete(target.id);
+        resourceReloadSyncs.delete(target.id);
       }
     }
     if (!requesterInventoryRefreshed) await refreshResourceInventory(workspace, repositoryPath);
@@ -4179,11 +4424,14 @@ function handleClientMessage(socket: WebSocket, raw: string): void {
         send(socket, { type: "workspace_error", message: "This server is pinned to one project" });
         return;
       }
-      const target = workspaces.get(message.root);
+      if (message.id !== undefined && typeof message.id !== "string") return;
+      // By id when there is one — a side session shares its project's root — else the
+      // root, which names the project's main session.
+      const target = workspaces.get(message.id ?? message.root);
       // Only a project already open. A path named here must never open one: that is
       // open_project's job, and it persists the open set before anything is built.
       if (!target) {
-        send(socket, { type: "workspace_error", message: `No open project at ${message.root}` });
+        send(socket, { type: "workspace_error", message: `No open project at ${message.id ?? message.root}` });
         return;
       }
       // Rebinding is the whole switch. Nothing else is touched: the project being
@@ -4212,7 +4460,12 @@ function handleClientMessage(socket: WebSocket, raw: string): void {
       return;
     case "close_project":
       if (typeof message.root !== "string") return;
-      handleCloseProject(socket, message.root).catch(reportError);
+      if (message.id !== undefined && typeof message.id !== "string") return;
+      handleCloseProject(socket, message.root, message.id).catch(reportError);
+      return;
+    case "open_side_session":
+      if (typeof message.root !== "string") return;
+      handleOpenSideSession(socket, message.root).catch(reportError);
       return;
     case "prompt": {
       if (typeof message.text !== "string") return;
@@ -4821,6 +5074,13 @@ function sweepIdleWorkspaces(): void {
     // make that review-ready workspace eligible for retirement.
     const readyForReview = workspaceWorkPlanReadyForReview(open);
     if (!shouldRetireWorkspace({ timeoutMs: timeout, now, lastUsedAt: open.lastUsedAt, watched: isWatched, busy: isBusy, readyForReview })) continue;
+    if (open.isSide) {
+      // Retiring rebuilds onto a fresh conversation, which would leave an empty side
+      // session in the selector. Its conversation is on disk: close it instead.
+      console.log(`[pi] closing ${workspaceTitle(open)} after ${Math.round((now - open.lastUsedAt) / 1000)}s idle`);
+      void closeSideSession(open).catch(reportError);
+      continue;
+    }
     console.log(`[pi] retiring ${path.basename(open.root)} after ${Math.round((now - open.lastUsedAt) / 1000)}s idle`);
     void open
       .retire()

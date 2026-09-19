@@ -187,7 +187,7 @@ test("a background result moves from working to review-ready without exposing it
   );
   const summary = ready.workspaces.find((workspace) => workspace.root === beta);
   assert.equal(summary.needsAttention, true);
-  assert.deepEqual(Object.keys(summary).sort(), ["activity", "name", "needsAttention", "root"]);
+  assert.deepEqual(Object.keys(summary).sort(), ["activity", "id", "name", "needsAttention", "root"]);
   assert.equal(
     watcher.received.some((message) => JSON.stringify(message).includes("Private result content") || JSON.stringify(message).includes("Private review task")),
     false,
@@ -229,7 +229,7 @@ test("several review-ready workspaces stay marked across selection without leaki
       && [root, beta].every((workspaceRoot) => message.workspaces.some((workspace) => workspace.root === workspaceRoot && workspace.activity === "ready-for-review" && workspace.needsAttention)),
   );
   for (const summary of bothReady.workspaces) {
-    assert.deepEqual(Object.keys(summary).sort(), ["activity", "name", "needsAttention", "root"], "only generic summary fields cross workspaces");
+    assert.deepEqual(Object.keys(summary).sort(), ["activity", "id", "name", "needsAttention", "root"], "only generic summary fields cross workspaces");
     assert.ok(!JSON.stringify(summary).includes("Private review task private-root"));
     assert.ok(!JSON.stringify(summary).includes("Private review task private-beta"));
   }

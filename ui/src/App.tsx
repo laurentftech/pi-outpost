@@ -1,4 +1,5 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
+import { workspaceKey } from "./util/workspaceKey";
 import type { OutcomeTarget, Theme, WireImage } from "@pi-outpost/shared";
 import { AssistantMessage } from "./components/AssistantMessage";
 import { CustomMessageCard } from "./components/CustomMessageCard";
@@ -148,6 +149,7 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
     switchWorkspace,
     openProject,
     closeProject,
+    openSideSession,
     openTerminal,
     sendTerminalInput,
     getTerminalCwd,
@@ -157,7 +159,7 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
     setOutcomeActive,
     refreshOutcome,
   } = useAgent(serverUrl, token, embedded, workspace);
-  useWorkspaceNotifications(state.workspaces, state.workspace?.root ?? null);
+  useWorkspaceNotifications(state.workspaces, state.workspace ? workspaceKey(state.workspace) : null);
   /**
    * Drop everything a switch must not carry across.
    *
@@ -167,12 +169,14 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
    * project shows its conversation, not the screen it was left on. The composer
    * draft is the one thing that survives, and it lives in `drafts`.
    */
-  const boundRoot = state.workspace?.root ?? null;
+  // The workspace's key, not its root: a side session is another conversation on the
+  // same directory, and switching to it is a switch like any other.
+  const boundKey = state.workspace ? workspaceKey(state.workspace) : null;
   useEffect(() => {
     setAttachments([]);
     setPendingUploads([]);
     if (mainRef.current) mainRef.current.scrollTop = 0;
-  }, [boundRoot]);
+  }, [boundKey]);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   // Paths the composer's draft names with `@`: they reference a file as surely as a chip does
@@ -182,7 +186,7 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
   const [loadedPreviewPdf, setLoadedPreviewPdf] = useState<{ path: string; revision: number } | null>(null);
   const [viewerDirty, setViewerDirty] = useState(false);
   /**
-   * Unsent composer text, per project root.
+   * Unsent composer text, per workspace (`workspaceKey`): a side session keeps its own.
    *
    * A ref rather than state: it changes on every keystroke and nothing renders
    * from it — only the composer's own remount reads it, when returning to a
@@ -269,11 +273,11 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
   useEffect(() => {
     setOutcomeActive(outcomeOpen);
     return () => setOutcomeActive(false);
-  }, [outcomeOpen, setOutcomeActive, state.sessionId, state.workspace?.root]);
+  }, [outcomeOpen, setOutcomeActive, state.sessionId, boundKey]);
   useEffect(() => {
     setOutcomeOpen(false);
     setRequestedTaskId(null);
-  }, [boundRoot]);
+  }, [boundKey]);
   const [attachmentErrors, setAttachmentErrors] = useState<string[]>([]);
   // Files being copied into the workspace right now — the composer shows one chip
   // each and refuses to send while any of them is outstanding.
@@ -691,11 +695,17 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
   useEffect(() => {
     // An extension's setTitle() (see extensions.md#custom-ui) wins until branding changes again.
     // Skipped when embedded: the host page owns its own <title>.
-    if (!embedded) document.title = state.extensionTitle ?? state.branding.title ?? "pi";
+    // The project leads, so several tabs on one server can be told apart; a side
+    // session's `name` carries its label too. Absent from a server that describes no
+    // workspace, where the title is what it always was.
+    if (!embedded) {
+      const title = state.extensionTitle ?? state.branding.title ?? "pi";
+      document.title = state.workspace ? `${state.workspace.name} — ${title}` : title;
+    }
     if (state.branding.accentColor) {
       accentTarget.style.setProperty("--accent", state.branding.accentColor);
     }
-  }, [state.branding, state.extensionTitle, embedded, accentTarget]);
+  }, [state.branding, state.extensionTitle, state.workspace?.name, embedded, accentTarget]);
 
   // The embed has no server-rendered shell to hide its defaults. Leave its
   // shadow root empty until the independent HTTP branding request settles, so
@@ -841,6 +851,7 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
             onSwitchWorkspace={switchWorkspace}
             onOpenProject={() => { setProjectPicker(true); browseServerDirectory(""); }}
             onCloseProject={closeProject}
+            onOpenSideSession={openSideSession}
             title={state.branding.title}
             sessions={state.sessions}
             sessionSearch={state.sessionSearch}
@@ -1212,10 +1223,10 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
               <Composer
                 // Remount on a project change so the restored draft becomes the
                 // field's initial value; without the key React keeps the old text.
-                key={state.workspace?.root ?? ""}
-                initialDraft={drafts.current[state.workspace?.root ?? ""] ?? ""}
+                key={boundKey ?? ""}
+                initialDraft={drafts.current[boundKey ?? ""] ?? ""}
                 onDraftChange={(text) => {
-                  drafts.current[state.workspace?.root ?? ""] = text;
+                  drafts.current[boundKey ?? ""] = text;
                 }}
                 isStreaming={state.isStreaming}
                 connected={state.connected}

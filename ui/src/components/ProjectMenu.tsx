@@ -18,14 +18,30 @@
 import { useEffect, useRef, useState } from "react";
 import type { WorkspaceActivity, WorkspaceInfo } from "@pi-outpost/shared";
 import { eventHitsNode } from "../util/clickOutside";
+import { workspaceKey } from "../util/workspaceKey";
 
 interface ProjectMenuProps {
   workspace: WorkspaceInfo | null;
   workspaces: WorkspaceInfo[];
   locked: boolean;
-  onSwitch: (root: string) => void;
+  /** `id` names a side session; absent, the project's main session. */
+  onSwitch: (root: string, id?: string) => void;
   onOpen: () => void;
-  onClose: (root: string) => void;
+  /** `id` closes one side session; absent, the project and its side sessions. */
+  onClose: (root: string, id?: string) => void;
+  /** Start a side session on a project. Absent, none is offered. */
+  onOpenSide?: (root: string) => void;
+}
+
+/**
+ * The rows in menu order: each project, then its side sessions under it. A side
+ * session whose project is not listed — a server mid-update — is kept, at the end,
+ * rather than dropped from a list the user switches with.
+ */
+function ordered(workspaces: WorkspaceInfo[]): WorkspaceInfo[] {
+  const projects = workspaces.filter((w) => !w.sideOf);
+  const rows = projects.flatMap((project) => [project, ...workspaces.filter((w) => w.sideOf === project.root)]);
+  return [...rows, ...workspaces.filter((w) => !rows.includes(w))];
 }
 
 const LABELS: Record<WorkspaceActivity, string> = {
@@ -119,7 +135,8 @@ export function ProjectMenu(props: ProjectMenuProps) {
   // without — which project this is — nowhere at all.
   if (!workspace) return null;
 
-  const others = workspaces.filter((w) => w.root !== workspace.root);
+  const others = workspaces.filter((w) => workspaceKey(w) !== workspaceKey(workspace));
+  const projectCount = workspaces.filter((w) => !w.sideOf).length;
   const attention = workspaces.filter((w) => w.needsAttention);
 
   return (
@@ -153,12 +170,12 @@ export function ProjectMenu(props: ProjectMenuProps) {
               <span className="flex items-center gap-1">
                 {others.map((w) =>
                   w.activity === "working" ? (
-                    <span key={w.root} className="relative flex h-1.5 w-1.5 items-center justify-center">
+                    <span key={workspaceKey(w)} className="relative flex h-1.5 w-1.5 items-center justify-center">
                       <span className="absolute h-1.5 w-1.5 animate-ping rounded-full bg-blue-700 opacity-60 dark:bg-blue-400" />
                       <span className="relative h-1.5 w-1.5 rounded-full bg-blue-700 dark:bg-blue-400" />
                     </span>
                   ) : (
-                    <span key={w.root} className="h-1 w-1 rounded-full bg-zinc-300 dark:bg-zinc-600" />
+                    <span key={workspaceKey(w)} className="h-1 w-1 rounded-full bg-zinc-300 dark:bg-zinc-600" />
                   ),
                 )}
               </span>
@@ -175,29 +192,34 @@ export function ProjectMenu(props: ProjectMenuProps) {
           role="menu"
           className="absolute left-0 top-full z-40 mt-1 w-87 rounded-md border border-zinc-300 bg-white p-1 shadow-lg dark:border-zinc-700 dark:bg-zinc-900"
         >
-          {workspaces.map((w) => {
-            const active = w.root === workspace.root;
+          {ordered(workspaces).map((w) => {
+            const key = workspaceKey(w);
+            const active = key === workspaceKey(workspace);
+            const side = w.sideOf !== undefined;
             return (
               <div
-                key={w.root}
-                className={`group flex items-center gap-2.5 rounded-md px-2.5 py-2 ${active ? "bg-zinc-100 dark:bg-zinc-800" : "hover:bg-zinc-50 dark:hover:bg-zinc-800/50"}`}
+                key={key}
+                data-testid={side ? "side-session-row" : "project-row"}
+                className={`group flex items-center gap-2.5 rounded-md py-2 pr-2.5 ${side ? "pl-7" : "pl-2.5"} ${active ? "bg-zinc-100 dark:bg-zinc-800" : "hover:bg-zinc-50 dark:hover:bg-zinc-800/50"}`}
               >
                 <button
                   type="button"
                   role="menuitem"
                   onClick={() => {
                     setOpen(false);
-                    if (!active) props.onSwitch(w.root);
+                    // A project's main session is addressed by its root, as it always was.
+                    if (!active) (side ? props.onSwitch(w.root, w.id) : props.onSwitch(w.root));
                   }}
                   className="flex min-w-0 flex-1 items-center gap-2.5 text-left"
                 >
                   <ActivityMark activity={w.activity} />
                   <span className="flex min-w-0 flex-col gap-0.5">
                     <span className={`truncate text-[13px] ${active ? "font-semibold text-zinc-900 dark:text-zinc-100" : "font-medium text-zinc-900 dark:text-zinc-100"}`}>
-                      {w.name}
+                      {side ? w.label ?? w.name : w.name}
                     </span>
-                    {/* The path is what separates two projects with the same basename. */}
-                    <span className="truncate font-mono text-[11px] text-zinc-400 dark:text-zinc-500">{w.root}</span>
+                    {/* The path is what separates two projects with the same basename. A
+                        side session sits under its project, whose path is already there. */}
+                    {!side && <span className="truncate font-mono text-[11px] text-zinc-400 dark:text-zinc-500">{w.root}</span>}
                   </span>
                 </button>
                 <span className="flex shrink-0 items-center gap-1.5">
@@ -214,14 +236,35 @@ export function ProjectMenu(props: ProjectMenuProps) {
                   {/* Offered even while the project is working: the server owns the
                       refusal, and hiding the control would leave the user unable to
                       learn that a running turn is what stands in the way. */}
-                  {workspaces.length > 1 && (
+                  {/* Always visible, unlike the close button: a hover-only control cannot
+                      be found, and cannot be reached at all without a pointer. */}
+                  {!side && props.onOpenSide && (
                     <button
                       type="button"
-                      title={`Close ${w.name}`}
-                      aria-label={`Close ${w.name}`}
+                      title={`New side session on ${w.name}`}
+                      aria-label={`New side session on ${w.name}`}
                       onClick={(event) => {
                         event.stopPropagation();
-                        props.onClose(w.root);
+                        setOpen(false);
+                        props.onOpenSide?.(w.root);
+                      }}
+                      className="flex h-5 w-5 items-center justify-center rounded border border-zinc-300 text-zinc-500 hover:border-zinc-400 hover:text-zinc-800 dark:border-zinc-600 dark:text-zinc-400 dark:hover:border-zinc-500 dark:hover:text-zinc-100"
+                    >
+                      <svg className="h-2.5 w-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                        <path d="M12 5v14" />
+                        <path d="M5 12h14" />
+                      </svg>
+                    </button>
+                  )}
+                  {(side || projectCount > 1) && (
+                    <button
+                      type="button"
+                      title={`Close ${side ? w.label ?? w.name : w.name}`}
+                      aria-label={`Close ${side ? w.label ?? w.name : w.name}`}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        if (side) props.onClose(w.root, w.id);
+                        else props.onClose(w.root);
                       }}
                       className="flex h-5 w-5 items-center justify-center rounded border border-transparent text-zinc-400 opacity-0 group-hover:border-zinc-300 group-hover:opacity-100 hover:text-zinc-700 dark:group-hover:border-zinc-600 dark:hover:text-zinc-200"
                     >

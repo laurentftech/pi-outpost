@@ -122,6 +122,11 @@ export interface SessionSummary {
   messageCount: number;
   /** Excerpt of the transcript around the match — search results only. */
   snippet?: string;
+  /**
+   * The label of another session of the same project in which this conversation is
+   * live. Such a conversation cannot be opened, renamed or deleted from here.
+   */
+  liveIn?: string;
 }
 
 /**
@@ -619,11 +624,18 @@ export type WorkspaceActivity =
  * hears about every project's activity, and about only its own project's content.
  */
 export interface WorkspaceInfo {
-  /**
-   * Resolved project directory. The workspace's identity on the wire too — there
-   * is no separate id to keep in step with it.
-   */
+  /** Resolved project directory. For a side session, the directory of its project. */
   root: string;
+  /**
+   * The workspace's identity: `root` for a project's main session, a distinct id for
+   * a side session. Absent from a server that predates side sessions, where `root`
+   * is the identity.
+   */
+  id?: string;
+  /** For a side session, the root of the project it runs on. */
+  sideOf?: string;
+  /** For a side session, its label: the conversation's name once it has one. */
+  label?: string;
   /** Directory basename, for the selector's row. The path disambiguates two alike. */
   name: string;
   activity: WorkspaceActivity;
@@ -1032,7 +1044,15 @@ export type ClientMessage =
    * path here. Switching disturbs nothing: no other workspace is cancelled, paused
    * or rebuilt, and a turn running in the project being left runs to completion.
    */
-  | { type: "switch_workspace"; root: string }
+  | {
+      type: "switch_workspace";
+      root: string;
+      /**
+       * The workspace's `id`, to reach a side session. Absent, `root` names the
+       * project's main session — what a client that predates side sessions sends.
+       */
+      id?: string;
+    }
   /**
    * Open a directory as a project. The path comes from the same picker the sandbox
    * root uses (`browse_server_directory`), so the boundary is the configured lock
@@ -1045,7 +1065,18 @@ export type ClientMessage =
    * session history on disk is untouched. Refused while its agent is streaming,
    * and refused for the last remaining project.
    */
-  | { type: "close_project"; root: string }
+  | {
+      type: "close_project";
+      root: string;
+      /** A side session's `id`, to close it alone. Absent, the project and its side sessions close. */
+      id?: string;
+    }
+  /**
+   * Start a side session on an open project: a second agent on the same directory,
+   * in a fresh conversation, running alongside the project's other sessions. The
+   * connection is bound to it. Refused on a server whose workspaces are locked.
+   */
+  | { type: "open_side_session"; root: string }
   | { type: "prompt"; text: string; images?: WireImage[] }
   | { type: "abort" }
   | { type: "set_model"; provider: string; id: string }

@@ -45,9 +45,11 @@ interface HeaderProps {
     onOpened: () => void;
     onSelect: (root: string) => void;
   };
-  onSwitchWorkspace: (root: string) => void;
+  onSwitchWorkspace: (root: string, id?: string) => void;
   onOpenProject: () => void;
-  onCloseProject: (root: string) => void;
+  onCloseProject: (root: string, id?: string) => void;
+  /** Start a side session on an open project. Absent, the project menu offers none. */
+  onOpenSideSession?: (root: string) => void;
   theme: "light" | "dark";
   showThemeToggle: boolean;
   /** Extension setStatus() key/text pairs — see extensions.md#custom-ui. */
@@ -188,6 +190,9 @@ function SessionRow({
         <div className="mt-0.5 text-xs text-zinc-400 dark:text-zinc-600">
           {new Date(session.modified).toLocaleString()} · {session.messageCount} messages
           {isCurrent ? " · current" : ""}
+          {/* Live in another session of this project: the server refuses to open it
+              here, and says so, rather than let two agents append to one file. */}
+          {!isCurrent && session.liveIn ? <span data-testid="session-live-in"> · open in {session.liveIn}</span> : null}
         </div>
       </button>
       <button
@@ -199,7 +204,7 @@ function SessionRow({
       >
         ✎
       </button>
-      {!isCurrent && (
+      {!isCurrent && !session.liveIn && (
         <button
           type="button"
           onClick={onDelete}
@@ -452,6 +457,7 @@ export function Header(props: HeaderProps) {
           onSwitch={props.onSwitchWorkspace}
           onOpen={props.onOpenProject}
           onClose={props.onCloseProject}
+          onOpenSide={props.onOpenSideSession}
         />
       )}
       {props.workspaceControl === "root" && props.rootControl && (
@@ -575,7 +581,7 @@ export function Header(props: HeaderProps) {
           sandbox={props.sandbox}
           // The roots are shown where the interface is about one project; with several
           // offered and open, Settings is about the agent's permissions.
-          showRoots={!(props.workspaceControl === "projects" && props.workspaces.length > 1)}
+          showRoots={!(props.workspaceControl === "projects" && props.workspaces.filter((w) => !w.sideOf).length > 1)}
           gitUnavailable={props.gitUnavailable}
           userSkillPaths={props.userSkillPaths}
           serverBrowse={props.serverBrowse}
