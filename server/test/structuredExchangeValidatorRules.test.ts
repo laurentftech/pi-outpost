@@ -532,7 +532,8 @@ describe("the setup guide's commands, as they ship", () => {
   });
 
   test("run against the guide's registry, profile and rules with the exit status the page states", () => {
-    const guide = readFileSync(path.join(REPO, "docs/structured-exchange-project-setup.md"), "utf8");
+    // A Windows checkout ends these lines with CRLF; a continuation `\` would otherwise be read as an argument.
+    const guide = readFileSync(path.join(REPO, "docs/structured-exchange-project-setup.md"), "utf8").replace(/\r\n/g, "\n");
     const blocks = [...guide.matchAll(/```json\r?\n([\s\S]*?)```/g)].map((match) => JSON.parse(match[1]) as Record<string, unknown>);
     const [registry] = blocks.filter((block) => block.schema === "urn:structured-exchange-profile-registry:1") as { profiles: string[]; rules: string[] }[];
     const [guideProfile] = blocks.filter((block) => block.schema === "urn:structured-exchange-profile:1");
