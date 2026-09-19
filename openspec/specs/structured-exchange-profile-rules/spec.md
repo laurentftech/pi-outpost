@@ -26,11 +26,15 @@ A condition SHALL name one attribute and the values it may take, and holds when 
 them; the conditions of one set SHALL all hold. A rule MAY have no selecting conditions, in which case it
 applies to every item or relationship of its kind.
 
+A condition of an item rule SHALL be read against its element kind. A condition of a link rule on the source
+or the target SHALL be read against the element kinds the relationship kind allows at that end, or against every
+element kind of the profile when that end is undeclared.
+
 A rules file SHALL be refused, with a rule and a pointer, when it does not conform to its schema, when two of
 its rules share an identifier, when it names a kind the profile does not declare in the vocabulary the rule
-uses, when a condition names an attribute the kind does not declare or an attribute that holds a list or a
-reference, when a condition on an enumeration names a value the enumeration does not list, or when a value's
-type does not match the attribute's.
+uses, when a condition names an attribute that no kind it is read against declares, or an attribute that holds a
+list or a reference, when a condition on an enumeration names a value the enumeration does not list, or when a
+value's type does not match the attribute's.
 
 #### Scenario: ALinkRuleForbidsARelationship
 - **WHEN** a rules file for `acme/requirements` declares that a `satisfies` relationship whose source has `category` `derived` is forbidden, at level `refuse`
@@ -55,6 +59,14 @@ type does not match the attribute's.
 #### Scenario: TwoRulesSharingAnIdentifierAreRefused
 - **WHEN** two rules of one file share an identifier
 - **THEN** the rules file is refused with a pointer to the second
+
+#### Scenario: ALinkRuleConditionIsReadOnTheDeclaredEnds
+- **WHEN** the profile allows only `requirement` at the source of `satisfies`, only `test` declares `bench`, and a link rule conditions the source's `bench`
+- **THEN** the rules file is refused with the rule and a pointer to `bench`, naming the kinds allowed at the source
+
+#### Scenario: AnUndeclaredEndReadsEveryElementKind
+- **WHEN** the profile declares no ends for `traces`, only `test` declares `bench`, and a link rule conditions the source's `bench`
+- **THEN** the rules file is usable
 
 ### Requirement: ADocumentIsHeldToItsProfilesRules
 

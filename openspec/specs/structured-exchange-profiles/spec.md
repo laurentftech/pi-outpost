@@ -65,14 +65,20 @@ and a committed, Git-tracked JSON Schema. A profile SHALL declare its identifier
 - for each kind, the attributes that kind may carry, each with a type — string, number, boolean,
   reference, or enumeration — whether it is required, and whether it holds a list;
 - for each enumeration, its allowed values and whether it is closed or open;
+- optionally, for each relationship kind, the element kinds allowed at its source and the element kinds
+  allowed at its target; a side left undeclared allows any element kind;
 - optionally, viewpoints in the same shape a version 2 document declares them.
 
 The format SHALL be flat: no inheritance between kinds and no references between profiles. A profile
 SHALL be refused when it does not conform to its schema, when it declares a kind or an attribute of a
-kind twice, when an enumeration has no values or repeats one, when a viewpoint retains a kind the profile
+kind twice, when an enumeration has no values or repeats one, when a relationship kind's ends name an
+element kind the profile does not declare or name one twice, when a viewpoint retains a kind the profile
 does not declare, when two of its viewpoints share an identifier, when its identifier is one the contract
 reserves, or when it exceeds the published ceilings on kinds, attributes, enumeration values and
 viewpoints. Every refusal SHALL name a rule and point at the offending value.
+
+Declaring ends is an addition to the published format: a profile that declares them SHALL be documented as
+refused by a validator or an application that predates them.
 
 #### Scenario: AProfileDeclaresKindsAttributesAndEnumerations
 - **WHEN** a profile declares a `requirement` element kind with a required closed enumeration `status` of `draft`, `approved` and `withdrawn`
@@ -102,6 +108,22 @@ viewpoints. Every refusal SHALL name a rule and point at the offending value.
 - **WHEN** a profile declares the identifier `urn:structured-exchange-conformity-report:1`
 - **THEN** the profile is refused with the rule and a pointer to its identifier
 
+#### Scenario: AProfileClaimingAViewIdentifierIsRefused
+- **WHEN** a profile declares the identifier `urn:structured-exchange-rule-patterns:1`
+- **THEN** the profile is refused with the rule and a pointer to its identifier
+
+#### Scenario: ARelationshipKindDeclaresItsEnds
+- **WHEN** a profile declares the `verifies` relationship kind with `test` allowed at its source and `requirement` at its target
+- **THEN** the profile is usable and those ends apply to documents held to it
+
+#### Scenario: AnEndNamingAnUndeclaredKindIsRefused
+- **WHEN** a relationship kind's source names the element kind `tset`, which the profile does not declare
+- **THEN** the profile is refused with the rule, a pointer to `tset` and the element kinds the profile declares
+
+#### Scenario: AnEndNamingAKindTwiceIsRefused
+- **WHEN** a relationship kind's target names `requirement` twice
+- **THEN** the profile is refused with the rule and a pointer to the second
+
 ### Requirement: ADocumentIsHeldToItsProfile
 
 A version 2 graph or table document SHALL be held to a profile when it names a registered profile, or
@@ -125,7 +147,9 @@ A document held to a profile SHALL be refused when:
 - a value of a closed enumeration is not one of its allowed values;
 - an item of a complete document, or an item a proposal adds, omits an attribute its kind requires;
 - any item sets an attribute its kind requires to null;
-- a proposal removes an attribute its kind requires.
+- a proposal removes an attribute its kind requires;
+- a relationship or relation joins, at an end its kind declares, an item of the document whose kind that
+  end does not allow.
 
 An item a proposal adds is one that carries no reference: nothing exists yet for it to leave unchanged, so
 it must carry every required attribute, exactly as in a complete document. A proposal SHALL NOT be refused
@@ -133,14 +157,21 @@ for required attributes it does not mention on an item it changes, because it de
 changes. A changed item SHALL still state its kind, so that its attributes can be checked. Structural
 heading rows SHALL NOT be held to kinds or attributes.
 
-When the agent is refused a kind, an attribute or a closed-enumeration value the profile does not have, the
-refusal SHALL also tell it not to substitute an allowed one it has no grounds for, and to ask the user which
-value is true or whether the profile should change.
+A relationship's ends SHALL be judged by the kinds a proposal leaves its items and itself with. An end that
+is not an item of the document, or is an item carrying no kind, SHALL NOT cause a refusal: its kind cannot be
+verified here, and it SHALL be reported as a finding to check with a pointer to the relationship. When a
+document is checked with a stated set of subjects, only relationships with a subject at one end at least
+SHALL be judged by their ends.
+
+When the agent is refused a kind, an attribute, a closed-enumeration value or a relationship between kinds the
+profile does not have, the refusal SHALL also tell it not to substitute an allowed one it has no grounds for,
+and to ask the user which is true or whether the profile should change.
 
 Each refusal SHALL name the rule, point at the offending value, and state what the profile allows at that
 point — for a kind, the kinds declared in that vocabulary; for an attribute, the attributes the kind
-declares; for a closed enumeration, its allowed values. Nothing SHALL be presented when a document is
-refused, and nothing SHALL be corrected on the producer's behalf.
+declares; for a closed enumeration, its allowed values; for an end, the element kinds the relationship kind
+allows there. Nothing SHALL be presented when a document is refused, and nothing SHALL be corrected on the
+producer's behalf.
 
 Sequence documents SHALL NOT be held to a profile.
 
@@ -216,6 +247,26 @@ Sequence documents SHALL NOT be held to a profile.
 - **WHEN** a sequence document names a registered profile
 - **THEN** it is validated by the core contract alone
 
+#### Scenario: ARelationshipBetweenKindsItsEndsDoNotAllowIsRefused
+- **WHEN** a graph holds a `verifies` relationship from a `requirement` to a `requirement`, and the profile allows only `test` at the source of `verifies`
+- **THEN** the document is refused, the refusal points at the relationship's source and lists `test`, tells the agent to ask rather than pick, and nothing is presented
+
+#### Scenario: ATableRelationIsHeldToItsEnds
+- **WHEN** a table holds a `verifies` relation whose target is a `test` row, and the profile allows only `requirement` at the target of `verifies`
+- **THEN** the document is refused with the rule and a pointer to the relation's target
+
+#### Scenario: AnUndeclaredSideAllowsAnyKind
+- **WHEN** the profile declares the source of `verifies` and not its target, and a `verifies` relationship goes from a `test` to a `test`
+- **THEN** the relationship's ends cause no refusal
+
+#### Scenario: AnEndOutsideTheDocumentIsAFindingToCheck
+- **WHEN** a `verifies` relation's source is a reference to an object the document does not carry, and the profile declares the source of `verifies`
+- **THEN** the document is presented, and the agent's result lists a finding to check pointing at the relation
+
+#### Scenario: AProposalIsJudgedByTheKindsItLeaves
+- **WHEN** a proposal changes the kind of an element from `test` to `requirement`, and a `verifies` relationship in the proposal has that element as its source, where only `test` is allowed
+- **THEN** the proposal is refused with the rule and a pointer to the relationship's source
+
 ### Requirement: AnOpenEnumerationReportsRatherThanRefuses
 
 A value outside an open enumeration SHALL NOT cause a refusal. The agent's result SHALL list each such
@@ -237,8 +288,10 @@ In a project whose registry declares no default, a document naming an unregister
 and a version 1 document, SHALL be validated by the core contract alone.
 
 A document naming a profile identifier the contract reserves — `urn:structured-exchange-conformity-report:1`,
-which a conformity report names — SHALL be validated by the core contract alone in every project, whatever
-its registry's default: the identifier states what the document is, and no project's model governs it.
+which a conformity report names, `urn:structured-exchange-rules-register:1`, which a rules register names, and
+`urn:structured-exchange-rule-patterns:1`, which rule patterns name — SHALL be validated by the core contract alone
+in every project, whatever its registry's default: the identifier states what the document is, and no project's
+model governs it.
 
 #### Scenario: AnUnregisteredProfileIsRefusedUnderADefault
 - **WHEN** a document names `acme/other` in a project whose registry declares a default and does not register `acme/other`
@@ -254,6 +307,10 @@ its registry's default: the identifier states what the document is, and no proje
 
 #### Scenario: AReservedIdentifierIsNeverHeldToAProfile
 - **WHEN** a document names `urn:structured-exchange-conformity-report:1` in a project whose registry declares a default
+- **THEN** the document is validated by the core contract alone
+
+#### Scenario: AViewIdentifierIsNeverHeldToAProfile
+- **WHEN** a document names `urn:structured-exchange-rules-register:1` in a project whose registry declares a default
 - **THEN** the document is validated by the core contract alone
 
 ### Requirement: AnUnusableRegistryRefusesEverything
@@ -315,10 +372,11 @@ The reference validation interface SHALL, without this application's sources:
   rules, and refusing a document that names a different profile identifier;
 - validate a document against a project registry, applying the core contract, the profile and its rules;
 - print a profile as a readable listing of every kind, every attribute with its type and whether it is
-  required or a list, and every enumeration value with whether the enumeration is closed or open —
-  nothing elided, so the profile can be reviewed by hand against the model it was built from — and, when
-  given a registry, every rule with its identifier, level, source, statement and conditions, so each
-  statement can be read beside what the rule checks.
+  required or a list, every enumeration value with whether the enumeration is closed or open, and for each
+  relationship kind the element kinds allowed at its source and at its target, or that any is — nothing
+  elided, so the profile can be reviewed by hand against the model it was built from — and, when given a
+  registry, every rule with its identifier, level, source, statement and conditions, so each statement can be
+  read beside what the rule checks.
 
 The existing process statuses SHALL keep their meaning, and a profile, rules file or registry that is
 unreadable, not JSON or does not conform SHALL be reported with a status distinct from a document that does not
@@ -356,14 +414,18 @@ conform, and documented.
 - **WHEN** a producer asks for a readable listing of a registry whose rules file holds three rules
 - **THEN** the listing shows each rule's identifier, level, source and statement beside the conditions it checks
 
+#### Scenario: DeclaredEndsAreListed
+- **WHEN** a producer asks for a readable listing of a profile whose `verifies` kind declares `test` at its source and nothing at its target
+- **THEN** the listing shows `test` as the source of `verifies` and any element kind as its target
+
 ### Requirement: TheReaderIsToldWhetherADocumentConforms
 
 A presented document held to a profile SHALL state, in its rendering and in its accessible textual
 equivalent, the profile it was checked against and that it conforms, with the number of values outside
-open enumerations and the number of findings to check — violated `report` rules and rules not verifiable
-here — when there are any. The statement SHALL be established against the project's registry as it is when
-the document is shown, live or restored, and SHALL say so when the registry cannot be used at that moment or
-the document no longer conforms.
+open enumerations and the number of findings to check — violated `report` rules, rules not verifiable
+here, and relationship ends whose kind cannot be verified here — when there are any. The statement SHALL be
+established against the project's registry as it is when the document is shown, live or restored, and SHALL
+say so when the registry cannot be used at that moment or the document no longer conforms.
 
 The statement SHALL be carried beside the document, never inside it: the document handed on for approval
 SHALL remain exactly the document that was validated. A document not held to a profile SHALL carry no
@@ -381,8 +443,16 @@ statement.
 - **WHEN** a presented document violates one `report` rule and has one rule not verifiable here
 - **THEN** the rendering states that it conforms with two findings to check
 
+#### Scenario: UnverifiableEndsAreCounted
+- **WHEN** a presented document has one relation whose declared end is outside the document
+- **THEN** the rendering states that it conforms with one finding to check
+
 #### Scenario: ARestoredDocumentIsCheckedAgainstTheProfileAsItIsNow
 - **WHEN** a session is restored after the profile was changed so that a previously presented document no longer conforms
+- **THEN** the restored rendering states that the document no longer conforms to the profile
+
+#### Scenario: NarrowedEndsApplyToARestoredDocument
+- **WHEN** a session is restored after a relationship kind's ends were narrowed so that a presented relationship is no longer allowed
 - **THEN** the restored rendering states that the document no longer conforms to the profile
 
 #### Scenario: TheStatementDoesNotAlterTheDocument

@@ -41,11 +41,12 @@ columns SHALL be the columns the subject documents declare, followed by `conform
 subject requirement SHALL be one row, carrying its identifier, reference, kind and cells, in the order of the
 input; each heading line SHALL be a heading row at its depth.
 
-A row's conformity SHALL be `non-conforming` when a `refuse` rule, or the profile's vocabulary, is violated
-for it; otherwise `to check` when a `report` rule is violated for it or a rule is not verifiable for it;
-otherwise `conforms`. Its violations SHALL list, for each, the rule's identifier and statement, and for a link
-rule the identifier of the other end. A violation of a link rule between two subjects SHALL appear on the rows
-of both, and SHALL be counted once.
+A row's conformity SHALL be `non-conforming` when a `refuse` rule, or the profile's vocabulary — including the
+element kinds a relationship kind allows at its ends — is violated for it; otherwise `to check` when a `report`
+rule is violated for it, a rule is not verifiable for it, or the kind of a declared end of one of its
+relationships cannot be verified; otherwise `conforms`. Its violations SHALL list, for each, the rule's
+identifier and statement, and for a link rule or an end the identifier of the other end. A violation of a link
+rule between two subjects SHALL appear on the rows of both, and SHALL be counted once.
 
 The report SHALL open with a summary chapter stating the number of requirements in each conformity state, the
 number of violations of each rule counted once, the unreadable lines, the date of the run and the version of
@@ -79,6 +80,14 @@ and the Markdown report SHALL still be written.
 #### Scenario: AReportIsNeverHeldToAProjectsProfile
 - **WHEN** a conformity report is presented in a project whose registry declares a default profile
 - **THEN** it is presented without refusal and carries no conformance statement
+
+#### Scenario: ARelationBetweenDisallowedKindsIsNonConforming
+- **WHEN** a subject requirement has a `verifies` relation to a linked `requirement`, and the profile allows only `test` at the target of `verifies`
+- **THEN** its conformity reads `non-conforming`, and its violations name the relation's other end
+
+#### Scenario: AnEndOfUnknownKindIsToCheck
+- **WHEN** a subject requirement's only finding is a `verifies` relation whose declared target is outside its document
+- **THEN** its conformity reads `to check`
 
 ### Requirement: TheReportIsReadableAsMarkdown
 
