@@ -8,6 +8,7 @@
  */
 import assert from "node:assert/strict";
 import { realpath } from "node:fs/promises";
+import path from "node:path";
 import { test } from "node:test";
 import { connect, makeWorkspace, startServer } from "./harness.mjs";
 
@@ -83,10 +84,10 @@ test("the server's own project, open alone, edits its root", async (t) => {
   const hello = await client.waitFor((message) => message.type === "hello");
   assert.equal(hello.sandbox.rootEditable, true);
 
-  client.send({ type: "update_config", sandbox: { root: `${alpha}/inner`, allowWrite: false, allowBash: false } });
+  client.send({ type: "update_config", sandbox: { root: path.join(alpha, "inner"), allowWrite: false, allowBash: false } });
   const ack = await client.waitFor((message) => message.type === "update_config_ack" || message.type === "error");
   assert.equal(ack.type, "update_config_ack", ack.message);
-  assert.equal(ack.sandbox.root, `${alpha}/inner`);
+  assert.equal(ack.sandbox.root, path.join(alpha, "inner"));
   assert.deepEqual(await listRoot(client, "inner"), ["c.md"]);
 });
 
@@ -98,7 +99,7 @@ test("write can be turned off and on again from a second project while the serve
   const beta = await realpath(await makeWorkspace({ "b.md": "beta\n" }));
   const server = await startServer(alpha, {
     openProjects: [beta],
-    sandbox: { root: alpha, allowWrite: true, writableRoot: `${alpha}/out`, allowBash: false },
+    sandbox: { root: alpha, allowWrite: true, writableRoot: path.join(alpha, "out"), allowBash: false },
   });
   t.after(() => server.stop());
   const client = connect(server.wsUrl());
@@ -107,14 +108,14 @@ test("write can be turned off and on again from a second project while the serve
   client.send({ type: "switch_workspace", root: beta });
   await client.waitFor((message) => message.type === "workspace_switched");
 
-  client.send({ type: "update_config", sandbox: { root: alpha, allowWrite: false, allowBash: false, writableRoot: `${alpha}/out` } });
+  client.send({ type: "update_config", sandbox: { root: alpha, allowWrite: false, allowBash: false, writableRoot: path.join(alpha, "out") } });
   const off = await client.waitFor((message) => message.type === "update_config_ack" || message.type === "error");
   assert.equal(off.type, "update_config_ack", off.message);
   assert.equal(off.sandbox.allowWrite, false);
   assert.equal(off.writableRoot, null, "nothing is writable in this project");
-  assert.equal(off.sandbox.writableRoot, `${alpha}/out`, "the server's writable root is kept");
+  assert.equal(off.sandbox.writableRoot, path.join(alpha, "out"), "the server's writable root is kept");
 
-  client.send({ type: "update_config", sandbox: { root: alpha, allowWrite: true, allowBash: false, writableRoot: `${alpha}/out` } });
+  client.send({ type: "update_config", sandbox: { root: alpha, allowWrite: true, allowBash: false, writableRoot: path.join(alpha, "out") } });
   // The harness can hand back a message already received: wait for this acknowledgement.
   const on = await client.waitFor(
     (message) => (message.type === "update_config_ack" && message.sandbox.allowWrite === true) || message.type === "error",
@@ -138,10 +139,10 @@ test("the server's own project moves its root while another is open, and the oth
   const hello = await client.waitFor((message) => message.type === "hello");
   assert.equal(hello.sandbox.rootEditable, true);
 
-  client.send({ type: "update_config", sandbox: { root: `${alpha}/inner`, allowWrite: false, allowBash: false } });
+  client.send({ type: "update_config", sandbox: { root: path.join(alpha, "inner"), allowWrite: false, allowBash: false } });
   const ack = await client.waitFor((message) => message.type === "update_config_ack" || message.type === "error");
   assert.equal(ack.type, "update_config_ack", ack.message);
-  assert.equal(ack.sandbox.root, `${alpha}/inner`);
+  assert.equal(ack.sandbox.root, path.join(alpha, "inner"));
   assert.deepEqual(await listRoot(client, "inner"), ["c.md"]);
 
   client.send({ type: "switch_workspace", root: beta });
