@@ -397,9 +397,9 @@ in [`pi-outpost.config.example.json`](pi-outpost.config.example.json).
 |-----|--------|
 | `cwd` | Agent working directory, and the default project |
 | `agentDir` | Own config dir (auth, models, settings, sessions) — fully separate from `~/.pi/agent`. It starts with **no credentials**: see [Model credentials](#model-credentials) |
-| `sandbox.root` | Read-only zone: read/ls/grep/find are confined to this directory, symlinks resolved. Defaults to `cwd` |
+| `sandbox.root` | Read-only zone: read/ls/grep/find are confined to this directory, symlinks resolved. Defaults to `cwd`. Applies to the `cwd` project; every other open project is confined to its own directory |
 | `sandbox.allowWrite` | Adds edit/write, confined to `sandbox.writableRoot` (default `false`) |
-| `sandbox.writableRoot` | Read-write zone: a subdirectory of `root` that edit/write are further confined to. Defaults to `root` itself |
+| `sandbox.writableRoot` | Read-write zone: a subdirectory of `root` that edit/write are further confined to. Defaults to `root` itself. Ignored while `allowWrite` is false, and applies to the `cwd` project only: every other open project is writable in its whole directory |
 | `sandbox.allowBash` | Adds bash — **not path-confined**, explicit opt-in (default `false`) |
 | `sandboxLocks` | Which sandbox fields Settings may **not** change: `root`, `writableRoot`, `allowWrite`, `allowBash` |
 | `workspaceLock` | Pin the server to one project: opening, closing and switching are refused, and no control is offered |

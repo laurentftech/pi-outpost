@@ -867,7 +867,8 @@ export function loadConfig(
     const writableRoot = optionalString(sandbox, "writableRoot");
     const resolvedWritableRoot = writableRoot ? resolve(writableRoot) : undefined;
     if (resolvedWritableRoot !== undefined) {
-      if (!allowWrite) fail(`"sandbox.writableRoot" requires "sandbox.allowWrite" to be true`);
+      // Kept, and ignored, while writing is off — as the field says. Refusing it made
+      // turning write off impossible from any project that cannot edit the roots.
       const rel = path.relative(resolvedRoot, resolvedWritableRoot);
       if (rel.startsWith("..") || path.isAbsolute(rel)) {
         fail(`"sandbox.writableRoot" must be inside "sandbox.root"`);
