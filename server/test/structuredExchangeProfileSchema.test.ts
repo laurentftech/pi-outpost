@@ -71,6 +71,26 @@ describe("the profile schema", () => {
     assert.equal(check.Check({ ...exampleProfile, extends: "acme/base" }), false);
   });
 
+  test("accepts a relationship kind declaring the element kinds at its ends", () => {
+    const withEnds = {
+      ...exampleProfile,
+      elementKinds: [...exampleProfile.elementKinds, { kind: "test" }],
+      relationshipKinds: [{ kind: "verifies", from: ["test"], to: ["requirement"] }, { kind: "satisfies", to: ["requirement"] }],
+    };
+    assert.deepEqual([...check.Errors(withEnds)], []);
+  });
+
+  test("refuses ends on an element kind, where they mean nothing", () => {
+    // Ends belong to a relationship; on an element kind they would read as a
+    // constraint nothing enforces.
+    const misplaced = { ...exampleProfile, elementKinds: [{ kind: "requirement", from: ["test"] }] };
+    assert.equal(check.Check(misplaced), false);
+  });
+
+  test("refuses an empty list of ends, which would allow nothing rather than anything", () => {
+    assert.equal(check.Check({ ...exampleProfile, relationshipKinds: [{ kind: "verifies", from: [] }] }), false);
+  });
+
   test("offers only the attribute types the checker knows", () => {
     assert.deepEqual(profileSchema.$defs.attribute.properties.type.enum, ["string", "number", "boolean", "reference", "enumeration"]);
   });
@@ -84,6 +104,9 @@ describe("the profile schema", () => {
       ["kindsPerVocabulary", profileSchema.properties.elementKinds.maxItems],
       ["kindsPerVocabulary", profileSchema.properties.relationshipKinds.maxItems],
       ["attributesPerKind", profileSchema.$defs.kindDeclaration.properties.attributes.maxItems],
+      ["attributesPerKind", profileSchema.$defs.relationshipKindDeclaration.properties.attributes.maxItems],
+      ["kindsPerVocabulary", profileSchema.$defs.relationshipKindDeclaration.properties.from.maxItems],
+      ["kindsPerVocabulary", profileSchema.$defs.relationshipKindDeclaration.properties.to.maxItems],
       ["attributeName", attribute.name.maxLength],
       ["enumerationValues", attribute.values.maxItems],
       ["enumerationValue", attribute.values.items.maxLength],

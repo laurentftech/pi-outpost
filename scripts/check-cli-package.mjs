@@ -101,6 +101,7 @@ const contract = [
   ["dist/contract/schemas/structured-exchange-rules-1.json", "the rules a project reviews its specifications against"],
   ["dist/contract/conformance/index.json", "the conformance suite's manifest — the executable half of the contract"],
   ["dist/contract/validate-structured-exchange.mjs", "the reference validator, runnable without a checkout"],
+  ["dist/contract/structured-exchange-project-setup.md", "how to write a project's profiles and rules, which the README links to"],
 ];
 
 const absent = contract.filter(([relative]) => !packed.has(relative));

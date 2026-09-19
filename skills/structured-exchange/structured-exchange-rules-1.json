@@ -6,6 +6,7 @@
   "type": "object",
   "additionalProperties": false,
   "required": ["schema", "profile", "rules"],
+  "examples": [{"schema": "urn:structured-exchange-rules:1", "profile": "acme/requirements", "rules": [{"id": "ARP4754A-derived-no-satisfy", "source": "ARP4754A", "statement": "A derived requirement does not satisfy an upstream requirement.", "level": "refuse", "relationship": "satisfies", "when": {"from": {"category": ["derived"]}}, "then": "forbidden"}, {"id": "SAF-approved", "source": "Safety plan", "statement": "A safety requirement is approved.", "level": "report", "element": "requirement", "when": {"safety": ["yes"]}, "then": {"status": ["approved"]}}]}],
   "properties": {
     "schema": {
       "description": "Which rules format this is.",
@@ -60,6 +61,7 @@
       "required": ["id", "statement", "level", "then"],
       "properties": {
         "id": {
+          "description": "The rule's stable identifier: every refusal, finding and report names it, and no two rules of one profile share it.",
           "type": "string",
           "minLength": 1,
           "maxLength": 200
@@ -92,8 +94,12 @@
           "minLength": 1,
           "maxLength": 100
         },
-        "when": { "$ref": "#/$defs/clause" },
+        "when": {
+          "description": "What the rule applies to. Without it, every item or relationship of the kind. Values in one condition are alternatives; conditions in one set must all hold. An item lacking an attribute named here is not selected, and escapes the rule. A link rule conditions its source under `from` and its target under `to`.",
+          "$ref": "#/$defs/clause"
+        },
         "then": {
+          "description": "What must hold for everything `when` selects, in the same form — or \"forbidden\": nothing selected may exist.",
           "anyOf": [{ "const": "forbidden" }, { "$ref": "#/$defs/clause" }]
         }
       }

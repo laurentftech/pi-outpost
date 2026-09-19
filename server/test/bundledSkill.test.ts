@@ -12,7 +12,7 @@
  * still turn it off — are both answered by that loader and by nothing else.
  */
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -32,7 +32,7 @@ const { loadSkills } = (await import(
 
 /** What the server enumerates: one path per skill, not the directory holding them. */
 function bundledSkillPaths(): string[] {
-  return ["structured-exchange"]
+  return ["structured-exchange", "structured-exchange-project"]
     .map((name) => path.join(SKILLS, name))
     .filter((dir) => existsSync(path.join(dir, "SKILL.md")));
 }
@@ -41,19 +41,26 @@ const load = (skillPaths: string[]) => loadSkills({ cwd: REPO, skillPaths, inclu
 
 describe("the skill that ships with the tool", () => {
   test("is enumerated at all", () => {
-    assert.deepEqual(bundledSkillPaths(), [path.join(SKILLS, "structured-exchange")]);
+    assert.deepEqual(bundledSkillPaths(), [path.join(SKILLS, "structured-exchange"), path.join(SKILLS, "structured-exchange-project")]);
+    // Every directory under skills/ holding a SKILL.md is shipped; none is left out of this list.
+    const shipped = readdirSync(SKILLS, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory() && existsSync(path.join(SKILLS, entry.name, "SKILL.md")))
+      .map((entry) => path.join(SKILLS, entry.name))
+      .sort();
+    assert.deepEqual(shipped, bundledSkillPaths());
   });
 
   test("loads from the path the server hands over", () => {
     const { skills, diagnostics } = load(bundledSkillPaths());
 
-    assert.deepEqual(skills.map((skill) => skill.name), ["structured-exchange"]);
+    // BothBundledSkillsLoad
+    assert.deepEqual(skills.map((skill) => skill.name), ["structured-exchange", "structured-exchange-project"]);
     assert.deepEqual(diagnostics, [], "a skill that loads with warnings is a skill half-loaded");
   });
 
   test("carries the description the model selects it by", () => {
     // A skill with no description is loaded and never chosen.
-    const [skill] = load(bundledSkillPaths()).skills;
+    const skill = load(bundledSkillPaths()).skills.find((each) => each.name === "structured-exchange")!;
     assert.ok(skill.description !== undefined && skill.description.length > 0);
     // Only the name and this description reach the prompt, so they decide whether the skill
     // is read at all. A model presenting a table of requirements under a project profile was
@@ -63,11 +70,40 @@ describe("the skill that ships with the tool", () => {
     assert.match(skill.description, /before calling present_structure/);
   });
 
+  test("the setup skill is selected for the project's registry, profiles and rules", () => {
+    // TheSetupSkillIsSelectedForTheProjectsFiles
+    const skill = load(bundledSkillPaths()).skills.find((each) => each.name === "structured-exchange-project");
+    assert.ok(skill?.description !== undefined);
+    assert.match(skill.description, /registry/);
+    assert.match(skill.description, /profiles/);
+    assert.match(skill.description, /rules/);
+    assert.match(skill.description, /Read it before writing or changing any of those files/);
+    assert.match(skill.description, /registry cannot be used/);
+  });
+
+  test("the authoring skill points to the setup skill", () => {
+    // TheAuthoringSkillPointsToTheSetupSkill
+    const authoring = readFileSync(path.join(SKILLS, "structured-exchange/SKILL.md"), "utf8");
+    assert.match(authoring, /Writing or changing the registry, a profile or a rules file is another job: read the\s+`structured-exchange-project` skill/);
+  });
+
+  test("the setup skill teaches what validates yet checks something else", () => {
+    // TheSetupSkillTeachesWhatPassesSilently
+    const setup = readFileSync(path.join(SKILLS, "structured-exchange-project/SKILL.md"), "utf8");
+    assert.match(setup, /Values in one condition are alternatives; conditions in one set must all hold/);
+    assert.match(setup, /An item lacking an attribute named in `when` is not selected, and escapes the rule/);
+    assert.match(setup, /`from` and `to` belong to link rules only/);
+    assert.match(setup, /A link rule reads its conditions on the kinds the relationship allows at that end/);
+    assert.match(setup, /present_project_model/);
+    assert.match(setup, /Never\s+invent one to fill a gap: ask the user/);
+  });
+
   test("still loads when the whole directory is handed over instead", () => {
     // The SDK's own documentation passes the parent, so both shapes have to work or
     // one of us is wrong about the contract.
     const names = load([SKILLS]).skills.map((skill) => skill.name);
     assert.ok(names.includes("structured-exchange"));
+    assert.ok(names.includes("structured-exchange-project"));
   });
 
   test("a user's skill of the same name wins, because the server puts theirs first", () => {
@@ -123,7 +159,8 @@ describe("the skill that ships with the tool", () => {
       "the SDK still merges additionalSkillPaths under noSkills — if this stopped being true, the server's guard can be simplified",
     );
 
-    // And what the server does with that: nothing gets through.
+    // And what the server does with that: nothing gets through — neither bundled skill.
+    // TheSetupSkillIsTurnedOffWithSkills
     assert.deepEqual(load([]).skills, []);
   });
 });

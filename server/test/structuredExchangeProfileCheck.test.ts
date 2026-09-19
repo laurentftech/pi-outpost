@@ -371,3 +371,132 @@ describe("a reserved profile identifier", () => {
     assert.equal(holdToProfile({ ...(report as object), profile: "acme/requirements" }, underDefault).outcome, "refused");
   });
 });
+
+describe("a view's reserved identifier", () => {
+  test("a rules register or rule patterns are never held to a profile, even under a default", () => {
+    // AViewIdentifierIsNeverHeldToAProfile
+    const underDefault = registered({ default: "acme/requirements" });
+    const register = valid({
+      schema: "urn:structured-exchange:2",
+      kind: "table",
+      profile: "urn:structured-exchange-rules-register:1",
+      data: { columns: ["id", "statement"], rows: [{ heading: "element requirement", depth: 1 }, { id: "R-1", kind: "report rule", cells: ["R-1", "Approved."] }] },
+    });
+    assert.deepEqual(holdToProfile(register, underDefault), { outcome: "unconstrained" });
+    const patterns = valid({
+      schema: "urn:structured-exchange:2",
+      kind: "graph",
+      profile: "urn:structured-exchange-rule-patterns:1",
+      data: { nodes: [{ id: "rule-1-item", label: "requirement · when safety = yes", kind: "selected item", container: "rule-1" }], edges: [], containers: [{ id: "rule-1", label: "REPORT · R-1 — Approved.", kind: "report rule" }] },
+    });
+    assert.deepEqual(holdToProfile(patterns, underDefault), { outcome: "unconstrained" });
+    assert.equal(holdToProfile({ ...(register as object), profile: "acme/requirements" }, underDefault).outcome, "refused");
+  });
+});
+
+describe("a relationship's ends", () => {
+  /** The requirements profile, with `verifies` allowing only a test at its source and a requirement at its target. */
+  const withEnds: StructuredExchangeProfile = {
+    ...requirements,
+    relationshipKinds: [
+      { kind: "verifies", from: ["test"], to: ["requirement"], attributes: [{ name: "confidence", type: "number" }] },
+      { kind: "derives" },
+    ],
+  };
+  const context: ProfileContext = { profiles: new Map([[withEnds.id, withEnds]]) };
+  const check = (envelope: unknown, subjects?: string[]) =>
+    checkAgainstProfile(envelope, withEnds, subjects === undefined ? {} : { subjects: new Set(subjects) });
+  const rulesAt = (envelope: unknown) => check(envelope).issues.map((issue) => `${issue.rule} @ ${issue.path}`);
+
+  const requirement = (id: string, over: Row = {}): Row => ({ id, kind: "requirement", label: id, attributes: { status: "approved" }, ...over });
+  const testNode = (id: string, over: Row = {}): Row => ({ id, kind: "test", label: id, ...over });
+
+  test("joining a kind its declared end does not allow is refused at that end, listing the allowed kinds", () => {
+    // ARelationshipBetweenKindsItsEndsDoNotAllowIsRefused
+    const envelope = graph([requirement("r1"), requirement("r2")], [{ from: "r1", to: "r2", kind: "verifies" }]);
+    assert.deepEqual(rulesAt(envelope), ["profile/end-kind @ /data/edges/0/from"]);
+    const issue = check(envelope).issues[0];
+    assert.match(issue.message, /"r1" is a "requirement"/);
+    assert.match(issue.message, /allows at its source only "test"/);
+    const held = holdToProfile(envelope, context);
+    assert.equal(held.outcome, "refused");
+  });
+
+  test("a table relation is held to its ends", () => {
+    // ATableRelationIsHeldToItsEnds
+    const envelope = table(
+      [requirementRow({ id: "r1" }), { id: "t1", kind: "test", cells: ["T1", "Bench"] }],
+      { data: { relations: [{ from: { id: "r1" }, to: { id: "t1" }, kind: "verifies" }] } },
+    );
+    // A requirement verifying a test is wrong at both ends.
+    assert.deepEqual(rulesAt(envelope), ["profile/end-kind @ /data/relations/0/from", "profile/end-kind @ /data/relations/0/to"]);
+    const right = table(
+      [requirementRow({ id: "r1" }), { id: "t1", kind: "test", cells: ["T1", "Bench"] }],
+      { data: { relations: [{ from: { id: "t1" }, to: { id: "r1" }, kind: "verifies" }] } },
+    );
+    assert.deepEqual(rulesAt(right), []);
+    assert.deepEqual(check(right).ends, []);
+  });
+
+  test("a side the relationship kind leaves undeclared allows any kind", () => {
+    // AnUndeclaredSideAllowsAnyKind
+    const onlySource: StructuredExchangeProfile = { ...requirements, relationshipKinds: [{ kind: "verifies", from: ["test"] }, { kind: "derives" }] };
+    const envelope = graph([testNode("t1"), testNode("t2")], [{ from: "t1", to: "t2", kind: "verifies" }]);
+    const outcome = checkAgainstProfile(envelope, onlySource);
+    assert.deepEqual(outcome.issues, []);
+    assert.deepEqual(outcome.ends, []);
+    // And a kind declaring no ends at all is not judged by its ends.
+    const derives = graph([testNode("t1"), requirement("r1")], [{ from: "t1", to: "r1", kind: "derives" }]);
+    assert.deepEqual(check(derives).issues, []);
+    assert.deepEqual(check(derives).ends, []);
+  });
+
+  test("an end outside the document is a finding to check, never a refusal or a pass", () => {
+    // AnEndOutsideTheDocumentIsAFindingToCheck
+    const envelope = table([requirementRow({ id: "r1" })], {
+      data: { relations: [{ from: { ref: "TEST-9" }, to: { id: "r1" }, kind: "verifies" }] },
+    });
+    const outcome = check(envelope);
+    assert.deepEqual(outcome.issues, []);
+    assert.deepEqual(
+      outcome.ends.map((finding) => `${finding.ruleId} ${finding.outcome} @ ${finding.path}`),
+      ["profile/end-not-verifiable not-verifiable @ /data/relations/0/from"],
+    );
+    assert.match(outcome.ends[0].message, /"TEST-9" is not in this document/);
+    const held = holdToProfile(envelope, context);
+    assert.equal(held.outcome, "conforms");
+    assert.deepEqual(held.outcome === "conforms" ? held.findings?.map((finding) => finding.path) : undefined, ["/data/relations/0/from"]);
+  });
+
+  test("a proposal is judged by the kinds it leaves its items with", () => {
+    // AProposalIsJudgedByTheKindsItLeaves
+    const envelope = graph(
+      [
+        { id: "n1", ref: "TST-1", kind: "test", label: "Bench", set: { kind: "requirement", attributes: { status: "draft" } } },
+        requirement("r1", { ref: "REQ-1" }),
+      ],
+      [{ from: "n1", to: "r1", kind: "verifies" }],
+      { target: { ref: "MODEL-1" } },
+    );
+    assert.deepEqual(rulesAt(envelope), ["profile/end-kind @ /data/edges/0/from"]);
+    // The same retyping the other way is what makes the link right.
+    const fixed = graph(
+      [
+        { id: "n1", ref: "REQ-7", kind: "requirement", label: "Bench", set: { kind: "test" } },
+        requirement("r1", { ref: "REQ-1" }),
+      ],
+      [{ from: "n1", to: "r1", kind: "verifies" }],
+      { target: { ref: "MODEL-1" } },
+    );
+    assert.deepEqual(rulesAt(fixed), []);
+  });
+
+  test("with stated subjects, only the relationships of a subject are judged by their ends", () => {
+    const envelope = table(
+      [requirementRow({ id: "r1" }), requirementRow({ id: "r2" }), requirementRow({ id: "r3" })],
+      { data: { relations: [{ from: { id: "r2" }, to: { id: "r3" }, kind: "verifies" }] } },
+    );
+    assert.deepEqual(check(envelope, ["r1"]).issues, []);
+    assert.deepEqual(check(envelope, ["r2"]).issues.map((issue) => issue.path), ["/data/relations/0/from"]);
+  });
+});

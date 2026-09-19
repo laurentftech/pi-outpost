@@ -28,6 +28,11 @@
  *     --batch spec.jsonl --report report.json --report-markdown report.md
  *   validate-structured-exchange --markdown table.json
  *
+ * And the views a person reviews a project's rules on, generated from the same files:
+ *
+ *   validate-structured-exchange --registry .pi-outpost/structured-exchange.json \
+ *     --rules-register rules-register.json --rule-patterns rule-patterns.json
+ *
  * This source imports the repository's TypeScript directly and therefore only runs
  * inside the monorepo. The artifact a producer actually gets is the bundle built
  * from it by `npm run build:validator`, which carries the schemas and the rules
@@ -58,6 +63,7 @@ import { validateProfile } from "../src/structuredExchangeProfileValidation.ts";
 import { holdToProfile } from "../src/structuredExchangeProfileCheck.ts";
 import { readProjectRegistry } from "../src/structuredExchangeProjectRegistry.ts";
 import { buildConformityReport, readBatch } from "../src/structuredExchangeConformityReport.ts";
+import { rulePatterns, rulesRegister, selectViewProfile } from "../src/structuredExchangeProjectViews.ts";
 import { tableMarkdown } from "../src/structuredExchangeTableExport.ts";
 
 /** Stamped into the bundle at build time; the monorepo source says what it is. */
@@ -71,6 +77,8 @@ validate-structured-exchange --registry <registry.json> [file]
 validate-structured-exchange --registry <registry.json> --describe-profile [profile-id]
 validate-structured-exchange --registry <registry.json> --batch <spec.jsonl>
                              [--report <report.json>] [--report-markdown <report.md>]
+validate-structured-exchange --registry <registry.json> [--describe-profile <profile-id>]
+                             [--rules-register <register.json>] [--rule-patterns <patterns.json>]
 validate-structured-exchange --markdown [file]
 
 Validates a structured-exchange document against the contract it declares:
@@ -100,6 +108,14 @@ Reads standard input when no file is given. Prints a JSON verdict on stdout.
 --report-markdown
                  writes the conformity report as Markdown, complete whatever its size.
 --markdown       prints a valid table as Markdown, as the reader's export writes it.
+--rules-register writes a profile's rules register: a table of every rule, chapter by the kind
+                 it targets, with when, then, statement and source (needs --registry).
+--rule-patterns  writes a profile's rule patterns: a graph with one frame per rule, drawing what
+                 it selects and what it requires on the kinds each end allows (needs --registry).
+                 Both write the document the agent's present_project_model tool presents. The
+                 profile is the one --describe-profile names, else the registry's default, else
+                 its only profile; nothing is written when the registry cannot be used (4) or a
+                 view does not fit the contract (1).
 
 Exit codes: 0 conforms, 1 does not conform (in a batch: a non-conforming requirement
 or an unreadable line; findings to check do not fail a run), 2 unreadable input or
@@ -107,7 +123,17 @@ unusable arguments, 3 not JSON, 4 the profile or registry is unreadable, not JSO
 or does not conform.`;
 
 /** Flags followed by a value; --describe-profile's is optional beside --registry. */
-const VALUE_FLAGS = ["--profile", "--check-profile", "--describe-profile", "--registry", "--batch", "--report", "--report-markdown"];
+const VALUE_FLAGS = [
+  "--profile",
+  "--check-profile",
+  "--describe-profile",
+  "--registry",
+  "--batch",
+  "--report",
+  "--report-markdown",
+  "--rules-register",
+  "--rule-patterns",
+];
 const SWITCHES = ["--markdown"];
 
 function emit(verdict, code) {
@@ -153,7 +179,7 @@ async function loadRegistry(file) {
     emit({ valid: false, subject: "registry", issues: [{ rule: "registry/unreadable", path: "", file: relative, message: `could not read ${file}: it does not exist` }] }, 4);
   }
   if (read.state === "unusable") emit({ valid: false, subject: "registry", issues: read.issues }, 4);
-  return { context: read.context, files: read.files };
+  return { context: read.context, files: read.files, filesByProfile: read.filesByProfile };
 }
 
 /** A document from a file or standard input, parsed against the contract, or an exit saying why not. */
@@ -236,10 +262,17 @@ async function main() {
     refuseArguments("a profile listing, a profile check or a batch takes no document");
   }
   if (has("--registry") && has("--describe-profile") && has("--batch")) refuseArguments("use --describe-profile or --batch, not both");
+  const views = ["--rules-register", "--rule-patterns"].filter(has);
+  if (views.length > 0) {
+    if (!has("--registry")) refuseArguments(`${views[0]} needs --registry: a view is generated from a project's profiles and rules`);
+    if (has("--batch") || positional.length > 0) refuseArguments(`${views[0]} takes no document and no batch`);
+  }
   if (positional.length > 1) refuseArguments("give one document at a time; a specification is validated with --batch");
 
   if (has("--registry")) {
     const registry = await loadRegistry(flags.get("--registry"));
+    // With a view, --describe-profile only names the profile: the output is the verdict.
+    if (views.length > 0) return writeViews(registry, flags.get("--describe-profile"), flags.get("--rules-register"), flags.get("--rule-patterns"));
     if (has("--describe-profile")) return describeRegistry(registry, flags.get("--describe-profile"));
     if (has("--batch")) return runBatch(registry, flags.get("--batch"), flags.get("--report"), flags.get("--report-markdown"));
     if (positional.length === 0) {
@@ -344,6 +377,28 @@ function validateAgainstRegistry(registry, file) {
     },
     0,
   );
+}
+
+/**
+ * A profile's rules register and rule patterns, written only once both are produced: a
+ * reviewer handed one view and not the other would not know the second was refused.
+ */
+function writeViews(registry, profileId, registerFile, patternsFile) {
+  const choice = selectViewProfile(registry.context, profileId);
+  if ("refused" in choice) emit({ valid: false, subject: "views", issues: [{ rule: "view/profile", path: "", message: choice.refused }] }, 2);
+  const { profile } = choice;
+  const rules = registry.context.rules?.get(profile.id) ?? [];
+  const sources = registry.filesByProfile.get(profile.id) ?? [];
+  const planned = [
+    ...(registerFile === undefined ? [] : [{ file: registerFile, view: rulesRegister(profile, rules, sources), name: "rulesRegister" }]),
+    ...(patternsFile === undefined ? [] : [{ file: patternsFile, view: rulePatterns(profile, rules, sources), name: "rulePatterns" }]),
+  ];
+  const refused = planned.filter(({ view }) => "refused" in view);
+  if (refused.length > 0) {
+    emit({ valid: false, subject: "views", profile: profile.id, issues: refused.map(({ name, view }) => ({ rule: "view/does-not-fit", path: "", view: name, message: view.refused })) }, 1);
+  }
+  for (const { file, view } of planned) writeOutput(file, JSON.stringify(view.document, null, 2) + "\n");
+  emit({ valid: true, subject: "views", profile: profile.id, ...Object.fromEntries(planned.map(({ file, name }) => [name, file])) }, 0);
 }
 
 /** A specification, line by line, into a conformity report. */

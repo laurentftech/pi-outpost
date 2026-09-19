@@ -23,7 +23,7 @@ import {
   type StructuredTableCell,
   type StructuredTableData,
 } from "./structuredExchange.ts";
-import { checkAgainstProfile, selectProfile, type ProfileContext } from "./structuredExchangeProfileCheck.ts";
+import { END_KIND_RULE, checkAgainstProfile, selectProfile, type ProfileContext } from "./structuredExchangeProfileCheck.ts";
 import { evaluateRules, type RuleFinding } from "./structuredExchangeRuleEvaluation.ts";
 import { tableMarkdown } from "./structuredExchangeTableExport.ts";
 import type { StructuredExchangeIssue } from "./structuredExchangeValidation.ts";
@@ -196,9 +196,16 @@ export function buildConformityReport(
     }
 
     const subjects = entry.subjects === undefined ? undefined : new Set(entry.subjects);
-    const vocabulary = checkAgainstProfile(envelope, selection.profile).issues;
-    const findings =
-      vocabulary.length === 0 ? evaluateRules(envelope, context.rules?.get(selection.profile.id) ?? [], subjects === undefined ? {} : { subjects }) : [];
+    const checked = checkAgainstProfile(envelope, selection.profile, subjects === undefined ? {} : { subjects });
+    // A relationship end is placed on the rows of its ends, like a link rule, rather
+    // than on the row its pointer happens to fall under.
+    const vocabulary = checked.issues.filter((issue) => issue.rule !== END_KIND_RULE);
+    const findings = [
+      ...checked.ends,
+      ...(checked.issues.length === 0
+        ? evaluateRules(envelope, context.rules?.get(selection.profile.id) ?? [], subjects === undefined ? {} : { subjects })
+        : []),
+    ];
 
     // The subject rows of this document, in its order.
     const rows = data.rows

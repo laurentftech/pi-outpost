@@ -172,6 +172,17 @@ describe("the reference validator's profile checks, as they ship", () => {
     assert.ok(requirementAt < componentAt && componentAt < firstValue && firstValue < lastValue && lastValue < testKindAt);
   });
 
+  test("a relationship kind is listed with the element kinds at its ends, or any", () => {
+    // DeclaredEndsAreListed
+    const withEnds = profile({ relationshipKinds: [{ kind: "verifies", from: ["test"] }] });
+    const outcome = run(["--describe-profile", write("profile-ends.json", withEnds)]);
+    assert.equal(outcome.code, 0, outcome.stdout);
+    assert.ok(
+      outcome.stdout.includes("  verifies\n    source: test\n    target: any element kind\n"),
+      `the ends are not listed under verifies:\n${outcome.stdout}`,
+    );
+  });
+
   test("the profile the documentation shows a profile author passes the shipped check", () => {
     // The example a profile author copies first: it has to be a profile the bundle accepts.
     const docs = readFileSync(path.join(REPO, "docs/structured-exchange.md"), "utf8");

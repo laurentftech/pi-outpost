@@ -20,6 +20,7 @@ import { STRUCTURED_EXCHANGE_SCHEMA_V1, readTableRow, type StructuredTableRow } 
 import type { ProfileAttribute, ProfileKind, ProfileRule, StructuredExchangeProfile } from "./structuredExchangeProfile.ts";
 import type { StructuredExchangeIssue } from "./structuredExchangeValidation.ts";
 import { evaluateRules, type RuleEvaluationOptions, type RuleFinding } from "./structuredExchangeRuleEvaluation.ts";
+import { endName, readDocument } from "./structuredExchangeDocumentItems.ts";
 
 /** A value outside an open enumeration: accepted, and reported so a typo is not taken for a new value. */
 export interface ProfileNote {
@@ -33,7 +34,19 @@ export interface ProfileNote {
 export interface ProfileCheckOutcome {
   issues: StructuredExchangeIssue[];
   notes: ProfileNote[];
+  /**
+   * A relationship's ends judged against the kinds its relationship kind allows there,
+   * as findings a batch can place on the rows they concern: `violated` for an end of a
+   * kind not allowed — each also among `issues` as `profile/end-kind` — and
+   * `not-verifiable` for an end whose kind this document does not show.
+   */
+  ends: RuleFinding[];
 }
+
+/** The rule an end of a kind the relationship kind does not allow is refused under. */
+export const END_KIND_RULE = "profile/end-kind";
+/** The finding an end whose kind cannot be read here is reported under. */
+export const END_NOT_VERIFIABLE_RULE = "profile/end-not-verifiable";
 
 /** The project's usable registry, as the check needs it. */
 export interface ProfileContext {
@@ -57,8 +70,9 @@ export type ProfileVerdictForDocument =
       profile: string;
       notes: ProfileNote[];
       /**
-       * What the profile's rules leave to check: violated report rules and rules not
-       * verifiable here. Present only when rules are registered for the profile.
+       * What is left to check: relationship ends whose kind cannot be verified here,
+       * violated report rules and rules not verifiable here. Absent when the profile
+       * declares no ends and has no rules registered.
        */
       findings?: RuleFinding[];
     };
@@ -135,7 +149,11 @@ export function selectProfile(envelope: unknown, context: ProfileContext): Profi
 }
 
 /** What a document held to `profile` does that the profile does not allow, and what it only reports. */
-export function checkAgainstProfile(envelope: unknown, profile: StructuredExchangeProfile): ProfileCheckOutcome {
+export function checkAgainstProfile(
+  envelope: unknown,
+  profile: StructuredExchangeProfile,
+  options: RuleEvaluationOptions = {},
+): ProfileCheckOutcome {
   const issues: StructuredExchangeIssue[] = [];
   const notes: ProfileNote[] = [];
   const document = envelope as { kind?: unknown; target?: unknown; viewpoints?: unknown; data?: Record<string, unknown> };
@@ -322,6 +340,11 @@ export function checkAgainstProfile(envelope: unknown, profile: StructuredExchan
     );
   }
 
+  const ends = checkEnds(envelope, profile, options);
+  for (const finding of ends) {
+    if (finding.outcome === "violated") issues.push({ rule: END_KIND_RULE, path: finding.path, message: finding.message });
+  }
+
   // A document's viewpoint and its profile's under one identifier: a figure asked for
   // it could only guess which was meant.
   const profileViewpoints = new Set((profile.viewpoints ?? []).map((viewpoint) => viewpoint.id));
@@ -336,7 +359,60 @@ export function checkAgainstProfile(envelope: unknown, profile: StructuredExchan
     });
   }
 
-  return { issues, notes };
+  return { issues, notes, ends };
+}
+
+/**
+ * Each relationship's ends against the element kinds its relationship kind allows there.
+ *
+ * Read with the rule evaluator's reading of the document, so an item a proposal retypes
+ * is judged by the kind it will have, and a batch line judges only the relationships of
+ * its subjects. An end outside the document, or carried with no kind, is not a pass: its
+ * kind is simply not shown here. An end of a kind the profile does not declare is left
+ * to the vocabulary refusal already made at that item.
+ */
+function checkEnds(envelope: unknown, profile: StructuredExchangeProfile, options: RuleEvaluationOptions): RuleFinding[] {
+  const declarations = new Map((profile.relationshipKinds ?? []).map((declaration) => [declaration.kind, declaration]));
+  if (![...declarations.values()].some((declaration) => declaration.from !== undefined || declaration.to !== undefined)) return [];
+  const elementKinds = new Set((profile.elementKinds ?? []).map((declaration) => declaration.kind));
+  const { relationships, endItem, concernsSubjects } = readDocument(envelope, options.subjects);
+  const findings: RuleFinding[] = [];
+
+  for (const relationship of relationships) {
+    const declaration = relationship.kind === undefined ? undefined : declarations.get(relationship.kind);
+    if (declaration === undefined || !concernsSubjects(relationship)) continue;
+    const described = {
+      from: endName(relationship.from),
+      to: endName(relationship.to),
+      relationship: relationship.ref ?? `${endName(relationship.from)} -${declaration.kind}-> ${endName(relationship.to)}`,
+    };
+    for (const side of ["from", "to"] as const) {
+      const allowed = declaration[side];
+      if (allowed === undefined) continue;
+      const position = side === "from" ? "source" : "target";
+      const end = relationship[side];
+      const item = endItem(end);
+      const statement = `relationship kind "${declaration.kind}" of profile "${profile.id}" allows at its ${position} only ${quoted(allowed)}`;
+      const common = { level: "refuse" as const, statement, path: `${relationship.path}/${side}`, ...described };
+      if (item?.kind === undefined) {
+        findings.push({
+          ...common,
+          ruleId: END_NOT_VERIFIABLE_RULE,
+          outcome: "not-verifiable",
+          message: `${statement} — not verifiable here: its ${position} "${endName(end)}" ${item === undefined ? "is not in this document" : "carries no kind"}, so its kind cannot be read`,
+        });
+        continue;
+      }
+      if (allowed.includes(item.kind) || !elementKinds.has(item.kind)) continue;
+      findings.push({
+        ...common,
+        ruleId: END_KIND_RULE,
+        outcome: "violated",
+        message: `its ${position} "${endName(end)}" is a "${item.kind}", and ${statement}`,
+      });
+    }
+  }
+  return findings;
 }
 
 /**
@@ -354,17 +430,21 @@ export function holdToProfile(
 ): ProfileVerdictForDocument {
   const selection = selectProfile(envelope, context);
   if (selection.outcome !== "held") return selection;
-  const { issues, notes } = checkAgainstProfile(envelope, selection.profile);
+  const { issues, notes, ends } = checkAgainstProfile(envelope, selection.profile, options);
   if (issues.length > 0) return { outcome: "refused", issues, profile: selection.profile.id };
 
+  // Only not-verifiable ends remain once the vocabulary conforms.
+  const unverifiedEnds = ends.filter((finding) => finding.outcome === "not-verifiable");
   const rules = context.rules?.get(selection.profile.id);
-  if (rules === undefined || rules.length === 0) return { outcome: "conforms", profile: selection.profile.id, notes };
+  if (rules === undefined || rules.length === 0) {
+    return { outcome: "conforms", profile: selection.profile.id, notes, ...(unverifiedEnds.length === 0 ? {} : { findings: unverifiedEnds }) };
+  }
 
   const evaluated = evaluateRules(envelope, rules, options);
   const refusals = evaluated
     .filter((finding) => finding.level === "refuse" && finding.outcome === "violated")
     .map((finding) => ({ rule: `rule/${finding.ruleId}`, path: finding.path, message: finding.message }));
   if (refusals.length > 0) return { outcome: "refused", issues: refusals, profile: selection.profile.id };
-  const findings = evaluated.filter((finding) => !(finding.level === "refuse" && finding.outcome === "violated"));
+  const findings = [...unverifiedEnds, ...evaluated.filter((finding) => !(finding.level === "refuse" && finding.outcome === "violated"))];
   return { outcome: "conforms", profile: selection.profile.id, notes, findings };
 }

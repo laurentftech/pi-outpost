@@ -6,6 +6,7 @@
   "type": "object",
   "additionalProperties": false,
   "required": ["schema", "id", "label"],
+  "examples": [{"schema": "urn:structured-exchange-profile:1", "id": "acme/requirements", "label": "ACME requirements model", "elementKinds": [{"kind": "requirement", "attributes": [{"name": "status", "type": "enumeration", "values": ["draft", "approved", "withdrawn"], "closed": true, "required": true}, {"name": "category", "type": "enumeration", "values": ["derived", "refined", "direct"], "closed": true}, {"name": "safety", "type": "enumeration", "values": ["yes", "no"], "closed": true}]}, {"kind": "test", "attributes": [{"name": "bench", "type": "enumeration", "values": ["hil", "vehicle", "simulation"], "closed": true}]}], "relationshipKinds": [{"kind": "satisfies", "from": ["requirement"], "to": ["requirement"]}, {"kind": "verifies", "from": ["test"], "to": ["requirement"]}]}],
   "properties": {
     "schema": {
       "description": "Which profile format this is.",
@@ -39,7 +40,7 @@
       "description": "The kinds graph relationships and table relations may carry. A document held to this profile may use no other.",
       "type": "array",
       "maxItems": 64,
-      "items": { "$ref": "#/$defs/kindDeclaration" }
+      "items": { "$ref": "#/$defs/relationshipKindDeclaration" }
     },
     "viewpoints": {
       "description": "The readings this domain's models are made for, available to every document held to this profile. Same shape as a document's own viewpoints; the kinds they retain must be declared above.",
@@ -70,6 +71,39 @@
           "type": "array",
           "maxItems": 50,
           "items": { "$ref": "#/$defs/attribute" }
+        }
+      }
+    },
+    "relationshipKindDeclaration": {
+      "description": "One relationship kind, the attributes a relationship of that kind may carry, and optionally the element kinds it may join. A side left undeclared allows any element kind. Declaring ends is newer than the format's first release: a profile that declares them is refused by a validator or an application that predates them.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind"],
+      "properties": {
+        "kind": { "$ref": "#/$defs/kindName" },
+        "description": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        },
+        "attributes": {
+          "type": "array",
+          "maxItems": 50,
+          "items": { "$ref": "#/$defs/attribute" }
+        },
+        "from": {
+          "description": "The element kinds allowed at the source. A relationship whose source is an item of another kind is refused.",
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 64,
+          "items": { "$ref": "#/$defs/kindName" }
+        },
+        "to": {
+          "description": "The element kinds allowed at the target. A relationship whose target is an item of another kind is refused.",
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 64,
+          "items": { "$ref": "#/$defs/kindName" }
         }
       }
     },

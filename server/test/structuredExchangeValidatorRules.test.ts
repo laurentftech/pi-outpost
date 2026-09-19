@@ -8,7 +8,7 @@
  */
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -463,5 +463,110 @@ describe("a conformity report held to the registry it was checked against, as it
     const outcome = run(["--registry", registry, report]);
     assert.equal(outcome.code, 0, outcome.stdout);
     assert.deepEqual(verdictOf(outcome).profile, { applied: false });
+  });
+});
+
+describe("the views a project's rules are reviewed on, written by the shipped validator", () => {
+  const read = (file: string) => JSON.parse(readFileSync(file, "utf8")) as Record<string, unknown>;
+
+  test("writes the rules register and the rule patterns, each a valid version 2 document", () => {
+    // TheValidatorWritesBothViews
+    const registry = project("views");
+    const register = path.join(away, "views-register.json");
+    const patterns = path.join(away, "views-patterns.json");
+    const outcome = run(["--registry", registry, "--rules-register", register, "--rule-patterns", patterns]);
+    assert.equal(outcome.code, 0, outcome.stdout);
+    assert.deepEqual(JSON.parse(outcome.stdout), { valid: true, subject: "views", profile: "acme/requirements", rulesRegister: register, rulePatterns: patterns });
+    for (const [file, kind, reserved] of [
+      [register, "table", "urn:structured-exchange-rules-register:1"],
+      [patterns, "graph", "urn:structured-exchange-rule-patterns:1"],
+    ] as const) {
+      const checked = run([file]);
+      assert.equal(checked.code, 0, `${file} is not a valid document: ${checked.stdout}`);
+      assert.equal(read(file).kind, kind);
+      assert.equal(read(file).profile, reserved);
+    }
+    const rows = (read(register).data as { rows: { id?: string }[] }).rows.filter((row) => row.id !== undefined).map((row) => row.id);
+    assert.deepEqual(rows, ["CAT-derived-verification", "ARP4754A-derived-no-satisfy", "SAF-satisfied-by-safety"]);
+  });
+
+  test("an unusable registry writes no view, with the status for an unusable profile", () => {
+    // AnUnusableRegistryWritesNoView
+    const inconsistent = { ...rules, rules: [{ ...rules.rules[0], when: { from: { category: ["derivee"] } } }] };
+    const registry = project("views-unusable", inconsistent);
+    const register = path.join(away, "unusable-register.json");
+    const patterns = path.join(away, "unusable-patterns.json");
+    const outcome = run(["--registry", registry, "--rules-register", register, "--rule-patterns", patterns]);
+    assert.equal(outcome.code, 4, outcome.stdout);
+    assert.equal(verdictOf(outcome).issues?.[0].rule, "rules-format/undeclared-value");
+    assert.equal(existsSync(register), false);
+    assert.equal(existsSync(patterns), false);
+  });
+
+  test("writes the very documents the agent's tool presents from the same files", async () => {
+    // TheValidatorAndTheToolAgree
+    const registry = project("views-agree");
+    const root = path.dirname(path.dirname(registry));
+    const register = path.join(away, "agree-register.json");
+    const patterns = path.join(away, "agree-patterns.json");
+    assert.equal(run(["--registry", registry, "--rules-register", register, "--rule-patterns", patterns]).code, 0);
+    const { createStructuredExchangeProjectModelToolDefinition } = await import("../src/structuredExchangeProjectModelTool.ts");
+    const tool = createStructuredExchangeProjectModelToolDefinition({ projectRoot: root });
+    const present = (view: string) =>
+      (tool.execute as unknown as (id: string, params: unknown) => Promise<{ details?: unknown }>)("c", { view });
+    assert.deepEqual((await present("rules-register")).details, read(register));
+    assert.deepEqual((await present("rule-patterns")).details, read(patterns));
+  });
+
+  test("refuses a view without a registry, or beside a document", () => {
+    assert.equal(run(["--rules-register", path.join(away, "x.json")]).code, 2);
+    const registry = project("views-arguments");
+    assert.equal(run(["--registry", registry, "--rule-patterns", path.join(away, "y.json"), path.join(away, "doc.json")]).code, 2);
+  });
+});
+
+describe("the setup guide's commands, as they ship", () => {
+  before(() => {
+    execFileSync(process.execPath, [path.join(REPO, "shared/scripts/build-validator.mjs")], { cwd: REPO, stdio: "ignore", env: envWithoutCoverageSink() });
+    copyFileSync(BUNDLE, cli);
+  });
+
+  test("run against the guide's registry, profile and rules with the exit status the page states", () => {
+    // A Windows checkout ends these lines with CRLF; a continuation `\` would otherwise be read as an argument.
+    const guide = readFileSync(path.join(REPO, "docs/structured-exchange-project-setup.md"), "utf8").replace(/\r\n/g, "\n");
+    const blocks = [...guide.matchAll(/```json\r?\n([\s\S]*?)```/g)].map((match) => JSON.parse(match[1]) as Record<string, unknown>);
+    const [registry] = blocks.filter((block) => block.schema === "urn:structured-exchange-profile-registry:1") as { profiles: string[]; rules: string[] }[];
+    const [guideProfile] = blocks.filter((block) => block.schema === "urn:structured-exchange-profile:1");
+    const [guideRules] = blocks.filter((block) => block.schema === "urn:structured-exchange-rules:1");
+    assert.ok(registry && guideProfile && guideRules, "the guide shows a registry, a profile and a rules file");
+
+    const root = path.join(away, "guide");
+    const place = (relative: string, value: unknown) => {
+      mkdirSync(path.dirname(path.join(root, relative)), { recursive: true });
+      writeFileSync(path.join(root, relative), JSON.stringify(value, null, 2));
+    };
+    place(registry.profiles[0], guideProfile);
+    place(registry.rules[0], guideRules);
+    place(".pi-outpost/structured-exchange.json", registry);
+
+    const commands = [...guide.matchAll(/^node validate-structured-exchange\.mjs (.+?)(?: \\\n {2}(.+))?$/gm)].map((match) =>
+      [match[1], match[2]].filter((part) => part !== undefined).join(" ").split(/\s+/),
+    );
+    assert.equal(commands.length, 3, "the guide shows three commands");
+    const stated = /each exits \*\*(\d)\*\*/.exec(guide);
+    assert.ok(stated, "the guide states the commands' exit status");
+
+    const inRoot = (argument: string) =>
+      argument.startsWith(".pi-outpost/") || argument.endsWith(".json") ? path.join(root, argument) : argument;
+    for (const command of commands) {
+      const outcome = run(command.map(inRoot));
+      assert.equal(outcome.code, Number(stated[1]), `${command.join(" ")}: ${outcome.stdout}`);
+    }
+    assert.equal(JSON.parse(readFileSync(path.join(root, "register.json"), "utf8")).profile, "urn:structured-exchange-rules-register:1");
+    const patterns = JSON.parse(readFileSync(path.join(root, "patterns.json"), "utf8")) as { data: { nodes: { label: string }[] } };
+    // The pattern the guide describes in words is the one drawn.
+    const labels = patterns.data.nodes.map((node) => node.label);
+    assert.ok(labels.includes("requirement · must have safety = yes"), labels.join(" / "));
+    assert.ok(labels.includes("requirement · when safety = yes"), labels.join(" / "));
   });
 });

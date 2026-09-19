@@ -153,11 +153,19 @@ import { createDocxExtractToolDefinition } from "./docxTool.ts";
 import { createXlsxExtractToolDefinition } from "./xlsxTool.ts";
 import { createPptxExtractToolDefinition } from "./pptxTool.ts";
 import { createStructuredExchangeToolDefinition } from "./structuredExchangeTool.ts";
+import { createStructuredExchangeProjectModelToolDefinition } from "./structuredExchangeProjectModelTool.ts";
 import { createStructuredExchangeTableToolDefinition } from "./structuredExchangeTableTool.ts";
 import { structuredConformanceFor } from "./structuredExchangeProfiles.ts";
 import { createStructuredExchangeFigureToolDefinition } from "./structuredExchangeFigureTool.ts";
 import { createWorkPlanExtendedToolDefinition, createWorkPlanToolDefinition, WORK_PLAN_EXTENDED_TOOL, WORK_PLAN_TOOL } from "./workPlanTool.ts";
 import { DOCUMENT_TOOLS, documentToolsFor } from "./documentTools.ts";
+import {
+  PROJECT_MODEL_TOOL,
+  projectModelFiles,
+  promptNamesProjectModel,
+  resultReportsUnusableRegistry,
+  toolCallTouchesProjectModel,
+} from "./projectModelTool.ts";
 import { copyWorkPlan, deleteWorkPlan, loadWorkPlan, sameSessionFile } from "./workPlanStore.ts";
 import { composeAppendSystemPrompt } from "./systemPrompt.ts";
 import { createPdfExtractToolDefinition } from "./pdfTool.ts";
@@ -456,6 +464,9 @@ function workspaceOptions(settings: WorkspaceSettings): Omit<WorkspaceOptions, "
     // profile registry is what it holds a document to.
     unconfinedTools: [
       createStructuredExchangeToolDefinition({ projectRoot: settings.cwd }),
+      // Likewise: no path argument, and only the project's registry and the files it lists are read.
+      // Published on demand, so it is ordered last with the extractors (see documentToolsLast).
+      createStructuredExchangeProjectModelToolDefinition({ projectRoot: settings.cwd }),
       workPlanTool,
       workPlanExtendedTool,
     ],
@@ -1068,6 +1079,8 @@ const makeCreateRuntime =
                 maxBytes: config.pptx.maxBytes,
                 writableRoot: await fs.realpath(cwd),
               }),
+              // Published on demand too, when the conversation touches the project's model.
+              createStructuredExchangeProjectModelToolDefinition({ projectRoot: cwd }),
             ],
           }),
     })),
@@ -1332,7 +1345,8 @@ withholdDocumentTools(workspace);
  * Most conversations never open one, and the ones that do say so first.
  */
 function withholdDocumentTools(workspace: Workspace): void {
-  for (const tool of DOCUMENT_TOOLS) workspace.agent.setToolPublished(tool, false);
+  // And the project model tool, withheld for the same reason: see projectModelTool.ts.
+  for (const tool of [...DOCUMENT_TOOLS, PROJECT_MODEL_TOOL]) workspace.agent.setToolPublished(tool, false);
   workspace.documentToolIdleTurns.clear();
   workspace.documentToolsEverUsed.clear();
 }
@@ -1346,7 +1360,8 @@ function withholdDocumentTools(workspace: Workspace): void {
  */
 function publishDocumentTools(workspace: Workspace, text: string): string[] {
   const published: string[] = [];
-  for (const tool of documentToolsFor(text)) {
+  const called = [...documentToolsFor(text), ...(promptNamesProjectModel(text, workspace.projectModelFiles) ? [PROJECT_MODEL_TOOL] : [])];
+  for (const tool of called) {
     // Naming the document is what resets the clock, whether or not the tool was already
     // there: the conversation has just turned back to a document of that kind.
     if (workspace.agent.setToolPublished(tool, true)) {
@@ -1355,6 +1370,17 @@ function publishDocumentTools(workspace: Workspace, text: string): string[] {
     }
   }
   return published;
+}
+
+/**
+ * Publish an on-demand tool from inside a turn — the agent has just touched what it serves.
+ *
+ * The embedded session re-reads its tool set before every request of a turn, so the tool
+ * reaches the very next call to the model. Aged like a tool published from the prompt.
+ */
+function publishToolDuringTurn(workspace: Workspace, tool: string): void {
+  if (workspace.documentToolIdleTurns.has(tool)) return;
+  if (workspace.agent.setToolPublished(tool, true)) workspace.documentToolIdleTurns.set(tool, 0);
 }
 
 /**
@@ -1994,6 +2020,9 @@ function onRuntimeEvent(workspace: Workspace, event: RuntimeEvent): void {
       if (event.toolName === "edit" || event.toolName === "write") {
         pendingFileMutations.set(event.toolCallId, event.args);
       }
+      if (toolCallTouchesProjectModel(event.args, [workspace.root], workspace.projectModelFiles)) {
+        publishToolDuringTurn(workspace, PROJECT_MODEL_TOOL);
+      }
       break;
     }
     case "tool_update": {
@@ -2031,11 +2060,21 @@ function onRuntimeEvent(workspace: Workspace, event: RuntimeEvent): void {
         ...structured,
       });
       void announceStructuredConformance(workspace, [{ toolCallId: event.toolCallId, ...structured }]);
+      // The agent was refused for the project's files, and needs the check that names them.
+      if (resultReportsUnusableRegistry(event.toolName, contentText(event.content as never))) {
+        publishToolDuringTurn(workspace, PROJECT_MODEL_TOOL);
+      }
       const args = pendingFileMutations.get(event.toolCallId);
       pendingFileMutations.delete(event.toolCallId);
       // Only announce once the write has actually landed on disk — the client
       // may otherwise refetch a directory/file before the change is visible.
       if (args !== undefined && !event.isError) void announceFileChange(workspace, args);
+      // A write to the registry may list new files; the next trigger should know them.
+      if (args !== undefined && !event.isError) {
+        void projectModelFiles(workspace.root).then((files) => {
+          workspace.projectModelFiles = files;
+        });
+      }
       const workPlanDetails = event.details as
         | { type?: unknown; sessionFile?: unknown; plan?: WorkPlan | null; changed?: unknown }
         | undefined;
@@ -2858,6 +2897,8 @@ async function absolutizeMentions(workspace: Workspace, text: string): Promise<s
 
 async function handlePrompt(workspace: Workspace, text: string, images?: WireImage[]): Promise<void> {
   const promptText = await absolutizeMentions(workspace, text);
+  // Read now: a registry edited by hand since the last turn lists different files.
+  workspace.projectModelFiles = await projectModelFiles(workspace.root);
   // Before the turn, not after: a tool published once the request is on its way is a
   // tool the model could not call. The composer references an attached document by
   // path, so the text naming a document is the same event as one arriving.
