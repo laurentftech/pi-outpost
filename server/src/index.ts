@@ -2867,8 +2867,26 @@ async function handleOpenSideSession(socket: WebSocket, rawRoot: string): Promis
     announceWorkspaceActivity();
     return;
   }
+  await adoptProjectModel(side, project);
   if (clients.get(socket) === boundWhenAsked) bindClient(socket, side, "workspace_switched");
   announceWorkspaceActivity();
+}
+
+/**
+ * Put a new side session on the model and thinking level the project's main session is
+ * using. A side action is a continuation of the user's work on the project, and a
+ * session that came up on the configured default instead had to be set by hand every
+ * time. Best effort: a model the side session cannot take leaves it on the default.
+ */
+async function adoptProjectModel(side: Workspace, project: Workspace): Promise<void> {
+  if (!project.started || !project.agent.ok) return;
+  const { model, thinkingLevel } = project.agent.snapshot();
+  try {
+    if (model) await side.agent.setModel(model.provider, model.id);
+    await side.agent.setThinkingLevel(thinkingLevel);
+  } catch (error) {
+    console.warn(`[pi] ${workspaceTitle(side)} kept its default model: ${error instanceof Error ? error.message : String(error)}`);
+  }
 }
 
 /**

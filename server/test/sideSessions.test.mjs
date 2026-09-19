@@ -412,3 +412,25 @@ test("a client that switches elsewhere while its side session builds is not pull
   const last = client.received.filter((m) => m.type === "workspace_switched").at(-1);
   assert.equal(last.workspace.id, root, "the client stays where it last chose to be");
 });
+
+test("a side session starts on the model and thinking level the project is using", async (t) => {
+  // ASideSessionStartsOnTheProjectsModel
+  const REASONING = { provider: "side-sessions-test", id: "side-sessions-reasoning" };
+  const { root, server } = await sideServer(t, { allowedModels: [MODEL, REASONING] });
+  const client = connect(server.wsUrl());
+  t.after(() => client.close());
+  const hello = await client.waitFor((m) => m.type === "hello", 30_000);
+  assert.notEqual(hello.model, "side-sessions-test/side-sessions-reasoning", "the project does not start on the model under test");
+  client.send({ type: "set_model", ...REASONING });
+  await client.waitFor((m) => m.type === "model_changed");
+  client.send({ type: "set_thinking", level: "high" });
+  await client.waitFor((m) => m.type === "thinking_changed" && m.level === "high");
+
+  const other = connect(server.wsUrl());
+  t.after(() => other.close());
+  await other.waitFor((m) => m.type === "hello", 30_000);
+  other.send({ type: "open_side_session", root });
+  const switched = await other.waitFor((m) => m.type === "workspace_switched", 30_000);
+  assert.equal(switched.model, "side-sessions-test/side-sessions-reasoning");
+  assert.equal(switched.thinkingLevel, "high");
+});

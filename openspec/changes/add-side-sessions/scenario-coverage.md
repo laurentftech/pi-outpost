@@ -7,11 +7,12 @@ and each answer can be traced to its conversation. The attention scenario uses t
 can block a turn on a dialog. Interface scenarios render components in jsdom; the start/switch/close path is also
 driven end to end in `e2e/side-sessions.spec.ts`.
 
-## Capability: `side-sessions` (22 scenarios)
+## Capability: `side-sessions` (23 scenarios)
 
 | Scenario | Coverage | Assertion evidence |
 | --- | --- | --- |
 | ASideSessionStartsWhileTheProjectWorks | covered | `server/test/sideSessions.test.mjs` — "a side session starts while the project works, and both agents run at once": while the main turn is held, the side session's snapshot has the project's root, an id that is not the root, no items and no streaming; the main session is then still reported `working`, and its held answer arrives after release |
+| ASideSessionStartsOnTheProjectsModel | covered | `server/test/sideSessions.test.mjs` — "a side session starts on the model and thinking level the project is using": the project starts on another model, is switched to the reasoning test model at `high`, and the side session's first snapshot reports that model and `high`; verified red without the adoption |
 | BothSessionsWorkAtTheSameTime | covered | same test — the side turn is answered while the main one is still held, the side answer never reaches the main client and the main answer never reaches the side client |
 | ASideSessionWorksInTheProjectDirectory | covered | `server/test/sideSessions.test.mjs` — "a side session works in the project directory, visible from the project": the side agent's real `write` call creates the file in the project root, and the main client's directory listing contains it |
 | ASideSessionIsListedUnderItsProject | covered | `server/test/sideSessions.test.mjs` — "a side session is listed under its project, and a root alone still names the project": the activity list carries the side entry with `sideOf` the project root, label `side session 1`, activity `idle`, beside the main entry; `ui/src/components/ProjectMenu.test.tsx` — "lists a side session under its project, by its label, and switches and closes it by id" asserts the row order and label |

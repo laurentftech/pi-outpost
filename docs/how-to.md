@@ -92,7 +92,8 @@ for meaningful follow-up work.
 
 For a small side action while a long task runs — a question about the code, a quick
 fix — use the **+** on the project's row to start a **side session**: a second agent on
-the same project, in a fresh conversation, working at the same time. It sits under its
+the same project, in a fresh conversation on the model the project is using, working at
+the same time. It sits under its
 project in the selector and is closed the same way. It shares the project's directory,
 sandbox and resources, like a second terminal on the same repository: nothing keeps the
 two agents' edits apart, so give them separate files. A conversation can be open in only

@@ -6,13 +6,18 @@ Lets a user run a second agent on a project that is already open — a side sess
 
 ### Requirement: StartASideSession
 
-A client SHALL be able to start a side session on an open project. A side session SHALL be a separate agent with its own conversation, started fresh, running in the same project directory with the same sandbox, tools, skills and extensions as the project. Starting it SHALL NOT interrupt, replace or pause any other session of the project, including one running a turn, and the client that started it SHALL be moved to it.
+A client SHALL be able to start a side session on an open project. A side session SHALL be a separate agent with its own conversation, started fresh, running in the same project directory with the same sandbox, tools, skills and extensions as the project, and on the model and thinking level the project's main session is using when it has started. Starting it SHALL NOT interrupt, replace or pause any other session of the project, including one running a turn, and the client that started it SHALL be moved to it.
 
 #### Scenario: ASideSessionStartsWhileTheProjectWorks
 - **GIVEN** an open project whose agent is running a turn
 - **WHEN** the user starts a side session on it
 - **THEN** the client is shown a new, empty conversation on the same project
 - **AND** the project's other agent keeps running its turn, and its output is kept
+
+#### Scenario: ASideSessionStartsOnTheProjectsModel
+- **GIVEN** a project whose main session was switched from the default model to another, with a thinking level set
+- **WHEN** a side session is started on it
+- **THEN** the side session is on that model and that thinking level, not the default
 
 #### Scenario: BothSessionsWorkAtTheSameTime
 - **GIVEN** a project and a side session on it

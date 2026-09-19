@@ -64,15 +64,27 @@ export default function (pi) {
     baseUrl: "http://127.0.0.1",
     apiKey: "test",
     api: "side-sessions-test-api",
-    models: [{
-      id: "side-sessions-test",
-      name: "Side Sessions Test",
-      reasoning: false,
-      input: ["text"],
-      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-      contextWindow: 16_000,
-      maxTokens: 1_000,
-    }],
+    models: [
+      {
+        id: "side-sessions-test",
+        name: "Side Sessions Test",
+        reasoning: false,
+        input: ["text"],
+        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+        contextWindow: 16_000,
+        maxTokens: 1_000,
+      },
+      // A second model, reasoning, so a test can tell "the project's model" from the default.
+      {
+        id: "side-sessions-reasoning",
+        name: "Side Sessions Reasoning",
+        reasoning: true,
+        input: ["text"],
+        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+        contextWindow: 16_000,
+        maxTokens: 1_000,
+      },
+    ],
     streamSimple: stream,
   });
 }

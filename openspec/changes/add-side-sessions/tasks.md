@@ -7,6 +7,7 @@
 ## 2. Side session lifecycle (server)
 
 - [x] 2.1 Handle `open_side_session`: build a workspace on the project's root through the same path as a project, fresh conversation, bind the requesting client, announce it; refuse under `workspaceLock`; verify `ASideSessionStartsWhileTheProjectWorks`, `BothSessionsWorkAtTheSameTime`, `ASideSessionWorksInTheProjectDirectory`, `ALockedServerRefusesSideSessions` in `server/test/sideSessions.test.mjs`
+- [x] 2.1b Start a side session on the model and thinking level of the project's main session; verify `ASideSessionStartsOnTheProjectsModel`
 - [x] 2.2 List side sessions with their project, labelled by conversation name once named; verify `ASideSessionIsListedUnderItsProject`, `ASideSessionIsLabelledByItsConversation`, `SwitchingAwayLeavesTheSideSessionRunning`, `AWaitingSideSessionAsksForAttention`
 - [x] 2.3 Enforce one live place per conversation in `switchSession`, fork and prompt-edit replacement, and mark `liveIn` in `sessionList`; verify `OpeningAConversationLiveElsewhereIsRefused`, `TheListShowsWhereAConversationIsLive`, `ASideConversationIsKeptInHistory`
 - [x] 2.4 Close side sessions (refused mid-turn), close a project's side sessions with it (refused while one works), close instead of retire in the sweep, and do not persist them; verify `ClosingASideSessionMovesItsClientsToTheProject`, `ClosingAWorkingSideSessionIsRefused`, `ClosingAProjectClosesItsSideSessions`, `AProjectWithAWorkingSideSessionCannotBeClosed`, `AnIdleSideSessionIsClosedNotRetired`, `SideSessionsDoNotSurviveARestart`
