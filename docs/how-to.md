@@ -71,7 +71,12 @@ Nothing to configure. The project control in the header opens one: browse the
 server's directories, pick it, and it is usable immediately — the set survives
 restarts.
 
-Each project gets its own agent, sandbox, file tree and session history. Switching
+Each project gets its own agent, sandbox, file tree and session history. Its sandbox
+is its own directory, with the permissions of the configured `sandbox` — write, bash —
+but not its `root` or `writableRoot`, which belong to the `cwd` project. With several
+projects open, Settings accordingly shows **Agent permissions** and the folder the
+project is confined to, not a root to edit; a permission applied there takes effect in
+that project at once and in projects opened after. Switching
 never disturbs the others: a turn you leave running finishes, and its result is
 waiting when you come back. The selector distinguishes stopped, starting, idle,
 working, waiting for you, and ready for review. Waiting means the agent needs an

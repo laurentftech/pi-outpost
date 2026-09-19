@@ -1211,7 +1211,8 @@ describe("an embed in projects mode", () => {
 
 describe("one listing, one picker", () => {
   it("closes the project picker when the sandbox-root chooser opens", () => {
-    const { api } = embedded({ embedWorkspaceControls: "projects" });
+    // One project open: with several, Settings shows no root to browse for.
+    const { api } = embedded({ embedWorkspaceControls: "projects", workspaces: [workspace("/srv/alpha")] });
     fireEvent.click(screen.getByTitle(/^Project:/));
     fireEvent.click(screen.getByRole("menuitem", { name: /Open a project/ }));
     expect(screen.getByTestId("server-path-picker")).toBeInTheDocument();

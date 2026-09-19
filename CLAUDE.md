@@ -215,3 +215,10 @@ that is the origin the server allows.
 **Rebuild first**: `web`, then `@pi-outpost/embed`, then `build:e2e-host`. The
 bench serves `dist/`, so an unbuilt fix is invisible and you will debug a fix that
 is already correct.
+
+## Releasing
+
+Follow [`docs/development.md` § Releasing](docs/development.md#releasing) step by step —
+do not release from memory. The step most often skipped: regenerate `package-lock.json`
+with `npx -y npm@11 install --package-lock-only` in the same commit as the version bump;
+never commit a lockfile written by npm 12.

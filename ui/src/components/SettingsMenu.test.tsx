@@ -185,8 +185,44 @@ describe("SettingsMenu", () => {
       // Omitting them would fail the server's typeof validation on a missing boolean
       const { onUpdateConfig } = setup({ sandbox: sandbox({ locks: { root: true, allowBash: true }, allowBash: true }) });
       openMenu();
+      fireEvent.click(check(/Allow write/));
       fireEvent.click(applyButton());
       expect(onUpdateConfig).toHaveBeenCalledWith(expect.objectContaining({ sandbox: expect.objectContaining({ root: "/work", allowBash: true }) }));
+    });
+  });
+
+  describe("applying the sandbox", () => {
+    it("offers no Apply until something in the section has changed, so an untouched sandbox is never rewritten", () => {
+      const { onUpdateConfig } = setup({ sandbox: sandbox() });
+      openMenu();
+      expect(applyButton()).toBeDisabled();
+      fireEvent.click(applyButton());
+      expect(onUpdateConfig).not.toHaveBeenCalled();
+      fireEvent.click(check(/Allow write/));
+      expect(applyButton()).toBeEnabled();
+      fireEvent.click(check(/Allow write/));
+      expect(applyButton()).toBeDisabled();
+    });
+
+    it("with several projects open, shows the agent's permissions and this project's own folder, and no root to edit", () => {
+      const { onUpdateConfig } = setup({ sandbox: sandbox({ rootEditable: false, projectRoot: "/projects/beta" }) });
+      openMenu();
+      expect(screen.getByText("Agent permissions")).toBeInTheDocument();
+      expect(screen.getByTestId("sandbox-project-root")).toHaveTextContent("/projects/beta");
+      expect(screen.queryByRole("button", { name: /Browse for sandbox root/ })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /Browse for writable root/ })).not.toBeInTheDocument();
+      // The fixture allows writing; the permission is what is edited here.
+      fireEvent.click(check(/Allow write/));
+      fireEvent.click(applyButton());
+      expect(onUpdateConfig).toHaveBeenCalledWith(expect.objectContaining({ sandbox: expect.objectContaining({ allowWrite: false }) }));
+    });
+
+    it("keeps the roots editable when the server does not say otherwise", () => {
+      setup({ sandbox: sandbox() });
+      openMenu();
+      expect(screen.getByText("Sandbox")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /Browse for sandbox root/ })).toBeInTheDocument();
+      expect(screen.queryByTestId("sandbox-project-root")).not.toBeInTheDocument();
     });
   });
 
@@ -240,6 +276,7 @@ describe("SettingsMenu", () => {
     it("leaves a locked list out of the payload rather than sending it unchanged", () => {
       const { onUpdateConfig } = setup({ extensionLock: true, userExtensionPaths: ["/mnt/a"] });
       openMenu();
+      fireEvent.click(check(/Allow write/));
       fireEvent.click(applyButton());
       // The server refuses any update carrying extension paths under a lock, which
       // would take the rest of the apply down with it.

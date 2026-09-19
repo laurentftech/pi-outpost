@@ -156,3 +156,10 @@ Two defects in the per-repository git work were exactly of this shape, and both
 had green suites over them: a commit log rendered under another project's name,
 and — once that was correlated — a menu that sat on "loading…" forever because
 the fetch only happened on the toggle.
+
+## Releasing
+
+Follow [`docs/development.md` § Releasing](docs/development.md#releasing) step by step —
+do not release from memory. The step most often skipped: regenerate `package-lock.json`
+with `npx -y npm@11 install --package-lock-only` in the same commit as the version bump;
+never commit a lockfile written by npm 12.

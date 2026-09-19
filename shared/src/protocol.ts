@@ -762,6 +762,18 @@ export interface SessionSnapshot {
     writableRoot?: string;
     /** Which fields the settings menu must not allow editing — set from config.sandboxLocks. */
     locks?: { root?: boolean; allowWrite?: boolean; allowBash?: boolean; writableRoot?: boolean; terminal?: boolean };
+    /**
+     * The directory this project's tools are actually confined to. With several
+     * projects open each is confined to its own, whatever `root` — the server's
+     * sandbox root, which only the server's own project uses — says.
+     */
+    projectRoot?: string;
+    /**
+     * Whether `root` and `writableRoot` can be edited from this project: only when it
+     * is the server's own project and the only one open. Otherwise Settings edits the
+     * agent's permissions alone.
+     */
+    rootEditable?: boolean;
   };
   /** Terminal configuration — whether the integrated web terminal is enabled and whether it is locked. */
   terminal?: {

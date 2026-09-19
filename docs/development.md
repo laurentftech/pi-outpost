@@ -133,3 +133,64 @@ Behaviour is specified under [`openspec/specs/`](../openspec/specs), one directo
 capability, and changes in flight live under `openspec/changes/`. A feature is not done
 until every applicable `#### Scenario:` is covered by a test that would fail if the
 behaviour broke.
+
+## Releasing
+
+A release is a version tag. Pushing `vX.Y.Z` runs
+[`.github/workflows/release.yml`](../.github/workflows/release.yml), which builds the
+executables, publishes `pi-outpost` (`cli/`) and `@pi-outpost/embed` (`embed/`) to npm, and
+creates the GitHub Release with the executables attached. Everything before the tag is done
+by hand, on `main`.
+
+1. **Merge first.** Every PR meant for the release is merged, and CI on `main` is green.
+   Pull `main` locally; the working tree must be clean.
+2. **Choose the version.** A `feat` since the last tag makes it a minor release, fixes
+   alone a patch. A prerelease (`0.27.0-beta.1`) is published under its own identifier and
+   never under `latest` — [`scripts/release-channel.mjs`](../scripts/release-channel.mjs)
+   derives the channel from the version.
+3. **Bump both packages.** Set the same version in `cli/package.json` and
+   `embed/package.json`. Leave `web/`, `server/`, `ui/` and `shared/` alone: they are not
+   published.
+4. **Update the lockfile with npm 11**, the npm CI runs:
+
+   ```bash
+   npx -y npm@11 install --package-lock-only
+   git diff package-lock.json   # only the two workspace versions
+   ```
+
+   A bump that skips this leaves the lockfile behind, and the next `npm install` rewrites
+   it inside an unrelated PR. Do not use npm 12 here: it also drops `hasShrinkwrap` from
+   `@earendil-works/pi-coding-agent`, whose published package does carry a shrinkwrap.
+5. **Commit and push to `main`:**
+
+   ```bash
+   git add cli/package.json embed/package.json package-lock.json
+   git commit -m "chore(release): vX.Y.Z"
+   git push origin main
+   ```
+
+6. **Tag that commit and push the tag:**
+
+   ```bash
+   git tag vX.Y.Z
+   git push origin vX.Y.Z
+   ```
+
+   The workflow refuses to publish when the tag disagrees with the packages' versions,
+   and skips a package already on npm at that version.
+7. **Watch the run** (`gh run watch`). The executables for macOS arm64, Linux x64 and
+   Windows x64 build first and gate the publish; the publish job then reruns typecheck,
+   lint, both suites, the CSS, embed and CLI checks and the e2e suite before anything reaches
+   npm.
+8. **Check the result.** `npm view pi-outpost@X.Y.Z version` and
+   `npm view @pi-outpost/embed@X.Y.Z version`. The CLI is about 25 MB and can take a few
+   minutes to show on npm after the publish log says it is done — trust the log before an
+   immediate 404. The GitHub Release carries notes generated from the merged PRs, and three
+   executables.
+
+The executables can be built from any branch without publishing anything, to check a
+change to the single-executable build before it meets a tag: run the *Release* workflow by
+hand (`gh workflow run release.yml --ref <branch>`), `executables_only` left on.
+
+OpenSpec changes are archived when their PR merges, not at release time — from `main`,
+never from the feature branch, or the main specs would claim what `main` does not have.

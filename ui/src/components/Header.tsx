@@ -65,7 +65,7 @@ interface HeaderProps {
   extensionLock: boolean;
   tools?: { name: string; active: boolean }[];
   commands?: { name: string; source: string }[];
-  sandbox: { root: string; allowWrite: boolean; allowBash: boolean; writableRoot?: string } | null;
+  sandbox: { root: string; allowWrite: boolean; allowBash: boolean; writableRoot?: string; projectRoot?: string; rootEditable?: boolean } | null;
   /** Why git is unavailable, when it is — shown in Settings, where a user looks. */
   gitUnavailable: GitUnavailable | null;
   versions?: { piOutpost: string; piSdk?: string; agent?: string } | null;
@@ -573,6 +573,9 @@ export function Header(props: HeaderProps) {
           tools={props.tools ?? []}
           commands={props.commands ?? []}
           sandbox={props.sandbox}
+          // The roots are shown where the interface is about one project; with several
+          // offered and open, Settings is about the agent's permissions.
+          showRoots={!(props.workspaceControl === "projects" && props.workspaces.length > 1)}
           gitUnavailable={props.gitUnavailable}
           userSkillPaths={props.userSkillPaths}
           serverBrowse={props.serverBrowse}

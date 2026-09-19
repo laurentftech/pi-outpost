@@ -404,4 +404,32 @@ describe("Header", () => {
     fireEvent.click(screen.getByRole("button", { name: "tree" }));
     expect(onListTree).toHaveBeenCalled();
   });
+
+  describe("the sandbox in Settings", () => {
+    const sandbox = { root: "/projects/alpha", allowWrite: false, allowBash: false, projectRoot: "/projects/alpha", rootEditable: true };
+    const project = (root: string) => ({ root, name: root.split("/").pop()!, activity: "idle" as const });
+    const openSettings = () => fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+
+    it("with several projects open in the standalone app, shows the agent's permissions and no root", () => {
+      // SeveralProjectsShowPermissionsOnly
+      setup({ workspaceControl: "projects", sandbox, workspaces: [project("/projects/alpha"), project("/projects/beta")] });
+      openSettings();
+      expect(screen.getByText("Agent permissions")).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /Browse for sandbox root/ })).not.toBeInTheDocument();
+    });
+
+    it("with one project open, keeps the full section", () => {
+      // ASingleProjectKeepsTheFullSection
+      setup({ workspaceControl: "projects", sandbox, workspaces: [project("/projects/alpha")] });
+      openSettings();
+      expect(screen.getByRole("button", { name: /Browse for sandbox root/ })).toBeInTheDocument();
+    });
+
+    it("in a widget bound to one project, keeps the root even while the server holds others", () => {
+      // AWidgetBoundToOneProjectKeepsItsRoot
+      setup({ workspaceControl: "none", sandbox, workspaces: [project("/projects/alpha"), project("/projects/beta")] });
+      openSettings();
+      expect(screen.getByRole("button", { name: /Browse for sandbox root/ })).toBeInTheDocument();
+    });
+  });
 });

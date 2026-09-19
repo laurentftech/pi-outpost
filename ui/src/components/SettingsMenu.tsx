@@ -11,6 +11,10 @@ interface SandboxConfig {
   allowBash: boolean;
   writableRoot?: string;
   locks?: { root?: boolean; allowWrite?: boolean; allowBash?: boolean; writableRoot?: boolean };
+  /** The directory this project is actually confined to. */
+  projectRoot?: string;
+  /** False with several projects open, or from any project but the server's own: permissions only. */
+  rootEditable?: boolean;
 }
 
 /**
@@ -45,6 +49,11 @@ interface SettingsMenuProps {
   tools: { name: string; active: boolean }[];
   commands: { name: string; source: string }[];
   sandbox: SandboxConfig | null;
+  /**
+   * Whether this interface shows the roots at all. The standalone app with several
+   * projects open says no: a root there reads as every project's, and is not.
+   */
+  showRoots?: boolean;
   /**
    * Why git is unavailable, or null when it is available.
    *
@@ -102,6 +111,7 @@ export function SettingsMenu({
   tools,
   commands,
   sandbox,
+  showRoots = true,
   gitUnavailable,
   userSkillPaths,
   serverBrowse,
@@ -197,21 +207,31 @@ export function SettingsMenu({
     onCloseServerBrowser();
   }
 
+  // Only what the reader changed is a change: an Apply over an untouched section used to
+  // rewrite the sandbox, root included, into the server's configuration file.
+  const sandboxChanged =
+    sandbox !== null &&
+    (sandboxRoot !== sandbox.root ||
+      (sandboxWritableRoot.trim() || undefined) !== (sandbox.writableRoot || undefined) ||
+      sandboxAllowWrite !== sandbox.allowWrite ||
+      sandboxAllowBash !== sandbox.allowBash);
+
   function handleApply() {
+    if (!sandbox || !sandboxChanged) return;
     // Always send all sandbox fields; the server enforces locks, so skipping locked
     // fields here would fail server-side validation (typeof check on missing bools).
-    const payload: SandboxConfig | undefined = sandbox
-      ? {
-          root: sandboxRoot,
-          allowWrite: sandboxAllowWrite,
-          allowBash: sandboxAllowBash,
-          writableRoot: sandboxWritableRoot.trim() || undefined,
-        }
-      : undefined;
     onUpdateConfig({
-      ...(payload ? { sandbox: payload } : {}),
+      sandbox: {
+        root: sandboxRoot,
+        allowWrite: sandboxAllowWrite,
+        allowBash: sandboxAllowBash,
+        writableRoot: sandboxWritableRoot.trim() || undefined,
+      },
     });
   }
+
+  /** Whether the roots are this project's to edit; an older server that does not say keeps them editable. */
+  const rootEditable = showRoots && sandbox?.rootEditable !== false;
 
   /*
    * Blocked is answered here, in the render, and not only by the effect below.
@@ -371,9 +391,18 @@ export function SettingsMenu({
             {sandbox && (
               <section>
                 <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
-                  Sandbox
+                  {rootEditable ? "Sandbox" : "Agent permissions"}
                 </h3>
                   <div className="space-y-3">
+                    {!rootEditable && (
+                      <p data-testid="sandbox-project-root" className="text-xs text-zinc-600 dark:text-zinc-400">
+                        This project is confined to its own folder,{" "}
+                        <span className="break-all font-mono text-zinc-800 dark:text-zinc-200">{sandbox.projectRoot ?? sandbox.root}</span>
+                        . Each open project is confined to its own. A change here applies to this project now, and to
+                        projects opened after.
+                      </p>
+                    )}
+                    {rootEditable && <>
                     <label className="block">
                       <span className="text-xs text-zinc-600 dark:text-zinc-400">
                         Root {sandbox.locks?.root ? <span className="text-zinc-400">(locked)</span> : null}
@@ -423,6 +452,7 @@ export function SettingsMenu({
                       </div>
                     </label>
                     {picking === "writableRoot" && picker}
+                    </>}
                     <label className="flex items-center gap-2">
                       <input
                         type="checkbox"
@@ -462,7 +492,7 @@ export function SettingsMenu({
               )}
               <button
                 type="button"
-                disabled={applying || (sandbox !== null && !sandboxRoot.trim())}
+                disabled={applying || !sandboxChanged || (sandbox !== null && !sandboxRoot.trim())}
                 onClick={handleApply}
                 className="w-full rounded-md bg-zinc-800 px-3 py-1.5 text-xs font-medium text-white hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-zinc-200 dark:text-zinc-900 dark:hover:bg-zinc-300"
               >

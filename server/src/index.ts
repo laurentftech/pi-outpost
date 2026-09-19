@@ -88,6 +88,7 @@ import {
   NoConfigError,
   persistEditableSettings,
   collectionSkillDir,
+  type SandboxConfig,
   type SkillCollection,
 } from "./config.ts";
 import {
@@ -1182,6 +1183,41 @@ const workspaces = new WorkspaceRegistry();
 // the default, which is what an unnamed connection and a pinned embed both get.
 workspaces.add(workspace);
 
+/**
+ * The project the server's sandbox root belongs to: the one it booted with. Every
+ * other project is confined to its own directory and takes only the permissions from
+ * the server's sandbox (see workspaceOptions).
+ */
+const serverProject = workspace;
+
+/**
+ * The sandbox a project's tools are rebuilt with. The server's own project uses the
+ * server's sandbox as configured; any other keeps its own root and writable root and
+ * takes the server's permissions. Applying Settings from a second project used to
+ * rebuild it with the first project's root, confining its agent to the wrong
+ * directory — and the sandbox the panel sends back is the server's, whatever changed.
+ */
+function sandboxFor(target: Workspace): SandboxConfig | undefined {
+  if (!config.sandbox) return undefined;
+  if (target === serverProject) return config.sandbox;
+  const own = target.settings.sandbox;
+  return {
+    ...config.sandbox,
+    root: own?.root ?? target.settings.cwd,
+    writableRoot: own?.writableRoot,
+  };
+}
+
+/**
+ * Whether Settings may move the sandbox root from this project: only from the server's
+ * own. Other open projects are unaffected when it moves — each has its own directory —
+ * and an embedded widget in `settings` mode, bound to this project, keeps its root
+ * control even while the server holds others (see the embed spec).
+ */
+function rootEditableFrom(target: Workspace): boolean {
+  return target === serverProject;
+}
+
 /** Resource repository state is per workspace; repository mutexes are shared by the service implementation. */
 const resourceServices = new Map<string, ResourceRepositoryService>();
 const resourceInventories = new Map<string, AgentResourceInventory>();
@@ -1760,6 +1796,9 @@ function snapshot(workspace: Workspace): SessionSnapshot {
           allowBash: config.sandbox.allowBash ?? false,
           writableRoot: config.sandbox.writableRoot,
           locks: config.sandboxLocks,
+          // The resolved directory, as the project selector names it.
+          projectRoot: workspace.browserRoot,
+          rootEditable: rootEditableFrom(workspace),
         }
       : undefined,
     terminal: {
@@ -2348,19 +2387,43 @@ async function handleUpdateConfig(
   // Enforce locks from config: locked fields keep their current value
   const locks = config.sandboxLocks ?? {};
   const current = config.sandbox;
-  const mergedSandbox =
+  // The roots are the server's own project's: from any other project, or with several
+  // open, they are kept as they are and only the permissions are taken.
+  const rootsEditable = rootEditableFrom(workspace);
+  const requestedSandbox =
     update.sandbox && current
       ? {
-          root: locks.root ? current.root : resolve(update.sandbox.root),
+          root: locks.root || !rootsEditable ? current.root : resolve(update.sandbox.root),
           allowWrite: locks.allowWrite ? current.allowWrite : update.sandbox.allowWrite,
           allowBash: locks.allowBash ? current.allowBash : update.sandbox.allowBash,
-          writableRoot: locks.writableRoot
+          writableRoot: locks.writableRoot || !rootsEditable
             ? current.writableRoot
             : update.sandbox.writableRoot === undefined
               ? undefined
               : resolve(update.sandbox.writableRoot),
         }
       : undefined;
+  // A sandbox sent back unchanged is not a change: it is neither written to the file —
+  // where it would pin a root nobody chose — nor reapplied.
+  const mergedSandbox =
+    requestedSandbox &&
+    current &&
+    requestedSandbox.root === current.root &&
+    requestedSandbox.writableRoot === current.writableRoot &&
+    requestedSandbox.allowWrite === current.allowWrite &&
+    requestedSandbox.allowBash === current.allowBash
+      ? undefined
+      : requestedSandbox;
+  if (
+    !mergedSandbox &&
+    update.userSkillPaths === undefined &&
+    update.userSkillCollections === undefined &&
+    update.userExtensionPaths === undefined
+  ) {
+    // Nothing changed: no file write, no replaced session, nothing to roll back.
+    if (!resourceRequestId) send(socket, { type: "update_config_ack", ...snapshot(workspace) });
+    return undefined;
+  }
   const canonicalResourcePaths = async (values: string[] | undefined): Promise<string[] | undefined> => {
     if (!values) return undefined;
     const canonical = await Promise.all(values.map(async (value) => {
@@ -2475,7 +2538,8 @@ async function handleUpdateConfig(
     // This workspace's own cwd, not the server's: Settings edits the project the
     // connection is looking at. `config.sandbox` stays the server's default, which
     // is what a project opened later inherits.
-    await workspace.rebuildResources({ cwd: workspace.settings.cwd, ...(config.sandbox ? { sandbox: config.sandbox } : {}) });
+    const rebuiltSandbox = sandboxFor(workspace);
+    await workspace.rebuildResources({ cwd: workspace.settings.cwd, ...(rebuiltSandbox ? { sandbox: rebuiltSandbox } : {}) });
     // Replace the current session so the new runtime picks up the updated tools
     // and re-runs skill discovery over the new paths.
     const replacement = await rebuildTools.call(workspace.agent, makeCreateRuntime(workspace.sandboxedTools));
@@ -2488,9 +2552,10 @@ async function handleUpdateConfig(
       config.userExtensionPaths = previousExtensionPaths;
       config.userSkillCollections = previousCollections;
       config.sandbox = previousSandbox;
+      const restoredSandbox = sandboxFor(workspace);
       await workspace.rebuildResources({
         cwd: workspace.settings.cwd,
-        ...(previousSandbox ? { sandbox: previousSandbox } : {}),
+        ...(restoredSandbox ? { sandbox: restoredSandbox } : {}),
       });
       persistEditableSettings(config, previousPersisted);
       refuse("Settings change cancelled by an extension; the previous settings remain active");
