@@ -886,6 +886,12 @@ export type ServerMessage =
    * read, and the messages that carry documents are built without I/O.
    */
   | { type: "structured_conformance"; toolCallId: string; conformance: StructuredConformance }
+  /**
+   * The same statement, for a structured-exchange document written straight into a
+   * reply as a ```json block. `key` is the block's `replyBlockKey`: a reply has no id,
+   * and the browser finds the block it drew by its content.
+   */
+  | { type: "reply_structured_conformance"; key: string; conformance: StructuredConformance }
   | { type: "queue"; steering: string[]; followUp: string[] }
   | { type: "context_usage"; usage: ContextUsage }
   | { type: "work_plan_changed"; workPlan: WorkPlan | null }

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
+import type { StructuredConformance } from "@pi-outpost/shared/structured-exchange/profile";
 import { workspaceKey } from "./util/workspaceKey";
 import { bootstrapToken, storedToken, storeToken } from "./authToken";
 import { repoForPath } from "./util/gitRepos";
@@ -279,6 +280,12 @@ export interface AgentState {
    */
   pendingPrompt: { text: string; images?: WireImage[] } | null;
   workPlan: WorkPlan | null;
+  /**
+   * What the server established about structured-exchange documents written straight
+   * into replies, by `replyBlockKey`. Emptied by every snapshot — the server restates
+   * each one after it, against the registry as it is then.
+   */
+  replyConformance: Record<string, StructuredConformance>;
   /** Latest workspace Outcome request/result; null until the drawer is opened. */
   outcome: OutcomeState | null;
   queue: { steering: string[]; followUp: string[] };
@@ -378,6 +385,7 @@ const initialState: AgentState = {
   items: [],
   pendingPrompt: null,
   workPlan: null,
+  replyConformance: {},
   outcome: null,
   queue: { steering: [], followUp: [] },
   errors: [],
@@ -522,6 +530,7 @@ function applySnapshot(state: AgentState, message: ServerMessage & { sessionId: 
   const current = message.models.find((m) => `${m.provider}/${m.id}` === message.model);
   return {
     ...state,
+    replyConformance: {},
     connected: true,
     brandingReady: true,
     workspace: message.workspace ?? null,
@@ -1090,6 +1099,8 @@ function reduce(state: AgentState, action: Action): AgentState {
         ...state,
         items: patchExistingTool(state.items, message.toolCallId, { structuredConformance: message.conformance }),
       };
+    case "reply_structured_conformance":
+      return { ...state, replyConformance: { ...state.replyConformance, [message.key]: message.conformance } };
     case "queue":
       return { ...state, queue: { steering: message.steering, followUp: message.followUp } };
     case "context_usage":

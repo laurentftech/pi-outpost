@@ -33,6 +33,7 @@ import {
   type GitRevision,
   type ModelChoice,
   type ServerMessage,
+  type ChatItem,
   type SessionSnapshot,
   type WorkspaceActivity,
   type WorkspaceInfo,
@@ -156,6 +157,7 @@ import { createStructuredExchangeToolDefinition } from "./structuredExchangeTool
 import { createStructuredExchangeProjectModelToolDefinition } from "./structuredExchangeProjectModelTool.ts";
 import { createStructuredExchangeTableToolDefinition } from "./structuredExchangeTableTool.ts";
 import { structuredConformanceFor } from "./structuredExchangeProfiles.ts";
+import { replyBlockKey, structuredExchangeBlocks } from "@pi-outpost/shared/structured-exchange/reply-blocks";
 import { createStructuredExchangeFigureToolDefinition } from "./structuredExchangeFigureTool.ts";
 import { createWorkPlanExtendedToolDefinition, createWorkPlanToolDefinition, WORK_PLAN_EXTENDED_TOOL, WORK_PLAN_TOOL } from "./workPlanTool.ts";
 import { DOCUMENT_TOOLS, documentToolsFor } from "./documentTools.ts";
@@ -1732,6 +1734,36 @@ async function announceStructuredConformance(
   }
 }
 
+/**
+ * Tell a workspace's readers whether the structured-exchange documents written
+ * straight into replies conform to the project's profile.
+ *
+ * The same statement a presented document gets, established the same way and after
+ * the message for the same reason. A reply carries no id, so each statement names its
+ * block by content (`replyBlockKey`), which the browser computes from what it draws.
+ */
+async function announceReplyConformance(workspace: Workspace, items: readonly ChatItem[]): Promise<void> {
+  await Promise.resolve();
+  const blocks = items.flatMap((item) =>
+    item.kind === "assistant"
+      ? item.blocks.flatMap((block) => (block.type === "text" ? structuredExchangeBlocks(block.text) : []))
+      : [],
+  );
+  if (blocks.length === 0) return;
+  const unique = [...new Map(blocks.map((text) => [replyBlockKey(text), text])).entries()];
+  try {
+    const statements = await structuredConformanceFor(
+      workspace.root,
+      unique.map(([key, structured]) => ({ toolCallId: key, structured })),
+    );
+    for (const { toolCallId: key, conformance } of statements) {
+      broadcast(workspace, { type: "reply_structured_conformance", key, conformance });
+    }
+  } catch (error) {
+    console.error("[pi-outpost] structured-exchange conformance of a reply could not be established:", error);
+  }
+}
+
 function snapshot(workspace: Workspace): SessionSnapshot {
   const state = workspace.agent.snapshot();
   const items = historyToItems(
@@ -1745,6 +1777,7 @@ function snapshot(workspace: Workspace): SessionSnapshot {
     workspace,
     items.flatMap((item) => (item.kind === "tool" && item.structured !== undefined ? [{ toolCallId: item.toolCallId, structured: item.structured }] : [])),
   );
+  void announceReplyConformance(workspace, items);
   return {
     branding: config.branding,
     // Always, whatever the number open. A selector's first job is to say where the
@@ -1990,7 +2023,9 @@ function onRuntimeEvent(workspace: Workspace, event: RuntimeEvent): void {
       break;
     case "assistant_end": {
       // Full sync of the finished message (covers retries/partial rebuilds)
-      broadcast(workspace, { type: "assistant_end", item: assistantToItem(event.message as never) });
+      const finished = assistantToItem(event.message as never);
+      broadcast(workspace, { type: "assistant_end", item: finished });
+      void announceReplyConformance(workspace, [finished]);
       // A turn that died of stack exhaustion arrives here as a message and no
       // stack: every provider's catch keeps `error.message` and drops the Error.
       // Record the input instead, while the branch that produced it is still

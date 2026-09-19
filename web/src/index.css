@@ -96,6 +96,10 @@ body,
 .prose-chat pre {
   @apply rounded-lg border p-3 my-2 overflow-x-auto border-zinc-200 bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-900;
 }
+/* Room on the right for the copy control, so a long line scrolled to its end is not under it. */
+.prose-chat .code-block > pre {
+  @apply pr-10;
+}
 .prose-chat pre code {
   @apply bg-transparent p-0 text-zinc-800 dark:text-zinc-200;
 }

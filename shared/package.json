@@ -32,6 +32,7 @@
     "./structured-exchange/conformity-report": "./src/structuredExchangeConformityReport.ts",
     "./structured-exchange/project-registry": "./src/structuredExchangeProjectRegistry.ts",
     "./structured-exchange/project-views": "./src/structuredExchangeProjectViews.ts",
+    "./structured-exchange/reply-blocks": "./src/structuredExchangeReplyBlocks.ts",
     "./diagram-orientation": "./src/diagramOrientation.ts"
   },
   "dependencies": {
