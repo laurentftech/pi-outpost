@@ -1984,3 +1984,23 @@ describe("where a side session is offered", () => {
   });
 });
 
+describe("the pi-outpost update notice", () => {
+  const outpostUpdate = { running: "0.26.0", latest: "0.27.0", instruction: 'Run "pi-outpost update" in a terminal, then restart it.', copy: "pi-outpost update" };
+
+  it("is shown in the standalone app", () => {
+    window.localStorage.clear();
+    const alpha = workspace("/srv/alpha");
+    const api = agentApi(agentState({ workspace: alpha, workspaces: [alpha], outpostUpdate }));
+    mockUseAgent.mockImplementation(() => api);
+    render(<App />);
+    expect(screen.getByTestId("update-notice")).toHaveTextContent("0.27.0");
+  });
+
+  it("is not shown in a widget", () => {
+    // AWidgetShowsNoNotice
+    window.localStorage.clear();
+    embedded({ outpostUpdate });
+    expect(screen.queryByTestId("update-notice")).not.toBeInTheDocument();
+  });
+});
+

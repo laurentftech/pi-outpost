@@ -1,4 +1,5 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
+import { UpdateNotice } from "./components/UpdateNotice";
 import { ReplyConformanceContext } from "./components/ReplyStructuredExchange";
 import { workspaceKey } from "./util/workspaceKey";
 import type { OutcomeTarget, Theme, WireImage } from "@pi-outpost/shared";
@@ -151,6 +152,9 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
     openProject,
     closeProject,
     openSideSession,
+    checkPiPackages,
+    updatePiPackage,
+    restartServer,
     openTerminal,
     sendTerminalInput,
     getTerminalCwd,
@@ -813,6 +817,8 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
               }}
             />
           )}
+          {/* The standalone app's reader runs the server; a widget's reader does not. */}
+          {!embedded && state.outpostUpdate && <UpdateNotice notice={state.outpostUpdate} />}
           <Header
             workspace={state.workspace}
             workspaces={state.workspaces}
@@ -854,6 +860,14 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
             onOpenProject={() => { setProjectPicker(true); browseServerDirectory(""); }}
             onCloseProject={closeProject}
             onOpenSideSession={openSideSession}
+            piPackages={state.piPackages}
+            piPackageUpdate={state.piPackageUpdate}
+            canRestartServer={!embedded}
+            serverRestarting={state.serverRestarting}
+            onCheckPiPackages={checkPiPackages}
+            onUpdatePiPackage={updatePiPackage}
+            onRestartServer={restartServer}
+            restartNeeded={state.restartNeeded}
             title={state.branding.title}
             sessions={state.sessions}
             sessionSearch={state.sessionSearch}

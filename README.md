@@ -364,7 +364,10 @@ pushes, switches branches, initializes submodules, or runs repository hooks. Upd
 repository containing extensions requires confirmation of the exact revisions, and
 `extensionLock` blocks the whole mixed repository from updating. If Git advances but one
 workspace cannot reload, the repository remains advanced and the dialog reports the
-per-workspace reload failure.
+per-workspace reload failure. A repository of skills alone is reloaded for real; one that
+supplies an **extension** is not — a running server cannot load an extension's new code, so
+the update says its code runs after a restart, and the repository joins what
+**Restart pi-outpost** in Settings runs.
 
 Clone and fetch are non-interactive: existing credential helpers, SSH agents, and other
 non-prompting Git authentication continue to work, but the server never opens a terminal or
@@ -650,8 +653,20 @@ message with it, waits for a keypress first.
 ## Staying up to date
 
 The server checks once a day whether a newer version has been published, and says so in one
-line if there is. **It never installs anything on its own** — `pi-outpost update` is the
-only thing that installs, and only when you run it without `--check`.
+line if there is — in the terminal, and in the standalone interface as a notice with the
+command to copy, which can be dismissed for that version. **It never installs pi-outpost on
+its own** — `pi-outpost update` is the only thing that installs it, and only when you run it
+without `--check`.
+
+**pi packages** — extensions installed with `pi install npm:…`, such as
+`@gotgenes/pi-permission-system` or `openlore` — are listed in Settings with the version
+installed and, once checked, whether a newer one is published; a check that fails says why.
+**Update** installs the newer version after a confirmation naming both versions. A running
+server cannot load an extension's new code, so the package then shows *restart to use it*,
+and **Restart pi-outpost** stops and starts the server again in the same terminal: every
+open window reconnects by itself and conversations are kept. Restarting is refused while an
+agent is running a turn, and is never offered in an embedded widget; `extensionLock` forbids
+updating. A version changed from a terminal (`pi update`) is marked the same way.
 
 What `update` does depends on how this copy was installed, which it works out rather than
 asking:

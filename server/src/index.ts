@@ -34,6 +34,8 @@ import {
   type ModelChoice,
   type ServerMessage,
   type ChatItem,
+  type OutpostUpdateNotice,
+  type PiPackageInfo,
   type SessionSnapshot,
   type WorkspaceActivity,
   type WorkspaceInfo,
@@ -73,6 +75,7 @@ import { browsableUrl, openBrowser, shouldOpenBrowser } from "./openBrowser.ts";
 import {
   currentEvidence,
   detectChannel,
+  fetchLatestVersion,
   runStartupUpdateNotice,
   runUpdateCommand,
   updateCheckEnabled,
@@ -158,6 +161,7 @@ import { createStructuredExchangeProjectModelToolDefinition } from "./structured
 import { createStructuredExchangeTableToolDefinition } from "./structuredExchangeTableTool.ts";
 import { structuredConformanceFor } from "./structuredExchangeProfiles.ts";
 import { replyBlockKey, structuredExchangeBlocks } from "@pi-outpost/shared/structured-exchange/reply-blocks";
+import { checkPiPackages, listPiPackages, packageManagerFor } from "./piPackages.ts";
 import { createStructuredExchangeFigureToolDefinition } from "./structuredExchangeFigureTool.ts";
 import { createWorkPlanExtendedToolDefinition, createWorkPlanToolDefinition, WORK_PLAN_EXTENDED_TOOL, WORK_PLAN_TOOL } from "./workPlanTool.ts";
 import { DOCUMENT_TOOLS, documentToolsFor } from "./documentTools.ts";
@@ -379,6 +383,40 @@ const config = await (async () => {
 // installed on every machine that has a working VS Code, and is routinely absent from
 // the PATH a server process inherits — which used to remove the entire git surface
 // with no message at all.
+/** A newer pi-outpost, once the startup check has found one — for the interface to say. */
+let outpostUpdate: OutpostUpdateNotice | undefined;
+/**
+ * Whether the module has finished starting. Until it has, nothing may be broadcast: the
+ * startup check answers while startup is still awaiting the first agent, and the client
+ * set it would broadcast to is not initialised yet — in the bundle, an undefined that
+ * crashed the whole server the day a newer version was published. A client that connects
+ * meanwhile gets the notice in its snapshot.
+ */
+let startupComplete = false;
+/** Each project's npm pi packages, as last listed and checked — the snapshot's copy. */
+const piPackageLists = new Map<string, PiPackageInfo[]>();
+/** Packages being installed right now, so a second click does not start a second npm. */
+const updatingPiPackages = new Set<string>();
+/**
+ * The version of each package the running server loaded, by scope — the agent
+ * directory's once, each project's when it first lists. Anything installed since, or
+ * added since, is not what is running.
+ */
+const loadedPiPackages = new Map<string, string | null>();
+const loadedPiPackageScopes = new Set<string>();
+/**
+ * Connections that may restart the server: the standalone interface — same address as
+ * the server, or a local development origin — and not an embedded widget, whose page
+ * belongs to someone else and must not be able to stop it.
+ */
+const mayRestart = new WeakSet<WebSocket>();
+/**
+ * What is installed and not running — a pi package at another version than the one
+ * loaded, an extension repository updated since startup — by name. A new process
+ * starts with none.
+ */
+const restartReasons = new Set<string>();
+
 try {
   useGitExecutable(await resolveGitExecutable(config.gitPath));
 } catch (error) {
@@ -675,6 +713,17 @@ app.get("/ws", { websocket: true }, (socket, req) => {
     socket.close(WS_CLOSE_UNAUTHORIZED, "unauthorized");
     return;
   }
+  // The standalone interface — the server's own address, or a development origin — may
+  // restart the server; a page embedding the widget may not.
+  // A declared embedding page is a widget even on localhost, as the bench's is.
+  const ownOrigin = origin === undefined || (ORIGIN_ALLOWLIST.test(origin) && !config.allowedOrigins.includes(origin)) || (() => {
+    try {
+      return new URL(origin).host === req.headers.host;
+    } catch {
+      return false;
+    }
+  })();
+  if (ownOrigin) mayRestart.add(socket);
   // Which project this connection watches. An unknown or absent name lands on the
   // default rather than failing: a client from before this existed names nothing,
   // and an embed host pinned to a project that has since closed should still get a
@@ -944,6 +993,10 @@ try {
       settings: { updateCheck: config.updateCheck, offline: config.offline },
       ...(config.updateRegistry !== undefined ? { registry: config.updateRegistry } : {}),
       log: (line) => console.log(line),
+      onNewer: (notice) => {
+        outpostUpdate = notice;
+        if (startupComplete) broadcastServerWide({ type: "outpost_update", notice });
+      },
     });
   }, 0);
   noticeTimer.unref?.();
@@ -1786,6 +1839,9 @@ function snapshot(workspace: Workspace): SessionSnapshot {
     // the count crossed the threshold.
     workspace: workspaceInfo(workspace),
     workspaces: workspaceInfos(),
+    ...(outpostUpdate ? { outpostUpdate } : {}),
+    ...(piPackageLists.has(workspace.root) ? { piPackages: piPackageLists.get(workspace.root) } : {}),
+    ...(restartReasons.size > 0 ? { restartNeeded: [...restartReasons] } : {}),
     ...(config.workspaceLock ? { workspaceLocked: true } : {}),
     // Absent means "settings", so a client that predates the setting — or one
     // that is not embedded — sees exactly what it saw before.
@@ -2986,6 +3042,8 @@ async function ensureStarted(target: Workspace): Promise<void> {
     publishWorkPlanTools(target, target.workPlan);
     withholdDocumentTools(target);
     target.lastUsedAt = Date.now();
+    // Listed, and looked up past startup's delay; a recent answer is reused.
+    void refreshPiPackages(target);
   })();
   starting.set(target.id, build);
   // Tell everyone it is starting, and again when it is ready or failed.
@@ -4127,6 +4185,144 @@ function affectedResourceWorkspaces(repositoryPath: string): Workspace[] {
   return [...roots].flatMap((root) => workspaces.sessionsOf(root));
 }
 
+// --- pi packages -------------------------------------------------------------
+
+
+/**
+ * Compare what is installed with what this server loaded. The first listing of a scope
+ * records it; later ones mark a package installed at another version, or configured
+ * since, as needing a restart.
+ */
+function markRestartNeeded(target: Workspace, listed: PiPackageInfo[]): PiPackageInfo[] {
+  const scopeKey = (scope: PiPackageInfo["scope"]) => (scope === "user" ? "user" : `project:${target.root}`);
+  for (const scope of ["user", "project"] as const) {
+    if (loadedPiPackageScopes.has(scopeKey(scope))) continue;
+    loadedPiPackageScopes.add(scopeKey(scope));
+    for (const entry of listed) if (entry.scope === scope) loadedPiPackages.set(`${scopeKey(scope)}:${entry.name}`, entry.installed ?? null);
+  }
+  const marked = listed.map((entry): PiPackageInfo => {
+    const key = `${scopeKey(entry.scope)}:${entry.name}`;
+    const loaded = loadedPiPackages.has(key) ? loadedPiPackages.get(key) : null;
+    return entry.installed !== undefined && entry.installed !== loaded ? { ...entry, restartNeeded: true } : entry;
+  });
+  for (const entry of marked) if (entry.restartNeeded) noteRestartReason(entry.name);
+  return marked;
+}
+
+/** Something now waits on a restart: say so to every client, once. */
+function noteRestartReason(name: string): void {
+  if (restartReasons.has(name)) return;
+  restartReasons.add(name);
+  if (startupComplete) broadcastServerWide({ type: "restart_needed", reasons: [...restartReasons] });
+}
+
+/** Every started session on a project, told its project's packages. */
+function broadcastPiPackages(root: string): void {
+  const packages = piPackageLists.get(root) ?? [];
+  for (const open of workspaces.sessionsOf(root)) broadcast(open, { type: "pi_packages", packages });
+}
+
+/**
+ * List a project's npm pi packages and look up newer versions.
+ *
+ * The listing goes out first, with the packages being looked up marked as such, so a
+ * slow registry shows as "checking" rather than as nothing. Never throws: a listing
+ * that cannot be read leaves the last one in place.
+ */
+async function refreshPiPackages(target: Workspace, force = false): Promise<void> {
+  try {
+    const listed = markRestartNeeded(target, await listPiPackages(target.settings.cwd, AGENT_DIR));
+    const settings = { updateCheck: config.updateCheck, offline: config.offline };
+    const enabled = updateCheckEnabled(settings);
+    const lookable = (entry: PiPackageInfo) => enabled && entry.pinned === undefined && entry.installed !== undefined;
+    piPackageLists.set(
+      target.root,
+      listed.map((entry) => (lookable(entry) ? { ...entry, check: { state: "checking" } } : entry)),
+    );
+    broadcastPiPackages(target.root);
+    const checked = await checkPiPackages(listed, {
+      enabled,
+      disabledReason: whyCheckingDisabled(settings),
+      force,
+      lookup: (packageName, installed) =>
+        fetchLatestVersion(installed, {
+          packageName,
+          background: !force,
+          ...(config.updateRegistry !== undefined ? { registry: config.updateRegistry } : {}),
+        }),
+    });
+    piPackageLists.set(target.root, checked);
+    broadcastPiPackages(target.root);
+  } catch (error) {
+    console.warn(`[pi] could not list pi packages for ${path.basename(target.root)}: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
+/**
+ * Install the newest version of one pi package. It takes effect when pi-outpost
+ * restarts: a running server cannot load an extension's new code in place (see the
+ * change's design), so nothing here claims it is running.
+ *
+ * The same rules as updating an extension repository: locked by `extensionLock`, and
+ * refused while a session that loads the package is working.
+ */
+async function handleUpdatePiPackage(workspace: Workspace, socket: WebSocket, source: string, requestId: string): Promise<void> {
+  const answer = (outcome: "installed" | "failed" | "refused", message: string) =>
+    send(socket, { type: "pi_package_update_result", requestId, outcome, message });
+  if (config.extensionLock) {
+    answer("refused", "Extensions are locked by this deployment's configuration");
+    return;
+  }
+  const entry = (await listPiPackages(workspace.settings.cwd, AGENT_DIR)).find((candidate) => candidate.source === source);
+  if (!entry) {
+    answer("refused", `${source} is not a pi package configured here`);
+    return;
+  }
+  if (entry.pinned !== undefined) {
+    answer("refused", `${entry.name} is pinned at ${entry.pinned}`);
+    return;
+  }
+  if (updatingPiPackages.has(entry.name)) {
+    answer("refused", `${entry.name} is already being updated`);
+    return;
+  }
+  // A package in the agent directory's settings is loaded by every project; one in a
+  // project's settings, by that project's sessions.
+  const affected = (entry.scope === "user" ? [...workspaces.all()] : workspaces.sessionsOf(workspace.root)).filter((open) => open.started);
+  const busy = busyResourceConsumer(affected);
+  if (busy) {
+    answer("refused", busy);
+    return;
+  }
+
+  updatingPiPackages.add(entry.name);
+  try {
+    try {
+      await (await packageManagerFor(workspace.settings.cwd, AGENT_DIR)).update(entry.source);
+    } catch (error) {
+      answer("failed", `${entry.name} was not updated: ${error instanceof Error ? error.message : String(error)}`);
+      return;
+    }
+    // The package manager returns without a word when it decides not to install — in
+    // pi's offline mode, or when its own look at the registry failed. What is on disk
+    // afterwards is the only answer to "did it update".
+    const installed = (await listPiPackages(workspace.settings.cwd, AGENT_DIR)).find((candidate) => candidate.source === source)?.installed;
+    if (installed === undefined || installed === entry.installed) {
+      const offline = process.env.PI_OFFLINE ? " — pi's offline mode (PI_OFFLINE) is on" : "";
+      answer("failed", `${entry.name} is still at ${entry.installed ?? "no version"}: the package manager installed nothing${offline}`);
+      return;
+    }
+    answer("installed", `${entry.name} ${installed} is installed — restart pi-outpost to use it`);
+  } finally {
+    updatingPiPackages.delete(entry.name);
+    const roots = new Set(affected.map((open) => open.root).concat(workspace.root));
+    for (const root of roots) {
+      const target = workspaces.get(root);
+      if (target) await refreshPiPackages(target);
+    }
+  }
+}
+
 /**
  * Why a change to a repository's resources must wait: the first of its consumers
  * that is starting, replacing its session, or streaming a turn. Workspaces already
@@ -4340,6 +4536,12 @@ async function handleUpdateAgentResourceRepository(
 
     const reloads: AgentResourceReloadResult[] = [];
     let requesterInventoryRefreshed = false;
+    // Skills are text, read again by a rebuilt session. Extension code is not: a module
+    // this server already imported is what a second import returns, so the rebuilt
+    // session keeps the old extension until pi-outpost restarts. Say that, rather than
+    // "reloaded" — verified by server/test/extensionRepositoryReload.test.mjs.
+    const carriesExtensions = service.repositoryResources(repositoryId).some((resource) => resource.kind === "extension");
+    const repositoryName = path.basename(repositoryPath);
     for (const target of affected) {
       if (!target.started) {
         reloads.push({ workspaceRoot: target.root, status: "not-started" });
@@ -4368,7 +4570,11 @@ async function handleUpdateAgentResourceRepository(
         const inventory = await (resourceReloadSyncs.get(target.id) ?? refreshResourceInventory(target, repositoryPath));
         broadcast(target, { type: "agent_resource_inventory", inventory });
         if (target === workspace) requesterInventoryRefreshed = true;
-        reloads.push({ workspaceRoot: target.root, status: "reloaded" });
+        reloads.push(
+          carriesExtensions
+            ? { workspaceRoot: target.root, status: "restart-required", message: `Skills are reloaded; ${repositoryName}'s extension code runs after pi-outpost restarts` }
+            : { workspaceRoot: target.root, status: "reloaded" },
+        );
       } catch (error) {
         reloads.push({ workspaceRoot: target.root, status: "failed", message: error instanceof Error ? error.message : String(error) });
       } finally {
@@ -4377,6 +4583,8 @@ async function handleUpdateAgentResourceRepository(
       }
     }
     if (!requesterInventoryRefreshed) await refreshResourceInventory(workspace, repositoryPath);
+    // Updated on disk: whatever else happened, what runs is the old code until a restart.
+    if (carriesExtensions) noteRestartReason(repositoryName);
     const failed = reloads.some((reload) => reload.status === "failed");
     const result: AgentResourceUpdateResult = {
       status: failed ? "updated-reload-failed" : "updated",
@@ -4501,6 +4709,16 @@ function handleClientMessage(socket: WebSocket, raw: string): void {
     case "open_side_session":
       if (typeof message.root !== "string") return;
       handleOpenSideSession(socket, message.root).catch(reportError);
+      return;
+    case "check_pi_packages":
+      void refreshPiPackages(workspace, true);
+      return;
+    case "restart_server":
+      handleRestartServer(socket).catch(reportError);
+      return;
+    case "update_pi_package":
+      if (typeof message.source !== "string" || typeof message.requestId !== "string") return;
+      handleUpdatePiPackage(workspace, socket, message.source, message.requestId).catch(reportError);
       return;
     case "prompt": {
       if (typeof message.text !== "string") return;
@@ -5026,6 +5244,14 @@ handleWsConnection = (socket, workspaceRoot) => {
 // sees the process is no longer serving an agent, even though HTTP still answers.
 getHealth = () => (workspace.agent.ok ? { ok: true, sessionId: workspace.agent.snapshot().sessionId } : { ok: false });
 
+// The server's own project lists its pi packages here, at the end of startup, because
+// the listing is broadcast to connected clients and nothing above this line may be
+// assumed initialised while the module is still evaluating. Other projects list theirs
+// as they start (ensureStarted). Not awaited: a registry lookup never delays startup.
+void refreshPiPackages(workspace);
+startupComplete = true;
+if (outpostUpdate) broadcastServerWide({ type: "outpost_update", notice: outpostUpdate });
+
 console.log(`[pi] session ${workspace.agent.snapshot().sessionId}`);
 console.log(`[pi] agent runtime ${workspace.agent.kind}`);
 console.log(`[pi] model ${modelName(workspace)} · cwd ${workspace.settings.cwd} · agentDir ${AGENT_DIR}`);
@@ -5136,6 +5362,60 @@ const idleSweep = setInterval(sweepIdleWorkspaces, SWEEP_INTERVAL_MS);
 idleSweep.unref?.();
 
 // --- Shutdown -------------------------------------------------------------------------
+
+/** Why this server cannot restart itself, when it cannot. */
+function whyNoRestart(): string | undefined {
+  if (process.execArgv.some((arg) => arg === "--watch" || arg.startsWith("--watch="))) {
+    return "pi-outpost runs under node --watch, which restarts it on every change";
+  }
+  return undefined;
+}
+
+let restarting = false;
+
+/**
+ * Stop, and start again with the same command in the same terminal.
+ *
+ * A process cannot replace its own image, so the new server is a child with the same
+ * executable, arguments, environment and inherited stdio, and this process stays as its
+ * parent: it forwards Ctrl-C and exits with the child's code, so the terminal keeps one
+ * foreground job. Nothing on disk is replaced — this loads what was updated, it does not
+ * update anything.
+ */
+async function restartServer(): Promise<void> {
+  if (restarting) return;
+  restarting = true;
+  console.log("[pi] restarting to load updated packages…");
+  await Promise.allSettled([...workspaces.all()].map((open) => open.stop()));
+  await app.close();
+  const { spawn } = process.getBuiltinModule("node:child_process");
+  const sea = process.getBuiltinModule("node:sea")?.isSea?.() === true;
+  const args = sea ? process.argv.slice(2) : [...process.execArgv, ...process.argv.slice(1)];
+  const child = spawn(process.execPath, args, { stdio: "inherit", env: process.env });
+  process.removeAllListeners("SIGINT");
+  process.removeAllListeners("SIGTERM");
+  for (const signal of ["SIGINT", "SIGTERM"] as const) process.on(signal, () => child.kill(signal));
+  child.on("exit", (code, signal) => process.exit(code ?? (signal ? 1 : 0)));
+}
+
+async function handleRestartServer(socket: WebSocket): Promise<void> {
+  if (!mayRestart.has(socket)) {
+    send(socket, { type: "error", message: "An embedded widget cannot restart the server" });
+    return;
+  }
+  const blocked = whyNoRestart();
+  if (blocked) {
+    send(socket, { type: "error", message: `Cannot restart: ${blocked}` });
+    return;
+  }
+  const working = [...workspaces.all()].find((open) => open.started && (open.isBusy() || open.replacingSession));
+  if (working) {
+    send(socket, { type: "error", message: `${workspaceTitle(working)} is working — stop its turn before restarting` });
+    return;
+  }
+  broadcastServerWide({ type: "server_restarting" });
+  await restartServer();
+}
 
 async function shutdown(): Promise<void> {
   // Every open project, not just the one the server booted with: a second project's

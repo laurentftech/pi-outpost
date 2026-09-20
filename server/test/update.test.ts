@@ -11,12 +11,14 @@ import { mkdir, mkdtemp, readFile, readdir, realpath, rm, symlink, writeFile } f
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { after, describe, test } from "node:test";
+import type { OutpostUpdateNotice } from "@pi-outpost/shared";
 import {
   CHECK_INTERVAL_MS,
   cachePath,
   currentEvidence,
   detectChannel,
   extractSingleVersion,
+  condenseNpmError,
   fetchLatestVersion,
   isFresh,
   isNewer,
@@ -710,10 +712,12 @@ describe("the startup notice", () => {
     lookupImpl?: VersionLookup;
     now?: number;
     agentDir?: string;
+    onNewer?: (notice: OutpostUpdateNotice) => void;
   }): Promise<{ lines: string[]; agentDir: string }> {
     const lines: string[] = [];
     const agentDir = over.agentDir ?? (await workspace());
     await runStartupUpdateNotice({
+      ...(over.onNewer ? { onNewer: over.onNewer } : {}),
       version: over.version ?? "0.8.0",
       agentDir,
       settings: over.settings ?? {},
@@ -811,5 +815,87 @@ describe("the startup notice", () => {
     const { lines } = await notice({ settings: { offline: true, updateCheck: true }, lookupImpl });
     assert.equal(calls(), 1, "an explicit yes must survive offline");
     assert.match(lines[0] ?? "", /0\.9\.0 is available/);
+  });
+  test("tells the interface about a newer version, with what this installation should do", async () => {
+    // ANewerVersionIsAnnouncedInTheInterface — the server half
+    const told: OutpostUpdateNotice[] = [];
+    await notice({ version: "0.26.0", lookupImpl: countingLookup("0.27.0").lookupImpl, onNewer: (n) => told.push(n) });
+    assert.deepEqual(told, [
+      { running: "0.26.0", latest: "0.27.0", instruction: 'Run "pi-outpost update" in a terminal, then restart it.', copy: "pi-outpost update" },
+    ]);
+
+    const exe: OutpostUpdateNotice[] = [];
+    await notice({ version: "0.26.0", channel: "executable", lookupImpl: countingLookup("0.27.0").lookupImpl, onNewer: (n) => exe.push(n) });
+    assert.match(exe[0]?.instruction ?? "", /Download the new build/);
+  });
+
+  test("tells the interface nothing when current, when the check fails, when off, or for a one-off run", async () => {
+    // NoNoticeWithoutANewerVersion — the server half
+    const told: OutpostUpdateNotice[] = [];
+    const onNewer = (n: OutpostUpdateNotice) => told.push(n);
+    await notice({ version: "0.27.0", lookupImpl: countingLookup("0.27.0").lookupImpl, onNewer });
+    await notice({ version: "0.26.0", lookupImpl: async () => { throw new Error("unreachable"); }, onNewer });
+    await notice({ version: "0.26.0", settings: { updateCheck: false }, lookupImpl: countingLookup("0.27.0").lookupImpl, onNewer });
+    await notice({ version: "0.26.0", channel: "ephemeral", lookupImpl: countingLookup("0.27.0").lookupImpl, onNewer });
+    assert.deepEqual(told, []);
+  });
+});
+
+describe("an npm failure, as a reader sees it", () => {
+  test("keeps the fact and drops npm's repetition and its log path", () => {
+    const stderr = [
+      "npm error code E404",
+      "npm error 404 Not Found - GET http://127.0.0.1:4399/pi-fake-ext",
+      "npm error 404",
+      "npm error 404  'pi-fake-ext@latest' is not in this registry.",
+      "npm error 404 Note that you can also install from a",
+      "npm error 404 tarball, folder, http url, or git url.",
+      "npm error A complete log of this run can be found in: /Users/someone/.npm/_logs/2026-09-20T07_44_34_308Z-debug-0.log",
+    ].join("\n");
+    const condensed = condenseNpmError(stderr);
+    assert.equal(condensed, "404 Not Found - GET http://127.0.0.1:4399/pi-fake-ext (E404)");
+    assert.ok(!condensed.includes("_logs"), "no log path");
+    assert.ok(condensed.length < 120);
+  });
+
+  test("keeps a single-line failure as it is, and caps a very long one", () => {
+    assert.equal(condenseNpmError("npm error network request to https://registry.example failed, reason: connect ECONNREFUSED"), "network request to https://registry.example failed, reason: connect ECONNREFUSED");
+    assert.equal(condenseNpmError(""), "");
+    assert.ok(condenseNpmError(`npm error ${"x".repeat(400)}`).endsWith("…"));
+  });
+});
+
+describe("looking up another package", () => {
+  test("npm view names the package asked for, scoped names included", () => {
+    const invocation = npmViewInvocation(undefined, "darwin", "/npm/bin/npm-cli.js", "@gotgenes/pi-permission-system");
+    assert.ok(invocation.args.includes("@gotgenes/pi-permission-system@latest"));
+    const windows = npmViewInvocation(undefined, "win32", "", "openlore");
+    assert.equal(windows.args.at(-1), "npm.cmd view openlore@latest version --json");
+  });
+
+  test("a name that is not an npm package name never reaches a command line", () => {
+    for (const hostile of ["openlore & calc", "../x", "Open Lore", "@scope/../x", ""]) {
+      assert.throws(() => npmViewInvocation(undefined, "win32", "", hostile), /not an npm package name/);
+    }
+  });
+
+  test("the lookup is asked for that package, and its failure is a failed check with the reason", async () => {
+    let asked: string | undefined;
+    const found = await fetchLatestVersion("33.0.1", {
+      packageName: "@gotgenes/pi-permission-system",
+      lookupImpl: async (options) => {
+        asked = options.packageName;
+        return "33.1.0";
+      },
+    });
+    assert.equal(asked, "@gotgenes/pi-permission-system");
+    assert.deepEqual(found, { status: "newer", running: "33.0.1", latest: "33.1.0" });
+
+    const refused = await fetchLatestVersion("1.0.0", {
+      packageName: "openlore & calc",
+      lookupImpl: async (options) => npmViewInvocation(undefined, "win32", "", options.packageName),
+    });
+    assert.equal(refused.status, "failed");
+    assert.match(refused.status === "failed" ? refused.reason : "", /not an npm package name/);
   });
 });

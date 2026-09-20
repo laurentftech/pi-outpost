@@ -517,6 +517,34 @@ describe("switching projects", () => {
     expect(result.current.state.workspace?.root).toBe("/srv/beta");
   });
 
+  it("sends a package update, keeps its answer, and marks a restart until the next snapshot", async () => {
+    const { result } = renderHook(() => useAgent());
+    act(() => mockWs!.open());
+    act(() => mockWs!.receive(switched("/srv/alpha")));
+    await waitFor(() => expect(result.current.state.workspace?.root).toBe("/srv/alpha"));
+
+    const packages = [{ source: "npm:openlore", name: "openlore", scope: "user", installed: "3.1.1", check: { state: "newer", latest: "3.2.0" } }];
+    act(() => mockWs!.receive({ type: "pi_packages", packages }));
+    expect(result.current.state.piPackages).toEqual(packages);
+
+    act(() => result.current.updatePiPackage("npm:openlore"));
+    const frame = sentFrames().at(-1) as { type: string; source: string; requestId: string };
+    expect(frame).toMatchObject({ type: "update_pi_package", source: "npm:openlore" });
+    expect(result.current.state.piPackageUpdate).toMatchObject({ status: "pending", source: "npm:openlore" });
+
+    act(() => mockWs!.receive({ type: "pi_package_update_result", requestId: "someone-else", outcome: "failed", message: "x" }));
+    expect(result.current.state.piPackageUpdate?.status).toBe("pending");
+    act(() => mockWs!.receive({ type: "pi_package_update_result", requestId: frame.requestId, outcome: "installed", message: "installed — restart" }));
+    expect(result.current.state.piPackageUpdate).toMatchObject({ status: "installed", message: "installed — restart" });
+
+    act(() => result.current.restartServer());
+    expect(sentFrames().at(-1)).toEqual({ type: "restart_server" });
+    act(() => mockWs!.receive({ type: "server_restarting" }));
+    expect(result.current.state.serverRestarting).toBe(true);
+    act(() => mockWs!.receive(switched("/srv/alpha")));
+    expect(result.current.state.serverRestarting).toBe(false);
+  });
+
   it("keeps each reply block's profile statement by key, until the next snapshot restates them", async () => {
     const { result } = renderHook(() => useAgent());
     act(() => mockWs!.open());
