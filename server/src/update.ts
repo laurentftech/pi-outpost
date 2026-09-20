@@ -12,6 +12,7 @@
  * is testable without a global install, an npx cache, or a compiled binary.
  */
 import fs from "node:fs/promises";
+import type { OutpostUpdateNotice } from "@pi-outpost/shared";
 import os from "node:os";
 import path from "node:path";
 
@@ -211,12 +212,25 @@ function npmEnvironmentWithOverride(
  * string; the optional registry travels through npm's environment instead. That
  * keeps registry URLs (and their shell metacharacters) out of cmd.exe's input.
  */
+/**
+ * A package name, checked against npm's own rules before it goes anywhere near a
+ * command line. The names come from the agent's settings, and on Windows the lookup
+ * runs through cmd.exe: a name is the one piece of that command a file controls.
+ */
+export function npmPackageName(name: string): string {
+  if (!/^(?:@[a-z0-9][a-z0-9._~-]*\/)?[a-z0-9][a-z0-9._~-]*$/.test(name) || name.length > 214) {
+    throw new Error(`"${name}" is not an npm package name`);
+  }
+  return name;
+}
+
 export function npmViewInvocation(
   registry?: string,
   platform: NodeJS.Platform = process.platform,
   npmExecPath = process.env.npm_execpath,
+  packageName: string = PACKAGE_NAME,
 ): NpmViewInvocation {
-  const viewArgs = ["view", `${PACKAGE_NAME}@latest`, "version", "--json"];
+  const viewArgs = ["view", `${npmPackageName(packageName)}@latest`, "version", "--json"];
   if (platform === "win32" && !npmExecPath?.trim()) {
     return {
       command: process.env.ComSpec?.trim() || "cmd.exe",
@@ -318,6 +332,8 @@ export type VersionLookup = (
   options: {
     signal: AbortSignal;
     registry?: string;
+    /** The package to look up; pi-outpost itself when absent. */
+    packageName?: string;
     /** True only when the lookup must not keep the process alive. */
     background: boolean;
   },
@@ -333,9 +349,31 @@ export type VersionLookup = (
  * Keeping the whole exchange inside npm makes its configuration the single source
  * of truth. An explicit pi-outpost override is still passed as `--registry`.
  */
+/**
+ * npm's stderr, as one sentence a reader can act on.
+ *
+ * npm answers a missing package with ten lines: a code, the request, the same code
+ * again, an explanation, a note about tarballs, and the path of a debug log. Shown whole
+ * in a settings panel — where this reason lands — it buries the one fact that matters,
+ * and names a log file nobody asked about. The first line that says something keeps that
+ * fact; the rest is dropped, and the whole text stays available where it came from.
+ */
+export function condenseNpmError(stderr: string): string {
+  const lines = stderr
+    .split(/\r?\n/)
+    .map((line) => line.replace(/^npm (?:error|ERR!|warn)\s*/i, "").trim())
+    .filter((line) => line !== "" && !/^A complete log of this run/i.test(line));
+  // A bare code or number on its own line is npm repeating itself around the message.
+  const informative = lines.find((line) => !/^(?:code\s+)?[A-Z0-9_]{2,8}$/.test(line) && line.length > 3);
+  const code = lines.find((line) => /^code\s+\S+$/i.test(line))?.replace(/^code\s+/i, "");
+  const message = informative ?? lines[0] ?? "";
+  const trimmed = message.length > 200 ? `${message.slice(0, 197)}…` : message;
+  return code && !trimmed.includes(code) ? `${trimmed} (${code})` : trimmed;
+}
+
 const npmViewLatestVersion: VersionLookup = async (options) => {
   const { execFile } = process.getBuiltinModule("node:child_process");
-  const { command, args, env } = npmViewInvocation(options.registry);
+  const { command, args, env } = npmViewInvocation(options.registry, process.platform, process.env.npm_execpath, options.packageName);
 
   return await new Promise<unknown>((resolve, reject) => {
     const child = execFile(
@@ -355,8 +393,7 @@ const npmViewLatestVersion: VersionLookup = async (options) => {
             reject(error);
             return;
           }
-          const detail = stderr.trim();
-          reject(new Error(detail || error.message));
+          reject(new Error(condenseNpmError(stderr) || error.message));
           return;
         }
         try {
@@ -402,7 +439,9 @@ export function extractSingleVersion(parsed: unknown): string {
 const directRegistryLatestVersion: VersionLookup = async (options) => {
   const configured = options.registry ?? process.env.npm_config_registry;
   const base = configured?.trim() || PUBLIC_REGISTRY;
-  const target = new URL(`${base.replace(/\/+$/, "")}/${PACKAGE_NAME}/latest`);
+  // A scoped name keeps its `@` and encodes its `/`: `@scope%2Fname`, as registries expect.
+  const name = npmPackageName(options.packageName ?? PACKAGE_NAME).replaceAll("/", "%2F");
+  const target = new URL(`${base.replace(/\/+$/, "")}/${name}/latest`);
   const transport = target.protocol === "http:"
     ? await import("node:http")
     : await import("node:https");
@@ -459,6 +498,8 @@ export async function fetchLatestVersion(
     lookupImpl?: VersionLookup;
     timeoutMs?: number;
     registry?: string;
+    /** The package to look up; pi-outpost itself when absent. */
+    packageName?: string;
     /**
      * Nobody asked for this check, so it may not hold the process open — the child,
      * its pipes and the timeout are unref'd. Defaults to false, which is the safe way
@@ -482,6 +523,7 @@ export async function fetchLatestVersion(
       signal: controller.signal,
       background,
       ...(options.registry ? { registry: options.registry } : {}),
+      ...(options.packageName ? { packageName: options.packageName } : {}),
     });
     if (typeof latest !== "string" || latest === "") {
       return { status: "failed", running, reason: "npm answered without a version" };
@@ -900,6 +942,28 @@ export interface StartupNoticeOptions {
   lookupImpl?: VersionLookup;
   now?: number;
   log?: (line: string) => void;
+  /** Told when a newer version is known, so the interface can say it too. */
+  onNewer?: (notice: OutpostUpdateNotice) => void;
+}
+
+
+/**
+ * The notice for an installation, or none. The instruction is the one the update
+ * command gives for that installation, so the interface never sends anyone to a
+ * command that would refuse them. A one-off runner already fetches the newest version
+ * on its next run, so it gets no notice at all.
+ */
+export function updateNoticeFor(channel: InstallChannel, running: string, latest: string): OutpostUpdateNotice | undefined {
+  switch (channel) {
+    case "global":
+    case "unknown":
+      return { running, latest, instruction: `Run "${PACKAGE_NAME} update" in a terminal, then restart it.`, copy: `${PACKAGE_NAME} update` };
+    case "executable":
+      return { running, latest, instruction: `Download the new build from ${RELEASES_URL}.`, copy: RELEASES_URL };
+    case "ephemeral":
+    case "checkout":
+      return undefined;
+  }
 }
 
 /**
@@ -950,8 +1014,13 @@ export async function runStartupUpdateNotice(options: StartupNoticeOptions): Pro
   // between a nicety and a nuisance.
   const agentDir = options.agentDir ?? defaultAgentDir();
   const cached = await readCache(agentDir);
+  const tell = (latest: string) => {
+    announce(say, options.version, latest);
+    const notice = updateNoticeFor(channel, options.version, latest);
+    if (notice) options.onNewer?.(notice);
+  };
   if (cached !== undefined && isFresh(cached, now)) {
-    if (isNewer(cached.latest, options.version)) announce(say, options.version, cached.latest);
+    if (isNewer(cached.latest, options.version)) tell(cached.latest);
     return;
   }
 
@@ -965,7 +1034,7 @@ export async function runStartupUpdateNotice(options: StartupNoticeOptions): Pro
   if (check.status === "failed") return;
 
   await writeCache(agentDir, { latest: check.latest, checkedAt: now });
-  if (check.status === "newer") announce(say, check.running, check.latest);
+  if (check.status === "newer") tell(check.latest);
 }
 
 function announce(say: (line: string) => void, running: string, latest: string): void {

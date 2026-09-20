@@ -1,4 +1,8 @@
 import { useEffect, useRef, useState } from "react";
+import type { PiPackageInfo } from "@pi-outpost/shared";
+import type { AgentState } from "../useAgent";
+import { PiPackages } from "./PiPackages";
+import { RestartNeeded } from "./RestartNeeded";
 import { useClickOutside } from "../util/clickOutside";
 import { ServerPathPicker } from "./ServerPathPicker";
 import { AgentResourceManager } from "./AgentResourceManager";
@@ -46,6 +50,17 @@ interface SettingsMenuProps {
   userExtensionPaths: string[];
   /** When true the deployment forbids editing them, and no control is drawn. */
   extensionLock: boolean;
+  /** The npm pi packages the agent loads, and the update and restart they offer. */
+  piPackages?: PiPackageInfo[] | null;
+  piPackageUpdate?: AgentState["piPackageUpdate"];
+  /** The standalone interface may restart the server; a widget may not. */
+  canRestartServer?: boolean;
+  serverRestarting?: boolean;
+  onCheckPiPackages?: () => void;
+  onUpdatePiPackage?: (source: string) => void;
+  onRestartServer?: () => void;
+  /** What waits on a restart to run. */
+  restartNeeded?: string[];
   tools: { name: string; active: boolean }[];
   commands: { name: string; source: string }[];
   sandbox: SandboxConfig | null;
@@ -108,6 +123,14 @@ export function SettingsMenu({
   configuredExtensionPaths,
   userExtensionPaths,
   extensionLock,
+  piPackages = null,
+  piPackageUpdate = null,
+  canRestartServer = false,
+  serverRestarting = false,
+  onCheckPiPackages,
+  onUpdatePiPackage,
+  onRestartServer,
+  restartNeeded = [],
   tools,
   commands,
   sandbox,
@@ -385,6 +408,15 @@ export function SettingsMenu({
                   Extension paths and repository updates that contain extensions are locked by this deployment.
                 </p>
               ) : null}
+
+              <PiPackages
+                packages={piPackages}
+                update={piPackageUpdate}
+                locked={extensionLock}
+                onCheck={() => onCheckPiPackages?.()}
+                onUpdate={(source) => onUpdatePiPackage?.(source)}
+              />
+              <RestartNeeded reasons={restartNeeded} canRestart={canRestartServer} restarting={serverRestarting} onRestart={() => onRestartServer?.()} />
             </section>
 
             {/* Sandbox section */}

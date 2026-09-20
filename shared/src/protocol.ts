@@ -344,7 +344,12 @@ export interface AgentResourceRemovalResult {
 
 export interface AgentResourceReloadResult {
   workspaceRoot: string;
-  status: "reloaded" | "not-started" | "failed";
+  /**
+   * `restart-required`: the session was rebuilt — skills are the new ones — but the
+   * repository's extension code already ran in this server, and a running server cannot
+   * load an extension's new code. It takes effect when pi-outpost restarts.
+   */
+  status: "reloaded" | "restart-required" | "not-started" | "failed";
   message?: string;
 }
 
@@ -652,6 +657,44 @@ export interface WorkspaceInfo {
  */
 export type EmbedWorkspaceControls = "settings" | "root" | "projects";
 
+/**
+ * A pi package the agent loads from npm, and what is known about a newer version.
+ * `check` is absent until the first look; a failed one says why and is never
+ * "current".
+ */
+export interface PiPackageInfo {
+  /** As configured, e.g. `npm:openlore`. */
+  source: string;
+  name: string;
+  /** The agent directory's settings (`user`) or the project's (`project`). */
+  scope: "user" | "project";
+  /** Absent when configured but not installed. */
+  installed?: string;
+  /** The version it is pinned to; a pinned package is offered no update. */
+  pinned?: string;
+  /**
+   * The installed version is not the one the server loaded when it started — updated
+   * from Settings or from a terminal since. It takes effect on a restart.
+   */
+  restartNeeded?: true;
+  check?:
+    | { state: "checking" }
+    | { state: "newer"; latest: string }
+    | { state: "current"; latest: string }
+    | { state: "failed"; reason: string }
+    | { state: "off"; reason: string };
+}
+
+/** What the interface says about a newer pi-outpost: what to do, and what to copy. */
+export interface OutpostUpdateNotice {
+  running: string;
+  latest: string;
+  /** How this installation moves to it, in a sentence. */
+  instruction: string;
+  /** What the copy control copies. */
+  copy: string;
+}
+
 /** Snapshot of session state, sent on connect and after session replacement. */
 export interface SessionSnapshot {
   /**
@@ -683,6 +726,12 @@ export interface SessionSnapshot {
    * what it is bound to.
    */
   workspaces?: WorkspaceInfo[];
+  /** A newer pi-outpost, when the startup check found one. */
+  outpostUpdate?: OutpostUpdateNotice;
+  /** The npm pi packages this project's agent loads. Absent until first listed. */
+  piPackages?: PiPackageInfo[];
+  /** What waits on a restart to run; absent when nothing does. */
+  restartNeeded?: string[];
   branding: Branding;
   sessionId: string;
   model: string;
@@ -892,6 +941,32 @@ export type ServerMessage =
    * and the browser finds the block it drew by its content.
    */
   | { type: "reply_structured_conformance"; key: string; conformance: StructuredConformance }
+  /**
+   * A newer pi-outpost is published. Server-wide, once the startup check knows; the
+   * standalone interface shows it, an embedded widget does not.
+   */
+  | { type: "outpost_update"; notice: OutpostUpdateNotice }
+  /** The npm pi packages this project's agent loads, and what is known about newer versions. */
+  | { type: "pi_packages"; packages: PiPackageInfo[] }
+  /** pi-outpost is restarting; the connection drops and comes back. */
+  | { type: "server_restarting" }
+  /**
+   * What is installed and not yet running, by name — pi packages and extension
+   * repositories updated since this server started. Empty when nothing waits on a restart.
+   */
+  | { type: "restart_needed"; reasons: string[] }
+  /** The answer to one `update_pi_package`. */
+  | {
+      type: "pi_package_update_result";
+      requestId: string;
+      /**
+       * `refused`: nothing changed (locked, busy, unknown). `failed`: the install failed
+       * or installed nothing, and the installed version is unchanged. `installed`: the new
+       * version is on disk and takes effect when pi-outpost restarts.
+       */
+      outcome: "installed" | "failed" | "refused";
+      message: string;
+    }
   | { type: "queue"; steering: string[]; followUp: string[] }
   | { type: "context_usage"; usage: ContextUsage }
   | { type: "work_plan_changed"; workPlan: WorkPlan | null }
@@ -1083,6 +1158,18 @@ export type ClientMessage =
    * connection is bound to it. Refused on a server whose workspaces are locked.
    */
   | { type: "open_side_session"; root: string }
+  /** Look up newer versions of this project's pi packages now, past any recent answer. */
+  | { type: "check_pi_packages" }
+  /**
+   * Restart pi-outpost so updated packages load. Refused while an agent works, and from
+   * an embedded widget's connection.
+   */
+  | { type: "restart_server" }
+  /**
+   * Install the newest version of one configured pi package and reload the sessions that
+   * load it. Sent only after the user confirmed that code is changing.
+   */
+  | { type: "update_pi_package"; source: string; requestId: string }
   | { type: "prompt"; text: string; images?: WireImage[] }
   | { type: "abort" }
   | { type: "set_model"; provider: string; id: string }
