@@ -49,6 +49,8 @@ jobs:
           - runner: windows-latest
             arch: x64
     runs-on: ${{ matrix.runner }}
+    # A build that stops answering is a build that failed; ~2 minutes is the norm.
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
@@ -95,6 +97,11 @@ jobs:
     needs: executables
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
+    # The suites here have hung before — a server test intermittently leaves a process
+    # alive, so the runner waits on a step that has already done its work (seen on
+    # PR #200, and again cutting v0.27.1). Uncapped, that waits out GitHub's six hours
+    # with a tag pushed and nothing published. Normal run: about thirteen minutes.
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v5
       
@@ -211,6 +218,8 @@ jobs:
     needs: [executables, publish]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
+    # Downloads three artifacts and uploads them: seconds, not minutes.
+    timeout-minutes: 15
     permissions:
       contents: write
     steps:
