@@ -157,6 +157,19 @@ async function setUp(t, config = {}) {
 }
 
 const packagesMessage = (client, predicate) => next(client, (m) => m.type === "pi_packages" && predicate(m.packages[0]));
+
+/**
+ * The messages this client has received so far, as a boundary to wait past.
+ *
+ * `next()` only accepts a message that arrives after it is armed, which is a race
+ * whenever something slow — a real npm install — runs between the action and the
+ * wait: the broadcast it is waiting for has already landed, and it waits out its
+ * timeout for a second one that is never sent. A boundary taken before the action
+ * cannot lose that way, and still refuses a message from before it.
+ */
+const mark = (client) => new Set(client.received);
+const packagesAfter = (client, since, predicate) =>
+  client.waitFor((m) => m.type === "pi_packages" && !since.has(m) && predicate(m.packages[0]));
 const toolNames = (message) => (message.tools ?? []).map((tool) => tool.name);
 
 async function update(client, requestId = "u1") {
@@ -248,9 +261,10 @@ test("an install that fails leaves the installed version and says why", async (t
   reg.state.published.add("1.1.0");
   reg.state.latest = "1.1.0";
   reg.state.withholdTarballs = true;
+  const since = mark(client);
   const result = await update(client);
   assert.equal(result.outcome, "failed", result.message);
-  const listed = await packagesMessage(client, (pkg) => pkg.check?.state !== "checking");
+  const listed = await packagesAfter(client, since, (pkg) => pkg.check?.state !== "checking");
   assert.equal(listed.packages[0].installed, "1.0.0");
 });
 
