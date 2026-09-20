@@ -8,14 +8,13 @@
  * selected it on `isBunBinary` alone, which a Node SEA is not, so both build scripts
  * patched that one condition by hand.
  *
- * pi-coding-agent#8237 fixed the same gap upstream, landing in 0.84.3: the branch now
- * reads `isBunBinary || isNodeSeaBinary || isBundledNode`, where `isNodeSeaBinary` is
- * the same `node:sea` isSea() check the hand patch was adding. Both build scripts
- * detect that shape and no-op rather than patch — see the "upstream fixed it" comment
- * in each. This suite asserts against the SDK *as installed*, on either shape, so an
- * SDK upgrade that moves the anchors again fails here — in a suite that runs on every
- * push — rather than at release time, or worse, in an executable where extension
- * loading is quietly dead.
+ * pi-coding-agent#8237 fixed the same gap upstream, landing in 0.84.3, and 0.86.0
+ * moved the same condition into a named `usesEmbeddedModules`. Both build scripts
+ * detect either shape and no-op rather than patch, through the one predicate in
+ * scripts/sea-jiti-shape.mjs that this suite reads too. It asserts against the SDK
+ * *as installed*, so an SDK upgrade that moves the anchors again fails here — in a
+ * suite that runs on every push — rather than at release time, or worse, in an
+ * executable where extension loading is quietly dead.
  *
  * The end-to-end proof cannot live here: it needs Node >= 26, a full SEA build of
  * several minutes, and a runtime whose single-executable support works. It was run
@@ -26,35 +25,33 @@ import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, test } from "node:test";
+import { PRE_8237_BRANCH, upstreamHandlesSea } from "../../scripts/sea-jiti-shape.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(HERE, "../..");
 const LOADER = path.join(REPO, "node_modules/@earendil-works/pi-coding-agent/dist/core/extensions/loader.js");
 
 /** The branch a Node SEA needed patched by hand, before pi-coding-agent#8237. */
-const OLD_BRANCH = "...isBunBinary ? { virtualModules: VIRTUAL_MODULES, tryNative: false }";
-/** What #8237 shipped: the SDK selects virtual modules for a Node SEA on its own. */
-const FIXED_BRANCH =
-  /isBunBinary\s*\|\|\s*isNodeSeaBinary\s*\|\|\s*isBundledNode\s*\?\s*\{\s*virtualModules:\s*VIRTUAL_MODULES,\s*tryNative:\s*false\s*\}/;
+const OLD_BRANCH = PRE_8237_BRANCH;
 
 describe("the SDK's SEA handling, as installed", () => {
   test("the loader selects jiti's virtual modules for a Node SEA — by hand, or natively since #8237", () => {
     const loader = readFileSync(LOADER, "utf8");
     // The bundled form differs from the source only in whitespace; both scripts
     // patch the bundled one, so this checks what is actually there to match against.
-    const hasEither = loader.includes(OLD_BRANCH) || FIXED_BRANCH.test(loader);
+    const hasEither = loader.includes(OLD_BRANCH) || upstreamHandlesSea(loader);
     assert.ok(hasEither, "neither the pre-#8237 branch nor its upstream fix is present — both build patches would miss");
   });
 
   test("pre-#8237: isBunBinary alone gates the branch", () => {
     const loader = readFileSync(LOADER, "utf8");
-    if (FIXED_BRANCH.test(loader)) return; // upstream already handles it — covered by the next test instead
+    if (upstreamHandlesSea(loader)) return; // upstream already handles it — covered by the next test instead
     assert.match(loader, /isBunBinary\s*\?\s*\{\s*virtualModules:\s*VIRTUAL_MODULES,\s*tryNative:\s*false\s*\}/);
   });
 
   test("since #8237: isNodeSeaBinary asks node:sea for real, not a name that happens to say so", () => {
     const loader = readFileSync(LOADER, "utf8");
-    if (!FIXED_BRANCH.test(loader)) return; // older SDK — the hand-written patch covers it instead
+    if (!upstreamHandlesSea(loader)) return; // older SDK — the hand-written patch covers it instead
     assert.match(loader, /isNodeSeaBinary\s*=[^;]*node:sea/);
   });
 
@@ -84,10 +81,11 @@ describe("both build scripts handle either SDK shape", () => {
   for (const script of scripts) {
     test(`${path.relative(REPO, script)} patches the pre-#8237 branch, recognises the fixed one, and refuses to run silently if neither is there`, () => {
       const source = readFileSync(script, "utf8");
-      assert.ok(source.includes(OLD_BRANCH), "the anchor for the pre-#8237 shape is gone");
+      assert.match(source, /PRE_8237_BRANCH/, "no longer anchors on the pre-#8237 shape");
+      assert.match(source, /sea-jiti-shape\.mjs/, "no longer shares the shape predicate, so the two scripts can drift apart");
+      assert.match(source, /upstreamHandlesSea\(/, "no longer recognises an SDK that handles a Node SEA itself");
       assert.match(source, /__piOutpostIsSea\(\)/);
       assert.match(source, /node:sea/);
-      assert.match(source, /isNodeSeaBinary/, "no longer recognises the shape #8237 shipped");
       // A patch that finds neither shape must stop the build, not produce an
       // executable whose extensions cannot import anything.
       assert.match(source, /throw new Error\(.*jiti branch moved/);
@@ -97,7 +95,7 @@ describe("both build scripts handle either SDK shape", () => {
 
 describe("what a built bundle carries", () => {
   const bundles = [path.join(REPO, "server/dist/bundle.mjs"), path.join(REPO, "cli/dist/pi-outpost.sea.mjs")];
-  const upstreamFixed = FIXED_BRANCH.test(readFileSync(LOADER, "utf8"));
+  const upstreamFixed = upstreamHandlesSea(readFileSync(LOADER, "utf8"));
 
   for (const bundle of bundles) {
     test(`${path.relative(REPO, bundle)} takes the working branch for a Node SEA, patched or native`, (t) => {
@@ -108,7 +106,7 @@ describe("what a built bundle carries", () => {
       if (upstreamFixed) {
         // The build scripts detect this and no-op — the SDK's own fix should be
         // inlined verbatim, and the hand patch's helper should not appear at all.
-        assert.match(built, FIXED_BRANCH);
+        assert.ok(upstreamHandlesSea(built), "the bundle does not carry the SDK's own SEA detection");
         assert.doesNotMatch(built, /function __piOutpostIsSea\(\)/);
       } else {
         assert.match(built, /isBunBinary \|\| __piOutpostIsSea\(\)/);

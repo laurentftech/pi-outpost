@@ -1,4 +1,5 @@
 import { createAssistantMessageEventStream } from "@earendil-works/pi-ai/compat";
+import { promptOf, toolsOf } from "./transcriptContext.mjs";
 
 const usage = {
   input: 0,
@@ -23,9 +24,10 @@ function message(model, content, stopReason) {
 }
 
 function assertWorkPlanSchema(context, { expectExtended }) {
-  const tool = context.tools?.find((candidate) => candidate.name === "work_plan");
+  const tools = toolsOf(context);
+  const tool = tools.find((candidate) => candidate.name === "work_plan");
   if (!tool) throw new Error("work_plan was not exposed to the provider");
-  const extended = context.tools?.find((candidate) => candidate.name === "work_plan_extended");
+  const extended = tools.find((candidate) => candidate.name === "work_plan_extended");
   // The whole point of the split, seen from where it matters: a provider serving a
   // session with no plan is never sent the collection shapes.
   //
@@ -80,7 +82,7 @@ function assertWorkPlanSchema(context, { expectExtended }) {
 }
 
 function assertWorkPlanGuidance(context) {
-  const prompt = String(context.systemPrompt ?? "");
+  const prompt = promptOf(context);
   for (const phrase of ["explicit working state", "Record verification evidence deliberately", "Evidence and task status are independent", "Before resuming substantial work", "Skip a Work Plan for trivial interactions"]) {
     if (!prompt.includes(phrase)) throw new Error(`work_plan system guidance did not reach provider: ${phrase}`);
   }
