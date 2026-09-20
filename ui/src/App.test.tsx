@@ -604,6 +604,39 @@ describe("App — conversation filters", () => {
     expect(screen.getByText("working…")).toBeInTheDocument();
   });
 
+  it("says it is working for as long as the turn can be stopped", () => {
+    // The pair the user reads as "something is happening": whenever the stop button
+    // is offered, the indicator is there. `assistant_start` appends an empty bubble
+    // before the model has written anything, which used to end the indicator while
+    // the turn — and the stop button — went on.
+    const stopButton = () => screen.queryByRole("button", { name: "Stop the agent" });
+    const { rerender } = mount({
+      isStreaming: true,
+      items: [
+        { kind: "user", text: "go" },
+        { kind: "assistant", blocks: [], streaming: true },
+      ] as ChatItem[],
+    });
+    expect(stopButton()).toBeInTheDocument();
+    expect(screen.getByText("working…")).toBeInTheDocument();
+
+    // And it goes when the turn does, rather than hanging over a finished answer.
+    mockUseAgent.mockReturnValue(
+      agentApi(
+        agentState({
+          isStreaming: false,
+          items: [
+            { kind: "user", text: "go" },
+            { kind: "assistant", blocks: [{ type: "text", text: "done" }] },
+          ] as ChatItem[],
+        }),
+      ),
+    );
+    rerender(<App />);
+    expect(stopButton()).not.toBeInTheDocument();
+    expect(screen.queryByText("working…")).not.toBeInTheDocument();
+  });
+
   it("hides reasoning and keeps the answer that came with it", () => {
     mount({
       items: [

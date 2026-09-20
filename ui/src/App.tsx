@@ -87,6 +87,21 @@ interface AppProps {
  */
 const NEAR_BOTTOM_PX = 120;
 
+/**
+ * The agent is working. Drawn at the end of the conversation, so it holds for the
+ * whole turn rather than only until the first thing the agent produces.
+ */
+function WorkingIndicator({ label }: { label: string }) {
+  return (
+    <div className="flex justify-end px-4" role="status" aria-live="polite">
+      <div className="flex items-center gap-2 py-1">
+        <span className="inline-block h-4 w-4 animate-spin rounded-full border-[3px] border-zinc-300 border-t-blue-500 dark:border-zinc-600 dark:border-t-blue-400 motion-reduce:animate-pulse" />
+        <span className="text-xs text-zinc-400 dark:text-zinc-500">{label}</span>
+      </div>
+    </div>
+  );
+}
+
 const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootElement, initialTheme, token, workspace }, ref) {
   const embedded = rootElement !== undefined;
   const accentTarget = rootElement ?? document.documentElement;
@@ -1053,23 +1068,12 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
                   </div>
                 );
                 if (item.kind === "user") {
-                  const showSpinner = i === state.items.length - 1 && state.isStreaming;
                   return anchor(
-                    <>
-                      <UserMessage
-                        item={item}
-                        canEdit={!state.isStreaming && state.connected}
-                        onEdit={editPrompt}
-                      />
-                      {showSpinner && (
-                        <div className="flex justify-end px-4">
-                          <div className="flex items-center gap-2 py-1">
-                            <span className="inline-block h-4 w-4 animate-spin rounded-full border-[3px] border-zinc-300 border-t-blue-500 dark:border-zinc-600 dark:border-t-blue-400 motion-reduce:animate-pulse" />
-                            <span className="text-xs text-zinc-400 dark:text-zinc-500">working…</span>
-                          </div>
-                        </div>
-                      )}
-                    </>,
+                    <UserMessage
+                      item={item}
+                      canEdit={!state.isStreaming && state.connected}
+                      onEdit={editPrompt}
+                    />,
                   );
                 }
                 if (item.kind === "tool") {
@@ -1121,14 +1125,18 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
                     canEdit={false}
                     onEdit={() => {}}
                   />
-                  <div className="flex justify-end px-4">
-                    <div className="flex items-center gap-2 py-1">
-                      <span className="inline-block h-4 w-4 animate-spin rounded-full border-[3px] border-zinc-300 border-t-blue-500 dark:border-zinc-600 dark:border-t-blue-400 motion-reduce:animate-pulse" />
-                      <span className="text-xs text-zinc-400 dark:text-zinc-500">sending…</span>
-                    </div>
-                  </div>
+                  <WorkingIndicator label="sending…" />
                 </div>
               )}
+
+              {/*
+                Working, on the same condition as the composer's stop button: a turn
+                the user can stop is a turn that says it is running. It was drawn under
+                the last user bubble before, which the first `assistant_start` ends —
+                so a model that thinks before it writes left a stop button above an
+                empty conversation, for as long as the thinking took.
+              */}
+              {state.isStreaming && !state.pendingPrompt && <WorkingIndicator label="working…" />}
 
               {(state.queue.steering.length > 0 || state.queue.followUp.length > 0) && (
                 <div className="rounded-lg border border-dashed border-zinc-300 px-3 py-2 text-xs text-zinc-500 dark:border-zinc-700">
