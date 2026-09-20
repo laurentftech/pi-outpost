@@ -21,6 +21,25 @@ import { next } from "./multiProjectHarness.mjs";
 import WebSocket from "ws";
 
 const run = promisify(execFile);
+
+/**
+ * npm, run the way it can be run on every platform this suite runs on.
+ *
+ * On Windows `npm` is `npm.cmd`, a batch file, and current Node refuses to spawn one
+ * without a shell (CVE-2024-27980) — a bare `execFile("npm", …)` fails with ENOENT.
+ * The same rule as `npmViewInvocation` in server/src/update.ts: go through the npm
+ * this process was started by when there is one, and through cmd.exe when there is
+ * not.
+ */
+function npm(args, options = {}) {
+  const execpath = process.env.npm_execpath?.trim();
+  if (execpath) return run(process.execPath, [execpath, ...args], options);
+  if (process.platform === "win32") {
+    const shell = process.env.ComSpec?.trim() || "cmd.exe";
+    return run(shell, ["/d", "/s", "/c", `npm.cmd ${args.join(" ")}`], options);
+  }
+  return run("npm", args, options);
+}
 const NAME = "pi-fake-ext";
 const PROVIDER = fileURLToPath(new URL("./fixtures/side-sessions-provider.mjs", import.meta.url));
 const toolOf = (version) => `fake_ext_v${version.replaceAll(".", "_")}`;
@@ -46,7 +65,7 @@ async function packed(version, into) {
 }
 `,
   );
-  const { stdout } = await run("npm", ["pack", "--silent", "--pack-destination", into], { cwd: dir });
+  const { stdout } = await npm(["pack", "--silent", "--pack-destination", into], { cwd: dir });
   const bytes = await readFile(path.join(into, stdout.trim()));
   return { version, bytes, shasum: createHash("sha1").update(bytes).digest("hex"), integrity: `sha512-${createHash("sha512").update(bytes).digest("base64")}` };
 }
@@ -103,7 +122,7 @@ async function setUp(t, config = {}) {
   // A cache of this test's own: npm would otherwise take a tarball another run left
   // behind, and "the registry withholds it" would never be tested.
   const cache = path.join(scratch, "npm-cache");
-  await run("npm", ["install", `${NAME}@1.0.0`, "--prefix", path.join(agentDir, "npm"), "--registry", reg.url, "--no-audit", "--no-fund"], {
+  await npm(["install", `${NAME}@1.0.0`, "--prefix", path.join(agentDir, "npm"), "--registry", reg.url, "--no-audit", "--no-fund"], {
     env: { ...process.env, npm_config_prefix: path.join(scratch, "empty-global"), npm_config_cache: cache },
   });
 

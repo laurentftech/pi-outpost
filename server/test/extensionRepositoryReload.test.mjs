@@ -12,7 +12,21 @@ import path from "node:path";
 import test from "node:test";
 import { connect, makeWorkspace, startServer } from "./harness.mjs";
 
-const git = execFileSync(process.platform === "win32" ? "where" : "which", ["git"], { encoding: "utf8" }).split("\n")[0].trim();
+/**
+ * git by absolute path: these drive a real remote, and a machine whose PATH has no
+ * git cannot. Resolved once, and its absence skips these tests rather than failing
+ * the file at import — `where` answers with CRLF, hence the split before the trim.
+ */
+const git = (() => {
+  try {
+    const found = execFileSync(process.platform === "win32" ? "where" : "which", ["git"], { encoding: "utf8" })
+      .split(/\r?\n/)[0]
+      .trim();
+    return found === "" ? undefined : found;
+  } catch {
+    return undefined;
+  }
+})();
 const run = (cwd, args) => execFileSync(git, args, { cwd, encoding: "utf8" }).trim();
 
 const extension = (tool) => `export default function (pi) {
@@ -29,6 +43,7 @@ const extension = (tool) => `export default function (pi) {
 const toolNames = (message) => (message.tools ?? []).map((tool) => tool.name);
 
 test("an updated extension repository says its code runs after a restart, and a restart runs it", async (t) => {
+  if (!git) return t.skip("git is not on PATH");
   const root = await realpath(await makeWorkspace());
   const remote = path.join(root, "origin.git");
   const seed = path.join(root, "seed");
@@ -108,6 +123,7 @@ test("an updated extension repository says its code runs after a restart, and a 
 });
 
 test("a repository of skills alone is really reloaded, and asks for no restart", async (t) => {
+  if (!git) return t.skip("git is not on PATH");
   const root = await realpath(await makeWorkspace());
   const remote = path.join(root, "origin.git");
   const seed = path.join(root, "seed");
