@@ -172,9 +172,13 @@ by hand, on `main`.
 6. **Tag that commit and push the tag:**
 
    ```bash
-   git tag vX.Y.Z
+   git tag -a vX.Y.Z -m "vX.Y.Z"
    git push origin vX.Y.Z
    ```
+
+   Annotated, because a lightweight `git tag vX.Y.Z` fails with `fatal: no tag message?`
+   wherever `tag.gpgsign` is on — git signs annotated tags only, so it refuses rather
+   than create an unsigned one.
 
    The workflow refuses to publish when the tag disagrees with the packages' versions,
    and skips a package already on npm at that version.
