@@ -440,7 +440,7 @@ const directRegistryLatestVersion: VersionLookup = async (options) => {
   const configured = options.registry ?? process.env.npm_config_registry;
   const base = configured?.trim() || PUBLIC_REGISTRY;
   // A scoped name keeps its `@` and encodes its `/`: `@scope%2Fname`, as registries expect.
-  const name = npmPackageName(options.packageName ?? PACKAGE_NAME).replace("/", "%2F");
+  const name = npmPackageName(options.packageName ?? PACKAGE_NAME).replaceAll("/", "%2F");
   const target = new URL(`${base.replace(/\/+$/, "")}/${name}/latest`);
   const transport = target.protocol === "http:"
     ? await import("node:http")
