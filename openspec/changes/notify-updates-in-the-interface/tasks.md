@@ -15,6 +15,11 @@
 - [x] 2.3 Offer Update with an executable-code confirmation naming both versions, nothing sent on cancel, nothing offered when locked; show the outcome and "restart needed"; verify `NothingIsSentWithoutConfirmation`, `LockedExtensionsOfferNoUpdate`
 - [x] 2.4 Offer "Restart pi-outpost" in the standalone app when a package needs a restart, with a confirmation; none in a widget; verify `AWidgetCannotRestartTheServer` (interface half) and the reconnect in the running app
 
+## 2b. Extension repositories
+
+- [x] 2b.1 Report a repository update that carries extensions as `restart-required` per runtime, name it in what waits on a restart, and say so in the resource manager; verify `AnUpdatedExtensionRepositoryAsksForARestart` and `ASkillsOnlyRepositoryIsReallyReloaded` in `server/test/extensionRepositoryReload.test.mjs`
+- [x] 2b.2 Move the restart control out of the package list into one panel shared by packages and repositories; verify in `ui/src/components/RestartNeeded.test.tsx`
+
 ## 3. Running app, docs, coverage
 
 - [x] 3.1 Drive it in the running app: a real pi package behind a published version (install an older version of a small package), see it offered, update it, see it current; the pi-outpost notice with a faked newer version; then break it — registry unreachable, update while a turn runs, double-click Update

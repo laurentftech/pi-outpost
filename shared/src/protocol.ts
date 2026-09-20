@@ -344,7 +344,12 @@ export interface AgentResourceRemovalResult {
 
 export interface AgentResourceReloadResult {
   workspaceRoot: string;
-  status: "reloaded" | "not-started" | "failed";
+  /**
+   * `restart-required`: the session was rebuilt — skills are the new ones — but the
+   * repository's extension code already ran in this server, and a running server cannot
+   * load an extension's new code. It takes effect when pi-outpost restarts.
+   */
+  status: "reloaded" | "restart-required" | "not-started" | "failed";
   message?: string;
 }
 
@@ -725,6 +730,8 @@ export interface SessionSnapshot {
   outpostUpdate?: OutpostUpdateNotice;
   /** The npm pi packages this project's agent loads. Absent until first listed. */
   piPackages?: PiPackageInfo[];
+  /** What waits on a restart to run; absent when nothing does. */
+  restartNeeded?: string[];
   branding: Branding;
   sessionId: string;
   model: string;
@@ -943,6 +950,11 @@ export type ServerMessage =
   | { type: "pi_packages"; packages: PiPackageInfo[] }
   /** pi-outpost is restarting; the connection drops and comes back. */
   | { type: "server_restarting" }
+  /**
+   * What is installed and not yet running, by name — pi packages and extension
+   * repositories updated since this server started. Empty when nothing waits on a restart.
+   */
+  | { type: "restart_needed"; reasons: string[] }
   /** The answer to one `update_pi_package`. */
   | {
       type: "pi_package_update_result";

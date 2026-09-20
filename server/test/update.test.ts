@@ -18,6 +18,7 @@ import {
   currentEvidence,
   detectChannel,
   extractSingleVersion,
+  condenseNpmError,
   fetchLatestVersion,
   isFresh,
   isNewer,
@@ -837,6 +838,30 @@ describe("the startup notice", () => {
     await notice({ version: "0.26.0", settings: { updateCheck: false }, lookupImpl: countingLookup("0.27.0").lookupImpl, onNewer });
     await notice({ version: "0.26.0", channel: "ephemeral", lookupImpl: countingLookup("0.27.0").lookupImpl, onNewer });
     assert.deepEqual(told, []);
+  });
+});
+
+describe("an npm failure, as a reader sees it", () => {
+  test("keeps the fact and drops npm's repetition and its log path", () => {
+    const stderr = [
+      "npm error code E404",
+      "npm error 404 Not Found - GET http://127.0.0.1:4399/pi-fake-ext",
+      "npm error 404",
+      "npm error 404  'pi-fake-ext@latest' is not in this registry.",
+      "npm error 404 Note that you can also install from a",
+      "npm error 404 tarball, folder, http url, or git url.",
+      "npm error A complete log of this run can be found in: /Users/someone/.npm/_logs/2026-09-20T07_44_34_308Z-debug-0.log",
+    ].join("\n");
+    const condensed = condenseNpmError(stderr);
+    assert.equal(condensed, "404 Not Found - GET http://127.0.0.1:4399/pi-fake-ext (E404)");
+    assert.ok(!condensed.includes("_logs"), "no log path");
+    assert.ok(condensed.length < 120);
+  });
+
+  test("keeps a single-line failure as it is, and caps a very long one", () => {
+    assert.equal(condenseNpmError("npm error network request to https://registry.example failed, reason: connect ECONNREFUSED"), "network request to https://registry.example failed, reason: connect ECONNREFUSED");
+    assert.equal(condenseNpmError(""), "");
+    assert.ok(condenseNpmError(`npm error ${"x".repeat(400)}`).endsWith("…"));
   });
 });
 

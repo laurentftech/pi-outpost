@@ -349,6 +349,28 @@ export type VersionLookup = (
  * Keeping the whole exchange inside npm makes its configuration the single source
  * of truth. An explicit pi-outpost override is still passed as `--registry`.
  */
+/**
+ * npm's stderr, as one sentence a reader can act on.
+ *
+ * npm answers a missing package with ten lines: a code, the request, the same code
+ * again, an explanation, a note about tarballs, and the path of a debug log. Shown whole
+ * in a settings panel — where this reason lands — it buries the one fact that matters,
+ * and names a log file nobody asked about. The first line that says something keeps that
+ * fact; the rest is dropped, and the whole text stays available where it came from.
+ */
+export function condenseNpmError(stderr: string): string {
+  const lines = stderr
+    .split(/\r?\n/)
+    .map((line) => line.replace(/^npm (?:error|ERR!|warn)\s*/i, "").trim())
+    .filter((line) => line !== "" && !/^A complete log of this run/i.test(line));
+  // A bare code or number on its own line is npm repeating itself around the message.
+  const informative = lines.find((line) => !/^(?:code\s+)?[A-Z0-9_]{2,8}$/.test(line) && line.length > 3);
+  const code = lines.find((line) => /^code\s+\S+$/i.test(line))?.replace(/^code\s+/i, "");
+  const message = informative ?? lines[0] ?? "";
+  const trimmed = message.length > 200 ? `${message.slice(0, 197)}…` : message;
+  return code && !trimmed.includes(code) ? `${trimmed} (${code})` : trimmed;
+}
+
 const npmViewLatestVersion: VersionLookup = async (options) => {
   const { execFile } = process.getBuiltinModule("node:child_process");
   const { command, args, env } = npmViewInvocation(options.registry, process.platform, process.env.npm_execpath, options.packageName);
@@ -371,8 +393,7 @@ const npmViewLatestVersion: VersionLookup = async (options) => {
             reject(error);
             return;
           }
-          const detail = stderr.trim();
-          reject(new Error(detail || error.message));
+          reject(new Error(condenseNpmError(stderr) || error.message));
           return;
         }
         try {

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { PiPackageInfo } from "@pi-outpost/shared";
 import type { AgentState } from "../useAgent";
 import { PiPackages } from "./PiPackages";
+import { RestartNeeded } from "./RestartNeeded";
 import { useClickOutside } from "../util/clickOutside";
 import { ServerPathPicker } from "./ServerPathPicker";
 import { AgentResourceManager } from "./AgentResourceManager";
@@ -58,6 +59,8 @@ interface SettingsMenuProps {
   onCheckPiPackages?: () => void;
   onUpdatePiPackage?: (source: string) => void;
   onRestartServer?: () => void;
+  /** What waits on a restart to run. */
+  restartNeeded?: string[];
   tools: { name: string; active: boolean }[];
   commands: { name: string; source: string }[];
   sandbox: SandboxConfig | null;
@@ -127,6 +130,7 @@ export function SettingsMenu({
   onCheckPiPackages,
   onUpdatePiPackage,
   onRestartServer,
+  restartNeeded = [],
   tools,
   commands,
   sandbox,
@@ -409,12 +413,10 @@ export function SettingsMenu({
                 packages={piPackages}
                 update={piPackageUpdate}
                 locked={extensionLock}
-                canRestart={canRestartServer}
-                restarting={serverRestarting}
                 onCheck={() => onCheckPiPackages?.()}
                 onUpdate={(source) => onUpdatePiPackage?.(source)}
-                onRestart={() => onRestartServer?.()}
               />
+              <RestartNeeded reasons={restartNeeded} canRestart={canRestartServer} restarting={serverRestarting} onRestart={() => onRestartServer?.()} />
             </section>
 
             {/* Sandbox section */}

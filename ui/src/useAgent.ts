@@ -298,6 +298,8 @@ export interface AgentState {
     | null;
   /** The server said it is restarting; cleared by the next snapshot. */
   serverRestarting: boolean;
+  /** What is installed and waits on a restart to run, by name. */
+  restartNeeded: string[];
   /** Latest workspace Outcome request/result; null until the drawer is opened. */
   outcome: OutcomeState | null;
   queue: { steering: string[]; followUp: string[] };
@@ -402,6 +404,7 @@ const initialState: AgentState = {
   piPackages: null,
   piPackageUpdate: null,
   serverRestarting: false,
+  restartNeeded: [],
   outcome: null,
   queue: { steering: [], followUp: [] },
   errors: [],
@@ -552,6 +555,7 @@ function applySnapshot(state: AgentState, message: ServerMessage & { sessionId: 
     // Absent from a snapshot the server built before listing: keep what is known.
     piPackages: message.piPackages ?? state.piPackages,
     serverRestarting: false,
+    restartNeeded: message.restartNeeded ?? [],
     connected: true,
     brandingReady: true,
     workspace: message.workspace ?? null,
@@ -1132,6 +1136,8 @@ function reduce(state: AgentState, action: Action): AgentState {
       if (pending?.requestId !== message.requestId) return state;
       return { ...state, piPackageUpdate: { requestId: message.requestId, source: pending.source, status: message.outcome, message: message.message } };
     }
+    case "restart_needed":
+      return { ...state, restartNeeded: message.reasons };
     case "server_restarting":
       // The answer that asked for this restart has served its purpose.
       return { ...state, serverRestarting: true, piPackageUpdate: null };

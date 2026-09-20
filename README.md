@@ -364,7 +364,10 @@ pushes, switches branches, initializes submodules, or runs repository hooks. Upd
 repository containing extensions requires confirmation of the exact revisions, and
 `extensionLock` blocks the whole mixed repository from updating. If Git advances but one
 workspace cannot reload, the repository remains advanced and the dialog reports the
-per-workspace reload failure.
+per-workspace reload failure. A repository of skills alone is reloaded for real; one that
+supplies an **extension** is not — a running server cannot load an extension's new code, so
+the update says its code runs after a restart, and the repository joins what
+**Restart pi-outpost** in Settings runs.
 
 Clone and fetch are non-interactive: existing credential helpers, SSH agents, and other
 non-prompting Git authentication continue to work, but the server never opens a terminal or

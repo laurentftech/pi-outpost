@@ -16,8 +16,8 @@ const base = (overrides: Partial<PiPackageInfo> = {}): PiPackageInfo => ({
 });
 
 function setup(props: Partial<React.ComponentProps<typeof PiPackages>> = {}) {
-  const handlers = { onCheck: vi.fn(), onUpdate: vi.fn(), onRestart: vi.fn() };
-  render(<PiPackages packages={[base()]} update={null} locked={false} canRestart restarting={false} {...handlers} {...props} />);
+  const handlers = { onCheck: vi.fn(), onUpdate: vi.fn() };
+  render(<PiPackages packages={[base()]} update={null} locked={false} {...handlers} {...props} />);
   return handlers;
 }
 
@@ -82,29 +82,5 @@ describe("updating a package", () => {
     });
     expect(statusOf("pi-permission-system")).toBe("33.1.0 installed — restart to use it");
     expect(screen.getByTestId("pi-package-result")).toHaveTextContent(/restart pi-outpost to use it/);
-  });
-});
-
-describe("restarting", () => {
-  it("is offered when a package needs it, confirmed, and then sent", () => {
-    const { onRestart } = setup({ packages: [base({ restartNeeded: true })] });
-    fireEvent.click(screen.getByRole("button", { name: "Restart pi-outpost to use the updates" }));
-    expect(screen.getByTestId("pi-packages-restart")).toHaveTextContent(/reconnects by itself, and conversations are kept/);
-    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
-    expect(onRestart).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole("button", { name: "Restart pi-outpost to use the updates" }));
-    fireEvent.click(screen.getByRole("button", { name: "Restart now" }));
-    expect(onRestart).toHaveBeenCalled();
-  });
-
-  it("is not offered in a widget, nor when nothing needs it", () => {
-    // AWidgetCannotRestartTheServer (interface half)
-    setup({ packages: [base({ restartNeeded: true })], canRestart: false });
-    expect(screen.queryByTestId("pi-packages-restart")).toBeNull();
-  });
-
-  it("is not offered when nothing needs it", () => {
-    setup();
-    expect(screen.queryByTestId("pi-packages-restart")).toBeNull();
   });
 });

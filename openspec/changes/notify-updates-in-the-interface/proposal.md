@@ -17,6 +17,10 @@ team current then means walking to each desk.
   govern updating an extension repository: an explicit confirmation that code is changing, refusal
   while an affected agent is running a turn, `extensionLock` forbidding it, and a reload failure said
   as such.
+- **An updated extension repository stops claiming it reloaded.** The same limit applies to the
+  resource manager's repository update: it reported "reloaded" while the agent kept running the
+  previous extension. It now says the extension code runs after a restart, and the repository joins
+  what waits on one. A repository of skills alone is still reloaded for real.
 - **A check that fails says so.** A package whose newest version could not be looked up — the
   registry unreachable, npm not runnable — is shown as "could not check" with the reason, never as up
   to date.
@@ -35,6 +39,9 @@ which are not offered an update.
 
 ### Modified Capabilities
 - `update`: the interface notice for a newer pi-outpost.
+- `agent-resource-management`: an updated repository that supplies extensions is reported as
+  needing a restart rather than as reloaded — it claimed the new code was running while the
+  agent kept the old one.
 
 ## Impact
 

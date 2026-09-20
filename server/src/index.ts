@@ -410,6 +410,12 @@ const loadedPiPackageScopes = new Set<string>();
  * belongs to someone else and must not be able to stop it.
  */
 const mayRestart = new WeakSet<WebSocket>();
+/**
+ * What is installed and not running — a pi package at another version than the one
+ * loaded, an extension repository updated since startup — by name. A new process
+ * starts with none.
+ */
+const restartReasons = new Set<string>();
 
 try {
   useGitExecutable(await resolveGitExecutable(config.gitPath));
@@ -1835,6 +1841,7 @@ function snapshot(workspace: Workspace): SessionSnapshot {
     workspaces: workspaceInfos(),
     ...(outpostUpdate ? { outpostUpdate } : {}),
     ...(piPackageLists.has(workspace.root) ? { piPackages: piPackageLists.get(workspace.root) } : {}),
+    ...(restartReasons.size > 0 ? { restartNeeded: [...restartReasons] } : {}),
     ...(config.workspaceLock ? { workspaceLocked: true } : {}),
     // Absent means "settings", so a client that predates the setting — or one
     // that is not embedded — sees exactly what it saw before.
@@ -4193,11 +4200,20 @@ function markRestartNeeded(target: Workspace, listed: PiPackageInfo[]): PiPackag
     loadedPiPackageScopes.add(scopeKey(scope));
     for (const entry of listed) if (entry.scope === scope) loadedPiPackages.set(`${scopeKey(scope)}:${entry.name}`, entry.installed ?? null);
   }
-  return listed.map((entry) => {
+  const marked = listed.map((entry): PiPackageInfo => {
     const key = `${scopeKey(entry.scope)}:${entry.name}`;
     const loaded = loadedPiPackages.has(key) ? loadedPiPackages.get(key) : null;
     return entry.installed !== undefined && entry.installed !== loaded ? { ...entry, restartNeeded: true } : entry;
   });
+  for (const entry of marked) if (entry.restartNeeded) noteRestartReason(entry.name);
+  return marked;
+}
+
+/** Something now waits on a restart: say so to every client, once. */
+function noteRestartReason(name: string): void {
+  if (restartReasons.has(name)) return;
+  restartReasons.add(name);
+  if (startupComplete) broadcastServerWide({ type: "restart_needed", reasons: [...restartReasons] });
 }
 
 /** Every started session on a project, told its project's packages. */
@@ -4520,6 +4536,12 @@ async function handleUpdateAgentResourceRepository(
 
     const reloads: AgentResourceReloadResult[] = [];
     let requesterInventoryRefreshed = false;
+    // Skills are text, read again by a rebuilt session. Extension code is not: a module
+    // this server already imported is what a second import returns, so the rebuilt
+    // session keeps the old extension until pi-outpost restarts. Say that, rather than
+    // "reloaded" — verified by server/test/extensionRepositoryReload.test.mjs.
+    const carriesExtensions = service.repositoryResources(repositoryId).some((resource) => resource.kind === "extension");
+    const repositoryName = path.basename(repositoryPath);
     for (const target of affected) {
       if (!target.started) {
         reloads.push({ workspaceRoot: target.root, status: "not-started" });
@@ -4548,7 +4570,11 @@ async function handleUpdateAgentResourceRepository(
         const inventory = await (resourceReloadSyncs.get(target.id) ?? refreshResourceInventory(target, repositoryPath));
         broadcast(target, { type: "agent_resource_inventory", inventory });
         if (target === workspace) requesterInventoryRefreshed = true;
-        reloads.push({ workspaceRoot: target.root, status: "reloaded" });
+        reloads.push(
+          carriesExtensions
+            ? { workspaceRoot: target.root, status: "restart-required", message: `Skills are reloaded; ${repositoryName}'s extension code runs after pi-outpost restarts` }
+            : { workspaceRoot: target.root, status: "reloaded" },
+        );
       } catch (error) {
         reloads.push({ workspaceRoot: target.root, status: "failed", message: error instanceof Error ? error.message : String(error) });
       } finally {
@@ -4557,6 +4583,8 @@ async function handleUpdateAgentResourceRepository(
       }
     }
     if (!requesterInventoryRefreshed) await refreshResourceInventory(workspace, repositoryPath);
+    // Updated on disk: whatever else happened, what runs is the old code until a restart.
+    if (carriesExtensions) noteRestartReason(repositoryName);
     const failed = reloads.some((reload) => reload.status === "failed");
     const result: AgentResourceUpdateResult = {
       status: failed ? "updated-reload-failed" : "updated",

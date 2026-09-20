@@ -61,6 +61,8 @@ interface HeaderProps {
   onCheckPiPackages?: () => void;
   onUpdatePiPackage?: (source: string) => void;
   onRestartServer?: () => void;
+  /** What waits on a restart to run. */
+  restartNeeded?: string[];
   theme: "light" | "dark";
   showThemeToggle: boolean;
   /** Extension setStatus() key/text pairs — see extensions.md#custom-ui. */
@@ -594,6 +596,7 @@ export function Header(props: HeaderProps) {
           {...(props.onCheckPiPackages ? { onCheckPiPackages: props.onCheckPiPackages } : {})}
           {...(props.onUpdatePiPackage ? { onUpdatePiPackage: props.onUpdatePiPackage } : {})}
           {...(props.onRestartServer ? { onRestartServer: props.onRestartServer } : {})}
+          restartNeeded={props.restartNeeded ?? []}
           tools={props.tools ?? []}
           commands={props.commands ?? []}
           sandbox={props.sandbox}

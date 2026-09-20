@@ -867,6 +867,7 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
             onCheckPiPackages={checkPiPackages}
             onUpdatePiPackage={updatePiPackage}
             onRestartServer={restartServer}
+            restartNeeded={state.restartNeeded}
             title={state.branding.title}
             sessions={state.sessions}
             sessionSearch={state.sessionSearch}

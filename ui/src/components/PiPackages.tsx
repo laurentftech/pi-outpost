@@ -5,7 +5,7 @@
  * Updating is code running with the agent's privileges changing, so it is confirmed in
  * place, naming both versions. An installed update takes effect on a restart — a running
  * server cannot load an extension's new code — and the list says so rather than implying
- * the new version runs.
+ * the new version runs. The restart itself is `RestartNeeded`'s, shared with repositories.
  */
 import { useState } from "react";
 import type { PiPackageInfo } from "@pi-outpost/shared";
@@ -16,12 +16,8 @@ interface PiPackagesProps {
   update: AgentState["piPackageUpdate"];
   /** Extension changes are locked by the deployment: nothing is offered. */
   locked: boolean;
-  /** The standalone interface may restart the server; a widget may not. */
-  canRestart: boolean;
-  restarting: boolean;
   onCheck: () => void;
   onUpdate: (source: string) => void;
-  onRestart: () => void;
 }
 
 function status(entry: PiPackageInfo): string {
@@ -44,12 +40,10 @@ function status(entry: PiPackageInfo): string {
   }
 }
 
-export function PiPackages({ packages, update, locked, canRestart, restarting, onCheck, onUpdate, onRestart }: PiPackagesProps) {
+export function PiPackages({ packages, update, locked, onCheck, onUpdate }: PiPackagesProps) {
   const [confirming, setConfirming] = useState<string | null>(null);
-  const [confirmingRestart, setConfirmingRestart] = useState(false);
   if (packages === null || packages.length === 0) return null;
   const pending = update?.status === "pending" ? update.source : null;
-  const needsRestart = packages.some((entry) => entry.restartNeeded);
 
   return (
     <div className="mt-3" data-testid="pi-packages">
@@ -79,7 +73,9 @@ export function PiPackages({ packages, update, locked, canRestart, restarting, o
                   </button>
                 )}
               </div>
-              <div className="text-zinc-500 dark:text-zinc-400" data-testid="pi-package-status">
+              {/* A registry's refusal can be a paragraph; two lines here, the whole of it
+                  on hover, so one package cannot push the rest of Settings off screen. */}
+              <div className="line-clamp-2 text-zinc-500 dark:text-zinc-400" data-testid="pi-package-status" title={status(entry)}>
                 {status(entry)}
               </div>
               {newer && confirming === entry.source && (
@@ -117,43 +113,6 @@ export function PiPackages({ packages, update, locked, canRestart, restarting, o
           );
         })}
       </ul>
-      {needsRestart && canRestart && (
-        <div className="mt-2" data-testid="pi-packages-restart">
-          {restarting ? (
-            <p className="text-xs text-zinc-500">Restarting pi-outpost…</p>
-          ) : confirmingRestart ? (
-            <div className="rounded border border-zinc-300 p-2 text-xs dark:border-zinc-600">
-              <p className="text-zinc-700 dark:text-zinc-300">
-                pi-outpost stops and starts again in the same terminal. Every open window reconnects by itself, and
-                conversations are kept.
-              </p>
-              <div className="mt-1 flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setConfirmingRestart(false);
-                    onRestart();
-                  }}
-                  className="rounded bg-zinc-800 px-2 py-0.5 text-white hover:bg-zinc-700 dark:bg-zinc-200 dark:text-zinc-900"
-                >
-                  Restart now
-                </button>
-                <button type="button" onClick={() => setConfirmingRestart(false)} className="rounded px-2 py-0.5 hover:bg-zinc-100 dark:hover:bg-zinc-800">
-                  Cancel
-                </button>
-              </div>
-            </div>
-          ) : (
-            <button
-              type="button"
-              onClick={() => setConfirmingRestart(true)}
-              className="rounded border border-zinc-300 px-2 py-0.5 text-xs text-zinc-700 hover:bg-zinc-100 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-700"
-            >
-              Restart pi-outpost to use the updates
-            </button>
-          )}
-        </div>
-      )}
     </div>
   );
 }

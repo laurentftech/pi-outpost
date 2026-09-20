@@ -21,6 +21,13 @@ server. That rehearsal found a startup crash no suite could reach (see the desig
 | NoNoticeWithoutANewerVersion | covered | `server/test/update.test.ts` — "tells the interface nothing when current, when the check fails, when off, or for a one-off run": no notice for a current version, a failed lookup, `updateCheck: false`, or an ephemeral run |
 | AWidgetShowsNoNotice | covered | `ui/src/App.test.tsx` — "is not shown in a widget": an embedded app holding a notice renders none |
 
+## Capability: `agent-resource-management` (2 scenarios)
+
+| Scenario | Coverage | Assertion evidence |
+| --- | --- | --- |
+| AnUpdatedExtensionRepositoryAsksForARestart | covered | `server/test/extensionRepositoryReload.test.mjs` — "an updated extension repository says its code runs after a restart, and a restart runs it": a repository whose extension registers a tool named after its revision is updated from v1 to v2; the reload status is `restart-required` with a message naming the repository, `restart_needed` lists it, a new connection still gets `repo_ext_v1` and `restartNeeded`, and after a real restart it gets `repo_ext_v2` and nothing waits. Before this change the same flow reported `reloaded` while the agent ran v1 |
+| ASkillsOnlyRepositoryIsReallyReloaded | covered | `server/test/extensionRepositoryReload.test.mjs` — "a repository of skills alone is really reloaded, and asks for no restart": the reload status is `reloaded`, nothing waits on a restart, and the agent's commands carry the updated skill description |
+
 ## Capability: `pi-package-updates` (13 scenarios)
 
 | Scenario | Coverage | Assertion evidence |
@@ -35,6 +42,6 @@ server. That rehearsal found a startup crash no suite could reach (see the desig
 | AnUpdateWaitsForARunningTurn | covered | `server/test/piPackagesWire.test.mjs` — "an update waits for a turn that is running, and changes nothing": refused naming the busy project, and the installed `package.json` is still 1.0.0 |
 | AFailedInstallChangesNothing | covered | `server/test/piPackagesWire.test.mjs` — "an install that fails leaves the installed version and says why": with the registry withholding tarballs (and a cache of the test's own), the answer is `failed` and the list still says 1.0.0 |
 | LockedExtensionsOfferNoUpdate | covered | `server/test/piPackagesWire.test.mjs` — "locked extensions refuse an update": `refused`, "locked"; `ui/src/components/PiPackages.test.tsx` — "is not offered when extensions are locked" |
-| ARestartLoadsTheUpdatedPackage | covered | `server/test/piPackagesWire.test.mjs` — "a newer version is offered and installed, then a restart loads it": after `restart_server` the client receives `server_restarting`, the server comes back on the same port, and a new connection's tools include `fake_ext_v1_1_0` and not `fake_ext_v1_0_0`; `ui/src/useAgent.test.ts` — "sends a package update, keeps its answer, and marks a restart until the next snapshot" |
+| ARestartLoadsTheUpdatedPackage | covered | `ui/src/components/RestartNeeded.test.tsx` — "names what waits, and restarts only after a confirmation"; `server/test/piPackagesWire.test.mjs` — "a newer version is offered and installed, then a restart loads it": after `restart_server` the client receives `server_restarting`, the server comes back on the same port, and a new connection's tools include `fake_ext_v1_1_0` and not `fake_ext_v1_0_0`; `ui/src/useAgent.test.ts` — "sends a package update, keeps its answer, and marks a restart until the next snapshot" |
 | ARestartWaitsForRunningTurns | covered | `server/test/piPackagesWire.test.mjs` — "a restart waits for a running turn": refused with "is working — stop its turn before restarting", and no `server_restarting` is sent |
-| AWidgetCannotRestartTheServer | covered | `server/test/piPackagesWire.test.mjs` — "a widget's connection cannot restart the server": a connection whose `Origin` is a configured host page is refused, and nothing restarts; `ui/src/components/PiPackages.test.tsx` — "is not offered in a widget, nor when nothing needs it" |
+| AWidgetCannotRestartTheServer | covered | `server/test/piPackagesWire.test.mjs` — "a widget's connection cannot restart the server": a connection whose `Origin` is a configured host page is refused, and nothing restarts; `ui/src/components/RestartNeeded.test.tsx` — "says what waits in a widget, and offers no restart there" |
