@@ -42,6 +42,7 @@ execFileSync("npm", ["run", "build", "--workspace", "web"], { cwd: REPO_ROOT, st
 // from a web/ folder on disk (fastifyStatic fallback in server/src/index.ts).
 console.log("[build] building the embedded web UI …");
 const { generateEmbeddedWeb, writeEmptyEmbeddedWeb } = await import("./embed-web.mjs");
+const { PRE_8237_BRANCH, upstreamHandlesSea } = await import("../../scripts/sea-jiti-shape.mjs");
 const EMBED_WEB = process.env.BUILD_EMBED_WEB !== "0";
 if (EMBED_WEB) {
   const embeddedCount = await generateEmbeddedWeb(WEB_SRC, resolve(REPO_ROOT, "server/src/embedded-web.ts"));
@@ -113,16 +114,16 @@ await esbuild.build({
 // leaves extensions working on whichever path the machine happened to take.
 //
 // pi-coding-agent 0.84.3 fixed the same gap upstream (earendil-works/pi#8237):
-// the branch now reads `isBunBinary || isNodeSeaBinary || isBundledNode`, and
-// `isNodeSeaBinary` is the same `node:sea` isSea() check this patch was adding
-// by hand. When that shape is present there is nothing left to patch —
-// checked explicitly, not assumed, so a real drift still throws below.
+// `isNodeSeaBinary` is the same `node:sea` isSea() check this patch was adding by
+// hand. 0.86.0 moved that condition out of the ternary into `usesEmbeddedModules`,
+// so both halves are checked here — the flag must still be raised for a SEA, and
+// the jiti options must still be chosen by it. When that shape is present there is
+// nothing left to patch; a real drift still throws below.
 {
   console.log("[build] routing extension imports through jiti's virtual modules …");
   let src = await readFile(SEA_BUNDLE, "utf-8");
 
-  const branchBefore = "...isBunBinary ? { virtualModules: VIRTUAL_MODULES, tryNative: false }";
-  const upstreamHandlesSea = /isBunBinary\s*\|\|\s*isNodeSeaBinary\s*\|\|\s*isBundledNode\s*\?\s*\{\s*virtualModules:\s*VIRTUAL_MODULES,\s*tryNative:\s*false\s*\}/;
+  const branchBefore = PRE_8237_BRANCH;
 
   if (src.includes(branchBefore)) {
     const helper =
@@ -151,7 +152,7 @@ await esbuild.build({
     src = src.replace(openBefore, openAfter).replace(tailBefore, tailAfter);
 
     await writeFile(SEA_BUNDLE, src, "utf-8");
-  } else if (upstreamHandlesSea.test(src)) {
+  } else if (upstreamHandlesSea(src)) {
     console.log("[build] the SDK already detects a Node SEA binary itself (pi#8237) — nothing to patch");
   } else {
     throw new Error("[build] the SDK's jiti branch moved — extensions would lose their bundled packages");

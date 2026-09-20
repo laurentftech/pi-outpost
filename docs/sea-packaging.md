@@ -199,12 +199,17 @@ export default function extension(pi: ExtensionAPI) {
 
 **How.** jiti — the loader the SDK reads extensions through — takes a `virtualModules`
 map of specifier to *already-loaded module object*, bypassing filesystem resolution.
-The SDK builds that map from static imports and selects it for its Bun binary; a
-Node executable is not that, so it fell through to `getAliases()`, whose
+The SDK builds that map from static imports and once selected it for its Bun binary
+only; a Node executable is not that, so it fell through to `getAliases()`, whose
 `require.resolve` throws inside a blob and took all extension loading with it. Both
-build scripts now widen the condition to include a Node single executable. The
-objects are already in the bundle; nothing is written to disk, and nothing changes
-outside an executable — `npm run dev` and `npm start` resolve packages normally.
+build scripts widened that condition by hand until pi-coding-agent 0.84.3 fixed it
+upstream (earendil-works/pi#8237); since then they recognise the SDK's own detection
+and patch nothing. Which shapes count as recognised lives in
+`scripts/sea-jiti-shape.mjs`, shared by both scripts and by the suite that guards
+them, so an SDK that moves the anchor stops the build instead of producing an
+executable whose extensions cannot import anything. The objects are already in the
+bundle; nothing is written to disk, and nothing changes outside an executable —
+`npm run dev` and `npm start` resolve packages normally.
 
 You get the same objects the agent itself uses, not a second copy: the versions are
 whatever the executable was built with, and an extension cannot pin its own.

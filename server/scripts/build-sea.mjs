@@ -22,6 +22,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { execFileSync } from "node:child_process";
 import esbuild from "esbuild";
+import { PRE_8237_BRANCH, upstreamHandlesSea } from "../../scripts/sea-jiti-shape.mjs";
 
 const require = createRequire(import.meta.url);
 
@@ -99,17 +100,16 @@ await esbuild.build({
 // The upstream fix is the same three lines in the SDK's own detection; this stays
 // until that lands.
 //
-// It landed in pi-coding-agent 0.84.3 (earendil-works/pi#8237): the branch now
-// reads `isBunBinary || isNodeSeaBinary || isBundledNode`, where `isNodeSeaBinary`
-// is the same `node:sea` isSea() check this patch was adding by hand. Checked
-// explicitly below rather than assumed, so a real drift in the SDK's source still
-// throws instead of silently shipping a broken loader.
+// It landed in pi-coding-agent 0.84.3 (earendil-works/pi#8237), and 0.86.0 moved the
+// same condition into a named `usesEmbeddedModules`. Which shapes count as "upstream
+// handles it" lives in scripts/sea-jiti-shape.mjs, shared with cli/scripts/build.mjs
+// and the suite that guards both, so a real drift throws in one place instead of
+// silently shipping a broken loader from whichever script was not updated.
 {
   console.log("[build-sea] routing extension imports through jiti's virtual modules …");
   let bundleSrc = await readFile(BUNDLE_PATH, "utf-8");
 
-  const branchBefore = "...isBunBinary ? { virtualModules: VIRTUAL_MODULES, tryNative: false }";
-  const upstreamHandlesSea = /isBunBinary\s*\|\|\s*isNodeSeaBinary\s*\|\|\s*isBundledNode\s*\?\s*\{\s*virtualModules:\s*VIRTUAL_MODULES,\s*tryNative:\s*false\s*\}/;
+  const branchBefore = PRE_8237_BRANCH;
 
   if (bundleSrc.includes(branchBefore)) {
     // `node:sea` answers this for real; wrapped because a runtime without it must
@@ -143,7 +143,7 @@ await esbuild.build({
     bundleSrc = bundleSrc.replace(openBefore, openAfter).replace(tailBefore, tailAfter);
 
     await writeFile(BUNDLE_PATH, bundleSrc, "utf-8");
-  } else if (upstreamHandlesSea.test(bundleSrc)) {
+  } else if (upstreamHandlesSea(bundleSrc)) {
     console.log("[build-sea] the SDK already detects a Node SEA binary itself (pi#8237) — nothing to patch");
   } else {
     // Loudly, not silently: a patch that quietly stops matching leaves extensions

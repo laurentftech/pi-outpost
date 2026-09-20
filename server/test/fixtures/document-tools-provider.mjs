@@ -8,6 +8,7 @@
  */
 import { createRequire } from "node:module";
 import { createAssistantMessageEventStream } from "@earendil-works/pi-ai/compat";
+import { toolsOf } from "./transcriptContext.mjs";
 
 const require = createRequire(import.meta.url);
 
@@ -15,7 +16,7 @@ function record(context) {
   const fs = require("node:fs");
   const file = process.env.DOCUMENT_TOOLS_LOG;
   if (!file) return;
-  fs.appendFileSync(file, `${JSON.stringify((context.tools ?? []).map((tool) => tool.name))}\n`);
+  fs.appendFileSync(file, `${JSON.stringify(toolsOf(context).map((tool) => tool.name))}\n`);
 }
 
 /**
@@ -25,7 +26,7 @@ function record(context) {
 function wantsToolCall(context) {
   const last = [...(context.messages ?? [])].reverse().find((item) => item.role === "user");
   const text = JSON.stringify(last?.content ?? "");
-  return text.includes("USE THE TOOL") && (context.tools ?? []).some((tool) => tool.name === "docx_extract");
+  return text.includes("USE THE TOOL") && toolsOf(context).some((tool) => tool.name === "docx_extract");
 }
 
 function stream(model, context) {

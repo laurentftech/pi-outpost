@@ -10,6 +10,7 @@
  */
 import { createRequire } from "node:module";
 import { createAssistantMessageEventStream } from "@earendil-works/pi-ai/compat";
+import { toolsOf } from "./transcriptContext.mjs";
 
 const require = createRequire(import.meta.url);
 
@@ -17,7 +18,7 @@ function record(context) {
   const fs = require("node:fs");
   const file = process.env.PROJECT_MODEL_LOG;
   if (!file) return;
-  fs.appendFileSync(file, `${JSON.stringify((context.tools ?? []).map((tool) => tool.name))}\n`);
+  fs.appendFileSync(file, `${JSON.stringify(toolsOf(context).map((tool) => tool.name))}\n`);
 }
 
 function scriptedCall(context) {

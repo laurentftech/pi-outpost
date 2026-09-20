@@ -23,6 +23,14 @@ import { contentText } from "./convert.ts";
  */
 export type SdkModel = NonNullable<AgentSession["model"]>;
 export type SdkStreamFn = AgentSession["agent"]["streamFunction"];
+/**
+ * What the stream function takes as its request: since pi-ai 0.86.0 a normalized
+ * transcript, where the system prompt is the transcript's leading system message
+ * rather than a `systemPrompt` field. pi-ai brands the type and only its own
+ * `normalizeContext` produces one, so the messages are built here and asserted —
+ * the type is read off the stream function, so a further change fails this file.
+ */
+type SdkStreamContext = Parameters<SdkStreamFn>[1];
 
 /** `apiKey` is only what the registry resolves eagerly — a provider whose key lives in an env var has none. */
 export interface RequestAuth {
@@ -102,20 +110,22 @@ export async function generateSessionTitle(options: {
   streamFn: SdkStreamFn;
   signal: AbortSignal;
 }): Promise<string | undefined> {
-  const stream = await options.streamFn(
-    options.model,
-    {
-      systemPrompt: TITLE_SYSTEM_PROMPT,
-      messages: [
-        {
-          role: "user",
-          content: [{ type: "text", text: `<conversation>\n${options.exchange}\n</conversation>` }],
-          timestamp: Date.now(),
-        },
-      ],
-    },
-    { ...options.auth, signal: options.signal, maxTokens: TITLE_MAX_TOKENS },
-  );
+  const now = Date.now();
+  const context = {
+    messages: [
+      { role: "system", content: TITLE_SYSTEM_PROMPT, timestamp: now },
+      {
+        role: "user",
+        content: [{ type: "text", text: `<conversation>\n${options.exchange}\n</conversation>` }],
+        timestamp: now,
+      },
+    ],
+  } as SdkStreamContext;
+  const stream = await options.streamFn(options.model, context, {
+    ...options.auth,
+    signal: options.signal,
+    maxTokens: TITLE_MAX_TOKENS,
+  });
   const response = await stream.result();
   if (response.stopReason === "error" || response.stopReason === "aborted") return undefined;
   const text = (response.content as { type: string; text?: string }[])
