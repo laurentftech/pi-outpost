@@ -491,6 +491,25 @@ describe("finding a command among many", () => {
     expect(shown()[0].textContent).toContain("skill:structured-exchange");
   });
 
+  it("matches commands containing the typed substring, not just prefix", () => {
+    setup({ commands: withSkill });
+    type("/exchange");
+    expect(shown()).toHaveLength(1);
+    expect(shown()[0].textContent).toContain("skill:structured-exchange");
+  });
+
+  it("prioritises prefix matches over substring matches", () => {
+    const cmds: CommandInfo[] = [
+      { name: "skill:exchange", description: "exchange", source: "skill" },
+      { name: "structured-exchange", description: "structured", source: "extension" },
+    ];
+    setup({ commands: cmds });
+    type("/exchange");
+    expect(shown()).toHaveLength(2);
+    expect(shown()[0].textContent).toContain("skill:exchange");
+    expect(shown()[1].textContent).toContain("structured-exchange");
+  });
+
   /**
    * Load order is the agent's business, not the reader's. Under a real RPC agent the
    * bundled structured-exchange skill was appended last of forty-one, so someone
