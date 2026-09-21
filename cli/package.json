@@ -5,7 +5,7 @@
   "description": "A web interface for the pi coding agent: a browser chat UI you run with npx — no clone, no build.",
   "license": "MIT",
   "author": "Laurent Francoise",
-  "homepage": "https://github.com/laurentftech/pi-outpost#readme",
+  "homepage": "https://laurentftech.github.io/pi-outpost/",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/laurentftech/pi-outpost.git",
