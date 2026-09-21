@@ -823,8 +823,10 @@ moving and removing tasks — is always there. `work_plan_extended`, which sets 
 dependencies, resources and verification evidence or replaces the plan wholesale, appears
 only once the session has a plan: every one of those operations acts on a task that must
 already exist, and their schemas are the expensive half to send on turns that never use
-them. A supervised `pi --mode rpc` child gets both at all times, having no way to change
-its published toolset.
+them. It goes again after five turns in which nothing touched the plan, and any later
+`work_plan` call brings it straight back — so a plan opened in the morning stops charging
+for the afternoon that moved on to something else. A supervised `pi --mode rpc` child gets
+both at all times, having no way to change its published toolset.
 
 When a non-empty plan contains at least one `needs_review` task and every other task is either
 `needs_review` or `done`, the project becomes **ready for review** in the project selector.

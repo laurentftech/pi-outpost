@@ -61,9 +61,10 @@ every conversation, and the first thing to look at when a context window feels s
 
 The two Pi Outpost rows are the states one of its conversations sits in. **At rest** is
 most turns of most conversations: no `work_plan_extended`, no document extractor. **A Work
-Plan open** is what real work settles into, since a plan is opened once and kept for the
-session — it is the figure to compare against OpenCode and Kilo Code, which carry every
-default tool on every request.
+Plan open** is what real work settles into — and it is the ceiling rather than the
+average, since the extended half is withdrawn again after five turns in which nothing
+touches the plan. It is the figure to compare against OpenCode and Kilo Code, which carry
+every default tool on every request.
 
 A document extractor adds ~0.5k on top while it lasts, and it does not last: five turns
 after its last call it is forgotten. There is deliberately no "everything published" row —
@@ -100,7 +101,7 @@ Per tool, largest first, in the state each is actually sent in:
 |---|---|---|---|
 | `bash` (Kilo Code) | 6 127 | ~1.5k | always |
 | `bash` (OpenCode) | 5 319 | ~1.3k | always |
-| `work_plan_extended` | 4 602 | ~1.2k | once the session has a plan, then kept |
+| `work_plan_extended` | 4 602 | ~1.2k | while a plan is being worked |
 | `work_plan` | 4 331 | ~1.1k | always |
 | `docx_extract` | 2 475 | ~0.6k | while a Word file is in play |
 | `xlsx_extract` | 2 345 | ~0.6k | while a spreadsheet is in play |
