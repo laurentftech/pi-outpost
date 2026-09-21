@@ -13,13 +13,22 @@ import { execFile } from "node:child_process";
 import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 import { test } from "node:test";
 import { isEnabled } from "../src/providerStackHook.mjs";
 
 const run = promisify(execFile);
-const HOOK = fileURLToPath(new URL("../src/providerStackHook.mjs", import.meta.url));
+
+/**
+ * A `file://` URL, never a path — for both `--import` and the dynamic import below.
+ *
+ * On Windows a bare absolute path reaches the ESM loader as a URL whose scheme is the
+ * drive letter: `D:\a\…` is protocol `d:`, and the loader refuses it with
+ * ERR_UNSUPPORTED_ESM_URL_SCHEME. `fileURLToPath` was the wrong direction here — these
+ * two values are consumed as module specifiers, not as filesystem paths.
+ */
+const HOOK = new URL("../src/providerStackHook.mjs", import.meta.url).href;
 
 /** pi-ai's catch, reduced to the line the hook matches and a recursion to fall into. */
 const FAKE_PROVIDER = `
@@ -47,7 +56,17 @@ async function fakeProvider() {
 }
 
 const driver = (module) =>
-  `import(${JSON.stringify(module)}).then((m) => console.log("message: " + m.stream().errorMessage))`;
+  `import(${JSON.stringify(pathToFileURL(module).href)}).then((m) => console.log("message: " + m.stream().errorMessage))`;
+
+test("every specifier this test hands Node is a file URL, not a path", async () => {
+  // A Linux-visible guard on a Windows-only fault. Here `/tmp/x.js` is a perfectly good
+  // module specifier, so nothing in this suite would notice the regression; on Windows
+  // `D:\a\x.js` is read as protocol `d:` and the loader refuses it. Asserted on the
+  // values rather than on behaviour, since the behaviour is correct on this platform.
+  const { module } = await fakeProvider();
+  assert.ok(HOOK.startsWith("file://"), `the --import specifier is a URL: ${HOOK}`);
+  assert.match(driver(module), /import\("file:\/\//, "and so is the one the child imports");
+});
 
 test("the flag decides, and only a value meaning yes turns it on", () => {
   for (const off of [undefined, "", "   ", "0", "false", "no", "off", "FALSE"]) {
