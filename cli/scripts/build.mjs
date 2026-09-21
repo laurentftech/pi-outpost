@@ -188,6 +188,15 @@ await cp(
   resolve(OUT_DIR, "contract/validate-structured-exchange.mjs"),
 );
 
+// The provider stack probe, beside the bundle so `--import` can reach it and so the
+// hook's own `register("./providerStackRewrite.mjs", { parentURL: import.meta.url })`
+// resolves. Not bundled: it has to be loaded by Node before the bundle's own graph, so
+// it must exist as a file. Inert unless PI_OUTPOST_PROVIDER_STACK says otherwise.
+console.log("[build] copying the provider stack probe …");
+for (const file of ["providerStackHook.mjs", "providerStackRewrite.mjs"]) {
+  await cp(resolve(REPO_ROOT, "server/src", file), resolve(OUT_DIR, file));
+}
+
 console.log("[build] copying skills …");
 await cp(resolve(REPO_ROOT, "skills"), resolve(OUT_DIR, "skills"), { recursive: true });
 
