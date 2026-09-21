@@ -142,8 +142,13 @@ export function Composer({
   const commandSuggestions = useMemo(() => {
     if (commandPrefix === null) return [];
     return commands
-      .filter((c) => c.name.toLowerCase().startsWith(commandPrefix))
-      .sort((a, b) => collator.compare(a.name, b.name))
+      .filter((c) => c.name.toLowerCase().includes(commandPrefix))
+      .sort((a, b) => {
+        const aPrefix = a.name.toLowerCase().startsWith(commandPrefix);
+        const bPrefix = b.name.toLowerCase().startsWith(commandPrefix);
+        if (aPrefix !== bPrefix) return aPrefix ? -1 : 1;
+        return collator.compare(a.name, b.name);
+      })
       .slice(0, MAX_COMMAND_SUGGESTIONS);
   }, [commandPrefix, commands]);
 
