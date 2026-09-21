@@ -1,197 +1,524 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Pi Outpost — Self-hosted web interface for the pi coding agent</title>
-  <meta name="description" content="Run the pi coding agent in your browser from your own machine or server. Streaming responses, live tool cards, file browser, git, and multiple projects.">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Pi Outpost is a self-hosted web interface for the Pi Coding Agent. Run Pi from your browser on your own machine or server, with streaming responses, tools, files, Git, multiple projects, and sandboxed agents.">
+  <meta name="theme-color" content="#0b0d10">
+  <meta property="og:title" content="Pi Outpost — Self-hosted Web UI for Pi Coding Agent">
+  <meta property="og:description" content="Run Pi Coding Agent from your browser on your own machine or server.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://laurentftech.github.io/pi-outpost/">
+  <title>Pi Outpost — Self-hosted Web UI for Pi Coding Agent</title>
+
   <style>
     :root {
-      --bg: #fafafa;
-      --fg: #171717;
-      --muted: #6b7280;
-      --accent: #2563eb;
-      --border: #e5e7eb;
-      --card-bg: #ffffff;
-      --code-bg: #f3f4f6;
+      color-scheme: light dark;
+      --bg: #ffffff;
+      --panel: #f6f7f9;
+      --panel-2: #eef0f3;
+      --text: #111318;
+      --muted: #59616d;
+      --border: #d9dde3;
+      --accent: #2457c5;
+      --accent-hover: #17439f;
+      --code: #f3f4f6;
+      --max: 1080px;
     }
+
     @media (prefers-color-scheme: dark) {
       :root {
-        --bg: #0a0a0a;
-        --fg: #ededed;
-        --muted: #9ca3af;
-        --accent: #60a5fa;
-        --border: #262626;
-        --card-bg: #171717;
-        --code-bg: #1f2937;
+        --bg: #0b0d10;
+        --panel: #12161b;
+        --panel-2: #171c22;
+        --text: #f2f4f7;
+        --muted: #a7afb9;
+        --border: #28303a;
+        --accent: #8ab4ff;
+        --accent-hover: #a9c8ff;
+        --code: #0a0c0f;
       }
     }
-    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    * { box-sizing: border-box; }
+
+    html {
+      scroll-behavior: smooth;
+    }
+
     body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      margin: 0;
       background: var(--bg);
-      color: var(--fg);
-      line-height: 1.6;
+      color: var(--text);
+      font-family:
+        Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+        "Segoe UI", sans-serif;
+      line-height: 1.65;
     }
-    a { color: var(--accent); text-decoration: none; }
-    a:hover { text-decoration: underline; }
 
-    .container { max-width: 960px; margin: 0 auto; padding: 0 1.5rem; }
-
-    /* Hero */
-    .hero {
-      text-align: center;
-      padding: 5rem 1.5rem 3rem;
+    a {
+      color: var(--accent);
+      text-decoration: none;
     }
-    .hero h1 {
-      font-size: 3rem;
+
+    a:hover {
+      color: var(--accent-hover);
+      text-decoration: underline;
+    }
+
+    .wrap {
+      width: min(calc(100% - 40px), var(--max));
+      margin: 0 auto;
+    }
+
+    header {
+      padding: 22px 0;
+      border-bottom: 1px solid var(--border);
+    }
+
+    nav {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 20px;
+    }
+
+    .brand {
+      color: var(--text);
       font-weight: 700;
       letter-spacing: -0.02em;
-      margin-bottom: 0.5rem;
     }
-    .hero .tagline {
-      font-size: 1.25rem;
-      color: var(--muted);
-      max-width: 640px;
-      margin: 0 auto 2rem;
-    }
-    .hero .cta {
-      display: inline-flex;
-      gap: 0.75rem;
-      flex-wrap: wrap;
-      justify-content: center;
-    }
-    .btn {
-      display: inline-block;
-      padding: 0.75rem 1.5rem;
-      border-radius: 8px;
-      font-size: 1rem;
-      font-weight: 500;
-      transition: opacity 0.15s;
-    }
-    .btn:hover { opacity: 0.85; text-decoration: none; }
-    .btn-primary { background: var(--fg); color: var(--bg); }
-    .btn-secondary { border: 1px solid var(--border); color: var(--fg); }
 
-    /* Screenshots */
-    .screenshots {
+    .nav-links {
       display: flex;
-      gap: 1rem;
-      justify-content: center;
-      margin: 3rem 0;
+      gap: 20px;
       flex-wrap: wrap;
-    }
-    .screenshots img {
-      max-width: 480px;
-      width: 100%;
-      border-radius: 12px;
-      border: 1px solid var(--border);
+      font-size: 0.95rem;
     }
 
-    /* Features */
+    main {
+      padding: 80px 0 100px;
+    }
+
+    .hero {
+      max-width: 850px;
+      padding: 20px 0 70px;
+    }
+
+    .eyebrow {
+      display: inline-block;
+      margin-bottom: 18px;
+      color: var(--muted);
+      font-size: 0.9rem;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    h1 {
+      margin: 0;
+      max-width: 900px;
+      font-size: clamp(2.4rem, 5vw, 4.1rem);
+      line-height: 0.98;
+      letter-spacing: -0.055em;
+    }
+
+    .hero p {
+      max-width: 760px;
+      margin: 28px 0 0;
+      color: var(--muted);
+      font-size: clamp(1.1rem, 2vw, 1.35rem);
+    }
+
+    .actions {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-top: 32px;
+    }
+
+    .button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 44px;
+      padding: 0 18px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--panel);
+      color: var(--text);
+      font-weight: 650;
+    }
+
+    .button:hover {
+      background: var(--panel-2);
+      text-decoration: none;
+    }
+
+    .button.primary {
+      background: var(--text);
+      border-color: var(--text);
+      color: var(--bg);
+    }
+
+    .button.primary:hover {
+      background: #fff;
+    }
+
+    section {
+      padding: 70px 0;
+      border-top: 1px solid var(--border);
+    }
+
+    h2 {
+      margin: 0 0 14px;
+      font-size: clamp(1.8rem, 4vw, 2.5rem);
+      line-height: 1.1;
+      letter-spacing: -0.035em;
+    }
+
+    .lead {
+      max-width: 760px;
+      color: var(--muted);
+      margin: 0 0 34px;
+    }
+
     .features {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-      gap: 1.5rem;
-      margin: 4rem 0;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 14px;
     }
+
     .feature {
-      background: var(--card-bg);
+      padding: 22px;
       border: 1px solid var(--border);
-      border-radius: 12px;
-      padding: 1.5rem;
+      border-radius: 10px;
+      background: var(--panel);
     }
-    .feature h3 { font-size: 1.1rem; margin-bottom: 0.4rem; }
-    .feature p { font-size: 0.95rem; color: var(--muted); }
 
-    /* Quick start */
-    .quickstart {
-      background: var(--card-bg);
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      padding: 2rem;
-      margin: 4rem 0;
+    .feature h3 {
+      margin: 0 0 8px;
+      font-size: 1rem;
     }
-    .quickstart h2 { font-size: 1.5rem; margin-bottom: 1rem; }
-    .quickstart pre {
-      background: var(--code-bg);
-      border-radius: 8px;
-      padding: 1rem 1.25rem;
+
+    .feature p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 0.95rem;
+    }
+
+    .code {
+      max-width: 680px;
+      padding: 20px 22px;
       overflow-x: auto;
-      font-size: 0.9rem;
-      line-height: 1.5;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: var(--code);
+      color: var(--text);
+      font: 0.95rem/1.7 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
     }
-    .quickstart code { font-family: "SF Mono", "Fira Code", "Fira Mono", Menlo, monospace; }
 
-    /* Footer */
+    .code .prompt {
+      color: var(--muted);
+      user-select: none;
+    }
+
+    .architecture {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+    }
+
+    .card {
+      padding: 26px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: var(--panel);
+    }
+
+    .card h3 {
+      margin-top: 0;
+    }
+
+    .card p {
+      margin-bottom: 0;
+      color: var(--muted);
+    }
+
+    .faq {
+      max-width: 800px;
+    }
+
+    details {
+      padding: 18px 0;
+      border-top: 1px solid var(--border);
+    }
+
+    details:last-child {
+      border-bottom: 1px solid var(--border);
+    }
+
+    summary {
+      cursor: pointer;
+      font-weight: 650;
+    }
+
+    details p {
+      margin: 12px 0 0;
+      color: var(--muted);
+    }
+
     footer {
-      text-align: center;
-      padding: 3rem 1.5rem;
+      padding: 40px 0 60px;
+      border-top: 1px solid var(--border);
       color: var(--muted);
       font-size: 0.9rem;
-      border-top: 1px solid var(--border);
-      margin-top: 4rem;
+    }
+
+    @media (max-width: 760px) {
+      .wrap {
+        width: min(calc(100% - 28px), var(--max));
+      }
+
+      main {
+        padding-top: 50px;
+      }
+
+      .features,
+      .architecture {
+        grid-template-columns: 1fr;
+      }
+
+      nav {
+        align-items: flex-start;
+      }
+
+      .nav-links {
+        gap: 12px;
+        justify-content: flex-end;
+      }
     }
   </style>
+
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "Pi Outpost",
+    "applicationCategory": "DeveloperApplication",
+    "operatingSystem": "Cross-platform",
+    "description": "A self-hosted web interface for the Pi Coding Agent.",
+    "url": "https://laurentftech.github.io/pi-outpost/",
+    "codeRepository": "https://github.com/laurentftech/pi-outpost/"
+  }
+  </script>
 </head>
+
 <body>
-
-  <section class="hero">
-    <div class="container">
-      <h1>&pi; Outpost</h1>
-      <p class="tagline">A self-hosted web interface for the <a href="https://github.com/earendil-works/pi">pi coding agent</a>. Run it in your browser from your own machine or server.</p>
-      <div class="cta">
-        <a href="https://github.com/laurentftech/pi-outpost#start-in-5-minutes" class="btn btn-primary">Get started</a>
-        <a href="https://github.com/laurentftech/pi-outpost" class="btn btn-secondary">GitHub</a>
-      </div>
+  <header>
+    <div class="wrap">
+      <nav aria-label="Main navigation">
+        <a class="brand" href="#top">Pi Outpost</a>
+        <div class="nav-links">
+          <a href="#features">Features</a>
+          <a href="#install">Install</a>
+          <a href="#faq">FAQ</a>
+          <a href="https://github.com/laurentftech/pi-outpost">GitHub</a>
+        </div>
+      </nav>
     </div>
-  </section>
+  </header>
 
-  <div class="container">
-    <div class="screenshots">
-      <img src="screenshots/chat-light.png" alt="Pi Outpost, light theme">
-      <img src="screenshots/chat-dark.png" alt="Pi Outpost, dark theme">
-    </div>
+  <main id="top">
+    <div class="wrap">
+      <div class="hero">
+        <span class="eyebrow">Pi Outpost</span>
+        <h1>Self-hosted Web UI for Pi Coding Agent</h1>
+        <p>
+          Run Pi from your browser on your own machine or server.
+          Pi Outpost provides a full web interface for streaming responses,
+          tool execution, files, Git, rich diagrams, multiple projects, and sandboxed agents.
+        </p>
 
-    <div class="features">
-      <div class="feature">
-        <h3>Streaming responses</h3>
-        <p>Watch the agent think and write in real time, with collapsible thinking blocks and markdown rendering.</p>
+        <div class="actions">
+          <a class="button primary" href="#install">Get started</a>
+          <a class="button" href="https://github.com/laurentftech/pi-outpost">View on GitHub</a>
+        </div>
       </div>
-      <div class="feature">
-        <h3>Live tool cards</h3>
-        <p>Bash, edit, file operations — see results as they happen, with progress bars for long-running tasks.</p>
-      </div>
-      <div class="feature">
-        <h3>File browser &amp; editor</h3>
-        <p>Navigate your project tree, view files with syntax highlighting, and edit inside the sandbox.</p>
-      </div>
-      <div class="feature">
-        <h3>Git integration</h3>
-        <p>Per-file diffs, commit history, log inspection — all without leaving the interface.</p>
-      </div>
-      <div class="feature">
-        <h3>Multiple projects</h3>
-        <p>Open several projects at once, each with its own agent, sandbox, and session history.</p>
-      </div>
-      <div class="feature">
-        <h3>Embeddable widget</h3>
-        <p>Mount pi-outpost as a Shadow-DOM-isolated widget inside any web application.</p>
-      </div>
-    </div>
 
-    <div class="quickstart">
-      <h2>Quick start</h2>
-      <pre><code>cd ~/projects/my-app
-npx pi-outpost init
-npx pi-outpost</code></pre>
-      <p style="margin-top: 1rem; color: var(--muted);">Requires Node &ge; 24 and a model API key. That's it.</p>
+      <section id="features">
+        <h2>Everything you need to work with Pi</h2>
+        <p class="lead">
+          Pi Outpost keeps the Pi Coding Agent close to its native workflow while
+          making it accessible from a browser, a desktop app, or another web application.
+        </p>
+
+        <div class="features">
+          <article class="feature">
+            <h3>Streaming responses</h3>
+            <p>See agent responses as they are generated, with live tool activity.</p>
+          </article>
+
+          <article class="feature">
+            <h3>Tool cards</h3>
+            <p>Follow tool calls and their results directly in the conversation.</p>
+          </article>
+
+          <article class="feature">
+            <h3>Files &amp; editor</h3>
+            <p>Browse your workspace and edit files without leaving the interface.</p>
+          </article>
+
+          <article class="feature">
+            <h3>Git integration</h3>
+            <p>Work with repositories and inspect Git changes alongside your agent.</p>
+          </article>
+
+          <article class="feature">
+            <h3>Multiple projects</h3>
+            <p>Keep several projects open, each with its own history, sandbox, and agent.</p>
+          </article>
+
+          <article class="feature">
+            <h3>Documents</h3>
+            <p>Work with PDF and Office documents as part of your coding workflow.</p>
+          </article>
+
+          <article class="feature">
+            <h3>Rich diagrams</h3>
+            <p>Render rich diagrams directly in conversations for architecture, flows, and technical explanations.</p>
+          </article>
+
+          <article class="feature">
+            <h3>Desktop app</h3>
+            <p>Install Pi Outpost as a desktop application when you want a dedicated window.</p>
+          </article>
+
+          <article class="feature">
+            <h3>Embeddable</h3>
+            <p>Embed the interface as a Shadow-DOM-isolated widget inside another web app.</p>
+          </article>
+
+          <article class="feature">
+            <h3>Self-hosted</h3>
+            <p>Run the Node process yourself and decide where the agent and its sandbox live.</p>
+          </article>
+        </div>
+      </section>
+
+      <section id="install">
+        <h2>Install</h2>
+        <p class="lead">
+          Run Pi Outpost on your own machine or server with Node.js.
+          See the repository for the latest installation and configuration options.
+        </p>
+
+        <pre class="code"><span class="prompt">$ </span>npx pi-outpost</pre>
+
+        <div class="actions">
+          <a class="button primary" href="https://github.com/laurentftech/pi-outpost#readme">Read the documentation</a>
+          <a class="button" href="https://www.npmjs.com/package/pi-outpost">View on npm</a>
+        </div>
+      </section>
+
+      <section>
+        <h2>One process, multiple ways to use it</h2>
+        <p class="lead">
+          Pi Outpost runs the agent and serves its interface from a single Node process.
+          Use the same setup locally, on a server, or as part of another application.
+        </p>
+
+        <div class="architecture">
+          <div class="card">
+            <h3>Run it directly</h3>
+            <p>
+              Start Pi Outpost on your workstation or server and access Pi Coding Agent
+              from any supported browser.
+            </p>
+          </div>
+
+          <div class="card">
+            <h3>Embed it</h3>
+            <p>
+              Use the isolated widget when you want Pi's interface inside another web
+              application without coupling its styles to the host page.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section id="faq">
+        <h2>FAQ</h2>
+
+        <div class="faq">
+          <details>
+            <summary>What is Pi Outpost?</summary>
+            <p>
+              Pi Outpost is a self-hosted web interface for the
+              <a href="https://github.com/earendil-works/pi">Pi Coding Agent</a>.
+              It lets you run Pi through a browser while keeping the agent and workspace
+              under your control.
+            </p>
+          </details>
+
+          <details>
+            <summary>Where does Pi Outpost run?</summary>
+            <p>
+              It can run on your own machine or server. The Node process runs the agent
+              and serves the web interface.
+            </p>
+          </details>
+
+          <details>
+            <summary>Can I use Pi Outpost as a desktop app?</summary>
+            <p>
+              Yes. Pi Outpost can be installed as a desktop application in addition to
+              being used directly from a browser.
+            </p>
+          </details>
+
+          <details>
+            <summary>Can Pi Outpost be embedded?</summary>
+            <p>
+              Yes. The interface can be embedded as a Shadow-DOM-isolated widget inside
+              another web application.
+            </p>
+          </details>
+
+          <details>
+            <summary>Does Pi Outpost support rich diagrams?</summary>
+            <p>
+              Yes. Pi Outpost can render rich diagrams in conversations, making it useful
+              for architecture, flows, and other technical visualizations.
+            </p>
+          </details>
+
+          <details>
+            <summary>Where can I find the source code?</summary>
+            <p>
+              Pi Outpost is open source. Visit the
+              <a href="https://github.com/laurentftech/pi-outpost">GitHub repository</a>
+              for the source code, documentation, issues, and releases.
+            </p>
+          </details>
+        </div>
+      </section>
     </div>
-  </div>
+  </main>
 
   <footer>
-    <p>pi-outpost is open source under the <a href="https://github.com/laurentftech/pi-outpost/blob/main/LICENSE">MIT license</a>.</p>
+    <div class="wrap">
+      <div>
+        Pi Outpost — a self-hosted web interface for the Pi Coding Agent.
+      </div>
+      <div style="margin-top: 8px;">
+        <a href="https://github.com/laurentftech/pi-outpost">GitHub</a>
+        ·
+        <a href="https://www.npmjs.com/package/pi-outpost">npm</a>
+        ·
+        <a href="https://github.com/earendil-works/pi">Pi Coding Agent</a>
+      </div>
+    </div>
   </footer>
-
 </body>
 </html>
