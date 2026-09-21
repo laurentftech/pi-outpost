@@ -19,9 +19,12 @@
  * before the stream is consumed, and V8 offers no hook at an Error's construction.
  *
  * There is one way in, and it is not from this file: `providerStackHook.mjs`
- * rewrites that catch as the module loads, in memory, and puts the stack on
- * stderr. It is off unless asked for — so when a census lands without one, the
- * headline below names the flag that would have caught it.
+ * rewrites that catch as the module loads, in memory. It puts the stack on
+ * stderr and attaches it to the assistant message as a diagnostic, which is
+ * what an upstream fix would do — so the trace arrives in `turn.diagnostics`
+ * of the record below, beside the census, instead of having to be matched to
+ * it by timestamp across two streams. It is off unless asked for, and when a
+ * census lands without one the headline names the flag that would have caught it.
  *
  * What is an option: a stack overflow is a deterministic function of its input,
  * so this records the input. The number that matters is **depth**. A recursive-

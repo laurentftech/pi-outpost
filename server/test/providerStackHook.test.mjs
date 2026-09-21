@@ -55,8 +55,14 @@ async function fakeProvider() {
   return { dir, module };
 }
 
+/**
+ * Drives the fake provider and prints both halves of what the probe produces: the
+ * message the catch kept, and the diagnostic it now attaches to the assistant message.
+ */
 const driver = (module) =>
-  `import(${JSON.stringify(pathToFileURL(module).href)}).then((m) => console.log("message: " + m.stream().errorMessage))`;
+  `import(${JSON.stringify(pathToFileURL(module).href)}).then((m) => { const out = m.stream();` +
+  ` console.log("message: " + out.errorMessage);` +
+  ` console.log("diagnostics: " + JSON.stringify(out.diagnostics ?? null)); })`;
 
 test("every specifier this test hands Node is a file URL, not a path", async () => {
   // A Linux-visible guard on a Windows-only fault. Here `/tmp/x.js` is a perfectly good
@@ -85,11 +91,12 @@ test("off by default: the module is imported and nothing is rewritten", async ()
     { env: { ...process.env, PI_OUTPOST_PROVIDER_STACK: "" } },
   );
   assert.match(stdout, /message: Maximum call stack size exceeded/, "the turn still fails the way it did");
+  assert.match(stdout, /diagnostics: null/, "and carries no diagnostic it did not ask for");
   assert.doesNotMatch(stderr, /provider stack/, "no probe, no output");
   assert.doesNotMatch(stderr, /probe armed on /, "and nothing was rewritten");
 });
 
-test("armed: the stack the catch was about to drop reaches stderr", async () => {
+test("armed: the stack the catch was about to drop reaches stderr and the message", async () => {
   const { module } = await fakeProvider();
   const { stdout, stderr } = await run(
     process.execPath,
@@ -112,6 +119,24 @@ test("armed: the stack the catch was about to drop reaches stderr", async () => 
     frames.filter((line) => line.includes("recurse")).length > 50,
     "and it names the function that recursed, which is what a real diagnosis reads",
   );
+
+  // The durable half: the same stack, attached to the assistant message the way
+  // pi-messages and openai-codex-responses attach theirs, so `censusOfTurn` records it
+  // verbatim into turn-failures.jsonl instead of it living only in a terminal.
+  const line = stdout.split("\n").find((l) => l.startsWith("diagnostics: "));
+  assert.ok(line, "the driver reported the message's diagnostics");
+  const diagnostics = JSON.parse(line.slice("diagnostics: ".length));
+  assert.equal(diagnostics?.length, 1, "exactly one diagnostic, not a pile of them");
+  const [diagnostic] = diagnostics;
+  assert.equal(diagnostic.type, "provider_transport_failure", "the type the SDK's own helper uses");
+  assert.equal(diagnostic.details.source, "pi-outpost provider stack probe", "and it says who attached it");
+  assert.match(diagnostic.error.message, /Maximum call stack size exceeded/);
+  assert.match(diagnostic.error.stack, /RangeError: Maximum call stack size exceeded/);
+  assert.ok(
+    diagnostic.error.stack.split("\n").filter((l) => l.includes("recurse")).length > 50,
+    "carrying the same deep trace, not a truncated copy",
+  );
+  assert.ok(Number.isFinite(diagnostic.timestamp), "and a timestamp, as the helper produces");
 });
 
 test("a catch the hook does not recognise arms nothing, and says nothing false", async () => {
@@ -133,6 +158,7 @@ test("a catch the hook does not recognise arms nothing, and says nothing false",
     { env: { ...process.env, PI_OUTPOST_PROVIDER_STACK: "1" } },
   );
   assert.match(stdout, /message: Maximum call stack size exceeded/, "the module still runs");
+  assert.match(stdout, /diagnostics: null/, "and no diagnostic is invented for a catch nobody rewrote");
   assert.doesNotMatch(stderr, /probe armed on /, "nothing claims to have been armed");
   assert.match(stderr, /the SDK's catch has moved/, "and the startup line already warned this could happen");
 });

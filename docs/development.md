@@ -145,8 +145,17 @@ On, it registers a load hook that rewrites that catch **in memory**, matched on 
 catch's own line rather than on a filename, so it arms every provider that shares it.
 Nothing under `node_modules` is touched and `npm ci` has nothing to undo. It also raises
 `Error.stackTraceLimit` to 200: V8's default of ten frames is nothing on a recursion,
-where the repeated frame is the answer. What lands on stderr is
-`[pi-outpost] provider stack:` followed by the trace — function names and file paths, no
+where the repeated frame is the answer.
+
+The trace goes to two places, because they answer different questions.
+`[pi-outpost] provider stack:` on stderr is what someone watching a terminal sees. The
+same stack is also attached to the assistant message as a `provider_transport_failure`
+diagnostic — the shape `pi-messages` and `openai-codex-responses` already produce, and
+what an upstream fix would add here — so it reaches `censusOfTurn`, which records
+`diagnostics` verbatim. The trace then lands in `turn-failures.jsonl` beside the census
+of the input it belongs to, rather than having to be matched to it by timestamp.
+`details.source` on the diagnostic says the probe attached it, so it is never mistaken
+for something the SDK produced. Either way it is function names and file paths: no
 message content, no tool arguments.
 
 Two things it will not do. It does not change what the agent sees: the probe is

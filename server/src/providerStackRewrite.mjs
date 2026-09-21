@@ -14,9 +14,11 @@
  * consumed, and V8 offers no hook at an `Error`'s construction — `prepareStackTrace`
  * runs on the first read of `.stack`, which never happens.
  *
- * So the stack is read here, at module load, before the catch can drop it. The source
- * is rewritten **in memory**: nothing under `node_modules` is touched, `npm ci` has
- * nothing to undo, and a machine running without the flag runs the bytes it installed.
+ * So the stack is read here, at module load, before the catch can drop it — and put
+ * back where the rest of the pipeline already knows to look, as an assistant-message
+ * diagnostic, which is what the upstream fix would be. The source is rewritten **in
+ * memory**: nothing under `node_modules` is touched, `npm ci` has nothing to undo, and
+ * a machine running without the flag runs the bytes it installed.
  *
  * Matched on the catch's own line rather than on a filename, so it arms every provider
  * that shares it — and arms none if a future SDK rewrites that line. That silence is
@@ -36,11 +38,35 @@ const NEEDLE = "output.errorMessage = formatProviderError(normalizeProviderError
  * `turnFailureLog.ts`: every other provider failure is already legible in the red
  * bubble, and dumping 200 frames for a rate limit would bury the rare event in the
  * common ones.
+ *
+ * Two destinations, because they answer different questions. stderr is immediate and
+ * is what someone watching a terminal sees. The diagnostic is durable: it rides on the
+ * assistant message the way `pi-messages` and `openai-codex-responses` already attach
+ * theirs, so it reaches `censusOfTurn`, which records `diagnostics` verbatim and says
+ * in its own comment that this is the only object in the pipeline that ever carries a
+ * stack. The census and the trace then land in the same record instead of having to be
+ * correlated by timestamp across two streams.
+ *
+ * The shape is `createAssistantMessageDiagnostic` + `appendAssistantMessageDiagnostic`
+ * from pi-ai's `utils/diagnostics.js`, inlined rather than imported: this text is
+ * injected into a module whose imports were resolved before the rewrite, so there is
+ * nothing to add an import to. `details.source` says who attached it, so nobody reads
+ * it as something the SDK itself produced.
  */
 const PROBE = [
-  "try { if (/maximum call stack size exceeded|call stack size exceeded|stack overflow/i.test(String(error && error.message)))",
-  ' console.error("[pi-outpost] provider stack:\\n" + ((error && error.stack) || String(error)));',
-  " } catch { }",
+  "try {",
+  " if (/maximum call stack size exceeded|call stack size exceeded|stack overflow/i.test(String(error && error.message))) {",
+  "  const __piCode = error && error.code;",
+  "  output.diagnostics = [...(output.diagnostics ?? []), {",
+  '   type: "provider_transport_failure", timestamp: Date.now(),',
+  "   error: { name: (error && error.name) || undefined,",
+  "    message: (error && error.message) || (error && error.name),",
+  "    stack: error && error.stack,",
+  '    code: (typeof __piCode === "string" || typeof __piCode === "number") ? __piCode : undefined },',
+  '   details: { source: "pi-outpost provider stack probe" } }];',
+  '  console.error("[pi-outpost] provider stack:\\n" + ((error && error.stack) || String(error)));',
+  " }",
+  "} catch { }",
 ].join("");
 
 /** Set by `initialize`, which `module.register` calls with the port it was given. */
