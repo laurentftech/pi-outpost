@@ -6,8 +6,8 @@
     "node": ">=24"
   },
   "scripts": {
-    "dev": "node --watch --import tsx src/index.ts --config ../pi-outpost.config.dev.json",
-    "start": "tsx src/index.ts",
+    "dev": "node --watch --import tsx --import ./src/providerStackHook.mjs src/index.ts --config ../pi-outpost.config.dev.json",
+    "start": "node --import tsx --import ./src/providerStackHook.mjs src/index.ts",
     "typecheck": "tsc --noEmit",
     "build": "tsc --noEmit",
     "build:sea": "node scripts/build-sea.mjs",

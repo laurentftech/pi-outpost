@@ -1374,24 +1374,17 @@ for (const root of config.openProjects) {
 
 workspace.workPlan = await loadWorkPlan(workspace.agent.snapshot().sessionFile);
 workspace.workPlanSessionFile = workspace.agent.snapshot().sessionFile;
+// Withheld first: it clears the idle counts, and the work plan tools enrol in them.
+withholdDocumentTools(workspace);
 // The bound session may already have a plan — resumed, or the server restarted under
 // one. An agent that inherits work should inherit the tools for it, not discover them.
 publishWorkPlanTools(workspace, workspace.workPlan);
-withholdDocumentTools(workspace);
 
 /**
  * Session replacement events are synchronous, while their sidecar reads are not.
  * Keep those reads ordered so a fork can wait for the replacement snapshot before
  * copying and announcing its inherited plan. Without the queue, a late ENOENT read
  * could overwrite the copied plan with null.
- */
-/**
- * The extended Work Plan tool is published exactly while there is a plan to act on.
- *
- * Derived from the plan itself at every point where the plan can change — a mutation,
- * a session replacement, the initial bind — rather than from a flag someone has to
- * remember to keep in step. The runtime says whether it took: an RPC child publishes
- * both tools always, which is the documented cost of that dialect.
  */
 /**
  * Withhold every document extractor until a document of its kind turns up.
@@ -1468,7 +1461,24 @@ function unpublishDocumentTools(workspace: Workspace, tools: string[]): void {
 const DOCUMENT_TOOL_IDLE_LIMIT = { unused: 1, used: 5 };
 
 /**
- * Age every published extractor by one turn, and forget the ones that have gone quiet.
+ * How long the extended Work Plan tool may go unused before it is withdrawn.
+ *
+ * Five, like an extractor that has been called, and for the same reason: a plan is worked
+ * in bursts, and the quiet turns between them are not evidence that the plan is over.
+ * Never one — the `unused` threshold pays back a *guess*, a document named in passing that
+ * turned out not to matter, and there is no guess here: the tool is published because a
+ * plan exists, which is a fact the sidecar states.
+ *
+ * What makes ageing it safe at all is that the way back is the agent's, not only the
+ * user's. `work_plan` is never withheld, its description names the extended half, and any
+ * successful call to either republishes the pair from inside the turn — see the
+ * `tool_result` handler. An extractor has no such path, which is why its own comment says
+ * naming the document again is the only way back.
+ */
+const WORK_PLAN_EXTENDED_IDLE_LIMIT = 5;
+
+/**
+ * Age every published on-demand tool by one turn, and forget the ones that have gone quiet.
  *
  * Called when a turn ends. A tool used during it was reset to zero as it was called, so
  * what is counted here is silence.
@@ -1478,9 +1488,12 @@ function ageDocumentTools(workspace: Workspace): void {
   for (const [tool, idle] of workspace.documentToolIdleTurns) {
     // A turn that called it is not a turn it sat idle through.
     if (used.has(tool)) continue;
-    const limit = workspace.documentToolsEverUsed.has(tool)
-      ? DOCUMENT_TOOL_IDLE_LIMIT.used
-      : DOCUMENT_TOOL_IDLE_LIMIT.unused;
+    const limit =
+      tool === WORK_PLAN_EXTENDED_TOOL
+        ? WORK_PLAN_EXTENDED_IDLE_LIMIT
+        : workspace.documentToolsEverUsed.has(tool)
+          ? DOCUMENT_TOOL_IDLE_LIMIT.used
+          : DOCUMENT_TOOL_IDLE_LIMIT.unused;
     if (idle + 1 < limit) {
       workspace.documentToolIdleTurns.set(tool, idle + 1);
       continue;
@@ -1491,8 +1504,25 @@ function ageDocumentTools(workspace: Workspace): void {
   used.clear();
 }
 
+/**
+ * The extended Work Plan tool is published while there is a plan to act on, and withdrawn
+ * again once the conversation has stopped touching it.
+ *
+ * Derived from the plan itself at every point where the plan can change — a mutation, a
+ * session replacement, the initial bind — rather than from a flag someone has to remember
+ * to keep in step. The runtime says whether it took: an RPC child publishes both tools
+ * always, which is the documented cost of that dialect, and there is nothing to age there.
+ *
+ * Existing is necessary and no longer sufficient. Its schema is 3.6 KB and it sat in every
+ * request for the life of a plan, most of them nowhere near dependencies or evidence, so it
+ * is enrolled in the same idle count as the extractors — which is also what resets the
+ * count, since every call that reaches this function is the plan being worked.
+ */
 function publishWorkPlanTools(workspace: Workspace, plan: WorkPlan | null): void {
-  workspace.agent.setToolPublished(WORK_PLAN_EXTENDED_TOOL, plan !== null);
+  const published = plan !== null;
+  if (!workspace.agent.setToolPublished(WORK_PLAN_EXTENDED_TOOL, published)) return;
+  if (published) workspace.documentToolIdleTurns.set(WORK_PLAN_EXTENDED_TOOL, 0);
+  else workspace.documentToolIdleTurns.delete(WORK_PLAN_EXTENDED_TOOL);
 }
 
 /**
@@ -1519,10 +1549,11 @@ function queueWorkPlanSessionSync(workspace: Workspace, after?: Promise<unknown>
     if (!sameSessionFile(workspace.agent.snapshot().sessionFile, sessionFile)) return;
     workspace.workPlan = plan;
     workspace.workPlanSessionFile = sessionFile;
-    publishWorkPlanTools(workspace, plan);
     // A replaced session is a new conversation: whatever documents the last one saw are
-    // not this one's, and the first prompt naming one publishes what it needs.
+    // not this one's, and the first prompt naming one publishes what it needs. Before the
+    // work plan tools, which enrol in the idle counts this clears.
     withholdDocumentTools(workspace);
+    publishWorkPlanTools(workspace, plan);
     broadcast(workspace, { type: "session_replaced", ...snapshot(workspace) });
     if (inherited) broadcast(workspace, { type: "work_plan_changed", workPlan: plan });
     announceWorkspaceActivity();
@@ -3037,10 +3068,11 @@ async function ensureStarted(target: Workspace): Promise<void> {
     refreshExtensionRender(target);
     target.workPlan = await loadWorkPlan(runtime.snapshot().sessionFile);
     target.workPlanSessionFile = runtime.snapshot().sessionFile;
-    // Same as the boot workspace: a project reopened onto an existing plan publishes
+    // Same as the boot workspace: withheld first, because it clears the idle counts the
+    // work plan tools enrol in; then a project reopened onto an existing plan publishes
     // the tools that plan needs, rather than making its agent find them again.
-    publishWorkPlanTools(target, target.workPlan);
     withholdDocumentTools(target);
+    publishWorkPlanTools(target, target.workPlan);
     target.lastUsedAt = Date.now();
     // Listed, and looked up past startup's delay; a recent answer is reused.
     void refreshPiPackages(target);

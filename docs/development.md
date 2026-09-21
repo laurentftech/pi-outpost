@@ -118,6 +118,52 @@ own origin with hostile CSS, the servers behind it, and a seeded transcript with
 and tables. Rebuild `web`, then `@pi-outpost/embed`, then `build:e2e-host` first — the bench
 serves `dist/`, so an unbuilt fix is invisible.
 
+## When a turn dies of stack exhaustion
+
+`server/src/turnFailureLog.ts` writes a census of the *input* to
+`<agentDir>/turn-failures.jsonl` — counts, byte sizes, nesting depths, roles and tool
+names, never message text — because a stack overflow is a deterministic function of what
+it was handed. What it cannot record is the trace, and the reason is upstream: every
+pi-ai provider's stream loop ends in a catch that keeps `error.message` and drops the
+`Error`. `normalizeProviderError` hands back a flat struct with no stack in it,
+`after_provider_response` fires before the stream is consumed, and V8 has no hook at an
+`Error`'s construction — `prepareStackTrace` runs on the first read of `.stack`, which
+never happens.
+
+The probe reads it before the catch can drop it:
+
+```bash
+PI_OUTPOST_PROVIDER_STACK=1 npm run dev --workspace server 2> pi-stderr.log
+```
+
+`providerStackHook.mjs` is passed with `--import` from the `dev` and `start` scripts —
+the only slot early enough, since the whole module graph is loaded before any of
+pi-outpost's own code evaluates. It is inert unless the variable says otherwise: off, it
+reads one environment variable and returns, registers nothing and rewrites nothing.
+
+On, it registers a load hook that rewrites that catch **in memory**, matched on the
+catch's own line rather than on a filename, so it arms every provider that shares it.
+Nothing under `node_modules` is touched and `npm ci` has nothing to undo. It also raises
+`Error.stackTraceLimit` to 200: V8's default of ten frames is nothing on a recursion,
+where the repeated frame is the answer. What lands on stderr is
+`[pi-outpost] provider stack:` followed by the trace — function names and file paths, no
+message content, no tool arguments.
+
+Two things it will not do. It does not change what the agent sees: the probe is
+prepended to the assignment, which still runs, so the turn fails exactly as it did. And
+it cannot reach inside a `--build-sea` executable, where the SDK is bundled rather than
+resolved — for the npm install the SDK stays external, so there it works.
+
+If a future SDK rewrites that catch, the hook matches nothing and says nothing false: the
+startup line warns that no probe reporting in by the first model call means exactly that.
+A census recorded without the probe armed prints the flag to set.
+
+For the installed CLI, the same file ships beside the bundle:
+
+```bash
+PI_OUTPOST_PROVIDER_STACK=1 NODE_OPTIONS="--import <prefix>/pi-outpost/dist/providerStackHook.mjs" pi-outpost
+```
+
 ## Building the widget
 
 ```bash

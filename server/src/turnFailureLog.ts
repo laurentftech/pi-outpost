@@ -14,7 +14,14 @@
  * crosses the runtime seam there is no `.stack` left to read anywhere in the
  * process. Two providers (pi-messages, openai-codex-responses) additionally
  * attach a diagnostic that does carry one; the Anthropic path does not. Logging
- * the error harder is therefore not an option that exists.
+ * the error harder *from here* is not an option that exists: `normalizeProviderError`
+ * hands back a flat struct with no stack in it, `after_provider_response` fires
+ * before the stream is consumed, and V8 offers no hook at an Error's construction.
+ *
+ * There is one way in, and it is not from this file: `providerStackHook.mjs`
+ * rewrites that catch as the module loads, in memory, and puts the stack on
+ * stderr. It is off unless asked for — so when a census lands without one, the
+ * headline below names the flag that would have caught it.
  *
  * What is an option: a stack overflow is a deterministic function of its input,
  * so this records the input. The number that matters is **depth**. A recursive-
@@ -62,6 +69,27 @@ const WORST_LISTED = 8;
 export function isStackExhaustion(message: string): boolean {
   return /maximum call stack size exceeded|call stack size exceeded|stack overflow/i.test(message);
 }
+
+/**
+ * The flag that arms the one thing this census cannot supply.
+ *
+ * Duplicated from `providerStackHook.mjs` rather than imported: that module is a
+ * `--import` target loaded before any of this, it cannot read TypeScript, and importing
+ * it here would run its registration a second time. Two short lists, one comment each.
+ */
+export const PROVIDER_STACK_ENV = "PI_OUTPOST_PROVIDER_STACK";
+
+const PROVIDER_STACK_OFF = new Set(["", "0", "false", "no", "off"]);
+
+/** Whether the next occurrence will carry a stack, or another census with no trace. */
+export function providerStackProbeArmed(env: NodeJS.ProcessEnv = process.env): boolean {
+  return !PROVIDER_STACK_OFF.has((env[PROVIDER_STACK_ENV] ?? "").trim().toLowerCase());
+}
+
+/** Said at the only moment anyone wants to hear it: a failure that arrived without one. */
+export const PROVIDER_STACK_HINT =
+  `[pi-outpost] no stack accompanies this — the provider's catch drops it. Set ${PROVIDER_STACK_ENV}=1` +
+  " and the next occurrence will print one.";
 
 /** What a value's shape says about why a recursive walk over it might not return. */
 export interface ShapeCensus {
@@ -319,6 +347,7 @@ function writeRecord(agentDir: string, report: TurnFailureReport): void {
     context?.cyclic?.length ? ` SELF-REFERENCE in ${context.cyclic.length} entr${context.cyclic.length === 1 ? "y" : "ies"}` : "",
   ].join("");
   console.error(headline);
+  if (!providerStackProbeArmed()) console.error(PROVIDER_STACK_HINT);
 
   const file = path.join(agentDir, "turn-failures.jsonl");
   try {
