@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pi Outpost — Self-hosted web interface for the pi coding agent</title>
+  <meta name="description" content="Run the pi coding agent in your browser from your own machine or server. Streaming responses, live tool cards, file browser, git, and multiple projects.">
+  <style>
+    :root {
+      --bg: #fafafa;
+      --fg: #171717;
+      --muted: #6b7280;
+      --accent: #2563eb;
+      --border: #e5e7eb;
+      --card-bg: #ffffff;
+      --code-bg: #f3f4f6;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #0a0a0a;
+        --fg: #ededed;
+        --muted: #9ca3af;
+        --accent: #60a5fa;
+        --border: #262626;
+        --card-bg: #171717;
+        --code-bg: #1f2937;
+      }
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      background: var(--bg);
+      color: var(--fg);
+      line-height: 1.6;
+    }
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    .container { max-width: 960px; margin: 0 auto; padding: 0 1.5rem; }
+
+    /* Hero */
+    .hero {
+      text-align: center;
+      padding: 5rem 1.5rem 3rem;
+    }
+    .hero h1 {
+      font-size: 3rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      margin-bottom: 0.5rem;
+    }
+    .hero .tagline {
+      font-size: 1.25rem;
+      color: var(--muted);
+      max-width: 640px;
+      margin: 0 auto 2rem;
+    }
+    .hero .cta {
+      display: inline-flex;
+      gap: 0.75rem;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+    .btn {
+      display: inline-block;
+      padding: 0.75rem 1.5rem;
+      border-radius: 8px;
+      font-size: 1rem;
+      font-weight: 500;
+      transition: opacity 0.15s;
+    }
+    .btn:hover { opacity: 0.85; text-decoration: none; }
+    .btn-primary { background: var(--fg); color: var(--bg); }
+    .btn-secondary { border: 1px solid var(--border); color: var(--fg); }
+
+    /* Screenshots */
+    .screenshots {
+      display: flex;
+      gap: 1rem;
+      justify-content: center;
+      margin: 3rem 0;
+      flex-wrap: wrap;
+    }
+    .screenshots img {
+      max-width: 480px;
+      width: 100%;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+    }
+
+    /* Features */
+    .features {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 1.5rem;
+      margin: 4rem 0;
+    }
+    .feature {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.5rem;
+    }
+    .feature h3 { font-size: 1.1rem; margin-bottom: 0.4rem; }
+    .feature p { font-size: 0.95rem; color: var(--muted); }
+
+    /* Quick start */
+    .quickstart {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 2rem;
+      margin: 4rem 0;
+    }
+    .quickstart h2 { font-size: 1.5rem; margin-bottom: 1rem; }
+    .quickstart pre {
+      background: var(--code-bg);
+      border-radius: 8px;
+      padding: 1rem 1.25rem;
+      overflow-x: auto;
+      font-size: 0.9rem;
+      line-height: 1.5;
+    }
+    .quickstart code { font-family: "SF Mono", "Fira Code", "Fira Mono", Menlo, monospace; }
+
+    /* Footer */
+    footer {
+      text-align: center;
+      padding: 3rem 1.5rem;
+      color: var(--muted);
+      font-size: 0.9rem;
+      border-top: 1px solid var(--border);
+      margin-top: 4rem;
+    }
+  </style>
+</head>
+<body>
+
+  <section class="hero">
+    <div class="container">
+      <h1>&pi; Outpost</h1>
+      <p class="tagline">A self-hosted web interface for the <a href="https://github.com/earendil-works/pi">pi coding agent</a>. Run it in your browser from your own machine or server.</p>
+      <div class="cta">
+        <a href="https://github.com/laurentftech/pi-outpost#start-in-5-minutes" class="btn btn-primary">Get started</a>
+        <a href="https://github.com/laurentftech/pi-outpost" class="btn btn-secondary">GitHub</a>
+      </div>
+    </div>
+  </section>
+
+  <div class="container">
+    <div class="screenshots">
+      <img src="screenshots/chat-light.png" alt="Pi Outpost, light theme">
+      <img src="screenshots/chat-dark.png" alt="Pi Outpost, dark theme">
+    </div>
+
+    <div class="features">
+      <div class="feature">
+        <h3>Streaming responses</h3>
+        <p>Watch the agent think and write in real time, with collapsible thinking blocks and markdown rendering.</p>
+      </div>
+      <div class="feature">
+        <h3>Live tool cards</h3>
+        <p>Bash, edit, file operations — see results as they happen, with progress bars for long-running tasks.</p>
+      </div>
+      <div class="feature">
+        <h3>File browser &amp; editor</h3>
+        <p>Navigate your project tree, view files with syntax highlighting, and edit inside the sandbox.</p>
+      </div>
+      <div class="feature">
+        <h3>Git integration</h3>
+        <p>Per-file diffs, commit history, log inspection — all without leaving the interface.</p>
+      </div>
+      <div class="feature">
+        <h3>Multiple projects</h3>
+        <p>Open several projects at once, each with its own agent, sandbox, and session history.</p>
+      </div>
+      <div class="feature">
+        <h3>Embeddable widget</h3>
+        <p>Mount pi-outpost as a Shadow-DOM-isolated widget inside any web application.</p>
+      </div>
+    </div>
+
+    <div class="quickstart">
+      <h2>Quick start</h2>
+      <pre><code>cd ~/projects/my-app
+npx pi-outpost init
+npx pi-outpost</code></pre>
+      <p style="margin-top: 1rem; color: var(--muted);">Requires Node &ge; 24 and a model API key. That's it.</p>
+    </div>
+  </div>
+
+  <footer>
+    <p>pi-outpost is open source under the <a href="https://github.com/laurentftech/pi-outpost/blob/main/LICENSE">MIT license</a>.</p>
+  </footer>
+
+</body>
+</html>
