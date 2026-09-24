@@ -1,12 +1,14 @@
 /**
- * The one zip operation a document reader needs: read one entry, by exact name.
+ * The zip reading a document reader needs: one entry by exact name, or — for the
+ * presentation builder, which copies a template's parts into a new package — every
+ * entry at once.
  *
  * Written here rather than taken from a package because the deployments this
  * serves are air-gapped, where a dependency is something a security team vendors
  * and re-reviews rather than something you install (see the docx change,
- * decision 1). The scope is deliberately tiny: no writing, no listing for the
- * caller, no path handling — an entry name never becomes a filesystem path, so
- * the classic zip-slip has no reachable sink here.
+ * decision 1). The scope is deliberately tiny: no writing (that is zipWriter.ts),
+ * no path handling — an entry name never becomes a filesystem path, so the
+ * classic zip-slip has no reachable sink here.
  *
  * SECURITY: the bytes are attacker-controlled. Every loop below is bounded, and
  * inflation runs against a byte budget so a compression bomb is stopped while it
@@ -126,26 +128,51 @@ function inflateBounded(compressed: Buffer, maxBytes: number, name: string): Buf
   }
 }
 
-/**
- * The contents of one entry, or null when the archive does not carry it.
- *
- * The entry is located through the central directory and then read from its
- * local header, whose name and extra-field lengths are the ones that count —
- * the two records disagree often enough that trusting the wrong one truncates
- * real files.
- */
+/** The contents of one entry, or null when the archive does not carry it. */
 export function readZipEntry(bytes: Buffer, name: string, limits: ZipLimits): Buffer | null {
   const entry = readCentralDirectory(bytes, limits).find((candidate) => candidate.name === name);
   if (entry === undefined) return null;
+  return readEntryData(bytes, entry, limits.maxInflatedBytes);
+}
 
+/**
+ * Every entry of the archive, by name, in directory order.
+ *
+ * `maxTotalBytes` bounds the sum of what the entries expand to: a package of a
+ * thousand parts each just under the per-entry ceiling is a bomb too, only a
+ * slower one. Directory entries (names ending in `/`) carry no data and are left out.
+ */
+export function readAllZipEntries(bytes: Buffer, limits: ZipLimits & { maxTotalBytes: number }): Map<string, Buffer> {
+  const entries = new Map<string, Buffer>();
+  let total = 0;
+  for (const entry of readCentralDirectory(bytes, limits)) {
+    if (entry.name.endsWith("/")) continue;
+    const remaining = limits.maxTotalBytes - total;
+    if (remaining <= 0) {
+      throw new ZipError("too-large", `the archive expands past the ${limits.maxTotalBytes} byte limit`);
+    }
+    const data = readEntryData(bytes, entry, Math.min(limits.maxInflatedBytes, remaining));
+    total += data.length;
+    entries.set(entry.name, data);
+  }
+  return entries;
+}
+
+/**
+ * The contents of one entry, read from its local header, whose name and
+ * extra-field lengths are the ones that count — the central directory and the
+ * local header disagree often enough that trusting the wrong one truncates real files.
+ */
+function readEntryData(bytes: Buffer, entry: ZipEntry, maxBytes: number): Buffer {
+  const name = entry.name;
   const local = slice(bytes, entry.localHeaderOffset, 30);
   if (local.readUInt32LE(0) !== LOCAL_SIGNATURE) {
     throw new ZipError("unreadable", `"${name}" does not start with a local file header`);
   }
   const dataAt = entry.localHeaderOffset + 30 + local.readUInt16LE(26) + local.readUInt16LE(28);
 
-  if (entry.uncompressedSize > limits.maxInflatedBytes) {
-    throw new ZipError("too-large", `"${name}" declares ${entry.uncompressedSize} bytes (limit ${limits.maxInflatedBytes})`);
+  if (entry.uncompressedSize > maxBytes) {
+    throw new ZipError("too-large", `"${name}" declares ${entry.uncompressedSize} bytes (limit ${maxBytes})`);
   }
   const compressed = slice(bytes, dataAt, entry.compressedSize);
 
@@ -153,7 +180,7 @@ export function readZipEntry(bytes: Buffer, name: string, limits: ZipLimits): Bu
   if (entry.compressionMethod !== 8) {
     throw new ZipError("unreadable", `"${name}" uses an unsupported compression method`);
   }
-  return inflateBounded(compressed, limits.maxInflatedBytes, name);
+  return inflateBounded(compressed, maxBytes, name);
 }
 
 /** Whether the archive carries an entry with this exact name. */

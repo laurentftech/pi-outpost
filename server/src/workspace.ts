@@ -27,6 +27,7 @@ import { resolveBrowserRoot, resolveWritableRoot } from "./fileBrowser.ts";
 import { discoverRepos, whyGitCannotServe, type GitRepo } from "./git.ts";
 import { ExtensionRenderer } from "./extensionRender.ts";
 import { createSandboxedTools } from "./sandbox.ts";
+import type { RenderSettings } from "./presentationRender.ts";
 import type { ExtensionUIRequest, GitUnavailable, WorkPlan } from "@pi-outpost/shared";
 
 /**
@@ -55,6 +56,8 @@ export interface WorkspaceToolLimits {
   xlsxMaxBytes: number;
   pptxMaxBytes: number;
   structuredExchangeMaxBytes: number;
+  /** How `pptx_render` finds and runs an office application. */
+  pptxRender?: RenderSettings;
 }
 
 /** Facts needed to decide whether an open workspace may release its resources. */
@@ -504,6 +507,7 @@ async function buildResources(options: WorkspaceOptions): Promise<WorkspaceResou
           limits.structuredExchangeMaxBytes,
           // The project, not the sandbox root: the profile registry is the project's.
           settings.cwd,
+          limits.pptxRender,
         )),
         ...options.unconfinedTools,
       ])

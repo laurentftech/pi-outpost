@@ -16,6 +16,7 @@ every flag.
 - [Teach the agent something](#teach-the-agent-something)
 - [Restrict which models can be picked](#restrict-which-models-can-be-picked)
 - [Let the agent read a big PDF, Word or Excel file](#let-the-agent-read-a-big-pdf-word-or-excel-file)
+- [Make a PowerPoint deck from a template](#make-a-powerpoint-deck-from-a-template)
 - [Lock down a shared deployment](#lock-down-a-shared-deployment)
 - [Put it inside your own web app](#put-it-inside-your-own-web-app)
 - [Use an existing pi installation](#use-an-existing-pi-installation)
@@ -425,6 +426,40 @@ The ceiling is 25 MB per format, raise it if your documents are bigger:
 
 For a long document, ask for `output_path`: the extractor writes the whole thing to a
 workspace file and returns a summary, instead of spending the context on it twice.
+
+## Make a PowerPoint deck from a template
+
+Name the template in your prompt — `Make the steering-committee deck from brand.potx, using
+report.docx` — or load the skill with `/skill:pptx-from-template`. Either one gives the agent three
+tools and the bundled skill tells it how to use them:
+
+1. `pptx_layouts` lists the template's layouts (a `.potx`, or a `.pptx` whose design you want).
+2. `pptx_create` writes a new `.pptx`: each slide takes a layout, and its title, subtitle,
+   bullets and picture go into that layout's placeholders, so the template styles them. The
+   template's own sample slides are left out. Pictures can be PNG, JPEG, GIF or SVG.
+3. `pptx_render` has an office application draw the deck and hands the agent a picture of every
+   slide, plus a list of the text that is on a slide but not visible (overflow, clipping). The
+   agent fixes what it sees and rebuilds, before telling you the deck is done. Ask for a PDF and
+   it saves the rendering too.
+
+Rendering needs one of these installed where the server runs:
+
+- **PowerPoint**, on Windows — used first, through COM automation. It is the reference: what
+  your audience will open the deck with. PowerPoint is never closed under you if you had a deck
+  open in it.
+- **LibreOffice**, anywhere — found in its standard location or on `PATH`.
+- **ONLYOFFICE Document Builder** (`docbuilder`).
+
+To force one, or to point at an executable installed elsewhere:
+
+```json
+{ "pptx": { "renderer": "libreoffice", "libreofficePath": "C:/Tools/LibreOffice/program/soffice.com" } }
+```
+
+LibreOffice and ONLYOFFICE substitute fonts they do not have, so their line breaks can differ a
+little from PowerPoint's; the agent is told to leave room rather than trust a render that only just
+fits. Building needs a writable workspace: in a read-only sandbox `pptx_create` is not offered.
+Charts, tables and speaker notes are not written yet — the agent says so rather than faking them.
 
 ## Lock down a shared deployment
 

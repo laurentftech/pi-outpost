@@ -29,7 +29,9 @@
     "maxBytes": 26214400
   },
   "pptx": {
-    "maxBytes": 26214400
+    "maxBytes": 26214400,
+    "renderer": "auto",
+    "renderTimeoutMs": 120000
   },
   "structuredExchange": {
     "maxBytes": 4000000

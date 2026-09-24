@@ -34,6 +34,17 @@ describe("parseToolsSettings", () => {
     assert.deepEqual(parsed, VALID);
   });
 
+  test("carries the rendering settings the parent passes, and refuses malformed ones", () => {
+    const withRender = { ...VALID, pptxRender: { renderer: "libreoffice", timeoutMs: 5000, libreofficePath: "/opt/lo/soffice" } };
+    assert.deepEqual(parseToolsSettings(JSON.stringify(withRender)), withRender);
+    assert.throws(() => parseToolsSettings(JSON.stringify({ ...VALID, pptxRender: { renderer: "keynote", timeoutMs: 5000 } })), /pptxRender\.renderer/);
+    assert.throws(() => parseToolsSettings(JSON.stringify({ ...VALID, pptxRender: { renderer: "auto", timeoutMs: 0 } })), /pptxRender\.timeoutMs/);
+    assert.throws(
+      () => parseToolsSettings(JSON.stringify({ ...VALID, pptxRender: { renderer: "auto", timeoutMs: 5000, onlyofficePath: 3 } })),
+      /pptxRender\.onlyofficePath/,
+    );
+  });
+
   test("throws when the env var is not set", () => {
     assert.throws(() => parseToolsSettings(undefined), new RegExp(TOOLS_ENV_VAR));
   });
@@ -139,15 +150,18 @@ describe("createPiOutpostTools", () => {
     await Promise.all(roots.map((r) => rm(r, { recursive: true, force: true })));
   });
 
-  test("returns the nine tools the agent needs, in the documented order", async () => {
+  test("returns the tools the agent needs, in the documented order", async () => {
     const tools = await createPiOutpostTools({ cwd: root, maxBytes: VALID.maxBytes });
-    assert.equal(tools.length, 10);
+    assert.equal(tools.length, 13);
     const names = tools.map((t) => t.name);
     assert.deepEqual(names, [
       "pdf_extract",
       "docx_extract",
       "xlsx_extract",
       "pptx_extract",
+      "pptx_layouts",
+      "pptx_create",
+      "pptx_render",
       "write_structure_figure",
       "write_structure_table",
       "present_structure",
@@ -204,14 +218,14 @@ describe("default export (extension entry)", () => {
     });
   }
 
-  test("registers the eight tools when the env var is set", async () => {
+  test("registers the same tools when the env var is set", async () => {
     await withEnv(JSON.stringify({ cwd: root, maxBytes: VALID.maxBytes }), async () => {
       const registered: ToolDefinition[] = [];
       const pi = { registerTool: (t: ToolDefinition) => void registered.push(t) } as unknown as ExtensionAPI;
 
       await piOutpostExtension(pi);
 
-      assert.equal(registered.length, 10);
+      assert.equal(registered.length, 13);
       assert.deepEqual(
         registered.map((t) => t.name),
         [
@@ -219,6 +233,9 @@ describe("default export (extension entry)", () => {
           "docx_extract",
           "xlsx_extract",
           "pptx_extract",
+          "pptx_layouts",
+          "pptx_create",
+          "pptx_render",
           "write_structure_figure",
           "write_structure_table",
           "present_structure",

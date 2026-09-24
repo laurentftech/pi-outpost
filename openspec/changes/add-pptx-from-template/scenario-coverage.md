@@ -1,0 +1,66 @@
+# Scenario coverage — add-pptx-from-template
+
+Every `#### Scenario:` declared by this change's delta specs, matched to the assertion that would
+fail if the contract broke. 38 scenarios: 30 in `pptx-presentations`, 5 in `agent`, 3 in `config`.
+
+Enumerated with `rg '^#### Scenario:' openspec/changes/add-pptx-from-template/`.
+
+The office applications are not on CI. What CI checks is how they are invoked (an injected runner
+asserts argv, environment and order) and how their output is read — on
+`server/test/fixtures/pptx-rendered.pdf`, a real LibreOffice rendering checked in with the script
+that produced it. The whole loop was also run against real LibreOffice 24.2 through the running
+server (`presentationToolsWire.test.mjs`, rendering branch), and its slide pictures were looked at.
+Real PowerPoint could not be exercised here; see tasks.md §6.
+
+## `pptx-presentations`
+
+| Scenario | Coverage | Assertion evidence |
+| --- | --- | --- |
+| LayoutsAreListedInTheMastersOrder | covered | `server/test/pptxBuild.test.ts` — "lists the layouts in the master's order, with their names, types and placeholders" asserts all seven `[name, type]` pairs in order; "describes the template for the model as a table of layouts" asserts the placeholder column. `server/test/presentationTools.test.ts` — "lists the template's layouts for the model" through the tool. |
+| APlaceholderWithoutPositionInheritsTheMasters | covered | `server/test/pptxBuild.test.ts` — "gives a placeholder that states no position its master's": the fixture layout's title and content have empty `spPr`; asserts they carry the master's exact boxes, and that a layout box of its own is kept. |
+| AnUnusableTemplateIsRefusedWithItsReason | covered | `server/test/pptxBuild.test.ts` — "refuses what is not a usable template, saying why": OLE (encrypted/legacy), non-zip, a Word document, a macro-enabled main part and a DOCTYPE, each with its own message. |
+| SlidesFillTheLayoutsPlaceholders | covered | `server/test/pptxBuild.test.ts` — "writes into the layout's placeholders by type and index, so the template styles them": asserts `<p:ph type="title"/>` and `<p:ph idx="1"/>` carry the text, an empty `spPr` (inherited position), and the slide's layout relationship. |
+| TheOutputIsAPresentationNotATemplate | covered | `server/test/pptxBuild.test.ts` — "is a presentation, not a template, and every relationship resolves": the main part's override is the presentation type and no `template.main` remains. |
+| TheTemplatesOwnSlidesAreLeftOut | covered | `server/test/pptxBuild.test.ts` — "sweeps the template's sample slide and everything only it reached" (notes slide, its rels and the sample picture gone, content types clean, masters/layouts/theme kept) and "drops the custom show and section list that named the sample, and keeps other extensions". "holds exactly the new slides, in order, with fresh ids" asserts only the new slides are listed. |
+| EveryRelationshipResolves | covered | `server/test/pptxBuild.test.ts` — `assertIntact` resolves every internal relationship of every `.rels` part and checks every part has a content type, run on a text deck and on an SVG deck. |
+| BulletsNestByIndentation | covered | `server/test/pptxBuild.test.ts` — "nests bullets by indentation and never doubles a bullet glyph": asserts each paragraph's `lvl` and text for spaces, tabs, `•` and `-`, and that `-5%` is left alone. |
+| ALayoutIsChosenFromTheContentWhenNoneIsNamed | covered | `server/test/pptxBuild.test.ts` — "picks by what the slide holds when no layout is named": six slides map to Title Slide, Title and Content, Two Content, Section Header, Title Only, Title and Content. |
+| AnUnknownLayoutIsRefusedWithTheList | covered | `server/test/pptxBuild.test.ts` — "refuses an unknown layout and lists the ones there are"; `server/test/presentationTools.test.ts` — "passes on the builder's refusals as the model's to fix". Name and number matching: "takes a named layout, case-insensitively or by its number". |
+| WhatALayoutCannotHoldIsReported | covered | `server/test/pptxBuild.test.ts` — "says what a layout could not hold instead of dropping it silently": title, bullets and subtitle warnings per slide. |
+| APictureFitsItsBoxWithoutStretching | covered | `server/test/pptxBuild.test.ts` — "fits a picture inside its box without stretching it, centred" (exact box), and "puts a picture in the layout's picture placeholder" asserts the 2:1 proportion kept in the real slide. |
+| PictureGoesToThePicturePlaceholder | covered | `server/test/pptxBuild.test.ts` — "puts a picture in the layout's picture placeholder when it has one": exact offset and extent inside the fixture's picture placeholder, and the alt text. |
+| TextAndPictureShareAContentPlaceholder | covered | `server/test/pptxBuild.test.ts` — "gives text and picture a side each when they share one content placeholder": text at the placeholder's left edge, picture beyond its middle. |
+| SvgIsEmbeddedWithARasterFallback | covered | `server/test/pptxBuild.test.ts` — "embeds an SVG for PowerPoint with a raster fallback beside it": the `svgBlip` extension under URI `{96DAC541-…}`, both relationships resolving to the fallback PNG and the SVG bytes, the `svg` content type, the rasteriser called at the picture's proportions; "says so when no rasteriser can draw the SVG's fallback". `server/test/presentationRender.test.ts` — "draws an SVG to a PNG of the requested size" (real canvas). |
+| AnSvgReachingOutsideItselfIsRefused | covered | `server/test/imageInfo.test.ts` — "refuses an SVG that would make its renderer fetch something" (https, file, relative, `url(http…)`, `@import`) and the DOCTYPE case; `server/test/presentationTools.test.ts` — "names the slide whose picture it cannot use" (`Slide 1: … outside itself`). |
+| SourcesOutsideTheReadableZoneAreRefused | covered | `server/test/presentationTools.test.ts` — "reads the template and every picture only from inside the sandbox" (template, picture, and a symlinked template, asserting nothing written) and "refuses a template outside the sandbox, through a symlink too" for `pptx_layouts`. |
+| OutputOutsideTheWritableZoneIsRefused | covered | `server/test/presentationTools.test.ts` — "writes only a .pptx, and only inside the writable zone": `.potx` output, an outside path (asserting the file does not appear), a read-only zone, a missing folder. |
+| AnExistingDeckIsReplacedOnlyWhenAsked | covered | `server/test/presentationTools.test.ts` — "refuses to overwrite unless asked, then replaces the deck whole": the second call fails, the third replaces it and the old title is gone. |
+| NoBuilderInAReadOnlySandbox | covered | `server/test/sandbox-tools.test.ts` — "read-only by default" lists `pptx_layouts` and `pptx_render` and not `pptx_create`; "adds edit and write only when writing is allowed" lists all three. |
+| SlidesComeBackAsPictures | covered | `server/test/presentationTools.test.ts` — "returns a picture of each slide, with the overflow it found named": four PNG image blocks, each preceded by `Slide N:`; "pictures only the slides asked for". `server/test/presentationRender.test.ts` — "draws the requested pages as PNGs of the requested width". |
+| OverflowingTextIsReported | covered | `server/test/presentationRender.test.ts` — "reports the paragraphs that ran off a slide, and only those" (paragraphs 6–16 of slide 3 on the real LibreOffice PDF, nothing elsewhere) and "flags a paragraph the page does not show at all"; `server/test/presentationTools.test.ts` asserts the same finding in the tool's answer. |
+| PowerPointIsPreferredOnWindows | covered | `server/test/presentationRender.test.ts` — "drives PowerPoint through PowerShell, with the paths in the environment rather than the script" (exact executable, argv, env vars, deck path absent from the script) and "auto tries PowerPoint first on Windows only". |
+| FallsBackWhenAConverterIsUnavailable | covered | `server/test/presentationRender.test.ts` — "falls back to LibreOffice when PowerPoint cannot run, and says why it skipped it": renderer, `skipped` reason, and the `soffice.com` executable. |
+| NoConverterIsReportedWithWhatToInstall | covered | `server/test/presentationRender.test.ts` — "when nothing can render, says what was tried and what to install"; `server/test/presentationTools.test.ts` — "says what to install when no office application can render". |
+| TheConverterNeverTouchesTheUsersFile | covered | `server/test/presentationRender.test.ts` — PowerPoint and LibreOffice tests assert the converter's input is a `deck.pptx` copy that exists at run time and is not the source; "leaves no working directory behind" counts `pi-outpost-render-*` directories before and after, success and failure. `server/test/presentationTools.test.ts` asserts the path handed to `soffice` is not the workspace file. |
+| StoppingTheTurnStopsTheRendering | covered | `server/test/presentationRender.test.ts` — "hands the turn's signal to the converter, and starts no other converter once stopped" (PowerPoint stopped mid-run: LibreOffice never started, the call fails as stopped), "a signal already stopped starts nothing", and in "reports the exit code, the output and a timeout" a real child process killed on the signal well before its own 20 s. `server/test/presentationTools.test.ts` exercises the tool passing its `signal` through. |
+| TheRenderingCanBeSavedAsPdf | covered | `server/test/presentationTools.test.ts` — "saves the PDF where asked, never over an existing file, never outside the writable zone": bytes equal the rendering; existing, outside, wrong extension and read-only are refused. |
+| PowerPointIsNotClosedUnderTheUser | covered | `server/test/presentationRender.test.ts` — "the PowerPoint script opens read-only and windowless, saves as PDF, and never closes the user's decks": `Open(…, -1, 0, 0)`, `SaveAs(…, 32)`, `Quit()` guarded by `Presentations.Count -eq 0`, no `Visible`. Asserts the script, not PowerPoint's behaviour — see tasks.md §6. |
+| TheSkillShipsWithTheProduct | covered | `server/test/bundledSkill.test.ts` — "is enumerated at all" and "loads from the path the server hands over" (the SDK's real loader, no diagnostics), "the presentation skill teaches the render-and-fix loop over the three tools". |
+
+## `agent`
+
+| Scenario | Coverage | Assertion evidence |
+| --- | --- | --- |
+| ACodeSessionPublishesNoPresentationTool | covered | `server/test/presentationToolsWire.test.mjs` — "the presentation tools are withheld until a template is named…": absent from the fresh session's active tools and from the request of a prompt naming nothing, read from what the provider received. `server/test/documentTools.test.ts` — "talking about presentations publishes nothing". |
+| NamingATemplatePublishesThePresentationTools | covered | `server/test/presentationToolsWire.test.mjs` — same test: all three reach the provider on the turn naming `brand.potx`, and `pptx_extract` does not. `server/test/documentTools.test.ts` — "a template publishes the tools that build from it, and not the extractor", "invoking the skill by name publishes them before any file is named". |
+| LoadingTheSkillPublishesThemInTheTurn | covered | `server/test/presentationToolsWire.test.mjs` — "loading the skill publishes the tools inside the same turn": absent from the request that calls `read` on SKILL.md, present on the next request of that turn. |
+| AgentSideTriggersNeverRepublishTheExtractor | covered | `server/test/documentTools.test.ts` — "a tool call reaching a deck or a template publishes the presentation tools, never the extractor" and "reading the skill's SKILL.md publishes them inside the turn" (another skill, or grep on it, does not). `index.ts` feeds every `tool_start` through that function unchanged. |
+| TheRpcChildRegistersThePresentationTools | covered | `server/test/piOutpostTools.test.ts` — "returns the tools the agent needs, in the documented order" and "registers the same tools when the env var is set": the three follow `pptx_extract`; "carries the rendering settings the parent passes, and refuses malformed ones". |
+
+## `config`
+
+| Scenario | Coverage | Assertion evidence |
+| --- | --- | --- |
+| RendererDefaultsToAuto | covered | `server/test/config.test.ts` — "pptx rendering defaults to auto and accepts a renderer, executables and a timeout": `auto`, no executable, 120 000 ms; then the configured values, paths resolved relative to the config file. |
+| ConfiguredExecutableIsUsedAndNotReplaced | covered | `server/test/presentationRender.test.ts` — "a configured executable wins, and a missing one is not replaced by a guess": with `/usr/bin/soffice` present, a configured path is returned, and a missing configured path yields none. |
+| InvalidRendererSettingIsRefused | covered | `server/test/config.test.ts` — "pptx rendering settings refuse what they cannot use": unknown renderer, empty path, and four bad timeouts, each naming the setting. |

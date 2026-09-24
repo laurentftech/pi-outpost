@@ -134,7 +134,7 @@ one needs, the command that proves it works, and the caution that goes with it.
 | [Teach the agent something](docs/how-to.md#teach-the-agent-something) | [Restrict which models can be picked](docs/how-to.md#restrict-which-models-can-be-picked) |
 | [Read a big PDF, Word or Excel file](docs/how-to.md#let-the-agent-read-a-big-pdf-word-or-excel-file) | [Lock down a shared deployment](docs/how-to.md#lock-down-a-shared-deployment) |
 | [Put it inside your own web app](docs/how-to.md#put-it-inside-your-own-web-app) | [Use an existing pi installation](docs/how-to.md#use-an-existing-pi-installation) |
-| [When something does not work](docs/how-to.md#when-something-does-not-work) | |
+| [Make a PowerPoint deck from a template](docs/how-to.md#make-a-powerpoint-deck-from-a-template) | [When something does not work](docs/how-to.md#when-something-does-not-work) |
 
 ## What you get
 
@@ -203,6 +203,13 @@ one needs, the command that proves it works, and the caution that goes with it.
   called, an extractor goes again when the turn ends; named and used, it stays through the
   work around that document and is forgotten after five quiet turns. Naming the document
   again brings it back
+- PowerPoint decks from a template: `pptx_layouts` lists a `.potx`/`.pptx` template's layouts,
+  `pptx_create` builds a deck into them — titles, bullets, PNG/JPEG/GIF/SVG pictures, written
+  into the layouts' placeholders so the template's fonts and colours apply — and `pptx_render`
+  has **PowerPoint (on Windows)**, LibreOffice or ONLYOFFICE draw it, returning a picture of
+  every slide and the text that ran off one. The bundled `pptx-from-template` skill makes the
+  agent render and fix its deck before handing it over. See
+  [Make a PowerPoint deck from a template](docs/how-to.md#make-a-powerpoint-deck-from-a-template)
 - Structured results: a tool can hand back **data** — a graph, a sequence, a table — and the
   interface draws it, with an approval gate when the document names a `target`. Files that
   declare the schema open as the diagram they describe, and any diagram exports as a
@@ -451,6 +458,9 @@ in [`pi-outpost.config.example.json`](pi-outpost.config.example.json).
 |-----|--------|
 | `pdf.maxBytes` | Largest PDF the viewer may load and `pdf_extract` may read (default `26214400` — 25 MB). Every other file keeps the 1 MB limit |
 | `docx.maxBytes` / `xlsx.maxBytes` / `pptx.maxBytes` | The same ceiling, per format, for the Office extractors |
+| `pptx.renderer` | Which application `pptx_render` draws decks with: `"auto"` (default — PowerPoint on Windows, then LibreOffice, then ONLYOFFICE), `"powerpoint"`, `"libreoffice"` or `"onlyoffice"` |
+| `pptx.libreofficePath` / `pptx.onlyofficePath` | The `soffice` or `docbuilder` executable, when it is not where it installs by default. Relative to the configuration file |
+| `pptx.renderTimeoutMs` | How long one rendering may take (default `120000`) |
 | `structuredExchange.maxBytes` | Largest structured-exchange document the viewer may open (default `8000000`, the widest ceiling any supported schema version declares). Each version's own ceiling is applied after the document says which one it claims, so a version 1 document is still bounded at its published 4 MB. Recognition is by the document's declared `schema`, never by its extension, so other JSON keeps the 1 MB preview limit. A larger value is clamped to the contract's |
 
 ### Server and interface

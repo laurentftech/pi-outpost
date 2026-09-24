@@ -129,13 +129,30 @@ export interface PptxConfig {
    * Largest presentation the extraction tool will open, in bytes. Default: 25 MiB.
    * The same ceiling as the other document formats — a deck's size is mostly its
    * images, which this reader never turns into output, so the slide and character
-   * caps in the reader are what bound one call.
+   * caps in the reader are what bound one call. Also the ceiling on a template
+   * `pptx_create` opens and on a deck `pptx_render` draws.
    */
   maxBytes: number;
+  /**
+   * Which office application `pptx_render` draws slides with. `auto` (the default)
+   * tries PowerPoint on Windows, then LibreOffice, then ONLYOFFICE Document Builder.
+   */
+  renderer: RendererChoice;
+  /** An explicit LibreOffice `soffice` executable; conventional locations are searched otherwise. */
+  libreofficePath?: string;
+  /** An explicit ONLYOFFICE `docbuilder` executable; conventional locations are searched otherwise. */
+  onlyofficePath?: string;
+  /** How long one rendering may take before it is abandoned, in ms. Default: 120 000. */
+  renderTimeoutMs: number;
 }
 
 /** Default presentation ceiling — 25 MiB, matching the other three. */
 export const DEFAULT_PPTX_MAX_BYTES = 26_214_400;
+
+/** The office applications `pptx_render` can draw slides with, and `auto`. */
+export const PPTX_RENDERERS = ["auto", "powerpoint", "libreoffice", "onlyoffice"] as const;
+export type RendererChoice = (typeof PPTX_RENDERERS)[number];
+export const DEFAULT_RENDER_TIMEOUT_MS = 120_000;
 
 export interface FilesConfig {
   /**
@@ -819,7 +836,7 @@ export function loadConfig(
     pdf: { maxBytes: DEFAULT_PDF_MAX_BYTES },
     docx: { maxBytes: DEFAULT_DOCX_MAX_BYTES },
     xlsx: { maxBytes: DEFAULT_XLSX_MAX_BYTES },
-    pptx: { maxBytes: DEFAULT_PPTX_MAX_BYTES },
+    pptx: { maxBytes: DEFAULT_PPTX_MAX_BYTES, renderer: "auto", renderTimeoutMs: DEFAULT_RENDER_TIMEOUT_MS },
     structuredExchange: { maxBytes: DEFAULT_STRUCTURED_EXCHANGE_MAX_BYTES },
     terminal: { enabled: false },
   };
@@ -1113,6 +1130,23 @@ export function loadConfig(
         fail(`"pptx.maxBytes" must be a positive integer (bytes)`);
       }
       config.pptx.maxBytes = pptx.maxBytes;
+    }
+    if (pptx.renderer !== undefined) {
+      if (typeof pptx.renderer !== "string" || !(PPTX_RENDERERS as readonly string[]).includes(pptx.renderer)) {
+        fail(`"pptx.renderer" must be one of ${PPTX_RENDERERS.map((name) => `"${name}"`).join(", ")}`);
+      }
+      config.pptx.renderer = pptx.renderer as RendererChoice;
+    }
+    for (const key of ["libreofficePath", "onlyofficePath"] as const) {
+      if (pptx[key] === undefined) continue;
+      if (typeof pptx[key] !== "string" || pptx[key].trim() === "") fail(`"pptx.${key}" must be a non-empty path`);
+      config.pptx[key] = resolve(pptx[key] as string);
+    }
+    if (pptx.renderTimeoutMs !== undefined) {
+      if (typeof pptx.renderTimeoutMs !== "number" || !Number.isInteger(pptx.renderTimeoutMs) || pptx.renderTimeoutMs <= 0) {
+        fail(`"pptx.renderTimeoutMs" must be a positive integer (ms)`);
+      }
+      config.pptx.renderTimeoutMs = pptx.renderTimeoutMs;
     }
   }
 
