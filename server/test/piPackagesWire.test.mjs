@@ -173,7 +173,11 @@ const packagesAfter = (client, since, predicate) =>
 const toolNames = (message) => (message.tools ?? []).map((tool) => tool.name);
 
 async function update(client, requestId = "u1") {
-  const [pkg] = (await packagesMessage(client, () => true)).packages;
+  // The list already received, not a new one: only its source is needed, and the
+  // broadcast just awaited may be the last before an update. Waiting for a newer list
+  // waits for the update this call has not sent yet — a race decided by whether the
+  // startup check's broadcast lands before or after the one the test asked for.
+  const [pkg] = (await client.waitFor((m) => m.type === "pi_packages")).packages;
   client.send({ type: "update_pi_package", source: pkg.source, requestId });
   return await client.waitFor((m) => m.type === "pi_package_update_result" && m.requestId === requestId, 120_000);
 }

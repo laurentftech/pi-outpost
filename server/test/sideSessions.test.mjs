@@ -263,6 +263,15 @@ test("side sessions are not reopened after a restart; their conversations are", 
     const { client: side } = await sideClient(t, first, project);
     side.send({ type: "prompt", text: "before the restart" });
     await answer(side, "ok: before the restart");
+    // The answer is not yet the saved conversation: the SDK tells its listeners about a
+    // message before it appends it to the file, and a conversation's first write is a
+    // line-by-line loop. On Windows `stop()` is `taskkill /F`, which can land inside that
+    // loop and leave a header with no messages — a lost conversation this test would
+    // blame on the restart. Stop once the history lists it, which it reads from disk.
+    for (const deadline = Date.now() + 30_000; ; await wait(100)) {
+      if ((await sessions(side)).some((s) => s.firstMessage.includes("before the restart"))) break;
+      assert.ok(Date.now() < deadline, "the conversation was saved before the restart");
+    }
   } finally {
     await first.stop();
   }
