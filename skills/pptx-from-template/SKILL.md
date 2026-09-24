@@ -1,6 +1,6 @@
 ---
 name: pptx-from-template
-description: Build a PowerPoint presentation (.pptx) from a template (.potx or .pptx) with pptx_layouts, pptx_create and pptx_render, then check it is readable by rendering it with PowerPoint (Windows), LibreOffice or ONLYOFFICE and fixing what the render shows. Use whenever the user asks for a deck, slides or a presentation made from a template, a corporate/brand deck, or to turn a document, notes or an outline into slides — and whenever a .potx file is involved.
+description: Build a PowerPoint presentation (.pptx) from a template (.potx or .pptx) — titles, bullets, pictures, native tables and editable charts — with pptx_layouts, pptx_create and pptx_render, then check it is readable by rendering it with PowerPoint (Windows), LibreOffice or ONLYOFFICE and fixing what the render shows. Use whenever the user asks for a deck, slides or a presentation made from a template, a corporate/brand deck, or to turn a document, notes or an outline into slides — and whenever a .potx file is involved.
 license: MIT
 metadata:
   version: "1.0"
@@ -16,7 +16,7 @@ so every slide takes the template's styling without you setting a single font or
 |---|---|
 | See which layouts a template offers | `pptx_layouts` with the template's `path` |
 | Read the text of a deck or of the template's sample slides | `pptx_extract` |
-| Build the deck | `pptx_create` |
+| Build the deck: text, pictures, tables, charts | `pptx_create` |
 | See the slides as the audience will, and find unreadable text | `pptx_render` |
 | Hand over a PDF as well | `pptx_render` with `pdf_path` |
 
@@ -59,8 +59,34 @@ Never declare a deck finished without having rendered it.
   diagrams and logos: it stays sharp at any size. A picture is fitted inside its box without
   being stretched. On a layout with one content placeholder, bullets and a picture share it —
   text on the left, picture on the right; a two-content layout gives each its own box.
+- **One picture, table or chart per slide.** Two of them is two slides.
 - **The template's own sample slides are not carried over.** Only its layouts, masters, theme
   and fonts are.
+
+## Tables and charts
+
+Both are native: the audience can edit them in PowerPoint, and they take the template's table
+style and theme colours. Never draw a chart as a picture, and never lay out a table as bullets.
+
+- **A table** is `"table": {"rows": [["Region", "Revenue"], ["EMEA", "€4.2M"]]}` — the first row is
+  the header (`"header": false` if it is not). Keep it to what a slide can show: about six rows and
+  five columns reads well; the tool refuses more than 20 rows or 10 columns. Figures are
+  right-aligned automatically. A longer table is a summary on the slide and the detail in an
+  appendix slide or a handout.
+- **A chart** is `"chart": {"type": "column", "categories": [...], "series": [{"name": ..., "values": [...]}]}`,
+  one value per category in each series. Pick the type from the message:
+  - `column` — compare a few values, or show change over a few periods;
+  - `bar` — compare many items, or items with long names (they read left to right);
+  - `line` — a trend over many periods;
+  - `pie` — parts of one whole, with at most five or six slices, one series only.
+  `stacked: true` stacks column or bar series (parts adding up to a total). Set `number_format`
+  (`"0%"` for fractions — 0.25 shows as 25%, `"#,##0"`, `"0.0"`) and `show_values: true` when the
+  exact figures matter. Give the chart a `title` only when the slide title does not already say what
+  it shows.
+- **Say what the chart shows in the slide title** — "EMEA drove Q4 growth", not "Revenue by
+  region". Bullets beside a chart go in a two-content layout.
+- In the render, check that axis labels and data labels are readable, that category names are not
+  cut or overlapping (use `bar` for long names), and that a table's last row is on the slide.
 
 ## Checking the render
 
@@ -90,6 +116,6 @@ there are neither pictures nor a text check, so do not claim the deck was checke
 
 ## What it does not do
 
-Charts, tables, speaker notes, animations and transitions are not written. SmartArt, icons and
-decorative shapes come only from the template's layouts. If the user needs one of these, build
-the rest and say what is missing rather than faking it with text.
+Speaker notes, animations and transitions are not written, and charts are limited to column, bar,
+line and pie. SmartArt, icons and decorative shapes come only from the template's layouts. If the
+user needs one of these, build the rest and say what is missing rather than faking it with text.

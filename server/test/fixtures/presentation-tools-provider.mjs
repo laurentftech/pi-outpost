@@ -31,6 +31,11 @@ const BUILD_STEPS = [
       slides: [
         { title: "Built by the agent", subtitle: "Through the running server" },
         { layout: "Two Content", title: "With a picture", bullets: ["Left side", "  detail"], image: { path: "diagram.svg", alt: "diagram" } },
+        { title: "A table", table: { rows: [["Region", "Revenue"], ["EMEA", "4.2"], ["APAC", "1.7"]] } },
+        {
+          title: "A chart",
+          chart: { type: "column", categories: ["Q1", "Q2"], series: [{ name: "2026", values: [2, 2.4] }], number_format: "0.0", show_values: true },
+        },
       ],
     },
   ],

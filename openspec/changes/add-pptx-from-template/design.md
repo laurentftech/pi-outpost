@@ -97,7 +97,34 @@ agent-side trigger republish `pptx_extract` too. That would have silently change
 contract, so agent-side triggers publish only the presentation tools; the extractor rule is
 unchanged.
 
-### 7. Where the tools exist
+### 7. Tables and charts are native, their data embedded
+
+A picture of a chart cannot be corrected by the person presenting it, does not follow the theme,
+and is what the reference skill warns against. So a table is an `a:tbl` in PowerPoint's default
+table style (`{5C22544A-7EE6-4342-B048-85BDC9FD1C3A}`, which colours itself from the theme), and a
+chart is a `c:chartSpace` part:
+
+- series filled with `schemeClr accent1…6`, never fixed colours, so the template decides them;
+- values cached in the part (what every reader draws) and also written to an embedded workbook
+  (`ppt/embeddings/Microsoft_Excel_SheetN.xlsx`, linked by `c:externalData` with
+  `autoUpdate=0` through a `package` relationship) laid out where the cell references point, so
+  *Edit Data* opens the numbers. The workbook is written with the in-house zip writer and inline
+  strings — no dependency, no shared-strings part;
+- element orders taken from ECMA-376 and checked against python-pptx's chart writer; `dLblPos` is
+  never written, since `outEnd` is refused on stacked bars and every type has a sensible default;
+- a horizontal bar chart runs its categories top to bottom (`maxMin`, value axis crossing at
+  `max`), the order people read a ranked list in.
+
+One visual per slide keeps the placement rules simple and the slides readable; a table or chart
+never goes into a picture placeholder. The limits (20 rows, 10 columns, 50 categories, 10 series)
+are about readability on a slide, not about the format.
+
+Verified beyond the unit tests: every chart type and a table rendered through LibreOffice and looked
+at; the generated decks passed an OOXML XSD and PowerPoint-constraint validator (the one shipped
+with Anthropic's `pptx` skill, run locally, not copied), including its chart checks; the embedded
+workbooks read back through this repository's own `.xlsx` extractor.
+
+### 8. Where the tools exist
 
 `pptx_layouts` and `pptx_render` are reading (a render's `pdf_path` is measured against the
 writable zone, exactly like an extractor's `output_path`). `pptx_create` writes, so it is
@@ -118,5 +145,5 @@ with `overwrite: true`, through a sibling file and a rename.
   MsoTriState `-1`/`0`, the `Visible` refusal) and the invocation is asserted in tests, but
   opening a generated deck in PowerPoint and rendering through COM remain to be observed on
   Windows — tracked in tasks.md.
-- **What is not written:** charts, tables, speaker notes, animations. The skill says so and tells
-  the agent to report the gap rather than fake it.
+- **What is not written:** speaker notes, animations, and chart types beyond column, bar, line and
+  pie. The skill says so and tells the agent to report the gap rather than fake it.

@@ -323,3 +323,85 @@ describe("buildPresentation — pictures", () => {
     assert.ok(png.subarray(1, 4).toString() === "PNG");
   });
 });
+
+describe("buildPresentation — tables and charts", () => {
+  const chart = {
+    type: "column" as const,
+    title: "Revenue",
+    categories: ["Q1", "Q2"],
+    series: [{ name: "2026", values: [2, 2.4] }],
+  };
+
+  test("a table goes where a picture would, as a native table the extractor reads back", async () => {
+    const { parts, built } = await build([{ title: "Results", table: { rows: [["Region", "Revenue"], ["EMEA", "4.2"]] } }]);
+    assert.equal(built.slides[0].layout, "Title and Content");
+    const slide = text(parts, "ppt/slides/slide1.xml");
+    // Inside the content placeholder's box: its left edge and its width.
+    assert.match(slide, /<p:xfrm><a:off x="838200" y="1825625"\/><a:ext cx="10515600" cy="\d+"\/><\/p:xfrm><a:graphic><a:graphicData uri="http:\/\/schemas.openxmlformats.org\/drawingml\/2006\/table">/);
+    assertIntact(parts);
+    const markdown = (await extractPptx(built.bytes)).markdown;
+    assert.match(markdown, /\| Region \| Revenue \|/);
+    assert.match(markdown, /\| EMEA \| 4\.2 \|/);
+  });
+
+  test("a chart is a chart part with its workbook, related from the slide and declared in the package", async () => {
+    const { parts } = await build([{ title: "Revenue", chart }, { title: "Again", chart: { ...chart, type: "pie" as const } }]);
+    assertIntact(parts);
+    const types = text(parts, "[Content_Types].xml");
+    for (const n of [1, 2]) {
+      assert.ok(parts.has(`ppt/charts/chart${n}.xml`), `chart ${n}`);
+      assert.match(types, new RegExp(`PartName="/ppt/charts/chart${n}.xml" ContentType="application/vnd.openxmlformats-officedocument.drawingml.chart\\+xml"`));
+      assert.match(
+        text(parts, `ppt/charts/_rels/chart${n}.xml.rels`),
+        new RegExp(`Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/package" Target="../embeddings/Microsoft_Excel_Sheet${n}.xlsx"`),
+      );
+      assert.equal(parts.get(`ppt/embeddings/Microsoft_Excel_Sheet${n}.xlsx`)!.subarray(0, 2).toString("latin1"), "PK");
+    }
+    assert.match(types, /Extension="xlsx" ContentType="application\/vnd.openxmlformats-officedocument.spreadsheetml.sheet"/);
+    const rels = text(parts, "ppt/slides/_rels/slide1.xml.rels");
+    const id = /Id="(rId\d+)" Type="http:\/\/schemas.openxmlformats.org\/officeDocument\/2006\/relationships\/chart" Target="..\/charts\/chart1.xml"/.exec(rels)![1];
+    assert.match(text(parts, "ppt/slides/slide1.xml"), new RegExp(`<c:chart xmlns:c="[^"]+" r:id="${id}"/>`));
+  });
+
+  test("a chart never takes the name of one the template keeps", async () => {
+    // A layout that carries a chart of its own: it survives the sweep, so its name is taken.
+    const parts = readAllZipEntries(templateBytes, LIMITS);
+    parts.set("ppt/charts/chart1.xml", Buffer.from("<c:chartSpace/>"));
+    parts.set("ppt/embeddings/Microsoft_Excel_Sheet2.xlsx", Buffer.from("PK"));
+    parts.set(
+      "ppt/slideLayouts/_rels/slideLayout7.xml.rels",
+      Buffer.from(
+        `<?xml version="1.0"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">` +
+          `<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideMaster" Target="../slideMasters/slideMaster1.xml"/>` +
+          `<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/chart" Target="../charts/chart1.xml"/>` +
+          `<Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/package" Target="../embeddings/Microsoft_Excel_Sheet2.xlsx"/></Relationships>`,
+      ),
+    );
+    const withChart = readTemplate(writeZip([...parts].map(([name, data]) => ({ name, data }))));
+    const built = await buildPresentation(withChart, [{ title: "x", chart }]);
+    const out = readAllZipEntries(built.bytes, LIMITS);
+    assert.equal(out.get("ppt/charts/chart1.xml")!.toString(), "<c:chartSpace/>", "the template's chart is untouched");
+    assert.ok(out.has("ppt/charts/chart3.xml"), "the new chart skips both numbers in use");
+    assert.ok(out.has("ppt/embeddings/Microsoft_Excel_Sheet3.xlsx"));
+  });
+
+  test("bullets and a chart share a slide, each in its own content placeholder", async () => {
+    const { built, parts } = await build([{ title: "Both", bullets: ["Point"], chart }]);
+    assert.equal(built.slides[0].layout, "Two Content");
+    assert.match(text(parts, "ppt/slides/slide1.xml"), /<a:off x="6172200" y="1825625"\/><a:ext cx="5181600" cy="4351338"\/><\/p:xfrm><a:graphic><a:graphicData uri="http:\/\/schemas.openxmlformats.org\/drawingml\/2006\/chart">/);
+  });
+
+  test("a chart or table never goes into a picture placeholder", async () => {
+    const { parts } = await build([{ layout: "Picture with Caption", title: "x", table: { rows: [["a"]] } }]);
+    assert.doesNotMatch(text(parts, "ppt/slides/slide1.xml"), /<a:off x="5183188" y="987425"\/>/);
+  });
+
+  test("one picture, table or chart per slide", async () => {
+    await assert.rejects(
+      () => build([{ title: "x", table: { rows: [["a"]] }, chart }]),
+      /slide 1: a slide holds one picture, table or chart — put the others on slides of their own/,
+    );
+    await assert.rejects(() => build([{ title: "x" }, { title: "y", chart: { ...chart, categories: [] } }]), /slide 2: the chart has no categories/);
+    await assert.rejects(() => build([{ title: "x", table: { rows: [["a", "b"], ["c"]] } }]), /slide 1: table row 2 has 1 cells/);
+  });
+});

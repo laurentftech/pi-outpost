@@ -26,6 +26,7 @@ import { assertWritableDestination } from "./extractionOutput.ts";
 import { ImageError, readImageInfo } from "./imageInfo.ts";
 import { PptxError, parseSlideRange, readSlideParagraphs } from "./pptx.ts";
 import { buildPresentation, describeTemplate, PptxBuildError, readTemplate, type SlideSpec } from "./pptxBuild.ts";
+import { CHART_TYPES, MAX_TABLE_COLUMNS, MAX_TABLE_ROWS, type ChartType } from "./pptxVisuals.ts";
 import {
   convertPresentationToPdf,
   countPdfPages,
@@ -128,6 +129,35 @@ const slideSchema = Type.Object({
       alt: Type.Optional(Type.String({ description: "Alternative text read by screen readers." })),
     }),
   ),
+  table: Type.Optional(
+    Type.Object(
+      {
+        rows: Type.Array(Type.Array(Type.String()), {
+          description: `Rows of cells, every row the same length; the first row is the header. At most ${MAX_TABLE_ROWS} rows and ${MAX_TABLE_COLUMNS} columns.`,
+        }),
+        header: Type.Optional(Type.Boolean({ description: "false when the first row is data, not a header." })),
+      },
+      { description: "A native PowerPoint table, styled by the template." },
+    ),
+  ),
+  chart: Type.Optional(
+    Type.Object(
+      {
+        type: Type.Union(CHART_TYPES.map((type) => Type.Literal(type)), {
+          description: "column (vertical bars), bar (horizontal bars), line, or pie (one series).",
+        }),
+        title: Type.Optional(Type.String()),
+        categories: Type.Array(Type.String(), { description: "The labels along the category axis, or the pie's slices." }),
+        series: Type.Array(
+          Type.Object({ name: Type.String(), values: Type.Array(Type.Number(), { description: "One number per category." }) }),
+        ),
+        stacked: Type.Optional(Type.Boolean({ description: "Stack the series (column and bar only)." })),
+        number_format: Type.Optional(Type.String({ description: 'Excel number format for values, e.g. "0%", "#,##0", "0.0". Percentages are fractions: 0.25 shows as 25%.' })),
+        show_values: Type.Optional(Type.Boolean({ description: "Write each value on the chart." })),
+      },
+      { description: "A native, editable PowerPoint chart in the template's colours." },
+    ),
+  ),
 });
 
 const createParameters = Type.Object({
@@ -145,6 +175,16 @@ interface SlideParam {
   subtitle?: string;
   bullets?: string[];
   image?: { path: string; alt?: string };
+  table?: { rows: string[][]; header?: boolean };
+  chart?: {
+    type: ChartType;
+    title?: string;
+    categories: string[];
+    series: Array<{ name: string; values: number[] }>;
+    stacked?: boolean;
+    number_format?: string;
+    show_values?: boolean;
+  };
 }
 
 export function createPptxCreateToolDefinition(options: PresentationToolOptions): ToolDefinition {
@@ -153,6 +193,7 @@ export function createPptxCreateToolDefinition(options: PresentationToolOptions)
     label: "Create presentation",
     description: [
       "Create a PowerPoint deck (.pptx) from a template (.potx or .pptx): each slide uses one of the template's layouts, and its title, subtitle, bullets and picture go into that layout's placeholders, so they take the template's fonts, colours and positions.",
+      "A slide may instead carry a native table or a native, editable chart (column, bar, line, pie) in the template's colours — one picture, table or chart per slide.",
       "The template's own sample slides are left out. Pictures may be PNG, JPEG, GIF or SVG.",
       "After creating a deck, call pptx_render on it and look at every slide before you say it is done.",
     ].join(" "),
@@ -189,6 +230,20 @@ export function createPptxCreateToolDefinition(options: PresentationToolOptions)
           ...(slide.title !== undefined ? { title: slide.title } : {}),
           ...(slide.subtitle !== undefined ? { subtitle: slide.subtitle } : {}),
           ...(slide.bullets !== undefined ? { bullets: slide.bullets } : {}),
+          ...(slide.table !== undefined ? { table: { rows: slide.table.rows, ...(slide.table.header !== undefined ? { header: slide.table.header } : {}) } } : {}),
+          ...(slide.chart !== undefined
+            ? {
+                chart: {
+                  type: slide.chart.type,
+                  categories: slide.chart.categories,
+                  series: slide.chart.series,
+                  ...(slide.chart.title !== undefined ? { title: slide.chart.title } : {}),
+                  ...(slide.chart.stacked !== undefined ? { stacked: slide.chart.stacked } : {}),
+                  ...(slide.chart.number_format !== undefined ? { numberFormat: slide.chart.number_format } : {}),
+                  ...(slide.chart.show_values !== undefined ? { showValues: slide.chart.show_values } : {}),
+                },
+              }
+            : {}),
         };
         if (slide.image !== undefined) {
           const image = await readSource(slide.image.path, options, MAX_IMAGE_BYTES, "picture");

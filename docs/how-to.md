@@ -435,8 +435,11 @@ tools and the bundled skill tells it how to use them:
 
 1. `pptx_layouts` lists the template's layouts (a `.potx`, or a `.pptx` whose design you want).
 2. `pptx_create` writes a new `.pptx`: each slide takes a layout, and its title, subtitle,
-   bullets and picture go into that layout's placeholders, so the template styles them. The
-   template's own sample slides are left out. Pictures can be PNG, JPEG, GIF or SVG.
+   bullets and picture go into that layout's placeholders, so the template styles them. A slide
+   can carry a native table (in the template's table style) or a native chart — column, bar,
+   line or pie, in the theme's colours, with its data in an embedded workbook so PowerPoint's
+   *Edit Data* works. The template's own sample slides are left out. Pictures can be PNG, JPEG,
+   GIF or SVG.
 3. `pptx_render` has an office application draw the deck and hands the agent a picture of every
    slide, plus a list of the text that is on a slide but not visible (overflow, clipping). The
    agent fixes what it sees and rebuilds, before telling you the deck is done. Ask for a PDF and
@@ -459,7 +462,8 @@ To force one, or to point at an executable installed elsewhere:
 LibreOffice and ONLYOFFICE substitute fonts they do not have, so their line breaks can differ a
 little from PowerPoint's; the agent is told to leave room rather than trust a render that only just
 fits. Building needs a writable workspace: in a read-only sandbox `pptx_create` is not offered.
-Charts, tables and speaker notes are not written yet — the agent says so rather than faking them.
+Speaker notes are not written yet, and charts are limited to those four types — the agent says so
+rather than faking them.
 
 ## Lock down a shared deployment
 

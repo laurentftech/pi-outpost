@@ -23,6 +23,7 @@ import {
   type PresentationToolOptions,
 } from "../src/presentationTools.ts";
 import { realResolve } from "../src/sandbox.ts";
+import { readAllZipEntries } from "../src/zip.ts";
 
 const FIXTURES = path.join(path.dirname(fileURLToPath(import.meta.url)), "fixtures");
 
@@ -137,6 +138,33 @@ describe("presentation tools", () => {
       assert.match(text, /Next: call pptx_render with path "deck\.pptx"/);
       const extraction = await extractPptx(await readFile(path.join(root, "deck.pptx")), { full: true });
       assert.match(extraction.markdown, /Quarterly review[\s\S]*September[\s\S]*Architecture[\s\S]*Server\nRuntime/);
+    });
+
+    test("builds native tables and charts from the tool's parameters", async () => {
+      const tool = createPptxCreateToolDefinition(options);
+      const text = firstText(
+        await call(tool, {
+          template_path: "brand.potx",
+          output_path: "visuals.pptx",
+          slides: [
+            { title: "Results", table: { rows: [["Region", "Revenue"], ["EMEA", "4.2"]] } },
+            {
+              title: "Share",
+              chart: { type: "pie", categories: ["EMEA", "APAC"], series: [{ name: "Share", values: [0.6, 0.4] }], number_format: "0%", show_values: true },
+            },
+          ],
+        }),
+      );
+      assert.match(text, /Wrote 2 slide\(s\)/);
+      const deck = await readFile(path.join(root, "visuals.pptx"));
+      assert.match((await extractPptx(deck)).markdown, /\| EMEA \| 4\.2 \|/);
+      const chart = readAllZipEntries(deck, { maxEntries: 500, maxInflatedBytes: 1e7, maxTotalBytes: 1e8 }).get("ppt/charts/chart1.xml")!.toString("utf8");
+      assert.match(chart, /<c:pieChart>/);
+      assert.match(chart, /<c:dLbls><c:numFmt formatCode="0%" sourceLinked="0"\/>/);
+      await assert.rejects(
+        () => call(tool, { template_path: "brand.potx", output_path: "bad.pptx", slides: [{ title: "x", chart: { type: "pie", categories: ["a"], series: [{ name: "s", values: [-1] }] } }] }),
+        /slide 1: a pie chart cannot show negative values/,
+      );
     });
 
     test("refuses to overwrite unless asked, then replaces the deck whole", async () => {

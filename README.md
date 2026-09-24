@@ -204,8 +204,9 @@ one needs, the command that proves it works, and the caution that goes with it.
   work around that document and is forgotten after five quiet turns. Naming the document
   again brings it back
 - PowerPoint decks from a template: `pptx_layouts` lists a `.potx`/`.pptx` template's layouts,
-  `pptx_create` builds a deck into them — titles, bullets, PNG/JPEG/GIF/SVG pictures, written
-  into the layouts' placeholders so the template's fonts and colours apply — and `pptx_render`
+  `pptx_create` builds a deck into them — titles, bullets, PNG/JPEG/GIF/SVG pictures, native
+  tables and editable column, bar, line and pie charts, written into the layouts' placeholders so
+  the template's fonts, table style and colours apply — and `pptx_render`
   has **PowerPoint (on Windows)**, LibreOffice or ONLYOFFICE draw it, returning a picture of
   every slide and the text that ran off one. The bundled `pptx-from-template` skill makes the
   agent render and fix its deck before handing it over. See

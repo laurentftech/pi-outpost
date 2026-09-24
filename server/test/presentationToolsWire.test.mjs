@@ -104,7 +104,7 @@ test("loading the skill publishes the tools inside the same turn", async () => {
   }
 });
 
-test("the agent lists the layouts, builds a deck into the workspace, and renders it", async () => {
+test("the agent lists the layouts, builds a deck with a picture, a table and a chart, and renders it", async () => {
   const { root, resultsLog, server, client } = await start();
   try {
     client.send({ type: "prompt", text: "BUILD THE DECK from brand.potx" });
@@ -116,7 +116,7 @@ test("the agent lists the layouts, builds a deck into the workspace, and renders
 
     assert.equal(created.tool, "pptx_create");
     assert.equal(created.isError, false, created.text);
-    assert.match(created.text, /Wrote 2 slide\(s\) to `deck\.pptx`/);
+    assert.match(created.text, /Wrote 4 slide\(s\) to `deck\.pptx`/);
     const deck = await readFile(path.join(root, "deck.pptx"));
     assert.equal(deck.subarray(0, 2).toString("latin1"), "PK");
 
@@ -127,9 +127,10 @@ test("the agent lists the layouts, builds a deck into the workspace, and renders
     if (rendered.isError) {
       assert.match(rendered.text, /No office application could render the presentation[\s\S]*Install LibreOffice/);
     } else {
-      assert.match(rendered.text, /^Rendered `deck\.pptx` with (PowerPoint|LibreOffice|ONLYOFFICE): 2 page\(s\) for 2 slide\(s\)\./);
-      assert.match(rendered.text, /Text check: every paragraph of slides 1-2 is visible/);
-      assert.equal(rendered.images, 2);
+      assert.match(rendered.text, /^Rendered `deck\.pptx` with (PowerPoint|LibreOffice|ONLYOFFICE): 4 page\(s\) for 4 slide\(s\)\./);
+      // The table's cells are checked too: they are paragraphs of the slide.
+      assert.match(rendered.text, /Text check: every paragraph of slides 1-4 is visible/);
+      assert.equal(rendered.images, 4);
     }
   } finally {
     client.close();

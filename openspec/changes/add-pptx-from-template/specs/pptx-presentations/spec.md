@@ -121,6 +121,69 @@ declares a DOCTYPE, SHALL be refused.
 - **WHEN** an SVG refers to a URL, a file, or a stylesheet outside itself
 - **THEN** the slide is refused, naming the picture
 
+### Requirement: NativeTablesAndCharts
+
+A slide MAY carry a table or a chart instead of a picture; a slide SHALL carry at most one picture,
+table or chart, and a slide asking for more SHALL be refused. A table or chart SHALL take the place a
+picture would, except that it SHALL NOT be put into a picture placeholder.
+
+A table SHALL be a native PowerPoint table filling its area's width, in the default table style so
+that the template's theme colours it, with the first row marked as its header unless the slide says
+otherwise. Cells holding figures SHALL be right-aligned, headers excepted. Its text size SHALL
+decrease with its number of rows so that it fits its area. A table without rows, with rows of
+unequal length, with more than 20 rows or 10 columns, or with a cell over 500 characters SHALL be
+refused, naming the slide.
+
+A chart SHALL be a native chart part of type column, bar, line or pie, whose series take the theme's
+accent colours in order (a pie's slices likewise), whose values are cached in the part, and whose
+data is embedded as a workbook linked from the part, laid out where the part's cell references
+point, so that the chart can be edited in PowerPoint. Column and bar series MAY be stacked; a number
+format MAY apply to the values and their labels; values MAY be written on the chart, without a
+label position, which some chart types refuse. A legend SHALL be shown for more than one series and
+for a pie. The markup SHALL follow the schema's element order for every chart type. A chart with an
+unknown type, no categories or series, a series whose length differs from the categories, a value
+that is not a finite number, a pie with more than one series or a negative value, or a stacked line
+or pie SHALL be refused, naming the slide.
+
+Chart and workbook part names SHALL NOT collide with parts the template keeps.
+
+#### Scenario: TablesAreNativeAndStyledByTheTemplate
+- **WHEN** a slide carries a table
+- **THEN** the slide holds a native table filling its area's width, in the default table style, with its first row marked as the header, and the extractor reads the table back
+
+#### Scenario: FiguresInATableAreRightAligned
+- **WHEN** a table holds figures and words
+- **THEN** the cells holding figures are right-aligned and the header and words are not
+
+#### Scenario: AnUnreadableTableIsRefused
+- **WHEN** a table has no rows, unequal rows, more than 20 rows or 10 columns, or an overlong cell
+- **THEN** the call fails, naming the slide and the reason
+
+#### Scenario: ChartsAreNativeWithTheirDataEmbedded
+- **WHEN** a slide carries a chart
+- **THEN** the package holds a chart part related from the slide, declared with the chart content type, whose workbook relationship resolves to an embedded workbook holding the categories and series where the chart's references point
+
+#### Scenario: ChartsTakeTheThemesColours
+- **WHEN** a chart is written
+- **THEN** its series, or a pie's slices, are filled with the theme's accent colours and no fixed colour
+
+#### Scenario: EachChartTypeFollowsTheSchemaOrder
+- **WHEN** a column, stacked bar, line or pie chart is written
+- **THEN** its elements appear in the schema's order, a stacked chart overlaps its series, a pie has no axes, and value labels name no position
+
+#### Scenario: InvalidChartDataIsRefused
+- **WHEN** a chart's type, categories, series or values cannot be charted
+- **THEN** the call fails, naming the slide and the reason
+
+#### Scenario: OneVisualPerSlide
+- **WHEN** a slide carries two of a picture, a table and a chart
+- **THEN** the call fails, telling the caller to put them on separate slides
+
+#### Scenario: ChartNamesNeverCollideWithTheTemplates
+- **GIVEN** a template that keeps a chart and a workbook of its own
+- **WHEN** a deck with a chart is created from it
+- **THEN** the template's parts are unchanged and the new chart and workbook take names not in use
+
 ### Requirement: CreationIsConfinedAndNonDestructive
 
 The template and every picture SHALL be read only from inside the readable zone, and the output

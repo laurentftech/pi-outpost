@@ -21,7 +21,10 @@ the audience will, and fix them, before calling the deck done.
   layout's **placeholders**, so the template's fonts, colours, positions and bullet styles apply.
   The template's own sample slides are left out, together with everything only they used.
   Pictures may be PNG, JPEG, GIF or **SVG** — an SVG is embedded as SVG for PowerPoint 2016 and
-  later, with a PNG rendering beside it for every other reader.
+  later, with a PNG rendering beside it for every other reader. A slide may instead carry a
+  **native table** (the template's table style, figures right-aligned) or a **native chart** —
+  column, bar, line or pie, stacked or not, in the theme's accent colours, its data in an embedded
+  workbook so PowerPoint's *Edit Data* works.
 - **`pptx_render`** draws a deck with a real office application and gives the agent a **picture of
   each slide**, plus a **text check**: every paragraph that is on a slide but not visible on the
   rendered page (overflow, clipping) and any text drawn at the slide's edge. It can also save the
@@ -49,7 +52,7 @@ the audience will, and fix them, before calling the deck done.
 
 ## Impact
 
-- New: `server/src/pptxBuild.ts`, `presentationRender.ts`, `presentationTools.ts`,
+- New: `server/src/pptxBuild.ts`, `pptxVisuals.ts`, `presentationRender.ts`, `presentationTools.ts`,
   `imageInfo.ts`, `zipWriter.ts`; `skills/pptx-from-template/SKILL.md`.
 - Changed: `zip.ts` (read every entry, with a total budget), `pptx.ts` (each slide's paragraphs,
   for the text check), `documentTools.ts`, `sandbox.ts`, `workspace.ts`, `index.ts`,

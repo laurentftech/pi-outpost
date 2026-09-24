@@ -23,6 +23,20 @@ import { IMAGE_CONTENT_TYPES, type ImageInfo, type ImageKind } from "./imageInfo
 import { scanXml, XmlError } from "./xml.ts";
 import { readAllZipEntries, ZipError } from "./zip.ts";
 import { writeZip } from "./zipWriter.ts";
+import {
+  chartFrame,
+  chartPartXml,
+  chartWorkbook,
+  CT_CHART,
+  CT_XLSX,
+  REL_CHART,
+  REL_PACKAGE,
+  tableFrame,
+  validateChart,
+  validateTable,
+  type SlideChart,
+  type SlideTable,
+} from "./pptxVisuals.ts";
 import zlib from "node:zlib";
 
 export class PptxBuildError extends Error {
@@ -359,6 +373,7 @@ export function describeTemplate(template: Template): string {
     `Slide size: ${inches(template.slideSize.cx)}" × ${inches(template.slideSize.cy)}"` +
       ` (${template.slideSize.cx * 3 > template.slideSize.cy * 4 + 1 ? "widescreen" : "4:3"}).`,
     `The template holds ${template.existingSlides} slide(s) of its own; pptx_create leaves them out.`,
+    "A content placeholder takes bullets, a picture, a table or a chart; a two-content layout puts bullets beside one of those.",
     "",
     "| # | Layout name | Type | Placeholders |",
     "| --- | --- | --- | --- |",
@@ -384,7 +399,17 @@ export interface SlideSpec {
   title?: string;
   subtitle?: string;
   bullets?: string[];
+  /** At most one of image, table and chart: they take the same place on the slide. */
   image?: SlideImage;
+  table?: SlideTable;
+  chart?: SlideChart;
+}
+
+export type { SlideChart, SlideTable } from "./pptxVisuals.ts";
+
+/** Whether the slide carries a picture, a table or a chart — its one visual. */
+function hasVisual(slide: SlideSpec): boolean {
+  return slide.image !== undefined || slide.table !== undefined || slide.chart !== undefined;
 }
 
 export interface BuildOptions {
@@ -430,7 +455,7 @@ function byType(layouts: TemplateLayout[], ...types: string[]): TemplateLayout |
  */
 function defaultLayout(layouts: TemplateLayout[], slide: SlideSpec, index: number): TemplateLayout {
   const bullets = (slide.bullets?.length ?? 0) > 0;
-  const image = slide.image !== undefined;
+  const image = hasVisual(slide);
   const withContent = layouts.find((layout) => hasTitle(layout) && contentPlaceholders(layout).length > 0);
   let chosen: TemplateLayout | undefined;
   if (!bullets && !image) {
@@ -573,7 +598,15 @@ interface NewSlide {
   part: string;
   xml: string;
   rels: string;
-  media: Array<{ part: string; bytes: Buffer }>;
+  /** Pictures, chart parts, their relationships and workbooks; `contentType` for an override. */
+  media: Array<{ part: string; bytes: Buffer; contentType?: string }>;
+}
+
+/** Part names this build may use without colliding with anything the template keeps. */
+interface PartNames {
+  mediaPrefix: string;
+  /** The next free `ppt/charts/chartN.xml` and `ppt/embeddings/Microsoft_Excel_SheetN.xlsx` number. */
+  nextChart: () => number;
 }
 
 /** Placement of one slide's content in its layout. */
@@ -582,10 +615,11 @@ async function composeSlide(
   layout: TemplateLayout,
   slide: SlideSpec,
   number: number,
-  mediaPrefix: string,
+  names: PartNames,
   options: BuildOptions,
   warnings: string[],
 ): Promise<NewSlide> {
+  const mediaPrefix = names.mediaPrefix;
   const shapes: string[] = [];
   let nextId = 2;
   const rels = [`<Relationship Id="rId1" Type="${REL_SLIDE_LAYOUT}" Target="${relativeTarget(`ppt/slides/slide${number}.xml`, layout.part)}"/>`];
@@ -611,13 +645,14 @@ async function composeSlide(
     } else warnings.push(`layout "${layout.name}" has no subtitle placeholder; the subtitle was left out`);
   }
 
-  // Where the picture goes, decided before the text: sharing one placeholder means
-  // the text gets the left part of it.
+  // Where the picture, table or chart goes, decided before the text: sharing one
+  // placeholder means the text gets the left part of it. Only a picture takes a
+  // picture placeholder — a table or a chart in a photo frame is not what it is for.
   let imageArea: Box | undefined;
   let textBox: Box | undefined;
   const textPlaceholder = bullets.length > 0 ? contents[usedContent] : undefined;
-  if (slide.image !== undefined) {
-    if (validBox(picture?.box)) imageArea = picture.box;
+  if (hasVisual(slide)) {
+    if (slide.image !== undefined && validBox(picture?.box)) imageArea = picture.box;
     else if (bullets.length > 0 && validBox(contents[usedContent + 1]?.box)) imageArea = contents[usedContent + 1].box;
     else if (bullets.length === 0 && validBox(contents[usedContent]?.box)) imageArea = contents[usedContent].box;
     else if (bullets.length > 0 && validBox(textPlaceholder?.box)) {
@@ -672,6 +707,31 @@ async function composeSlide(
       rels.push(`<Relationship Id="${embed}" Type="${REL_IMAGE}" Target="${relativeTarget(`ppt/slides/slide${number}.xml`, imagePart)}"/>`);
     }
     shapes.push(pictureShape(nextId++, image, box, embed, svgEmbed));
+  }
+
+  if (slide.table !== undefined && imageArea !== undefined) {
+    shapes.push(tableFrame(nextId++, slide.table, imageArea));
+  }
+
+  if (slide.chart !== undefined && imageArea !== undefined) {
+    const n = names.nextChart();
+    const chartPart = `ppt/charts/chart${n}.xml`;
+    const workbookPart = `ppt/embeddings/Microsoft_Excel_Sheet${n}.xlsx`;
+    media.push(
+      { part: chartPart, bytes: Buffer.from(chartPartXml(slide.chart), "utf8"), contentType: CT_CHART },
+      {
+        part: relsPartOf(chartPart),
+        bytes: Buffer.from(
+          `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Relationships xmlns="${NS_REL_PACKAGE}">` +
+            `<Relationship Id="rId1" Type="${REL_PACKAGE}" Target="${relativeTarget(chartPart, workbookPart)}"/></Relationships>`,
+          "utf8",
+        ),
+      },
+      { part: workbookPart, bytes: chartWorkbook(slide.chart) },
+    );
+    const id = `rId${rels.length + 1}`;
+    rels.push(`<Relationship Id="${id}" Type="${REL_CHART}" Target="${relativeTarget(`ppt/slides/slide${number}.xml`, chartPart)}"/>`);
+    shapes.push(chartFrame(nextId++, id, imageArea));
   }
 
   if (shapes.length === 0) warnings.push("the slide is empty");
@@ -793,7 +853,14 @@ function scanRawRelationships(xml: string, visit: (raw: string, type: string) =>
   }
 }
 
-function rewriteContentTypes(xml: string, keptParts: Set<string>, presentationPart: string, slideParts: string[], extensions: Set<string>): string {
+function rewriteContentTypes(
+  xml: string,
+  keptParts: Set<string>,
+  presentationPart: string,
+  slideParts: string[],
+  extensions: Set<string>,
+  added: Array<[string, string]>,
+): string {
   let result = xml.replace(/<(?:\w+:)?Override\b[^>]*?\/>/g, (element) => {
     const part = /\bPartName="([^"]*)"/.exec(element)?.[1]?.replace(/^\//, "");
     if (part === undefined || !keptParts.has(part)) return "";
@@ -801,10 +868,14 @@ function rewriteContentTypes(xml: string, keptParts: Set<string>, presentationPa
     return element;
   });
   const declared = new Set([...result.matchAll(/<(?:\w+:)?Default\b[^>]*\bExtension="([^"]*)"/g)].map((match) => match[1].toLowerCase()));
+  const defaultType = (extension: string) => (extension === "xlsx" ? CT_XLSX : IMAGE_CONTENT_TYPES[extension as ImageKind]);
   const defaults = [...extensions]
     .filter((extension) => !declared.has(extension))
-    .map((extension) => `<Default Extension="${extension}" ContentType="${IMAGE_CONTENT_TYPES[extension as ImageKind]}"/>`);
-  const overrides = slideParts.map((part) => `<Override PartName="/${part}" ContentType="${CT_SLIDE}"/>`);
+    .map((extension) => `<Default Extension="${extension}" ContentType="${defaultType(extension)}"/>`);
+  const overrides = [
+    ...slideParts.map((part) => `<Override PartName="/${part}" ContentType="${CT_SLIDE}"/>`),
+    ...added.map(([part, type]) => `<Override PartName="/${part}" ContentType="${type}"/>`),
+  ];
   const close = result.lastIndexOf("</");
   result = result.slice(0, close) + defaults.join("") + overrides.join("") + result.slice(close);
   return result;
@@ -815,9 +886,18 @@ export async function buildPresentation(template: Template, slides: SlideSpec[],
   if (slides.length > MAX_SLIDES) throw new PptxBuildError(`at most ${MAX_SLIDES} slides can be built in one call (got ${slides.length})`);
 
   const kept = reachableParts(template.parts, template.presentationPart);
-  // Our media names must not collide with anything the template keeps.
+  // Our part names must not collide with anything the template keeps.
   let mediaPrefix = "pptx-create-";
   while ([...kept].some((part) => part.startsWith(`ppt/media/${mediaPrefix}`))) mediaPrefix = `x${mediaPrefix}`;
+  let chartNumber = 0;
+  const names: PartNames = {
+    mediaPrefix,
+    nextChart: () => {
+      do chartNumber++;
+      while (kept.has(`ppt/charts/chart${chartNumber}.xml`) || kept.has(`ppt/embeddings/Microsoft_Excel_Sheet${chartNumber}.xlsx`));
+      return chartNumber;
+    },
+  };
 
   const built: BuiltSlide[] = [];
   const newSlides: NewSlide[] = [];
@@ -829,10 +909,16 @@ export async function buildPresentation(template: Template, slides: SlideSpec[],
     if (slide.bullets?.some((bullet) => bullet.length > MAX_TEXT_CHARS)) {
       throw new PptxBuildError(`slide ${index + 1}: a bullet is longer than ${MAX_TEXT_CHARS} characters`);
     }
+    const visuals = [slide.image, slide.table, slide.chart].filter((visual) => visual !== undefined).length;
+    if (visuals > 1) {
+      throw new PptxBuildError(`slide ${index + 1}: a slide holds one picture, table or chart — put the others on slides of their own`);
+    }
+    if (slide.table !== undefined) validateTable(slide.table, `slide ${index + 1}`);
+    if (slide.chart !== undefined) validateChart(slide.chart, `slide ${index + 1}`);
     const layout = slide.layout !== undefined && slide.layout.trim() !== "" ? findLayout(template.layouts, slide.layout) : defaultLayout(template.layouts, slide, index);
     const warnings: string[] = [];
     // The template's slides are all dropped, so slide file numbers start again at 1.
-    newSlides.push(await composeSlide(template, layout, slide, index + 1, mediaPrefix, options, warnings));
+    newSlides.push(await composeSlide(template, layout, slide, index + 1, names, options, warnings));
     built.push({ number: index + 1, layout: layout.name, warnings });
   }
 
@@ -857,16 +943,19 @@ export async function buildPresentation(template: Template, slides: SlideSpec[],
   output.set(template.presentationPart, Buffer.from(presentationXml, "utf8"));
   output.set(presentationRelsPart, Buffer.from(rels.xml, "utf8"));
   const extensions = new Set<string>();
+  const overrides: Array<[string, string]> = [];
   for (const slide of newSlides) {
     output.set(slide.part, Buffer.from(slide.xml, "utf8"));
     output.set(relsPartOf(slide.part), Buffer.from(slide.rels, "utf8"));
     for (const item of slide.media) {
       output.set(item.part, item.bytes);
-      extensions.add(item.part.split(".").pop()!);
+      if (item.part.endsWith(".rels")) continue;
+      if (item.contentType !== undefined) overrides.push([item.part, item.contentType]);
+      else extensions.add(item.part.split(".").pop()!);
     }
   }
   const allParts = new Set([...output.keys()].filter((name) => !name.endsWith(".rels")));
-  const contentTypes = rewriteContentTypes(decode(template.parts, CONTENT_TYPES)!, allParts, template.presentationPart, slideParts, extensions);
+  const contentTypes = rewriteContentTypes(decode(template.parts, CONTENT_TYPES)!, allParts, template.presentationPart, slideParts, extensions, overrides);
 
   const entries = [
     { name: CONTENT_TYPES, data: Buffer.from(contentTypes, "utf8") },

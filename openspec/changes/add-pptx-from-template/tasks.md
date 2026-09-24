@@ -76,10 +76,27 @@
   not. `pdf_path` gives them the rendering to open in the PDF viewer meanwhile. Proposed as a
   separate change.
 
-## 6. Still to observe on Windows
+## 6. Tables and charts
 
-- [ ] 6.1 Open a deck made from a real corporate `.potx` in PowerPoint for Microsoft 365: no repair
-  prompt, placeholders styled by the template, SVG drawn as vector.
-- [ ] 6.2 Render through PowerPoint COM from a pi-outpost server on Windows (interactive session and
+- [x] 6.1 Read python-pptx's chart writer and graphic-frame and table templates for the element
+  orders, the default table style GUID, the chart and package relationship types and the
+  `c:externalData` link.
+- [x] 6.2 `pptxVisuals.ts`: native tables (style, header, figure alignment, size by rows) and
+  charts (column, bar, line, pie; stacked; number format; value labels; theme accents) with an
+  embedded workbook; validation with readable limits.
+- [x] 6.3 Place them like a picture (never in a picture placeholder), one visual per slide; chart
+  and workbook names that avoid the template's parts; content types.
+- [x] 6.4 Tool parameters `table` and `chart`; skill section on choosing and checking them.
+- [x] 6.5 Render every chart type and a table through LibreOffice and look at them; run the decks
+  through an OOXML schema and PowerPoint-constraint validator; read the workbooks back.
+- [x] 6.6 Tests: `pptxVisuals.test.ts`, and table/chart cases in `pptxBuild.test.ts` and
+  `presentationTools.test.ts`.
+
+## 7. Still to observe on Windows
+
+- [ ] 7.1 Open a deck made from a real corporate `.potx` in PowerPoint for Microsoft 365: no repair
+  prompt, placeholders styled by the template, SVG drawn as vector, tables in the template's style,
+  charts in its colours and *Edit Data* opening the embedded workbook.
+- [ ] 7.2 Render through PowerPoint COM from a pi-outpost server on Windows (interactive session and
   as a service account), and confirm PowerPoint stays open when the user had a deck open in it.
-- [ ] 6.3 Render with ONLYOFFICE Document Builder on Windows and Linux.
+- [ ] 7.3 Render with ONLYOFFICE Document Builder on Windows and Linux.
