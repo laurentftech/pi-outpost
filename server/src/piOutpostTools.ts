@@ -28,6 +28,9 @@ import type { ExtensionAPI, ToolDefinition } from "@earendil-works/pi-coding-age
 import { createDocxExtractToolDefinition } from "./docxTool.ts";
 import { createPdfExtractToolDefinition } from "./pdfTool.ts";
 import { createPptxExtractToolDefinition } from "./pptxTool.ts";
+import { DEFAULT_RENDER_TIMEOUT_MS, PPTX_RENDERERS } from "./config.ts";
+import type { RenderSettings } from "./presentationRender.ts";
+import { createPptxCreateToolDefinition, createPptxLayoutsToolDefinition, createPptxRenderToolDefinition } from "./presentationTools.ts";
 import { createStructuredExchangeFigureToolDefinition } from "./structuredExchangeFigureTool.ts";
 import { createStructuredExchangeTableToolDefinition } from "./structuredExchangeTableTool.ts";
 import { createStructuredExchangeToolDefinition } from "./structuredExchangeTool.ts";
@@ -40,6 +43,8 @@ export interface PiOutpostToolsSettings {
   /** The agent's working directory — paths the model gives resolve against it. */
   cwd: string;
   maxBytes: { pdf: number; docx: number; xlsx: number; pptx: number; structuredExchange: number };
+  /** How `pptx_render` finds and runs an office application. Defaults when absent. */
+  pptxRender?: RenderSettings;
 }
 
 export const TOOLS_ENV_VAR = "PI_OUTPOST_TOOLS";
@@ -65,7 +70,23 @@ export function parseToolsSettings(raw: string | undefined): PiOutpostToolsSetti
       throw new Error(`${TOOLS_ENV_VAR} has no positive "maxBytes.${key}"`);
     }
   }
-  return { cwd: settings.cwd, maxBytes: sizes as PiOutpostToolsSettings["maxBytes"] };
+  const render = settings.pptxRender;
+  if (render !== undefined) {
+    if (typeof render !== "object" || render === null || !(PPTX_RENDERERS as readonly string[]).includes(render.renderer)) {
+      throw new Error(`${TOOLS_ENV_VAR} has an invalid "pptxRender.renderer"`);
+    }
+    if (typeof render.timeoutMs !== "number" || !Number.isFinite(render.timeoutMs) || render.timeoutMs <= 0) {
+      throw new Error(`${TOOLS_ENV_VAR} has no positive "pptxRender.timeoutMs"`);
+    }
+    for (const key of ["libreofficePath", "onlyofficePath"] as const) {
+      if (render[key] !== undefined && typeof render[key] !== "string") throw new Error(`${TOOLS_ENV_VAR} has an invalid "pptxRender.${key}"`);
+    }
+  }
+  return {
+    cwd: settings.cwd,
+    maxBytes: sizes as PiOutpostToolsSettings["maxBytes"],
+    ...(render !== undefined ? { pptxRender: render } : {}),
+  };
 }
 
 /**
@@ -77,11 +98,15 @@ export async function createPiOutpostTools(settings: PiOutpostToolsSettings): Pr
   const cwd = settings.cwd;
   const root = await fs.realpath(cwd);
   const common = { cwd, allowedRoots: [root], writableRoot: root };
+  const render: RenderSettings = settings.pptxRender ?? { renderer: "auto", timeoutMs: DEFAULT_RENDER_TIMEOUT_MS };
   return [
     createPdfExtractToolDefinition({ ...common, maxBytes: settings.maxBytes.pdf }),
     createDocxExtractToolDefinition({ ...common, maxBytes: settings.maxBytes.docx }),
     createXlsxExtractToolDefinition({ ...common, maxBytes: settings.maxBytes.xlsx }),
     createPptxExtractToolDefinition({ ...common, maxBytes: settings.maxBytes.pptx }),
+    createPptxLayoutsToolDefinition({ ...common, maxBytes: settings.maxBytes.pptx, render }),
+    createPptxCreateToolDefinition({ ...common, maxBytes: settings.maxBytes.pptx, render }),
+    createPptxRenderToolDefinition({ ...common, maxBytes: settings.maxBytes.pptx, render }),
     createStructuredExchangeFigureToolDefinition({ ...common, maxBytes: settings.maxBytes.structuredExchange, projectRoot: root }),
     createStructuredExchangeTableToolDefinition({ ...common, maxBytes: settings.maxBytes.structuredExchange, projectRoot: root }),
     createStructuredExchangeToolDefinition({ projectRoot: root }),

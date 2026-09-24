@@ -26,7 +26,7 @@ assembling it yourself, and what it costs you in context before you have said an
 | Sandbox / permissions | tool allowlist | read root, writable root, write and bash switches, per project, editable from the interface | permission rules per tool and pattern | allow, ask or deny rules per tool; optional `--auto` mode |
 | File browser and editor | — | tree, syntax-highlighted viewer, editor confined to the writable zone | — | through the host IDE; CLI edits through tools |
 | Git | through bash | change badges, per-file diffs, log, per-file history graph, multi-repository workspaces | through bash | through the terminal, plus turn diffs, checkpoints and commit generation |
-| PDF and Office | — | `pdf_extract`, `docx_extract`, `xlsx_extract`, `pptx_extract`, no shell and no external binary | — | — |
+| PDF and Office | — | `pdf_extract`, `docx_extract`, `xlsx_extract`, `pptx_extract`, no shell and no external binary; PowerPoint decks built from a template, rendered by PowerPoint, LibreOffice or ONLYOFFICE for the agent to check | — | — |
 | Structured results | — | a tool can hand back a graph, a sequence or a table and the interface draws it | — | — |
 | Work plans | — | agent-owned plan with dependencies, evidence and review states, published in two halves | to-do list tool | to-do list tool |
 | Embeddable in another app | — | `@pi-outpost/embed`, Shadow-DOM isolated | — | — |

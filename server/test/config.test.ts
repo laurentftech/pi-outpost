@@ -766,6 +766,42 @@ describe("loadConfig — resource path resolution", () => {
     });
   });
 
+  test("pptx rendering defaults to auto and accepts a renderer, executables and a timeout", async () => {
+    await withTempDir(async (dir) => {
+      const configPath = path.join(dir, "config.json");
+      await writeFile(configPath, JSON.stringify({}, null, 2));
+      const defaults = loadConfig(dir, { config: configPath }).pptx;
+      assert.equal(defaults.renderer, "auto");
+      assert.equal(defaults.renderTimeoutMs, 120_000);
+      assert.equal(defaults.libreofficePath, undefined);
+
+      await writeFile(
+        configPath,
+        JSON.stringify({ pptx: { renderer: "libreoffice", libreofficePath: "tools/soffice", onlyofficePath: path.join(dir, "oo", "docbuilder"), renderTimeoutMs: 30_000 } }, null, 2),
+      );
+      const pptx = loadConfig(dir, { config: configPath }).pptx;
+      assert.equal(pptx.renderer, "libreoffice");
+      // Relative to the configuration file, like every other path in it.
+      assert.equal(pptx.libreofficePath, path.resolve(dir, "tools/soffice"));
+      assert.equal(pptx.onlyofficePath, path.join(dir, "oo", "docbuilder"));
+      assert.equal(pptx.renderTimeoutMs, 30_000);
+    });
+  });
+
+  test("pptx rendering settings refuse what they cannot use", async () => {
+    await withTempDir(async (dir) => {
+      const configPath = path.join(dir, "config.json");
+      await writeFile(configPath, JSON.stringify({ pptx: { renderer: "keynote" } }, null, 2));
+      assert.throws(() => loadConfig(dir, { config: configPath }), /"pptx.renderer" must be one of "auto", "powerpoint", "libreoffice", "onlyoffice"/);
+      await writeFile(configPath, JSON.stringify({ pptx: { libreofficePath: "" } }, null, 2));
+      assert.throws(() => loadConfig(dir, { config: configPath }), /"pptx.libreofficePath" must be a non-empty path/);
+      for (const renderTimeoutMs of [0, -5, 2.5, "60s"]) {
+        await writeFile(configPath, JSON.stringify({ pptx: { renderTimeoutMs } }, null, 2));
+        assert.throws(() => loadConfig(dir, { config: configPath }), /"pptx.renderTimeoutMs" must be a positive integer/);
+      }
+    });
+  });
+
   test("structuredExchange.maxBytes defaults to the contract's ceiling and can be tightened", async () => {
     // The default is not a guess about what people open, the way the document
     // ceilings above are: the contract bounds a conforming document, and accepting

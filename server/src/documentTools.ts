@@ -1,5 +1,5 @@
 /**
- * Which document extractors a piece of conversation calls for.
+ * Which document extractors — and presentation tools — a piece of conversation calls for.
  *
  * The four extractor schemas come to some 8 000 characters — around a quarter of a
  * session's whole prompt floor — describing how to read Word, Excel, PowerPoint and
@@ -14,18 +14,31 @@
  * which is exactly where every session starts today.
  */
 
-/** Extension → the tool that reads it. */
-const EXTRACTORS: Record<string, string> = {
-  pdf: "pdf_extract",
-  docx: "docx_extract",
-  xlsx: "xlsx_extract",
-  pptx: "pptx_extract",
+/**
+ * The tools that make and check a PowerPoint deck from a template. Published together:
+ * each is useless without the others — layouts to choose from, a builder, and the
+ * rendering that shows whether the result reads.
+ */
+export const PRESENTATION_TOOLS = ["pptx_layouts", "pptx_create", "pptx_render"];
+
+/** The skill that teaches the loop through them; loading it is asking for them. */
+export const PRESENTATION_SKILL = "pptx-from-template";
+
+/** Extension → the tools a document of that kind calls for. */
+const EXTRACTORS: Record<string, string[]> = {
+  pdf: ["pdf_extract"],
+  docx: ["docx_extract"],
+  xlsx: ["xlsx_extract"],
+  // A deck may be read, or be the template a new one is built from.
+  pptx: ["pptx_extract", ...PRESENTATION_TOOLS],
+  // A .potx is only ever a template.
+  potx: PRESENTATION_TOOLS,
 };
 
-export const DOCUMENT_TOOLS = Object.values(EXTRACTORS);
+export const DOCUMENT_TOOLS = [...new Set(Object.values(EXTRACTORS).flat())];
 
 /**
- * A path-like token ending in one of the four extensions.
+ * A path-like token ending in one of the document extensions.
  *
  * The boundary before the name is what keeps prose out: "convert this to PDF" names no
  * file, and publishing on the bare word would put all four back in every conversation
@@ -41,19 +54,43 @@ export const DOCUMENT_TOOLS = Object.values(EXTRACTORS);
  * closed a parenthetical, "(report.pdf)", as much as a comma), or a sentence's full
  * stop.
  */
-const MENTION = /(?:^|[\s"'`<])(?:[^\s"'`<>]*[/\\])?[^\s"'`<>/\\]+\.(pdf|docx|xlsx|pptx)(?=$|[\s"'`>)\],;:!?.])/gi;
+const MENTION = /(?:^|[\s"'`<])(?:[^\s"'`<>]*[/\\])?[^\s"'`<>/\\]+\.(pdf|docx|xlsx|pptx|potx)(?=$|[\s"'`>)\],;:!?.])/gi;
 
 /**
- * The extractor tools the text calls for, in the order they are registered.
+ * The tools the text calls for, in the order they are registered.
  *
  * Case-insensitive: `REPORT.PDF` off a Windows share is the same document as
- * `report.pdf`.
+ * `report.pdf`. Invoking the presentation skill by name (`/skill:pptx-from-template`)
+ * calls for the presentation tools even before any file is named.
  */
 export function documentToolsFor(text: string): string[] {
   const found = new Set<string>();
   for (const match of text.matchAll(MENTION)) {
-    const tool = EXTRACTORS[match[1].toLowerCase()];
-    if (tool !== undefined) found.add(tool);
+    for (const tool of EXTRACTORS[match[1].toLowerCase()] ?? []) found.add(tool);
+  }
+  if (new RegExp(`(?:^|\\s)/skill:${PRESENTATION_SKILL}(?=$|\\s)`).test(text)) {
+    for (const tool of PRESENTATION_TOOLS) found.add(tool);
   }
   return DOCUMENT_TOOLS.filter((tool) => found.has(tool));
+}
+
+/**
+ * The presentation tools a call the agent is making calls for, published inside the
+ * same turn.
+ *
+ * Two cases. Reading the presentation skill's SKILL.md is how a model loads a skill on
+ * its own, and the skill is useless without the tools it teaches. And a `path`
+ * argument naming a .pptx or .potx — a template found with `find`, a deck the agent
+ * just listed — is a template arriving from the agent's side rather than the user's.
+ *
+ * Only the presentation tools: the extractors stay the user's to bring back by naming
+ * a document (the agent spec's "only way back"), so nothing the agent does republishes
+ * `pptx_extract`.
+ */
+export function documentToolsForToolCall(toolName: string, args: unknown): string[] {
+  const target = (args as { path?: unknown } | null)?.path;
+  if (typeof target !== "string") return [];
+  const normalized = target.replace(/\\/g, "/");
+  if (toolName === "read" && normalized.endsWith(`/${PRESENTATION_SKILL}/SKILL.md`)) return PRESENTATION_TOOLS;
+  return /\.(pptx|potx)$/i.test(normalized) ? PRESENTATION_TOOLS : [];
 }

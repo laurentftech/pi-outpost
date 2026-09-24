@@ -156,6 +156,8 @@ import {
 import { createDocxExtractToolDefinition } from "./docxTool.ts";
 import { createXlsxExtractToolDefinition } from "./xlsxTool.ts";
 import { createPptxExtractToolDefinition } from "./pptxTool.ts";
+import { createPptxCreateToolDefinition, createPptxLayoutsToolDefinition, createPptxRenderToolDefinition } from "./presentationTools.ts";
+import type { RenderSettings } from "./presentationRender.ts";
 import { createStructuredExchangeToolDefinition } from "./structuredExchangeTool.ts";
 import { createStructuredExchangeProjectModelToolDefinition } from "./structuredExchangeProjectModelTool.ts";
 import { createStructuredExchangeTableToolDefinition } from "./structuredExchangeTableTool.ts";
@@ -164,7 +166,7 @@ import { replyBlockKey, structuredExchangeBlocks } from "@pi-outpost/shared/stru
 import { checkPiPackages, listPiPackages, packageManagerFor } from "./piPackages.ts";
 import { createStructuredExchangeFigureToolDefinition } from "./structuredExchangeFigureTool.ts";
 import { createWorkPlanExtendedToolDefinition, createWorkPlanToolDefinition, WORK_PLAN_EXTENDED_TOOL, WORK_PLAN_TOOL } from "./workPlanTool.ts";
-import { DOCUMENT_TOOLS, documentToolsFor } from "./documentTools.ts";
+import { DOCUMENT_TOOLS, documentToolsFor, documentToolsForToolCall } from "./documentTools.ts";
 import {
   PROJECT_MODEL_TOOL,
   projectModelFiles,
@@ -476,6 +478,16 @@ const workPlanTool = createWorkPlanToolDefinition();
  */
 const workPlanExtendedTool = createWorkPlanExtendedToolDefinition();
 
+/** How `pptx_render` finds and runs an office application, from the `pptx` settings. */
+function pptxRenderSettings(): RenderSettings {
+  return {
+    renderer: config.pptx.renderer,
+    timeoutMs: config.pptx.renderTimeoutMs,
+    ...(config.pptx.libreofficePath ? { libreofficePath: config.pptx.libreofficePath } : {}),
+    ...(config.pptx.onlyofficePath ? { onlyofficePath: config.pptx.onlyofficePath } : {}),
+  };
+}
+
 /**
  * Everything a workspace needs that is the server's rather than the project's:
  * limits, whether to watch, the unconfined tools, and where its file changes go.
@@ -497,6 +509,7 @@ function workspaceOptions(settings: WorkspaceSettings): Omit<WorkspaceOptions, "
       xlsxMaxBytes: config.xlsx.maxBytes,
       pptxMaxBytes: config.pptx.maxBytes,
       structuredExchangeMaxBytes: config.structuredExchange.maxBytes,
+      pptxRender: pptxRenderSettings(),
     },
     watchFiles: config.files.watch,
     // `present_structure` has no path argument to confine, so it is unconfined on both
@@ -1134,6 +1147,29 @@ const makeCreateRuntime =
                 maxBytes: config.pptx.maxBytes,
                 writableRoot: await fs.realpath(cwd),
               }),
+              // Making a deck from a template, and drawing it to check it reads — published
+              // with the extractors, when a presentation or a template enters the conversation.
+              createPptxLayoutsToolDefinition({
+                cwd,
+                allowedRoots: [await fs.realpath(cwd)],
+                maxBytes: config.pptx.maxBytes,
+                writableRoot: await fs.realpath(cwd),
+                render: pptxRenderSettings(),
+              }),
+              createPptxCreateToolDefinition({
+                cwd,
+                allowedRoots: [await fs.realpath(cwd)],
+                maxBytes: config.pptx.maxBytes,
+                writableRoot: await fs.realpath(cwd),
+                render: pptxRenderSettings(),
+              }),
+              createPptxRenderToolDefinition({
+                cwd,
+                allowedRoots: [await fs.realpath(cwd)],
+                maxBytes: config.pptx.maxBytes,
+                writableRoot: await fs.realpath(cwd),
+                render: pptxRenderSettings(),
+              }),
               // Published on demand too, when the conversation touches the project's model.
               createStructuredExchangeProjectModelToolDefinition({ projectRoot: cwd }),
             ],
@@ -1195,6 +1231,7 @@ async function buildRuntimeFor(target: Workspace): Promise<AgentRuntime> {
             pptx: config.pptx.maxBytes,
             structuredExchange: config.structuredExchange.maxBytes,
           },
+          pptxRender: pptxRenderSettings(),
         } satisfies PiOutpostToolsSettings),
       },
     });
@@ -2160,6 +2197,8 @@ function onRuntimeEvent(workspace: Workspace, event: RuntimeEvent): void {
       if (toolCallTouchesProjectModel(event.args, [workspace.root], workspace.projectModelFiles)) {
         publishToolDuringTurn(workspace, PROJECT_MODEL_TOOL);
       }
+      // Loading the presentation skill, or reaching a deck or template on its own.
+      for (const tool of documentToolsForToolCall(event.toolName, event.args)) publishToolDuringTurn(workspace, tool);
       break;
     }
     case "tool_update": {

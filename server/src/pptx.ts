@@ -565,3 +565,38 @@ function describeSlides(slides: number[]): string {
   if (contiguous && slides.length > 1) return `${slides[0]}-${slides[slides.length - 1]}`;
   return slides.join(", ");
 }
+
+/**
+ * Every slide's paragraphs, in presentation order: what each slide is meant to show.
+ *
+ * The rendering check compares this with the text an office application actually
+ * drew on each page — a paragraph present here and absent there ran off the slide.
+ * Tables are included cell by cell, since a cell can overflow as well as a text box.
+ */
+export function readSlideParagraphs(bytes: Uint8Array): string[][] {
+  const buffer = Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  if (buffer.subarray(0, 4).equals(OLE_MAGIC)) {
+    throw new PptxError("encrypted", "This presentation is password-protected; its content cannot be read.");
+  }
+  const limits: ZipLimits = { maxEntries: MAX_ZIP_ENTRIES, maxInflatedBytes: MAX_PART_BYTES };
+  try {
+    const presentationXml = readZipEntry(buffer, PRESENTATION_PART, limits);
+    if (presentationXml === null) {
+      throw new PptxError("unreadable", `This package has no ${PRESENTATION_PART}: it is not a PowerPoint presentation.`);
+    }
+    const relsXml = readZipEntry(buffer, PRESENTATION_RELS, limits);
+    const relationships = relsXml === null ? new Map<string, string>() : parseRelationships(relsXml.toString("utf8"), "ppt");
+    return parsePresentation(presentationXml.toString("utf8")).map((entry) => {
+      const part = relationships.get(entry.relationshipId);
+      // SECURITY: the same confinement as extraction — only parts under `ppt/`.
+      if (part === undefined || !part.startsWith(PACKAGE_PREFIX)) return [];
+      const slideXml = readZipEntry(buffer, part, limits);
+      if (slideXml === null) return [];
+      return parseSlide(slideXml.toString("utf8")).blocks.flatMap((block) =>
+        block.kind === "text" ? block.text.split("\n") : block.rows.flat().flatMap((cell) => cell.split("\n")),
+      );
+    });
+  } catch (error) {
+    throw asPptxError(error);
+  }
+}
