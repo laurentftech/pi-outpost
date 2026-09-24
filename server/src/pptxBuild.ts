@@ -18,6 +18,7 @@
  * relationship target is only ever used as a name inside the package — it never
  * becomes a filesystem path. Pictures arrive already read and checked by the caller.
  */
+import { escapeCell } from "./markdownTable.ts";
 import { resolvePart } from "./ooxml.ts";
 import { IMAGE_CONTENT_TYPES, type ImageInfo, type ImageKind } from "./imageInfo.ts";
 import { scanXml, XmlError } from "./xml.ts";
@@ -378,7 +379,7 @@ export function describeTemplate(template: Template): string {
     "| # | Layout name | Type | Placeholders |",
     "| --- | --- | --- | --- |",
     ...template.layouts.map(
-      (layout, index) => `| ${index + 1} | ${layout.name.replace(/\|/g, "\\|")} | ${layout.type} | ${describeLayout(layout)} |`,
+      (layout, index) => `| ${index + 1} | ${escapeCell(layout.name)} | ${escapeCell(layout.type)} | ${describeLayout(layout)} |`,
     ),
   ];
   return lines.join("\n");

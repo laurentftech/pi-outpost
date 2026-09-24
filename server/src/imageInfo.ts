@@ -46,7 +46,9 @@ export function readImageInfo(bytes: Buffer, name: string): ImageInfo {
   }
   if (bytes.length >= 4 && bytes[0] === 0xff && bytes[1] === 0xd8) return readJpeg(bytes, name);
   const head = bytes.toString("utf8", 0, Math.min(bytes.length, 4096));
-  if (/<svg[\s>]/i.test(head) || /^\s*(<\?xml[^>]*>\s*)?(<!--[\s\S]*?-->\s*)*<svg/i.test(head)) return readSvg(bytes, name);
+  // An <svg> tag anywhere in the head, whatever prolog or comments come before it — a
+  // plain search, so no pattern here can backtrack on a hostile prolog.
+  if (/<svg[\s>/]/i.test(head)) return readSvg(bytes, name);
   throw new ImageError(`"${name}" is not a PNG, JPEG, GIF or SVG image`);
 }
 

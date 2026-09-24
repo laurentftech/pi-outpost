@@ -7,7 +7,7 @@
 
 **A self-hosted web interface for the [pi coding agent](https://github.com/earendil-works/pi)** — run Pi in your browser from your own machine or server, install Pi Outpost as a desktop app, or embed it as a Shadow-DOM-isolated widget inside another web application.
 
-One Node process runs the agent and serves the interface: streaming responses, live tool cards, a file browser and editor, Git integration, PDF and Office document support, and multiple projects open at once — each with its own sandbox, history, and agent. You control the shape of the sandbox and where everything runs.
+One Node process runs the agent and serves the interface: streaming responses, live tool cards, a file browser and editor, Git integration, PDF and Office document support, PowerPoint decks built from your own templates, and multiple projects open at once — each with its own sandbox, history, and agent. You control the shape of the sandbox and where everything runs.
 
 <p align="center">
   <img src="docs/screenshots/chat-light.png" alt="pi-outpost, light theme" width="49%">

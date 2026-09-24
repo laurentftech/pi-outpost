@@ -69,6 +69,16 @@ describe("readImageInfo", () => {
     assert.deepEqual(readImageInfo(svg(""), "f.svg"), { kind: "svg", width: 300, height: 150 });
   });
 
+  test("finds the <svg> tag after a prolog, and a hostile prolog costs no time", () => {
+    const prolog = `<?xml version="1.0"?>\n<!-- made by hand -->\n`;
+    assert.equal(readImageInfo(Buffer.from(`${prolog}<svg xmlns="http://www.w3.org/2000/svg" width="4" height="2"/>`), "p.svg").kind, "svg");
+    // The shape CodeQL named: a comment opener followed by many close-and-reopen pairs.
+    const hostile = Buffer.from(`<!--${"--><!--".repeat(20_000)}`);
+    const started = Date.now();
+    assert.throws(() => readImageInfo(hostile, "h.svg"), /not a PNG, JPEG, GIF or SVG/);
+    assert.ok(Date.now() - started < 1000, "sniffed in linear time");
+  });
+
   test("allows references inside the SVG itself", () => {
     const body = '<defs><linearGradient id="g"/></defs><rect fill="url(#g)"/><use href="#g"/><image href="data:image/png;base64,AAAA"/>';
     assert.equal(readImageInfo(svg('viewBox="0 0 1 1"', body), "ok.svg").kind, "svg");

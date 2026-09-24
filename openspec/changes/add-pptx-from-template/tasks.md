@@ -99,4 +99,4 @@
   charts in its colours and *Edit Data* opening the embedded workbook.
 - [ ] 7.2 Render through PowerPoint COM from a pi-outpost server on Windows (interactive session and
   as a service account), and confirm PowerPoint stays open when the user had a deck open in it.
-- [ ] 7.3 Render with ONLYOFFICE Document Builder on Windows and Linux.
+- [x] 7.3 Render with ONLYOFFICE Document Builder — tested by the project owner.

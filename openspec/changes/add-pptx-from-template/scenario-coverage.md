@@ -10,7 +10,7 @@ asserts argv, environment and order) and how their output is read — on
 `server/test/fixtures/pptx-rendered.pdf`, a real LibreOffice rendering checked in with the script
 that produced it. The whole loop was also run against real LibreOffice 24.2 through the running
 server (`presentationToolsWire.test.mjs`, rendering branch), and its slide pictures were looked at.
-Real PowerPoint could not be exercised here; see tasks.md §7.
+Real PowerPoint could not be exercised here; ONLYOFFICE was tested by the project owner. See tasks.md §7.
 
 ## `pptx-presentations`
 

@@ -116,6 +116,11 @@ describe("readTemplate", () => {
     assert.match(description, /\| 7 \| Blank \| blank \| no content placeholders \(blank\) \|/);
   });
 
+  test("escapes a layout name in the table, backslashes first", () => {
+    const named = { ...template, layouts: [{ ...template.layouts[0], name: "Split | half \\ path" }] };
+    assert.match(describeTemplate(named), /\| 1 \| Split \\\| half \\\\ path \| title \|/);
+  });
+
   test("refuses what is not a usable template, saying why", async () => {
     assert.throws(() => readTemplate(Buffer.from([0xd0, 0xcf, 0x11, 0xe0, 0, 0, 0, 0])), /password-protected or a legacy \.ppt/);
     assert.throws(() => readTemplate(Buffer.from("not a zip at all, just some text")), /cannot be read/);

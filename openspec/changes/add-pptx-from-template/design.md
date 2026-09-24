@@ -144,6 +144,6 @@ with `overwrite: true`, through a sibling file and a rename.
   The COM calls follow Microsoft's documented object model (checked constants: `ppSaveAsPDF = 32`,
   MsoTriState `-1`/`0`, the `Visible` refusal) and the invocation is asserted in tests, but
   opening a generated deck in PowerPoint and rendering through COM remain to be observed on
-  Windows — tracked in tasks.md.
+  Windows — tracked in tasks.md. ONLYOFFICE rendering was tested by the project owner.
 - **What is not written:** speaker notes, animations, and chart types beyond column, bar, line and
   pie. The skill says so and tells the agent to report the gap rather than fake it.
