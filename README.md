@@ -176,7 +176,8 @@ one needs, the command that proves it works, and the caution that goes with it.
   file with the system's own application; anything outside the writable zone is dimmed.
   Ctrl+F (Cmd+F) finds text in the open file — source, rendered Markdown, or a live edit
 - Word export: any text file open in the viewer downloads as a real `.docx`. Markdown becomes
-  Word's own structure — heading styles, lists, tables, hyperlinks — LaTeX becomes native Word
+  Word's own structure — headings as chapter levels (navigation pane, table of contents), lists,
+  tables, hyperlinks — LaTeX becomes native Word
   equations you can edit in the equation editor, and mermaid diagrams travel as vector images
   that stay sharp, with a raster behind them for readers that do not draw SVG. A figure the
   document references — beside it, below it or above it — is carried as a picture under the same

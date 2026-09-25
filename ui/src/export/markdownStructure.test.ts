@@ -17,6 +17,28 @@ describe("headings", () => {
     expect(xml).toContain('w:val="Heading6"');
   });
 
+  it("HeadingsAreChapterLevels: each heading style declares its outline level", async () => {
+    // A heading styled "Heading 2" still sits at body-text level unless its style says
+    // otherwise, and then Word's navigation pane, table of contents and chapter
+    // numbering pass it by. The level lives on the style, so that is where it is read.
+    const blob = await buildDocx("# One\n\n## Two\n\n###### Six\n\nBody.\n", "doc.md");
+    const styles = await partText(await openDocx(blob), "word/styles.xml");
+    const style = (id: string) => styles.match(new RegExp(`<w:style [^>]*w:styleId="${id}"[\\s\\S]*?</w:style>`))?.[0] ?? "";
+
+    for (let depth = 1; depth <= 6; depth++) {
+      const heading = style(`Heading${depth}`);
+      expect(heading, `Heading${depth} is declared`).not.toBe("");
+      expect(heading).toContain(`<w:outlineLvl w:val="${depth - 1}"/>`);
+      // Declaring the level must not cost the style its look.
+      expect(heading).toContain("<w:color ");
+    }
+    expect(style("Normal")).not.toContain("w:outlineLvl");
+    // And the paragraphs point at those styles.
+    const xml = await documentXml(blob);
+    expect(xml).toContain('<w:pStyle w:val="Heading2"/>');
+    expect(xml).toContain('<w:pStyle w:val="Heading6"/>');
+  });
+
   it("leaves no hash in the text a reader sees", async () => {
     // The whole point of the mapping: a heading is a heading, not a paragraph that
     // begins with punctuation the reader has to mentally strip.
