@@ -177,7 +177,12 @@ async function update(client, requestId = "u1") {
   // broadcast just awaited may be the last before an update. Waiting for a newer list
   // waits for the update this call has not sent yet — a race decided by whether the
   // startup check's broadcast lands before or after the one the test asked for.
-  const [pkg] = (await client.waitFor((m) => m.type === "pi_packages")).packages;
+  //
+  // Nor only a `pi_packages` message: when the startup check has finished before this
+  // client connected — a slow runner — the list arrives inside `hello` and no message
+  // follows it, and waiting for one waits out the timeout.
+  const known = (m) => (m.type === "pi_packages" ? m.packages : m.type === "hello" ? m.piPackages : undefined);
+  const [pkg] = known(await client.waitFor((m) => known(m)?.length > 0));
   client.send({ type: "update_pi_package", source: pkg.source, requestId });
   return await client.waitFor((m) => m.type === "pi_package_update_result" && m.requestId === requestId, 120_000);
 }
