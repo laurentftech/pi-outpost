@@ -29,6 +29,6 @@
 ## 7. Proving it
 - [x] 7.1 Unit tests per module; wire test with a scripted model.
 - [x] 7.2 Render through LibreOffice and look; validate packages with an OOXML validator.
-- [ ] 7.3 Running app: export with and without template, then the monkey pass.
+- [x] 7.3 Running app: export with and without template, then the monkey pass.
 - [x] 7.4 Scenario matrix and `npm run check:scenarios`.
 - [ ] 7.5 On Windows (project owner): open in Word without repair, render through Word COM.
