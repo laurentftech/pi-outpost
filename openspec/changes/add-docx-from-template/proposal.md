@@ -25,13 +25,19 @@ the result the way it already checks a deck: have an office application draw it 
   quotes, equations, images), and the result is grafted into the template's package so that its
   styles, numbering, section settings, headers, footers and theme apply. The template's sample
   body is dropped, except a cover page and a table of contents when asked to keep them.
+- **`docx_update`**: changes an existing `.docx` by section — replace, insert after, append,
+  delete — addressed by heading path, with the document as its own template. Everything it does
+  not touch is kept byte for byte, and edits are written as tracked changes by default so the
+  owner reviews them in Word.
 - **`docx_render`**: draws the document with Word (COM, on Windows), LibreOffice or ONLYOFFICE,
   returns pictures of its pages and a check that every paragraph reached the PDF, and can save
   the PDF — `pptx_render`'s pipeline, for Word.
-- **Skill `docx-from-template`**: the choose-styles → write → render → fix loop.
+- **Skill `docx-from-template`**: the choose-styles → write (or update) → render → fix loop.
 - **Viewer export with a template**: the download can use a template; a default template is
   configurable, and the export without one stays exactly as today.
-- Settings: `docx.template` (the default export template) and the Word renderer choice.
+- Settings: `docx.template` (the default export template). The rendering settings introduced as
+  `pptx.*` in 0.29 become `office.*`, shared by decks and documents; the `pptx.*` keys are
+  deprecated, still read, with a warning naming the replacement.
 
 ## Impact
 

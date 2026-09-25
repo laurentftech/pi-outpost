@@ -97,3 +97,48 @@ document is open in it.
 #### Scenario: WordIsDrivenWithoutDisturbingTheUser
 - **WHEN** Word renders on Windows while the user has a document open in it
 - **THEN** the rendering opens a read-only copy invisibly, closes it without saving, and leaves Word running
+
+### Requirement: UpdateAnExistingDocument
+
+The system SHALL provide a `docx_update` tool that changes an existing `.docx` by sections, each
+edit naming its section by heading path: replace a section's body keeping its heading, insert a new
+section after one, append at the end, or delete a section. A section SHALL run from its heading to
+the next heading of the same or a higher level. Content SHALL be Markdown, mapped as for
+`docx_create`, using the document's own styles and numbering.
+
+A heading path that matches no heading or several SHALL be refused with the document's headings.
+Everything outside the edited sections SHALL be left identical: its paragraphs unchanged in
+`document.xml`, and every other part copied unchanged.
+
+Edits SHALL be written as tracked changes attributed to pi-outpost unless the call asks otherwise.
+An edit to a section holding revisions not yet accepted SHALL be refused. Content controls, fields
+and comments removed with a section SHALL be counted in the result.
+
+The result SHALL be written to the writable zone, and SHALL replace the original only when asked to.
+
+#### Scenario: ASectionIsReplacedAndTheRestIsUntouched
+- **GIVEN** a document with sections 1, 2 and 3
+- **WHEN** section 2's body is replaced
+- **THEN** section 2 holds the new content under its original heading, and every paragraph of sections 1 and 3 and every other part is byte-identical to the original
+
+#### Scenario: EditsAreTrackedChangesByDefault
+- **WHEN** a section is replaced without `track_changes: false`
+- **THEN** the removed paragraphs are marked deleted and the new ones inserted, attributed to pi-outpost
+
+#### Scenario: AnUnknownOrAmbiguousHeadingIsRefused
+- **WHEN** the heading path matches no heading, or two headings
+- **THEN** the call fails, lists the document's headings, and the document is unchanged
+
+#### Scenario: InsertAndDeleteFollowTheOutline
+- **WHEN** a section is inserted after "2. Scope" and "3. Risks" is deleted
+- **THEN** the new section sits after all of section 2's subsections, and section 3 with its subsections is gone
+
+#### Scenario: PendingRevisionsAreNotEditedOver
+- **GIVEN** a section with an unaccepted tracked change
+- **WHEN** an edit targets it
+- **THEN** the call is refused and says why
+
+#### Scenario: NewContentWearsTheDocumentsStyles
+- **GIVEN** a document whose heading styles have localized ids
+- **WHEN** a section with a subheading and a list is inserted
+- **THEN** the subheading uses the document's second-level heading style, and the list its numbering
