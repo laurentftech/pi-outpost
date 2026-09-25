@@ -116,6 +116,25 @@ describe("POST /files/docx-template", () => {
     assert.match(answer.message, /^The document could not be written into the template/);
   });
 
+  test("a cross-origin page may send it: the preflight allows the POST and its headers", async () => {
+    const origin = "http://localhost:5173";
+    const preflight = await fetch(`${configured.base}/files/docx-template`, {
+      method: "OPTIONS",
+      headers: { Origin: origin, "Access-Control-Request-Method": "POST", "Access-Control-Request-Headers": "authorization, content-type" },
+    });
+    assert.equal(preflight.status, 204);
+    assert.equal(preflight.headers.get("access-control-allow-origin"), origin);
+    assert.match(preflight.headers.get("access-control-allow-methods") ?? "", /\bPOST\b/);
+    assert.match(preflight.headers.get("access-control-allow-headers") ?? "", /authorization, content-type/i);
+    const res = await fetch(`${configured.base}/files/docx-template`, {
+      method: "POST",
+      headers: { Origin: origin, "Content-Type": DOCX, Authorization: `Bearer ${TOKEN}` },
+      body: document,
+    });
+    assert.equal(res.status, 200);
+    assert.equal(res.headers.get("access-control-allow-origin"), origin);
+  });
+
   test("the token is required, as for every other file route", async () => {
     assert.equal((await post(configured, document, null)).status, 401);
     assert.equal((await post(configured, document, "wrong")).status, 401);
