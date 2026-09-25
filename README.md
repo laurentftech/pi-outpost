@@ -173,8 +173,9 @@ one needs, the command that proves it works, and the caution that goes with it.
   history — switch between them while work continues in the ones you are not watching, and
   get a browser notification when a background project needs an answer or is ready for review
 - File browser: lazy-loaded tree, syntax-highlighted viewer, Markdown rendering, and an
-  editor that saves inside the writable zone. Create, rename, move, copy, delete, or open a
-  file with the system's own application; anything outside the writable zone is dimmed.
+  editor that saves inside the writable zone. Create, rename, move, copy, delete, open a
+  file with the system's own application, or show a file or folder in Finder, Explorer or
+  the Linux file manager; anything outside the writable zone is dimmed.
   Ctrl+F (Cmd+F) finds text in the open file — source, rendered Markdown, or a live edit
 - Word export: any text file open in the viewer downloads as a real `.docx`. Markdown becomes
   Word's own structure — headings as chapter levels (navigation pane, table of contents), lists,

@@ -25,6 +25,7 @@ interface SidebarProps {
   onCreateFile?: (path: string) => void;
   onCreateDirectory?: (path: string) => void;
   onOpenNative?: (path: string) => void;
+  onRevealNative?: (path: string) => void;
   onRenameFile?: (path: string, name: string) => void;
   onDeleteFile?: (path: string) => void;
   onMoveFile?: (path: string, destinationDirectory: string) => void;
@@ -52,6 +53,7 @@ export function Sidebar({
   onCreateFile,
   onCreateDirectory,
   onOpenNative,
+  onRevealNative,
   onRenameFile,
   onDeleteFile,
   onMoveFile,
@@ -96,6 +98,7 @@ export function Sidebar({
           onCreateFile={onCreateFile}
           onCreateDirectory={onCreateDirectory}
           onOpenNative={onOpenNative}
+          onRevealNative={onRevealNative}
           onRenameFile={onRenameFile}
           onDeleteFile={onDeleteFile}
           onMoveFile={onMoveFile}

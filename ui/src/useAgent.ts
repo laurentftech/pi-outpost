@@ -1477,12 +1477,21 @@ const WS_CLOSE_UNAUTHORIZED = 4401;
  * `embedded` disables URL capture: the host page's ?token= parameter and
  * history belong to the host app, the widget must not consume or rewrite them.
  */
+/** A second reveal of the same path within this long is the tail of a double-click. */
+const REVEAL_REPEAT_MS = 1000;
+
 export function useAgent(serverUrl = "", explicitToken?: string, embedded = false, workspaceRoot?: string) {
   const [state, dispatch] = useReducer(reduce, initialState);
   const socketRef = useRef<WebSocket | null>(null);
   // Bumped when the user submits a token on the TokenGate — re-runs the connect effect
   const [authNonce, setAuthNonce] = useState(0);
   const tokenRef = useRef<string | null>(null);
+  /**
+   * The last reveal asked for, and when. A double-click on the control is one intention,
+   * but the round trip is fast enough that the second press lands after the first has
+   * been answered — and Explorer opens a window per request.
+   */
+  const lastReveal = useRef<{ path: string; at: number } | null>(null);
   if (authNonce === 0 && tokenRef.current === null) {
     tokenRef.current = explicitToken ?? (embedded ? storedToken() : bootstrapToken());
   }
@@ -2106,6 +2115,15 @@ export function useAgent(serverUrl = "", explicitToken?: string, embedded = fals
       const requestId = `fileop:${crypto.randomUUID()}`;
       dispatch({ type: "file_operation_started", operation: "open_native", path, requestId });
       sendMessage({ type: "open_native", path, requestId });
+    },
+    /** Show a file or folder, selected, in the file manager of the machine the server runs on. */
+    revealNative: (path: string) => {
+      const now = Date.now();
+      if (lastReveal.current?.path === path && now - lastReveal.current.at < REVEAL_REPEAT_MS) return;
+      lastReveal.current = { path, at: now };
+      const requestId = `fileop:${crypto.randomUUID()}`;
+      dispatch({ type: "file_operation_started", operation: "reveal_native", path, requestId });
+      sendMessage({ type: "reveal_native", path, requestId });
     },
     renameFile: (path: string, name: string) => {
       const requestId = `fileop:${crypto.randomUUID()}`;

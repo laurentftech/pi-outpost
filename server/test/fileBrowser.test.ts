@@ -12,6 +12,7 @@ import assert from "node:assert/strict";
 import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import fsPromises from "node:fs/promises";
 import { after, before, describe, mock, test } from "node:test";
 import {
@@ -29,7 +30,10 @@ import {
   copyFileFromBrowser,
   deleteFileFromBrowser,
   moveFileFromBrowser,
+  launchNative,
+  NATIVE_SPAWN_OPTIONS,
   openFileNative,
+  revealPathNative,
   renameFileFromBrowser,
   resolveBrowserRoot,
   resolveWritableRoot,
@@ -586,6 +590,98 @@ describe("file browser", () => {
         ),
         "launcher-failed",
       );
+    });
+  });
+
+  describe("launching on Windows", () => {
+    test("ExplorersExitCodeIsNotAFailure: opening on Windows accepts whatever Explorer exits with", async () => {
+      const calls: Array<{ command: string; args: string[]; options?: { anyExitCode?: boolean } }> = [];
+      await openFileNative(root, "readme.md", async (command, args, options) => void calls.push({ command, args, options }), "win32");
+      assert.deepEqual(calls, [{ command: "explorer.exe", args: [path.join(root, "readme.md")], options: { anyExitCode: true } }]);
+    });
+
+    test("the real launcher: a non-zero exit fails unless any exit code is accepted, and a missing program always fails", async () => {
+      const exitsOne = ["-e", "process.exit(1)"];
+      await assert.rejects(launchNative(process.execPath, exitsOne), /exited with code 1/);
+      await launchNative(process.execPath, exitsOne, { anyExitCode: true });
+      await assert.rejects(launchNative("pi-outpost-no-such-launcher", [], { anyExitCode: true }));
+    });
+
+    test("launchers are never started hidden: Explorer passes a hidden show state on to what it opens", () => {
+      // windowsHide becomes wShowWindow = SW_HIDE for every process libuv starts.
+      assert.equal("windowsHide" in NATIVE_SPAWN_OPTIONS, false);
+      assert.equal(NATIVE_SPAWN_OPTIONS.shell, false);
+    });
+  });
+
+  describe("revealPathNative", () => {
+    type Call = { command: string; args: string[]; options?: { anyExitCode?: boolean } };
+    const recorder = (fail: (command: string) => boolean = () => false) => {
+      const calls: Call[] = [];
+      const launcher = async (command: string, args: string[], options?: { anyExitCode?: boolean }) => {
+        calls.push(options === undefined ? { command, args } : { command, args, options });
+        if (fail(command)) throw new Error(`${command} failed`);
+      };
+      return { calls, launcher };
+    };
+
+    test("RevealAFileOnEachPlatform: Finder, Explorer and the freedesktop file manager, each given the validated path", async () => {
+      write("reveal/my report, final.docx", "x");
+      const file = path.join(root, "reveal", "my report, final.docx");
+
+      const mac = recorder();
+      await revealPathNative(root, "reveal/my report, final.docx", mac.launcher, "darwin");
+      assert.deepEqual(mac.calls, [{ command: "open", args: ["-R", file] }]);
+
+      const windows = recorder();
+      await revealPathNative(root, "reveal/my report, final.docx", windows.launcher, "win32");
+      assert.deepEqual(windows.calls, [{ command: "explorer.exe", args: ["/select,", file], options: { anyExitCode: true } }]);
+
+      const linux = recorder();
+      await revealPathNative(root, "reveal/my report, final.docx", linux.launcher, "linux");
+      const uri = pathToFileURL(file).href.replace(/,/g, "%2C");
+      assert.match(uri, /my%20report%2C%20final\.docx$/, "spaces and the comma dbus-send would split on are encoded");
+      assert.deepEqual(linux.calls, [
+        {
+          command: "dbus-send",
+          args: [
+            "--session",
+            "--print-reply",
+            "--dest=org.freedesktop.FileManager1",
+            "--type=method_call",
+            "/org/freedesktop/FileManager1",
+            "org.freedesktop.FileManager1.ShowItems",
+            `array:string:${uri}`,
+            "string:",
+          ],
+        },
+      ]);
+    });
+
+    test("a folder is revealed like a file, and nothing needs to be writable", async () => {
+      mkdirSync(path.join(root, "reveal", "folder"), { recursive: true });
+      const mac = recorder();
+      await revealPathNative(root, "reveal/folder", mac.launcher, "darwin");
+      assert.deepEqual(mac.calls, [{ command: "open", args: ["-R", path.join(root, "reveal", "folder")] }]);
+    });
+
+    test("LinuxFallsBackToTheContainingFolder: when no file manager answers, xdg-open opens the folder", async () => {
+      write("reveal/notes.md", "x");
+      const linux = recorder((command) => command === "dbus-send");
+      await revealPathNative(root, "reveal/notes.md", linux.launcher, "linux");
+      assert.deepEqual(linux.calls.map((call) => call.command), ["dbus-send", "xdg-open"]);
+      assert.deepEqual(linux.calls[1].args, [path.join(root, "reveal")]);
+      // And when even that fails, the reason reaches the tree.
+      const nothing = recorder(() => true);
+      assert.equal(await reasonOf(() => revealPathNative(root, "reveal/notes.md", nothing.launcher, "linux")), "launcher-failed");
+    });
+
+    test("RevealIsConfined: an escaping, a traversal or a missing path is refused before anything is launched", async () => {
+      const guard = recorder();
+      assert.equal(await reasonOf(() => revealPathNative(root, "../outside/secret.txt", guard.launcher, "darwin")), "outside-root");
+      assert.equal(await reasonOf(() => revealPathNative(root, path.join(root, "..", "outside"), guard.launcher, "darwin")), "outside-root");
+      assert.equal(await reasonOf(() => revealPathNative(root, "reveal/nope.txt", guard.launcher, "darwin")), "not-found");
+      assert.deepEqual(guard.calls, []);
     });
   });
 

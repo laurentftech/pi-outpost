@@ -494,7 +494,7 @@ export type FileBrowserErrorReason =
   | "invalid";
 
 /** Mutating/opening operation acknowledged by file_operation_result. */
-export type FileOperation = "open_native" | "rename_file" | "delete_file" | "move_file" | "copy_file";
+export type FileOperation = "open_native" | "reveal_native" | "rename_file" | "delete_file" | "move_file" | "copy_file";
 
 /**
  * Why git is unavailable, when it is.
@@ -1230,6 +1230,8 @@ export type ClientMessage =
   | { type: "upload_file"; destinationDirectory: string; name: string; contentBase64: string; requestId: string }
   /** Ask the host OS to open an existing confined file in its associated application. */
   | { type: "open_native"; path: string; requestId: string }
+  /** Show a file or folder, selected, in the file manager of the machine the server runs on. */
+  | { type: "reveal_native"; path: string; requestId: string }
   /** Rename a regular file within its current directory. `name` is one path segment. */
   | { type: "rename_file"; path: string; name: string; requestId: string }
   /** Permanently delete one regular file. UI confirmation happens before this message. */

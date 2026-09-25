@@ -9,6 +9,7 @@ import { constants, type Dirent } from "node:fs";
 import fs from "node:fs/promises";
 import { createHash } from "node:crypto";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import { spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import type { DirEntry, FileBrowserErrorReason, FileSearchEntry } from "@pi-outpost/shared";
@@ -578,12 +579,25 @@ export async function uploadFileFromBrowser(
   }
 }
 
-type NativeLauncher = (command: string, args: string[]) => Promise<void>;
+/**
+ * How the platform launchers are started: no shell, and never `windowsHide`.
+ *
+ * `windowsHide` is for console programs. libuv turns it into `wShowWindow = SW_HIDE`
+ * for every process it starts, and Explorer — a GUI program — passes that show state on:
+ * the document it was asked to open, or the folder it was asked to show, stays hidden.
+ */
+export const NATIVE_SPAWN_OPTIONS = { shell: false, stdio: "ignore" } as const;
 
-/** Spawn an OS launcher without a shell and wait until it reports success/failure. */
-async function launchNative(command: string, args: string[]): Promise<void> {
+type NativeLauncher = (command: string, args: string[], options?: { anyExitCode?: boolean }) => Promise<void>;
+
+/**
+ * Spawn an OS launcher without a shell and wait until it reports success/failure.
+ * `anyExitCode`: the process starting is the success — Explorer exits non-zero even
+ * when it has opened its window.
+ */
+export async function launchNative(command: string, args: string[], options: { anyExitCode?: boolean } = {}): Promise<void> {
   await new Promise<void>((resolve, reject) => {
-    const child = spawn(command, args, { shell: false, stdio: "ignore", windowsHide: true });
+    const child = spawn(command, args, NATIVE_SPAWN_OPTIONS);
     let settled = false;
     child.once("error", (error) => {
       if (settled) return;
@@ -593,7 +607,7 @@ async function launchNative(command: string, args: string[]): Promise<void> {
     child.once("close", (code) => {
       if (settled) return;
       settled = true;
-      if (code === 0) resolve();
+      if (code === 0 || options.anyExitCode === true) resolve();
       else reject(new Error(`${command} exited with code ${code ?? "unknown"}`));
     });
   });
@@ -622,9 +636,66 @@ export async function openFileNative(
         ? { command: "explorer.exe", args: [resolved] }
         : { command: "xdg-open", args: [resolved] };
   try {
-    await launcher(invocation.command, invocation.args);
+    // Explorer exits non-zero even when it has opened the document.
+    await launcher(invocation.command, invocation.args, platform === "win32" ? { anyExitCode: true } : undefined);
   } catch (error) {
     throw new FileBrowserError("launcher-failed", `Cannot open "${relPath}": ${(error as Error).message}`);
+  }
+}
+
+/**
+ * Show one confined file or folder in the host's file manager, selected in its folder.
+ *
+ * macOS: `open -R` (Finder). Windows: `explorer.exe /select,` — its exit code means
+ * nothing, so only failing to start it is an error. Elsewhere: the freedesktop
+ * `org.freedesktop.FileManager1.ShowItems` D-Bus method, which Nautilus, Dolphin, Nemo
+ * and Thunar implement; when no file manager answers it, the containing folder is
+ * opened with `xdg-open` instead.
+ */
+export async function revealPathNative(
+  root: string,
+  relPath: string,
+  launcher: NativeLauncher = launchNative,
+  platform: NodeJS.Platform = process.platform,
+): Promise<void> {
+  const resolved = await resolveConfined(root, relPath);
+  try {
+    const stat = await fs.stat(resolved);
+    if (!stat.isFile() && !stat.isDirectory()) throw new Error("not a file or a folder");
+  } catch {
+    throw new FileBrowserError("not-found", `"${relPath}" does not exist`);
+  }
+  const failed = (error: unknown) => new FileBrowserError("launcher-failed", `Cannot show "${relPath}" in the file manager: ${(error as Error).message}`);
+
+  if (platform === "darwin") {
+    await launcher("open", ["-R", resolved]).catch((error: unknown) => {
+      throw failed(error);
+    });
+    return;
+  }
+  if (platform === "win32") {
+    await launcher("explorer.exe", ["/select,", resolved], { anyExitCode: true }).catch((error: unknown) => {
+      throw failed(error);
+    });
+    return;
+  }
+  // dbus-send splits an array value on commas: a comma in the path must not reach it raw.
+  const uri = pathToFileURL(resolved).href.replace(/,/g, "%2C");
+  try {
+    await launcher("dbus-send", [
+      "--session",
+      "--print-reply",
+      "--dest=org.freedesktop.FileManager1",
+      "--type=method_call",
+      "/org/freedesktop/FileManager1",
+      "org.freedesktop.FileManager1.ShowItems",
+      `array:string:${uri}`,
+      "string:",
+    ]);
+  } catch {
+    await launcher("xdg-open", [path.dirname(resolved)]).catch((error: unknown) => {
+      throw failed(error);
+    });
   }
 }
 

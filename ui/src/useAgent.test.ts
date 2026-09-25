@@ -1083,6 +1083,7 @@ describe("file lifecycle operations", () => {
   function lastSent() {
     return JSON.parse(mockWs!.sent[mockWs!.sent.length - 1]) as Record<string, unknown>;
   }
+  const sentCount = () => mockWs!.sent.length;
 
   async function withLoadedFile(path = "draft.docx") {
     const result = await connected();
@@ -1107,6 +1108,18 @@ describe("file lifecycle operations", () => {
     act(() => result.current.openNative("report.docx"));
     expect(lastSent()).toMatchObject({ type: "open_native", path: "report.docx" });
     expect(String(lastSent().requestId)).toMatch(/^fileop:/);
+
+    act(() => result.current.revealNative("docs"));
+    expect(lastSent()).toMatchObject({ type: "reveal_native", path: "docs" });
+    expect(String(lastSent().requestId)).toMatch(/^fileop:/);
+    expect(result.current.state.fileOperation).toMatchObject({ status: "pending", operation: "reveal_native", path: "docs" });
+
+    // The tail of a double-click is not a second request; another path is.
+    const sentBefore = sentCount();
+    act(() => result.current.revealNative("docs"));
+    expect(sentCount()).toBe(sentBefore);
+    act(() => result.current.revealNative("report.docx"));
+    expect(lastSent()).toMatchObject({ type: "reveal_native", path: "report.docx" });
 
     act(() => result.current.renameFile("report.docx", "final.docx"));
     expect(lastSent()).toMatchObject({ type: "rename_file", path: "report.docx", name: "final.docx" });

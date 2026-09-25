@@ -133,6 +133,7 @@ import {
   MAX_UPLOAD_BASE64_LENGTH,
   moveFileFromBrowser,
   openFileNative,
+  revealPathNative,
   readFileForPreview,
   readFileRaw,
   renameFileFromBrowser,
@@ -3973,6 +3974,15 @@ async function handleOpenNative(workspace: Workspace, socket: WebSocket, filePat
   }
 }
 
+async function handleRevealNative(workspace: Workspace, socket: WebSocket, filePath: string, requestId: string): Promise<void> {
+  try {
+    await revealPathNative(workspace.browserRoot, filePath);
+    send(socket, { type: "file_operation_result", requestId, operation: "reveal_native", path: filePath });
+  } catch (error) {
+    sendFileBrowserError(socket, requestId, filePath, error);
+  }
+}
+
 async function handleRenameFile(workspace: Workspace, socket: WebSocket, filePath: string, name: string, requestId: string): Promise<void> {
   try {
     const renamedPath = await renameFileFromBrowser(workspace.browserRoot, workspace.writableRoot, filePath, name);
@@ -5050,6 +5060,10 @@ function handleClientMessage(socket: WebSocket, raw: string): void {
     case "open_native":
       if (typeof message.path !== "string" || typeof message.requestId !== "string") return;
       handleOpenNative(workspace, socket, message.path, message.requestId).catch(reportError);
+      break;
+    case "reveal_native":
+      if (typeof message.path !== "string" || typeof message.requestId !== "string") return;
+      handleRevealNative(workspace, socket, message.path, message.requestId).catch(reportError);
       break;
     case "rename_file":
       if (typeof message.path !== "string" || typeof message.name !== "string" || typeof message.requestId !== "string") return;

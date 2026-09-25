@@ -135,6 +135,7 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
     createDirectory,
     uploadFile,
     openNative,
+    revealNative,
     renameFile,
     deleteFile,
     moveFile,
@@ -803,6 +804,7 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
             }}
             onCreateDirectory={createDirectory}
             onOpenNative={openNative}
+            onRevealNative={revealNative}
             onRenameFile={renameFile}
             onDeleteFile={deleteFile}
             onMoveFile={moveFile}
