@@ -35,7 +35,16 @@ The same applies to every story holding the document's text: body (tables and te
 included), headers, footers, footnotes, endnotes. Comments, drawings, charts and embedded objects
 are left alone.
 
-### 3. Tracked by default
+### 3. Page setup, headers and footers only on request
+
+`include: ["page"]` gives every section the template's page size and margins (from its final
+section) and keeps each section's orientation: a landscape section is structure, not style.
+`include: ["headers"]` replaces the document's header and footer parts with the template's and
+points every section at them. Neither is the default, because a document's own title-page footer
+or section layout is often deliberate. A page setup change is tracked with `w:sectPrChange`; a
+replaced header or footer part is not a revision, and the answer says so.
+
+### 4. Tracked by default
 
 A removed run property is recorded as the ISO/IEC 29500 schema provides (`CT_RPrChange`): the run
 keeps a `w:rPrChange` by pi-outpost holding its old `w:rPr`. Word shows it as a formatting
@@ -44,13 +53,13 @@ revision. `track_changes: false` writes the result directly.
 Replacing `styles.xml`, the theme and numbering is not a revision. The answer says so, and the
 tool writes to a new file unless asked to overwrite: the original is the way back.
 
-### 4. The text is proved unchanged
+### 5. The text is proved unchanged
 
 Before writing, the text of every paragraph of every story is compared with the original; if one
 differs, nothing is written. A document with unaccepted revisions is refused, as `docx_update`
 refuses one.
 
-### 5. Published with the Word tools
+### 6. Published with the Word tools
 
 `docx_restyle` joins `WORD_TOOLS`: published when a `.docx`/`.dotx` is named or the skill is
 read, absent in a read-only sandbox. It shares `docx.maxBytes`.
@@ -58,7 +67,7 @@ read, absent in a read-only sandbox. It shares `docx.maxBytes`.
 ## Non-goals
 
 Legacy `.doc`; changing text, tables or pictures; turning bold short lines into headings;
-applying the template's page setup, headers or table styles; restyling comments or drawings.
+applying the template's table styles; restyling comments or drawings.
 
 ## Open question
 

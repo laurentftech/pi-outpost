@@ -18,6 +18,8 @@ template (font, size)".
   template's styles, theme and heading numbering replace the document's (styles matched by name,
   as `docx_create` does), and fonts, sizes and colours set by hand are removed so the text takes
   its style's. Everything else — emphasis, spacing, lists, text, tables, pictures — is kept.
+- On request (`include`), the template's page size and margins, and its headers and footers,
+  replace the document's.
 - The text of every paragraph is checked unchanged before writing.
 - Tracked by default, like `docx_update`: the owner sees each removal in Word and accepts or
   rejects it.

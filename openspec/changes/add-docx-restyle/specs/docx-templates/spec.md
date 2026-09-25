@@ -13,6 +13,9 @@ The system SHALL provide a `docx_restyle` tool that, given an existing `.docx` a
 - every other formatting — bold, italic, underline, strike-through, superscript and subscript,
   highlight, spacing, indentation — SHALL be kept;
 - the document's own lists, its text, tables, pictures, fields and comments SHALL be unchanged.
+- the template's page size and margins SHALL replace every section's, keeping each section's
+  orientation, only when `include` names `"page"`; the template's headers and footers SHALL
+  replace the document's only when `include` names `"headers"`.
 
 Before writing, the tool SHALL compare the text of every paragraph with the original and SHALL
 write nothing if any differs. A document holding revisions not yet accepted SHALL be refused.
@@ -41,6 +44,11 @@ only when asked to.
 - **GIVEN** a template whose headings are numbered, and a document with a numbered list of its own
 - **WHEN** the document is restyled
 - **THEN** its headings are numbered by the template's definitions, and the list keeps its own
+
+#### Scenario: PageSetupAndHeadersOnlyOnRequest
+- **GIVEN** a template with other margins and its own header and footer, and a document with a landscape section
+- **WHEN** the document is restyled without `include`, then with `include: ["page", "headers"]`
+- **THEN** the first result keeps the document's margins, header and footer; the second has the template's margins in every section, the landscape section still landscape, and the template's header and footer
 
 #### Scenario: AStyleTheTemplateLacksIsKept
 - **GIVEN** a document with a custom paragraph style the template does not have
