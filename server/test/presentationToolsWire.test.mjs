@@ -16,7 +16,7 @@ import { connect, makeWorkspace, startServer } from "./harness.mjs";
 const PROVIDER = fileURLToPath(new URL("./fixtures/presentation-tools-provider.mjs", import.meta.url));
 const TEMPLATE = fileURLToPath(new URL("./fixtures/pptx-template.potx", import.meta.url));
 const SKILL_DIR = fileURLToPath(new URL("../../skills/pptx-from-template", import.meta.url));
-const PRESENTATION = ["pptx_layouts", "pptx_create", "pptx_render"];
+const PRESENTATION = ["pptx_layouts", "pptx_create", "pptx_update", "pptx_render"];
 
 async function lines(file) {
   const text = await readFile(file, "utf8").catch(() => "");
@@ -104,11 +104,11 @@ test("loading the skill publishes the tools inside the same turn", async () => {
   }
 });
 
-test("the agent lists the layouts, builds a deck with a picture, a table and a chart, and renders it", async () => {
+test("the agent lists the layouts, builds a deck with a picture, a table and a chart, updates it, and renders the change", async () => {
   const { root, resultsLog, server, client } = await start();
   try {
     client.send({ type: "prompt", text: "BUILD THE DECK from brand.potx" });
-    const [layouts, created, rendered] = await results(resultsLog, 3);
+    const [layouts, created, updated, rendered] = await results(resultsLog, 4);
 
     assert.equal(layouts.tool, "pptx_layouts");
     assert.equal(layouts.isError, false);
@@ -120,17 +120,25 @@ test("the agent lists the layouts, builds a deck with a picture, a table and a c
     const deck = await readFile(path.join(root, "deck.pptx"));
     assert.equal(deck.subarray(0, 2).toString("latin1"), "PK");
 
+    assert.equal(updated.tool, "pptx_update");
+    assert.equal(updated.isError, false, updated.text);
+    assert.match(updated.text, /Wrote `deck-v2\.pptx`/);
+    assert.match(updated.text, /Changed slides in the result: 3\./);
+    // The original stays as it was; the update is its own file.
+    assert.ok((await readFile(path.join(root, "deck.pptx"))).equals(deck));
+    const revised = await readFile(path.join(root, "deck-v2.pptx"));
+    assert.ok(!revised.equals(deck));
+
     assert.equal(rendered.tool, "pptx_render");
     // An office application is what this step needs, and CI runners have none: there the
     // result must say so and name what to install; where one exists, the agent gets
-    // a picture of every slide and a clean text check.
+    // a picture of the changed slide and a clean text check.
     if (rendered.isError) {
       assert.match(rendered.text, /No office application could render the presentation[\s\S]*Install LibreOffice/);
     } else {
-      assert.match(rendered.text, /^Rendered `deck\.pptx` with (PowerPoint|LibreOffice|ONLYOFFICE): 4 page\(s\) for 4 slide\(s\)\./);
-      // The table's cells are checked too: they are paragraphs of the slide.
-      assert.match(rendered.text, /Text check: every paragraph of slides 1-4 is visible/);
-      assert.equal(rendered.images, 4);
+      assert.match(rendered.text, /^Rendered `deck-v2\.pptx` with (PowerPoint|LibreOffice|ONLYOFFICE): 3 page\(s\) for 3 slide\(s\)\./);
+      assert.match(rendered.text, /Text check: every paragraph of slide 3 is visible/);
+      assert.equal(rendered.images, 1);
     }
   } finally {
     client.close();

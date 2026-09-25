@@ -84,7 +84,7 @@ describe("documentToolsFor", () => {
 
 describe("Word tools", () => {
   test("NamingAWordTemplatePublishesTheTools: a .dotx publishes the Word tools, and not the extractor", () => {
-    assert.deepEqual(documentToolsFor("Write the report from house.dotx"), WORD_TOOLS);
+    assert.deepEqual(documentToolsFor("Write the report from house.dotx"), ["docx_styles", "docx_create", "docx_update", "docx_render"]);
     assert.deepEqual(documentToolsFor("@C:\\Templates\\Corporate.DOTX"), WORD_TOOLS);
   });
 
@@ -102,6 +102,11 @@ describe("Word tools", () => {
 });
 
 describe("presentation tools", () => {
+  test("UpdateComesWithTheOtherPresentationTools: a .pptx brings pptx_update with the layouts, create and render tools", () => {
+    // Spelled out, not read back from the constant: a tool dropped from the list must fail here.
+    assert.deepEqual(documentToolsFor("Revise deck.pptx"), ["pptx_extract", "pptx_layouts", "pptx_create", "pptx_update", "pptx_render"]);
+  });
+
   test("a template publishes the tools that build from it, and not the extractor", () => {
     assert.deepEqual(documentToolsFor("Make a deck from brand.potx"), PRESENTATION_TOOLS);
     assert.deepEqual(documentToolsFor("@C:\\Templates\\Corporate.POTX"), PRESENTATION_TOOLS);

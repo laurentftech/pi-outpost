@@ -486,7 +486,7 @@ export function createPptxRenderToolDefinition(options: PresentationToolOptions)
       if (resolvedPdf !== undefined) header.push(`Saved the PDF to \`${pdfDestination}\`.`);
       header.push("");
       if (findings.length === 0) {
-        header.push(`Text check: every paragraph of slides ${describeList(wanted)} is visible on the rendered page.`);
+        header.push(`Text check: every paragraph of ${wanted.length === 1 ? "slide" : "slides"} ${describeList(wanted)} is visible on the rendered page.`);
       } else {
         header.push("Text check — fix these before calling the deck finished:");
         for (const finding of findings) {

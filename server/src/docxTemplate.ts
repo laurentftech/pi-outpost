@@ -208,17 +208,25 @@ function paragraphsIn(element: { xml: string; local: string }): string[] {
 }
 
 /** The template as the model reads it. */
+/** Table styles named in `docx_styles`' answer; the rest are counted. */
+export const MAX_LISTED_TABLE_STYLES = 20;
+
 export function formatTemplateDescription(description: TemplateDescription): string {
   const lines: string[] = ["Styles the content will use:"];
   for (const role of description.roles) {
     const name = role.style === undefined ? "(none — the writer's own will be added)" : `"${role.style.name}" (id ${role.style.id})`;
     lines.push(`- ${role.role}: ${name}${role.numbered ? ", numbered by the template" : ""}`);
   }
-  const tables = description.tableStyles;
+  // A corporate template can declare a hundred table styles; the default comes first,
+  // and the list stops where it stops helping the choice.
+  const tables = [...description.tableStyles].sort((a, b) => Number(b.isDefault) - Number(a.isDefault));
+  const shownTables = tables.slice(0, MAX_LISTED_TABLE_STYLES);
   lines.push(
     tables.length === 0
       ? "Table styles: none declared."
-      : `Table styles: ${tables.map((style) => `"${style.name}"${style.isDefault ? " (default)" : ""}`).join(", ")}.`,
+      : `Table styles: ${shownTables.map((style) => `"${style.name}"${style.isDefault ? " (default)" : ""}`).join(", ")}${
+          tables.length > shownTables.length ? `, and ${tables.length - shownTables.length} more` : ""
+        }.`,
   );
   const f = description.features;
   const has = (flag: boolean) => (flag ? "yes" : "no");

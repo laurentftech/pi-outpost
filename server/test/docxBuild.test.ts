@@ -14,7 +14,7 @@ import { fileURLToPath } from "node:url";
 import { describe, test } from "node:test";
 import { crc32, deflateSync } from "node:zlib";
 import { createDocument } from "../src/docxBuild.ts";
-import { describeWordTemplate, formatTemplateDescription, readWordPackage, WordTemplateError } from "../src/docxTemplate.ts";
+import { describeWordTemplate, formatTemplateDescription, MAX_LISTED_TABLE_STYLES, readWordPackage, WordTemplateError } from "../src/docxTemplate.ts";
 import { withUpdateFields } from "../src/docxGraft.ts";
 import { readAllZipEntries } from "../src/zip.ts";
 import { writeZip } from "../src/zipWriter.ts";
@@ -89,6 +89,16 @@ describe("docx_styles: what a template offers", () => {
     assert.deepEqual(description.tableStyles.map((style) => style.name), ["Normal Table", "Table Grid"]);
     const shown = formatTemplateDescription(description);
     assert.match(shown, /heading 1: "heading 1" \(id Titre1\), numbered by the template/);
+  });
+
+  test("a long list of table styles is cut after the default and the first ones, and counted", () => {
+    const description = describeWordTemplate(template());
+    const many = Array.from({ length: 45 }, (_, i) => ({ id: `T${i}`, name: `Table ${i}`, isDefault: i === 30 }));
+    const shown = formatTemplateDescription({ ...description, tableStyles: many });
+    const line = shown.split(/\r?\n/).find((entry) => entry.startsWith("Table styles:"))!;
+    assert.match(line, /^Table styles: "Table 30" \(default\), "Table 0", /);
+    assert.equal(line.match(/"Table \d+"/g)?.length, MAX_LISTED_TABLE_STYLES);
+    assert.match(line, /, and 25 more\.$/);
   });
 
   test("TemplateFeaturesAreReported: cover page, header, footer and table of contents", () => {

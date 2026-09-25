@@ -13,12 +13,21 @@ import type { OpenFile } from "../useAgent";
 
 type ExportCall = { text: string; path: string; options?: { serverUrl?: string; token?: string | null } };
 
-const exported = vi.hoisted(() => ({ calls: [] as ExportCall[], fail: null as Error | null }));
+const exported = vi.hoisted(() => ({
+  calls: [] as ExportCall[],
+  fail: null as Error | null,
+  templateCalls: [] as ExportCall[],
+  templateFail: null as Error | null,
+}));
 
 vi.mock("../export/docxExport", () => ({
   downloadDocx: async (text: string, path: string, options?: ExportCall["options"]) => {
     exported.calls.push({ text, path, options });
     if (exported.fail !== null) throw exported.fail;
+  },
+  downloadDocxInTemplate: async (text: string, path: string, options?: ExportCall["options"]) => {
+    exported.templateCalls.push({ text, path, options });
+    if (exported.templateFail !== null) throw exported.templateFail;
   },
 }));
 
@@ -240,5 +249,59 @@ describe("while it is working, and when it fails", () => {
 
     await waitFor(() => expect(exported.calls).toHaveLength(1));
     release();
+  });
+});
+
+describe("with a configured Word template", () => {
+  beforeEach(() => {
+    exported.calls.length = 0;
+    exported.fail = null;
+    exported.templateCalls.length = 0;
+    exported.templateFail = null;
+  });
+
+  const plain = () => screen.getByRole("button", { name: "Download as a Word document" });
+  const inTemplate = () => screen.queryByRole("button", { name: /in the template/i });
+
+  it("ExportUsesTheConfiguredTemplate: offers the template export beside the plain one, and sends the document through it", async () => {
+    setup({ docxTemplate: "house.dotx", serverUrl: "http://127.0.0.1:4322", token: "t0k" });
+
+    expect(inTemplate()).not.toBeNull();
+    expect(inTemplate()!.title).toContain("house.dotx");
+    fireEvent.click(inTemplate()!);
+
+    await waitFor(() => expect(exported.templateCalls).toHaveLength(1));
+    expect(exported.templateCalls[0]).toEqual({ text: "# Title\n\nBody.\n", path: "notes.md", options: { serverUrl: "http://127.0.0.1:4322", token: "t0k" } });
+    expect(exported.calls).toHaveLength(0);
+  });
+
+  it("WithoutATemplateTheExportIsUnchanged: one export, the plain one", async () => {
+    setup();
+
+    expect(inTemplate()).toBeNull();
+    expect(screen.getAllByRole("button", { name: /download as a word document/i })).toHaveLength(1);
+    fireEvent.click(plain());
+    await waitFor(() => expect(exported.calls).toHaveLength(1));
+    expect(exported.templateCalls).toHaveLength(0);
+  });
+
+  it("ABrokenTemplateDoesNotBlockThePlainExport: the template export says why, and the plain one still works", async () => {
+    exported.templateFail = new Error("The Word template house.dotx cannot be read.");
+    setup({ docxTemplate: "house.dotx" });
+
+    fireEvent.click(inTemplate()!);
+
+    await waitFor(() => expect(inTemplate()).toHaveTextContent(/export failed/i));
+    expect(inTemplate()!.title).toContain("The Word template house.dotx cannot be read.");
+    // The failure is shown where it happened, not on the plain export.
+    expect(plain()).toHaveTextContent("⤓ word");
+    expect(plain()).not.toBeDisabled();
+
+    // Past the double-click guard: a later press is a new intention.
+    await new Promise((resolve) => setTimeout(resolve, 800));
+    fireEvent.click(plain());
+    await waitFor(() => expect(exported.calls).toHaveLength(1));
+    await waitFor(() => expect(plain()).toHaveTextContent("⤓ word"));
+    expect(plain()).not.toHaveTextContent(/failed/i);
   });
 });
