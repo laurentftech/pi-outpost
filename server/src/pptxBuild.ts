@@ -74,12 +74,12 @@ export const MAX_BULLET_LEVEL = 8;
 
 const NS_A = "http://schemas.openxmlformats.org/drawingml/2006/main";
 const NS_P = "http://schemas.openxmlformats.org/presentationml/2006/main";
-const NS_R = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
-const NS_REL_PACKAGE = "http://schemas.openxmlformats.org/package/2006/relationships";
-const REL_SLIDE = `${NS_R}/slide`;
-const REL_SLIDE_LAYOUT = `${NS_R}/slideLayout`;
+export const NS_R = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+export const NS_REL_PACKAGE = "http://schemas.openxmlformats.org/package/2006/relationships";
+export const REL_SLIDE = `${NS_R}/slide`;
+export const REL_SLIDE_LAYOUT = `${NS_R}/slideLayout`;
 const REL_SLIDE_MASTER = `${NS_R}/slideMaster`;
-const REL_IMAGE = `${NS_R}/image`;
+export const REL_IMAGE = `${NS_R}/image`;
 const REL_OFFICE_DOCUMENT = `${NS_R}/officeDocument`;
 /** The extension list entry PowerPoint reads an SVG picture from (Office 2016 and later). */
 const SVG_BLIP_EXT_URI = "{96DAC541-7B7A-43D3-8B79-37D633B846F1}";
@@ -88,9 +88,9 @@ const NS_ASVG = "http://schemas.microsoft.com/office/drawing/2016/SVG/main";
 const CT_PRESENTATION = "application/vnd.openxmlformats-officedocument.presentationml.presentation.main+xml";
 const CT_TEMPLATE = "application/vnd.openxmlformats-officedocument.presentationml.template.main+xml";
 const CT_SLIDESHOW = "application/vnd.openxmlformats-officedocument.presentationml.slideshow.main+xml";
-const CT_SLIDE = "application/vnd.openxmlformats-officedocument.presentationml.slide+xml";
-const CONTENT_TYPES = "[Content_Types].xml";
-const ROOT_RELS = "_rels/.rels";
+export const CT_SLIDE = "application/vnd.openxmlformats-officedocument.presentationml.slide+xml";
+export const CONTENT_TYPES = "[Content_Types].xml";
+export const ROOT_RELS = "_rels/.rels";
 
 /** OLE compound files (encrypted OOXML, legacy .ppt) start with this, not with "PK". */
 const OLE_MAGIC = Buffer.from([0xd0, 0xcf, 0x11, 0xe0]);
@@ -400,7 +400,7 @@ function byType(layouts: TemplateLayout[], ...types: string[]): TemplateLayout |
  * The layout a slide gets when the caller names none. Picked by the layout *type*
  * PowerPoint records, since names are the template author's and vary with language.
  */
-function defaultLayout(layouts: TemplateLayout[], slide: SlideSpec, index: number): TemplateLayout {
+export function defaultLayout(layouts: TemplateLayout[], slide: SlideSpec, index: number): TemplateLayout {
   const bullets = (slide.bullets?.length ?? 0) > 0;
   const image = hasVisual(slide);
   const withContent = layouts.find((layout) => hasTitle(layout) && contentPlaceholders(layout).length > 0);
@@ -415,7 +415,7 @@ function defaultLayout(layouts: TemplateLayout[], slide: SlideSpec, index: numbe
   return chosen ?? withContent ?? layouts.find(hasTitle) ?? layouts[0];
 }
 
-function findLayout(layouts: TemplateLayout[], name: string): TemplateLayout {
+export function findLayout(layouts: TemplateLayout[], name: string): TemplateLayout {
   const wanted = name.trim().toLowerCase();
   const found =
     layouts.find((layout) => layout.name.toLowerCase() === wanted) ??
@@ -541,7 +541,7 @@ function transparentPixel(): Buffer {
 
 /* ── Building ───────────────────────────────────────────────────────────────── */
 
-interface NewSlide {
+export interface NewSlide {
   part: string;
   xml: string;
   rels: string;
@@ -550,14 +550,14 @@ interface NewSlide {
 }
 
 /** Part names this build may use without colliding with anything the template keeps. */
-interface PartNames {
+export interface PartNames {
   mediaPrefix: string;
   /** The next free `ppt/charts/chartN.xml` and `ppt/embeddings/Microsoft_Excel_SheetN.xlsx` number. */
   nextChart: () => number;
 }
 
 /** Placement of one slide's content in its layout. */
-async function composeSlide(
+export async function composeSlide(
   template: Template,
   layout: TemplateLayout,
   slide: SlideSpec,
@@ -718,7 +718,7 @@ function reachableParts(parts: Map<string, Buffer>, presentationPart: string): S
 }
 
 /** Remove every `<prefix:name …>…</prefix:name>` (or self-closed) element with this local name. */
-function removeElement(xml: string, name: string): string {
+export function removeElement(xml: string, name: string): string {
   const open = new RegExp(`<(\\w+:)?${name}\\b[^>]*?/>|<(\\w+:)?${name}\\b[^>]*>[\\s\\S]*?</(\\w+:)?${name}>`, "g");
   return xml.replace(open, "");
 }
@@ -749,7 +749,7 @@ function rewritePresentation(xml: string, slideRelIds: string[]): string {
 }
 
 /** The `r:` prefix our slide list uses must be bound on the root. */
-function ensureRelationshipNamespace(xml: string): string {
+export function ensureRelationshipNamespace(xml: string): string {
   const root = /<(\w+:)?presentation\b[^>]*>/.exec(xml)!;
   if (/\sxmlns:r="/.test(root[0])) {
     if (!root[0].includes(`xmlns:r="${NS_R}"`)) throw new PptxBuildError("the template binds the r: prefix to another namespace");
@@ -812,6 +812,23 @@ function rewriteContentTypes(
   return result;
 }
 
+/** Refuse a slide the builder cannot write, naming it by `label`. */
+export function validateSlide(slide: SlideSpec, label: string): void {
+  for (const [field, value] of [["title", slide.title], ["subtitle", slide.subtitle]] as const) {
+    if (value !== undefined && value.length > MAX_TEXT_CHARS) throw new PptxBuildError(`${label}: the ${field} is longer than ${MAX_TEXT_CHARS} characters`);
+  }
+  if ((slide.bullets?.length ?? 0) > MAX_BULLETS) throw new PptxBuildError(`${label}: more than ${MAX_BULLETS} bullets`);
+  if (slide.bullets?.some((bullet) => bullet.length > MAX_TEXT_CHARS)) {
+    throw new PptxBuildError(`${label}: a bullet is longer than ${MAX_TEXT_CHARS} characters`);
+  }
+  const visuals = [slide.image, slide.table, slide.chart].filter((visual) => visual !== undefined).length;
+  if (visuals > 1) {
+    throw new PptxBuildError(`${label}: a slide holds one picture, table or chart — put the others on slides of their own`);
+  }
+  if (slide.table !== undefined) validateTable(slide.table, label);
+  if (slide.chart !== undefined) validateChart(slide.chart, label);
+}
+
 export async function buildPresentation(template: Template, slides: SlideSpec[], options: BuildOptions = {}): Promise<BuiltPresentation> {
   if (slides.length === 0) throw new PptxBuildError("a presentation needs at least one slide");
   if (slides.length > MAX_SLIDES) throw new PptxBuildError(`at most ${MAX_SLIDES} slides can be built in one call (got ${slides.length})`);
@@ -833,19 +850,7 @@ export async function buildPresentation(template: Template, slides: SlideSpec[],
   const built: BuiltSlide[] = [];
   const newSlides: NewSlide[] = [];
   for (const [index, slide] of slides.entries()) {
-    for (const [field, value] of [["title", slide.title], ["subtitle", slide.subtitle]] as const) {
-      if (value !== undefined && value.length > MAX_TEXT_CHARS) throw new PptxBuildError(`slide ${index + 1}: the ${field} is longer than ${MAX_TEXT_CHARS} characters`);
-    }
-    if ((slide.bullets?.length ?? 0) > MAX_BULLETS) throw new PptxBuildError(`slide ${index + 1}: more than ${MAX_BULLETS} bullets`);
-    if (slide.bullets?.some((bullet) => bullet.length > MAX_TEXT_CHARS)) {
-      throw new PptxBuildError(`slide ${index + 1}: a bullet is longer than ${MAX_TEXT_CHARS} characters`);
-    }
-    const visuals = [slide.image, slide.table, slide.chart].filter((visual) => visual !== undefined).length;
-    if (visuals > 1) {
-      throw new PptxBuildError(`slide ${index + 1}: a slide holds one picture, table or chart — put the others on slides of their own`);
-    }
-    if (slide.table !== undefined) validateTable(slide.table, `slide ${index + 1}`);
-    if (slide.chart !== undefined) validateChart(slide.chart, `slide ${index + 1}`);
+    validateSlide(slide, `slide ${index + 1}`);
     const layout = slide.layout !== undefined && slide.layout.trim() !== "" ? findLayout(template.layouts, slide.layout) : defaultLayout(template.layouts, slide, index);
     const warnings: string[] = [];
     // The template's slides are all dropped, so slide file numbers start again at 1.

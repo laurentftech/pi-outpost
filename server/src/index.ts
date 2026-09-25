@@ -156,7 +156,12 @@ import {
 import { createDocxExtractToolDefinition } from "./docxTool.ts";
 import { createXlsxExtractToolDefinition } from "./xlsxTool.ts";
 import { createPptxExtractToolDefinition } from "./pptxTool.ts";
-import { createPptxCreateToolDefinition, createPptxLayoutsToolDefinition, createPptxRenderToolDefinition } from "./presentationTools.ts";
+import {
+  createPptxCreateToolDefinition,
+  createPptxLayoutsToolDefinition,
+  createPptxRenderToolDefinition,
+  createPptxUpdateToolDefinition,
+} from "./presentationTools.ts";
 import {
   createDocxCreateToolDefinition,
   createDocxRenderToolDefinition,
@@ -1163,6 +1168,13 @@ const makeCreateRuntime =
                 render: officeRenderSettings(),
               }),
               createPptxCreateToolDefinition({
+                cwd,
+                allowedRoots: [await fs.realpath(cwd)],
+                maxBytes: config.pptx.maxBytes,
+                writableRoot: await fs.realpath(cwd),
+                render: officeRenderSettings(),
+              }),
+              createPptxUpdateToolDefinition({
                 cwd,
                 allowedRoots: [await fs.realpath(cwd)],
                 maxBytes: config.pptx.maxBytes,

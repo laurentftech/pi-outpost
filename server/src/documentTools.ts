@@ -15,11 +15,11 @@
  */
 
 /**
- * The tools that make and check a PowerPoint deck from a template. Published together:
- * each is useless without the others — layouts to choose from, a builder, and the
- * rendering that shows whether the result reads.
+ * The tools that make, update and check a PowerPoint deck. Published together: each is
+ * useless without the others — layouts to choose from, a builder and an editor, and
+ * the rendering that shows whether the result reads.
  */
-export const PRESENTATION_TOOLS = ["pptx_layouts", "pptx_create", "pptx_render"];
+export const PRESENTATION_TOOLS = ["pptx_layouts", "pptx_create", "pptx_update", "pptx_render"];
 
 /** The skill that teaches the loop through them; loading it is asking for them. */
 export const PRESENTATION_SKILL = "pptx-from-template";

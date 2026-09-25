@@ -138,9 +138,13 @@ describe("createSandboxedTools", () => {
 
   describe("which tools the model gets", () => {
     test("read-only by default", async () => {
+      // NoWordCreationInAReadOnlySandbox, NoDeckUpdateInAReadOnlySandbox: the tools that
+      // write a document or a deck are absent; the ones that describe and draw stay.
       const tools = await createSandboxedTools(config({ root }));
       assert.deepEqual(names(tools), [
         "docx_extract",
+        "docx_render",
+        "docx_styles",
         "find",
         "grep",
         "ls",
@@ -158,7 +162,11 @@ describe("createSandboxedTools", () => {
     test("adds edit and write only when writing is allowed", async () => {
       const tools = await createSandboxedTools(config({ root, allowWrite: true }));
       assert.deepEqual(names(tools), [
+        "docx_create",
         "docx_extract",
+        "docx_render",
+        "docx_styles",
+        "docx_update",
         "edit",
         "find",
         "grep",
@@ -168,6 +176,7 @@ describe("createSandboxedTools", () => {
         "pptx_extract",
         "pptx_layouts",
         "pptx_render",
+        "pptx_update",
         "read",
         "write",
         "write_structure_figure",

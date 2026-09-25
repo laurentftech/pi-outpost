@@ -73,6 +73,7 @@ describe("documentToolsFor", () => {
       "pptx_extract",
       "pptx_layouts",
       "pptx_create",
+      "pptx_update",
       "pptx_render",
     ]);
     for (const extension of ["pdf", "xlsx"]) {

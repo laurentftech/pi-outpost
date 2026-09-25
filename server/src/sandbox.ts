@@ -34,7 +34,12 @@ import { createDocxExtractToolDefinition } from "./docxTool.ts";
 import { createXlsxExtractToolDefinition } from "./xlsxTool.ts";
 import { createPptxExtractToolDefinition } from "./pptxTool.ts";
 import { createPdfExtractToolDefinition } from "./pdfTool.ts";
-import { createPptxCreateToolDefinition, createPptxLayoutsToolDefinition, createPptxRenderToolDefinition } from "./presentationTools.ts";
+import {
+  createPptxCreateToolDefinition,
+  createPptxLayoutsToolDefinition,
+  createPptxRenderToolDefinition,
+  createPptxUpdateToolDefinition,
+} from "./presentationTools.ts";
 import {
   createDocxCreateToolDefinition,
   createDocxRenderToolDefinition,
@@ -230,6 +235,7 @@ export async function createSandboxedTools(
   // Building a deck writes one: offered only where writing is.
   if (realWritableRoot !== null) {
     tools.push(scopeToRoot(createPptxCreateToolDefinition({ cwd: realRoot, ...presentation }), realRoot, realRoot, readExceptions));
+    tools.push(scopeToRoot(createPptxUpdateToolDefinition({ cwd: realRoot, ...presentation }), realRoot, realRoot, readExceptions));
     // Writing and updating a Word document write one.
     tools.push(scopeToRoot(createDocxCreateToolDefinition({ cwd: realRoot, ...word }), realRoot, realRoot, readExceptions));
     tools.push(scopeToRoot(createDocxUpdateToolDefinition({ cwd: realRoot, ...word }), realRoot, realRoot, readExceptions));

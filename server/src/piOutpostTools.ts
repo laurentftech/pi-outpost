@@ -30,7 +30,12 @@ import { createPdfExtractToolDefinition } from "./pdfTool.ts";
 import { createPptxExtractToolDefinition } from "./pptxTool.ts";
 import { DEFAULT_RENDER_TIMEOUT_MS, OFFICE_RENDERERS } from "./config.ts";
 import type { RenderSettings } from "./presentationRender.ts";
-import { createPptxCreateToolDefinition, createPptxLayoutsToolDefinition, createPptxRenderToolDefinition } from "./presentationTools.ts";
+import {
+  createPptxCreateToolDefinition,
+  createPptxLayoutsToolDefinition,
+  createPptxRenderToolDefinition,
+  createPptxUpdateToolDefinition,
+} from "./presentationTools.ts";
 import {
   createDocxCreateToolDefinition,
   createDocxRenderToolDefinition,
@@ -112,6 +117,7 @@ export async function createPiOutpostTools(settings: PiOutpostToolsSettings): Pr
     createPptxExtractToolDefinition({ ...common, maxBytes: settings.maxBytes.pptx }),
     createPptxLayoutsToolDefinition({ ...common, maxBytes: settings.maxBytes.pptx, render }),
     createPptxCreateToolDefinition({ ...common, maxBytes: settings.maxBytes.pptx, render }),
+    createPptxUpdateToolDefinition({ ...common, maxBytes: settings.maxBytes.pptx, render }),
     createPptxRenderToolDefinition({ ...common, maxBytes: settings.maxBytes.pptx, render }),
     createDocxStylesToolDefinition({ ...common, maxBytes: settings.maxBytes.docx, render }),
     createDocxCreateToolDefinition({ ...common, maxBytes: settings.maxBytes.docx, render }),
