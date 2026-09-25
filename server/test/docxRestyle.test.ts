@@ -20,6 +20,7 @@ import { realResolve } from "../src/sandbox.ts";
 import { bodyLayout } from "../src/wordml.ts";
 import { createDocxRestyleToolDefinition } from "../src/wordTools.ts";
 import { readAllZipEntries } from "../src/zip.ts";
+import { writeZip } from "../src/zipWriter.ts";
 
 const FIXTURES = path.join(path.dirname(fileURLToPath(import.meta.url)), "fixtures");
 const driftedBytes = await readFile(path.join(FIXTURES, "docx-drifted.docx"));
@@ -107,6 +108,15 @@ describe("restyleDocument", () => {
     assert.match(numbering, /<w:num w:numId="2"><w:abstractNumId w:val="1"\/><\/w:num>/);
     assert.match(numbering, /<w:abstractNum w:abstractNumId="1">[\s\S]*?lowerLetter/);
     assert.match(text(parts, "word/document.xml"), /<w:numId w:val="2"\/><\/w:numPr><\/w:pPr><w:r>(?:<w:rPr>[\s\S]*?<\/w:rPr>)?<w:t[^>]*>Premier point/);
+  });
+
+  test("a template style numbered by a list its package does not hold is left unnumbered, not pointed at the document's lists", () => {
+    const parts = unzip(templateBytes);
+    parts.set("word/styles.xml", Buffer.from(text(parts, "word/styles.xml").replace('<w:numId w:val="1"/>', '<w:numId w:val="7"/>'), "utf8"));
+    const broken = writeZip([...parts].map(([name, data]) => ({ name, data })));
+    const result = restyleDocument(readWordPackage(driftedBytes, "the document"), readWordPackage(broken), { date: DATE });
+    const styles = unzip(result.bytes).get("word/styles.xml")!.toString("utf8");
+    assert.match(/w:styleId="Titre1">[\s\S]*?<\/w:style>/.exec(styles)![0], /<w:numId w:val="0"\/>/);
   });
 
   test("PageSetupAndHeadersOnlyOnRequest: margins and headers from the template, orientation kept", () => {

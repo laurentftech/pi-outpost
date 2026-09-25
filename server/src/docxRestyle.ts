@@ -222,9 +222,9 @@ export function restyleDocument(doc: WordPackage, template: WordPackage, options
   const templateNumbering = template.numberingPart === undefined ? undefined : decode(template.parts, template.numberingPart);
   const addedAbstracts: string[] = [];
   const addedNums: string[] = [];
-  if (templateNumbering !== undefined) {
-    const root = /<(\w+:)?numbering\b[^>]*>/.exec(templateNumbering)!;
-    const elements = childElements(templateNumbering, root.index + root[0].length, templateNumbering.lastIndexOf("</"));
+  {
+    const root = templateNumbering === undefined ? null : /<(\w+:)?numbering\b[^>]*>/.exec(templateNumbering);
+    const elements = root === null ? [] : childElements(templateNumbering!, root.index + root[0].length, templateNumbering!.lastIndexOf("</"));
     const abstracts = new Map(elements.filter((e) => e.local === "abstractNum").map((e) => [/abstractNumId="(\d+)"/.exec(e.xml)![1], e.xml]));
     const nums = new Map(elements.filter((e) => e.local === "num").map((e) => [/numId="(\d+)"/.exec(e.xml)![1], e.xml]));
     let nextAbstract = highestNumber([...(docNumbering ?? "").matchAll(/abstractNumId="(\d+)"/g)].map((match) => match[1])) + 1;
@@ -233,7 +233,9 @@ export function restyleDocument(doc: WordPackage, template: WordPackage, options
     const abstractMap = new Map<string, string>();
     stylesXml = stylesXml.replace(/(<w:numId\b[^>]*?\bw:val=")(\d+)(")/g, (whole, open: string, value: string, close: string) => {
       const num = nums.get(value);
-      if (num === undefined) return whole;
+      // A numbering the template's own package lacks: left as it was, its id would name
+      // one of the document's lists instead. 0 is "not numbered".
+      if (num === undefined) return value === "0" ? whole : `${open}0${close}`;
       let newNum = numMap.get(value);
       if (newNum === undefined) {
         const abstractId = /<w:abstractNumId\b[^>]*?val="(\d+)"/.exec(num)?.[1];
