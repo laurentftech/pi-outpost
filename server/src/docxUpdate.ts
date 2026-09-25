@@ -63,9 +63,13 @@ function normalise(text: string): string {
   return text.normalize("NFC").trim().replace(/\s+/g, " ").toLowerCase();
 }
 
-/** A heading's text without the number a user may have copied from the rendered page. */
+/**
+ * A heading's text without the number a user may have copied from the rendered page:
+ * `2 `, `2. `, `2) `, `2.1 `, `2.1. `. Each group of digits is followed by a separator
+ * or ends the number, so the pattern has one way to match and runs in linear time.
+ */
 function withoutNumber(text: string): string {
-  return text.replace(/^\s*(?:\d+[.)]?)+(?:\.\d+)*\.?\s+/, "");
+  return text.replace(/^\s*\d+(?:[.)]\d+)*[.)]?\s+/, "");
 }
 
 function headingsOf(children: XmlElement[], pkg: WordPackage): Heading[] {

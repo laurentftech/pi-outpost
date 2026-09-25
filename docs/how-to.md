@@ -519,7 +519,8 @@ The path is relative to the configuration file. The viewer's Word export then of
 button, **⤓ word · template**, that writes the open document into it. The document is built in
 the browser as before, diagrams included, and the server carries it into the template. The plain
 export stays beside it: a template that is missing or cannot be used is reported on its own
-button, and never blocks the other.
+button, and never blocks the other. Each browser may export into the template 30 times a minute; past that,
+the button says when to try again.
 
 ## Lock down a shared deployment
 

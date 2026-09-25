@@ -113,6 +113,18 @@ describe("docx_update", () => {
     assert.deepEqual(outline(resolved.bytes), ["1 Lot A", "2 Détail", "1 Lot B"]);
   });
 
+  test("a heading named with the number copied from the page is found, and a hostile one is refused in linear time", async () => {
+    for (const section of ["2. Périmètre > 2.1 Inclus", "2) Périmètre > 2.1. Inclus", "2 Périmètre > Inclus"]) {
+      const updated = await updateDocument(report(), [{ action: "delete", section }], { trackChanges: false });
+      assert.ok(!outline(updated.bytes).includes("2 Inclus"), section);
+    }
+    // The shape CodeQL named for the old pattern: a long run of one digit that never
+    // becomes a heading number. It must be refused at once, not backtracked through.
+    const started = performance.now();
+    await assert.rejects(updateDocument(report(), [{ action: "delete", section: `${"0".repeat(50_000)}x` }]), WordTemplateError);
+    assert.ok(performance.now() - started < 2_000, `took ${Math.round(performance.now() - started)} ms`);
+  });
+
   test("InsertAndDeleteFollowTheOutline: a new section after all of Périmètre, and Risques gone with its body", async () => {
     const edits: DocxEdit[] = [
       { action: "insert_after", section: "Périmètre", markdown: "# Budget\n\nDes chiffres." },

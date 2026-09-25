@@ -135,6 +135,24 @@ describe("POST /files/docx-template", () => {
     assert.equal(res.headers.get("access-control-allow-origin"), origin);
   });
 
+  test("a client is held to 30 exports a minute", async () => {
+    // Its own server, so the other tests' requests do not count against it.
+    const root = await makeWorkspace({});
+    await copyFile(TEMPLATE, path.join(root, "house.dotx"));
+    const limited = await startServer(root, { server: { token: TOKEN }, docx: { template: path.join(root, "house.dotx") } });
+    try {
+      // Refused bodies are cheap to send and count all the same.
+      const statuses = [];
+      for (let i = 0; i < 30; i++) statuses.push((await post(limited, Buffer.from("x"))).status);
+      assert.deepEqual([...new Set(statuses)], [422]);
+      const over = await post(limited, document);
+      assert.equal(over.status, 429);
+      assert.match((await over.json()).message, /Rate limit exceeded, retry in/);
+    } finally {
+      await limited.stop();
+    }
+  });
+
   test("the token is required, as for every other file route", async () => {
     assert.equal((await post(configured, document, null)).status, 401);
     assert.equal((await post(configured, document, "wrong")).status, 401);

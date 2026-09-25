@@ -18,6 +18,7 @@
   },
   "dependencies": {
     "@earendil-works/pi-coding-agent": "^0.87.1",
+    "@fastify/rate-limit": "^11.2.0",
     "@fastify/static": "^10.1.2",
     "@fastify/websocket": "^11.0.2",
     "@pi-outpost/shared": "*",

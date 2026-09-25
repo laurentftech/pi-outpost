@@ -8,6 +8,7 @@
  */
 import { createHash, timingSafeEqual } from "node:crypto";
 import fs from "node:fs/promises";
+import rateLimit from "@fastify/rate-limit";
 import fastifyStatic from "@fastify/static";
 import websocket from "@fastify/websocket";
 import Fastify, { type FastifyReply, type FastifyRequest } from "fastify";
@@ -685,6 +686,9 @@ const app = Fastify({ logger: false });
 await app.register(websocket, {
   options: { maxPayload: Math.max(MAX_UPLOAD_BASE64_LENGTH, MAX_IMAGES * MAX_IMAGE_BYTES) + 65_536 },
 });
+// Rate limits are opt-in per route (`config.rateLimit`), for the handlers whose work a
+// client decides: the rest of the API is driven by the page at the page's own pace.
+await app.register(rateLimit, { global: false });
 
 // A hook rather than a call in each handler: a per-route list is one a future
 // route joins by being remembered, and this one cannot be half-applied.
@@ -812,7 +816,10 @@ function hostAllowed(hostHeader: string | undefined): boolean {
 // sits beside; bounded by the Word ceiling.
 const DOCX_CONTENT_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 app.addContentTypeParser(DOCX_CONTENT_TYPE, { parseAs: "buffer", bodyLimit: config.docx.maxBytes }, (_req, body, done) => done(null, body));
-app.post("/files/docx-template", async (req, reply) => {
+// Each request unzips a template and a document and rewrites their XML: a person
+// exports a few documents a minute, a loop would keep the server busy.
+const DOCX_TEMPLATE_EXPORTS_PER_MINUTE = 30;
+app.post("/files/docx-template", { config: { rateLimit: { max: DOCX_TEMPLATE_EXPORTS_PER_MINUTE, timeWindow: "1 minute" } } }, async (req, reply) => {
   if (!hostAllowed(req.headers.host)) {
     console.warn(`[server] rejected /files/docx-template request with foreign host ${req.headers.host} from ${req.ip}`);
     return reply.code(403).send({ error: "forbidden" });
