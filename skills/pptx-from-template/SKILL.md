@@ -1,6 +1,6 @@
 ---
 name: pptx-from-template
-description: Build a PowerPoint presentation (.pptx) from a template (.potx or .pptx) — titles, bullets, pictures, native tables and editable charts — with pptx_layouts, pptx_create and pptx_render, then check it is readable by rendering it with PowerPoint (Windows), LibreOffice or ONLYOFFICE and fixing what the render shows. Use whenever the user asks for a deck, slides or a presentation made from a template, a corporate/brand deck, or to turn a document, notes or an outline into slides — and whenever a .potx file is involved.
+description: Build a PowerPoint presentation (.pptx) from a template (.potx or .pptx) — titles, bullets, pictures, native tables and editable charts — or update an existing deck slide by slide, with pptx_layouts, pptx_create, pptx_update and pptx_render, then check it is readable by rendering it with PowerPoint (Windows), LibreOffice or ONLYOFFICE and fixing what the render shows. Use whenever the user asks for a deck, slides or a presentation made from a template, a corporate/brand deck, or to turn a document, notes or an outline into slides — and whenever a .potx file is involved.
 license: MIT
 metadata:
   version: "1.0"
@@ -17,6 +17,7 @@ so every slide takes the template's styling without you setting a single font or
 | See which layouts a template offers | `pptx_layouts` with the template's `path` |
 | Read the text of a deck or of the template's sample slides | `pptx_extract` |
 | Build the deck: text, pictures, tables, charts | `pptx_create` |
+| Change slides of an existing deck | `pptx_update` |
 | See the slides as the audience will, and find unreadable text | `pptx_render` |
 | Hand over a PDF as well | `pptx_render` with `pdf_path` |
 
@@ -42,6 +43,21 @@ so every slide takes the template's styling without you setting a single font or
    application rendered the deck, and what you could not check.
 
 Never declare a deck finished without having rendered it.
+
+## Updating an existing deck
+
+When the user asks to change a deck they already have — a figure to refresh, a slide to add,
+one to drop — use `pptx_update` rather than rebuilding it: rebuilding loses every hand edit made
+since. Read the deck with `pptx_extract` first to know its slides.
+
+- Name slides by number or title, as the deck is **now**: `replace` rewrites a slide's content on
+  its own layout (give `content.layout` to change it), `insert_after` adds a slide (after `0` for
+  the start), `delete` removes one, `move` puts one `after` another. All edits apply together.
+- `content` is a slide exactly as for `pptx_create`: title, bullets, one picture, table or chart.
+- Write to a new file with `output_path`, unless the user asked to change the original
+  (`overwrite: true`). Speaker notes of a replaced slide are kept.
+- The answer lists the changed slides' numbers in the result: render exactly those with
+  `pptx_render` and `slides`.
 
 ## Writing slides
 

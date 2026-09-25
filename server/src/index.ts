@@ -162,6 +162,9 @@ import {
   createPptxRenderToolDefinition,
   createPptxUpdateToolDefinition,
 } from "./presentationTools.ts";
+import { createFromContent } from "./docxBuild.ts";
+import { contentFromDocx } from "./docxGraft.ts";
+import { readWordPackage, WordTemplateError } from "./docxTemplate.ts";
 import {
   createDocxCreateToolDefinition,
   createDocxRenderToolDefinition,
@@ -801,6 +804,49 @@ function hostAllowed(hostHeader: string | undefined): boolean {
     }
   });
 }
+
+// The viewer's Word export, written into the configured template. The browser builds
+// the document — its diagrams and pictures are the browser's to draw and fetch — and
+// sends it here; the server carries its body into `docx.template`, whose path comes
+// from the configuration only, never from the request. Authenticated like the API it
+// sits beside; bounded by the Word ceiling.
+const DOCX_CONTENT_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+app.addContentTypeParser(DOCX_CONTENT_TYPE, { parseAs: "buffer", bodyLimit: config.docx.maxBytes }, (_req, body, done) => done(null, body));
+app.post("/files/docx-template", async (req, reply) => {
+  if (!hostAllowed(req.headers.host)) {
+    console.warn(`[server] rejected /files/docx-template request with foreign host ${req.headers.host} from ${req.ip}`);
+    return reply.code(403).send({ error: "forbidden" });
+  }
+  const auth = req.headers.authorization;
+  if (!tokenValid(auth?.startsWith("Bearer ") ? auth.slice("Bearer ".length) : undefined)) {
+    console.warn(`[server] rejected /files/docx-template request with bad or missing token from ${req.ip}`);
+    return reply.code(401).send({ error: "unauthorized" });
+  }
+  const templatePath = config.docx.template;
+  if (templatePath === undefined) return reply.code(404).send({ error: "no-template", message: "No Word template is configured (docx.template)." });
+  if (!Buffer.isBuffer(req.body)) return reply.code(415).send({ error: "unsupported", message: "Send the document as a .docx body." });
+  let templateBytes: Buffer;
+  try {
+    const stat = await fs.stat(templatePath);
+    if (stat.size > config.docx.maxBytes) return reply.code(422).send({ error: "template", message: `The Word template ${path.basename(templatePath)} is larger than the Word ceiling.` });
+    templateBytes = await fs.readFile(templatePath);
+  } catch {
+    return reply.code(422).send({ error: "template", message: `The Word template ${path.basename(templatePath)} cannot be read.` });
+  }
+  try {
+    const created = createFromContent(readWordPackage(templateBytes), contentFromDocx(req.body), []);
+    return reply
+      .header("Content-Type", DOCX_CONTENT_TYPE)
+      .header("Content-Disposition", "attachment")
+      .header("Cache-Control", "no-store")
+      .send(created.bytes);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    const isTemplate = error instanceof WordTemplateError;
+    console.warn(`[server] Word template export failed: ${message}`);
+    return reply.code(422).send({ error: isTemplate ? "template" : "document", message: isTemplate ? `The Word template ${path.basename(templatePath)}: ${message}` : `The document could not be written into the template: ${message}` });
+  }
+});
 
 // Raw bytes for workspace files referenced in assistant messages (inline
 // images). `<img>` cannot send headers, so the token rides the query string —
@@ -1989,6 +2035,7 @@ function snapshot(workspace: Workspace): SessionSnapshot {
     writableRoot: workspace.writableRoot,
     // Not merely "a repository was found on disk": one git will actually read
     gitAvailable: workspace.repos.length > 0 && workspace.gitUnavailable === undefined,
+    ...(config.docx.template !== undefined ? { docxTemplate: path.basename(config.docx.template) } : {}),
     ...(workspace.gitUnavailable ? { gitUnavailable: workspace.gitUnavailable } : {}),
     credentials: credentialStatus(workspace),
     // Omitted, not emptied, when the runtime cannot report an inventory: "none

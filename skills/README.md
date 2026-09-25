@@ -27,5 +27,9 @@ Or copy the directory into `.agents/skills/`, which the agent discovers on its o
   with [`docs/structured-exchange-project-setup.md`](../docs/structured-exchange-project-setup.md).
 - **`pptx-from-template/`** — building a PowerPoint deck from a `.potx`/`.pptx` template with
   `pptx_layouts`, `pptx_create` and `pptx_render`, and the render-and-fix loop that checks the
-  slides are readable before the deck is handed over. Loading it (by name, or by the agent
-  reading it) publishes the three tools.
+  slides are readable before the deck is handed over, and updating an existing deck slide by
+  slide with `pptx_update`. Loading it (by name, or by the agent reading it) publishes the four
+  tools.
+- **`docx-from-template/`** — writing a Word document in a `.dotx`/`.docx` template's styles with
+  `docx_styles`, `docx_create` and `docx_render`, and updating an existing document section by
+  section, as tracked changes, with `docx_update`. Loading it publishes the four tools.

@@ -8,7 +8,7 @@
  */
 import type { PictureSource, ReferencedImage } from "@pi-outpost/shared/docx";
 import { countDiagrams } from "@pi-outpost/shared/docx";
-import { generateContent, WordComposer } from "./docxGraft.ts";
+import { generateContent, WordComposer, type GeneratedContent } from "./docxGraft.ts";
 import { isGallery, isTableOfContents, WordTemplateError, type WordPackage } from "./docxTemplate.ts";
 import { bodyLayout } from "./wordml.ts";
 
@@ -57,10 +57,18 @@ export function contentWarnings(markdown: string, pictures: PictureSource, misse
 export async function createDocument(template: WordPackage, markdown: string, options: CreateOptions = {}): Promise<CreatedDocument> {
   if (markdown.trim() === "") throw new WordTemplateError("there is no content to write");
   if (markdown.length > MAX_MARKDOWN_CHARS) throw new WordTemplateError(`the content is longer than ${MAX_MARKDOWN_CHARS} characters`);
-  const keep = new Set(options.keep ?? []);
-  const warnings: string[] = [];
   const counting = countingPictures(options.pictures ?? {});
+  const generated = await generateContent(markdown, counting.source);
+  return createFromContent(template, generated, options.keep ?? [], contentWarnings(markdown, counting.source, counting.missed));
+}
 
+/**
+ * A document from content already written as Word — by `generateContent`, or by the
+ * viewer's export in the browser — carried into the template.
+ */
+export function createFromContent(template: WordPackage, generated: GeneratedContent, keepParts: KeepPart[], contentNotes: string[] = []): CreatedDocument {
+  const keep = new Set(keepParts);
+  const warnings: string[] = [];
   const layout = bodyLayout(template.documentXml);
   const kept: string[] = [];
   const cover = layout.children.find((child) => child.local === "sdt" && isGallery(child.xml, "Cover Pages"));
@@ -75,8 +83,8 @@ export async function createDocument(template: WordPackage, markdown: string, op
   }
 
   const composer = new WordComposer(template);
-  const content = composer.adopt(await generateContent(markdown, counting.source));
-  warnings.push(...contentWarnings(markdown, counting.source, counting.missed));
+  const content = composer.adopt(generated);
+  warnings.push(...contentNotes);
 
   const body = [...kept, ...content, layout.sectPr?.xml ?? ""].join("");
   const documentXml = template.documentXml.slice(0, layout.innerStart) + body + template.documentXml.slice(layout.innerEnd);

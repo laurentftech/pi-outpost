@@ -990,6 +990,7 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
               key={state.openFile.path}
               file={state.openFile}
               writableRoot={state.writableRoot}
+              docxTemplate={state.docxTemplate}
               isStreaming={state.isStreaming}
               onDirtyChange={setViewerDirty}
               gitState={state.gitStatus?.files[state.openFile.path]}

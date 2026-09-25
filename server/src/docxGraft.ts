@@ -72,6 +72,36 @@ export async function generateContent(markdown: string, source: PictureSource): 
   };
 }
 
+/**
+ * A Word document someone else wrote — the viewer's export, drawn in the browser with
+ * its diagrams and pictures — opened as content to carry into a template.
+ */
+export function contentFromDocx(bytes: Uint8Array): GeneratedContent {
+  const parts = readAllZipEntries(Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength), {
+    maxEntries: 4096,
+    maxInflatedBytes: 256 * 1024 * 1024,
+    maxTotalBytes: 512 * 1024 * 1024,
+  });
+  const main = parseRelationshipList(decode(parts, ROOT_RELS), "").find((rel) => rel.type.endsWith("/officeDocument") && !rel.external)?.target;
+  const documentXml = main === undefined ? undefined : decode(parts, main);
+  if (main === undefined || documentXml === undefined) throw new Error("the export is not a Word document");
+  const layout = bodyLayout(documentXml);
+  const rels = parseRelationshipList(decode(parts, relsPartOf(main)), main);
+  const target = (type: string) => rels.find((rel) => rel.type === type && !rel.external)?.target;
+  const stylesPart = target(`${NS_R}/styles`);
+  const numberingPart = target(REL_NUMBERING);
+  // `adopt` reads the writer's own part names; an export is one of the writer's packages.
+  if (stylesPart !== undefined && stylesPart !== "word/styles.xml") parts.set("word/styles.xml", parts.get(stylesPart)!);
+  if (numberingPart !== undefined && numberingPart !== "word/numbering.xml") parts.set("word/numbering.xml", parts.get(numberingPart)!);
+  return {
+    parts,
+    documentXml,
+    rels,
+    styles: parseStyles(stylesPart === undefined ? undefined : decode(parts, stylesPart)),
+    body: layout.children.filter((child) => child.local !== "sectPr"),
+  };
+}
+
 /** The namespace declarations on a part's root element, by prefix. */
 function namespacesOf(xml: string): Map<string, string> {
   const start = xml.indexOf("<", xml.startsWith("<?") ? xml.indexOf("?>") + 2 : 0);

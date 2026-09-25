@@ -28,6 +28,8 @@ interface FileViewerProps {
   file: OpenFile;
   /** Writable zone; see SessionSnapshot.writableRoot (undefined = everything, null = nothing). */
   writableRoot?: string | null;
+  /** The Word template the export can also write into; absent when none is configured. */
+  docxTemplate?: string;
   /** The viewer covers the chat: surface agent activity so a running reply isn't invisible. */
   isStreaming: boolean;
   /** Reports whether the editor holds unsaved changes (App auto-closes the viewer on prompt send only when it doesn't). */
@@ -160,6 +162,7 @@ export function FileViewer({
   onSave,
   serverUrl = "",
   token = null,
+  docxTemplate,
   onImageLoad,
   onPdfLoad,
   rawRevision = 0,
@@ -828,7 +831,7 @@ export function FileViewer({
             rather than a workspace write. Not offered for an image or a PDF (there
             is no text to carry), nor while the diff is showing (the reader is
             looking at changes, not at the document). */}
-        {loaded && !image && !pdf && !showGitDiff && <DocxExportButton text={editedText} path={file.path} serverUrl={serverUrl} token={token} />}
+        {loaded && !image && !pdf && !showGitDiff && <DocxExportButton text={editedText} path={file.path} serverUrl={serverUrl} token={token} template={docxTemplate} />}
         {loaded && edit === null && <CopyButton text={loaded.content} />}
         {loaded && edit === null && !showGitDiff && writable && (
           <button

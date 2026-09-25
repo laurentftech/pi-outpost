@@ -76,3 +76,30 @@ async function documentChildren(text: string, path: string, options?: ExportOpti
 export async function downloadDocx(text: string, path: string, options?: ExportOptions): Promise<void> {
   save(await buildDocx(text, path, options), docxFileName(path));
 }
+
+const DOCX_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+
+/**
+ * The same document, written into the server's configured Word template.
+ *
+ * Built here exactly as the plain export is — the diagrams and pictures are the
+ * browser's to draw and fetch — then sent to the server, which carries its body into
+ * the template (its styles, numbering, page setup, header and footer) and answers
+ * with the result. The template is the server's configuration, never the page's.
+ */
+export async function buildDocxInTemplate(text: string, path: string, options?: ExportOptions): Promise<Blob> {
+  const document = await buildDocx(text, path, options);
+  const headers: Record<string, string> = { "Content-Type": DOCX_TYPE };
+  if (options?.token) headers.Authorization = `Bearer ${options.token}`;
+  const response = await fetch(`${options?.serverUrl ?? ""}/files/docx-template`, { method: "POST", headers, body: document });
+  if (!response.ok) {
+    const answer = (await response.json().catch(() => null)) as { message?: string } | null;
+    throw new Error(answer?.message ?? `the server answered ${response.status}`);
+  }
+  return response.blob();
+}
+
+/** Builds the document in the template and hands it to the browser. */
+export async function downloadDocxInTemplate(text: string, path: string, options?: ExportOptions): Promise<void> {
+  save(await buildDocxInTemplate(text, path, options), docxFileName(path));
+}
