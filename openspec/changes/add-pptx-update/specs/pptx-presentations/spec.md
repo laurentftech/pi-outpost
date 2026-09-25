@@ -35,12 +35,3 @@ original, and SHALL report which slides changed, by their numbers in the result.
 #### Scenario: TheOriginalIsKeptUnlessOverwriteIsAsked
 - **WHEN** `pptx_update` is called without `overwrite`
 - **THEN** the original file is unchanged and the result is written to the path given
-
-### Requirement: RenderSelectedSlides
-
-`pptx_render` SHALL accept a selection of slide numbers and return pictures and the text check for
-those slides only, so an update can be checked where it changed.
-
-#### Scenario: OnlyTheSelectedSlidesAreReturned
-- **WHEN** a deck of ten slides is rendered with `slides: [3, 4]`
-- **THEN** the result holds the pictures and text check of slides 3 and 4 only

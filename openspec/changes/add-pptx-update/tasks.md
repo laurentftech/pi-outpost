@@ -2,7 +2,7 @@
 
 ## 1. Build
 - [ ] 1.1 `pptxUpdate.ts`: slide addressing (number/title, refusal with list), replace in own placeholders, insert on own layout, delete, move, reachability sweep, byte-identical untouched parts.
-- [ ] 1.2 `pptx_render` `slides` selection.
+- [x] 1.2 `pptx_render` `slides` selection — already there (`add-pptx-from-template`); nothing to add.
 - [ ] 1.3 Tool registration and publication; skill `pptx-from-template` gains the update loop.
 
 ## 2. Proving it

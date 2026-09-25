@@ -19,11 +19,11 @@ deck, which loses every hand edit made since.
 - **Untouched slides stay identical**, byte for byte, with every part they use.
 - No tracked changes (not needed for decks). As with `pptx_create`, the original is replaced only
   with `overwrite: true`; the call reports which slides changed, so the agent renders exactly
-  those to check them (`pptx_render` gains a `slides` selection).
+  those to check them, with `pptx_render`'s existing `slides` selection.
 
 ## Impact
 
-- Capability `pptx-presentations` (from `add-pptx-from-template`): two added requirements.
+- Capability `pptx-presentations` (from `add-pptx-from-template`): one added requirement.
 - Capability `agent`: `pptx_update` joins the presentation tools' publication.
 - Server: `pptxUpdate.ts` beside `pptxBuild.ts`, reusing its placeholder writing, picture,
   table and chart code and its reachability sweep.

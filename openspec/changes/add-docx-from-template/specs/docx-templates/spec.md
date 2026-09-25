@@ -108,7 +108,8 @@ the next heading of the same or a higher level. Content SHALL be Markdown, mappe
 
 A heading path that matches no heading or several SHALL be refused with the document's headings.
 Everything outside the edited sections SHALL be left identical: its paragraphs unchanged in
-`document.xml`, and every other part copied unchanged.
+`document.xml`, and every part the edits do not need to change — the new content's styles,
+numbering, pictures and links need theirs — copied unchanged.
 
 Edits SHALL be written as tracked changes attributed to pi-outpost unless the call asks otherwise.
 An edit to a section holding revisions not yet accepted SHALL be refused. Content controls, fields
@@ -119,7 +120,7 @@ The result SHALL be written to the writable zone, and SHALL replace the original
 #### Scenario: ASectionIsReplacedAndTheRestIsUntouched
 - **GIVEN** a document with sections 1, 2 and 3
 - **WHEN** section 2's body is replaced
-- **THEN** section 2 holds the new content under its original heading, and every paragraph of sections 1 and 3 and every other part is byte-identical to the original
+- **THEN** section 2 holds the new content under its original heading, and every paragraph of sections 1 and 3, and every part the new content does not need, is byte-identical to the original
 
 #### Scenario: EditsAreTrackedChangesByDefault
 - **WHEN** a section is replaced without `track_changes: false`

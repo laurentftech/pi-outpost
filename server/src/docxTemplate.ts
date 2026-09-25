@@ -82,6 +82,13 @@ export function readWordPackage(bytes: Uint8Array, what = "the template"): WordP
           : `${what} is not a Word document or template`,
       );
     }
+    // Parts are carried into the output as they are, and only the body is ever scanned:
+    // a DOCTYPE anywhere else would travel, entities and all, to whoever opens the result.
+    for (const [name, data] of parts) {
+      if (/\.(xml|rels)$/i.test(name) && /<!doctype/i.test(data.toString("latin1"))) {
+        throw new XmlError(`${name} declares a DOCTYPE, which is refused`);
+      }
+    }
     const documentXml = decode(parts, mainPart)!;
     const documentRels = parseRelationshipList(decode(parts, relsPartOf(mainPart)), mainPart);
     const target = (type: string) => documentRels.find((rel) => rel.type === type && !rel.external && parts.has(rel.target))?.target;

@@ -43,11 +43,10 @@ their relationships are taken:
   `w:sectPr` (page size, margins, headers, footers, columns) is kept as the body's last element.
 - **Styles**: generated paragraphs reference style ids. They are rewritten to the template's ids,
   found by the style's **name**, not its id — Word writes localized ids (`Titre1` in a French
-  template) but keeps the built-in names (`heading 1`). Mapping: heading 1–6, Normal, List
-  Paragraph, Quote, Caption, and a monospaced style for code (the template's `HTML Preformatted`
-  or a style the template calls code; otherwise the library's, added to the template's
-  `styles.xml`). A style the template lacks is added from the generated package, never silently
-  renamed.
+  template) but keeps the built-in names (`heading 1`). The mapping writes heading 1–6, List
+  Paragraph and body text (Normal) by style; code, quotes and captions keep the direct
+  formatting the viewer's export gives them. A style the template lacks is added from the
+  generated package (under a free id), never silently replaced by another.
 - **Numbering**: generated `w:abstractNum` / `w:num` ids are shifted past the template's highest
   so both sets coexist; headings keep the template's own numbering (1, 1.1, …) because it lives on
   the template's heading styles.
@@ -87,10 +86,16 @@ heading bookmarks, which is how the agent sees that its chapters are chapters.
 
 ### 5. The viewer export with a template
 
-The browser does the grafting too (the code is in `shared/`), with the template fetched from the
-server. `docx.template` names the default; the export menu offers "with template" when one is
-configured, and "plain" always stays — a template that fails to load reports why and does not
-block the plain export. Without `docx.template` the button behaves exactly as today.
+The browser builds the document exactly as the plain export does — diagrams and pictures are
+the browser's to draw and fetch — and sends it to the server (`POST /files/docx-template`),
+which carries its body into `docx.template` with the same `WordComposer` as `docx_create`. The
+grafting stays on the server: it is built on the server's zip reader and writer and Node
+buffers, and the template file is the server's to read. The template's path comes from the
+configuration only, never from the request; the route checks the host and token like the other
+file routes and is bounded by the Word ceiling. The export menu offers "word · template" when
+one is configured, and the plain export always stays beside it — a template that cannot be used
+answers with its reason and does not block the plain export. Without `docx.template` the button
+behaves exactly as today.
 
 ### 6. Settings
 
