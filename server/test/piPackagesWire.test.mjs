@@ -221,7 +221,10 @@ test("a newer version is offered and installed, then a restart loads it", async 
 
 test("a version changed behind the server's back needs a restart too", async (t) => {
   const { client, agentDir } = await setUp(t);
-  await packagesMessage(client, () => true);
+  // The startup listing, settled — already received or still to come. `next()` would
+  // accept only a list sent after it is armed, and when the startup check's broadcasts
+  // have already landed no other list comes until the check below is sent.
+  await client.waitFor((m) => m.type === "pi_packages" && m.packages[0]?.check?.state !== "checking", 60_000);
   const manifest = path.join(agentDir, "npm", "node_modules", NAME, "package.json");
   const edited = JSON.parse(await readFile(manifest, "utf8"));
   await writeFile(manifest, JSON.stringify({ ...edited, version: "1.0.1" }));
