@@ -19,7 +19,18 @@
  * becomes a filesystem path. Pictures arrive already read and checked by the caller.
  */
 import { escapeCell } from "./markdownTable.ts";
-import { resolvePart } from "./ooxml.ts";
+import {
+  contentTypeOf,
+  decode,
+  directoryOf,
+  localName,
+  parseRelationshipList,
+  relationshipIdOf,
+  relativeTarget,
+  relsPartOf,
+  resolvePart,
+  scanRawRelationships,
+} from "./ooxml.ts";
 import { IMAGE_CONTENT_TYPES, type ImageInfo, type ImageKind } from "./imageInfo.ts";
 import { scanXml, XmlError } from "./xml.ts";
 import { readAllZipEntries, ZipError } from "./zip.ts";
@@ -119,56 +130,6 @@ export interface Template {
   layouts: TemplateLayout[];
   /** Slides the template itself contains — dropped from what is built. */
   existingSlides: number;
-}
-
-interface Relationship {
-  id: string;
-  type: string;
-  /** Part name inside the package, or the raw target when external. */
-  target: string;
-  external: boolean;
-}
-
-function decode(parts: Map<string, Buffer>, name: string): string | undefined {
-  return parts.get(name)?.toString("utf8");
-}
-
-function relsPartOf(part: string): string {
-  const slash = part.lastIndexOf("/");
-  return slash === -1 ? `_rels/${part}.rels` : `${part.slice(0, slash)}/_rels/${part.slice(slash + 1)}.rels`;
-}
-
-function directoryOf(part: string): string {
-  const slash = part.lastIndexOf("/");
-  return slash === -1 ? "" : part.slice(0, slash);
-}
-
-function localName(name: string): string {
-  const colon = name.indexOf(":");
-  return colon === -1 ? name : name.slice(colon + 1);
-}
-
-function parseRelationshipList(xml: string | undefined, sourcePart: string): Relationship[] {
-  if (xml === undefined) return [];
-  const base = directoryOf(sourcePart);
-  const list: Relationship[] = [];
-  scanXml(xml, (event) => {
-    if (event.kind !== "open" || localName(event.name) !== "Relationship") return;
-    const { Id: id, Type: type, Target: target, TargetMode: mode } = event.attributes;
-    if (id === undefined || type === undefined || target === undefined) return;
-    const external = mode === "External";
-    list.push({ id, type, target: external ? target : resolvePart(target, base), external });
-  });
-  return list;
-}
-
-/** Attributes of an `r:id`-style attribute, whatever prefix the writer bound. */
-function relationshipIdOf(attributes: Record<string, string>): string | undefined {
-  if (attributes["r:id"] !== undefined) return attributes["r:id"];
-  for (const [name, value] of Object.entries(attributes)) {
-    if (name !== "id" && name.endsWith(":id")) return value;
-  }
-  return undefined;
 }
 
 /** The relationship ids of `<…:sldMasterId>` or `<…:sldLayoutId>` entries, in declared order. */
@@ -327,21 +288,6 @@ export function readTemplate(bytes: Uint8Array): Template {
     if (error instanceof XmlError) throw new PptxBuildError(`the template is damaged: ${error.message}`);
     throw error;
   }
-}
-
-/** The content type the package declares for a part: its override, else its extension's default. */
-function contentTypeOf(contentTypes: string, part: string): string | undefined {
-  let override: string | undefined;
-  const defaults = new Map<string, string>();
-  scanXml(contentTypes, (event) => {
-    if (event.kind !== "open") return;
-    const local = localName(event.name);
-    if (local === "Override" && event.attributes.PartName?.replace(/^\//, "") === part) override = event.attributes.ContentType;
-    if (local === "Default" && event.attributes.Extension !== undefined) {
-      defaults.set(event.attributes.Extension.toLowerCase(), event.attributes.ContentType);
-    }
-  });
-  return override ?? defaults.get(part.split(".").pop()!.toLowerCase());
 }
 
 /* ── Describing a template ──────────────────────────────────────────────────── */
@@ -750,15 +696,6 @@ async function composeSlide(
   return { part: `ppt/slides/slide${number}.xml`, xml, rels: relsXml, media };
 }
 
-/** A relationship target from one part to another, relative to the first one's folder. */
-function relativeTarget(from: string, to: string): string {
-  const fromDir = directoryOf(from).split("/").filter(Boolean);
-  const toParts = to.split("/");
-  let common = 0;
-  while (common < fromDir.length && common < toParts.length - 1 && fromDir[common] === toParts[common]) common++;
-  return [...Array(fromDir.length - common).fill(".."), ...toParts.slice(common)].join("/");
-}
-
 /**
  * The parts still reached from the package root once the template's slides are cut
  * from the presentation's relationships. Everything else — the slides, and whatever
@@ -845,13 +782,6 @@ function rewritePresentationRels(xml: string | undefined, presentationPart: stri
       `<Relationships xmlns="${NS_REL_PACKAGE}">${keptXml.join("")}${added.join("")}</Relationships>`,
     ids,
   };
-}
-
-function scanRawRelationships(xml: string, visit: (raw: string, type: string) => void): void {
-  for (const match of xml.matchAll(/<(?:\w+:)?Relationship\b[^>]*?(?:\/>|>[\s\S]*?<\/(?:\w+:)?Relationship>)/g)) {
-    const type = /\bType="([^"]*)"/.exec(match[0])?.[1] ?? "";
-    visit(match[0], type);
-  }
 }
 
 function rewriteContentTypes(

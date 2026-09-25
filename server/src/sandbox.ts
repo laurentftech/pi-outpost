@@ -35,6 +35,12 @@ import { createXlsxExtractToolDefinition } from "./xlsxTool.ts";
 import { createPptxExtractToolDefinition } from "./pptxTool.ts";
 import { createPdfExtractToolDefinition } from "./pdfTool.ts";
 import { createPptxCreateToolDefinition, createPptxLayoutsToolDefinition, createPptxRenderToolDefinition } from "./presentationTools.ts";
+import {
+  createDocxCreateToolDefinition,
+  createDocxRenderToolDefinition,
+  createDocxStylesToolDefinition,
+  createDocxUpdateToolDefinition,
+} from "./wordTools.ts";
 import type { RenderSettings } from "./presentationRender.ts";
 import { createStructuredExchangeFigureToolDefinition } from "./structuredExchangeFigureTool.ts";
 import { createStructuredExchangeTableToolDefinition } from "./structuredExchangeTableTool.ts";
@@ -147,7 +153,7 @@ export async function createSandboxedTools(
    */
   projectRoot: string = sandbox.root,
   /** How `pptx_render` finds and runs an office application. */
-  pptxRender: RenderSettings = { renderer: "auto", timeoutMs: DEFAULT_RENDER_TIMEOUT_MS },
+  officeRender: RenderSettings = { renderer: "auto", timeoutMs: DEFAULT_RENDER_TIMEOUT_MS },
 ): Promise<ToolDefinition[]> {
   const realRoot = await fs.realpath(sandbox.root);
   const readFactories: Array<(cwd: string) => ToolDefinition> = [
@@ -211,15 +217,22 @@ export async function createSandboxedTools(
   );
   // Reading a template and drawing a deck are reading too; the rendering's pdf_path is
   // measured against the writable zone like every other destination.
-  const presentation = { allowedRoots: documentRoots, maxBytes: pptxMaxBytes, writableRoot: realWritableRoot, render: pptxRender };
+  const presentation = { allowedRoots: documentRoots, maxBytes: pptxMaxBytes, writableRoot: realWritableRoot, render: officeRender };
   readFactories.push((cwd) => createPptxLayoutsToolDefinition({ cwd, ...presentation }));
   readFactories.push((cwd) => createPptxRenderToolDefinition({ cwd, ...presentation }));
+  // The same for Word documents: describing a template and drawing a document read.
+  const word = { allowedRoots: documentRoots, maxBytes: docxMaxBytes, writableRoot: realWritableRoot, render: officeRender };
+  readFactories.push((cwd) => createDocxStylesToolDefinition({ cwd, ...word }));
+  readFactories.push((cwd) => createDocxRenderToolDefinition({ cwd, ...word }));
   const tools = readFactories.map((create) =>
     scopeToRoot(create(realRoot), realRoot, realRoot, readExceptions),
   );
   // Building a deck writes one: offered only where writing is.
   if (realWritableRoot !== null) {
     tools.push(scopeToRoot(createPptxCreateToolDefinition({ cwd: realRoot, ...presentation }), realRoot, realRoot, readExceptions));
+    // Writing and updating a Word document write one.
+    tools.push(scopeToRoot(createDocxCreateToolDefinition({ cwd: realRoot, ...word }), realRoot, realRoot, readExceptions));
+    tools.push(scopeToRoot(createDocxUpdateToolDefinition({ cwd: realRoot, ...word }), realRoot, realRoot, readExceptions));
   }
 
   if (realWritableRoot !== null) {

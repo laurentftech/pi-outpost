@@ -68,7 +68,7 @@ function describeSize(bytes: number): string {
 }
 
 /** Resolve a source path and refuse it outside the readable zone or past `maxBytes`. */
-async function readSource(target: string, options: PresentationToolOptions, maxBytes: number, what: string): Promise<{ resolved: string; bytes: Buffer }> {
+export async function readSource(target: string, options: Pick<PresentationToolOptions, "cwd" | "allowedRoots">, maxBytes: number, what: string): Promise<{ resolved: string; bytes: Buffer }> {
   const resolved = await realResolve(path.resolve(options.cwd, target));
   if (!isWithinAny(options.allowedRoots, resolved)) {
     throw new Error(`Access denied: "${target}" is outside the sandbox (${options.allowedRoots[0]})`);
@@ -306,7 +306,7 @@ const renderParameters = Type.Object({
     Type.String({ description: `Slides to return as pictures, e.g. "3" or "2-5,8". Omit for the first ${MAX_RENDERED_SLIDES}.` }),
   ),
   renderer: Type.Optional(
-    Type.Union([Type.Literal("auto"), ...RENDERER_NAMES.map((name) => Type.Literal(name))], {
+    Type.Union([Type.Literal("auto"), ...RENDERER_NAMES.filter((name) => name !== "word").map((name) => Type.Literal(name))], {
       description: "Which application draws the slides. auto (the default) tries PowerPoint on Windows, then LibreOffice, then ONLYOFFICE.",
     }),
   ),

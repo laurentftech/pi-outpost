@@ -35,7 +35,10 @@ import type { RendererChoice } from "./config.ts";
 export type { RendererChoice } from "./config.ts";
 export { DEFAULT_RENDER_TIMEOUT_MS } from "./config.ts";
 export type RendererName = Exclude<RendererChoice, "auto">;
-export const RENDERER_NAMES: RendererName[] = ["powerpoint", "libreoffice", "onlyoffice"];
+export const RENDERER_NAMES: RendererName[] = ["word", "powerpoint", "libreoffice", "onlyoffice"];
+
+/** What is being drawn: a deck or a Word document. */
+export type OfficeKind = "presentation" | "document";
 
 export interface RenderSettings {
   renderer: RendererChoice;
@@ -207,6 +210,38 @@ export const POWERPOINT_SCRIPT = [
   "}",
 ].join("\n");
 
+/**
+ * Word through COM, read-only on a private copy and out of sight.
+ *
+ * From Microsoft's Word VBA reference (MicrosoftDocs/VBA-Docs):
+ *
+ * - `Documents.Open(FileName, ConfirmConversions, ReadOnly, AddToRecentFiles,
+ *   PasswordDocument, PasswordTemplate, Revert, WritePasswordDocument,
+ *   WritePasswordTemplate, Format, Encoding, Visible)`: no conversion dialog,
+ *   read-only, not added to the recent files, `wdOpenFormatAuto` (0), invisible.
+ * - `ExportAsFixedFormat(OutputFileName, ExportFormat, OpenAfterExport, OptimizeFor,
+ *   Range, From, To, Item, IncludeDocProps, KeepIRM, CreateBookmarks)`:
+ *   `wdExportFormatPDF` (17), not opened afterwards, `wdExportOptimizeForPrint` (0),
+ *   `wdExportAllDocument` (0), `wdExportDocumentWithMarkup` (7) so tracked changes are
+ *   drawn as LibreOffice draws them, and `wdExportCreateHeadingBookmarks` (1) — the
+ *   headings become the PDF's outline, which is how the agent sees its chapters.
+ * - `Close(wdDoNotSaveChanges)` (0). Word is told to quit only when no other document
+ *   is open in it, so a user's own documents are never closed.
+ */
+export const WORD_SCRIPT = [
+  "$ErrorActionPreference = 'Stop'",
+  "$app = $null; $doc = $null",
+  "try {",
+  "  $app = New-Object -ComObject Word.Application",
+  "  $missing = [Type]::Missing",
+  "  $doc = $app.Documents.Open($env:PI_OUTPOST_RENDER_INPUT, $false, $true, $false, $missing, $missing, $missing, $missing, $missing, 0, $missing, $false)",
+  "  $doc.ExportAsFixedFormat($env:PI_OUTPOST_RENDER_OUTPUT, 17, $false, 0, 0, 1, 1, 7, $true, $true, 1)",
+  "} finally {",
+  "  if ($doc -ne $null) { $doc.Close(0) }",
+  "  if ($app -ne $null -and $app.Documents.Count -eq 0) { $app.Quit(0) }",
+  "}",
+].join("\n");
+
 /** The Document Builder script: open, save as PDF, close. Paths are JSON string literals. */
 export function onlyOfficeScript(input: string, output: string): string {
   return [`builder.OpenFile(${JSON.stringify(input)}, "");`, `builder.SaveFile("pdf", ${JSON.stringify(output)});`, "builder.CloseFile();", ""].join("\n");
@@ -239,15 +274,17 @@ async function convertWith(
   environment: RenderEnvironment,
   signal: AbortSignal | undefined,
 ): Promise<{ pdf: string } | { failure: string }> {
-  const output = path.join(workDir, "deck.pdf");
-  if (renderer === "powerpoint") {
-    if (environment.platform !== "win32") return { failure: "PowerPoint automation is only available on Windows" };
+  // LibreOffice names its output after the input; the others are told this name.
+  const output = path.join(workDir, `${path.basename(input, path.extname(input))}.pdf`);
+  if (renderer === "powerpoint" || renderer === "word") {
+    const application = renderer === "word" ? "Word" : "PowerPoint";
+    if (environment.platform !== "win32") return { failure: `${application} automation is only available on Windows` };
     const powershell = environment.env.SystemRoot
       ? path.win32.join(environment.env.SystemRoot, "System32", "WindowsPowerShell", "v1.0", "powershell.exe")
       : "powershell.exe";
     const result = await environment.run(
       powershell,
-      ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", POWERPOINT_SCRIPT],
+      ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", renderer === "word" ? WORD_SCRIPT : POWERPOINT_SCRIPT],
       {
         env: { ...environment.env, PI_OUTPOST_RENDER_INPUT: input, PI_OUTPOST_RENDER_OUTPUT: output },
         timeoutMs: settings.timeoutMs,
@@ -290,10 +327,17 @@ async function convertWith(
   return { failure: describeFailure(result, settings.timeoutMs) };
 }
 
-/** The converters worth trying for a choice, in order. */
-export function renderersFor(choice: RendererChoice, platform: NodeJS.Platform): RendererName[] {
-  if (choice !== "auto") return [choice];
-  return platform === "win32" ? ["powerpoint", "libreoffice", "onlyoffice"] : ["libreoffice", "onlyoffice"];
+/**
+ * The converters worth trying for a choice, in order.
+ *
+ * `word` and `powerpoint` name the application for their own kind of file; asked of the
+ * other kind, they fall back to what `auto` would try.
+ */
+export function renderersFor(choice: RendererChoice, platform: NodeJS.Platform, kind: OfficeKind = "presentation"): RendererName[] {
+  const own: RendererName = kind === "document" ? "word" : "powerpoint";
+  const other: RendererName = kind === "document" ? "powerpoint" : "word";
+  if (choice !== "auto" && choice !== other) return [choice];
+  return platform === "win32" ? [own, "libreoffice", "onlyoffice"] : ["libreoffice", "onlyoffice"];
 }
 
 export interface PdfConversion {
@@ -304,41 +348,63 @@ export interface PdfConversion {
 }
 
 /**
- * The presentation as a PDF drawn by an office application.
+ * A deck or a document as a PDF drawn by an office application.
  *
- * The deck is copied into a private temporary directory as `deck.pptx` first: the
- * converters name their output after their input and write it beside them, and
- * neither belongs in the user's folder.
+ * The file is copied into a private temporary directory first (`deck.pptx`,
+ * `document.docx`): the converters name their output after their input and write it
+ * beside them, and neither belongs in the user's folder.
  */
-export async function convertPresentationToPdf(
+async function convertToPdf(
+  kind: OfficeKind,
   source: string,
   settings: RenderSettings,
-  environment: RenderEnvironment = defaultEnvironment(),
-  signal?: AbortSignal,
+  environment: RenderEnvironment,
+  signal: AbortSignal | undefined,
 ): Promise<PdfConversion> {
   const workDir = await fs.mkdtemp(path.join(os.tmpdir(), "pi-outpost-render-"));
   try {
-    const input = path.join(workDir, "deck.pptx");
+    const input = path.join(workDir, kind === "document" ? "document.docx" : "deck.pptx");
     await fs.copyFile(source, input);
     const attempts: Attempt[] = [];
-    for (const renderer of renderersFor(settings.renderer, environment.platform)) {
+    for (const renderer of renderersFor(settings.renderer, environment.platform, kind)) {
       // Stopped: neither this converter nor the next one is started.
       if (signal?.aborted) throw new RenderError("The rendering was stopped.");
       const outcome = await convertWith(renderer, input, workDir, settings, environment, signal);
       if ("pdf" in outcome) return { pdf: await fs.readFile(outcome.pdf), renderer, skipped: attempts };
       attempts.push({ renderer, failure: outcome.failure });
     }
+    const own = kind === "document" ? "Word" : "PowerPoint";
     throw new RenderError(
       [
-        "No office application could render the presentation:",
+        `No office application could render the ${kind}:`,
         ...attempts.map((attempt) => `- ${attempt.renderer}: ${attempt.failure}`),
-        "Install LibreOffice (or, on Windows, PowerPoint; or ONLYOFFICE Document Builder), " +
-          'or point "pptx.libreofficePath" / "pptx.onlyofficePath" in the configuration at one.',
+        `Install LibreOffice (or, on Windows, ${own}; or ONLYOFFICE Document Builder), ` +
+          'or point "office.libreofficePath" / "office.onlyofficePath" in the configuration at one.',
       ].join("\n"),
     );
   } finally {
     await fs.rm(workDir, { recursive: true, force: true }).catch(() => {});
   }
+}
+
+/** The presentation as a PDF drawn by an office application. */
+export async function convertPresentationToPdf(
+  source: string,
+  settings: RenderSettings,
+  environment: RenderEnvironment = defaultEnvironment(),
+  signal?: AbortSignal,
+): Promise<PdfConversion> {
+  return convertToPdf("presentation", source, settings, environment, signal);
+}
+
+/** The Word document as a PDF drawn by an office application. */
+export async function convertDocumentToPdf(
+  source: string,
+  settings: RenderSettings,
+  environment: RenderEnvironment = defaultEnvironment(),
+  signal?: AbortSignal,
+): Promise<PdfConversion> {
+  return convertToPdf("document", source, settings, environment, signal);
 }
 
 /* ── Rasterising ────────────────────────────────────────────────────────────── */
@@ -462,7 +528,7 @@ interface TextItem {
 }
 
 /** Letters and digits only: line wrapping, hyphen-free spacing and bullet glyphs do not count. */
-function comparable(text: string): string {
+export function comparable(text: string): string {
   return text.normalize("NFKC").toLowerCase().replace(/[\s •▪◦‣∙·–—-]+/g, "");
 }
 
@@ -505,6 +571,53 @@ export async function findUnreadableText(pdf: Buffer, expected: string[][], slid
       if (missing.length > 0 || atEdge) findings.push({ slide, missing, atEdge });
     }
     return findings;
+  } finally {
+    await task.destroy().catch(() => {});
+  }
+}
+
+/* ── Checking a document ────────────────────────────────────────────────────── */
+
+export interface DocumentCheck {
+  pageCount: number;
+  /** Body paragraphs no page shows. */
+  missing: string[];
+  /** The PDF's outline — the headings, when the renderer turns them into bookmarks. */
+  outline: Array<{ title: string; depth: number }>;
+}
+
+/**
+ * Compare a document's paragraphs with the text of the whole rendering, and read the
+ * PDF's outline.
+ *
+ * A document flows: text that does not fit moves to the next page rather than off the
+ * edge, so the check is against every page at once. What it catches is text that is
+ * not drawn at all — hidden by a style, lost in a field, dropped by a converter.
+ */
+export async function checkDocumentPdf(pdf: Buffer, paragraphs: string[]): Promise<DocumentCheck> {
+  const pdfjs = await loadPdfjs();
+  const task = pdfjs.getDocument({ data: new Uint8Array(pdf), useWorkerFetch: false, useSystemFonts: false, disableAutoFetch: true, ...pdfjsAssetDirs() });
+  try {
+    const doc = await task.promise;
+    let drawn = "";
+    for (let page = 1; page <= doc.numPages; page++) {
+      const content = await (await doc.getPage(page)).getTextContent();
+      for (const raw of content.items as TextItem[]) if (typeof raw.str === "string") drawn += raw.str;
+    }
+    const shown = comparable(drawn);
+    const missing = paragraphs.filter((paragraph) => {
+      const wanted = comparable(paragraph);
+      return wanted !== "" && !shown.includes(wanted);
+    });
+    const outline: Array<{ title: string; depth: number }> = [];
+    const walk = (items: Array<{ title: string; items?: unknown[] }> | null | undefined, depth: number) => {
+      for (const item of items ?? []) {
+        outline.push({ title: item.title, depth });
+        walk(item.items as Array<{ title: string; items?: unknown[] }> | undefined, depth + 1);
+      }
+    };
+    walk((await doc.getOutline()) as Array<{ title: string; items?: unknown[] }> | null, 0);
+    return { pageCount: doc.numPages, missing, outline };
   } finally {
     await task.destroy().catch(() => {});
   }

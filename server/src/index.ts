@@ -157,6 +157,12 @@ import { createDocxExtractToolDefinition } from "./docxTool.ts";
 import { createXlsxExtractToolDefinition } from "./xlsxTool.ts";
 import { createPptxExtractToolDefinition } from "./pptxTool.ts";
 import { createPptxCreateToolDefinition, createPptxLayoutsToolDefinition, createPptxRenderToolDefinition } from "./presentationTools.ts";
+import {
+  createDocxCreateToolDefinition,
+  createDocxRenderToolDefinition,
+  createDocxStylesToolDefinition,
+  createDocxUpdateToolDefinition,
+} from "./wordTools.ts";
 import type { RenderSettings } from "./presentationRender.ts";
 import { createStructuredExchangeToolDefinition } from "./structuredExchangeTool.ts";
 import { createStructuredExchangeProjectModelToolDefinition } from "./structuredExchangeProjectModelTool.ts";
@@ -478,13 +484,13 @@ const workPlanTool = createWorkPlanToolDefinition();
  */
 const workPlanExtendedTool = createWorkPlanExtendedToolDefinition();
 
-/** How `pptx_render` finds and runs an office application, from the `pptx` settings. */
-function pptxRenderSettings(): RenderSettings {
+/** How the render tools find and run an office application, from the `office` settings. */
+function officeRenderSettings(): RenderSettings {
   return {
-    renderer: config.pptx.renderer,
-    timeoutMs: config.pptx.renderTimeoutMs,
-    ...(config.pptx.libreofficePath ? { libreofficePath: config.pptx.libreofficePath } : {}),
-    ...(config.pptx.onlyofficePath ? { onlyofficePath: config.pptx.onlyofficePath } : {}),
+    renderer: config.office.renderer,
+    timeoutMs: config.office.renderTimeoutMs,
+    ...(config.office.libreofficePath ? { libreofficePath: config.office.libreofficePath } : {}),
+    ...(config.office.onlyofficePath ? { onlyofficePath: config.office.onlyofficePath } : {}),
   };
 }
 
@@ -509,7 +515,7 @@ function workspaceOptions(settings: WorkspaceSettings): Omit<WorkspaceOptions, "
       xlsxMaxBytes: config.xlsx.maxBytes,
       pptxMaxBytes: config.pptx.maxBytes,
       structuredExchangeMaxBytes: config.structuredExchange.maxBytes,
-      pptxRender: pptxRenderSettings(),
+      officeRender: officeRenderSettings(),
     },
     watchFiles: config.files.watch,
     // `present_structure` has no path argument to confine, so it is unconfined on both
@@ -1154,21 +1160,51 @@ const makeCreateRuntime =
                 allowedRoots: [await fs.realpath(cwd)],
                 maxBytes: config.pptx.maxBytes,
                 writableRoot: await fs.realpath(cwd),
-                render: pptxRenderSettings(),
+                render: officeRenderSettings(),
               }),
               createPptxCreateToolDefinition({
                 cwd,
                 allowedRoots: [await fs.realpath(cwd)],
                 maxBytes: config.pptx.maxBytes,
                 writableRoot: await fs.realpath(cwd),
-                render: pptxRenderSettings(),
+                render: officeRenderSettings(),
               }),
               createPptxRenderToolDefinition({
                 cwd,
                 allowedRoots: [await fs.realpath(cwd)],
                 maxBytes: config.pptx.maxBytes,
                 writableRoot: await fs.realpath(cwd),
-                render: pptxRenderSettings(),
+                render: officeRenderSettings(),
+              }),
+              // Writing Word documents in a template's styles, updating them, and drawing
+              // them — published when a Word document or template enters the conversation.
+              createDocxStylesToolDefinition({
+                cwd,
+                allowedRoots: [await fs.realpath(cwd)],
+                maxBytes: config.docx.maxBytes,
+                writableRoot: await fs.realpath(cwd),
+                render: officeRenderSettings(),
+              }),
+              createDocxCreateToolDefinition({
+                cwd,
+                allowedRoots: [await fs.realpath(cwd)],
+                maxBytes: config.docx.maxBytes,
+                writableRoot: await fs.realpath(cwd),
+                render: officeRenderSettings(),
+              }),
+              createDocxUpdateToolDefinition({
+                cwd,
+                allowedRoots: [await fs.realpath(cwd)],
+                maxBytes: config.docx.maxBytes,
+                writableRoot: await fs.realpath(cwd),
+                render: officeRenderSettings(),
+              }),
+              createDocxRenderToolDefinition({
+                cwd,
+                allowedRoots: [await fs.realpath(cwd)],
+                maxBytes: config.docx.maxBytes,
+                writableRoot: await fs.realpath(cwd),
+                render: officeRenderSettings(),
               }),
               // Published on demand too, when the conversation touches the project's model.
               createStructuredExchangeProjectModelToolDefinition({ projectRoot: cwd }),
@@ -1231,7 +1267,7 @@ async function buildRuntimeFor(target: Workspace): Promise<AgentRuntime> {
             pptx: config.pptx.maxBytes,
             structuredExchange: config.structuredExchange.maxBytes,
           },
-          pptxRender: pptxRenderSettings(),
+          officeRender: officeRenderSettings(),
         } satisfies PiOutpostToolsSettings),
       },
     });

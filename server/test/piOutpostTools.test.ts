@@ -35,13 +35,13 @@ describe("parseToolsSettings", () => {
   });
 
   test("carries the rendering settings the parent passes, and refuses malformed ones", () => {
-    const withRender = { ...VALID, pptxRender: { renderer: "libreoffice", timeoutMs: 5000, libreofficePath: "/opt/lo/soffice" } };
+    const withRender = { ...VALID, officeRender: { renderer: "libreoffice", timeoutMs: 5000, libreofficePath: "/opt/lo/soffice" } };
     assert.deepEqual(parseToolsSettings(JSON.stringify(withRender)), withRender);
-    assert.throws(() => parseToolsSettings(JSON.stringify({ ...VALID, pptxRender: { renderer: "keynote", timeoutMs: 5000 } })), /pptxRender\.renderer/);
-    assert.throws(() => parseToolsSettings(JSON.stringify({ ...VALID, pptxRender: { renderer: "auto", timeoutMs: 0 } })), /pptxRender\.timeoutMs/);
+    assert.throws(() => parseToolsSettings(JSON.stringify({ ...VALID, officeRender: { renderer: "keynote", timeoutMs: 5000 } })), /officeRender\.renderer/);
+    assert.throws(() => parseToolsSettings(JSON.stringify({ ...VALID, officeRender: { renderer: "auto", timeoutMs: 0 } })), /officeRender\.timeoutMs/);
     assert.throws(
-      () => parseToolsSettings(JSON.stringify({ ...VALID, pptxRender: { renderer: "auto", timeoutMs: 5000, onlyofficePath: 3 } })),
-      /pptxRender\.onlyofficePath/,
+      () => parseToolsSettings(JSON.stringify({ ...VALID, officeRender: { renderer: "auto", timeoutMs: 5000, onlyofficePath: 3 } })),
+      /officeRender\.onlyofficePath/,
     );
   });
 

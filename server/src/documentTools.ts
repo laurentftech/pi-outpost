@@ -24,10 +24,22 @@ export const PRESENTATION_TOOLS = ["pptx_layouts", "pptx_create", "pptx_render"]
 /** The skill that teaches the loop through them; loading it is asking for them. */
 export const PRESENTATION_SKILL = "pptx-from-template";
 
+/**
+ * The tools that write, update and check Word documents in a template's styles.
+ * Published together, for the same reason as the presentation tools.
+ */
+export const WORD_TOOLS = ["docx_styles", "docx_create", "docx_update", "docx_render"];
+
+/** The skill that teaches the Word loop. */
+export const WORD_SKILL = "docx-from-template";
+
 /** Extension → the tools a document of that kind calls for. */
 const EXTRACTORS: Record<string, string[]> = {
   pdf: ["pdf_extract"],
-  docx: ["docx_extract"],
+  // A Word document may be read, updated, or be the template a new one is written from.
+  docx: ["docx_extract", ...WORD_TOOLS],
+  // A .dotx is only ever a template.
+  dotx: WORD_TOOLS,
   xlsx: ["xlsx_extract"],
   // A deck may be read, or be the template a new one is built from.
   pptx: ["pptx_extract", ...PRESENTATION_TOOLS],
@@ -54,7 +66,7 @@ export const DOCUMENT_TOOLS = [...new Set(Object.values(EXTRACTORS).flat())];
  * closed a parenthetical, "(report.pdf)", as much as a comma), or a sentence's full
  * stop.
  */
-const MENTION = /(?:^|[\s"'`<])(?:[^\s"'`<>]*[/\\])?[^\s"'`<>/\\]+\.(pdf|docx|xlsx|pptx|potx)(?=$|[\s"'`>)\],;:!?.])/gi;
+const MENTION = /(?:^|[\s"'`<])(?:[^\s"'`<>]*[/\\])?[^\s"'`<>/\\]+\.(pdf|docx|dotx|xlsx|pptx|potx)(?=$|[\s"'`>)\],;:!?.])/gi;
 
 /**
  * The tools the text calls for, in the order they are registered.
@@ -70,6 +82,9 @@ export function documentToolsFor(text: string): string[] {
   }
   if (new RegExp(`(?:^|\\s)/skill:${PRESENTATION_SKILL}(?=$|\\s)`).test(text)) {
     for (const tool of PRESENTATION_TOOLS) found.add(tool);
+  }
+  if (new RegExp(`(?:^|\\s)/skill:${WORD_SKILL}(?=$|\\s)`).test(text)) {
+    for (const tool of WORD_TOOLS) found.add(tool);
   }
   return DOCUMENT_TOOLS.filter((tool) => found.has(tool));
 }
@@ -92,5 +107,7 @@ export function documentToolsForToolCall(toolName: string, args: unknown): strin
   if (typeof target !== "string") return [];
   const normalized = target.replace(/\\/g, "/");
   if (toolName === "read" && normalized.endsWith(`/${PRESENTATION_SKILL}/SKILL.md`)) return PRESENTATION_TOOLS;
+  if (toolName === "read" && normalized.endsWith(`/${WORD_SKILL}/SKILL.md`)) return WORD_TOOLS;
+  if (/\.(docx|dotx)$/i.test(normalized)) return WORD_TOOLS;
   return /\.(pptx|potx)$/i.test(normalized) ? PRESENTATION_TOOLS : [];
 }
