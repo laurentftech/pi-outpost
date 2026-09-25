@@ -68,6 +68,7 @@ describe("documentToolsFor", () => {
       "docx_styles",
       "docx_create",
       "docx_update",
+      "docx_restyle",
       "docx_render",
       "xlsx_extract",
       "pptx_extract",
@@ -84,7 +85,7 @@ describe("documentToolsFor", () => {
 
 describe("Word tools", () => {
   test("NamingAWordTemplatePublishesTheTools: a .dotx publishes the Word tools, and not the extractor", () => {
-    assert.deepEqual(documentToolsFor("Write the report from house.dotx"), ["docx_styles", "docx_create", "docx_update", "docx_render"]);
+    assert.deepEqual(documentToolsFor("Write the report from house.dotx"), ["docx_styles", "docx_create", "docx_update", "docx_restyle", "docx_render"]);
     assert.deepEqual(documentToolsFor("@C:\\Templates\\Corporate.DOTX"), WORD_TOOLS);
   });
 

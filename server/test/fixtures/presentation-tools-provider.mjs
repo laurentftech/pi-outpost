@@ -10,6 +10,7 @@
  * - `WRITE THE REPORT`: `docx_styles` on brand.dotx, `docx_create` into report.docx,
  *   `docx_update` of it into report-v2.docx, `docx_render` on that, then answers.
  *
+ * - `RESTYLE THE DOCUMENT`: `docx_restyle` of old.docx onto brand.dotx, then `docx_render`.
  * - `RENDER BOTH`: `docx_render` on report.docx, then `pptx_render` on deck.pptx, even
  *   when the first fails.
  *
@@ -86,10 +87,16 @@ const RENDER_STEPS = [
   ["pptx_render", { path: "deck.pptx" }],
 ];
 
+const RESTYLE_STEPS = [
+  ["docx_restyle", { path: "old.docx", template_path: "brand.dotx", output_path: "old-restyled.docx" }],
+  ["docx_render", { path: "old-restyled.docx" }],
+];
+
 const SCRIPTS = [
   ["BUILD THE DECK", BUILD_STEPS],
   ["WRITE THE REPORT", REPORT_STEPS],
   ["RENDER BOTH", RENDER_STEPS],
+  ["RESTYLE THE DOCUMENT", RESTYLE_STEPS],
 ];
 
 function append(variable, value) {

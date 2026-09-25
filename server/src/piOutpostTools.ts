@@ -40,6 +40,7 @@ import {
   createDocxCreateToolDefinition,
   createDocxRenderToolDefinition,
   createDocxStylesToolDefinition,
+  createDocxRestyleToolDefinition,
   createDocxUpdateToolDefinition,
 } from "./wordTools.ts";
 import { createStructuredExchangeFigureToolDefinition } from "./structuredExchangeFigureTool.ts";
@@ -122,6 +123,7 @@ export async function createPiOutpostTools(settings: PiOutpostToolsSettings): Pr
     createDocxStylesToolDefinition({ ...common, maxBytes: settings.maxBytes.docx, render }),
     createDocxCreateToolDefinition({ ...common, maxBytes: settings.maxBytes.docx, render }),
     createDocxUpdateToolDefinition({ ...common, maxBytes: settings.maxBytes.docx, render }),
+    createDocxRestyleToolDefinition({ ...common, maxBytes: settings.maxBytes.docx, render }),
     createDocxRenderToolDefinition({ ...common, maxBytes: settings.maxBytes.docx, render }),
     createStructuredExchangeFigureToolDefinition({ ...common, maxBytes: settings.maxBytes.structuredExchange, projectRoot: root }),
     createStructuredExchangeTableToolDefinition({ ...common, maxBytes: settings.maxBytes.structuredExchange, projectRoot: root }),

@@ -32,4 +32,5 @@ Or copy the directory into `.agents/skills/`, which the agent discovers on its o
   tools.
 - **`docx-from-template/`** — writing a Word document in a `.dotx`/`.docx` template's styles with
   `docx_styles`, `docx_create` and `docx_render`, and updating an existing document section by
-  section, as tracked changes, with `docx_update`. Loading it publishes the four tools.
+  section, as tracked changes, with `docx_update`, and bringing an existing document into a
+  template's styles with `docx_restyle`. Loading it publishes the five tools.

@@ -44,6 +44,7 @@ import {
   createDocxCreateToolDefinition,
   createDocxRenderToolDefinition,
   createDocxStylesToolDefinition,
+  createDocxRestyleToolDefinition,
   createDocxUpdateToolDefinition,
 } from "./wordTools.ts";
 import type { RenderSettings } from "./presentationRender.ts";
@@ -236,9 +237,10 @@ export async function createSandboxedTools(
   if (realWritableRoot !== null) {
     tools.push(scopeToRoot(createPptxCreateToolDefinition({ cwd: realRoot, ...presentation }), realRoot, realRoot, readExceptions));
     tools.push(scopeToRoot(createPptxUpdateToolDefinition({ cwd: realRoot, ...presentation }), realRoot, realRoot, readExceptions));
-    // Writing and updating a Word document write one.
+    // Writing, updating and restyling a Word document write one.
     tools.push(scopeToRoot(createDocxCreateToolDefinition({ cwd: realRoot, ...word }), realRoot, realRoot, readExceptions));
     tools.push(scopeToRoot(createDocxUpdateToolDefinition({ cwd: realRoot, ...word }), realRoot, realRoot, readExceptions));
+    tools.push(scopeToRoot(createDocxRestyleToolDefinition({ cwd: realRoot, ...word }), realRoot, realRoot, readExceptions));
   }
 
   if (realWritableRoot !== null) {

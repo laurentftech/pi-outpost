@@ -18,7 +18,7 @@ import { connect, makeWorkspace, startServer } from "./harness.mjs";
 const PROVIDER = fileURLToPath(new URL("./fixtures/presentation-tools-provider.mjs", import.meta.url));
 const TEMPLATE = fileURLToPath(new URL("./fixtures/docx-template.dotx", import.meta.url));
 const SKILL_DIR = fileURLToPath(new URL("../../skills/docx-from-template", import.meta.url));
-const WORD = ["docx_styles", "docx_create", "docx_update", "docx_render"];
+const WORD = ["docx_styles", "docx_create", "docx_update", "docx_restyle", "docx_render"];
 
 async function lines(file) {
   const text = await readFile(file, "utf8").catch(() => "");
@@ -173,6 +173,38 @@ test("PptxRendererKeysStillWork: the 0.29 pptx.* keys choose the renderer of doc
       // One attempt, LibreOffice at the configured path: no other application was tried.
       const attempts = rendered.text.split(/\r?\n/).filter((line) => line.startsWith("- "));
       assert.deepEqual(attempts, [`- libreoffice: no executable at ${missing}`], rendered.text);
+    }
+  } finally {
+    client.close();
+    await server.stop();
+  }
+});
+
+test("the agent brings an old document into the template and renders it", async () => {
+  const { root, resultsLog, server, client } = await start();
+  try {
+    await copyFile(fileURLToPath(new URL("./fixtures/docx-drifted.docx", import.meta.url)), path.join(root, "old.docx"));
+    const original = await readFile(path.join(root, "old.docx"));
+    client.send({ type: "prompt", text: "RESTYLE THE DOCUMENT old.docx with brand.dotx" });
+    const [restyled, rendered] = await results(resultsLog, 2);
+
+    assert.equal(restyled.tool, "docx_restyle");
+    assert.equal(restyled.isError, false, restyled.text);
+    assert.match(restyled.text, /Removed hand-set formatting from 17 run\(s\)/);
+    assert.match(restyled.text, /"Boxed text" \(1 use\)/);
+    const body = await part(path.join(root, "old-restyled.docx"), "word/document.xml");
+    assert.match(body, /<w:pStyle w:val="Titre1"\/>/);
+    assert.match(body, /<w:rPrChange [^>]*w:author="pi-outpost"/);
+    assert.ok((await readFile(path.join(root, "old.docx"))).equals(original), "the original is unchanged");
+
+    assert.equal(rendered.tool, "docx_render");
+    if (rendered.isError) {
+      assert.match(rendered.text, /No office application could render the document[\s\S]*Install LibreOffice/);
+    } else {
+      assert.match(rendered.text, /^Rendered `old-restyled\.docx` with (Word|LibreOffice|ONLYOFFICE): \d+ page\(s\)\./);
+      // The template's heading numbering, in the bookmarks.
+      assert.match(rendered.text, /- 1\. Introduction[\s\S]*- 2\. Conclusion/);
+      assert.match(rendered.text, /Text check: every paragraph of the body is on a page\./);
     }
   } finally {
     client.close();

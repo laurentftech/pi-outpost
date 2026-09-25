@@ -1,6 +1,6 @@
 ---
 name: docx-from-template
-description: Write a Word document (.docx) in a template's house style — or update an existing one section by section, as tracked changes — with docx_styles, docx_create, docx_update and docx_render, then check it by rendering it with Word (Windows), LibreOffice or ONLYOFFICE and fixing what the render shows. Use whenever the user asks for a report, memo, specification or letter in their Word template, to turn notes or Markdown into a Word document, or to revise sections of an existing .docx — and whenever a .dotx file is involved.
+description: Write a Word document (.docx) in a template's house style — or update an existing one section by section, as tracked changes, or bring an old one onto a template (restyle) — with docx_styles, docx_create, docx_update, docx_restyle and docx_render, then check it by rendering it with Word (Windows), LibreOffice or ONLYOFFICE and fixing what the render shows. Use whenever the user asks for a report, memo, specification or letter in their Word template, to turn notes or Markdown into a Word document, or to revise sections of an existing .docx, to fix a document's inconsistent fonts or move it onto a new template — and whenever a .dotx file is involved.
 license: MIT
 metadata:
   version: "1.0"
@@ -20,6 +20,7 @@ inside an existing document, and leaves everything you did not touch exactly as 
 | Read an existing document, and its headings | `docx_extract` |
 | Write a new document from Markdown in a template | `docx_create` |
 | Change sections of an existing document | `docx_update` |
+| Bring an existing document into a template's styles, fixing hand-set fonts | `docx_restyle` |
 | See the pages as the reader will, with the chapters and any lost text | `docx_render` |
 | Hand over a PDF as well | `docx_render` with `pdf_path` |
 
@@ -64,6 +65,24 @@ inside an existing document, and leaves everything you did not touch exactly as 
 Everything outside the edited sections — other chapters, headers, footers, comments,
 pictures — is left byte for byte as it was. The answer says how many content controls, fields
 and comment anchors went with a deleted or replaced section: report them to the user.
+
+## Bringing a document into the template
+
+When a document's fonts and sizes are inconsistent, or it has to move onto a new template:
+
+1. Call `docx_restyle` with the document (`path`), the template (`template_path`) and an
+   `output_path`. The template's styles, theme and heading numbering replace the document's —
+   matched by name, so an English Word's `Heading 1` becomes the template's heading 1 — and fonts,
+   sizes and colours set by hand are removed so the text takes its style's. Emphasis, spacing,
+   lists, tables and pictures are kept, and the text is checked unchanged before writing.
+2. Add `include: ["page"]` for the template's page size and margins, `["headers"]` for its headers
+   and footers, only when the user wants them: a document's own title-page footer is often
+   deliberate.
+3. The removals are tracked formatting changes; the replaced style definitions are not. Tell the
+   user so, and that the original file is the way back.
+4. Report the styles the answer lists as missing from the template: they were kept as they were,
+   and the user decides what they should become.
+5. Render the result with `docx_render` and look at it next to the original.
 
 ## Checking the render
 

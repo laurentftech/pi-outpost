@@ -495,14 +495,23 @@ it. The bundled skill teaches the agent the loop:
    name of pi-outpost, so whoever owns the document accepts or rejects them in Word;
    `track_changes: false` writes them directly. Everything outside the edited sections is left
    byte for byte as it was, and a section holding changes nobody has accepted yet is refused.
-4. `docx_render` has an office application draw the document and returns the pages as pictures,
+4. `docx_restyle` brings an existing document into a template: the template's styles, theme and
+   heading numbering replace the document's (matched by name), and the fonts, sizes and colours
+   someone set by hand are removed so the text takes its style's — what makes a pasted paragraph
+   look different from its neighbours. Bold, italic, spacing, lists, tables and pictures stay, and
+   the tool checks that not a character of the text changed. The removals are tracked changes the
+   owner accepts in Word; the replaced style definitions cannot be, so the result goes to a new
+   file. `include: ["page"]` also takes the template's page size and margins (each section keeps
+   its orientation), `["headers"]` its headers and footers. Styles the template does not have are
+   kept and listed.
+5. `docx_render` has an office application draw the document and returns the pages as pictures,
    the chapters as the PDF's bookmarks — the headings as Word sees them, with their numbers when
    the template numbers them — and any body paragraph that reached no page.
 
 Rendering uses the same applications and settings as decks, with **Word** first on Windows: it
 opens a read-only copy of the document, invisibly, and never closes a document you have open in
-it. Creating and updating need a writable workspace: in a read-only sandbox `docx_create` and
-`docx_update` are not offered.
+it. Creating, updating and restyling need a writable workspace: in a read-only sandbox
+`docx_create`, `docx_update` and `docx_restyle` are not offered.
 
 Footnotes, comments, text boxes and section changes (landscape pages, columns) are not written, and
 a mermaid diagram is written as its source; the agent says what is missing rather than faking it.

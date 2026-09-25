@@ -118,7 +118,7 @@ function findSection(path: string, headings: Heading[], bodyEnd: number): Sectio
   return scope![0];
 }
 
-const PENDING = /<(?:\w+:)?(?:ins|del|moveFrom|moveTo|rPrChange|pPrChange|sectPrChange|tblPrChange|trPrChange|tcPrChange)\b/;
+export const PENDING = /<(?:\w+:)?(?:ins|del|moveFrom|moveTo|rPrChange|pPrChange|sectPrChange|tblPrChange|trPrChange|tcPrChange)\b/;
 
 /* ── Tracked changes ────────────────────────────────────────────────────────── */
 

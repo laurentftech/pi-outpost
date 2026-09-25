@@ -103,7 +103,7 @@ export function contentFromDocx(bytes: Uint8Array): GeneratedContent {
 }
 
 /** The namespace declarations on a part's root element, by prefix. */
-function namespacesOf(xml: string): Map<string, string> {
+export function namespacesOf(xml: string): Map<string, string> {
   const start = xml.indexOf("<", xml.startsWith("<?") ? xml.indexOf("?>") + 2 : 0);
   const attributes = rootAttributes(xml.slice(start));
   const map = new Map<string, string>();
@@ -112,7 +112,7 @@ function namespacesOf(xml: string): Map<string, string> {
 }
 
 /** Prefixes an XML fragment uses on elements and attributes. */
-function prefixesUsed(xml: string): Set<string> {
+export function prefixesUsed(xml: string): Set<string> {
   const used = new Set<string>();
   for (const match of xml.matchAll(/<\/?([A-Za-z_][\w.-]*):/g)) used.add(match[1]);
   for (const match of xml.matchAll(/\s([A-Za-z_][\w.-]*):[\w.-]+\s*=/g)) if (match[1] !== "xmlns") used.add(match[1]);
@@ -125,7 +125,7 @@ function prefixesUsed(xml: string): Set<string> {
  * the ones the source listed so. Refuses a prefix already bound to another URI —
  * rewriting prefixes inside carried markup is not something to do silently.
  */
-function declareNamespaces(xml: string, needed: Map<string, string>, ignorable: Set<string>): string {
+export function declareNamespaces(xml: string, needed: Map<string, string>, ignorable: Set<string>): string {
   const declared = namespacesOf(xml);
   const additions: string[] = [];
   const addIgnorable: string[] = [];
@@ -164,7 +164,7 @@ function ignorableOf(xml: string): Set<string> {
 }
 
 /** The highest `N` among values like `rIdN`, `N`. */
-function highestNumber(values: Iterable<string>): number {
+export function highestNumber(values: Iterable<string>): number {
   let highest = 0;
   for (const value of values) {
     const match = /(\d+)$/.exec(value);
@@ -174,7 +174,7 @@ function highestNumber(values: Iterable<string>): number {
 }
 
 /** Relationships reachable from the package root. */
-function reachableParts(parts: Map<string, Buffer>): Set<string> {
+export function reachableParts(parts: Map<string, Buffer>): Set<string> {
   const reached = new Set<string>();
   const queue = [""];
   while (queue.length > 0) {

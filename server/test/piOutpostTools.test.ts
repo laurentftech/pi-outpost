@@ -152,7 +152,7 @@ describe("createPiOutpostTools", () => {
 
   test("returns the tools the agent needs, in the documented order", async () => {
     const tools = await createPiOutpostTools({ cwd: root, maxBytes: VALID.maxBytes });
-    assert.equal(tools.length, 18);
+    assert.equal(tools.length, 19);
     const names = tools.map((t) => t.name);
     assert.deepEqual(names, [
       "pdf_extract",
@@ -166,6 +166,7 @@ describe("createPiOutpostTools", () => {
       "docx_styles",
       "docx_create",
       "docx_update",
+      "docx_restyle",
       "docx_render",
       "write_structure_figure",
       "write_structure_table",
@@ -230,7 +231,7 @@ describe("default export (extension entry)", () => {
 
       await piOutpostExtension(pi);
 
-      assert.equal(registered.length, 18);
+      assert.equal(registered.length, 19);
       assert.deepEqual(
         registered.map((t) => t.name),
         [
@@ -245,6 +246,7 @@ describe("default export (extension entry)", () => {
           "docx_styles",
           "docx_create",
           "docx_update",
+          "docx_restyle",
           "docx_render",
           "write_structure_figure",
           "write_structure_table",
