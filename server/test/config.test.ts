@@ -766,39 +766,94 @@ describe("loadConfig — resource path resolution", () => {
     });
   });
 
-  test("pptx rendering defaults to auto and accepts a renderer, executables and a timeout", async () => {
+  test("office rendering defaults to auto and accepts a renderer, executables and a timeout", async () => {
     await withTempDir(async (dir) => {
       const configPath = path.join(dir, "config.json");
       await writeFile(configPath, JSON.stringify({}, null, 2));
-      const defaults = loadConfig(dir, { config: configPath }).pptx;
+      const defaults = loadConfig(dir, { config: configPath }).office;
       assert.equal(defaults.renderer, "auto");
       assert.equal(defaults.renderTimeoutMs, 120_000);
       assert.equal(defaults.libreofficePath, undefined);
 
       await writeFile(
         configPath,
-        JSON.stringify({ pptx: { renderer: "libreoffice", libreofficePath: "tools/soffice", onlyofficePath: path.join(dir, "oo", "docbuilder"), renderTimeoutMs: 30_000 } }, null, 2),
+        JSON.stringify({ office: { renderer: "word", libreofficePath: "tools/soffice", onlyofficePath: path.join(dir, "oo", "docbuilder"), renderTimeoutMs: 30_000 } }, null, 2),
       );
-      const pptx = loadConfig(dir, { config: configPath }).pptx;
-      assert.equal(pptx.renderer, "libreoffice");
+      const office = loadConfig(dir, { config: configPath }).office;
+      assert.equal(office.renderer, "word");
       // Relative to the configuration file, like every other path in it.
-      assert.equal(pptx.libreofficePath, path.resolve(dir, "tools/soffice"));
-      assert.equal(pptx.onlyofficePath, path.join(dir, "oo", "docbuilder"));
-      assert.equal(pptx.renderTimeoutMs, 30_000);
+      assert.equal(office.libreofficePath, path.resolve(dir, "tools/soffice"));
+      assert.equal(office.onlyofficePath, path.join(dir, "oo", "docbuilder"));
+      assert.equal(office.renderTimeoutMs, 30_000);
     });
   });
 
-  test("pptx rendering settings refuse what they cannot use", async () => {
+  test("office rendering settings refuse what they cannot use", async () => {
     await withTempDir(async (dir) => {
       const configPath = path.join(dir, "config.json");
-      await writeFile(configPath, JSON.stringify({ pptx: { renderer: "keynote" } }, null, 2));
-      assert.throws(() => loadConfig(dir, { config: configPath }), /"pptx.renderer" must be one of "auto", "powerpoint", "libreoffice", "onlyoffice"/);
-      await writeFile(configPath, JSON.stringify({ pptx: { libreofficePath: "" } }, null, 2));
-      assert.throws(() => loadConfig(dir, { config: configPath }), /"pptx.libreofficePath" must be a non-empty path/);
+      await writeFile(configPath, JSON.stringify({ office: { renderer: "keynote" } }, null, 2));
+      assert.throws(() => loadConfig(dir, { config: configPath }), /"office.renderer" must be one of "auto", "word", "powerpoint", "libreoffice", "onlyoffice"/);
+      await writeFile(configPath, JSON.stringify({ office: { libreofficePath: "" } }, null, 2));
+      assert.throws(() => loadConfig(dir, { config: configPath }), /"office.libreofficePath" must be a non-empty path/);
       for (const renderTimeoutMs of [0, -5, 2.5, "60s"]) {
-        await writeFile(configPath, JSON.stringify({ pptx: { renderTimeoutMs } }, null, 2));
-        assert.throws(() => loadConfig(dir, { config: configPath }), /"pptx.renderTimeoutMs" must be a positive integer/);
+        await writeFile(configPath, JSON.stringify({ office: { renderTimeoutMs } }, null, 2));
+        assert.throws(() => loadConfig(dir, { config: configPath }), /"office.renderTimeoutMs" must be a positive integer/);
       }
+      // A deprecated key is checked under the name it was written with.
+      await writeFile(configPath, JSON.stringify({ pptx: { renderer: "keynote" } }, null, 2));
+      assert.throws(() => loadConfig(dir, { config: configPath }), /"pptx.renderer" must be one of/);
+    });
+  });
+
+  test("PptxRendererKeysStillWork: the 0.29 pptx.* rendering keys are read, and named as deprecated", async () => {
+    await withTempDir(async (dir) => {
+      const configPath = path.join(dir, "config.json");
+      await writeFile(configPath, JSON.stringify({ pptx: { renderer: "libreoffice", libreofficePath: "tools/soffice", renderTimeoutMs: 45_000 } }, null, 2));
+      const lines: string[] = [];
+      const original = console.log;
+      console.log = (line: unknown) => void lines.push(String(line));
+      let office;
+      try {
+        office = loadConfig(dir, { config: configPath }).office;
+      } finally {
+        console.log = original;
+      }
+      assert.equal(office.renderer, "libreoffice");
+      assert.equal(office.libreofficePath, path.resolve(dir, "tools/soffice"));
+      assert.equal(office.renderTimeoutMs, 45_000);
+      assert.ok(lines.some((line) => /"pptx.renderer" is deprecated; rename it "office.renderer"/.test(line)), lines.join("\n"));
+      assert.ok(lines.some((line) => /"pptx.libreofficePath" is deprecated/.test(line)));
+    });
+  });
+
+  test("OfficeKeysWinOverTheirAliases: office.* wins, and the conflict is logged", async () => {
+    await withTempDir(async (dir) => {
+      const configPath = path.join(dir, "config.json");
+      await writeFile(configPath, JSON.stringify({ office: { renderer: "onlyoffice" }, pptx: { renderer: "libreoffice" } }, null, 2));
+      const lines: string[] = [];
+      const original = console.log;
+      console.log = (line: unknown) => void lines.push(String(line));
+      let office;
+      try {
+        office = loadConfig(dir, { config: configPath }).office;
+      } finally {
+        console.log = original;
+      }
+      assert.equal(office.renderer, "onlyoffice");
+      assert.ok(lines.some((line) => /"pptx.renderer" is ignored: "office.renderer" is set too/.test(line)), lines.join("\n"));
+    });
+  });
+
+  test("docx.template is resolved against the configuration file, and refused when empty", async () => {
+    await withTempDir(async (dir) => {
+      const configPath = path.join(dir, "config.json");
+      await writeFile(configPath, JSON.stringify({}, null, 2));
+      assert.equal(loadConfig(dir, { config: configPath }).docx.template, undefined);
+      // A missing file is not an error at startup: the export that uses it reports it.
+      await writeFile(configPath, JSON.stringify({ docx: { template: "templates/house.dotx" } }, null, 2));
+      assert.equal(loadConfig(dir, { config: configPath }).docx.template, path.resolve(dir, "templates/house.dotx"));
+      await writeFile(configPath, JSON.stringify({ docx: { template: "" } }, null, 2));
+      assert.throws(() => loadConfig(dir, { config: configPath }), /"docx.template" must be a non-empty path/);
     });
   });
 

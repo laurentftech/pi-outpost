@@ -57,7 +57,7 @@ export interface WorkspaceToolLimits {
   pptxMaxBytes: number;
   structuredExchangeMaxBytes: number;
   /** How `pptx_render` finds and runs an office application. */
-  pptxRender?: RenderSettings;
+  officeRender?: RenderSettings;
 }
 
 /** Facts needed to decide whether an open workspace may release its resources. */
@@ -507,7 +507,7 @@ async function buildResources(options: WorkspaceOptions): Promise<WorkspaceResou
           limits.structuredExchangeMaxBytes,
           // The project, not the sandbox root: the profile registry is the project's.
           settings.cwd,
-          limits.pptxRender,
+          limits.officeRender,
         )),
         ...options.unconfinedTools,
       ])

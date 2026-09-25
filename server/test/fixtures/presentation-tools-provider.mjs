@@ -6,8 +6,14 @@
  *
  * - `READ THE SKILL <path>`: calls `read` on that SKILL.md, then answers.
  * - `BUILD THE DECK`: `pptx_layouts` on brand.potx, `pptx_create` into deck.pptx,
- *   `pptx_render` on deck.pptx, then answers — one tool per request, as a model would,
- *   and only calling a tool the request actually offered.
+ *   `pptx_update` of it into deck-v2.pptx, `pptx_render` on slide 2 of that, then answers.
+ * - `WRITE THE REPORT`: `docx_styles` on brand.dotx, `docx_create` into report.docx,
+ *   `docx_update` of it into report-v2.docx, `docx_render` on that, then answers.
+ *
+ * - `RENDER BOTH`: `docx_render` on report.docx, then `pptx_render` on deck.pptx, even
+ *   when the first fails.
+ *
+ * One tool per request, as a model would, and only calling a tool the request offered.
  *
  * Every tool result it receives is appended to PRESENTATION_RESULTS_LOG, so the test
  * reads what the agent was really handed back — text, and how many pictures.
@@ -39,7 +45,51 @@ const BUILD_STEPS = [
       ],
     },
   ],
+  [
+    "pptx_update",
+    {
+      path: "deck.pptx",
+      output_path: "deck-v2.pptx",
+      edits: [
+        { action: "replace", slide: "A table", content: { title: "A revised table", table: { rows: [["Region", "Revenue"], ["EMEA", "4.4"]] } } },
+        { action: "delete", slide: 4 },
+      ],
+    },
+  ],
+  ["pptx_render", { path: "deck-v2.pptx", slides: "3" }],
+];
+
+const REPORT_STEPS = [
+  ["docx_styles", { path: "brand.dotx" }],
+  [
+    "docx_create",
+    {
+      template_path: "brand.dotx",
+      output_path: "report.docx",
+      keep: ["cover", "toc"],
+      markdown: "# Findings\n\nThe quarter went **well**.\n\n## Detail\n\n1. Revenue\n2. Margin\n\n| Region | Revenue |\n|---|---|\n| EMEA | 4.2 |\n\n![Diagram](diagram.svg)\n\n# Next steps\n\nKeep going.\n",
+    },
+  ],
+  [
+    "docx_update",
+    {
+      path: "report.docx",
+      output_path: "report-v2.docx",
+      edits: [{ action: "replace", section: "Next steps", markdown: "Hire two people.\n\n- Sales\n- Support" }],
+    },
+  ],
+  ["docx_render", { path: "report-v2.docx" }],
+];
+
+const RENDER_STEPS = [
+  ["docx_render", { path: "report.docx" }],
   ["pptx_render", { path: "deck.pptx" }],
+];
+
+const SCRIPTS = [
+  ["BUILD THE DECK", BUILD_STEPS],
+  ["WRITE THE REPORT", REPORT_STEPS],
+  ["RENDER BOTH", RENDER_STEPS],
 ];
 
 function append(variable, value) {
@@ -98,8 +148,9 @@ function stream(model, context) {
   const skill = /READ THE SKILL (\S+)/.exec(prompt);
   if (skill && results.length === 0) return call("read", { path: skill[1] });
 
-  if (prompt.includes("BUILD THE DECK") && results.length < BUILD_STEPS.length && !last?.isError) {
-    const [name, args] = BUILD_STEPS[results.length];
+  for (const [keyword, steps] of SCRIPTS) {
+    if (!prompt.includes(keyword) || results.length >= steps.length || (last?.isError && keyword !== "RENDER BOTH")) continue;
+    const [name, args] = steps[results.length];
     if (offered.includes(name)) return call(name, args);
   }
   return reply(model, [{ type: "text", text: "ok" }], "stop");

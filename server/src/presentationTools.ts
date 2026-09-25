@@ -26,6 +26,7 @@ import { assertWritableDestination } from "./extractionOutput.ts";
 import { ImageError, readImageInfo } from "./imageInfo.ts";
 import { PptxError, parseSlideRange, readSlideParagraphs } from "./pptx.ts";
 import { buildPresentation, describeTemplate, PptxBuildError, readTemplate, type SlideSpec } from "./pptxBuild.ts";
+import { updatePresentation, type DeckEdit } from "./pptxUpdate.ts";
 import { CHART_TYPES, MAX_TABLE_COLUMNS, MAX_TABLE_ROWS, type ChartType } from "./pptxVisuals.ts";
 import {
   convertPresentationToPdf,
@@ -68,7 +69,7 @@ function describeSize(bytes: number): string {
 }
 
 /** Resolve a source path and refuse it outside the readable zone or past `maxBytes`. */
-async function readSource(target: string, options: PresentationToolOptions, maxBytes: number, what: string): Promise<{ resolved: string; bytes: Buffer }> {
+export async function readSource(target: string, options: Pick<PresentationToolOptions, "cwd" | "allowedRoots">, maxBytes: number, what: string): Promise<{ resolved: string; bytes: Buffer }> {
   const resolved = await realResolve(path.resolve(options.cwd, target));
   if (!isWithinAny(options.allowedRoots, resolved)) {
     throw new Error(`Access denied: "${target}" is outside the sandbox (${options.allowedRoots[0]})`);
@@ -187,6 +188,61 @@ interface SlideParam {
   };
 }
 
+/** A slide as the model described it, with its picture read and checked. */
+async function toSlideSpec(slide: SlideParam, options: PresentationToolOptions, label: string): Promise<SlideSpec> {
+  const spec: SlideSpec = {
+    ...(slide.layout !== undefined ? { layout: slide.layout } : {}),
+    ...(slide.title !== undefined ? { title: slide.title } : {}),
+    ...(slide.subtitle !== undefined ? { subtitle: slide.subtitle } : {}),
+    ...(slide.bullets !== undefined ? { bullets: slide.bullets } : {}),
+    ...(slide.table !== undefined ? { table: { rows: slide.table.rows, ...(slide.table.header !== undefined ? { header: slide.table.header } : {}) } } : {}),
+    ...(slide.chart !== undefined
+      ? {
+          chart: {
+            type: slide.chart.type,
+            categories: slide.chart.categories,
+            series: slide.chart.series,
+            ...(slide.chart.title !== undefined ? { title: slide.chart.title } : {}),
+            ...(slide.chart.stacked !== undefined ? { stacked: slide.chart.stacked } : {}),
+            ...(slide.chart.number_format !== undefined ? { numberFormat: slide.chart.number_format } : {}),
+            ...(slide.chart.show_values !== undefined ? { showValues: slide.chart.show_values } : {}),
+          },
+        }
+      : {}),
+  };
+  if (slide.image !== undefined) {
+    const image = await readSource(slide.image.path, options, MAX_IMAGE_BYTES, "picture");
+    try {
+      spec.image = { name: slide.image.path, bytes: image.bytes, info: readImageInfo(image.bytes, slide.image.path), ...(slide.image.alt !== undefined ? { alt: slide.image.alt } : {}) };
+    } catch (error) {
+      if (error instanceof ImageError) throw new Error(`${label}: ${error.message}`);
+      throw error;
+    }
+  }
+  return spec;
+}
+
+/** Write a new file, or replace one through a sibling and a rename so a reader never sees half of it. */
+async function writeDeck(resolved: string, exists: boolean, bytes: Buffer, destination: string): Promise<void> {
+  if (!exists) {
+    try {
+      await fs.writeFile(resolved, bytes, { flag: "wx" });
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code === "EEXIST") throw new Error(`"${destination}" already exists. Pass overwrite: true to replace it, or choose another path.`);
+      if (code === "ENOENT") throw new Error(`The folder for "${destination}" does not exist.`);
+      throw new Error(`Cannot write "${destination}": ${(error as Error).message}`);
+    }
+    return;
+  }
+  const staging = `${resolved}.${randomBytes(6).toString("hex")}.tmp`;
+  await fs.writeFile(staging, bytes, { flag: "wx" });
+  await fs.rename(staging, resolved).catch(async (error: unknown) => {
+    await fs.rm(staging, { force: true });
+    throw new Error(`Cannot replace "${destination}": ${(error as Error).message}`);
+  });
+}
+
 export function createPptxCreateToolDefinition(options: PresentationToolOptions): ToolDefinition {
   return {
     name: "pptx_create",
@@ -224,38 +280,7 @@ export function createPptxCreateToolDefinition(options: PresentationToolOptions)
 
       const template = await readSource(templatePath, options, options.maxBytes, "template");
       const specs: SlideSpec[] = [];
-      for (const [index, slide] of slides.entries()) {
-        const spec: SlideSpec = {
-          ...(slide.layout !== undefined ? { layout: slide.layout } : {}),
-          ...(slide.title !== undefined ? { title: slide.title } : {}),
-          ...(slide.subtitle !== undefined ? { subtitle: slide.subtitle } : {}),
-          ...(slide.bullets !== undefined ? { bullets: slide.bullets } : {}),
-          ...(slide.table !== undefined ? { table: { rows: slide.table.rows, ...(slide.table.header !== undefined ? { header: slide.table.header } : {}) } } : {}),
-          ...(slide.chart !== undefined
-            ? {
-                chart: {
-                  type: slide.chart.type,
-                  categories: slide.chart.categories,
-                  series: slide.chart.series,
-                  ...(slide.chart.title !== undefined ? { title: slide.chart.title } : {}),
-                  ...(slide.chart.stacked !== undefined ? { stacked: slide.chart.stacked } : {}),
-                  ...(slide.chart.number_format !== undefined ? { numberFormat: slide.chart.number_format } : {}),
-                  ...(slide.chart.show_values !== undefined ? { showValues: slide.chart.show_values } : {}),
-                },
-              }
-            : {}),
-        };
-        if (slide.image !== undefined) {
-          const image = await readSource(slide.image.path, options, MAX_IMAGE_BYTES, "picture");
-          try {
-            spec.image = { name: slide.image.path, bytes: image.bytes, info: readImageInfo(image.bytes, slide.image.path), ...(slide.image.alt !== undefined ? { alt: slide.image.alt } : {}) };
-          } catch (error) {
-            if (error instanceof ImageError) throw new Error(`Slide ${index + 1}: ${error.message}`);
-            throw error;
-          }
-        }
-        specs.push(spec);
-      }
+      for (const [index, slide] of slides.entries()) specs.push(await toSlideSpec(slide, options, `Slide ${index + 1}`));
 
       let built: Awaited<ReturnType<typeof buildPresentation>>;
       try {
@@ -265,24 +290,7 @@ export function createPptxCreateToolDefinition(options: PresentationToolOptions)
         throw error;
       }
 
-      if (existing === null) {
-        try {
-          await fs.writeFile(resolvedOutput, built.bytes, { flag: "wx" });
-        } catch (error) {
-          const code = (error as NodeJS.ErrnoException).code;
-          if (code === "EEXIST") throw new Error(`"${destination}" already exists. Pass overwrite: true to replace it, or choose another path.`);
-          if (code === "ENOENT") throw new Error(`The folder for "${destination}" does not exist.`);
-          throw new Error(`Cannot write "${destination}": ${(error as Error).message}`);
-        }
-      } else {
-        // Replace through a sibling and a rename, so a reader never sees half a deck.
-        const staging = `${resolvedOutput}.${randomBytes(6).toString("hex")}.tmp`;
-        await fs.writeFile(staging, built.bytes, { flag: "wx" });
-        await fs.rename(staging, resolvedOutput).catch(async (error: unknown) => {
-          await fs.rm(staging, { force: true });
-          throw new Error(`Cannot replace "${destination}": ${(error as Error).message}`);
-        });
-      }
+      await writeDeck(resolvedOutput, existing !== null, built.bytes, destination);
 
       const lines = [
         `Wrote ${built.slides.length} slide(s) to \`${destination}\` (${built.bytes.length} bytes).`,
@@ -298,6 +306,88 @@ export function createPptxCreateToolDefinition(options: PresentationToolOptions)
   } as ToolDefinition;
 }
 
+/* ── pptx_update ────────────────────────────────────────────────────────────── */
+
+const slideRefSchema = Type.Union([Type.Integer({ minimum: 0 }), Type.String()], {
+  description: "A slide by its number in the deck as it is now (1 is the first), or by its title.",
+});
+
+const updateEditSchema = Type.Object({
+  action: Type.Union([Type.Literal("replace"), Type.Literal("insert_after"), Type.Literal("delete"), Type.Literal("move")], {
+    description:
+      "replace: rewrite a slide's content on its own layout (or content.layout). insert_after: a new slide after one (0 for the very start). delete: remove a slide. move: put a slide after another (0 for the start).",
+  }),
+  slide: slideRefSchema,
+  after: Type.Optional(Type.Union([Type.Integer({ minimum: 0 }), Type.String()], { description: "For move: the slide it goes after, or 0 for the start." })),
+  content: Type.Optional(slideSchema),
+});
+
+export function createPptxUpdateToolDefinition(options: PresentationToolOptions): ToolDefinition {
+  return {
+    name: "pptx_update",
+    label: "Update presentation",
+    description: [
+      "Change an existing PowerPoint deck (.pptx): replace a slide's content, insert a slide after one, delete a slide, or move one — naming slides by number or title as the deck is now.",
+      "A replaced or inserted slide is written into the deck's own layouts like pptx_create's slides; every other slide is left exactly as it was.",
+      "Writes to output_path; replaces the original only with overwrite: true. The answer lists the changed slides: render those with pptx_render (slides=\"…\").",
+    ].join(" "),
+    promptSnippet: "Change slides of an existing PowerPoint deck",
+    parameters: Type.Object({
+      path: Type.String({ description: "The deck to update (.pptx)." }),
+      edits: Type.Array(updateEditSchema, { description: "The edits, applied together to the deck as it is now." }),
+      output_path: Type.Optional(Type.String({ description: "Where to write the updated deck (.pptx). Required unless overwrite is true." })),
+      overwrite: Type.Optional(Type.Boolean({ description: "Write over output_path if it exists — or over the original when output_path is omitted." })),
+    }),
+    async execute(_toolCallId, params) {
+      const p = params as {
+        path: string;
+        edits: Array<{ action: DeckEdit["action"]; slide: number | string; after?: number | string; content?: SlideParam }>;
+        output_path?: string;
+        overwrite?: boolean;
+      };
+      if (p.output_path === undefined && p.overwrite !== true) throw new Error("Give output_path for the updated deck, or overwrite: true to replace the original.");
+      const destination = p.output_path ?? p.path;
+      if (!/\.pptx$/i.test(destination)) throw new Error(`"${destination}" must end in .pptx.`);
+      const resolvedOutput = await assertWritableDestination(destination, { cwd: options.cwd, writableRoot: options.writableRoot });
+      const existing = await fs.lstat(resolvedOutput).catch(() => null);
+      if (existing !== null && p.overwrite !== true) throw new Error(`"${destination}" already exists. Pass overwrite: true to replace it, or choose another path.`);
+      if (existing !== null && !existing.isFile()) throw new Error(`"${destination}" exists and is not a file.`);
+
+      const source = await readSource(p.path, options, options.maxBytes, "presentation");
+      const edits: DeckEdit[] = [];
+      for (const [index, edit] of p.edits.entries()) {
+        const label = `Edit ${index + 1}`;
+        if (edit.action === "replace" || edit.action === "insert_after") {
+          if (edit.content === undefined) throw new Error(`${label}: ${edit.action} needs content.`);
+          edits.push({ action: edit.action, slide: edit.slide, content: await toSlideSpec(edit.content, options, label) });
+        } else if (edit.action === "move") {
+          if (edit.after === undefined) throw new Error(`${label}: move needs after (a slide, or 0 for the start).`);
+          edits.push({ action: "move", slide: edit.slide, after: edit.after });
+        } else {
+          edits.push({ action: "delete", slide: edit.slide });
+        }
+      }
+      let updated: Awaited<ReturnType<typeof updatePresentation>>;
+      try {
+        updated = await updatePresentation(source.bytes, edits, { rasterizeSvg });
+      } catch (error) {
+        if (error instanceof PptxBuildError) throw new Error(`"${p.path}": ${error.message}`);
+        throw error;
+      }
+      await writeDeck(resolvedOutput, existing !== null, updated.bytes, destination);
+      const lines = [
+        `Wrote \`${destination}\` (${updated.bytes.length} bytes):`,
+        ...updated.report.map((line) => `- ${line}`),
+        "",
+        updated.changed.length === 0
+          ? "No slide was written or moved."
+          : `Changed slides in the result: ${updated.changed.join(", ")}. Next: call pptx_render with path "${destination}" and slides="${updated.changed.join(",")}".`,
+      ];
+      return { content: [{ type: "text", text: lines.join("\n") }], details: undefined };
+    },
+  } as ToolDefinition;
+}
+
 /* ── pptx_render ────────────────────────────────────────────────────────────── */
 
 const renderParameters = Type.Object({
@@ -306,7 +396,7 @@ const renderParameters = Type.Object({
     Type.String({ description: `Slides to return as pictures, e.g. "3" or "2-5,8". Omit for the first ${MAX_RENDERED_SLIDES}.` }),
   ),
   renderer: Type.Optional(
-    Type.Union([Type.Literal("auto"), ...RENDERER_NAMES.map((name) => Type.Literal(name))], {
+    Type.Union([Type.Literal("auto"), ...RENDERER_NAMES.filter((name) => name !== "word").map((name) => Type.Literal(name))], {
       description: "Which application draws the slides. auto (the default) tries PowerPoint on Windows, then LibreOffice, then ONLYOFFICE.",
     }),
   ),
@@ -396,7 +486,7 @@ export function createPptxRenderToolDefinition(options: PresentationToolOptions)
       if (resolvedPdf !== undefined) header.push(`Saved the PDF to \`${pdfDestination}\`.`);
       header.push("");
       if (findings.length === 0) {
-        header.push(`Text check: every paragraph of slides ${describeList(wanted)} is visible on the rendered page.`);
+        header.push(`Text check: every paragraph of ${wanted.length === 1 ? "slide" : "slides"} ${describeList(wanted)} is visible on the rendered page.`);
       } else {
         header.push("Text check — fix these before calling the deck finished:");
         for (const finding of findings) {

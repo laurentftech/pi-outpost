@@ -28,6 +28,7 @@ import {
 } from "../src/pptxBuild.ts";
 import { readAllZipEntries } from "../src/zip.ts";
 import { writeZip } from "../src/zipWriter.ts";
+import { assertIntact } from "./ooxmlPackage.ts";
 
 const FIXTURES = path.join(path.dirname(fileURLToPath(import.meta.url)), "fixtures");
 const LIMITS = { maxEntries: 4096, maxInflatedBytes: 64 * 1024 * 1024, maxTotalBytes: 256 * 1024 * 1024 };
@@ -48,37 +49,6 @@ async function build(slides: SlideSpec[], rasterize: (svg: Buffer, w: number, h:
 }
 
 const text = (parts: Map<string, Buffer>, name: string) => parts.get(name)?.toString("utf8") ?? "";
-
-/**
- * The package-level promises a reader like PowerPoint enforces: every relationship
- * resolves to a part that exists, and every part has a content type.
- */
-function assertIntact(parts: Map<string, Buffer>): void {
-  const types = text(parts, "[Content_Types].xml");
-  const overrides = new Set([...types.matchAll(/PartName="\/([^"]+)"/g)].map((match) => match[1]));
-  const defaults = new Set([...types.matchAll(/Extension="([^"]+)"/g)].map((match) => match[1].toLowerCase()));
-  for (const name of parts.keys()) {
-    if (name === "[Content_Types].xml") continue;
-    assert.ok(overrides.has(name) || defaults.has(name.split(".").pop()!.toLowerCase()), `no content type for ${name}`);
-  }
-  for (const override of overrides) assert.ok(parts.has(override), `content type for a missing part: ${override}`);
-  for (const [name, data] of parts) {
-    if (!name.endsWith(".rels")) continue;
-    // `_rels/.rels` belongs to the package root; `dir/_rels/part.rels` to `dir/part`.
-    const owner = name === "_rels/.rels" ? "" : name.replace(/_rels\/([^/]+)\.rels$/, "$1");
-    const base = owner.includes("/") ? owner.slice(0, owner.lastIndexOf("/")) : "";
-    for (const match of data.toString("utf8").matchAll(/<Relationship [^>]*Target="([^"]+)"[^>]*\/>/g)) {
-      if (/TargetMode="External"/.test(match[0])) continue;
-      const segments: string[] = [];
-      for (const segment of `${base}/${match[1]}`.split("/")) {
-        if (segment === "" || segment === ".") continue;
-        if (segment === "..") segments.pop();
-        else segments.push(segment);
-      }
-      assert.ok(parts.has(segments.join("/")), `${name} points at missing ${segments.join("/")}`);
-    }
-  }
-}
 
 describe("readTemplate", () => {
   test("lists the layouts in the master's order, with their names, types and placeholders", () => {
@@ -149,6 +119,24 @@ describe("buildPresentation — the package", () => {
     const types = text(parts, "[Content_Types].xml");
     assert.match(types, /PartName="\/ppt\/presentation.xml" ContentType="application\/vnd.openxmlformats-officedocument.presentationml.presentation.main\+xml"/);
     assert.doesNotMatch(types, /template\.main/);
+  });
+
+  test("declares once a part whose name the template's sample already used", async () => {
+    // Built on a deck that already holds slides, charts and workbooks: the new parts
+    // take the same names as the sample ones they replace.
+    const { built: first } = await build([
+      { title: "Chart", chart: { type: "column", categories: ["a"], series: [{ name: "S", values: [1] }] } },
+      { title: "Table", table: { rows: [["x"]] } },
+    ]);
+    const built = await buildPresentation(readTemplate(first.bytes), [
+      { title: "Again", chart: { type: "pie", categories: ["a"], series: [{ name: "S", values: [1] }] } },
+      { title: "Two" },
+    ]);
+    const parts = readAllZipEntries(built.bytes, LIMITS);
+    assertIntact(parts);
+    const types = text(parts, "[Content_Types].xml");
+    assert.equal(types.match(/PartName="\/ppt\/slides\/slide1\.xml"/g)?.length, 1);
+    assert.equal(types.match(/PartName="\/ppt\/charts\/chart1\.xml"/g)?.length, 1);
   });
 
   test("holds exactly the new slides, in order, with fresh ids", async () => {

@@ -5,12 +5,13 @@
  */
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { DOCUMENT_TOOLS, documentToolsFor, documentToolsForToolCall, PRESENTATION_TOOLS } from "../src/documentTools.ts";
+import { DOCUMENT_TOOLS, documentToolsFor, documentToolsForToolCall, PRESENTATION_TOOLS, WORD_TOOLS } from "../src/documentTools.ts";
 
 describe("documentToolsFor", () => {
   test("a named document publishes its own extractor and no other", () => {
     assert.deepEqual(documentToolsFor("Read report.pdf and summarise it"), ["pdf_extract"]);
-    assert.deepEqual(documentToolsFor("What does notes.docx say?"), ["docx_extract"]);
+    // A Word document may be read, updated or written from, so it brings the Word tools.
+    assert.deepEqual(documentToolsFor("What does notes.docx say?"), ["docx_extract", ...WORD_TOOLS]);
     assert.deepEqual(documentToolsFor("Open budget.xlsx"), ["xlsx_extract"]);
     // A deck may be read or be the template of a new one, so it brings the presentation tools.
     assert.deepEqual(documentToolsFor("Check deck.pptx"), ["pptx_extract", ...PRESENTATION_TOOLS]);
@@ -50,8 +51,8 @@ describe("documentToolsFor", () => {
   });
 
   test("two kinds in one prompt publish two tools, in registration order", () => {
-    assert.deepEqual(documentToolsFor("see notes.docx and slides.pptx"), ["docx_extract", "pptx_extract", ...PRESENTATION_TOOLS]);
-    assert.deepEqual(documentToolsFor("a.pdf, b.docx."), ["pdf_extract", "docx_extract"]);
+    assert.deepEqual(documentToolsFor("see notes.docx and slides.pptx"), ["docx_extract", ...WORD_TOOLS, "pptx_extract", ...PRESENTATION_TOOLS]);
+    assert.deepEqual(documentToolsFor("a.pdf, b.docx."), ["pdf_extract", "docx_extract", ...WORD_TOOLS]);
   });
 
   test("the same document twice publishes one tool", () => {
@@ -61,14 +62,51 @@ describe("documentToolsFor", () => {
   test("the exported set is what the server withholds and republishes", () => {
     // A tool added to one list and not the other would be published to everyone
     // forever, or withheld from everyone forever.
-    assert.deepEqual(DOCUMENT_TOOLS, ["pdf_extract", "docx_extract", "xlsx_extract", "pptx_extract", "pptx_layouts", "pptx_create", "pptx_render"]);
-    for (const extension of ["pdf", "docx", "xlsx"]) {
+    assert.deepEqual(DOCUMENT_TOOLS, [
+      "pdf_extract",
+      "docx_extract",
+      "docx_styles",
+      "docx_create",
+      "docx_update",
+      "docx_render",
+      "xlsx_extract",
+      "pptx_extract",
+      "pptx_layouts",
+      "pptx_create",
+      "pptx_update",
+      "pptx_render",
+    ]);
+    for (const extension of ["pdf", "xlsx"]) {
       assert.deepEqual(documentToolsFor(`file.${extension}`), [`${extension}_extract`], extension);
     }
   });
 });
 
+describe("Word tools", () => {
+  test("NamingAWordTemplatePublishesTheTools: a .dotx publishes the Word tools, and not the extractor", () => {
+    assert.deepEqual(documentToolsFor("Write the report from house.dotx"), ["docx_styles", "docx_create", "docx_update", "docx_render"]);
+    assert.deepEqual(documentToolsFor("@C:\\Templates\\Corporate.DOTX"), WORD_TOOLS);
+  });
+
+  test("invoking the Word skill by name publishes them before any file is named", () => {
+    assert.deepEqual(documentToolsFor("/skill:docx-from-template turn notes.md into a report"), WORD_TOOLS);
+  });
+
+  test("ReadingTheSkillPublishesTheToolsWithinTheTurn: reading the skill, or a Word path in a call, calls for them", () => {
+    assert.deepEqual(documentToolsForToolCall("read", { path: "/opt/skills/docx-from-template/SKILL.md" }), WORD_TOOLS);
+    assert.deepEqual(documentToolsForToolCall("find", { path: "templates/house.dotx" }), WORD_TOOLS);
+    assert.deepEqual(documentToolsForToolCall("read", { path: "C:\\docs\\Report.DOCX" }), WORD_TOOLS);
+    // The extractor stays the user's to bring back by naming a document.
+    assert.ok(!documentToolsForToolCall("read", { path: "report.docx" }).includes("docx_extract"));
+  });
+});
+
 describe("presentation tools", () => {
+  test("UpdateComesWithTheOtherPresentationTools: a .pptx brings pptx_update with the layouts, create and render tools", () => {
+    // Spelled out, not read back from the constant: a tool dropped from the list must fail here.
+    assert.deepEqual(documentToolsFor("Revise deck.pptx"), ["pptx_extract", "pptx_layouts", "pptx_create", "pptx_update", "pptx_render"]);
+  });
+
   test("a template publishes the tools that build from it, and not the extractor", () => {
     assert.deepEqual(documentToolsFor("Make a deck from brand.potx"), PRESENTATION_TOOLS);
     assert.deepEqual(documentToolsFor("@C:\\Templates\\Corporate.POTX"), PRESENTATION_TOOLS);

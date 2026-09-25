@@ -134,7 +134,8 @@ one needs, the command that proves it works, and the caution that goes with it.
 | [Teach the agent something](docs/how-to.md#teach-the-agent-something) | [Restrict which models can be picked](docs/how-to.md#restrict-which-models-can-be-picked) |
 | [Read a big PDF, Word or Excel file](docs/how-to.md#let-the-agent-read-a-big-pdf-word-or-excel-file) | [Lock down a shared deployment](docs/how-to.md#lock-down-a-shared-deployment) |
 | [Put it inside your own web app](docs/how-to.md#put-it-inside-your-own-web-app) | [Use an existing pi installation](docs/how-to.md#use-an-existing-pi-installation) |
-| [Make a PowerPoint deck from a template](docs/how-to.md#make-a-powerpoint-deck-from-a-template) | [When something does not work](docs/how-to.md#when-something-does-not-work) |
+| [Make a PowerPoint deck from a template](docs/how-to.md#make-a-powerpoint-deck-from-a-template) | [Write a Word document from a template](docs/how-to.md#write-a-word-document-from-a-template) |
+| [When something does not work](docs/how-to.md#when-something-does-not-work) | |
 
 ## What you get
 
@@ -184,7 +185,10 @@ one needs, the command that proves it works, and the caution that goes with it.
   rule; one that cannot be read keeps its alt text, and an image referenced by an absolute URL is
   never fetched. Any other text
   file exports as monospaced lines. It is a download, so a read-only file offers it too, and
-  the writer is fetched only when you first use it
+  the writer is fetched only when you first use it. With a Word template configured
+  (`docx.template`), a second button writes the same document into the template — its styles,
+  heading numbering, page setup, header and footer; if the template cannot be used, that button
+  says why and the plain export still works
 - Split view: a Markdown or structured document renders beside the editor, following what
   you type rather than what was last saved
 - Git: uncommitted-change badges in the tree, per-file diffs, log and commit inspection, and
@@ -207,11 +211,20 @@ one needs, the command that proves it works, and the caution that goes with it.
 - PowerPoint decks from a template: `pptx_layouts` lists a `.potx`/`.pptx` template's layouts,
   `pptx_create` builds a deck into them — titles, bullets, PNG/JPEG/GIF/SVG pictures, native
   tables and editable column, bar, line and pie charts, written into the layouts' placeholders so
-  the template's fonts, table style and colours apply — and `pptx_render`
-  has **PowerPoint (on Windows)**, LibreOffice or ONLYOFFICE draw it, returning a picture of
-  every slide and the text that ran off one. The bundled `pptx-from-template` skill makes the
-  agent render and fix its deck before handing it over. See
+  the template's fonts, table style and colours apply — `pptx_update` replaces, inserts, deletes
+  or moves slides of an existing deck and leaves every other slide exactly as it was, and
+  `pptx_render` has **PowerPoint (on Windows)**, LibreOffice or ONLYOFFICE draw it, returning a
+  picture of every slide and the text that ran off one. The bundled `pptx-from-template` skill
+  makes the agent render and fix its deck before handing it over. See
   [Make a PowerPoint deck from a template](docs/how-to.md#make-a-powerpoint-deck-from-a-template)
+- Word documents from a template: `docx_styles` says which of a `.dotx`/`.docx` template's styles
+  the content will wear, `docx_create` writes Markdown into the template — its heading styles and
+  numbering, lists, tables, pictures, native equations, cover page and table of contents on
+  request — `docx_update` changes an existing document section by section, **as tracked
+  changes** by default, leaving everything else byte for byte as it was, and `docx_render` has
+  **Word (on Windows)**, LibreOffice or ONLYOFFICE draw it, returning the pages, the chapters as
+  Word sees them and any text that reached no page. The bundled `docx-from-template` skill teaches
+  the loop. See [Write a Word document from a template](docs/how-to.md#write-a-word-document-from-a-template)
 - Structured results: a tool can hand back **data** — a graph, a sequence, a table — and the
   interface draws it, with an approval gate when the document names a `target`. Files that
   declare the schema open as the diagram they describe, and any diagram exports as a
@@ -460,9 +473,11 @@ in [`pi-outpost.config.example.json`](pi-outpost.config.example.json).
 |-----|--------|
 | `pdf.maxBytes` | Largest PDF the viewer may load and `pdf_extract` may read (default `26214400` — 25 MB). Every other file keeps the 1 MB limit |
 | `docx.maxBytes` / `xlsx.maxBytes` / `pptx.maxBytes` | The same ceiling, per format, for the Office extractors |
-| `pptx.renderer` | Which application `pptx_render` draws decks with: `"auto"` (default — PowerPoint on Windows, then LibreOffice, then ONLYOFFICE), `"powerpoint"`, `"libreoffice"` or `"onlyoffice"` |
-| `pptx.libreofficePath` / `pptx.onlyofficePath` | The `soffice` or `docbuilder` executable, when it is not where it installs by default. Relative to the configuration file |
-| `pptx.renderTimeoutMs` | How long one rendering may take (default `120000`) |
+| `docx.template` | The Word template (`.dotx` or `.docx`) the viewer's Word export can write into, relative to the configuration file. A file that is missing or unusable is reported when the export is used, not at startup |
+| `office.renderer` | Which application `pptx_render` and `docx_render` draw with: `"auto"` (default — on Windows PowerPoint for decks and Word for documents, then LibreOffice, then ONLYOFFICE), `"powerpoint"`, `"word"`, `"libreoffice"` or `"onlyoffice"`. `"powerpoint"` and `"word"` each apply to their own kind of file; the other kind is drawn as with `"auto"` |
+| `office.libreofficePath` / `office.onlyofficePath` | The `soffice` or `docbuilder` executable, when it is not where it installs by default. Relative to the configuration file |
+| `office.renderTimeoutMs` | How long one rendering may take (default `120000`) |
+| `pptx.renderer`, `pptx.libreofficePath`, `pptx.onlyofficePath`, `pptx.renderTimeoutMs` | Deprecated since 0.30: the 0.29 names of the `office.*` keys above. Still read, each named in a warning at startup; when both are set, the `office.*` key wins and the conflict is logged |
 | `structuredExchange.maxBytes` | Largest structured-exchange document the viewer may open (default `8000000`, the widest ceiling any supported schema version declares). Each version's own ceiling is applied after the document says which one it claims, so a version 1 document is still bounded at its published 4 MB. Recognition is by the document's declared `schema`, never by its extension, so other JSON keeps the 1 MB preview limit. A larger value is clamped to the contract's |
 
 ### Server and interface
@@ -472,7 +487,7 @@ in [`pi-outpost.config.example.json`](pi-outpost.config.example.json).
 | `server.port` | Port to listen on (default `3141`). `--port` and `PI_OUTPOST_PORT`/`PORT` override it |
 | `server.host` | Address to bind (default `127.0.0.1` — only change this if you have read the security note above) |
 | `server.allowedOrigins` | Extra exact Origins accepted on the WebSocket, and given CORS headers on the HTTP endpoints |
-| `server.token` | Shared secret required on the WebSocket, `/branding` and `/files/raw` (`PI_OUTPOST_TOKEN` overrides). Mandatory in practice off loopback |
+| `server.token` | Shared secret required on the WebSocket, `/branding`, `/files/raw` and `/files/docx-template` (`PI_OUTPOST_TOKEN` overrides). Mandatory in practice off loopback |
 | `openBrowser` | Whether starting the server opens the interface (default: wherever a desktop session exists) |
 | `openIn` | `"window"` (its own window, the default) or `"browser"` (a tab). `openBrowser` still decides *whether* |
 | `branding` | `title` (default `"π"`), `welcome` message, `accentColor` |
@@ -768,7 +783,7 @@ Two things to configure server-side, whatever the topology:
   pi-outpost's — add it explicitly. Even same-domain deployments need this; only
   `localhost`/`127.0.0.1` are trusted automatically
 - **CORS**: an origin listed there also receives CORS headers on the HTTP endpoints
-  (`/branding`, `/health`, `/files/raw`, the static app), so a genuinely cross-origin widget
+  (`/branding`, `/health`, `/files/raw`, `/files/docx-template`, the static app), so a genuinely cross-origin widget
   works without a proxy in front. The allowlist is the whole of it
 
 A raw iframe (`<iframe src="https://your-pi-outpost-server">`) still works too, and honours

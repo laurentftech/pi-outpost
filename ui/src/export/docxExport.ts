@@ -11,9 +11,10 @@
  * downloads a document writer. Everything heavy — the OOXML writer, KaTeX, mermaid —
  * hangs off this entry and travels in its chunk.
  */
-import { AlignmentType, Document, LevelFormat, Packer } from "docx";
+import { Packer } from "docx";
+import { docxDocument } from "@pi-outpost/shared/docx";
 import { save } from "../util/download";
-import { markdownToDocx, ORDERED_NUMBERING, type DocxBlock } from "./markdownToDocx";
+import { markdownToDocx, type DocxBlock } from "./markdownToDocx";
 import { plainTextToDocx } from "./plainTextToDocx";
 
 /**
@@ -55,62 +56,7 @@ export function isMarkdownPath(path: string): boolean {
  * itself is only ever reached by `import()`.
  */
 export async function buildDocx(text: string, path: string, options?: ExportOptions): Promise<Blob> {
-  const document = new Document({
-    styles: { default: headingOutlineLevels() },
-    numbering: { config: [orderedNumbering()] },
-    sections: [{ children: await documentChildren(text, path, options) }],
-  });
-  return Packer.toBlob(document);
-}
-
-/**
- * Heading 1–6 declared as outline levels 0–5.
- *
- * The writer's default heading styles carry a colour and a size and nothing else, so a
- * heading looked like one without being one: Word's navigation pane, its table of
- * contents and chapter numbering all read the paragraph's outline level, and a style
- * that does not declare one leaves the paragraph at body-text level. The level goes on
- * the style rather than on each paragraph, where Word itself keeps it; the writer merges
- * it with the style's own run properties.
- */
-function headingOutlineLevels() {
-  const level = (outlineLevel: number) => ({ paragraph: { outlineLevel } });
-  return {
-    heading1: level(0),
-    heading2: level(1),
-    heading3: level(2),
-    heading4: level(3),
-    heading5: level(4),
-    heading6: level(5),
-  };
-}
-
-/**
- * The definition ordered lists draw their markers from.
- *
- * Word does not number a paragraph because it looks like a list item; it numbers
- * one that points at a numbering definition. Five levels, cycling through the
- * markers Word's own default list uses, each indented one step further than the
- * last so nesting reads as nesting.
- */
-function orderedNumbering() {
-  const FORMATS = [
-    LevelFormat.DECIMAL,
-    LevelFormat.LOWER_LETTER,
-    LevelFormat.LOWER_ROMAN,
-    LevelFormat.DECIMAL,
-    LevelFormat.LOWER_LETTER,
-  ] as const;
-  return {
-    reference: ORDERED_NUMBERING,
-    levels: FORMATS.map((format, level) => ({
-      level,
-      format,
-      text: `%${level + 1}.`,
-      alignment: AlignmentType.START,
-      style: { paragraph: { indent: { left: 720 * (level + 1), hanging: 360 } } },
-    })),
-  };
+  return Packer.toBlob(docxDocument(await documentChildren(text, path, options)));
 }
 
 /**
@@ -129,4 +75,31 @@ async function documentChildren(text: string, path: string, options?: ExportOpti
 /** Builds the document and hands it to the browser. */
 export async function downloadDocx(text: string, path: string, options?: ExportOptions): Promise<void> {
   save(await buildDocx(text, path, options), docxFileName(path));
+}
+
+const DOCX_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+
+/**
+ * The same document, written into the server's configured Word template.
+ *
+ * Built here exactly as the plain export is — the diagrams and pictures are the
+ * browser's to draw and fetch — then sent to the server, which carries its body into
+ * the template (its styles, numbering, page setup, header and footer) and answers
+ * with the result. The template is the server's configuration, never the page's.
+ */
+export async function buildDocxInTemplate(text: string, path: string, options?: ExportOptions): Promise<Blob> {
+  const document = await buildDocx(text, path, options);
+  const headers: Record<string, string> = { "Content-Type": DOCX_TYPE };
+  if (options?.token) headers.Authorization = `Bearer ${options.token}`;
+  const response = await fetch(`${options?.serverUrl ?? ""}/files/docx-template`, { method: "POST", headers, body: document });
+  if (!response.ok) {
+    const answer = (await response.json().catch(() => null)) as { message?: string } | null;
+    throw new Error(answer?.message ?? `the server answered ${response.status}`);
+  }
+  return response.blob();
+}
+
+/** Builds the document in the template and hands it to the browser. */
+export async function downloadDocxInTemplate(text: string, path: string, options?: ExportOptions): Promise<void> {
+  save(await buildDocxInTemplate(text, path, options), docxFileName(path));
 }

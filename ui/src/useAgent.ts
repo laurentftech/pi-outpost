@@ -320,6 +320,8 @@ export interface AgentState {
   previewRevision: number;
   /** Writable zone in the file browser; see SessionSnapshot.writableRoot. */
   writableRoot?: string | null;
+  /** The Word template the export can write into; see SessionSnapshot.docxTemplate. */
+  docxTemplate?: string;
   /** Which providers can answer; drives the onboarding screen. Never carries a key. */
   credentials: CredentialStatus | null;
   fileSearch: FileSearch | null;
@@ -608,6 +610,7 @@ function applySnapshot(state: AgentState, message: ServerMessage & { sessionId: 
     directoryRequests: {},
     fileOperation: null,
     writableRoot: message.writableRoot,
+    docxTemplate: message.docxTemplate,
     gitAvailable: message.gitAvailable === true,
     gitUnavailable: message.gitUnavailable ?? null,
     credentials: message.credentials ?? null,

@@ -759,6 +759,11 @@ export interface SessionSnapshot {
   writableRoot?: string | null;
   /** Whether the browser root is inside a git work tree (and git is installed). */
   gitAvailable?: boolean;
+  /**
+   * The file name of the Word template the viewer's export can write into
+   * (`docx.template`). Absent when none is configured: the export offers no template.
+   */
+  docxTemplate?: string;
   /** Present only when `gitAvailable` is false: why, so the absence can be acted on. */
   gitUnavailable?: GitUnavailable;
   /** Which providers are usable, and whether the agent can answer at all. Never carries a key. */

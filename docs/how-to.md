@@ -430,7 +430,7 @@ workspace file and returns a summary, instead of spending the context on it twic
 ## Make a PowerPoint deck from a template
 
 Name the template in your prompt — `Make the steering-committee deck from brand.potx, using
-report.docx` — or load the skill with `/skill:pptx-from-template`. Either one gives the agent three
+report.docx` — or load the skill with `/skill:pptx-from-template`. Either one gives the agent four
 tools and the bundled skill tells it how to use them:
 
 1. `pptx_layouts` lists the template's layouts (a `.potx`, or a `.pptx` whose design you want).
@@ -440,10 +440,14 @@ tools and the bundled skill tells it how to use them:
    line or pie, in the theme's colours, with its data in an embedded workbook so PowerPoint's
    *Edit Data* works. The template's own sample slides are left out. Pictures can be PNG, JPEG,
    GIF or SVG.
-3. `pptx_render` has an office application draw the deck and hands the agent a picture of every
-   slide, plus a list of the text that is on a slide but not visible (overflow, clipping). The
-   agent fixes what it sees and rebuilds, before telling you the deck is done. Ask for a PDF and
-   it saves the rendering too.
+3. `pptx_update` changes an existing deck: replace a slide's content, insert a slide after one,
+   delete or move one — slides named by number or by title. Every slide it does not touch stays
+   exactly as it was, and what a deleted slide alone used (its pictures, charts, notes) leaves
+   with it. It writes to a new file unless you ask it to overwrite the original.
+4. `pptx_render` has an office application draw the deck and hands the agent a picture of every
+   slide — or only the ones it asks for, such as the slides an update changed — plus a list of the
+   text that is on a slide but not visible (overflow, clipping). The agent fixes what it sees and
+   rebuilds, before telling you the deck is done. Ask for a PDF and it saves the rendering too.
 
 Rendering needs one of these installed where the server runs:
 
@@ -456,14 +460,67 @@ Rendering needs one of these installed where the server runs:
 To force one, or to point at an executable installed elsewhere:
 
 ```json
-{ "pptx": { "renderer": "libreoffice", "libreofficePath": "C:/Tools/LibreOffice/program/soffice.com" } }
+{ "office": { "renderer": "libreoffice", "libreofficePath": "C:/Tools/LibreOffice/program/soffice.com" } }
 ```
+
+These keys were `pptx.renderer`, `pptx.libreofficePath`, `pptx.onlyofficePath` and
+`pptx.renderTimeoutMs` in 0.29: they still work, and the server names each one at startup with its
+`office` replacement. The same settings draw Word documents.
 
 LibreOffice and ONLYOFFICE substitute fonts they do not have, so their line breaks can differ a
 little from PowerPoint's; the agent is told to leave room rather than trust a render that only just
-fits. Building needs a writable workspace: in a read-only sandbox `pptx_create` is not offered.
+fits. Building needs a writable workspace: in a read-only sandbox `pptx_create` and `pptx_update`
+are not offered.
 Speaker notes are not written yet, and charts are limited to those four types — the agent says so
 rather than faking them.
+
+## Write a Word document from a template
+
+Name the template in your prompt — `Write the quarterly report from house.dotx` — or load the skill
+with `/skill:docx-from-template`. Naming a `.docx` brings the same tools, with `docx_extract` to read
+it. The bundled skill teaches the agent the loop:
+
+1. `docx_styles` reads the template (`.dotx`, or a `.docx` whose look you want): which of its styles
+   the headings, paragraphs, lists and tables will wear, whether it numbers its headings, and
+   whether it has a cover page, a header and footer, and a table of contents.
+2. `docx_create` writes Markdown into it. `#` becomes the template's first heading level, `##` the
+   second, and so on, found by style name — so a template saved by a French Word, whose heading
+   styles have the ids `Titre1`, `Titre2`…, works as one saved by an English Word. Lists, tables, pictures from the workspace, links and LaTeX equations (as native
+   Word equations) come along; the template's styles, numbering, margins, header, footer and theme
+   apply to all of it. The template's sample text is left out; its cover page and table of
+   contents are kept when asked, and Word refreshes the table of contents on opening.
+3. `docx_update` changes an existing document, one section at a time, sections named by their
+   heading (`"Scope"`, or `"Scope > Out of scope"` when a name repeats): replace a section's body,
+   insert a section after one, append, or delete. The changes are **tracked** by default, in the
+   name of pi-outpost, so whoever owns the document accepts or rejects them in Word;
+   `track_changes: false` writes them directly. Everything outside the edited sections is left
+   byte for byte as it was, and a section holding changes nobody has accepted yet is refused.
+4. `docx_render` has an office application draw the document and returns the pages as pictures,
+   the chapters as the PDF's bookmarks — the headings as Word sees them, with their numbers when
+   the template numbers them — and any body paragraph that reached no page.
+
+Rendering uses the same applications and settings as decks, with **Word** first on Windows: it
+opens a read-only copy of the document, invisibly, and never closes a document you have open in
+it. Creating and updating need a writable workspace: in a read-only sandbox `docx_create` and
+`docx_update` are not offered.
+
+Footnotes, comments, text boxes and section changes (landscape pages, columns) are not written, and
+a mermaid diagram is written as its source; the agent says what is missing rather than faking it.
+
+### Export from the viewer into your template
+
+Point `docx.template` at the template everyone should use:
+
+```json
+{ "docx": { "template": "templates/house.dotx" } }
+```
+
+The path is relative to the configuration file. The viewer's Word export then offers a second
+button, **⤓ word · template**, that writes the open document into it. The document is built in
+the browser as before, diagrams included, and the server carries it into the template. The plain
+export stays beside it: a template that is missing or cannot be used is reported on its own
+button, and never blocks the other. Each browser may export into the template 30 times a minute; past that,
+the button says when to try again.
 
 ## Lock down a shared deployment
 

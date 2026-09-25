@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
-import { buildDocx, docxFileName, isMarkdownPath } from "./docxExport";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { buildDocx, buildDocxInTemplate, docxFileName, isMarkdownPath } from "./docxExport";
 import { openDocx, partText } from "./testSupport";
 
 describe("docxFileName", () => {
@@ -75,5 +75,46 @@ describe("buildDocx", () => {
 
     const rels = await partText(zip, "_rels/.rels");
     expect(rels).toContain("word/document.xml");
+  });
+});
+
+describe("buildDocxInTemplate", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("builds the document here and sends it to the server's template route, with the token", async () => {
+    const answer = new Blob(["in the template"]);
+    const fetchMock = vi.fn(async () => ({ ok: true, status: 200, blob: async () => answer }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await buildDocxInTemplate("# Title\n\nBody.", "notes.md", { serverUrl: "http://127.0.0.1:4322", token: "t0k" });
+
+    expect(await result.text()).toBe("in the template");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe("http://127.0.0.1:4322/files/docx-template");
+    expect(init.method).toBe("POST");
+    expect(init.headers).toEqual({ "Content-Type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document", Authorization: "Bearer t0k" });
+    // The body is the plain export: the same document the button without a template gives.
+    const sent = await openDocx(init.body as Blob);
+    expect(await partText(sent, "word/document.xml")).toContain("Title");
+  });
+
+  it("same-origin and without a token when the page has none", async () => {
+    const fetchMock = vi.fn(async () => ({ ok: true, status: 200, blob: async () => new Blob(["x"]) }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await buildDocxInTemplate("text", "notes.md");
+
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe("/files/docx-template");
+    expect(init.headers).not.toHaveProperty("Authorization");
+  });
+
+  it("fails with the server's reason, so the button can show it", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => ({ ok: false, status: 422, json: async () => ({ error: "template", message: "The Word template house.dotx cannot be read." }) })));
+    await expect(buildDocxInTemplate("text", "notes.md")).rejects.toThrow("The Word template house.dotx cannot be read.");
+
+    vi.stubGlobal("fetch", vi.fn(async () => ({ ok: false, status: 502, json: async () => JSON.parse("<html>bad gateway</html>") })));
+    await expect(buildDocxInTemplate("text", "notes.md")).rejects.toThrow("the server answered 502");
   });
 });

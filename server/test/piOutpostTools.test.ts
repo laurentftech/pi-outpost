@@ -35,13 +35,13 @@ describe("parseToolsSettings", () => {
   });
 
   test("carries the rendering settings the parent passes, and refuses malformed ones", () => {
-    const withRender = { ...VALID, pptxRender: { renderer: "libreoffice", timeoutMs: 5000, libreofficePath: "/opt/lo/soffice" } };
+    const withRender = { ...VALID, officeRender: { renderer: "libreoffice", timeoutMs: 5000, libreofficePath: "/opt/lo/soffice" } };
     assert.deepEqual(parseToolsSettings(JSON.stringify(withRender)), withRender);
-    assert.throws(() => parseToolsSettings(JSON.stringify({ ...VALID, pptxRender: { renderer: "keynote", timeoutMs: 5000 } })), /pptxRender\.renderer/);
-    assert.throws(() => parseToolsSettings(JSON.stringify({ ...VALID, pptxRender: { renderer: "auto", timeoutMs: 0 } })), /pptxRender\.timeoutMs/);
+    assert.throws(() => parseToolsSettings(JSON.stringify({ ...VALID, officeRender: { renderer: "keynote", timeoutMs: 5000 } })), /officeRender\.renderer/);
+    assert.throws(() => parseToolsSettings(JSON.stringify({ ...VALID, officeRender: { renderer: "auto", timeoutMs: 0 } })), /officeRender\.timeoutMs/);
     assert.throws(
-      () => parseToolsSettings(JSON.stringify({ ...VALID, pptxRender: { renderer: "auto", timeoutMs: 5000, onlyofficePath: 3 } })),
-      /pptxRender\.onlyofficePath/,
+      () => parseToolsSettings(JSON.stringify({ ...VALID, officeRender: { renderer: "auto", timeoutMs: 5000, onlyofficePath: 3 } })),
+      /officeRender\.onlyofficePath/,
     );
   });
 
@@ -152,7 +152,7 @@ describe("createPiOutpostTools", () => {
 
   test("returns the tools the agent needs, in the documented order", async () => {
     const tools = await createPiOutpostTools({ cwd: root, maxBytes: VALID.maxBytes });
-    assert.equal(tools.length, 13);
+    assert.equal(tools.length, 18);
     const names = tools.map((t) => t.name);
     assert.deepEqual(names, [
       "pdf_extract",
@@ -161,7 +161,12 @@ describe("createPiOutpostTools", () => {
       "pptx_extract",
       "pptx_layouts",
       "pptx_create",
+      "pptx_update",
       "pptx_render",
+      "docx_styles",
+      "docx_create",
+      "docx_update",
+      "docx_render",
       "write_structure_figure",
       "write_structure_table",
       "present_structure",
@@ -225,7 +230,7 @@ describe("default export (extension entry)", () => {
 
       await piOutpostExtension(pi);
 
-      assert.equal(registered.length, 13);
+      assert.equal(registered.length, 18);
       assert.deepEqual(
         registered.map((t) => t.name),
         [
@@ -235,7 +240,12 @@ describe("default export (extension entry)", () => {
           "pptx_extract",
           "pptx_layouts",
           "pptx_create",
+          "pptx_update",
           "pptx_render",
+          "docx_styles",
+          "docx_create",
+          "docx_update",
+          "docx_render",
           "write_structure_figure",
           "write_structure_table",
           "present_structure",

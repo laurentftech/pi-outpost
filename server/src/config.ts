@@ -106,6 +106,12 @@ export interface DocxConfig {
    * text previews, and says nothing useful about a document format.
    */
   maxBytes: number;
+  /**
+   * The Word template the viewer's export can write documents into (`.dotx` or `.docx`),
+   * resolved against the configuration file. Absent: the export offers no template.
+   * A file that is not there is reported when an export uses it, not at startup.
+   */
+  template?: string;
 }
 
 /** Default Word ceiling — 25 MiB, matching the PDF one. */
@@ -133,9 +139,21 @@ export interface PptxConfig {
    * `pptx_create` opens and on a deck `pptx_render` draws.
    */
   maxBytes: number;
+}
+
+/**
+ * The office applications `pptx_render` and `docx_render` draw with.
+ *
+ * Named `office` because they are one set of programs for both kinds of file. They
+ * were introduced under `pptx` in 0.29, when presentations were the only thing
+ * rendered; those keys are still read, with a warning naming their replacement.
+ */
+export interface OfficeConfig {
   /**
-   * Which office application `pptx_render` draws slides with. `auto` (the default)
-   * tries PowerPoint on Windows, then LibreOffice, then ONLYOFFICE Document Builder.
+   * `auto` (the default) tries, on Windows, the Office application of the file's own
+   * kind — Word for documents, PowerPoint for decks — then LibreOffice, then ONLYOFFICE
+   * Document Builder. `word` and `powerpoint` apply to their own kind of file and
+   * fall back as `auto` does for the other.
    */
   renderer: RendererChoice;
   /** An explicit LibreOffice `soffice` executable; conventional locations are searched otherwise. */
@@ -149,9 +167,9 @@ export interface PptxConfig {
 /** Default presentation ceiling — 25 MiB, matching the other three. */
 export const DEFAULT_PPTX_MAX_BYTES = 26_214_400;
 
-/** The office applications `pptx_render` can draw slides with, and `auto`. */
-export const PPTX_RENDERERS = ["auto", "powerpoint", "libreoffice", "onlyoffice"] as const;
-export type RendererChoice = (typeof PPTX_RENDERERS)[number];
+/** The office applications the render tools can draw with, and `auto`. */
+export const OFFICE_RENDERERS = ["auto", "word", "powerpoint", "libreoffice", "onlyoffice"] as const;
+export type RendererChoice = (typeof OFFICE_RENDERERS)[number];
 export const DEFAULT_RENDER_TIMEOUT_MS = 120_000;
 
 export interface FilesConfig {
@@ -544,6 +562,8 @@ export interface AppConfig {
   xlsx: XlsxConfig;
   /** PowerPoint handling (size ceiling for the extraction tool). */
   pptx: PptxConfig;
+  /** The office applications documents and decks are rendered with. */
+  office: OfficeConfig;
   /** Structured-exchange documents opened as files (size ceiling for the viewer). */
   structuredExchange: StructuredExchangeConfig;
   /** Integrated interactive web terminal (PTY) configuration. */
@@ -836,7 +856,8 @@ export function loadConfig(
     pdf: { maxBytes: DEFAULT_PDF_MAX_BYTES },
     docx: { maxBytes: DEFAULT_DOCX_MAX_BYTES },
     xlsx: { maxBytes: DEFAULT_XLSX_MAX_BYTES },
-    pptx: { maxBytes: DEFAULT_PPTX_MAX_BYTES, renderer: "auto", renderTimeoutMs: DEFAULT_RENDER_TIMEOUT_MS },
+    pptx: { maxBytes: DEFAULT_PPTX_MAX_BYTES },
+    office: { renderer: "auto", renderTimeoutMs: DEFAULT_RENDER_TIMEOUT_MS },
     structuredExchange: { maxBytes: DEFAULT_STRUCTURED_EXCHANGE_MAX_BYTES },
     terminal: { enabled: false },
   };
@@ -849,6 +870,8 @@ export function loadConfig(
   }
   const baseDir = path.dirname(path.resolve(filePath));
   const resolve = (p: string) => path.resolve(baseDir, p);
+  /** Settings still read under an old name, announced once the file has loaded. */
+  const deprecations: string[] = [];
 
   const cwd = optionalString(raw, "cwd");
   if (cwd) config.cwd = resolve(cwd);
@@ -1111,6 +1134,10 @@ export function loadConfig(
       }
       config.docx.maxBytes = docx.maxBytes;
     }
+    if (docx.template !== undefined) {
+      if (typeof docx.template !== "string" || docx.template.trim() === "") fail(`"docx.template" must be a non-empty path`);
+      config.docx.template = resolve(docx.template);
+    }
   }
 
   if (raw.xlsx !== undefined) {
@@ -1131,22 +1158,35 @@ export function loadConfig(
       }
       config.pptx.maxBytes = pptx.maxBytes;
     }
-    if (pptx.renderer !== undefined) {
-      if (typeof pptx.renderer !== "string" || !(PPTX_RENDERERS as readonly string[]).includes(pptx.renderer)) {
-        fail(`"pptx.renderer" must be one of ${PPTX_RENDERERS.map((name) => `"${name}"`).join(", ")}`);
-      }
-      config.pptx.renderer = pptx.renderer as RendererChoice;
+  }
+
+  // Rendering: `office`, with the keys 0.29 introduced under `pptx` still read.
+  const office = raw.office === undefined ? {} : asObject(raw.office, "office");
+  const legacy = raw.pptx === undefined ? {} : asObject(raw.pptx, "pptx");
+  for (const key of ["renderer", "libreofficePath", "onlyofficePath", "renderTimeoutMs"] as const) {
+    const fromOffice = office[key];
+    const fromLegacy = legacy[key];
+    if (fromLegacy !== undefined) {
+      deprecations.push(
+        fromOffice !== undefined
+          ? `"pptx.${key}" is ignored: "office.${key}" is set too — remove the pptx one`
+          : `"pptx.${key}" is deprecated; rename it "office.${key}"`,
+      );
     }
-    for (const key of ["libreofficePath", "onlyofficePath"] as const) {
-      if (pptx[key] === undefined) continue;
-      if (typeof pptx[key] !== "string" || pptx[key].trim() === "") fail(`"pptx.${key}" must be a non-empty path`);
-      config.pptx[key] = resolve(pptx[key] as string);
-    }
-    if (pptx.renderTimeoutMs !== undefined) {
-      if (typeof pptx.renderTimeoutMs !== "number" || !Number.isInteger(pptx.renderTimeoutMs) || pptx.renderTimeoutMs <= 0) {
-        fail(`"pptx.renderTimeoutMs" must be a positive integer (ms)`);
+    const value = fromOffice !== undefined ? fromOffice : fromLegacy;
+    const label = fromOffice !== undefined ? `office.${key}` : `pptx.${key}`;
+    if (value === undefined) continue;
+    if (key === "renderer") {
+      if (typeof value !== "string" || !(OFFICE_RENDERERS as readonly string[]).includes(value)) {
+        fail(`"${label}" must be one of ${OFFICE_RENDERERS.map((name) => `"${name}"`).join(", ")}`);
       }
-      config.pptx.renderTimeoutMs = pptx.renderTimeoutMs;
+      config.office.renderer = value as RendererChoice;
+    } else if (key === "renderTimeoutMs") {
+      if (typeof value !== "number" || !Number.isInteger(value) || value <= 0) fail(`"${label}" must be a positive integer (ms)`);
+      config.office.renderTimeoutMs = value as number;
+    } else {
+      if (typeof value !== "string" || value.trim() === "") fail(`"${label}" must be a non-empty path`);
+      config.office[key] = resolve(value as string);
     }
   }
 
@@ -1221,6 +1261,7 @@ export function loadConfig(
     if (!options.quiet) console.log(line);
   };
   announce(`[config] loaded ${filePath}`);
+  for (const line of deprecations) announce(`[config] ${line}`);
   // The runtime decides what actually executes on this host, so say it every start —
   // with the command redacted, since an argument vector can carry an API key.
   announce(

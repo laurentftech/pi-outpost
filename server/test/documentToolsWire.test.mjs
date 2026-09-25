@@ -88,14 +88,18 @@ test("a document extractor is published when a document is named, and not before
       assert.ok(!named.includes(tool), `${tool} stays withheld: no document of its kind was named`);
     }
 
+    // A Word document may also be updated or written from: the Word tools come with it.
     // Registered last, so a caching provider keeps everything ahead of them.
-    assert.equal(named.at(-1), "docx_extract", "the extractors sit at the end of the tool list");
+    const onDemand = ["docx_extract", "docx_styles", "docx_create", "docx_update", "docx_render"];
+    assert.deepEqual(named.slice(-onDemand.length), onDemand, "the tools published on demand sit at the end of the tool list");
 
     // The turn named a document and never called the tool, so the guess is paid back:
     // the next request carries none of them again.
     client.send({ type: "prompt", text: "Thanks, nothing else." });
     const after = await nthRequest(log, 2);
-    assert.ok(!after.includes("docx_extract"), "a tool published and never called is withdrawn at the end of the turn");
+    for (const tool of ["docx_extract", "docx_styles", "docx_create", "docx_update", "docx_render"]) {
+      assert.ok(!after.includes(tool), `${tool}, published and never called, is withdrawn at the end of the turn`);
+    }
 
     // Named *and used*: that one stays, because extraction is rarely a single call and
     // an agent has no way to ask for a tool back.

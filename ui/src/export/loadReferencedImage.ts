@@ -24,23 +24,10 @@ import {
   rasterise,
   svgDimensions,
   withExplicitSize,
-  type DiagramImage,
 } from "./mermaidToImage";
+import type { RasterType, ReferencedImage } from "@pi-outpost/shared/docx";
 
-/** The raster formats the writer can embed as themselves. */
-export type RasterType = "png" | "jpg" | "gif" | "bmp";
-
-/**
- * A loaded reference, ready to be drawn.
- *
- * A vector arrives as a `DiagramImage` — the very type a rendered diagram
- * produces — so the two go into the package through one embedding rule rather
- * than two. A raster keeps its own bytes and its own format: it is already the
- * picture, and redrawing it would only lose quality.
- */
-export type ReferencedImage =
-  | { kind: "vector"; image: DiagramImage }
-  | { kind: "raster"; type: RasterType; bytes: Uint8Array; width: number; height: number };
+export type { RasterType, ReferencedImage };
 
 /**
  * Whether this reference is a workspace file the export may load.

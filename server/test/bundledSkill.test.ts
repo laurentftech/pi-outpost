@@ -32,7 +32,7 @@ const { loadSkills } = (await import(
 
 /** What the server enumerates: one path per skill, not the directory holding them. */
 function bundledSkillPaths(): string[] {
-  return ["pptx-from-template", "structured-exchange", "structured-exchange-project"]
+  return ["docx-from-template", "pptx-from-template", "structured-exchange", "structured-exchange-project"]
     .map((name) => path.join(SKILLS, name))
     .filter((dir) => existsSync(path.join(dir, "SKILL.md")));
 }
@@ -42,6 +42,7 @@ const load = (skillPaths: string[]) => loadSkills({ cwd: REPO, skillPaths, inclu
 describe("the skill that ships with the tool", () => {
   test("is enumerated at all", () => {
     assert.deepEqual(bundledSkillPaths(), [
+      path.join(SKILLS, "docx-from-template"),
       path.join(SKILLS, "pptx-from-template"),
       path.join(SKILLS, "structured-exchange"),
       path.join(SKILLS, "structured-exchange-project"),
@@ -58,7 +59,7 @@ describe("the skill that ships with the tool", () => {
     const { skills, diagnostics } = load(bundledSkillPaths());
 
     // BothBundledSkillsLoad — and the presentation skill beside them.
-    assert.deepEqual(skills.map((skill) => skill.name), ["pptx-from-template", "structured-exchange", "structured-exchange-project"]);
+    assert.deepEqual(skills.map((skill) => skill.name), ["docx-from-template", "pptx-from-template", "structured-exchange", "structured-exchange-project"]);
     assert.deepEqual(diagnostics, [], "a skill that loads with warnings is a skill half-loaded");
   });
 
@@ -81,9 +82,21 @@ describe("the skill that ships with the tool", () => {
     assert.match(skill.description ?? "", /template \(\.potx or \.pptx\)/);
     assert.match(skill.description ?? "", /PowerPoint \(Windows\), LibreOffice or ONLYOFFICE/);
     const body = readFileSync(skill.filePath, "utf8");
-    for (const tool of ["pptx_layouts", "pptx_create", "pptx_render"]) assert.match(body, new RegExp(`\`${tool}\``), tool);
+    for (const tool of ["pptx_layouts", "pptx_create", "pptx_update", "pptx_render"]) assert.match(body, new RegExp(`\`${tool}\``), tool);
     assert.match(body, /Never declare a deck finished without having rendered it\./);
     assert.match(body, /overwrite: true/, "the rebuild step names how to replace the deck");
+  });
+
+  test("the Word skill teaches writing, updating as tracked changes, and rendering", () => {
+    const skill = load(bundledSkillPaths()).skills.find((each) => each.name === "docx-from-template");
+    assert.ok(skill, "the Word skill loads");
+    assert.match(skill.description ?? "", /template/);
+    assert.match(skill.description ?? "", /tracked changes/);
+    assert.match(skill.description ?? "", /\.dotx/);
+    const body = readFileSync(skill.filePath, "utf8");
+    for (const tool of ["docx_styles", "docx_create", "docx_update", "docx_render", "docx_extract"]) assert.match(body, new RegExp(`\`${tool}\``), tool);
+    assert.match(body, /Tracked changes are the default/);
+    assert.match(body, /without a render, the document was not checked/);
   });
 
   test("the setup skill is selected for the project's registry, profiles and rules", () => {

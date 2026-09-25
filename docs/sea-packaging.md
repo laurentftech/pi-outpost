@@ -216,10 +216,12 @@ whatever the executable was built with, and an extension cannot pin its own.
 
 ## Slide pictures and SVG fallbacks need the canvas package
 
-`pptx_render` draws slide pictures, and `pptx_create` draws the PNG fallback of an SVG, with
-`@napi-rs/canvas` — a native, optional package the executable does not contain. In the
-executable, `pptx_render` still converts the deck with PowerPoint, LibreOffice or ONLYOFFICE and
-still reports text that runs off a slide, but returns no pictures and says so; an SVG picture
+`pptx_render` and `docx_render` draw slide and page pictures, and `pptx_create` and
+`pptx_update` draw the PNG fallback of an SVG, with `@napi-rs/canvas` — a native, optional package
+the executable does not contain. In the executable, `pptx_render` still converts the deck with
+PowerPoint, LibreOffice or ONLYOFFICE and still reports text that runs off a slide, and
+`docx_render` still reports the page count, the chapters and text that reached no page, but
+neither returns pictures, and both say so; an SVG picture
 gets an empty fallback, so PowerPoint 2016 and later show it and older readers show nothing.
 The npm package has neither limit.
 
@@ -234,8 +236,9 @@ This degrades rather than breaks. `present_structure` and the rest of the tools 
 exactly as they do elsewhere; what is missing is the instructions that tell the agent
 what a valid structured-exchange document looks like, so it is more likely to send
 one that gets refused and to need a second attempt.
-Likewise without `pptx-from-template`: the presentation tools still appear once a template is
-named, but nothing teaches the agent to render its deck and fix what the render shows.
+Likewise without `pptx-from-template` and `docx-from-template`: the presentation and Word tools
+still appear once a template is named, but nothing teaches the agent to render its deck or
+document and fix what the render shows.
 
 To give the executable its skills, put them somewhere on disk and name that directory
 in the config:

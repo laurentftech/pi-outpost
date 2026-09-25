@@ -8,6 +8,7 @@
  */
 import { createHash, timingSafeEqual } from "node:crypto";
 import fs from "node:fs/promises";
+import rateLimit from "@fastify/rate-limit";
 import fastifyStatic from "@fastify/static";
 import websocket from "@fastify/websocket";
 import Fastify, { type FastifyReply, type FastifyRequest } from "fastify";
@@ -156,7 +157,21 @@ import {
 import { createDocxExtractToolDefinition } from "./docxTool.ts";
 import { createXlsxExtractToolDefinition } from "./xlsxTool.ts";
 import { createPptxExtractToolDefinition } from "./pptxTool.ts";
-import { createPptxCreateToolDefinition, createPptxLayoutsToolDefinition, createPptxRenderToolDefinition } from "./presentationTools.ts";
+import {
+  createPptxCreateToolDefinition,
+  createPptxLayoutsToolDefinition,
+  createPptxRenderToolDefinition,
+  createPptxUpdateToolDefinition,
+} from "./presentationTools.ts";
+import { createFromContent } from "./docxBuild.ts";
+import { contentFromDocx } from "./docxGraft.ts";
+import { readWordPackage, WordTemplateError } from "./docxTemplate.ts";
+import {
+  createDocxCreateToolDefinition,
+  createDocxRenderToolDefinition,
+  createDocxStylesToolDefinition,
+  createDocxUpdateToolDefinition,
+} from "./wordTools.ts";
 import type { RenderSettings } from "./presentationRender.ts";
 import { createStructuredExchangeToolDefinition } from "./structuredExchangeTool.ts";
 import { createStructuredExchangeProjectModelToolDefinition } from "./structuredExchangeProjectModelTool.ts";
@@ -478,13 +493,13 @@ const workPlanTool = createWorkPlanToolDefinition();
  */
 const workPlanExtendedTool = createWorkPlanExtendedToolDefinition();
 
-/** How `pptx_render` finds and runs an office application, from the `pptx` settings. */
-function pptxRenderSettings(): RenderSettings {
+/** How the render tools find and run an office application, from the `office` settings. */
+function officeRenderSettings(): RenderSettings {
   return {
-    renderer: config.pptx.renderer,
-    timeoutMs: config.pptx.renderTimeoutMs,
-    ...(config.pptx.libreofficePath ? { libreofficePath: config.pptx.libreofficePath } : {}),
-    ...(config.pptx.onlyofficePath ? { onlyofficePath: config.pptx.onlyofficePath } : {}),
+    renderer: config.office.renderer,
+    timeoutMs: config.office.renderTimeoutMs,
+    ...(config.office.libreofficePath ? { libreofficePath: config.office.libreofficePath } : {}),
+    ...(config.office.onlyofficePath ? { onlyofficePath: config.office.onlyofficePath } : {}),
   };
 }
 
@@ -509,7 +524,7 @@ function workspaceOptions(settings: WorkspaceSettings): Omit<WorkspaceOptions, "
       xlsxMaxBytes: config.xlsx.maxBytes,
       pptxMaxBytes: config.pptx.maxBytes,
       structuredExchangeMaxBytes: config.structuredExchange.maxBytes,
-      pptxRender: pptxRenderSettings(),
+      officeRender: officeRenderSettings(),
     },
     watchFiles: config.files.watch,
     // `present_structure` has no path argument to confine, so it is unconfined on both
@@ -671,6 +686,9 @@ const app = Fastify({ logger: false });
 await app.register(websocket, {
   options: { maxPayload: Math.max(MAX_UPLOAD_BASE64_LENGTH, MAX_IMAGES * MAX_IMAGE_BYTES) + 65_536 },
 });
+// Rate limits are opt-in per route (`config.rateLimit`), for the handlers whose work a
+// client decides: the rest of the API is driven by the page at the page's own pace.
+await app.register(rateLimit, { global: false });
 
 // A hook rather than a call in each handler: a per-route list is one a future
 // route joins by being remembered, and this one cannot be half-applied.
@@ -790,6 +808,52 @@ function hostAllowed(hostHeader: string | undefined): boolean {
     }
   });
 }
+
+// The viewer's Word export, written into the configured template. The browser builds
+// the document — its diagrams and pictures are the browser's to draw and fetch — and
+// sends it here; the server carries its body into `docx.template`, whose path comes
+// from the configuration only, never from the request. Authenticated like the API it
+// sits beside; bounded by the Word ceiling.
+const DOCX_CONTENT_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+app.addContentTypeParser(DOCX_CONTENT_TYPE, { parseAs: "buffer", bodyLimit: config.docx.maxBytes }, (_req, body, done) => done(null, body));
+// Each request unzips a template and a document and rewrites their XML: a person
+// exports a few documents a minute, a loop would keep the server busy.
+const DOCX_TEMPLATE_EXPORTS_PER_MINUTE = 30;
+app.post("/files/docx-template", { config: { rateLimit: { max: DOCX_TEMPLATE_EXPORTS_PER_MINUTE, timeWindow: "1 minute" } } }, async (req, reply) => {
+  if (!hostAllowed(req.headers.host)) {
+    console.warn(`[server] rejected /files/docx-template request with foreign host ${req.headers.host} from ${req.ip}`);
+    return reply.code(403).send({ error: "forbidden" });
+  }
+  const auth = req.headers.authorization;
+  if (!tokenValid(auth?.startsWith("Bearer ") ? auth.slice("Bearer ".length) : undefined)) {
+    console.warn(`[server] rejected /files/docx-template request with bad or missing token from ${req.ip}`);
+    return reply.code(401).send({ error: "unauthorized" });
+  }
+  const templatePath = config.docx.template;
+  if (templatePath === undefined) return reply.code(404).send({ error: "no-template", message: "No Word template is configured (docx.template)." });
+  if (!Buffer.isBuffer(req.body)) return reply.code(415).send({ error: "unsupported", message: "Send the document as a .docx body." });
+  let templateBytes: Buffer;
+  try {
+    const stat = await fs.stat(templatePath);
+    if (stat.size > config.docx.maxBytes) return reply.code(422).send({ error: "template", message: `The Word template ${path.basename(templatePath)} is larger than the Word ceiling.` });
+    templateBytes = await fs.readFile(templatePath);
+  } catch {
+    return reply.code(422).send({ error: "template", message: `The Word template ${path.basename(templatePath)} cannot be read.` });
+  }
+  try {
+    const created = createFromContent(readWordPackage(templateBytes), contentFromDocx(req.body), []);
+    return reply
+      .header("Content-Type", DOCX_CONTENT_TYPE)
+      .header("Content-Disposition", "attachment")
+      .header("Cache-Control", "no-store")
+      .send(created.bytes);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    const isTemplate = error instanceof WordTemplateError;
+    console.warn(`[server] Word template export failed: ${message}`);
+    return reply.code(422).send({ error: isTemplate ? "template" : "document", message: isTemplate ? `The Word template ${path.basename(templatePath)}: ${message}` : `The document could not be written into the template: ${message}` });
+  }
+});
 
 // Raw bytes for workspace files referenced in assistant messages (inline
 // images). `<img>` cannot send headers, so the token rides the query string —
@@ -1154,21 +1218,58 @@ const makeCreateRuntime =
                 allowedRoots: [await fs.realpath(cwd)],
                 maxBytes: config.pptx.maxBytes,
                 writableRoot: await fs.realpath(cwd),
-                render: pptxRenderSettings(),
+                render: officeRenderSettings(),
               }),
               createPptxCreateToolDefinition({
                 cwd,
                 allowedRoots: [await fs.realpath(cwd)],
                 maxBytes: config.pptx.maxBytes,
                 writableRoot: await fs.realpath(cwd),
-                render: pptxRenderSettings(),
+                render: officeRenderSettings(),
+              }),
+              createPptxUpdateToolDefinition({
+                cwd,
+                allowedRoots: [await fs.realpath(cwd)],
+                maxBytes: config.pptx.maxBytes,
+                writableRoot: await fs.realpath(cwd),
+                render: officeRenderSettings(),
               }),
               createPptxRenderToolDefinition({
                 cwd,
                 allowedRoots: [await fs.realpath(cwd)],
                 maxBytes: config.pptx.maxBytes,
                 writableRoot: await fs.realpath(cwd),
-                render: pptxRenderSettings(),
+                render: officeRenderSettings(),
+              }),
+              // Writing Word documents in a template's styles, updating them, and drawing
+              // them — published when a Word document or template enters the conversation.
+              createDocxStylesToolDefinition({
+                cwd,
+                allowedRoots: [await fs.realpath(cwd)],
+                maxBytes: config.docx.maxBytes,
+                writableRoot: await fs.realpath(cwd),
+                render: officeRenderSettings(),
+              }),
+              createDocxCreateToolDefinition({
+                cwd,
+                allowedRoots: [await fs.realpath(cwd)],
+                maxBytes: config.docx.maxBytes,
+                writableRoot: await fs.realpath(cwd),
+                render: officeRenderSettings(),
+              }),
+              createDocxUpdateToolDefinition({
+                cwd,
+                allowedRoots: [await fs.realpath(cwd)],
+                maxBytes: config.docx.maxBytes,
+                writableRoot: await fs.realpath(cwd),
+                render: officeRenderSettings(),
+              }),
+              createDocxRenderToolDefinition({
+                cwd,
+                allowedRoots: [await fs.realpath(cwd)],
+                maxBytes: config.docx.maxBytes,
+                writableRoot: await fs.realpath(cwd),
+                render: officeRenderSettings(),
               }),
               // Published on demand too, when the conversation touches the project's model.
               createStructuredExchangeProjectModelToolDefinition({ projectRoot: cwd }),
@@ -1231,7 +1332,7 @@ async function buildRuntimeFor(target: Workspace): Promise<AgentRuntime> {
             pptx: config.pptx.maxBytes,
             structuredExchange: config.structuredExchange.maxBytes,
           },
-          pptxRender: pptxRenderSettings(),
+          officeRender: officeRenderSettings(),
         } satisfies PiOutpostToolsSettings),
       },
     });
@@ -1941,6 +2042,7 @@ function snapshot(workspace: Workspace): SessionSnapshot {
     writableRoot: workspace.writableRoot,
     // Not merely "a repository was found on disk": one git will actually read
     gitAvailable: workspace.repos.length > 0 && workspace.gitUnavailable === undefined,
+    ...(config.docx.template !== undefined ? { docxTemplate: path.basename(config.docx.template) } : {}),
     ...(workspace.gitUnavailable ? { gitUnavailable: workspace.gitUnavailable } : {}),
     credentials: credentialStatus(workspace),
     // Omitted, not emptied, when the runtime cannot report an inventory: "none
