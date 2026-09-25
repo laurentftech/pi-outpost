@@ -71,6 +71,8 @@ interface TreeProps {
   /** Create one directory at this path. */
   onCreateDirectory?: (path: string) => void;
   onOpenNative?: (path: string) => void;
+  /** Show the path, selected, in the file manager of the machine the server runs on. */
+  onRevealNative?: (path: string) => void;
   onRenameFile?: (path: string, name: string) => void;
   onDeleteFile?: (path: string) => void;
   onMoveFile?: (path: string, destinationDirectory: string) => void;
@@ -325,6 +327,18 @@ function TreeNode({
               </span>
             )}
           </button>
+          {props.onRevealNative && (
+            <button
+              type="button"
+              disabled={lifecyclePending}
+              onClick={() => props.onRevealNative?.(fullPath)}
+              title="Show in the file manager"
+              aria-label={`Show ${entry.name} in the file manager`}
+              className={ROW_ACTION_CLASS}
+            >
+              ⌂
+            </button>
+          )}
           {props.creation && !readOnly && (
             <button
               type="button"
@@ -391,6 +405,18 @@ function TreeNode({
           className={ROW_ACTION_CLASS}
         >
           ↗
+        </button>
+      )}
+      {props.onRevealNative && (
+        <button
+          type="button"
+          disabled={lifecyclePending}
+          onClick={() => props.onRevealNative?.(fullPath)}
+          title="Show in the file manager"
+          aria-label={`Show ${entry.name} in the file manager`}
+          className={ROW_ACTION_CLASS}
+        >
+          ⌂
         </button>
       )}
       {mutable && props.onRenameFile && (

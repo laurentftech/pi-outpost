@@ -310,6 +310,32 @@ describe("FileTree", () => {
       expect(screen.queryByRole("button", { name: "Delete readme.md" })).not.toBeInTheDocument();
     });
 
+    it("TheTreeOffersRevealOnFilesAndFolders: a file row and a folder row each ask to be shown in the file manager", () => {
+      const onRevealNative = vi.fn();
+      setup({ tree: { "": [dir("docs"), file("readme.md")] }, onRevealNative, writableRoot: null });
+
+      fireEvent.click(screen.getByRole("button", { name: "Show readme.md in the file manager" }));
+      fireEvent.click(screen.getByRole("button", { name: "Show docs in the file manager" }));
+
+      expect(onRevealNative.mock.calls).toEqual([["readme.md"], ["docs"]]);
+      // Showing is not writing: a read-only tree offers it all the same, and nothing expanded.
+      expect(screen.getByRole("button", { name: "Show docs in the file manager" })).toHaveAttribute("title", "Show in the file manager");
+    });
+
+    it("offers no reveal control when the page cannot ask for one", () => {
+      setup({ tree: { "": [dir("docs"), file("readme.md")] } });
+      expect(screen.queryByRole("button", { name: /in the file manager$/ })).not.toBeInTheDocument();
+    });
+
+    it("shows why a reveal failed, on the tree", () => {
+      setup({
+        tree: { "": [file("readme.md")] },
+        onRevealNative: vi.fn(),
+        fileOperation: { status: "error", operation: "reveal_native", path: "readme.md", requestId: "fileop:1", message: 'Cannot show "readme.md" in the file manager: xdg-open exited with code 3' },
+      });
+      expect(screen.getByRole("alert")).toHaveTextContent('Cannot show "readme.md" in the file manager: xdg-open exited with code 3');
+    });
+
     it("renames a writable file in place", () => {
       const actions = handlers();
       setup(actions);
