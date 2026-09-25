@@ -165,6 +165,7 @@ describe("createSandboxedTools", () => {
         "docx_create",
         "docx_extract",
         "docx_render",
+        "docx_restyle",
         "docx_styles",
         "docx_update",
         "edit",

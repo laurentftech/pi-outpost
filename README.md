@@ -221,7 +221,9 @@ one needs, the command that proves it works, and the caution that goes with it.
   the content will wear, `docx_create` writes Markdown into the template — its heading styles and
   numbering, lists, tables, pictures, native equations, cover page and table of contents on
   request — `docx_update` changes an existing document section by section, **as tracked
-  changes** by default, leaving everything else byte for byte as it was, and `docx_render` has
+  changes** by default, leaving everything else byte for byte as it was, `docx_restyle` brings an
+  existing document into a template — its styles, theme and heading numbering, with the fonts,
+  sizes and colours set by hand removed as tracked changes — and `docx_render` has
   **Word (on Windows)**, LibreOffice or ONLYOFFICE draw it, returning the pages, the chapters as
   Word sees them and any text that reached no page. The bundled `docx-from-template` skill teaches
   the loop. See [Write a Word document from a template](docs/how-to.md#write-a-word-document-from-a-template)

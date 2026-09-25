@@ -25,6 +25,7 @@ import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 import type { PictureSource, ReferencedImage } from "@pi-outpost/shared/docx";
 import { createDocument, type KeepPart } from "./docxBuild.ts";
 import { describeWordTemplate, formatTemplateDescription, readWordPackage, WordTemplateError } from "./docxTemplate.ts";
+import { restyleDocument, type RestyleInclude } from "./docxRestyle.ts";
 import { updateDocument, type DocxEdit } from "./docxUpdate.ts";
 import { assertWritableDestination } from "./extractionOutput.ts";
 import { ImageError, readImageInfo } from "./imageInfo.ts";
@@ -338,6 +339,73 @@ export function createDocxUpdateToolDefinition(options: WordToolOptions): ToolDe
         ...updated.warnings.map((warning) => `- Note: ${warning}`),
         "",
         `Next: call docx_render with path "${destinationPath}" and look at the changed pages.`,
+      ];
+      return { content: [{ type: "text", text: lines.join("\n") }], details: undefined };
+    },
+  } as ToolDefinition;
+}
+
+/* ── docx_restyle ───────────────────────────────────────────────────────────── */
+
+export function createDocxRestyleToolDefinition(options: WordToolOptions): ToolDefinition {
+  return {
+    name: "docx_restyle",
+    label: "Restyle Word document",
+    description: [
+      "Bring an existing Word document (.docx) into a template's house style: the template's styles, theme and heading numbering replace the document's (styles matched by name), and fonts, sizes and colours set by hand are removed so the text takes its style's.",
+      "Bold, italic, underline, spacing, indentation, lists, text, tables and pictures are kept; the text is checked unchanged before writing.",
+      'The removals are tracked formatting changes (attributed to pi-outpost) unless track_changes is false. include: ["page"] also applies the template\'s page size and margins, ["headers"] its headers and footers.',
+      "Writes to output_path; replaces the original only with overwrite: true. Call docx_render on the result and compare.",
+    ].join(" "),
+    promptSnippet: "Bring a Word document into a template's styles, removing hand-set fonts, sizes and colours",
+    parameters: Type.Object({
+      path: Type.String({ description: "The document to restyle (.docx)." }),
+      template_path: Type.String({ description: "The template (.dotx or .docx) whose styles, theme and numbering the document takes." }),
+      output_path: Type.Optional(Type.String({ description: "Where to write the restyled document (.docx). Required unless overwrite is true." })),
+      overwrite: Type.Optional(Type.Boolean({ description: "Write the result over output_path if it exists — or over the original when output_path is omitted." })),
+      track_changes: Type.Optional(Type.Boolean({ description: "false removes the formatting directly instead of as tracked changes. Default: true." })),
+      include: Type.Optional(
+        Type.Array(Type.Union([Type.Literal("page"), Type.Literal("headers")]), {
+          description: "Also take the template's page size and margins (\"page\", each section keeps its orientation) and its headers and footers (\"headers\"). Default: neither.",
+        }),
+      ),
+    }),
+    async execute(_toolCallId, params) {
+      const p = params as { path: string; template_path: string; output_path?: string; overwrite?: boolean; track_changes?: boolean; include?: RestyleInclude[] };
+      if (p.output_path === undefined && p.overwrite !== true) {
+        throw new Error("Give output_path for the restyled document, or overwrite: true to replace the original.");
+      }
+      const destinationPath = p.output_path ?? p.path;
+      const destination = await prepareDestination(destinationPath, p.overwrite, options);
+      const source = await readSource(p.path, options, options.maxBytes, "document");
+      const template = await readSource(p.template_path, options, options.maxBytes, "template");
+      let document;
+      let templatePackage;
+      try {
+        document = readWordPackage(source.bytes, "the document");
+      } catch (error) {
+        asToolError(error, p.path);
+      }
+      try {
+        templatePackage = readWordPackage(template.bytes, "the template");
+      } catch (error) {
+        asToolError(error, p.template_path);
+      }
+      let restyled;
+      try {
+        restyled = restyleDocument(document, templatePackage, {
+          ...(p.track_changes !== undefined ? { trackChanges: p.track_changes } : {}),
+          ...(p.include !== undefined ? { include: p.include } : {}),
+        });
+      } catch (error) {
+        asToolError(error, p.path);
+      }
+      await writeDocument(destination.resolved, destination.exists, restyled.bytes, destinationPath);
+      const lines = [
+        `Wrote \`${destinationPath}\` (${restyled.bytes.length} bytes) in the styles of \`${p.template_path}\`:`,
+        ...restyled.report.map((line) => `- ${line}`),
+        "",
+        `Next: call docx_render with path "${destinationPath}" and look at the pages.`,
       ];
       return { content: [{ type: "text", text: lines.join("\n") }], details: undefined };
     },

@@ -13,6 +13,12 @@
  * - `docx-report.docx` — a document to update: sections 1, 2 (with 2.1 and 2.2) and
  *   3, a list, a table, a picture in section 3, a comment and a bookmark in section 2.
  * - `docx-report-tracked.docx` — the same, with an unaccepted insertion in 2.1.
+ * - `docx-drifted.docx` — a document to restyle: an English Word's ids (`Heading1`), its
+ *   own Arial styles, theme and heading numbering; fonts, sizes and colours set by hand
+ *   in the body, a heading, a list, a table cell, a text box, the header, a footnote and
+ *   a comment; emphasis, a superscript, a highlight and hand-set spacing to keep; an
+ *   equation; a custom style the template lacks; a landscape section.
+ * - `docx-drifted-tracked.docx` — the same, with an unaccepted insertion.
  *
  * The zip is written here too, so this needs nothing installed.
  *
@@ -275,4 +281,111 @@ for (const [file, tracked] of [
     }),
   );
 }
-console.log("wrote docx-template.dotx, docx-report.docx, docx-report-tracked.docx");
+/* ── A document that has drifted, to restyle ────────────────────────────────── */
+
+const M = "http://schemas.openxmlformats.org/officeDocument/2006/math";
+const V = "urn:schemas-microsoft-com:vml";
+const run = (text, rPr = "") => `<w:r>${rPr ? `<w:rPr>${rPr}</w:rPr>` : ""}<w:t xml:space="preserve">${text}</w:t></w:r>`;
+const ARIAL = `<w:rFonts w:ascii="Arial" w:hAnsi="Arial"/>`;
+
+const driftedStyles = `${XML}<w:styles xmlns:w="${W}">
+<w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii="Times New Roman" w:hAnsi="Times New Roman"/><w:sz w:val="24"/></w:rPr></w:rPrDefault></w:docDefaults>
+<w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/><w:rPr>${ARIAL}<w:sz w:val="22"/></w:rPr></w:style>
+<w:style w:type="paragraph" w:styleId="Heading1"><w:name w:val="heading 1"/><w:basedOn w:val="Normal"/><w:next w:val="Normal"/><w:pPr><w:numPr><w:numId w:val="1"/></w:numPr><w:outlineLvl w:val="0"/></w:pPr><w:rPr><w:b/>${ARIAL}<w:sz w:val="32"/></w:rPr></w:style>
+<w:style w:type="paragraph" w:styleId="Heading2"><w:name w:val="heading 2"/><w:basedOn w:val="Normal"/><w:next w:val="Normal"/><w:pPr><w:outlineLvl w:val="1"/></w:pPr><w:rPr><w:b/>${ARIAL}<w:sz w:val="28"/></w:rPr></w:style>
+<w:style w:type="paragraph" w:styleId="ListParagraph"><w:name w:val="List Paragraph"/><w:basedOn w:val="Normal"/><w:pPr><w:ind w:left="720"/></w:pPr></w:style>
+<w:style w:type="paragraph" w:customStyle="1" w:styleId="Encadre"><w:name w:val="Boxed text"/><w:basedOn w:val="Normal"/><w:pPr><w:pBdr><w:top w:val="single" w:sz="4" w:space="1" w:color="auto"/></w:pBdr></w:pPr></w:style>
+<w:style w:type="character" w:default="1" w:styleId="DefaultParagraphFont"><w:name w:val="Default Paragraph Font"/><w:semiHidden/></w:style>
+<w:style w:type="table" w:default="1" w:styleId="TableNormal"><w:name w:val="Normal Table"/><w:semiHidden/><w:tblPr><w:tblInd w:w="0" w:type="dxa"/></w:tblPr></w:style>
+<w:style w:type="table" w:styleId="TableGrid"><w:name w:val="Table Grid"/><w:basedOn w:val="TableNormal"/><w:tblPr><w:tblBorders><w:top w:val="single" w:sz="4" w:space="0" w:color="auto"/></w:tblBorders></w:tblPr></w:style>
+</w:styles>`;
+
+const driftedNumbering = `${XML}<w:numbering xmlns:w="${W}">
+<w:abstractNum w:abstractNumId="0"><w:multiLevelType w:val="multilevel"/><w:lvl w:ilvl="0"><w:start w:val="1"/><w:numFmt w:val="upperRoman"/><w:pStyle w:val="Heading1"/><w:lvlText w:val="%1."/><w:lvlJc w:val="left"/></w:lvl></w:abstractNum>
+<w:abstractNum w:abstractNumId="1"><w:multiLevelType w:val="hybridMultilevel"/><w:lvl w:ilvl="0"><w:start w:val="1"/><w:numFmt w:val="lowerLetter"/><w:lvlText w:val="%1)"/><w:lvlJc w:val="left"/></w:lvl></w:abstractNum>
+<w:num w:numId="1"><w:abstractNumId w:val="0"/></w:num>
+<w:num w:numId="2"><w:abstractNumId w:val="1"/></w:num>
+</w:numbering>`;
+
+const driftedTheme = theme.replace('name="Exemple"', 'name="Ancien"').replaceAll('typeface="Calibri Light"', 'typeface="Georgia"').replaceAll('typeface="Calibri"', 'typeface="Verdana"');
+const driftedHeader = `${XML}<w:hdr xmlns:w="${W}"><w:p>${run("Ancien en-tête", `${ARIAL}<w:sz w:val="16"/>`)}</w:p></w:hdr>`;
+const driftedFootnotes =
+  `${XML}<w:footnotes xmlns:w="${W}">` +
+  `<w:footnote w:type="separator" w:id="-1"><w:p><w:r><w:separator/></w:r></w:p></w:footnote>` +
+  `<w:footnote w:type="continuationSeparator" w:id="0"><w:p><w:r><w:continuationSeparator/></w:r></w:p></w:footnote>` +
+  `<w:footnote w:id="1"><w:p><w:r><w:rPr><w:vertAlign w:val="superscript"/></w:rPr><w:footnoteRef/></w:r>${run(" Une note.", `<w:rFonts w:ascii="Courier New" w:hAnsi="Courier New"/>`)}</w:p></w:footnote>` +
+  `</w:footnotes>`;
+const driftedComments = `${XML}<w:comments xmlns:w="${W}"><w:comment w:id="1" w:author="Bob" w:date="2026-01-01T00:00:00Z"><w:p>${run("Voir la police.", `<w:rFonts w:ascii="Courier New" w:hAnsi="Courier New"/>`)}</w:p></w:comment></w:comments>`;
+
+function driftedBody(tracked) {
+  return (
+    `<w:p><w:pPr><w:pStyle w:val="Heading1"/></w:pPr>${run("Introduction")}</w:p>` +
+    `<w:p>${run("Texte collé d’un courriel", `<w:rFonts w:ascii="Calibri" w:hAnsi="Calibri"/><w:sz w:val="22"/><w:color w:val="FF0000"/>`)}` +
+    run(" en gras", `<w:b/>${ARIAL}`) +
+    run(" en italique", `<w:i/><w:sz w:val="28"/>`) +
+    run(" m", "") +
+    run("2", `<w:vertAlign w:val="superscript"/>${ARIAL}`) +
+    run(" surligné", `<w:highlight w:val="yellow"/><w:color w:val="0000FF"/>`) +
+    `<w:commentRangeStart w:id="1"/>${run(" commenté")}<w:commentRangeEnd w:id="1"/><w:r><w:commentReference w:id="1"/></w:r>` +
+    `<w:r><w:rPr><w:vertAlign w:val="superscript"/></w:rPr><w:footnoteReference w:id="1"/></w:r></w:p>` +
+    `<w:p><w:pPr><w:spacing w:after="0"/><w:ind w:left="360"/><w:rPr>${ARIAL}<w:sz w:val="28"/></w:rPr></w:pPr>${run("Interligne posé à la main", `${ARIAL}`)}</w:p>` +
+    `<w:p><w:pPr><w:pStyle w:val="Heading2"/></w:pPr>${run("Détails", `${ARIAL}<w:sz w:val="32"/><w:color w:val="C00000"/>`)}</w:p>` +
+    `<w:p><w:pPr><w:pStyle w:val="ListParagraph"/><w:numPr><w:ilvl w:val="0"/><w:numId w:val="2"/></w:numPr></w:pPr>${run("Premier point", ARIAL)}</w:p>` +
+    `<w:p><w:pPr><w:pStyle w:val="ListParagraph"/><w:numPr><w:ilvl w:val="0"/><w:numId w:val="2"/></w:numPr></w:pPr>${run("Second point", ARIAL)}</w:p>` +
+    `<w:p><w:pPr><w:pStyle w:val="Encadre"/></w:pPr>${run("Un encadré maison", `<w:sz w:val="20"/>`)}</w:p>` +
+    `<w:tbl><w:tblPr><w:tblStyle w:val="TableGrid"/><w:tblW w:w="0" w:type="auto"/></w:tblPr><w:tblGrid><w:gridCol w:w="4500"/></w:tblGrid>` +
+    `<w:tr><w:tc><w:p>${run("Cellule", `<w:rFonts w:ascii="Comic Sans MS" w:hAnsi="Comic Sans MS"/>`)}</w:p></w:tc></w:tr></w:tbl>` +
+    `<w:p><w:r><w:pict><v:shape id="box" style="width:200pt;height:40pt"><v:textbox><w:txbxContent><w:p>${run("Zone de texte", `<w:rFonts w:ascii="Impact" w:hAnsi="Impact"/>`)}</w:p></w:txbxContent></v:textbox></v:shape></w:pict></w:r></w:p>` +
+    `<m:oMathPara><m:oMath><m:r><w:rPr><w:rFonts w:ascii="Cambria Math" w:hAnsi="Cambria Math"/></w:rPr><m:t>x=1</m:t></m:r></m:oMath></m:oMathPara>` +
+    `<w:p><w:pPr><w:sectPr><w:headerReference w:type="default" r:id="rIdHeader"/><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440" w:header="720" w:footer="720" w:gutter="0"/></w:sectPr></w:pPr>${run("Fin de la première section.")}</w:p>` +
+    `<w:p>${run("Section en paysage", ARIAL)}</w:p>` +
+    `<w:p><w:pPr><w:sectPr><w:headerReference w:type="default" r:id="rIdHeader"/><w:pgSz w:w="16838" w:h="11906" w:orient="landscape"/><w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440" w:header="720" w:footer="720" w:gutter="0"/></w:sectPr></w:pPr>${run("Fin du paysage.")}</w:p>` +
+    `<w:p><w:pPr><w:pStyle w:val="Heading1"/></w:pPr>${run("Conclusion")}</w:p>` +
+    (tracked ? `<w:p><w:ins w:id="90" w:author="Alice" w:date="2026-01-01T00:00:00Z">${run("Ajout non accepté.")}</w:ins></w:p>` : `<w:p>${run("Le projet avance.", ARIAL)}</w:p>`) +
+    `<w:sectPr><w:headerReference w:type="default" r:id="rIdHeader"/><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440" w:header="720" w:footer="720" w:gutter="0"/></w:sectPr>`
+  );
+}
+
+for (const [file, tracked] of [
+  ["docx-drifted.docx", false],
+  ["docx-drifted-tracked.docx", true],
+]) {
+  await writeFile(
+    path.join(HERE, file),
+    zip({
+      "[Content_Types].xml":
+        `${XML}<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">` +
+        `<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/>` +
+        `<Override PartName="/word/document.xml" ContentType="${CT("document.main")}"/>` +
+        `<Override PartName="/word/styles.xml" ContentType="${CT("styles")}"/>` +
+        `<Override PartName="/word/numbering.xml" ContentType="${CT("numbering")}"/>` +
+        `<Override PartName="/word/settings.xml" ContentType="${CT("settings")}"/>` +
+        `<Override PartName="/word/header1.xml" ContentType="${CT("header")}"/>` +
+        `<Override PartName="/word/footnotes.xml" ContentType="${CT("footnotes")}"/>` +
+        `<Override PartName="/word/comments.xml" ContentType="${CT("comments")}"/>` +
+        `<Override PartName="/word/theme/theme1.xml" ContentType="application/vnd.openxmlformats-officedocument.theme+xml"/>` +
+        `<Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/></Types>`,
+      "_rels/.rels": rootRels,
+      "docProps/core.xml": core,
+      "word/styles.xml": driftedStyles,
+      "word/numbering.xml": driftedNumbering,
+      "word/settings.xml": settings,
+      "word/theme/theme1.xml": driftedTheme,
+      "word/header1.xml": driftedHeader,
+      "word/footnotes.xml": driftedFootnotes,
+      "word/comments.xml": driftedComments,
+      "word/_rels/document.xml.rels":
+        `${XML}<Relationships xmlns="${REL}">` +
+        `<Relationship Id="rIdStyles" Type="${T("styles")}" Target="styles.xml"/>` +
+        `<Relationship Id="rIdNumbering" Type="${T("numbering")}" Target="numbering.xml"/>` +
+        `<Relationship Id="rIdSettings" Type="${T("settings")}" Target="settings.xml"/>` +
+        `<Relationship Id="rIdTheme" Type="${T("theme")}" Target="theme/theme1.xml"/>` +
+        `<Relationship Id="rIdHeader" Type="${T("header")}" Target="header1.xml"/>` +
+        `<Relationship Id="rIdFootnotes" Type="${T("footnotes")}" Target="footnotes.xml"/>` +
+        `<Relationship Id="rIdComments" Type="${T("comments")}" Target="comments.xml"/>` +
+        `</Relationships>`,
+      "word/document.xml": `${XML}<w:document xmlns:w="${W}" xmlns:r="${R}" xmlns:m="${M}" xmlns:v="${V}"><w:body>${driftedBody(tracked)}</w:body></w:document>`,
+    }),
+  );
+}
+console.log("wrote docx-template.dotx, docx-report.docx, docx-report-tracked.docx, docx-drifted.docx, docx-drifted-tracked.docx");

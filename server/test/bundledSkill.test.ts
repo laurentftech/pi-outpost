@@ -94,7 +94,7 @@ describe("the skill that ships with the tool", () => {
     assert.match(skill.description ?? "", /tracked changes/);
     assert.match(skill.description ?? "", /\.dotx/);
     const body = readFileSync(skill.filePath, "utf8");
-    for (const tool of ["docx_styles", "docx_create", "docx_update", "docx_render", "docx_extract"]) assert.match(body, new RegExp(`\`${tool}\``), tool);
+    for (const tool of ["docx_styles", "docx_create", "docx_update", "docx_restyle", "docx_render", "docx_extract"]) assert.match(body, new RegExp(`\`${tool}\``), tool);
     assert.match(body, /Tracked changes are the default/);
     assert.match(body, /without a render, the document was not checked/);
   });

@@ -28,7 +28,7 @@ export const PRESENTATION_SKILL = "pptx-from-template";
  * The tools that write, update and check Word documents in a template's styles.
  * Published together, for the same reason as the presentation tools.
  */
-export const WORD_TOOLS = ["docx_styles", "docx_create", "docx_update", "docx_render"];
+export const WORD_TOOLS = ["docx_styles", "docx_create", "docx_update", "docx_restyle", "docx_render"];
 
 /** The skill that teaches the Word loop. */
 export const WORD_SKILL = "docx-from-template";
