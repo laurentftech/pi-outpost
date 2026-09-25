@@ -792,9 +792,13 @@ function rewriteContentTypes(
   extensions: Set<string>,
   added: Array<[string, string]>,
 ): string {
+  // The parts written here are declared below. A sample slide the template carried
+  // under the same name keeps its override otherwise, and a part named twice — part
+  // names compare without case — is a package PowerPoint refuses to open unrepaired.
+  const written = new Set([...slideParts, ...added.map(([part]) => part)].map((part) => part.toLowerCase()));
   let result = xml.replace(/<(?:\w+:)?Override\b[^>]*?\/>/g, (element) => {
     const part = /\bPartName="([^"]*)"/.exec(element)?.[1]?.replace(/^\//, "");
-    if (part === undefined || !keptParts.has(part)) return "";
+    if (part === undefined || !keptParts.has(part) || written.has(part.toLowerCase())) return "";
     if (part === presentationPart) return element.replace(/ContentType="[^"]*"/, `ContentType="${CT_PRESENTATION}"`);
     return element;
   });

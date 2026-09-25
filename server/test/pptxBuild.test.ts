@@ -51,10 +51,16 @@ const text = (parts: Map<string, Buffer>, name: string) => parts.get(name)?.toSt
 
 /**
  * The package-level promises a reader like PowerPoint enforces: every relationship
- * resolves to a part that exists, and every part has a content type.
+ * resolves to a part that exists, every part has a content type, and no part or
+ * extension is declared twice — part names compare without case, and a duplicate is a
+ * package PowerPoint only opens after offering to repair it.
  */
 function assertIntact(parts: Map<string, Buffer>): void {
   const types = text(parts, "[Content_Types].xml");
+  for (const declared of [/PartName="([^"]+)"/g, /Extension="([^"]+)"/g]) {
+    const names = [...types.matchAll(declared)].map((match) => match[1].toLowerCase());
+    assert.deepEqual(names.filter((name, index) => names.indexOf(name) !== index), [], "declared twice in [Content_Types].xml");
+  }
   const overrides = new Set([...types.matchAll(/PartName="\/([^"]+)"/g)].map((match) => match[1]));
   const defaults = new Set([...types.matchAll(/Extension="([^"]+)"/g)].map((match) => match[1].toLowerCase()));
   for (const name of parts.keys()) {
@@ -149,6 +155,24 @@ describe("buildPresentation — the package", () => {
     const types = text(parts, "[Content_Types].xml");
     assert.match(types, /PartName="\/ppt\/presentation.xml" ContentType="application\/vnd.openxmlformats-officedocument.presentationml.presentation.main\+xml"/);
     assert.doesNotMatch(types, /template\.main/);
+  });
+
+  test("declares once a part whose name the template's sample already used", async () => {
+    // Built on a deck that already holds slides, charts and workbooks: the new parts
+    // take the same names as the sample ones they replace.
+    const { built: first } = await build([
+      { title: "Chart", chart: { type: "column", categories: ["a"], series: [{ name: "S", values: [1] }] } },
+      { title: "Table", table: { rows: [["x"]] } },
+    ]);
+    const built = await buildPresentation(readTemplate(first.bytes), [
+      { title: "Again", chart: { type: "pie", categories: ["a"], series: [{ name: "S", values: [1] }] } },
+      { title: "Two" },
+    ]);
+    const parts = readAllZipEntries(built.bytes, LIMITS);
+    assertIntact(parts);
+    const types = text(parts, "[Content_Types].xml");
+    assert.equal(types.match(/PartName="\/ppt\/slides\/slide1\.xml"/g)?.length, 1);
+    assert.equal(types.match(/PartName="\/ppt\/charts\/chart1\.xml"/g)?.length, 1);
   });
 
   test("holds exactly the new slides, in order, with fresh ids", async () => {
