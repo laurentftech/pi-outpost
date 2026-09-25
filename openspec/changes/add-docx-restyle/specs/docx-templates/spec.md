@@ -12,7 +12,7 @@ The system SHALL provide a `docx_restyle` tool that, given an existing `.docx` a
   (tables and text boxes included), headers and footers, footnotes and endnotes;
 - every other formatting — bold, italic, underline, strike-through, superscript and subscript,
   highlight, spacing, indentation — SHALL be kept;
-- the document's own lists, its text, tables, pictures, fields and comments SHALL be unchanged.
+- the document's own lists, its text, tables, pictures, fields and comments SHALL be unchanged;
 - the template's page size and margins SHALL replace every section's, keeping each section's
   orientation, only when `include` names `"page"`; the template's headers and footers SHALL
   replace the document's only when `include` names `"headers"`.
