@@ -138,6 +138,6 @@ place of hand edits, and is built so that what it does not touch stays exactly a
 - Content controls, fields and comments inside a replaced or deleted section are removed with
   it; the call reports how many, so the agent can say what went.
 
-## Open questions
+Tracked changes on by default was confirmed by the project owner.
 
-1. Tracked changes on by default for `docx_update` (decision 8): confirm, or direct edits by default?
+Updating a PowerPoint deck is the same need, scoped separately: `add-pptx-update`.
