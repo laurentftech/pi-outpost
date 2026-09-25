@@ -10,13 +10,14 @@ The office renderer settings SHALL be `office.renderer` (`auto`, `word`, `powerp
 `libreoffice`, `onlyoffice`; `word` and `powerpoint` each apply to their own kind of document and
 fall back as `auto` does for the other), `office.libreofficePath`, `office.onlyofficePath` and
 `office.renderTimeoutMs`. The `pptx.renderer`, `pptx.libreofficePath`, `pptx.onlyofficePath` and
-`pptx.renderTimeoutMs` keys SHALL keep working as aliases; when both are given, the `office` key
-SHALL win and the conflict SHALL be logged.
+`pptx.renderTimeoutMs` keys introduced in 0.29 SHALL be deprecated: still read as aliases, each
+one present SHALL be named in a warning at startup together with its `office` replacement, and
+when both are given the `office` key SHALL win and the conflict SHALL be logged.
 
 #### Scenario: PptxRendererKeysStillWork
 - **GIVEN** a configuration written for 0.29 with `pptx.renderer: "libreoffice"`
 - **WHEN** it is loaded
-- **THEN** documents and decks render with LibreOffice
+- **THEN** documents and decks render with LibreOffice, and a startup warning names `pptx.renderer` as deprecated in favour of `office.renderer`
 
 #### Scenario: OfficeKeysWinOverTheirAliases
 - **GIVEN** `office.renderer: "onlyoffice"` and `pptx.renderer: "libreoffice"`

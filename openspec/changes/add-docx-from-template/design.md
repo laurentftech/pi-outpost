@@ -85,10 +85,14 @@ block the plain export. Without `docx.template` the button behaves exactly as to
 
 ### 6. Settings
 
-`docx.template` is new. The renderer settings are shared with presentations: the converters are
-the same programs. They move to an `office` section (`office.renderer`, `office.libreofficePath`,
-`office.onlyofficePath`, `office.renderTimeoutMs`), with `renderer` gaining `word`; the `pptx.*`
-keys stay accepted as aliases so no configuration written for 0.29 breaks.
+`docx.template` is new. Rendering a document needs the settings `pptx_render` introduced in 0.29 —
+which application draws, where LibreOffice and ONLYOFFICE are, how long a rendering may take —
+because it drives the same programs. They are not presentation settings that happen to be named
+`pptx`; they are office settings named after the first tool that needed them. They move to an
+`office` section (`office.renderer`, `office.libreofficePath`, `office.onlyofficePath`,
+`office.renderTimeoutMs`), with `renderer` gaining `word`. The `pptx.*` keys are **deprecated**:
+still read, so no configuration written for 0.29 breaks, and each one used is named in a warning
+at startup with its replacement. Their removal is a later release's decision.
 
 ### 7. Publication
 
@@ -107,7 +111,33 @@ reads that skill or names such a path. `docx_create` is absent from read-only sa
   render it server-side if that matters.
 - **Not verifiable here**: Word by COM needs Windows with Office, as PowerPoint did.
 
+### 8. Updating an existing document
+
+Documents are also maintained, not only created. `docx_update` changes an existing `.docx` in
+place of hand edits, and is built so that what it does not touch stays exactly as it was:
+
+- **Addressed by heading, not by position.** An edit names a section by its heading path
+  (`"2. Scope > 2.1 Out of scope"`), which is how people refer to parts of a document and what
+  `docx_extract` already shows the agent. A path that matches no heading, or more than one, is
+  refused with the headings that exist — never guessed.
+- **Operations**: replace a section's body (keeping its heading), insert a new section after
+  one, append at the end, delete a section. A section runs to the next heading of the same or a
+  higher level. Content is Markdown, mapped as in `docx_create`, and **the document is its own
+  template**: styles, numbering and section settings come from it.
+- **Untouched content is not rewritten.** Only the edited ranges of `document.xml` change; every
+  other part (headers, footers, comments, images of untouched sections, custom XML) is copied
+  byte for byte. A paragraph outside the edited sections is identical before and after — this is
+  the property the tests hold it to.
+- **Tracked changes by default.** Edits are written as revisions (`w:ins` / `w:del`, authored
+  "pi-outpost" with the time), so the document's owner reviews and accepts them in Word, as they
+  would a colleague's. `track_changes: false` writes them directly. A document that already has
+  pending revisions in an edited section is refused rather than stacked upon, since the result of
+  editing someone's unaccepted change is ambiguous.
+- **Written like `docx_create`:** to the writable zone, through a sibling file and a rename; the
+  original is replaced only with `overwrite: true`, otherwise a new path is required.
+- Content controls, fields and comments inside a replaced or deleted section are removed with
+  it; the call reports how many, so the agent can say what went.
+
 ## Open questions
 
-1. Keep the `pptx.*` renderer keys as aliases indefinitely, or deprecate them with a warning?
-2. Should `docx_create` also accept an existing `.docx` to *append* to, or only create?
+1. Tracked changes on by default for `docx_update` (decision 8): confirm, or direct edits by default?

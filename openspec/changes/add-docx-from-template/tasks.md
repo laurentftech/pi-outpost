@@ -12,12 +12,15 @@
 - [ ] 3.1 `docxTemplate.ts`: read styles by name, features, sample body.
 - [ ] 3.2 `docxBuild.ts`: body replacement keeping `sectPr`, style-id rewrite, numbering shift, relationship/media re-issue, reachability sweep, `.dotx` re-typing, `keep`, update-fields.
 
+## 3b. Updating
+- [ ] 3b.1 `docxUpdate.ts`: resolve heading paths (refuse unknown/ambiguous with the list), section ranges, the four operations, byte-identical copy outside edited ranges, tracked revisions (`w:ins`/`w:del`), refusal on pending revisions in an edited section, report of removed controls/fields/comments.
+
 ## 4. Rendering
 - [ ] 4.1 Word COM converter; `.docx` through LibreOffice and ONLYOFFICE; page count, bookmarks, text check.
 
 ## 5. Tools, skill, settings, publication
-- [ ] 5.1 `docx_styles`, `docx_create`, `docx_render`; registration (no `docx_create` read-only); publication triggers.
-- [ ] 5.2 `office.*` settings with `pptx.*` aliases; `docx.template`.
+- [ ] 5.1 `docx_styles`, `docx_create`, `docx_update`, `docx_render`; registration (no writing tools read-only); publication triggers.
+- [ ] 5.2 `office.*` settings; `pptx.*` deprecated (read, warned); `docx.template`; docs updated.
 - [ ] 5.3 Skill `docx-from-template`.
 
 ## 6. Viewer export
