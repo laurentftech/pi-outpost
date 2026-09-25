@@ -41,17 +41,22 @@ export function DocxExportButton({
    *
    * Refs rather than state: both have to be true immediately, and state does not
    * settle until the next render — which is far too late to stop the next click.
+   *
+   * The window is per button. Pressing the other export straight after one finished
+   * is a second intention, not the tail of a double-click: a template export can come
+   * back in a couple of hundred milliseconds, and a guard shared by both buttons
+   * silently swallowed the plain export pressed right after it.
    */
   const busy = useRef(false);
-  const lastStarted = useRef(0);
+  const lastStarted = useRef<Record<"plain" | "template", number>>({ plain: 0, template: 0 });
 
   /** Long enough to swallow a double-click, short enough to be invisible. */
   const SAME_INTENTION_MS = 750;
 
   async function exportDocx(kind: "plain" | "template") {
-    if (busy.current || Date.now() - lastStarted.current < SAME_INTENTION_MS) return;
+    if (busy.current || Date.now() - lastStarted.current[kind] < SAME_INTENTION_MS) return;
     busy.current = true;
-    lastStarted.current = Date.now();
+    lastStarted.current[kind] = Date.now();
     setWhich(kind);
     setState("working");
     setReason(null);

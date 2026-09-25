@@ -285,6 +285,24 @@ describe("with a configured Word template", () => {
     expect(exported.templateCalls).toHaveLength(0);
   });
 
+  it("the other export pressed straight after one finishes is not taken for a double-click", async () => {
+    // A template export can come back in a couple of hundred milliseconds. The guard
+    // against the second half of a double-click once covered both buttons, and the plain
+    // export pressed right after it was silently dropped.
+    setup({ docxTemplate: "house.dotx" });
+
+    fireEvent.click(inTemplate()!);
+    await waitFor(() => expect(exported.templateCalls).toHaveLength(1));
+    await waitFor(() => expect(plain()).not.toBeDisabled());
+    fireEvent.click(plain());
+
+    await waitFor(() => expect(exported.calls).toHaveLength(1));
+    // The same button pressed again at once is still one intention.
+    fireEvent.click(plain());
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(exported.calls).toHaveLength(1);
+  });
+
   it("ABrokenTemplateDoesNotBlockThePlainExport: the template export says why, and the plain one still works", async () => {
     exported.templateFail = new Error("The Word template house.dotx cannot be read.");
     setup({ docxTemplate: "house.dotx" });
@@ -297,8 +315,7 @@ describe("with a configured Word template", () => {
     expect(plain()).toHaveTextContent("⤓ word");
     expect(plain()).not.toBeDisabled();
 
-    // Past the double-click guard: a later press is a new intention.
-    await new Promise((resolve) => setTimeout(resolve, 800));
+    // Straight away: the other button is another intention, not the end of a double-click.
     fireEvent.click(plain());
     await waitFor(() => expect(exported.calls).toHaveLength(1));
     await waitFor(() => expect(plain()).toHaveTextContent("⤓ word"));

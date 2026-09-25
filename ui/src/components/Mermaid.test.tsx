@@ -136,3 +136,4 @@ describe("naturalWidth", () => {
     expect(naturalWidth('<svg viewBox="0 0 0 0">')).toBeUndefined();
   });
 });
+

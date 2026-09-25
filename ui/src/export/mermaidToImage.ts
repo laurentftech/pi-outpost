@@ -19,6 +19,7 @@
  */
 
 import type { DiagramImage } from "@pi-outpost/shared/docx";
+import { withMermaid } from "../util/mermaidQueue";
 
 export type { DiagramImage };
 
@@ -171,21 +172,10 @@ export function inlineStyles(svg: string): string {
  * Mermaid, configured for a printed page rather than for the screen.
  *
  * `mermaid.initialize()` is global to the module, and the viewer's own diagrams
- * share it. Every call here is therefore serialised and restores what it found, so
- * an export cannot leave the on-screen renderer configured for export.
+ * share it. Every call here therefore takes its turn in the page's one mermaid queue
+ * (`withMermaid`) — the viewer's renders wait in the same queue — and restores what it
+ * found, so an export cannot leave the on-screen renderer configured for export.
  */
-let inFlight: Promise<unknown> = Promise.resolve();
-
-async function exclusively<T>(work: () => Promise<T>): Promise<T> {
-  const mine = inFlight.then(work, work);
-  // The queue must not reject: a failed export still has to release the next one.
-  inFlight = mine.then(
-    () => undefined,
-    () => undefined,
-  );
-  return mine;
-}
-
 /**
  * A diagram rendered for export.
  *
@@ -194,7 +184,7 @@ async function exclusively<T>(work: () => Promise<T>): Promise<T> {
  * view too, where no diagram is mounted at all.
  */
 export async function renderDiagram(source: string, id: string): Promise<DiagramImage> {
-  return exclusively(async () => {
+  return withMermaid(async () => {
     const mermaid = (await import("mermaid")).default;
     let svg: string;
     try {

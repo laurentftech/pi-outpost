@@ -9,26 +9,30 @@ import {
   type Orientation,
 } from "@pi-outpost/shared/diagram-orientation";
 import { orientableMermaid, orientationOfDirection } from "./mermaidDirection";
+import { withMermaid } from "../util/mermaidQueue";
 
 type MermaidTheme = "dark" | "default";
 
 let mermaidPromise: Promise<typeof import("mermaid")> | null = null;
-let initializedTheme: MermaidTheme | null = null;
 
-/** Lazy-load mermaid (heavy) only when a diagram is actually rendered. */
+/**
+ * Lazy-load mermaid (heavy) only when a diagram is actually rendered, configured for
+ * the screen in this theme.
+ *
+ * Configured on every call, not once per theme: the Word export reconfigures the same
+ * global module for print between two of these, and a cached "already set" would draw
+ * the next diagram with whatever the export left. Only ever called inside `withMermaid`.
+ */
 async function loadMermaid(theme: MermaidTheme) {
   const module = await (mermaidPromise ??= import("mermaid"));
-  if (initializedTheme !== theme) {
-    initializedTheme = theme;
-    module.default.initialize({
-      startOnLoad: false,
-      theme,
-      securityLevel: "strict",
-      // On parse errors mermaid injects an error SVG into the document —
-      // keep failures inside our fallback <pre> instead
-      suppressErrorRendering: true,
-    });
-  }
+  module.default.initialize({
+    startOnLoad: false,
+    theme,
+    securityLevel: "strict",
+    // On parse errors mermaid injects an error SVG into the document —
+    // keep failures inside our fallback <pre> instead
+    suppressErrorRendering: true,
+  });
   return module;
 }
 
@@ -129,7 +133,7 @@ export function Mermaid({ code }: { code: string }) {
     let cancelled = false;
     // Debounce: during streaming the code arrives in chunks and intermediate
     // states are invalid diagrams — only render once input settles.
-    const timer = setTimeout(async () => {
+    const timer = setTimeout(() => void withMermaid(async () => {
       try {
         const mermaid = (await loadMermaid(mermaidTheme)).default;
         const source = codeRef.current;
@@ -174,7 +178,7 @@ export function Mermaid({ code }: { code: string }) {
       } catch (e) {
         if (!cancelled) setError(e instanceof Error ? e.message : String(e));
       }
-    }, 300);
+    }), 300);
     return () => {
       cancelled = true;
       clearTimeout(timer);
