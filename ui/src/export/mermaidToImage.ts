@@ -18,13 +18,9 @@
  *    comes out empty. The real dimensions live in the `viewBox`.
  */
 
-/** What the export needs of a diagram: the vector, the raster, and its size. */
-export type DiagramImage = {
-  svg: string;
-  png: Uint8Array;
-  width: number;
-  height: number;
-};
+import type { DiagramImage } from "@pi-outpost/shared/docx";
+
+export type { DiagramImage };
 
 /** Raised when a diagram cannot be produced, so the caller can fall back. */
 export class DiagramError extends Error {

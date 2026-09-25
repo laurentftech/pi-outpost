@@ -18,11 +18,20 @@ and the renderer's pipeline for *where* and *how to check*.
 
 The browser export and the agent tool must write the same structure from the same Markdown, or a
 document downloaded and a document the agent built will disagree on what a table or an equation
-is. `markdownToDocx` and its helpers move to `shared/` (they depend on `docx`, `mdast` and the
-equation converter, all of which run in Node and in the browser). Two things stay per side:
-fetching a referenced image (the browser asks the server; the server reads the sandbox) and
-drawing a mermaid diagram (browser only: the server tool writes the diagram's source as a code
-block and says so, rather than shipping a headless browser).
+is. `markdownToDocx` and its helpers move to `shared/src/docx/`.
+
+**This adds dependencies to the server**, which until now avoided them (the Word reader and the
+deck builder are in-house). `docx`, `unified`, `remark-parse`/`remark-gfm`/`remark-math` and
+`katex` already ship to the browser in the UI bundle and are already in the lockfile; the project
+owner chose to add them to the server rather than keep two Markdown→Word writers that would
+drift. Two adjustments make the mapping portable:
+
+- the equation transform read KaTeX's MathML through the browser's `DOMParser`; it now reads it
+  with a small XML tree builder of its own (KaTeX's MathML is a closed, well-formed vocabulary);
+- the two things only one side can do are injected: loading a referenced picture (the browser
+  asks the server; the server reads the sandbox) and drawing a mermaid diagram (browser only —
+  the server tool writes the diagram's source as a code block and says so, rather than shipping a
+  headless browser).
 
 ### 2. Write with the library, then graft into the template
 
