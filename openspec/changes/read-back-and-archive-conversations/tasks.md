@@ -57,6 +57,11 @@
 - [x] 8.3 Monkey-test the transitions: spam the load-more control, switch project and session mid-request, fork and navigate the tree with older items loaded, export while a turn is streaming, compact while paginating, and abort an export midway — report what broke, reading back the DOM after each burst
 - [x] 8.4 Verify no stale-context defect: with two projects open, load older items in one and confirm the other's transcript and export are unaffected, and that an export started in one project cannot be handed a file built from the other's history
 
+## 10. A session the runtime cannot price
+
+- [x] 10.1 Guard the SDK's context-usage read in `server/src/embeddedRuntime.ts`, reporting no figure rather than failing the snapshot, and verify a wire test opens a compacted session whose replies carry no token counters
+- [x] 10.2 Mutation-check that test: with the guard removed it fails, so it is asserting the contract rather than passing for free
+
 ## 9. Documentation, coverage and validation
 
 - [x] 9.1 Reread every new test for the Windows failures listed in CLAUDE.md (paths built as strings, line endings, spawning) and verify expected paths are built with `path.join`

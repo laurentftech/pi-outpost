@@ -135,6 +135,19 @@ otherwise have hidden it.
 | ProgressIsVisible | covered | `ui/src/export/conversationHtml.test.ts` — "reports progress so a long export is not silent" asserts `onProgress(1, 2)` and `(2, 2)`. `ui/src/export/conversationExport.test.ts` — "reports progress through both stages" asserts `("collecting", 1, 1)` and `("rendering", 3, 3)`, which is what the header button renders as `reading …/…` then `writing …/…` |
 | NotOfferedForAnEmptyConversation | covered | `ui/src/App.history.test.tsx` — "offers the export only once there is a conversation" asserts the action is absent with no items and present with them. `ui/src/export/conversationExport.test.ts` — "refuses an empty conversation" asserts the refusal even if a caller asks anyway. Observed in the app: a fresh session shows no `↓ html` |
 
+## Capability: `session-usage` (modified, 1 added requirement, 2 scenarios)
+
+Reading a compacted conversation back exposed the crash this requirement exists to prevent: the
+SDK dereferences an assistant reply's `usage` unguarded once the branch holds a compaction entry
+(reported upstream as earendil-works/pi #6311, #6312, #6705, #8192 and #8776, each closed as not
+planned). A provider that prices nothing is a supported configuration here, and a session file is
+parsed without validation, so the shape is reachable in production and not only in fixtures.
+
+| Scenario | Coverage | Assertion evidence |
+| --- | --- | --- |
+| CompactedSessionWithUnpricedReplies | covered | `server/test/history-wire.test.mjs` — "a session whose replies carry no token counters still opens, and says nothing about its context" seeds a real session whose replies carry neither `usage` nor `stopReason`, compacts it, switches to it over the wire, and asserts the transcript arrives with its compaction boundary and that no `error` frame mentioning `totalTokens` reaches the client. Mutation-checked (tasks.md §10.2): with the guard removed the test fails, so it is asserting the contract and not passing for free |
+| NoContextFigureIsInvented | covered | The same test asserts `replaced.contextUsage` is `undefined` — absent rather than zero or a figure carried over. The UI side is unchanged and already covered: `session-usage`'s own `NothingToReport` scenario asserts nothing is claimed when no figures exist |
+
 ## Capability: `api` (modified, 1 added requirement, 7 scenarios)
 
 | Scenario | Coverage | Assertion evidence |

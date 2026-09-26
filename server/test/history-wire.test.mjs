@@ -206,3 +206,45 @@ test("a session with no name carries none, rather than an empty one", async () =
     await server.stop();
   }
 });
+
+test("a session whose replies carry no token counters still opens, and says nothing about its context", async () => {
+  const root = await makeWorkspace();
+  const manager = SessionManager.create(root, path.join(root, ".pi-agent", "sessions"));
+  // No `usage` and no `stopReason` on the replies — what a provider that prices nothing
+  // produces, and what an imported or hand-edited session file can hold. Paired with a
+  // compaction entry it takes the SDK down the branch that dereferences `usage`
+  // unguarded (earendil-works/pi #6312, closed as not planned).
+  const first = manager.appendMessage({ role: "user", content: [{ type: "text", text: "ask 1" }] });
+  manager.appendMessage({ role: "assistant", content: [{ type: "text", text: "answer 1" }] });
+  manager.appendMessage({ role: "user", content: [{ type: "text", text: "ask 2" }] });
+  manager.appendMessage({ role: "assistant", content: [{ type: "text", text: "answer 2" }] });
+  manager.appendCompaction("what came before", first, 5_000);
+  manager.appendMessage({ role: "user", content: [{ type: "text", text: "ask 3" }] });
+  manager.appendMessage({ role: "assistant", content: [{ type: "text", text: "answer 3" }] });
+  const sessionFile = manager.getSessionFile();
+
+  const server = await startServer(root);
+  const client = connect(server.wsUrl());
+  try {
+    await client.open();
+    await client.waitFor("hello");
+    client.send({ type: "switch_session", path: sessionFile });
+    const replaced = await client.waitFor("session_replaced");
+
+    // The conversation arrives — which is the whole point: before the guard, building
+    // this snapshot threw and the reader was left with an error instead of a session.
+    assert.ok(replaced.items.length > 0, "the transcript is served");
+    assert.ok(
+      replaced.items.some((item) => item.kind === "compaction"),
+      "including the compaction boundary",
+    );
+    assert.equal(replaced.contextUsage, undefined, "and the context indicator claims nothing it cannot compute");
+    assert.ok(
+      !client.received.some((message) => message.type === "error" && /totalTokens/.test(message.message ?? "")),
+      "no error about a missing token count reaches the client",
+    );
+  } finally {
+    client.close();
+    await server.stop();
+  }
+});

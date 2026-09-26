@@ -127,6 +127,32 @@ async function settlesWithin(work: Promise<unknown>, ms: number): Promise<boolea
   return true;
 }
 
+/**
+ * How full the context window is, or nothing when the session cannot say.
+ *
+ * The SDK dereferences an assistant message's `usage` unguarded once the branch holds a
+ * compaction entry, so a session that pairs a compaction with a reply carrying no
+ * billing counters throws here rather than answering. A provider that reports no usage
+ * is a supported configuration — a self-hosted model, most of it — and a session file is
+ * parsed without validation, so an imported or hand-edited one can hold the same shape.
+ *
+ * Reported upstream five times and closed as not planned each time (earendil-works/pi
+ * #6311, #6312, #6705, #8192, #8776), so it is guarded here: a snapshot is built for
+ * every client on every connection, and a conversation that cannot be priced must still
+ * open. The indicator goes quiet, which is the honest answer — the runtime genuinely
+ * does not know — instead of costing the reader the session.
+ */
+function contextUsageOf(session: AgentSession): ContextUsage | undefined {
+  try {
+    return session.getContextUsage() as ContextUsage | undefined;
+  } catch (error) {
+    console.warn(
+      `[pi] the context window size could not be computed for this session: ${error instanceof Error ? error.message : String(error)}`,
+    );
+    return undefined;
+  }
+}
+
 type SdkRuntime = Awaited<ReturnType<typeof createAgentSessionRuntime>>;
 
 /**
@@ -217,7 +243,7 @@ export class EmbeddedRuntime implements AgentRuntime {
       commands: this.commands(),
       resources: this.resources(),
       resourceCapabilities: { skills: "available", extensions: "available" },
-      contextUsage: session.getContextUsage() as ContextUsage | undefined,
+      contextUsage: contextUsageOf(session),
       providers: this.providers(),
       extensionPaths: session.extensionRunner.getExtensionPaths(),
       tools: this.tools(),

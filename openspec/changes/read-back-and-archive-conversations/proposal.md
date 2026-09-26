@@ -55,6 +55,12 @@ the whole conversation. Reaching the prefix is the precondition for exporting it
 
 ### Modified Capabilities
 
+- `session-usage`: it owns the context-window indicator. Reading a compacted conversation back
+  exposed a crash in the agent SDK — an assistant reply with no token counters is dereferenced
+  unguarded once the branch holds a compaction entry, so exactly the sessions this change is about
+  could fail to open at all. Reported upstream five times and closed as not planned each time, so
+  the requirement is stated here: a conversation opens whether or not its context size can be
+  computed, and the indicator says nothing it cannot establish.
 - `api`: the protocol gains the request and reply that carry older transcript items, alongside
   the other request/response pairs specified there (`SessionSearchMessages`, `UploadFileMessage`).
   The answer goes to the requesting socket only, since a page's scroll position is not shared
@@ -68,7 +74,9 @@ the whole conversation. Reaching the prefix is the precondition for exporting it
   `navigateTree?`: the embedded SDK runtime has `sessionManager.getBranch(leafId)`, which walks
   to the root through compaction entries rather than stopping at them; the Pi RPC dialect has no
   equivalent and reports that it cannot, rather than answering with a truncated branch.
-- `server/src/embeddedRuntime.ts`, `server/src/index.ts` — the implementation and the message
+- `server/src/embeddedRuntime.ts` — the branch-entries implementation, and a guard around the
+  SDK's context-usage read so a session it cannot price still opens.
+- `server/src/index.ts` — the message
   handler, converting the older entries through the same `historyToItems` the live transcript
   uses. No second renderer.
 - `ui/src/useAgent.ts`, `ui/src/App.tsx` — prepending items with the scroll position preserved,
