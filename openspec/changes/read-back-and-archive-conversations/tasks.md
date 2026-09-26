@@ -59,7 +59,7 @@
 
 ## 9. Documentation, coverage and validation
 
-- [ ] 9.1 Reread every new test for the Windows failures listed in CLAUDE.md (paths built as strings, line endings, spawning) and verify expected paths are built with `path.join`
-- [ ] 9.2 Update `README.md`'s feature list and the conversation documentation for reading back and for the HTML export, and verify documented behaviour against the implementation
-- [ ] 9.3 Write `openspec/changes/read-back-and-archive-conversations/scenario-coverage.md` classifying every `#### Scenario:` of the three deltas, enumerated with `rg '^#### Scenario:' openspec/changes/read-back-and-archive-conversations/specs/`, and verify `npm run check:scenarios` passes
-- [ ] 9.4 Run `npm run lint`, the server and ui suites, and `npx openspec validate read-back-and-archive-conversations --strict`, and verify all pass
+- [x] 9.1 Reread every new test for the Windows failures listed in CLAUDE.md (paths built as strings, line endings, spawning) and verify expected paths are built with `path.join`
+- [x] 9.2 Update `README.md`'s feature list and the conversation documentation for reading back and for the HTML export, and verify documented behaviour against the implementation
+- [x] 9.3 Write `openspec/changes/read-back-and-archive-conversations/scenario-coverage.md` classifying every `#### Scenario:` of the three deltas, enumerated with `rg '^#### Scenario:' openspec/changes/read-back-and-archive-conversations/specs/`, and verify `npm run check:scenarios` passes
+- [x] 9.4 Run `npm run lint`, the server and ui suites, and `npx openspec validate read-back-and-archive-conversations --strict`, and verify all pass
