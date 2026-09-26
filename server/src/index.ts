@@ -119,6 +119,7 @@ import {
 } from "./credentials.ts";
 import { assistantToItem, contentText, customMessageToItem, historyToItems, structuredExchangeField, toProgressFraction, truncate, userMessageText } from "./convert.ts";
 
+import { HistoryUnavailableError, type HistoryContext, historyWindow, olderItemCount } from "./history.ts";
 import { isStackExhaustion, noteCompaction, noteToolOutcome, noteTurnOutcome, recordTurnFailure } from "./turnFailureLog.ts";
 import {
   assertWithinRoot,
@@ -2019,6 +2020,7 @@ function snapshot(workspace: Workspace): SessionSnapshot {
       ? { embedWorkspaceControls: config.embed.workspaceControls }
       : {}),
     sessionId: state.sessionId,
+    ...(state.sessionName ? { sessionName: state.sessionName } : {}),
     model: modelName(workspace),
     thinkingLevel: state.thinkingLevel,
     ...((): { thinkingLevels?: ThinkingLevel[] } => {
@@ -2033,6 +2035,13 @@ function snapshot(workspace: Workspace): SessionSnapshot {
       workspace.browserRoot,
       workspace.renderer,
     ),
+    // What compaction took out of the context and a reader can still ask for. Absent
+    // when there is nothing older, which is also what a runtime that cannot read the
+    // branch reports — either way no client offers to load what is not there.
+    ...((): { olderItems?: number } => {
+      const older = olderItemCount(workspace.agent, historyContext(workspace));
+      return older === undefined ? {} : { olderItems: older };
+    })(),
     models: availableModels(workspace),
     commands: state.commands,
     ...(resourceInventories.get(workspace.root) ? { agentResources: resourceInventories.get(workspace.root) } : {}),
@@ -3605,6 +3614,50 @@ function liveSessionMatch(workspace: Workspace, candidate: string): "live" | "no
 const UNKNOWN_LIVE_SESSION = "The agent runtime does not report which session file it is using, so this cannot be done safely";
 
 /** Match against the name, the first message and the whole transcript (server-side — see sessions.ts). */
+/** What the history conversion needs from the project whose conversation it is. */
+function historyContext(workspace: Workspace): HistoryContext {
+  return { browserRoot: workspace.browserRoot, renderer: workspace.renderer };
+}
+
+/**
+ * Hand one reader the conversation before what they hold.
+ *
+ * Answered to the asking socket alone: how far back somebody has read is not session
+ * state, and a second client watching the same project has not asked for anything.
+ */
+function handleHistoryBefore(
+  workspace: Workspace,
+  socket: WebSocket,
+  sessionId: string,
+  have: number,
+  count: number,
+  requestId: string,
+): void {
+  const live = workspace.agent.snapshot().sessionId;
+  if (sessionId !== live) {
+    // The session moved while the request was in flight. Refusing is the whole point:
+    // the items this workspace could serve now belong to a different conversation, and
+    // the client has already been sent the snapshot that replaced its transcript.
+    send(socket, {
+      type: "history_unavailable",
+      requestId,
+      kind: "stale",
+      reason: "the session changed while the request was in flight",
+    });
+    return;
+  }
+  try {
+    const { items, remaining } = historyWindow(workspace.agent, historyContext(workspace), have, count);
+    send(socket, { type: "history_items", requestId, items, remaining });
+  } catch (error) {
+    if (error instanceof HistoryUnavailableError) {
+      send(socket, { type: "history_unavailable", requestId, kind: "unsupported", reason: error.message });
+      return;
+    }
+    throw error;
+  }
+}
+
 async function handleSearchSessions(workspace: Workspace, socket: WebSocket, query: string, requestId: string): Promise<void> {
   send(socket, {
     type: "session_search_results",
@@ -4988,6 +5041,11 @@ function handleClientMessage(socket: WebSocket, raw: string): void {
       // A search scans every transcript: don't let a client do it with a novel
       if (message.query.length > MAX_QUERY_LENGTH) return;
       handleSearchSessions(workspace, socket, message.query, message.requestId).catch(reportError);
+      break;
+    case "history_before":
+      if (typeof message.sessionId !== "string" || typeof message.requestId !== "string") return;
+      if (typeof message.have !== "number" || typeof message.count !== "number") return;
+      handleHistoryBefore(workspace, socket, message.sessionId, message.have, message.count, message.requestId);
       break;
     case "compact":
       // Failures surface via the compaction_end event (errorMessage) — avoid double-reporting.

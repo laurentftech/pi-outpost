@@ -72,6 +72,15 @@ export interface RuntimeSnapshot {
   sessionId: string;
   /** Path of the session file, when the runtime persists one. */
   sessionFile?: string;
+  /**
+   * The session's display name, when it has one.
+   *
+   * Carried here rather than looked up in the session list: the list is loaded only
+   * when a reader opens the menu, and anything that names a conversation — an exported
+   * file, most of all — must not fall back to a uuid because nobody happened to open a
+   * menu first.
+   */
+  sessionName?: string;
   model?: RuntimeModel;
   thinkingLevel: ThinkingLevel;
   /**
@@ -230,6 +239,17 @@ export interface AgentRuntime {
   entries(): RuntimeEntry[];
   /** Entries on the active branch (post-compaction context), for the user-message list. */
   contextEntries(): RuntimeEntry[];
+  /**
+   * Every entry on the active branch, root first, *through* compaction rather than
+   * stopping at it — what the reader can still be shown of a conversation the model
+   * has forgotten.
+   *
+   * Optional, like `navigateTree`: the Pi RPC dialect has no command that returns the
+   * branch. A runtime without it says so, and callers report that rather than
+   * answering with the part of the conversation they happen to hold — a transcript
+   * presented as whole is the one thing worse than a transcript that admits it is cut.
+   */
+  branchEntries?(): RuntimeEntry[];
 
   /** False once the runtime has failed; `/health` reports it and commands are refused. */
   readonly ok: boolean;

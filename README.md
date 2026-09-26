@@ -163,6 +163,17 @@ one needs, the command that proves it works, and the caution that goes with it.
   branch you can navigate back to
 - Slash commands (`/`) and file mentions (`@`) with autocompletion, and a button back to the
   latest message when you have scrolled up
+- Read the whole conversation back: when the context window fills, the agent compacts the
+  exchange and carries on from a summary — the transcript says where that happened, and
+  **Load earlier messages** brings back what it removed, from the session's own record, without
+  moving the message you were reading. Recovered messages are read-only: their turns are no
+  longer in the model's context, so they cannot be edited or forked from until you navigate
+  back to them in the conversation tree
+- Take the conversation away: **↓ html** saves the whole exchange — everything above the
+  compaction point included — as one self-contained HTML file. It opens with no network, no
+  application and no JavaScript: images and diagrams travel inside it, equations as MathML,
+  tool calls as sections you unfold. Either the file holds the whole conversation or there is no
+  file; nothing is written into the workspace
 - Attachments: drop or paste images and text files into the composer. A PDF, `.docx`,
   `.xlsx` or `.pptx` is uploaded into the workspace and attached as a **path**, so the agent
   reads it with its extraction tools instead of the prompt carrying its content

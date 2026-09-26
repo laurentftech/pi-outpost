@@ -704,3 +704,54 @@ describe("replaying history with a project's own renderers", () => {
     assert.equal((item as { text: string }).text, "step one");
   });
 });
+
+// ---------------------------------------------------------------------------
+// historyToItems — the compaction boundary
+// ---------------------------------------------------------------------------
+describe("historyToItems — compaction", () => {
+  test("emits the boundary carrying what the model was left with", () => {
+    const items = historyToItems([
+      { role: "compactionSummary", summary: "the first hour, in three lines", tokensBefore: 120_000 },
+      { role: "user", content: "and now?" },
+    ] as never);
+
+    assert.equal(items.length, 2);
+    const boundary = items[0] as Extract<(typeof items)[0], { kind: "compaction" }>;
+    assert.equal(boundary.kind, "compaction");
+    assert.equal(boundary.summary, "the first hour, in three lines");
+    assert.equal(boundary.tokensBefore, 120_000);
+  });
+
+  test("sits between what was summarized away and what survived", () => {
+    // The order the SDK's context has: the compaction entry first, then the turns it
+    // kept. A reader scrolling up must meet the boundary, not an unexplained first
+    // message.
+    const items = historyToItems([
+      { role: "compactionSummary", summary: "summary", tokensBefore: 1 },
+      { role: "user", content: "kept prompt" },
+      { role: "assistant", content: [{ type: "text", text: "kept reply" }] },
+    ] as never);
+
+    assert.deepEqual(
+      items.map((item) => item.kind),
+      ["compaction", "user", "assistant"],
+    );
+  });
+
+  test("omits a token count the runtime did not report", () => {
+    const items = historyToItems([{ role: "compactionSummary", summary: "summary" }] as never);
+    const boundary = items[0] as Extract<(typeof items)[0], { kind: "compaction" }>;
+    assert.equal("tokensBefore" in boundary, false);
+  });
+
+  test("still skips a branch summary", () => {
+    const items = historyToItems([
+      { role: "branchSummary", summary: "another branch", fromId: "e1" },
+      { role: "user", content: "hello" },
+    ] as never);
+    assert.deepEqual(
+      items.map((item) => item.kind),
+      ["user"],
+    );
+  });
+});

@@ -119,6 +119,10 @@ interface HeaderProps {
   onToggleSidebar: () => void;
   onToggleOutcome: () => void;
   onFilterChange: (kind: ConversationFilterKind, shown: boolean) => void;
+  /** Take the whole conversation away as one HTML file. Absent where there is nothing to export. */
+  onExportConversation?: () => void;
+  /** An export is being produced: several round trips and a diagram each, so it says so. */
+  exportProgress?: string | null;
   onToggleTheme: () => void;
   onNewSession: () => void;
   onSwitchSession: (path: string) => void;
@@ -542,6 +546,19 @@ export function Header(props: HeaderProps) {
 
       <div className="ml-auto flex items-center gap-2">
         <ConversationFilterMenu filters={props.filters} onFilterChange={props.onFilterChange} />
+        {props.onExportConversation && (
+          <button
+            type="button"
+            onClick={props.onExportConversation}
+            disabled={Boolean(props.exportProgress)}
+            aria-busy={Boolean(props.exportProgress)}
+            title="Save the whole conversation as one HTML file"
+            aria-label="Export the conversation as HTML"
+            className="rounded-md border border-zinc-300 px-2 py-1 text-xs text-zinc-500 hover:border-zinc-400 hover:text-zinc-700 disabled:cursor-progress disabled:opacity-60 dark:border-zinc-800 dark:text-zinc-400 dark:hover:border-zinc-600 dark:hover:text-zinc-200"
+          >
+            {props.exportProgress ?? "↓ html"}
+          </button>
+        )}
         {props.onToggleTerminal && (
           <button
             type="button"

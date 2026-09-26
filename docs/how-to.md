@@ -531,6 +531,44 @@ export stays beside it: a template that is missing or cannot be used is reported
 button, and never blocks the other. Each browser may export into the template 30 times a minute; past that,
 the button says when to try again.
 
+## Read a long conversation back, and send it to someone
+
+A conversation the agent has worked in for a while runs out of context window. When that happens
+the agent *compacts* it: the older exchange is replaced, in the model's context, by a summary it
+writes, and work carries on from there. Nothing is deleted — the session file keeps every message
+— but until now the interface only ever showed what the model could still see, so scrolling up
+stopped at a message that was not the first one, with nothing above it and nothing saying why.
+
+Two things address that:
+
+- The transcript marks the cut. **Conversation compacted here** sits where compaction happened,
+  and unfolding it shows the summary the agent was left with — which is what it now remembers of
+  everything above.
+- **Load earlier messages**, at the top of the transcript, brings those messages back, fifty at a
+  time, from the session's own record. Your reading position does not move: the messages appear
+  above what you were reading. They come back read-only, because their turns are no longer in the
+  model's context — the ✎ and the fork are offered again if you navigate back to them through the
+  conversation tree.
+
+To keep a conversation or send it to someone who does not run pi-outpost, use **↓ html** in the
+header. It saves the whole exchange — everything above the compaction point included, whatever the
+transcript happens to have loaded and whatever the conversation filters hide — as one file:
+
+- It opens from a disk, with no network, no application and no JavaScript. Workspace images travel
+  inside it, diagrams as vector graphics, equations as MathML, tool calls as sections the reader
+  unfolds.
+- It is named after the session and the day, so several exports do not collide in a downloads
+  folder.
+- Either it holds the whole conversation or you get no file at all. A partial archive cannot be
+  told from a complete one once it has been sent, so a conversation whose earlier half cannot be
+  read back is refused with the reason instead.
+- Nothing is written into the workspace; it is a download, like the Word export.
+
+Reading back needs the session record the embedded agent runtime keeps. Under the Pi RPC runtime
+(`agentRuntime.mode: "rpc"`) there is no command for it: no **Load earlier messages** appears, and a
+compacted conversation cannot be exported in full — it says so rather than handing over the visible
+tail.
+
 ## Lock down a shared deployment
 
 For a server other people connect to, decide what the browser may change:
