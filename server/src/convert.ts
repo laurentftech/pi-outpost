@@ -67,6 +67,9 @@ interface AnyMessage {
   isError?: boolean;
   customType?: string;
   details?: unknown;
+  /** Compaction summary: what the model kept, and how much context it replaced. */
+  summary?: string;
+  tokensBefore?: unknown;
   /** Whether the message is shown in the transcript vs. sent to the LLM only. */
   display?: boolean;
   /** Billing counters, on finished assistant messages. Shape: pi-ai's `Usage`. */
@@ -296,8 +299,23 @@ export function historyToItems(
         if (text) items.push(customMessageToItem(message, renderer));
         break;
       }
+      case "compactionSummary": {
+        // Where the conversation was cut, carrying what the model was left with in
+        // its place. Emitted rather than skipped because the summary *is* the agent's
+        // memory of that stretch: a reader who cannot see it has no way to tell an
+        // answer built on the original exchange from one built on three lines about it.
+        // The context puts this message ahead of the turns compaction kept, so the
+        // boundary lands at the top of what survived — which is where it belongs.
+        const summary = typeof message.summary === "string" ? message.summary : "";
+        items.push({
+          kind: "compaction",
+          summary,
+          ...(isNumber(message.tokensBefore) ? { tokensBefore: message.tokensBefore } : {}),
+        });
+        break;
+      }
       default:
-        // compaction/branch summaries, bash executions — skipped in v1
+        // branch summaries, bash executions — skipped in v1
         break;
     }
   }

@@ -16,6 +16,7 @@ import { createServer } from "node:http";
 import { readFile, realpath, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { SEEDED_MESSAGES, VERIFICATION_REPORT } from "../e2e/fixtures/seeded-transcript";
 import { createStructuredExchangeFigureToolDefinition } from "../server/src/structuredExchangeFigureTool.ts";
 // @ts-expect-error -- .mjs harness, no types
@@ -184,7 +185,65 @@ async function seedFigures(): Promise<void> {
   );
 }
 
+/**
+ * A long conversation that has been compacted, so reading back has something to read.
+ *
+ * Seeded as a real session file in the store the plain server reads: the compaction
+ * entry is the SDK's own, and the turns before it are exactly what a reader could not
+ * reach before this change. The pre-compaction half carries a tool call, a workspace
+ * image and a diagram, because those are what an export has to carry too — a bench that
+ * only proves prose survives proves the easy half.
+ */
+async function seedCompactedSession(): Promise<string> {
+  const manager = SessionManager.create(root, path.join(root, ".pi-agent", "sessions"));
+  // Real replies carry their billing counters; a fixture without them trips an unguarded
+  // read in the SDK's context-usage calculation once a branch holds a compaction entry.
+  const usage = { input: 2_400, output: 380, cacheRead: 0, cacheWrite: 0, totalTokens: 2_780 };
+  const reply = (text: string) => ({ role: "assistant", content: [{ type: "text", text }], stopReason: "stop", usage });
+  const prompt = (text: string) => ({ role: "user", content: [{ type: "text", text }] });
+
+  const userEntryIds: string[] = [];
+  for (let turn = 1; turn <= 12; turn++) {
+    userEntryIds.push(manager.appendMessage(prompt(`Turn ${turn}: what did we decide about the brake distance?`) as never));
+    if (turn === 3) {
+      manager.appendMessage({
+        role: "assistant",
+        content: [{ type: "toolCall", id: `call-${turn}`, name: "read", arguments: { path: "notes/braking.md" } }],
+        stopReason: "stop",
+        usage,
+      } as never);
+      manager.appendMessage({
+        role: "toolResult",
+        toolCallId: `call-${turn}`,
+        toolName: "read",
+        content: [{ type: "text", text: "# Braking\n\nThe vehicle shall stop within 40 m from 100 km/h.\n" }],
+      } as never);
+    }
+    if (turn === 5) {
+      manager.appendMessage(reply("Here is the architecture we settled on:\n\n![The whole architecture](figures/whole.svg)") as never);
+    } else if (turn === 7) {
+      manager.appendMessage(
+        reply("And the flow, as a diagram:\n\n```mermaid\ngraph TD;\n  pedal-->master;\n  master-->caliper;\n```") as never,
+      );
+    } else {
+      manager.appendMessage(reply(`Reply ${turn}. It stops within 40 m from 100 km/h, and $v = \\sqrt{2 a d}$ says why.`) as never);
+    }
+  }
+  // Only the last two turns stay in the model's context: everything above is what the
+  // reader could not see.
+  manager.appendCompaction(
+    "Twelve turns about braking: the vehicle stops within 40 m from 100 km/h, the architecture was agreed, and the flow was drawn.",
+    userEntryIds[userEntryIds.length - 2],
+    118_000,
+  );
+  manager.appendMessage({ role: "user", content: [{ type: "text", text: "Turn 13: summarise where we are." }] } as never);
+  manager.appendMessage(reply("We are at 40 m from 100 km/h, with the architecture agreed.") as never);
+  manager.appendSessionInfo("Braking, twelve turns and a compaction");
+  return manager.getSessionFile();
+}
+
 await seedFigures();
+const compactedSessionFile = await seedCompactedSession();
 const plain = await startServer(
   root,
   {
@@ -620,6 +679,10 @@ const profiles = await startServer(
 const link = (server: string) => `${host.url}/?server=${encodeURIComponent(server)}&theme=light`;
 console.log("\n  embed bench — the widget inside a host page that fights it\n");
 console.log(`  settings, files, sessions   ${link(plain.base)}`);
+console.log(
+  `  compacted conversation      ${link(plain.base)}   sessions → "Braking, twelve turns and a compaction"`,
+);
+console.log(`                              (seeded at ${compactedSessionFile})`);
 console.log(`  workspace                   ${root}`);
 console.log(
   LIVE

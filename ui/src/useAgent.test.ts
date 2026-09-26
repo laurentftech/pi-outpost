@@ -2991,3 +2991,158 @@ describe("agent resource operations", () => {
     expect(result.current.state.agentResourceOperations.removals).toEqual({});
   });
 });
+
+// ---------------------------------------------------------------------------
+// Reading the conversation back past compaction
+// ---------------------------------------------------------------------------
+describe("older history", () => {
+  it("takes the count of unreachable items from the snapshot, and nothing from an empty one", async () => {
+    const result = await connected([userItem("kept")], { olderItems: 42 });
+    expect(result.current.state.olderHistory).toEqual({ remaining: 42, have: 0, loading: false, error: null });
+
+    act(() =>
+      mockWs!.receive({
+        type: "session_replaced",
+        sessionId: "sess_2",
+        branding: {},
+        model: "",
+        thinkingLevel: "off",
+        models: [],
+        commands: [],
+        isStreaming: false,
+        items: [userItem("fresh")],
+        contextUsage: null,
+        gitAvailable: false,
+      }),
+    );
+    await waitFor(() => expect(result.current.state.sessionId).toBe("sess_2"));
+    expect(result.current.state.olderHistory).toBeNull();
+  });
+
+  it("prepends what the server serves and advances the cursor", async () => {
+    const result = await connected([userItem("kept")], { olderItems: 5 });
+
+    act(() => {
+      void result.current.loadOlderItems();
+    });
+    await waitFor(() => expect(result.current.state.olderHistory?.loading).toBe(true));
+    const request = JSON.parse(mockWs!.sent[mockWs!.sent.length - 1]);
+    expect(request.type).toBe("history_before");
+    expect(request.have).toBe(0);
+    expect(request.sessionId).toBe("sess_1");
+
+    act(() =>
+      mockWs!.receive({
+        type: "history_items",
+        requestId: request.requestId,
+        items: [userItem("first"), userItem("second")],
+        remaining: 3,
+      }),
+    );
+
+    await waitFor(() => expect(result.current.state.items.length).toBe(3));
+    expect(result.current.state.items.map((item) => (item.kind === "user" ? item.text : ""))).toEqual([
+      "first",
+      "second",
+      "kept",
+    ]);
+    expect(result.current.state.olderHistory).toEqual({ remaining: 3, have: 2, loading: false, error: null });
+  });
+
+  it("issues one request while another is in flight", async () => {
+    const result = await connected([userItem("kept")], { olderItems: 5 });
+    const before = mockWs!.sent.length;
+
+    act(() => {
+      void result.current.loadOlderItems();
+      void result.current.loadOlderItems();
+      void result.current.loadOlderItems();
+    });
+    await waitFor(() => expect(result.current.state.olderHistory?.loading).toBe(true));
+
+    const requests = mockWs!.sent.slice(before).filter((frame) => JSON.parse(frame).type === "history_before");
+    expect(requests.length).toBe(1);
+  });
+
+  it("asks for nothing once the conversation's beginning has been reached", async () => {
+    const result = await connected([userItem("kept")], { olderItems: 2 });
+    act(() => {
+      void result.current.loadOlderItems();
+    });
+    await waitFor(() => expect(result.current.state.olderHistory?.loading).toBe(true));
+    const request = JSON.parse(mockWs!.sent[mockWs!.sent.length - 1]);
+    act(() =>
+      mockWs!.receive({
+        type: "history_items",
+        requestId: request.requestId,
+        items: [userItem("first"), userItem("second")],
+        remaining: 0,
+      }),
+    );
+    await waitFor(() => expect(result.current.state.olderHistory?.remaining).toBe(0));
+
+    const before = mockWs!.sent.length;
+    act(() => {
+      void result.current.loadOlderItems();
+    });
+    expect(mockWs!.sent.slice(before).filter((frame) => JSON.parse(frame).type === "history_before").length).toBe(0);
+  });
+
+  it("keeps the transcript and reports a refusal the reader can retry", async () => {
+    const result = await connected([userItem("kept")], { olderItems: 5 });
+    act(() => {
+      void result.current.loadOlderItems();
+    });
+    await waitFor(() => expect(result.current.state.olderHistory?.loading).toBe(true));
+    const request = JSON.parse(mockWs!.sent[mockWs!.sent.length - 1]);
+
+    act(() =>
+      mockWs!.receive({
+        type: "history_unavailable",
+        requestId: request.requestId,
+        kind: "unsupported",
+        reason: "reading further back is not available with the rpc agent runtime",
+      }),
+    );
+
+    await waitFor(() => expect(result.current.state.olderHistory?.error).toMatch(/rpc agent runtime/));
+    expect(result.current.state.items.length).toBe(1);
+    expect(result.current.state.olderHistory?.loading).toBe(false);
+    expect(result.current.state.olderHistory?.remaining).toBe(5);
+  });
+
+  it("says nothing to the reader when the session moved under the request", async () => {
+    const result = await connected([userItem("kept")], { olderItems: 5 });
+    act(() => {
+      void result.current.loadOlderItems();
+    });
+    await waitFor(() => expect(result.current.state.olderHistory?.loading).toBe(true));
+    const request = JSON.parse(mockWs!.sent[mockWs!.sent.length - 1]);
+
+    act(() =>
+      mockWs!.receive({
+        type: "history_unavailable",
+        requestId: request.requestId,
+        kind: "stale",
+        reason: "the session changed while the request was in flight",
+      }),
+    );
+
+    await waitFor(() => expect(result.current.state.olderHistory?.loading).toBe(false));
+    expect(result.current.state.olderHistory?.error).toBe("");
+    expect(result.current.state.items.length).toBe(1);
+  });
+
+  it("ignores an answer to a request it is no longer waiting for", async () => {
+    const result = await connected([userItem("kept")], { olderItems: 5 });
+    act(() =>
+      mockWs!.receive({
+        type: "history_items",
+        requestId: "history:never-asked",
+        items: [userItem("stranger")],
+        remaining: 0,
+      }),
+    );
+    expect(result.current.state.items.map((item) => (item.kind === "user" ? item.text : ""))).toEqual(["kept"]);
+  });
+});

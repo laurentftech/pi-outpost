@@ -202,6 +202,10 @@ export class EmbeddedRuntime implements AgentRuntime {
     return {
       sessionId: session.sessionId,
       sessionFile: session.sessionManager.getSessionFile(),
+      ...((): { sessionName?: string } => {
+        const name = session.sessionManager.getSessionName()?.trim();
+        return name ? { sessionName: name } : {};
+      })(),
       ...(model?.provider && model.id
         ? { model: { provider: model.provider, id: model.id, name: model.name, reasoning: model.reasoning } }
         : {}),
@@ -321,6 +325,13 @@ export class EmbeddedRuntime implements AgentRuntime {
 
   contextEntries(): RuntimeEntry[] {
     return this.session.sessionManager.buildContextEntries() as RuntimeEntry[];
+  }
+
+  branchEntries(): RuntimeEntry[] {
+    // getBranch walks the leaf's parent chain to the root and reverses it, so the
+    // entries arrive in the order they were appended and compaction entries are
+    // passed through rather than treated as a floor.
+    return this.session.sessionManager.getBranch() as RuntimeEntry[];
   }
 
   // --- binding -------------------------------------------------------------

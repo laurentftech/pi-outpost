@@ -25,9 +25,29 @@ export interface WireImage {
   mimeType: string;
 }
 
+/**
+ * What is true of an item whatever its kind.
+ *
+ * Intersected rather than repeated on each variant: the flag is about where the
+ * item came from, not about what it contains, and narrowing on `kind` works
+ * through the intersection exactly as it does on the bare union.
+ */
+export interface ChatItemProvenance {
+  /**
+   * The item was recovered from before the model's context window — compaction
+   * summarized the turn it belongs to, so its session entry is no longer in the
+   * context the agent would branch from.
+   *
+   * The operations that rewrite the conversation from a message (editing a prompt,
+   * forking) cannot be honoured on it and must not be offered. Everything that
+   * only reads it is unaffected.
+   */
+  readOnly?: boolean;
+}
+
 /** Chat item as displayed by the UI (also used to serialize history). */
-export type ChatItem =
-  | {
+export type ChatItem = ChatItemProvenance &
+  ({
       kind: "user";
       text: string;
       images?: WireImage[];
@@ -97,7 +117,22 @@ export type ChatItem =
       contentHtml?: string;
       /** Collapsed preview when it differs from contentHtml. */
       contentHtmlCollapsed?: string;
-    };
+    }
+  | {
+      /**
+       * Where compaction cut the conversation.
+       *
+       * The summary is what the model was left with in place of everything before
+       * this point — so the boundary is not a decoration around missing content, it
+       * *is* the content the agent now has for that stretch. Positioned by the same
+       * conversion as every other item, which is what makes it land where the
+       * compaction happened rather than where a client stopped loading.
+       */
+      kind: "compaction";
+      summary: string;
+      /** Size of the context that was compacted away, when the runtime reported it. */
+      tokensBefore?: number;
+    });
 
 export interface AssistantBlock {
   type: "text" | "thinking";
@@ -135,6 +170,20 @@ export interface SessionSummary {
  * enforces it too — this is here so the client doesn't bother asking.
  */
 export const MIN_SESSION_QUERY_LENGTH = 2;
+
+/**
+ * Most items one `history_before` request may fetch.
+ *
+ * Read back in chunks rather than all at once: the conversation is not
+ * virtualised, so a reader who asks for the beginning of a thousand-turn session
+ * would otherwise be handed a thousand turns to lay out at once. The server
+ * clamps to this — a request for more is answered with this many, not refused —
+ * and the client asks for `HISTORY_CHUNK` at a time.
+ */
+export const MAX_HISTORY_CHUNK = 200;
+
+/** What one activation of "older messages" fetches. */
+export const HISTORY_CHUNK = 50;
 
 export const THINKING_LEVELS = ["off", "minimal", "low", "medium", "high", "xhigh"] as const;
 export type ThinkingLevel = (typeof THINKING_LEVELS)[number];
@@ -734,6 +783,11 @@ export interface SessionSnapshot {
   restartNeeded?: string[];
   branding: Branding;
   sessionId: string;
+  /**
+   * The session's display name, when it has one. Absent for an unnamed session, where a
+   * client falls back to what it has — its first message, or the id.
+   */
+  sessionName?: string;
   model: string;
   thinkingLevel: string;
   /**
@@ -744,6 +798,16 @@ export interface SessionSnapshot {
   thinkingLevels?: ThinkingLevel[];
   isStreaming: boolean;
   items: ChatItem[];
+  /**
+   * How many items precede `items` — what compaction removed from the model's
+   * context and a reader can still ask for with `history_before`.
+   *
+   * Absent when there is nothing older (a session that was never compacted) and
+   * when the runtime cannot serve the session branch, which are the two cases where
+   * no client should offer to load more. A client that does not know the field
+   * behaves as it always did.
+   */
+  olderItems?: number;
   models: ModelChoice[];
   commands: CommandInfo[];
   /** Git-aware skill and extension inventory. Optional for older servers/clients. */
@@ -875,6 +939,33 @@ export type ServerMessage =
   | { type: "sessions"; sessions: SessionSummary[] }
   /** Answer to search_sessions — sent only to the client that asked. */
   | { type: "session_search_results"; requestId: string; query: string; sessions: SessionSummary[] }
+  /**
+   * Answer to history_before — sent only to the client that asked, because how far
+   * back a reader has scrolled is that reader's state and not the session's.
+   *
+   * `items` end immediately before the oldest item the requester holds, so
+   * prepending them yields one continuous conversation. `remaining` counts what is
+   * still older than `items`; zero means the transcript now starts at the
+   * conversation's first message. `unavailable` names the runtime that cannot serve
+   * the session branch at all — an answer, not silence, and never a partial branch.
+   */
+  | {
+      type: "history_items";
+      requestId: string;
+      items: ChatItem[];
+      remaining: number;
+    }
+  /**
+   * Why a `history_before` request was not answered with items.
+   *
+   * `"unsupported"` is a property of the deployment — this runtime cannot read the
+   * session branch — and is worth telling the reader. `"stale"` means the session
+   * moved under the request (switched, forked, navigated) and the snapshot that
+   * accompanied the move has already replaced the transcript: there is nothing to
+   * report, and prepending the answer would put one conversation's messages above
+   * another's.
+   */
+  | { type: "history_unavailable"; requestId: string; kind: "unsupported" | "stale"; reason: string }
   /** `thinkingLevels` is the new model's accepted set; absent means "offer the full set". */
   | { type: "model_changed"; model: string; reasoning: boolean; thinkingLevels?: ThinkingLevel[] }
   /**
@@ -1187,6 +1278,21 @@ export type ClientMessage =
   | { type: "rename_session"; path: string; name: string }
   /** Find sessions by name, first message or transcript content (matched server-side). */
   | { type: "search_sessions"; query: string; requestId: string }
+  /**
+   * Read further back than the model's context: the items before the ones this
+   * client holds, from the session's own record.
+   *
+   * `have` is how many pre-context items the client already holds — zero on its
+   * first request — and is what the window is measured back from. Counted rather
+   * than named by entry id because most items have no id to name: only user items
+   * carry one, and only while they are in the model's context.
+   *
+   * `sessionId` is the conversation the count was taken from. The server refuses a
+   * request whose session it no longer holds rather than answering from the one it
+   * does: a reply that crossed a session switch would prepend one conversation's
+   * messages above another's, and both clients would look plausible.
+   */
+  | { type: "history_before"; sessionId: string; have: number; count: number; requestId: string }
   | { type: "compact" }
   | { type: "list_directory"; path: string; requestId: string }
   /**

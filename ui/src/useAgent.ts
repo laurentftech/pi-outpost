@@ -38,6 +38,8 @@ import type {
   WireImage,
   WorkPlan,
 } from "@pi-outpost/shared";
+import { HISTORY_CHUNK } from "@pi-outpost/shared";
+import { HistoryError, type HistoryWindow } from "./conversationHistory";
 import { UPLOADS_DIRECTORY, UploadError } from "./uploads";
 import { isImageFile, isPdfFile } from "./util/workspacePath";
 
@@ -226,6 +228,18 @@ function emptyAgentResourceOperations(): AgentResourceOperationState {
   return { clonePath: null, preview: null, enrollment: null, refresh: null, updates: {}, skills: {}, removals: {} };
 }
 
+/** Reading a conversation back past compaction: what remains, and what is in flight. */
+export interface OlderHistory {
+  /** Items still older than the transcript, as the server last counted them. */
+  remaining: number;
+  /** Recovered items this client holds — the cursor the next request is measured from. */
+  have: number;
+  /** A request is in flight; a second activation must not issue another. */
+  loading: boolean;
+  /** Why the last attempt failed. Cleared when another starts, so the reader can retry. */
+  error: string | null;
+}
+
 export interface AgentState {
   connected: boolean;
   /**
@@ -251,6 +265,8 @@ export interface AgentState {
   brandingReady: boolean;
   branding: Branding;
   sessionId: string;
+  /** The session's display name, when the server reported one. */
+  sessionName: string | null;
   model: string;
   thinkingLevel: string;
   modelSupportsReasoning: boolean;
@@ -265,6 +281,15 @@ export interface AgentState {
   tree: TreeNode[] | null;
   isStreaming: boolean;
   items: ChatItem[];
+  /**
+   * What is still readable above the transcript, when compaction cut it.
+   *
+   * `null` means the conversation starts where the transcript starts — a session that
+   * was never compacted, or a runtime that cannot read its own branch — and no control
+   * to load more is offered. Never inferred from an empty reply: only the server knows
+   * what the session file holds.
+   */
+  olderHistory: OlderHistory | null;
   /**
    * A prompt this client has sent and the server has not echoed back yet.
    *
@@ -389,6 +414,7 @@ const initialState: AgentState = {
   brandingReady: false,
   branding: {},
   sessionId: "",
+  sessionName: null,
   model: "",
   thinkingLevel: "off",
   modelSupportsReasoning: false,
@@ -399,6 +425,7 @@ const initialState: AgentState = {
   tree: null,
   isStreaming: false,
   items: [],
+  olderHistory: null,
   pendingPrompt: null,
   workPlan: null,
   replyConformance: {},
@@ -470,6 +497,9 @@ type Action =
   | { type: "file_search_started"; query: string; requestId: string }
   | { type: "file_search_cleared" }
   | { type: "session_search_started"; query: string; requestId: string }
+  | { type: "history_load_started" }
+  | { type: "history_loaded"; items: ChatItem[]; remaining: number }
+  | { type: "history_load_failed"; message: string }
   | { type: "session_search_cleared" }
   | { type: "git_diff_started"; path: string; requestId: string }
   | { type: "git_diff_cleared" }
@@ -573,6 +603,7 @@ function applySnapshot(state: AgentState, message: ServerMessage & { sessionId: 
     switching: false,
     branding: message.branding,
     sessionId: message.sessionId,
+    sessionName: message.sessionName ?? null,
     model: message.model,
     thinkingLevel: message.thinkingLevel,
     thinkingLevels: message.thinkingLevels,
@@ -581,6 +612,10 @@ function applySnapshot(state: AgentState, message: ServerMessage & { sessionId: 
     commands: message.commands,
     isStreaming: message.isStreaming,
     items: message.items,
+    // The snapshot is the only authority on what the session file still holds. A
+    // switch, a reconnect or a compaction resets the cursor with it: what a client
+    // had recovered belonged to the transcript this snapshot replaces.
+    olderHistory: message.olderItems ? { remaining: message.olderItems, have: 0, loading: false, error: null } : null,
     // A snapshot is the authority on what this conversation contains. A prompt
     // still waiting for its echo when one arrives — a reconnect, a session
     // switch — either made it into these items or never landed at all.
@@ -716,6 +751,35 @@ function reduce(state: AgentState, action: Action): AgentState {
     };
   }
   if (action.type === "session_search_cleared") return { ...state, sessionSearch: null };
+  if (action.type === "history_load_started") {
+    // Nothing older to ask for: a control that is not offered cannot have been
+    // activated, and answering anyway would invent a loading state.
+    if (!state.olderHistory) return state;
+    return { ...state, olderHistory: { ...state.olderHistory, loading: true, error: null } };
+  }
+  if (action.type === "history_loaded") {
+    if (!state.olderHistory) return state;
+    return {
+      ...state,
+      // Above what is already there, in the order they were exchanged. The server
+      // served the items that end where this client's oldest one begins, so a
+      // concatenation is the whole of it — no merge, no de-duplication.
+      items: [...action.items, ...state.items],
+      olderHistory: {
+        remaining: action.remaining,
+        have: state.olderHistory.have + action.items.length,
+        loading: false,
+        error: null,
+      },
+    };
+  }
+  if (action.type === "history_load_failed") {
+    if (!state.olderHistory) return state;
+    // The transcript is left exactly as it was. A reader who is told nothing would
+    // conclude the conversation starts here, which is the misunderstanding this whole
+    // change exists to end.
+    return { ...state, olderHistory: { ...state.olderHistory, loading: false, error: action.message } };
+  }
   if (action.type === "git_diff_started") return { ...state, gitDiff: null };
   if (action.type === "git_diff_cleared") return { ...state, gitDiff: null };
   if (action.type === "git_show_cleared") return { ...state, gitShow: null, gitLog: state.gitLog };
@@ -1455,6 +1519,15 @@ function wsUrlFor(serverUrl: string, token: string | null, workspace?: string): 
 const UPLOAD_TIMEOUT_MS = 120_000;
 
 /**
+ * How long a request for older transcript may go unanswered.
+ *
+ * Shorter than an upload: the server reads a file it already has open and answers
+ * without a model or a network hop. Past this the control offers a retry rather than
+ * sitting on "loading…" for the rest of the session.
+ */
+const HISTORY_TIMEOUT_MS = 20_000;
+
+/**
  * How long the Outcome drawer waits for an answer before saying so.
  *
  * Comfortably above what composing costs — a git status per repository, each
@@ -1514,6 +1587,32 @@ export function useAgent(serverUrl = "", explicitToken?: string, embedded = fals
   // Waiters live outside the reducer for that reason, keyed by the same requestId
   // correlation every other file-browser request uses.
   const uploadWaitersRef = useRef(new Map<string, { resolve: (path: string) => void; reject: (error: UploadError) => void }>());
+  /**
+   * Requests for older transcript, awaiting their answer.
+   *
+   * Promises rather than reducer state because two callers want the same request: the
+   * reader's control, which prepends what comes back, and the export, which walks the
+   * whole history without putting any of it on screen.
+   */
+  const historyWaitersRef = useRef(
+    new Map<string, { resolve: (window: { items: ChatItem[]; remaining: number }) => void; reject: (error: Error) => void }>(),
+  );
+  const sessionIdRef = useRef(state.sessionId);
+  useEffect(() => {
+    sessionIdRef.current = state.sessionId;
+  }, [state.sessionId]);
+  /**
+   * A request for older transcript is in flight.
+   *
+   * Separate from the `loading` flag in state, and set before the request is sent: the
+   * state mirror is written by an effect, so three activations in one tick would all
+   * read `loading: false` and all ask. A latch closes in the same tick as the click.
+   */
+  const historyLoadingRef = useRef(false);
+  const olderHistoryRef = useRef(state.olderHistory);
+  useEffect(() => {
+    olderHistoryRef.current = state.olderHistory;
+  }, [state.olderHistory]);
   const writableRootRef = useRef(state.writableRoot);
   useEffect(() => {
     writableRootRef.current = state.writableRoot;
@@ -1785,6 +1884,22 @@ export function useAgent(serverUrl = "", explicitToken?: string, embedded = fals
           }
           return;
         }
+        if (message.type === "history_items") {
+          const waiter = historyWaitersRef.current.get(message.requestId);
+          if (waiter) {
+            historyWaitersRef.current.delete(message.requestId);
+            waiter.resolve({ items: message.items, remaining: message.remaining });
+          }
+          return;
+        }
+        if (message.type === "history_unavailable") {
+          const waiter = historyWaitersRef.current.get(message.requestId);
+          if (waiter) {
+            historyWaitersRef.current.delete(message.requestId);
+            waiter.reject(new HistoryError(message.reason, message.kind));
+          }
+          return;
+        }
         if (message.type === "file_uploaded") {
           const waiter = uploadWaitersRef.current.get(message.requestId);
           if (waiter) {
@@ -1931,6 +2046,10 @@ export function useAgent(serverUrl = "", explicitToken?: string, embedded = fals
           waiter.reject(new UploadError("The connection dropped before the upload finished"));
         }
         uploadWaitersRef.current.clear();
+        for (const waiter of historyWaitersRef.current.values()) {
+          waiter.reject(new HistoryError("the connection dropped before the older messages arrived", "failed"));
+        }
+        historyWaitersRef.current.clear();
         if (event.code === WS_CLOSE_UNAUTHORIZED) {
           // Bad token: retrying is pointless — show the token screen instead
           dispatch({ type: "auth_required" });
@@ -1950,6 +2069,69 @@ export function useAgent(serverUrl = "", explicitToken?: string, embedded = fals
       socket?.close();
     };
   }, [sendMessage, serverUrl, refreshGitStatus, gitStatusSettled, relistDirectory, requestDirectory, invalidateOutcome, settleOutcome, authNonce, workspaceRoot]);
+
+  /**
+   * Ask the server for the items before the ones this client holds.
+   *
+   * A promise rather than reducer state because two callers want the same request: the
+   * reader's control, which prepends what comes back, and the export, which walks the
+   * whole history without putting any of it on screen.
+   */
+  const fetchOlderItems = useCallback(
+    (have: number, count: number): Promise<HistoryWindow> => {
+      const socket = socketRef.current;
+      if (!socket || socket.readyState !== WebSocket.OPEN) {
+        return Promise.reject(new HistoryError("not connected to the server", "failed"));
+      }
+      const requestId = `history:${crypto.randomUUID()}`;
+      return new Promise<HistoryWindow>((resolve, reject) => {
+        // A dropped socket rejects every waiter; this covers the answer that never
+        // comes on a socket that stays up. Left unsettled, the control would sit on
+        // "loading…" for the rest of the session — the shape of the git-menu defect
+        // this project has already been bitten by.
+        const timer = window.setTimeout(() => {
+          if (!historyWaitersRef.current.delete(requestId)) return;
+          reject(new HistoryError("the older messages did not arrive", "failed"));
+        }, HISTORY_TIMEOUT_MS);
+        const settle =
+          <T,>(run: (value: T) => void) =>
+          (value: T) => {
+            clearTimeout(timer);
+            run(value);
+          };
+        historyWaitersRef.current.set(requestId, { resolve: settle(resolve), reject: settle(reject) });
+        sendMessage({ type: "history_before", sessionId: sessionIdRef.current, have, count, requestId });
+      });
+    },
+    [sendMessage],
+  );
+
+  /** Load one chunk of older messages into the transcript, above what is there. */
+  const loadOlderItems = useCallback(async (): Promise<void> => {
+    const older = olderHistoryRef.current;
+    // Not offered, already asking, or nothing left: all three are reasons to do nothing
+    // rather than issue a request whose answer would be discarded.
+    if (!older || older.loading || historyLoadingRef.current || older.remaining <= 0) return;
+    historyLoadingRef.current = true;
+    dispatch({ type: "history_load_started" });
+    try {
+      const window = await fetchOlderItems(older.have, HISTORY_CHUNK);
+      dispatch({ type: "history_loaded", items: window.items, remaining: window.remaining });
+    } catch (error) {
+      // A session that moved under the request has already replaced the transcript:
+      // there is nothing for the reader to retry, and nothing to tell them either.
+      if (error instanceof HistoryError && error.kind === "stale") {
+        dispatch({ type: "history_load_failed", message: "" });
+        return;
+      }
+      dispatch({
+        type: "history_load_failed",
+        message: error instanceof Error ? error.message : "the older messages could not be loaded",
+      });
+    } finally {
+      historyLoadingRef.current = false;
+    }
+  }, [fetchOlderItems]);
 
   return {
     state,
@@ -2033,6 +2215,10 @@ export function useAgent(serverUrl = "", explicitToken?: string, embedded = fals
     editPrompt: (entryId: string, text: string, images?: WireImage[]) =>
       sendMessage({ type: "edit_prompt", entryId, text, ...(images?.length ? { images } : {}) }),
     compact: () => sendMessage({ type: "compact" }),
+    /** Ask for the items before the ones this client holds, without touching the transcript. */
+    fetchOlderItems,
+    /** Load one chunk of older messages into the transcript, above what is there. */
+    loadOlderItems,
     /** Answer the dialog at the head of the queue and pop it locally. */
     respondToDialog: (response: { id: string; value: string } | { id: string; confirmed: boolean } | { id: string; cancelled: true }) => {
       sendMessage({ type: "extension_ui_response", ...response });

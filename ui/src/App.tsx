@@ -1,10 +1,12 @@
-import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { UpdateNotice } from "./components/UpdateNotice";
 import { ReplyConformanceContext } from "./components/ReplyStructuredExchange";
 import { workspaceKey } from "./util/workspaceKey";
 import type { OutcomeTarget, Theme, WireImage } from "@pi-outpost/shared";
 import { AssistantMessage } from "./components/AssistantMessage";
+import { CompactionBoundary } from "./components/CompactionBoundary";
 import { CustomMessageCard } from "./components/CustomMessageCard";
+import { OlderMessages } from "./components/OlderMessages";
 import { SessionAnalysisPanel } from "./components/SessionAnalysis";
 import { ThemeContext } from "./theme/ThemeContext";
 import { useConversationJump } from "./useConversationJump";
@@ -125,6 +127,8 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
     forkSession,
     editPrompt,
     compact,
+    loadOlderItems,
+    fetchOlderItems,
     respondToDialog,
     dismissNotification,
     listDirectory,
@@ -705,6 +709,55 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
     },
     [setStick],
   );
+  /**
+   * Taking the conversation away.
+   *
+   * The module is imported inside the handler: it carries the markdown pipeline and
+   * mermaid behind it, and a reader who never exports must not pay for either. The
+   * whole history is collected by the export itself, not read off the transcript — see
+   * `export/conversationExport.ts`.
+   */
+  const [exportProgress, setExportProgress] = useState<string | null>(null);
+  const [exportError, setExportError] = useState<string | null>(null);
+
+  const sessionLabel = useMemo(() => {
+    // The snapshot's own name first: the session list is loaded only when its menu is
+    // opened, and an export must not be named after a uuid because nobody opened a menu.
+    const session = state.sessions?.find((candidate) => candidate.id === state.sessionId);
+    return state.sessionName?.trim() || session?.name?.trim() || session?.firstMessage?.trim() || state.sessionId;
+  }, [state.sessionName, state.sessions, state.sessionId]);
+
+  const exportConversationToFile = useCallback(async () => {
+    setExportError(null);
+    setExportProgress("preparing…");
+    try {
+      const { exportConversation } = await import("./export/conversationExport");
+      await exportConversation({
+        items: state.items,
+        olderItems: state.olderHistory?.remaining ?? 0,
+        // Absent when the deployment cannot read its own branch, which is what makes the
+        // export refuse rather than quietly hand over the visible tail.
+        ...(state.olderHistory ? { fetchOlderItems } : {}),
+        connection: { serverUrl, token: authToken },
+        meta: {
+          ...(state.workspace ? { project: state.workspace.name } : {}),
+          // The session's own name when it has one, its opening line when it does not,
+          // and its id as a last resort: the file will be read by someone who was not
+          // here, and "01a0da6c-…" tells them nothing.
+          session: sessionLabel,
+          model: state.model,
+          exportedAt: new Date(),
+        },
+        onProgress: (stage, done, total) =>
+          setExportProgress(stage === "collecting" ? `reading ${done}/${total}…` : `writing ${done}/${total}…`),
+      });
+    } catch (error) {
+      setExportError(error instanceof Error ? error.message : "the conversation could not be exported");
+    } finally {
+      setExportProgress(null);
+    }
+  }, [state.items, state.olderHistory, state.workspace, state.model, sessionLabel, fetchOlderItems, serverUrl, authToken]);
+
   const { jumpToItem, highlightIndex } = useConversationJump({
     items: state.items,
     scrollerRef: mainRef,
@@ -712,6 +765,41 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
     onShowTools: showTools,
     onJump: handleJump,
   });
+
+  /**
+   * Where the reader was when they asked for more, so the insert above them does not
+   * move them.
+   *
+   * Prepending content grows the scroller upwards: with `scrollTop` untouched, every
+   * pixel of new content pushes the message being read down the viewport, and the
+   * reader is dropped somewhere in the middle of history they had not asked to see.
+   * Taken at the click rather than in the effect, because by the time the items arrive
+   * the geometry they are measured against is already gone.
+   */
+  const prependAnchor = useRef<{ height: number; top: number } | null>(null);
+  const loadedCount = useRef(state.olderHistory?.have ?? 0);
+
+  const loadOlder = useCallback(() => {
+    const main = mainRef.current;
+    if (main) prependAnchor.current = { height: main.scrollHeight, top: main.scrollTop };
+    void loadOlderItems();
+  }, [loadOlderItems]);
+
+  // Before the browser paints: a corrected position applied after a paint is a visible
+  // jump, which is exactly what this exists to avoid. Keyed on how many recovered items
+  // are held — the one number that changes only when a prepend lands, never when the
+  // agent streams something at the other end of the transcript.
+  useLayoutEffect(() => {
+    const have = state.olderHistory?.have ?? 0;
+    const previous = loadedCount.current;
+    loadedCount.current = have;
+    const anchor = prependAnchor.current;
+    prependAnchor.current = null;
+    if (!anchor || have <= previous) return;
+    const main = mainRef.current;
+    if (!main) return;
+    main.scrollTop = anchor.top + (main.scrollHeight - anchor.height);
+  }, [state.olderHistory?.have]);
 
   useEffect(() => {
     // An extension's setTitle() (see extensions.md#custom-ui) wins until branding changes again.
@@ -901,6 +989,8 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
             onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
             onToggleOutcome={toggleOutcome}
             onFilterChange={setFilter}
+            {...(state.items.length > 0 ? { onExportConversation: () => void exportConversationToFile() } : {})}
+            exportProgress={exportProgress}
             onToggleTheme={toggleTheme}
             onNewSession={newSession}
             onSwitchSession={switchSession}
@@ -1053,6 +1143,7 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
                   <p className="text-sm">{state.branding.welcome ?? "Send a message to start the agent."}</p>
                 </div>
               )}
+              {state.olderHistory && <OlderMessages older={state.olderHistory} onLoad={loadOlder} />}
               {state.items.map((item, i) => {
                 // Scope keys to the session so component state (collapsed cards…)
                 // never bleeds across session_replaced
@@ -1074,10 +1165,17 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
                   return anchor(
                     <UserMessage
                       item={item}
-                      canEdit={!state.isStreaming && state.connected}
+                      // A prompt recovered from before the compaction point has no entry
+                      // in the model's context to rewind to. Said here as well as implied
+                      // by the missing entry id: the refusal is a decision, not an accident
+                      // of how the item was built.
+                      canEdit={!item.readOnly && !state.isStreaming && state.connected}
                       onEdit={editPrompt}
                     />,
                   );
+                }
+                if (item.kind === "compaction") {
+                  return anchor(<CompactionBoundary item={item} />);
                 }
                 if (item.kind === "tool") {
                   if (!filters.tools) return null;
@@ -1163,6 +1261,11 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
               {previewAttachmentError && (
                 <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-300">
                   {previewAttachmentError}
+                </div>
+              )}
+              {exportError && (
+                <div className="rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-300">
+                  {exportError}
                 </div>
               )}
               {state.errors.map((error, i) => (
