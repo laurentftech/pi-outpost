@@ -120,6 +120,16 @@ describe("Word tools", () => {
     assert.ok(!WORD_SCRIPT.includes(root));
     // Documents.Open(FileName, ConfirmConversions=false, ReadOnly=true, AddToRecentFiles=false, …, Format=0, …, Visible=false)
     assert.match(WORD_SCRIPT, /Documents\.Open\(\$env:PI_OUTPOST_RENDER_INPUT, \$false, \$true, \$false(, \$missing){5}, 0, \$missing, \$false\)/);
+    // Each table of contents is refreshed first, and before the export: the exporter
+    // draws a field's cached result, so a document written from a template rendered its
+    // contents as "Error! Bookmark not defined." — the template's entries pointing at
+    // bookmarks the new document does not have. A table that cannot refresh is swallowed,
+    // because it is not a reason to return no pages at all.
+    assert.match(WORD_SCRIPT, /for \(\$i = 1; \$i -le \$doc\.TablesOfContents\.Count; \$i\+\+\) \{ try \{ \$doc\.TablesOfContents\.Item\(\$i\)\.Update\(\) \} catch \{ \} \}/);
+    assert.ok(
+      WORD_SCRIPT.indexOf("TablesOfContents") < WORD_SCRIPT.indexOf("ExportAsFixedFormat"),
+      "the tables are refreshed before the export, not after",
+    );
     // PDF (17), with the headings as bookmarks (CreateBookmarks = 1) and the markup shown (Item = 7).
     assert.match(WORD_SCRIPT, /ExportAsFixedFormat\(\$env:PI_OUTPOST_RENDER_OUTPUT, 17, \$false, 0, 0, 1, 1, 7, \$true, \$true, 1\)/);
     // Closed without saving (wdDoNotSaveChanges = 0); Word quits only when nothing else is open.

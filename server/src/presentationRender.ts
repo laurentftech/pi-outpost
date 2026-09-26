@@ -225,8 +225,15 @@ export const POWERPOINT_SCRIPT = [
  *   `wdExportAllDocument` (0), `wdExportDocumentWithMarkup` (7) so tracked changes are
  *   drawn as LibreOffice draws them, and `wdExportCreateHeadingBookmarks` (1) — the
  *   headings become the PDF's outline, which is how the agent sees its chapters.
+ * - Each table of contents is refreshed before the export. `ExportAsFixedFormat` draws
+ *   a field's cached result, and a document written from a template carries the
+ *   template's entries pointing at bookmarks that no longer exist — so the pages came
+ *   out reading "Error! Bookmark not defined." where the contents belong. Word refreshes
+ *   the table when a person opens the file; nothing refreshes it on this path. Failures
+ *   are swallowed: a table that cannot refresh is not a reason to return no pages.
  * - `Close(wdDoNotSaveChanges)` (0). Word is told to quit only when no other document
- *   is open in it, so a user's own documents are never closed.
+ *   is open in it, so a user's own documents are never closed. The copy is opened
+ *   read-only and never saved, so refreshing the table changes no file.
  * - `Quit([ref]0)`: Word declares `Quit`'s arguments ByRef, and PowerShell refuses a
  *   plain value for one ("argument 1 must be of type PSReference"). That throw lands in
  *   the `finally`, so the PDF is written and the script still exits non-zero — the
@@ -240,6 +247,7 @@ export const WORD_SCRIPT = [
   "  $app = New-Object -ComObject Word.Application",
   "  $missing = [Type]::Missing",
   "  $doc = $app.Documents.Open($env:PI_OUTPOST_RENDER_INPUT, $false, $true, $false, $missing, $missing, $missing, $missing, $missing, 0, $missing, $false)",
+  "  for ($i = 1; $i -le $doc.TablesOfContents.Count; $i++) { try { $doc.TablesOfContents.Item($i).Update() } catch { } }",
   "  $doc.ExportAsFixedFormat($env:PI_OUTPOST_RENDER_OUTPUT, 17, $false, 0, 0, 1, 1, 7, $true, $true, 1)",
   "} finally {",
   "  if ($doc -ne $null) { $doc.Close(0) }",
