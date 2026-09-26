@@ -25,6 +25,12 @@ call passes `track_changes: false`; the answer SHALL say that the replaced style
 not tracked. The result SHALL be written to the writable zone, and SHALL replace an existing file
 only when asked to.
 
+The body's final paragraph mark is the one exception: its removal SHALL be written directly even
+when the other removals are tracked, and the answer SHALL say so. Word's *Accept all* works over
+the main text story, which stops short of that mark, so a tracked change there survives both
+*Accept all* and *Reject all* — the document goes on reporting a change its owner cannot clear
+except by finding that one revision by hand. The removal still happens and is still counted.
+
 #### Scenario: DocumentTakesTheTemplatesStyles
 - **GIVEN** a document written by an English Word, whose heading 1 is Arial 16 pt under the id `Heading1`
 - **WHEN** it is restyled with a template whose heading 1 is another font under the id `Titre1`
@@ -62,6 +68,11 @@ only when asked to.
 #### Scenario: RemovalsAreTrackedByDefault
 - **WHEN** a document is restyled without `track_changes: false`
 - **THEN** every changed run carries a `w:rPrChange` by pi-outpost holding its old run properties, and the answer says the style definitions are not tracked
+
+#### Scenario: AcceptAllLeavesNoChangeBehind
+- **GIVEN** a document whose last paragraph mark sets a font, a size or a colour by hand
+- **WHEN** it is restyled with tracking on, and every change is accepted in Word
+- **THEN** the mark's removal was written directly rather than tracked, the answer says so, it is counted among the removals, and the document is left with no revision
 
 #### Scenario: PendingRevisionsAreRefused
 - **GIVEN** a document with an insertion nobody has accepted
