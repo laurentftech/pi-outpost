@@ -10,7 +10,7 @@ import type { PictureSource, ReferencedImage } from "@pi-outpost/shared/docx";
 import { countDiagrams } from "@pi-outpost/shared/docx";
 import { generateContent, WordComposer, type GeneratedContent } from "./docxGraft.ts";
 import { isGallery, isTableOfContents, WordTemplateError, type WordPackage } from "./docxTemplate.ts";
-import { bodyLayout } from "./wordml.ts";
+import { bodyLayout, type BodyLayout } from "./wordml.ts";
 
 export const MAX_MARKDOWN_CHARS = 2_000_000;
 
@@ -77,9 +77,17 @@ export function createFromContent(template: WordPackage, generated: GeneratedCon
     if (cover === undefined) warnings.push("the template has no cover page to keep");
     else kept.push(cover.xml);
   }
+  let tocKept = false;
   if (keep.has("toc")) {
     if (toc === undefined) warnings.push("the template has no table of contents to keep");
-    else kept.push(toc.xml);
+    else {
+      const region = fieldRegion(layout.children, toc);
+      if (region === null) warnings.push("the template's table of contents field is never closed, so it was left out");
+      else {
+        kept.push(...region);
+        tocKept = true;
+      }
+    }
   }
 
   const composer = new WordComposer(template);
@@ -88,6 +96,40 @@ export function createFromContent(template: WordPackage, generated: GeneratedCon
 
   const body = [...kept, ...content, layout.sectPr?.xml ?? ""].join("");
   const documentXml = template.documentXml.slice(0, layout.innerStart) + body + template.documentXml.slice(layout.innerEnd);
-  const bytes = composer.compose(documentXml, { asDocument: true, updateFields: keep.has("toc") && toc !== undefined, sweep: "all" });
+  const bytes = composer.compose(documentXml, { asDocument: true, updateFields: tocKept, sweep: "all" });
   return { bytes, warnings };
+}
+
+/**
+ * Every body child the kept element's field spans — not just the one it starts in.
+ *
+ * A table of contents Word wrote is a field whose *result* is cached as the entries
+ * themselves: `fldChar begin` and the `TOC` instruction sit in the first paragraph,
+ * one paragraph follows per entry, and the matching `fldChar end` lands in a
+ * paragraph of its own. Keeping only the first leaves the field unterminated, and
+ * Word then sees no table of contents at all — `TablesOfContents.Count` is 0, so it
+ * never refreshes, however plainly the `TOC` instruction is still in the file.
+ *
+ * Nesting is counted because each cached entry carries its own `PAGEREF` field.
+ * A content control (`sdt`) already encloses its whole field, and needs no walk.
+ *
+ * `null` when the field never closes: the template is malformed, and reproducing
+ * an unterminated field would only pass the defect on.
+ */
+function fieldRegion(children: BodyLayout["children"], start: BodyLayout["children"][number]): string[] | null {
+  if (start.local === "sdt") return [start.xml];
+  const from = children.indexOf(start);
+  const region: string[] = [];
+  let depth = 0;
+  for (let at = from; at < children.length; at++) {
+    const child = children[at];
+    if (child.local === "sectPr") break;
+    region.push(child.xml);
+    for (const [, type] of child.xml.matchAll(/fldCharType="(\w+)"/g)) {
+      if (type === "begin") depth++;
+      else if (type === "end") depth--;
+    }
+    if (depth <= 0) return region;
+  }
+  return null;
 }

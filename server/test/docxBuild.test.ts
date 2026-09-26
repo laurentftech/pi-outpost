@@ -189,6 +189,49 @@ describe("docx_create: Markdown written into a template", () => {
     ]);
   });
 
+  test("CoverAndTableOfContentsAreKeptOnRequest: a bare TOC field is kept whole, not just its first paragraph", async () => {
+    // docx-template-fieldtoc.dotx holds the table of contents Word writes once it has
+    // been refreshed: a field spanning three paragraphs, each cached entry carrying its
+    // own nested PAGEREF. Keeping only the paragraph the field opens in leaves the field
+    // unterminated — Word then reports TablesOfContents.Count as 0 and never refreshes
+    // it, however plainly the TOC instruction is still in the file. Checked in Word
+    // (Pro Plus 2021) before and after this fix.
+    const fieldTocBytes = await readFile(path.join(FIXTURES, "docx-template-fieldtoc.dotx"));
+    const created = await createDocument(readWordPackage(fieldTocBytes), "# Report\n\nOur text.", { keep: ["cover", "toc"] });
+    const document = text(unzip(created.bytes), "word/document.xml");
+
+    const chars = [...document.matchAll(/fldCharType="(\w+)"/g)].map((match) => match[1]);
+    const count = (type: string) => chars.filter((char) => char === type).length;
+    assert.equal(count("begin"), count("end"), `every field is closed: ${chars.join(",")}`);
+    assert.equal(count("begin"), 3, "the TOC and both of its cached PAGEREF entries");
+    assert.equal(count("separate"), 3);
+    // The instruction and the cached entries come across together.
+    assert.match(document, /instrText[^>]*>\s*TOC \\o "1-3"/);
+    assert.match(document, /PAGEREF _Toc100000002/);
+    assert.match(document, /Sous-partie d’exemple/);
+    assert.deepEqual(created.warnings, []);
+
+    // A field the template never closes is left out rather than passed on unterminated:
+    // reproducing it would hand the same dead table of contents to Word.
+    const parts = unzip(fieldTocBytes);
+    const closing = '<w:p><w:r><w:fldChar w:fldCharType="end"/></w:r></w:p>';
+    const original = parts.get("word/document.xml")!.toString("utf8");
+    assert.ok(original.includes(closing), "the fixture has a closing paragraph to remove");
+    parts.set("word/document.xml", Buffer.from(original.replace(closing, ""), "utf8"));
+    const broken = await createDocument(
+      readWordPackage(Buffer.from(writeZip([...parts].map(([name, data]) => ({ name, data }))))),
+      "# Report",
+      { keep: ["toc"] },
+    );
+    assert.deepEqual(broken.warnings, ["the template's table of contents field is never closed, so it was left out"]);
+    const brokenDocument = text(unzip(broken.bytes), "word/document.xml");
+    assert.doesNotMatch(brokenDocument, /instrText[^>]*>\s*TOC/, "no half a table of contents");
+    const brokenChars = [...brokenDocument.matchAll(/fldCharType="(\w+)"/g)].map((match) => match[1]);
+    assert.equal(brokenChars.filter((c) => c === "begin").length, brokenChars.filter((c) => c === "end").length);
+    // Nothing claims the reader should refresh a table that is not there.
+    assert.doesNotMatch(text(unzip(broken.bytes), "word/settings.xml"), /updateFields/);
+  });
+
   test("updateFields goes before the first settings child the schema puts after it", () => {
     assert.equal(withUpdateFields('<w:settings xmlns:w="w"><w:zoom/><w:rsids/></w:settings>'), '<w:settings xmlns:w="w"><w:zoom/><w:updateFields w:val="true"/><w:rsids/></w:settings>');
     assert.equal(withUpdateFields('<w:settings xmlns:w="w"><w:zoom/></w:settings>'), '<w:settings xmlns:w="w"><w:zoom/><w:updateFields w:val="true"/></w:settings>');
