@@ -57,7 +57,7 @@ const DESCRIPTION = [
   "Do not return the content and then write it yourself — that spends the context twice.",
   "Without sheet, every visible sheet is read in workbook order; hidden sheets and hidden columns are not read and are reported.",
   "Otherwise output is capped per call — when it is truncated it says so and names the sheet and row range to ask for next, or pass full:true to get everything at once.",
-  "Values are rendered from the cell's number format: dates as YYYY-MM-DD, times as HH:MM:SS, decimals with a dot and no thousands separator, percentages with %, and a currency symbol only when the format states one.",
+  "Values are rendered from the cell's number format: dates as YYYY-MM-DD, times as HH:MM:SS, decimals with a dot and no thousands separator, percentages with %, scientific formats with their exponent (1.23E-04), and a currency symbol only when the format states one.",
   "A computed cell shows the last result stored in the workbook; formulas themselves are not returned.",
   "Charts, pivot tables, images, conditional formatting, cell comments and defined names are not read.",
 ].join(" ");
