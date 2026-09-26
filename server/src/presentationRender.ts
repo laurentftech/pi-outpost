@@ -227,6 +227,11 @@ export const POWERPOINT_SCRIPT = [
  *   headings become the PDF's outline, which is how the agent sees its chapters.
  * - `Close(wdDoNotSaveChanges)` (0). Word is told to quit only when no other document
  *   is open in it, so a user's own documents are never closed.
+ * - `Quit([ref]0)`: Word declares `Quit`'s arguments ByRef, and PowerShell refuses a
+ *   plain value for one ("argument 1 must be of type PSReference"). That throw lands in
+ *   the `finally`, so the PDF is written and the script still exits non-zero — the
+ *   conversion is discarded and the Word process is left running. `Close` takes its 0
+ *   by value, which is why only this call needs the cast.
  */
 export const WORD_SCRIPT = [
   "$ErrorActionPreference = 'Stop'",
@@ -238,7 +243,7 @@ export const WORD_SCRIPT = [
   "  $doc.ExportAsFixedFormat($env:PI_OUTPOST_RENDER_OUTPUT, 17, $false, 0, 0, 1, 1, 7, $true, $true, 1)",
   "} finally {",
   "  if ($doc -ne $null) { $doc.Close(0) }",
-  "  if ($app -ne $null -and $app.Documents.Count -eq 0) { $app.Quit(0) }",
+  "  if ($app -ne $null -and $app.Documents.Count -eq 0) { $app.Quit([ref]0) }",
   "}",
 ].join("\n");
 

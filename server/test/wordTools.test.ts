@@ -124,7 +124,11 @@ describe("Word tools", () => {
     assert.match(WORD_SCRIPT, /ExportAsFixedFormat\(\$env:PI_OUTPOST_RENDER_OUTPUT, 17, \$false, 0, 0, 1, 1, 7, \$true, \$true, 1\)/);
     // Closed without saving (wdDoNotSaveChanges = 0); Word quits only when nothing else is open.
     assert.match(WORD_SCRIPT, /\$doc\.Close\(0\)/);
-    assert.match(WORD_SCRIPT, /if \(\$app -ne \$null -and \$app\.Documents\.Count -eq 0\) \{ \$app\.Quit\(0\) \}/);
+    assert.match(WORD_SCRIPT, /if \(\$app -ne \$null -and \$app\.Documents\.Count -eq 0\) \{ \$app\.Quit\(\[ref\]0\) \}/);
+    // Word declares Quit's arguments ByRef: a plain 0 makes PowerShell throw inside the
+    // finally, so the PDF is written, the script exits non-zero, the conversion is thrown
+    // away and the Word process is left running. Only [ref] gets an exit code of 0.
+    assert.doesNotMatch(WORD_SCRIPT, /\$app\.Quit\(\s*0\s*\)/);
     assert.doesNotMatch(WORD_SCRIPT, /Visible\s*=\s*\$true|\.Save\(/);
   });
 });
