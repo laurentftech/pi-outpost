@@ -17,7 +17,7 @@
  * (`output_path`, `pdf_path`) inside the writable one, which is `null` when writing
  * is disabled. `pptx_create` is not registered at all in a read-only sandbox.
  */
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { Type } from "typebox";
@@ -27,6 +27,7 @@ import { ImageError, readImageInfo } from "./imageInfo.ts";
 import { PptxError, parseSlideRange, readSlideParagraphs } from "./pptx.ts";
 import { buildPresentation, describeTemplate, PptxBuildError, readTemplate, type SlideSpec } from "./pptxBuild.ts";
 import { updatePresentation, type DeckEdit } from "./pptxUpdate.ts";
+import { DEFAULT_TEMPLATE_NAME, defaultTemplateBytes } from "./defaultTemplate.ts";
 import { CHART_TYPES, MAX_TABLE_COLUMNS, MAX_TABLE_ROWS, type ChartType } from "./pptxVisuals.ts";
 import {
   convertPresentationToPdf,
@@ -80,10 +81,42 @@ export async function readSource(target: string, options: Pick<PresentationToolO
   return { resolved, bytes: await fs.readFile(resolved) };
 }
 
+/**
+ * The template to build on: the one named, or the built-in Office theme.
+ *
+ * The built-in bytes deliberately do not go through `readSource`. It confines a path
+ * to the sandbox, which is right for anything the model names and wrong for this —
+ * the built-in template is not a file in the workspace and has no path to confine.
+ *
+ * `label` is what the answer calls it, so a reader can never mistake a deck built on
+ * the stock Office theme for one built on their own house style.
+ */
+export async function readTemplateSource(
+  target: string | undefined,
+  options: Pick<PresentationToolOptions, "cwd" | "allowedRoots">,
+  maxBytes: number,
+): Promise<{ bytes: Buffer; label: string }> {
+  // An empty string is how a model says "no template" when it has decided to send the
+  // key anyway, and it is at least as common as leaving the key out — watched live, a
+  // model that had just listed the built-in layouts passed `template_path: ""` on every
+  // one of its attempts. Read literally it resolves to the workspace directory, so the
+  // build failed with "No such file: " and the model looped on the deck it never wrote.
+  if (target === undefined || target.trim() === "") {
+    return { bytes: defaultTemplateBytes(), label: DEFAULT_TEMPLATE_NAME };
+  }
+  const { bytes } = await readSource(target, options, maxBytes, "template");
+  return { bytes, label: `\`${target}\`` };
+}
+
 /* ── pptx_layouts ───────────────────────────────────────────────────────────── */
 
 const layoutsParameters = Type.Object({
-  path: Type.String({ description: "The template: a .potx or .pptx file (relative to the workspace root, or absolute)" }),
+  path: Type.Optional(
+    Type.String({
+      description:
+        "The template: a .potx or .pptx file (relative to the workspace root, or absolute). Omit it to see the layouts of the built-in Office theme, which is what pptx_create uses when no template is given.",
+    }),
+  ),
 });
 
 export function createPptxLayoutsToolDefinition(options: PresentationToolOptions): ToolDefinition {
@@ -93,17 +126,21 @@ export function createPptxLayoutsToolDefinition(options: PresentationToolOptions
     description: [
       "List the slide layouts of a PowerPoint template (.potx or .pptx): each layout's name, its type, and the placeholders it offers (title, subtitle, content, text, picture).",
       "Call it before pptx_create to choose a layout for each slide by name.",
+      "With no path it describes the built-in Office theme, the template pptx_create falls back to.",
     ].join(" "),
     promptSnippet: "List the slide layouts a PowerPoint template offers",
     parameters: layoutsParameters,
     async execute(_toolCallId, params) {
-      const { path: target } = params as { path: string };
-      const { bytes } = await readSource(target, options, options.maxBytes, "template");
+      const { path: target } = params as { path?: string };
+      const { bytes, label } = await readTemplateSource(target, options, options.maxBytes);
       try {
         const template = readTemplate(bytes);
-        return { content: [{ type: "text", text: describeTemplate(template) }], details: undefined };
+        return { content: [{ type: "text", text: `Layouts of ${label}:\n\n${describeTemplate(template)}` }], details: undefined };
       } catch (error) {
-        if (error instanceof PptxBuildError) throw new Error(`"${target}": ${error.message}`);
+        // A named template keeps the quoting the answer has always used for a path.
+        if (error instanceof PptxBuildError) {
+          throw new Error(`${label === DEFAULT_TEMPLATE_NAME ? label : `"${target}"`}: ${error.message}`);
+        }
         throw error;
       }
     },
@@ -162,7 +199,12 @@ const slideSchema = Type.Object({
 });
 
 const createParameters = Type.Object({
-  template_path: Type.String({ description: "The template (.potx or .pptx) whose masters, layouts, theme and fonts the deck uses." }),
+  template_path: Type.Optional(
+    Type.String({
+      description:
+        "The template (.potx or .pptx) whose masters, layouts, theme and fonts the deck uses. Omit it only when the user named no template and asked for no particular look: the deck is then built on the built-in Office theme, the one a blank PowerPoint deck carries. Never pass a template found by searching the codebase — a test fixture is not the user's house style.",
+    }),
+  ),
   output_path: Type.String({ description: "Where to write the new deck; must end in .pptx." }),
   slides: Type.Array(slideSchema, { description: "The slides, in order." }),
   overwrite: Type.Optional(
@@ -265,7 +307,7 @@ export function createPptxCreateToolDefinition(options: PresentationToolOptions)
         output_path: destination,
         slides,
         overwrite,
-      } = params as { template_path: string; output_path: string; slides: SlideParam[]; overwrite?: boolean };
+      } = params as { template_path?: string; output_path: string; slides: SlideParam[]; overwrite?: boolean };
 
       if (!/\.pptx$/i.test(destination)) {
         throw new Error(`"${destination}" must end in .pptx: the tool writes a presentation, not a template or a macro-enabled file.`);
@@ -278,7 +320,7 @@ export function createPptxCreateToolDefinition(options: PresentationToolOptions)
       }
       if (existing !== null && !existing.isFile()) throw new Error(`"${destination}" exists and is not a file.`);
 
-      const template = await readSource(templatePath, options, options.maxBytes, "template");
+      const template = await readTemplateSource(templatePath, options, options.maxBytes);
       const specs: SlideSpec[] = [];
       for (const [index, slide] of slides.entries()) specs.push(await toSlideSpec(slide, options, `Slide ${index + 1}`));
 
@@ -293,7 +335,7 @@ export function createPptxCreateToolDefinition(options: PresentationToolOptions)
       await writeDeck(resolvedOutput, existing !== null, built.bytes, destination);
 
       const lines = [
-        `Wrote ${built.slides.length} slide(s) to \`${destination}\` (${built.bytes.length} bytes).`,
+        `Wrote ${built.slides.length} slide(s) to \`${destination}\` (${built.bytes.length} bytes), on ${template.label}.`,
         "",
         ...built.slides.map(
           (slide) => `- Slide ${slide.number}: ${slide.layout}${slide.warnings.length > 0 ? ` — ${slide.warnings.join("; ")}` : ""}`,
@@ -405,8 +447,29 @@ const renderParameters = Type.Object({
 
 const RENDERER_LABELS: Record<string, string> = { powerpoint: "PowerPoint", libreoffice: "LibreOffice", onlyoffice: "ONLYOFFICE" };
 
+/**
+ * What the last render of a deck found, so rendering it again unchanged is free.
+ *
+ * Watched live: a text-only model rendered one deck 94 times across 53 edits, and the
+ * text check came back clean on every single one. It was not chasing a defect — the
+ * answer asks the caller to look at the pictures too, and a model that cannot see them
+ * can never reach "nothing is wrong", so it edited at a guess and rendered again. The
+ * verdict below makes that stop condition reachable; this cache makes the loop cheap
+ * rather than a full PowerPoint round trip each time, and says plainly that nothing has
+ * changed — which is the signal the model actually needs.
+ */
+interface LastRender {
+  /** Digest of the deck as it was rendered. */
+  hash: string;
+  /** Slides the pictures covered, so asking for others still renders. */
+  pictured: number[];
+  renderer: RendererChoice | undefined;
+  verdict: string;
+}
+
 export function createPptxRenderToolDefinition(options: PresentationToolOptions): ToolDefinition {
   const environment = options.environment ?? defaultEnvironment();
+  const lastRender = new Map<string, LastRender>();
   return {
     name: "pptx_render",
     label: "Render presentation",
@@ -443,6 +506,36 @@ export function createPptxRenderToolDefinition(options: PresentationToolOptions)
       if (slideCount === 0) throw new Error(`"${target}" has no slides to render.`);
       const wanted = slides !== undefined ? parseSlideRange(slides, slideCount) : Array.from({ length: slideCount }, (_, i) => i + 1);
       const pictured = wanted.slice(0, MAX_RENDERED_SLIDES);
+
+      // Unchanged since the last render, same slides, same renderer, and no PDF to
+      // write: there is nothing a second office round trip could find that the first
+      // did not. Answer from what it found, and say why there are no fresh pictures.
+      const hash = createHash("sha256").update(source.bytes).digest("hex");
+      const previous = lastRender.get(source.resolved);
+      if (
+        previous !== undefined &&
+        previous.hash === hash &&
+        previous.renderer === renderer &&
+        resolvedPdf === undefined &&
+        pictured.every((slide) => previous.pictured.includes(slide))
+      ) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: [
+                `\`${target}\` has not changed since it was last rendered, so this is that render's verdict, unchanged:`,
+                "",
+                previous.verdict,
+                "",
+                "The pictures already sent for it still apply — rendering it again without editing it will keep returning this.",
+                "If the text check is clean and you cannot see anything wrong in those pictures, the deck is finished: say so and stop.",
+              ].join("\n"),
+            },
+          ],
+          details: undefined,
+        };
+      }
 
       let conversion: Awaited<ReturnType<typeof convertPresentationToPdf>>;
       try {
@@ -508,9 +601,20 @@ export function createPptxRenderToolDefinition(options: PresentationToolOptions)
           : `Look at each picture for: text that overflows or is cut off, overlapping elements, text too small or too low in contrast to read, and leftover placeholder text.` +
               (wanted.length > pictured.length ? ` Pictures cover slides ${describeList(pictured)}; ask for the rest with slides="${wanted[pictured.length]}-${wanted[wanted.length - 1]}".` : ""),
       );
+      if (findings.length === 0) {
+        // The stop condition has to be one the caller can actually reach. A model with
+        // no sight of the pictures cannot declare them clean, and left to infer what to
+        // do it edits at a guess and renders again, indefinitely.
+        header.push(
+          "Nothing in the text check needs fixing. If you cannot see the pictures, or you can and nothing in them is wrong, the deck is finished: say which application rendered it and what you could not check, and stop. Do not render it again unless you change it.",
+        );
+      }
+
+      const verdict = header.join("\n");
+      lastRender.set(source.resolved, { hash, pictured, renderer, verdict });
 
       const content: Array<{ type: "text"; text: string } | { type: "image"; data: string; mimeType: string }> = [
-        { type: "text", text: header.join("\n") },
+        { type: "text", text: verdict },
       ];
       for (const image of raster?.images ?? []) {
         content.push({ type: "text", text: `Slide ${image.page}:` });

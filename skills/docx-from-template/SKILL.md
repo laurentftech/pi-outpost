@@ -34,7 +34,10 @@ inside an existing document, and leaves everything you did not touch exactly as 
    heading levels become the document's outline. Use real lists, tables and `**bold**`; LaTeX
    (`$…$`, `$$…$$`) becomes native Word equations. Reference pictures by workspace path
    (`![Architecture](figures/architecture.svg)`); prefer SVG for diagrams. Mermaid is written as
-   code, not drawn: export a diagram to SVG and reference that instead.
+   code, not drawn — a page showing source where a diagram belongs. To get the `.svg`, write what
+   the diagram describes as a structured-exchange document and turn it into the picture with
+   `write_structure_figure`; the `structured-exchange` skill holds the document shape, and is
+   worth reading before the first one, since the schema is checked and a near miss is refused.
 3. **Create** with `docx_create`: `template_path`, `output_path` (a `.docx`), and `markdown` (or
    `markdown_path` for a file, whose pictures then resolve against its folder). Pass
    `keep: ["cover", "toc"]` when the template has them and the document should — Word fills the

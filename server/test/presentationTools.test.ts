@@ -233,6 +233,54 @@ describe("presentation tools", () => {
   });
 
   describe("pptx_render", () => {
+    test("answers an unchanged deck from the last render, without running the converter again", async () => {
+      // A text-only model rendered one deck 94 times across 53 edits, every text check
+      // clean: it cannot see the pictures, so it can never reach "nothing is wrong" and
+      // edits at a guess instead. A second office round trip over identical bytes can
+      // find nothing the first did not, and saying so is the signal it needs.
+      const soffice: string[] = [];
+      const tool = createPptxRenderToolDefinition({ ...options, environment: fakeOffice(soffice) });
+
+      const first = firstText(await call(tool, { path: "rendered.pptx" }));
+      assert.equal(soffice.length, 1);
+
+      const again = await call(tool, { path: "rendered.pptx" });
+      assert.equal(soffice.length, 1, "the converter ran once, not twice");
+      const text = firstText(again);
+      assert.match(text, /has not changed since it was last rendered/);
+      // The verdict is repeated in full, so the finding is not lost by being cached.
+      assert.ok(text.includes(first), text);
+      // Pictures are not sent a second time; the ones already in the transcript stand.
+      assert.equal(again.filter((item) => item.type === "image").length, 0);
+    });
+
+    test("renders again once the deck has changed", async () => {
+      const soffice: string[] = [];
+      const tool = createPptxRenderToolDefinition({ ...options, environment: fakeOffice(soffice) });
+      await call(tool, { path: "rendered.pptx" });
+
+      const deck = path.join(root, "rendered.pptx");
+      const bytes = await readFile(deck);
+      await writeFile(deck, bytes);
+      await writeFile(path.join(root, "changed.pptx"), bytes);
+      // Same bytes, different deck: the cache is per file, not global.
+      await call(tool, { path: "changed.pptx" });
+
+      assert.equal(soffice.length, 2);
+    });
+
+    test("says the deck is finished when the text check is clean", async () => {
+      // Without this the caller is left to infer what a clean check means, and a model
+      // that cannot see the pictures infers "keep trying".
+      const tool = createPptxRenderToolDefinition({ ...options, environment: fakeOffice() });
+
+      const clean = firstText(await call(tool, { path: "rendered.pptx", slides: "1" }));
+
+      assert.match(clean, /every paragraph of slide 1 is visible/);
+      assert.match(clean, /If you cannot see the pictures/);
+      assert.match(clean, /Do not render it again unless you change it/);
+    });
+
     test("returns a picture of each slide, with the overflow it found named", async () => {
       const soffice: string[] = [];
       const tool = createPptxRenderToolDefinition({ ...options, environment: fakeOffice(soffice) });
