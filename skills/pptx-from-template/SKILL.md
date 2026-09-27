@@ -61,6 +61,12 @@ then build on the default first, so there is something to look at while they fin
 
 Never declare a deck finished without having rendered it.
 
+**If you cannot see the pictures, say so and stop there.** Some models get the render's
+text check but not its images. Then a clean text check is the whole verdict: report that
+the pictures could not be inspected and hand the deck over. Do not edit a deck the render
+found nothing wrong with, and never render one you have not changed — the answer will be
+the same, and that loop has run a deck through ninety-four renders without improving it.
+
 ## Updating an existing deck
 
 When the user asks to change a deck they already have — a figure to refresh, a slide to add,

@@ -17,7 +17,7 @@
  * (`output_path`, `pdf_path`) inside the writable one, which is `null` when writing
  * is disabled. `pptx_create` is not registered at all in a read-only sandbox.
  */
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { Type } from "typebox";
@@ -447,8 +447,29 @@ const renderParameters = Type.Object({
 
 const RENDERER_LABELS: Record<string, string> = { powerpoint: "PowerPoint", libreoffice: "LibreOffice", onlyoffice: "ONLYOFFICE" };
 
+/**
+ * What the last render of a deck found, so rendering it again unchanged is free.
+ *
+ * Watched live: a text-only model rendered one deck 94 times across 53 edits, and the
+ * text check came back clean on every single one. It was not chasing a defect — the
+ * answer asks the caller to look at the pictures too, and a model that cannot see them
+ * can never reach "nothing is wrong", so it edited at a guess and rendered again. The
+ * verdict below makes that stop condition reachable; this cache makes the loop cheap
+ * rather than a full PowerPoint round trip each time, and says plainly that nothing has
+ * changed — which is the signal the model actually needs.
+ */
+interface LastRender {
+  /** Digest of the deck as it was rendered. */
+  hash: string;
+  /** Slides the pictures covered, so asking for others still renders. */
+  pictured: number[];
+  renderer: RendererChoice | undefined;
+  verdict: string;
+}
+
 export function createPptxRenderToolDefinition(options: PresentationToolOptions): ToolDefinition {
   const environment = options.environment ?? defaultEnvironment();
+  const lastRender = new Map<string, LastRender>();
   return {
     name: "pptx_render",
     label: "Render presentation",
@@ -485,6 +506,36 @@ export function createPptxRenderToolDefinition(options: PresentationToolOptions)
       if (slideCount === 0) throw new Error(`"${target}" has no slides to render.`);
       const wanted = slides !== undefined ? parseSlideRange(slides, slideCount) : Array.from({ length: slideCount }, (_, i) => i + 1);
       const pictured = wanted.slice(0, MAX_RENDERED_SLIDES);
+
+      // Unchanged since the last render, same slides, same renderer, and no PDF to
+      // write: there is nothing a second office round trip could find that the first
+      // did not. Answer from what it found, and say why there are no fresh pictures.
+      const hash = createHash("sha256").update(source.bytes).digest("hex");
+      const previous = lastRender.get(source.resolved);
+      if (
+        previous !== undefined &&
+        previous.hash === hash &&
+        previous.renderer === renderer &&
+        resolvedPdf === undefined &&
+        pictured.every((slide) => previous.pictured.includes(slide))
+      ) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: [
+                `\`${target}\` has not changed since it was last rendered, so this is that render's verdict, unchanged:`,
+                "",
+                previous.verdict,
+                "",
+                "The pictures already sent for it still apply — rendering it again without editing it will keep returning this.",
+                "If the text check is clean and you cannot see anything wrong in those pictures, the deck is finished: say so and stop.",
+              ].join("\n"),
+            },
+          ],
+          details: undefined,
+        };
+      }
 
       let conversion: Awaited<ReturnType<typeof convertPresentationToPdf>>;
       try {
@@ -550,9 +601,20 @@ export function createPptxRenderToolDefinition(options: PresentationToolOptions)
           : `Look at each picture for: text that overflows or is cut off, overlapping elements, text too small or too low in contrast to read, and leftover placeholder text.` +
               (wanted.length > pictured.length ? ` Pictures cover slides ${describeList(pictured)}; ask for the rest with slides="${wanted[pictured.length]}-${wanted[wanted.length - 1]}".` : ""),
       );
+      if (findings.length === 0) {
+        // The stop condition has to be one the caller can actually reach. A model with
+        // no sight of the pictures cannot declare them clean, and left to infer what to
+        // do it edits at a guess and renders again, indefinitely.
+        header.push(
+          "Nothing in the text check needs fixing. If you cannot see the pictures, or you can and nothing in them is wrong, the deck is finished: say which application rendered it and what you could not check, and stop. Do not render it again unless you change it.",
+        );
+      }
+
+      const verdict = header.join("\n");
+      lastRender.set(source.resolved, { hash, pictured, renderer, verdict });
 
       const content: Array<{ type: "text"; text: string } | { type: "image"; data: string; mimeType: string }> = [
-        { type: "text", text: header.join("\n") },
+        { type: "text", text: verdict },
       ];
       for (const image of raster?.images ?? []) {
         content.push({ type: "text", text: `Slide ${image.page}:` });
