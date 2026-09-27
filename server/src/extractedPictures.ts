@@ -184,15 +184,23 @@ export function selectPictures(pictures: FoundPicture[], request: PictureRequest
 
   for (const picture of wanted) {
     if (picture.bytes === undefined) continue; // Its marker already says why.
-    // A picture named outright is returned however large it is: that is the way
-    // back for one the budget withheld, and refusing it would leave no way at all.
-    if (!named && picture.bytes.length > MAX_ONE_PICTURE_BYTES) {
-      tooBig.push(picture.number);
-      continue;
-    }
-    if (returned.length >= MAX_PICTURES_PER_CALL || bytesSoFar + picture.bytes.length > MAX_PICTURE_BYTES_PER_CALL) {
-      cappedAt ??= picture.number;
-      continue;
+    // A picture named outright is returned however large it is: that is the way back
+    // for one the budget withheld, and refusing it would leave no way at all. That
+    // has to hold for *every* ceiling, not just the per-picture one — a named picture
+    // over the per-call budget used to come back with a note advising the caller to
+    // ask for it by number, which is what it had just done. The first named picture
+    // therefore always travels; the ceilings resume from the second, so naming fifty
+    // of them is still bounded.
+    const first = named && returned.length === 0;
+    if (!first) {
+      if (!named && picture.bytes.length > MAX_ONE_PICTURE_BYTES) {
+        tooBig.push(picture.number);
+        continue;
+      }
+      if (returned.length >= MAX_PICTURES_PER_CALL || bytesSoFar + picture.bytes.length > MAX_PICTURE_BYTES_PER_CALL) {
+        cappedAt ??= picture.number;
+        continue;
+      }
     }
     returned.push(picture);
     bytesSoFar += picture.bytes.length;
@@ -210,7 +218,11 @@ export function selectPictures(pictures: FoundPicture[], request: PictureRequest
     notes.push(
       `${left.length} further picture${left.length === 1 ? "" : "s"} did not fit this answer ` +
         `(at most ${MAX_PICTURES_PER_CALL} pictures and ${Math.round(MAX_PICTURE_BYTES_PER_CALL / (1024 * 1024))} MB per call). ` +
-        `Ask for them by number, starting at ${cappedAt}.`,
+        // The advice has to differ by case. Telling a caller that already named its
+        // pictures to "ask by number" sends it round the loop it is standing in.
+        (named
+          ? `Ask for fewer at a time, starting at ${cappedAt}.`
+          : `Ask for them by number, starting at ${cappedAt}.`),
     );
   }
   return { returned, notes };

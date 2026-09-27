@@ -149,6 +149,9 @@ describe("createSandboxedTools", () => {
         "grep",
         "ls",
         "pdf_extract",
+        // Drawing a page is reading it: it opens the file and returns pictures, writing
+        // nothing, so it belongs in the read-only set beside the extractor.
+        "pdf_render",
         "pptx_extract",
         "pptx_layouts",
         "pptx_render",
@@ -173,6 +176,7 @@ describe("createSandboxedTools", () => {
         "grep",
         "ls",
         "pdf_extract",
+        "pdf_render",
         "pptx_create",
         "pptx_extract",
         "pptx_layouts",

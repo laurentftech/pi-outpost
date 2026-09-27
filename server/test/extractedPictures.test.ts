@@ -169,6 +169,25 @@ describe("what travels, and what is said about the rest", () => {
     assert.deepEqual(chosen.notes, [], "no note: nothing was withheld from what was asked");
   });
 
+  test("the advice a note gives is never the thing the caller just did", () => {
+    // Found by hammering: a named picture over the *per-call* budget came back with
+    // nothing and a note saying to ask for it by number — which is what the caller had
+    // just done. The way back has to exist at every ceiling, not only the per-picture
+    // one, so the first named picture always travels.
+    const enormous = picture(1, MAX_PICTURE_BYTES_PER_CALL * 2);
+    const chosen = selectPictures([enormous], ["1"]);
+    assert.deepEqual(chosen.returned.map((p) => p.number), [1]);
+    assert.deepEqual(chosen.notes, []);
+
+    // From the second onward the ceilings resume, so naming many is still bounded —
+    // and then the advice says to ask for fewer, not to do the same thing again.
+    const many = Array.from({ length: 4 }, (_, i) => picture(i + 1, MAX_PICTURE_BYTES_PER_CALL));
+    const capped = selectPictures(many, ["1", "2", "3", "4"]);
+    assert.equal(capped.returned.length, 1, "the first travels, the rest are bounded");
+    assert.match(capped.notes[0], /Ask for fewer at a time, starting at 2\./);
+    assert.doesNotMatch(capped.notes[0], /Ask for them by number/);
+  });
+
   test("several oversized pictures read as a list, in one sentence", () => {
     const found = [picture(1, MAX_ONE_PICTURE_BYTES + 1), picture(2, MAX_ONE_PICTURE_BYTES + 1), picture(3, 10)];
     const chosen = selectPictures(found, "all");
