@@ -674,3 +674,89 @@ describe("extractPdf and struck-through text", () => {
     assert.doesNotMatch(markdown, /~~/);
   });
 });
+
+/**
+ * The images a page draws.
+ *
+ * Nothing can be handed over as it was stored: pdf.js decodes an image before the
+ * operator walk can see it, so the encoding is chosen here — and these fixtures are
+ * one page per bitmap kind so each branch of that choice is exercised against a real
+ * decode rather than a synthetic buffer.
+ *
+ * `pdf-scan.pdf` is deliberately not among them: it models a scan as a page with no
+ * text, drawn with a filled rectangle, so it holds no image at all. That makes it the
+ * fixture for a page only `pdf_render` can show, which is a different case.
+ */
+describe("extractPdf and the images a page draws", () => {
+  test("a photograph comes back as a JPEG, named where it was drawn", async () => {
+    const result = await extractPdf(await fixture("pdf-image-rgb"));
+
+    assert.match(result.markdown, /\[picture 1: JPEG 8×8\]/);
+    assert.equal(result.pictures.length, 1);
+    const picture = result.pictures[0];
+    assert.equal(picture.mimeType, "image/jpeg");
+    assert.equal(picture.width, 8);
+    assert.equal(picture.height, 8);
+    assert.ok(picture.bytes !== undefined && picture.bytes.length > 0);
+    assert.equal(picture.unavailable, undefined);
+  });
+
+  test("a bilevel scan stays lossless, because JPEG rings around glyphs", async () => {
+    const result = await extractPdf(await fixture("pdf-image-bilevel"));
+
+    assert.match(result.markdown, /\[picture 1: PNG 16×8\]/);
+    assert.equal(result.pictures[0].mimeType, "image/png");
+    // The resolution is the file's own, not a page width: that detail is the whole
+    // value of looking at a scan.
+    assert.equal(result.pictures[0].width, 16);
+    assert.equal(result.pictures[0].height, 8);
+  });
+
+  test("an image that cannot be decoded is named with the reason, and the page still reads", async () => {
+    const result = await extractPdf(await fixture("pdf-image-undecodable"));
+
+    assert.equal(result.pictures.length, 1);
+    assert.equal(result.pictures[0].bytes, undefined);
+    assert.match(result.markdown, /\[picture 1: image 8×8; /);
+    assert.match(result.pictures[0].unavailable ?? "", /bitmap|encoding/);
+    assert.deepEqual(result.pages, [1], "the page is still covered");
+  });
+
+  test("a marker lands on the page that drew it, after that page's text", async () => {
+    const result = await extractPdf(await fixture("pdf-text-then-image"));
+
+    assert.deepEqual(result.pages, [1, 2]);
+    assert.equal(result.pictures.length, 1);
+    const [first, second] = result.markdown.split("## Page 2");
+    assert.match(first, /Cover page with real text/);
+    assert.doesNotMatch(first, /\[picture /, "page 1 draws nothing");
+    assert.match(second, /\[picture 1: JPEG 8×8\]/);
+  });
+
+  test("a page with no text says how to look at it, images before drawing", async () => {
+    const result = await extractPdf(await fixture("pdf-image-rgb"));
+
+    // Saying only that OCR is unavailable leaves a caller with no next move, which is
+    // where it used to stop. The routes come in the order they are worth trying.
+    assert.match(result.markdown, /OCR is not available\./);
+    const note = /Ask for the images[^\n]*/.exec(result.markdown)?.[0] ?? "";
+    assert.match(note, /images: "all"/);
+    assert.match(note, /pdf_render/);
+    assert.ok(note.indexOf('images: "all"') < note.indexOf("pdf_render"), "the page's own image is the better answer, so it comes first");
+  });
+
+  test("a page drawn with no image at all still says so, and points at rendering", async () => {
+    const result = await extractPdf(await fixture("pdf-scan"));
+
+    assert.deepEqual(result.pictures, [], "a filled rectangle is not an image to return");
+    assert.match(result.markdown, /no image to return either/);
+    assert.match(result.markdown, /pdf_render/);
+  });
+
+  test("a document with no images reports none", async () => {
+    const result = await extractPdf(await fixture("pdf-text"));
+
+    assert.deepEqual(result.pictures, []);
+    assert.doesNotMatch(result.markdown, /\[picture /);
+  });
+});

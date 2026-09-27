@@ -10,6 +10,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { Type } from "typebox";
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
+import { imagesParameter, pictureContentFor, type PictureRequest } from "./extractedPictures.ts";
 import { assertWritableDestination, excerptOf, extractionSummary, writeExtraction } from "./extractionOutput.ts";
 import { extractPdf, PdfError, type PdfMode } from "./pdf.ts";
 import { isWithinAny, realResolve } from "./sandbox.ts";
@@ -50,6 +51,7 @@ const parameters = Type.Object({
       description: "Write the whole extraction to this workspace path and return a summary instead of the content. The file must not already exist.",
     }),
   ),
+  images: imagesParameter,
 });
 
 const DESCRIPTION = [
@@ -60,7 +62,8 @@ const DESCRIPTION = [
   "Table reconstruction is best-effort; use mode=\"text\" to see a page exactly as its text layer reads.",
   "Text the page draws a strike across is returned as ~~struck through~~ and means the document withdrew it — do not treat it as current, and say which passages are struck when you transcribe, quote or summarise the document.",
   "A PDF records a strike as a drawn shape, not as a property of the text, so detection is best-effort: it can miss one, and it never removes or alters text.",
-  "A scanned PDF has no text layer and is reported as such: there is no OCR.",
+  "Each image a page draws is named where it sits, as [picture 3: JPEG 1700×2200]; pass images: \"all\" to get them as images too, or images: [\"3\"] for one by its number.",
+  "A scanned page is one such image, returned at the resolution the file holds — so a page with no text layer is still readable by looking at it. There is no OCR: the text is not searchable, and a page drawn as vectors rather than placed as an image has nothing to return, which is what pdf_render is for.",
 ].join(" ");
 
 /** Past this, an answer is large enough that the file option is worth naming again. */
@@ -89,7 +92,8 @@ export function createPdfExtractToolDefinition(options: PdfToolOptions): ToolDef
         mode,
         full,
         output_path: destination,
-      } = params as { path: string; pages?: string; mode?: PdfMode; full?: boolean; output_path?: string };
+        images = "none",
+      } = params as { path: string; pages?: string; mode?: PdfMode; full?: boolean; output_path?: string; images?: PictureRequest };
 
       // SECURITY: scopeToRoot confines `path` and nothing else, so `output_path`
       // is checked by writeExtraction against the writable zone. Two arguments,
@@ -129,6 +133,10 @@ export function createPdfExtractToolDefinition(options: PdfToolOptions): ToolDef
         throw error;
       }
 
+      // Images are selected before the answer is assembled, so an identifier that
+      // names nothing is refused instead of returning text that looks complete.
+      const pictures = await pictureContentFor(extraction.pictures, images);
+
       if (destination === undefined) {
         // A very large answer is the moment output_path becomes worth knowing about:
         // saying so here reaches the caller when the cost is in front of it, which a
@@ -138,7 +146,10 @@ export function createPdfExtractToolDefinition(options: PdfToolOptions): ToolDef
             ? `${extraction.markdown}\n\n> This answer is ${extraction.markdown.length} characters. ` +
               `For a document this size, pass output_path next time to write it to a file instead.`
             : extraction.markdown;
-        return { content: [{ type: "text", text }], details: undefined };
+        return {
+          content: [{ type: "text", text: [text, ...pictures.notes.map((note) => `> ${note}`)].join("\n\n") }, ...pictures.blocks],
+          details: undefined,
+        };
       }
 
       const written = await writeExtraction(destination, extraction.markdown, {
@@ -149,7 +160,12 @@ export function createPdfExtractToolDefinition(options: PdfToolOptions): ToolDef
         covered: `${extraction.pages.length} of ${extraction.pageCount} pages`,
         excerpt: excerptOf(extraction.markdown),
       });
-      return { content: [{ type: "text", text: summary }], details: undefined };
+      // Images still come back when they were asked for: the file holds the markers,
+      // and a caller that wanted the bytes wanted them whichever way the text went.
+      return {
+        content: [{ type: "text", text: [summary, ...pictures.notes.map((note) => `> ${note}`)].join("\n\n") }, ...pictures.blocks],
+        details: undefined,
+      };
     },
   } as ToolDefinition;
 }

@@ -8,6 +8,7 @@
  *
  *   node server/test/fixtures/make-pdfs.mjs
  */
+import { deflateSync } from "node:zlib";
 import { writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -90,12 +91,16 @@ function buildPdf(pages, { trailerExtra = "", objectsExtra = [], secondFont = fa
   if (secondFont) objects[30] = `<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Oblique >>`;
   const fontResources = secondFont ? `/F1 3 0 R /F2 30 0 R` : `/F1 3 0 R`;
 
-  pages.forEach((content, i) => {
+  pages.forEach((page, i) => {
     const pageId = pageIds[i];
     const contentId = pageId + 1;
+    // A page is a content stream, or that stream plus resources of its own — which is
+    // how a page gets an image to draw.
+    const content = typeof page === "string" ? page : page.content;
+    const resources = typeof page === "string" ? "" : (page.resources ?? "");
     objects[pageId] =
       `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] ` +
-      `/Resources << /Font << ${fontResources} >> >> /Contents ${contentId} 0 R >>`;
+      `/Resources << /Font << ${fontResources} >> ${resources}>> /Contents ${contentId} 0 R >>`;
     objects[contentId] = `<< /Length ${content.length} >>\nstream\n${content}\nendstream`;
   });
 
@@ -322,7 +327,97 @@ const strikeDecoyDoc = (() => {
 /** Cut mid-object: a file that begins like a PDF and is not one. */
 const corruptDoc = Buffer.concat([textDoc.subarray(0, 220), Buffer.from("\n%%broken\n", "latin1")]);
 
+/* ── Pages that draw a picture ──────────────────────────────────────────────── */
+
+/**
+ * An image XObject and the page that draws it.
+ *
+ * `pdf-scan.pdf` models a scan as a page with no *text* — a filled rectangle — which
+ * is a page with nothing to extract at all. A real scan is the opposite: the page's
+ * whole content is one image, and that image is the thing worth returning. These
+ * fixtures are that shape, one per bitmap kind the reader has to encode.
+ */
+function imagePage(id, { width, height, colourSpace, bitsPerComponent, filter, data, drawWidth = 240, drawHeight = 160 }) {
+  const stream = `<< /Type /XObject /Subtype /Image /Width ${width} /Height ${height} ` +
+    `/ColorSpace ${colourSpace} /BitsPerComponent ${bitsPerComponent}${filter} /Length ${data.length} >>\n` +
+    `stream\n${data}\nendstream`;
+  return {
+    object: [id, stream],
+    page: {
+      // Place it, draw it, and put the matrix back — no text anywhere on the page.
+      content: `q ${drawWidth} 0 0 ${drawHeight} 100 500 cm /Im0 Do Q`,
+      resources: `/XObject << /Im0 ${id} 0 R >> `,
+    },
+  };
+}
+
+/** Raw RGB, deflated: what a photograph decodes to, and the JPEG branch of the encoder. */
+const rgbPixels = (() => {
+  const pixels = Buffer.alloc(8 * 8 * 3);
+  for (let i = 0; i < 64; i++) {
+    pixels[i * 3] = (i * 4) % 256;
+    pixels[i * 3 + 1] = (i * 9) % 256;
+    pixels[i * 3 + 2] = 255 - ((i * 4) % 256);
+  }
+  return deflateSync(pixels).toString("latin1");
+})();
+const rgbImage = imagePage(40, {
+  width: 8,
+  height: 8,
+  colourSpace: "/DeviceRGB",
+  bitsPerComponent: 8,
+  filter: " /Filter /FlateDecode",
+  data: rgbPixels,
+});
+const rgbImageDoc = buildPdf([rgbImage.page], { objectsExtra: [rgbImage.object] });
+
+/** One bit per pixel: a scan of text, and the lossless branch of the encoder. */
+const bilevelRows = (() => {
+  // 16 px wide is two bytes a row, rows padded to whole bytes.
+  const rows = Buffer.alloc(2 * 8);
+  for (let y = 0; y < 8; y++) {
+    rows[y * 2] = y % 2 === 0 ? 0b10101010 : 0b01010101;
+    rows[y * 2 + 1] = 0b11110000;
+  }
+  return deflateSync(rows).toString("latin1");
+})();
+const bilevelImage = imagePage(42, {
+  width: 16,
+  height: 8,
+  colourSpace: "/DeviceGray",
+  bitsPerComponent: 1,
+  filter: " /Filter /FlateDecode",
+  data: bilevelRows,
+});
+const bilevelImageDoc = buildPdf([bilevelImage.page], { objectsExtra: [bilevelImage.object] });
+
+/**
+ * An image that claims to be a JPEG and is not.
+ *
+ * The reader has to name a picture it cannot decode rather than pass over it, and a
+ * truncated DCT stream is the shortest honest way to produce one.
+ */
+const brokenImage = imagePage(44, {
+  width: 8,
+  height: 8,
+  colourSpace: "/DeviceRGB",
+  bitsPerComponent: 8,
+  filter: " /Filter /DCTDecode",
+  data: "\xff\xd8\xff\xe0 not a jpeg at all",
+});
+const brokenImageDoc = buildPdf([brokenImage.page], { objectsExtra: [brokenImage.object] });
+
+/** A page of text, then a page whose only content is an image. */
+const textThenImageDoc = buildPdf(
+  [contentStream([{ text: "Cover page with real text", x: 72, y: 700 }]), rgbImage.page],
+  { objectsExtra: [rgbImage.object] },
+);
+
 const fixtures = {
+  "pdf-image-rgb.pdf": rgbImageDoc,
+  "pdf-image-bilevel.pdf": bilevelImageDoc,
+  "pdf-image-undecodable.pdf": brokenImageDoc,
+  "pdf-text-then-image.pdf": textThenImageDoc,
   "pdf-text.pdf": textDoc,
   "pdf-table.pdf": tableDoc,
   "pdf-mixed.pdf": mixedDoc,

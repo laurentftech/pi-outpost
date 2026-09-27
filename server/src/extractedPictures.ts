@@ -17,6 +17,7 @@
  */
 
 import { Type } from "typebox";
+import type { CanvasModule } from "./canvas.ts";
 
 /** A picture an extractor found, before any decision about returning its bytes. */
 export interface FoundPicture {
@@ -288,4 +289,89 @@ export async function pictureContentFor(
     );
   }
   return { blocks, notes };
+}
+
+/* ── Bitmaps out of a PDF ───────────────────────────────────────────────────── */
+
+/** A decoded bitmap, in the shape pdf.js hands one over. */
+export interface Bitmap {
+  width: number;
+  height: number;
+  /** pdf.js `ImageKind`: 1 grayscale 1bpp, 2 RGB 24bpp, 3 RGBA 32bpp. */
+  kind: number;
+  data: Uint8Array;
+}
+
+const GRAYSCALE_1BPP = 1;
+const RGB_24BPP = 2;
+const RGBA_32BPP = 3;
+
+/**
+ * A bitmap encoded for the model, and the media type it came out as.
+ *
+ * Nothing can be passed through: pdf.js decodes every image before the operator walk
+ * can see it, so a page's JPEG arrives as raw RGB — 240×160 of it is 115,200 bytes
+ * where the file held 15,003. The encoding therefore has to be chosen here, and it
+ * follows the bitmap's kind:
+ *
+ * - **RGBA** → PNG, because the alpha channel needs it.
+ * - **RGB** → JPEG at 85. This is the photograph case and the one that decides the
+ *   budget: a 3000×2000 photograph is 18 MB of raw RGB, roughly 8–15 MB as PNG, and
+ *   under a megabyte as JPEG. PNG here would put nearly every photograph over the
+ *   per-picture ceiling. A second generation of loss at 85 is not visible at the job
+ *   in hand, which is a model reading the picture.
+ * - **Grayscale 1 bpp** → PNG. Small and lossless, which is what a scan of text wants:
+ *   JPEG's ringing around glyphs is the one artefact that would hurt reading it.
+ *
+ * `null` when there is no canvas, or the bitmap is not one of those three kinds — the
+ * caller marks the picture and says so rather than returning something wrong.
+ */
+export async function encodeBitmap(bitmap: Bitmap, canvas: CanvasModule | null): Promise<{ bytes: Buffer; mimeType: string } | null> {
+  if (canvas === null) return null;
+  const { width, height, kind, data } = bitmap;
+  if (width <= 0 || height <= 0) return null;
+  const pixels = width * height;
+
+  const rgba = new Uint8ClampedArray(pixels * 4);
+  if (kind === RGBA_32BPP) {
+    if (data.length < pixels * 4) return null;
+    rgba.set(data.subarray(0, pixels * 4));
+  } else if (kind === RGB_24BPP) {
+    if (data.length < pixels * 3) return null;
+    for (let at = 0; at < pixels; at++) {
+      rgba[at * 4] = data[at * 3];
+      rgba[at * 4 + 1] = data[at * 3 + 1];
+      rgba[at * 4 + 2] = data[at * 3 + 2];
+      rgba[at * 4 + 3] = 255;
+    }
+  } else if (kind === GRAYSCALE_1BPP) {
+    // One bit per pixel, rows padded to whole bytes, and 0 is black.
+    const stride = (width + 7) >> 3;
+    if (data.length < stride * height) return null;
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const bit = (data[y * stride + (x >> 3)] >> (7 - (x & 7))) & 1;
+        const value = bit === 1 ? 255 : 0;
+        const at = (y * width + x) * 4;
+        rgba[at] = value;
+        rgba[at + 1] = value;
+        rgba[at + 2] = value;
+        rgba[at + 3] = 255;
+      }
+    }
+  } else {
+    return null;
+  }
+
+  try {
+    const surface = canvas.createCanvas(width, height);
+    const context = surface.getContext("2d");
+    const image = context.createImageData(width, height);
+    image.data.set(rgba);
+    context.putImageData(image, 0, 0);
+    if (kind === RGB_24BPP) return { bytes: await surface.encode("jpeg", 85), mimeType: "image/jpeg" };
+    return { bytes: await surface.encode("png"), mimeType: "image/png" };
+  } catch {
+    return null;
+  }
 }

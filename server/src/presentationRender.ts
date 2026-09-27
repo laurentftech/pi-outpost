@@ -24,10 +24,10 @@
 import { execFile } from "node:child_process";
 import { constants as fsConstants } from "node:fs";
 import fs from "node:fs/promises";
-import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
+import { loadCanvas } from "./canvas.ts";
 import { loadPdfjs, pdfjsAssetDirs } from "./pdf.ts";
 
 import type { RendererChoice } from "./config.ts";
@@ -422,28 +422,9 @@ export async function convertDocumentToPdf(
 
 /* ── Rasterising ────────────────────────────────────────────────────────────── */
 
-interface NativeCanvas {
-  getContext(kind: "2d"): { fillStyle: string; fillRect(x: number, y: number, w: number, h: number): void; drawImage(...args: unknown[]): void };
-  encode(format: "png"): Promise<Buffer>;
-}
-
-interface CanvasModule {
-  createCanvas(width: number, height: number): NativeCanvas;
-  loadImage(source: Buffer): Promise<{ width: number; height: number }>;
-}
-
-/**
- * `@napi-rs/canvas`, when this install has it. It is optional — absent from the
- * single-file build and from installs that skip optional dependencies — so every
- * caller has an answer for `null`.
- */
-export function loadCanvas(): CanvasModule | null {
-  try {
-    return createRequire(import.meta.url)("@napi-rs/canvas") as CanvasModule;
-  } catch {
-    return null;
-  }
-}
+// Re-exported so the callers and tests that reach for it here still find it; the
+// module-level comment in canvas.ts says why the implementation moved.
+export { loadCanvas };
 
 /**
  * An SVG drawn to a PNG of the given size, or `null` without a canvas.
