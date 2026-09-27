@@ -487,3 +487,117 @@ describe("struckThroughNotice", () => {
     assert.equal(struckThroughNotice("plain text with **bold** in it"), "");
   });
 });
+
+/**
+ * Pictures, which this reader used to drop without a trace.
+ *
+ * The parser's half is tested through `parseBody` with a marker of the test's own,
+ * so the cases that matter — a drawing that is not a picture, a reference the
+ * package cannot resolve — need no package at all; `extractDocx` covers the rest
+ * against a real one.
+ */
+describe("parseBody and pictures", () => {
+  /** A marker that records what the parser handed it, so both halves are visible. */
+  function marking() {
+    const seen: Array<{ relationshipId: string; alt?: string; name?: string }> = [];
+    return {
+      seen,
+      marker: (reference: { relationshipId: string; alt?: string; name?: string }) => {
+        seen.push(reference);
+        return `[picture ${seen.length}]`;
+      },
+    };
+  }
+
+  const drawing = (rel: string, attributes = "") =>
+    `<w:r><w:drawing><wp:inline><wp:docPr id="1" name="Picture 1"${attributes}/>` +
+    `<a:graphic><a:graphicData><pic:pic><pic:blipFill><a:blip r:embed="${rel}"/></pic:blipFill></pic:pic></a:graphicData></a:graphic>` +
+    `</wp:inline></w:drawing></w:r>`;
+  const body = (inner: string) => `<w:document><w:body>${inner}</w:body></w:document>`;
+  const para = (text: string) => `<w:p><w:r><w:t>${text}</w:t></w:r></w:p>`;
+
+  test("the marker goes where the picture sits, and the paragraphs keep their order", () => {
+    const { seen } = marking();
+    const kit = marking();
+    const blocks = parseBody(body(para("Before") + `<w:p>${drawing("rId7")}</w:p>` + para("After")), undefined, kit.marker);
+    assert.deepEqual(blocks.map((block) => (block.kind === "paragraph" ? block.text : "TABLE")), [
+      "Before",
+      "[picture 1]",
+      "After",
+    ]);
+    assert.deepEqual(kit.seen, [{ relationshipId: "rId7", name: "Picture 1" }]);
+    assert.equal(seen.length, 0, "the other kit was not called");
+  });
+
+  test("a picture inside a sentence stays inside it, spaced so the words still read", () => {
+    const kit = marking();
+    const blocks = parseBody(
+      body(`<w:p><w:r><w:t>see</w:t></w:r>${drawing("rId2")}<w:r><w:t>here</w:t></w:r></w:p>`),
+      undefined,
+      kit.marker,
+    );
+    assert.equal(blocks.length, 1);
+    assert.equal(blocks[0].kind === "paragraph" ? blocks[0].text : "", "see [picture 1] here");
+  });
+
+  test("alternative text comes from descr, with its XML entities decoded", () => {
+    const kit = marking();
+    parseBody(body(`<w:p>${drawing("rId3", ' descr="Ventes &quot;Q3&quot; &amp; marges"')}</w:p>`), undefined, kit.marker);
+    assert.equal(kit.seen[0].alt, 'Ventes "Q3" & marges');
+  });
+
+  test("a drawing that is not a picture is not marked as one", () => {
+    // Word wraps a chart in a `<w:drawing>` too, and a chart has no image part to
+    // point at: marking it would promise bytes that do not exist.
+    const kit = marking();
+    const chart = `<w:p><w:r><w:drawing><wp:inline><wp:docPr id="1" name="Chart 1"/>` +
+      `<a:graphic><a:graphicData><c:chart r:id="rId9"/></a:graphicData></a:graphic></wp:inline></w:drawing></w:r></w:p>`;
+    const blocks = parseBody(body(chart + para("After")), undefined, kit.marker);
+    assert.deepEqual(kit.seen, []);
+    assert.deepEqual(blocks.map((block) => (block.kind === "paragraph" ? block.text : "TABLE")), ["After"]);
+  });
+
+  test("the pre-2007 shape is read too, from v:imagedata", () => {
+    const kit = marking();
+    parseBody(body(`<w:p><w:r><w:pict><v:shape><v:imagedata r:id="rId4"/></v:shape></w:pict></w:r></w:p>`), undefined, kit.marker);
+    assert.deepEqual(kit.seen, [{ relationshipId: "rId4" }]);
+  });
+
+  test("a picture in a table cell is marked in that cell", () => {
+    const kit = marking();
+    const blocks = parseBody(
+      body(`<w:tbl><w:tr><w:tc>${para("Region")}</w:tc><w:tc><w:p>${drawing("rId5")}</w:p></w:tc></w:tr>` +
+        `<w:tr><w:tc>${para("North")}</w:tc><w:tc>${para("1200")}</w:tc></w:tr></w:tbl>`),
+      undefined,
+      kit.marker,
+    );
+    assert.equal(blocks.length, 1);
+    assert.deepEqual(blocks[0].kind === "table" ? blocks[0].rows[0] : [], ["Region", "[picture 1]"]);
+  });
+
+  test("without a marker the parser behaves exactly as it did", () => {
+    const blocks = parseBody(body(para("Before") + `<w:p>${drawing("rId7")}</w:p>` + para("After")));
+    assert.deepEqual(blocks.map((block) => (block.kind === "paragraph" ? block.text : "TABLE")), ["Before", "After"]);
+  });
+});
+
+describe("extractDocx and pictures", () => {
+  test("a real package's picture is named where it sits, with its format and size", async () => {
+    const result = await extractDocx(await readFile(path.join(FIXTURES, "docx-report.docx")));
+    assert.match(result.markdown, /\[picture 1: PNG 2×1\]/);
+    // In place: after the risk paragraph, before the conclusion heading.
+    assert.match(result.markdown, /Un risque de délai\.\s*\n\s*\[picture 1: PNG 2×1\]\s*\n\s*# Conclusion/);
+    assert.equal(result.pictures.length, 1);
+    const picture = result.pictures[0];
+    assert.equal(picture.format, "PNG");
+    assert.equal(picture.mimeType, "image/png");
+    assert.ok(picture.bytes !== undefined && picture.bytes.length > 0, "its bytes came across");
+    assert.equal(picture.unavailable, undefined);
+  });
+
+  test("a document with no picture reports none, and says so no longer mentioning images", async () => {
+    const result = await extractDocx(await readFile(path.join(FIXTURES, "docx-text.docx")));
+    assert.deepEqual(result.pictures, []);
+    assert.doesNotMatch(result.markdown, /\[picture /);
+  });
+});

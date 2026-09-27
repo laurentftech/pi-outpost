@@ -12,8 +12,11 @@
  * all capped, and the XML scanner refuses a DOCTYPE outright so entity expansion
  * is unreachable rather than merely disabled.
  */
+import { pictureMarker, type FoundPicture } from "./extractedPictures.ts";
+import { IMAGE_CONTENT_TYPES, readImageInfo } from "./imageInfo.ts";
 import { renderSpans, struckThroughNotice, BOLD, ITALIC, STRIKE, type Span } from "./markdownSpans.ts";
 import { escapeCell, renderMarkdownTable } from "./markdownTable.ts";
+import { parseRelationshipList, relsPartOf } from "./ooxml.ts";
 import { scanXml, XmlError } from "./xml.ts";
 import { readZipEntry, ZipError, type ZipLimits } from "./zip.ts";
 
@@ -61,6 +64,12 @@ export interface DocxExtraction {
   /** First block a cap kept back, when one did. */
   nextBlock?: number;
   blockCount: number;
+  /**
+   * Every picture the body draws, in document order, whether its bytes could be
+   * prepared or not. The markdown already names each one; this is what a caller
+   * asking for the bytes selects from.
+   */
+  pictures: FoundPicture[];
 }
 
 /** Caps chosen so one call cannot spend a session's context on a long specification. */
@@ -137,7 +146,17 @@ function headingLevel(styleId: string | undefined, outlineLevel: string | undefi
  * Text accumulates as spans rather than strings because the markers cannot be
  * decided run by run — see `renderSpans`.
  */
-export function parseBody(xml: string, deadline?: () => void): DocxBlock[] {
+/**
+ * Called when the body draws a picture, to get the marker that stands in its place.
+ *
+ * The marker names the picture's format and pixel dimensions, which only its bytes
+ * can say — so the caller resolves the relationship and reads the part, and this
+ * parser stays a parser. Returning `""` leaves the picture unmarked, which is what a
+ * reference the package cannot resolve to a picture at all should do.
+ */
+export type PictureMarker = (reference: { relationshipId: string; alt?: string; name?: string }) => string;
+
+export function parseBody(xml: string, deadline?: () => void, pictureMarkerFor?: PictureMarker): DocxBlock[] {
   const blocks: DocxBlock[] = [];
 
   let paragraph: Span[] = [];
@@ -164,6 +183,19 @@ export function parseBody(xml: string, deadline?: () => void): DocxBlock[] {
    */
   let runPropertiesDepth = 0;
   let paragraphPropertiesDepth = 0;
+
+  /**
+   * The picture being walked, if any.
+   *
+   * A `<w:drawing>` is not always a picture: Word wraps a chart, a diagram and a
+   * grouped shape in one too, and those have no image part to point at. So a marker
+   * is written only once a blip or an image reference has actually been seen —
+   * marking a chart as a picture would promise bytes that do not exist.
+   */
+  let drawingDepth = 0;
+  let pictureRel: string | undefined;
+  let pictureAlt: string | undefined;
+  let pictureName: string | undefined;
 
   const applyToggle = (flag: number, value: string | undefined) => {
     if (runPropertiesDepth === 0) return;
@@ -241,6 +273,28 @@ export function parseBody(xml: string, deadline?: () => void): DocxBlock[] {
         case "w:t":
           if (deletionDepth === 0) textTarget = inCell ? "cell" : "paragraph";
           break;
+        case "w:drawing":
+        case "w:pict":
+          drawingDepth++;
+          pictureRel = undefined;
+          pictureAlt = undefined;
+          pictureName = undefined;
+          break;
+        case "wp:docPr":
+          // Where Word keeps a picture's alternative text and its name.
+          if (drawingDepth > 0) {
+            pictureAlt = event.attributes["descr"];
+            pictureName = event.attributes["name"];
+          }
+          break;
+        case "a:blip":
+          if (drawingDepth > 0) pictureRel ??= event.attributes["r:embed"];
+          break;
+        case "v:imagedata":
+          // The pre-2007 shape a `<w:pict>` still uses, and what Word writes for a
+          // pasted metafile to this day.
+          if (drawingDepth > 0) pictureRel ??= event.attributes["r:id"];
+          break;
         case "w:tab":
           (inCell ? cell : paragraph).push({ text: " ", format: runFormat });
           break;
@@ -285,6 +339,25 @@ export function parseBody(xml: string, deadline?: () => void): DocxBlock[] {
         // Guarded the same way the open is, so the pair a `<w:pPr>` contains is
         // ignored at both ends rather than decrementing a run's count.
         if (paragraphPropertiesDepth === 0 && runPropertiesDepth > 0) runPropertiesDepth--;
+        break;
+      case "w:drawing":
+      case "w:pict":
+        if (drawingDepth > 0) drawingDepth--;
+        // The marker goes where the drawing was, spaced so it cannot glue itself to
+        // the words on either side of an inline picture.
+        if (drawingDepth === 0 && pictureRel !== undefined && pictureMarkerFor !== undefined) {
+          const marker = pictureMarkerFor({
+            relationshipId: pictureRel,
+            ...(pictureAlt !== undefined ? { alt: pictureAlt } : {}),
+            ...(pictureName !== undefined ? { name: pictureName } : {}),
+          });
+          if (marker !== "") (inCell ? cell : paragraph).push({ text: ` ${marker} `, format: 0 });
+        }
+        if (drawingDepth === 0) {
+          pictureRel = undefined;
+          pictureAlt = undefined;
+          pictureName = undefined;
+        }
         break;
       case "w:r":
         runFormat = 0;
@@ -431,9 +504,11 @@ export async function extractDocx(bytes: Uint8Array, options: DocxExtractOptions
     throw new DocxError("unreadable", `This package has no ${DOCUMENT_PART}: it is not a Word document.`);
   }
 
+  const pictures: FoundPicture[] = [];
   let blocks: DocxBlock[];
   try {
-    blocks = parseBody(documentXml.toString("utf8"), deadline);
+    const marker = pictureMarkerIn(buffer, limits, pictures, deadline);
+    blocks = parseBody(documentXml.toString("utf8"), deadline, marker);
   } catch (error) {
     throw asDocxError(error);
   }
@@ -443,9 +518,10 @@ export async function extractDocx(bytes: Uint8Array, options: DocxExtractOptions
     return {
       markdown:
         "_This document has no extractable body content._\n\n" +
-        "> Headers, footers, footnotes, comments, text boxes and images are not read by this tool.",
+        "> Headers, footers, footnotes, comments and text boxes are not read by this tool.",
       blocks: [],
       blockCount: 0,
+      pictures,
     };
   }
 
@@ -501,7 +577,83 @@ export async function extractDocx(bytes: Uint8Array, options: DocxExtractOptions
     blocks: covered,
     ...(nextBlock === undefined ? {} : { nextBlock }),
     blockCount,
+    pictures,
   };
+}
+
+/**
+ * A marker for each picture the body draws, reading the part behind it.
+ *
+ * The relationships are read once, on the first picture, so a document with none
+ * pays nothing. Each part is inflated because the marker names pixel dimensions and
+ * only the bytes state those — the drawing's own `wp:extent` is the size Word prints
+ * it at, which is a different number and not what a reader of the extraction wants.
+ *
+ * Nothing here throws: a package that cannot produce a picture still gets a marker
+ * saying so, because the one outcome worse than an unreadable picture is a document
+ * that never mentions it.
+ */
+function pictureMarkerIn(
+  buffer: Buffer,
+  limits: ZipLimits,
+  pictures: FoundPicture[],
+  deadline: () => void,
+): PictureMarker {
+  let targets: Map<string, string> | undefined;
+  return (reference) => {
+    deadline();
+    if (targets === undefined) {
+      const rels = readZipEntryQuietly(buffer, relsPartOf(DOCUMENT_PART), limits);
+      targets = new Map(
+        parseRelationshipList(rels?.toString("utf8"), DOCUMENT_PART)
+          .filter((rel) => !rel.external)
+          .map((rel) => [rel.id, rel.target]),
+      );
+    }
+    const number = pictures.length + 1;
+    const alt = reference.alt !== undefined && reference.alt.trim() !== "" ? { alt: reference.alt } : {};
+    const target = targets.get(reference.relationshipId);
+    const found = ((): FoundPicture => {
+      if (target === undefined) {
+        return { number, format: "picture", ...alt, unavailable: "the package does not hold the part it points at" };
+      }
+      const extension = (target.split(".").pop() ?? "").toUpperCase();
+      const bytes = readZipEntryQuietly(buffer, target, limits);
+      if (bytes === null) {
+        return { number, format: extension || "picture", ...alt, unavailable: "its part is missing from the package" };
+      }
+      try {
+        const info = readImageInfo(bytes, target);
+        // An SVG's bytes are not something the model can be shown; a later pass
+        // rasterises it. The marker is the same either way — it names SVG and the
+        // dimensions the file declares — so nothing here depends on that pass.
+        return {
+          number,
+          format: info.kind.toUpperCase(),
+          width: info.width,
+          height: info.height,
+          ...alt,
+          bytes,
+          mimeType: IMAGE_CONTENT_TYPES[info.kind],
+        };
+      } catch {
+        // A format this reader does not know. Name it from the part's own extension
+        // rather than calling it damaged: EMF and WMF are ordinary in Word documents.
+        return { number, format: extension || "picture", ...alt, unavailable: `${extension || "this format"} cannot be shown as an image` };
+      }
+    })();
+    pictures.push(found);
+    return pictureMarker(found);
+  };
+}
+
+/** A part read for a picture: absent or unreadable is an answer, not a failure. */
+function readZipEntryQuietly(buffer: Buffer, part: string, limits: ZipLimits): Buffer | null {
+  try {
+    return readZipEntry(buffer, part, limits);
+  } catch {
+    return null;
+  }
 }
 
 function rangeTo(count: number): number[] {
