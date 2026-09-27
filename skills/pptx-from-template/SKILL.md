@@ -75,6 +75,16 @@ since. Read the deck with `pptx_extract` first to know its slides.
   diagrams and logos: it stays sharp at any size. A picture is fitted inside its box without
   being stretched. On a layout with one content placeholder, bullets and a picture share it —
   text on the left, picture on the right; a two-content layout gives each its own box.
+- **A diagram is not drawn by hand.** Write the thing it describes as a structured-exchange
+  document and turn that into the picture with `write_structure_figure`, then put the `.svg`
+  on the slide. Do not type SVG, and do not type mermaid: mermaid arrives as its own source
+  text, which is a slide showing code where a diagram belongs. The `structured-exchange` skill
+  holds the document shape — read it before writing the first one rather than guessing, since
+  the schema is checked and a near miss is refused. Briefly: `{"schema":
+  "urn:structured-exchange:1", "kind": "graph", "data": {"nodes": [{"id": "a", "label": "A"},
+  {"id": "b", "label": "B"}], "edges": [{"from": "a", "to": "b", "kind": "calls"}]}}`. Three
+  things a first attempt usually gets wrong: `nodes` and `edges` live inside `data`, every edge
+  carries a `kind` rather than a `label`, and an edge may only name a node the document declares.
 - **One picture, table or chart per slide.** Two of them is two slides.
 - **The template's own sample slides are not carried over.** Only its layouts, masters, theme
   and fonts are.
