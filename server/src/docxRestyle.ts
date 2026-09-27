@@ -100,6 +100,32 @@ function mathSpans(xml: string): Array<[number, number]> {
   return [...xml.matchAll(/<m:oMath\b[\s\S]*?<\/m:oMath>/g)].map((match) => [match.index!, match.index! + match[0].length]);
 }
 
+/**
+ * The span of the body's final paragraph mark properties — `[start, end)` over its
+ * `w:pPr` — or `undefined` when the body ends in something else.
+ *
+ * Word's `AcceptAllRevisions` works over the main text story, which stops short of
+ * the last paragraph mark: a revision there survives *Accept all* and *Reject all*
+ * alike, and the only way to clear it is to find and accept that one change by hand.
+ * Verified in Word (Pro Plus 2021): accepting it on its own works, accepting all
+ * leaves it. So the mark is restyled, and not tracked.
+ */
+function finalParagraphMark(documentXml: string): [number, number] | undefined {
+  let layout;
+  try {
+    layout = bodyLayout(documentXml);
+  } catch {
+    return undefined;
+  }
+  const paragraphs = layout.children.filter((child) => child.local === "p");
+  const last = paragraphs[paragraphs.length - 1];
+  if (last === undefined) return undefined;
+  // `w:pPr` never nests, and it is the paragraph's first child when it is there at
+  // all; a self-closing one carries no run properties and so has nothing to skip.
+  const pPr = /<w:pPr\b[^>]*>[\s\S]*?<\/w:pPr>/.exec(last.xml);
+  return pPr === null ? undefined : [last.start + pPr.index, last.start + pPr.index + pPr[0].length];
+}
+
 /** The attributes of a self-closing element as a map. */
 function attributesOf(element: string): Record<string, string> {
   return Object.fromEntries([...element.matchAll(/([\w:]+)="([^"]*)"/g)].map((match) => [match[1], match[2]]));
@@ -376,10 +402,12 @@ export function restyleDocument(doc: WordPackage, template: WordPackage, options
   let nextRevision = 1 + Math.max(0, ...[...original.values()].flatMap((xml) => [...xml.matchAll(/\bw:id="(\d+)"/g)].map((match) => Number(match[1]))));
   const mark = () => `w:id="${nextRevision++}" w:author="${REVISION_AUTHOR}" w:date="${date}"`;
   const removed = { runs: 0, fonts: 0, sizes: 0, colours: 0 };
+  let untrackedFinalMark = false;
   for (const part of stories) {
     if (replaceHeaders && headerParts.has(part)) continue;
     const xml = edited.get(part)!;
     const math = mathSpans(xml);
+    const finalMark = part === doc.mainPart && track ? finalParagraphMark(xml) : undefined;
     edited.set(
       part,
       xml.replace(/<w:rPr>([\s\S]*?)<\/w:rPr>/g, (whole, inner: string, offset: number) => {
@@ -392,8 +420,17 @@ export function restyleDocument(doc: WordPackage, template: WordPackage, options
         if (kinds.size === 0) return whole;
         removed.runs++;
         for (const kind of kinds) removed[kind as "fonts" | "sizes" | "colours"]++;
+        const direct = kept === "" ? "" : `<w:rPr>${kept}</w:rPr>`;
+        // Word's "Accept all" never reaches the body's final paragraph mark, so a
+        // tracked change there is one the document's owner cannot clear — the file
+        // keeps reporting a pending change on a mark that shows nothing. The removal
+        // still happens; it is written directly, and the report says so.
+        if (finalMark !== undefined && offset >= finalMark[0] && offset < finalMark[1]) {
+          untrackedFinalMark = true;
+          return direct;
+        }
         if (track) return `<w:rPr>${kept}<w:rPrChange ${mark()}><w:rPr>${inner}</w:rPr></w:rPrChange></w:rPr>`;
-        return kept === "" ? "" : `<w:rPr>${kept}</w:rPr>`;
+        return direct;
       }),
     );
   }
@@ -518,6 +555,11 @@ export function restyleDocument(doc: WordPackage, template: WordPackage, options
       ? "No font, size or colour was set by hand."
       : `Removed hand-set formatting from ${removed.runs} run(s): a font in ${removed.fonts}, a size in ${removed.sizes}, a colour in ${removed.colours}${track ? " — as tracked formatting changes" : ""}.`,
   ];
+  if (untrackedFinalMark) {
+    report.push(
+      "The last paragraph mark was restyled directly, not as a tracked change: Word's \"Accept all\" does not reach it, so a tracked change there could never be cleared.",
+    );
+  }
   if (missingStyles.length > 0) {
     report.push(`Styles the template does not have, kept as they were: ${missingStyles.map((style) => `"${style.name}" (${style.uses} use${style.uses === 1 ? "" : "s"})`).join(", ")}.`);
   }

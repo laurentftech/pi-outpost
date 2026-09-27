@@ -10,6 +10,13 @@
  *   a table of contents as content controls; a header and a footer; custom margins;
  *   sample text whose picture nothing else uses; and a template (not document) main
  *   part the output must turn into a document.
+ * - `docx-template-fieldtoc.dotx` — the same template, except its table of contents is
+ *   a bare field spanning several paragraphs rather than a content control: `fldChar
+ *   begin` and the `TOC` instruction in the first, one cached entry per paragraph after
+ *   it (each with its own nested `PAGEREF` field), and the matching `fldChar end` alone
+ *   in the last. This is what Word writes once the table has been refreshed, and it is
+ *   the shape a content control hides — keeping only the paragraph the field starts in
+ *   leaves it unterminated, and Word then sees no table of contents at all.
  * - `docx-report.docx` — a document to update: sections 1, 2 (with 2.1 and 2.2) and
  *   3, a list, a table, a picture in section 3, a comment and a bookmark in section 2.
  * - `docx-report-tracked.docx` — the same, with an unaccepted insertion in 2.1.
@@ -226,6 +233,49 @@ await writeFile(
   }),
 );
 
+/* ── The same template, with a refreshed table of contents ──────────────────── */
+
+/** One cached entry: the text, a tab, and its own PAGEREF field for the page number. */
+const tocEntry = (text, bookmark, page) =>
+  `<w:p><w:pPr><w:pStyle w:val="TM1"/></w:pPr><w:r><w:t>${text}</w:t></w:r><w:r><w:tab/></w:r>` +
+  `<w:r><w:fldChar w:fldCharType="begin"/></w:r>` +
+  `<w:r><w:instrText xml:space="preserve"> PAGEREF ${bookmark} \\h </w:instrText></w:r>` +
+  `<w:r><w:fldChar w:fldCharType="separate"/></w:r>` +
+  `<w:r><w:t>${page}</w:t></w:r>` +
+  `<w:r><w:fldChar w:fldCharType="end"/></w:r></w:p>`;
+
+// The field opens in the paragraph carrying the first entry and closes two later.
+const fieldToc =
+  `<w:p><w:pPr><w:pStyle w:val="TM1"/></w:pPr>` +
+  `<w:r><w:fldChar w:fldCharType="begin"/></w:r>` +
+  `<w:r><w:instrText xml:space="preserve"> TOC \\o "1-3" \\h \\z \\u </w:instrText></w:r>` +
+  `<w:r><w:fldChar w:fldCharType="separate"/></w:r>` +
+  `<w:r><w:t>Titre de section</w:t></w:r><w:r><w:tab/></w:r>` +
+  `<w:r><w:fldChar w:fldCharType="begin"/></w:r>` +
+  `<w:r><w:instrText xml:space="preserve"> PAGEREF _Toc100000001 \\h </w:instrText></w:r>` +
+  `<w:r><w:fldChar w:fldCharType="separate"/></w:r><w:r><w:t>1</w:t></w:r>` +
+  `<w:r><w:fldChar w:fldCharType="end"/></w:r></w:p>` +
+  tocEntry("Sous-partie d’exemple", "_Toc100000002", "2") +
+  `<w:p><w:r><w:fldChar w:fldCharType="end"/></w:r></w:p>`;
+
+await writeFile(
+  path.join(HERE, "docx-template-fieldtoc.dotx"),
+  zip({
+    "[Content_Types].xml": contentTypes(CT("template.main")),
+    ...common,
+    "word/_rels/document.xml.rels": documentRels(`<Relationship Id="rIdSample" Type="${T("image")}" Target="media/exemple.png"/>`),
+    "word/document.xml": docRoot(
+      cover +
+        fieldToc +
+        para("Titre de section", "Titre1") +
+        para("Remplacez ce texte d’exemple par le vôtre.") +
+        para("Sous-partie d’exemple", "Titre2") +
+        sectPr,
+    ),
+    "word/media/exemple.png": png(),
+  }),
+);
+
 /* ── A document to update ───────────────────────────────────────────────────── */
 
 const bookmark = `<w:bookmarkStart w:id="0" w:name="scope"/><w:bookmarkEnd w:id="0"/>`;
@@ -388,4 +438,4 @@ for (const [file, tracked] of [
     }),
   );
 }
-console.log("wrote docx-template.dotx, docx-report.docx, docx-report-tracked.docx, docx-drifted.docx, docx-drifted-tracked.docx");
+console.log("wrote docx-template.dotx, docx-template-fieldtoc.dotx, docx-report.docx, docx-report-tracked.docx, docx-drifted.docx, docx-drifted-tracked.docx");

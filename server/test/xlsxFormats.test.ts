@@ -191,6 +191,75 @@ describe("when the chain breaks", () => {
   });
 });
 
+/**
+ * Scientific notation, against what Excel itself displays.
+ *
+ * Every expectation below was read off Excel (Pro Plus 2021, numFmtId 11 and 48)
+ * for the same value and format code, with Excel's decimal comma swapped for the
+ * dot this module writes. This is the one format kind where dropping the
+ * presentation drops the value: a mantissa on its own reads as a different
+ * number, and `0.00` reads as zero.
+ */
+describe("scientific notation", () => {
+  test("a small number keeps its magnitude instead of collapsing to zero", () => {
+    // Excel shows 1,23E-04. Rendering the mantissa alone gives "0.00", which
+    // reads as an empty measurement rather than a small one.
+    assert.equal(render(0.000123456, [11]), "1.23E-04");
+    assert.notEqual(render(0.000123456, [11]), "0.00");
+  });
+
+  test("the exponent's sign and width are the format's, not the value's", () => {
+    assert.equal(render(12300000000, [11]), "1.23E+10"); // Excel: 1,23E+10
+    assert.equal(render(12345.678, [11]), "1.23E+04");
+    assert.equal(render(0, [11]), "0.00E+00"); // Excel: 0,00E+00
+  });
+
+  test("a negative number signs the mantissa, not the exponent", () => {
+    assert.equal(render(-0.00000042, [11]), "-4.20E-07"); // Excel: -4,20E-07
+  });
+
+  test("E- writes the sign only when the exponent is negative", () => {
+    assert.equal(renderNumericValue(0.000123456, parseFormatCode("0.00E-00", 0.000123456), false), "1.23E-04");
+    assert.equal(renderNumericValue(12300000000, parseFormatCode("0.00E-00", 12300000000), false), "1.23E10");
+  });
+
+  test("more than one integer placeholder is engineering notation", () => {
+    // Built-in 48 is ##0.0E+0: Excel holds the exponent to a multiple of 3, so
+    // the mantissa carries the extra digits instead of being rounded away.
+    assert.equal(render(12300000000, [48]), "12.3E+9"); // Excel: 12,3E+9
+    assert.equal(render(0.000123456, [48]), "123.5E-6"); // Excel: 123,5E-6
+  });
+
+  test("rounding that overflows the mantissa moves the exponent", () => {
+    // 9.99e5 at one decimal rounds to 10.0, which is not a mantissa; the
+    // exponent takes the step so the reading stays 1.0E+06.
+    assert.equal(renderNumericValue(999900, parseFormatCode("0.0E+00", 999900), false), "1.0E+06");
+  });
+
+  test("the format's kind and declared widths are read off the code", () => {
+    assert.deepEqual(analyzeFormatSection("0.00E+00"), {
+      kind: "scientific",
+      decimals: 2,
+      exponentDigits: 2,
+      integerDigits: 1,
+      plusSign: true,
+    });
+    assert.deepEqual(analyzeFormatSection("##0.0E+0"), {
+      kind: "scientific",
+      decimals: 1,
+      exponentDigits: 1,
+      integerDigits: 3,
+      plusSign: true,
+    });
+  });
+
+  test("a date format is still a date, and a percentage still a percentage", () => {
+    // The exponent check runs before the plain-number path; it must not reach past it.
+    assert.deepEqual(analyzeFormatSection("yyyy-mm-dd"), { kind: "datetime", date: true, time: false });
+    assert.deepEqual(analyzeFormatSection("0.00%"), { kind: "percent", decimals: 2 });
+  });
+});
+
 function dateParts(year: number, month: number, day: number) {
   return { year, month, day, hours: 0, minutes: 0, seconds: 0 };
 }

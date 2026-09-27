@@ -194,6 +194,52 @@ describe("restyleDocument", () => {
     assert.doesNotMatch(body, /sectPrChange/);
   });
 
+  test("the body's final paragraph mark is restyled directly, so Word's Accept all leaves nothing behind", () => {
+    // Word's AcceptAllRevisions works over the main text story, which stops short of
+    // the last paragraph mark: a tracked change there survives both "Accept all" and
+    // "Reject all", and the document goes on reporting a pending change on a mark that
+    // shows nothing. Measured in Word (Pro Plus 2021): 10 revisions, 1 left after
+    // Accept all; accepting that one on its own worked, so it is reachable only by hand.
+    // Word ends a document with a paragraph like this whenever the last thing in it is
+    // a formatted empty line, which is why the mark carries hand-set properties at all.
+    const trailing =
+      '<w:p><w:pPr><w:rPr><w:rFonts w:ascii="Trebuchet MS" w:hAnsi="Trebuchet MS"/><w:color w:val="FF6600"/><w:sz w:val="18"/></w:rPr></w:pPr></w:p>';
+    const parts = unzip(driftedBytes);
+    const original = text(parts, "word/document.xml");
+    const sectPr = bodyLayout(original).sectPr;
+    assert.ok(sectPr, "the fixture ends in a sectPr to insert before");
+    parts.set(
+      "word/document.xml",
+      Buffer.from(original.slice(0, sectPr.start) + trailing + original.slice(sectPr.start), "utf8"),
+    );
+    const withTrailing = Buffer.from(writeZip([...parts].map(([name, data]) => ({ name, data }))));
+
+    const { result, parts: out } = restyle({}, withTrailing);
+    const body = text(out, "word/document.xml");
+    const layout = bodyLayout(body);
+    const paragraphs = layout.children.filter((child) => child.local === "p");
+    const lastParagraph = paragraphs[paragraphs.length - 1].xml;
+
+    // The removal happened: the hand-set properties are gone from the mark…
+    assert.doesNotMatch(lastParagraph, /Trebuchet MS|FF6600|w:sz w:val="18"/);
+    // …and it is not tracked, because a tracked change there could never be cleared.
+    assert.doesNotMatch(lastParagraph, /rPrChange/);
+    assert.match(result.report.join("\n"), /The last paragraph mark was restyled directly, not as a tracked change/);
+
+    // Against the same document without that trailing paragraph: one more removal, and
+    // not one more tracked change. The fix is this mark and nothing else.
+    const baseline = restyle();
+    const changesIn = (p: Map<string, Buffer>) => [...text(p, "word/document.xml").matchAll(/<w:rPrChange\b/g)].length;
+    assert.equal(result.removed.runs, baseline.result.removed.runs + 1, "the removal is still counted");
+    assert.equal(changesIn(out), changesIn(baseline.parts), "no tracked change was added");
+    assert.match(runOf(body, "Texte collé d’un courriel"), /rPrChange/);
+
+    // Untracked mode is unchanged: nothing is tracked, and no note claims otherwise.
+    const direct = restyle({ trackChanges: false }, withTrailing);
+    assert.doesNotMatch(text(direct.parts, "word/document.xml"), /rPrChange/);
+    assert.doesNotMatch(direct.result.report.join("\n"), /The last paragraph mark/);
+  });
+
   test("PendingRevisionsAreRefused: an insertion nobody accepted stops the restyle", async () => {
     const tracked = await readFile(path.join(FIXTURES, "docx-drifted-tracked.docx"));
     assert.throws(

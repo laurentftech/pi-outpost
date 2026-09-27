@@ -74,6 +74,10 @@ documented, locale-independent form:
 - percentages as the displayed number followed by `%`, at the format's precision
 - currency as the number, preceded by the currency symbol **only when the format string states one
   literally**; a built-in currency id that names no symbol renders as a plain number
+- scientific formats as the mantissa, `E`, the exponent's sign and its declared digits
+  (`0.00E+00` on 0.000123456 is `1.23E-04`); where the mantissa declares more than one integer
+  placeholder the format is engineering notation, and the exponent SHALL be held to a multiple of
+  that count (`##0.0E+0` on 1.23e10 is `12.3E+9`)
 - booleans as `TRUE` / `FALSE`, errors as the workbook's own error text (`#DIV/0!`)
 
 What the system SHALL preserve is the *kind* and the *precision* the format declares; what it SHALL
@@ -102,6 +106,11 @@ alone is unexplained, and a sheet note alone does not say which cell.
 - **GIVEN** a cell holding `0.1234` with a format declaring one decimal place
 - **WHEN** the sheet is extracted
 - **THEN** the cell reads at that precision, not at the stored one
+
+#### Scenario: ScientificNotationKeepsItsExponent
+- **GIVEN** a cell holding `0.000123456` with a scientific format
+- **WHEN** the sheet is extracted
+- **THEN** the cell reads as `1.23E-04`, and never as the mantissa alone — `0.00` would read as zero
 
 #### Scenario: CurrencyWithoutALiteralSymbol
 - **GIVEN** a cell using a built-in currency format that names no symbol in the file

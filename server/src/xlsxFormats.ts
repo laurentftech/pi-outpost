@@ -30,6 +30,16 @@ export type CellFormat =
   | { kind: "percent"; decimals: number }
   /** `symbol` is only ever a literal the format string carries. */
   | { kind: "currency"; symbol: string; decimals: number }
+  /**
+   * `0.00E+00` and its kin. The exponent is not presentation: dropping it turns
+   * 1.23E-04 into `0.00`, which reads as zero rather than as a small number.
+   *
+   * `integerDigits` is how many integer placeholders the mantissa declares, which
+   * is what makes `##0.0E+0` engineering notation — Excel holds the exponent to a
+   * multiple of that count, so 1.23e10 shows as `12.3E+9` and not `1.2E+10`.
+   * `plusSign` is `E+` (the sign is always written) against `E-` (only negatives).
+   */
+  | { kind: "scientific"; decimals: number; exponentDigits: number; integerDigits: number; plusSign: boolean }
   | { kind: "datetime"; date: boolean; time: boolean }
   /**
    * The chain broke: an id neither built in nor defined by the workbook. The
@@ -228,6 +238,22 @@ export function analyzeFormatSection(section: string): CellFormat {
   }
   if (hasDate || hasTime) return { kind: "datetime", date: hasDate, time: hasTime };
 
+  // An exponent has to be read before the plain-number path, which would otherwise
+  // keep the mantissa's decimals and silently drop the magnitude.
+  const exponent = /[eE]([+-])([0#?]+)/.exec(codeText);
+  if (exponent !== null) {
+    const mantissa = codeText.slice(0, exponent.index);
+    const mantissaDecimals = /\.([0#?]+)/.exec(mantissa);
+    const integerPart = mantissa.split(".")[0];
+    return {
+      kind: "scientific",
+      decimals: mantissaDecimals ? mantissaDecimals[1].length : 0,
+      exponentDigits: exponent[2].length,
+      integerDigits: Math.max((integerPart.match(/[0#?]/g) ?? []).length, 1),
+      plusSign: exponent[1] === "+",
+    };
+  }
+
   const placeholders = /[0#?]/.test(codeText);
   const decimalMatch = /[0#?]*\.([0#?]+)/.exec(codeText);
   const decimals = decimalMatch ? decimalMatch[1].length : placeholders ? 0 : null;
@@ -390,6 +416,8 @@ export function renderNumericValue(value: number, format: CellFormat, epoch1904:
       // currency named "-€".
       return `${value < 0 ? "-" : ""}${format.symbol}${magnitude}`;
     }
+    case "scientific":
+      return scientific(value, format);
     case "number":
       return format.decimals === null ? generalNumber(value) : value.toFixed(format.decimals);
     case "text":
@@ -397,6 +425,35 @@ export function renderNumericValue(value: number, format: CellFormat, epoch1904:
     case "unresolved":
       return generalNumber(value);
   }
+}
+
+/**
+ * A number in the scientific shape its format declares.
+ *
+ * The exponent is chosen first and the mantissa is formatted against it, rather
+ * than rounding the mantissa and scaling afterwards: `##0.0E+0` on 1.23e10 is
+ * `12.3E+9`, and a rounded-then-scaled 1.2 would have shown `12.0E+9`.
+ *
+ * `toFixed` can still carry the mantissa out of its range — 9.99 at one decimal
+ * becomes 10.0 — so the exponent takes one more step and the mantissa is redone.
+ */
+function scientific(value: number, format: Extract<CellFormat, { kind: "scientific" }>): string {
+  if (!Number.isFinite(value)) return generalNumber(value);
+  const step = format.integerDigits;
+  let exponent = 0;
+  if (value !== 0) {
+    exponent = Math.floor(Math.log10(Math.abs(value)));
+    // Engineering notation: the exponent stays a multiple of the integer width.
+    if (step > 1) exponent = Math.floor(exponent / step) * step;
+  }
+  let mantissa = (value / 10 ** exponent).toFixed(format.decimals);
+  if (Math.abs(Number(mantissa)) >= 10 ** step) {
+    exponent += step;
+    mantissa = (value / 10 ** exponent).toFixed(format.decimals);
+  }
+  const sign = exponent < 0 ? "-" : format.plusSign ? "+" : "";
+  const digits = String(Math.abs(exponent)).padStart(format.exponentDigits, "0");
+  return `${mantissa}E${sign}${digits}`;
 }
 
 /* ── Styles ─────────────────────────────────────────────────────────────────── */
