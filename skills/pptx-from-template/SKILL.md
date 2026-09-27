@@ -1,6 +1,6 @@
 ---
 name: pptx-from-template
-description: Build a PowerPoint presentation (.pptx) from a template (.potx or .pptx) — titles, bullets, pictures, native tables and editable charts — or update an existing deck slide by slide, with pptx_layouts, pptx_create, pptx_update and pptx_render, then check it is readable by rendering it with PowerPoint (Windows), LibreOffice or ONLYOFFICE and fixing what the render shows. Use whenever the user asks for a deck, slides or a presentation made from a template, a corporate/brand deck, or to turn a document, notes or an outline into slides — and whenever a .potx file is involved.
+description: Build a PowerPoint presentation (.pptx) from a template (.potx or .pptx) — or from no template at all, on the built-in Office theme — titles, bullets, pictures, native tables and editable charts, or update an existing deck slide by slide, with pptx_layouts, pptx_create, pptx_update and pptx_render, then check it is readable by rendering it with PowerPoint (Windows), LibreOffice or ONLYOFFICE and fixing what the render shows. Use whenever the user asks for a deck, slides or a presentation — from their template, a corporate/brand deck, on the default or standard PowerPoint theme, or with no theme named at all — and to turn a document, notes or an outline into slides, and whenever a .potx file is involved.
 license: MIT
 metadata:
   version: "1.0"
@@ -15,15 +15,32 @@ so every slide takes the template's styling without you setting a single font or
 | Task | Tool |
 |---|---|
 | See which layouts a template offers | `pptx_layouts` with the template's `path` |
+| See the layouts when there is no template | `pptx_layouts` with no `path` |
 | Read the text of a deck or of the template's sample slides | `pptx_extract` |
 | Build the deck: text, pictures, tables, charts | `pptx_create` |
 | Change slides of an existing deck | `pptx_update` |
 | See the slides as the audience will, and find unreadable text | `pptx_render` |
 | Hand over a PDF as well | `pptx_render` with `pdf_path` |
 
+## When the user gives you no template
+
+Plenty of requests name none: "a deck on our architecture", "slides from these notes", "use
+the default PowerPoint theme". Then **omit `template_path`** and `pptx_create` builds on the
+built-in Office theme — the look a blank PowerPoint deck has, with the layouts listed below.
+Call `pptx_layouts` with no `path` to see them. Say in your answer that the deck is on the
+default Office theme, and that a `.potx` of theirs would put it in their house style.
+
+**Never go looking for a template.** A `.potx` or `.dotx` turned up by searching the project
+is a test fixture or someone else's brand, and a deck built on it is wrong in a way the user
+cannot see from the file name. Use the one the user named, or none.
+
+Ask for a template only when the look is the point — a client-facing or brand deck — and even
+then build on the default first, so there is something to look at while they find it.
+
 ## The loop
 
-1. **Read the template.** Call `pptx_layouts` on it. Note the layout names and what each holds:
+1. **Read the template.** Call `pptx_layouts` on it, or with no `path` for the built-in theme.
+   Note the layout names and what each holds:
    `title, subtitle` is a cover or section slide, `title, content` takes bullets or a picture,
    `title, content, content` puts bullets and a picture side by side, `title, picture, text` is
    a captioned picture. If the template is a .pptx with sample slides, `pptx_extract` shows how
