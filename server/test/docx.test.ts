@@ -641,3 +641,51 @@ describe("extractDocx and a document that is only a picture", () => {
     assert.match(result.markdown, /Headers, footers, footnotes, comments and text boxes are not read/);
   });
 });
+
+describe("extractDocx and a picture whose bytes cannot travel", () => {
+  /** The report fixture with its blip pointed at a relationship the package lacks. */
+  async function withBrokenPicture(): Promise<Buffer> {
+    const parts = readAllZipEntries(Buffer.from(await readFile(path.join(FIXTURES, "docx-report.docx"))), {
+      maxEntries: 4096,
+      maxInflatedBytes: 1e8,
+      maxTotalBytes: 1e9,
+    });
+    const document = parts.get("word/document.xml")!.toString("utf8");
+    const repointed = document.replace(/(<a:blip[^>]*r:embed=")[^"]+(")/, "$1rIdNoSuchThing$2");
+    assert.notEqual(repointed, document, "the fixture has a blip to repoint");
+    parts.set("word/document.xml", Buffer.from(repointed, "utf8"));
+    return Buffer.from(writeZip([...parts].map(([name, data]) => ({ name, data }))));
+  }
+
+  test("UnreadablePictureIsStillNamed: the marker says the package does not hold the part", async () => {
+    const result = await extractDocx(await withBrokenPicture());
+
+    assert.equal(result.pictures.length, 1, "a picture the package cannot resolve is still a picture the document draws");
+    assert.equal(result.pictures[0].bytes, undefined);
+    assert.match(result.pictures[0].unavailable ?? "", /does not hold the part/);
+    assert.match(result.markdown, /\[picture 1: picture; the package does not hold the part it points at\]/);
+    // And the rest of the document came through: a picture is not a reason to fail.
+    assert.match(result.markdown, /# Introduction/);
+    assert.match(result.markdown, /Le projet avance\./);
+  });
+
+  test("OneUnpreparablePictureDoesNotFailTheCall: a good picture beside a bad one still travels", async () => {
+    // Two drawings, the second pointing nowhere — the first must be unaffected.
+    const parts = readAllZipEntries(Buffer.from(await readFile(path.join(FIXTURES, "docx-report.docx"))), {
+      maxEntries: 4096,
+      maxInflatedBytes: 1e8,
+      maxTotalBytes: 1e9,
+    });
+    const document = parts.get("word/document.xml")!.toString("utf8");
+    const drawing = /<w:p\b[^>]*>(?:(?!<\/w:p>)[\s\S])*?<w:drawing>[\s\S]*?<\/w:p>/.exec(document)![0];
+    const broken = drawing.replace(/(<a:blip[^>]*r:embed=")[^"]+(")/, "$1rIdNoSuchThing$2");
+    parts.set("word/document.xml", Buffer.from(document.replace(drawing, drawing + broken), "utf8"));
+
+    const result = await extractDocx(Buffer.from(writeZip([...parts].map(([name, data]) => ({ name, data })))));
+    assert.equal(result.pictures.length, 2);
+    assert.ok(result.pictures[0].bytes !== undefined, "the first still has its bytes");
+    assert.equal(result.pictures[1].bytes, undefined);
+    assert.match(result.markdown, /\[picture 1: PNG 2×1\]/);
+    assert.match(result.markdown, /\[picture 2: picture; /);
+  });
+});

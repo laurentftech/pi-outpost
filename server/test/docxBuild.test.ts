@@ -286,3 +286,35 @@ describe("docx_create: Markdown written into a template", () => {
     assert.match(text(unzip(created.bytes), "word/document.xml"), /graph TD; A--&gt;B/);
   });
 });
+
+describe("createDocument and a picture's alternative text", () => {
+  /** The same injected picture every other test here uses. */
+  const source = () => {
+    const bytes = png();
+    return { imageKey: (src: string) => src, loadImage: async () => ({ kind: "raster" as const, type: "png" as const, bytes: new Uint8Array(bytes), width: 1, height: 1 }) };
+  };
+
+  test("the Markdown's alt text is written as the picture's description", async () => {
+    // It was being dropped: the document came out with descr="", so a screen reader —
+    // and the extraction reading the document back — had nothing to go on, while
+    // pptx_create had always written it.
+    const created = await createDocument(template(), "![the third quarter's revenue](chart.png)\n", { pictures: source() });
+    const document = text(unzip(created.bytes), "word/document.xml");
+    const docPr = /<wp:docPr\b[^>]*>/.exec(document)?.[0] ?? "";
+    // The apostrophe arrives escaped, which is the writer doing its job.
+    assert.match(docPr, /descr="the third quarter&apos;s revenue"/);
+  });
+
+  test("a picture with no alt text describes nothing, rather than inventing a description", async () => {
+    const created = await createDocument(template(), "![](chart.png)\n", { pictures: source() });
+    const docPr = /<wp:docPr\b[^>]*>/.exec(text(unzip(created.bytes), "word/document.xml"))?.[0] ?? "";
+    assert.notEqual(docPr, "", "the picture is still drawn");
+    assert.match(docPr, /descr=""/, "an empty description is what no description looks like here");
+  });
+
+  test("whitespace is not alternative text", async () => {
+    const created = await createDocument(template(), "![   ](chart.png)\n", { pictures: source() });
+    const docPr = /<wp:docPr\b[^>]*>/.exec(text(unzip(created.bytes), "word/document.xml"))?.[0] ?? "";
+    assert.match(docPr, /descr=""/, "spaces are not a description of anything");
+  });
+});

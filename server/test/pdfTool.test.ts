@@ -143,3 +143,65 @@ describe("pdf_extract writing to a file", () => {
     assert.doesNotMatch(answer, /Truncated/);
   });
 });
+
+/**
+ * The images a PDF holds, through the tool the agent calls.
+ *
+ * `pdf.test.ts` covers the reading and the encoding; what matters here is the contract
+ * at the surface — that an existing call is unaffected, and that the budget is stated
+ * rather than quietly applied.
+ */
+describe("pdf_extract and images", () => {
+  let root: string;
+  let tool: ReturnType<typeof createPdfExtractToolDefinition>;
+
+  type Content = { type: "text"; text: string } | { type: "image"; data: string; mimeType: string };
+  async function call(params: Record<string, unknown>): Promise<Content[]> {
+    const result = await (
+      tool.execute as unknown as (id: string, params: unknown, signal?: AbortSignal) => Promise<{ content: Content[] }>
+    )("call-1", params, undefined);
+    return result.content;
+  }
+  const images = (content: Content[]) => content.filter((one): one is Extract<Content, { type: "image" }> => one.type === "image");
+  const text = (content: Content[]) => content.filter((one) => one.type === "text").map((one) => (one as { text: string }).text).join("\n");
+
+  before(async () => {
+    root = await realResolve(await mkdtemp(path.join(tmpdir(), "pi-pdfimages-")));
+    for (const name of ["pdf-image-rgb.pdf", "pdf-text.pdf"]) {
+      await copyFile(path.join(FIXTURES, name), path.join(root, name));
+    }
+    tool = createPdfExtractToolDefinition({ cwd: root, allowedRoots: [root], maxBytes: 25 * 1024 * 1024, writableRoot: root });
+  });
+
+  test("the description says images are named and how to ask for them", () => {
+    assert.match(tool.description, /\[picture 3: JPEG/);
+    assert.match(tool.description, /images: "all"/);
+    assert.match(tool.description, /pdf_render/);
+  });
+
+  test("NoImageBytesByDefault: an existing call gets markers and no bytes", async () => {
+    const content = await call({ path: "pdf-image-rgb.pdf" });
+    assert.match(text(content), /\[picture 1: JPEG 8×8\]/);
+    assert.deepEqual(images(content), []);
+  });
+
+  test('"all" returns the image, announced by its marker', async () => {
+    const content = await call({ path: "pdf-image-rgb.pdf", images: "all" });
+    const returned = images(content);
+    assert.equal(returned.length, 1);
+    assert.equal(returned[0].mimeType, "image/jpeg");
+    const marker = content.findIndex((one) => one.type === "text" && /\[picture 1: JPEG 8×8\]$/.test(one.text));
+    assert.ok(marker !== -1 && content[marker + 1]?.type === "image", "the marker precedes its image");
+  });
+
+  test("ImageBudgetIsStated: an identifier naming nothing is refused, and says what is there", async () => {
+    await assert.rejects(
+      () => call({ path: "pdf-image-rgb.pdf", images: ["7"] }),
+      (error: unknown) => error instanceof Error && /No picture "7"\. This document holds 1, numbered 1–1\./.test(error.message),
+    );
+    // And a document with no images says so by having none to name.
+    const none = await call({ path: "pdf-text.pdf", images: "all" });
+    assert.deepEqual(images(none), []);
+    assert.doesNotMatch(text(none), /\[picture /);
+  });
+});
