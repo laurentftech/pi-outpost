@@ -11,8 +11,10 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { Type } from "typebox";
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
+import { imagesParameter, pictureContentFor, type PictureRequest } from "./extractedPictures.ts";
 import { assertWritableDestination, excerptOf, extractionSummary, writeExtraction } from "./extractionOutput.ts";
 import { PptxError, extractPptx } from "./pptx.ts";
+import { rasterizeSvg } from "./presentationRender.ts";
 import { isWithinAny, realResolve } from "./sandbox.ts";
 
 export interface PptxToolOptions {
@@ -46,6 +48,7 @@ const parameters = Type.Object({
       description: "Write the whole extraction to this workspace path and return a summary instead of the content. The file must not already exist.",
     }),
   ),
+  images: imagesParameter,
 });
 
 const DESCRIPTION = [
@@ -54,7 +57,8 @@ const DESCRIPTION = [
   "Do not return the content and then write it yourself — that spends the context twice.",
   "Otherwise output is capped per call — when it is truncated it says so and names the slide range to ask for next, or pass full:true to get everything at once.",
   "Slide order is the presentation's own, not the order of the files inside the package.",
-  "Images, charts, SmartArt, animations, speaker notes, comments and embedded media are not read; a slide holding only those says so.",
+  "Each picture is named where the slide puts it, as [picture 3: PNG 800×600 — \"its alt text\"]; pass images: \"all\" to get them as images too, or images: [\"3\"] for one by its number.",
+  "Charts, SmartArt, animations, speaker notes, comments and embedded media are not read, and are not pictures — there are no bytes to return for them; call pptx_render to see a slide as it looks. A slide holding only those says so.",
 ].join(" ");
 
 /** Past this, an answer is large enough that the file option is worth naming again. */
@@ -82,7 +86,8 @@ export function createPptxExtractToolDefinition(options: PptxToolOptions): ToolD
         slides,
         full,
         output_path: destination,
-      } = params as { path: string; slides?: string; full?: boolean; output_path?: string };
+        images = "none",
+      } = params as { path: string; slides?: string; full?: boolean; output_path?: string; images?: PictureRequest };
 
       // SECURITY: scopeToRoot confines `path` and nothing else, so `output_path`
       // is checked by writeExtraction against the writable zone. Two arguments,
@@ -121,6 +126,10 @@ export function createPptxExtractToolDefinition(options: PptxToolOptions): ToolD
         throw error;
       }
 
+      // Pictures are selected before the answer is assembled, so an identifier that
+      // names nothing is refused instead of returning text that looks complete.
+      const pictures = await pictureContentFor(extraction.pictures, images, rasterizeSvg);
+
       if (destination === undefined) {
         // A very large answer is the moment output_path becomes worth knowing about:
         // saying so here reaches the caller when the cost is in front of it, which a
@@ -130,7 +139,10 @@ export function createPptxExtractToolDefinition(options: PptxToolOptions): ToolD
             ? `${extraction.markdown}\n\n> This answer is ${extraction.markdown.length} characters. ` +
               `For a presentation this size, pass output_path next time to write it to a file instead.`
             : extraction.markdown;
-        return { content: [{ type: "text", text }], details: undefined };
+        return {
+          content: [{ type: "text", text: [text, ...pictures.notes.map((note) => `> ${note}`)].join("\n\n") }, ...pictures.blocks],
+          details: undefined,
+        };
       }
 
       const written = await writeExtraction(destination, extraction.markdown, {
@@ -141,7 +153,12 @@ export function createPptxExtractToolDefinition(options: PptxToolOptions): ToolD
         covered: `${extraction.slides.length} of ${extraction.slideCount} slides`,
         excerpt: excerptOf(extraction.markdown),
       });
-      return { content: [{ type: "text", text: summary }], details: undefined };
+      // Pictures still come back when they were asked for: the file holds the markers,
+      // and a caller that wanted the bytes wanted them whichever way the text went.
+      return {
+        content: [{ type: "text", text: [summary, ...pictures.notes.map((note) => `> ${note}`)].join("\n\n") }, ...pictures.blocks],
+        details: undefined,
+      };
     },
   } as ToolDefinition;
 }

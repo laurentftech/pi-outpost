@@ -16,6 +16,8 @@
  * already work to avoid for text; pictures get the same treatment.
  */
 
+import { Type } from "typebox";
+
 /** A picture an extractor found, before any decision about returning its bytes. */
 export interface FoundPicture {
   /** 1-based position in document order. This is the identifier a caller names. */
@@ -39,6 +41,16 @@ export interface FoundPicture {
    */
   unavailable?: string;
 }
+
+/**
+ * Called when a reader meets a picture, to get the marker that stands in its place.
+ *
+ * The marker names the picture's format and pixel dimensions, which only its bytes
+ * can say — so the caller resolves the relationship and reads the part, and the
+ * parser stays a parser. Returning `""` leaves the picture unmarked, for a reference
+ * that turns out not to be a picture at all.
+ */
+export type PictureMarker = (reference: { relationshipId: string; alt?: string; name?: string }) => string;
 
 /** At most this many pictures in one answer, matching the page cap on rendering. */
 export const MAX_PICTURES_PER_CALL = 8;
@@ -201,4 +213,79 @@ export function selectPictures(pictures: FoundPicture[], request: PictureRequest
     );
   }
   return { returned, notes };
+}
+
+/* ── The tool surface ───────────────────────────────────────────────────────── */
+
+/**
+ * The `images` parameter, shared so the three readers cannot drift apart on it.
+ *
+ * One parameter rather than a flag beside a list: two knobs can disagree, and a
+ * caller acting on a marker it just read wants to name that picture, not set a mode
+ * and a filter. `"none"` is the default because an existing call must not start
+ * receiving bytes it never asked for.
+ */
+export const imagesParameter = Type.Optional(
+  Type.Union([Type.Literal("none"), Type.Literal("all"), Type.Array(Type.String())], {
+    description:
+      'Pictures to return as images: "none" (the default) marks them in the text only, "all" returns every one within the per-call budget, ' +
+      'or a list of the numbers the markers carry (["3", "7"]) to return just those — which is also how to get one the budget held back.',
+  }),
+);
+
+/** What a tool returns: its text, then the pictures that travelled, each announced. */
+export type PictureContent = { type: "text"; text: string } | { type: "image"; data: string; mimeType: string };
+
+/** Turns SVG bytes into a raster, or `null` where it cannot. Injected, as elsewhere. */
+export type SvgRasteriser = (svg: Buffer, width: number, height: number) => Promise<Buffer | null>;
+
+/** Widest a rasterised vector picture is drawn: enough to read, bounded whatever it declares. */
+const RASTER_WIDTH = 1200;
+
+/**
+ * The content blocks for a call's pictures, and the lines to add to its answer.
+ *
+ * Each picture is introduced by its own marker before the bytes arrive, so a reader
+ * of the transcript can tell which image is which — an unannounced run of pictures
+ * is unreadable the moment there is more than one.
+ *
+ * A vector picture is rasterised *here* rather than when the document was read: the
+ * default asks for no bytes at all, and rasterising every SVG in a document nobody
+ * wanted pictures from is work for nothing. It also keeps the marker honest without
+ * rewriting it — the marker names the format and the size the file declares, which
+ * stays true whether the raster succeeds or not, and a failure is reported in a note
+ * beside the answer instead.
+ */
+export async function pictureContentFor(
+  pictures: FoundPicture[],
+  request: PictureRequest,
+  rasterizeSvg?: SvgRasteriser,
+): Promise<{ blocks: PictureContent[]; notes: string[] }> {
+  const { returned, notes } = selectPictures(pictures, request);
+  const blocks: PictureContent[] = [];
+  const failed: number[] = [];
+  for (const picture of returned) {
+    let bytes = picture.bytes!;
+    let mimeType = picture.mimeType ?? "image/png";
+    if (mimeType === "image/svg+xml") {
+      const ratio = picture.width !== undefined && picture.height !== undefined && picture.width > 0 ? picture.height / picture.width : 1;
+      const raster = rasterizeSvg === undefined ? null : await rasterizeSvg(bytes, RASTER_WIDTH, Math.max(1, Math.round(RASTER_WIDTH * ratio)));
+      if (raster === null) {
+        failed.push(picture.number);
+        continue;
+      }
+      bytes = raster;
+      mimeType = "image/png";
+    }
+    blocks.push({ type: "text", text: pictureMarker(picture) });
+    blocks.push({ type: "image", data: bytes.toString("base64"), mimeType });
+  }
+  if (failed.length > 0) {
+    notes.push(
+      `Picture${failed.length === 1 ? "" : "s"} ${failed.join(", ")} ${failed.length === 1 ? "is" : "are"} a vector drawing ` +
+        `that could not be turned into an image here, so ${failed.length === 1 ? "its" : "their"} bytes did not travel. ` +
+        `The text still names ${failed.length === 1 ? "it" : "them"}.`,
+    );
+  }
+  return { blocks, notes };
 }

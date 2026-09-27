@@ -17,18 +17,18 @@
 
 - [x] 3.1 Walk the document body for inline and floating pictures, resolving each drawing's relationship to its `word/media/*` part, and emit a marker at the picture's place in the flow. Verify the markdown holds the marker between the surrounding paragraphs, in order (spec: PictureIsMarkedInPlace).
 - [x] 3.2 Read each picture's alt text from `wp:docPr/@descr` into the marker. Verify against a document declaring alt text (spec: AlternativeTextIsCarried).
-- [ ] 3.3 Add the `images` parameter (`"none"` default, `"all"`, or identifiers) returning pictures as image content. Verify the default returns no image content and that `"all"` and a single identifier each return what they name (spec: NoPictureBytesByDefault, PicturesReturnedOnRequest, OnePictureByIdentifier).
-- [ ] 3.4 Rasterise SVG pictures through `rasterizeSvg`; mark EMF, WMF and an unreadable or missing part as present-but-unavailable with the reason, and keep the call succeeding. Verify on a document holding one returnable and one unavailable picture (spec: UnreadablePictureIsStillNamed, OneUnpreparablePictureDoesNotFailTheCall).
-- [ ] 3.5 Make a document whose only content is a picture report that picture instead of "no extractable body content". Verify against the existing empty-document path so its behaviour for a genuinely empty file is unchanged (spec: DocumentWhoseOnlyContentIsAPicture).
-- [ ] 3.6 Update the `docx_extract` description: images are read and marked, the parameter exists, and the sentence claiming images are not read is gone. Verify by reading the assembled description back in a test.
+- [x] 3.3 Add the `images` parameter (`"none"` default, `"all"`, or identifiers) returning pictures as image content. Verify the default returns no image content and that `"all"` and a single identifier each return what they name (spec: NoPictureBytesByDefault, PicturesReturnedOnRequest, OnePictureByIdentifier).
+- [x] 3.4 Rasterise SVG pictures through `rasterizeSvg`; mark EMF, WMF and an unreadable or missing part as present-but-unavailable with the reason, and keep the call succeeding. Verify on a document holding one returnable and one unavailable picture (spec: UnreadablePictureIsStillNamed, OneUnpreparablePictureDoesNotFailTheCall).
+- [x] 3.5 Make a document whose only content is a picture report that picture instead of "no extractable body content". Verify against the existing empty-document path so its behaviour for a genuinely empty file is unchanged (spec: DocumentWhoseOnlyContentIsAPicture).
+- [x] 3.6 Update the `docx_extract` description: images are read and marked, the parameter exists, and the sentence claiming images are not read is gone. Verify by reading the assembled description back in a test.
 
 ## 4. PowerPoint: `pptx_extract`
 
-- [ ] 4.1 Emit a marker for each slide picture, with format, size, alt text from `p:cNvPr/@descr`, and an identifier. Verify a slide with a title and a picture yields both in order (spec: SlidePictureIsMarked).
-- [ ] 4.2 Report a slide whose only content is a picture as holding it, rather than as holding nothing readable. Verify against the existing "slide holds only unsupported content" path (spec: SlideWhoseOnlyContentIsAPicture).
-- [ ] 4.3 Add the same `images` parameter and budget to `pptx_extract`, reusing the group 2 code. Verify default and `"all"` on a deck with pictures on two slides (spec: SlidePictureBytesOnRequest, NoSlidePictureBytesByDefault).
-- [ ] 4.4 Keep a native chart, a diagram and a grouped shape named as unsupported visual content, with no picture marker and no image bytes. Verify on a deck holding a chart and no picture that asking for pictures returns none for it (spec: AChartIsNotAPicture).
-- [ ] 4.5 Update the `pptx_extract` description accordingly. Verify by reading the description back in a test.
+- [x] 4.1 Emit a marker for each slide picture, with format, size, alt text from `p:cNvPr/@descr`, and an identifier. Verify a slide with a title and a picture yields both in order (spec: SlidePictureIsMarked).
+- [x] 4.2 Report a slide whose only content is a picture as holding it, rather than as holding nothing readable. Verify against the existing "slide holds only unsupported content" path (spec: SlideWhoseOnlyContentIsAPicture).
+- [x] 4.3 Add the same `images` parameter and budget to `pptx_extract`, reusing the group 2 code. Verify default and `"all"` on a deck with pictures on two slides (spec: SlidePictureBytesOnRequest, NoSlidePictureBytesByDefault).
+- [x] 4.4 Keep a native chart, a diagram and a grouped shape named as unsupported visual content, with no picture marker and no image bytes. Verify on a deck holding a chart and no picture that asking for pictures returns none for it (spec: AChartIsNotAPicture).
+- [x] 4.5 Update the `pptx_extract` description accordingly. Verify by reading the description back in a test.
 
 ## 5. PDF: the images a page draws
 

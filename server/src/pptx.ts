@@ -15,7 +15,9 @@
  * the package did not legitimately state.
  */
 import { escapeCell, renderMarkdownTable } from "./markdownTable.ts";
-import { parseRelationships } from "./ooxml.ts";
+import { pictureMarker, type FoundPicture, type PictureMarker } from "./extractedPictures.ts";
+import { IMAGE_CONTENT_TYPES, readImageInfo } from "./imageInfo.ts";
+import { directoryOf, parseRelationships, relsPartOf } from "./ooxml.ts";
 import { scanXml, XmlError } from "./xml.ts";
 import { readZipEntry, ZipError, type ZipLimits } from "./zip.ts";
 
@@ -60,6 +62,11 @@ export interface PptxExtraction {
   /** First slide a cap kept back, when one did. */
   nextSlide?: number;
   slideCount: number;
+  /**
+   * Every picture the covered slides hold, numbered across the deck rather than per
+   * slide: a caller names one picture, and it should not have to say which slide too.
+   */
+  pictures: FoundPicture[];
 }
 
 /** Caps chosen so one call cannot spend a session's context on a long deck. */
@@ -149,7 +156,9 @@ export function parsePresentation(xml: string): SlideEntry[] {
 
 export type SlideBlock =
   | { kind: "text"; text: string }
-  | { kind: "table"; rows: string[][] };
+  | { kind: "table"; rows: string[][] }
+  /** A picture, named where the shape tree put it. `text` is its marker. */
+  | { kind: "picture"; text: string };
 
 /** What a slide holds that this reader does not turn into text. */
 export interface SlideVisuals {
@@ -194,10 +203,18 @@ export function describeVisuals(visuals: SlideVisuals): string {
  * `a:txBody`, which is what keeps shape names, placeholder metadata and relationship
  * ids out of the output.
  */
-export function parseSlide(xml: string, deadline?: () => void): SlideContent {
+export function parseSlide(xml: string, deadline?: () => void, pictureMarkerFor?: PictureMarker): SlideContent {
   const blocks: SlideBlock[] = [];
   const visuals: SlideVisuals = { images: 0, charts: 0, diagrams: 0, media: 0 };
   let title: string | undefined;
+
+  /**
+   * The picture being walked. A `p:pic` always has a blip; the guard is for a slide
+   * whose blip the package cannot resolve, which still deserves a marker.
+   */
+  let pictureDepth = 0;
+  let pictureRel: string | undefined;
+  let pictureAlt: string | undefined;
 
   // A shape's own paragraphs, flushed when the shape's text body closes.
   let shapeParagraphs: string[] = [];
@@ -258,7 +275,21 @@ export function parseSlide(xml: string, deadline?: () => void): SlideContent {
           if (shapeDepth > 0 && placeholder === undefined) placeholder = event.attributes.type ?? "body";
           break;
         case "pic":
-          visuals.images++;
+          pictureDepth++;
+          if (pictureDepth === 1) {
+            pictureRel = undefined;
+            pictureAlt = undefined;
+          }
+          // Counted only when nothing will mark it: a slide that says both
+          // "[picture 1: PNG 800×600]" and "1 image not read" contradicts itself.
+          if (pictureMarkerFor === undefined) visuals.images++;
+          break;
+        case "cNvPr":
+          // Where PowerPoint keeps a shape's alternative text.
+          if (pictureDepth > 0) pictureAlt ??= event.attributes.descr;
+          break;
+        case "blip":
+          if (pictureDepth > 0) pictureRel ??= event.attributes["r:embed"];
           break;
         case "graphicData":
           // The uri names the kind of graphic: a chart and a SmartArt diagram are
@@ -334,6 +365,20 @@ export function parseSlide(xml: string, deadline?: () => void): SlideContent {
         // A cell's text body belongs to its cell, not to a shape of its own.
         if (textBodyDepth === 0 && tableDepth === 0) flushShape();
         break;
+      case "pic":
+        if (pictureDepth > 0) pictureDepth--;
+        if (pictureDepth === 0 && pictureMarkerFor !== undefined) {
+          // A picture with no blip the package can name still gets a marker: the
+          // resolver decides what to say about it, and silence is never the answer.
+          const marker = pictureMarkerFor({
+            relationshipId: pictureRel ?? "",
+            ...(pictureAlt !== undefined && pictureAlt.trim() !== "" ? { alt: pictureAlt } : {}),
+          });
+          if (marker !== "") blocks.push({ kind: "picture", text: marker });
+          pictureRel = undefined;
+          pictureAlt = undefined;
+        }
+        break;
       case "sp":
         if (shapeDepth > 0) shapeDepth--;
         if (shapeDepth === 0) placeholder = undefined;
@@ -354,7 +399,7 @@ export function renderSlide(number: number, content: SlideContent): string {
   const heading = content.title === undefined ? `## Slide ${number}` : `## Slide ${number} — ${content.title}`;
   const pieces: string[] = [];
   for (const block of content.blocks) {
-    if (block.kind === "text") {
+    if (block.kind === "text" || block.kind === "picture") {
       pieces.push(block.text);
       continue;
     }
@@ -466,8 +511,10 @@ export async function extractPptx(bytes: Uint8Array, options: PptxExtractOptions
   }
 
   const slideCount = entries.length;
+  const pictures: FoundPicture[] = [];
   if (slideCount === 0) {
     return {
+      pictures,
       markdown:
         "_This presentation declares no slides._\n\n" +
         "> Slide layouts and masters are templates, not slides, and are not read by this tool.",
@@ -527,7 +574,9 @@ export async function extractPptx(bytes: Uint8Array, options: PptxExtractOptions
 
     let content: SlideContent;
     try {
-      content = parseSlide(slideXml.toString("utf8"), deadline);
+      // A slide's pictures are named by its own relationships part, so the resolver is
+      // built per slide; the numbering it hands out runs across the whole deck.
+      content = parseSlide(slideXml.toString("utf8"), deadline, slidePictureMarker(buffer, limits, part!, pictures, deadline));
     } catch (error) {
       throw asPptxError(error);
     }
@@ -549,6 +598,7 @@ export async function extractPptx(bytes: Uint8Array, options: PptxExtractOptions
   return {
     markdown: [...pieces, ...notes].join("\n\n"),
     slides: covered,
+    pictures,
     ...(nextSlide === undefined ? {} : { nextSlide }),
     slideCount,
   };
@@ -592,11 +642,69 @@ export function readSlideParagraphs(bytes: Uint8Array): string[][] {
       if (part === undefined || !part.startsWith(PACKAGE_PREFIX)) return [];
       const slideXml = readZipEntry(buffer, part, limits);
       if (slideXml === null) return [];
+      // No marker is asked for here: this reads a deck's words for the conformance
+      // checker, and a picture has none to contribute.
       return parseSlide(slideXml.toString("utf8")).blocks.flatMap((block) =>
-        block.kind === "text" ? block.text.split("\n") : block.rows.flat().flatMap((cell) => cell.split("\n")),
+        block.kind === "table" ? block.rows.flat().flatMap((cell) => cell.split("\n")) : block.text.split("\n"),
       );
     });
   } catch (error) {
     throw asPptxError(error);
+  }
+}
+
+/**
+ * A marker for each picture a slide holds, reading the part behind it.
+ *
+ * Built per slide because a slide names its pictures through its own relationships,
+ * and numbering across the deck because a caller asks for "picture 3", not for the
+ * third picture of the fourth slide.
+ *
+ * SECURITY: the same confinement extraction applies to slides applies here — a target
+ * that normalises out of `ppt/` is not a part this package may name, and is refused
+ * rather than read.
+ */
+function slidePictureMarker(
+  buffer: Buffer,
+  limits: ZipLimits,
+  slidePart: string,
+  pictures: FoundPicture[],
+  deadline: () => void,
+): PictureMarker {
+  let targets: Map<string, string> | undefined;
+  return (reference) => {
+    deadline();
+    if (targets === undefined) {
+      const rels = readSilently(buffer, relsPartOf(slidePart), limits);
+      targets = rels === null ? new Map() : parseRelationships(rels.toString("utf8"), directoryOf(slidePart));
+    }
+    const number = pictures.length + 1;
+    const alt = reference.alt !== undefined ? { alt: reference.alt } : {};
+    const target = targets.get(reference.relationshipId);
+    const found = ((): FoundPicture => {
+      if (target === undefined || !target.startsWith(PACKAGE_PREFIX)) {
+        return { number, format: "picture", ...alt, unavailable: "the package does not hold the part it points at" };
+      }
+      const extension = (target.split(".").pop() ?? "").toUpperCase();
+      const bytes = readSilently(buffer, target, limits);
+      if (bytes === null) return { number, format: extension || "picture", ...alt, unavailable: "its part is missing from the package" };
+      try {
+        const info = readImageInfo(bytes, target);
+        return { number, format: info.kind.toUpperCase(), width: info.width, height: info.height, ...alt, bytes, mimeType: IMAGE_CONTENT_TYPES[info.kind] };
+      } catch {
+        return { number, format: extension || "picture", ...alt, unavailable: `${extension || "this format"} cannot be shown as an image` };
+      }
+    })();
+    pictures.push(found);
+    return pictureMarker(found);
+  };
+}
+
+/** A part read for a picture: absent or unreadable is an answer, not a failure. */
+function readSilently(buffer: Buffer, part: string, limits: ZipLimits): Buffer | null {
+  try {
+    return readZipEntry(buffer, part, limits);
+  } catch {
+    return null;
   }
 }

@@ -182,3 +182,74 @@ describe("docx_extract writing to a file", () => {
     assert.match(answer, /# Sales by region/);
   });
 });
+
+/**
+ * The pictures a document holds, through the tool the agent calls.
+ *
+ * `docx.test.ts` covers the reading; what matters here is the contract at the
+ * surface: an existing call must not start receiving bytes it never asked for, and
+ * asking for a picture that is not there must be refused rather than answered with
+ * something that looks complete.
+ */
+describe("docx_extract and pictures", () => {
+  let root: string;
+  let tool: ReturnType<typeof createDocxExtractToolDefinition>;
+
+  type Content = { type: "text"; text: string } | { type: "image"; data: string; mimeType: string };
+  async function call(params: Record<string, unknown>): Promise<Content[]> {
+    const result = await (
+      tool.execute as unknown as (id: string, params: unknown, signal?: AbortSignal) => Promise<{ content: Content[] }>
+    )("call-1", params, undefined);
+    return result.content;
+  }
+  const images = (content: Content[]) => content.filter((one): one is Extract<Content, { type: "image" }> => one.type === "image");
+  const text = (content: Content[]) => content.filter((one) => one.type === "text").map((one) => (one as { text: string }).text).join("\n");
+
+  before(async () => {
+    root = await realResolve(await mkdtemp(path.join(tmpdir(), "pi-docxpictures-")));
+    await copyFile(path.join(FIXTURES, "docx-report.docx"), path.join(root, "report.docx"));
+    tool = createDocxExtractToolDefinition({ cwd: root, allowedRoots: [root], maxBytes: 25 * 1024 * 1024, writableRoot: root });
+  });
+
+  test("the description says pictures are named and how to ask for them", () => {
+    assert.match(tool.description, /\[picture 3: PNG 800×600/);
+    assert.match(tool.description, /images: "all"/);
+    // What it must no longer claim.
+    assert.doesNotMatch(tool.description, /text boxes and images are not read/);
+  });
+
+  test("by default a picture is named and its bytes stay behind", async () => {
+    const content = await call({ path: "report.docx" });
+    assert.match(text(content), /\[picture 1: PNG 2×1\]/);
+    assert.deepEqual(images(content), []);
+  });
+
+  test('"all" returns the picture, announced by its own marker', async () => {
+    const content = await call({ path: "report.docx", images: "all" });
+    const returned = images(content);
+    assert.equal(returned.length, 1);
+    assert.equal(returned[0].mimeType, "image/png");
+    assert.ok(returned[0].data.length > 0);
+    // Announced before the bytes, so a transcript with several is still readable.
+    const marker = content.findIndex((one) => one.type === "text" && /\[picture 1: PNG 2×1\]$/.test(one.text));
+    assert.ok(marker !== -1 && content[marker + 1]?.type === "image", "the marker precedes its picture");
+  });
+
+  test("a picture can be asked for by the number its marker carries", async () => {
+    assert.equal(images(await call({ path: "report.docx", images: ["1"] })).length, 1);
+    assert.equal(images(await call({ path: "report.docx", images: ["picture 1"] })).length, 1);
+  });
+
+  test("an identifier naming no picture is refused, and says what is there", async () => {
+    await assert.rejects(
+      () => call({ path: "report.docx", images: ["4"] }),
+      (error: unknown) => error instanceof Error && /No picture "4"\. This document holds 1, numbered 1–1\./.test(error.message),
+    );
+  });
+
+  test("writing to a file keeps the markers in it, and still returns the pictures asked for", async () => {
+    const content = await call({ path: "report.docx", output_path: "out.md", images: "all" });
+    assert.match(await readFile(path.join(root, "out.md"), "utf8"), /\[picture 1: PNG 2×1\]/);
+    assert.equal(images(content).length, 1, "the caller asked for the bytes, whichever way the text went");
+  });
+});

@@ -12,7 +12,7 @@
  * all capped, and the XML scanner refuses a DOCTYPE outright so entity expansion
  * is unreachable rather than merely disabled.
  */
-import { pictureMarker, type FoundPicture } from "./extractedPictures.ts";
+import { pictureMarker, type FoundPicture, type PictureMarker } from "./extractedPictures.ts";
 import { IMAGE_CONTENT_TYPES, readImageInfo } from "./imageInfo.ts";
 import { renderSpans, struckThroughNotice, BOLD, ITALIC, STRIKE, type Span } from "./markdownSpans.ts";
 import { escapeCell, renderMarkdownTable } from "./markdownTable.ts";
@@ -146,16 +146,6 @@ function headingLevel(styleId: string | undefined, outlineLevel: string | undefi
  * Text accumulates as spans rather than strings because the markers cannot be
  * decided run by run — see `renderSpans`.
  */
-/**
- * Called when the body draws a picture, to get the marker that stands in its place.
- *
- * The marker names the picture's format and pixel dimensions, which only its bytes
- * can say — so the caller resolves the relationship and reads the part, and this
- * parser stays a parser. Returning `""` leaves the picture unmarked, which is what a
- * reference the package cannot resolve to a picture at all should do.
- */
-export type PictureMarker = (reference: { relationshipId: string; alt?: string; name?: string }) => string;
-
 export function parseBody(xml: string, deadline?: () => void, pictureMarkerFor?: PictureMarker): DocxBlock[] {
   const blocks: DocxBlock[] = [];
 

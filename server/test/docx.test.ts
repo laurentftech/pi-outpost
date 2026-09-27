@@ -13,6 +13,8 @@ import { fileURLToPath } from "node:url";
 import { describe, test } from "node:test";
 import { DocxError, extractDocx, parseBlockRange, parseBody, renderBlock, toggleOn } from "../src/docx.ts";
 import { BOLD, ITALIC, STRIKE, renderSpans, struckThroughNotice } from "../src/markdownSpans.ts";
+import { readAllZipEntries } from "../src/zip.ts";
+import { writeZip } from "../src/zipWriter.ts";
 
 const FIXTURES = path.join(path.dirname(fileURLToPath(import.meta.url)), "fixtures");
 
@@ -599,5 +601,43 @@ describe("extractDocx and pictures", () => {
     const result = await extractDocx(await readFile(path.join(FIXTURES, "docx-text.docx")));
     assert.deepEqual(result.pictures, []);
     assert.doesNotMatch(result.markdown, /\[picture /);
+  });
+});
+
+describe("extractDocx and a document that is only a picture", () => {
+  /** The same package with its body replaced, so one fixture covers both cases. */
+  async function withBody(inner: string): Promise<Buffer> {
+    const parts = readAllZipEntries(Buffer.from(await readFile(path.join(FIXTURES, "docx-report.docx"))), {
+      maxEntries: 4096,
+      maxInflatedBytes: 1e8,
+      maxTotalBytes: 1e9,
+    });
+    const document = parts.get("word/document.xml")!.toString("utf8");
+    const body = /<w:body>[\s\S]*<\/w:body>/.exec(document)![0];
+    parts.set("word/document.xml", Buffer.from(document.replace(body, `<w:body>${inner}</w:body>`), "utf8"));
+    return Buffer.from(writeZip([...parts].map(([name, data]) => ({ name, data }))));
+  }
+
+  test("a picture is content: the document is not reported as empty", async () => {
+    const document = await readFile(path.join(FIXTURES, "docx-report.docx"));
+    const drawing = /<w:p\b[^>]*>(?:(?!<\/w:p>)[\s\S])*?<w:drawing>[\s\S]*?<\/w:p>/.exec(
+      readAllZipEntries(Buffer.from(document), { maxEntries: 4096, maxInflatedBytes: 1e8, maxTotalBytes: 1e9 })
+        .get("word/document.xml")!
+        .toString("utf8"),
+    )![0];
+
+    const result = await extractDocx(await withBody(drawing));
+    assert.match(result.markdown, /^\[picture 1: PNG 2×1\]$/);
+    assert.equal(result.pictures.length, 1);
+    assert.doesNotMatch(result.markdown, /no extractable body content/);
+  });
+
+  test("a document with genuinely nothing still says so, and no longer blames images", async () => {
+    const result = await extractDocx(await withBody(""));
+    assert.match(result.markdown, /no extractable body content/);
+    assert.deepEqual(result.pictures, []);
+    // The note used to list images among what is not read. They are read now.
+    assert.doesNotMatch(result.markdown, /images/);
+    assert.match(result.markdown, /Headers, footers, footnotes, comments and text boxes are not read/);
   });
 });
