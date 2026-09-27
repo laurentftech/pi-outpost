@@ -51,7 +51,12 @@ describe("pptx_extract", () => {
     assert.match(tool.description, /markdown/i);
     // What a caller has to know before trusting the output
     assert.match(tool.description, /order it is presented/i);
-    assert.match(tool.description, /Images, charts, SmartArt/i);
+    // It used to say "Images, charts, SmartArt … are not read". Pictures are read now,
+    // so the list of what is not is shorter — and the description has to say both halves,
+    // or a caller trusts the wrong one.
+    assert.match(tool.description, /Charts, SmartArt/i);
+    assert.doesNotMatch(tool.description, /Images, charts, SmartArt/i);
+    assert.match(tool.description, /Each picture is named/i);
   });
 
   test("leads with the file case, because that is the one that is got wrong", () => {
