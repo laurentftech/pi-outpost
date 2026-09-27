@@ -39,10 +39,10 @@
 
 ## 6. PDF: `pdf_render`, and pointing at the right tool
 
-- [ ] 6.1 Add a `pdf_render` tool taking a path and an optional page range, returning page pictures and the page count through `rasterizePdf` unchanged, capped per call. Verify a range returns those pages with the document's count, and that exceeding the cap says which pages were not drawn (spec: PageRangeAndCount, PageCapIsStated).
+- [x] 6.1 Add a `pdf_render` tool taking a path and an optional page range, returning page pictures and the page count through `rasterizePdf` unchanged, capped per call. Verify a range returns those pages with the document's count, and that exceeding the cap says which pages were not drawn (spec: PageRangeAndCount, PageCapIsStated).
 - [ ] 6.2 Verify a page with no text layer and no extractable image — vector-drawn — is returned as a picture (spec: VectorPageWithNoTextIsDrawn), and that drawing needs no office application by running with the converter lookup pointed at nothing (spec: NoOfficeApplicationNeeded).
 - [x] 6.3 Rewrite the no-text-layer note to name image extraction first and drawing second, keeping the statement that OCR is not provided. Verify the note's text on `fixtures/pdf-scan.pdf` and `fixtures/pdf-mixed-scan.pdf` (spec: ScannedDocument, MixedScanAndText).
-- [ ] 6.4 Write `pdf_render`'s description so it reads as the second choice, and register the tool where the other document tools are registered. Verify it appears in the tool list and that its description names extraction first.
+- [x] 6.4 Write `pdf_render`'s description so it reads as the second choice, and register the tool where the other document tools are registered. Verify it appears in the tool list and that its description names extraction first.
 
 ## 7. The write side: alt text in `docx_create`
 
