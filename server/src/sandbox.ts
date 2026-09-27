@@ -33,7 +33,7 @@ import {
 import { createDocxExtractToolDefinition } from "./docxTool.ts";
 import { createXlsxExtractToolDefinition } from "./xlsxTool.ts";
 import { createPptxExtractToolDefinition } from "./pptxTool.ts";
-import { createPdfExtractToolDefinition } from "./pdfTool.ts";
+import { createPdfExtractToolDefinition, createPdfRenderToolDefinition } from "./pdfTool.ts";
 import {
   createPptxCreateToolDefinition,
   createPptxLayoutsToolDefinition,
@@ -189,6 +189,11 @@ export async function createSandboxedTools(
   const documentRoots = [realRoot, ...(readExceptions ?? [])];
   readFactories.push((cwd) =>
     createPdfExtractToolDefinition({ cwd, allowedRoots: documentRoots, maxBytes: pdfMaxBytes, writableRoot: realWritableRoot }),
+  );
+  // Drawing a page is reading it too: it opens the file and returns pictures of it,
+  // writing nothing. It belongs beside the extractor, not behind a wider permission.
+  readFactories.push((cwd) =>
+    createPdfRenderToolDefinition({ cwd, allowedRoots: documentRoots, maxBytes: pdfMaxBytes, writableRoot: realWritableRoot }),
   );
   readFactories.push((cwd) =>
     createDocxExtractToolDefinition({ cwd, allowedRoots: documentRoots, maxBytes: docxMaxBytes, writableRoot: realWritableRoot }),

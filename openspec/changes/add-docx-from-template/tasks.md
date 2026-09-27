@@ -32,3 +32,14 @@
 - [x] 7.3 Running app: export with and without template, then the monkey pass.
 - [x] 7.4 Scenario matrix and `npm run check:scenarios`.
 - [ ] 7.5 On Windows (project owner): open in Word without repair, render through Word COM.
+
+## 8. Carried in from another change
+- [ ] 8.1 Add a requirement for a picture's alternative text to `specs/docx-templates/spec.md` before
+  archiving. `docx_create` writes a Markdown image's alt text into `wp:docPr/@descr` as of the
+  `see-the-images-in-a-document` change — it wrote `descr=""` until then, so a screen reader and the
+  extraction reading the document back both had nothing. The behaviour is implemented and tested
+  (`server/test/docxBuild.test.ts`, "the Markdown's alt text is written as the picture's
+  description"), but its requirement has no home yet: this capability is the one that governs
+  `docx_create`, and it still lives here rather than in `openspec/specs/`. Left open there rather than
+  invented into a capability it does not belong to. Note while writing it that Word puts `descr` on
+  both `wp:docPr` and `pic:cNvPr`, and this writer fills only the first.

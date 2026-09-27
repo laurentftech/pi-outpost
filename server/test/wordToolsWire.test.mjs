@@ -211,3 +211,45 @@ test("the agent brings an old document into the template and renders it", async 
     await server.stop();
   }
 });
+
+/**
+ * Reading a document's pictures over a real server.
+ *
+ * The unit tests prove the tool works; this proves the loop closes — that the marker a
+ * caller is shown carries an identifier the very next call can use, through the real
+ * protocol, with the real extraction on the other end. Whether a live model *chooses*
+ * to ask is a different question, and no scripted provider can answer it.
+ */
+test("PicturesReachTheCallerOverTheWire: markers first, then the bytes for the one named", async () => {
+  const { root, resultsLog, server, client } = await start();
+  try {
+    await copyFile(fileURLToPath(new URL("./fixtures/docx-report.docx", import.meta.url)), path.join(root, "report.docx"));
+    await copyFile(fileURLToPath(new URL("./fixtures/pdf-scan.pdf", import.meta.url)), path.join(root, "drawn.pdf"));
+
+    // Both kinds are named: the document tools are published per kind, so a prompt
+    // naming only the .docx would never be offered pdf_render at all.
+    client.send({ type: "prompt", text: "READ THE PICTURES in report.docx, then look at drawn.pdf." });
+    const logged = await results(resultsLog, 4);
+    const [first, all, named, drawn] = logged.slice(-4);
+
+    // The first call says a picture is there, and spends nothing on it.
+    assert.equal(first.tool, "docx_extract");
+    assert.equal(first.isError, false);
+    assert.match(first.text, /\[picture 1: PNG 2×1\]/);
+    assert.equal(first.images, 0, "an existing call is unaffected");
+
+    // The second returns it; the third returns it by the number the marker carried.
+    assert.equal(all.images, 1, "images: \"all\" put a picture in front of the model");
+    assert.equal(named.images, 1, "the identifier from the first call's marker still resolves");
+    assert.equal(named.isError, false);
+
+    // And a page carrying neither text nor an image is drawn instead.
+    assert.equal(drawn.tool, "pdf_render");
+    assert.equal(drawn.isError, false);
+    assert.equal(drawn.images, 1);
+    assert.match(drawn.text, /Drew 1 of 1 page\(s\)/);
+  } finally {
+    client.close();
+    await server.stop();
+  }
+});

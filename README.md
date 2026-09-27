@@ -208,10 +208,15 @@ one needs, the command that proves it works, and the caution that goes with it.
   included. A directory of independently versioned projects works too — each child
   repository answers for its own files. See [Git](#git)
 - PDF in the viewer (pages, zoom, keyboard paging, Ctrl+F search across the whole document);
-  the agent reads its text and tables through `pdf_extract` — no shell, no external binary, no OCR
+  the agent reads its text and tables through `pdf_extract` — no shell, no external binary. A page
+  with no text layer is not a dead end: the images it draws are named and can be returned at the
+  resolution the file holds, so a scan is readable by looking at it, and `pdf_render` draws a page
+  that carries neither text nor an image. There is still no OCR, so a scan's words are not searchable
 - Office documents: `docx_extract`, `xlsx_extract` and `pptx_extract` give the agent Word
   text and tables, one markdown table per spreadsheet sheet, and slide structure with
-  speaker notes. Text a document crosses out comes back as `~~struck through~~` rather than
+  speaker notes. Every picture is named where it sits, with its format, size and the alt text the
+  document declares, and its bytes come back on request — so a report's chart is never simply
+  missing from what the agent read. Text a document crosses out comes back as `~~struck through~~` rather than
   as live content — in a `.docx` from the run's own formatting, in a PDF from the strike the
   page draws over the glyphs. Each takes an `output_path`, to write the whole document to a
   file instead of spending the context on it twice. The four extractors are described to

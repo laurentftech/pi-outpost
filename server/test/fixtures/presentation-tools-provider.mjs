@@ -92,11 +92,27 @@ const RESTYLE_STEPS = [
   ["docx_render", { path: "old-restyled.docx" }],
 ];
 
+/**
+ * Reading a document's pictures the way a caller would: the markers first, then the
+ * bytes for the one they name.
+ *
+ * The second and third steps are the point. A caller has no reason to ask for a
+ * picture it was never told about, so the first call has to *say* there is one — and
+ * the identifier the third step passes is the one the first call's marker carried.
+ */
+const PICTURE_STEPS = [
+  ["docx_extract", { path: "report.docx" }],
+  ["docx_extract", { path: "report.docx", images: "all" }],
+  ["docx_extract", { path: "report.docx", images: ["1"] }],
+  ["pdf_render", { path: "drawn.pdf" }],
+];
+
 const SCRIPTS = [
   ["BUILD THE DECK", BUILD_STEPS],
   ["WRITE THE REPORT", REPORT_STEPS],
   ["RENDER BOTH", RENDER_STEPS],
   ["RESTYLE THE DOCUMENT", RESTYLE_STEPS],
+  ["READ THE PICTURES", PICTURE_STEPS],
 ];
 
 function append(variable, value) {

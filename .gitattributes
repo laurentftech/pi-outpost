@@ -9,3 +9,20 @@
 shared/schemas/*.json          text eol=lf
 shared/conformance/**/*.json   text eol=lf
 skills/structured-exchange/*   text eol=lf
+
+# The Office and PDF fixtures are byte-exact documents, not text. Git guesses this
+# from a NUL in the first few kilobytes and guesses wrong on an uncompressed PDF: it
+# hands a Windows working tree a CRLF copy of `pdf-text.pdf`, 46 bytes longer than
+# the blob, every xref offset past the first now wrong. pdf.js survives it by
+# reindexing the whole document — which is what the "Indexing all PDF objects"
+# warnings in the test output have been announcing — but a fixture carrying a
+# deflated image stream would not survive at all, and would fail as an image that
+# mysteriously will not decode. Declaring the type settles it for every fixture
+# rather than leaving it to what bytes each one happens to contain.
+server/test/fixtures/*.pdf     binary
+server/test/fixtures/*.docx    binary
+server/test/fixtures/*.dotx    binary
+server/test/fixtures/*.pptx    binary
+server/test/fixtures/*.potx    binary
+server/test/fixtures/*.xlsx    binary
+server/test/fixtures/*.png     binary

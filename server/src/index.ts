@@ -193,7 +193,7 @@ import {
 } from "./projectModelTool.ts";
 import { copyWorkPlan, deleteWorkPlan, loadWorkPlan, sameSessionFile } from "./workPlanStore.ts";
 import { composeAppendSystemPrompt } from "./systemPrompt.ts";
-import { createPdfExtractToolDefinition } from "./pdfTool.ts";
+import { createPdfExtractToolDefinition, createPdfRenderToolDefinition } from "./pdfTool.ts";
 import { Workspace, shouldRetireWorkspace, type WorkspaceOptions, type WorkspaceSettings } from "./workspace.ts";
 import { WorkspaceRegistry } from "./workspaceRegistry.ts";
 import { discoverSkillCatalogue, ResourceRepositoryService } from "./resourceRepositories.ts";
@@ -1190,6 +1190,12 @@ const makeCreateRuntime =
               // so everything registered before them survives their arrival. Measured:
               // `pdf_extract` fifth of fourteen kept 9.2% of the prefix.
               createPdfExtractToolDefinition({
+                cwd,
+                allowedRoots: [await fs.realpath(cwd)],
+                maxBytes: config.pdf.maxBytes,
+                writableRoot: await fs.realpath(cwd),
+              }),
+              createPdfRenderToolDefinition({
                 cwd,
                 allowedRoots: [await fs.realpath(cwd)],
                 maxBytes: config.pdf.maxBytes,

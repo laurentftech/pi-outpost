@@ -35,7 +35,10 @@ export const WORD_SKILL = "docx-from-template";
 
 /** Extension → the tools a document of that kind calls for. */
 const EXTRACTORS: Record<string, string[]> = {
-  pdf: ["pdf_extract"],
+  // `pdf_render` travels with the extractor because it is the answer to something the
+  // extractor says: a page carrying neither text nor an image tells the caller to draw
+  // it, and that advice is worthless if the tool it names was never offered.
+  pdf: ["pdf_extract", "pdf_render"],
   // A Word document may be read, updated, or be the template a new one is written from.
   docx: ["docx_extract", ...WORD_TOOLS],
   // A .dotx is only ever a template.

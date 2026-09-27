@@ -132,7 +132,7 @@ function inlineRuns(nodes: readonly PhrasingContent[], refs: Refs, marks: Marks 
         // about it, because losing those silently would lose content.
         const picture = refs.get(node);
         if (picture === undefined) out.push(runOf(node.alt ?? node.url, marks));
-        else out.push(pictureRun(picture));
+        else out.push(pictureRun(picture, node.alt));
         break;
       }
       case "inlineMath":
@@ -337,13 +337,30 @@ function diagramBlock(image: DiagramImage): Paragraph {
  * a redrawing of them — carrying the physical size its own pixels imply, scaled
  * down to the text width when it would otherwise run off the page.
  */
-function pictureRun(reference: ReferencedImage): ImageRun {
+function pictureRun(reference: ReferencedImage, alt?: string | null): ImageRun {
   if (reference.kind === "vector") return vectorRun(reference.image);
   return new ImageRun({
     type: reference.type,
     data: reference.bytes,
     transformation: diagramSize(reference.width, reference.height),
+    ...altTextOf(alt),
   });
+}
+
+/**
+ * A picture's alternative text, from the Markdown that referenced it.
+ *
+ * `![the third quarter's revenue](chart.png)` says what the picture is, and that was
+ * being dropped: the document came out with `descr=""`, so a reader — a screen reader,
+ * or the extraction reading the document back — had nothing. `pptx_create` has always
+ * written it, and the two writers had no business disagreeing.
+ *
+ * `name` is required by the writer and is not the alt text: it is the shape's name in
+ * the drawing, which Word shows in the selection pane.
+ */
+function altTextOf(alt: string | null | undefined): { altText?: { name: string; description: string } } {
+  const description = alt?.trim() ?? "";
+  return description === "" ? {} : { altText: { name: "Picture", description } };
 }
 
 /**

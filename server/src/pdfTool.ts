@@ -10,8 +10,10 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { Type } from "typebox";
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
+import { imagesParameter, pictureContentFor, type PictureRequest } from "./extractedPictures.ts";
 import { assertWritableDestination, excerptOf, extractionSummary, writeExtraction } from "./extractionOutput.ts";
-import { extractPdf, PdfError, type PdfMode } from "./pdf.ts";
+import { extractPdf, parsePageRange, PdfError, type PdfMode } from "./pdf.ts";
+import { rasterizePdf } from "./presentationRender.ts";
 import { isWithinAny, realResolve } from "./sandbox.ts";
 
 export interface PdfToolOptions {
@@ -50,6 +52,7 @@ const parameters = Type.Object({
       description: "Write the whole extraction to this workspace path and return a summary instead of the content. The file must not already exist.",
     }),
   ),
+  images: imagesParameter,
 });
 
 const DESCRIPTION = [
@@ -60,7 +63,8 @@ const DESCRIPTION = [
   "Table reconstruction is best-effort; use mode=\"text\" to see a page exactly as its text layer reads.",
   "Text the page draws a strike across is returned as ~~struck through~~ and means the document withdrew it — do not treat it as current, and say which passages are struck when you transcribe, quote or summarise the document.",
   "A PDF records a strike as a drawn shape, not as a property of the text, so detection is best-effort: it can miss one, and it never removes or alters text.",
-  "A scanned PDF has no text layer and is reported as such: there is no OCR.",
+  "Each image a page draws is named where it sits, as [picture 3: JPEG 1700×2200]; pass images: \"all\" to get them as images too, or images: [\"3\"] for one by its number.",
+  "A scanned page is one such image, returned at the resolution the file holds — so a page with no text layer is still readable by looking at it. There is no OCR: the text is not searchable, and a page drawn as vectors rather than placed as an image has nothing to return, which is what pdf_render is for.",
 ].join(" ");
 
 /** Past this, an answer is large enough that the file option is worth naming again. */
@@ -89,7 +93,8 @@ export function createPdfExtractToolDefinition(options: PdfToolOptions): ToolDef
         mode,
         full,
         output_path: destination,
-      } = params as { path: string; pages?: string; mode?: PdfMode; full?: boolean; output_path?: string };
+        images = "none",
+      } = params as { path: string; pages?: string; mode?: PdfMode; full?: boolean; output_path?: string; images?: PictureRequest };
 
       // SECURITY: scopeToRoot confines `path` and nothing else, so `output_path`
       // is checked by writeExtraction against the writable zone. Two arguments,
@@ -129,6 +134,10 @@ export function createPdfExtractToolDefinition(options: PdfToolOptions): ToolDef
         throw error;
       }
 
+      // Images are selected before the answer is assembled, so an identifier that
+      // names nothing is refused instead of returning text that looks complete.
+      const pictures = await pictureContentFor(extraction.pictures, images);
+
       if (destination === undefined) {
         // A very large answer is the moment output_path becomes worth knowing about:
         // saying so here reaches the caller when the cost is in front of it, which a
@@ -138,7 +147,10 @@ export function createPdfExtractToolDefinition(options: PdfToolOptions): ToolDef
             ? `${extraction.markdown}\n\n> This answer is ${extraction.markdown.length} characters. ` +
               `For a document this size, pass output_path next time to write it to a file instead.`
             : extraction.markdown;
-        return { content: [{ type: "text", text }], details: undefined };
+        return {
+          content: [{ type: "text", text: [text, ...pictures.notes.map((note) => `> ${note}`)].join("\n\n") }, ...pictures.blocks],
+          details: undefined,
+        };
       }
 
       const written = await writeExtraction(destination, extraction.markdown, {
@@ -149,7 +161,98 @@ export function createPdfExtractToolDefinition(options: PdfToolOptions): ToolDef
         covered: `${extraction.pages.length} of ${extraction.pageCount} pages`,
         excerpt: excerptOf(extraction.markdown),
       });
-      return { content: [{ type: "text", text: summary }], details: undefined };
+      // Images still come back when they were asked for: the file holds the markers,
+      // and a caller that wanted the bytes wanted them whichever way the text went.
+      return {
+        content: [{ type: "text", text: [summary, ...pictures.notes.map((note) => `> ${note}`)].join("\n\n") }, ...pictures.blocks],
+        details: undefined,
+      };
     },
   } as ToolDefinition;
+}
+
+/* ── pdf_render ─────────────────────────────────────────────────────────────── */
+
+/** Pages one call draws, and how wide — the same budget rendering a document gets. */
+export const MAX_DRAWN_PAGES = 8;
+export const DRAWN_PAGE_WIDTH = 1100;
+
+const RENDER_DESCRIPTION = [
+  "Draw a PDF's pages as pictures and return them with the page count.",
+  "This is the second choice, not the first: when a page has no text layer, pdf_extract names the images it draws and returns them at the resolution the file holds, which is better than a picture of the page — ask it for those before reaching here.",
+  "Use pdf_render for a page that carries neither text nor an image, which is a page drawn as vectors: an export from a drawing tool, a map, a plot. And use it to see how a page actually looks, rather than what it contains.",
+  "No office application is needed — a PDF needs no conversion before it can be drawn.",
+].join(" ");
+
+/**
+ * The render tool.
+ *
+ * Deliberately thin: `rasterizePdf` already draws an arbitrary PDF, and this adds the
+ * path checking, the page range and the cap. It says in its own description that
+ * extraction comes first, because a tool whose description oversells it gets reached
+ * for by default — the failure this project has already recorded once, where the
+ * mechanism was right and the use of it was not.
+ */
+export function createPdfRenderToolDefinition(options: PdfToolOptions): ToolDefinition {
+  return {
+    name: "pdf_render",
+    label: "Render PDF",
+    description: RENDER_DESCRIPTION,
+    promptSnippet: "Draw a PDF's pages as pictures, to look at them",
+    parameters: Type.Object({
+      path: Type.String({ description: "Path to the PDF file (relative to the workspace root, or absolute)" }),
+      pages: Type.Optional(
+        Type.String({ description: `Pages to draw, e.g. "3" or "2-5,8". Omit for the first ${MAX_DRAWN_PAGES}.` }),
+      ),
+    }),
+    executionMode: "sequential",
+    async execute(_toolCallId, params) {
+      const { path: target, pages } = params as { path: string; pages?: string };
+
+      const resolved = await realResolve(path.resolve(options.cwd, target));
+      if (!isWithinAny(options.allowedRoots, resolved)) {
+        throw new Error(`Access denied: "${target}" is outside the sandbox (${options.allowedRoots[0]})`);
+      }
+      const stat = await fs.stat(resolved).catch(() => null);
+      if (stat === null || !stat.isFile()) throw new Error(`No such file: ${target}`);
+      if (stat.size > options.maxBytes) {
+        throw new Error(`"${target}" is larger than the ${describeSize(options.maxBytes)} PDF limit`);
+      }
+
+      const bytes = await fs.readFile(resolved);
+      // The page count is not known until the document is open, so the range is
+      // parsed against what came back rather than guessed at beforehand.
+      const drawn = await rasterizePdf(bytes, [], DRAWN_PAGE_WIDTH);
+      if (drawn === null) {
+        throw new Error(
+          `Cannot draw "${target}": no image encoder is installed here (@napi-rs/canvas is an optional dependency). ` +
+            `pdf_extract still reads the text, and the images a page draws.`,
+        );
+      }
+      const wanted = pages === undefined ? rangeUpTo(drawn.pageCount) : parsePageRange(pages, drawn.pageCount);
+      const drawnPages = wanted.slice(0, MAX_DRAWN_PAGES);
+      const raster = await rasterizePdf(bytes, drawnPages, DRAWN_PAGE_WIDTH);
+
+      const lines = [`Drew ${raster?.images.length ?? 0} of ${drawn.pageCount} page(s) of \`${target}\`.`];
+      if (wanted.length > drawnPages.length) {
+        lines.push(
+          `Pages ${drawnPages.join(", ")} are below; ${wanted.length - drawnPages.length} more were not drawn ` +
+            `(at most ${MAX_DRAWN_PAGES} per call). Ask for them with pages="${wanted[drawnPages.length]}-${wanted[wanted.length - 1]}".`,
+        );
+      }
+      const content: Array<{ type: "text"; text: string } | { type: "image"; data: string; mimeType: string }> = [
+        { type: "text", text: lines.join("\n") },
+      ];
+      for (const image of raster?.images ?? []) {
+        content.push({ type: "text", text: `Page ${image.page}:` });
+        content.push({ type: "image", data: image.png.toString("base64"), mimeType: "image/png" });
+      }
+      return { content, details: undefined };
+    },
+  } as ToolDefinition;
+}
+
+/** 1…count, for a call that named no range. */
+function rangeUpTo(count: number): number[] {
+  return Array.from({ length: count }, (_, index) => index + 1);
 }

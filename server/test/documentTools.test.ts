@@ -9,7 +9,11 @@ import { DOCUMENT_TOOLS, documentToolsFor, documentToolsForToolCall, PRESENTATIO
 
 describe("documentToolsFor", () => {
   test("a named document publishes its own extractor and no other", () => {
-    assert.deepEqual(documentToolsFor("Read report.pdf and summarise it"), ["pdf_extract"]);
+    // pdf_render travels with the extractor: a page carrying neither text nor an image
+    // tells the caller to draw it, and that advice is worthless if the tool it names was
+    // never offered. Registering a tool is not publishing it — this was found by driving
+    // the real server, where the tool existed, worked, and never reached the model.
+    assert.deepEqual(documentToolsFor("Read report.pdf and summarise it"), ["pdf_extract", "pdf_render"]);
     // A Word document may be read, updated or written from, so it brings the Word tools.
     assert.deepEqual(documentToolsFor("What does notes.docx say?"), ["docx_extract", ...WORD_TOOLS]);
     assert.deepEqual(documentToolsFor("Open budget.xlsx"), ["xlsx_extract"]);
@@ -27,13 +31,13 @@ describe("documentToolsFor", () => {
       "see ./docs/report.pdf, then tell me",
       "read report.pdf.",
     ]) {
-      assert.deepEqual(documentToolsFor(text), ["pdf_extract"], text);
+      assert.deepEqual(documentToolsFor(text), ["pdf_extract", "pdf_render"], text);
     }
   });
 
   test("case does not matter: a Windows share shouts", () => {
     assert.deepEqual(documentToolsFor("@/mnt/share/Q3.XLSX please"), ["xlsx_extract"]);
-    assert.deepEqual(documentToolsFor("REPORT.PDF"), ["pdf_extract"]);
+    assert.deepEqual(documentToolsFor("REPORT.PDF"), ["pdf_extract", "pdf_render"]);
   });
 
   test("the word is not the path", () => {
@@ -52,11 +56,11 @@ describe("documentToolsFor", () => {
 
   test("two kinds in one prompt publish two tools, in registration order", () => {
     assert.deepEqual(documentToolsFor("see notes.docx and slides.pptx"), ["docx_extract", ...WORD_TOOLS, "pptx_extract", ...PRESENTATION_TOOLS]);
-    assert.deepEqual(documentToolsFor("a.pdf, b.docx."), ["pdf_extract", "docx_extract", ...WORD_TOOLS]);
+    assert.deepEqual(documentToolsFor("a.pdf, b.docx."), ["pdf_extract", "pdf_render", "docx_extract", ...WORD_TOOLS]);
   });
 
   test("the same document twice publishes one tool", () => {
-    assert.deepEqual(documentToolsFor("compare a.pdf with b.pdf"), ["pdf_extract"]);
+    assert.deepEqual(documentToolsFor("compare a.pdf with b.pdf"), ["pdf_extract", "pdf_render"]);
   });
 
   test("the exported set is what the server withholds and republishes", () => {
@@ -64,6 +68,7 @@ describe("documentToolsFor", () => {
     // forever, or withheld from everyone forever.
     assert.deepEqual(DOCUMENT_TOOLS, [
       "pdf_extract",
+      "pdf_render",
       "docx_extract",
       "docx_styles",
       "docx_create",
@@ -77,9 +82,10 @@ describe("documentToolsFor", () => {
       "pptx_update",
       "pptx_render",
     ]);
-    for (const extension of ["pdf", "xlsx"]) {
-      assert.deepEqual(documentToolsFor(`file.${extension}`), [`${extension}_extract`], extension);
-    }
+    // Not generated from the extension any more: a PDF brings its renderer as well as
+    // its extractor, so the one-tool-per-kind shortcut no longer describes the map.
+    assert.deepEqual(documentToolsFor("file.xlsx"), ["xlsx_extract"]);
+    assert.deepEqual(documentToolsFor("file.pdf"), ["pdf_extract", "pdf_render"]);
   });
 });
 

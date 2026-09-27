@@ -12,6 +12,8 @@ import path from "node:path";
 import { Type } from "typebox";
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { DocxError, extractDocx, type DocxMode } from "./docx.ts";
+import { imagesParameter, pictureContentFor, type PictureRequest } from "./extractedPictures.ts";
+import { rasterizeSvg } from "./presentationRender.ts";
 import { assertWritableDestination, excerptOf, extractionSummary, writeExtraction } from "./extractionOutput.ts";
 import { isWithinAny, realResolve } from "./sandbox.ts";
 
@@ -51,6 +53,7 @@ const parameters = Type.Object({
       description: "Write the whole extraction to this workspace path and return a summary instead of the content. The file must not already exist.",
     }),
   ),
+  images: imagesParameter,
 });
 
 const DESCRIPTION = [
@@ -62,7 +65,9 @@ const DESCRIPTION = [
   "Text the document crosses out is returned as ~~struck through~~ and means the document withdrew it — do not treat it as current, and say which passages are struck when you transcribe, quote or summarise the document.",
   "Bold and italic runs are returned as markdown emphasis; underline has no markdown equivalent and is not marked.",
   "Only formatting written on the run itself is read, so strikethrough applied through a character style is not detected.",
-  "Headers, footers, footnotes, comments, text boxes and images are not read.",
+  "Each picture is named where it sits, as [picture 3: PNG 800×600 — \"its alt text\"]; pass images: \"all\" to get them as images too, or images: [\"3\"] for one by its number.",
+  "A picture whose bytes cannot be shown — a metafile, a missing part — is still named, with the reason, so nothing the document holds goes unmentioned.",
+  "Headers, footers, footnotes, comments and text boxes are not read. Charts, diagrams and grouped shapes are not pictures and have no bytes to return; call docx_render to see those.",
 ].join(" ");
 
 /** Past this, an answer is large enough that the file option is worth naming again. */
@@ -91,7 +96,8 @@ export function createDocxExtractToolDefinition(options: DocxToolOptions): ToolD
         mode,
         full,
         output_path: destination,
-      } = params as { path: string; blocks?: string; mode?: DocxMode; full?: boolean; output_path?: string };
+        images = "none",
+      } = params as { path: string; blocks?: string; mode?: DocxMode; full?: boolean; output_path?: string; images?: PictureRequest };
 
       // SECURITY: scopeToRoot confines `path` and nothing else, so `output_path`
       // is checked by writeExtraction against the writable zone. Two arguments,
@@ -131,6 +137,10 @@ export function createDocxExtractToolDefinition(options: DocxToolOptions): ToolD
         throw error;
       }
 
+      // Pictures are selected before the answer is assembled, so an identifier that
+      // names nothing is refused instead of returning text that looks complete.
+      const pictures = await pictureContentFor(extraction.pictures, images, rasterizeSvg);
+
       if (destination === undefined) {
         // A very large answer is the moment output_path becomes worth knowing about:
         // saying so here reaches the caller when the cost is in front of it, which a
@@ -140,7 +150,10 @@ export function createDocxExtractToolDefinition(options: DocxToolOptions): ToolD
             ? `${extraction.markdown}\n\n> This answer is ${extraction.markdown.length} characters. ` +
               `For a document this size, pass output_path next time to write it to a file instead.`
             : extraction.markdown;
-        return { content: [{ type: "text", text }], details: undefined };
+        return {
+          content: [{ type: "text", text: [text, ...pictures.notes.map((note) => `> ${note}`)].join("\n\n") }, ...pictures.blocks],
+          details: undefined,
+        };
       }
 
       const written = await writeExtraction(destination, extraction.markdown, {
@@ -151,7 +164,12 @@ export function createDocxExtractToolDefinition(options: DocxToolOptions): ToolD
         covered: `${extraction.blocks.length} of ${extraction.blockCount} blocks`,
         excerpt: excerptOf(extraction.markdown),
       });
-      return { content: [{ type: "text", text: summary }], details: undefined };
+      // Pictures still come back when they were asked for: the file holds the markers,
+      // and a caller that wanted the bytes wanted them whichever way the text went.
+      return {
+        content: [{ type: "text", text: [summary, ...pictures.notes.map((note) => `> ${note}`)].join("\n\n") }, ...pictures.blocks],
+        details: undefined,
+      };
     },
   } as ToolDefinition;
 }

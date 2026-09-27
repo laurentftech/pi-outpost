@@ -418,6 +418,18 @@ confined to the sandbox root like every other file tool. Drop the document into 
 composer and it is uploaded into the workspace and attached as a path, which is what
 those tools take.
 
+A picture in the document is named where it sits — `[picture 3: PNG 800×600 — "its alt
+text"]` — and nothing more is spent on it unless you ask. `images: "all"` returns them
+as images within a per-call budget, and `images: ["3"]` returns one by the number its
+marker carries, which is also how to get one the budget held back. A picture whose bytes
+cannot be shown, a metafile or a missing part, is still named with the reason: nothing
+the document holds goes unmentioned.
+
+There is no OCR. A scanned PDF has no text layer, and its words are not searchable — but
+the page *is* an image, so `pdf_extract` returns it at the resolution the file holds and
+the agent can read it by looking. For a page carrying neither text nor an image — an
+export drawn as vectors, a map, a plot — `pdf_render` draws the pages as pictures.
+
 The ceiling is 25 MB per format, raise it if your documents are bigger:
 
 ```json

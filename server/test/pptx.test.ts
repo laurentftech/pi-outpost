@@ -222,11 +222,19 @@ describe("extractPptx", () => {
   });
 
   test("reports a visual-only slide rather than returning nothing", async () => {
-    const { markdown } = await extractPptx(await fixture("pptx-visual"));
+    const { markdown, pictures } = await extractPptx(await fixture("pptx-visual"));
 
     assert.match(markdown, /## Slide 1/);
-    assert.match(markdown, /no extractable text/);
-    assert.match(markdown, /Not read: 1 image and 1 chart\./);
+    // The slide's picture is now named where it sits, which is what keeps this slide
+    // from reading as empty — it used to say only "no extractable text" and count the
+    // image among what it had not read. This fixture holds no media part for it, so
+    // the marker says that rather than claiming bytes exist.
+    assert.match(markdown, /\[picture 1: picture; the package does not hold the part it points at\]/);
+    assert.equal(pictures.length, 1);
+    assert.equal(pictures[0].bytes, undefined);
+    // A chart is not a picture: it stays among what was not read, with no marker.
+    assert.match(markdown, /Not read: 1 chart\./);
+    assert.doesNotMatch(markdown, /1 image and 1 chart/);
   });
 
   test("returns only the slides a range names", async () => {
@@ -350,5 +358,72 @@ describe("extractPptx", () => {
 
     assert.equal(failure.reason, "budget");
     assert.match(failure.message, /budget/);
+  });
+});
+
+/**
+ * Pictures on a slide.
+ *
+ * A deck's argument often lives in its pictures, so a slide that held one used to
+ * read as a slide with nothing on it. The reading is tested through `parseSlide`
+ * with a marker of the test's own, which keeps the cases that matter — a chart, a
+ * blip the package cannot resolve — free of any package.
+ */
+describe("parseSlide and pictures", () => {
+  function marking() {
+    const seen: Array<{ relationshipId: string; alt?: string }> = [];
+    return {
+      seen,
+      marker: (reference: { relationshipId: string; alt?: string }) => {
+        seen.push(reference);
+        return `[picture ${seen.length}]`;
+      },
+    };
+  }
+  const slide = (inner: string) => `<p:sld><p:cSld><p:spTree>${inner}</p:spTree></p:cSld></p:sld>`;
+  const textShape = (text: string) =>
+    `<p:sp><p:nvSpPr><p:nvPr/></p:nvSpPr><p:txBody><a:p><a:r><a:t>${text}</a:t></a:r></a:p></p:txBody></p:sp>`;
+  const picture = (rel: string, descr = "") =>
+    `<p:pic><p:nvPicPr><p:cNvPr id="4" name="Picture 4"${descr}/></p:nvPicPr>` +
+    `<p:blipFill><a:blip r:embed="${rel}"/></p:blipFill></p:pic>`;
+
+  test("a picture is marked where the shape tree puts it", () => {
+    const kit = marking();
+    const content = parseSlide(slide(textShape("Title") + picture("rId2")), undefined, kit.marker);
+    assert.deepEqual(content.blocks, [
+      { kind: "text", text: "Title" },
+      { kind: "picture", text: "[picture 1]" },
+    ]);
+    assert.deepEqual(kit.seen, [{ relationshipId: "rId2" }]);
+  });
+
+  test("alternative text comes from the shape's descr", () => {
+    const kit = marking();
+    parseSlide(slide(picture("rId3", ' descr="Revenue by region"')), undefined, kit.marker);
+    assert.equal(kit.seen[0].alt, "Revenue by region");
+  });
+
+  test("a marked picture is no longer counted among what was not read", () => {
+    const kit = marking();
+    const content = parseSlide(slide(picture("rId2")), undefined, kit.marker);
+    assert.equal(content.visuals.images, 0, "a slide must not both name a picture and call it unread");
+    // Without a marker the old count stands, which is what the deck readers rely on.
+    assert.equal(parseSlide(slide(picture("rId2"))).visuals.images, 1);
+  });
+
+  test("a chart is not a picture", () => {
+    const kit = marking();
+    const chart = `<p:graphicFrame><a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/chart"/></a:graphic></p:graphicFrame>`;
+    const content = parseSlide(slide(chart), undefined, kit.marker);
+    assert.deepEqual(kit.seen, [], "nothing to mark: a chart has no image part");
+    assert.equal(content.visuals.charts, 1);
+    assert.deepEqual(content.blocks, []);
+  });
+
+  test("a picture whose blip names nothing is still marked", () => {
+    const kit = marking();
+    const content = parseSlide(slide(`<p:pic><p:nvPicPr><p:cNvPr id="4"/></p:nvPicPr><p:blipFill/></p:pic>`), undefined, kit.marker);
+    assert.deepEqual(kit.seen, [{ relationshipId: "" }], "the resolver decides what to say; silence is not an option");
+    assert.deepEqual(content.blocks, [{ kind: "picture", text: "[picture 1]" }]);
   });
 });

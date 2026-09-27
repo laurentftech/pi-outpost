@@ -14,6 +14,8 @@
  */
 import { createRequire } from "node:module";
 import path from "node:path";
+import { loadCanvas, type CanvasModule } from "./canvas.ts";
+import { encodeBitmap, pictureMarker, type Bitmap, type FoundPicture } from "./extractedPictures.ts";
 import { renderSpans, struckThroughNotice, STRIKE, type Span } from "./markdownSpans.ts";
 import { escapeCell } from "./markdownTable.ts";
 
@@ -61,6 +63,12 @@ export interface PdfExtraction {
   /** First page a cap kept back, when one did. */
   nextPage?: number;
   pageCount: number;
+  /**
+   * Every image the covered pages draw, in page order, whether it could be encoded
+   * or not. The markdown already names each one; this is what a caller asking for
+   * the bytes selects from.
+   */
+  pictures: FoundPicture[];
 }
 
 /** Caps chosen so one call cannot spend a session's context on a long report. */
@@ -308,6 +316,81 @@ function overlapWidth(shape: DrawnShape, x: number, xEnd: number): number {
   return Math.max(0, Math.min(shape.xEnd, xEnd) - Math.max(shape.x, x));
 }
 
+/** An image a page draws: what to fetch it by, and where it landed. */
+export interface DrawnImage {
+  /**
+   * The object name the operator carries, which the page's own object store
+   * resolves to a decoded bitmap. Empty for an inline image, whose data travels in
+   * the operator instead.
+   */
+  name: string;
+  /** Intrinsic pixel size, as the operator states it. */
+  width: number;
+  height: number;
+  /** The top edge in page space, so a picture orders against the text around it. */
+  top: number;
+  /** Height on the page in points — the printed size, which is not the pixel size. */
+  pageHeight: number;
+}
+
+/**
+ * The images a page draws, in the order it draws them.
+ *
+ * Walks the same operator list and the same transform stack `collectShapes` does,
+ * for the same reason: an image's position is not in the operator, it is in the
+ * matrix in force when the operator runs. The unit square maps through that matrix,
+ * so the translation is the bottom-left corner and the scale is the printed size.
+ *
+ * The top edge is what comes back rather than the bottom, because that is what
+ * decides whether a picture sits above or below a paragraph.
+ */
+export function collectImages(operators: OperatorList, ops: Record<string, number>): DrawnImage[] {
+  const images: DrawnImage[] = [];
+  let ctm: number[] = [1, 0, 0, 1, 0, 0];
+  const stack: number[][] = [];
+  const multiply = (m: number[], n: number[]): number[] => [
+    m[0] * n[0] + m[2] * n[1],
+    m[1] * n[0] + m[3] * n[1],
+    m[0] * n[2] + m[2] * n[3],
+    m[1] * n[2] + m[3] * n[3],
+    m[0] * n[4] + m[2] * n[5] + m[4],
+    m[1] * n[4] + m[3] * n[5] + m[5],
+  ];
+
+  for (let at = 0; at < operators.fnArray.length; at++) {
+    const fn = operators.fnArray[at];
+    if (fn === ops.save) {
+      stack.push([...ctm]);
+      continue;
+    }
+    if (fn === ops.restore) {
+      ctm = stack.pop() ?? [1, 0, 0, 1, 0, 0];
+      continue;
+    }
+    if (fn === ops.transform) {
+      ctm = multiply(ctm, operators.argsArray[at] as number[]);
+      continue;
+    }
+    if (fn !== ops.paintImageXObject && fn !== ops.paintInlineImageXObject) continue;
+    const args = operators.argsArray[at] as unknown[];
+    const inline = fn === ops.paintInlineImageXObject;
+    // paintImageXObject carries (name, width, height); the inline form carries the
+    // decoded image itself, whose own fields state its size.
+    const bitmap = inline ? (args[0] as { width?: number; height?: number } | undefined) : undefined;
+    const width = inline ? Math.round(bitmap?.width ?? 0) : Math.round(Number(args[1]) || 0);
+    const height = inline ? Math.round(bitmap?.height ?? 0) : Math.round(Number(args[2]) || 0);
+    const pageHeight = Math.abs(ctm[3]);
+    images.push({
+      name: inline ? "" : String(args[0] ?? ""),
+      width,
+      height,
+      top: ctm[5] + pageHeight,
+      pageHeight,
+    });
+  }
+  return images;
+}
+
 /**
  * The index nearest `target` at which the text can be cut without cutting a word.
  *
@@ -514,8 +597,45 @@ function renderText(lines: Line[], skip: Set<number>): string {
   return out.join("\n\n");
 }
 
-/** One page's markdown, in reading order, for the requested mode. */
-export function renderPage(lines: Line[], mode: PdfMode): string {
+/** A picture to name in a page's text, at the height it was drawn. */
+export interface PagePicture {
+  top: number;
+  marker: string;
+}
+
+/**
+ * One page's markdown, in reading order, for the requested mode.
+ *
+ * Pictures are woven in between runs of lines rather than being handed to the table
+ * detector as lines of their own. That detector reads geometry, and a marker sitting
+ * among rows looks exactly like a row: a bulleted list already comes back as a
+ * two-column table often enough, and a picture absorbed into one would be worse — it
+ * would stop looking like a picture at all.
+ *
+ * `tables` mode gets none: it returns tables, and a picture is not one.
+ */
+export function renderPage(lines: Line[], mode: PdfMode, pictures: PagePicture[] = []): string {
+  if (pictures.length > 0 && mode !== "tables") {
+    const ordered = [...pictures].sort((a, b) => b.top - a.top);
+    const chunks: string[] = [];
+    let at = 0;
+    for (const picture of ordered) {
+      const above: Line[] = [];
+      while (at < lines.length && lines[at].y >= picture.top) above.push(lines[at++]);
+      if (above.length > 0) {
+        const text = renderPage(above, mode);
+        if (text !== "") chunks.push(text);
+      }
+      chunks.push(picture.marker);
+    }
+    const rest = lines.slice(at);
+    if (rest.length > 0) {
+      const text = renderPage(rest, mode);
+      if (text !== "") chunks.push(text);
+    }
+    return chunks.join("\n\n");
+  }
+
   if (lines.length === 0) return "";
   if (mode === "text") return renderText(lines, new Set());
 
@@ -592,13 +712,19 @@ export function parsePageRange(spec: string, pageCount: number): number[] {
  * The rest of the path may keep its native separators: Node's fs accepts both
  * there, and only the ending is checked. Exported for that reason.
  */
-export function pdfjsAssetDirs(): { standardFontDataUrl?: string; cMapUrl?: string } {
+export function pdfjsAssetDirs(): { standardFontDataUrl?: string; cMapUrl?: string; wasmUrl?: string } {
   try {
     const require = createRequire(import.meta.url);
     const root = path.dirname(require.resolve("pdfjs-dist/package.json"));
     return {
       standardFontDataUrl: `${path.join(root, "standard_fonts")}/`,
       cMapUrl: `${path.join(root, "cmaps")}/`,
+      // JBIG2 and JPEG 2000 are decoded by WebAssembly modules pdf.js loads from
+      // here, and those two are exactly what a scanned page is encoded with. Without
+      // this the images on such a page do not decode, which is the one case the whole
+      // reason for reading a scan's pictures rests on. The trailing slash is pdf.js's
+      // own requirement, as it is for the other two.
+      wasmUrl: `${path.join(root, "wasm")}/`,
     };
   } catch {
     return {};
@@ -691,6 +817,10 @@ interface PdfJsTextItem {
 interface PdfJsPage {
   getTextContent(): Promise<{ items: unknown[] }>;
   getOperatorList(): Promise<OperatorList>;
+  /** Page-local resolved objects, where a painted image's bitmap lands. */
+  objs?: { has?: (name: string) => boolean; get: (name: string, callback?: (value: unknown) => void) => unknown };
+  /** Objects shared across pages, checked second for the same reason. */
+  commonObjs?: { has?: (name: string) => boolean; get: (name: string) => unknown };
 }
 
 interface PdfJsDocument {
@@ -816,23 +946,41 @@ function toPieces(items: unknown[]): TextPiece[] {
  * Exported for the tests: a page whose operator list rejects is not a state any
  * fixture can produce, and it is exactly the state that must not lose the text.
  */
-export async function pageShapes(
+/**
+ * What a page draws, from one read of its operator list.
+ *
+ * Shapes and images come from the same walk because the list is expensive to build
+ * and there is no reason to build it twice. A failure that is not the deadline gives
+ * back nothing rather than failing the page: a document whose drawing cannot be read
+ * still has text worth returning.
+ */
+export async function pageDrawings(
   page: PdfJsPage,
   ops: Record<string, number>,
   timeoutMs: number,
   pageNumber: number,
-): Promise<DrawnShape[]> {
+): Promise<{ shapes: DrawnShape[]; images: DrawnImage[] }> {
   try {
     const operators = await withDeadline(
       page.getOperatorList(),
       timeoutMs,
       `reading the drawing on page ${pageNumber}`,
     );
-    return collectShapes(operators, ops);
+    return { shapes: collectShapes(operators, ops), images: collectImages(operators, ops) };
   } catch (error) {
     if (error instanceof PdfError && error.reason === "budget") throw error;
-    return [];
+    return { shapes: [], images: [] };
   }
+}
+
+/** The shapes alone, for callers that only ever wanted those. */
+export async function pageShapes(
+  page: PdfJsPage,
+  ops: Record<string, number>,
+  timeoutMs: number,
+  pageNumber: number,
+): Promise<DrawnShape[]> {
+  return (await pageDrawings(page, ops, timeoutMs, pageNumber)).shapes;
 }
 
 /* ── Extraction ─────────────────────────────────────────────────────────────── */
@@ -855,6 +1003,10 @@ export async function extractPdf(bytes: Uint8Array, options: PdfExtractOptions =
   // document, not the one-time cost of loading pdf.js.
   const pdfjs = await loadPdfjs();
   const started = Date.now();
+  const pictures: FoundPicture[] = [];
+  // Loaded once for the document rather than per image: it is a native module, and
+  // `null` is an answer every picture already has to handle.
+  const canvas = loadCanvas();
 
   const { doc, destroy } = await openDocument(bytes, timeoutMs);
   try {
@@ -890,16 +1042,21 @@ export async function extractPdf(bytes: Uint8Array, options: PdfExtractOptions =
       // getting one each, or a single page could spend twice what it is allowed.
       const left = timeoutMs - (Date.now() - started);
       if (left <= 0) throw new PdfError("budget", `extraction exceeded the ${timeoutMs} ms budget`);
-      const shapes = await pageShapes(page, pdfjs.OPS as unknown as Record<string, number>, left, pageNumber);
-      const lines = buildLines(markStruckPieces(toPieces(content.items), shapes));
+      const drawn = await pageDrawings(page, pdfjs.OPS as unknown as Record<string, number>, left, pageNumber);
+      const lines = buildLines(markStruckPieces(toPieces(content.items), drawn.shapes));
+      const pagePictures = await resolvePagePictures(page, drawn.images, pictures, canvas, timeoutMs - (Date.now() - started));
 
       covered.push(pageNumber);
-      if (lines.length === 0) {
+      if (lines.length === 0 && pagePictures.length === 0) {
         withoutText.push(pageNumber);
-        sections.push(`## Page ${pageNumber}\n\n_No text layer on this page — it is an image (a scan). OCR is not available._`);
+        sections.push(
+          `## Page ${pageNumber}\n\n_No text layer on this page, and no image to return either — it is drawn. ` +
+            `OCR is not available; call pdf_render to look at the page._`,
+        );
         continue;
       }
-      const body = renderPage(lines, mode);
+      if (lines.length === 0) withoutText.push(pageNumber);
+      const body = renderPage(lines, mode, pagePictures);
       const section =
         body === ""
           ? `## Page ${pageNumber}\n\n_No table found on this page._`
@@ -909,12 +1066,19 @@ export async function extractPdf(bytes: Uint8Array, options: PdfExtractOptions =
     }
 
     const notes: string[] = [];
+    // A note about a page nobody can read as text always says how to look at it.
+    // Saying only that OCR is unavailable leaves a reader with no next step, and a
+    // caller stops there — so the routes come in the order they are worth trying:
+    // the page's own image first, drawing the page second.
+    const look =
+      `Ask for the images on ${withoutText.length === 1 ? "that page" : "those pages"} with images: "all" to see what ${withoutText.length === 1 ? "it holds" : "they hold"}, ` +
+      `or call pdf_render to draw the page${withoutText.length === 1 ? "" : "s"}.`;
     if (withoutText.length === covered.length && covered.length > 0) {
       notes.push(
-        `> This document has no extractable text layer (pages ${describePages(withoutText)}); reading it would require OCR, which is not available.`,
+        `> This document has no extractable text layer (pages ${describePages(withoutText)}). OCR is not available. ${look}`,
       );
     } else if (withoutText.length > 0) {
-      notes.push(`> No text layer on page${withoutText.length === 1 ? "" : "s"} ${describePages(withoutText)}.`);
+      notes.push(`> No text layer on page${withoutText.length === 1 ? "" : "s"} ${describePages(withoutText)}. ${look}`);
     }
     if (nextPage !== undefined) {
       notes.push(
@@ -931,6 +1095,7 @@ export async function extractPdf(bytes: Uint8Array, options: PdfExtractOptions =
       pages: covered,
       ...(nextPage === undefined ? {} : { nextPage }),
       pageCount,
+      pictures,
     };
   } catch (error) {
     throw asPdfError(error);
@@ -949,4 +1114,115 @@ function describePages(pages: number[]): string {
   const contiguous = pages.every((page, i) => i === 0 || page === pages[i - 1] + 1);
   if (contiguous && pages.length > 1) return `${pages[0]}-${pages[pages.length - 1]}`;
   return pages.join(", ");
+}
+
+/**
+ * The pictures a page draws, resolved, encoded and turned into markers.
+ *
+ * Every bitmap is re-encoded: pdf.js decodes an image before the operator walk can
+ * see it, so nothing can be handed over as it was stored — see `encodeBitmap` for
+ * what each kind becomes and why. An image that cannot be reached or cannot be
+ * encoded still gets a marker naming the reason: a page that draws something and
+ * says nothing about it is the failure all of this exists to remove.
+ */
+async function resolvePagePictures(
+  page: PdfJsPage,
+  drawn: DrawnImage[],
+  pictures: FoundPicture[],
+  canvas: CanvasModule | null,
+  timeoutMs: number,
+): Promise<PagePicture[]> {
+  const markers: PagePicture[] = [];
+  for (const image of drawn) {
+    const number = pictures.length + 1;
+    const size = image.width > 0 && image.height > 0 ? { width: image.width, height: image.height } : {};
+    const bitmap = await bitmapFor(page, image, timeoutMs);
+    let found: FoundPicture;
+    if (bitmap === null) {
+      found = { number, format: "image", ...size, unavailable: "its bitmap is not in the page's object store" };
+    } else {
+      const encoded = await encodeBitmap(bitmap, canvas);
+      found =
+        encoded === null
+          ? {
+              number,
+              format: "image",
+              ...size,
+              unavailable:
+                canvas === null
+                  ? "no image encoder is installed here"
+                  : "its encoding could not be turned into a viewable picture",
+            }
+          : {
+              number,
+              format: encoded.mimeType === "image/jpeg" ? "JPEG" : "PNG",
+              ...size,
+              bytes: encoded.bytes,
+              mimeType: encoded.mimeType,
+            };
+    }
+    pictures.push(found);
+    markers.push({ top: image.top, marker: pictureMarker(found) });
+  }
+  return markers;
+}
+
+/** Longest one image is waited for, whatever the document's remaining budget is. */
+const IMAGE_WAIT_MS = 5_000;
+
+/**
+ * The decoded bitmap behind one drawn image, or `null` when it cannot be reached.
+ *
+ * The wait is the point. `getOperatorList()` returns before the images it names are
+ * decoded — measured on a fixture whose 8×8 image took about 150 ms to appear — so
+ * asking the object store once gets `false` and loses every picture on the page.
+ *
+ * The callback form has to be bounded, and not only for slowness: pdf.js *creates* an
+ * entry for a name it does not have, so a reference to an image the document never
+ * supplies would otherwise wait on a promise nothing will ever settle.
+ */
+async function bitmapFor(page: PdfJsPage, image: DrawnImage, timeoutMs: number): Promise<Bitmap | null> {
+  if (image.name === "") return null;
+  const asBitmap = (candidate: unknown): Bitmap | null => {
+    const value = candidate as Partial<Bitmap> | undefined;
+    if (value?.data === undefined || typeof value.width !== "number" || typeof value.height !== "number") return null;
+    return { width: value.width, height: value.height, kind: value.kind ?? 0, data: value.data };
+  };
+
+  const store = page.objs;
+  if (store !== undefined) {
+    try {
+      if (store.has?.(image.name) === true) return asBitmap(store.get(image.name));
+      const waited = await new Promise<unknown>((resolve) => {
+        let settled = false;
+        const finish = (value: unknown) => {
+          if (settled) return;
+          settled = true;
+          resolve(value);
+        };
+        const timer = setTimeout(() => finish(undefined), Math.max(0, Math.min(timeoutMs, IMAGE_WAIT_MS)));
+        try {
+          store.get(image.name, (value: unknown) => {
+            clearTimeout(timer);
+            finish(value);
+          });
+        } catch {
+          clearTimeout(timer);
+          finish(undefined);
+        }
+      });
+      const bitmap = asBitmap(waited);
+      if (bitmap !== null) return bitmap;
+    } catch {
+      // A store that refuses the name is one more way of not having it.
+    }
+  }
+  // Shared objects are only ever already resolved here, so no callback is needed —
+  // and asking for one would create an entry that never settles.
+  try {
+    if (page.commonObjs?.has?.(image.name) === true) return asBitmap(page.commonObjs.get(image.name));
+  } catch {
+    // As above.
+  }
+  return null;
 }

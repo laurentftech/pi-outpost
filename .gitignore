@@ -56,3 +56,6 @@ RELEASE_NOTES.md
 
 # Playwright MCP leaves snapshots and console logs where it is driven from
 .playwright-mcp/
+
+# Cygwin/MSYS crash dumps, which a Windows working tree grows on its own.
+*.stackdump
