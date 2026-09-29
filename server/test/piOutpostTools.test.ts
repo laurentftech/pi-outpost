@@ -25,7 +25,7 @@ import piOutpostExtension, {
 
 const VALID: PiOutpostToolsSettings = {
   cwd: "/tmp",
-  maxBytes: { pdf: 10485760, docx: 5242880, xlsx: 5242880, pptx: 5242880, structuredExchange: 4000000 },
+  maxBytes: { pdf: 10485760, docx: 5242880, xlsx: 5242880, pptx: 5242880, structuredExchange: 4000000, mail: 5242880 },
 };
 
 describe("parseToolsSettings", () => {
@@ -152,13 +152,16 @@ describe("createPiOutpostTools", () => {
 
   test("returns the tools the agent needs, in the documented order", async () => {
     const tools = await createPiOutpostTools({ cwd: root, maxBytes: VALID.maxBytes });
-    assert.equal(tools.length, 19);
+    assert.equal(tools.length, 20);
     const names = tools.map((t) => t.name);
     assert.deepEqual(names, [
       "pdf_extract",
       "docx_extract",
       "xlsx_extract",
       "pptx_extract",
+      // The RPC runtime cannot change its published toolset, so the child carries
+      // every document tool at all times — mail_extract included.
+      "mail_extract",
       "pptx_layouts",
       "pptx_create",
       "pptx_update",
@@ -231,7 +234,7 @@ describe("default export (extension entry)", () => {
 
       await piOutpostExtension(pi);
 
-      assert.equal(registered.length, 19);
+      assert.equal(registered.length, 20);
       assert.deepEqual(
         registered.map((t) => t.name),
         [
@@ -239,6 +242,7 @@ describe("default export (extension entry)", () => {
           "docx_extract",
           "xlsx_extract",
           "pptx_extract",
+          "mail_extract",
           "pptx_layouts",
           "pptx_create",
           "pptx_update",

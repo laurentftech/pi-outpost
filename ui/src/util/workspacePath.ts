@@ -41,9 +41,17 @@ export function isPdfFile(path: string): boolean {
   return /\.pdf$/i.test(path);
 }
 
-/** Binary workspace formats backed by the always-available path extraction tools. */
+/**
+ * Workspace formats backed by the always-available path extraction tools.
+ *
+ * The mail formats are here for the same reason the Office ones are — a tool reads
+ * them at a path — and the consequence matters most for `.eml`, which is *text*. A
+ * dropped `.eml` under the inline limit would otherwise take the inline-text branch
+ * and carry MIME headers, boundary markers and the base64 of every attachment into
+ * the prompt in place of the message.
+ */
 export function hasPathExtractionTool(path: string): boolean {
-  return /\.(docx|xlsx|pptx)$/i.test(path);
+  return /\.(docx|xlsx|pptx|msg|eml|emlx)$/i.test(path);
 }
 
 /**

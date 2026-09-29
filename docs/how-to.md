@@ -412,8 +412,8 @@ usually far more variants than a given deployment actually serves.
 
 ## Let the agent read a big PDF, Word or Excel file
 
-Nothing to enable: `pdf_extract`, `docx_extract`, `xlsx_extract` and `pptx_extract`
-are available wherever `read` is, need no shell and no external binary, and are
+Nothing to enable: `pdf_extract`, `docx_extract`, `xlsx_extract`, `pptx_extract` and
+`mail_extract` are available wherever `read` is, need no shell and no external binary, and are
 confined to the sandbox root like every other file tool. Drop the document into the
 composer and it is uploaded into the workspace and attached as a path, which is what
 those tools take.
@@ -438,6 +438,53 @@ The ceiling is 25 MB per format, raise it if your documents are bigger:
 
 For a long document, ask for `output_path`: the extractor writes the whole thing to a
 workspace file and returns a summary, instead of spending the context on it twice.
+
+## Read a mail someone forwarded you, and what it carried
+
+Drop the message on the composer. An Outlook `.msg`, or a `.eml`/`.emlx` from macOS Mail,
+Gmail or any webmail, is copied into the workspace and attached as a path, exactly as a PDF
+is — never inlined, which for a `.eml` would spend the prompt on MIME headers and the base64
+of every attachment instead of the message.
+
+`mail_extract` then reads it: subject, sender, recipients, date, the body as markdown, and
+an inventory of the attachments with an identifier, a name, a type and a size for each. Ask
+for them and they become files:
+
+```
+Read Bienvenue.msg and tell me what the deck says
+```
+
+The tool writes the attachments you asked for — `attachments: "all"`, or the identifiers
+from the inventory — into a directory beside the message, `Bienvenue.msg.attachments/`, and
+returns their paths. They are ordinary workspace files from that point on, so the deck is
+read by `pptx_extract`, the contract by `docx_extract`, the report by `pdf_extract`, at a
+path. The reader for whatever was written is offered to the agent in the same turn, so it
+does not have to ask you to name a file it just unpacked.
+
+What the tool will not do: return an attachment's content alongside its path (that would
+spend the context twice), overwrite a file that is already there, write anywhere outside the
+writable zone, or use an attachment's own file name as a path — a name arriving from a
+stranger is reduced to a single component first, with its extension kept so the right reader
+is still chosen. In a read-only sandbox, unpacking is refused and the message is still read.
+
+A message is content someone else wrote, and every extraction says so before the body: its
+text, its addresses and its attachment names are data, not instructions. Nothing in it is
+fetched or executed — a remote image in the body is reported as the reference it is, never
+loaded. An encrypted message (S/MIME or PGP) says it is encrypted rather than handing over
+ciphertext; a signed one is read from the content the signature covers and reported as
+unverified, because nothing here verifies one.
+
+The ceiling is 25 MB, as for the other formats:
+
+```json
+{ "mail": { "maxBytes": 52428800 } }
+```
+
+One limitation worth knowing before you blame the feature: dragging a message **straight out
+of the Outlook desktop app** into a browser may hand it nothing at all, depending on the
+version — Outlook offers its own clipboard format rather than a file. Drag the message to a
+folder first, or use the composer's attach button. Dragging from macOS Mail gives a `.eml`
+and always works.
 
 ## Make a PowerPoint deck from a template
 

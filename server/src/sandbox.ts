@@ -24,6 +24,7 @@ import {
 import {
   DEFAULT_DOCX_MAX_BYTES,
   DEFAULT_PDF_MAX_BYTES,
+  DEFAULT_MAIL_MAX_BYTES,
   DEFAULT_PPTX_MAX_BYTES,
   DEFAULT_RENDER_TIMEOUT_MS,
   DEFAULT_STRUCTURED_EXCHANGE_MAX_BYTES,
@@ -33,6 +34,7 @@ import {
 import { createDocxExtractToolDefinition } from "./docxTool.ts";
 import { createXlsxExtractToolDefinition } from "./xlsxTool.ts";
 import { createPptxExtractToolDefinition } from "./pptxTool.ts";
+import { createMailExtractToolDefinition } from "./mailTool.ts";
 import { createPdfExtractToolDefinition, createPdfRenderToolDefinition } from "./pdfTool.ts";
 import {
   createPptxCreateToolDefinition,
@@ -160,6 +162,17 @@ export async function createSandboxedTools(
   projectRoot: string = sandbox.root,
   /** How `pptx_render` finds and runs an office application. */
   officeRender: RenderSettings = { renderer: "auto", timeoutMs: DEFAULT_RENDER_TIMEOUT_MS },
+  mailMaxBytes: number = DEFAULT_MAIL_MAX_BYTES,
+  /**
+   * Called with the workspace paths of the documents `mail_extract` has just written.
+   *
+   * The session publishes the reader for each kind written, inside the turn that
+   * wrote it (see documentToolsForWrittenPaths). It arrives here because a sandboxed
+   * toolset is what a real deployment runs — leaving it to the unsandboxed branch
+   * alone would mean an unpacked attachment the agent cannot open on every server
+   * that configures a sandbox, which is the default in this project's own tests.
+   */
+  onDocumentsWritten?: (paths: string[]) => void,
 ): Promise<ToolDefinition[]> {
   const realRoot = await fs.realpath(sandbox.root);
   const readFactories: Array<(cwd: string) => ToolDefinition> = [
@@ -203,6 +216,18 @@ export async function createSandboxedTools(
   );
   readFactories.push((cwd) =>
     createPptxExtractToolDefinition({ cwd, allowedRoots: documentRoots, maxBytes: pptxMaxBytes, writableRoot: realWritableRoot }),
+  );
+  // Reading a message is reading, so it sits with the extractors — and unpacking an
+  // attachment is a write, measured against the writable zone exactly as an
+  // `output_path` is.
+  readFactories.push((cwd) =>
+    createMailExtractToolDefinition({
+      cwd,
+      allowedRoots: documentRoots,
+      maxBytes: mailMaxBytes,
+      writableRoot: realWritableRoot,
+      ...(onDocumentsWritten === undefined ? {} : { onDocumentsWritten }),
+    }),
   );
   // Reading a document and drawing it is reading, so it sits with the extractors:
   // same zone, same exceptions, and its `output_path` measured against the writable

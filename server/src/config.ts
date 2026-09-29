@@ -167,6 +167,19 @@ export interface OfficeConfig {
 /** Default presentation ceiling — 25 MiB, matching the other three. */
 export const DEFAULT_PPTX_MAX_BYTES = 26_214_400;
 
+export interface MailConfig {
+  /**
+   * Largest email message the extraction tool will open, in bytes. Default: 25 MiB.
+   * The same ceiling as the document formats, and for the same reason: a message
+   * carrying a deck is the size of the deck. What bounds one *call* is the body cap
+   * in the tool — an attachment costs a path, not its bytes.
+   */
+  maxBytes: number;
+}
+
+/** Default message ceiling — 25 MiB, matching the document formats. */
+export const DEFAULT_MAIL_MAX_BYTES = 26_214_400;
+
 /** The office applications the render tools can draw with, and `auto`. */
 export const OFFICE_RENDERERS = ["auto", "word", "powerpoint", "libreoffice", "onlyoffice"] as const;
 export type RendererChoice = (typeof OFFICE_RENDERERS)[number];
@@ -562,6 +575,8 @@ export interface AppConfig {
   xlsx: XlsxConfig;
   /** PowerPoint handling (size ceiling for the extraction tool). */
   pptx: PptxConfig;
+  /** Email handling (size ceiling for the extraction tool). */
+  mail: MailConfig;
   /** The office applications documents and decks are rendered with. */
   office: OfficeConfig;
   /** Structured-exchange documents opened as files (size ceiling for the viewer). */
@@ -857,6 +872,7 @@ export function loadConfig(
     docx: { maxBytes: DEFAULT_DOCX_MAX_BYTES },
     xlsx: { maxBytes: DEFAULT_XLSX_MAX_BYTES },
     pptx: { maxBytes: DEFAULT_PPTX_MAX_BYTES },
+    mail: { maxBytes: DEFAULT_MAIL_MAX_BYTES },
     office: { renderer: "auto", renderTimeoutMs: DEFAULT_RENDER_TIMEOUT_MS },
     structuredExchange: { maxBytes: DEFAULT_STRUCTURED_EXCHANGE_MAX_BYTES },
     terminal: { enabled: false },
@@ -1157,6 +1173,16 @@ export function loadConfig(
         fail(`"pptx.maxBytes" must be a positive integer (bytes)`);
       }
       config.pptx.maxBytes = pptx.maxBytes;
+    }
+  }
+
+  if (raw.mail !== undefined) {
+    const mail = asObject(raw.mail, "mail");
+    if (mail.maxBytes !== undefined) {
+      if (typeof mail.maxBytes !== "number" || !Number.isInteger(mail.maxBytes) || mail.maxBytes <= 0) {
+        fail(`"mail.maxBytes" must be a positive integer (bytes)`);
+      }
+      config.mail.maxBytes = mail.maxBytes;
     }
   }
 

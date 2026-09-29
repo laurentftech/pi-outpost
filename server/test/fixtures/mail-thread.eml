@@ -1,0 +1,35 @@
+From: =?UTF-8?Q?Fran=C3=A7ois_Girard?= <francois.girard@example.test>
+To: Laurent <laurent@example.test>
+Cc: comite@example.test
+Subject: =?UTF-8?Q?R=C3=A9union_de_mardi?= =?UTF-8?Q?_=E2=80=94_dossier?=
+Date: Tue, 22 Sep 2026 09:14:00 +0200
+Message-ID: <thread-1@example.test>
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="----=_Part_42_1695371640"
+
+------=_Part_42_1695371640
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: quoted-printable
+
+Bonjour,
+
+Voici la pr=C3=A9sentation et le rapport.
+
+Le 21 septembre, Paul a =C3=A9crit :
+> et le budget ?
+
+------=_Part_42_1695371640
+Content-Type: application/vnd.openxmlformats-officedocument.presentationml.presentation
+Content-Disposition: attachment; filename="=?UTF-8?Q?pr=C3=A9sentation.pptx?="
+Content-Transfer-Encoding: base64
+
+UEsDBCEhISEhISEhISEhISEhISEhISEhISEhISEhISEhISEhISEhISEhISEhISEhISEhISEhISEhISEhISEhISEhISE=
+
+------=_Part_42_1695371640
+Content-Type: application/pdf
+Content-Disposition: attachment; filename="rapport.pdf"
+Content-Transfer-Encoding: base64
+
+JVBERi0xLjcKJSBhIHZlcnkgc2hvcnQgcmVwb3J0Cg==
+
+------=_Part_42_1695371640--

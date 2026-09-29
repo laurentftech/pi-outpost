@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 import { UploadError } from "./uploads";
 import {
   classifyDroppedFile,
+  needsUpload,
   filesToAttachments,
   composePrompt,
   mentionedPaths,
@@ -58,6 +59,33 @@ describe("classifyDroppedFile", () => {
     expect(classifyDroppedFile(sized("enormous.zip", "application/zip", 30 * 1024 * 1024))).toBe("unsupported");
   });
 
+  it("routes an email to an upload whatever its size, so its MIME never reaches the prompt", () => {
+    // A `.msg` is binary and would be refused as an unsupported binary file; a small
+    // `.eml` is text and would be *inlined* — headers, boundaries, base64 and all.
+    // Both are files a tool reads at a path, so both travel as a path.
+    expect(classifyDroppedFile(sized("Bienvenue.msg", "application/vnd.ms-outlook", 180_000))).toBe("extraction-tool");
+    expect(classifyDroppedFile(sized("Bienvenue.msg", "", 180_000))).toBe("extraction-tool");
+    expect(classifyDroppedFile(sized("message.eml", "message/rfc822", 1_200))).toBe("extraction-tool");
+    expect(classifyDroppedFile(sized("message.eml", "", 1_200))).toBe("extraction-tool");
+    expect(classifyDroppedFile(sized("stored.emlx", "", 4_000))).toBe("extraction-tool");
+    // Case does not matter: a message off a Windows share shouts.
+    expect(classifyDroppedFile(sized("BIENVENUE.MSG", "", 9_000))).toBe("extraction-tool");
+  });
+
+  it("agrees with needsUpload, so the pending chip is shown for exactly these files", () => {
+    for (const file of [
+      sized("Bienvenue.msg", "application/vnd.ms-outlook", 180_000),
+      sized("message.eml", "message/rfc822", 1_200),
+      sized("stored.emlx", "", 4_000),
+      sized("report.pdf", "application/pdf", 900_000),
+    ]) {
+      expect(needsUpload(file)).toBe(true);
+    }
+    // And not for the files that never reach the server.
+    expect(needsUpload(sized("readme.txt", "text/plain", 400))).toBe(false);
+    expect(needsUpload(sized("shot.png", "image/png", 1024))).toBe(false);
+  });
+
   it("uploads text too big to inline, and refuses it only past the upload cap", () => {
     expect(classifyDroppedFile(sized("huge.txt", "text/plain", 600 * 1024))).toBe("extraction-tool");
     expect(classifyDroppedFile(sized("server.log", "text/plain", 5 * 1024 * 1024))).toBe("extraction-tool");
@@ -103,6 +131,58 @@ describe("filesToAttachments", () => {
     });
     // Inline text keeps travelling in the prompt — nothing is copied into the workspace
     expect(upload).not.toHaveBeenCalled();
+  });
+
+  it("uploads a dropped .eml and attaches the path, not its MIME source", async () => {
+    const mime = [
+      "From: =?UTF-8?Q?Fran=C3=A7ois?= <francois@example.test>",
+      "Subject: Dossier",
+      'Content-Type: multipart/mixed; boundary="b1"',
+      "",
+      "--b1",
+      "Content-Type: text/plain",
+      "",
+      "Voir les pieces jointes.",
+      "--b1",
+      "Content-Type: application/pdf",
+      "Content-Transfer-Encoding: base64",
+      "",
+      "JVBERi0xLjcgYSByZXBvcnQ=",
+      "--b1--",
+      "",
+    ].join("\r\n");
+    // Well under the 512 KB inline limit: the branch this has to *not* take.
+    const file = sized("Dossier.eml", "message/rfc822", mime.length, mime);
+    const upload = stubUpload(() => "uploads/Dossier.eml");
+
+    const { attachments, errors } = await filesToAttachments([file], upload);
+
+    expect(errors).toEqual([]);
+    expect(upload).toHaveBeenCalledOnce();
+    expect(attachments).toEqual([
+      { name: "uploads/Dossier.eml", kind: "path", data: "uploads/Dossier.eml", mimeType: "text/plain", source: "manual" },
+    ]);
+    // The prompt carries the path and none of the message.
+    const prompt = composePrompt("Que dit ce mail ?", attachments);
+    expect(prompt).toBe("Que dit ce mail ?\n\n@uploads/Dossier.eml");
+    expect(prompt).not.toContain("boundary");
+    expect(prompt).not.toContain("JVBERi0x");
+  });
+
+  it("uploads a dropped .msg instead of refusing it as an unsupported binary", async () => {
+    // A compound file starts with a signature full of NULs — the byte that used to
+    // make this an "unsupported binary file".
+    const bytes = new Uint8Array([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1, 0x00, 0x00, 0x00, 0x00]);
+    const file = new File([bytes], "Bienvenue.msg", { type: "application/vnd.ms-outlook" });
+    const upload = stubUpload(() => "uploads/Bienvenue.msg");
+
+    const { attachments, errors } = await filesToAttachments([file], upload);
+
+    expect(errors).toEqual([]);
+    expect(attachments).toEqual([
+      { name: "uploads/Bienvenue.msg", kind: "path", data: "uploads/Bienvenue.msg", mimeType: "text/plain", source: "manual" },
+    ]);
+    expect(composePrompt("", attachments)).toBe("@uploads/Bienvenue.msg");
   });
 
   it("uploads a PDF and attaches the written path instead of its bytes", async () => {

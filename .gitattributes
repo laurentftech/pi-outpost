@@ -26,3 +26,10 @@ server/test/fixtures/*.pptx    binary
 server/test/fixtures/*.potx    binary
 server/test/fixtures/*.xlsx    binary
 server/test/fixtures/*.png     binary
+# A `.msg` is a compound file: every stream in it is addressed by a sector offset, so
+# a CRLF conversion moves every offset after the first and the file stops being one.
+server/test/fixtures/*.msg     binary
+
+# A `.eml` is the opposite case, and is left to git on purpose: a message *is* text,
+# and a Windows checkout handing the reader CRLF where a Linux one hands it LF is
+# exactly the difference the reader has to tolerate. Declaring it would hide that.
