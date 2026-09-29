@@ -114,6 +114,25 @@ if (absent.length > 0) {
   );
 }
 
+/**
+ * What the RPC runtime loads into its child. The server refuses to start an RPC child
+ * without it, and nothing that reads the source tree notices it is missing: a checkout
+ * falls back to the TypeScript source beside rpcResourceArgs.ts, which a package lacks.
+ */
+const runtime = [
+  ["dist/pi-outpost-tools.mjs", "the tools extension an `agentRuntime.mode: \"rpc\"` child is started with"],
+];
+
+const unshipped = runtime.filter(([relative]) => !packed.has(relative));
+if (unshipped.length > 0) {
+  fail(
+    "the tarball is missing what the RPC runtime loads:",
+    unshipped.map(([relative, why]) => `  ${relative} — ${why}`).join("\n") +
+      `\n\nRun \`npm run build --workspace cli\`, then re-check.` +
+      `\nPublished as-is, every RPC configuration refuses to start.`,
+  );
+}
+
 console.log(
-  `[check-cli-package] ok — the tarball carries ${required.length} build inputs and ${contract.length} contract files`,
+  `[check-cli-package] ok — the tarball carries ${required.length} build inputs, ${contract.length} contract files and ${runtime.length} runtime extension`,
 );
