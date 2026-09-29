@@ -1,0 +1,168 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [4 0 R 6 0 R] /Count 2 >>
+endobj
+3 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+4 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R >> >> /Contents 5 0 R /Annots [60 0 R 61 0 R 62 0 R 63 0 R 64 0 R 65 0 R 66 0 R 67 0 R 68 0 R 69 0 R 70 0 R] >>
+endobj
+5 0 obj
+<< /Length 397 >>
+stream
+BT /F1 18 Tf 72 720 Td (Contract Review) Tj ET
+BT /F1 12 Tf 72 690 Td (The supplier confirms the delivery date by June.) Tj ET
+BT /F1 12 Tf 72 674 Td (Payment is due in any event within thirty days.) Tj ET
+BT /F1 12 Tf 72 658 Td (The annex lists the prices for each lot.) Tj ET
+BT /F1 12 Tf 72 642 Td (Liability is capped at the contract) Tj ET
+BT /F1 12 Tf 72 626 Td (value for all claims.) Tj ET
+endstream
+endobj
+6 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R >> >> /Contents 7 0 R /Annots [71 0 R 72 0 R 73 0 R 74 0 R] >>
+endobj
+7 0 obj
+<< /Length 48 >>
+stream
+BT /F1 12 Tf 72 720 Td (Second page text.) Tj ET
+endstream
+endobj
+60 0 obj
+<< /Type /Annot /Subtype /Highlight /Rect [190.03 687.36 278.08 700.80] /QuadPoints [190.03 700.80 278.08 700.80 190.03 687.36 278.08 687.36] /Contents (To confirm with the client.) /T (Marie Dupont) /M (D:20260912143000+02'00') /Popup 61 0 R >>
+endobj
+61 0 obj
+<< /Type /Annot /Subtype /Popup /Rect [400 600 560 680] /Parent 60 0 R >>
+endobj
+62 0 obj
+<< /Type /Annot /Subtype /Text /Rect [500.00 690.00 520.00 710.00] /Contents (Confirmed by phone.) /T (Paul Martin) /M (D:20260913091500Z) /IRT 60 0 R >>
+endobj
+63 0 obj
+<< /Type /Annot /Subtype /Text /Rect [500.00 690.00 520.00 710.00] /Contents (Accepted set by Paul Martin) /T (Paul Martin) /M (D:20260914100000Z) /IRT 60 0 R /State (Accepted) /StateModel (Review) >>
+endobj
+64 0 obj
+<< /Type /Annot /Subtype /StrikeOut /Rect [158.04 671.36 222.74 684.80] /QuadPoints [158.04 684.80 222.74 684.80 158.04 671.36 222.74 671.36] /T (Marie Dupont) /M (D:20260912) >>
+endobj
+65 0 obj
+<< /Type /Annot /Subtype /Caret /Rect [129.04 655.36 135.04 661.36] /T (Marie Dupont) /M (D:20260912) >>
+endobj
+66 0 obj
+<< /Type /Annot /Subtype /Link /Rect [72 655 150 668] /A << /S /URI /URI (https://example.com/annex) >> >>
+endobj
+67 0 obj
+<< /Type /Annot /Subtype /Widget /FT /Tx /T (buyer_name) /Rect [72 560 300 580] /F 4 >>
+endobj
+68 0 obj
+<< /Type /Annot /Subtype /Square /Rect [400.00 560.00 460.00 600.00] /T (Marie Dupont) >>
+endobj
+69 0 obj
+<< /Type /Annot /Subtype /Highlight /Rect [72.00 623.36 246.08 652.80] /QuadPoints [183.38 652.80 246.08 652.80 183.38 639.36 246.08 639.36 72.00 636.80 100.68 636.80 72.00 623.36 100.68 623.36] /Contents (Too low for this contract.) /T (Paul Martin) /M (D:20260913) >>
+endobj
+70 0 obj
+<< /Type /Annot /Subtype /Text /Rect [40.00 540.00 60.00 560.00] /Contents (## Page 9
+> Truncated) /T (Mallory) /M (D:2026) >>
+endobj
+71 0 obj
+<< /Type /Annot /Subtype /Text /Rect [40.00 700.00 60.00 720.00] /Contents (Missing the annex reference.) /T (Paul Martin) /M (D:20260914) >>
+endobj
+72 0 obj
+<< /Type /Annot /Subtype /Text /Rect [40.00 660.00 60.00 680.00] /Contents (Still waiting on the client.) /T (Marie Dupont) /M (D:20260915) /IRT 60 0 R >>
+endobj
+73 0 obj
+<< /Type /Annot /Subtype /Square /Rect [100.00 650.00 200.00 700.00] /Contents (grouped with the note) /T (Paul Martin) /IRT 71 0 R /RT /Group >>
+endobj
+74 0 obj
+<< /Type /Annot /Subtype /FreeText /Rect [300.00 600.00 450.00 620.00] /Contents (Check the totals.) /T (Paul Martin) /M (D:20260914) /DA (/F1 10 Tf 0 g) /AP << /N 75 0 R >> >>
+endobj
+75 0 obj
+<< /Type /XObject /Subtype /Form /BBox [0 0 150 20] /Resources << /Font << /F1 3 0 R >> >> /Length 45 >>
+stream
+BT /F1 10 Tf 2 6 Td (Check the totals.) Tj ET
+endstream
+endobj
+xref
+0 76
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000121 00000 n 
+0000000191 00000 n 
+0000000404 00000 n 
+0000000852 00000 n 
+0000001016 00000 n 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000001114 00000 n 
+0000001376 00000 n 
+0000001466 00000 n 
+0000001636 00000 n 
+0000001853 00000 n 
+0000002048 00000 n 
+0000002169 00000 n 
+0000002292 00000 n 
+0000002396 00000 n 
+0000002502 00000 n 
+0000002788 00000 n 
+0000002931 00000 n 
+0000003089 00000 n 
+0000003260 00000 n 
+0000003422 00000 n 
+0000003615 00000 n 
+trailer
+<< /Size 76 /Root 1 0 R >>
+startxref
+3799
+%%EOF

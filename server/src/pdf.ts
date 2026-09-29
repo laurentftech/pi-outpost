@@ -18,6 +18,7 @@ import { loadCanvas, type CanvasModule } from "./canvas.ts";
 import { encodeBitmap, pictureMarker, type Bitmap, type FoundPicture } from "./extractedPictures.ts";
 import { renderSpans, struckThroughNotice, STRIKE, type Span } from "./markdownSpans.ts";
 import { escapeCell } from "./markdownTable.ts";
+import { commentsNotice, commentsOf, renderComments, UNREADABLE_COMMENTS } from "./pdfComments.ts";
 
 export type PdfMode = "text" | "tables" | "both";
 
@@ -816,6 +817,8 @@ interface PdfJsTextItem {
 
 interface PdfJsPage {
   getTextContent(): Promise<{ items: unknown[] }>;
+  /** The page's annotations: where a reviewer's notes and marks are. */
+  getAnnotations?(): Promise<unknown[]>;
   getOperatorList(): Promise<OperatorList>;
   /** Page-local resolved objects, where a painted image's bitmap lands. */
   objs?: { has?: (name: string) => boolean; get: (name: string, callback?: (value: unknown) => void) => unknown };
@@ -983,6 +986,27 @@ export async function pageShapes(
   return (await pageDrawings(page, ops, timeoutMs, pageNumber)).shapes;
 }
 
+/**
+ * The annotations of one page, or `null` when they cannot be read.
+ *
+ * As with the drawing, a page whose annotations cannot be read still has text worth
+ * returning, so only the deadline propagates. `null` is not `[]`: the page then says
+ * its comments could not be read, rather than letting a reader conclude it has none.
+ *
+ * Exported for the tests: no fixture makes pdf.js fail here, and that failure is
+ * exactly the one that must not cost the page.
+ */
+export async function pageAnnotations(page: PdfJsPage, timeoutMs: number, pageNumber: number): Promise<unknown[] | null> {
+  if (page.getAnnotations === undefined) return [];
+  try {
+    const annotations = await withDeadline(page.getAnnotations(), timeoutMs, `reading the comments on page ${pageNumber}`);
+    return Array.isArray(annotations) ? annotations : null;
+  } catch (error) {
+    if (error instanceof PdfError && error.reason === "budget") throw error;
+    return null;
+  }
+}
+
 /* ── Extraction ─────────────────────────────────────────────────────────────── */
 
 /**
@@ -1016,6 +1040,10 @@ export async function extractPdf(bytes: Uint8Array, options: PdfExtractOptions =
     const sections: string[] = [];
     const covered: number[] = [];
     const withoutText: number[] = [];
+    // Page content without the comments: the strike notice counts struck passages in
+    // it, and a remark quoting `~~text~~` is not the document crossing anything out.
+    const bodies: string[] = [];
+    let commentCount = 0;
     let characters = 0;
     let nextPage: number | undefined;
 
@@ -1043,24 +1071,35 @@ export async function extractPdf(bytes: Uint8Array, options: PdfExtractOptions =
       const left = timeoutMs - (Date.now() - started);
       if (left <= 0) throw new PdfError("budget", `extraction exceeded the ${timeoutMs} ms budget`);
       const drawn = await pageDrawings(page, pdfjs.OPS as unknown as Record<string, number>, left, pageNumber);
-      const lines = buildLines(markStruckPieces(toPieces(content.items), drawn.shapes));
+      const pieces = toPieces(content.items);
+      const lines = buildLines(markStruckPieces(pieces, drawn.shapes));
       const pagePictures = await resolvePagePictures(page, drawn.images, pictures, canvas, timeoutMs - (Date.now() - started));
+      const annotations = await pageAnnotations(page, timeoutMs - (Date.now() - started), pageNumber);
+      const comments = annotations === null ? null : commentsOf(annotations, pieces);
+      commentCount += comments?.count ?? 0;
+      // `tables` mode returns tables; comments are counted for the notice, not listed.
+      const commentBlock = mode === "tables" ? "" : comments === null ? UNREADABLE_COMMENTS : renderComments(pageNumber, comments);
+      const withComments = (section: string) => (commentBlock === "" ? section : `${section}\n\n${commentBlock}`);
 
       covered.push(pageNumber);
       if (lines.length === 0 && pagePictures.length === 0) {
         withoutText.push(pageNumber);
-        sections.push(
+        const section = withComments(
           `## Page ${pageNumber}\n\n_No text layer on this page, and no image to return either — it is drawn. ` +
             `OCR is not available; call pdf_render to look at the page._`,
         );
+        characters += section.length;
+        sections.push(section);
         continue;
       }
       if (lines.length === 0) withoutText.push(pageNumber);
       const body = renderPage(lines, mode, pagePictures);
-      const section =
+      bodies.push(body);
+      const section = withComments(
         body === ""
           ? `## Page ${pageNumber}\n\n_No table found on this page._`
-          : `## Page ${pageNumber}\n\n${body}`;
+          : `## Page ${pageNumber}\n\n${body}`,
+      );
       characters += section.length;
       sections.push(section);
     }
@@ -1086,12 +1125,12 @@ export async function extractPdf(bytes: Uint8Array, options: PdfExtractOptions =
       );
     }
 
-    // The strikethrough notice leads; everything else trails. See
-    // `struckThroughNotice` for why that one is not a trailing note.
-    const lead = struckThroughNotice(sections.join("\n\n"));
+    // The strikethrough and comments notices lead; everything else trails. See
+    // `struckThroughNotice` for why those are not trailing notes.
+    const lead = [struckThroughNotice(bodies.join("\n\n")), commentsNotice(commentCount, mode)].filter((line) => line !== "");
 
     return {
-      markdown: [...(lead ? [lead] : []), ...sections, ...notes].join("\n\n"),
+      markdown: [...lead, ...sections, ...notes].join("\n\n"),
       pages: covered,
       ...(nextPage === undefined ? {} : { nextPage }),
       pageCount,
