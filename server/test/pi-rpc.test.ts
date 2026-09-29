@@ -180,6 +180,13 @@ describe("agentDirEnv", () => {
     assert.ok("OMP_CODING_AGENT_DIR" in agentDirEnv("C:\\tools\\omp.exe", "/agent"));
   });
 
+  test("ASourceLauncherReceivesTheAgentDirectory: strips the .sh of Prime Agent's prime-agent.sh", () => {
+    assert.deepEqual(agentDirEnv("/src/prime-agent/prime-agent.sh", "/agent"), {
+      PI_CODING_AGENT_DIR: "/agent",
+      PRIME_AGENT_CODING_AGENT_DIR: "/agent",
+    });
+  });
+
   test("never emits a name that is not a legal variable", () => {
     for (const name of Object.keys(agentDirEnv("/opt/2-weird.name/agent!", "/agent"))) {
       assert.match(name, /^[A-Z][A-Z0-9_]*$/, `"${name}" is not a usable environment variable name`);
@@ -401,6 +408,121 @@ describe("RpcRuntimeStarts", () => {
     await runtime.prompt("finish on OMP's terminal event");
     await completed;
     assert.equal(runtime.snapshot().isStreaming, false);
+  });
+
+  test("PrimeAgentStartsWithoutATree: uses Prime Agent's fork messages and Pi's fork command", async () => {
+    const { runtime, commandLog } = await startFake({
+      failures: {
+        get_tree: "Unknown command: get_tree",
+        get_branch_messages: "Unknown command: get_branch_messages",
+      },
+      omitResponseIdsFor: ["get_tree", "get_branch_messages"],
+      commands_: {
+        get_fork_messages: {
+          data: { messages: [{ entryId: "user-1", text: "first" }, { entryId: "user-2", text: "second" }] },
+        },
+        fork: { data: { cancelled: true, text: "second" } },
+        prompt: { after: [{ type: "agent_start" }, { type: "agent_end", messages: [] }] },
+      },
+    });
+    assert.equal(runtime.ok, true);
+    assert.deepEqual(runtime.entries().map((entry) => entry.id), ["user-1", "user-2"]);
+    assert.equal(runtime.tree().leafId, "user-2");
+    assert.deepEqual(await runtime.fork("user-2"), { cancelled: true, selectedText: "second" });
+    const sent = await commands(commandLog);
+    assert.ok(sent.some((command) => command.type === "fork" && command.entryId === "user-2"));
+    assert.ok(!sent.some((command) => command.type === "branch"), "Prime Agent has no `branch` command");
+
+    const completed = waitForEvent(runtime, (event) => event.type === "agent_end");
+    await runtime.prompt("finish on Prime Agent's terminal event");
+    await completed;
+    assert.equal(runtime.snapshot().isStreaming, false);
+  });
+
+  test("ARetryKeepsTheTurnRunning: a Prime Agent retry after agent_end reopens the turn and its queue", async () => {
+    const { runtime, commandLog } = await startFake({
+      failures: {
+        get_tree: "Unknown command: get_tree",
+        get_branch_messages: "Unknown command: get_branch_messages",
+      },
+      omitResponseIdsFor: ["get_tree", "get_branch_messages"],
+      commands_: {
+        get_fork_messages: { data: { messages: [] } },
+        prompt: [
+          {
+            after: [
+              { type: "agent_start" },
+              { type: "session_action_update", actions: { queuedCount: 1, steering: ["queued"], followUps: ["later"] } },
+              { type: "agent_end", messages: [] },
+              { type: "auto_retry_start", attempt: 1, maxAttempts: 3, delayMs: 60_000, errorMessage: "overloaded" },
+            ],
+          },
+          { after: [] },
+        ],
+      },
+    });
+    const seen: RuntimeEvent[] = [];
+    runtime.subscribe((event) => seen.push(event));
+    const queued = waitForEvent(runtime, (event) => event.type === "queue");
+    const retried = waitForEvent(runtime, () => seen.some((event, i) => event.type === "agent_start" && seen[i - 1]?.type === "agent_end"));
+    await runtime.prompt("first attempt fails");
+    assert.deepEqual(await queued, { type: "queue", steering: ["queued"], followUp: ["later"] });
+    await retried;
+
+    const afterEnd = seen.slice(seen.findIndex((event) => event.type === "agent_end"));
+    assert.deepEqual(afterEnd.map((event) => event.type), ["agent_end", "agent_start", "queue"]);
+    assert.deepEqual(afterEnd[2], { type: "queue", steering: ["queued"], followUp: ["later"] }, "the child's queue is shown again");
+    assert.equal(runtime.snapshot().isStreaming, true, "the retry is still the running turn");
+
+    await runtime.prompt("sent while it retries");
+    const sent = (await commands(commandLog)).filter((command) => command.type === "prompt");
+    assert.equal(sent.at(-1)?.streamingBehavior, "steer");
+  });
+
+  test("ACancelledRetryEndsTheTurn: Prime Agent sends no agent_end after a cancelled retry", async () => {
+    const { runtime } = await startFake({
+      failures: {
+        get_tree: "Unknown command: get_tree",
+        get_branch_messages: "Unknown command: get_branch_messages",
+      },
+      omitResponseIdsFor: ["get_tree", "get_branch_messages"],
+      commands_: {
+        get_fork_messages: { data: { messages: [] } },
+        prompt: {
+          after: [
+            { type: "agent_start" },
+            { type: "agent_end", messages: [] },
+            { type: "auto_retry_start", attempt: 1, maxAttempts: 3, delayMs: 60_000, errorMessage: "overloaded" },
+          ],
+        },
+        abort: { after: [{ type: "auto_retry_end", success: false, attempt: 1, finalError: "Retry cancelled" }] },
+      },
+    });
+    const seen: RuntimeEvent[] = [];
+    runtime.subscribe((event) => seen.push(event));
+    const retried = waitForEvent(runtime, () => seen.filter((event) => event.type === "agent_start").length === 2);
+    await runtime.prompt("fails, then retries");
+    await retried;
+    assert.equal(runtime.snapshot().isStreaming, true);
+
+    const ended = waitForEvent(runtime, () => seen.filter((event) => event.type === "agent_end").length === 2);
+    await runtime.abort();
+    await ended;
+    assert.equal(runtime.snapshot().isStreaming, false, "the cancelled retry closes the turn");
+  });
+
+  test("NoActiveBranchSourceFailsClosed: a fork with no tree, branch or fork messages does not start", async () => {
+    await assert.rejects(
+      startFake({
+        failures: {
+          get_tree: "Unknown command: get_tree",
+          get_branch_messages: "Unknown command: get_branch_messages",
+          get_fork_messages: "Unknown command: get_fork_messages",
+        },
+        omitResponseIdsFor: ["get_tree", "get_branch_messages", "get_fork_messages"],
+      }),
+      /Pi RPC runtime failed to start.*Unknown command: get_fork_messages/,
+    );
   });
 
   test("derives entries from the required tree when get_entries is unavailable", async () => {
