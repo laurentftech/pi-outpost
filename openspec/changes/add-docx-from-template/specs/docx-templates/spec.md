@@ -33,7 +33,11 @@ numbering, section settings, headers, footers and theme apply to it.
 
 Written paragraphs SHALL carry the template's styles, matched by style name. A style the content
 needs and the template lacks SHALL be added to the document rather than replaced by another. The
-content's list numbering SHALL coexist with the template's without renumbering either.
+content's list numbering SHALL coexist with the template's without renumbering either. Where the
+style a heading takes is numbered by the template — through its own numbering, an inherited one, or a
+numbering level linked to it — a number typed in front of the heading's text (`1. `, `2) `, `2.1 `,
+with no more groups than the heading's level) SHALL be removed and reported in the result, so the
+heading is not numbered twice.
 
 The template's sample body SHALL NOT appear in the document, except its cover page and table of
 contents when the call asks to keep them and the template has them. A kept table of contents SHALL
@@ -46,6 +50,11 @@ the writable zone, and SHALL replace an existing file only when asked to.
 - **GIVEN** a template whose first-level heading style has the id `Titre1` and the name `heading 1`
 - **WHEN** a document with `# Introduction` is created from it
 - **THEN** that paragraph references `Titre1`, and the template's style definitions are the document's
+
+#### Scenario: TypedHeadingNumbersAreRemoved
+- **GIVEN** a template that numbers its first two heading levels and not its third
+- **WHEN** a document with `# 1. Introduction`, `## 1.1 Scope`, `### 1.1.1 Detail` and `# 2024 results` is created from it
+- **THEN** the first two headings read "Introduction" and "Scope", the third and fourth keep their text, and the result names the two headings changed
 
 #### Scenario: HeadersFootersAndPageSetupAreKept
 - **WHEN** a document is created from a template with a header, a footer and custom margins
@@ -104,7 +113,8 @@ The system SHALL provide a `docx_update` tool that changes an existing `.docx` b
 edit naming its section by heading path: replace a section's body keeping its heading, insert a new
 section after one, append at the end, or delete a section. A section SHALL run from its heading to
 the next heading of the same or a higher level. Content SHALL be Markdown, mapped as for
-`docx_create`, using the document's own styles and numbering.
+`docx_create`, using the document's own styles and numbering, and a typed number is removed from a heading the
+document numbers, as for `docx_create`.
 
 A heading path that matches no heading or several SHALL be refused with the document's headings.
 Everything outside the edited sections SHALL be left identical: its paragraphs unchanged in
@@ -143,3 +153,8 @@ The result SHALL be written to the writable zone, and SHALL replace the original
 - **GIVEN** a document whose heading styles have localized ids
 - **WHEN** a section with a subheading and a list is inserted
 - **THEN** the subheading uses the document's second-level heading style, and the list its numbering
+
+#### Scenario: TypedHeadingNumbersAreRemovedOnUpdate
+- **GIVEN** a document that numbers its first two heading levels
+- **WHEN** a section `# 3. Budget` with a subsection `## 3.1 Chiffres` is inserted
+- **THEN** the headings read "Budget" and "Chiffres", and the result names the two headings changed
