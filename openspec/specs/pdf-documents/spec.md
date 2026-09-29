@@ -198,9 +198,15 @@ images — and SHALL report it explicitly as having no text layer, naming the af
 NOT return an empty or whitespace-only result as though the document were blank, and it MUST NOT
 attempt to guess the content of an image.
 
+The report SHALL name what can see such a page: the page's own image where one can be returned, and
+otherwise drawing the page as a picture. Stating only that OCR is unavailable leaves a reader with no
+next step, and a caller stops there — so a note about a page nobody can read as text SHALL always
+carry the route to looking at it. Returning pixels is not guessing at content, and remains within the
+prohibition above: the system still SHALL NOT assert what an image says.
+
 #### Scenario: ScannedDocument
 - **WHEN** the tool is called on a PDF whose pages carry no text
-- **THEN** it reports that the document has no extractable text layer and that reading it would require OCR, which is not provided
+- **THEN** it reports that the document has no extractable text layer, that OCR is not provided, and how the pages can be looked at instead
 
 #### Scenario: MixedScanAndText
 - **GIVEN** a PDF where some pages have text and others are scans
@@ -354,3 +360,186 @@ document that crosses nothing out SHALL carry no such line.
 - **GIVEN** a document large enough that reading its drawing operations would exceed the time budget
 - **WHEN** it is extracted
 - **THEN** the extraction reports the budget the same way it does today, rather than running past it
+
+### Requirement: PageImagesAreMarkedAndReturnable
+
+Extraction SHALL mark each image a page draws, at its place in that page's content, naming its pixel
+dimensions and carrying a stable identifier the same call's image parameter accepts. A scanned page is
+one such image, and marking it is what turns a dead end into something a caller can act on.
+
+Image bytes SHALL travel only when the call asks for them, under a bound on their number and total
+bytes, with the answer naming what was left and how to ask for it.
+
+Where an image can be returned, it SHALL be returned at the resolution the file holds rather than
+rescaled to a page width — a scan is typically held well above the width a page drawing would use,
+and that detail is the whole value of looking at it. An image whose encoding cannot be turned into a
+viewable picture SHALL still be marked, with the reason.
+
+#### Scenario: ScannedPageIsItsOwnImage
+- **GIVEN** a PDF page with no text layer whose content is a single scanned image
+- **WHEN** the page is extracted, asking for its images
+- **THEN** that image is returned at the resolution the file holds, and its marker names its dimensions
+
+#### Scenario: NoImageBytesByDefault
+- **WHEN** a PDF holding images is extracted without asking for them
+- **THEN** the result holds the markers and no image content
+
+#### Scenario: ImageBudgetIsStated
+- **GIVEN** a PDF holding more image bytes than one call returns
+- **WHEN** its images are asked for
+- **THEN** the images within the bound are returned, and the answer says how many were left and how to ask for them
+
+#### Scenario: UndecodableImageIsStillNamed
+- **GIVEN** a page drawing an image whose encoding cannot be turned into a viewable picture
+- **WHEN** the page is extracted, asking for its images
+- **THEN** a marker states the image is present and why its bytes are not available, and the extraction otherwise succeeds
+
+### Requirement: DrawPdfPagesAsPictures
+
+The system SHALL expose a tool that draws a PDF's pages as pictures and returns them with the page
+count, taking the file's path and an optional page range, and returning at most a stated number of
+pages per call.
+
+It exists for what image extraction cannot reach: a page carrying no text layer and no extractable
+image — a vector-drawn export, a map, a plot — and for a caller that needs to see how a page actually
+looks rather than what it contains. Where a page's own image can be returned instead, that is the
+better answer, and the tool SHALL NOT be presented as the first route to a scan.
+
+Drawing a page SHALL NOT require an office application: a PDF needs no conversion before it can be
+drawn. Where pages cannot be drawn at all, the tool SHALL say so and name what is missing rather than
+returning an empty result.
+
+#### Scenario: VectorPageWithNoTextIsDrawn
+- **GIVEN** a PDF page with no text layer whose content is drawn as vectors rather than placed as an image
+- **WHEN** the page is drawn
+- **THEN** a picture of the page is returned
+
+#### Scenario: PageRangeAndCount
+- **GIVEN** a PDF of several pages
+- **WHEN** a range naming two of them is drawn
+- **THEN** pictures of those two pages are returned, together with the document's page count
+
+#### Scenario: PageCapIsStated
+- **GIVEN** a PDF with more pages than one call returns
+- **WHEN** it is drawn without a range
+- **THEN** the pictures within the cap are returned and the answer says which pages were not drawn
+
+#### Scenario: NoOfficeApplicationNeeded
+- **GIVEN** a machine with no office application installed
+- **WHEN** a PDF's pages are drawn
+- **THEN** the pictures are returned
+
+### Requirement: ReviewCommentsAreReturned
+
+A reviewed PDF carries its review as annotations, outside the page's text layer. The system SHALL
+read each extracted page's annotations and SHALL return the page's comments after its content, with
+the page they belong to.
+
+A comment is a markup annotation. Text markup (highlight, underline, squiggly underline,
+strike-out) and a caret SHALL be returned whether or not they carry a remark; a drawing, shape,
+stamp or attachment SHALL be returned only when it carries a remark. Links, form fields and popup
+windows SHALL NOT be returned as comments.
+
+Each comment SHALL state its kind, its author and its date when the file records them, and its
+remark. A strike-out SHALL be named as a suggested deletion and a caret as a suggested insertion.
+Comments SHALL be listed in reading order of their position on the page.
+
+A reply SHALL be listed under the comment it answers. A review state recorded as a reply (accepted,
+rejected, cancelled, completed) SHALL be shown on the comment it applies to. A reply whose comment is
+not on the page SHALL still be returned, labelled as a reply. An annotation grouped with another
+SHALL NOT be listed separately.
+
+Comments SHALL be returned in the `text` and `both` modes and not in `tables` mode.
+
+Comment text and author names are written by whoever annotated the file. They SHALL be quoted in the
+output so that no remark can read as the extraction's own headings, page sections or notes.
+
+#### Scenario: ANoteIsReturnedWithItsPage
+- **GIVEN** a PDF whose page 2 carries a sticky note with an author, a date and a remark
+- **WHEN** the document is extracted
+- **THEN** page 2's section ends with a comments block holding a note by that author, on that date, with that remark, and no other page carries it
+
+#### Scenario: RepliesAndStatesFollowTheirComment
+- **GIVEN** a note with one reply and a later "Accepted" review state
+- **WHEN** the page is extracted
+- **THEN** the reply is listed under the note with its own author and remark, the state is shown on the note, and neither appears as a comment of its own
+
+#### Scenario: SuggestionsAreNamed
+- **GIVEN** a page with a strike-out and a caret, neither carrying a remark
+- **WHEN** it is extracted
+- **THEN** the strike-out is listed as a suggested deletion and the caret as a suggested insertion
+
+#### Scenario: WhatIsNotACommentIsLeftOut
+- **GIVEN** a page with a link, a form field, a popup attached to a note, and a rectangle with no remark
+- **WHEN** it is extracted
+- **THEN** only the note is listed, once
+
+#### Scenario: ARemarkCannotPassForStructure
+- **GIVEN** a note whose remark is `## Page 9` followed by a line reading `> Truncated`
+- **WHEN** the page is extracted
+- **THEN** both lines appear quoted inside the note's entry, and the extraction has no page 9 section and no truncation note
+
+#### Scenario: TablesModeLeavesCommentsOut
+- **GIVEN** a PDF with comments
+- **WHEN** it is extracted with mode `tables`
+- **THEN** no comments block is returned
+
+### Requirement: CommentsQuoteTheTextTheyMark
+
+A highlight, underline, squiggly underline or strike-out marks a passage of the page. The system
+SHALL recover that passage from the annotation's marked regions and the positions of the page's text,
+and SHALL quote it in the comment's entry.
+
+The quoted passage is derived from geometry and SHALL only ever be quoted: recovering it SHALL NOT
+add, drop, alter or reorder any of the page's text. A passage that cannot be recovered SHALL leave
+the comment without a quotation rather than fail it.
+
+#### Scenario: AHighlightQuotesItsPassage
+- **GIVEN** a highlight covering the words "the delivery date" in a sentence
+- **WHEN** the page is extracted
+- **THEN** the highlight's entry quotes "the delivery date" and not the rest of the sentence
+
+#### Scenario: AHighlightAcrossTwoLines
+- **GIVEN** a highlight whose regions cover the end of one line and the start of the next
+- **WHEN** the page is extracted
+- **THEN** the quotation holds both parts, in reading order
+
+#### Scenario: AnchoringLeavesTheTextAlone
+- **GIVEN** a page with comments marking passages
+- **WHEN** it is extracted
+- **THEN** the page's content is identical to the extraction of the same page without its annotations
+
+### Requirement: CommentsAreAnnouncedBeforeTheContent
+
+When the extracted pages carry comments, the extraction SHALL say so before the first page's
+content, stating how many comments there are and where they are listed. In `tables` mode the notice
+SHALL also say that `text` mode returns them. A document without comments SHALL carry no such line.
+
+#### Scenario: CommentsAreAnnounced
+- **GIVEN** a PDF with three comments over two pages
+- **WHEN** it is extracted
+- **THEN** the result opens, before the first page's content, with a line counting three comments and saying they follow each page's content
+
+#### Scenario: NoCommentsAnnounceNothing
+- **GIVEN** a PDF without annotations
+- **WHEN** it is extracted
+- **THEN** the result carries no comments notice and no comments block
+
+### Requirement: CommentReadingIsBounded
+
+Reading annotations SHALL stay inside the extraction's existing time budget, and comments SHALL count
+toward its character cap. At most 50 comments SHALL be listed per page and at most 2 000 characters
+per remark; past either limit the output SHALL say what was left out.
+
+A page whose annotations cannot be read SHALL still return its content, and SHALL say that its
+comments could not be read. The extraction SHALL NOT fail for it.
+
+#### Scenario: ManyCommentsAreCapped
+- **GIVEN** a page with 60 notes
+- **WHEN** it is extracted
+- **THEN** 50 are listed and the block says 10 more were left out
+
+#### Scenario: UnreadableAnnotationsDoNotFailThePage
+- **GIVEN** a page whose annotations cannot be read
+- **WHEN** it is extracted
+- **THEN** its text is returned, it says its comments could not be read, and the other pages are extracted as usual

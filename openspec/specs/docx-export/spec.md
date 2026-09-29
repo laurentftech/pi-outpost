@@ -322,3 +322,39 @@ to produce one figure is not a failure of the export: it falls back as its own r
 - **GIVEN** a document far larger than a typical note
 - **WHEN** it is exported
 - **THEN** the application stays responsive and either completes the export or reports why it stopped
+
+### Requirement: HeadingsAreChapterLevels
+
+The heading styles an exported document uses SHALL declare the outline level of their
+heading level — level 0 for a first-level heading through level 5 for a sixth-level one —
+so that Word's navigation pane, table of contents and heading numbering treat the headings
+as the document's chapters. Declaring the level MUST NOT remove the style's own
+formatting, and body text MUST NOT be given an outline level.
+
+#### Scenario: HeadingsAreChapterLevels
+- **GIVEN** a Markdown document with headings at several levels and body text
+- **WHEN** it is exported
+- **THEN** each of the Heading 1–6 styles in the document declares the outline level one below its heading level, keeps its own run formatting, and the body-text style declares no outline level
+
+### Requirement: ExportWithATemplate
+
+When a default Word template is configured, the viewer's Word export SHALL offer to write the
+document into it, with the same result as `docx_create` for the same Markdown and template, apart
+from diagrams, which the browser draws. The export without a template SHALL remain available and
+unchanged. A template that cannot be loaded SHALL be reported with its reason and SHALL NOT prevent
+the export without it.
+
+#### Scenario: ExportUsesTheConfiguredTemplate
+- **GIVEN** `docx.template` names a template
+- **WHEN** a Markdown file is exported with the template
+- **THEN** the downloaded document carries the template's styles, header and footer
+
+#### Scenario: WithoutATemplateTheExportIsUnchanged
+- **GIVEN** no `docx.template`
+- **WHEN** a Markdown file is exported
+- **THEN** the export offers no template and produces the same document as before this change
+
+#### Scenario: ABrokenTemplateDoesNotBlockThePlainExport
+- **GIVEN** `docx.template` names a file that is missing or unusable
+- **WHEN** the user exports
+- **THEN** the template export reports why, and the plain export still works
