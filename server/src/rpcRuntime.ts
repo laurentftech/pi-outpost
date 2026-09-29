@@ -95,13 +95,15 @@ class RpcRuntime implements AgentRuntime {
   private availableCommands: CommandInfo[] = [];
   private availableResources: AgentResourceInfo[] = [];
   private usage: ContextUsage | undefined;
-  /** Standard Pi names this operation `fork`; OMP's compatible dialect names it `branch`. */
+  /** Standard Pi and Prime Agent name this operation `fork`; OMP's compatible dialect names it `branch`. */
   private forkCommand: "fork" | "branch" = "fork";
-  /** Standard Pi settles after maintenance; OMP's dialect terminates directly at `agent_end`. */
+  /** Standard Pi settles after maintenance; OMP's and Prime Agent's dialects terminate directly at `agent_end`. */
   private completionEvent: "agent_settled" | "agent_end" = "agent_settled";
 
   /** Assistant message being streamed, assembled from deltas so a mid-stream connect sees it. */
   private partial: { role: "assistant"; content: unknown[]; timestamp: number } | undefined;
+  /** The child's last reported queue, re-sent when a retry reopens a turn. */
+  private pendingQueue: { steering: string[]; followUp: string[] } = { steering: [], followUp: [] };
   /** Dialog requests Pi is blocked on, so a session replacement can release them. */
   private openDialogs = new Set<string>();
   /** Serializes record handling: a refresh must not interleave with the next event. */
@@ -281,9 +283,18 @@ class RpcRuntime implements AgentRuntime {
       // OMP exposes the authoritative active-branch user entries, but not the
       // off-branch tree. Project them as one linear branch: every visible entry
       // keeps its real id, so branching/forking remains valid and deterministic.
-      const branch = (await this.process.command("get_branch_messages")) as
-        | { messages?: Array<{ entryId?: unknown; text?: unknown }> }
-        | undefined;
+      // Prime Agent has neither command: it answers the same shape to
+      // `get_fork_messages` and keeps Pi's `fork`, but, like OMP, ends at `agent_end`.
+      type BranchMessages = { messages?: Array<{ entryId?: unknown; text?: unknown }> } | undefined;
+      let branch: BranchMessages;
+      try {
+        branch = (await this.process.command("get_branch_messages")) as BranchMessages;
+        this.forkCommand = "branch";
+      } catch (branchError) {
+        if (!isUnknownCommand(branchError, "get_branch_messages")) throw branchError;
+        branch = (await this.process.command("get_fork_messages")) as BranchMessages;
+        this.forkCommand = "fork";
+      }
       const projected = (branch?.messages ?? []).flatMap((item) =>
         typeof item.entryId === "string" && typeof item.text === "string"
           ? [{ type: "message", id: item.entryId, message: { role: "user", content: item.text } } satisfies RuntimeEntry]
@@ -292,7 +303,6 @@ class RpcRuntime implements AgentRuntime {
       this.sessionEntries = projected;
       this.treeRoots = linearTree(projected);
       this.leafId = projected.at(-1)?.id ?? null;
-      this.forkCommand = "branch";
       this.completionEvent = "agent_end";
     }
     const stats = (await this.process.command("get_session_stats")) as { contextUsage?: unknown } | undefined;
@@ -321,6 +331,7 @@ class RpcRuntime implements AgentRuntime {
   private rebootstrap(): Promise<void> {
     return this.queued(async () => {
       this.releaseDialogs();
+      this.pendingQueue = { steering: [], followUp: [] };
       this.applyState((await this.process.command("get_state")) as Record<string, unknown>);
       await this.refreshCatalog();
       await this.refreshConversation();
@@ -436,11 +447,28 @@ class RpcRuntime implements AgentRuntime {
         break;
       }
       case "queue_update":
-        this.emit({
-          type: "queue",
-          steering: toStringArray(record.steering),
-          followUp: toStringArray(record.followUp),
-        });
+        this.emitQueue(toStringArray(record.steering), toStringArray(record.followUp));
+        break;
+      case "session_action_update": {
+        // Prime Agent reports its pending prompts here rather than in `queue_update`.
+        const actions = record.actions as { steering?: unknown; followUps?: unknown } | undefined;
+        this.emitQueue(toStringArray(actions?.steering), toStringArray(actions?.followUps));
+        break;
+      }
+      case "auto_retry_start":
+        // In a dialect whose `agent_end` is terminal (OMP, Prime Agent), that event
+        // also closes each failed attempt, and the retry comes after it — seconds or
+        // a minute later. The turn is not over: say so again, or the composer is free
+        // while the agent still works, and what the user sends meanwhile goes out
+        // without a `streamingBehavior` and lands in a queue they are not shown.
+        if (!this.streaming) {
+          this.streaming = true;
+          this.emit({ type: "agent_start" });
+          // `agent_end` emptied the client's queue; the child's is still pending.
+          if (this.pendingQueue.steering.length || this.pendingQueue.followUp.length) {
+            this.emit({ type: "queue", ...this.pendingQueue });
+          }
+        }
         break;
       case "compaction_start":
         this.emit({ type: "compaction_start" });
@@ -463,11 +491,22 @@ class RpcRuntime implements AgentRuntime {
       case "extension_ui_request":
         this.onExtensionUiRequest(record);
         break;
+      case "auto_retry_end":
+        // An abort during the wait cancels the retry with no `agent_end` after it, so
+        // the turn reopened above would never close. After a real final attempt the
+        // `agent_end` has already closed it, and `streaming` is false here.
+        if (record.success === false && this.streaming && this.completionEvent === "agent_end") await this.completeTurn();
+        break;
       default:
-        // Auto-retry and summarization-retry events have no browser equivalent; the
-        // turn they belong to still reports through the message and event stream.
+        // The rest of auto-retry and summarization-retry have no browser equivalent;
+        // the turn they belong to still reports through the message and event stream.
         break;
     }
+  }
+
+  private emitQueue(steering: string[], followUp: string[]): void {
+    this.pendingQueue = { steering, followUp };
+    this.emit({ type: "queue", steering, followUp });
   }
 
   private async completeTurn(): Promise<void> {

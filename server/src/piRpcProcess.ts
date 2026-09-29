@@ -151,7 +151,7 @@ function childEnv(extra: Record<string, string> = {}): NodeJS.ProcessEnv {
 
 export function agentDirEnv(executable: string, agentDir: string): Record<string, string> {
   const env: Record<string, string> = { PI_CODING_AGENT_DIR: agentDir };
-  const base = (executable.split(/[\\/]/).pop() ?? "").replace(/\.(exe|cmd|bat|js|mjs)$/i, "");
+  const base = (executable.split(/[\\/]/).pop() ?? "").replace(/\.(exe|cmd|bat|js|mjs|sh)$/i, "");
   const derived = base.toUpperCase().replace(/[^A-Z0-9]+/g, "_").replace(/^_+|_+$/g, "");
   if (derived !== "" && derived !== "PI" && /^[A-Z]/.test(derived)) env[`${derived}_CODING_AGENT_DIR`] = agentDir;
   return env;

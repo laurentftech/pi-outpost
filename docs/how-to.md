@@ -713,6 +713,15 @@ have no RPC equivalent and say so rather than failing quietly: storing credentia
 declaring a provider, changing the sandbox from Settings, tree navigation, editing a
 past message, and automatic session titles.
 
+The executable may also be a Pi-derived agent. For [Prime Agent](https://github.com/PrimeIntellect-ai/prime-agent):
+
+```json
+{ "agentRuntime": { "mode": "rpc", "executable": "prime-agent", "args": [] } }
+```
+
+Leave `tools` unset (Prime Agent's only built-in tool is `ipython`), and expect the
+conversation tree as a single branch. See the README's [Agent runtimes](../README.md#agent-runtimes).
+
 ## When something does not work
 
 | What you see | What it is |

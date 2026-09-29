@@ -621,6 +621,13 @@ features have no RPC equivalent and say so rather than failing quietly: storing 
 declaring a provider, changing the sandbox from Settings, tree navigation, and editing a
 past message. Sessions are not auto-titled there either.
 
+The child can be a Pi-derived agent rather than pi itself. [Prime Agent](https://github.com/PrimeIntellect-ai/prime-agent)
+runs with `"executable": "prime-agent"` (or its source launcher, `prime-agent.sh`). Its
+conversation tree is shown as one linear branch. Its only built-in tool is `ipython`, so a
+`tools` list naming `read`, `write`, `grep`, `find` or `ls` is refused at startup. Its
+schedules, heartbeats and agent-to-agent messages have no control in the interface. It
+executes model-generated Python with your permissions and is not a sandbox either.
+
 ## Command line
 
 ```
