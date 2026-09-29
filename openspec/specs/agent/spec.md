@@ -172,6 +172,16 @@ written into the workspace and referenced by path, and a file the user names in 
 words. Publication SHALL happen before the turn is dispatched, so the tool is available to
 the call that needs it rather than after a refusal.
 
+A document also enters the conversation when this system writes one into the workspace on the
+agent's behalf, which is what unpacking an email's attachments does. The extractor for each kind
+written SHALL be published inside the turn that wrote it. This is not the guess a text match makes:
+the file exists because this system just created it, and its path was never available for the user
+to name — without this, an agent that has just unpacked an emailed deck holds a path it cannot open
+and no way to ask for the tool.
+
+That exception SHALL be limited to documents this system itself wrote. A path the agent merely names,
+lists or finds SHALL NOT publish an extractor: the trigger is the write, not the mention.
+
 A published extractor SHALL be withdrawn once it has gone unused for long enough, and how long
 SHALL depend on whether it was ever used:
 
@@ -182,9 +192,10 @@ SHALL depend on whether it was ever used:
   tool away mid-task would strand an agent that cannot ask for it back. Five turns of silence
   is the conversation having moved on.
 
-Naming a document of that kind again SHALL republish its extractor and reset the count. That is
-the only way back, and it belongs to the user: an agent cannot request a tool it can no longer
-see, and nothing announces the withdrawal to it.
+Naming a document of that kind again SHALL republish its extractor and reset the count. Together
+with a document this system writes on the agent's behalf, that is the only way back, and neither
+belongs to the agent's own choosing: an agent cannot request a tool it can no longer see, and
+nothing announces the withdrawal to it.
 
 The tools SHALL NOT be published on the strength of the workspace merely containing such a
 file. A repository with a documents folder would otherwise pay for every extractor in every
@@ -213,6 +224,26 @@ that runtime SHALL publish all of them at all times rather than emulate the gati
 - **GIVEN** a document attached through the composer, written into the workspace and referenced by path
 - **WHEN** the prompt is sent
 - **THEN** the extractor for that kind is published
+
+#### Scenario: Naming an email publishes the mail extractor
+- **GIVEN** a session publishing no extractor
+- **WHEN** the user sends a prompt naming a `.msg`, `.eml` or `.emlx` path
+- **THEN** the mail extractor is published before the turn is dispatched, and the extractors for the other kinds are not
+
+#### Scenario: An unpacked attachment publishes its extractor within the turn
+- **GIVEN** a turn in which the agent unpacks an email attachment that is a `.pptx`
+- **WHEN** the attachment has been written into the workspace
+- **THEN** the presentation extractor is published for the rest of that turn, without the user naming the file
+
+#### Scenario: Only the kinds actually written are published
+- **GIVEN** a message whose attachments are a `.pdf` and a `.pptx`
+- **WHEN** only the `.pdf` is unpacked
+- **THEN** the PDF extractor is published and the presentation extractor is not
+
+#### Scenario: A path the agent merely names publishes nothing
+- **GIVEN** a turn in which the agent lists a workspace directory containing a `.xlsx`
+- **WHEN** the listing returns
+- **THEN** no extractor is published, because nothing was written
 
 #### Scenario: A tool published on a wrong guess is withdrawn when the turn ends
 - **GIVEN** a turn that named a document and never called the extractor published for it
@@ -248,6 +279,96 @@ that runtime SHALL publish all of them at all times rather than emulate the gati
 - **GIVEN** a workspace served by the RPC runtime
 - **WHEN** the agent's toolset is composed
 - **THEN** every document extraction tool is published, as that dialect cannot change its active toolset
+
+### Requirement: Presentation tools are published with a template or their skill
+
+The presentation tools — `pptx_layouts`, `pptx_create` and `pptx_render` — SHALL be published on
+demand, together, by the same mechanism as the document extractors, and withdrawn by the same idle
+rule.
+
+They SHALL be published before the turn is dispatched when the prompt names a `.potx` path, names a
+`.pptx` path (alongside `pptx_extract`), or invokes the skill as `/skill:pptx-from-template`. A
+`.potx` SHALL NOT publish `pptx_extract`: a template is not a deck to read.
+
+They SHALL also be published inside the turn when the agent reads the skill's `SKILL.md` — which is
+how a model loads a skill on its own — or when a tool call's `path` names a `.pptx` or `.potx`.
+Those agent-side triggers SHALL publish only the presentation tools: they SHALL NOT republish an
+extractor, which remains the user's to bring back by naming a document.
+
+Talking about presentations without naming a file or the skill SHALL publish nothing.
+
+In the RPC runtime, which cannot change its published toolset, the child SHALL register the three
+tools with the others.
+
+#### Scenario: ACodeSessionPublishesNoPresentationTool
+- **GIVEN** a session whose prompts name no template and do not invoke the skill
+- **WHEN** a turn is sent
+- **THEN** none of the presentation tools reaches the model
+
+#### Scenario: NamingATemplatePublishesThePresentationTools
+- **WHEN** the user sends a prompt naming a `.potx` path
+- **THEN** the three presentation tools reach the model on that turn, and `pptx_extract` does not
+
+#### Scenario: LoadingTheSkillPublishesThemInTheTurn
+- **WHEN** the agent reads the skill's `SKILL.md` during a turn
+- **THEN** the next request of that same turn carries the three presentation tools
+
+#### Scenario: AgentSideTriggersNeverRepublishTheExtractor
+- **WHEN** a tool call's path names a `.pptx`
+- **THEN** the presentation tools are published and `pptx_extract` is not
+
+#### Scenario: TheRpcChildRegistersThePresentationTools
+- **WHEN** the RPC child builds its toolset
+- **THEN** it registers `pptx_layouts`, `pptx_create` and `pptx_render` after `pptx_extract`
+
+### Requirement: WordTemplateToolsArePublishedOnDemand
+
+`docx_styles`, `docx_create`, `docx_update` and `docx_render` SHALL be published together when a prompt names a
+`.dotx` file, when it names a `.docx` file (with `docx_extract`), when it invokes
+`/skill:docx-from-template`, or when, within a turn, the agent reads that skill's `SKILL.md` or
+calls a tool with a `.docx`/`.dotx` path. A trigger from the agent's side SHALL NOT republish
+`docx_extract`. `docx_create` and `docx_update` SHALL NOT be registered where writing is disabled.
+
+#### Scenario: NamingAWordTemplatePublishesTheTools
+- **WHEN** a prompt names `report.dotx`
+- **THEN** the four Word tools are published for that turn, and `docx_extract` is not
+
+#### Scenario: ReadingTheSkillPublishesTheToolsWithinTheTurn
+- **WHEN** the agent reads `skills/docx-from-template/SKILL.md`
+- **THEN** the next request in the same turn carries the four Word tools
+
+#### Scenario: NoWordCreationInAReadOnlySandbox
+- **GIVEN** a sandbox where writing is disabled
+- **WHEN** the tools are registered
+- **THEN** `docx_create` and `docx_update` are absent, and `docx_styles` and `docx_render` are present
+
+### Requirement: DeckUpdateIsPublishedWithThePresentationTools
+
+`pptx_update` SHALL be published whenever the presentation tools are, and SHALL NOT be registered
+where writing is disabled.
+
+#### Scenario: UpdateComesWithTheOtherPresentationTools
+- **WHEN** a prompt names a `.pptx` file
+- **THEN** `pptx_update` is published with `pptx_layouts`, `pptx_create` and `pptx_render`
+
+#### Scenario: NoDeckUpdateInAReadOnlySandbox
+- **GIVEN** a sandbox where writing is disabled
+- **WHEN** the tools are registered
+- **THEN** `pptx_update` is absent
+
+### Requirement: RestyleIsPublishedWithTheWordTools
+
+`docx_restyle` SHALL be published whenever the Word template tools are, and SHALL NOT be registered
+where writing is disabled.
+
+#### Scenario: RestyleComesWithTheWordTools
+- **WHEN** a prompt names a `.docx` or a `.dotx` file, or the agent reads the `docx-from-template` skill
+- **THEN** `docx_restyle` is published with `docx_styles`, `docx_create`, `docx_update` and `docx_render`
+
+#### Scenario: NoRestyleInAReadOnlySandbox
+- **GIVEN** a sandbox where writing is disabled
+- **WHEN** the tools are registered
+- **THEN** `docx_restyle` is absent
 
 ## Technical Notes
 

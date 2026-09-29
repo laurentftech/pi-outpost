@@ -15,8 +15,14 @@ The system SHALL classify every file supplied from outside the workspace — whe
 application or chosen through the composer's attach button — and SHALL treat both sources
 identically.
 
-A file whose type has a path-based extraction tool (PDF, `.docx`, `.xlsx`, `.pptx`) SHALL be copied
-into the workspace and attached as a path reference. Its bytes MUST NOT travel with the prompt.
+A file whose type has a path-based extraction tool (PDF, `.docx`, `.xlsx`, `.pptx`, and an email
+message: `.msg`, `.eml`, `.emlx`) SHALL be copied into the workspace and attached as a path
+reference. Its bytes MUST NOT travel with the prompt.
+
+The email formats SHALL be routed this way whatever their size, ahead of the inline text limit. A
+`.eml` is text, and inlining it would carry MIME headers, boundary markers and the base64 of every
+attachment into the prompt in place of the message — which is what the tool that reads it exists to
+prevent. A `.msg` is not text at all, and MUST NOT be refused as an unsupported binary.
 
 An image within the image attachment limit SHALL be attached as image bytes, because the agent
 cannot hand image bytes to the model on its own. It MUST NOT be copied into the workspace: the
@@ -41,6 +47,16 @@ refused against a different one.
 #### Scenario: Attach button and drop behave alike
 - **WHEN** the user chooses a `.docx` file through the composer's attach button
 - **THEN** the resulting attachment is the same path reference a drop of that file produces
+
+#### Scenario: Dropped Outlook message becomes a path reference
+- **WHEN** the user drops a `.msg` file dragged out of Outlook
+- **THEN** the file is copied into the workspace and attached as a path reference, and it is not
+  reported as an unsupported binary file
+
+#### Scenario: Small dropped .eml is referenced, not inlined
+- **WHEN** the user drops a `.eml` file smaller than the inline text limit
+- **THEN** the file is copied into the workspace and attached as a path reference, and its MIME
+  source is not part of the prompt
 
 #### Scenario: Image within the limit is shown to the model without a copy
 - **WHEN** the user drops or pastes an image no larger than the image attachment limit

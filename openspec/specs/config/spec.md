@@ -504,3 +504,59 @@ The server configuration SHALL provide an explicit `terminal.enabled` setting, d
 #### Scenario: Sandbox lock prevents terminal tampering
 - **GIVEN** `sandboxLocks.terminal: true` in server configuration
 - **THEN** client settings cannot enable or unlock the terminal feature
+
+### Requirement: PresentationRendererSettings
+
+The configuration SHALL support choosing the office application `pptx_render` draws decks with —
+`pptx.renderer`: `auto` (the default), `powerpoint`, `libreoffice` or `onlyoffice` — naming the
+LibreOffice and ONLYOFFICE Document Builder executables (`pptx.libreofficePath`,
+`pptx.onlyofficePath`, resolved relative to the configuration file), and bounding how long one
+rendering may take (`pptx.renderTimeoutMs`, default 120 000).
+
+A configured executable SHALL be the one used: when it does not exist, that converter SHALL be
+reported unavailable rather than replaced by one found elsewhere. Unlike the git executable, a
+missing converter SHALL NOT stop the server from starting — rendering is one tool's concern, and
+the rest of the product works without it.
+
+An unknown renderer, an empty executable path, or a timeout that is not a positive integer SHALL
+make loading the configuration fail with an error naming the setting.
+
+The same settings SHALL reach the RPC child with the rest of its tool settings.
+
+#### Scenario: RendererDefaultsToAuto
+- **GIVEN** a configuration with no `pptx` rendering settings
+- **WHEN** it is loaded
+- **THEN** the renderer is `auto`, no executable is named, and the timeout is 120 000 ms
+
+#### Scenario: ConfiguredExecutableIsUsedAndNotReplaced
+- **GIVEN** a configuration naming a LibreOffice executable
+- **WHEN** a deck is rendered
+- **THEN** that executable is the one found, and if it is missing no other LibreOffice is used in its place
+
+#### Scenario: InvalidRendererSettingIsRefused
+- **WHEN** the configuration names an unknown renderer, an empty executable path or a non-positive timeout
+- **THEN** loading fails with an error naming the setting
+
+### Requirement: WordTemplateAndOfficeRendererSettings
+
+The configuration SHALL accept `docx.template`, the default Word template for the viewer export,
+resolved relative to the configuration file; a named file that does not exist SHALL be reported
+when used, not at startup.
+
+The office renderer settings SHALL be `office.renderer` (`auto`, `word`, `powerpoint`,
+`libreoffice`, `onlyoffice`; `word` and `powerpoint` each apply to their own kind of document and
+fall back as `auto` does for the other), `office.libreofficePath`, `office.onlyofficePath` and
+`office.renderTimeoutMs`. The `pptx.renderer`, `pptx.libreofficePath`, `pptx.onlyofficePath` and
+`pptx.renderTimeoutMs` keys introduced in 0.29 SHALL be deprecated: still read as aliases, each
+one present SHALL be named in a warning at startup together with its `office` replacement, and
+when both are given the `office` key SHALL win and the conflict SHALL be logged.
+
+#### Scenario: PptxRendererKeysStillWork
+- **GIVEN** a configuration written for 0.29 with `pptx.renderer: "libreoffice"`
+- **WHEN** it is loaded
+- **THEN** documents and decks render with LibreOffice, and a startup warning names `pptx.renderer` as deprecated in favour of `office.renderer`
+
+#### Scenario: OfficeKeysWinOverTheirAliases
+- **GIVEN** `office.renderer: "onlyoffice"` and `pptx.renderer: "libreoffice"`
+- **WHEN** the configuration is loaded
+- **THEN** the renderer is ONLYOFFICE and the conflict is logged
