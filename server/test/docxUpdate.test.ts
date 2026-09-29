@@ -113,6 +113,15 @@ describe("docx_update", () => {
     assert.deepEqual(outline(resolved.bytes), ["1 Lot A", "2 Détail", "1 Lot B"]);
   });
 
+  test("TypedHeadingNumbersAreRemovedOnUpdate: a new section's typed number is removed where the document numbers its headings", async () => {
+    const updated = await updateDocument(report(), [{ action: "insert_after", section: "Périmètre", markdown: "# 3. Budget\n\n## 3.1 Chiffres\n\nDes chiffres." }], {
+      trackChanges: false,
+    });
+    const headings = outline(updated.bytes);
+    assert.ok(headings.includes("1 Budget") && headings.includes("2 Chiffres"), headings.join("\n"));
+    assert.ok(updated.warnings.some((warning) => /typed number was removed from 2 heading/.test(warning)), updated.warnings.join("\n"));
+  });
+
   test("a heading named with the number copied from the page is found, and a hostile one is refused in linear time", async () => {
     for (const section of ["2. Périmètre > 2.1 Inclus", "2) Périmètre > 2.1. Inclus", "2 Périmètre > Inclus"]) {
       const updated = await updateDocument(report(), [{ action: "delete", section }], { trackChanges: false });

@@ -15,7 +15,7 @@
 import { contentTypeOf, decode, parseRelationshipList, relsPartOf, type Relationship } from "./ooxml.ts";
 import { XmlError } from "./xml.ts";
 import { readAllZipEntries, ZipError } from "./zip.ts";
-import { bodyLayout, paragraphText, parseStyles, styleByName, type WordStyle } from "./wordml.ts";
+import { bodyLayout, paragraphText, parseStyles, styleByName, styleIsNumbered, type WordStyle } from "./wordml.ts";
 
 export class WordTemplateError extends Error {
   constructor(message: string) {
@@ -154,12 +154,13 @@ export function describeWordTemplate(pkg: WordPackage): TemplateDescription {
     return { role: label, style: style === undefined ? undefined : { id: style.id, name: style.name } };
   };
   const roles: StyleRole[] = [];
+  const numbering = pkg.numberingPart === undefined ? undefined : decode(pkg.parts, pkg.numberingPart);
   for (let level = 1; level <= 6; level++) {
     const style = styleByName(pkg.styles, `heading ${level}`);
     roles.push({
       role: `heading ${level}`,
       style: style === undefined ? undefined : { id: style.id, name: style.name },
-      numbered: style === undefined ? undefined : style.numbered,
+      numbered: style === undefined ? undefined : styleIsNumbered(pkg.styles, style.id, numbering),
     });
   }
   roles.push(role("Normal", "body text"), role("List Paragraph", "list"));

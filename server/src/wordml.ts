@@ -224,6 +224,48 @@ export function styleOutlineLevel(styles: Map<string, WordStyle>, id: string | u
 }
 
 /**
+ * Whether Word numbers the paragraphs of this style.
+ *
+ * Either the style states a `w:numPr` — its own or one it inherits through `basedOn`,
+ * where the nearest wins and `numId` 0 means "not numbered" — or a level of the
+ * numbering part names the style (`<w:lvl><w:pStyle w:val="Titre1"/>`), which is how
+ * Word's "link level to style" writes heading numbering.
+ */
+export function styleIsNumbered(styles: Map<string, WordStyle>, id: string | undefined, numberingXml?: string): boolean {
+  const seen = new Set<string>();
+  let current = id === undefined ? undefined : styles.get(id);
+  while (current !== undefined && !seen.has(current.id)) {
+    const numPr = /<(?:\w+:)?numPr\b[\s\S]*?(?:\/>|<\/(?:\w+:)?numPr>)/.exec(current.xml)?.[0];
+    if (numPr !== undefined) {
+      const numId = firstVal(numPr, "numId");
+      if (numId !== undefined) return numId !== "0";
+    }
+    seen.add(current.id);
+    current = current.basedOn === undefined ? undefined : styles.get(current.basedOn);
+  }
+  if (id === undefined || numberingXml === undefined) return false;
+  for (const match of numberingXml.matchAll(/<(?:\w+:)?pStyle\b[^>]*?\bw:val="([^"]*)"/g)) if (decodeEntities(match[1]) === id) return true;
+  return false;
+}
+
+/**
+ * A heading's text without a number typed in front of it — `1. `, `2) `, `2.1 `, `2.1. ` —
+ * or undefined when it has none to remove.
+ *
+ * Only what reads unambiguously as outline numbering: at most as many groups as the
+ * heading's level, and a lone number only with its `.` or `)` — "2024 results" keeps
+ * its year. Each group is followed by a separator or ends the number, so the pattern
+ * has one way to match and runs in linear time.
+ */
+export function withoutTypedNumber(text: string, level: number): string | undefined {
+  const match = /^(\s*)(\d{1,3}(?:\.\d{1,3})*)([.)]?)\s+(?=\S)/.exec(text);
+  if (match === null) return undefined;
+  const groups = match[2].split(".").length;
+  if (groups > level || (groups === 1 && match[3] === "")) return undefined;
+  return text.slice(match[0].length);
+}
+
+/**
  * The heading level (1–9) of a paragraph, or undefined for body text.
  *
  * Word's own rule: the paragraph's direct outline level if it states one, else its
