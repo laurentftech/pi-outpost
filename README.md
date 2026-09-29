@@ -211,7 +211,9 @@ one needs, the command that proves it works, and the caution that goes with it.
   the agent reads its text and tables through `pdf_extract` — no shell, no external binary. A page
   with no text layer is not a dead end: the images it draws are named and can be returned at the
   resolution the file holds, so a scan is readable by looking at it, and `pdf_render` draws a page
-  that carries neither text nor an image. There is still no OCR, so a scan's words are not searchable
+  that carries neither text nor an image. There is still no OCR, so a scan's words are not searchable.
+  A reviewed PDF's comments — notes, highlights, suggested deletions and insertions, replies and
+  review states — come back after each page's content, with their author, date and the text they mark
 - Office documents: `docx_extract`, `xlsx_extract` and `pptx_extract` give the agent Word
   text and tables, one markdown table per spreadsheet sheet, and slide structure with
   speaker notes. Every picture is named where it sits, with its format, size and the alt text the

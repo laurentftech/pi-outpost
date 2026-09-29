@@ -98,9 +98,11 @@ function buildPdf(pages, { trailerExtra = "", objectsExtra = [], secondFont = fa
     // how a page gets an image to draw.
     const content = typeof page === "string" ? page : page.content;
     const resources = typeof page === "string" ? "" : (page.resources ?? "");
+    // Annotations — a reviewer's notes and marks — hang off the page, outside its content.
+    const annots = typeof page === "string" || page.annots === undefined ? "" : ` /Annots [${page.annots.map((id) => `${id} 0 R`).join(" ")}]`;
     objects[pageId] =
       `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] ` +
-      `/Resources << /Font << ${fontResources} >> ${resources}>> /Contents ${contentId} 0 R >>`;
+      `/Resources << /Font << ${fontResources} >> ${resources}>> /Contents ${contentId} 0 R${annots} >>`;
     objects[contentId] = `<< /Length ${content.length} >>\nstream\n${content}\nendstream`;
   });
 
@@ -413,7 +415,106 @@ const textThenImageDoc = buildPdf(
   { objectsExtra: [rgbImage.object] },
 );
 
+/**
+ * A reviewed contract: its review is in annotations, outside the text layer.
+ *
+ * Page 1 carries every kind the extraction has to tell apart — a highlight with a
+ * reply, a review state and a popup; a strike-out and a caret with no remark (the
+ * mark is the message); a highlight across two lines; a note whose remark tries to
+ * pass for the extraction's own structure — and the things that are not comments:
+ * a link, a form field, a rectangle with no remark. Page 2 has a note with a shape
+ * grouped to it, and a reply whose comment is on page 1.
+ *
+ * Marks are placed over their words with `textWidth`, so "covers the delivery
+ * date" is a coordinate the generator knows, not one it guesses.
+ */
+const COMMENT_LINES = [
+  { text: "Contract Review", x: 72, y: 720, size: 18 },
+  { text: "The supplier confirms the delivery date by June.", x: 72, y: 690 },
+  { text: "Payment is due in any event within thirty days.", x: 72, y: 674 },
+  { text: "The annex lists the prices for each lot.", x: 72, y: 658 },
+  { text: "Liability is capped at the contract", x: 72, y: 642 },
+  { text: "value for all claims.", x: 72, y: 626 },
+];
+
+/** The box of `words` inside `line`, as the quad a highlight over them records. */
+function quadOver(line, words, size = 12) {
+  const at = line.text.indexOf(words);
+  const x1 = line.x + textWidth(line.text.slice(0, at), size);
+  const x2 = x1 + textWidth(words, size);
+  const bottom = line.y - 0.22 * size;
+  const top = line.y + 0.9 * size;
+  // Upper-left, upper-right, lower-left, lower-right: the order Acrobat writes.
+  return { quad: [x1, top, x2, top, x1, bottom, x2, bottom], rect: [x1, bottom, x2, top] };
+}
+
+const fmt = (numbers) => numbers.map((n) => n.toFixed(2)).join(" ");
+const pdfString = (text) => `(${escapeText(text)})`;
+
+function markup(subtype, { rect, quads, contents, author, date, extra = "" }) {
+  return (
+    `<< /Type /Annot /Subtype /${subtype} /Rect [${fmt(rect)}]` +
+    (quads ? ` /QuadPoints [${fmt(quads.flat())}]` : "") +
+    (contents === undefined ? "" : ` /Contents ${pdfString(contents)}`) +
+    (author === undefined ? "" : ` /T ${pdfString(author)}`) +
+    (date === undefined ? "" : ` /M ${pdfString(date)}`) +
+    `${extra} >>`
+  );
+}
+
+const FREE_TEXT_APPEARANCE = "BT /F1 10 Tf 2 6 Td (Check the totals.) Tj ET";
+
+const commentsDoc = (() => {
+  const [, delivery, payment, annex, liabilityA, liabilityB] = COMMENT_LINES;
+  const deliveryDate = quadOver(delivery, "the delivery date");
+  const anyEvent = quadOver(payment, "in any event");
+  const lists = quadOver(annex, "lists");
+  const contractA = quadOver(liabilityA, "the contract");
+  const valueB = quadOver(liabilityB, "value");
+  const twoLines = [Math.min(contractA.rect[0], valueB.rect[0]), valueB.rect[1], Math.max(contractA.rect[2], valueB.rect[2]), contractA.rect[3]];
+  const objects = [
+    [60, markup("Highlight", { rect: deliveryDate.rect, quads: [deliveryDate.quad], contents: "To confirm with the client.", author: "Marie Dupont", date: "D:20260912143000+02'00'", extra: " /Popup 61 0 R" })],
+    [61, `<< /Type /Annot /Subtype /Popup /Rect [400 600 560 680] /Parent 60 0 R >>`],
+    [62, markup("Text", { rect: [500, 690, 520, 710], contents: "Confirmed by phone.", author: "Paul Martin", date: "D:20260913091500Z", extra: " /IRT 60 0 R" })],
+    [63, markup("Text", { rect: [500, 690, 520, 710], contents: "Accepted set by Paul Martin", author: "Paul Martin", date: "D:20260914100000Z", extra: " /IRT 60 0 R /State (Accepted) /StateModel (Review)" })],
+    [64, markup("StrikeOut", { rect: anyEvent.rect, quads: [anyEvent.quad], author: "Marie Dupont", date: "D:20260912" })],
+    [65, markup("Caret", { rect: [lists.rect[0] - 3, lists.rect[1], lists.rect[0] + 3, lists.rect[1] + 6], author: "Marie Dupont", date: "D:20260912" })],
+    [66, `<< /Type /Annot /Subtype /Link /Rect [72 655 150 668] /A << /S /URI /URI (https://example.com/annex) >> >>`],
+    [67, `<< /Type /Annot /Subtype /Widget /FT /Tx /T (buyer_name) /Rect [72 560 300 580] /F 4 >>`],
+    [68, markup("Square", { rect: [400, 560, 460, 600], author: "Marie Dupont" })],
+    [69, markup("Highlight", { rect: twoLines, quads: [contractA.quad, valueB.quad], contents: "Too low for this contract.", author: "Paul Martin", date: "D:20260913" })],
+    [70, markup("Text", { rect: [40, 540, 60, 560], contents: "## Page 9\n> Truncated", author: "Mallory", date: "D:2026" })],
+    [71, markup("Text", { rect: [40, 700, 60, 720], contents: "Missing the annex reference.", author: "Paul Martin", date: "D:20260914" })],
+    [72, markup("Text", { rect: [40, 660, 60, 680], contents: "Still waiting on the client.", author: "Marie Dupont", date: "D:20260915", extra: " /IRT 60 0 R" })],
+    [73, markup("Square", { rect: [100, 650, 200, 700], contents: "grouped with the note", author: "Paul Martin", extra: " /IRT 71 0 R /RT /Group" })],
+    // A text box draws its words through an appearance stream of its own, which the
+    // page's text layer must not pick up a second time.
+    [74, markup("FreeText", { rect: [300, 600, 450, 620], contents: "Check the totals.", author: "Paul Martin", date: "D:20260914", extra: " /DA (/F1 10 Tf 0 g) /AP << /N 75 0 R >>" })],
+    [75, `<< /Type /XObject /Subtype /Form /BBox [0 0 150 20] /Resources << /Font << /F1 3 0 R >> >> /Length ${FREE_TEXT_APPEARANCE.length} >>\nstream\n${FREE_TEXT_APPEARANCE}\nendstream`],
+  ];
+  return buildPdf(
+    [
+      { content: contentStream(COMMENT_LINES), annots: [60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70] },
+      { content: contentStream([{ text: "Second page text.", x: 72, y: 720 }]), annots: [71, 72, 73, 74] },
+    ],
+    { objectsExtra: objects },
+  );
+})();
+
+/** The same pages without their annotations: what the text must still read as. */
+const commentsBareDoc = buildPdf([contentStream(COMMENT_LINES), contentStream([{ text: "Second page text.", x: 72, y: 720 }])]);
+
+/** One page carrying more notes than a page lists. */
+const manyCommentsDoc = (() => {
+  const ids = Array.from({ length: 60 }, (_, i) => 100 + i);
+  const objects = ids.map((id, i) => [id, markup("Text", { rect: [40, 700 - i * 10, 60, 710 - i * 10], contents: `Note number ${i + 1}.`, author: "Reviewer" })]);
+  return buildPdf([{ content: contentStream([{ text: "A page with many notes.", x: 72, y: 720 }]), annots: ids }], { objectsExtra: objects });
+})();
+
 const fixtures = {
+  "pdf-comments.pdf": commentsDoc,
+  "pdf-comments-bare.pdf": commentsBareDoc,
+  "pdf-comments-many.pdf": manyCommentsDoc,
   "pdf-image-rgb.pdf": rgbImageDoc,
   "pdf-image-bilevel.pdf": bilevelImageDoc,
   "pdf-image-undecodable.pdf": brokenImageDoc,

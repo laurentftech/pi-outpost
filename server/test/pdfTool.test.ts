@@ -33,6 +33,7 @@ describe("pdf_extract", () => {
     root = await realResolve(await mkdtemp(path.join(tmpdir(), "pi-pdftool-")));
     await copyFile(path.join(FIXTURES, "pdf-table.pdf"), path.join(root, "report.pdf"));
     await copyFile(path.join(FIXTURES, "pdf-encrypted.pdf"), path.join(root, "locked.pdf"));
+    await copyFile(path.join(FIXTURES, "pdf-comments.pdf"), path.join(root, "reviewed.pdf"));
     await writeFile(path.join(root, "notes.txt"), "not a pdf\n");
     tool = createPdfExtractToolDefinition({ cwd: root, allowedRoots: [root], maxBytes: 25 * 1024 * 1024, writableRoot: root });
   });
@@ -48,6 +49,25 @@ describe("pdf_extract", () => {
 
     assert.match(text, /## Page 1/);
     assert.match(text, /\| Region \| Units \| Revenue \|/);
+  });
+
+  test("the description says review comments are listed after each page, with the text they mark", () => {
+    assert.match(tool.description, /Review comments/);
+    assert.match(tool.description, /Comments on page N/);
+    assert.match(tool.description, /not the document's text/);
+  });
+
+  test("returns a reviewed document's comments with its pages, and writes them to a file too", async () => {
+    const text = await run({ path: "reviewed.pdf", mode: "text" });
+
+    assert.match(text, /^> This document carries 9 review comments/);
+    assert.match(text, /### Comments on page 1\n\n- \*\*Highlight\*\* — Marie Dupont, 2026-09-12, on "the delivery date":/);
+
+    const answer = await run({ path: "reviewed.pdf", mode: "text", output_path: "reviewed.md" });
+    assert.match(answer, /reviewed\.md/);
+    const written = await readFile(path.join(root, "reviewed.md"), "utf8");
+    assert.match(written, /^> This document carries 9 review comments/);
+    assert.match(written, /> Confirmed by phone\./);
   });
 
   test("honours mode and page range", async () => {

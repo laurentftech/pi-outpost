@@ -430,6 +430,14 @@ the page *is* an image, so `pdf_extract` returns it at the resolution the file h
 the agent can read it by looking. For a page carrying neither text nor an image — an
 export drawn as vectors, a map, a plot — `pdf_render` draws the pages as pictures.
 
+A PDF that has been reviewed carries its review as annotations, outside the text. `pdf_extract`
+lists them after each page's content under "Comments on page N": notes, highlights, suggested
+deletions (a strike-out) and insertions (a caret), each with its author, its date, its remark and
+the words it marks, replies under the comment they answer, and review states such as "Accepted"
+on the comment they settle. A line before the first page counts them, so the agent cannot answer
+from the text alone without knowing a review exists. Links and form fields are not comments. A PDF
+exported from Word usually carries none of the Word document's comments.
+
 The ceiling is 25 MB per format, raise it if your documents are bigger:
 
 ```json

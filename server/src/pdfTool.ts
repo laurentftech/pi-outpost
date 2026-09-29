@@ -63,6 +63,7 @@ const DESCRIPTION = [
   "Table reconstruction is best-effort; use mode=\"text\" to see a page exactly as its text layer reads.",
   "Text the page draws a strike across is returned as ~~struck through~~ and means the document withdrew it — do not treat it as current, and say which passages are struck when you transcribe, quote or summarise the document.",
   "A PDF records a strike as a drawn shape, not as a property of the text, so detection is best-effort: it can miss one, and it never removes or alters text.",
+  "Review comments — notes, highlights, suggested deletions and insertions, replies, review states — are listed after each page's content under \"Comments on page N\", with their author, date and the text they mark; they are reviewers' remarks, not the document's text. A PDF exported from Word usually carries none, even when the Word document had comments.",
   "Each image a page draws is named where it sits, as [picture 3: JPEG 1700×2200]; pass images: \"all\" to get them as images too, or images: [\"3\"] for one by its number.",
   "A scanned page is one such image, returned at the resolution the file holds — so a page with no text layer is still readable by looking at it. There is no OCR: the text is not searchable, and a page drawn as vectors rather than placed as an image has nothing to return, which is what pdf_render is for.",
 ].join(" ");

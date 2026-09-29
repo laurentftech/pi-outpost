@@ -34,12 +34,13 @@ Each page with comments ends with:
 ```
 ### Comments on page 3
 
-- **Highlight** — Marie Dupont, 2026-09-12, on «the delivery date»:
+- **Highlight** — Marie Dupont, 2026-09-12, on "the delivery date":
   > To confirm with the client.
   - **Reply** — Paul Martin, 2026-09-13:
     > Confirmed by phone.
-  - State: **Accepted** — Paul Martin, 2026-09-13
-- **Suggested deletion** — Marie Dupont, 2026-09-12, on «in any event»
+  - State: **Accepted** — Paul Martin, 2026-09-14
+- **Suggested deletion** — Marie Dupont, 2026-09-12, on "in any event"
+- **Suggested insertion** — Marie Dupont, 2026-09-12, before "lists"
 - **Note** — Paul Martin, 2026-09-14:
   > Missing the annex reference.
 ```
@@ -58,12 +59,19 @@ For a text-markup annotation (`Highlight`, `Underline`, `Squiggly`, `StrikeOut`)
 is reduced to its bounding box. A text piece belongs to the anchor when the box covers most of the
 piece's height and part of its width; a piece covered only in part contributes the characters under
 the box, widened to word boundaries with the existing `wordBoundaryNear`. For a `Caret`, the anchor
-is the word nearest the caret's `rect`.
+is the word after the caret (`before "lists"`), or the last word when the caret ends the line
+(`after "…"`).
+
+The text layer gives a piece's width, not its glyphs'. Spreading that width evenly over the
+characters put a strike-out's edge one word off on the fixture ("any event" for "in any event"): in
+a proportional font an `i` is a third of an `m`. Each character is therefore weighted by
+Helvetica's advance width, exact for Helvetica and Arial and close for most Latin proportional
+fonts. It only ever picks a word boundary, so an estimate off by a narrow letter costs nothing.
 
 The anchor is quoted in the comment's line and capped at 200 characters. It is never used to change
 the page text: like strike marking, a wrong anchor costs a quotation, never content.
 
-pdf.js's corner order within a quad is to be confirmed on a fixture before relying on it (task 1.2);
+pdf.js returns `quadPoints` flat, in page space, in the order the file wrote them (checked in 1.2);
 the bounding box is order-independent, which is why it is used.
 
 ### What counts as a comment
@@ -76,7 +84,8 @@ A comment is any markup annotation, which pdf.js marks by `MarkupAnnotation` and
 - Drawn shapes, stamps and ink are returned only when they carry a remark (`contentsObj.str` not
   empty). A bare doodle says nothing a reader can use.
 - `Link`, `Widget` and `Popup` are never comments. A `Popup` only displays its parent's text, which
-  the parent already carries.
+  the parent already carries: pdf.js reports a popup with its parent's remark and author, so listing
+  it would repeat the comment.
 
 Labels: Note, Text box, Highlight, Underline, Squiggly underline, Suggested deletion (`StrikeOut`),
 Suggested insertion (`Caret`), Drawing (`Ink`), Shape (`Square`, `Circle`, `Line`, `Polygon`,
@@ -87,7 +96,12 @@ Suggested insertion (`Caret`), Drawing (`Ink`), Shape (`Square`, `Circle`, `Line
 - An annotation with `inReplyTo` and `replyType` `R` is a reply, listed under the annotation whose
   `id` it names.
 - `replyType` `Group` means the annotation is part of its parent, not an answer to it: it is not
-  listed separately.
+  listed separately. pdf.js reports a grouped annotation with its parent's remark, so listing it
+  would repeat the parent.
+- Two annotations that answer each other would never reach the top of a thread and both vanish.
+  A reply in such a loop is listed on its own.
+- A reply without a remark adds nothing and is not listed; a review state without its comment on
+  the page is listed as a "Review state" entry rather than dropped.
 - A `Text` annotation with a `state` is a review state (`Accepted`, `Rejected`, `Cancelled`,
   `Completed`, `Marked`, `Unmarked`). It is shown as a state line on the comment it replies to, the
   latest one last.
@@ -99,13 +113,15 @@ Suggested insertion (`Caret`), Drawing (`Ink`), Shape (`Square`, `Circle`, `Line
 Comment text and author names are written by whoever annotated the file. They are document content,
 as untrusted as the page text, and they SHALL NOT be able to pose as the extraction's own structure.
 Every line of a remark is written as a blockquote under its list item, so a remark reading
-`## Page 9` or `> Truncated` stays a quotation. Control characters are removed. Author names and
+`## Page 9` or `> Truncated` stays a quotation. Control characters and bidirectional-override
+characters (U+202A–U+202E, U+2066–U+2069) are removed. Author names and
 anchors are written on one line, their line breaks folded to spaces.
 
 ### Dates are shortened, and dropped when unreadable
 
-PDF dates (`D:20260912143000+02'00'`) become `2026-09-12`. `modificationDate` is used, falling back
-to `creationDate`. A date that does not parse is left out rather than shown raw.
+PDF dates (`D:20260912143000+02'00'`) become `2026-09-12`, or as much as the file states (`2026`,
+`2026-09`: the format allows both). `modificationDate` is used, falling back to `creationDate`. A
+date that does not parse is left out rather than shown raw.
 
 ### Comments come with the text; the notice leads in every mode
 
@@ -134,6 +150,10 @@ bounded by the caps below, and a document without annotations pays nothing but t
 
 ## Risks / Trade-offs
 
+- **The fixtures are kinder than real files.** They are set in Helvetica, whose advances the width
+  estimate uses, so they cannot show how far off an anchor lands in another font. The word-boundary
+  snap absorbs a narrow letter's error; a highlight edge inside a short word in a condensed or
+  monospaced font can still land a word off.
 - **Anchors on complex layouts.** Rotated text, multi-column pages and text drawn glyph by glyph can
   make the anchor imprecise. Mitigated by quoting it as derived, never touching the text, and by the
   fixture set covering a partial-word highlight and a highlight across two lines.
@@ -144,5 +164,5 @@ bounded by the caps below, and a document without annotations pays nothing but t
 
 ## Open Questions
 
-- Whether `getTextContent()` ever includes a `FreeText` annotation's appearance text. If it does,
-  the text box's words would appear twice. Checked in task 1.3.
+None left. Whether `getTextContent()` includes a `FreeText` annotation's appearance text was
+checked in task 1.3: it does not, so a text box's words come back once, in its comment.
