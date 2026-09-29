@@ -547,7 +547,9 @@ it. The bundled skill teaches the agent the loop:
    styles have the ids `Titre1`, `Titre2`…, works as one saved by an English Word. Lists, tables, pictures from the workspace, links and LaTeX equations (as native
    Word equations) come along; the template's styles, numbering, margins, header, footer and theme
    apply to all of it. The template's sample text is left out; its cover page and table of
-   contents are kept when asked, and Word refreshes the table of contents on opening.
+   contents are kept when asked, and Word refreshes the table of contents on opening. Where the
+   template numbers a heading level, a number typed in front of the heading (`## 2.1 Scope`) is
+   removed, so the heading is not numbered twice; `docx_update` does the same.
 3. `docx_update` changes an existing document, one section at a time, sections named by their
    heading (`"Scope"`, or `"Scope > Out of scope"` when a name repeats): replace a section's body,
    insert a section after one, append, or delete. The changes are **tracked** by default, in the

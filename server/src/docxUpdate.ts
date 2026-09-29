@@ -18,7 +18,7 @@
  */
 import type { PictureSource } from "@pi-outpost/shared/docx";
 import { contentWarnings, countingPictures, MAX_MARKDOWN_CHARS } from "./docxBuild.ts";
-import { generateContent, WordComposer } from "./docxGraft.ts";
+import { generateContent, renumberedNote, WordComposer } from "./docxGraft.ts";
 import { WordTemplateError, type WordPackage } from "./docxTemplate.ts";
 import { bodyLayout, childElements, headingLevelOf, paragraphText, type XmlElement } from "./wordml.ts";
 
@@ -347,6 +347,7 @@ export async function updateDocument(pkg: WordPackage, edits: DocxEdit[], option
     pieces.splice(plan.from, plan.to - plan.from, ...kept, ...content);
   }
 
+  warnings.unshift(...renumberedNote(composer.renumberedHeadings));
   const documentXml = pkg.documentXml.slice(0, layout.innerStart) + pieces.join("") + pkg.documentXml.slice(layout.innerEnd);
   const bytes = composer.compose(documentXml, { sweep: "changed" });
   const report = planned.map((plan) => `${plan.order + 1}. ${plan.label}${track ? " (tracked)" : ""}`);

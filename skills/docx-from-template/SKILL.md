@@ -28,8 +28,9 @@ inside an existing document, and leaves everything you did not touch exactly as 
 
 1. **Read the template.** Call `docx_styles` on it. It says which of its styles your headings,
    paragraphs and lists will wear, whether the template numbers its headings (then do **not**
-   type numbers into your headings: "Scope", not "2. Scope"), and whether it has a cover page and
-   a table of contents.
+   type numbers into your headings: "Scope", not "2. Scope" — Word adds its own, and a number you
+   type is removed and reported in the answer), and whether it has a cover page and a table of
+   contents.
 2. **Write the content as Markdown.** `#` is a chapter, `##` a section, `###` a subsection — the
    heading levels become the document's outline. Use real lists, tables and `**bold**`; LaTeX
    (`$…$`, `$$…$$`) becomes native Word equations. Reference pictures by workspace path

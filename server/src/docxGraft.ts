@@ -26,7 +26,8 @@ import { docxDocument, markdownToDocx, type PictureSource } from "@pi-outpost/sh
 import { contentTypeOf, decode, parseRelationshipList, relsPartOf, scanRawRelationships, type Relationship } from "./ooxml.ts";
 import { readAllZipEntries } from "./zip.ts";
 import { writeZip } from "./zipWriter.ts";
-import { bodyLayout, childElements, parseStyles, rootAttributes, styleKey, type WordStyle, type XmlElement } from "./wordml.ts";
+import { decodeEntities } from "./xml.ts";
+import { bodyLayout, childElements, firstVal, headingLevelOf, parseStyles, rootAttributes, styleIsNumbered, styleKey, withoutTypedNumber, type WordStyle, type XmlElement } from "./wordml.ts";
 import {
   CONTENT_TYPES,
   CT_DOCUMENT,
@@ -54,6 +55,14 @@ export interface GeneratedContent {
   rels: Relationship[];
   styles: Map<string, WordStyle>;
   body: XmlElement[];
+}
+
+/** The note for headings whose typed number was removed, or none. */
+export function renumberedNote(headings: string[]): string[] {
+  if (headings.length === 0) return [];
+  const shown = headings.slice(0, 3).map((text) => `"${decodeEntities(text).trim()}"`).join(", ");
+  const more = headings.length > 3 ? `, and ${headings.length - 3} more` : "";
+  return [`the typed number was removed from ${headings.length} heading(s) the template numbers itself (${shown}${more}); write headings without numbers`];
 }
 
 /** Markdown as body elements of a throwaway package, for `WordComposer.adopt`. */
@@ -228,11 +237,15 @@ export class WordComposer {
   private readonly ignorable = new Set<string>();
   private readonly styleNamespaces = new Map<string, string>();
   private readonly numberingNamespaces = new Map<string, string>();
+  private readonly targetNumbering: string | undefined;
+  /** Headings whose typed number was removed because their style numbers them, as they were written. */
+  readonly renumberedHeadings: string[] = [];
 
   constructor(target: WordPackage) {
     this.target = target;
     this.styles = new Map(target.styles);
     const numbering = target.numberingPart === undefined ? "" : (decode(target.parts, target.numberingPart) ?? "");
+    this.targetNumbering = numbering;
     this.nextAbstractNum = highestNumber([...numbering.matchAll(/abstractNumId="(\d+)"/g)].map((match) => match[1])) + 1;
     this.nextNum = highestNumber([...numbering.matchAll(/<(?:\w+:)?num\b[^>]*numId="(\d+)"/g)].map((match) => match[1])) + 1;
     this.nextRel = highestNumber(target.documentRels.map((rel) => rel.id)) + 1;
@@ -265,6 +278,21 @@ export class WordComposer {
     return newId;
   }
 
+  /** A body element, its typed heading number removed when its style numbers it. */
+  private withoutTypedHeadingNumber(xml: string): string {
+    if (!/^<w:p\b/.test(xml)) return xml;
+    const level = headingLevelOf(xml, this.styles);
+    if (level === undefined) return xml;
+    const pPr = /<w:pPr\b[\s\S]*?<\/w:pPr>/.exec(xml)?.[0] ?? "";
+    if (!styleIsNumbered(this.styles, firstVal(pPr, "pStyle"), this.targetNumbering)) return xml;
+    const run = /(<w:t\b[^>]*>)([^<]*)(<\/w:t>)/.exec(xml);
+    if (run === null) return xml;
+    const rest = withoutTypedNumber(run[2], level);
+    if (rest === undefined) return xml;
+    this.renumberedHeadings.push(run[2]);
+    return xml.slice(0, run.index) + run[1] + rest + run[3] + xml.slice(run.index + run[0].length);
+  }
+
   /** Body elements of `generated`, rewritten to live in the target. */
   adopt(generated: GeneratedContent): string[] {
     const genNamespaces = namespacesOf(generated.documentXml);
@@ -277,6 +305,13 @@ export class WordComposer {
       const genStylesXml = decode(generated.parts, "word/styles.xml") ?? "";
       for (const [prefix, uri] of namespacesOf(genStylesXml)) this.styleNamespaces.set(prefix, uri);
     }
+
+    // A heading whose style the target numbers loses the number typed in front of it;
+    // kept, the reader would see both: "1. 1. Scope".
+    body = body
+      .split("\u0000")
+      .map((xml) => this.withoutTypedHeadingNumber(xml))
+      .join("\u0000");
 
     // Numbering: carry the definitions the body uses, renumbered past the target's.
     const numbering = decode(generated.parts, "word/numbering.xml");

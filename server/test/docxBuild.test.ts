@@ -18,7 +18,7 @@ import { describeWordTemplate, formatTemplateDescription, MAX_LISTED_TABLE_STYLE
 import { withUpdateFields } from "../src/docxGraft.ts";
 import { readAllZipEntries } from "../src/zip.ts";
 import { writeZip } from "../src/zipWriter.ts";
-import { bodyLayout } from "../src/wordml.ts";
+import { bodyLayout, paragraphText, parseStyles, styleIsNumbered, withoutTypedNumber } from "../src/wordml.ts";
 
 const FIXTURES = path.join(path.dirname(fileURLToPath(import.meta.url)), "fixtures");
 const templateBytes = await readFile(path.join(FIXTURES, "docx-template.dotx"));
@@ -144,6 +144,33 @@ describe("docx_create: Markdown written into a template", () => {
     // A heading level the template lacks is added under the writer's name, not replaced.
     assert.match(document, /w:val="Heading4"/);
     assert.match(styles, /<w:style w:type="paragraph" w:styleId="Heading4"><w:name w:val="Heading 4"\/>[\s\S]*?<w:outlineLvl w:val="3"\/>/);
+  });
+
+  test("TypedHeadingNumbersAreRemoved: a heading the template numbers is not numbered twice", async () => {
+    const created = await createDocument(
+      template(),
+      "# 1. Introduction\n\nIn 2. steps.\n\n## 1.1 Scope\n\n### 1.1.1 Detail\n\n# 2024 results\n\n## 3.2.1 Too deep\n",
+    );
+    const document = text(unzip(created.bytes), "word/document.xml");
+    const headings = bodyLayout(document)
+      .children.filter((child) => /<w:pStyle w:val="Titre\d"\/>/.test(child.xml))
+      .map((child) => `${/w:val="(Titre\d)"/.exec(child.xml)![1]} ${paragraphText(child.xml)}`);
+    assert.deepEqual(headings, [
+      "Titre1 Introduction",
+      "Titre2 Scope",
+      // The template's heading 3 is not numbered: its typed number is the only one.
+      "Titre3 1.1.1 Detail",
+      "Titre1 2024 results",
+      // More groups than the level has is not outline numbering; it is left to the writer.
+      "Titre2 3.2.1 Too deep",
+    ]);
+    assert.match(document, /In 2\. steps\./);
+    assert.ok(created.warnings.some((warning) => /typed number was removed from 2 heading\(s\).*"1\. Introduction", "1\.1 Scope"/.test(warning)), created.warnings.join("\n"));
+  });
+
+  test("without typed numbers, nothing is removed and nothing is reported", async () => {
+    const created = await createDocument(template(), "# Introduction\n\n## Scope\n");
+    assert.ok(created.warnings.every((warning) => !/typed number/.test(warning)));
   });
 
   test("HeadersFootersAndPageSetupAreKept: the template's final section ends the new body", async () => {
@@ -316,5 +343,39 @@ describe("createDocument and a picture's alternative text", () => {
     const created = await createDocument(template(), "![   ](chart.png)\n", { pictures: source() });
     const docPr = /<wp:docPr\b[^>]*>/.exec(text(unzip(created.bytes), "word/document.xml"))?.[0] ?? "";
     assert.match(docPr, /descr=""/, "spaces are not a description of anything");
+  });
+});
+
+describe("heading numbering, as Word decides it", () => {
+  const styles = parseStyles(
+    '<w:styles xmlns:w="w">' +
+      '<w:style w:type="paragraph" w:styleId="Base"><w:name w:val="base"/><w:pPr><w:numPr><w:numId w:val="4"/></w:numPr></w:pPr></w:style>' +
+      '<w:style w:type="paragraph" w:styleId="Child"><w:name w:val="child"/><w:basedOn w:val="Base"/></w:style>' +
+      '<w:style w:type="paragraph" w:styleId="Off"><w:name w:val="off"/><w:basedOn w:val="Base"/><w:pPr><w:numPr><w:numId w:val="0"/></w:numPr></w:pPr></w:style>' +
+      '<w:style w:type="paragraph" w:styleId="Linked"><w:name w:val="linked"/></w:style>' +
+      '<w:style w:type="paragraph" w:styleId="Plain"><w:name w:val="plain"/></w:style>' +
+      "</w:styles>",
+  );
+  const numbering = '<w:numbering xmlns:w="w"><w:abstractNum w:abstractNumId="1"><w:lvl w:ilvl="0"><w:pStyle w:val="Linked"/></w:lvl></w:abstractNum></w:numbering>';
+
+  test("a style is numbered by its own numPr, one it inherits, or a numbering level linked to it — and numId 0 turns it off", () => {
+    assert.equal(styleIsNumbered(styles, "Base", numbering), true);
+    assert.equal(styleIsNumbered(styles, "Child", numbering), true);
+    assert.equal(styleIsNumbered(styles, "Off", numbering), false);
+    assert.equal(styleIsNumbered(styles, "Linked", numbering), true);
+    assert.equal(styleIsNumbered(styles, "Linked", undefined), false);
+    assert.equal(styleIsNumbered(styles, "Plain", numbering), false);
+    assert.equal(styleIsNumbered(styles, undefined, numbering), false);
+  });
+
+  test("only what reads as outline numbering is taken for a typed number", () => {
+    assert.equal(withoutTypedNumber("1. Introduction", 1), "Introduction");
+    assert.equal(withoutTypedNumber("2) Scope", 1), "Scope");
+    assert.equal(withoutTypedNumber("2.1 Scope", 2), "Scope");
+    assert.equal(withoutTypedNumber("2.1. Scope", 3), "Scope");
+    assert.equal(withoutTypedNumber("2.1 Scope", 1), undefined);
+    assert.equal(withoutTypedNumber("2024 results", 1), undefined);
+    assert.equal(withoutTypedNumber("1.", 1), undefined);
+    assert.equal(withoutTypedNumber("Scope 1.", 1), undefined);
   });
 });

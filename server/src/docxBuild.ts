@@ -8,7 +8,7 @@
  */
 import type { PictureSource, ReferencedImage } from "@pi-outpost/shared/docx";
 import { countDiagrams } from "@pi-outpost/shared/docx";
-import { generateContent, WordComposer, type GeneratedContent } from "./docxGraft.ts";
+import { generateContent, renumberedNote, WordComposer, type GeneratedContent } from "./docxGraft.ts";
 import { isGallery, isTableOfContents, WordTemplateError, type WordPackage } from "./docxTemplate.ts";
 import { bodyLayout, type BodyLayout } from "./wordml.ts";
 
@@ -92,7 +92,7 @@ export function createFromContent(template: WordPackage, generated: GeneratedCon
 
   const composer = new WordComposer(template);
   const content = composer.adopt(generated);
-  warnings.push(...contentNotes);
+  warnings.push(...renumberedNote(composer.renumberedHeadings), ...contentNotes);
 
   const body = [...kept, ...content, layout.sectPr?.xml ?? ""].join("");
   const documentXml = template.documentXml.slice(0, layout.innerStart) + body + template.documentXml.slice(layout.innerEnd);
