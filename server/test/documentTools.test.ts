@@ -5,7 +5,14 @@
  */
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { DOCUMENT_TOOLS, documentToolsFor, documentToolsForToolCall, PRESENTATION_TOOLS, WORD_TOOLS } from "../src/documentTools.ts";
+import {
+  DOCUMENT_TOOLS,
+  documentToolsFor,
+  documentToolsForToolCall,
+  documentToolsForWrittenPaths,
+  PRESENTATION_TOOLS,
+  WORD_TOOLS,
+} from "../src/documentTools.ts";
 
 describe("documentToolsFor", () => {
   test("a named document publishes its own extractor and no other", () => {
@@ -81,6 +88,7 @@ describe("documentToolsFor", () => {
       "pptx_create",
       "pptx_update",
       "pptx_render",
+      "mail_extract",
     ]);
     // Not generated from the extension any more: a PDF brings its renderer as well as
     // its extractor, so the one-tool-per-kind shortcut no longer describes the map.
@@ -105,6 +113,81 @@ describe("Word tools", () => {
     assert.deepEqual(documentToolsForToolCall("read", { path: "C:\\docs\\Report.DOCX" }), WORD_TOOLS);
     // The extractor stays the user's to bring back by naming a document.
     assert.ok(!documentToolsForToolCall("read", { path: "report.docx" }).includes("docx_extract"));
+  });
+});
+
+describe("mail tools", () => {
+  test("a named message publishes the mail extractor and nothing else", () => {
+    for (const text of [
+      "read Bienvenue.msg",
+      "@uploads/dossier.eml",
+      "what does /Users/laurent/Library/Mail/message.emlx say?",
+      'open "Réunion de mardi.msg"',
+      "C:\\\\Users\\\\laurent\\\\Bienvenue.MSG",
+    ]) {
+      assert.deepEqual(documentToolsFor(text), ["mail_extract"], text);
+    }
+  });
+
+  test("talking about email publishes nothing", () => {
+    // A `.msg` says nothing about what it carries, so naming one must not publish the
+    // extractors for the formats it might hold either.
+    for (const text of [
+      "forward me the mail",
+      "can you read my outlook messages?",
+      "we support msg and eml",
+      "refactor src/mail.ts",
+      "the .eml format is MIME",
+    ]) {
+      assert.deepEqual(documentToolsFor(text), [], text);
+    }
+  });
+
+  test("a message alongside a document publishes both, in registration order", () => {
+    assert.deepEqual(documentToolsFor("compare report.pdf with Bienvenue.msg"), ["pdf_extract", "pdf_render", "mail_extract"]);
+  });
+
+  test("WrittenAttachmentPublishesItsExtractor: a document this system wrote publishes its reader", () => {
+    assert.deepEqual(documentToolsForWrittenPaths(["uploads/m.msg.attachments/1-deck.pptx"]), ["pptx_extract"]);
+    assert.deepEqual(documentToolsForWrittenPaths(["uploads/m.eml.attachments/2-rapport.pdf"]), ["pdf_extract", "pdf_render"]);
+    assert.deepEqual(documentToolsForWrittenPaths(["a.docx"]), ["docx_extract"]);
+    assert.deepEqual(documentToolsForWrittenPaths(["b.xlsx"]), ["xlsx_extract"]);
+    // A message carried inside a message is read by the same tool.
+    assert.deepEqual(documentToolsForWrittenPaths(["fwd.eml"]), ["mail_extract"]);
+  });
+
+  test("only the extractor: unpacking a deck is not a reason to start writing one", () => {
+    // The authoring tools travel with the extractor when a *template* is named. An
+    // attachment is not a template, and publishing five tools for a file the agent
+    // wants to read would cost the rest of the session.
+    const published = documentToolsForWrittenPaths(["1-deck.pptx", "2-notes.docx"]);
+    assert.deepEqual(published, ["docx_extract", "pptx_extract"]);
+    for (const tool of [...PRESENTATION_TOOLS, ...WORD_TOOLS]) {
+      assert.ok(!published.includes(tool), `${tool} must not be published by a write`);
+    }
+  });
+
+  test("only the kinds actually written", () => {
+    assert.deepEqual(documentToolsForWrittenPaths(["1-rapport.pdf"]), ["pdf_extract", "pdf_render"]);
+    assert.ok(!documentToolsForWrittenPaths(["1-rapport.pdf"]).includes("pptx_extract"));
+  });
+
+  test("a path the agent merely names publishes nothing", () => {
+    // Listing a directory that holds a spreadsheet, or reading a PDF by path, is not a
+    // write: the extractor stays the user's to bring back by naming the document. Only
+    // a document this system wrote reaches documentToolsForWrittenPaths.
+    assert.deepEqual(documentToolsForToolCall("ls", { path: "reports/budget.xlsx" }), []);
+    assert.deepEqual(documentToolsForToolCall("read", { path: "reports/annual.pdf" }), []);
+    assert.deepEqual(documentToolsForToolCall("find", { path: "inbox/Bienvenue.msg" }), []);
+  });
+
+  test("a path with no document extension publishes nothing", () => {
+    assert.deepEqual(documentToolsForWrittenPaths(["1-notes.txt", "2-image001.png", "3-nameless"]), []);
+    assert.deepEqual(documentToolsForWrittenPaths([]), []);
+  });
+
+  test("a Windows path is understood, and case does not matter", () => {
+    assert.deepEqual(documentToolsForWrittenPaths(["uploads\\m.msg.attachments\\1-DECK.PPTX"]), ["pptx_extract"]);
   });
 });
 

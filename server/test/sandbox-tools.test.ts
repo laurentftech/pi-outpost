@@ -148,6 +148,10 @@ describe("createSandboxedTools", () => {
         "find",
         "grep",
         "ls",
+        // Reading a message is reading, and unpacking one of its attachments is a
+        // write measured against the writable zone — so the tool is here, and in a
+        // read-only sandbox it refuses to unpack while still reading the message.
+        "mail_extract",
         "pdf_extract",
         // Drawing a page is reading it: it opens the file and returns pictures, writing
         // nothing, so it belongs in the read-only set beside the extractor.
@@ -175,6 +179,7 @@ describe("createSandboxedTools", () => {
         "find",
         "grep",
         "ls",
+        "mail_extract",
         "pdf_extract",
         "pdf_render",
         "pptx_create",
@@ -198,6 +203,7 @@ describe("createSandboxedTools", () => {
       assert.ok(names(tools).includes("docx_extract"));
       assert.ok(names(tools).includes("xlsx_extract"));
       assert.ok(names(tools).includes("pptx_extract"));
+      assert.ok(names(tools).includes("mail_extract"));
       assert.ok(!names(tools).includes("bash"));
     });
 

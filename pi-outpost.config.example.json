@@ -31,6 +31,9 @@
   "pptx": {
     "maxBytes": 26214400
   },
+  "mail": {
+    "maxBytes": 26214400
+  },
   "office": {
     "renderer": "auto",
     "renderTimeoutMs": 120000

@@ -219,12 +219,24 @@ one needs, the command that proves it works, and the caution that goes with it.
   missing from what the agent read. Text a document crosses out comes back as `~~struck through~~` rather than
   as live content — in a `.docx` from the run's own formatting, in a PDF from the strike the
   page draws over the glyphs. Each takes an `output_path`, to write the whole document to a
-  file instead of spending the context on it twice. The four extractors are described to
+  file instead of spending the context on it twice. The extractors are described to
   the agent only once a document of that kind is named in the conversation — their schemas
   are a quarter of a session's prompt floor, and most sessions never open one. Named and never
   called, an extractor goes again when the turn ends; named and used, it stays through the
   work around that document and is forgotten after five quiet turns. Naming the document
   again brings it back
+- Email dropped on the composer: an Outlook `.msg`, or a `.eml`/`.emlx` from macOS Mail, Gmail or
+  any webmail, is copied into the workspace and read by `mail_extract` — subject, sender,
+  recipients, date, the body as markdown, and an inventory of its attachments. Ask for the
+  attachments and it writes them into a directory beside the message, so the deck, the contract or
+  the report it carried is read by `pptx_extract`, `docx_extract`, `xlsx_extract` or `pdf_extract`
+  at a path, and the reader for what was written is offered to the agent there and then. A message
+  is content someone else wrote, so every extraction says so before the body, nothing in it is
+  fetched or executed, and an attachment's file name is never used as a path as it stands. An
+  encrypted message says it is encrypted rather than returning its ciphertext; a signed one is read
+  from the signed content and reported as unverified. Dragging a message straight out of the
+  Outlook app may hand the browser nothing at all, depending on its version — drag it to a folder
+  first, or use the composer's attach button. macOS Mail gives a `.eml` and is unaffected
 - PowerPoint decks from a template: `pptx_layouts` lists a `.potx`/`.pptx` template's layouts,
   `pptx_create` builds a deck into them — titles, bullets, PNG/JPEG/GIF/SVG pictures, native
   tables and editable column, bar, line and pie charts, written into the layouts' placeholders so
@@ -492,6 +504,7 @@ in [`pi-outpost.config.example.json`](pi-outpost.config.example.json).
 |-----|--------|
 | `pdf.maxBytes` | Largest PDF the viewer may load and `pdf_extract` may read (default `26214400` — 25 MB). Every other file keeps the 1 MB limit |
 | `docx.maxBytes` / `xlsx.maxBytes` / `pptx.maxBytes` | The same ceiling, per format, for the Office extractors |
+| `mail.maxBytes` | The same ceiling for `mail_extract` (default `26214400` — 25 MB). A message carrying a deck is the size of the deck; what bounds one *call* is the body cap in the tool, since an attachment costs a path rather than its bytes |
 | `docx.template` | The Word template (`.dotx` or `.docx`) the viewer's Word export can write into, relative to the configuration file. A file that is missing or unusable is reported when the export is used, not at startup |
 | `office.renderer` | Which application `pptx_render` and `docx_render` draw with: `"auto"` (default — on Windows PowerPoint for decks and Word for documents, then LibreOffice, then ONLYOFFICE), `"powerpoint"`, `"word"`, `"libreoffice"` or `"onlyoffice"`. `"powerpoint"` and `"word"` each apply to their own kind of file; the other kind is drawn as with `"auto"` |
 | `office.libreofficePath` / `office.onlyofficePath` | The `soffice` or `docbuilder` executable, when it is not where it installs by default. Relative to the configuration file |

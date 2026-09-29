@@ -26,6 +26,7 @@
 import fs from "node:fs/promises";
 import type { ExtensionAPI, ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { createDocxExtractToolDefinition } from "./docxTool.ts";
+import { createMailExtractToolDefinition } from "./mailTool.ts";
 import { createPdfExtractToolDefinition } from "./pdfTool.ts";
 import { createPptxExtractToolDefinition } from "./pptxTool.ts";
 import { DEFAULT_RENDER_TIMEOUT_MS, OFFICE_RENDERERS } from "./config.ts";
@@ -54,7 +55,7 @@ import { createWorkPlanExtendedToolDefinition, createWorkPlanToolDefinition } fr
 export interface PiOutpostToolsSettings {
   /** The agent's working directory — paths the model gives resolve against it. */
   cwd: string;
-  maxBytes: { pdf: number; docx: number; xlsx: number; pptx: number; structuredExchange: number };
+  maxBytes: { pdf: number; docx: number; xlsx: number; pptx: number; structuredExchange: number; mail: number };
   /** How the render tools find and run an office application. Defaults when absent. */
   officeRender?: RenderSettings;
 }
@@ -77,7 +78,7 @@ export function parseToolsSettings(raw: string | undefined): PiOutpostToolsSetti
     throw new Error(`${TOOLS_ENV_VAR} has no "cwd"`);
   }
   const sizes = settings.maxBytes;
-  for (const key of ["pdf", "docx", "xlsx", "pptx", "structuredExchange"] as const) {
+  for (const key of ["pdf", "docx", "xlsx", "pptx", "structuredExchange", "mail"] as const) {
     if (typeof sizes?.[key] !== "number" || !Number.isFinite(sizes[key]) || sizes[key] <= 0) {
       throw new Error(`${TOOLS_ENV_VAR} has no positive "maxBytes.${key}"`);
     }
@@ -116,6 +117,7 @@ export async function createPiOutpostTools(settings: PiOutpostToolsSettings): Pr
     createDocxExtractToolDefinition({ ...common, maxBytes: settings.maxBytes.docx }),
     createXlsxExtractToolDefinition({ ...common, maxBytes: settings.maxBytes.xlsx }),
     createPptxExtractToolDefinition({ ...common, maxBytes: settings.maxBytes.pptx }),
+    createMailExtractToolDefinition({ ...common, maxBytes: settings.maxBytes.mail }),
     createPptxLayoutsToolDefinition({ ...common, maxBytes: settings.maxBytes.pptx, render }),
     createPptxCreateToolDefinition({ ...common, maxBytes: settings.maxBytes.pptx, render }),
     createPptxUpdateToolDefinition({ ...common, maxBytes: settings.maxBytes.pptx, render }),

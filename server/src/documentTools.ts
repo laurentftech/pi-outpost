@@ -48,6 +48,12 @@ const EXTRACTORS: Record<string, string[]> = {
   pptx: ["pptx_extract", ...PRESENTATION_TOOLS],
   // A .potx is only ever a template.
   potx: PRESENTATION_TOOLS,
+  // A message is read by one tool, which also unpacks what it carries. The
+  // extractors for those attachments are published when they are *written*, not
+  // here: naming a `.msg` says nothing about what is inside it.
+  msg: ["mail_extract"],
+  eml: ["mail_extract"],
+  emlx: ["mail_extract"],
 };
 
 export const DOCUMENT_TOOLS = [...new Set(Object.values(EXTRACTORS).flat())];
@@ -69,7 +75,7 @@ export const DOCUMENT_TOOLS = [...new Set(Object.values(EXTRACTORS).flat())];
  * closed a parenthetical, "(report.pdf)", as much as a comma), or a sentence's full
  * stop.
  */
-const MENTION = /(?:^|[\s"'`<])(?:[^\s"'`<>]*[/\\])?[^\s"'`<>/\\]+\.(pdf|docx|dotx|xlsx|pptx|potx)(?=$|[\s"'`>)\],;:!?.])/gi;
+const MENTION = /(?:^|[\s"'`<])(?:[^\s"'`<>]*[/\\])?[^\s"'`<>/\\]+\.(pdf|docx|dotx|xlsx|pptx|potx|msg|eml|emlx)(?=$|[\s"'`>)\],;:!?.])/gi;
 
 /**
  * The tools the text calls for, in the order they are registered.
@@ -105,6 +111,31 @@ export function documentToolsFor(text: string): string[] {
  * a document (the agent spec's "only way back"), so nothing the agent does republishes
  * `pptx_extract`.
  */
+/**
+ * The tools a document *this system has just written* calls for.
+ *
+ * The one way an extractor is published other than by the user naming a document,
+ * and the distinction is the point: a path the agent merely mentions, lists or finds
+ * publishes nothing, because the trigger there is a text match that can be wrong. A
+ * path handed to this function was written by this system a moment ago — unpacking an
+ * email's attachments is what does it — so the file provably exists, and it exists at
+ * a path the user never had the chance to name.
+ *
+ * Only the extractor for each kind written. The authoring tools that travel with an
+ * extractor when a *template* is named are not called for by an attachment: reading
+ * the deck someone emailed is not a reason to start writing one.
+ */
+export function documentToolsForWrittenPaths(paths: string[]): string[] {
+  const found = new Set<string>();
+  for (const written of paths) {
+    const extension = /\.([A-Za-z0-9]+)$/.exec(written.replace(/\\/g, "/"))?.[1]?.toLowerCase() ?? "";
+    for (const tool of EXTRACTORS[extension] ?? []) {
+      if (tool.endsWith("_extract") || tool === "pdf_render") found.add(tool);
+    }
+  }
+  return DOCUMENT_TOOLS.filter((tool) => found.has(tool));
+}
+
 export function documentToolsForToolCall(toolName: string, args: unknown): string[] {
   const target = (args as { path?: unknown } | null)?.path;
   if (typeof target !== "string") return [];

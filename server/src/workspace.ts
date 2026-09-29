@@ -56,6 +56,7 @@ export interface WorkspaceToolLimits {
   xlsxMaxBytes: number;
   pptxMaxBytes: number;
   structuredExchangeMaxBytes: number;
+  mailMaxBytes: number;
   /** How `pptx_render` finds and runs an office application. */
   officeRender?: RenderSettings;
 }
@@ -100,6 +101,12 @@ export interface WorkspaceOptions {
    * may hear about it.
    */
   onDirectoryChanged: (relPath: string) => void;
+  /**
+   * Called with the workspace paths of documents the toolset has written for this
+   * workspace — today, an email's unpacked attachments. The server publishes the
+   * reader for each kind, inside the turn that wrote it.
+   */
+  onDocumentsWritten?: (paths: string[]) => void;
   /**
    * Where "this workspace's repository set changed" goes. Called only when the set
    * differs from the one it replaces, so a quiet re-scan says nothing.
@@ -508,6 +515,8 @@ async function buildResources(options: WorkspaceOptions): Promise<WorkspaceResou
           // The project, not the sandbox root: the profile registry is the project's.
           settings.cwd,
           limits.officeRender,
+          limits.mailMaxBytes,
+          options.onDocumentsWritten,
         )),
         ...options.unconfinedTools,
       ])

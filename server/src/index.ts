@@ -183,7 +183,7 @@ import { replyBlockKey, structuredExchangeBlocks } from "@pi-outpost/shared/stru
 import { checkPiPackages, listPiPackages, packageManagerFor } from "./piPackages.ts";
 import { createStructuredExchangeFigureToolDefinition } from "./structuredExchangeFigureTool.ts";
 import { createWorkPlanExtendedToolDefinition, createWorkPlanToolDefinition, WORK_PLAN_EXTENDED_TOOL, WORK_PLAN_TOOL } from "./workPlanTool.ts";
-import { DOCUMENT_TOOLS, documentToolsFor, documentToolsForToolCall } from "./documentTools.ts";
+import { DOCUMENT_TOOLS, documentToolsFor, documentToolsForToolCall, documentToolsForWrittenPaths } from "./documentTools.ts";
 import {
   PROJECT_MODEL_TOOL,
   projectModelFiles,
@@ -193,6 +193,7 @@ import {
 } from "./projectModelTool.ts";
 import { copyWorkPlan, deleteWorkPlan, loadWorkPlan, sameSessionFile } from "./workPlanStore.ts";
 import { composeAppendSystemPrompt } from "./systemPrompt.ts";
+import { createMailExtractToolDefinition } from "./mailTool.ts";
 import { createPdfExtractToolDefinition, createPdfRenderToolDefinition } from "./pdfTool.ts";
 import { Workspace, shouldRetireWorkspace, type WorkspaceOptions, type WorkspaceSettings } from "./workspace.ts";
 import { WorkspaceRegistry } from "./workspaceRegistry.ts";
@@ -526,6 +527,7 @@ function workspaceOptions(settings: WorkspaceSettings): Omit<WorkspaceOptions, "
       xlsxMaxBytes: config.xlsx.maxBytes,
       pptxMaxBytes: config.pptx.maxBytes,
       structuredExchangeMaxBytes: config.structuredExchange.maxBytes,
+      mailMaxBytes: config.mail.maxBytes,
       officeRender: officeRenderSettings(),
     },
     watchFiles: config.files.watch,
@@ -547,6 +549,22 @@ function workspaceOptions(settings: WorkspaceSettings): Omit<WorkspaceOptions, "
 }
 
 /**
+ * Publishing the reader for a document this system has just written for a workspace.
+ *
+ * The workspace is reached through a function because these callbacks are built while
+ * it is still being constructed — the same shape `onDirectoryChanged` uses at every
+ * one of these sites — and they only ever run later, from inside a turn.
+ */
+function publishWrittenDocuments(target: () => Workspace): (paths: string[]) => void {
+  return (paths) => {
+    const workspace = target();
+    const tools = documentToolsForWrittenPaths(paths);
+    DEBUG("[pi-outpost] documents written", paths, "publishing", tools);
+    for (const tool of tools) publishToolDuringTurn(workspace, tool);
+  };
+}
+
+/**
  * The project this server booted with, and everything rooted at it.
  *
  * Its runtime is attached below rather than built here: the HTTP server
@@ -556,6 +574,7 @@ function workspaceOptions(settings: WorkspaceSettings): Omit<WorkspaceOptions, "
  */
 const workspace = await Workspace.create({
   ...workspaceOptions({ cwd: config.cwd, ...(config.sandbox ? { sandbox: config.sandbox } : {}) }),
+  onDocumentsWritten: publishWrittenDocuments(() => workspace),
   onDirectoryChanged: (relPath) => {
     workspace.noteDirectoryChange();
     broadcast(workspace, { type: "directory_changed", path: relPath });
@@ -1095,7 +1114,18 @@ const DEBUG = process.env.PI_OUTPOST_DEBUG ? console.log : () => {};
  * spelled.
  */
 const makeCreateRuntime =
-  (sandboxedTools: ToolDefinition[] | undefined): CreateAgentSessionRuntimeFactory =>
+  (
+    sandboxedTools: ToolDefinition[] | undefined,
+    /**
+     * The workspace whose session a tool may publish another tool into.
+     *
+     * Only `mail_extract` uses it, and only for a document it has just written: see
+     * `documentToolsForWrittenPaths`. Passed as the workspace rather than as a
+     * callback built here because the agent does not exist yet when this factory is
+     * made — it is the factory's own result — so the lookup has to be late.
+     */
+    publishInto?: Workspace,
+  ): CreateAgentSessionRuntimeFactory =>
   async ({ cwd, sessionManager, sessionStartEvent }) => {
   const appendSystemPrompt = composeAppendSystemPrompt(config);
 
@@ -1219,6 +1249,25 @@ const makeCreateRuntime =
                 maxBytes: config.pptx.maxBytes,
                 writableRoot: await fs.realpath(cwd),
               }),
+              createMailExtractToolDefinition({
+                cwd,
+                allowedRoots: [await fs.realpath(cwd)],
+                maxBytes: config.mail.maxBytes,
+                writableRoot: await fs.realpath(cwd),
+                // An unpacked attachment is a document arriving by a route the user
+                // never had a chance to name, so its extractor is published here,
+                // inside the turn that wrote it. The trigger is the write: nothing
+                // the agent merely says reaches this.
+                ...(publishInto === undefined
+                  ? {}
+                  : {
+                      onDocumentsWritten: (paths: string[]) => {
+                        const tools = documentToolsForWrittenPaths(paths);
+                        DEBUG("[pi-outpost] mail unpacked", paths, "publishing", tools);
+                        for (const tool of tools) publishToolDuringTurn(publishInto, tool);
+                      },
+                    }),
+              }),
               // Making a deck from a template, and drawing it to check it reads — published
               // with the extractors, when a presentation or a template enters the conversation.
               createPptxLayoutsToolDefinition({
@@ -1339,6 +1388,7 @@ async function buildRuntimeFor(target: Workspace): Promise<AgentRuntime> {
             xlsx: config.xlsx.maxBytes,
             pptx: config.pptx.maxBytes,
             structuredExchange: config.structuredExchange.maxBytes,
+            mail: config.mail.maxBytes,
           },
           officeRender: officeRenderSettings(),
         } satisfies PiOutpostToolsSettings),
@@ -1346,7 +1396,7 @@ async function buildRuntimeFor(target: Workspace): Promise<AgentRuntime> {
     });
   }
   return await createEmbeddedRuntime({
-    factory: makeCreateRuntime(target.sandboxedTools),
+    factory: makeCreateRuntime(target.sandboxedTools, target),
     cwd,
     agentDir: AGENT_DIR,
     sessionManager: SessionManager.create(cwd, SESSION_DIR),
@@ -1499,6 +1549,7 @@ for (const root of config.openProjects) {
   try {
     const restored = await Workspace.create({
       ...workspaceOptions({ cwd: root }),
+      onDocumentsWritten: publishWrittenDocuments(() => restored),
       onDirectoryChanged: (relPath) => {
         restored.noteDirectoryChange();
         broadcast(restored, { type: "directory_changed", path: relPath });
@@ -2656,7 +2707,7 @@ async function rebuildSibling(sibling: Workspace): Promise<void> {
   const conversation = sibling.agent.snapshot().sessionFile;
   sibling.replacingSession = true;
   try {
-    const result = await rebuild.call(sibling.agent, makeCreateRuntime(sibling.sandboxedTools));
+    const result = await rebuild.call(sibling.agent, makeCreateRuntime(sibling.sandboxedTools, sibling));
     if (result.cancelled || conversation === undefined) return;
     // A conversation with nothing in it yet has no file to go back to.
     if (!(await fs.stat(conversation).then(() => true, () => false))) return;
@@ -2880,7 +2931,7 @@ async function handleUpdateConfig(
     await workspace.rebuildResources({ cwd: workspace.settings.cwd, ...(rebuiltSandbox ? { sandbox: rebuiltSandbox } : {}) });
     // Replace the current session so the new runtime picks up the updated tools
     // and re-runs skill discovery over the new paths.
-    const replacement = await rebuildTools.call(workspace.agent, makeCreateRuntime(workspace.sandboxedTools));
+    const replacement = await rebuildTools.call(workspace.agent, makeCreateRuntime(workspace.sandboxedTools, workspace));
     if (replacement.cancelled) {
       // newSession did not invalidate the old agent, so restore every other view
       // of the boundary before reporting the refusal. Runtime first, disk second:
@@ -2910,7 +2961,7 @@ async function handleUpdateConfig(
     if (!resourceRequestId) reportError(error);
     refuse(`Settings saved, but the session could not be rebuilt: ${error instanceof Error ? error.message : String(error)}`);
     try {
-      await rebuildTools.call(workspace.agent, makeCreateRuntime(workspace.sandboxedTools));
+      await rebuildTools.call(workspace.agent, makeCreateRuntime(workspace.sandboxedTools, workspace));
     } catch (recoveryError) {
       if (!resourceRequestId) reportError(recoveryError);
     }
@@ -2972,6 +3023,7 @@ async function handleOpenProject(socket: WebSocket, rawRoot: string): Promise<vo
     // the persisted set start the same way, and share the same in-flight guard.
     opened = await Workspace.create({
       ...workspaceOptions({ cwd: root }),
+      onDocumentsWritten: publishWrittenDocuments(() => opened),
       onDirectoryChanged: (relPath) => {
         opened.noteDirectoryChange();
         broadcast(opened, { type: "directory_changed", path: relPath });
@@ -3115,6 +3167,7 @@ async function handleOpenSideSession(socket: WebSocket, rawRoot: string): Promis
     side = await Workspace.create(
       {
         ...workspaceOptions(project.settings),
+        onDocumentsWritten: publishWrittenDocuments(() => side),
         onDirectoryChanged: (relPath) => {
           side.noteDirectoryChange();
           broadcast(side, { type: "directory_changed", path: relPath });

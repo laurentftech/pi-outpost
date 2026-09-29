@@ -766,6 +766,40 @@ describe("loadConfig — resource path resolution", () => {
     });
   });
 
+  test("mail.maxBytes defaults to 25 MB and can be changed", async () => {
+    await withTempDir(async (dir) => {
+      const configPath = path.join(dir, "config.json");
+      await writeFile(configPath, JSON.stringify({}, null, 2));
+      assert.equal(loadConfig(dir, { config: configPath }).mail.maxBytes, 26_214_400);
+
+      await writeFile(configPath, JSON.stringify({ mail: { maxBytes: 4_000_000 } }, null, 2));
+      assert.equal(loadConfig(dir, { config: configPath }).mail.maxBytes, 4_000_000);
+    });
+  });
+
+  test("mail.maxBytes refuses a value that is not a positive integer", async () => {
+    await withTempDir(async (dir) => {
+      const configPath = path.join(dir, "config.json");
+      for (const maxBytes of ["25MB", 0, -1, 1.5]) {
+        await writeFile(configPath, JSON.stringify({ mail: { maxBytes } }, null, 2));
+        assert.throws(() => loadConfig(dir, { config: configPath }), /"mail.maxBytes" must be a positive integer/);
+      }
+    });
+  });
+
+  test("the mail limit leaves every other file's limit alone", async () => {
+    await withTempDir(async (dir) => {
+      const configPath = path.join(dir, "config.json");
+      await writeFile(configPath, JSON.stringify({ mail: { maxBytes: 1_000_000 } }, null, 2));
+      const config = loadConfig(dir, { config: configPath });
+      assert.equal(config.mail.maxBytes, 1_000_000);
+      assert.equal(config.pdf.maxBytes, 26_214_400);
+      assert.equal(config.docx.maxBytes, 26_214_400);
+      assert.equal(config.pptx.maxBytes, 26_214_400);
+      assert.equal(config.xlsx.maxBytes, 26_214_400);
+    });
+  });
+
   test("office rendering defaults to auto and accepts a renderer, executables and a timeout", async () => {
     await withTempDir(async (dir) => {
       const configPath = path.join(dir, "config.json");
