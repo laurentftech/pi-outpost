@@ -12,7 +12,7 @@ import { ansiLinesToHtml } from "../../node_modules/@earendil-works/pi-coding-ag
 import { createToolHtmlRenderer } from "../../node_modules/@earendil-works/pi-coding-agent/dist/core/export-html/tool-renderer.js";
 import { getThemeByName } from "../../node_modules/@earendil-works/pi-coding-agent/dist/modes/interactive/theme/theme.js";
 import type { MessageRenderer, ToolDefinition } from "@earendil-works/pi-coding-agent";
-import type { Theme } from "@earendil-works/pi-coding-agent";
+import type { Theme, ThemeColor } from "@earendil-works/pi-coding-agent";
 
 const RENDER_WIDTH = 100;
 
@@ -43,6 +43,15 @@ function cssColor(ansi: string): string | undefined {
   return /style="(?:[^"]*;)?color:([^;"]+)/.exec(ansiLinesToHtml([`${ansi}x`]))?.[1];
 }
 
+/** A role's text colour escape, or `undefined` for a token that is a background only. */
+function foregroundAnsi(theme: Theme, role: ThemeColor): string | undefined {
+  try {
+    return theme.getFgAnsi(role);
+  } catch {
+    return undefined;
+  }
+}
+
 /**
  * Each dark-theme text colour, and the light theme's colour for the same role.
  *
@@ -54,11 +63,11 @@ function cssColor(ansi: string): string | undefined {
 function lightCounterparts(dark: Theme, light: Theme | undefined): Map<string, string> {
   const pairs = new Map<string, string>();
   if (light === undefined) return pairs;
-  const darkColors = (dark as unknown as { fgColors: Map<string, string> }).fgColors;
-  const lightColors = (light as unknown as { fgColors: Map<string, string> }).fgColors;
-  for (const [role, ansi] of darkColors) {
-    const darkCss = cssColor(ansi);
-    const lightAnsi = lightColors.get(role);
+  // Through the public API: the escapes used to be read from a private field, and when
+  // the SDK renamed it the pairing came back empty without a word.
+  for (const role of Object.keys(dark.colors) as ThemeColor[]) {
+    const darkCss = cssColor(foregroundAnsi(dark, role) ?? "");
+    const lightAnsi = foregroundAnsi(light, role);
     const lightCss = lightAnsi === undefined ? undefined : cssColor(lightAnsi);
     if (darkCss === undefined || lightCss === undefined || darkCss === lightCss || pairs.has(darkCss)) continue;
     pairs.set(darkCss, lightCss);
