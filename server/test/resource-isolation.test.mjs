@@ -25,6 +25,8 @@ const FIXTURES = path.resolve(
 describe("resource isolation", () => {
   test("extensionPaths + skillPaths + promptPaths load explicitly listed resources", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "pi-outpost-res-"));
+    let server;
+    let client;
     try {
       // Copy fixtures so relative paths work
       await cp(
@@ -41,7 +43,7 @@ describe("resource isolation", () => {
         path.join(root, "test-prompt.md"),
       );
 
-      const server = await startServer(root, {
+      server = await startServer(root, {
         noExtensions: true,
         extensionPaths: ["./test-extension.ts"],
         noSkills: true,
@@ -51,7 +53,7 @@ describe("resource isolation", () => {
         server: { port: await freePort() },
       });
 
-      const client = connect(server.wsUrl());
+      client = connect(server.wsUrl());
       await client.open();
       const hello = await client.waitFor("hello", 15_000);
 
@@ -78,9 +80,9 @@ describe("resource isolation", () => {
       );
       assert.equal(prompts[0].name, "test-prompt");
 
-      client.close();
-      await server.stop();
     } finally {
+      client?.close();
+      await server?.stop();
       await rm(root, { recursive: true, force: true });
     }
   });
@@ -136,14 +138,16 @@ describe("resource isolation", () => {
 
   test("absolute extensionPaths loads the listed extension", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "pi-outpost-abs-ext-"));
+    let server;
+    let client;
     try {
-      const server = await startServer(root, {
+      server = await startServer(root, {
         noExtensions: true,
         extensionPaths: [path.join(FIXTURES, "test-extension.ts")],
         server: { port: await freePort() },
       });
 
-      const client = connect(server.wsUrl());
+      client = connect(server.wsUrl());
       await client.open();
       const hello = await client.waitFor("hello", 15_000);
 
@@ -151,9 +155,9 @@ describe("resource isolation", () => {
       assert.ok(extCmd, "extension command 'test-ext' must be present");
       assert.equal(extCmd.source, "extension");
 
-      client.close();
-      await server.stop();
     } finally {
+      client?.close();
+      await server?.stop();
       await rm(root, { recursive: true, force: true });
     }
   });
