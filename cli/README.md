@@ -12,6 +12,9 @@ like `ANTHROPIC_API_KEY`, or the setup screen). The default embedded runtime alr
 the [pi coding agent](https://github.com/earendil-works/pi); a separate `pi` executable is
 needed only when `agentRuntime.mode` is `"rpc"`.
 
+When extensions are enabled, the embedded runtime also loads Pi's built-in `codemode`,
+`tool_search` and MCP extensions. Pi settings and MCP configuration decide which tools are active.
+
 ## It will not start without a configuration file
 
 That is deliberate. The config decides the agent's working directory, which tools it gets, and whether it can write files or run bash — and inferring that from whatever directory you happen to be standing in is not a decision anyone wants made for them. `init` writes the safe version (read-only, no bash) for you to open up as needed.

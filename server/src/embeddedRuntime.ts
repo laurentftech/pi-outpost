@@ -334,6 +334,11 @@ export class EmbeddedRuntime implements AgentRuntime {
       });
     }
     for (const extensionPath of this.session.extensionRunner.getExtensionPaths()) {
+      // Pi reports built-in extensions using markers such as `<inline:codemode>`.
+      // They are loaded runtime extensions, but not filesystem resources: passing
+      // these markers into resource provenance makes inventory code treat them as
+      // paths and fail realpath/lookups.
+      if (/^<inline:[^>]+>$/.test(extensionPath)) continue;
       const name = extensionPath.split(/[\\/]/).filter(Boolean).at(-1)?.replace(/\.[^.]+$/, "") ?? extensionPath;
       resources.push({ id: `extension:${extensionPath}`, kind: "extension", name, origin: "runtime", path: extensionPath });
     }

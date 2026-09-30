@@ -17,6 +17,9 @@ import {
   type CreateAgentSessionRuntimeFactory,
   createAgentSessionFromServices,
   createAgentSessionServices,
+  createCodemodeExtension,
+  createMcpExtension,
+  createToolSearchExtension,
   getAgentDir,
   type SessionInfo,
   SessionManager,
@@ -1169,7 +1172,19 @@ const makeCreateRuntime =
         : {}),
       ...(config.systemPrompt !== undefined ? { systemPrompt: config.systemPrompt } : {}),
       ...(appendSystemPrompt.length > 0 ? { appendSystemPrompt } : {}),
-      ...(extraFactories.length > 0 ? { extensionFactories: extraFactories } : {}),
+      extensionFactories: [
+        ...extraFactories,
+        // The Pi CLI loads these built-ins itself; SDK sessions do not. Keep the
+        // embedded runtime's extension set in step with the CLI, including MCP's
+        // codemode/tool_search activation when configured servers need them.
+        ...(!config.noExtensions
+          ? [
+              { name: "codemode", factory: createCodemodeExtension(), replaceable: true },
+              { name: "tool-search", factory: createToolSearchExtension(), replaceable: true },
+              { name: "mcp", factory: createMcpExtension(), replaceable: true },
+            ]
+          : []),
+      ],
     },
   });
   const extResult = services.resourceLoader.getExtensions();

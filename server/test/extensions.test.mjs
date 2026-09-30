@@ -15,7 +15,7 @@ try {
   await mkdir(path.join(root, "my-ext"), { recursive: true });
   await writeFile(
     path.join(root, "my-ext", "index.ts"),
-    `export default (pi) => { pi.registerCommand("my-cmd", { description: "from my ext" }); };`,
+    `export default (pi) => { pi.registerCommand("my-cmd", { description: "from my ext", handler: async () => {} }); };`,
   );
 
   const server = await startServer(root, {

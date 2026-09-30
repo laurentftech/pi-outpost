@@ -602,6 +602,9 @@ back to the OS preference.
 pi SDK session inside this process. `rpc` supervises a `pi --mode rpc` child — to match an
 existing pi installation, or to isolate a crash.
 
+With extensions enabled, the embedded session loads Pi's built-in `codemode`, `tool_search`
+and MCP extensions too. Their activation follows Pi's settings and MCP configuration.
+
 **The embedded SDK runtime is the supported target; `rpc` is best effort.** Features are
 designed, measured and proven against the SDK session. The RPC dialect gets what it can
 express: where a capability has no equivalent there, it is reported as unavailable rather
