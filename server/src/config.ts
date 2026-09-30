@@ -202,7 +202,8 @@ export interface PdfConfig {
   /**
    * Largest PDF the raw-file route will serve, in bytes. Default: 25 MiB.
    * PDFs get their own ceiling because the 1 MiB preview limit excludes most
-   * real documents; every other file keeps that limit.
+   * real documents. Inline images share it, for the same reason: most photos and
+   * screenshots exceed 1 MiB. Every other file keeps that limit.
    */
   maxBytes: number;
 }

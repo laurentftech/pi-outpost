@@ -504,7 +504,7 @@ in [`pi-outpost.config.example.json`](pi-outpost.config.example.json).
 
 | Key | Effect |
 |-----|--------|
-| `pdf.maxBytes` | Largest PDF the viewer may load and `pdf_extract` may read (default `26214400` — 25 MB). Every other file keeps the 1 MB limit |
+| `pdf.maxBytes` | Largest PDF the viewer may load and `pdf_extract` may read (default `26214400` — 25 MB). Images shown inline (PNG, JPEG, GIF, WebP, SVG, AVIF) share this limit; every other file keeps the 1 MB limit |
 | `docx.maxBytes` / `xlsx.maxBytes` / `pptx.maxBytes` | The same ceiling, per format, for the Office extractors |
 | `mail.maxBytes` | The same ceiling for `mail_extract` (default `26214400` — 25 MB). A message carrying a deck is the size of the deck; what bounds one *call* is the body cap in the tool, since an attachment costs a path rather than its bytes |
 | `docx.template` | The Word template (`.dotx` or `.docx`) the viewer's Word export can write into, relative to the configuration file. A file that is missing or unusable is reported when the export is used, not at startup |

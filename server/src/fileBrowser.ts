@@ -57,6 +57,24 @@ export function isPdfPath(relPath: string): boolean {
   return path.extname(relPath).toLowerCase() === ".pdf";
 }
 
+/**
+ * An image `/files/raw` serves inline — the same extensions as the route's content
+ * types. A photo or a screenshot is routinely several megabytes, so the 1 MiB
+ * preview cap would draw a PNG or a JPEG as a broken image where an SVG of the same
+ * figure, being a few kilobytes of text, draws fine.
+ */
+export function isRawImagePath(relPath: string): boolean {
+  return /^\.(png|jpe?g|gif|webp|svg|avif)$/.test(path.extname(relPath).toLowerCase());
+}
+
+/**
+ * The size `/files/raw` accepts for this path: PDFs and images are measured
+ * against the PDF ceiling (`pdf.maxBytes`), everything else against the preview cap.
+ */
+export function rawFileLimit(relPath: string, pdfMaxBytes: number): number {
+  return isPdfPath(relPath) || isRawImagePath(relPath) ? pdfMaxBytes : MAX_PREVIEW_BYTES;
+}
+
 export class FileBrowserError extends Error {
   constructor(
     public readonly reason: FileBrowserErrorReason,
@@ -272,9 +290,9 @@ function describeUnmeasured(size: number, structuredExchangeMaxBytes: number): s
  * here — deciding what's safe to *serve* (content type, disposition) is the
  * route's job.
  *
- * The size cap depends on the file's type: a PDF is measured against
- * `pdfMaxBytes`, which is the whole point — most real PDFs exceed the 1 MB
- * preview limit that governs everything else.
+ * The size cap depends on the file's type: a PDF or an image is measured against
+ * `pdfMaxBytes`, which is the whole point — most real PDFs, photos and screenshots
+ * exceed the 1 MB preview limit that governs everything else.
  */
 export async function readFileRaw(
   root: string,
@@ -291,7 +309,7 @@ export async function readFileRaw(
   if (!stat.isFile()) {
     throw new FileBrowserError("not-found", `"${relPath}" is not a file`);
   }
-  const limit = isPdfPath(relPath) ? pdfMaxBytes : MAX_PREVIEW_BYTES;
+  const limit = rawFileLimit(relPath, pdfMaxBytes);
   if (stat.size > limit) {
     const mb = (limit / (1024 * 1024)).toFixed(0);
     throw new FileBrowserError("too-large", `File is larger than the ${mb} MB limit`);

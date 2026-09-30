@@ -128,7 +128,6 @@ import {
   copyFileFromBrowser,
   deleteFileFromBrowser,
   FileBrowserError,
-  isPdfPath,
   listDirectory,
   MAX_PREVIEW_BYTES,
   MAX_UPLOAD_BASE64_LENGTH,
@@ -136,6 +135,7 @@ import {
   openFileNative,
   revealPathNative,
   readFileForPreview,
+  rawFileLimit,
   readFileRaw,
   renameFileFromBrowser,
   resolveConfined,
@@ -895,7 +895,7 @@ app.get("/files/raw", async (req, reply) => {
   const relPath = typeof query.path === "string" ? query.path : undefined;
   if (!relPath) return reply.code(400).send({ error: "missing path" });
   try {
-    // PDFs are measured against their own ceiling; everything else keeps 1 MB.
+    // PDFs and images are measured against the PDF ceiling; everything else keeps 1 MB.
     const bytes = await readFileRaw(workspace.browserRoot, relPath, config.pdf.maxBytes);
     reply.header("X-Content-Type-Options", "nosniff");
     // Workspace content may be stale seconds later (agent regenerates a plot)
@@ -918,7 +918,7 @@ app.get("/files/raw", async (req, reply) => {
     if (error instanceof FileBrowserError) {
       if (error.reason === "too-large") {
         // The viewer names the limit it hit, and the limit depends on the type
-        const limit = isPdfPath(relPath) ? config.pdf.maxBytes : MAX_PREVIEW_BYTES;
+        const limit = rawFileLimit(relPath, config.pdf.maxBytes);
         return reply.code(413).send({ error: error.reason, limit });
       }
       return reply.code(404).send({ error: error.reason });
