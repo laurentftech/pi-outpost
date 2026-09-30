@@ -50,7 +50,7 @@ test("Settings keeps the agent's sandbox and external resource access in sync", 
   await page.getByRole("button", { name: "Go" }).click();
   await page.getByRole("button", { name: "Use this directory" }).click();
   await page.getByRole("button", { name: "Add folder" }).click();
-  const ungrouped = page.getByRole("button", { name: /Provenance unavailable 1/ });
+  const ungrouped = page.getByRole("button", { name: /Provenance unavailable/ });
   await expect(ungrouped).toBeVisible();
   await ungrouped.click();
   await expect(page.getByText("outside-skill", { exact: true })).toBeVisible();
