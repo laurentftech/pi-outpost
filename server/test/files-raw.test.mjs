@@ -22,7 +22,11 @@ describe("GET /files/raw", () => {
   before(async () => {
     const files = {
       "plot.png": PNG_BYTES,
-      "big.png": Buffer.concat([PNG_BYTES, randomBytes(1_100_000)]),
+      // A photo or a screenshot: above the 1 MB cap, which an SVG of the same
+      // figure never reaches
+      "big.png": Buffer.concat([PNG_BYTES, randomBytes(2_000_000)]),
+      "photo.jpg": Buffer.concat([Buffer.from([0xff, 0xd8, 0xff]), randomBytes(2_000_000)]),
+      "big.txt": Buffer.alloc(1_100_000, "a"),
       "report.html": "<h1>hi</h1><script>alert(1)</script>",
       "img.svg": '<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>',
       "notes.md": "# hello\n",
@@ -65,9 +69,28 @@ describe("GET /files/raw", () => {
     }
   });
 
-  test("refuses a file over the 1 MiB cap", async () => {
-    const res = await fetch(`${open.base}/files/raw?path=big.png`);
+  test("refuses a non-image file over the 1 MiB cap", async () => {
+    const res = await fetch(`${open.base}/files/raw?path=big.txt`);
     assert.equal(res.status, 413);
+    assert.equal((await res.json()).limit, 1_048_576);
+  });
+
+  test("ImageUnderThePdfLimit: serves a PNG and a JPEG above the 1 MB cap, under the PDF ceiling", async () => {
+    for (const [name, type, length] of [
+      ["big.png", "image/png", PNG_BYTES.length + 2_000_000],
+      ["photo.jpg", "image/jpeg", 2_000_003],
+    ]) {
+      const res = await fetch(`${open.base}/files/raw?path=${name}`);
+      assert.equal(res.status, 200, name);
+      assert.equal(res.headers.get("content-type"), type);
+      assert.equal(Buffer.from(await res.arrayBuffer()).length, length);
+    }
+  });
+
+  test("ImageOverThePdfLimit: an image over the configured PDF ceiling is refused, naming that ceiling", async () => {
+    const res = await fetch(`${tightPdf.base}/files/raw?path=big.png`);
+    assert.equal(res.status, 413);
+    assert.equal((await res.json()).limit, 1_048_576);
   });
 
   test("serves a PDF above the 1 MB cap, under the PDF ceiling", async () => {

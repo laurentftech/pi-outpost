@@ -20,6 +20,7 @@ import {
   FileBrowserError,
   listDirectory,
   MAX_PREVIEW_BYTES,
+  rawFileLimit,
   readFileForPreview,
   readFileRaw,
   createFileFromBrowser,
@@ -303,6 +304,16 @@ describe("file browser", () => {
 
     test("still refuses an oversized file", async () => {
       assert.equal(await reasonOf(() => readFileRaw(root, "big.txt")), "too-large");
+    });
+
+    test("an image is measured against the PDF ceiling, like a PDF, whatever the extension's case", () => {
+      const ceiling = 26_214_400;
+      for (const name of ["a.png", "b.JPG", "c.jpeg", "d.gif", "e.webp", "f.svg", "g.avif", "docs/h.pdf"]) {
+        assert.equal(rawFileLimit(name, ceiling), ceiling, name);
+      }
+      for (const name of ["notes.md", "page.html", "png", "photo.png.txt"]) {
+        assert.equal(rawFileLimit(name, ceiling), MAX_PREVIEW_BYTES, name);
+      }
     });
   });
 
