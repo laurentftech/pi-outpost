@@ -48,11 +48,21 @@ describe("extension paths from the interface", () => {
       assert.deepEqual(hello.userExtensionPaths, [], "the snapshot carries the user's own list");
       assert.deepEqual(hello.configuredExtensionPaths, [deployment], "and the deployment's, apart");
       assert.deepEqual(hello.agentResources?.capabilities, { skills: "available", extensions: "available" });
-      const extensionResource = hello.agentResources?.resources.find(
-        (resource) => resource.kind === "extension" && resource.path === deployment,
-      );
+      const deploymentRealPath = await realpath(deployment);
+      let extensionResource;
+      for (const resource of hello.agentResources?.resources ?? []) {
+        if (
+          resource.kind === "extension" &&
+          resource.path &&
+          !resource.path.startsWith("<inline:") &&
+          (await realpath(resource.path)) === deploymentRealPath
+        ) {
+          extensionResource = resource;
+          break;
+        }
+      }
       assert.ok(extensionResource?.path, "the embedded adapter preserves extension filesystem provenance");
-      assert.equal(await realpath(extensionResource.path), await realpath(deployment));
+      assert.equal(await realpath(extensionResource.path), deploymentRealPath);
       assert.equal(
         hello.agentResources?.resources.some((resource) => resource.path?.startsWith("<inline:")),
         false,
