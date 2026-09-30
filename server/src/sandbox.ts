@@ -101,7 +101,7 @@ export function isWithinAny(roots: string[], target: string): boolean {
  * A Proxy rather than a spread: the context carries accessors and live session
  * state, and copying it would freeze what it reports.
  */
-function withCwd(ctx: ExtensionContext, cwd: string): ExtensionContext {
+function withCwd<Context extends ExtensionContext>(ctx: Context, cwd: string): Context {
   if (!ctx) return ctx;
   return new Proxy(ctx, {
     get: (target, prop, receiver) => (prop === "cwd" ? cwd : Reflect.get(target, prop, receiver)),
