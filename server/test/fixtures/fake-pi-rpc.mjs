@@ -137,6 +137,10 @@ const DATA = {
 const seen = [];
 const commandCounts = new Map();
 let pendingDialogCommand;
+// Prime Agent 0.9.7: an abort suspends queued session input, and a `prompt` is only
+// admitted again — and lifts the suspension — when it carries `streamingBehavior`.
+let queueSuspended = false;
+const SUSPENDED = "Cannot admit a session action while queued session input is suspended.";
 
 function recordCommand(command) {
   seen.push(command);
@@ -173,6 +177,15 @@ function handle(command) {
   }
 
   emitAll(script?.before);
+
+  if (config.suspendsQueueOnAbort && type === "abort") queueSuspended = true;
+  if (queueSuspended && type === "prompt") {
+    if (command.streamingBehavior === undefined) {
+      emit({ ...responseId, type: "response", command: type, success: false, error: SUSPENDED });
+      return;
+    }
+    queueSuspended = false;
+  }
 
   const failure = config.failures?.[type];
   if (failure !== undefined) {

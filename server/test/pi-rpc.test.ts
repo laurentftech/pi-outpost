@@ -511,6 +511,47 @@ describe("RpcRuntimeStarts", () => {
     assert.equal(runtime.snapshot().isStreaming, false, "the cancelled retry closes the turn");
   });
 
+  test("APromptAfterAnAbortResumesThePrimeQueue: a prompt refused as suspended is resent once with streamingBehavior", async () => {
+    const { runtime, commandLog } = await startFake({
+      suspendsQueueOnAbort: true,
+      failures: {
+        get_tree: "Unknown command: get_tree",
+        get_branch_messages: "Unknown command: get_branch_messages",
+      },
+      omitResponseIdsFor: ["get_tree", "get_branch_messages"],
+      commands_: {
+        get_fork_messages: { data: { messages: [] } },
+        prompt: { after: [{ type: "agent_start" }, { type: "agent_end", messages: [] }] },
+      },
+    });
+    await runtime.abort();
+
+    const accepted: boolean[] = [];
+    const ended = waitForEvent(runtime, (event) => event.type === "agent_end");
+    await runtime.prompt("after the stop", { onAccepted: (value) => accepted.push(value) });
+    assert.deepEqual(accepted, [true], "the user's message is accepted, not refused");
+    await ended;
+
+    const prompts = (await commands(commandLog)).filter((command) => command.type === "prompt");
+    assert.equal(prompts.length, 2);
+    assert.equal(prompts[0]?.streamingBehavior, undefined, "the first attempt is an ordinary prompt");
+    assert.equal(prompts[1]?.streamingBehavior, "followUp");
+    assert.equal(prompts[1]?.message, "after the stop");
+
+    assert.equal(runtime.snapshot().isStreaming, false, "the resumed turn ended");
+    await runtime.prompt("and the next one");
+    const next = (await commands(commandLog)).filter((command) => command.type === "prompt").at(-1);
+    assert.equal(next?.streamingBehavior, undefined, "once resumed, prompts go out plain again");
+  });
+
+  test("OnlyTheSuspendedRefusalIsResent: any other refused prompt is reported, not retried", async () => {
+    const { runtime, commandLog } = await startFake({ failures: { prompt: "No model selected" } });
+    const accepted: boolean[] = [];
+    await assert.rejects(runtime.prompt("hello", { onAccepted: (value) => accepted.push(value) }), /No model selected/);
+    assert.deepEqual(accepted, [false]);
+    assert.equal((await commands(commandLog)).filter((command) => command.type === "prompt").length, 1);
+  });
+
   test("NoActiveBranchSourceFailsClosed: a fork with no tree, branch or fork messages does not start", async () => {
     await assert.rejects(
       startFake({

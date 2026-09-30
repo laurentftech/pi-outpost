@@ -693,7 +693,20 @@ class RpcRuntime implements AgentRuntime {
       ...(this.streaming ? { streamingBehavior: "steer" } : {}),
     };
     try {
-      await this.command("prompt", payload);
+      try {
+        await this.command("prompt", payload);
+      } catch (error) {
+        // Workaround for a Prime Agent bug (0.9.7), not protocol: after an abort
+        // during a tool call it suspends queued input, and an RPC `prompt` only
+        // lifts that when it carries `streamingBehavior` — the field's presence
+        // is read as "resume if idle", its value is not. Without this, every
+        // later message in the session is refused until a new one is started.
+        // Only this exact refusal is resent, once; if Prime changes the gate,
+        // the user sees the same error as before and nothing worse.
+        // https://github.com/PrimeIntellect-ai/prime-agent/discussions/3163
+        if (payload.streamingBehavior !== undefined || !isSuspendedQueueRefusal(error)) throw error;
+        await this.command("prompt", { ...payload, streamingBehavior: "followUp" });
+      }
     } catch (error) {
       // Rejected *before* acceptance — the initiating client is told, and no user
       // bubble is echoed. A failure after acceptance never arrives here; it shows up
@@ -889,4 +902,9 @@ function isUnknownCommand(error: unknown, command: string): boolean {
   if (!(error instanceof Error)) return false;
   const message = error.message.toLowerCase();
   return message.includes(command.toLowerCase()) && ABSENT_COMMAND_WORDS.test(message);
+}
+
+/** Prime Agent's refusal of a prompt while an abort has suspended its queued input. */
+function isSuspendedQueueRefusal(error: unknown): boolean {
+  return error instanceof Error && error.message.includes("queued session input is suspended");
 }

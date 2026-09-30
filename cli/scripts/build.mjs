@@ -82,6 +82,27 @@ await esbuild.build({
 });
 await chmod(BUNDLE, 0o755);
 
+// pi-outpost's own tools as a pi extension, for the RPC runtime. A `--mode rpc`
+// child is a separate process that builds its own toolset, so it loads these
+// through `--extension <path>`, and rpcResourceArgs.ts looks for this exact file
+// next to the server bundle. Without it, every RPC start refuses — which is what
+// every published package did until this was emitted. Same externals as the
+// server bundle: the child's loader resolves the SDK from this package's
+// node_modules, and everything local is inlined.
+console.log("[build] bundling the RPC tools extension …");
+await esbuild.build({
+  entryPoints: [resolve(REPO_ROOT, "server/src/piOutpostTools.ts")],
+  bundle: true,
+  platform: "node",
+  format: "esm",
+  target: "node22",
+  outfile: resolve(OUT_DIR, "pi-outpost-tools.mjs"),
+  external: ["@earendil-works/pi-coding-agent"],
+  banner: {
+    js: "import { createRequire as ___createRequire } from 'node:module'; const require = ___createRequire(import.meta.url);",
+  },
+});
+
 // Also produce a fully-bundled version for --build-sea (no external deps)
 const SEA_BUNDLE = resolve(OUT_DIR, "pi-outpost.sea.mjs");
 console.log("[build] bundling SEA-ready version (all deps inlined) …");
