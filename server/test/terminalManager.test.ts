@@ -1,9 +1,36 @@
 import assert from "node:assert/strict";
-import { describe, test } from "node:test";
-import { TerminalManager, findWindowsGitBash } from "../src/terminalManager.ts";
+import { afterEach, describe, test } from "node:test";
+import { TERMINAL_KILL_GRACE_MS, TerminalManager as RealTerminalManager, findWindowsGitBash } from "../src/terminalManager.ts";
 import type { WebSocket } from "ws";
 
+/**
+ * Every manager a test makes, closed after it whatever the test did.
+ *
+ * These tests spawn real shells. One left running keeps its pty open, and the test
+ * file's process then never exits — a CI job that hangs with nothing failing.
+ */
+const managers: RealTerminalManager[] = [];
+class TerminalManager extends RealTerminalManager {
+  constructor() {
+    super();
+    managers.push(this);
+  }
+}
+
+const alive = (pid: number) => {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
 describe("TerminalManager", () => {
+  afterEach(() => {
+    for (const manager of managers.splice(0)) manager.closeAll();
+  });
+
   test("getDefaultShell returns a valid shell path and args", () => {
     const manager = new TerminalManager();
     const { shell, args } = manager.getDefaultShell();
@@ -148,5 +175,25 @@ describe("TerminalManager", () => {
     // The final session must be reachable and clean up without issue
     assert.equal(manager.write(socket, "tick-id", "echo same-tick\n"), true);
     assert.equal(manager.close(socket, "tick-id"), true);
+  });
+
+  test("a shell that ignores SIGHUP is killed outright after the grace period", { skip: process.platform === "win32" && "ConPTY takes no signals" }, async () => {
+    const manager = new TerminalManager();
+    const socket = {} as WebSocket;
+    const session = await manager.open(socket, "hup", process.cwd(), 80, 24, () => {}, () => {}, {
+      shell: "/bin/bash",
+      shellArgs: ["-c", "trap '' HUP; while :; do sleep 1; done"],
+    });
+    const pid = session.ptyProcess.pid;
+    // Long enough for bash to have installed the trap before it is sent SIGHUP.
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    assert.equal(manager.close(socket, "hup"), true);
+
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    assert.ok(alive(pid), "the shell survived SIGHUP, so this exercises the escalation");
+
+    const deadline = Date.now() + TERMINAL_KILL_GRACE_MS + 3_000;
+    while (alive(pid) && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 100));
+    assert.ok(!alive(pid), "and it is gone once the grace period has passed");
   });
 });

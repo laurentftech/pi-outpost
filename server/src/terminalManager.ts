@@ -186,6 +186,43 @@ function endSession(session: TerminalSession): void {
   } catch {
     // Process might already be dead
   }
+  killIfStillAlive(session.ptyProcess);
+}
+
+/** How long a shell gets to act on SIGHUP before it is killed outright. */
+export const TERMINAL_KILL_GRACE_MS = 2_000;
+
+/**
+ * Make sure a closed terminal's shell is really gone.
+ *
+ * `kill()` sends SIGHUP, which a shell may ignore — `trap '' HUP`, a `nohup` wrapper,
+ * or one caught while it is still starting. A survivor keeps the pty open, and the
+ * process that spawned it can never exit: the suspected cause of the CI check job that
+ * hangs after `terminalManager.test.ts` with an orphaned `bash` left behind. So after a
+ * grace period, a process that still answers is sent SIGKILL.
+ *
+ * By polling the pid rather than adding an `onExit` listener: closing detaches every
+ * listener on purpose (see `TerminalSession.listeners`), and this must not undo that.
+ * The timer is unref'd, so it never holds a process open either. Not on Windows, where
+ * ConPTY takes no signals and ends its own helper.
+ */
+function killIfStillAlive(ptyProcess: pty.IPty): void {
+  if (process.platform === "win32") return;
+  const pid = ptyProcess.pid;
+  if (!(pid > 0)) return;
+  const timer = setTimeout(() => {
+    try {
+      process.kill(pid, 0);
+    } catch {
+      return; // Gone, as it should be.
+    }
+    try {
+      ptyProcess.kill("SIGKILL");
+    } catch {
+      // Exited between the probe and the kill.
+    }
+  }, TERMINAL_KILL_GRACE_MS);
+  timer.unref?.();
 }
 
 /**
