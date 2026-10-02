@@ -14,6 +14,7 @@ import websocket from "@fastify/websocket";
 import Fastify, { type FastifyReply, type FastifyRequest } from "fastify";
 import type { WebSocket } from "ws";
 import {
+  type AgentSession,
   type CreateAgentSessionRuntimeFactory,
   createAgentSessionFromServices,
   createAgentSessionServices,
@@ -1195,8 +1196,7 @@ const makeCreateRuntime =
   } else {
     DEBUG("[pi-outpost] No extension errors. Loaded:", extResult.extensions.length, "extensions");
   }
-  return {
-    ...(await createAgentSessionFromServices({
+  const created = await createAgentSessionFromServices({
       services,
       sessionManager,
       sessionStartEvent,
@@ -1347,11 +1347,46 @@ const makeCreateRuntime =
               createStructuredExchangeProjectModelToolDefinition({ projectRoot: cwd }),
             ],
           }),
-    })),
+    });
+  if (sandboxedTools) activateDefaultTools(created.session, services.settingsManager.getDefaultTools());
+  return {
+    ...created,
     services,
     diagnostics: services.diagnostics,
   };
 };
+
+/**
+ * Honour Pi's `defaultTools` setting in a sandboxed session.
+ *
+ * The sandbox needs `noTools: "builtin"`, and the SDK reads that as "start with
+ * nothing active", skipping `defaultTools` altogether. Tools Pi registers inactive —
+ * `codemode`, `tool_search` — have no other way on, so a user who enabled them for
+ * `pi` found them missing here.
+ *
+ * Only adds, and never one of Pi's own built-ins. `noTools: "builtin"` leaves those
+ * registered, merely inactive, so the unconfined `bash` a sandbox without
+ * `allowBash` withholds is one activation away: a setting naming it must not be that
+ * activation. A sandboxed tool of the same name is registered from the SDK, not as a
+ * built-in, and is the confined one.
+ */
+function activateDefaultTools(
+  session: Pick<AgentSession, "getActiveToolNames" | "getAllTools" | "setActiveToolsByName">,
+  defaultTools: string[] | undefined,
+): void {
+  if (!defaultTools) return;
+  const active = new Set(session.getActiveToolNames());
+  const activatable = new Set(
+    session
+      .getAllTools()
+      .filter((tool) => tool.sourceInfo.source !== "builtin")
+      .map((tool) => tool.name),
+  );
+  const added = defaultTools.filter((name) => !active.has(name) && activatable.has(name));
+  if (added.length === 0) return;
+  DEBUG("[pi-outpost] activating defaultTools under sandbox:", added);
+  session.setActiveToolsByName([...active, ...added]);
+}
 
 // The SDK decides this once, when it constructs its ModelRuntime — it reads
 // `process.env.PI_OFFLINE` there and keeps the answer — so the variable has to be
