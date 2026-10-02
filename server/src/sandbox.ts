@@ -11,6 +11,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import {
+  type AgentSession,
   createBashToolDefinition,
   createEditToolDefinition,
   createFindToolDefinition,
@@ -293,4 +294,48 @@ export async function createSandboxedTools(
     });
   }
   return tools;
+}
+
+/**
+ * Pi's built-in tools, as `allToolNames` in its `core/tools` lists them.
+ *
+ * Not exported by the package, so named here; `assertNoUnconfinedBuiltIns` is what
+ * notices when a Pi upgrade adds one.
+ */
+export const PI_BUILTIN_TOOL_NAMES = ["read", "bash", "powershell", "edit", "write", "grep", "find", "ls"];
+
+/**
+ * The built-ins a sandboxed session must not register: every one the sandbox does not
+ * replace with its own confined tool of the same name.
+ *
+ * `noTools: "builtin"` alone only starts them inactive. They stay registered, and an
+ * inactive tool is one `setActiveTools` away — a call every extension is handed — so
+ * a sandbox without `allowBash` still carried Pi's unconfined `bash` and `powershell`,
+ * and a read-only one its unconfined `write` and `edit`. Excluding a name drops it
+ * from the registry altogether, whoever registered it.
+ */
+export function unsuppliedBuiltIns(sandboxedTools: ToolDefinition[]): string[] {
+  const supplied = new Set(sandboxedTools.map((tool) => tool.name));
+  return PI_BUILTIN_TOOL_NAMES.filter((name) => !supplied.has(name));
+}
+
+/**
+ * Fail closed when a sandboxed session still registers one of Pi's own built-ins.
+ *
+ * Every tool of that name was either replaced by the sandbox (registered from the SDK)
+ * or excluded, so one that remains is a built-in this list does not know about yet —
+ * an unconfined tool an extension could switch on. Refusing the session is the only
+ * answer that keeps the sandbox meaning what it says.
+ */
+export function assertNoUnconfinedBuiltIns(session: Pick<AgentSession, "getAllTools">): void {
+  const leaked = session
+    .getAllTools()
+    .filter((tool) => tool.sourceInfo.source === "builtin")
+    .map((tool) => tool.name);
+  if (leaked.length > 0) {
+    throw new Error(
+      `Sandboxed session still registers Pi's unconfined built-in tools: ${leaked.join(", ")}. ` +
+        "pi-outpost does not know how to withhold them; refusing to start the session.",
+    );
+  }
 }

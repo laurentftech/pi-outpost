@@ -203,7 +203,7 @@ import { Workspace, shouldRetireWorkspace, type WorkspaceOptions, type Workspace
 import { WorkspaceRegistry } from "./workspaceRegistry.ts";
 import { discoverSkillCatalogue, ResourceRepositoryService } from "./resourceRepositories.ts";
 import { deriveWorkspaceActivity, workspaceActivityNeedsAttention } from "./workspaceActivity.ts";
-import { isWithin, realResolve } from "./sandbox.ts";
+import { assertNoUnconfinedBuiltIns, isWithin, realResolve, unsuppliedBuiltIns } from "./sandbox.ts";
 import {
   firstExchange,
   generateSessionTitle,
@@ -1200,8 +1200,16 @@ const makeCreateRuntime =
       services,
       sessionManager,
       sessionStartEvent,
-      // Sandbox replaces the built-in toolset with path-scoped equivalents
-      ...(sandboxedTools ? { noTools: "builtin" as const, customTools: sandboxedTools } : {}),
+      // Sandbox replaces the built-in toolset with path-scoped equivalents,
+      // and Pi's own built-ins it does not supply are not registered at all: see
+      // unsuppliedBuiltIns.
+      ...(sandboxedTools
+        ? {
+            noTools: "builtin" as const,
+            customTools: sandboxedTools,
+            excludeTools: unsuppliedBuiltIns(sandboxedTools),
+          }
+        : {}),
       ...(!sandboxedTools && config.tools ? { tools: config.tools } : {}),
       // No sandbox: the built-in toolset stands, and pdf_extract joins it — it is
       // not one of pi's built-ins, so nothing else would supply it. It stays
@@ -1348,7 +1356,10 @@ const makeCreateRuntime =
             ],
           }),
     });
-  if (sandboxedTools) activateDefaultTools(created.session, services.settingsManager.getDefaultTools());
+  if (sandboxedTools) {
+    assertNoUnconfinedBuiltIns(created.session);
+    activateDefaultTools(created.session, services.settingsManager.getDefaultTools());
+  }
   return {
     ...created,
     services,
@@ -1364,11 +1375,11 @@ const makeCreateRuntime =
  * `codemode`, `tool_search` — have no other way on, so a user who enabled them for
  * `pi` found them missing here.
  *
- * Only adds, and never one of Pi's own built-ins. `noTools: "builtin"` leaves those
- * registered, merely inactive, so the unconfined `bash` a sandbox without
- * `allowBash` withholds is one activation away: a setting naming it must not be that
- * activation. A sandboxed tool of the same name is registered from the SDK, not as a
- * built-in, and is the confined one.
+ * Only adds, and never one of Pi's own built-ins. Those the sandbox does not replace
+ * are not registered at all (see unsuppliedBuiltIns), so this filter is a second
+ * line: a setting naming `bash` must never be what brings the unconfined one back.
+ * A sandboxed tool of the same name is registered from the SDK, not as a built-in,
+ * and is the confined one.
  */
 function activateDefaultTools(
   session: Pick<AgentSession, "getActiveToolNames" | "getAllTools" | "setActiveToolsByName">,
