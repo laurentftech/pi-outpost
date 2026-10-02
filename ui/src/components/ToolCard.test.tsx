@@ -253,7 +253,7 @@ describe("ToolCard", () => {
     const root = cardRoot(container);
 
     expect(root.children.length).toBe(1);
-    expect(root.children[0].tagName).toBe("BUTTON");
+    expect(root.children[0].querySelector("button")).not.toBeNull();
 
     const button = root.querySelector("button");
     if (button) fireEvent.click(button);
@@ -306,7 +306,7 @@ describe("ToolCard", () => {
     const root = cardRoot(render(<ToolCard item={item} />).container);
 
     expect(root.children.length).toBe(1);
-    expect(root.children[0].tagName).toBe("BUTTON");
+    expect(root.children[0].querySelector("button")).not.toBeNull();
   });
 
   it("shows running message when tool is running with no output", () => {
@@ -376,5 +376,40 @@ describe("ToolCard", () => {
       const { container } = render(<ToolCard item={item} />);
       expect(cardRoot(container).querySelector("progress")?.value).toBeCloseTo(0.6);
     });
+  });
+
+  it("keeps a long command whole and scrollable sideways instead of truncating it", () => {
+    const command = `find . -name '*.ts' | xargs grep -n '${"a".repeat(200)}' | sort | uniq -c`;
+    const item: ToolItem = { kind: "tool", toolName: "bash", running: false, isError: false, args: { command } };
+    render(<ToolCard item={item} />);
+    const summary = screen.getByText(command);
+    expect(summary.textContent).toBe(command);
+    expect(summary).not.toHaveClass("truncate");
+    expect(summary).toHaveClass("overflow-x-auto", "whitespace-nowrap", "min-w-0", "[scrollbar-width:none]");
+    // Outside the toggle button: Chrome drops a click on a scroller inside a <button>.
+    expect(summary.closest("button")).toBeNull();
+  });
+
+  it("folds on a click in the call line, but not when the press dragged to select", () => {
+    const item: ToolItem = { kind: "tool", toolName: "bash", running: false, isError: false, args: { command: "ls -la" }, output: "out" };
+    const { container } = render(<ToolCard item={item} />);
+    const root = cardRoot(container);
+    const line = screen.getByText("ls -la");
+    fireEvent.mouseDown(line, { clientX: 10, clientY: 5 });
+    fireEvent.click(line, { clientX: 10, clientY: 5, detail: 1 });
+    expect(root.children.length).toBe(2);
+    fireEvent.mouseDown(line, { clientX: 10, clientY: 5 });
+    fireEvent.click(line, { clientX: 120, clientY: 5, detail: 1 });
+    expect(root.children.length).toBe(2);
+  });
+
+  it("toggles from the keyboard through the button", () => {
+    const item: ToolItem = { kind: "tool", toolName: "bash", running: false, isError: false, args: { command: "ls" }, output: "out" };
+    const { container } = render(<ToolCard item={item} />);
+    const button = screen.getByRole("button", { name: /bash/ });
+    expect(button).toHaveAttribute("aria-expanded", "false");
+    fireEvent.click(button, { detail: 0 });
+    expect(cardRoot(container).children.length).toBe(2);
+    expect(button).toHaveAttribute("aria-expanded", "true");
   });
 });

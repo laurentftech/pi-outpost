@@ -547,4 +547,41 @@ describe("finding a command among many", () => {
     expect(list.className).toContain("overflow-y-auto");
     expect(list.className).toMatch(/max-h-/);
   });
+
+  describe("height", () => {
+    // jsdom lays nothing out, so scrollHeight is stubbed as the content's height: what
+    // is checked is that the box follows it, wrapped lines included.
+    let contentHeight = 24;
+    const original = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "scrollHeight");
+    beforeEach(() => {
+      Object.defineProperty(HTMLElement.prototype, "scrollHeight", { configurable: true, get: () => contentHeight });
+    });
+    afterEach(() => {
+      if (original) Object.defineProperty(HTMLElement.prototype, "scrollHeight", original);
+      else delete (HTMLElement.prototype as { scrollHeight?: number }).scrollHeight;
+    });
+
+    it("grows with a long paragraph that has no newline", () => {
+      setup();
+      expect(box().style.height).toBe("24px");
+      contentHeight = 120;
+      type("word ".repeat(200));
+      expect(box().style.height).toBe("120px");
+    });
+
+    it("shrinks back once the text is sent", () => {
+      setup();
+      contentHeight = 120;
+      type("word ".repeat(200));
+      contentHeight = 24;
+      fireEvent.keyDown(box(), { key: "Enter" });
+      expect(box().style.height).toBe("24px");
+    });
+
+    it("is capped, and scrolls past the cap", () => {
+      setup();
+      expect(box().className).toMatch(/max-h-\[min\(40vh,20rem\)\]/);
+      expect(box()).toHaveClass("overflow-y-auto");
+    });
+  });
 });
