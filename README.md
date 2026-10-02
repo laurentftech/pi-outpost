@@ -603,7 +603,13 @@ pi SDK session inside this process. `rpc` supervises a `pi --mode rpc` child —
 existing pi installation, or to isolate a crash.
 
 With extensions enabled, the embedded session loads Pi's built-in `codemode`, `tool_search`
-and MCP extensions too. Their activation follows Pi's settings and MCP configuration.
+and MCP extensions too. Their activation follows Pi's settings and MCP configuration: add
+`"defaultTools": ["+codemode", "+tool_search"]` to `~/.pi/agent/settings.json` to switch them
+on. That setting is honoured with a sandbox too, for every tool except Pi's own built-ins —
+the sandbox supplies its confined `read`/`write`/`edit`/… and a setting cannot bring back the
+unconfined ones (a sandbox without `allowBash` stays without `bash`). A `tools` list in this
+server's config replaces `defaultTools` entirely, so name `codemode` and `tool_search` there
+if you use one.
 
 **The embedded SDK runtime is the supported target; `rpc` is best effort.** Features are
 designed, measured and proven against the SDK session. The RPC dialect gets what it can
