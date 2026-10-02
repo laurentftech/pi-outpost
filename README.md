@@ -729,8 +729,9 @@ npx -y npm@11 install -g pi-outpost
 ```
 
 Use npm 11 for that install: npm 12 skips install scripts by default, which leaves
-`node-pty` unbuilt in the same way. `pi-outpost doctor` reports whether `node-pty` loads
-when the terminal is enabled. The standalone executable does not include it at all; install
+`node-pty` unbuilt in the same way. With the terminal enabled, the server says at startup
+when `node-pty` will not load, with the same instructions, and `pi-outpost doctor` checks it
+again after a reinstall. The standalone executable does not include it at all; install
 the npm package for the terminal.
 
 

@@ -106,6 +106,7 @@ import {
   exitCodeFor,
   probeAddress,
   renderReport,
+  terminalUnavailableNotice,
   webDistCandidatesFor,
 } from "./doctor.ts";
 import { listServerDirectories, ServerDirectoryError } from "./serverDirectories.ts";
@@ -1070,6 +1071,14 @@ try {
   // browser opens.
   const url = typeof bound === "object" && bound !== null ? browsableUrl(bound) : `http://${HOST}:${PORT}/`;
   console.log(`[server] ${url}`);
+  // A terminal switched on in the configuration that cannot run here is said now, in
+  // the console the operator is reading, not first discovered as a button that fails.
+  // Not awaited: loading a native module is no reason to hold the server back.
+  if (config.terminal?.enabled) {
+    void probePty().then((pty) => {
+      if (!pty.ok) console.warn(terminalUnavailableNotice(pty.error, process.platform, detectChannel(currentEvidence(VERSION))));
+    });
+  }
   // A server with no interface of its own has nothing to open: in development the
   // UI comes from Vite on another port, and a tab on this one shows a 404. It is
   // also what a backend for an embedded widget looks like, which is the other case
