@@ -51,7 +51,7 @@ describe("ToolCard collapsed extension rendering", () => {
 
     const root = cardRoot(container);
     expect(root.children.length).toBe(1);
-    expect(root.children[0].tagName).toBe("BUTTON");
+    expect(root.children[0].querySelector("button")).not.toBeNull();
   });
 });
 

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { CommandInfo, FileSearchEntry, WireImage } from "@pi-outpost/shared";
 import { composePrompt, mentionedPaths, type Attachment } from "../attachments";
 import type { FileSearch } from "../useAgent";
@@ -111,6 +111,22 @@ export function Composer({
     textareaRef.current?.focus();
     textareaRef.current?.setSelectionRange(pendingCursorRef.current, pendingCursorRef.current);
     pendingCursorRef.current = null;
+  }, [text]);
+
+  // Grow with what is typed, soft-wrapped lines included: counting newlines left a long
+  // paragraph on one line. The CSS max-height caps it, and past that it scrolls.
+  useLayoutEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    const fit = () => {
+      el.style.height = "auto";
+      el.style.height = `${el.scrollHeight}px`;
+    };
+    fit();
+    // A narrower box wraps the same text onto more lines.
+    const observer = typeof ResizeObserver === "undefined" ? undefined : new ResizeObserver(fit);
+    observer?.observe(el);
+    return () => observer?.disconnect();
   }, [text]);
 
   const mentioned = useMemo(() => mentionedPaths(text), [text]);
@@ -439,8 +455,8 @@ export function Composer({
                 : "message pi… (/ for commands, @ for files, Enter to send, Shift+Enter for newline)"
           }
           disabled={!connected}
-          rows={Math.min(6, Math.max(1, text.split("\n").length))}
-          className="flex-1 resize-none bg-transparent px-2 py-1.5 text-[15px] outline-none placeholder:text-zinc-400 disabled:opacity-50 dark:placeholder:text-zinc-600"
+          rows={1}
+          className="max-h-[min(40vh,20rem)] flex-1 resize-none overflow-y-auto bg-transparent px-2 py-1.5 text-[15px] outline-none placeholder:text-zinc-400 disabled:opacity-50 dark:placeholder:text-zinc-600"
         />
         {isStreaming && (
           <button
