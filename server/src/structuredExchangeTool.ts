@@ -208,7 +208,10 @@ export function createStructuredExchangeToolDefinition(options: StructuredExchan
     description: DESCRIPTION,
     promptSnippet: "Present a graph, sequence, or table as structured data",
     promptGuidelines: [
-      "When asked to draw, diagram, or model a structure, use present_structure with data rather than writing diagram syntax by hand.",
+      "For a graph, a sequence or a table — above all one the user may review or change — use present_structure with data rather than writing diagram syntax by hand.",
+      // "Draw" alone used to send everything here, including shapes the format has no
+      // kind for: a timeline came out as a graph whose details sat folded or cut short.
+      "For a shape present_structure has no kind for — a timeline, a Gantt chart, a pie chart, a mind map — write a mermaid code block in your reply instead: it renders, with all of its text shown. In a mermaid timeline a period's details belong to it — `0.31 : first change : second change`, or one per line starting with `:` — never as `-` list items, which become periods of their own.",
       "To propose a change to something that already exists, set `target` and describe only what changes — omitting an element never removes it.",
     ],
     parameters,
