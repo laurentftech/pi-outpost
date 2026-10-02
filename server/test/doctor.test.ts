@@ -383,6 +383,37 @@ describe("terminalCheck", () => {
     assert.match(text(check), /Cannot find module 'node-pty'/);
     assert.match(text(check), /terminal_error/, "says what the user will actually see");
   });
+
+  const missing = async () => ({ ok: false as const, error: "Cannot find module 'node-pty'" });
+
+  test("on Linux it names the toolchain and the reinstall, with npm 11", async () => {
+    const check = await terminalCheck(healthy({ platform: "linux", channel: "global", loadPty: missing }), true);
+    assert.ok(check);
+    assert.match(text(check), /no prebuilt binary for Linux \(WSL included\)/);
+    assert.match(text(check), /sudo apt install -y build-essential python3/);
+    assert.match(text(check), /npx -y npm@11 install -g pi-outpost/);
+  });
+
+  test("on Linux in a checkout it reinstalls the checkout, not a global package", async () => {
+    const check = await terminalCheck(healthy({ platform: "linux", channel: "checkout", loadPty: missing }), true);
+    assert.ok(check);
+    assert.match(text(check), /npx -y npm@11 install$/m);
+    assert.doesNotMatch(text(check), /install -g/);
+  });
+
+  test("the standalone executable is told to use the npm package, whatever the platform", async () => {
+    const check = await terminalCheck(healthy({ platform: "linux", channel: "executable", loadPty: missing }), true);
+    assert.ok(check);
+    assert.match(text(check), /standalone executable does not carry node-pty/);
+    assert.doesNotMatch(text(check), /apt install/);
+  });
+
+  test("elsewhere it keeps the general toolchain note, without apt", async () => {
+    const check = await terminalCheck(healthy({ platform: "darwin", channel: "global", loadPty: missing }), true);
+    assert.ok(check);
+    assert.match(text(check), /C\+\+ toolchain/);
+    assert.doesNotMatch(text(check), /apt install/);
+  });
 });
 
 // ---------------------------------------------------------------------------

@@ -717,6 +717,22 @@ When enabled via `--terminal`, `PI_OUTPOST_TERMINAL=1`, or `"terminal": { "enabl
 - **Background minimization**: Press `Ctrl+\`` (or `Cmd+\``) or click `>_ terminal` in the header to minimize the panel without interrupting active builds, commands, or logs.
 - **1-Click Workspace Repointing**: The terminal detects current working directory (`pwd`) in real time (supporting OSC 7). Clicking `📁 <dir> → open as project` repositions the AI agent, file browser, and git view to that subdirectory.
 
+The terminal runs on [`node-pty`](https://github.com/microsoft/node-pty), an optional
+native dependency. It comes prebuilt for macOS and Windows. **On Linux, WSL included, npm
+compiles it at install time**, and because it is optional a missing compiler fails
+silently: Pi Outpost installs and runs, and only the terminal is missing. Install a
+toolchain, then reinstall:
+
+```bash
+sudo apt install -y build-essential python3   # Debian, Ubuntu, WSL
+npx -y npm@11 install -g pi-outpost
+```
+
+Use npm 11 for that install: npm 12 skips install scripts by default, which leaves
+`node-pty` unbuilt in the same way. `pi-outpost doctor` reports whether `node-pty` loads
+when the terminal is enabled. The standalone executable does not include it at all; install
+the npm package for the terminal.
+
 
 When the server cannot start — a port already taken, an unreadable directory, a bad
 configuration — it says which of those it was in a sentence, not a stack trace. A window
