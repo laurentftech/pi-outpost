@@ -18,6 +18,7 @@ import {
   renderReport,
   settingsCheck,
   terminalCheck,
+  terminalUnavailableNotice,
   webDistCandidatesFor,
   webUiCheck,
 } from "../src/doctor.ts";
@@ -383,6 +384,37 @@ describe("terminalCheck", () => {
     assert.match(text(check), /Cannot find module 'node-pty'/);
     assert.match(text(check), /terminal_error/, "says what the user will actually see");
   });
+
+  const missing = async () => ({ ok: false as const, error: "Cannot find module 'node-pty'" });
+
+  test("on Linux it names the toolchain and the reinstall, with npm 11", async () => {
+    const check = await terminalCheck(healthy({ platform: "linux", channel: "global", loadPty: missing }), true);
+    assert.ok(check);
+    assert.match(text(check), /no prebuilt binary for Linux \(WSL included\)/);
+    assert.match(text(check), /sudo apt install -y build-essential python3/);
+    assert.match(text(check), /npx -y npm@11 install -g pi-outpost/);
+  });
+
+  test("on Linux in a checkout it reinstalls the checkout, not a global package", async () => {
+    const check = await terminalCheck(healthy({ platform: "linux", channel: "checkout", loadPty: missing }), true);
+    assert.ok(check);
+    assert.match(text(check), /npx -y npm@11 install$/m);
+    assert.doesNotMatch(text(check), /install -g/);
+  });
+
+  test("the standalone executable is told to use the npm package, whatever the platform", async () => {
+    const check = await terminalCheck(healthy({ platform: "linux", channel: "executable", loadPty: missing }), true);
+    assert.ok(check);
+    assert.match(text(check), /standalone executable does not carry node-pty/);
+    assert.doesNotMatch(text(check), /apt install/);
+  });
+
+  test("elsewhere it keeps the general toolchain note, without apt", async () => {
+    const check = await terminalCheck(healthy({ platform: "darwin", channel: "global", loadPty: missing }), true);
+    assert.ok(check);
+    assert.match(text(check), /C\+\+ toolchain/);
+    assert.doesNotMatch(text(check), /apt install/);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -506,5 +538,16 @@ describe("installationCheck", () => {
 
   test("carries the versions a bug report needs", () => {
     assert.match(text(installationCheck(healthy())), /pi-outpost 1\.2\.3 —.*\n.*node v22\.0\.0 on win32\/x64/);
+  });
+});
+
+describe("terminalUnavailableNotice", () => {
+  test("on Linux the startup line carries the same remedy as doctor", () => {
+    const notice = terminalUnavailableNotice("Cannot find module 'node-pty'", "linux", "global");
+    assert.match(notice, /^\[terminal\] enabled in the configuration, but node-pty could not be loaded/);
+    assert.match(notice, /Cannot find module 'node-pty'/);
+    assert.match(notice, /sudo apt install -y build-essential python3/);
+    assert.match(notice, /npx -y npm@11 install -g pi-outpost/);
+    assert.match(notice, /pi-outpost doctor/);
   });
 });

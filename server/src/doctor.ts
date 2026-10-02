@@ -307,11 +307,54 @@ export async function terminalCheck(d: Diagnosis, enabled: boolean): Promise<Che
     name: "terminal",
     status: "warn",
     detail: ["enabled, but node-pty could not be loaded:", `  ${pty.error}`, "Opening a terminal will answer terminal_error."],
-    remedy: [
-      "node-pty is an optional native dependency: it needs a C++ toolchain at install",
-      "time, and the standalone executable does not carry one at all.",
-    ],
+    remedy: ptyRemedy(d.platform, d.channel),
   };
+}
+
+/**
+ * How to get `node-pty` on this machine, as far as the platform and the install say.
+ *
+ * Linux is the case that needs spelling out. node-pty ships prebuilt binaries for
+ * macOS and Windows only, so on Linux — WSL included — npm compiles it at install, and
+ * as an optional dependency a missing toolchain fails silently: pi-outpost installs and
+ * runs, and only the terminal is gone. npm 12 skips install scripts by default, which
+ * fails the same way with a toolchain present.
+ */
+export function ptyRemedy(platform: NodeJS.Platform, channel: InstallChannel): string[] {
+  if (channel === "executable") {
+    return [
+      "The standalone executable does not carry node-pty. Install the npm package",
+      "(npm install -g pi-outpost) to get the terminal.",
+    ];
+  }
+  if (platform !== "linux") {
+    return ["node-pty is an optional native dependency: it needs a C++ toolchain at install time."];
+  }
+  const reinstall = channel === "checkout" ? "npx -y npm@11 install" : "npx -y npm@11 install -g pi-outpost";
+  return [
+    "node-pty has no prebuilt binary for Linux (WSL included): npm compiles it at install,",
+    "and a missing toolchain fails silently because it is optional. Install one, then reinstall:",
+    "  sudo apt install -y build-essential python3    (Debian, Ubuntu, WSL)",
+    `  ${reinstall}`,
+    "npm 11 because npm 12 skips install scripts, which leaves node-pty unbuilt the same way.",
+  ];
+}
+
+/**
+ * What the server prints at startup when the terminal is enabled and `node-pty` will
+ * not load.
+ *
+ * Without it the first sign is a terminal button that answers `terminal_error`, long
+ * after the console that could have explained it was last read. Same remedy as
+ * `doctor`, which stays the place to look for the rest.
+ */
+export function terminalUnavailableNotice(error: string, platform: NodeJS.Platform, channel: InstallChannel): string {
+  return [
+    "[terminal] enabled in the configuration, but node-pty could not be loaded — the terminal will not open:",
+    `  ${error}`,
+    ...ptyRemedy(platform, channel).map((line) => `  ${line}`),
+    "  pi-outpost doctor checks it again after a reinstall.",
+  ].join("\n");
 }
 
 /**
