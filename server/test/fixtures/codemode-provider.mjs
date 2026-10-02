@@ -28,7 +28,7 @@ function script(outside) {
     "const out = {};",
     'out.inside = await tools.read({ path: "inside.txt" });',
     `try { out.outside = await tools.read({ path: ${JSON.stringify(outside)} }); } catch (error) { out.outsideError = String(error.message); }`,
-    "out.bash = typeof tools.bash;",
+    "out.bash = \"bash\" in tools;",
     "return out;",
   ].join("\n");
 }

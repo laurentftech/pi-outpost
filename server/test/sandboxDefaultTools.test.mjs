@@ -94,7 +94,7 @@ test("a codemode script runs under the sandbox and is confined by it", async () 
     assert.match(result, /INSIDE-MARKER/, "a file inside the workspace is readable from a script");
     assert.doesNotMatch(result, /OUTSIDE-MARKER/, "a file outside the sandbox is not");
     assert.match(result, /outsideError/, "the outside read was refused, not skipped");
-    assert.match(result, /"bash":\s*"undefined"/, "a script cannot reach the unconfined bash");
+    assert.match(result, /"bash":\s*false/, "a script cannot reach the unconfined bash");
   } finally {
     client.close();
     await server.stop();
