@@ -124,6 +124,10 @@ In a dialect whose `agent_end` is terminal, a turn SHALL remain running while th
 after that `agent_end`, and SHALL end when the child reports the retry cancelled. The child's queue
 SHALL be shown whether it is reported as `queue_update` or `session_action_update`.
 
+A prompt that Prime Agent refuses because an abort suspended its queued input SHALL be resent once
+with `streamingBehavior`, which Prime Agent 0.9.7 requires to resume; any other refusal SHALL be
+reported unchanged.
+
 The agent directory SHALL reach an agent started through a `.sh` launcher under the variable its
 own name derives.
 
@@ -146,6 +150,16 @@ own name derives.
 - **GIVEN** a Prime Agent turn reopened by a retry
 - **WHEN** the user aborts and the child reports `auto_retry_end` with `success: false` and no `agent_end`
 - **THEN** the turn ends
+
+#### Scenario: APromptAfterAnAbortResumesThePrimeQueue
+- **GIVEN** a Prime Agent session whose queued input an abort has suspended
+- **WHEN** the user sends a message and the plain `prompt` is refused as suspended
+- **THEN** the same message is resent once with `streamingBehavior`, accepted, and later prompts go out plain
+
+#### Scenario: OnlyTheSuspendedRefusalIsResent
+- **GIVEN** a child that refuses a `prompt` for any other reason
+- **WHEN** the user sends a message
+- **THEN** the refusal is reported and the prompt is not resent
 
 #### Scenario: ASourceLauncherReceivesTheAgentDirectory
 - **GIVEN** the executable `prime-agent.sh`

@@ -25,4 +25,4 @@
 ## 5. Integration
 
 - [x] 5.1 Add a version 2 registry with an appearance to the bench's plain-server project, rebuild (`web`, `@pi-outpost/embed`, `build:e2e-host`), and drive it with Playwright: timeline, graph and file viewer show the declared colours and marked legends; edit the registry's colour, present again and read back the new colour; break the colour and read back the refusal; then monkey-test (edit while a drawing is enlarged, toggle compact and dependencies) and report what broke
-- [ ] 5.2 Write `scenario-coverage.md`, run `npm run check:scenarios`, `npm run lint`, typecheck, the server and UI suites, and `openspec validate add-project-kind-colours --strict`
+- [x] 5.2 Write `scenario-coverage.md`, run `npm run check:scenarios`, `npm run lint`, typecheck, the server and UI suites, and `openspec validate add-project-kind-colours --strict`
