@@ -275,3 +275,18 @@ describe("what survives from the tool to the interface", () => {
     assert.ok(!text.includes("changes nothing"), text);
   });
 });
+
+describe("when the agent should reach for present_structure, and when for mermaid", () => {
+  const guidance = () => (createStructuredExchangeToolDefinition().promptGuidelines ?? []).join("\n");
+
+  test("graphs, sequences and tables still go to present_structure", () => {
+    assert.match(guidance(), /graph, a sequence or a table[^\n]*use present_structure/);
+  });
+
+  test("a timeline, which the format has no kind for, is sent to a mermaid block", () => {
+    // "Draw" alone used to route everything here, and a timeline came out as a graph
+    // whose details were folded or cut short.
+    assert.match(guidance(), /timeline[^\n]*mermaid code block/);
+    assert.doesNotMatch(guidance(), /When asked to draw, diagram, or model a structure/);
+  });
+});
