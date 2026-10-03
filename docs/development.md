@@ -214,8 +214,9 @@ by hand, on `main`.
    ```
 
    A bump that skips this leaves the lockfile behind, and the next `npm install` rewrites
-   it inside an unrelated PR. Do not use npm 12 here: it also drops `hasShrinkwrap` from
-   `@earendil-works/pi-coding-agent`, whose published package does carry a shrinkwrap.
+   it inside an unrelated PR. Do not use npm 12 here: it writes a lockfile npm 11 does not,
+   and drops `hasShrinkwrap` from any dependency published with a shrinkwrap (as
+   `@earendil-works/pi-coding-agent` was up to 1.0.0).
 5. **Commit and push to `main`:**
 
    ```bash

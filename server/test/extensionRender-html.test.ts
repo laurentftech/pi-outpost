@@ -27,7 +27,7 @@ function component(lines: string[]) {
 /** Configure with a message renderer for `plan`, and nothing else. */
 function configureWith(render: (message: unknown, options: { expanded: boolean }) => unknown) {
   renderer.configure({
-    getToolDefinition: () => undefined,
+    getToolRenderers: () => undefined,
     getMessageRenderer: (customType: string) => (customType === "plan" ? (render as never) : undefined),
     cwd: process.cwd(),
   });
@@ -126,7 +126,7 @@ describe("renderCustomMessageHtml", () => {
 
 describe("tool rendering once configured", () => {
   test("renders nothing for a tool no extension defines", () => {
-    // getToolDefinition returns undefined for everything here: there is no renderer
+    // getToolRenderers returns undefined for everything here: there is no renderer
     // to ask, and the answer must be "show the plain card", not a crash
     configureWith(() => component(["ok"]));
     assert.equal(renderer.renderToolCallHtml("c1", "unknown-tool", {}), undefined);
@@ -142,7 +142,7 @@ describe("tool rendering once configured", () => {
   test("falls back to the dark theme for a name it does not know", () => {
     // An unknown theme name must not leave the renderer unconfigured
     renderer.configure({
-      getToolDefinition: () => undefined,
+      getToolRenderers: () => undefined,
       getMessageRenderer: () => (() => component(["themed"])) as never,
       cwd: process.cwd(),
       themeName: "no-such-theme",
@@ -166,12 +166,12 @@ describe("two projects, two sets of renderers", () => {
     const alpha = new ExtensionRenderer();
     const beta = new ExtensionRenderer();
     alpha.configure({
-      getToolDefinition: () => undefined,
+      getToolRenderers: () => undefined,
       getMessageRenderer: (customType: string) => (customType === "plan" ? ((() => component(["plan drawn by alpha"])) as never) : undefined),
       cwd: "/srv/alpha",
     });
     beta.configure({
-      getToolDefinition: () => undefined,
+      getToolRenderers: () => undefined,
       getMessageRenderer: (customType: string) => (customType === "plan" ? ((() => component(["plan drawn by beta"])) as never) : undefined),
       cwd: "/srv/beta",
     });
@@ -186,11 +186,11 @@ describe("two projects, two sets of renderers", () => {
     const alpha = new ExtensionRenderer();
     const beta = new ExtensionRenderer();
     alpha.configure({
-      getToolDefinition: () => undefined,
+      getToolRenderers: () => undefined,
       getMessageRenderer: (customType: string) => (customType === "plan" ? ((() => component(["plan drawn by alpha"])) as never) : undefined),
       cwd: "/srv/alpha",
     });
-    beta.configure({ getToolDefinition: () => undefined, getMessageRenderer: () => undefined, cwd: "/srv/beta" });
+    beta.configure({ getToolRenderers: () => undefined, getMessageRenderer: () => undefined, cwd: "/srv/beta" });
 
     // Not the other project's rendering as a fallback: a card dressed by an
     // extension the project does not have is attributed to the wrong place.

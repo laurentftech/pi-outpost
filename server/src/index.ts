@@ -2328,7 +2328,7 @@ function refreshExtensionRender(workspace: Workspace): void {
   workspace.renderer.configure({
     // An RPC child cannot hand its renderer objects across the pipe, so tool cards
     // fall back to the built-in rendering rather than an extension-supplied one.
-    getToolDefinition: (name) => renderers?.getToolDefinition(name) as never,
+    getToolRenderers: (name) => renderers?.getToolRenderers(name) as never,
     getMessageRenderer: (customType) => renderers?.getMessageRenderer(customType) as never,
     cwd: workspace.settings.cwd,
     themeName: "dark",

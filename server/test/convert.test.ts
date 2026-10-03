@@ -679,7 +679,7 @@ describe("replaying history with a project's own renderers", () => {
   function rendererFor(text: string) {
     const renderer = new ExtensionRenderer();
     renderer.configure({
-      getToolDefinition: () => undefined,
+      getToolRenderers: () => undefined,
       getMessageRenderer: (customType: string) =>
         customType === "plan" ? ((() => ({ render: () => [text] })) as never) : undefined,
       cwd: "/srv/alpha",

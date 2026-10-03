@@ -623,6 +623,8 @@ export class EmbeddedRuntime implements AgentRuntime {
 
   readonly renderers: RenderCapability = {
     getToolDefinition: (name: string) => this.session.getToolDefinition(name),
+    getToolRenderers: (name: string) =>
+      this.session.extensionRunner.resolveToolRenderers(name, () => this.session.getToolDefinition(name)),
     getMessageRenderer: (customType: string) => this.session.extensionRunner.getMessageRenderer(customType),
   };
 

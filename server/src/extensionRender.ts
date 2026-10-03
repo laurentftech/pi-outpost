@@ -11,7 +11,7 @@ import { createCustomMessage } from "../../node_modules/@earendil-works/pi-codin
 import { ansiLinesToHtml } from "../../node_modules/@earendil-works/pi-coding-agent/dist/core/export-html/ansi-to-html.js";
 import { createToolHtmlRenderer } from "../../node_modules/@earendil-works/pi-coding-agent/dist/core/export-html/tool-renderer.js";
 import { getThemeByName } from "../../node_modules/@earendil-works/pi-coding-agent/dist/modes/interactive/theme/theme.js";
-import type { MessageRenderer, ToolDefinition } from "@earendil-works/pi-coding-agent";
+import type { MessageRenderer, ToolRenderers } from "@earendil-works/pi-coding-agent";
 import type { Theme, ThemeColor } from "@earendil-works/pi-coding-agent";
 
 const RENDER_WIDTH = 100;
@@ -88,7 +88,11 @@ export interface RenderedHtml {
 }
 
 export interface ExtensionRenderDeps {
-  getToolDefinition: (name: string) => ToolDefinition | undefined;
+  /**
+   * How calls to a tool are drawn: what the extensions chose for it, else the tool's own
+   * definition. pi resolves the two the same way for its HTML export.
+   */
+  getToolRenderers: (name: string) => ToolRenderers | undefined;
   getMessageRenderer: (customType: string) => MessageRenderer | undefined;
   cwd: string;
   themeName?: string;
@@ -134,7 +138,7 @@ export class ExtensionRenderer {
     this.toolRenderer =
       next && this.theme
         ? createToolHtmlRenderer({
-            getToolDefinition: (name: string) => next.getToolDefinition(name),
+            getToolRenderers: (name: string) => next.getToolRenderers(name),
             theme: this.theme,
             cwd: next.cwd,
             width: RENDER_WIDTH,
