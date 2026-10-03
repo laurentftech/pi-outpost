@@ -292,7 +292,7 @@ export async function createSandboxedTools(
     tools.push(...writeFactories.map((create) => scopeToRoot(create(realRoot), realRoot, realWritableRoot)));
   }
 
-  if (sandbox.allowBash) {
+  if (sandbox.allowBash && sandbox.bashFrom === undefined) {
     // Explicit opt-in: bash runs in the root but is NOT path-confined. The root
     // still has to be pinned onto the context, or the shell starts in the
     // project root instead — see `withCwd`.
@@ -324,9 +324,59 @@ export const PI_BUILTIN_TOOL_NAMES = ["read", "bash", "powershell", "edit", "wri
  * and a read-only one its unconfined `write` and `edit`. Excluding a name drops it
  * from the registry altogether, whoever registered it.
  */
-export function unsuppliedBuiltIns(sandboxedTools: ToolDefinition[]): string[] {
-  const supplied = new Set(sandboxedTools.map((tool) => tool.name));
+export function unsuppliedBuiltIns(sandboxedTools: ToolDefinition[], delegated: readonly string[] = []): string[] {
+  const supplied = new Set([...sandboxedTools.map((tool) => tool.name), ...delegated]);
   return PI_BUILTIN_TOOL_NAMES.filter((name) => !supplied.has(name));
+}
+
+/**
+ * The built-ins an extension supplies instead of the sandbox: `bash`, when the sandbox
+ * allows it and names the extension that provides it. Not excluded, so that extension's
+ * tool can register; checked by `assertDelegatedBash` once the session exists.
+ */
+export function delegatedBuiltIns(sandbox: Pick<SandboxConfig, "allowBash" | "bashFrom"> | undefined): string[] {
+  return sandbox?.allowBash && sandbox.bashFrom !== undefined ? ["bash"] : [];
+}
+
+/** Whether a tool's source is the extension `bashFrom` names: its package source, or a path at or under it. */
+export function isFromExtension(source: { source: string; path: string }, bashFrom: string): boolean {
+  if (source.source === bashFrom) return true;
+  if (source.source === "builtin" || source.source === "sdk") return false;
+  const named = path.resolve(bashFrom);
+  return path.isAbsolute(source.path) && isWithin(named, path.resolve(source.path));
+}
+
+/** A session refused because `sandbox.bashFrom` names an extension that did not supply bash. */
+export class SandboxDelegationError extends Error {
+  override readonly name = "SandboxDelegationError";
+}
+
+/**
+ * Fail closed when bash was handed to an extension that did not supply it.
+ *
+ * Without this, a misspelt name or an extension that failed to load would leave Pi's
+ * own `bash` registered — unconfined, which `assertNoUnconfinedBuiltIns` refuses too,
+ * but without saying why — or another extension's `bash` in its place, which nothing
+ * else would notice. The sandbox's word is that bash runs where the user said it does.
+ */
+export function assertDelegatedBash(
+  session: Pick<AgentSession, "getAllTools">,
+  sandbox: Pick<SandboxConfig, "allowBash" | "bashFrom"> | undefined,
+): void {
+  if (!sandbox?.allowBash || sandbox.bashFrom === undefined) return;
+  const bash = session.getAllTools().find((tool) => tool.name === "bash");
+  if (bash === undefined || !isFromExtension(bash.sourceInfo, sandbox.bashFrom)) {
+    const found =
+      bash === undefined
+        ? "no extension registered one"
+        : bash.sourceInfo.source === "builtin"
+          ? "the only one is Pi's own, which is unconfined"
+          : `the one registered comes from ${bash.sourceInfo.source === "sdk" ? "pi-outpost" : bash.sourceInfo.source} (${bash.sourceInfo.path})`;
+    throw new SandboxDelegationError(
+      `"sandbox.bashFrom" hands bash to "${sandbox.bashFrom}", but ${found}. ` +
+        "Install and enable that extension, or remove sandbox.bashFrom; refusing to start the session.",
+    );
+  }
 }
 
 /**

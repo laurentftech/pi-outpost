@@ -1168,3 +1168,31 @@ describe("loadConfig — the shape the interface opens in", () => {
     });
   });
 });
+
+// ---------------------------------------------------------------------------
+// sandbox.bashFrom: bash supplied by a sandboxing extension.
+// ---------------------------------------------------------------------------
+describe("loadConfig — sandbox.bashFrom", () => {
+  async function load(raw: Record<string, unknown>) {
+    const dir = await mkdtemp(path.join(tmpdir(), "pi-outpost-bashfrom-test-"));
+    try {
+      const configPath = path.join(dir, "config.json");
+      await writeFile(configPath, JSON.stringify({ sandbox: { root: dir, allowBash: true, ...raw } }, null, 2));
+      return loadConfig(dir, { config: configPath });
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  }
+
+  // openlore: scenario=TheDelegateIsNamedInTheSandbox spec=sandbox-delegated-bash
+  test("keeps the extension it names, trimmed, and leaves it out when unset", async () => {
+    assert.equal((await load({ bashFrom: " npm:pi-landstrip " })).sandbox?.bashFrom, "npm:pi-landstrip");
+    assert.equal((await load({})).sandbox?.bashFrom, undefined);
+  });
+
+  test("refuses a name that names nothing", async () => {
+    await assert.rejects(load({ bashFrom: "" }), /non-empty string/);
+    await assert.rejects(load({ bashFrom: "   " }), /"sandbox\.bashFrom" must name an extension/);
+    await assert.rejects(load({ bashFrom: 3 }), /bashFrom/);
+  });
+});

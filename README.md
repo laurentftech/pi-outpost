@@ -475,11 +475,34 @@ in [`pi-outpost.config.example.json`](pi-outpost.config.example.json).
 | `sandbox.allowWrite` | Adds edit/write, confined to `sandbox.writableRoot` (default `false`) |
 | `sandbox.writableRoot` | Read-write zone: a subdirectory of `root` that edit/write are further confined to. Defaults to `root` itself. Ignored while `allowWrite` is false, and applies to the `cwd` project only: every other open project is writable in its whole directory |
 | `sandbox.allowBash` | Adds bash — **not path-confined**, explicit opt-in (default `false`) |
+| `sandbox.bashFrom` | Hands bash to a sandboxing extension instead: its package source as pi lists it (`"npm:pi-landstrip"`) or the path of its file or directory. pi-outpost then supplies no `bash` of its own — which would otherwise shadow the extension's, since an application's tool wins over an extension's of the same name. The session refuses to start unless that extension registers `bash`, and a Settings change that would leave it without one is rolled back. Only while `allowBash` is on. See [Confining bash with an extension](#confining-bash-with-an-extension) |
 | `sandboxLocks` | Which sandbox fields Settings may **not** change: `root`, `writableRoot`, `allowWrite`, `allowBash` |
 | `workspaceLock` | Pin the server to one project: opening, closing and switching are refused, and no control is offered |
 | `workspaceIdleTimeoutMs` | How long an unused project stays alive before it is retired (default `1800000` — 30 min; `0` never retires). A project running a turn, waiting for you, or ready for review is never retired |
 | `openProjects` | The set of open projects. **Written by the server** when you open or close one — not hand-authored |
 | `files.watch` | Watch the directories the file browser has listed, so the tree follows the workspace whoever changed it (default `true`). Set `false` where a watch is a liability — a network mount that emits no events, a spent inotify budget. The tree's ↻ control re-lists by hand either way |
+
+### Confining bash with an extension
+
+pi-outpost confines its file tools to the sandbox, but `bash` cannot be path-confined: once
+`allowBash` is on, a command runs with everything the server's user can do. A sandboxing
+extension such as [pi-landstrip](https://pi.dev/packages/pi-landstrip) supplies a `bash` that
+runs inside an operating-system sandbox (seccomp on Linux) with its own file and network
+policy. Install it with `pi install npm:pi-landstrip` (into the same agent directory the server
+uses), then name it:
+
+```json
+{
+  "sandbox": { "root": ".", "allowWrite": true, "allowBash": true, "bashFrom": "npm:pi-landstrip" }
+}
+```
+
+Without `bashFrom`, the extension loads but its `bash` is shadowed by pi-outpost's own, and
+commands run unconfined. With it, the session checks that the `bash` in place comes from that
+extension and refuses to start otherwise, naming the `bash` it found. The extension's policy is
+its own (pi-landstrip reads `~/.pi/agent/sandbox.json` and `.pi/sandbox.json`); pi-outpost does
+not interpret it. The terminal panel, when enabled (`terminal.enabled`), is a separate shell that
+no extension confines: leave it off where that matters, and lock it with `sandboxLocks.terminal`.
 
 ### Agent resources
 

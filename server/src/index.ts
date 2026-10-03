@@ -207,7 +207,15 @@ import { Workspace, shouldRetireWorkspace, type WorkspaceOptions, type Workspace
 import { WorkspaceRegistry } from "./workspaceRegistry.ts";
 import { discoverSkillCatalogue, ResourceRepositoryService } from "./resourceRepositories.ts";
 import { deriveWorkspaceActivity, workspaceActivityNeedsAttention } from "./workspaceActivity.ts";
-import { assertNoUnconfinedBuiltIns, isWithin, realResolve, unsuppliedBuiltIns } from "./sandbox.ts";
+import {
+  assertDelegatedBash,
+  assertNoUnconfinedBuiltIns,
+  delegatedBuiltIns,
+  isWithin,
+  realResolve,
+  SandboxDelegationError,
+  unsuppliedBuiltIns,
+} from "./sandbox.ts";
 import {
   firstExchange,
   generateSessionTitle,
@@ -1144,6 +1152,10 @@ const makeCreateRuntime =
   ): CreateAgentSessionRuntimeFactory =>
   async ({ cwd, sessionManager, sessionStartEvent }) => {
   const appendSystemPrompt = composeAppendSystemPrompt(config);
+  // What the toolset hands to an extension (bashFrom). Server-wide, like allowBash:
+  // a project's own sandbox differs only in its roots (see sandboxFor), and the server's
+  // project is still being created when its first session is.
+  const projectSandbox = config.sandbox;
 
   const extraFactories = [...seaExtensionFactories];
   // extensionScripts are loaded via the SDK's jiti-based loader (same as
@@ -1219,7 +1231,7 @@ const makeCreateRuntime =
         ? {
             noTools: "builtin" as const,
             customTools: sandboxedTools,
-            excludeTools: unsuppliedBuiltIns(sandboxedTools),
+            excludeTools: unsuppliedBuiltIns(sandboxedTools, delegatedBuiltIns(projectSandbox)),
           }
         : {}),
       ...(!sandboxedTools && config.tools ? { tools: config.tools } : {}),
@@ -1375,6 +1387,8 @@ const makeCreateRuntime =
           }),
     });
   if (sandboxedTools) {
+    // The delegation first: it names the cause when Pi's own bash is what remains.
+    assertDelegatedBash(created.session, projectSandbox);
     assertNoUnconfinedBuiltIns(created.session);
     activateDefaultTools(created.session, services.settingsManager.getDefaultTools());
   }
@@ -3005,6 +3019,9 @@ async function handleUpdateConfig(
         allowWrite: mergedSandbox.allowWrite,
         allowBash: mergedSandbox.allowBash,
         writableRoot: mergedSandbox.writableRoot,
+        // Not edited from Settings: carried over, or an apply would hand bash back to
+        // pi-outpost's unconfined one until the next start.
+        ...(config.sandbox?.bashFrom === undefined ? {} : { bashFrom: config.sandbox.bashFrom }),
         readExceptions: [],
       };
     }
@@ -3030,12 +3047,11 @@ async function handleUpdateConfig(
     await workspace.rebuildResources({ cwd: workspace.settings.cwd, ...(rebuiltSandbox ? { sandbox: rebuiltSandbox } : {}) });
     // Replace the current session so the new runtime picks up the updated tools
     // and re-runs skill discovery over the new paths.
-    const replacement = await rebuildTools.call(workspace.agent, makeCreateRuntime(workspace.sandboxedTools, workspace));
-    if (replacement.cancelled) {
-      // newSession did not invalidate the old agent, so restore every other view
-      // of the boundary before reporting the refusal. Runtime first, disk second:
-      // even if the second atomic write unexpectedly fails, this process remains
-      // fail-safe and a restart will build both sides from the on-disk settings.
+    // newSession did not invalidate the old agent, so restore every other view of the
+    // boundary before reporting the refusal. Runtime first, disk second: even if the
+    // second atomic write unexpectedly fails, this process remains fail-safe and a
+    // restart will build both sides from the on-disk settings.
+    const rollBack = async (reason: string) => {
       config.userSkillPaths = previousSkillPaths;
       config.userExtensionPaths = previousExtensionPaths;
       config.userSkillCollections = previousCollections;
@@ -3046,7 +3062,20 @@ async function handleUpdateConfig(
         ...(restoredSandbox ? { sandbox: restoredSandbox } : {}),
       });
       persistEditableSettings(config, previousPersisted);
-      refuse("Settings change cancelled by an extension; the previous settings remain active");
+      refuse(reason);
+    };
+    let replacement: Awaited<ReturnType<NonNullable<typeof rebuildTools>>>;
+    try {
+      replacement = await rebuildTools.call(workspace.agent, makeCreateRuntime(workspace.sandboxedTools, workspace));
+    } catch (error) {
+      // Bash handed to an extension that does not supply it: a sandbox that cannot
+      // start, and — kept on disk — a server that would not start again either.
+      if (!(error instanceof SandboxDelegationError)) throw error;
+      await rollBack(`${error.message.replace(/; refusing to start the session\.$/, ".")} The previous settings remain active.`);
+      return undefined;
+    }
+    if (replacement.cancelled) {
+      await rollBack("Settings change cancelled by an extension; the previous settings remain active");
       return undefined;
     }
     for (const sibling of siblings) await rebuildSibling(sibling);
