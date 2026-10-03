@@ -74,7 +74,7 @@ describe("a figure draws an enriched document", () => {
   });
 
   test("a version this build does not implement is still refused", () => {
-    const future = { ...architecture, schema: "urn:structured-exchange:3" };
+    const future = { ...architecture, schema: "urn:structured-exchange:4" };
     assert.equal((figure(future) as { reason?: string }).reason, "unsupported-version");
   });
 });

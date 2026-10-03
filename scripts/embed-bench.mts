@@ -17,7 +17,15 @@ import { readFile, realpath, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
-import { SEEDED_MESSAGES, VERIFICATION_REPORT } from "../e2e/fixtures/seeded-transcript";
+import {
+  SEEDED_MESSAGES,
+  SEEDED_PLAN_FIGURE,
+  SEEDED_PLAN_FIGURE_PATH,
+  SEEDED_TIMELINE,
+  SEEDED_TIMELINE_PREVIOUS,
+  VERIFICATION_REPORT,
+} from "../e2e/fixtures/seeded-transcript";
+import { createTimelineComparisonToolDefinition } from "../server/src/timelineComparisonTool.ts";
 import { createStructuredExchangeFigureToolDefinition } from "../server/src/structuredExchangeFigureTool.ts";
 // @ts-expect-error -- .mjs harness, no types
 import { makeWorkspace, startServer } from "../server/test/harness.mjs";
@@ -96,7 +104,25 @@ const host = await serveHostPage(HOST_PORT);
  * JSON that does not, the version we do not implement, and the one that claims
  * the contract and fails it.
  */
+/**
+ * The project's kind colours, as a version 2 registry declares them — no profile, so
+ * nothing is constrained. `power` is coloured as an element kind only: architecture.json
+ * also has a `power` relationship, which must keep its automatic colour.
+ */
+const BENCH_APPEARANCE_REGISTRY = JSON.stringify(
+  {
+    schema: "urn:structured-exchange-profile-registry:2",
+    appearance: {
+      kinds: { SRR: { color: "#dc2626" }, "étude": { color: "#16a34a" }, power: { color: "#b45309" } },
+      relationshipKinds: { signal: { color: "#7c3aed" } },
+    },
+  },
+  null,
+  2,
+);
+
 const DOCUMENT_FILES = {
+  ".pi-outpost/structured-exchange.json": BENCH_APPEARANCE_REGISTRY,
   "diagrams/architecture.json": JSON.stringify(
     {
       schema: "urn:structured-exchange:1",
@@ -116,6 +142,8 @@ const DOCUMENT_FILES = {
     null,
     2,
   ),
+  "diagrams/plan.json": JSON.stringify(SEEDED_TIMELINE, null, 2),
+  "diagrams/plan-previous.json": JSON.stringify(SEEDED_TIMELINE_PREVIOUS, null, 2),
   "diagrams/not-a-document.json": JSON.stringify({ kind: "graph", data: { nodes: [], edges: [] } }, null, 2),
   "diagrams/future.json": JSON.stringify({ schema: "urn:structured-exchange:2", kind: "constellation" }, null, 2),
   "diagrams/broken.json": JSON.stringify(
@@ -161,7 +189,25 @@ async function seedFigures(): Promise<void> {
     output_path: "figures/power-only.svg",
     hide_relationship_kinds: ["signal"],
   });
-  for (const result of [whole, narrowed]) {
+  // The programme schedule at a page's width, one row per section — the figure a
+  // review report carries.
+  const plan = await write({ path: "diagrams/plan.json", output_path: "figures/plan.svg", width: 900, compact: true });
+  // The update as a review report carries it: compared through the agent's own tool,
+  // written beside the plans, then drawn.
+  const compareTool = createTimelineComparisonToolDefinition({
+    cwd: root,
+    allowedRoots: [await realpath(root)],
+    maxBytes: 4_000_000,
+    writableRoot: await realpath(root),
+  });
+  const compared = await (compareTool.execute as (id: string, params: unknown) => Promise<{ content: { text: string }[]; isError?: boolean }>)("bench", {
+    previous_path: "diagrams/plan-previous.json",
+    current_path: "diagrams/plan.json",
+    label: "Plan of 1 September",
+    output_path: "diagrams/plan-compared.json",
+  });
+  const comparedFigure = await write({ path: "diagrams/plan-compared.json", output_path: "figures/plan-compared.svg", width: 900 });
+  for (const result of [whole, narrowed, plan, compared, comparedFigure]) {
     if (result.isError) throw new Error(`the bench could not write its figures: ${result.content[0]?.text}`);
   }
 
@@ -178,6 +224,14 @@ async function seedFigures(): Promise<void> {
       "says so itself, at the bottom of the picture:",
       "",
       "![Power only](figures/power-only.svg)",
+      "",
+      "The programme schedule, fitted to the page, one row per section:",
+      "",
+      "![Programme X](figures/plan.svg)",
+      "",
+      "What changed since the plan of 1 September:",
+      "",
+      "![Programme X compared](figures/plan-compared.svg)",
       "",
       "Both were written by `write_structure_figure` from `diagrams/architecture.json`.",
       "",
@@ -263,6 +317,9 @@ const plain = await startServer(
 
 const diagramRoot = await makeWorkspace({
   "readme.md": "# diagrams\n",
+  // The picture the schedule reply shows.
+  [SEEDED_PLAN_FIGURE_PATH]: SEEDED_PLAN_FIGURE,
+  ".pi-outpost/structured-exchange.json": BENCH_APPEARANCE_REGISTRY,
   // The artifact the seeded proposal binds its approval to, and the file its
   // locations point at. Both have to exist here or the reader is driving a
   // document whose links all lead nowhere — which proves only that nothing

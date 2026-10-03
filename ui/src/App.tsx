@@ -1,6 +1,7 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { UpdateNotice } from "./components/UpdateNotice";
 import { ReplyConformanceContext } from "./components/ReplyStructuredExchange";
+import { StructuredAppearanceContext } from "./presentations/structuredAppearance";
 import { workspaceKey } from "./util/workspaceKey";
 import type { OutcomeTarget, Theme, WireImage } from "@pi-outpost/shared";
 import { AssistantMessage } from "./components/AssistantMessage";
@@ -848,6 +849,7 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
   return (
     <ThemeContext.Provider value={theme}>
     <ReplyConformanceContext.Provider value={state.replyConformance}>
+    <StructuredAppearanceContext.Provider value={state.structuredAppearance}>
       <div
         className="relative flex h-full"
         onDragEnter={(e) => {
@@ -1397,6 +1399,7 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
 
       {state.dialogQueue[0] && <ExtensionDialog request={state.dialogQueue[0]} onRespond={respondToDialog} />}
       <ExtensionNotifications notifications={state.notifications} onDismiss={dismissNotification} />
+    </StructuredAppearanceContext.Provider>
     </ReplyConformanceContext.Provider>
     </ThemeContext.Provider>
   );

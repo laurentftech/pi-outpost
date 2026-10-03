@@ -19,6 +19,7 @@ import {
   type NotADocument,
   type StructuredExchangeDocumentVerdict,
 } from "./structuredExchangeDocument.ts";
+import type { ProjectAppearance } from "./structuredExchangeProfile.ts";
 import type { StructuredExchangeSchemaCheck } from "./structuredExchangeParse.ts";
 import type { StructuredExchangeLimits } from "./structuredExchangeBounds.ts";
 import type { StructuredExchangeIssue } from "./structuredExchangeValidation.ts";
@@ -26,9 +27,13 @@ import type {
   StructuredGraphData,
   StructuredSequenceData,
   StructuredViewpoint,
+  StructuredTimelineData,
+  StructuredTimelineScale,
   ValidatedStructuredExchange,
 } from "./structuredExchange.ts";
 import { graphFigure, sequenceFigure, serializeFigure, shownGraph } from "./structuredExchangeFigure.ts";
+import { localToday } from "./structuredExchangeTimeline.ts";
+import { timelineFigure } from "./structuredExchangeTimelineFigure.ts";
 import { narrowingOf, NOTHING_HIDDEN, resolveViewpoint, viewpointsOf, type Narrowing } from "./structuredExchangeModel.ts";
 
 /** How much of the document the figure draws, in the document's own terms. */
@@ -56,6 +61,8 @@ export interface FigureExport {
    * the document, or the profile the document is held to.
    */
   viewpoint?: { id: string; label: string; source: "document" | "profile"; profile?: string };
+  /** A timeline too long for the width asked: drawn at the narrowest legible scale, wider than asked. */
+  overWidth?: boolean;
 }
 
 export type FigureRefusal = { ok: false } & (
@@ -63,8 +70,10 @@ export type FigureRefusal = { ok: false } & (
   | { reason: "unsupported-version"; schema: string }
   | { reason: "invalid"; issues: StructuredExchangeIssue[] }
   | { reason: "too-large"; issue: StructuredExchangeIssue }
-  /** A table is data. It exports as a spreadsheet, and has no figure. */
+  /** A table is data, and exports as a spreadsheet: it has no figure. */
   | { reason: "not-drawable"; kind: string }
+  /** An option that means something for another kind only — a graph's narrowing asked of a timeline. */
+  | { reason: "option-not-for-kind"; option: string; kind: string }
   /** The narrowing selected nothing, or the document declares nothing. */
   | { reason: "nothing-to-draw"; coverage: FigureCoverage }
   /** A viewpoint was named, and neither the document nor its profile declares any. */
@@ -96,6 +105,21 @@ export interface FigureNarrowing {
    * looked up after the document's own — the document is the more specific author.
    */
   profile?: { id: string; viewpoints: readonly StructuredViewpoint[] };
+  /** The project's kind colours, so a written figure looks like the one the reader sees. */
+  appearance?: ProjectAppearance;
+  /** How a timeline is drawn: the reader's display options, a page width, the date line. */
+  timeline?: {
+    compact?: boolean;
+    hideDependencies?: boolean;
+    /** The scale to draw at; the timeline's declared one when omitted. A width wins over it. */
+    scale?: StructuredTimelineScale;
+    width?: number;
+    referenceLine?: "dated" | "none";
+    /** A compared timeline: draw the comparison (default) or the new version alone. */
+    comparison?: "compare" | "new";
+    /** The day the figure is drawn, as a day number; the caller's local calendar date. */
+    today: number;
+  };
 }
 
 /** The refusal a document verdict maps to, or undefined when it validated. */
@@ -125,6 +149,46 @@ export function figureForEnvelope(
   narrowing: FigureNarrowing = {},
 ): FigureExport | FigureRefusal {
   const isProposal = envelope.target !== undefined;
+
+  if (envelope.kind === "timeline") {
+    // A graph's narrowing names element and relationship kinds and viewpoints, none of
+    // which a timeline has. Ignored, it would write a figure the agent believes narrowed.
+    for (const [option, given] of [
+      ["hide_element_kinds", narrowing.hiddenElementKinds],
+      ["hide_relationship_kinds", narrowing.hiddenRelationshipKinds],
+      ["viewpoint", narrowing.viewpoint],
+    ] as const) {
+      if (given !== undefined && (typeof given === "string" || given.length > 0)) {
+        return { ok: false, reason: "option-not-for-kind", option, kind: "timeline" };
+      }
+    }
+    const data = envelope.data as StructuredTimelineData;
+    const options = narrowing.timeline ?? { today: localToday() };
+    const figure = timelineFigure(data, {
+      today: options.today,
+      compact: options.compact ?? false,
+      showDependencies: !(options.hideDependencies ?? false),
+      ...(options.scale === undefined ? {} : { scale: options.scale }),
+      ...(options.width === undefined ? {} : { width: options.width }),
+      referenceLine: options.referenceLine ?? "dated",
+      comparison: options.comparison ?? "compare",
+      appearance: narrowing.appearance ?? null,
+    });
+    const items = data.rows.reduce((count, row) => count + (row.type === "task" ? row.items.length : 0), 0);
+    const dependencies = (data.dependencies ?? []).length;
+    return {
+      ok: true,
+      svg: serializeFigure(figure),
+      coverage: {
+        elements: items,
+        ofElements: items,
+        relationships: options.hideDependencies ? 0 : dependencies,
+        ofRelationships: dependencies,
+      },
+      ...(options.hideDependencies && dependencies > 0 ? { narrowing: `${dependencies} dependencies are not drawn` } : {}),
+      ...(figure.overWidth ? { overWidth: true } : {}),
+    };
+  }
 
   // Before anything is drawn, and for every kind: a viewpoint named for a document that
   // cannot have it is refused rather than ignored. Only a graph may declare viewpoints,
@@ -161,7 +225,10 @@ export function figureForEnvelope(
     // A sequence is not narrowable here: its key explains the picture and switches
     // nothing. A narrowing named for one is not quietly applied and not quietly
     // dropped either — it simply has no key to act on, which the coverage shows.
-    const figure = sequenceFigure(data, { isProposal });
+    const figure = sequenceFigure(data, {
+      isProposal,
+      ...(narrowing.appearance === undefined ? {} : { appearance: narrowing.appearance }),
+    });
     return { ok: true, svg: serializeFigure(figure), coverage };
   }
 
@@ -198,7 +265,12 @@ export function figureForEnvelope(
   // caller only discovers is worthless when somebody opens the file.
   if (shown.nodes.length === 0) return { ok: false, reason: "nothing-to-draw", coverage };
 
-  const figure = graphFigure(data, { isProposal, hidden, ...(viewpoint === undefined ? {} : { viewpoint }) });
+  const figure = graphFigure(data, {
+    isProposal,
+    hidden,
+    ...(viewpoint === undefined ? {} : { viewpoint }),
+    ...(narrowing.appearance === undefined ? {} : { appearance: narrowing.appearance }),
+  });
   return {
     ok: true,
     svg: serializeFigure(figure),
@@ -257,7 +329,13 @@ export function describeFigureRefusal(refusal: FigureRefusal): string {
     case "too-large":
       return refusal.issue.message;
     case "not-drawable":
-      return `a ${refusal.kind} is data rather than a drawing, and has no figure`;
+      // A timeline is drawn, but only by the reader's view: no figure is written for
+      // one in this version, and saying it is "data rather than a drawing" would be false.
+      return refusal.kind === "timeline"
+        ? "a timeline is drawn in the conversation but has no figure file in this version; present it with present_structure instead"
+        : `a ${refusal.kind} is data rather than a drawing, and has no figure`;
+    case "option-not-for-kind":
+      return `\`${refusal.option}\` narrows a graph, and a ${refusal.kind} has nothing it could narrow; leave it out`;
     case "nothing-to-draw":
       return refusal.coverage.ofElements === 0
         ? "the document declares nothing to draw"
@@ -281,10 +359,13 @@ export function describeFigureRefusal(refusal: FigureRefusal): string {
 }
 
 /** What a figure shows, in words, for a result a caller reports back. */
-export function describeCoverage(coverage: FigureCoverage): string {
+export function describeCoverage(coverage: FigureCoverage, kind: string = "graph"): string {
+  // A timeline's things are items and its links dependencies; calling them elements
+  // and relationships would describe a graph nobody drew.
+  const [things, links] = kind === "timeline" ? ["items", "dependencies"] : ["elements", "relationships"];
   const whole = coverage.elements === coverage.ofElements && coverage.relationships === coverage.ofRelationships;
   return whole
-    ? `the whole document: ${coverage.ofElements} elements and ${coverage.ofRelationships} relationships`
-    : `${coverage.elements} of ${coverage.ofElements} elements and ` +
-        `${coverage.relationships} of ${coverage.ofRelationships} relationships`;
+    ? `the whole document: ${coverage.ofElements} ${things} and ${coverage.ofRelationships} ${links}`
+    : `${coverage.elements} of ${coverage.ofElements} ${things} and ` +
+        `${coverage.relationships} of ${coverage.ofRelationships} ${links}`;
 }

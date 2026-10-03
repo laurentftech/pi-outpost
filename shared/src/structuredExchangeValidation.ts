@@ -22,8 +22,10 @@ import {
   type StructuredGraphData,
   type StructuredSequenceData,
   type StructuredTableData,
+  type StructuredTimelineData,
   type ValidatedStructuredExchange,
 } from "./structuredExchange.ts";
+import { timelineIssues } from "./structuredExchangeTimelineValidation.ts";
 
 /**
  * One reason a document was refused.
@@ -54,6 +56,7 @@ function dataMatchesKind(envelope: StructuredExchangeEnvelope): boolean {
   const data = envelope.data as unknown as Record<string, unknown>;
   if (envelope.kind === "graph") return Array.isArray(data.nodes) && Array.isArray(data.edges);
   if (envelope.kind === "sequence") return Array.isArray(data.participants) && Array.isArray(data.messages);
+  if (envelope.kind === "timeline") return typeof data.time === "object" && data.time !== null && Array.isArray(data.rows);
   return Array.isArray(data.columns) && Array.isArray(data.rows);
 }
 
@@ -112,6 +115,9 @@ interface EnrichedItem {
 }
 
 function enrichedItemsOf(envelope: StructuredExchangeEnvelope): EnrichedItem[] {
+  // A timeline's rows are tasks and separators, which carry no enrichment; read as a
+  // table's rows they would be walked for constructs they cannot hold.
+  if (envelope.kind === "timeline") return [];
   const data = envelope.data as unknown as Record<string, unknown>;
   const items: EnrichedItem[] = [];
   for (const collection of ["nodes", "edges", "participants", "messages", "rows", "relations"]) {
@@ -178,6 +184,21 @@ function rowRelationsOf(envelope: StructuredExchangeEnvelope): { from?: unknown;
   return Array.isArray(relations) ? (relations as { from?: unknown; to?: unknown }[]) : [];
 }
 
+/**
+ * Why a kind refuses a proposal, in terms of that kind.
+ *
+ * A table is a projection of something held elsewhere. A timeline is not — it is
+ * the plan itself — but it is maintained by presenting it again rather than by
+ * patching, and telling its producer it is "a projection" would send them looking
+ * for the thing it projects.
+ */
+function notProposable(kind: string, consequence: string): string {
+  if (kind === "timeline") {
+    return `a timeline is maintained by presenting the revised timeline again, not proposed as a change, ${consequence}`;
+  }
+  return `a ${kind} is a projection and cannot be proposed, ${consequence}`;
+}
+
 export function validateStructuredExchangeSemantics(envelope: StructuredExchangeEnvelope): StructuredExchangeIssue[] {
   const issues: StructuredExchangeIssue[] = [];
 
@@ -197,7 +218,7 @@ export function validateStructuredExchangeSemantics(envelope: StructuredExchange
     issues.push({
       rule: "kind-not-proposable",
       path: "/target",
-      message: `a ${envelope.kind} is a projection and cannot be proposed, so it carries no target`,
+      message: notProposable(envelope.kind, "so it carries no target"),
     });
   }
   // Presence is the assertion, not length. An empty `removals` on a projection still
@@ -208,7 +229,7 @@ export function validateStructuredExchangeSemantics(envelope: StructuredExchange
       issues.push({
         rule: "kind-not-proposable",
         path: "/removals",
-        message: `a ${envelope.kind} is a projection and cannot be proposed, so it declares no removals`,
+        message: notProposable(envelope.kind, "so it declares no removals"),
       });
     } else if (envelope.target === undefined) {
       issues.push({
@@ -333,7 +354,7 @@ export function validateStructuredExchangeSemantics(envelope: StructuredExchange
       issues.push({
         rule: "kind-not-proposable",
         path: `${candidate.at}/set`,
-        message: `a ${envelope.kind} is a projection and cannot be proposed, so nothing in it declares a change`,
+        message: notProposable(envelope.kind, "so nothing in it declares a change"),
       });
     } else if (envelope.target === undefined) {
       // `target` is the whole of what makes a document a proposal, and the reader's
@@ -470,6 +491,8 @@ export function validateStructuredExchangeSemantics(envelope: StructuredExchange
       }
     });
   }
+
+  if (envelope.kind === "timeline") issues.push(...timelineIssues(envelope.data as StructuredTimelineData));
 
   // ---------------------------------------------------------------------------
   // The enriched contract's own rules

@@ -11,10 +11,11 @@
  * Node-only, like the document schema check: it carries the compiler. The browser
  * never validates a profile; it is shown the server's verdict.
  */
-import { RESERVED_PROFILE_IDENTIFIERS } from "./structuredExchangeProfile.ts";
+import { RESERVED_PROFILE_IDENTIFIERS, STRUCTURED_EXCHANGE_PROFILE_REGISTRY_SCHEMA_V2 } from "./structuredExchangeProfile.ts";
 import { Compile } from "typebox/compile";
 import profileSchemaModule from "../schemas/structured-exchange-profile-1.json" with { type: "json" };
 import registrySchemaModule from "../schemas/structured-exchange-profile-registry-1.json" with { type: "json" };
+import registrySchemaModuleV2 from "../schemas/structured-exchange-profile-registry-2.json" with { type: "json" };
 import type { StructuredViewpoint } from "./structuredExchange.ts";
 import type { StructuredExchangeProfile, StructuredExchangeProfileRegistry } from "./structuredExchangeProfile.ts";
 import { unwrapSchemaModule } from "./structuredExchangeSchemaNode.ts";
@@ -37,6 +38,7 @@ export interface LoadedProfile {
 
 let profileCheck: ReturnType<typeof Compile> | undefined;
 let registryCheck: ReturnType<typeof Compile> | undefined;
+let registryCheckV2: ReturnType<typeof Compile> | undefined;
 
 /** One JSON Pointer segment, escaped as RFC 6901 requires. */
 function segment(name: string): string {
@@ -238,18 +240,73 @@ export function validateProfile(value: unknown): ProfileVerdict {
 
 /** A registry file's content, on its own — before the profiles it lists are read. */
 export function validateRegistry(value: unknown): RegistryVerdict {
-  registryCheck ??= Compile(unwrapSchemaModule(registrySchemaModule));
-  const schema = schemaIssues(registryCheck, value, "registry");
-  if (schema.length > 0) return { valid: false, issues: schema };
+  // Judged by the format it declares, as documents are. Anything else is judged by
+  // version 1, whose `schema` constant then names what was expected — as it always did.
+  const declared = (value as { schema?: unknown } | null)?.schema;
+  let check: ReturnType<typeof Compile>;
+  if (declared === STRUCTURED_EXCHANGE_PROFILE_REGISTRY_SCHEMA_V2) {
+    registryCheckV2 ??= Compile(unwrapSchemaModule(registrySchemaModuleV2));
+    check = registryCheckV2;
+  } else {
+    registryCheck ??= Compile(unwrapSchemaModule(registrySchemaModule));
+    check = registryCheck;
+  }
+  const schema = schemaIssues(check, value, "registry");
+  if (schema.length > 0) return { valid: false, issues: preciseAppearanceIssues(value, schema) };
   const registry = value as StructuredExchangeProfileRegistry;
   const issues: StructuredExchangeIssue[] = [];
   const seenPaths = new Map<string, number>();
-  registry.profiles.forEach((listed, index) => {
+  (registry.profiles ?? []).forEach((listed, index) => {
     const first = seenPaths.get(listed);
     if (first === undefined) seenPaths.set(listed, index);
     else issues.push({ rule: "registry/repeated-profile-path", path: `/profiles/${index}`, message: `"${listed}" is already listed at /profiles/${first}` });
   });
   return issues.length > 0 ? { valid: false, issues } : { valid: true, registry, issues: [] };
+}
+
+/**
+ * A colour refused at the colour, not at the map holding it.
+ *
+ * The appearance maps are keyed by kind name, so the compiler reports a bad entry as
+ * "must not have additional properties" at `/appearance/kinds` — which names neither
+ * the kind nor the colour. Each entry is judged here instead, and replaces whatever the
+ * compiler said about that map.
+ */
+function preciseAppearanceIssues(value: unknown, issues: StructuredExchangeIssue[]): StructuredExchangeIssue[] {
+  const appearance = (value as { appearance?: unknown } | null)?.appearance;
+  if (appearance === null || typeof appearance !== "object") return issues;
+  const precise: StructuredExchangeIssue[] = [];
+  const explained = new Set<string>();
+  for (const vocabulary of ["kinds", "relationshipKinds"] as const) {
+    const map = (appearance as Record<string, unknown>)[vocabulary];
+    if (map === null || typeof map !== "object" || Array.isArray(map)) continue;
+    const at = `/appearance/${vocabulary}`;
+    for (const [kind, entry] of Object.entries(map as Record<string, unknown>)) {
+      const where = `${at}/${segment(kind)}`;
+      if (entry === null || typeof entry !== "object" || Array.isArray(entry)) {
+        precise.push({ rule: "registry/schema/type", path: where, message: `the appearance of "${kind}" must be an object declaring a color` });
+        explained.add(at);
+        continue;
+      }
+      const { color, ...rest } = entry as Record<string, unknown>;
+      if (typeof color !== "string" || !/^#[0-9a-fA-F]{6}$/.test(color)) {
+        precise.push({
+          rule: "registry/appearance/color",
+          path: `${where}/color`,
+          message: `the colour of "${kind}" must be six hexadecimal digits after "#", such as "#dc2626"; got ${JSON.stringify(color)}`,
+        });
+        explained.add(at);
+      }
+      for (const name of Object.keys(rest)) {
+        precise.push({ rule: "registry/schema/additionalProperties", path: `${where}/${segment(name)}`, message: `"${name}" is not part of a kind's appearance; only "color" is` });
+        explained.add(at);
+      }
+    }
+  }
+  if (precise.length === 0) return issues;
+  const within = (issue: StructuredExchangeIssue) =>
+    [...explained].some((map) => issue.path === map || issue.path.startsWith(`${map}/`));
+  return [...issues.filter((issue) => !within(issue)), ...precise];
 }
 
 /**
@@ -277,7 +334,7 @@ export function registryConsistencyIssues(
     }
   });
   if (registry.default !== undefined && !firstById.has(registry.default)) {
-    const registered = [...firstById.keys()].map((id) => `"${id}"`).join(", ");
+    const registered = firstById.size === 0 ? "none" : [...firstById.keys()].map((id) => `"${id}"`).join(", ");
     issues.push({
       rule: "registry/unregistered-default",
       path: "/default",

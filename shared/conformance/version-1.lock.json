@@ -172,10 +172,10 @@
     },
     {
       "file": "invalid/unknown-version.json",
-      "sha256": "2e581c8a8a3ee8e9f9d0e41591a017fcdbc48698a146e32d0e23c973bbc88c72",
+      "sha256": "280f977fdf0ea84712f0acd4fbf65bae8327cbca197bcfac8401753fe1329f5b",
       "verdict": "invalid",
       "expectedRule": "unsupported-version",
-      "changedAfterFreeze": "Declared urn:structured-exchange:2 to make the point that an unsupported version is refused. Publishing version 2 made that document valid, so the case now names version 3 \u2014 the intent is unchanged, and the rule it expects is the one version dispatch reports."
+      "changedAfterFreeze": "Declared urn:structured-exchange:2 to make the point that an unsupported version is refused. Publishing version 2 made that document valid, so the case named version 3; publishing version 3 (the timeline) made that identifier supported too, so it now names version 4 \u2014 the intent is unchanged, and the rule it expects is the one version dispatch reports."
     },
     {
       "file": "invalid/unresolved-endpoint.json",

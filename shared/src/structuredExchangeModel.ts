@@ -680,6 +680,21 @@ export function describeStructure(
     };
   }
 
+  if (envelope.kind === "timeline") {
+    // A timeline is drawn and described by its own view: it has no elements, links
+    // or columns for the graph and table readings below to find.
+    return {
+      thingNoun: "task",
+      linkNoun: "dependency",
+      things: [],
+      links: [],
+      containers: [],
+      removals,
+      traces: [],
+      ...shared,
+    };
+  }
+
   const isGraph = envelope.kind === "graph";
   const source = isGraph
     ? (envelope.data as StructuredGraphData).nodes
@@ -793,8 +808,9 @@ export function toMermaid(envelope: ValidatedStructuredExchange): string | undef
     }
     return lines.join("\n");
   }
-  // A table has no diagram form, and inventing one would be a second
-  // representation nobody asked for.
+  // A table has no diagram form, and a timeline's would be Mermaid's `gantt`, whose
+  // dependency syntax cannot say three of the four types the document can. Neither
+  // gets one: inventing a second representation that says less is worse than none.
   return undefined;
 }
 

@@ -52,6 +52,7 @@ import {
 } from "./wordTools.ts";
 import type { RenderSettings } from "./presentationRender.ts";
 import { createStructuredExchangeFigureToolDefinition } from "./structuredExchangeFigureTool.ts";
+import { createTimelineComparisonToolDefinition } from "./timelineComparisonTool.ts";
 import { createStructuredExchangeTableToolDefinition } from "./structuredExchangeTableTool.ts";
 
 /**
@@ -240,6 +241,15 @@ export async function createSandboxedTools(
       maxBytes: structuredExchangeMaxBytes,
       writableRoot: realWritableRoot,
       projectRoot,
+    }),
+  );
+  // Comparing two plans reads two documents and may write one: confined like the figure tool.
+  readFactories.push((cwd) =>
+    createTimelineComparisonToolDefinition({
+      cwd,
+      allowedRoots: documentRoots,
+      maxBytes: structuredExchangeMaxBytes,
+      writableRoot: realWritableRoot,
     }),
   );
   // Writing a table as Markdown reads a document and writes one file: the figure tool's twin.

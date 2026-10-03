@@ -151,7 +151,11 @@ describe("the registry schema", () => {
 describe("the copies shipped with the skill are the same documents", () => {
   // A profile author reading the skill's copy and a project validated against ours
   // must be reading one format, or the author builds to a contract nobody enforces.
-  for (const name of ["structured-exchange-profile-1.json", "structured-exchange-profile-registry-1.json"]) {
+  for (const name of [
+    "structured-exchange-profile-1.json",
+    "structured-exchange-profile-registry-1.json",
+    "structured-exchange-profile-registry-2.json",
+  ]) {
     test(`${name} in skills/ matches shared/schemas`, () => {
       const source = readFileSync(path.join(ROOT, "shared/schemas", name), "utf8");
       const shipped = readFileSync(path.join(ROOT, "skills/structured-exchange", name), "utf8");

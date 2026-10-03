@@ -1,5 +1,5 @@
 import type { StructuredConformance } from "@pi-outpost/shared";
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { EnlargedView } from "../components/EnlargedView";
 import {
   readTableRow,
@@ -7,6 +7,7 @@ import {
   type StructuredGraphData,
   type StructuredSequenceData,
   type StructuredTableData,
+  type StructuredTimelineData,
   type StructuredTableRowRole,
   type ValidatedStructuredExchange,
 } from "@pi-outpost/shared/structured-exchange";
@@ -35,13 +36,15 @@ import {
   graphOrientationFor,
   sequenceFigure,
   type FigureGroup,
-  type FigureMarker,
-  type Primitive,
 } from "@pi-outpost/shared/structured-exchange/figure";
 import { otherOrientation, type Orientation } from "@pi-outpost/shared/diagram-orientation";
 import { resolveViewpoint, sameNarrowing, viewpointsOf } from "@pi-outpost/shared/structured-exchange/model";
 import type { StructuredViewpoint } from "@pi-outpost/shared/structured-exchange";
 import { downloadCsv, downloadMarkdown, downloadXlsx, tableExport } from "./tableExport";
+import { initialTimelineDisplay, TimelineView, type TimelineDisplay } from "./TimelineView";
+import { Drawn, FigureMarkers } from "./figureDrawing";
+import { StructuredAppearanceContext } from "./structuredAppearance";
+import { timelineTextLines } from "@pi-outpost/shared/structured-exchange/timeline";
 import type { ActionDispatch, PresentationProps, ToolItem } from "./types";
 import { resourceTargetFor } from "@pi-outpost/shared/resource-target";
 import {
@@ -74,122 +77,6 @@ export { wrapLabel } from "@pi-outpost/shared/structured-exchange/text";
  */
 
 /* ── Drawing a figure ───────────────────────────────────────────────────────── */
-
-/**
- * One shape, as an element.
- *
- * Decides nothing. Every colour, coordinate and piece of text arrived computed, from
- * the same function that feeds the serializer — which is what stops the picture on
- * screen and the picture in a file from being two different pictures.
- */
-function Shape({ primitive }: { primitive: Primitive }) {
-  const data = Object.fromEntries(
-    Object.entries(primitive.data ?? {}).map(([name, value]) => [`data-${name}`, value]),
-  );
-  switch (primitive.shape) {
-    case "rect":
-      return (
-        <rect
-          {...data}
-          x={primitive.x}
-          y={primitive.y}
-          width={primitive.width}
-          height={primitive.height}
-          rx={primitive.rx}
-          fill={primitive.fill}
-          stroke={primitive.stroke}
-          strokeWidth={primitive.strokeWidth}
-          strokeDasharray={primitive.strokeDasharray}
-          opacity={primitive.opacity}
-        />
-      );
-    case "text":
-      return (
-        <text
-          {...data}
-          data-testid={primitive.testId}
-          x={primitive.x}
-          y={primitive.y}
-          fontSize={primitive.fontSize}
-          fontFamily={primitive.fontFamily}
-          fontWeight={primitive.fontWeight}
-          textAnchor={primitive.textAnchor}
-          fill={primitive.fill}
-          stroke={primitive.stroke}
-          strokeWidth={primitive.strokeWidth}
-          paintOrder={primitive.paintOrder}
-          opacity={primitive.opacity}
-        >
-          {primitive.text}
-        </text>
-      );
-    case "line":
-      return (
-        <line
-          {...data}
-          x1={primitive.x1}
-          y1={primitive.y1}
-          x2={primitive.x2}
-          y2={primitive.y2}
-          stroke={primitive.stroke}
-          strokeWidth={primitive.strokeWidth}
-          strokeDasharray={primitive.strokeDasharray}
-          opacity={primitive.opacity}
-          markerEnd={primitive.markerEnd === undefined ? undefined : `url(#${primitive.markerEnd})`}
-        />
-      );
-    case "path":
-      return (
-        <path
-          {...data}
-          d={primitive.d}
-          fill={primitive.fill ?? "none"}
-          stroke={primitive.stroke}
-          strokeWidth={primitive.strokeWidth}
-          strokeDasharray={primitive.strokeDasharray}
-          strokeLinecap={primitive.strokeLinecap}
-          opacity={primitive.opacity}
-          markerEnd={primitive.markerEnd === undefined ? undefined : `url(#${primitive.markerEnd})`}
-          pointerEvents="none"
-        />
-      );
-  }
-}
-
-/** What a browser adds to a drawn group: handlers, cursors, and a hit area. */
-export type Interaction = { extra?: React.SVGProps<SVGGElement>; before?: React.ReactNode };
-
-/**
- * The shapes of one declared thing, with whatever this browser adds to them.
- *
- * Recurses one level, because the key is a group of switchable groups. The
- * interaction function is passed down rather than applied here, so a nested entry is
- * offered a pointer on the same terms as anything else drawn.
- */
-function Drawn({
-  group,
-  interaction,
-}: {
-  group: FigureGroup;
-  interaction?: (group: FigureGroup) => Interaction;
-}) {
-  const data = Object.fromEntries(
-    Object.entries(group.data ?? {}).map(([name, value]) => [`data-${name}`, value]),
-  );
-  const { extra, before } = interaction?.(group) ?? {};
-  return (
-    <g {...data} data-testid={group.testId} opacity={group.opacity} {...extra}>
-      {group.title === undefined ? null : <title>{group.title}</title>}
-      {before}
-      {group.primitives.map((primitive, index) => (
-        <Shape key={index} primitive={primitive} />
-      ))}
-      {(group.groups ?? []).map((inner) => (
-        <Drawn key={inner.id} group={inner} interaction={interaction} />
-      ))}
-    </g>
-  );
-}
 
 /**
  * One hover tooltip, for everything a diagram draws.
@@ -225,29 +112,6 @@ function useDiagramTooltip() {
     );
 
   return { hover, Tooltip };
-}
-
-/** The arrowheads a figure declares, since a marker cannot inherit a stroke colour. */
-function FigureMarkers({ markers }: { markers: FigureMarker[] }) {
-  return (
-    <defs>
-      {markers.map((marker) => (
-        <marker
-          key={marker.id}
-          id={marker.id}
-          markerWidth="7"
-          markerHeight="7"
-          refX="9"
-          refY="5"
-          viewBox="0 0 10 10"
-          markerUnits="userSpaceOnUse"
-          orient="auto"
-        >
-          <path d="M0,0 L10,5 L0,10 z" fill={marker.paint} />
-        </marker>
-      ))}
-    </defs>
-  );
 }
 
 /* ── Graph ─────────────────────────────────────────────────────────────── */
@@ -316,9 +180,18 @@ function GraphView({
    * the extent, the key — happens in `graphFigure`. What is left here is the half a
    * file cannot carry: pointing, dragging and panning.
    */
+  const appearance = useContext(StructuredAppearanceContext);
   const figure = useMemo(
-    () => graphFigure(data, { isProposal, hidden, nudges, orientation, ...(viewpoint === undefined ? {} : { viewpoint }) }),
-    [data, isProposal, hidden, nudges, orientation, viewpoint],
+    () =>
+      graphFigure(data, {
+        isProposal,
+        hidden,
+        nudges,
+        orientation,
+        ...(viewpoint === undefined ? {} : { viewpoint }),
+        ...(appearance === null ? {} : { appearance }),
+      }),
+    [data, isProposal, hidden, nudges, orientation, viewpoint, appearance],
   );
 
   /**
@@ -541,7 +414,11 @@ function GraphView({
  */
 function SequenceView({ data, isProposal }: { data: StructuredSequenceData; isProposal: boolean }) {
   const { hover, Tooltip } = useDiagramTooltip();
-  const figure = useMemo(() => sequenceFigure(data, { isProposal }), [data, isProposal]);
+  const appearance = useContext(StructuredAppearanceContext);
+  const figure = useMemo(
+    () => sequenceFigure(data, { isProposal, ...(appearance === null ? {} : { appearance }) }),
+    [data, isProposal, appearance],
+  );
 
   return (
     <>
@@ -1137,6 +1014,11 @@ function textualEquivalent(
   for (const artifact of described.artifacts) lines.push(`Artifact — ${artifactText(artifact)}`);
   if (lines.length > 0) lines.push("");
 
+  if (envelope.kind === "timeline") {
+    lines.push(...timelineTextLines(envelope.data as StructuredTimelineData));
+    return lines.join("\n");
+  }
+
   if (described.columns !== undefined && described.rows !== undefined) {
     // A table leaves this application as these words — there is no figure to
     // export — so a narrowed reading has to say so here or it says so nowhere.
@@ -1359,6 +1241,7 @@ function targetRef(envelope: ValidatedStructuredExchange): string | undefined {
 }
 
 export function StructuredExchangeDocument({ envelope, source, rawOutput, dispatch, conformance }: StructuredExchangeDocumentProps) {
+  const appearance = useContext(StructuredAppearanceContext);
   const [enlarged, setEnlarged] = useState(false);
   const [showText, setShowText] = useState(false);
   const [showExport, setShowExport] = useState(false);
@@ -1373,6 +1256,12 @@ export function StructuredExchangeDocument({ envelope, source, rawOutput, dispat
   const [chosenOrientation, setChosenOrientation] = useState<Orientation | undefined>(undefined);
   /** The viewpoint the reader selected, by identifier. Undefined is the whole document. */
   const [selectedViewpoint, setSelectedViewpoint] = useState<string | undefined>(undefined);
+  /**
+   * A timeline's display options, held here for the same reason as the orientation:
+   * the copy in the conversation and the enlarged one are two instances, and a scale
+   * chosen in one must be the scale the other opens at. Undefined until first changed.
+   */
+  const [timelineDisplay, setTimelineDisplay] = useState<TimelineDisplay | undefined>(undefined);
   const mermaid = useMemo(() => toMermaid(envelope), [envelope]);
 
   const isProposal = envelope.target !== undefined;
@@ -1438,6 +1327,15 @@ export function StructuredExchangeDocument({ envelope, source, rawOutput, dispat
       />
     ) : envelope.kind === "sequence" ? (
       <SequenceView data={envelope.data as StructuredSequenceData} isProposal={isProposal} />
+    ) : envelope.kind === "timeline" ? (
+      <TimelineView
+        data={envelope.data as StructuredTimelineData}
+        appearance={appearance}
+        display={timelineDisplay ?? initialTimelineDisplay(envelope.data as StructuredTimelineData)}
+        onDisplayChange={(update) =>
+          setTimelineDisplay((current) => update(current ?? initialTimelineDisplay(envelope.data as StructuredTimelineData)))
+        }
+      />
     ) : (
       <TableView
         data={envelope.data as StructuredTableData}
@@ -1647,7 +1545,9 @@ export function StructuredExchangeDocument({ envelope, source, rawOutput, dispat
         // what tells the overlay which tree it has to be rendered into.
         anchorRef={diagramRef}
         actions={
-          envelope.kind !== "table" && (
+          // A table leaves as data and a timeline is not exported in this version;
+          // only the diagrams have a figure to save.
+          (envelope.kind === "graph" || envelope.kind === "sequence") && (
             <>
               <button type="button" onClick={downloadDiagram} className={LINK_BUTTON}>
                 ⤓ download SVG
@@ -1788,7 +1688,7 @@ export function StructuredExchangeDocument({ envelope, source, rawOutput, dispat
               </span>
             )}
           </>
-        ) : (
+        ) : envelope.kind === "timeline" ? null : (
           <>
             <button
               type="button"

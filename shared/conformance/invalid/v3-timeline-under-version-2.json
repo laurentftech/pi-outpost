@@ -1,0 +1,120 @@
+{
+  "schema": "urn:structured-exchange:2",
+  "kind": "timeline",
+  "data": {
+    "title": "Programme X",
+    "time": {
+      "start": "2026-10-01",
+      "end": "2028-03-31",
+      "scale": "month"
+    },
+    "rows": [
+      {
+        "type": "separator",
+        "label": "Système A"
+      },
+      {
+        "type": "task",
+        "id": "T1",
+        "label": "Études système",
+        "items": [
+          {
+            "type": "activity",
+            "id": "etude-preliminaire",
+            "start": "2026-11-01",
+            "end": "2027-02-28",
+            "label": "Étude préliminaire"
+          },
+          {
+            "type": "milestone",
+            "id": "srr",
+            "date": "2027-03-01",
+            "kind": "SRR",
+            "label": "System Requirements Review"
+          },
+          {
+            "type": "activity",
+            "id": "etude-detaillee",
+            "start": "2027-03-15",
+            "end": "2027-07-31",
+            "label": "Étude détaillée"
+          },
+          {
+            "type": "milestone",
+            "id": "pdr",
+            "date": "2027-05-15",
+            "kind": "PDR",
+            "label": "Preliminary Design Review"
+          },
+          {
+            "type": "milestone",
+            "id": "cdr",
+            "date": "2027-08-01",
+            "kind": "CDR",
+            "label": "Critical Design Review"
+          }
+        ]
+      },
+      {
+        "type": "task",
+        "id": "T2",
+        "label": "Développement",
+        "items": [
+          {
+            "type": "activity",
+            "id": "dev",
+            "start": "2027-03-01",
+            "end": "2027-09-30",
+            "label": "Développement"
+          }
+        ]
+      },
+      {
+        "type": "separator",
+        "label": "Système B"
+      },
+      {
+        "type": "task",
+        "id": "T3",
+        "label": "Études système",
+        "items": [
+          {
+            "type": "activity",
+            "start": "2027-02-01",
+            "end": "2027-06-30",
+            "label": "Étude"
+          }
+        ]
+      },
+      {
+        "type": "separator"
+      },
+      {
+        "type": "task",
+        "id": "T4",
+        "label": "Recette",
+        "items": []
+      }
+    ],
+    "dependencies": [
+      {
+        "from": "etude-preliminaire",
+        "to": "srr"
+      },
+      {
+        "from": "srr",
+        "to": "T2"
+      },
+      {
+        "from": "etude-detaillee",
+        "to": "cdr",
+        "type": "finish-to-finish"
+      },
+      {
+        "from": "T1",
+        "to": "T3",
+        "type": "start-to-start"
+      }
+    ]
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "schema": "urn:structured-exchange:3",
+  "kind": "timeline",
+  "data": {
+    "time": {
+      "start": "2027-01-01",
+      "end": "2027-12-31",
+      "scale": "month"
+    },
+    "rows": [
+      {
+        "type": "task",
+        "id": "T1",
+        "label": "Audit",
+        "items": [
+          {
+            "type": "activity",
+            "id": "a",
+            "start": "2027-06-15",
+            "end": "2027-06-15",
+            "label": "On-site audit"
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -561,6 +561,29 @@ describe("switching projects", () => {
     expect(result.current.state.replyConformance).toEqual({});
   });
 
+  it("holds the project's kind colours across its own snapshots, and drops them for another project", async () => {
+    const { result } = renderHook(() => useAgent());
+    act(() => mockWs!.open());
+    act(() => mockWs!.receive(switched("/srv/alpha")));
+    await waitFor(() => expect(result.current.state.workspace?.root).toBe("/srv/alpha"));
+    expect(result.current.state.structuredAppearance).toBeNull();
+
+    const appearance = { kinds: { SRR: { color: "#dc2626" } } };
+    act(() => mockWs!.receive({ type: "structured_appearance", appearance }));
+    expect(result.current.state.structuredAppearance).toEqual(appearance);
+
+    // A snapshot of the same project keeps them until the server says again: no flash.
+    act(() => mockWs!.receive({ ...switched("/srv/alpha"), type: "session_replaced" }));
+    expect(result.current.state.structuredAppearance).toEqual(appearance);
+    act(() => mockWs!.receive({ type: "structured_appearance", appearance: null }));
+    expect(result.current.state.structuredAppearance).toBeNull();
+
+    act(() => mockWs!.receive({ type: "structured_appearance", appearance }));
+    act(() => mockWs!.receive(switched("/srv/beta")));
+    await waitFor(() => expect(result.current.state.workspace?.root).toBe("/srv/beta"));
+    expect(result.current.state.structuredAppearance).toBeNull();
+  });
+
   it("starts, reaches and closes a side session by its id, and a project by its root", async () => {
     const { result } = renderHook(() => useAgent());
     act(() => mockWs!.open());

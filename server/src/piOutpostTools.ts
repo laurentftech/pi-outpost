@@ -45,6 +45,7 @@ import {
   createDocxUpdateToolDefinition,
 } from "./wordTools.ts";
 import { createStructuredExchangeFigureToolDefinition } from "./structuredExchangeFigureTool.ts";
+import { createTimelineComparisonToolDefinition } from "./timelineComparisonTool.ts";
 import { createStructuredExchangeTableToolDefinition } from "./structuredExchangeTableTool.ts";
 import { createStructuredExchangeToolDefinition } from "./structuredExchangeTool.ts";
 import { createStructuredExchangeProjectModelToolDefinition } from "./structuredExchangeProjectModelTool.ts";
@@ -129,6 +130,7 @@ export async function createPiOutpostTools(settings: PiOutpostToolsSettings): Pr
     createDocxRenderToolDefinition({ ...common, maxBytes: settings.maxBytes.docx, render }),
     createStructuredExchangeFigureToolDefinition({ ...common, maxBytes: settings.maxBytes.structuredExchange, projectRoot: root }),
     createStructuredExchangeTableToolDefinition({ ...common, maxBytes: settings.maxBytes.structuredExchange, projectRoot: root }),
+    createTimelineComparisonToolDefinition({ ...common, maxBytes: settings.maxBytes.structuredExchange }),
     createStructuredExchangeToolDefinition({ projectRoot: root }),
     createStructuredExchangeProjectModelToolDefinition({ projectRoot: root }),
     createWorkPlanToolDefinition(),

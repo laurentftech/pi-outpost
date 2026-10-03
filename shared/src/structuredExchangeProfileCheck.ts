@@ -97,8 +97,8 @@ function segment(name: string): string {
  * one at all. Each of those is what an agent refused by the profile would otherwise
  * learn to do.
  *
- * Sequences are never held: profiles cover the graphs and tables a data model is
- * written in. The ways-around are refused for them too, since those are about what
+ * Sequences and timelines are never held: profiles cover the graphs and tables a
+ * data model is written in. The ways-around are refused for them too, since those are about what
  * a document claims, not what it draws.
  */
 export function selectProfile(envelope: unknown, context: ProfileContext): ProfileSelection {
@@ -144,7 +144,10 @@ export function selectProfile(envelope: unknown, context: ProfileContext): Profi
     selected = fallback;
   }
 
-  if (selected === undefined || kind === "sequence") return { outcome: "unconstrained" };
+  // A timeline is a schedule, not a data model: its kinds name review gates and work
+  // packages, which no profile vocabulary declares yet. Held to one, every milestone
+  // would be refused for a kind the profile never had the chance to name.
+  if (selected === undefined || kind === "sequence" || kind === "timeline") return { outcome: "unconstrained" };
   return { outcome: "held", profile: selected };
 }
 

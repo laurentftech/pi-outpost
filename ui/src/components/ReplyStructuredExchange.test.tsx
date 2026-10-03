@@ -49,6 +49,36 @@ describe("a structured-exchange block in a reply", () => {
     expect(JSON.parse(screen.getByTestId("structured-envelope").textContent ?? "")).toEqual(graph);
   });
 
+  it("draws a timeline as a timeline", () => {
+    // ATimelineInAReplyIsDrawn
+    const timeline = {
+      schema: "urn:structured-exchange:3",
+      kind: "timeline",
+      data: {
+        time: { start: "2027-01-01", end: "2027-12-31", scale: "month" },
+        rows: [
+          {
+            type: "task",
+            id: "T1",
+            label: "Design",
+            items: [
+              { type: "activity", id: "d", start: "2027-01-01", end: "2027-03-31", label: "Detailed design" },
+              { type: "milestone", id: "cdr", date: "2027-04-01", kind: "CDR" },
+            ],
+          },
+        ],
+        dependencies: [{ from: "d", to: "cdr" }],
+      },
+    };
+    reply(fenced(JSON.stringify(timeline, null, 2)));
+    expect(screen.getByTestId("reply-structured-exchange")).toBeInTheDocument();
+    expect(screen.queryByTestId("code-block")).not.toBeInTheDocument();
+    const drawn = screen.getAllByTestId("timeline")[0];
+    expect(drawn.querySelectorAll('[data-testid="timeline-activity"]')).toHaveLength(1);
+    expect(drawn.querySelectorAll('[data-testid="timeline-milestone"]')).toHaveLength(1);
+    expect(drawn.querySelectorAll('[data-testid="timeline-dependency"]')).toHaveLength(1);
+  });
+
   it("leaves JSON that declares no structured-exchange schema as code", () => {
     // OrdinaryJsonStaysCode
     reply(fenced('{ "name": "pi-outpost", "version": "0.26.0" }'));

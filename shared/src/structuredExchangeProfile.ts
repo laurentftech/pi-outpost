@@ -18,6 +18,23 @@ import type { StructuredViewpoint } from "./structuredExchange.ts";
 
 export const STRUCTURED_EXCHANGE_PROFILE_SCHEMA_V1 = "urn:structured-exchange-profile:1";
 export const STRUCTURED_EXCHANGE_PROFILE_REGISTRY_SCHEMA_V1 = "urn:structured-exchange-profile-registry:1";
+/** Version 1 plus the project's appearance; profiles optional. */
+export const STRUCTURED_EXCHANGE_PROFILE_REGISTRY_SCHEMA_V2 = "urn:structured-exchange-profile-registry:2";
+
+/** How one kind is drawn in this project: a colour, `#rrggbb`. */
+export interface KindAppearance {
+  color: string;
+}
+
+/**
+ * A project's colours for kinds, by vocabulary — the same split the documents use, so
+ * a name in one map never colours the other. Read from the registry, sent to readers,
+ * never written into a document.
+ */
+export interface ProjectAppearance {
+  kinds?: Record<string, KindAppearance>;
+  relationshipKinds?: Record<string, KindAppearance>;
+}
 
 /** Where a project keeps its registry, relative to the project directory. */
 export const STRUCTURED_EXCHANGE_PROFILE_REGISTRY_PATH = ".pi-outpost/structured-exchange.json";
@@ -200,9 +217,11 @@ export function profileListing(profile: StructuredExchangeProfile): string {
 }
 
 export interface StructuredExchangeProfileRegistry {
-  schema: typeof STRUCTURED_EXCHANGE_PROFILE_REGISTRY_SCHEMA_V1;
-  /** Profile files, relative to the project directory. */
-  profiles: string[];
+  schema: typeof STRUCTURED_EXCHANGE_PROFILE_REGISTRY_SCHEMA_V1 | typeof STRUCTURED_EXCHANGE_PROFILE_REGISTRY_SCHEMA_V2;
+  /** Profile files, relative to the project directory. Required by version 1; optional and possibly empty in version 2. */
+  profiles?: string[];
+  /** Version 2 only: the project's kind colours. */
+  appearance?: ProjectAppearance;
   /** Rules files, relative to the project directory; each names the profile it applies to. */
   rules?: string[];
   /** A registered profile's identifier. */

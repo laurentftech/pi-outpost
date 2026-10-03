@@ -27,6 +27,7 @@ import {
   STRUCTURED_EXCHANGE_PROFILE_REGISTRY_PATH,
   STRUCTURED_EXCHANGE_RULES_CEILINGS,
   type ProfileRule,
+  type ProjectAppearance,
   type StructuredExchangeProfile,
 } from "./structuredExchangeProfile.ts";
 import type { ProfileContext } from "./structuredExchangeProfileCheck.ts";
@@ -61,6 +62,8 @@ export type ProjectProfiles =
        * generated from.
        */
       filesByProfile: ReadonlyMap<string, readonly RegistryFile[]>;
+      /** The project's kind colours, when a version 2 registry declares any. */
+      appearance?: ProjectAppearance;
     }
   | { state: "unusable"; issues: ProjectProfileIssue[] };
 
@@ -165,7 +168,7 @@ export async function readProjectRegistry(
   // profiles should learn about all of them from one refusal.
   const issues: ProjectProfileIssue[] = [];
   const loaded: LoadedProfile[] = [];
-  for (const [index, listed] of registry.profiles.entries()) {
+  for (const [index, listed] of (registry.profiles ?? []).entries()) {
     const read = await readConfinedJson(root, listed, STRUCTURED_EXCHANGE_PROFILE_CEILINGS.profileBytes, "profile-format");
     if (read.ok === "missing") {
       issues.push({ rule: "registry/missing-profile", path: `/profiles/${index}`, message: `"${listed}" does not exist`, file: registryFile });
@@ -244,7 +247,18 @@ export async function readProjectRegistry(
     context: { profiles, ...(registry.default !== undefined ? { default: registry.default } : {}), ...(rules.size > 0 ? { rules } : {}) },
     files,
     filesByProfile,
+    ...(registry.appearance !== undefined ? { appearance: registry.appearance } : {}),
   };
+}
+
+/**
+ * The colours the project gives its kinds, or `null` — no registry, an unusable one, or
+ * none declared. An unusable registry gives no colours rather than some: its tools refuse
+ * every document anyway, and a reader shown half a convention would take it for the whole.
+ */
+export async function readProjectAppearance(projectRoot: string): Promise<ProjectAppearance | null> {
+  const project = await readProjectRegistry(projectRoot);
+  return project.state === "usable" ? (project.appearance ?? null) : null;
 }
 
 /** An unusable registry, as the lines a refusal carries. */

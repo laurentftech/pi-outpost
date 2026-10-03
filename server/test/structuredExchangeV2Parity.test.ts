@@ -129,6 +129,11 @@ describe("every refusal still holds under version 2, except where it was meant t
         return;
       }
 
+      // A version 3 case is about the timeline, which version 2 does not have:
+      // re-expressed under version 2 it would be refused for being a timeline, which
+      // is the point of `v3-timeline-under-version-2.json`, not of this comparison.
+      if (original.schema === "urn:structured-exchange:3") return;
+
       const after = parse(asEnriched(original));
       const deliberate = DELIBERATE[file];
       if (deliberate !== undefined) {

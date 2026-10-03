@@ -200,6 +200,28 @@ When the source does not say, ask the user; do not choose `refuse` to look stric
 | `registry/duplicate-rule-identifier` | two rules of one profile share an `id` | give each rule its own identifier |
 | `registry/rules-for-unregistered-profile` | a rules file names a profile the registry does not list | fix the rules file's `profile`, or register the profile |
 | `registry/missing-…`, `…/outside-project` | a listed file is missing or outside the project | fix the path in the registry |
+| `registry/appearance/color` | a colour is not `#rrggbb` | write six hexadecimal digits after `#` |
+
+## Project colours
+
+If the user wants the project's kinds drawn in set colours, add an `appearance` section to the
+registry and declare it version 2. Colours apply to every drawing in the project; never put a
+colour in a structured-exchange document.
+
+```json
+{
+  "schema": "urn:structured-exchange-profile-registry:2",
+  "profiles": ["profiles/requirements.json"],
+  "appearance": {
+    "kinds": { "requirement": { "color": "#2563eb" } },
+    "relationshipKinds": { "verifies": { "color": "#16a34a" } }
+  }
+}
+```
+
+`kinds` is for elements, participants and timeline items; `relationshipKinds` for relationships.
+Each colour is exactly `#` and six hexadecimal digits. Ask the user for the colours: do not pick
+them yourself. A registry may declare `appearance` and no profile at all.
 
 ## Changing a model that is in use
 

@@ -91,7 +91,26 @@ const KIND_DASHES: (string | undefined)[] = [undefined, "7 3", "2 3", "9 3 2 3"]
  */
 export const KIND_PRESENTATIONS = KIND_TINTS.length * KIND_DASHES.length;
 
-export type Tint = { fill: string; stroke: string; dash?: string };
+/** `declared`: the colour is the project's, not the palette's. */
+/**
+ * `hatch`: the second channel where dashes would mislead — 1 rising, 2 falling, 3 crossed.
+ * Only given once the sixteen colours are spent.
+ */
+export type Tint = { fill: string; stroke: string; dash?: string; hatch?: 1 | 2 | 3; declared?: boolean };
+
+/** Colours a project declares for one vocabulary, by kind name. */
+export type DeclaredColours = Readonly<Record<string, { color: string }>>;
+
+/** A declared colour mixed toward white: the light fill a box or bar is painted with. */
+export function lighten(color: string, amount = 0.88): string {
+  const channel = (index: number) => {
+    const value = Number.parseInt(color.slice(1 + index * 2, 3 + index * 2), 16);
+    return Math.round(value + (255 - value) * amount)
+      .toString(16)
+      .padStart(2, "0");
+  };
+  return `#${channel(0)}${channel(1)}${channel(2)}`;
+}
 
 /** FNV-1a, for a preferred slot that depends only on the name. */
 function hashOf(kind: string): number {
@@ -119,19 +138,89 @@ function hashOf(kind: string): number {
  */
 export const KIND_TINT_COUNT = KIND_TINTS.length;
 
-export function assignTints(kinds: string[]): Map<string, Tint> {
+export function assignTints(
+  kinds: string[],
+  declared?: DeclaredColours,
+  /**
+   * `false` for a drawing where a dashed outline already means something else — a
+   * timeline, where it is a previous position. Types are then told apart by colour
+   * first, and by a hatch only once all sixteen colours are taken: a plan with three
+   * kinds draws three plain colours, never a pattern that reads as meaning.
+   */
+  options: { dashes?: boolean } = {},
+): Map<string, Tint> {
+  const hatched = options.dashes === false;
+  const slots = KIND_PRESENTATIONS;
   const assigned = new Map<string, Tint>();
   const taken = new Set<number>();
+  // The project's colours first, exactly as declared. An automatic colour equal to one
+  // of them, in this drawing, would make two kinds look alike that the project told
+  // apart — so those palette colours are withheld from the kinds it did not name.
+  const ownColour = (kind: string) => (declared !== undefined && Object.hasOwn(declared, kind) ? declared[kind].color : undefined);
+  const declaredHere = new Set<string>();
   for (const kind of kinds) {
-    let slot = hashOf(kind) % KIND_PRESENTATIONS;
-    for (let probe = 0; probe < KIND_PRESENTATIONS && taken.has(slot); probe++) {
-      slot = (slot + 1) % KIND_PRESENTATIONS;
+    const color = ownColour(kind);
+    if (color === undefined) continue;
+    assigned.set(kind, { fill: lighten(color), stroke: color, declared: true });
+    declaredHere.add(color.toLowerCase());
+  }
+  for (let slot = 0; slot < slots; slot++) {
+    if (declaredHere.has(KIND_TINTS[slot % KIND_TINTS.length].stroke.toLowerCase())) taken.add(slot);
+  }
+  for (const kind of kinds) {
+    if (assigned.has(kind)) continue;
+    let slot: number;
+    if (hatched) {
+      // Plain colours first, in the kind's preferred slot or the next free one; the
+      // hatched variants only once every plain colour is taken.
+      slot = -1;
+      const plain = hashOf(kind) % KIND_TINTS.length;
+      for (let probe = 0; probe < KIND_TINTS.length && slot === -1; probe++) {
+        const candidate = (plain + probe) % KIND_TINTS.length;
+        if (!taken.has(candidate)) slot = candidate;
+      }
+      for (let probe = KIND_TINTS.length; probe < KIND_PRESENTATIONS && slot === -1; probe++) {
+        const candidate = KIND_TINTS.length + ((plain + probe) % (KIND_PRESENTATIONS - KIND_TINTS.length));
+        if (!taken.has(candidate)) slot = candidate;
+      }
+      if (slot === -1) slot = plain;
+    } else {
+      slot = hashOf(kind) % slots;
+      for (let probe = 0; probe < slots && taken.has(slot); probe++) {
+        slot = (slot + 1) % slots;
+      }
     }
     taken.add(slot);
     const tint = KIND_TINTS[slot % KIND_TINTS.length];
-    assigned.set(kind, { ...tint, dash: KIND_DASHES[Math.floor(slot / KIND_TINTS.length) % KIND_DASHES.length] });
+    const channel = Math.floor(slot / KIND_TINTS.length) % KIND_DASHES.length;
+    if (hatched) {
+      assigned.set(kind, { ...tint, ...(channel === 0 ? {} : { hatch: channel as 1 | 2 | 3 }) });
+    } else {
+      const dash = KIND_DASHES[channel];
+      assigned.set(kind, { ...tint, ...(dash === undefined ? {} : { dash }) });
+    }
   }
   return assigned;
+}
+
+/**
+ * For each kind drawn in a declared colour, the other kinds here declared the same
+ * colour. The project chose it, so neither is recoloured; the key says so instead.
+ */
+export function sharedDeclaredColours(kinds: string[], tints: ReadonlyMap<string, Tint>): Map<string, string[]> {
+  const byColour = new Map<string, string[]>();
+  for (const kind of kinds) {
+    const tint = tints.get(kind);
+    if (tint?.declared !== true) continue;
+    const key = tint.stroke.toLowerCase();
+    byColour.set(key, [...(byColour.get(key) ?? []), kind]);
+  }
+  const shared = new Map<string, string[]>();
+  for (const group of byColour.values()) {
+    if (group.length < 2) continue;
+    for (const kind of group) shared.set(kind, group.filter((other) => other !== kind));
+  }
+  return shared;
 }
 
 /** The types present, in the order they first appear, so the legend is stable too. */

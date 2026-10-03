@@ -34,6 +34,8 @@ import type { StructuredViewpoint } from "@pi-outpost/shared/structured-exchange
 import { assertWritableDestination } from "./extractionOutput.ts";
 import { isWithinAny, realResolve } from "./sandbox.ts";
 import { describeUnusableProfiles, readProjectProfiles } from "./structuredExchangeProfiles.ts";
+import { localToday } from "@pi-outpost/shared/structured-exchange/timeline";
+import type { ProjectAppearance } from "@pi-outpost/shared/structured-exchange/profile";
 
 export interface StructuredExchangeFigureToolOptions {
   /** Paths the model gives are resolved against this. */
@@ -82,6 +84,36 @@ const parameters = Type.Object({
         'The `id` of a viewpoint the document declares, or one the project\'s profile for the document declares, e.g. "power". The figure shows what that viewpoint retains and states its concern inside the drawing; the hide lists still apply on top. Refused, listing the declared ones, when neither declares it.',
     }),
   ),
+  compact: Type.Optional(
+    Type.Boolean({ description: "Timelines only: draw one row per section (a separator and its tasks) instead of one row per task." }),
+  ),
+  hide_dependencies: Type.Optional(Type.Boolean({ description: "Timelines only: leave the dependency arrows out." })),
+  scale: Type.Optional(
+    Type.Union([Type.Literal("week"), Type.Literal("month"), Type.Literal("quarter")], {
+      description:
+        "Timelines only: the scale to draw at — week (about 84 px a week, header in ISO weeks), month (about 120 px a month) or quarter (about 68 px a quarter). Defaults to the timeline's own `time.scale`. Use week for a few months, month for a year or two, quarter beyond.",
+    }),
+  ),
+  width: Type.Optional(
+    Type.Number({
+      minimum: 300,
+      maximum: 4000,
+      description:
+        "Timelines only: fit the whole figure into this many pixels, e.g. 900 for a page. Durations stay proportional; rows grow to keep labels apart; wins over `scale`. Omit to draw at the scale.",
+    }),
+  ),
+  comparison: Type.Optional(
+    Type.Union([Type.Literal("compare"), Type.Literal("new")], {
+      description:
+        'Compared timelines only: "compare" (default) draws previous dates dashed beside the current ones, with the shifts; "new" draws the new version alone, as a plain plan.',
+    }),
+  ),
+  reference_line: Type.Optional(
+    Type.Union([Type.Literal("dated"), Type.Literal("none")], {
+      description:
+        'Timelines only: "dated" (default) draws a line at the day the figure is written, labelled with that date; "none" leaves it out.',
+    }),
+  ),
 });
 
 const DESCRIPTION = [
@@ -91,6 +123,7 @@ const DESCRIPTION = [
   "Write one figure per view worth having rather than one figure of everything: a narrowed figure is the reason this takes narrowing at all.",
   "When the document declares viewpoints — or the project holds it to a profile that does — name one with `viewpoint` instead of rebuilding its selection from hide lists: the figure then states which viewpoint it shows and the concern it frames, so a report can carry one figure per viewpoint.",
   "A relationship whose endpoint is hidden goes with it — an arrow to a box that is not drawn cannot be drawn.",
+  "A timeline is drawn too: give it `width` (e.g. 900) when it goes into a page, `scale` to draw it by week, month or quarter at its natural size, `compact` for one row per section, `hide_dependencies` to leave the arrows out; its date line is labelled with the day it is written, since the file outlives that day.",
   "A table has no figure; export it as a spreadsheet instead.",
 ].join(" ");
 
@@ -119,12 +152,24 @@ export function createStructuredExchangeFigureToolDefinition(
         hide_element_kinds: hiddenElementKinds,
         hide_relationship_kinds: hiddenRelationshipKinds,
         viewpoint,
+        compact,
+        hide_dependencies: hideDependencies,
+        scale,
+        width,
+        reference_line: referenceLine,
+        comparison,
       } = params as {
         path: string;
         output_path: string;
         hide_element_kinds?: string[];
         hide_relationship_kinds?: string[];
         viewpoint?: string;
+        compact?: boolean;
+        hide_dependencies?: boolean;
+        scale?: "week" | "month" | "quarter";
+        width?: number;
+        reference_line?: "dated" | "none";
+        comparison?: "compare" | "new";
       };
 
       // SECURITY: two arguments, two zones. The read zone never grants a write.
@@ -161,6 +206,8 @@ export function createStructuredExchangeFigureToolDefinition(
       const parsed = parseSerializedStructuredExchange(text, checkStructuredExchangeSchema, options.limits);
       // The profile the document is held to, whose viewpoints the figure may be drawn for.
       let heldTo: { id: string; viewpoints: readonly StructuredViewpoint[] } | undefined;
+      // The project's colours, so the written figure is the one the reader is shown.
+      let appearance: ProjectAppearance | undefined;
       if (parsed.valid) {
         const project = await readProjectProfiles(options.projectRoot);
         if (project.state === "unusable") {
@@ -179,6 +226,7 @@ export function createStructuredExchangeFigureToolDefinition(
           };
         }
         if (project.state === "usable") {
+          appearance = project.appearance;
           const held = holdToProfile(parsed.envelope, project.context);
           if (held.outcome === "refused") {
             const against = held.profile === undefined ? "this project's profile rules" : `this project's profile "${held.profile}"`;
@@ -210,6 +258,16 @@ export function createStructuredExchangeFigureToolDefinition(
           ...(hiddenRelationshipKinds === undefined ? {} : { hiddenRelationshipKinds }),
           ...(viewpoint === undefined ? {} : { viewpoint }),
           ...(heldTo === undefined ? {} : { profile: heldTo }),
+          ...(appearance === undefined ? {} : { appearance }),
+          timeline: {
+            today: localToday(),
+            ...(compact === undefined ? {} : { compact }),
+            ...(hideDependencies === undefined ? {} : { hideDependencies }),
+            ...(scale === undefined ? {} : { scale }),
+            ...(width === undefined ? {} : { width }),
+            ...(referenceLine === undefined ? {} : { referenceLine }),
+            ...(comparison === undefined ? {} : { comparison }),
+          },
         },
         options.limits,
       );
@@ -253,7 +311,7 @@ export function createStructuredExchangeFigureToolDefinition(
           {
             type: "text",
             text: [
-              `Wrote \`${destination}\` (${Buffer.byteLength(result.svg, "utf8")} bytes), showing ${describeCoverage(result.coverage)}.`,
+              `Wrote \`${destination}\` (${Buffer.byteLength(result.svg, "utf8")} bytes), showing ${describeCoverage(result.coverage, parsed.valid ? parsed.envelope.kind : undefined)}.`,
               // Named before the statement, so an agent writing several figures from one
               // document can tell which chapter each belongs to without opening them.
               result.viewpoint === undefined
@@ -262,6 +320,9 @@ export function createStructuredExchangeFigureToolDefinition(
                     result.viewpoint.source === "profile" ? `this project's profile "${result.viewpoint.profile}"` : "the document"
                   }.`,
               result.narrowing === undefined ? undefined : `The figure states: "${result.narrowing}"`,
+              result.overWidth === true
+                ? `The plan is too long to fit the width asked at a legible scale, so the figure is wider than ${width}; split the range or ask for more width.`
+                : undefined,
               `Reference it from Markdown as a relative path, e.g. \`![${path.basename(destination, ".svg")}](${destination})\`.`,
             ]
               .filter((line) => line !== undefined)

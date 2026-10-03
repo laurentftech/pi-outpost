@@ -38,6 +38,11 @@ export const GENERATED_CHECKS = [
     schema: path.resolve(HERE, "../schemas/structured-exchange-2.json"),
     output: path.resolve(HERE, "../src/generated/structuredExchangeCheck2.ts"),
   },
+  {
+    version: "3",
+    schema: path.resolve(HERE, "../schemas/structured-exchange-3.json"),
+    output: path.resolve(HERE, "../src/generated/structuredExchangeCheck3.ts"),
+  },
 ];
 
 const header = (version) => `/**

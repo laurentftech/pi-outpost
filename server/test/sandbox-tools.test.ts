@@ -142,6 +142,8 @@ describe("createSandboxedTools", () => {
       // write a document or a deck are absent; the ones that describe and draw stay.
       const tools = await createSandboxedTools(config({ root }));
       assert.deepEqual(names(tools), [
+        // Comparing two plans reads them; an output it may write is held to the writable zone.
+        "compare_timelines",
         "docx_extract",
         "docx_render",
         "docx_styles",
@@ -169,6 +171,7 @@ describe("createSandboxedTools", () => {
     test("adds edit and write only when writing is allowed", async () => {
       const tools = await createSandboxedTools(config({ root, allowWrite: true }));
       assert.deepEqual(names(tools), [
+        "compare_timelines",
         "docx_create",
         "docx_extract",
         "docx_render",

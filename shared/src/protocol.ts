@@ -17,8 +17,8 @@ export type {
 } from "./outcome.ts";
 export { outcomeVerification, workPlanProgress } from "./outcome.ts";
 import type { WorkspaceOutcome } from "./outcome.ts";
-import type { StructuredConformance } from "./structuredExchangeProfile.ts";
-export type { StructuredConformance } from "./structuredExchangeProfile.ts";
+import type { ProjectAppearance, StructuredConformance } from "./structuredExchangeProfile.ts";
+export type { ProjectAppearance, StructuredConformance } from "./structuredExchangeProfile.ts";
 
 export interface WireImage {
   data: string;
@@ -1037,6 +1037,14 @@ export type ServerMessage =
    * and the browser finds the block it drew by its content.
    */
   | { type: "reply_structured_conformance"; key: string; conformance: StructuredConformance }
+  /**
+   * The project's kind colours, from its registry as it is now — `null` when it has no
+   * registry, an unusable one, or declares none. One per project rather than one per
+   * document: it is a convention of the project, and every drawing applies it. Sent after
+   * every snapshot and every presented document, so an edited registry takes effect
+   * without a restart.
+   */
+  | { type: "structured_appearance"; appearance: ProjectAppearance | null }
   /**
    * A newer pi-outpost is published. Server-wide, once the startup check knows; the
    * standalone interface shows it, an embedded widget does not.

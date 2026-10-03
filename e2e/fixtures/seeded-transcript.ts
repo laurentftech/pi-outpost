@@ -1,3 +1,7 @@
+import { compareTimelines } from "../../shared/src/structuredExchangeTimelineComparison.ts";
+import { timelineFigure } from "../../shared/src/structuredExchangeTimelineFigure.ts";
+import { serializeFigure } from "../../shared/src/structuredExchangeFigure.ts";
+import { localToday } from "../../shared/src/structuredExchangeTimeline.ts";
 /**
  * A transcript with diagrams in it, served by the scripted RPC agent.
  *
@@ -399,6 +403,128 @@ const VIEWPOINT_GRAPH = {
  * have), and each handler writes a global the spec reads back — so a browser
  * that executed any of them says so rather than merely looking fine.
  */
+/**
+ * A programme schedule, as a version 3 timeline.
+ *
+ * Its range is built round the year the bench runs in, so the Today line always
+ * falls inside it — a fixture that ages out of its own range would quietly stop
+ * exercising the one thing only a running app shows. Everything else is fixed:
+ * crowded milestones a week apart, two separators (one anonymous), every
+ * dependency type, a task as an endpoint, one dependency a slip broke, typed
+ * activities beside one left untyped ("Exigences B", drawn grey).
+ */
+const PLAN_YEAR = new Date().getFullYear();
+const on = (offset: number, monthDay: string) => `${PLAN_YEAR + offset}-${monthDay}`;
+export const SEEDED_TIMELINE = {
+  schema: "urn:structured-exchange:3",
+  kind: "timeline",
+  data: {
+    title: "Programme X — system A and B",
+    time: { start: on(-1, "10-01"), end: on(1, "03-31"), scale: "month" },
+    rows: [
+      { type: "separator", label: "Système A" },
+      {
+        type: "task",
+        id: "T1",
+        label: "Études système",
+        items: [
+          { type: "activity", id: "prelim", start: on(-1, "11-01"), end: on(0, "02-28"), label: "Étude préliminaire", kind: "étude" },
+          { type: "milestone", id: "srr", date: on(0, "03-01"), kind: "SRR", label: "System Requirements Review" },
+          { type: "milestone", id: "srr-close", date: on(0, "03-05"), kind: "SRR", label: "SRR close-out" },
+          { type: "milestone", id: "pdr", date: on(0, "03-09"), kind: "PDR", label: "Preliminary Design Review" },
+          { type: "activity", id: "detail", start: on(0, "03-15"), end: on(0, "07-31"), label: "Étude détaillée", kind: "étude" },
+          { type: "milestone", id: "cdr", date: on(0, "08-01"), kind: "CDR" },
+        ],
+      },
+      {
+        type: "task",
+        id: "T2",
+        label: "Développement",
+        items: [{ type: "activity", id: "dev", start: on(0, "03-01"), end: on(0, "10-15"), label: "Développement logiciel et matériel", kind: "réalisation" }],
+      },
+      { type: "separator", label: "Système B" },
+      {
+        type: "task",
+        id: "T3",
+        label: "Analyse des exigences",
+        items: [{ type: "activity", id: "req-b", start: on(0, "02-01"), end: on(0, "06-30"), label: "Exigences B" }],
+      },
+      { type: "separator" },
+      {
+        type: "task",
+        id: "T4",
+        label: "Validation",
+        items: [
+          { type: "activity", id: "val", start: on(0, "10-01"), end: on(1, "02-28"), label: "Campagne de validation", kind: "vérification" },
+          { type: "milestone", id: "qr", date: on(1, "03-15"), kind: "QR", label: "Qualification Review" },
+        ],
+      },
+    ],
+    periods: [
+      { start: on(-1, "12-21"), end: on(0, "01-03"), label: "Fermeture de fin d'année", kind: "fermeture" },
+      { start: on(0, "08-02"), end: on(0, "08-22"), label: "Congés d'été", kind: "vacances" },
+      { start: on(0, "04-12"), end: on(0, "04-18"), label: "Inventaire" },
+    ],
+    references: [{ date: on(0, "11-30"), label: "Livraison contractuelle", kind: "contrat" }],
+    dependencies: [
+      { from: "prelim", to: "srr" },
+      { from: "srr", to: "T2" },
+      { from: "detail", to: "cdr", type: "finish-to-finish" },
+      { from: "T1", to: "T3", type: "start-to-start" },
+      { from: "req-b", to: "val", type: "start-to-finish" },
+      // Development slipped to 15 October, and validation, which waits for it, still
+      // starts on 1 October: the dependency the slip broke.
+      { from: "dev", to: "val" },
+      { from: "val", to: "qr" },
+    ],
+  },
+};
+
+/**
+ * The same programme as it stood a few weeks earlier: the detailed study and the CDR
+ * were planned earlier, development was shorter, an audit was still planned, and the
+ * PDR did not exist yet. Compared with it, the current plan shows every kind of change.
+ */
+export const SEEDED_TIMELINE_PREVIOUS = (() => {
+  const previous = JSON.parse(JSON.stringify(SEEDED_TIMELINE)) as typeof SEEDED_TIMELINE;
+  previous.data.title = "Programme X — plan of 1 September";
+  const studies = previous.data.rows[1] as { items: Record<string, unknown>[] };
+  studies.items = studies.items
+    .filter((item) => item.id !== "pdr")
+    .map((item) =>
+      item.id === "detail"
+        ? { ...item, start: on(0, "03-01"), end: on(0, "06-30") }
+        : item.id === "cdr"
+          ? { ...item, date: on(0, "07-01") }
+          : item,
+    );
+  studies.items.push({ type: "milestone", id: "audit", date: on(0, "04-15"), label: "Audit externe" });
+  const development = previous.data.rows[2] as { items: Record<string, unknown>[] };
+  development.items = development.items.map((item) => ({ ...item, end: on(0, "08-15") }));
+  return previous;
+})();
+
+/** The current plan compared with the earlier one, as `compare_timelines` presents it. */
+export const SEEDED_TIMELINE_COMPARED = {
+  schema: "urn:structured-exchange:3",
+  kind: "timeline",
+  data: compareTimelines(
+    SEEDED_TIMELINE_PREVIOUS.data as never,
+    SEEDED_TIMELINE.data as never,
+    "Plan of 1 September",
+  ).data,
+};
+
+/**
+ * The schedule as a picture, for a reply that shows one: the figure
+ * `write_structure_figure` would write, kept at `figures/plan.svg` in the workspace
+ * the transcript is served from, so the reply's image resolves to a real file.
+ */
+export const SEEDED_PLAN_FIGURE_PATH = "figures/plan.svg";
+export const SEEDED_PLAN_FIGURE = serializeFigure(
+  timelineFigure(SEEDED_TIMELINE.data as never, { today: localToday(), width: 900, compact: true, referenceLine: "dated" }),
+);
+
 export const SEEDED_EXTENSION_SECTION = [
   "The power train draws on two documents.",
   "",
@@ -537,6 +663,48 @@ export const SEEDED_MESSAGES = [
     content: "graph with 5 elements and 2 viewpoints",
     details: VIEWPOINT_GRAPH,
   },
-  { role: "user", content: "Where does that come from?" },
+  { role: "user", content: "Show me the programme schedule." },
+  {
+    role: "assistant",
+    content: [{ type: "toolCall", id: "call-timeline", name: "structured_exchange", arguments: { kind: "timeline" } }],
+  },
+  {
+    role: "toolResult",
+    toolCallId: "call-timeline",
+    toolName: "structured_exchange",
+    content: "timeline with 4 tasks and 7 dependencies",
+    details: SEEDED_TIMELINE,
+  },
+  { role: "user", content: "What changed since the plan of 1 September?" },
+  {
+    role: "assistant",
+    content: [{ type: "toolCall", id: "call-compare", name: "compare_timelines", arguments: { previous_path: "plans/v1.json", current_path: "plans/v2.json" } }],
+  },
+  {
+    role: "toolResult",
+    toolCallId: "call-compare",
+    toolName: "compare_timelines",
+    content: "compared with the plan of 1 September",
+    details: SEEDED_TIMELINE_COMPARED,
+  },
+  { role: "user", content: "Put the schedule in a picture I can paste into the review report." },
+  {
+    role: "assistant",
+    content: [
+      {
+        type: "text",
+        text: [
+          "Here is the programme as a figure, one row per section, sized for a page:",
+          "",
+          `![Programme X — schedule](${SEEDED_PLAN_FIGURE_PATH})`,
+          "",
+          `It is saved as \`${SEEDED_PLAN_FIGURE_PATH}\`. One thing to raise in the review: development now ends on 15 October, after validation is due to start (the red dashed arrow).`,
+        ].join("\n"),
+      },
+    ],
+  },
+  // Not a real answer: a reply carrying hostile HTML, kept to prove it renders inert
+  // (see e2e/assistant-html.spec.ts). Named as such so nobody reads it as a broken reply.
+  { role: "user", content: "(bench) A reply carrying hostile HTML — it must render inert." },
   { role: "assistant", content: [{ type: "text", text: SEEDED_EXTENSION_SECTION }] },
 ];

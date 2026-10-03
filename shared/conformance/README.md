@@ -17,8 +17,8 @@ whether it conforms does not have a contract, it has a dependency.
 
 ## Two versions in one suite
 
-Cases are named for the version they exercise: `v2-` for the enriched contract,
-everything else for version 1. A conforming implementation dispatches on the
+Cases are named for the version they exercise: `v3-` for the timeline, `v2-` for the
+enriched contract, everything else for version 1. A conforming implementation dispatches on the
 identifier each document declares — `index.json` states the expected verdict, and
 nothing else about a case tells you which contract judges it.
 
@@ -48,6 +48,19 @@ at v0.25.0 — the first release to publish version 2. Until then version 2 grew
 written against it. From that release on, a change to what a version 2 envelope may say is a
 new version, and the two locks together are the floor the suite may not sink below.
 
+## Version 3
+
+Version 3 is version 2 with one more kind, `timeline`. Everything version 2 defines keeps
+its meaning, so a version 2 document re-declared as version 3 reaches the same verdict
+with the same reasons; the `v3-` cases exercise only the timeline. `unknown-version`
+moved to version 4 when version 3 was published, and the version 1 lock records why.
+
+Version 3 may still grow in place until a release publishes it, as version 2 did for
+viewpoints — compared timelines (`comparedTo`, `previous`, `role`), calendar periods and reference dates
+(`periods`, `references`) and the `week` and `quarter` scales were added that way. From that release on it is
+frozen like the other two: another timeline scale (`day`, `year`), another item or row type, or anything else a
+version 3 document could not say before, is a version 4.
+
 ## Rules that are not in the schema
 
 JSON Schema decides shape. These are the relational rules that follow it, and the
@@ -55,12 +68,12 @@ JSON Schema decides shape. These are the relational rules that follow it, and th
 
 | Rule | What it refuses |
 |---|---|
-| `duplicate-identifier` | two elements sharing an envelope-scoped `id` |
+| `duplicate-identifier` | two elements sharing an envelope-scoped `id` — on a timeline, any two tasks or items |
 | `duplicate-container-identifier` | two containers sharing an `id` |
-| `unresolved-endpoint` | a relationship endpoint that no declared element carries |
+| `unresolved-endpoint` | a relationship endpoint that no declared element carries, or a timeline dependency naming no task or item |
 | `unresolved-container` | an element assigned to a container the document never declares |
 | `kind-data-mismatch` | a declared `kind` that disagrees with the data variant present |
-| `kind-not-proposable` | a `table` carrying a `target` or a `removal` |
+| `kind-not-proposable` | a `table` (version 1) or a `timeline` carrying a `target` or a `removal` |
 | `removal-without-target` | a removal in a document that targets nothing |
 | `duplicate-reference` | the same reference addressed twice — changed twice, or changed and removed |
 | `change-without-reference` | a `set` with no `ref` naming what should change |
@@ -71,6 +84,17 @@ JSON Schema decides shape. These are the relational rules that follow it, and th
 | `viewpoints-without-graph` | viewpoints declared on a document that is not a graph |
 | `duplicate-viewpoint-identifier` | two viewpoints of one document sharing an `id` |
 | `empty-viewpoint` | a viewpoint that retains no element kind and no relationship kind |
+| `invalid-date` | a timeline date the pattern admits and the calendar does not, such as `2027-02-30` |
+| `inverted-range` | a timeline, or an activity, that starts after it ends |
+| `item-outside-range` | an activity or milestone outside the timeline's `time` range — refused, never clipped |
+| `empty-task-endpoint` | a dependency naming a task that holds no item, so has no start or finish |
+| `self-dependency` | a dependency from something to itself, or between a task and one of its own items |
+| `duplicate-dependency` | the same `from`, `to` and type declared twice |
+| `comparison-without-reference` | previous dates or a change role in a timeline that declares no `comparedTo` |
+| `contradictory-change` | previous dates on an added or removed item, or an item role contradicting its task's |
+| `dependency-on-removed` | a dependency naming a task or item the plan dropped |
+| `period-outside-range` | a timeline period lying wholly outside the range (one straddling an edge is drawn clipped) |
+| `dependency-cycle` | dependencies that loop, which no dates could honour; the message names the loop |
 | `unresolved-viewpoint-kind` | a viewpoint retaining a kind no element, or no relationship, of the document has — checked per vocabulary, and never corrected to a near miss |
 
 Rules prefixed `schema/` come from the JSON Schema itself; the suffix is the keyword
