@@ -18,4 +18,4 @@
 ## 4. Integration
 
 - [x] 4.1 Seed a closure, holidays and a contractual date in the bench, rebuild, drive with Playwright (reader, compact, comparison, download, figure in the report), monkey-test toggles; report what broke
-- [ ] 4.2 Write `scenario-coverage.md`, run `npm run check:scenarios`, lint, typecheck, server and UI suites, `openspec validate add-timeline-periods --strict`
+- [x] 4.2 Write `scenario-coverage.md`, run `npm run check:scenarios`, lint, typecheck, server and UI suites, `openspec validate add-timeline-periods --strict`
