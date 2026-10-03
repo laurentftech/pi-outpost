@@ -407,7 +407,7 @@ const VIEWPOINT_GRAPH = {
  * falls inside it — a fixture that ages out of its own range would quietly stop
  * exercising the one thing only a running app shows. Everything else is fixed:
  * crowded milestones a week apart, two separators (one anonymous), every
- * dependency type, a task as an endpoint, one dependency the dates break, typed
+ * dependency type, a task as an endpoint, one dependency a slip broke, typed
  * activities beside one left untyped ("Exigences B", drawn grey).
  */
 const PLAN_YEAR = new Date().getFullYear();
@@ -437,7 +437,7 @@ export const SEEDED_TIMELINE = {
         type: "task",
         id: "T2",
         label: "Développement",
-        items: [{ type: "activity", id: "dev", start: on(0, "03-01"), end: on(0, "09-30"), label: "Développement logiciel et matériel", kind: "réalisation" }],
+        items: [{ type: "activity", id: "dev", start: on(0, "03-01"), end: on(0, "10-15"), label: "Développement logiciel et matériel", kind: "réalisation" }],
       },
       { type: "separator", label: "Système B" },
       {
@@ -457,14 +457,21 @@ export const SEEDED_TIMELINE = {
         ],
       },
     ],
+    periods: [
+      { start: on(-1, "12-21"), end: on(0, "01-03"), label: "Fermeture de fin d'année", kind: "fermeture" },
+      { start: on(0, "08-02"), end: on(0, "08-22"), label: "Congés d'été", kind: "vacances" },
+      { start: on(0, "04-12"), end: on(0, "04-18"), label: "Inventaire" },
+    ],
+    references: [{ date: on(0, "11-30"), label: "Livraison contractuelle", kind: "contrat" }],
     dependencies: [
       { from: "prelim", to: "srr" },
       { from: "srr", to: "T2" },
       { from: "detail", to: "cdr", type: "finish-to-finish" },
       { from: "T1", to: "T3", type: "start-to-start" },
       { from: "req-b", to: "val", type: "start-to-finish" },
-      // Development ends on 30 September; CDR on 1 August cannot wait for it.
-      { from: "dev", to: "cdr" },
+      // Development slipped to 15 October, and validation, which waits for it, still
+      // starts on 1 October: the dependency the slip broke.
+      { from: "dev", to: "val" },
       { from: "val", to: "qr" },
     ],
   },

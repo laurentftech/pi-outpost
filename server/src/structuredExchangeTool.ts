@@ -77,7 +77,8 @@ export function digest(envelope: ValidatedStructuredExchange): string {
     const facts = timelineFacts(data);
     parts.push(
       `timeline ${data.time.start} to ${data.time.end}: ${facts.tasks} tasks, ${facts.activities} activities, ` +
-        `${facts.milestones} milestones, ${facts.dependencies} dependencies`,
+        `${facts.milestones} milestones, ${facts.dependencies} dependencies` +
+        (facts.periods + facts.references === 0 ? "" : `, ${facts.periods} periods, ${facts.references} reference dates`),
     );
     if (facts.comparison !== undefined) {
       const { moved, added, removed, largestSlip } = facts.comparison;

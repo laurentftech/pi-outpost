@@ -449,6 +449,12 @@ activities and milestones on each task, and optional Gantt dependencies between 
         { "type": "milestone", "id": "final", "date": "2027-06-15", "kind": "QR" }
       ] }
     ],
+    "periods": [
+      { "start": "2027-05-03", "end": "2027-05-14", "label": "Bench maintenance", "kind": "closure" }
+    ],
+    "references": [
+      { "date": "2027-06-30", "label": "Contractual end of campaign", "kind": "contract" }
+    ],
     "dependencies": [
       { "from": "trr", "to": "b2" },
       { "from": "b2", "to": "final" }
@@ -477,6 +483,12 @@ What a producer has to know:
 - **A timeline is not a proposal.** It carries no `target`, `removals` or `viewpoints`;
   a revision is the whole timeline presented again. No profile constrains it, and
   `write_structure_table` refuses it.
+- **A timeline can carry its calendar.** `periods` (`start`, `end`, optional `label`, `kind`)
+  are drawn as translucent bands across every row and the header — a closure, holidays; their
+  colour follows their `kind`, neutral and hatched without one. `references` (`date`, `label`,
+  optional `kind`) are named dashed lines — a contractual date, a delivery. Neither constrains
+  any item. A period may straddle the range's edge and is drawn clipped; one wholly outside is
+  `period-outside-range`; a reference outside the range is `item-outside-range`.
 - **A timeline can state what it is compared with.** `comparedTo: { label, date? }` names
   the previous plan; an activity may carry `previous: { start, end }`, a milestone
   `previous: { date }`, and a task or item `role: "added" | "removed"`. The reader draws the

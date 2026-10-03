@@ -26,6 +26,7 @@ import {
 import { serializeFigure } from "@pi-outpost/shared/structured-exchange/figure";
 import { withoutComparison } from "@pi-outpost/shared/structured-exchange/timeline-comparison";
 import {
+  hatch,
   starPath,
   timelineFigure,
   timelineFigureParts,
@@ -430,9 +431,38 @@ export function TimelineView({
         </p>
       )}
 
-      {laid.kinds.length > 0 && (
+      {(laid.periods.length > 0 || laid.references.length > 0) && (
+        // Every period and reference by name and dates: the header names only those it has room for.
+        <ul className="flex flex-wrap gap-3 border-t border-zinc-200 px-2 py-1 text-xs text-zinc-600" data-testid="timeline-calendar-legend">
+          {laid.periods.map((period) => {
+            const declared = data.periods![period.index];
+            return (
+              <li key={`p${period.index}`} className="flex items-center gap-1" data-period={period.index}>
+                <span
+                  aria-hidden="true"
+                  className="inline-block h-2.5 w-4 rounded-sm"
+                  style={{ background: period.kind === undefined ? "#a1a1aa" : tintOf(period.kind).stroke, opacity: 0.35 }}
+                />
+                {declared.label ?? "Period"} {declared.start} – {declared.end}
+              </li>
+            );
+          })}
+          {laid.references.map((marked) => (
+            <li key={`r${marked.index}`} className="flex items-center gap-1" data-reference={marked.index}>
+              <span
+                aria-hidden="true"
+                className="inline-block h-3 border-l-2 border-dashed"
+                style={{ borderColor: marked.kind === undefined ? "#3f3f46" : tintOf(marked.kind).stroke }}
+              />
+              {marked.label} {marked.date}
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {laid.kinds.some((kind) => kindShapes.has(kind)) && (
         <ul className="flex flex-wrap gap-3 border-t border-zinc-200 px-2 py-1 text-xs" data-testid="timeline-legend">
-          {laid.kinds.map((kind) => {
+          {laid.kinds.filter((kind) => kindShapes.has(kind)).map((kind) => {
             const tint = tintOf(kind);
             return (
               <li
@@ -456,8 +486,13 @@ export function TimelineView({
                       fill={tint.stroke}
                       fillOpacity={TIMELINE_BAR_FILL_OPACITY}
                       stroke={tint.stroke}
-                      strokeDasharray={tint.dash}
                     />
+                    {tint.hatch !== undefined &&
+                      hatch(1, 2, 16, 8, tint.hatch, tint.stroke, 4, 0.8).map((line, index) =>
+                        line.shape === "line" ? (
+                          <line key={index} x1={line.x1} y1={line.y1} x2={line.x2} y2={line.y2} stroke={line.stroke} strokeWidth={line.strokeWidth} opacity={line.opacity} />
+                        ) : null,
+                      )}
                   </svg>
                 )}
                 {kindShapes.get(kind)?.milestone && (

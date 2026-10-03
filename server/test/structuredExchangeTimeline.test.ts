@@ -418,3 +418,64 @@ describe("ComparisonDataIsCheckedAfterTheSchema", () => {
     ]);
   });
 });
+
+describe("ATimelineMayDeclarePeriodsAndReferenceDates", () => {
+  const withCalendar = () => {
+    const document = programme();
+    document.data.periods = [
+      { start: "2026-12-21", end: "2027-01-03", label: "Fermeture de fin d'année", kind: "fermeture" },
+      { start: "2027-08-02", end: "2027-08-22", label: "Congés d'été", kind: "vacances" },
+    ];
+    document.data.references = [{ date: "2027-06-30", label: "Livraison contractuelle", kind: "contrat" }];
+    return document;
+  };
+
+  test("PeriodsAndReferencesAreValid", () => {
+    assert.deepEqual(rulesOf(withCalendar()), []);
+  });
+
+  test("APeriodRunningPastTheEdgeIsValid", () => {
+    const document = withCalendar();
+    document.data.periods[0] = { start: "2026-09-15", end: "2026-10-10" };
+    assert.deepEqual(rulesOf(document), []);
+  });
+
+  test("APeriodWhollyOutsideIsRefused", () => {
+    const document = withCalendar();
+    document.data.periods[1] = { start: "2026-08-01", end: "2026-09-30" };
+    assert.deepEqual(rulesOf(document), ["period-outside-range /data/periods/1"]);
+  });
+
+  test("AnInvertedPeriodIsRefused", () => {
+    const document = withCalendar();
+    document.data.periods[1] = { start: "2027-08-22", end: "2027-08-02" };
+    assert.deepEqual(rulesOf(document), ["inverted-range /data/periods/1"]);
+  });
+
+  test("AReferenceOutsideTheRangeIsRefused", () => {
+    const document = withCalendar();
+    document.data.references[0].date = "2028-04-01";
+    assert.deepEqual(rulesOf(document), ["item-outside-range /data/references/0"]);
+  });
+
+  test("a period's or reference's impossible day is refused", () => {
+    const document = withCalendar();
+    document.data.periods[0].end = "2027-02-30";
+    document.data.references[0].date = "2027-06-31";
+    assert.deepEqual(rulesOf(document).sort(), ["invalid-date /data/periods/0/end", "invalid-date /data/references/0/date"]);
+  });
+
+  test("AnItemInsideAPeriodIsValid", () => {
+    // Étude préliminaire runs through the year-end closure.
+    assert.deepEqual(rulesOf(withCalendar()), []);
+  });
+
+  test("a reference needs a label, and neither carries presentation", () => {
+    const unlabelled = withCalendar();
+    delete unlabelled.data.references[0].label;
+    assert.ok(rulesOf(unlabelled).some((rule) => rule.startsWith("schema/required /data/references/0")));
+    const coloured = withCalendar();
+    coloured.data.periods[0].color = "#eee";
+    assert.deepEqual(rulesOf(coloured), ["schema/additionalProperties /data/periods/0/color"]);
+  });
+});

@@ -524,6 +524,8 @@ export const STRUCTURED_EXCHANGE_SCHEMA_V3 = "urn:structured-exchange:3";
  */
 export const STRUCTURED_EXCHANGE_CEILINGS_3 = {
   timelineRows: 500,
+  periods: 100,
+  references: 50,
   itemsPerTask: 100,
   dependencies: 2000,
 } as const;
@@ -597,9 +599,26 @@ export interface StructuredTimelineComparedTo {
   date?: StructuredCalendarDate;
 }
 
+/** A span of the calendar the plan runs in: a closure, holidays. Constrains nothing. */
+export interface StructuredTimelinePeriod {
+  start: StructuredCalendarDate;
+  end: StructuredCalendarDate;
+  label?: string;
+  kind?: string;
+}
+
+/** A named day the plan is judged against: a contractual date, a delivery. */
+export interface StructuredTimelineReference {
+  date: StructuredCalendarDate;
+  label: string;
+  kind?: string;
+}
+
 export interface StructuredTimelineData {
   title?: string;
   comparedTo?: StructuredTimelineComparedTo;
+  periods?: StructuredTimelinePeriod[];
+  references?: StructuredTimelineReference[];
   time: { start: StructuredCalendarDate; end: StructuredCalendarDate; scale: StructuredTimelineScale };
   rows: StructuredTimelineRow[];
   dependencies?: StructuredTimelineDependency[];

@@ -960,6 +960,51 @@
         "added",
         "removed"
       ]
+    },
+    "timelinePeriod": {
+      "description": "A span of the calendar the plan runs in \u2014 a closure, holidays. Drawn as a band across every row; constrains nothing.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "start",
+        "end"
+      ],
+      "properties": {
+        "start": {
+          "$ref": "#/$defs/calendarDate"
+        },
+        "end": {
+          "$ref": "#/$defs/calendarDate"
+        },
+        "label": {
+          "$ref": "#/$defs/label"
+        },
+        "kind": {
+          "$ref": "#/$defs/kind"
+        }
+      }
+    },
+    "timelineReference": {
+      "description": "A named day the plan is judged against \u2014 a contractual date, a delivery. Drawn as a line across every row.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "date",
+        "label"
+      ],
+      "properties": {
+        "date": {
+          "$ref": "#/$defs/calendarDate"
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500
+        },
+        "kind": {
+          "$ref": "#/$defs/kind"
+        }
+      }
     }
   },
   "properties": {
@@ -1192,6 +1237,20 @@
                 "date": {
                   "$ref": "#/$defs/calendarDate"
                 }
+              }
+            },
+            "periods": {
+              "type": "array",
+              "maxItems": 100,
+              "items": {
+                "$ref": "#/$defs/timelinePeriod"
+              }
+            },
+            "references": {
+              "type": "array",
+              "maxItems": 50,
+              "items": {
+                "$ref": "#/$defs/timelineReference"
               }
             }
           }

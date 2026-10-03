@@ -632,6 +632,10 @@ line taken from the reader's own date.
   is refused.
 - A timeline is not a proposal: it has no `target`. To change one, present the whole
   revised timeline again. `write_structure_table` refuses it.
+- **Closures, holidays and key dates** belong in the plan: `periods` (`start`, `end`, optional
+  `label` and `kind`, e.g. `"fermeture"`) are drawn as bands across every row, and `references`
+  (`date`, `label`, optional `kind`, e.g. a contractual date) as named lines. They constrain
+  nothing. A period may run past the plan's range (drawn clipped); a reference must fall inside it.
 - **To show what changed between two versions of a plan**, keep each version as its own
   timeline file and call `compare_timelines` with the previous and the current one — never
   work out the shifts yourself. It pairs tasks and items by `id`, so give every item an `id`

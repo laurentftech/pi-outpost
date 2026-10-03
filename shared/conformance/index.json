@@ -95,6 +95,9 @@
     },
     {
       "file": "valid/v3-timeline-compared.json"
+    },
+    {
+      "file": "valid/v3-timeline-calendar.json"
     }
   ],
   "invalid": [
@@ -353,6 +356,14 @@
     {
       "file": "invalid/v3-timeline-previous-wrong-shape.json",
       "expectedRule": "schema/additionalProperties"
+    },
+    {
+      "file": "invalid/v3-timeline-period-outside-range.json",
+      "expectedRule": "period-outside-range"
+    },
+    {
+      "file": "invalid/v3-timeline-reference-outside-range.json",
+      "expectedRule": "item-outside-range"
     }
   ]
 }

@@ -311,6 +311,38 @@ export interface TimelineLayout {
   kinds: string[];
   /** Tasks left out by "only what moved", so the view can say how many. */
   hiddenTasks: number;
+  /** Calendar periods, clipped to the range: bands across every row. */
+  periods: TimelinePeriodLayout[];
+  /** Reference dates: named lines across every row. */
+  references: TimelineReferenceLayout[];
+  /** Names placed in the header's top band without colliding; the rest go to the legend and hover only. */
+  headerLabels: TimelineHeaderLabel[];
+}
+
+export interface TimelinePeriodLayout {
+  index: number;
+  x: number;
+  width: number;
+  label?: string;
+  kind?: string;
+  start: string;
+  end: string;
+}
+
+export interface TimelineReferenceLayout {
+  index: number;
+  x: number;
+  label: string;
+  kind?: string;
+  date: string;
+}
+
+export interface TimelineHeaderLabel {
+  of: "period" | "reference";
+  index: number;
+  text: string;
+  x: number;
+  width: number;
 }
 
 /**
@@ -654,6 +686,52 @@ export function layoutTimeline(data: StructuredTimelineData, today: number, opti
     if (row.type !== "task") continue;
     for (const item of row.items) if (item.kind && !kinds.includes(item.kind)) kinds.push(item.kind);
   }
+  for (const marked of [...(data.periods ?? []), ...(data.references ?? [])]) {
+    if (marked.kind && !kinds.includes(marked.kind)) kinds.push(marked.kind);
+  }
+
+  // Periods, clipped to the range: a closure straddling its edge shows the part inside.
+  const periods: TimelinePeriodLayout[] = [];
+  (data.periods ?? []).forEach((period, index) => {
+    const first = Math.max(dayNumber(period.start) ?? start, start);
+    const last = Math.min(dayNumber(period.end) ?? end, end);
+    if (first > last) return;
+    periods.push({
+      index,
+      x: xOf(first),
+      width: (last - first + 1) * px,
+      start: period.start,
+      end: period.end,
+      ...(period.label ? { label: period.label } : {}),
+      ...(period.kind ? { kind: period.kind } : {}),
+    });
+  });
+  const references: TimelineReferenceLayout[] = (data.references ?? []).flatMap((reference, index) => {
+    const at = dayNumber(reference.date);
+    if (at === undefined || at < start || at > end) return [];
+    return [{ index, x: xOf(at) + px / 2, label: reference.label, date: reference.date, ...(reference.kind ? { kind: reference.kind } : {}) }];
+  });
+
+  // Their names, in the header's top band, left to right, never over one another or
+  // over the Today tag. A name that does not fit is left to the legend and the hover.
+  const taken: { x0: number; x1: number }[] = [];
+  if (today >= start && today <= end) {
+    const todayX = xOf(today) + px / 2;
+    taken.push({ x0: todayX - 26, x1: todayX + 26 });
+  }
+  const headerLabels: TimelineHeaderLabel[] = [];
+  const candidates = [
+    ...periods.filter((period) => period.label).map((period) => ({ of: "period" as const, index: period.index, text: period.label!, x: period.x + 3, room: period.width - 6 })),
+    ...references.map((reference) => ({ of: "reference" as const, index: reference.index, text: reference.label, x: reference.x + 4, room: width - reference.x - 6 })),
+  ].sort((a, b) => a.x - b.x);
+  for (const candidate of candidates) {
+    const textW = textWidth(candidate.text) * (10 / 11);
+    if (textW > candidate.room) continue;
+    const span = { x0: candidate.x - 2, x1: candidate.x + textW + 2 };
+    if (taken.some((other) => span.x0 < other.x1 && other.x0 < span.x1)) continue;
+    taken.push(span);
+    headerLabels.push({ of: candidate.of, index: candidate.index, text: candidate.text, x: candidate.x, width: textW });
+  }
 
   return {
     width,
@@ -674,6 +752,9 @@ export function layoutTimeline(data: StructuredTimelineData, today: number, opti
           : { x: xOf(today) + px / 2, day: today },
     kinds,
     hiddenTasks,
+    periods,
+    references,
+    headerLabels,
   };
 }
 
@@ -801,6 +882,8 @@ export function timelineFacts(data: StructuredTimelineData): {
   milestones: number;
   dependencies: number;
   unsatisfied: StructuredTimelineDependency[];
+  periods: number;
+  references: number;
   /** In a compared timeline: what changed since the plan it is compared with. */
   comparison?: { moved: number; added: number; removed: number; largestSlip?: { name: string; shift: string } };
 } {
@@ -848,6 +931,8 @@ export function timelineFacts(data: StructuredTimelineData): {
     milestones,
     dependencies: dependencies.length,
     unsatisfied: dependencies.filter((dependency) => dependencySatisfied(dependency, endpoints) === false),
+    periods: (data.periods ?? []).length,
+    references: (data.references ?? []).length,
     ...(comparison === undefined ? {} : { comparison }),
   };
 }
@@ -888,6 +973,15 @@ export function timelineTextLines(data: StructuredTimelineData): string[] {
       lines.push(`  ${item.type} ${when}${label}${kind}${id}${change}`);
     }
   }
+  const calendar = [
+    ...(data.periods ?? []).map(
+      (period) => `  period ${period.start} to ${period.end}${period.label ? `: ${period.label}` : ""}${period.kind ? ` [${period.kind}]` : ""}`,
+    ),
+    ...(data.references ?? []).map(
+      (reference) => `  reference ${reference.date}: ${reference.label}${reference.kind ? ` [${reference.kind}]` : ""}`,
+    ),
+  ];
+  if (calendar.length > 0) lines.push("", "Calendar", ...calendar);
   const dependencies = data.dependencies ?? [];
   if (dependencies.length > 0) {
     const endpoints = timelineEndpoints(data);

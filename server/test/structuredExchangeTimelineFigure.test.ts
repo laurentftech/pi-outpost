@@ -163,3 +163,46 @@ describe("AFigureFitsAWidth", () => {
     assert.ok(figure.width > 400);
   });
 });
+
+describe("in a timeline, a dash means a previous position and nothing else", () => {
+  const manyKinds = (count: number): StructuredTimelineData => ({
+    time: { start: "2027-01-01", end: "2027-12-31", scale: "month" },
+    rows: [
+      {
+        type: "task",
+        id: "T",
+        label: "Work",
+        items: Array.from({ length: count }, (_, index) => ({
+          type: "activity" as const,
+          id: `a${index}`,
+          start: "2027-01-01",
+          end: "2027-01-10",
+          kind: `kind-${index}`,
+        })),
+      },
+    ],
+  });
+
+  test("a few kinds are plain colours: no dash, no hatch", () => {
+    const parts = timelineFigureParts(manyKinds(4), { today: day("2027-06-01") });
+    assert.equal(new Set([...parts.tints.values()].map((tint) => tint.stroke)).size, 4);
+    for (const tint of parts.tints.values()) {
+      assert.equal(tint.dash, undefined);
+      assert.equal(tint.hatch, undefined);
+    }
+    const svg = serializeFigure(timelineFigure(manyKinds(4), { today: day("2027-06-01") }));
+    assert.doesNotMatch(svg, /stroke-dasharray/);
+  });
+
+  test("past sixteen kinds, the extra ones are hatched, never dashed", () => {
+    const parts = timelineFigureParts(manyKinds(20), { today: day("2027-06-01") });
+    const tints = [...parts.tints.values()];
+    assert.equal(tints.filter((tint) => tint.hatch === undefined).length, 16);
+    assert.equal(tints.filter((tint) => tint.hatch !== undefined).length, 4);
+    assert.ok(tints.every((tint) => tint.dash === undefined));
+    // Every kind is still told apart: colour and hatch together are distinct.
+    assert.equal(new Set(tints.map((tint) => `${tint.stroke}/${tint.hatch ?? 0}`)).size, 20);
+    const hatchedBar = parts.rows.find((group) => group.data?.kind === [...parts.tints.entries()].find(([, tint]) => tint.hatch)![0])!;
+    assert.ok(hatchedBar.primitives.filter((primitive) => primitive.shape === "line").length > 0, "the hatched kind's bar has no hatch");
+  });
+});

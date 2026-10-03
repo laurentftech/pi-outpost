@@ -125,6 +125,9 @@ export function compareTimelines(
     time: { start: calendarDate(start), end: calendarDate(end), scale: current.time.scale },
     rows,
     ...(current.dependencies === undefined ? {} : { dependencies: clone(current.dependencies) }),
+    // The calendar the current plan runs in, as declared: periods are not compared.
+    ...(current.periods === undefined ? {} : { periods: clone(current.periods) }),
+    ...(current.references === undefined ? {} : { references: clone(current.references) }),
   };
   return { data, uncompared: { previous: uncomparedPrevious, current: uncomparedCurrent } };
 }

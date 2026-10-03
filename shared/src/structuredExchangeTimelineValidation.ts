@@ -153,6 +153,38 @@ export function timelineIssues(data: StructuredTimelineData): StructuredExchange
     });
   });
 
+  // Periods may straddle the range's edge — a closure over the plan's first week is
+  // ordinary — and are drawn clipped; one wholly outside would draw nothing at all.
+  (data.periods ?? []).forEach((period, index) => {
+    const at = `/data/periods/${index}`;
+    if (period.kind !== undefined) kinds.add(period.kind);
+    const first = day(period.start, `${at}/start`);
+    const last = day(period.end, `${at}/end`);
+    if (first === undefined || last === undefined) return;
+    if (first > last) {
+      issues.push({ rule: "inverted-range", path: at, message: `the period starts on ${period.start}, after it ends on ${period.end}` });
+    } else if (range !== undefined && (last < range.start || first > range.end)) {
+      issues.push({
+        rule: "period-outside-range",
+        path: at,
+        message: `the period ${period.start} to ${period.end} lies wholly outside the timeline's range ${declaredRange}, so nothing of it could be drawn`,
+      });
+    }
+  });
+  // A reference is a single day, held to the range like a milestone.
+  (data.references ?? []).forEach((reference, index) => {
+    const at = `/data/references/${index}`;
+    if (reference.kind !== undefined) kinds.add(reference.kind);
+    const only = day(reference.date, `${at}/date`);
+    if (only !== undefined && range !== undefined && (only < range.start || only > range.end)) {
+      issues.push({
+        rule: "item-outside-range",
+        path: at,
+        message: `the reference date ${reference.date} is outside the timeline's range ${declaredRange}; widen \`time\` or move it`,
+      });
+    }
+  });
+
   if (kinds.size > STRUCTURED_EXCHANGE_CEILINGS.kindsPerVocabulary) {
     issues.push({
       rule: "too-many-kinds",

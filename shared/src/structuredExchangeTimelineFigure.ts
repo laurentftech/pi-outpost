@@ -96,6 +96,45 @@ export function starPath(cx: number, cy: number, radius: number): string {
   return `M${points.join("L")}Z`;
 }
 
+/**
+ * Diagonal lines inside a box, each cut to it. `1` rises, `2` falls, `3` crosses;
+ * the neutral period's hatch, and a kind's second channel once its colours are spent.
+ */
+export function hatch(
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  variant: 1 | 2 | 3 = 1,
+  stroke = "#a1a1aa",
+  spacing = 6,
+  opacity = 0.5,
+): Primitive[] {
+  const lines: Primitive[] = [];
+  const rising = (mirror: boolean) => {
+    for (let k = spacing; k < width + height; k += spacing) {
+      // The line x' + y' = k in box coordinates, cut to the box.
+      const ax = Math.min(k, width);
+      const ay = Math.max(0, k - width);
+      const bx = Math.max(0, k - height);
+      const by = Math.min(k, height);
+      lines.push({
+        shape: "line",
+        x1: x + (mirror ? width - ax : ax),
+        y1: y + ay,
+        x2: x + (mirror ? width - bx : bx),
+        y2: y + by,
+        stroke,
+        strokeWidth: 0.6,
+        opacity,
+      });
+    }
+  };
+  if (variant === 1 || variant === 3) rising(false);
+  if (variant === 2 || variant === 3) rising(true);
+  return lines;
+}
+
 /** `3 Oct 2026`: the date a written figure's reference line stands for. */
 export function writtenDate(day: number): string {
   const [year, month, date] = calendarDate(day).split("-");
@@ -146,7 +185,9 @@ export function timelineFigureParts(document: StructuredTimelineData, options: T
     overWidth = fitted < TIMELINE_MIN_PX_PER_DAY;
   }
   const layout = layoutTimeline(data, options.today, { compact: options.compact, pxPerDay, onlyChanged: options.onlyChanged });
-  const tints = assignTints(layout.kinds, options.appearance?.kinds);
+  // Colour alone: in a timeline a dashed outline means a previous position, and a type
+  // drawn dashed would read as a change that never happened.
+  const tints = assignTints(layout.kinds, options.appearance?.kinds, { dashes: false });
   const tintOf = (kind: string | undefined) => (kind === undefined ? NEUTRAL : (tints.get(kind) ?? NEUTRAL));
   const reference = options.referenceLine ?? "today";
   const showDependencies = options.showDependencies ?? true;
@@ -213,6 +254,41 @@ export function timelineFigureParts(document: StructuredTimelineData, options: T
       })),
     },
   ];
+  // Each period carried up into the calendar's year and month bands, so where it falls
+  // reads against the dates and not only against the rows.
+  if (layout.periods.length > 0) {
+    header.push({
+      id: "calendar-bands",
+      primitives: layout.periods.map((period): Primitive => ({
+        shape: "rect",
+        x: period.x,
+        y: TIMELINE_TODAY_BAND,
+        width: period.width,
+        height: TIMELINE_HEADER_HEIGHT - TIMELINE_TODAY_BAND,
+        fill: period.kind === undefined ? "#a1a1aa" : tintOf(period.kind).stroke,
+        fillOpacity: period.kind === undefined ? 0.1 : 0.12,
+      })),
+    });
+  }
+  // Period and reference names, in the top band; the Today tag is drawn over them.
+  if (layout.headerLabels.length > 0) {
+    header.push({
+      id: "calendar-names",
+      primitives: layout.headerLabels.map((label): Primitive => {
+        const kind = label.of === "period" ? layout.periods.find((p) => p.index === label.index)?.kind : layout.references.find((r) => r.index === label.index)?.kind;
+        return {
+          shape: "text",
+          x: label.x,
+          y: 12,
+          text: label.text,
+          fontSize: 10,
+          fill: kind === undefined ? MUTED : tintOf(kind).stroke,
+          fontFamily: FIGURE_FONT,
+          testId: `timeline-${label.of}-name`,
+        };
+      }),
+    });
+  }
   const tagText = reference === "dated" ? writtenDate(options.today) : "Today";
   if (reference !== "none" && "x" in layout.today) {
     const x = layout.today.x;
@@ -290,6 +366,37 @@ export function timelineFigureParts(document: StructuredTimelineData, options: T
               },
     ),
   ];
+
+  // Calendar periods: translucent bands across every row, separators included, under
+  // the work. A kind gives a colour; no kind is neutral and hatched, so an unnamed
+  // closure is still told apart from a coloured one.
+  for (const period of layout.periods) {
+    const declared = data.periods![period.index];
+    const name = `${declared.label ?? "Period"}: ${writtenDate(dayNumber(declared.start)!)} – ${writtenDate(dayNumber(declared.end)!)}`;
+    const primitives: Primitive[] = [
+      {
+        shape: "rect",
+        x: period.x,
+        y: 0,
+        width: period.width,
+        height: layout.height,
+        fill: period.kind === undefined ? "#a1a1aa" : tintOf(period.kind).stroke,
+        fillOpacity: period.kind === undefined ? 0.1 : 0.12,
+      },
+    ];
+    if (period.kind === undefined) primitives.push(...hatch(period.x, 0, period.width, layout.height));
+    rows.push({ id: `period-${period.index}`, testId: "timeline-period", title: name, data: { ...(period.kind ? { kind: period.kind } : {}) }, primitives });
+  }
+  for (const marked of layout.references) {
+    const paint = marked.kind === undefined ? "#3f3f46" : tintOf(marked.kind).stroke;
+    rows.push({
+      id: `reference-${marked.index}`,
+      testId: "timeline-reference",
+      title: `${marked.label}: ${writtenDate(dayNumber(marked.date)!)}`,
+      data: { ...(marked.kind ? { kind: marked.kind } : {}) },
+      primitives: [{ shape: "line", x1: marked.x, x2: marked.x, y1: 0, y2: layout.height, stroke: paint, strokeWidth: 1.5, strokeDasharray: "6 3" }],
+    });
+  }
 
   // Arrows before glyphs and annotations, so no annotation is ever under one.
   if (showDependencies) {
@@ -387,8 +494,10 @@ export function timelineFigureParts(document: StructuredTimelineData, options: T
         ...(kinded ? { fillOpacity: TIMELINE_BAR_FILL_OPACITY } : {}),
         stroke: selected ? EMPHASIS : tint.stroke,
         strokeWidth: selected ? 2.5 : 1.25,
-        ...(tint.dash === undefined ? {} : { strokeDasharray: tint.dash }),
       });
+      if (tint.hatch !== undefined) {
+        primitives.push(...hatch(item.glyph.x, item.glyph.y, item.glyph.width, item.glyph.height, tint.hatch, tint.stroke, 4, 0.8));
+      }
     } else {
       primitives.push({
         shape: "path",
@@ -482,7 +591,9 @@ export function timelineFigureParts(document: StructuredTimelineData, options: T
   const legendWidth = labelWidth + layout.width;
   for (const kind of layout.kinds) {
     const tint = tintOf(kind);
-    const shape = shapes.get(kind)!;
+    // A kind only periods or references carry is named on their own line below.
+    const shape = shapes.get(kind);
+    if (shape === undefined) continue;
     const label = shared.has(kind) ? `${kind} (same colour as ${shared.get(kind)!.join(", ")})` : kind;
     const entryWidth = (shape.activity ? 22 : 0) + (shape.milestone ? 16 : 0) + label.length * CHAR_WIDTH + 18;
     if (x > 0 && x + entryWidth > legendWidth) {
@@ -503,8 +614,8 @@ export function timelineFigureParts(document: StructuredTimelineData, options: T
         fill: tint.stroke,
         stroke: tint.stroke,
         fillOpacity: TIMELINE_BAR_FILL_OPACITY,
-        ...(tint.dash === undefined ? {} : { strokeDasharray: tint.dash }),
       });
+      if (tint.hatch !== undefined) primitives.push(...hatch(at, top + 4, 16, 8, tint.hatch, tint.stroke, 4, 0.8));
       at += 22;
     }
     if (shape.milestone) {
@@ -519,6 +630,41 @@ export function timelineFigureParts(document: StructuredTimelineData, options: T
     });
     x += entryWidth;
   }
+  // Periods and reference dates, each named with its dates: whatever the header could not fit.
+  const calendar = [
+    ...layout.periods.map((period) => {
+      const declared = data.periods![period.index];
+      return { kind: period.kind, line: false, text: `${declared.label ?? "Period"} ${writtenDate(dayNumber(declared.start)!)} – ${writtenDate(dayNumber(declared.end)!)}` };
+    }),
+    ...layout.references.map((marked) => ({ kind: marked.kind, line: true, text: `${marked.label} ${writtenDate(dayNumber(marked.date)!)}` })),
+  ];
+  if (calendar.length > 0) {
+    if (x > 0) {
+      x = 0;
+      line += 1;
+    }
+    calendar.forEach((entry, position) => {
+      const entryWidth = 22 + entry.text.length * CHAR_WIDTH + 18;
+      if (x > 0 && x + entryWidth > legendWidth) {
+        x = 0;
+        line += 1;
+      }
+      const top = line * LEGEND_ROW;
+      const paint = entry.kind === undefined ? (entry.line ? "#3f3f46" : "#a1a1aa") : tintOf(entry.kind).stroke;
+      legendGroups.push({
+        id: `legend-calendar-${position}`,
+        testId: "timeline-calendar-legend",
+        primitives: [
+          entry.line
+            ? { shape: "line", x1: x + 8, x2: x + 8, y1: top + 2, y2: top + 14, stroke: paint, strokeWidth: 1.5, strokeDasharray: "3 2" }
+            : { shape: "rect", x, y: top + 3, width: 16, height: 10, fill: paint, fillOpacity: 0.25 },
+          { shape: "text", x: x + 22, y: top + 12, text: entry.text, fontSize: 10, fill: MUTED, fontFamily: FIGURE_FONT },
+        ],
+      });
+      x += entryWidth;
+    });
+  }
+
   // A comparison's marks, on a line of their own: what dashed, "new" and struck mean.
   if (data.comparedTo !== undefined) {
     if (x > 0) {
