@@ -49,6 +49,15 @@ describe("Mermaid", () => {
     expect(renderDiagram).toHaveBeenCalledTimes(1);
   });
 
+  it("draws with ELK's layout in the classic look", async () => {
+    render(<Mermaid code={CODE} />);
+    await settle();
+    const config = initialize.mock.calls.at(-1)![0];
+    expect(config.look).toBe("classic");
+    // The layout is left to mermaid, whose default is ELK.
+    expect(config.layout).toBeUndefined();
+  });
+
   it("draws only the code it settled on", async () => {
     const { rerender } = render(<Mermaid code="graph TD; A" />);
     rerender(<Mermaid code="graph TD; A-->B" />);
