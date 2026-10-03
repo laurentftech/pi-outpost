@@ -55,8 +55,8 @@ A sandboxing extension can protect you in three ways, and pi-outpost treats each
 | **Confines the whole process** (it runs pi-outpost inside its sandbox) | **Applies**, to everything the server does. |
 
 pi-landstrip does the first two. Without `bashFrom`, you keep only its filter: commands it lets
-through run unconfined, and nothing tells you so — the extension still reports its sandbox as on,
-because it is, for a `bash` the agent never uses.
+through run unconfined — the extension still reports its sandbox as on, because it is, for a `bash`
+the agent never uses. pi-outpost warns about it (below); the extension does not.
 
 The same rule shadows any extension's `read`, `write` or `edit`: pi-outpost keeps its own confined
 ones, which is what a sandbox should do. Only `bash` can be handed over.
@@ -94,11 +94,16 @@ Two practical points:
 
 - **Install the extension where the server loads it.** If your configuration sets `agentDir`,
   install into that directory: `PI_CODING_AGENT_DIR=/path/to/agentDir pi install npm:pi-landstrip`.
-- **Make the extension read the same directory.** pi-outpost hands `agentDir` to its sessions but
-  does not export it, and an extension that looks up Pi's agent directory itself — pi-landstrip
-  does, for its global `sandbox.json` — sees `PI_CODING_AGENT_DIR`, or `~/.pi/agent` without it. Start
-  the server with `PI_CODING_AGENT_DIR` set to the same directory as `agentDir`, or leave `agentDir`
-  unset, so that the policy you wrote is the one it reads.
+- **The extension reads the same directory.** An extension that looks up Pi's agent directory for
+  itself — pi-landstrip does, for its global `sandbox.json` — reads `PI_CODING_AGENT_DIR`. With
+  `agentDir` set, pi-outpost exports it to that directory as it starts (embedded runtime; the RPC
+  runtime passes it to its child), so the policy beside the packages the server loads is the one
+  enforced. The terminal panel keeps the value you started the server with: a `pi` you type there
+  is still yours.
+
+**If you forget `bashFrom`**, pi-outpost says so. When `allowBash` is on, `bashFrom` is not set, and an
+extension registers its own `bash`, the server log carries a `WARNING` naming the extension, and every
+browser that opens the project gets the same warning, with the `bashFrom` line to add.
 
 ## The agent cannot rewrite what confines it
 

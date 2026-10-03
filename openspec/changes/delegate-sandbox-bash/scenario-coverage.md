@@ -22,6 +22,10 @@ agent directory:
 | AMissingDelegateRefusesTheSession | covered | Same file — "AMissingDelegateRefusesTheSession": the server does not start, and the message names `bashFrom`, the extension and the refusal. |
 | AnotherExtensionsBashIsRefused | covered | Same file — "AnotherExtensionsBashIsRefused": refused, and the message contains the other extension's path. |
 | SettingsKeepTheDelegation | covered | Same file — "SettingsKeepTheDelegation": after an `update_config` apply, the agent's call still returns "ran confined". Fails with the carry-over removed (checked). |
+| AShadowedExtensionBashIsWarnedAbout | covered | `server/test/sandboxDelegatedBash.test.mjs` — "AShadowedExtensionBashIsWarnedAbout": the notification is `notify`/`warning`, names the extension file, says "not confined" and carries the exact `bashFrom` line; the server log has the WARNING; a second browser connecting later gets it too. Also seen in the running app: the toast with that text, dismissible. |
+| NoWarningWhenTheExtensionsBashIsUsedOrThereIsNone | covered | Same file — "no warning when the extension's bash is the one, or when there is no bash": neither notification nor log line, with `bashFrom` and with `allowBash` off. |
+| ExtensionsSeeTheServersAgentDirectory | covered | Same file — "ExtensionsSeeTheServersAgentDirectory": started with `PI_CODING_AGENT_DIR` elsewhere, a probe extension's `getAgentDir()` is the configured `agentDir`. |
+| TheTerminalKeepsTheUsersAgentDirectory | covered | `server/test/terminalManager.test.ts` — "puts back what the user started the server with, and drops what they did not set". |
 | TurningBashOnWithoutTheDelegateIsRefused | covered | Same file — "TurningBashOnWithoutTheDelegateIsRefused": the reply is an error naming the reason; a fresh connection sees `allowBash` off and no `bash`; the file still has `allowBash: false` and keeps `bashFrom`. |
 
 ## file

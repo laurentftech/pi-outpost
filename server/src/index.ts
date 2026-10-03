@@ -214,6 +214,7 @@ import {
   isWithin,
   realResolve,
   SandboxDelegationError,
+  shadowedBashWarning,
   unsuppliedBuiltIns,
 } from "./sandbox.ts";
 import {
@@ -477,6 +478,29 @@ if (cli.command === "config") {
 const PORT = config.port;
 const HOST = config.host;
 const AGENT_DIR = config.agentDir ?? getAgentDir();
+/**
+ * What the server was started with, for the terminal panel: the user's shell keeps it.
+ *
+ * An embedded session gets `agentDir` handed over, but an extension that looks Pi's agent
+ * directory up for itself reads `PI_CODING_AGENT_DIR` — pi-landstrip does, for its global
+ * `sandbox.json` — and without it `~/.pi/agent`. So a policy written beside the packages
+ * pi-outpost loads was never the one enforced. Exported here, before any session, so the
+ * extensions see the directory the server uses. The RPC runtime passes it to its child.
+ */
+const LAUNCH_PI_CODING_AGENT_DIR = process.env.PI_CODING_AGENT_DIR;
+
+/**
+ * Per project root: the warning that an extension's bash is shadowed by pi-outpost's (see
+ * shadowedBashWarning). Kept, because the session that found it usually starts before any
+ * browser is there to be told, and told again to each that binds to the project.
+ */
+const shadowedBashWarnings = new Map<string, string>();
+if (config.agentDir !== undefined && config.agentRuntime.mode !== "rpc" && process.env.PI_CODING_AGENT_DIR !== config.agentDir) {
+  if (LAUNCH_PI_CODING_AGENT_DIR !== undefined) {
+    console.log(`[pi] PI_CODING_AGENT_DIR ${LAUNCH_PI_CODING_AGENT_DIR} replaced by agentDir ${config.agentDir} for this server's extensions`);
+  }
+  process.env.PI_CODING_AGENT_DIR = config.agentDir;
+}
 // Own agentDir ⇒ own session store, fully separate from ~/.pi/agent
 const SESSION_DIR = config.agentDir ? path.join(config.agentDir, "sessions") : undefined;
 
@@ -1390,6 +1414,12 @@ const makeCreateRuntime =
     // The delegation first: it names the cause when Pi's own bash is what remains.
     assertDelegatedBash(created.session, projectSandbox);
     assertNoUnconfinedBuiltIns(created.session);
+    const shadowed = shadowedBashWarning(created.session.extensionRunner.getAllRegisteredTools(), projectSandbox);
+    if (shadowed !== undefined) console.warn(`[pi] WARNING ${shadowed}`);
+    if (publishInto) {
+      if (shadowed === undefined) shadowedBashWarnings.delete(publishInto.root);
+      else shadowedBashWarnings.set(publishInto.root, shadowed);
+    }
     activateDefaultTools(created.session, services.settingsManager.getDefaultTools());
   }
   return {
@@ -2049,6 +2079,10 @@ function bindClient(socket: WebSocket, target: Workspace, kind: "hello" | "works
   clients.set(socket, target);
   send(socket, { type: kind, ...snapshot(target) });
   for (const request of target.pendingDialogs.values()) send(socket, request);
+  const shadowed = shadowedBashWarnings.get(target.root);
+  if (shadowed !== undefined) {
+    send(socket, { type: "extension_ui_request", id: "sandbox-shadowed-bash", method: "notify", message: shadowed, notifyType: "warning" });
+  }
 }
 
 function workspaceInfos(): WorkspaceInfo[] {
@@ -2271,7 +2305,7 @@ function snapshot(workspace: Workspace): SessionSnapshot {
  * client bound elsewhere is the failure this map exists to make unstatable.
  */
 const clients = new Map<WebSocket, Workspace>();
-const terminalManager = new TerminalManager();
+const terminalManager = new TerminalManager({ PI_CODING_AGENT_DIR: LAUNCH_PI_CODING_AGENT_DIR });
 
 const WS_LOG_PATH = process.env.WS_LOG_PATH ? path.resolve(process.env.WS_LOG_PATH) : undefined;
 

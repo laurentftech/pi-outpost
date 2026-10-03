@@ -167,3 +167,72 @@ test("TurningBashOnWithoutTheDelegateIsRefused: Settings cannot switch on a bash
   assert.equal(saved.sandbox.allowBash, false, "the file was rolled back too");
   assert.equal(saved.sandbox.bashFrom, "npm:pi-landstrip", "and still names the extension");
 });
+
+/** The first message after hello that warns about a shadowed bash, if one comes. */
+async function shadowedWarning(client) {
+  return client
+    .waitFor((message) => message.type === "extension_ui_request" && message.id === "sandbox-shadowed-bash", 3_000)
+    .catch(() => undefined);
+}
+
+// openlore: scenario=AShadowedExtensionBashIsWarnedAbout spec=sandbox-delegated-bash
+test("AShadowedExtensionBashIsWarnedAbout: allowBash without bashFrom says the extension's bash is not the one", async (t) => {
+  const project = await realpath(await makeWorkspace());
+  const server = await startServer(project, {
+    sandbox: { root: project, allowWrite: true, writableRoot: project, allowBash: true },
+    extensionPaths: [CONFINED],
+  });
+  t.after(() => server.stop());
+  const client = connect(server.wsUrl());
+  t.after(() => client.close());
+  await client.waitFor("hello", 30_000);
+  const warning = await shadowedWarning(client);
+  assert.ok(warning, "a browser binding to the project is told");
+  assert.equal(warning.method, "notify");
+  assert.equal(warning.notifyType, "warning");
+  assert.ok(warning.message.includes(CONFINED), "it names the extension");
+  assert.match(warning.message, /not confined/);
+  assert.ok(warning.message.includes(`"sandbox.bashFrom": ${JSON.stringify(CONFINED)}`), "and the line that fixes it");
+  assert.match(server.log(), /\[pi\] WARNING .*registers its own bash/, "and the server log says so at start");
+
+  // Told again to the next browser, which was not there when the session started.
+  const later = connect(server.wsUrl());
+  t.after(() => later.close());
+  await later.waitFor("hello", 30_000);
+  assert.ok(await shadowedWarning(later), "each binding browser is told");
+});
+
+test("no warning when the extension's bash is the one, or when there is no bash", async (t) => {
+  for (const sandbox of [{ allowBash: true, bashFrom: CONFINED }, { allowBash: false }]) {
+    const project = await realpath(await makeWorkspace());
+    const server = await startServer(project, {
+      sandbox: { root: project, allowWrite: true, writableRoot: project, ...sandbox },
+      extensionPaths: [CONFINED],
+    });
+    t.after(() => server.stop());
+    const client = connect(server.wsUrl());
+    t.after(() => client.close());
+    await client.waitFor("hello", 30_000);
+    assert.equal(await shadowedWarning(client), undefined, JSON.stringify(sandbox));
+    assert.doesNotMatch(server.log(), /registers its own bash/, JSON.stringify(sandbox));
+  }
+});
+
+// openlore: scenario=ExtensionsSeeTheServersAgentDirectory spec=sandbox-delegated-bash
+test("ExtensionsSeeTheServersAgentDirectory: an extension looking up Pi's agent directory finds agentDir", async (t) => {
+  const project = await realpath(await makeWorkspace());
+  const report = path.join(project, "agent-dir.json");
+  const agentDir = path.join(project, ".pi-agent");
+  const server = await startServer(
+    project,
+    { agentDir, extensionPaths: [fileURLToPath(new URL("./fixtures/agent-dir-probe-extension.mjs", import.meta.url))] },
+    // Started from a shell that points Pi elsewhere: the configured agentDir still wins.
+    { env: { AGENT_DIR_REPORT: report, PI_CODING_AGENT_DIR: path.join(project, "somewhere-else") } },
+  );
+  t.after(() => server.stop());
+  const client = connect(server.wsUrl());
+  t.after(() => client.close());
+  await client.waitFor("hello", 30_000);
+  const seen = JSON.parse(await waitForFile(report));
+  assert.equal(path.resolve(seen.agentDir), path.resolve(agentDir));
+});

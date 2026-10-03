@@ -24,6 +24,14 @@ no other way to confine the agent's shell.
   is applied, and a change that would leave bash with nobody to supply it is rolled back, in memory
   and on disk, so the next start is not refused.
 - Without `allowBash`, nothing changes: no `bash` is registered, the extension's included.
+- **Warn when it is missed.** With `allowBash` on, no `bashFrom`, and an extension that registers
+  `bash`, the server logs a warning and every browser opening the project gets it as a notification:
+  the extension, the fact that the bash in use is not confined, and the `bashFrom` line to add.
+- **Extensions read the server's agent directory.** pi-landstrip reads its global `sandbox.json`
+  from `PI_CODING_AGENT_DIR`, or `~/.pi/agent` without it, not from the `agentDir` pi-outpost hands to
+  its sessions. A policy written beside the server's packages was therefore never the one enforced.
+  pi-outpost now exports `PI_CODING_AGENT_DIR` = `agentDir` in the embedded runtime. The terminal panel
+  keeps the user's value.
 - **The agent cannot rewrite what confines it.** None of pi-outpost's file-writing tools may write
   in a `.pi` directory under the writable zone. Every project counts as trusted, so pi-landstrip
   merges the project's `.pi/sandbox.json` over its global policy before every command. The agent
@@ -56,6 +64,10 @@ no other way to confine the agent's shell.
 - `server/src/sandbox.ts` and `server/src/extractionOutput.ts`: `piConfigWriteRefusal` in `write`/`edit` and in
   `assertWritableDestination`, which every file-writing tool goes through.
 - `server/test/sandboxPiConfig.test.ts`.
+- `server/src/index.ts`: the `PI_CODING_AGENT_DIR` export; the shadowed-bash warning, logged and sent
+  to each binding browser.
+- `server/src/terminalManager.ts`: `terminalEnvironment` with overrides; the terminal gets the user's
+  `PI_CODING_AGENT_DIR` back.
 - `README.md`: the key, and a section on confining bash with an extension.
 - `docs/sandboxing.md` (new) and `docs/how-to.md`.
 - No UI change. Embedded runtime only: a sandbox is refused under the RPC runtime already.

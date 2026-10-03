@@ -370,6 +370,33 @@ export function isFromExtension(source: { source: string; path: string }, bashFr
   return path.isAbsolute(source.path) && isWithin(named, path.resolve(source.path));
 }
 
+/** How a registration is named in `bashFrom`: its package source, or its path for one loaded by path. */
+function extensionNameOf(source: { source: string; path: string }): string {
+  return ["cli", "local", "auto", "temporary"].includes(source.source) ? source.path : source.source;
+}
+
+/**
+ * Why an extension's `bash` is silently not the one the agent runs, or undefined.
+ *
+ * With `allowBash` and no `bashFrom`, pi-outpost supplies its own `bash`, and the SDK keeps
+ * it over an extension's of the same name. A sandboxing extension then loads, reports its
+ * sandbox as on, and confines nothing the agent runs — the trap this names, and the line
+ * that gets out of it.
+ */
+export function shadowedBashWarning(
+  registered: ReadonlyArray<{ definition: { name: string }; sourceInfo: { source: string; path: string } }>,
+  sandbox: Pick<SandboxConfig, "allowBash" | "bashFrom"> | undefined,
+): string | undefined {
+  if (!sandbox?.allowBash || sandbox.bashFrom !== undefined) return undefined;
+  const names = [...new Set(registered.filter((tool) => tool.definition.name === "bash").map((tool) => extensionNameOf(tool.sourceInfo)))];
+  if (names.length === 0) return undefined;
+  return (
+    `${names.join(", ")} registers its own bash, but the agent runs pi-outpost's, which is not confined: ` +
+    `"sandbox.allowBash" is on without "sandbox.bashFrom". To run the extension's, set ` +
+    `"sandbox.bashFrom": ${JSON.stringify(names[0])}. See docs/sandboxing.md.`
+  );
+}
+
 /** A session refused because `sandbox.bashFrom` names an extension that did not supply bash. */
 export class SandboxDelegationError extends Error {
   override readonly name = "SandboxDelegationError";

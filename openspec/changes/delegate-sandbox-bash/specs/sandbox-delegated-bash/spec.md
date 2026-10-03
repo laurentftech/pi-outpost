@@ -67,3 +67,34 @@ the browser SHALL be told why.
 #### Scenario: TurningBashOnWithoutTheDelegateIsRefused
 - **WHEN** `bashFrom` names an extension that is not loaded and Settings switch `allowBash` on
 - **THEN** the change is refused with the reason, a new connection still sees `allowBash` off and no `bash`, and the configuration file still has `allowBash` off and keeps `bashFrom`
+
+### Requirement: AShadowedExtensionBashIsReported
+
+While `allowBash` is on and `bashFrom` is not set, a session in which an extension registers its own
+`bash` SHALL be reported. The server log SHALL carry a warning, and every browser that binds to that
+project SHALL receive the same warning as a notification. The warning SHALL name the extension and
+say that the agent runs pi-outpost's `bash`, which is not confined, and SHALL give the `bashFrom` value
+that would hand bash to that extension. No warning SHALL be given when `bashFrom` names the extension,
+or when `allowBash` is off.
+
+#### Scenario: AShadowedExtensionBashIsWarnedAbout
+- **WHEN** `allowBash` is on, `bashFrom` is unset, an extension registers `bash`, and two browsers open the project one after the other
+- **THEN** the server log carries the warning, and each browser receives a warning notification naming the extension, saying the bash in use is not confined, and giving the `bashFrom` line
+
+#### Scenario: NoWarningWhenTheExtensionsBashIsUsedOrThereIsNone
+- **WHEN** the same extension is loaded with `bashFrom` naming it, and then with `allowBash` off
+- **THEN** no warning is logged or sent
+
+### Requirement: ExtensionsSeeTheServersAgentDirectory
+
+In the embedded runtime, with `agentDir` configured, an extension that looks up Pi's agent directory for
+itself SHALL find `agentDir`, whatever `PI_CODING_AGENT_DIR` the server was started with. The terminal
+panel SHALL keep the `PI_CODING_AGENT_DIR` the server was started with, or none.
+
+#### Scenario: ExtensionsSeeTheServersAgentDirectory
+- **WHEN** the server is started with `agentDir` set and `PI_CODING_AGENT_DIR` pointing elsewhere, and an extension looks up Pi's agent directory
+- **THEN** it finds `agentDir`
+
+#### Scenario: TheTerminalKeepsTheUsersAgentDirectory
+- **WHEN** a terminal's environment is built on the server's, which carries `agentDir`
+- **THEN** it carries the value the server was started with, and none when there was none, alongside the rest of the server's environment

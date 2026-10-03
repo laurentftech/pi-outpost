@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { afterEach, describe, test } from "node:test";
-import { TERMINAL_KILL_GRACE_MS, TerminalManager as RealTerminalManager, findWindowsGitBash } from "../src/terminalManager.ts";
+import { TERMINAL_KILL_GRACE_MS, TerminalManager as RealTerminalManager, findWindowsGitBash, terminalEnvironment } from "../src/terminalManager.ts";
 import type { WebSocket } from "ws";
 
 /**
@@ -195,5 +195,17 @@ describe("TerminalManager", () => {
     const deadline = Date.now() + TERMINAL_KILL_GRACE_MS + 3_000;
     while (alive(pid) && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 100));
     assert.ok(!alive(pid), "and it is gone once the grace period has passed");
+  });
+});
+
+describe("terminalEnvironment", () => {
+  // openlore: scenario=TheTerminalKeepsTheUsersAgentDirectory spec=sandbox-delegated-bash
+  test("puts back what the user started the server with, and drops what they did not set", () => {
+    const server = { PATH: "/usr/bin", PI_CODING_AGENT_DIR: "/srv/outpost-agent" };
+    assert.equal(terminalEnvironment(server, { PI_CODING_AGENT_DIR: "/home/me/.pi/agent" }).PI_CODING_AGENT_DIR, "/home/me/.pi/agent");
+    const unset = terminalEnvironment(server, { PI_CODING_AGENT_DIR: undefined });
+    assert.equal("PI_CODING_AGENT_DIR" in unset, false);
+    assert.equal(unset.PATH, "/usr/bin");
+    assert.equal(unset.TERM, "xterm-256color");
   });
 });

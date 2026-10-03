@@ -474,7 +474,7 @@ in [`pi-outpost.config.example.json`](pi-outpost.config.example.json).
 | Key | Effect |
 |-----|--------|
 | `cwd` | Agent working directory, and the default project |
-| `agentDir` | Own config dir (auth, models, settings, sessions) — fully separate from `~/.pi/agent`. It starts with **no credentials**: see [Model credentials](#model-credentials) |
+| `agentDir` | Own config dir (auth, models, settings, sessions) — fully separate from `~/.pi/agent`. It starts with **no credentials**: see [Model credentials](#model-credentials). Exported as `PI_CODING_AGENT_DIR` for extensions that look it up themselves; the terminal panel keeps yours |
 | `sandbox.root` | Read-only zone: read/ls/grep/find are confined to this directory, symlinks resolved. Defaults to `cwd`. Applies to the `cwd` project; every other open project is confined to its own directory |
 | `sandbox.allowWrite` | Adds edit/write, confined to `sandbox.writableRoot` (default `false`). Never inside a `.pi` directory, which holds the configuration that confines the agent — see [docs/sandboxing.md](docs/sandboxing.md#the-agent-cannot-rewrite-what-confines-it) |
 | `sandbox.writableRoot` | Read-write zone: a subdirectory of `root` that edit/write are further confined to. Defaults to `root` itself. Ignored while `allowWrite` is false, and applies to the `cwd` project only: every other open project is writable in its whole directory |
@@ -490,8 +490,8 @@ in [`pi-outpost.config.example.json`](pi-outpost.config.example.json).
 
 > **Installing a sandboxing extension is not enough.** Without `sandbox.bashFrom`, pi-outpost's own
 > `bash` shadows the extension's confined one: the extension loads, reports its sandbox as on, and the
-> agent's commands still run unconfined. [docs/sandboxing.md](docs/sandboxing.md) says what is and is
-> not confined, and how to check it.
+> agent's commands still run unconfined. pi-outpost warns when it sees this, in its log and in the
+> browser. [docs/sandboxing.md](docs/sandboxing.md) says what is and is not confined, and how to check it.
 
 pi-outpost confines its file tools to the sandbox, but `bash` cannot be path-confined: once
 `allowBash` is on, a command runs with everything the server's user can do. A sandboxing

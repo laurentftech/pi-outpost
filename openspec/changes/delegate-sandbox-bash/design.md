@@ -75,6 +75,26 @@ settings and extensions, and a sandboxing extension may add files there that thi
 know. Commands stay the extension's to deny; the docs give pi-landstrip's settings for it
 (`denyWrite: [".pi/**"]`, `toolFilesystemPolicy: "sandbox"`).
 
+### D6. Warn about a shadowed bash, where the user looks
+
+`shadowedBashWarning` compares the extensions' own registrations
+(`extensionRunner.getAllRegisteredTools()`) with the sandbox. A `bash` registered there while
+pi-outpost supplies its own is the trap. It is reported:
+- once in the log, when the session is created;
+- to every browser that binds to the project, through the existing notification channel
+  (`extension_ui_request` with `notify`, as a `warning`).
+
+The session usually starts before any browser connects, so the warning is kept per project root.
+The extension is named the way `bashFrom` takes it: its package source, or its path when loaded by
+path.
+
+### D7. Export the agent directory, keep the user's in the terminal
+
+`getAgentDir()` reads `PI_CODING_AGENT_DIR` live, so exporting it once at start, before any session,
+is enough. It is embedded only: the RPC child already gets it. The terminal panel is the user's
+shell, so `TerminalManager` takes overrides that restore the launch value, or remove it if there was
+none. A `pi` typed there keeps the user's own directory.
+
 ## Risks / Trade-offs
 
 - **The extension's policy decides what bash can do.** pi-outpost proves only *whose* bash runs. The
