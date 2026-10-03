@@ -17,7 +17,7 @@ import { readFile, realpath, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
-import { SEEDED_MESSAGES, VERIFICATION_REPORT } from "../e2e/fixtures/seeded-transcript";
+import { SEEDED_MESSAGES, SEEDED_TIMELINE, VERIFICATION_REPORT } from "../e2e/fixtures/seeded-transcript";
 import { createStructuredExchangeFigureToolDefinition } from "../server/src/structuredExchangeFigureTool.ts";
 // @ts-expect-error -- .mjs harness, no types
 import { makeWorkspace, startServer } from "../server/test/harness.mjs";
@@ -96,7 +96,25 @@ const host = await serveHostPage(HOST_PORT);
  * JSON that does not, the version we do not implement, and the one that claims
  * the contract and fails it.
  */
+/**
+ * The project's kind colours, as a version 2 registry declares them — no profile, so
+ * nothing is constrained. `power` is coloured as an element kind only: architecture.json
+ * also has a `power` relationship, which must keep its automatic colour.
+ */
+const BENCH_APPEARANCE_REGISTRY = JSON.stringify(
+  {
+    schema: "urn:structured-exchange-profile-registry:2",
+    appearance: {
+      kinds: { SRR: { color: "#dc2626" }, "étude": { color: "#16a34a" }, power: { color: "#b45309" } },
+      relationshipKinds: { signal: { color: "#7c3aed" } },
+    },
+  },
+  null,
+  2,
+);
+
 const DOCUMENT_FILES = {
+  ".pi-outpost/structured-exchange.json": BENCH_APPEARANCE_REGISTRY,
   "diagrams/architecture.json": JSON.stringify(
     {
       schema: "urn:structured-exchange:1",
@@ -116,6 +134,7 @@ const DOCUMENT_FILES = {
     null,
     2,
   ),
+  "diagrams/plan.json": JSON.stringify(SEEDED_TIMELINE, null, 2),
   "diagrams/not-a-document.json": JSON.stringify({ kind: "graph", data: { nodes: [], edges: [] } }, null, 2),
   "diagrams/future.json": JSON.stringify({ schema: "urn:structured-exchange:2", kind: "constellation" }, null, 2),
   "diagrams/broken.json": JSON.stringify(
@@ -263,6 +282,7 @@ const plain = await startServer(
 
 const diagramRoot = await makeWorkspace({
   "readme.md": "# diagrams\n",
+  ".pi-outpost/structured-exchange.json": BENCH_APPEARANCE_REGISTRY,
   // The artifact the seeded proposal binds its approval to, and the file its
   // locations point at. Both have to exist here or the reader is driving a
   // document whose links all lead nowhere — which proves only that nothing

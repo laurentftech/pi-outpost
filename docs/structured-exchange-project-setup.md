@@ -192,6 +192,42 @@ files; the second prints the profile and every rule beside the conditions it che
 both views. A registry, profile or rules file that cannot be used exits **4**, with every issue, its
 file and a pointer.
 
+## Project colours
+
+A project can give the kinds its documents use the colours of its own conventions — reviews in
+red, phases in the colours of the planning tool everyone already reads. Declare them in the
+registry, as version 2:
+
+```json
+{
+  "schema": "urn:structured-exchange-profile-registry:2",
+  "profiles": ["profiles/requirements.json"],
+  "appearance": {
+    "kinds": {
+      "SRR": { "color": "#dc2626" },
+      "requirement": { "color": "#2563eb" }
+    },
+    "relationshipKinds": {
+      "verifies": { "color": "#16a34a" }
+    }
+  }
+}
+```
+
+- `kinds` colours elements, sequence participants and timeline activities and milestones;
+  `relationshipKinds` colours relationships. A name in one map never colours the other.
+- A colour is `#rrggbb`. Anything else — `"red"`, `"#d22"` — makes the registry unusable, like any
+  other registry fault: every document is refused, with the registry file and a pointer to the
+  colour, until it is fixed.
+- Kinds you do not name keep their automatic colour, which never reuses one of yours in the same
+  drawing. Two kinds you give the same colour keep it; the legend says they share it.
+- Every drawing applies them: documents the agent presents, blocks in its replies, files opened in
+  the viewer, and figures it writes with `write_structure_figure`. No document ever carries a colour.
+- `profiles` is optional in version 2: a registry with only `appearance` constrains no document.
+  Version 1 registries are read exactly as before and declare no colours.
+- An edited registry is applied to the next document presented or reply received, or when the
+  page reloads — no restart.
+
 ## Changing a model in use
 
 Documents are checked against the files as they are when shown. Removing an enumeration value or

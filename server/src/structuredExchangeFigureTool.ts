@@ -34,6 +34,7 @@ import type { StructuredViewpoint } from "@pi-outpost/shared/structured-exchange
 import { assertWritableDestination } from "./extractionOutput.ts";
 import { isWithinAny, realResolve } from "./sandbox.ts";
 import { describeUnusableProfiles, readProjectProfiles } from "./structuredExchangeProfiles.ts";
+import type { ProjectAppearance } from "@pi-outpost/shared/structured-exchange/profile";
 
 export interface StructuredExchangeFigureToolOptions {
   /** Paths the model gives are resolved against this. */
@@ -161,6 +162,8 @@ export function createStructuredExchangeFigureToolDefinition(
       const parsed = parseSerializedStructuredExchange(text, checkStructuredExchangeSchema, options.limits);
       // The profile the document is held to, whose viewpoints the figure may be drawn for.
       let heldTo: { id: string; viewpoints: readonly StructuredViewpoint[] } | undefined;
+      // The project's colours, so the written figure is the one the reader is shown.
+      let appearance: ProjectAppearance | undefined;
       if (parsed.valid) {
         const project = await readProjectProfiles(options.projectRoot);
         if (project.state === "unusable") {
@@ -179,6 +182,7 @@ export function createStructuredExchangeFigureToolDefinition(
           };
         }
         if (project.state === "usable") {
+          appearance = project.appearance;
           const held = holdToProfile(parsed.envelope, project.context);
           if (held.outcome === "refused") {
             const against = held.profile === undefined ? "this project's profile rules" : `this project's profile "${held.profile}"`;
@@ -210,6 +214,7 @@ export function createStructuredExchangeFigureToolDefinition(
           ...(hiddenRelationshipKinds === undefined ? {} : { hiddenRelationshipKinds }),
           ...(viewpoint === undefined ? {} : { viewpoint }),
           ...(heldTo === undefined ? {} : { profile: heldTo }),
+          ...(appearance === undefined ? {} : { appearance }),
         },
         options.limits,
       );

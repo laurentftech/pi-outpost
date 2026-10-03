@@ -77,6 +77,21 @@
     },
     {
       "file": "valid/v2-graph-with-viewpoints.json"
+    },
+    {
+      "file": "valid/v3-timeline-programme.json"
+    },
+    {
+      "file": "valid/v3-timeline-empty-task-and-anonymous-separator.json"
+    },
+    {
+      "file": "valid/v3-timeline-single-day-activity.json"
+    },
+    {
+      "file": "valid/v3-timeline-four-dependency-types.json"
+    },
+    {
+      "file": "valid/v3-timeline-unsatisfied-dependency.json"
     }
   ],
   "invalid": [
@@ -255,6 +270,66 @@
     {
       "file": "invalid/viewpoints-under-version-1.json",
       "expectedRule": "schema/additionalProperties"
+    },
+    {
+      "file": "invalid/v3-timeline-impossible-date.json",
+      "expectedRule": "invalid-date"
+    },
+    {
+      "file": "invalid/v3-timeline-inverted-activity.json",
+      "expectedRule": "inverted-range"
+    },
+    {
+      "file": "invalid/v3-timeline-inverted-range.json",
+      "expectedRule": "inverted-range"
+    },
+    {
+      "file": "invalid/v3-timeline-milestone-outside-range.json",
+      "expectedRule": "item-outside-range"
+    },
+    {
+      "file": "invalid/v3-timeline-duplicate-identifier.json",
+      "expectedRule": "duplicate-identifier"
+    },
+    {
+      "file": "invalid/v3-timeline-unresolved-dependency-endpoint.json",
+      "expectedRule": "unresolved-endpoint"
+    },
+    {
+      "file": "invalid/v3-timeline-empty-task-endpoint.json",
+      "expectedRule": "empty-task-endpoint"
+    },
+    {
+      "file": "invalid/v3-timeline-self-dependency.json",
+      "expectedRule": "self-dependency"
+    },
+    {
+      "file": "invalid/v3-timeline-duplicate-dependency.json",
+      "expectedRule": "duplicate-dependency"
+    },
+    {
+      "file": "invalid/v3-timeline-dependency-cycle.json",
+      "expectedRule": "dependency-cycle"
+    },
+    {
+      "file": "invalid/v3-timeline-unsupported-scale.json",
+      "expectedRule": "schema/enum"
+    },
+    {
+      "file": "invalid/v3-timeline-unknown-dependency-type.json",
+      "expectedRule": "schema/enum"
+    },
+    {
+      "file": "invalid/v3-timeline-presentation-property.json",
+      "expectedRule": "schema/additionalProperties"
+    },
+    {
+      "file": "invalid/v3-timeline-with-target.json",
+      "expectedRule": "kind-not-proposable"
+    },
+    {
+      "file": "invalid/v3-timeline-under-version-2.json",
+      "expectedRule": "schema/enum"
     }
   ]
 }

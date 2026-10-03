@@ -99,7 +99,7 @@ describe("the reference validator as it ships", () => {
       path.join(away, "enriched-dangling-relation.json"),
       enriched(undefined, [{ from: { id: "nobody" }, to: { ref: "TEST-9" }, kind: "verifiedBy" }]),
     );
-    writeFileSync(path.join(away, "future.json"), enriched().replace("exchange:2", "exchange:3"));
+    writeFileSync(path.join(away, "future.json"), enriched().replace("exchange:2", "exchange:4"));
   });
 
   test("runs at all, outside the repository, with nothing installed", () => {
@@ -182,7 +182,7 @@ describe("the reference validator as it ships", () => {
       assert.equal(code, 1);
       const [issue] = verdict.issues as { rule: string; message: string }[];
       assert.equal(issue.rule, "unsupported-version");
-      assert.match(issue.message, /urn:structured-exchange:1 and urn:structured-exchange:2/);
+      assert.match(issue.message, /urn:structured-exchange:1 and urn:structured-exchange:2 and urn:structured-exchange:3/);
     });
   });
 

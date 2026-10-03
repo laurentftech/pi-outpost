@@ -74,10 +74,10 @@ describe("the verdict on a file's content", () => {
   });
 
   test("a version we do not implement is named and never validated", () => {
-    const verdict = read(JSON.stringify({ schema: "urn:structured-exchange:3", kind: "constellation" }));
+    const verdict = read(JSON.stringify({ schema: "urn:structured-exchange:4", kind: "constellation" }));
     assert.equal(verdict.status, "unsupported-version");
     if (verdict.status !== "unsupported-version") return;
-    assert.equal(verdict.schema, "urn:structured-exchange:3");
+    assert.equal(verdict.schema, "urn:structured-exchange:4");
   });
 
   test("a document that declares a supported version and fails it says what failed", () => {

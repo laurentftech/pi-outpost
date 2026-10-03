@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import type { OutpostUpdateNotice, PiPackageInfo } from "@pi-outpost/shared";
-import type { StructuredConformance } from "@pi-outpost/shared/structured-exchange/profile";
+import type { ProjectAppearance, StructuredConformance } from "@pi-outpost/shared/structured-exchange/profile";
 import { workspaceKey } from "./util/workspaceKey";
 import { bootstrapToken, storedToken, storeToken } from "./authToken";
 import { repoForPath } from "./util/gitRepos";
@@ -312,6 +312,8 @@ export interface AgentState {
    * each one after it, against the registry as it is then.
    */
   replyConformance: Record<string, StructuredConformance>;
+  /** The project's kind colours, as the server last said; `null` for none. */
+  structuredAppearance: ProjectAppearance | null;
   /** A newer pi-outpost, when the server's startup check found one. */
   outpostUpdate: OutpostUpdateNotice | null;
   /** The npm pi packages this project's agent loads. Null until the server lists them. */
@@ -429,6 +431,7 @@ const initialState: AgentState = {
   pendingPrompt: null,
   workPlan: null,
   replyConformance: {},
+  structuredAppearance: null,
   outpostUpdate: null,
   piPackages: null,
   piPackageUpdate: null,
@@ -583,6 +586,9 @@ function applySnapshot(state: AgentState, message: ServerMessage & { sessionId: 
   return {
     ...state,
     replyConformance: {},
+    // Kept across a snapshot of the same project until the server says again, so a
+    // drawing does not flash its automatic colours; another project's are dropped.
+    structuredAppearance: message.type === "workspace_switched" ? null : state.structuredAppearance,
     outpostUpdate: message.outpostUpdate ?? state.outpostUpdate,
     // Absent from a snapshot the server built before listing: keep what is known.
     piPackages: message.piPackages ?? state.piPackages,
@@ -1194,6 +1200,8 @@ function reduce(state: AgentState, action: Action): AgentState {
         ...state,
         items: patchExistingTool(state.items, message.toolCallId, { structuredConformance: message.conformance }),
       };
+    case "structured_appearance":
+      return { ...state, structuredAppearance: message.appearance };
     case "outpost_update":
       return { ...state, outpostUpdate: message.notice };
     case "pi_packages":

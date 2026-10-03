@@ -1,0 +1,61 @@
+{
+  "schema": "urn:structured-exchange:3",
+  "kind": "timeline",
+  "data": {
+    "time": {
+      "start": "2027-01-01",
+      "end": "2027-12-31",
+      "scale": "month"
+    },
+    "rows": [
+      {
+        "type": "task",
+        "id": "T1",
+        "label": "Design",
+        "items": [
+          {
+            "type": "activity",
+            "id": "design",
+            "start": "2027-01-01",
+            "end": "2027-03-31"
+          }
+        ]
+      },
+      {
+        "type": "task",
+        "id": "T2",
+        "label": "Build",
+        "items": [
+          {
+            "type": "activity",
+            "id": "build",
+            "start": "2027-02-01",
+            "end": "2027-06-30"
+          }
+        ]
+      }
+    ],
+    "dependencies": [
+      {
+        "from": "design",
+        "to": "build",
+        "type": "finish-to-start"
+      },
+      {
+        "from": "design",
+        "to": "build",
+        "type": "start-to-start"
+      },
+      {
+        "from": "design",
+        "to": "build",
+        "type": "finish-to-finish"
+      },
+      {
+        "from": "design",
+        "to": "build",
+        "type": "start-to-finish"
+      }
+    ]
+  }
+}

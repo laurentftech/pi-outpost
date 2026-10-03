@@ -91,7 +91,22 @@ const KIND_DASHES: (string | undefined)[] = [undefined, "7 3", "2 3", "9 3 2 3"]
  */
 export const KIND_PRESENTATIONS = KIND_TINTS.length * KIND_DASHES.length;
 
-export type Tint = { fill: string; stroke: string; dash?: string };
+/** `declared`: the colour is the project's, not the palette's. */
+export type Tint = { fill: string; stroke: string; dash?: string; declared?: boolean };
+
+/** Colours a project declares for one vocabulary, by kind name. */
+export type DeclaredColours = Readonly<Record<string, { color: string }>>;
+
+/** A declared colour mixed toward white: the light fill a box or bar is painted with. */
+export function lighten(color: string, amount = 0.88): string {
+  const channel = (index: number) => {
+    const value = Number.parseInt(color.slice(1 + index * 2, 3 + index * 2), 16);
+    return Math.round(value + (255 - value) * amount)
+      .toString(16)
+      .padStart(2, "0");
+  };
+  return `#${channel(0)}${channel(1)}${channel(2)}`;
+}
 
 /** FNV-1a, for a preferred slot that depends only on the name. */
 function hashOf(kind: string): number {
@@ -119,10 +134,25 @@ function hashOf(kind: string): number {
  */
 export const KIND_TINT_COUNT = KIND_TINTS.length;
 
-export function assignTints(kinds: string[]): Map<string, Tint> {
+export function assignTints(kinds: string[], declared?: DeclaredColours): Map<string, Tint> {
   const assigned = new Map<string, Tint>();
   const taken = new Set<number>();
+  // The project's colours first, exactly as declared. An automatic colour equal to one
+  // of them, in this drawing, would make two kinds look alike that the project told
+  // apart — so those palette colours are withheld from the kinds it did not name.
+  const ownColour = (kind: string) => (declared !== undefined && Object.hasOwn(declared, kind) ? declared[kind].color : undefined);
+  const declaredHere = new Set<string>();
   for (const kind of kinds) {
+    const color = ownColour(kind);
+    if (color === undefined) continue;
+    assigned.set(kind, { fill: lighten(color), stroke: color, declared: true });
+    declaredHere.add(color.toLowerCase());
+  }
+  for (let slot = 0; slot < KIND_PRESENTATIONS; slot++) {
+    if (declaredHere.has(KIND_TINTS[slot % KIND_TINTS.length].stroke.toLowerCase())) taken.add(slot);
+  }
+  for (const kind of kinds) {
+    if (assigned.has(kind)) continue;
     let slot = hashOf(kind) % KIND_PRESENTATIONS;
     for (let probe = 0; probe < KIND_PRESENTATIONS && taken.has(slot); probe++) {
       slot = (slot + 1) % KIND_PRESENTATIONS;
@@ -132,6 +162,26 @@ export function assignTints(kinds: string[]): Map<string, Tint> {
     assigned.set(kind, { ...tint, dash: KIND_DASHES[Math.floor(slot / KIND_TINTS.length) % KIND_DASHES.length] });
   }
   return assigned;
+}
+
+/**
+ * For each kind drawn in a declared colour, the other kinds here declared the same
+ * colour. The project chose it, so neither is recoloured; the key says so instead.
+ */
+export function sharedDeclaredColours(kinds: string[], tints: ReadonlyMap<string, Tint>): Map<string, string[]> {
+  const byColour = new Map<string, string[]>();
+  for (const kind of kinds) {
+    const tint = tints.get(kind);
+    if (tint?.declared !== true) continue;
+    const key = tint.stroke.toLowerCase();
+    byColour.set(key, [...(byColour.get(key) ?? []), kind]);
+  }
+  const shared = new Map<string, string[]>();
+  for (const group of byColour.values()) {
+    if (group.length < 2) continue;
+    for (const kind of group) shared.set(kind, group.filter((other) => other !== kind));
+  }
+  return shared;
 }
 
 /** The types present, in the order they first appear, so the legend is stable too. */

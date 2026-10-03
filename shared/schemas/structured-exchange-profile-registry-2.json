@@ -1,0 +1,94 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:structured-exchange-profile-registry:2",
+  "title": "Structured exchange profile registry v2",
+  "description": "Version 1 plus the project's appearance: colours for the kinds its documents use, applied wherever a kind is coloured and never written into a document. Profiles become optional, so a project may declare only its colours. Kept at .pi-outpost/structured-exchange.json in the project.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema"
+  ],
+  "properties": {
+    "schema": {
+      "description": "Which registry format this is.",
+      "const": "urn:structured-exchange-profile-registry:2"
+    },
+    "profiles": {
+      "description": "Profile files, by path relative to the project directory. Each must stay inside the project. May be empty or absent: a registry without profiles constrains no document.",
+      "type": "array",
+      "minItems": 0,
+      "maxItems": 20,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 500
+      }
+    },
+    "rules": {
+      "description": "Rules files, by path relative to the project directory. Each names the registered profile it applies to, and is checked against that profile's vocabulary whenever it is read.",
+      "type": "array",
+      "maxItems": 20,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 500
+      }
+    },
+    "default": {
+      "description": "The identifier of a registered profile that documents naming no profile are held to. Declaring one also refuses documents that name an unregistered profile, and version 1 documents.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200
+    },
+    "appearance": {
+      "description": "The project's colours for kinds, by vocabulary. A name in one map does not colour the other vocabulary; a kind not named keeps its automatic colour.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "kinds": {
+          "type": "object",
+          "maxProperties": 64,
+          "propertyNames": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/kindAppearance"
+          },
+          "description": "Kinds of elements, participants, table rows and timeline items."
+        },
+        "relationshipKinds": {
+          "type": "object",
+          "maxProperties": 64,
+          "propertyNames": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/kindAppearance"
+          },
+          "description": "Kinds of relationships and table relations."
+        }
+      }
+    }
+  },
+  "$defs": {
+    "kindAppearance": {
+      "description": "How one kind is drawn. Colour only; the renderer derives lighter fills from it.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "color"
+      ],
+      "properties": {
+        "color": {
+          "description": "A six-digit hexadecimal colour, #rrggbb.",
+          "type": "string",
+          "pattern": "^#[0-9a-fA-F]{6}$"
+        }
+      }
+    }
+  }
+}

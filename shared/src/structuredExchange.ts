@@ -17,8 +17,11 @@
 /** Version-1 schema identifier; the `schema` field must equal this exactly. */
 export const STRUCTURED_EXCHANGE_SCHEMA_V1 = "urn:structured-exchange:1";
 
-/** Which presentations exist. Only `graph` and `sequence` may be proposed. */
-export type StructuredExchangeKind = "graph" | "sequence" | "table";
+/**
+ * Which presentations exist. Only `graph` and `sequence` may be proposed under
+ * version 1; version 3 adds `timeline`, which is never proposable.
+ */
+export type StructuredExchangeKind = "graph" | "sequence" | "table" | "timeline";
 
 /** Kinds a proposal may target: a table is a projection and cannot be applied. */
 export const PROPOSABLE_KINDS: readonly StructuredExchangeKind[] = ["graph", "sequence"];
@@ -37,7 +40,19 @@ export const PROPOSABLE_KINDS: readonly StructuredExchangeKind[] = ["graph", "se
  * refused exactly as it was.
  */
 export function proposableKinds(schema: string): readonly StructuredExchangeKind[] {
-  return schema === STRUCTURED_EXCHANGE_SCHEMA_V2 ? ["graph", "sequence", "table"] : PROPOSABLE_KINDS;
+  return isEnrichedSchema(schema) ? ["graph", "sequence", "table"] : PROPOSABLE_KINDS;
+}
+
+/**
+ * True for every version that carries the enriched contract's constructs.
+ *
+ * Version 3 is version 2 plus the timeline, so every question of the form "does
+ * this document speak version 2?" has to be answered yes for it too. Asked as an
+ * equality with version 2's identifier, the same question quietly answered no for a
+ * version 3 graph, and every enriched rule stopped applying to it.
+ */
+export function isEnrichedSchema(schema: unknown): boolean {
+  return schema === STRUCTURED_EXCHANGE_SCHEMA_V2 || schema === STRUCTURED_EXCHANGE_SCHEMA_V3;
 }
 
 /**
@@ -187,7 +202,11 @@ export function readTableRow(row: StructuredTableRow): {
   return { cells: row.cells, role: row.role };
 }
 
-export type StructuredExchangeData = StructuredGraphData | StructuredSequenceData | StructuredTableData;
+export type StructuredExchangeData =
+  | StructuredGraphData
+  | StructuredSequenceData
+  | StructuredTableData
+  | StructuredTimelineData;
 
 /**
  * A declared removal. A reference alone does not say what it names — the same
@@ -233,7 +252,8 @@ export interface StructuredExchangeEnvelope {
 export type ValidatedStructuredExchange =
   | (StructuredExchangeEnvelope & { kind: "graph"; data: StructuredGraphData })
   | (StructuredExchangeEnvelope & { kind: "sequence"; data: StructuredSequenceData })
-  | (StructuredExchangeEnvelope & { kind: "table"; data: StructuredTableData });
+  | (StructuredExchangeEnvelope & { kind: "table"; data: StructuredTableData })
+  | (StructuredExchangeEnvelope & { kind: "timeline"; data: StructuredTimelineData });
 
 /** True when the envelope proposes a change to something that already exists. */
 export function isProposal(envelope: StructuredExchangeEnvelope): boolean {
@@ -488,10 +508,89 @@ export function isStructuralRow(row: StructuredEnrichedTableRow): row is Structu
   return !Array.isArray(row) && typeof (row as StructuredStructuralRow).heading === "string";
 }
 
+// ---------------------------------------------------------------------------
+// Version 3: the timeline
+//
+// Mirrored from `shared/schemas/structured-exchange-3.json`, which is normative.
+// Version 3 is version 2 with one more kind; everything above keeps its meaning.
+// ---------------------------------------------------------------------------
+
+/** Version 3's identifier: version 2 plus the timeline. */
+export const STRUCTURED_EXCHANGE_SCHEMA_V3 = "urn:structured-exchange:3";
+
+/**
+ * What version 3 adds to the ceilings above. Generous for a programme schedule and
+ * bounded like the collections they resemble: dependencies like a table's relations.
+ */
+export const STRUCTURED_EXCHANGE_CEILINGS_3 = {
+  timelineRows: 500,
+  itemsPerTask: 100,
+  dependencies: 2000,
+} as const;
+
+/** A calendar day, `YYYY-MM-DD`. A day rather than an instant, so no time zone moves it. */
+export type StructuredCalendarDate = string;
+
+/** The only scale version 3 supports. */
+export type StructuredTimelineScale = "month";
+
+export interface StructuredTimelineActivity {
+  type: "activity";
+  start: StructuredCalendarDate;
+  end: StructuredCalendarDate;
+  id?: string;
+  label?: string;
+  kind?: string;
+}
+
+export interface StructuredTimelineMilestone {
+  type: "milestone";
+  date: StructuredCalendarDate;
+  id?: string;
+  label?: string;
+  kind?: string;
+}
+
+export type StructuredTimelineItem = StructuredTimelineActivity | StructuredTimelineMilestone;
+
+/** A semantic row: a task and whatever activities and milestones it holds. */
+export interface StructuredTimelineTask {
+  type: "task";
+  id: string;
+  label: string;
+  items: StructuredTimelineItem[];
+}
+
+/** A divider between groups of tasks. No dates; no part in the time axis. */
+export interface StructuredTimelineSeparator {
+  type: "separator";
+  label?: string;
+}
+
+export type StructuredTimelineRow = StructuredTimelineTask | StructuredTimelineSeparator;
+
+/** The four Gantt dependency types, spelled out. Absent means `finish-to-start`. */
+export type StructuredDependencyType = "finish-to-start" | "start-to-start" | "finish-to-finish" | "start-to-finish";
+
+/** The successor `to` waits on the predecessor `from`; each names a task or an item. */
+export interface StructuredTimelineDependency {
+  from: string;
+  to: string;
+  type?: StructuredDependencyType;
+}
+
+export interface StructuredTimelineData {
+  title?: string;
+  time: { start: StructuredCalendarDate; end: StructuredCalendarDate; scale: StructuredTimelineScale };
+  rows: StructuredTimelineRow[];
+  dependencies?: StructuredTimelineDependency[];
+}
+
 /** Every version of the contract this build validates against, newest last. */
 export const STRUCTURED_EXCHANGE_SUPPORTED_SCHEMAS = [
   STRUCTURED_EXCHANGE_SCHEMA_V1,
   STRUCTURED_EXCHANGE_SCHEMA_V2,
+  STRUCTURED_EXCHANGE_SCHEMA_V3,
 ] as const;
 
 export type StructuredExchangeSchemaId = (typeof STRUCTURED_EXCHANGE_SUPPORTED_SCHEMAS)[number];

@@ -9,10 +9,12 @@
  */
 import { Check as checkV1 } from "./generated/structuredExchangeCheck.ts";
 import { Check as checkV2 } from "./generated/structuredExchangeCheck2.ts";
+import { Check as checkV3 } from "./generated/structuredExchangeCheck3.ts";
 import { declaredSchemaOf } from "./structuredExchangeDocument.ts";
 import {
   STRUCTURED_EXCHANGE_SCHEMA_V1,
   STRUCTURED_EXCHANGE_SCHEMA_V2,
+  STRUCTURED_EXCHANGE_SCHEMA_V3,
   STRUCTURED_EXCHANGE_SUPPORTED_SCHEMAS,
   supportedSchemaOf,
 } from "./structuredExchange.ts";
@@ -26,6 +28,7 @@ import type { StructuredExchangeSchemaCheck } from "./structuredExchangeParse.ts
 const checks = {
   [STRUCTURED_EXCHANGE_SCHEMA_V1]: checkV1,
   [STRUCTURED_EXCHANGE_SCHEMA_V2]: checkV2,
+  [STRUCTURED_EXCHANGE_SCHEMA_V3]: checkV3,
 };
 
 export const checkStructuredExchangeSchemaInBrowser: StructuredExchangeSchemaCheck = (document) => {

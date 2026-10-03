@@ -15,9 +15,12 @@ import { Compile } from "typebox/compile";
 // filesystem read works in every test and fails on the first real install.
 import schemaModuleV1 from "../schemas/structured-exchange-1.json" with { type: "json" };
 import schemaModuleV2 from "../schemas/structured-exchange-2.json" with { type: "json" };
+import schemaModuleV3 from "../schemas/structured-exchange-3.json" with { type: "json" };
 import { declaredSchemaOf } from "./structuredExchangeDocument.ts";
 import {
   STRUCTURED_EXCHANGE_SCHEMA_V1,
+  STRUCTURED_EXCHANGE_SCHEMA_V2,
+  STRUCTURED_EXCHANGE_SCHEMA_V3,
   STRUCTURED_EXCHANGE_SUPPORTED_SCHEMAS,
   supportedSchemaOf,
   type StructuredExchangeSchemaId,
@@ -53,6 +56,7 @@ export function unwrapSchemaModule(module: unknown): Record<string, unknown> {
 const schemas: Record<StructuredExchangeSchemaId, Record<string, unknown>> = {
   "urn:structured-exchange:1": unwrapSchemaModule(schemaModuleV1),
   "urn:structured-exchange:2": unwrapSchemaModule(schemaModuleV2),
+  "urn:structured-exchange:3": unwrapSchemaModule(schemaModuleV3),
 };
 
 const schema: Record<string, unknown> = schemas[STRUCTURED_EXCHANGE_SCHEMA_V1];
@@ -95,7 +99,12 @@ function schemaFor(version: StructuredExchangeSchemaId, kind: unknown): Record<s
     string,
     { properties?: Record<string, unknown> }
   >[];
-  const required: Record<string, string> = { graph: "nodes", sequence: "participants", table: "columns" };
+  const required: Record<string, string> = {
+    graph: "nodes",
+    sequence: "participants",
+    table: "columns",
+    timeline: "time",
+  };
   const marker = typeof kind === "string" ? required[kind] : undefined;
   const variant =
     marker === undefined
@@ -118,7 +127,7 @@ function schemaFor(version: StructuredExchangeSchemaId, kind: unknown): Record<s
  * and every invalid document — a tool result, any workspace file declaring the
  * family — can reach this. Narrow only to a kind that is really one.
  */
-const NARROWABLE_KINDS: readonly string[] = ["graph", "sequence", "table"];
+const NARROWABLE_KINDS: readonly string[] = ["graph", "sequence", "table", "timeline"];
 
 function validator(version: StructuredExchangeSchemaId, kind: unknown): ReturnType<typeof Compile> {
   const narrowable = typeof kind === "string" && NARROWABLE_KINDS.includes(kind);
@@ -130,6 +139,84 @@ function validator(version: StructuredExchangeSchemaId, kind: unknown): ReturnTy
   const built = Compile(schemaFor(version, narrowable ? kind : undefined));
   compiled.set(key, built);
   return built;
+}
+
+type SchemaError = ReturnType<ReturnType<typeof Compile>["Errors"]> extends Iterable<infer E> ? E : never;
+
+/**
+ * The definition a timeline row or item is checked against, by the `type` it declares.
+ *
+ * Rows and items are dispatched with `if`/`then` on their `type`, so a milestone is
+ * never told what an activity lacks. The cost is the compiler's report: a failed
+ * `then` says only "must match then schema", at the row, which names neither the
+ * property nor the fault.
+ */
+const TIMELINE_BRANCHES: Readonly<Record<string, string>> = {
+  task: "timelineTask",
+  separator: "timelineSeparator",
+  activity: "timelineActivity",
+  milestone: "timelineMilestone",
+};
+
+const branchValidators = new Map<string, ReturnType<typeof Compile>>();
+
+function branchValidator(definition: string): ReturnType<typeof Compile> {
+  const existing = branchValidators.get(definition);
+  if (existing !== undefined) return existing;
+  const defs = schemas[STRUCTURED_EXCHANGE_SCHEMA_V3].$defs;
+  const built = Compile({ $defs: defs, $ref: `#/$defs/${definition}` });
+  branchValidators.set(definition, built);
+  return built;
+}
+
+/**
+ * Replaces each failed `then` with the reasons it failed, asked of the one
+ * definition the value's `type` selects — so the refusal points at the property
+ * the producer got wrong rather than at the row that contains it. Recursive,
+ * because a task's own reasons include its items' failed `then`s.
+ */
+function expandTimelineBranches(document: unknown, errors: SchemaError[]): SchemaError[] {
+  return errors.flatMap((error) => {
+    if (error.keyword === "additionalProperties") return namedExtras(error);
+    if (error.keyword === "enum") return [withAllowedValues(error)];
+    if (error.keyword !== "if") return [error];
+    const at = error.instancePath ?? "";
+    const value = atPointer(document, at) as { type?: unknown } | undefined;
+    const definition = typeof value?.type === "string" ? TIMELINE_BRANCHES[value.type] : undefined;
+    if (definition === undefined) return [error];
+    const inner = [...branchValidator(definition).Errors(value)].map((found) => ({
+      ...found,
+      instancePath: `${at}${found.instancePath ?? ""}`,
+    })) as SchemaError[];
+    return inner.length === 0 ? [error] : expandTimelineBranches(document, inner);
+  });
+}
+
+/** An enumeration refusal that says what would have been accepted: a scale, a type, a dependency type. */
+function withAllowedValues(error: SchemaError): SchemaError {
+  const allowed = (error.params as { allowedValues?: unknown } | undefined)?.allowedValues;
+  if (!Array.isArray(allowed)) return error;
+  return { ...error, message: `must be one of ${allowed.map((value) => JSON.stringify(value)).join(", ")}` } as SchemaError;
+}
+
+/**
+ * One refusal per property the timeline does not define, pointing at the property.
+ *
+ * A timeline is where a producer is most tempted to send presentation — an `x`, a
+ * `color`, a `shape` — and "must not have additional properties" at the item does
+ * not say which of its fields was the one.
+ */
+function namedExtras(error: SchemaError): SchemaError[] {
+  const names = (error.params as { additionalProperties?: unknown } | undefined)?.additionalProperties;
+  if (!Array.isArray(names) || names.length === 0) return [error];
+  return names.map(
+    (name) =>
+      ({
+        ...error,
+        instancePath: `${error.instancePath ?? ""}/${String(name).replace(/~/g, "~0").replace(/\//g, "~1")}`,
+        message: `"${String(name)}" is not defined here; a timeline carries what the plan means, and the renderer derives positions, colours and shapes`,
+      }) as SchemaError,
+  );
 }
 
 /**
@@ -144,7 +231,7 @@ function observedFor(keyword: string, value: unknown): number | undefined {
 }
 
 /** Reads a JSON Pointer out of the document, for the observed value in a diagnostic. */
-function at(document: unknown, pointer: string): unknown {
+function atPointer(document: unknown, pointer: string): unknown {
   if (pointer === "") return document;
   let current: unknown = document;
   for (const rawSegment of pointer.slice(1).split("/")) {
@@ -183,16 +270,31 @@ export const checkStructuredExchangeSchema: StructuredExchangeSchemaCheck = (doc
   const published = [...validator(contract, undefined).Errors(document)];
   if (published.length === 0) return issues;
   const kind = (document as { kind?: unknown } | null)?.kind;
+  // Version 3 is version 2 plus one `data` branch. For any other kind, that branch
+  // adds nothing but a fourth set of complaints about a timeline nobody sent — so
+  // the reasons are asked of version 2, which phrases them exactly as producers have
+  // been reading them. The verdict above is still version 3's.
+  if (contract === STRUCTURED_EXCHANGE_SCHEMA_V3 && typeof kind === "string" && ["graph", "sequence", "table"].includes(kind)) {
+    const asVersionTwo = checkStructuredExchangeSchema({
+      ...(document as Record<string, unknown>),
+      schema: STRUCTURED_EXCHANGE_SCHEMA_V2,
+    });
+    if (asVersionTwo.length > 0) return asVersionTwo;
+  }
   const narrowed = [...validator(contract, kind).Errors(document)];
   // Both lists, not the narrower one: a rule a producer has been keying on since
   // the contract was published must not vanish because a second way of asking the
   // same question phrases it differently. The narrowed errors come first and the
   // published ones add whatever rule and place they name that narrowing did not.
   const seen = new Set(narrowed.map((error) => `${error.keyword}@${error.instancePath}`));
-  const combined = [
-    ...narrowed,
-    ...published.filter((error) => !seen.has(`${error.keyword}@${error.instancePath}`)),
-  ];
+  // A timeline has no published phrasing to preserve: the kind is new with version
+  // 3, so no producer has keyed on what the graph, sequence and table branches say
+  // about one. Kept, they would answer a misspelt milestone with "must have required
+  // properties nodes, edges" — the sentence narrowing exists to avoid.
+  const timeline = contract === STRUCTURED_EXCHANGE_SCHEMA_V3 && kind === "timeline";
+  const combined = timeline
+    ? expandTimelineBranches(document, narrowed)
+    : [...narrowed, ...published.filter((error) => !seen.has(`${error.keyword}@${error.instancePath}`))];
   for (const error of combined) {
     const keyword = String(error.keyword ?? "schema");
     const limit = (error.params as { limit?: number } | undefined)?.limit;
@@ -202,7 +304,7 @@ export const checkStructuredExchangeSchema: StructuredExchangeSchemaCheck = (doc
       message: error.message ?? "does not conform to the published schema",
       ...(limit !== undefined ? { limit, level: "ceiling" as const } : {}),
       ...(() => {
-        const observed = observedFor(keyword, at(document, error.instancePath ?? ""));
+        const observed = observedFor(keyword, atPointer(document, error.instancePath ?? ""));
         return observed === undefined ? {} : { observed };
       })(),
     });

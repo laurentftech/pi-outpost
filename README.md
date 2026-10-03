@@ -258,10 +258,11 @@ one needs, the command that proves it works, and the caution that goes with it.
   **Word (on Windows)**, LibreOffice or ONLYOFFICE draw it, returning the pages, the chapters as
   Word sees them and any text that reached no page. The bundled `docx-from-template` skill teaches
   the loop. See [Write a Word document from a template](docs/how-to.md#write-a-word-document-from-a-template)
-- Structured results: a tool can hand back **data** — a graph, a sequence, a table — and the
+- Structured results: a tool can hand back **data** — a graph, a sequence, a table, or a
+  planning timeline with milestones, Gantt dependencies and a *Today* line — and the
   interface draws it, with an approval gate when the document names a `target`. Files that
-  declare the schema open as the diagram they describe, and any diagram exports as a
-  self-contained SVG. A graph with too many boxes to read across is laid out down the page,
+  declare the schema open as the diagram they describe, and any graph or sequence exports as
+  a self-contained SVG. A graph with too many boxes to read across is laid out down the page,
   and the reader can turn it either way. A graph may name the readings it is made for as
   viewpoints — power, control, safety — which a reader selects and the agent writes one figure
   for. A project can hold the agent's documents to its own data model — kinds, attributes,

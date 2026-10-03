@@ -28,8 +28,10 @@ import {
   RELATIONSHIP_PAINT,
   ROLE_PAINT,
   ROLES,
+  sharedDeclaredColours,
   type Tint,
 } from "./structuredExchangePalette.ts";
+import type { ProjectAppearance } from "./structuredExchangeProfile.ts";
 import { boxHeight, boxWidthWithChanges, changeText } from "./structuredExchangeText.ts";
 import { orientationFor, READING_WIDTH, type Orientation } from "./diagramOrientation.ts";
 import {
@@ -454,6 +456,8 @@ export type LegendEntry = {
   /** The qualified name this entry switches — see `filterKey`. */
   key?: string;
   hidden?: boolean;
+  /** The colour is the project's: said on hover and to a screen reader, and as data. */
+  projectColour?: boolean;
 };
 
 export type LegendGroup = {
@@ -572,8 +576,10 @@ export function legendGroups(
 
       entries.push({
         id: `legend-${entry.key ?? entry.label}`,
+        ...(entry.projectColour === true ? { title: `${entry.label} — project colour` } : {}),
         data: {
           "legend-entry": entry.key ?? entry.label,
+          ...(entry.projectColour === true ? { "colour-source": "project" } : {}),
           // Only a type entry switches something. A role entry explains the picture
           // and has nothing to hide, so a browser must not offer to click it.
           ...(entry.toggles === true && entry.key !== undefined ? { toggles: "true" } : {}),
@@ -751,7 +757,26 @@ export type GraphFigureOptions = {
    * arrives in `hidden`: the caller resolves the viewpoint and adds anything further.
    */
   viewpoint?: StructuredViewpoint;
+  /** The project's kind colours, when it declares any. Presentation only. */
+  appearance?: ProjectAppearance;
 };
+
+/**
+ * A type's key entry, with the project's colour said where it applies.
+ *
+ * Two kinds the project gave one colour keep it — it is the project's choice — and the
+ * label itself says they share it, because a key showing two identical swatches under
+ * two names reads as a mistake otherwise.
+ */
+function kindEntry(kind: string, tint: Tint, sharesWith: readonly string[] | undefined): Pick<LegendEntry, "label" | "fill" | "stroke" | "dashed" | "projectColour"> {
+  return {
+    label: sharesWith === undefined ? kind : `${kind} (same colour as ${sharesWith.join(", ")})`,
+    fill: tint.fill,
+    stroke: tint.stroke,
+    ...(tint.dash === undefined ? {} : { dashed: tint.dash }),
+    ...(tint.declared === true ? { projectColour: true } : {}),
+  };
+}
 
 /**
  * The layout to draw, and which way it turned out.
@@ -835,16 +860,15 @@ export function graphFigure(data: StructuredGraphData, options: GraphFigureOptio
    * channels — a fill and a stroke — so contending for the same palette slots only
    * exhausted it sooner.
    */
-  const elementTints = assignTints(kindsPresent(data.nodes));
-  const relationshipTints = assignTints(kindsPresent(data.edges));
+  const elementTints = assignTints(kindsPresent(data.nodes), options.appearance?.kinds);
+  const relationshipTints = assignTints(kindsPresent(data.edges), options.appearance?.relationshipKinds);
+  const elementShared = sharedDeclaredColours(kindsPresent(data.nodes), elementTints);
+  const relationshipShared = sharedDeclaredColours(kindsPresent(data.edges), relationshipTints);
 
   const swatch = (of: "element" | "relationship") => (kind: string): LegendEntry => {
     const tint = (of === "element" ? elementTints : relationshipTints).get(kind)!;
     return {
-      label: kind,
-      fill: tint.fill,
-      stroke: tint.stroke,
-      ...(tint.dash === undefined ? {} : { dashed: tint.dash }),
+      ...kindEntry(kind, tint, (of === "element" ? elementShared : relationshipShared).get(kind)),
       toggles: true,
       key: filterKey(of, kind),
       hidden: hidden.has(filterKey(of, kind)),
@@ -1177,7 +1201,10 @@ export function graphFigure(data: StructuredGraphData, options: GraphFigureOptio
  * the picture and switches nothing — so this takes the document and nothing else,
  * rather than accepting a narrowing it would quietly ignore.
  */
-export function sequenceFigure(data: StructuredSequenceData, options: { isProposal: boolean }): Figure {
+export function sequenceFigure(
+  data: StructuredSequenceData,
+  options: { isProposal: boolean; appearance?: ProjectAppearance },
+): Figure {
   const isProposal = options.isProposal;
   const layout = layoutSequence(data);
   const { columns, bands, bandHeight, lifelineX, boxW, headerHeight, messageGap } = layout;
@@ -1186,7 +1213,8 @@ export function sequenceFigure(data: StructuredSequenceData, options: { isPropos
 
   // Participants are elements and carry a type like any other; a message does not,
   // because its label is what it is.
-  const tints = assignTints(kindsPresent(data.participants));
+  const tints = assignTints(kindsPresent(data.participants), options.appearance?.kinds);
+  const shared = sharedDeclaredColours(kindsPresent(data.participants), tints);
   const legend: LegendGroup[] = [
     {
       title: "participants",
@@ -1196,10 +1224,7 @@ export function sequenceFigure(data: StructuredSequenceData, options: { isPropos
         // The dash is half of what distinguishes a type; a key that drops it stops
         // matching the picture the moment a diagram has more than sixteen.
         return {
-          label: kind,
-          fill: tint.fill,
-          stroke: tint.stroke,
-          ...(tint.dash === undefined ? {} : { dashed: tint.dash }),
+          ...kindEntry(kind, tint, shared.get(kind)),
           // Named even though a sequence key switches nothing: the name is how the
           // entry is found, and it is the vocabulary it belongs to that names it.
           key: filterKey("element", kind),

@@ -184,6 +184,8 @@ import { createStructuredExchangeToolDefinition } from "./structuredExchangeTool
 import { createStructuredExchangeProjectModelToolDefinition } from "./structuredExchangeProjectModelTool.ts";
 import { createStructuredExchangeTableToolDefinition } from "./structuredExchangeTableTool.ts";
 import { structuredConformanceFor } from "./structuredExchangeProfiles.ts";
+import { readProjectAppearance } from "@pi-outpost/shared/structured-exchange/project-registry";
+import { STRUCTURED_EXCHANGE_PROFILE_REGISTRY_PATH } from "@pi-outpost/shared/structured-exchange/profile";
 import { replyBlockKey, structuredExchangeBlocks } from "@pi-outpost/shared/structured-exchange/reply-blocks";
 import { checkPiPackages, listPiPackages, packageManagerFor } from "./piPackages.ts";
 import { createStructuredExchangeFigureToolDefinition } from "./structuredExchangeFigureTool.ts";
@@ -2093,6 +2095,23 @@ async function announceStructuredConformance(
  * the message for the same reason. A reply carries no id, so each statement names its
  * block by content (`replyBlockKey`), which the browser computes from what it draws.
  */
+/**
+ * Tell a workspace's readers the project's kind colours, as the registry says now.
+ *
+ * After the message it accompanies, for the reason conformance is: a registry read is
+ * I/O. Sent whole each time rather than as a change, so a reader that missed one is
+ * corrected by the next, and an edited registry recolours what is drawn next.
+ */
+async function announceStructuredAppearance(workspace: Workspace): Promise<void> {
+  await Promise.resolve();
+  try {
+    broadcast(workspace, { type: "structured_appearance", appearance: await readProjectAppearance(workspace.root) });
+  } catch (error) {
+    // Colours that cannot be read leave the automatic ones; the session is not disturbed.
+    console.error("[pi-outpost] structured-exchange appearance could not be read:", error);
+  }
+}
+
 async function announceReplyConformance(workspace: Workspace, items: readonly ChatItem[]): Promise<void> {
   await Promise.resolve();
   const blocks = items.flatMap((item) =>
@@ -2129,6 +2148,7 @@ function snapshot(workspace: Workspace): SessionSnapshot {
     items.flatMap((item) => (item.kind === "tool" && item.structured !== undefined ? [{ toolCallId: item.toolCallId, structured: item.structured }] : [])),
   );
   void announceReplyConformance(workspace, items);
+  void announceStructuredAppearance(workspace);
   return {
     branding: config.branding,
     // Always, whatever the number open. A selector's first job is to say where the
@@ -2389,6 +2409,7 @@ function onRuntimeEvent(workspace: Workspace, event: RuntimeEvent): void {
       const finished = assistantToItem(event.message as never);
       broadcast(workspace, { type: "assistant_end", item: finished });
       void announceReplyConformance(workspace, [finished]);
+      void announceStructuredAppearance(workspace);
       // A turn that died of stack exhaustion arrives here as a message and no
       // stack: every provider's catch keeps `error.message` and drops the Error.
       // Record the input instead, while the branch that produced it is still
@@ -2475,6 +2496,7 @@ function onRuntimeEvent(workspace: Workspace, event: RuntimeEvent): void {
         ...structured,
       });
       void announceStructuredConformance(workspace, [{ toolCallId: event.toolCallId, ...structured }]);
+      void announceStructuredAppearance(workspace);
       // The agent was refused for the project's files, and needs the check that names them.
       if (resultReportsUnusableRegistry(event.toolName, contentText(event.content as never))) {
         publishToolDuringTurn(workspace, PROJECT_MODEL_TOOL);
@@ -4109,6 +4131,11 @@ async function handleWriteFile(workspace: Workspace,
     const { size, mtimeMs } = await writeFileFromBrowser(workspace.browserRoot, workspace.writableRoot, filePath, content, expectedMtimeMs, force);
     send(socket, { type: "file_written", requestId, path: filePath, size, mtimeMs });
     broadcast(workspace, { type: "file_changed", path: filePath });
+    // The project's registry, saved from the viewer: its colours apply now, not at the
+    // next document or reload — this is where somebody edits them and looks again.
+    if (path.resolve(workspace.browserRoot, filePath) === path.resolve(workspace.root, STRUCTURED_EXCHANGE_PROFILE_REGISTRY_PATH)) {
+      void announceStructuredAppearance(workspace);
+    }
   } catch (error) {
     if (error instanceof FileBrowserError) {
       send(socket, { type: "file_browser_error", requestId, path: filePath, message: error.message, reason: error.reason });

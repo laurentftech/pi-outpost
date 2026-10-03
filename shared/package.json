@@ -33,6 +33,7 @@
     "./structured-exchange/project-registry": "./src/structuredExchangeProjectRegistry.ts",
     "./structured-exchange/project-views": "./src/structuredExchangeProjectViews.ts",
     "./structured-exchange/reply-blocks": "./src/structuredExchangeReplyBlocks.ts",
+    "./structured-exchange/timeline": "./src/structuredExchangeTimeline.ts",
     "./diagram-orientation": "./src/diagramOrientation.ts",
     "./docx": "./src/docx/index.ts",
     "./markdown-math": "./src/markdownMath.ts"

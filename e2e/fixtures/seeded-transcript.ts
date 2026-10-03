@@ -399,6 +399,76 @@ const VIEWPOINT_GRAPH = {
  * have), and each handler writes a global the spec reads back — so a browser
  * that executed any of them says so rather than merely looking fine.
  */
+/**
+ * A programme schedule, as a version 3 timeline.
+ *
+ * Its range is built round the year the bench runs in, so the Today line always
+ * falls inside it — a fixture that ages out of its own range would quietly stop
+ * exercising the one thing only a running app shows. Everything else is fixed:
+ * crowded milestones a week apart, two separators (one anonymous), every
+ * dependency type, a task as an endpoint, one dependency the dates break, typed
+ * activities beside one left untyped ("Exigences B", drawn grey).
+ */
+const PLAN_YEAR = new Date().getFullYear();
+const on = (offset: number, monthDay: string) => `${PLAN_YEAR + offset}-${monthDay}`;
+export const SEEDED_TIMELINE = {
+  schema: "urn:structured-exchange:3",
+  kind: "timeline",
+  data: {
+    title: "Programme X — system A and B",
+    time: { start: on(-1, "10-01"), end: on(1, "03-31"), scale: "month" },
+    rows: [
+      { type: "separator", label: "Système A" },
+      {
+        type: "task",
+        id: "T1",
+        label: "Études système",
+        items: [
+          { type: "activity", id: "prelim", start: on(-1, "11-01"), end: on(0, "02-28"), label: "Étude préliminaire", kind: "étude" },
+          { type: "milestone", id: "srr", date: on(0, "03-01"), kind: "SRR", label: "System Requirements Review" },
+          { type: "milestone", id: "srr-close", date: on(0, "03-05"), kind: "SRR", label: "SRR close-out" },
+          { type: "milestone", id: "pdr", date: on(0, "03-09"), kind: "PDR", label: "Preliminary Design Review" },
+          { type: "activity", id: "detail", start: on(0, "03-15"), end: on(0, "07-31"), label: "Étude détaillée", kind: "étude" },
+          { type: "milestone", id: "cdr", date: on(0, "08-01"), kind: "CDR" },
+        ],
+      },
+      {
+        type: "task",
+        id: "T2",
+        label: "Développement",
+        items: [{ type: "activity", id: "dev", start: on(0, "03-01"), end: on(0, "09-30"), label: "Développement logiciel et matériel", kind: "réalisation" }],
+      },
+      { type: "separator", label: "Système B" },
+      {
+        type: "task",
+        id: "T3",
+        label: "Analyse des exigences",
+        items: [{ type: "activity", id: "req-b", start: on(0, "02-01"), end: on(0, "06-30"), label: "Exigences B" }],
+      },
+      { type: "separator" },
+      {
+        type: "task",
+        id: "T4",
+        label: "Validation",
+        items: [
+          { type: "activity", id: "val", start: on(0, "10-01"), end: on(1, "02-28"), label: "Campagne de validation", kind: "vérification" },
+          { type: "milestone", id: "qr", date: on(1, "03-15"), kind: "QR", label: "Qualification Review" },
+        ],
+      },
+    ],
+    dependencies: [
+      { from: "prelim", to: "srr" },
+      { from: "srr", to: "T2" },
+      { from: "detail", to: "cdr", type: "finish-to-finish" },
+      { from: "T1", to: "T3", type: "start-to-start" },
+      { from: "req-b", to: "val", type: "start-to-finish" },
+      // Development ends on 30 September; CDR on 1 August cannot wait for it.
+      { from: "dev", to: "cdr" },
+      { from: "val", to: "qr" },
+    ],
+  },
+};
+
 export const SEEDED_EXTENSION_SECTION = [
   "The power train draws on two documents.",
   "",
@@ -536,6 +606,18 @@ export const SEEDED_MESSAGES = [
     toolName: "structured_exchange",
     content: "graph with 5 elements and 2 viewpoints",
     details: VIEWPOINT_GRAPH,
+  },
+  { role: "user", content: "Show me the programme schedule." },
+  {
+    role: "assistant",
+    content: [{ type: "toolCall", id: "call-timeline", name: "structured_exchange", arguments: { kind: "timeline" } }],
+  },
+  {
+    role: "toolResult",
+    toolCallId: "call-timeline",
+    toolName: "structured_exchange",
+    content: "timeline with 4 tasks and 7 dependencies",
+    details: SEEDED_TIMELINE,
   },
   { role: "user", content: "Where does that come from?" },
   { role: "assistant", content: [{ type: "text", text: SEEDED_EXTENSION_SECTION }] },

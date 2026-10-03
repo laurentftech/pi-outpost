@@ -29,10 +29,12 @@ import type {
   StructuredTableData,
   ValidatedStructuredExchange,
 } from "@pi-outpost/shared/structured-exchange";
+import type { StructuredTimelineData } from "@pi-outpost/shared/structured-exchange";
+import { dependencyText, timelineFacts } from "@pi-outpost/shared/structured-exchange/timeline";
 import { describeUnusableProfiles, readProjectProfiles } from "./structuredExchangeProfiles.ts";
 
 const DESCRIPTION = [
-  "Present a structured-exchange document — a graph, sequence, or table — so the interface renders it natively.",
+  "Present a structured-exchange document — a graph, sequence, table, or (version 3) a planning timeline — so the interface renders it natively.",
   "Emit data, never hand-drawn diagram syntax: what you pass here is validated, shown to the user for approval when it proposes a change, and can be handed on to whatever applies it.",
   "The document is checked against the published schema. If it is refused you get the rule and a pointer to the offending value back; fix it and call again.",
   "A project may also hold its documents to a profile of its own — the kinds, attributes and enumeration values its data model has. A document that strays from it is refused the same way, and the refusal says what the profile allows at that point: use those words, never invent one.",
@@ -43,7 +45,7 @@ const DESCRIPTION = [
 const parameters = Type.Object({
   document: Type.String({
     description:
-      'The structured-exchange document as JSON: {"schema":"urn:structured-exchange:1","kind":"graph"|"sequence"|"table",...}. Include "target" only when proposing a change to something that already exists. A version 2 graph may declare "viewpoints" — named readings, each an id, a label, the concern it frames, and the elementKinds and relationshipKinds it retains — so a reader can select one and a figure can be written for one. A version 2 document may name the "profile" its kinds and attributes come from; in a project that registers profiles, that profile is enforced.',
+      'The structured-exchange document as JSON: {"schema":"urn:structured-exchange:1","kind":"graph"|"sequence"|"table",...}. Include "target" only when proposing a change to something that already exists. A version 2 graph may declare "viewpoints" — named readings, each an id, a label, the concern it frames, and the elementKinds and relationshipKinds it retains — so a reader can select one and a figure can be written for one. A version 2 document may name the "profile" its kinds and attributes come from; in a project that registers profiles, that profile is enforced. A schedule is a version 3 timeline: {"schema":"urn:structured-exchange:3","kind":"timeline","data":{"title"?,"time":{"start":"YYYY-MM-DD","end":"YYYY-MM-DD","scale":"month"},"rows":[{"type":"separator","label"?},{"type":"task","id","label","items":[{"type":"activity","start","end","id"?,"label"?,"kind"?},{"type":"milestone","date","id"?,"label"?,"kind"?}]}],"dependencies"?:[{"from":id,"to":id,"type"?:"finish-to-start"|"start-to-start"|"finish-to-finish"|"start-to-finish"}]}} — never coordinates, colours or today\'s date; to change a timeline, present the whole revised one again.',
   }),
   summary: Type.String({
     description:
@@ -70,6 +72,20 @@ function digest(envelope: ValidatedStructuredExchange): string {
   } else if (envelope.kind === "sequence") {
     const data = envelope.data as StructuredSequenceData;
     parts.push(`sequence: ${data.participants.length} participants, ${data.messages.length} messages`);
+  } else if (envelope.kind === "timeline") {
+    const data = envelope.data as StructuredTimelineData;
+    const facts = timelineFacts(data);
+    parts.push(
+      `timeline ${data.time.start} to ${data.time.end}: ${facts.tasks} tasks, ${facts.activities} activities, ` +
+        `${facts.milestones} milestones, ${facts.dependencies} dependencies`,
+    );
+    // The agent will not see the arrows. A dependency the dates break is the one
+    // thing in a plan it most needs to hear about, so it is named here, one by one.
+    if (facts.unsatisfied.length > 0) {
+      parts.push(
+        `not satisfied by the dates: ${facts.unsatisfied.map((dependency) => dependencyText(data, dependency, undefined)).join("; ")}`,
+      );
+    }
   } else {
     const data = envelope.data as StructuredTableData;
     parts.push(`table: ${data.columns.length} columns, ${data.rows.length} rows`);
@@ -108,6 +124,10 @@ function roleTally(envelope: ValidatedStructuredExchange): string {
   } else if (envelope.kind === "sequence") {
     const data = envelope.data as StructuredSequenceData;
     subjects.push(...data.participants, ...data.messages);
+  } else if (envelope.kind === "timeline") {
+    // Never reached: a timeline is refused before it can carry a target. Explicit so
+    // a timeline is never counted as table rows if that ever changes.
+    return "a timeline is not a proposal";
   } else {
     // A table is proposable under the enriched contract, and its rows are what a
     // proposal addresses. Counting only graphs and sequences told the agent that a

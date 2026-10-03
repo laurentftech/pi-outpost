@@ -1,7 +1,7 @@
 # Structured exchange — for producers
 
 A tool can return structured data alongside its text, and this application will render
-it natively: a graph, a sequence, or a table, drawn from the data rather than from
+it natively: a graph, a sequence, a table, or a planning timeline, drawn from the data rather than from
 anything the tool wrote for display. When the document names a target it is read as a
 *proposal* to change something an external authority holds, and its rendering becomes
 the approval gate before that change is applied.
@@ -421,6 +421,69 @@ not, and will not:
 - **resolve anything you name.** Profiles, locations and artifact URIs are inert text
   until a person acts on them.
 
+## Version 3: the timeline, `urn:structured-exchange:3`
+
+Version 3 is version 2 with one more kind. Everything version 2 defines keeps its
+meaning — re-declare a version 2 document as version 3 and it reaches the same verdict
+with the same diagnostics — and versions 1 and 2 never accept a timeline. The schema is
+[`shared/schemas/structured-exchange-3.json`](../shared/schemas/structured-exchange-3.json).
+
+A `timeline` carries a schedule: a calendar range, rows of tasks and separators, the
+activities and milestones on each task, and optional Gantt dependencies between them.
+
+```json
+{
+  "schema": "urn:structured-exchange:3",
+  "kind": "timeline",
+  "data": {
+    "title": "Validation campaign",
+    "time": { "start": "2027-01-01", "end": "2027-06-30", "scale": "month" },
+    "rows": [
+      { "type": "separator", "label": "Bench" },
+      { "type": "task", "id": "bench", "label": "Bench tests", "items": [
+        { "type": "activity", "id": "b1", "start": "2027-01-11", "end": "2027-02-26", "label": "Campaign 1" },
+        { "type": "milestone", "id": "trr", "date": "2027-03-01", "kind": "TRR", "label": "Test Readiness Review" },
+        { "type": "activity", "id": "b2", "start": "2027-03-08", "end": "2027-04-30", "label": "Campaign 2" }
+      ] },
+      { "type": "task", "id": "report", "label": "Report", "items": [
+        { "type": "milestone", "id": "final", "date": "2027-06-15", "kind": "QR" }
+      ] }
+    ],
+    "dependencies": [
+      { "from": "trr", "to": "b2" },
+      { "from": "b2", "to": "final" }
+    ]
+  }
+}
+```
+
+What a producer has to know:
+
+- **Dates are calendar days**, `YYYY-MM-DD`, never instants, so no reader's time zone
+  moves a bar. An impossible day (`2027-02-30`) is `invalid-date`; a range or an activity
+  that ends before it starts is `inverted-range`; an item outside `time` is
+  `item-outside-range` — refused, never clipped.
+- **Rows and items are dispatched by `type`.** A task needs `id`, `label` and `items`
+  (which may be empty); a separator needs nothing else and may carry a `label`. A refusal
+  points at the property at fault, including one the timeline does not define: positions,
+  colours, shapes and the current date are the renderer's, and the schema refuses them.
+- **Dependencies** name a task or an identified item at each end. A task stands for the
+  span of its items. `type` is one of `finish-to-start` (the default), `start-to-start`,
+  `finish-to-finish`, `start-to-finish`. Unresolved ends, an empty task as an end, a task
+  linked to its own item, duplicates and cycles are refused. A dependency the dates do
+  not honour — the successor's linked day strictly before the predecessor's — is **not**
+  refused: it is drawn marked as not satisfied and reported to the agent, because a slip
+  is exactly what a reader needs to see.
+- **A timeline is not a proposal.** It carries no `target`, `removals` or `viewpoints`;
+  a revision is the whole timeline presented again. No profile constrains it, and there
+  is no figure or table file for one yet.
+- **Today is never in the document.** The reader draws a *Today* line at their own
+  calendar date when it falls in the range, and says which side of the range it is on
+  when it does not.
+
+Only the `month` scale exists. Version 3 may still grow in place until a release
+publishes it; after that, another scale is a version 4.
+
 ## Holding documents to a project's data model
 
 The core contract treats `profile` as a name. A project can go further: declare its data
@@ -796,6 +859,7 @@ contract ships with the package, under `contract/`:
 node_modules/pi-outpost/dist/contract/
   schemas/structured-exchange-1.json    the normative schema — any validator runs it
   schemas/structured-exchange-2.json    the enriched contract, published beside it
+  schemas/structured-exchange-3.json    version 2 plus the planning timeline
   schemas/structured-exchange-rules-1.json
                                         the rules a project reviews its specifications against
   conformance/                          documents and the verdict each should get

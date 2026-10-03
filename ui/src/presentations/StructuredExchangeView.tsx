@@ -1,5 +1,5 @@
 import type { StructuredConformance } from "@pi-outpost/shared";
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { EnlargedView } from "../components/EnlargedView";
 import {
   readTableRow,
@@ -7,6 +7,7 @@ import {
   type StructuredGraphData,
   type StructuredSequenceData,
   type StructuredTableData,
+  type StructuredTimelineData,
   type StructuredTableRowRole,
   type ValidatedStructuredExchange,
 } from "@pi-outpost/shared/structured-exchange";
@@ -42,6 +43,9 @@ import { otherOrientation, type Orientation } from "@pi-outpost/shared/diagram-o
 import { resolveViewpoint, sameNarrowing, viewpointsOf } from "@pi-outpost/shared/structured-exchange/model";
 import type { StructuredViewpoint } from "@pi-outpost/shared/structured-exchange";
 import { downloadCsv, downloadMarkdown, downloadXlsx, tableExport } from "./tableExport";
+import { TimelineView } from "./TimelineView";
+import { StructuredAppearanceContext } from "./structuredAppearance";
+import { timelineTextLines } from "@pi-outpost/shared/structured-exchange/timeline";
 import type { ActionDispatch, PresentationProps, ToolItem } from "./types";
 import { resourceTargetFor } from "@pi-outpost/shared/resource-target";
 import {
@@ -316,9 +320,18 @@ function GraphView({
    * the extent, the key — happens in `graphFigure`. What is left here is the half a
    * file cannot carry: pointing, dragging and panning.
    */
+  const appearance = useContext(StructuredAppearanceContext);
   const figure = useMemo(
-    () => graphFigure(data, { isProposal, hidden, nudges, orientation, ...(viewpoint === undefined ? {} : { viewpoint }) }),
-    [data, isProposal, hidden, nudges, orientation, viewpoint],
+    () =>
+      graphFigure(data, {
+        isProposal,
+        hidden,
+        nudges,
+        orientation,
+        ...(viewpoint === undefined ? {} : { viewpoint }),
+        ...(appearance === null ? {} : { appearance }),
+      }),
+    [data, isProposal, hidden, nudges, orientation, viewpoint, appearance],
   );
 
   /**
@@ -541,7 +554,11 @@ function GraphView({
  */
 function SequenceView({ data, isProposal }: { data: StructuredSequenceData; isProposal: boolean }) {
   const { hover, Tooltip } = useDiagramTooltip();
-  const figure = useMemo(() => sequenceFigure(data, { isProposal }), [data, isProposal]);
+  const appearance = useContext(StructuredAppearanceContext);
+  const figure = useMemo(
+    () => sequenceFigure(data, { isProposal, ...(appearance === null ? {} : { appearance }) }),
+    [data, isProposal, appearance],
+  );
 
   return (
     <>
@@ -1137,6 +1154,11 @@ function textualEquivalent(
   for (const artifact of described.artifacts) lines.push(`Artifact — ${artifactText(artifact)}`);
   if (lines.length > 0) lines.push("");
 
+  if (envelope.kind === "timeline") {
+    lines.push(...timelineTextLines(envelope.data as StructuredTimelineData));
+    return lines.join("\n");
+  }
+
   if (described.columns !== undefined && described.rows !== undefined) {
     // A table leaves this application as these words — there is no figure to
     // export — so a narrowed reading has to say so here or it says so nowhere.
@@ -1359,6 +1381,7 @@ function targetRef(envelope: ValidatedStructuredExchange): string | undefined {
 }
 
 export function StructuredExchangeDocument({ envelope, source, rawOutput, dispatch, conformance }: StructuredExchangeDocumentProps) {
+  const appearance = useContext(StructuredAppearanceContext);
   const [enlarged, setEnlarged] = useState(false);
   const [showText, setShowText] = useState(false);
   const [showExport, setShowExport] = useState(false);
@@ -1438,6 +1461,8 @@ export function StructuredExchangeDocument({ envelope, source, rawOutput, dispat
       />
     ) : envelope.kind === "sequence" ? (
       <SequenceView data={envelope.data as StructuredSequenceData} isProposal={isProposal} />
+    ) : envelope.kind === "timeline" ? (
+      <TimelineView data={envelope.data as StructuredTimelineData} appearance={appearance} />
     ) : (
       <TableView
         data={envelope.data as StructuredTableData}
@@ -1647,7 +1672,9 @@ export function StructuredExchangeDocument({ envelope, source, rawOutput, dispat
         // what tells the overlay which tree it has to be rendered into.
         anchorRef={diagramRef}
         actions={
-          envelope.kind !== "table" && (
+          // A table leaves as data and a timeline is not exported in this version;
+          // only the diagrams have a figure to save.
+          (envelope.kind === "graph" || envelope.kind === "sequence") && (
             <>
               <button type="button" onClick={downloadDiagram} className={LINK_BUTTON}>
                 ⤓ download SVG
@@ -1788,7 +1815,7 @@ export function StructuredExchangeDocument({ envelope, source, rawOutput, dispat
               </span>
             )}
           </>
-        ) : (
+        ) : envelope.kind === "timeline" ? null : (
           <>
             <button
               type="button"

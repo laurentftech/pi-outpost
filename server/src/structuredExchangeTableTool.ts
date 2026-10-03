@@ -103,7 +103,9 @@ export function createStructuredExchangeTableToolDefinition(options: StructuredE
       }
       if (verdict.envelope.kind !== "table") {
         return refused(
-          `No table was written. \`${target}\` is a ${verdict.envelope.kind}, not a table; draw it with write_structure_figure instead.`,
+          verdict.envelope.kind === "timeline"
+            ? `No table was written. \`${target}\` is a timeline, not a table, and a timeline is not exported as a file in this version: present it with present_structure to show it.`
+            : `No table was written. \`${target}\` is a ${verdict.envelope.kind}, not a table; draw it with write_structure_figure instead.`,
         );
       }
 

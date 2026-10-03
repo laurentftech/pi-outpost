@@ -70,10 +70,10 @@ describe("validation is selected by the declared version", () => {
   });
 
   test("a version this build does not have is refused by name", () => {
-    const future = { ...v1Graph, schema: "urn:structured-exchange:3" };
+    const future = { ...v1Graph, schema: "urn:structured-exchange:4" };
     const issues = checkStructuredExchangeSchema(future);
     assert.deepEqual(issues.map((issue) => issue.rule), ["unsupported-version"]);
-    assert.match(issues[0].message, /urn:structured-exchange:1 and urn:structured-exchange:2/);
+    assert.match(issues[0].message, /urn:structured-exchange:1 and urn:structured-exchange:2 and urn:structured-exchange:3/);
     assert.equal(issues[0].path, "/schema");
   });
 
@@ -96,7 +96,7 @@ describe("the browser reaches the same verdict as Node", () => {
     ["a version 1 graph", v1Graph],
     ["a version 2 requirements table", v2Requirements],
     ["version 2 fields under a version 1 identifier", { ...v2Requirements, schema: "urn:structured-exchange:1" }],
-    ["a version this build does not have", { ...v1Graph, schema: "urn:structured-exchange:3" }],
+    ["a version this build does not have", { ...v1Graph, schema: "urn:structured-exchange:4" }],
     ["not a structured exchange at all", { nonsense: true }],
     ["a heading row, which only version 2 has", {
       schema: "urn:structured-exchange:2", kind: "table",

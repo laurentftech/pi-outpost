@@ -19,6 +19,7 @@ import {
   type NotADocument,
   type StructuredExchangeDocumentVerdict,
 } from "./structuredExchangeDocument.ts";
+import type { ProjectAppearance } from "./structuredExchangeProfile.ts";
 import type { StructuredExchangeSchemaCheck } from "./structuredExchangeParse.ts";
 import type { StructuredExchangeLimits } from "./structuredExchangeBounds.ts";
 import type { StructuredExchangeIssue } from "./structuredExchangeValidation.ts";
@@ -63,7 +64,7 @@ export type FigureRefusal = { ok: false } & (
   | { reason: "unsupported-version"; schema: string }
   | { reason: "invalid"; issues: StructuredExchangeIssue[] }
   | { reason: "too-large"; issue: StructuredExchangeIssue }
-  /** A table is data. It exports as a spreadsheet, and has no figure. */
+  /** A table is data, and exports as a spreadsheet; a timeline has no figure file yet. Neither has a figure. */
   | { reason: "not-drawable"; kind: string }
   /** The narrowing selected nothing, or the document declares nothing. */
   | { reason: "nothing-to-draw"; coverage: FigureCoverage }
@@ -96,6 +97,8 @@ export interface FigureNarrowing {
    * looked up after the document's own — the document is the more specific author.
    */
   profile?: { id: string; viewpoints: readonly StructuredViewpoint[] };
+  /** The project's kind colours, so a written figure looks like the one the reader sees. */
+  appearance?: ProjectAppearance;
 }
 
 /** The refusal a document verdict maps to, or undefined when it validated. */
@@ -161,7 +164,10 @@ export function figureForEnvelope(
     // A sequence is not narrowable here: its key explains the picture and switches
     // nothing. A narrowing named for one is not quietly applied and not quietly
     // dropped either — it simply has no key to act on, which the coverage shows.
-    const figure = sequenceFigure(data, { isProposal });
+    const figure = sequenceFigure(data, {
+      isProposal,
+      ...(narrowing.appearance === undefined ? {} : { appearance: narrowing.appearance }),
+    });
     return { ok: true, svg: serializeFigure(figure), coverage };
   }
 
@@ -198,7 +204,12 @@ export function figureForEnvelope(
   // caller only discovers is worthless when somebody opens the file.
   if (shown.nodes.length === 0) return { ok: false, reason: "nothing-to-draw", coverage };
 
-  const figure = graphFigure(data, { isProposal, hidden, ...(viewpoint === undefined ? {} : { viewpoint }) });
+  const figure = graphFigure(data, {
+    isProposal,
+    hidden,
+    ...(viewpoint === undefined ? {} : { viewpoint }),
+    ...(narrowing.appearance === undefined ? {} : { appearance: narrowing.appearance }),
+  });
   return {
     ok: true,
     svg: serializeFigure(figure),
@@ -257,7 +268,11 @@ export function describeFigureRefusal(refusal: FigureRefusal): string {
     case "too-large":
       return refusal.issue.message;
     case "not-drawable":
-      return `a ${refusal.kind} is data rather than a drawing, and has no figure`;
+      // A timeline is drawn, but only by the reader's view: no figure is written for
+      // one in this version, and saying it is "data rather than a drawing" would be false.
+      return refusal.kind === "timeline"
+        ? "a timeline is drawn in the conversation but has no figure file in this version; present it with present_structure instead"
+        : `a ${refusal.kind} is data rather than a drawing, and has no figure`;
     case "nothing-to-draw":
       return refusal.coverage.ofElements === 0
         ? "the document declares nothing to draw"

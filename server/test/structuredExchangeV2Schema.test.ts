@@ -201,7 +201,7 @@ describe("the enriched schema", () => {
 describe("the distributed copies are the same document", () => {
   // A producer validates against the copy it was given. Two copies that differ are
   // two contracts, and the one that loses is whichever the producer did not read.
-  for (const version of ["1", "2"] as const) {
+  for (const version of ["1", "2", "3"] as const) {
     test(`version ${version} in skills/ matches shared/schemas`, () => {
       const source = readFileSync(path.join(ROOT, `shared/schemas/structured-exchange-${version}.json`), "utf8");
       const shipped = readFileSync(

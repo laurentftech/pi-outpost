@@ -1,5 +1,5 @@
 {
-  "schema": "urn:structured-exchange:3",
+  "schema": "urn:structured-exchange:4",
   "kind": "graph",
   "data": {
     "nodes": [

@@ -14,7 +14,7 @@ import {
   STRUCTURED_EXCHANGE_BYTES_CEILING_2,
   STRUCTURED_EXCHANGE_CEILINGS,
   STRUCTURED_EXCHANGE_CEILINGS_2,
-  STRUCTURED_EXCHANGE_SCHEMA_V2,
+  isEnrichedSchema,
 } from "./structuredExchange.ts";
 import type { StructuredExchangeIssue } from "./structuredExchangeValidation.ts";
 
@@ -48,7 +48,7 @@ export const STRUCTURED_EXCHANGE_BYTES_CEILING_ANY = Math.max(
 
 /** The byte ceiling the declared version promises its producers. */
 export function bytesCeilingFor(declared: string | undefined): number {
-  return declared === STRUCTURED_EXCHANGE_SCHEMA_V2
+  return isEnrichedSchema(declared)
     ? STRUCTURED_EXCHANGE_BYTES_CEILING_2
     : STRUCTURED_EXCHANGE_BYTES_CEILING;
 }

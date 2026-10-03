@@ -1,6 +1,6 @@
 ---
 name: structured-exchange
-description: Author a structured-exchange document — a graph, sequence, or table the interface renders natively, such as a table of requirements with their attributes, or a proposal to change one an external authority holds — and write figures of one into a document you are authoring. Read it before calling present_structure or write_structure_figure. Use when asked to draw or diagram a structure, to present requirements or other typed items, to propose an evolution of an existing model, to illustrate a report you are writing, when a project's profile refuses a kind, attribute or value, or when a result would otherwise be a hand-written diagram.
+description: Author a structured-exchange document — a graph, sequence, table or planning timeline the interface renders natively, such as a table of requirements with their attributes, a programme schedule with milestones and dependencies, or a proposal to change one an external authority holds — and write figures of one into a document you are authoring. Read it before calling present_structure or write_structure_figure. Use when asked to draw or diagram a structure, to present requirements or other typed items, to plan or show a schedule, roadmap or Gantt chart, to propose an evolution of an existing model, to illustrate a report you are writing, when a project's profile refuses a kind, attribute or value, or when a result would otherwise be a hand-written diagram.
 allowed-tools: Bash(node:*)
 license: MIT
 metadata:
@@ -49,7 +49,8 @@ refused, never corrected — correcting it would produce a document you did not 
 }
 ```
 
-`kind` is `graph`, `sequence`, or `table`. Under version 1 a table is a projection: it
+`kind` is `graph`, `sequence`, or `table` — and, under version 3, `timeline` (see
+**Timelines: a schedule as data**). Under version 1 a table is a projection: it
 can be shown and reasoned about, never proposed — though its rows may report what a
 change did to them (see **Roles on a table's rows**). Under version 2 its rows can carry
 an identity, so a table can be proposed like anything else (see **The enriched
@@ -576,6 +577,62 @@ All of it together, as one document you can copy:
   }
 }
 ```
+
+## Timelines: a schedule as data
+
+A project schedule, a roadmap, a validation campaign: declare it as a version 3
+`timeline` rather than as a Mermaid `gantt` block or a table of dates. The interface
+draws a proportional calendar, bars, star milestones, dependency arrows and a **Today**
+line taken from the reader's own date.
+
+```json
+{
+  "schema": "urn:structured-exchange:3",
+  "kind": "timeline",
+  "data": {
+    "title": "Programme X",
+    "time": { "start": "2026-10-01", "end": "2027-12-31", "scale": "month" },
+    "rows": [
+      { "type": "separator", "label": "System A" },
+      { "type": "task", "id": "T1", "label": "System studies", "items": [
+        { "type": "activity", "id": "study", "start": "2026-11-01", "end": "2027-02-28", "label": "Preliminary study" },
+        { "type": "milestone", "id": "srr", "date": "2027-03-01", "kind": "SRR", "label": "System Requirements Review" },
+        { "type": "activity", "id": "design", "start": "2027-03-15", "end": "2027-07-31", "label": "Detailed design" },
+        { "type": "milestone", "id": "cdr", "date": "2027-08-01", "kind": "CDR" }
+      ] },
+      { "type": "separator" },
+      { "type": "task", "id": "T2", "label": "Development", "items": [
+        { "type": "activity", "id": "dev", "start": "2027-03-01", "end": "2027-09-30" }
+      ] }
+    ],
+    "dependencies": [
+      { "from": "study", "to": "srr" },
+      { "from": "srr", "to": "T2" },
+      { "from": "design", "to": "cdr", "type": "finish-to-finish" }
+    ]
+  }
+}
+```
+
+- **Rows** are drawn in order. A `task` has an `id`, a `label` and any number of
+  `items` — activities and milestones, overlapping or with gaps, in any order. A
+  `separator` divides groups of tasks, with a `label` or without one.
+- **An activity** runs from `start` to `end` inclusive; **a milestone** is a `date`.
+  Dates are calendar days, `YYYY-MM-DD`, and every item must fall inside `time`:
+  one outside is refused, never clipped — widen `time` instead.
+- **`label`** is what a reader sees beside the item; a milestone without one shows its
+  `kind`. **`kind`** is your own vocabulary (`SRR`, `PDR`, `CDR`); every kind gets its
+  own colour and a legend entry. Write no colour, position, shape or "today" — the
+  renderer derives them, and the schema refuses them.
+- **A dependency** says `to` waits on `from`. Each names a task or an item by `id` (give
+  an item an `id` if anything depends on it); a task stands for the span of its items.
+  `type` is `finish-to-start` when omitted, or `start-to-start`, `finish-to-finish`,
+  `start-to-finish`. A dependency the dates break is **drawn and reported to you as
+  not satisfied**, not refused — tell the user, do not move dates to hide it. A cycle
+  is refused.
+- A timeline is not a proposal: it has no `target`. To change one, present the whole
+  revised timeline again. It has no figure file yet: `write_structure_figure` and
+  `write_structure_table` refuse it.
 
 ## Size
 
