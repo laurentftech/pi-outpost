@@ -1,4 +1,7 @@
 import { compareTimelines } from "../../shared/src/structuredExchangeTimelineComparison.ts";
+import { timelineFigure } from "../../shared/src/structuredExchangeTimelineFigure.ts";
+import { serializeFigure } from "../../shared/src/structuredExchangeFigure.ts";
+import { localToday } from "../../shared/src/structuredExchangeTimeline.ts";
 /**
  * A transcript with diagrams in it, served by the scripted RPC agent.
  *
@@ -512,6 +515,16 @@ export const SEEDED_TIMELINE_COMPARED = {
   ).data,
 };
 
+/**
+ * The schedule as a picture, for a reply that shows one: the figure
+ * `write_structure_figure` would write, kept at `figures/plan.svg` in the workspace
+ * the transcript is served from, so the reply's image resolves to a real file.
+ */
+export const SEEDED_PLAN_FIGURE_PATH = "figures/plan.svg";
+export const SEEDED_PLAN_FIGURE = serializeFigure(
+  timelineFigure(SEEDED_TIMELINE.data as never, { today: localToday(), width: 900, compact: true, referenceLine: "dated" }),
+);
+
 export const SEEDED_EXTENSION_SECTION = [
   "The power train draws on two documents.",
   "",
@@ -674,6 +687,24 @@ export const SEEDED_MESSAGES = [
     content: "compared with the plan of 1 September",
     details: SEEDED_TIMELINE_COMPARED,
   },
-  { role: "user", content: "Where does that come from?" },
+  { role: "user", content: "Put the schedule in a picture I can paste into the review report." },
+  {
+    role: "assistant",
+    content: [
+      {
+        type: "text",
+        text: [
+          "Here is the programme as a figure, one row per section, sized for a page:",
+          "",
+          `![Programme X — schedule](${SEEDED_PLAN_FIGURE_PATH})`,
+          "",
+          `It is saved as \`${SEEDED_PLAN_FIGURE_PATH}\`. One thing to raise in the review: development now ends on 15 October, after validation is due to start (the red dashed arrow).`,
+        ].join("\n"),
+      },
+    ],
+  },
+  // Not a real answer: a reply carrying hostile HTML, kept to prove it renders inert
+  // (see e2e/assistant-html.spec.ts). Named as such so nobody reads it as a broken reply.
+  { role: "user", content: "(bench) A reply carrying hostile HTML — it must render inert." },
   { role: "assistant", content: [{ type: "text", text: SEEDED_EXTENSION_SECTION }] },
 ];

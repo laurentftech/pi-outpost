@@ -3,7 +3,7 @@ import { createServer } from "node:http";
 import { access, mkdir, readdir, readFile, realpath, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { SEEDED_MESSAGES } from "./fixtures/seeded-transcript";
+import { SEEDED_MESSAGES, SEEDED_PLAN_FIGURE, SEEDED_PLAN_FIGURE_PATH } from "./fixtures/seeded-transcript";
 // The same harness the server's own integration tests use: a real server, in its
 // own process group, against a throwaway workspace, with PI_OFFLINE set so the
 // SDK's model runtime never reaches the network.
@@ -345,7 +345,7 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
   // embedded runtime, and because it is the one configured to open light —
   // `branding.defaultTheme` is untestable on a server whose host page names a
   // theme of its own.
-  const diagramRoot = await makeWorkspace({ "readme.md": "# diagrams\n" });
+  const diagramRoot = await makeWorkspace({ "readme.md": "# diagrams\n", [SEEDED_PLAN_FIGURE_PATH]: SEEDED_PLAN_FIGURE });
   const fakeConfig = path.join(diagramRoot, "fake-rpc.json");
   await writeFile(
     fakeConfig,

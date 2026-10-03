@@ -17,7 +17,14 @@ import { readFile, realpath, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
-import { SEEDED_MESSAGES, SEEDED_TIMELINE, SEEDED_TIMELINE_PREVIOUS, VERIFICATION_REPORT } from "../e2e/fixtures/seeded-transcript";
+import {
+  SEEDED_MESSAGES,
+  SEEDED_PLAN_FIGURE,
+  SEEDED_PLAN_FIGURE_PATH,
+  SEEDED_TIMELINE,
+  SEEDED_TIMELINE_PREVIOUS,
+  VERIFICATION_REPORT,
+} from "../e2e/fixtures/seeded-transcript";
 import { createTimelineComparisonToolDefinition } from "../server/src/timelineComparisonTool.ts";
 import { createStructuredExchangeFigureToolDefinition } from "../server/src/structuredExchangeFigureTool.ts";
 // @ts-expect-error -- .mjs harness, no types
@@ -310,6 +317,8 @@ const plain = await startServer(
 
 const diagramRoot = await makeWorkspace({
   "readme.md": "# diagrams\n",
+  // The picture the schedule reply shows.
+  [SEEDED_PLAN_FIGURE_PATH]: SEEDED_PLAN_FIGURE,
   ".pi-outpost/structured-exchange.json": BENCH_APPEARANCE_REGISTRY,
   // The artifact the seeded proposal binds its approval to, and the file its
   // locations point at. Both have to exist here or the reader is driving a
