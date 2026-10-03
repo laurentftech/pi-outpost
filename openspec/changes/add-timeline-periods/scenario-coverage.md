@@ -9,7 +9,7 @@ Test files cited below:
 
 Also driven in the bench: the seeded programme with a year-end closure, summer holidays, an unnamed
 inventory period and a contractual date — bands across every row and the header, names placed where they
-fit, the calendar legend with every date, the bands kept in the compact view, in the comparison and in
+fit, the calendar legend naming every period and date, the bands kept in the compact view, in the comparison and in
 "new version only", and in a downloaded SVG.
 
 ## structured-exchange-timeline
@@ -26,6 +26,6 @@ fit, the calendar legend with every date, the bands kept in the compact view, in
 | PeriodKindsLookDifferent | covered | Same file — "PeriodKindsLookDifferent, with project colours": three distinct fills, the declared colour used for `holidays`. |
 | AClippedPeriodIsDrawnInsideTheRange | covered | Same file — "AClippedPeriodIsDrawnInsideTheRange": a closure from 21 Dec starts at x 0 with three days' width. |
 | AnUnkindedPeriodIsNeutral | covered | Same file — "AnUnkindedPeriodIsNeutral": neutral fill and hatch lines; a kinded band has none. |
-| AContractDateIsANamedLine | covered | Same file — "AContractDateIsANamedLine": line at the day's middle across every row, dashed, named in the header, distinct from the solid Today line; "header names never overlap one another or the Today tag"; "the legend names every period and reference with its dates". |
+| AContractDateIsANamedLine | covered | Same file — "AContractDateIsANamedLine": line at the day's middle across every row, dashed, named in the header, distinct from the solid Today line; "header names never overlap one another or the Today tag"; "the legend names every period and reference, and leaves their dates to the axis and hover". |
 | TheTextListsPeriodsAndReferences | covered | Same file — "TheTextListsPeriodsAndReferences"; "the digest counts them". |
 | AComparisonCarriesTheCurrentPeriods | covered | Same file — "AComparisonCarriesTheCurrentPeriods". |

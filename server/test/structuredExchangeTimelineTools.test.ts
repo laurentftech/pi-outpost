@@ -124,8 +124,10 @@ describe("a timeline through the agent's tools", () => {
     assert.equal((result.details as { kind: string }).kind, "timeline");
   });
 
+  const definition = (root: string) =>
+    createStructuredExchangeFigureToolDefinition({ cwd: root, allowedRoots: [root], maxBytes: 4_000_000, writableRoot: root, projectRoot: root });
   const figureTool = (root: string) =>
-    (createStructuredExchangeFigureToolDefinition({ cwd: root, allowedRoots: [root], maxBytes: 4_000_000, writableRoot: root, projectRoot: root })
+    (definition(root)
       .execute as unknown as (id: string, params: unknown, signal?: AbortSignal) => Promise<ToolResult>);
 
   test("TheAgentWritesATimelineFigure", async () => {
@@ -141,6 +143,29 @@ describe("a timeline through the agent's tools", () => {
     assert.doesNotMatch(svg, />Today</);
     assert.match(result.content[0].text, /!\[plan\]\(figures\/plan\.svg\)/);
     assert.match(result.content[0].text, /items and \d+ dependencies/);
+  });
+
+  test("TheAgentChoosesAScale", async () => {
+    const root = project({ "plan.json": programme() });
+    const result = await figureTool(root)("call-1", { path: "plan.json", output_path: "figures/weeks.svg", scale: "week" }, undefined);
+    assert.notEqual(result.isError, true, result.content[0].text);
+    const svg = readFileSync(path.join(root, "figures/weeks.svg"), "utf8");
+    // ISO weeks under months, and the 18-month plan drawn at about 84 px a week.
+    assert.match(svg, />W12<\/text>/);
+    assert.match(svg, />Mar 2027<\/text>/);
+    assert.ok(Number(/width="(\d+(?:\.\d+)?)"/.exec(svg)![1]) > 548 * 12);
+    // The scale is a parameter of the tool, offered to the agent with its values.
+    const scale = (definition(root).parameters as { properties: Record<string, { anyOf?: { const: string }[] }> }).properties.scale;
+    assert.deepEqual(scale.anyOf?.map((option) => option.const), ["week", "month", "quarter"]);
+  });
+
+  test("a width wins over a scale", async () => {
+    const root = project({ "plan.json": programme() });
+    const result = await figureTool(root)("call-1", { path: "plan.json", output_path: "figures/page.svg", scale: "week", width: 900 }, undefined);
+    assert.notEqual(result.isError, true, result.content[0].text);
+    const svg = readFileSync(path.join(root, "figures/page.svg"), "utf8");
+    assert.ok(Number(/width="(\d+(?:\.\d+)?)"/.exec(svg)![1]) <= 900);
+    assert.doesNotMatch(svg, />W\d+<\/text>/);
   });
 
   test("a timeline figure can leave the arrows and the date line out", async () => {
@@ -219,7 +244,7 @@ describe("a timeline through the agent's tools", () => {
     assert.deepEqual(items.find((item) => item.id === "srr")!.previous, { date: "2027-03-01" });
     assert.equal(items.find((item) => item.id === "pdr")!.role, "removed");
     assert.equal(items.find((item) => item.id === "trr")!.role, "added");
-    assert.match(result.content[0].text, /compared with "Plan of 1 September": 1 moved, 1 added, 1 removed; largest slip: "System Requirements Review" \+3 wk/);
+    assert.match(result.content[0].text, /compared with "Plan of 1 September": 1 moved, 1 added, 1 removed; largest slip: "System Requirements Review" \+3w/);
     // T3's activity has no id in either plan.
     assert.match(result.content[0].text, /Not compared, for want of an `id`: 1 item of the current plan and 1 of the previous one/);
   });
@@ -268,10 +293,10 @@ describe("a timeline through the agent's tools", () => {
     const comparedSvg = readFileSync(path.join(root, "figures/cmp.svg"), "utf8");
     assert.match(comparedSvg, /data-previous="true"/);
     assert.match(comparedSvg, />Compared with Plan of 1 September</);
-    assert.match(comparedSvg, /\+3 wk/);
+    assert.match(comparedSvg, /<tspan font-style="italic">\(\+3w\)<\/tspan>/);
     const fresh = await figureTool(root)("call-3", { path: "plans/cmp.json", output_path: "figures/new.svg", comparison: "new" }, undefined);
     assert.notEqual(fresh.isError, true, fresh.content[0].text);
     const newSvg = readFileSync(path.join(root, "figures/new.svg"), "utf8");
-    assert.doesNotMatch(newSvg, /data-previous|Compared with|\+3 wk|line-through/);
+    assert.doesNotMatch(newSvg, /data-previous|Compared with|\+3w|line-through/);
   });
 });

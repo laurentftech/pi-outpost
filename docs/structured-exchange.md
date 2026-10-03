@@ -498,11 +498,18 @@ What a producer has to know:
   `previous` (`contradictory-change`); nothing may depend on a removed item
   (`dependency-on-removed`); previous dates fall inside `time`. The agent's
   `compare_timelines` tool produces such a document from two plan files, pairing by `id`.
+- **A timeline has a scale, and the reader may change it.** `time.scale` is `week`, `month`
+  or `quarter`: the scale the plan opens at, a choice of display that moves no date. The
+  reader switches between them or fits the whole range to the visible width; the header
+  labels the finest unit there is room for — ISO weeks (`W41`) under months, months under
+  years, or quarters (`Q1`) under years — and every year stays named. A comparison opens on
+  its first change, anything else on *Today*.
 - **A timeline leaves as a figure.** `write_structure_figure` writes it as one SVG — labels,
-  calendar, rows, arrows, key — with `width` to fit a page, `compact` and `hide_dependencies`
+  calendar, rows, arrows, key — with `scale` to draw it by week, month or quarter, `width` to
+  fit a page (which wins over `scale`), `compact` and `hide_dependencies`
   for the reader's display options, and a date line labelled with the day it was written
   (`reference_line: "none"` omits it). The reader's "download SVG" saves the same figure for
-  the options on screen.
+  the options and scale on screen.
 - **Today is never in the document.** The reader draws a *Today* line at their own
   calendar date when it falls in the range, and says which side of the range it is on
   when it does not.
@@ -529,8 +536,8 @@ A compared timeline, as `compare_timelines` writes it:
 }
 ```
 
-Only the `month` scale exists. Version 3 may still grow in place until a release
-publishes it; after that, another scale is a version 4.
+The scales are `week`, `month` and `quarter`. Version 3 may still grow in place until a
+release publishes it; after that, another scale is a version 4.
 
 ## Holding documents to a project's data model
 

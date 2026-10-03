@@ -1,0 +1,42 @@
+{
+  "schema": "urn:structured-exchange:3",
+  "kind": "timeline",
+  "data": {
+    "title": "Programme roadmap",
+    "time": {
+      "start": "2026-01-01",
+      "end": "2028-12-31",
+      "scale": "quarter"
+    },
+    "rows": [
+      {
+        "type": "task",
+        "id": "T1",
+        "label": "Programme",
+        "items": [
+          {
+            "type": "activity",
+            "id": "design",
+            "start": "2026-02-01",
+            "end": "2027-03-31",
+            "label": "Design"
+          },
+          {
+            "type": "activity",
+            "id": "build",
+            "start": "2027-04-01",
+            "end": "2028-09-30",
+            "label": "Build"
+          },
+          {
+            "type": "milestone",
+            "id": "qr",
+            "date": "2028-11-15",
+            "kind": "QR",
+            "label": "Qualification Review"
+          }
+        ]
+      }
+    ]
+  }
+}

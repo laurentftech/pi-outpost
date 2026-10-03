@@ -67,18 +67,19 @@ describe("TheComparisonShowsWhatMoved", () => {
     assert.equal(study.ghost!.x, x("2027-03-01"));
     assert.equal(study.ghost!.width, x("2027-07-01") - x("2027-03-01"));
     assert.equal(study.glyph.x, x("2027-03-22"));
-    assert.equal(study.label!.text, "Study +3 wk");
+    assert.equal(study.label!.text, "Study (+3w)");
+    assert.equal(study.label!.note, "(+3w)");
   });
 
   test("AStretchedActivityShowsBothEnds", () => {
-    assert.equal(itemNamed("design").label!.text, "Design end +4 wk");
+    assert.equal(itemNamed("design").label!.text, "Design (end+4w)");
   });
 
   test("AMovedMilestoneShowsWhereItWas", () => {
     const pdr = itemNamed("pdr");
     assert.equal(pdr.ghostCenter!.x, x("2027-05-15") + TIMELINE_PX_PER_DAY / 2);
     assert.equal(pdr.center!.x, x("2027-06-01") + TIMELINE_PX_PER_DAY / 2);
-    assert.equal(pdr.label!.text, "PDR +2 wk");
+    assert.equal(pdr.label!.text, "PDR (+2w)");
     const svg = serializeFigure(timelineFigure(compared, { today, referenceLine: "none" }));
     // A hollow dashed star for the previous date.
     assert.match(svg, /<path [^>]*fill="none"[^>]*stroke-dasharray="2 2" data-previous="true"/);
@@ -87,7 +88,8 @@ describe("TheComparisonShowsWhatMoved", () => {
   test("AddedAndRemovedAreMarked", () => {
     const trr = itemNamed("trr");
     assert.equal(trr.change, "added");
-    assert.equal(trr.label!.text, "Test Readiness Review · new");
+    assert.equal(trr.label!.text, "Test Readiness Review (new)");
+    assert.equal(trr.label!.note, "(new)");
     const audit = itemNamed("audit");
     assert.equal(audit.change, "removed");
     assert.equal(audit.label!.struck, true);

@@ -46,6 +46,7 @@ export function Shape({ primitive }: { primitive: Primitive }) {
           fontSize={primitive.fontSize}
           fontFamily={primitive.fontFamily}
           fontWeight={primitive.fontWeight}
+          fontStyle={primitive.fontStyle}
           textAnchor={primitive.textAnchor}
           fill={primitive.fill}
           stroke={primitive.stroke}
@@ -55,6 +56,12 @@ export function Shape({ primitive }: { primitive: Primitive }) {
           opacity={primitive.opacity}
         >
           {primitive.text}
+          {primitive.note !== undefined && (
+            <>
+              {" "}
+              <tspan fontStyle="italic">{primitive.note}</tspan>
+            </>
+          )}
         </text>
       );
     case "line":

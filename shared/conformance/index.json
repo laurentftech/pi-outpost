@@ -88,6 +88,12 @@
       "file": "valid/v3-timeline-single-day-activity.json"
     },
     {
+      "file": "valid/v3-timeline-week-scale.json"
+    },
+    {
+      "file": "valid/v3-timeline-quarter-scale.json"
+    },
+    {
       "file": "valid/v3-timeline-four-dependency-types.json"
     },
     {

@@ -533,8 +533,11 @@ export const STRUCTURED_EXCHANGE_CEILINGS_3 = {
 /** A calendar day, `YYYY-MM-DD`. A day rather than an instant, so no time zone moves it. */
 export type StructuredCalendarDate = string;
 
-/** The only scale version 3 supports. */
-export type StructuredTimelineScale = "month";
+/**
+ * The scale a timeline opens at. A choice of display, like one row per section: it
+ * moves no date and changes no rule, and the reader may draw the plan at another.
+ */
+export type StructuredTimelineScale = "week" | "month" | "quarter";
 
 /**
  * What a task or an item is in a compared timeline: new since the previous plan, or

@@ -1,0 +1,35 @@
+{
+  "schema": "urn:structured-exchange:3",
+  "kind": "timeline",
+  "data": {
+    "title": "Test campaign",
+    "time": {
+      "start": "2027-03-01",
+      "end": "2027-04-30",
+      "scale": "week"
+    },
+    "rows": [
+      {
+        "type": "task",
+        "id": "T1",
+        "label": "Bench tests",
+        "items": [
+          {
+            "type": "activity",
+            "id": "bench",
+            "start": "2027-03-08",
+            "end": "2027-04-09",
+            "label": "Bench campaign"
+          },
+          {
+            "type": "milestone",
+            "id": "trr",
+            "date": "2027-04-16",
+            "kind": "TRR",
+            "label": "Test Readiness Review"
+          }
+        ]
+      }
+    ]
+  }
+}

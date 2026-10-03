@@ -104,6 +104,7 @@ type PrimitiveShape =
       fill: string;
       fontFamily?: string;
       fontWeight?: number;
+      fontStyle?: "italic";
       textAnchor?: "start" | "middle" | "end";
       opacity?: number;
       /** The halo a label over a line is drawn with, so it stays readable on it. */
@@ -112,6 +113,11 @@ type PrimitiveShape =
       paintOrder?: "stroke";
       /** Struck through: a dropped item's name, still readable. */
       textDecoration?: "line-through";
+      /**
+       * Set after `text`, a space apart, in italics: a remark on what `text` names —
+       * a timeline's `(+2w)` — that must not read as part of the name.
+       */
+      note?: string;
       /** Carried through to `data-testid`, for the assertions that name it. */
       testId?: string;
     }
@@ -335,6 +341,7 @@ function primitiveMarkup(primitive: Primitive): string {
         ["font-size", primitive.fontSize],
         ["font-family", primitive.fontFamily],
         ["font-weight", primitive.fontWeight],
+        ["font-style", primitive.fontStyle],
         ["text-anchor", primitive.textAnchor],
         ["fill", primitive.fill],
         ["stroke", primitive.stroke],
@@ -344,7 +351,9 @@ function primitiveMarkup(primitive: Primitive): string {
         ["opacity", primitive.opacity],
         ["data-testid", primitive.testId],
         ...data,
-      ])}>${escapeText(primitive.text)}</text>`;
+      ])}>${escapeText(primitive.text)}${
+        primitive.note === undefined ? "" : ` <tspan font-style="italic">${escapeText(primitive.note)}</tspan>`
+      }</text>`;
     case "line":
       return `<line${attributes([
         ["x1", primitive.x1],

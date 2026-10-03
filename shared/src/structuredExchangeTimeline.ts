@@ -16,6 +16,7 @@ import type {
   StructuredTimelineData,
   StructuredTimelineDependency,
   StructuredTimelineItem,
+  StructuredTimelineScale,
   StructuredTimelineTask,
 } from "./structuredExchange.ts";
 
@@ -166,25 +167,23 @@ export function describeDays(days: number): string {
   if (days === 0) return "";
   const sign = days > 0 ? "+" : "−";
   const size = Math.abs(days);
-  if (size < 14) return `${sign}${size} d`;
-  if (size < 70) return `${sign}${Math.round(size / 7)} wk`;
-  return `${sign}${Math.round(size / 30.44)} mo`;
+  if (size < 14) return `${sign}${size}d`;
+  if (size < 70) return `${sign}${Math.round(size / 7)}w`;
+  return `${sign}${Math.round(size / 30.44)}mo`;
 }
 
 /**
- * The shift written beside an item: one amount when both ends moved alike, else
- * each end that moved. Empty when nothing moved.
+ * The shift written beside an item: one amount when both ends moved alike (`+2w`),
+ * the start's then the end's when they differ (`+1w, end+2w`), and a lone end
+ * named (`start+1w`, `end+2w`). Empty when nothing moved.
  */
 export function shiftText(item: StructuredTimelineItem): string {
   const shift = shiftOf(item);
   if (shift === undefined) return "";
   if (shift.start === shift.end) return describeDays(shift.start);
-  return [
-    shift.start === 0 ? undefined : `start ${describeDays(shift.start)}`,
-    shift.end === 0 ? undefined : `end ${describeDays(shift.end)}`,
-  ]
-    .filter((part): part is string => part !== undefined)
-    .join(", ");
+  if (shift.start === 0) return `end${describeDays(shift.end)}`;
+  if (shift.end === 0) return `start${describeDays(shift.start)}`;
+  return `${describeDays(shift.start)}, end${describeDays(shift.end)}`;
 }
 
 /** Whether an item holds a change the comparison shows. */
@@ -209,6 +208,31 @@ export function taskChanged(task: StructuredTimelineTask): boolean {
 
 /** Horizontal scale of the month view: about 120 pixels a month. */
 export const TIMELINE_PX_PER_DAY = 4;
+
+/**
+ * The density each scale draws time at: about 84 pixels a week, 120 a month, 68 a
+ * quarter. A scale is a choice of display; durations are proportional at all three.
+ */
+export const TIMELINE_SCALE_PX_PER_DAY: Readonly<Record<StructuredTimelineScale, number>> = {
+  week: 12,
+  month: TIMELINE_PX_PER_DAY,
+  quarter: 0.75,
+};
+
+/** The calendar unit the header labels under the years. */
+export type TimelineHeaderUnit = "week" | "month" | "quarter";
+
+/**
+ * The finest unit the density leaves room to label: a week needs room for `W41`, a
+ * month for `Jan`. Decided by density, not by the declared scale, so a week-scale
+ * plan fitted to a page shows months or quarters rather than unreadable weeks.
+ */
+export function timelineHeaderUnit(pxPerDay: number, atLeast?: TimelineHeaderUnit): TimelineHeaderUnit {
+  const fits: TimelineHeaderUnit = pxPerDay >= 8 ? "week" : pxPerDay >= 1 ? "month" : "quarter";
+  if (atLeast === undefined) return fits;
+  const order: TimelineHeaderUnit[] = ["week", "month", "quarter"];
+  return order[Math.max(order.indexOf(fits), order.indexOf(atLeast))];
+}
 /** Where "Today" is written: above the years, so it never covers a date. */
 export const TIMELINE_TODAY_BAND = 18;
 export const TIMELINE_YEAR_BAND = 20;
@@ -249,7 +273,13 @@ export interface TimelineMonthBand extends TimelineHeaderBand {
 }
 
 export interface TimelineLabel extends TimelineBox {
+  /** The whole annotation as it reads, its note included. */
   text: string;
+  /**
+   * The end of `text` that says what happened to the item — `(+2w)`, `(new)` — set in
+   * italics, so a shift is never read as part of the task's name.
+   */
+  note?: string;
   /** Inside the bar it belongs to, or beside its glyph. */
   inside: boolean;
   /** Struck through: the item was dropped from the plan. */
@@ -300,8 +330,16 @@ export interface TimelineLayout {
   end: number;
   years: TimelineHeaderBand[];
   months: TimelineMonthBand[];
-  /** Month boundaries inside the range, for reference lines. */
+  /** Month boundaries inside the range. */
   monthLines: number[];
+  /** What the header labels under its upper band, chosen from the density. */
+  unit: TimelineHeaderUnit;
+  /** The header's upper band: years, or months with their year when the unit is the week. */
+  upper: TimelineHeaderBand[];
+  /** The header's lower band: weeks (`W41`), months (`Jan`) or quarters (`Q1`), clipped to the range. */
+  lower: TimelineHeaderBand[];
+  /** Boundaries of the lower band inside the range, for reference lines across the rows. */
+  unitLines: number[];
   rows: TimelineRowLayout[];
   items: TimelineItemLayout[];
   dependencies: TimelineDependencyLayout[];
@@ -354,6 +392,27 @@ export function monthLabelFor(band: TimelineHeaderBand): string {
   if (band.width >= 24) return band.label;
   if (band.width >= 9) return band.label.charAt(0);
   return "";
+}
+
+/**
+ * A lower-band label for the room it has. Months shorten to their initial; a week
+ * or a quarter cut by the range's edge has no shorter form, so it goes unlabelled.
+ */
+export function unitLabelFor(band: TimelineHeaderBand, unit: TimelineHeaderUnit): string {
+  if (unit === "month") return monthLabelFor(band);
+  return band.width >= band.label.length * 6 + 4 ? band.label : "";
+}
+
+/** Day of the week, Monday 0. Day 0 (1970-01-01) was a Thursday. */
+function weekday(day: number): number {
+  return (((day + 3) % 7) + 7) % 7;
+}
+
+/** The ISO 8601 week number: weeks start on Monday, and week 1 holds the year's first Thursday. */
+export function isoWeek(day: number): number {
+  const thursday = day - weekday(day) + 3;
+  const year = new Date(thursday * MS_PER_DAY).getUTCFullYear();
+  return Math.floor((thursday - monthDay(year, 0)) / 7) + 1;
 }
 
 /** What an item is annotated with: its label, or a milestone's kind. Never invented. */
@@ -412,12 +471,35 @@ function overlaps(a: Occupant, b: Occupant): boolean {
   return a.x0 < b.x1 && b.x0 < a.x1;
 }
 
+/**
+ * Where a timeline wider than its view opens, as a scroll offset; undefined to stay
+ * at its start. A comparison opens on its earliest change — a shift's either
+ * position, an addition or a removal — when that change is out of view, since
+ * that is what it exists to show. Anything else opens on today when today is out
+ * of view. Applied once, when the view is first drawn.
+ */
+export function timelineOpeningScroll(layout: TimelineLayout, viewWidth: number): number | undefined {
+  if (viewWidth <= 0 || layout.width <= viewWidth) return undefined;
+  const changed = layout.items.filter((item) => item.change !== undefined);
+  if (changed.length > 0) {
+    const first = Math.min(...changed.flatMap((item) => (item.ghost === undefined ? [item.glyph.x] : [item.glyph.x, item.ghost.x])));
+    return first < viewWidth * 0.9 ? undefined : Math.max(0, first - viewWidth / 6);
+  }
+  if ("x" in layout.today && layout.today.x > viewWidth * 0.8) return Math.max(0, layout.today.x - viewWidth / 3);
+  return undefined;
+}
+
 /** How the reader asked for the timeline to be drawn. Never part of the document. */
 export interface TimelineLayoutOptions {
   /** One row per section — a separator and the tasks under it — instead of one per task. */
   compact?: boolean;
-  /** Horizontal scale. The reader's is `TIMELINE_PX_PER_DAY`; a figure fitted to a page uses less. */
+  /** Horizontal scale. Defaults to the declared scale's density; a fitted view or figure passes its own. */
   pxPerDay?: number;
+  /**
+   * The header's unit, never made finer: a chosen scale stretched to fill a wide view
+   * keeps labelling its own unit. Without it the unit follows the density alone.
+   */
+  unit?: TimelineHeaderUnit;
   /** In a compared timeline, draw only the tasks holding a change, under the separators that head them. */
   onlyChanged?: boolean;
 }
@@ -425,7 +507,7 @@ export interface TimelineLayoutOptions {
 export function layoutTimeline(data: StructuredTimelineData, today: number, options: TimelineLayoutOptions = {}): TimelineLayout {
   const start = dayNumber(data.time.start) ?? 0;
   const end = dayNumber(data.time.end) ?? start;
-  const px = options.pxPerDay ?? TIMELINE_PX_PER_DAY;
+  const px = options.pxPerDay ?? TIMELINE_SCALE_PX_PER_DAY[data.time.scale] ?? TIMELINE_PX_PER_DAY;
   const width = (end - start + 1) * px;
   const xOf = (day: number) => (day - start) * px;
 
@@ -454,6 +536,31 @@ export function layoutTimeline(data: StructuredTimelineData, today: number, opti
     else years.push({ label: String(segment.year), x: band.x, width: band.width });
   });
 
+  // The unit the density leaves room for, and the header bands that label it.
+  const unit = timelineHeaderUnit(px, options.unit);
+  const cut = (starts: number[], label: (day: number) => string): TimelineHeaderBand[] =>
+    starts.map((day, index) => {
+      const next = index + 1 < starts.length ? starts[index + 1] : end + 1;
+      return { label: label(day), x: xOf(day), width: (next - day) * px };
+    });
+  let upper: TimelineHeaderBand[] = years;
+  let lower: TimelineHeaderBand[];
+  if (unit === "week") {
+    const mondays: number[] = [];
+    for (let day = start - weekday(start) + 7; day <= end; day += 7) mondays.push(day);
+    lower = cut([start, ...mondays], (day) => `W${isoWeek(day)}`);
+    upper = months.map((month) => ({ label: `${month.label} ${month.year}`, x: month.x, width: month.width }));
+  } else if (unit === "quarter") {
+    const quarterStarts = segments.filter((segment, index) => index === 0 || segment.month % 3 === 0);
+    lower = quarterStarts.map((segment, index) => {
+      const next = index + 1 < quarterStarts.length ? quarterStarts[index + 1].day : end + 1;
+      return { label: `Q${Math.floor(segment.month / 3) + 1}`, x: xOf(segment.day), width: (next - segment.day) * px };
+    });
+  } else {
+    lower = months;
+  }
+  const unitLines = lower.slice(1).map((band) => band.x);
+
   // Rows, and the items on them, lane by lane.
   const rows: TimelineRowLayout[] = [];
   const items: TimelineItemLayout[] = [];
@@ -467,12 +574,17 @@ export function layoutTimeline(data: StructuredTimelineData, today: number, opti
    * took the top line and pushed that phase underneath it, which reads upside down.
    */
   const compared = data.comparedTo !== undefined;
-  /** The annotation in a comparison: the label, then what happened to the item. */
-  const comparedText = (item: StructuredTimelineItem, task: StructuredTimelineTask, base: string | undefined): string | undefined => {
-    if (!compared) return base;
-    if (item.role === "added" || task.role === "added") return base === undefined ? "new" : `${base} · new`;
+  /** What happened to the item, in brackets: `(+2w)`, `(new)`. Undefined outside a comparison or when nothing did. */
+  const noteOf = (item: StructuredTimelineItem, task: StructuredTimelineTask): string | undefined => {
+    if (!compared) return undefined;
+    if (item.role === "added" || task.role === "added") return "(new)";
     const shift = shiftText(item);
-    return shift === "" ? base : base === undefined ? shift : `${base} ${shift}`;
+    return shift === "" ? undefined : `(${shift})`;
+  };
+  /** The annotation in a comparison: the label, then its note. */
+  const comparedText = (item: StructuredTimelineItem, task: StructuredTimelineTask, base: string | undefined): string | undefined => {
+    const note = noteOf(item, task);
+    return note === undefined ? base : base === undefined ? note : `${base} ${note}`;
   };
   const changeOf = (item: StructuredTimelineItem, task: StructuredTimelineTask): TimelineItemLayout["change"] => {
     if (!compared) return undefined;
@@ -481,7 +593,7 @@ export function layoutTimeline(data: StructuredTimelineData, today: number, opti
     return shiftText(item) === "" ? undefined : "moved";
   };
   const place = (
-    entries: { row: number; index: number; item: StructuredTimelineItem; text?: string; change?: TimelineItemLayout["change"] }[],
+    entries: { row: number; index: number; item: StructuredTimelineItem; text?: string; note?: string; change?: TimelineItemLayout["change"] }[],
     top: number,
   ) => {
     const lanes: Occupant[][] = [];
@@ -503,7 +615,7 @@ export function layoutTimeline(data: StructuredTimelineData, today: number, opti
           a.row - b.row ||
           a.index - b.index,
       );
-    for (const { item, index, row, days, text, change } of order) {
+    for (const { item, index, row, days, text, note, change } of order) {
       const occupants: Occupant[] = [];
       // Where a moved item stood: an occupant like a bar, so no label lands on it.
       let ghost: { x0: number; x1: number; cx?: number } | undefined;
@@ -533,6 +645,7 @@ export function layoutTimeline(data: StructuredTimelineData, today: number, opti
             label = besideLabel(text, x0, x1, width);
           }
           // Inside its own bar or beside it, text a later glyph must not land on.
+          if (note !== undefined) label.note = note;
           occupants.push({ kind: "label", x0: label.x, x1: label.x + label.width });
         }
       } else {
@@ -542,6 +655,7 @@ export function layoutTimeline(data: StructuredTimelineData, today: number, opti
         occupants.push({ kind: "star", x0, x1 });
         if (text !== undefined) {
           label = besideLabel(text, x0, x1, width);
+          if (note !== undefined) label.note = note;
           occupants.push({ kind: "label", x0: label.x, x1: label.x + label.width });
         }
       }
@@ -598,6 +712,7 @@ export function layoutTimeline(data: StructuredTimelineData, today: number, opti
         index,
         item,
         text: comparedText(item, task, annotationOf(item)),
+        note: noteOf(item, task),
         change: changeOf(item, task),
       })),
       y,
@@ -626,6 +741,7 @@ export function layoutTimeline(data: StructuredTimelineData, today: number, opti
             index,
             item,
             text: comparedText(item, task, annotationOf(item) ?? (item.type === "activity" ? task.label : undefined)),
+            note: noteOf(item, task),
             change: changeOf(item, task),
           })),
         ),
@@ -722,7 +838,18 @@ export function layoutTimeline(data: StructuredTimelineData, today: number, opti
   const headerLabels: TimelineHeaderLabel[] = [];
   const candidates = [
     ...periods.filter((period) => period.label).map((period) => ({ of: "period" as const, index: period.index, text: period.label!, x: period.x + 3, room: period.width - 6 })),
-    ...references.map((reference) => ({ of: "reference" as const, index: reference.index, text: reference.label, x: reference.x + 4, room: width - reference.x - 6 })),
+    // A reference's name is centred over its line, pulled in only where it would run off
+    // an edge: beside the line, it read as naming whatever came after it.
+    ...references.map((reference) => {
+      const textW = textWidth(reference.label) * (10 / 11);
+      return {
+        of: "reference" as const,
+        index: reference.index,
+        text: reference.label,
+        x: Math.min(Math.max(2, reference.x - textW / 2), width - textW - 2),
+        room: width - 4,
+      };
+    }),
   ].sort((a, b) => a.x - b.x);
   for (const candidate of candidates) {
     const textW = textWidth(candidate.text) * (10 / 11);
@@ -741,6 +868,10 @@ export function layoutTimeline(data: StructuredTimelineData, today: number, opti
     years,
     months,
     monthLines: boundaries.map((boundary) => xOf(boundary.day)),
+    unit,
+    upper,
+    lower,
+    unitLines,
     rows,
     items,
     dependencies: layoutDependencies(data, rows, items, xOf),

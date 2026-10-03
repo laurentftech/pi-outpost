@@ -632,6 +632,10 @@ line taken from the reader's own date.
   is refused.
 - A timeline is not a proposal: it has no `target`. To change one, present the whole
   revised timeline again. `write_structure_table` refuses it.
+- **Choose `time.scale` for the plan's length**: `week` for a few months (a test campaign),
+  `month` for a year or two, `quarter` beyond (a multi-year programme). It is only the scale
+  the plan opens at — the reader can switch to another or fit it to the screen — and it moves
+  no date.
 - **Closures, holidays and key dates** belong in the plan: `periods` (`start`, `end`, optional
   `label` and `kind`, e.g. `"fermeture"`) are drawn as bands across every row, and `references`
   (`date`, `label`, optional `kind`, e.g. a contractual date) as named lines. They constrain
@@ -640,14 +644,16 @@ line taken from the reader's own date.
   timeline file and call `compare_timelines` with the previous and the current one — never
   work out the shifts yourself. It pairs tasks and items by `id`, so give every item an `id`
   in a plan that will be compared; it tells you how many it could not pair. The reader sees
-  previous dates dashed, shifts like `+3 wk`, new and dropped items marked, and can switch to
+  previous dates dashed, shifts like `(+3w)`, new and dropped items marked, and can switch to
   the new version alone. Give `output_path` to keep the comparison for a report, and draw it
   with `write_structure_figure` (`comparison: "new"` draws the new version alone). A compared
   timeline carries `comparedTo`, `previous` dates and `role: "added" | "removed"`; do not write
   these by hand.
 - **To put a timeline in a report**, write it with `write_structure_figure` and reference
   the `.svg` from the Markdown. Give `width` (e.g. `900`) for a page — durations stay
-  proportional and rows grow to keep labels apart; `compact: true` for one row per section;
+  proportional and rows grow to keep labels apart, and the header switches to months or
+  quarters when weeks would not fit; `scale` (`week`, `month`, `quarter`) to draw it at that
+  scale's natural size instead; `compact: true` for one row per section;
   `hide_dependencies: true` to leave the arrows out. The figure's date line is labelled
   with the day it is written (`reference_line: "none"` leaves it out), because the file
   outlives that day. Graph options (`hide_element_kinds`, `viewpoint`…) are refused for a

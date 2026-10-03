@@ -259,8 +259,8 @@ one needs, the command that proves it works, and the caution that goes with it.
   Word sees them and any text that reached no page. The bundled `docx-from-template` skill teaches
   the loop. See [Write a Word document from a template](docs/how-to.md#write-a-word-document-from-a-template)
 - Structured results: a tool can hand back **data** — a graph, a sequence, a table, or a
-  planning timeline with milestones, Gantt dependencies and a *Today* line, which the agent
-  can compare with an earlier version of the plan — and the
+  planning timeline with milestones, Gantt dependencies and a *Today* line, read by week, month,
+  quarter or fitted to the screen, which the agent can compare with an earlier version of the plan — and the
   interface draws it, with an approval gate when the document names a `target`. Files that
   declare the schema open as the diagram they describe, and any graph, sequence or timeline
   exports as a self-contained SVG. A graph with too many boxes to read across is laid out down the page,

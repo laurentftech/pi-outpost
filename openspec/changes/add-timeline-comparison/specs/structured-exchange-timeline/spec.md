@@ -60,28 +60,31 @@ After schema validation the system SHALL refuse, naming the rule and pointing at
 
 In the comparison view, the reader SHALL draw each changed activity at its current dates solid and at its
 previous dates as a dashed outline on the same row, and each changed milestone as a solid star with a
-hollow dashed star at its previous date. The annotation SHALL state the shift — start and end for an
-activity whose duration changed, one amount otherwise — in days under two weeks, weeks under ten weeks,
-months beyond, signed (`+3 wk`, `−2 d`). An added task or item SHALL be marked as new; a removed one SHALL
+hollow dashed star at its previous date. The annotation SHALL state the shift after the label, in
+brackets and in italics so it is never read as part of the name: one amount when both ends moved alike
+(`(+3w)`), the start's then the end's when they differ (`(+1w, end+4w)`), and a lone end named when only
+one moved (`(end+4w)`, `(start+1w)`). Amounts SHALL be in days under two weeks, weeks under ten weeks,
+months beyond, signed (`+3w`, `−2d`, `+3mo`). An added task or item SHALL be marked `(new)` the same way;
+a removed one SHALL
 be drawn dashed only, with its annotation struck through. The reference plan's label SHALL be shown above
 the timeline, and the legend SHALL explain current, previous, new and removed. Annotations SHALL still not
 overlap one another or any glyph, previous outlines included.
 
 #### Scenario: ASlippedActivityShowsBothPositions
 - **WHEN** an activity planned 2027-03-01 to 2027-06-30 now runs 2027-03-22 to 2027-07-21
-- **THEN** a dashed outline is drawn at the previous dates and a solid bar at the current ones, annotated `+3 wk`
+- **THEN** a dashed outline is drawn at the previous dates and a solid bar at the current ones, annotated `(+3w)` in italics after its label
 
 #### Scenario: AStretchedActivityShowsBothEnds
 - **WHEN** an activity's start is unchanged and its end moved by four weeks
-- **THEN** its annotation states the end moved `+4 wk` and the start did not
+- **THEN** its annotation states `(end+4w)`, and the start is not mentioned
 
 #### Scenario: AMovedMilestoneShowsWhereItWas
 - **WHEN** a milestone moved from 2027-05-15 to 2027-06-01
-- **THEN** a hollow dashed star is drawn at 2027-05-15, a solid star at 2027-06-01, annotated `+2 wk`
+- **THEN** a hollow dashed star is drawn at 2027-05-15, a solid star at 2027-06-01, annotated `(+2w)`
 
 #### Scenario: AddedAndRemovedAreMarked
 - **WHEN** a timeline holds an added milestone and a removed activity
-- **THEN** the milestone is marked new, the activity is drawn dashed with its label struck through, and the legend explains both
+- **THEN** the milestone is marked `(new)`, the activity is drawn dashed with its label struck through, and the legend explains both
 
 #### Scenario: TheReferencePlanIsNamed
 - **WHEN** a timeline declares `comparedTo: { label: "Plan of 1 September" }`

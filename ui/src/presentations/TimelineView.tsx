@@ -11,16 +11,19 @@
  * Today is read here, from the reader's own calendar, every time this renders. It
  * is never in the document: a plan reopened next month shows next month's today.
  */
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
-import type { StructuredTimelineData, StructuredTimelineItem } from "@pi-outpost/shared/structured-exchange";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import type { StructuredTimelineData, StructuredTimelineItem, StructuredTimelineScale } from "@pi-outpost/shared/structured-exchange";
 import { sharedDeclaredColours, type Tint } from "@pi-outpost/shared/structured-exchange/palette";
 import type { ProjectAppearance } from "@pi-outpost/shared/structured-exchange/profile";
 import type { FigureGroup } from "@pi-outpost/shared/structured-exchange/figure";
 import {
+  dayNumber,
   endpointName,
   localToday,
   timelineLabelColumnWidth,
+  timelineOpeningScroll,
   TIMELINE_HEADER_HEIGHT,
+  TIMELINE_SCALE_PX_PER_DAY,
   type TimelineDependencyLayout,
 } from "@pi-outpost/shared/structured-exchange/timeline";
 import { serializeFigure } from "@pi-outpost/shared/structured-exchange/figure";
@@ -31,6 +34,7 @@ import {
   timelineFigure,
   timelineFigureParts,
   TIMELINE_BAR_FILL_OPACITY,
+  TIMELINE_MIN_PX_PER_DAY,
 } from "@pi-outpost/shared/structured-exchange/timeline-figure";
 import { Drawn, FigureMarkers, type Interaction } from "./figureDrawing";
 
@@ -53,6 +57,32 @@ export function fileStem(title: string): string {
 
 type Selection = { type: "item"; row: number; item: number } | { type: "task"; row: number };
 
+/** A declared scale, or the whole range fitted to the visible width. */
+export type TimelineScaleChoice = StructuredTimelineScale | "fit";
+const SCALE_CHOICES: TimelineScaleChoice[] = ["week", "month", "quarter", "fit"];
+
+/**
+ * How the reader asked for a timeline to be drawn. Presentation only: none of it is in
+ * the document, the text equivalent or the details. Held by whoever shows the timeline,
+ * so the copy in the conversation and the enlarged one are drawn the same way.
+ */
+export interface TimelineDisplay {
+  scale: TimelineScaleChoice;
+  /** One row per section instead of one per task. */
+  compact: boolean;
+  showDependencies: boolean;
+  /** A compared timeline: the comparison, or the new version as a plain plan. */
+  comparison: "compare" | "new";
+  /** A compared timeline: only the tasks holding a change. */
+  onlyChanged: boolean;
+}
+
+export function initialTimelineDisplay(plan: StructuredTimelineData): TimelineDisplay {
+  return { scale: plan.time.scale, compact: false, showDependencies: true, comparison: "compare", onlyChanged: false };
+}
+
+export type TimelineDisplayUpdate = (update: (current: TimelineDisplay) => TimelineDisplay) => void;
+
 function datesOf(item: StructuredTimelineItem): string {
   return item.type === "activity" ? `${item.start} to ${item.end}` : item.date;
 }
@@ -61,13 +91,29 @@ export function TimelineView({
   data: plan,
   today,
   appearance,
+  display: sharedDisplay,
+  onDisplayChange,
 }: {
   data: StructuredTimelineData;
   today?: number;
   /** The project's kind colours; items share the element vocabulary. */
   appearance?: ProjectAppearance | null;
+  /** The display options, when the caller holds them; otherwise this view keeps its own. */
+  display?: TimelineDisplay;
+  onDisplayChange?: TimelineDisplayUpdate;
 }) {
   const day = today ?? localToday();
+  const [ownDisplay, setOwnDisplay] = useState(() => initialTimelineDisplay(plan));
+  const display = sharedDisplay ?? ownDisplay;
+  const updateDisplay: TimelineDisplayUpdate = onDisplayChange ?? setOwnDisplay;
+  /** A setter for one option, taking a value or an update of the current one, as `useState`'s does. */
+  const option =
+    <K extends keyof TimelineDisplay>(key: K) =>
+    (next: TimelineDisplay[K] | ((current: TimelineDisplay[K]) => TimelineDisplay[K])) =>
+      updateDisplay((current) => ({
+        ...current,
+        [key]: typeof next === "function" ? (next as (value: TimelineDisplay[K]) => TimelineDisplay[K])(current[key]) : next,
+      }));
   /**
    * A compared timeline is drawn as the comparison, or as the new version alone —
    * which is the plan with its comparison taken out, so it draws exactly as the pure
@@ -75,18 +121,56 @@ export function TimelineView({
    * and a download always describe the same rows.
    */
   const isComparison = plan.comparedTo !== undefined;
-  const [comparison, setComparison] = useState<"compare" | "new">("compare");
-  const [onlyChanged, setOnlyChanged] = useState(false);
+  const { comparison, onlyChanged, compact, showDependencies, scale } = display;
+  const setComparison = option("comparison");
+  const setOnlyChanged = option("onlyChanged");
   const data = useMemo(
     () => (isComparison && comparison === "new" ? withoutComparison(plan) : plan),
     [plan, isComparison, comparison],
   );
   const filtering = isComparison && comparison === "compare" && onlyChanged;
   /** Presentation only: one row per section instead of one per task. The document is untouched. */
-  const [compact, setCompact] = useState(false);
+  const setCompact = option("compact");
   /** Presentation only: hiding arrows changes nothing in the document, the details or the text. */
-  const [showDependencies, setShowDependencies] = useState(true);
+  const setShowDependencies = option("showDependencies");
   const [selected, setSelected] = useState<Selection | undefined>(undefined);
+  /**
+   * Presentation only: the scale the reader draws at. It opens at the one the plan
+   * declares; fit draws the whole range in the visible width and follows it.
+   */
+  const setScale = option("scale");
+  const scrollerRef = useRef<HTMLDivElement>(null);
+  const [viewWidth, setViewWidth] = useState(0);
+  useEffect(() => {
+    const scroller = scrollerRef.current;
+    if (scroller === null) return;
+    setViewWidth(scroller.clientWidth);
+    if (typeof ResizeObserver === "undefined") return;
+    // The scroller's width is set by the page, never by the drawing inside it, so
+    // redrawing to its width cannot feed back into it. The frame keeps the update
+    // out of the observer's own callback.
+    let frame = 0;
+    const observer = new ResizeObserver(() => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => setViewWidth(scroller.clientWidth));
+    });
+    observer.observe(scroller);
+    return () => {
+      cancelAnimationFrame(frame);
+      observer.disconnect();
+    };
+  }, []);
+  const span = (dayNumber(data.time.end) ?? 0) - (dayNumber(data.time.start) ?? 0) + 1;
+  /**
+   * Fit fills the view with the whole range, its header in whatever unit that leaves
+   * room for. A chosen scale is a least density: a plan shorter than the view at that
+   * scale is stretched to fill it rather than leave it empty, and keeps the chosen unit.
+   */
+  const fitted = viewWidth > 0 ? viewWidth / span : 0;
+  const density =
+    scale === "fit"
+      ? { pxPerDay: Math.max(TIMELINE_MIN_PX_PER_DAY, fitted) }
+      : { pxPerDay: Math.max(TIMELINE_SCALE_PX_PER_DAY[scale], fitted), unit: scale };
   /** The item holding keyboard focus, so it can be ringed: an SVG group draws no outline of its own. */
   const [focused, setFocused] = useState<string | undefined>(undefined);
   const parts = useMemo(
@@ -98,9 +182,12 @@ export function TimelineView({
         appearance: appearance ?? null,
         referenceLine: "today",
         onlyChanged: filtering,
+        ...density,
         ...(selected === undefined ? {} : { selection: selected.type === "item" ? { row: selected.row, item: selected.item } : { row: selected.row } }),
       }),
-    [data, day, compact, showDependencies, appearance, selected, filtering],
+    // `density` is rebuilt each render; what it holds is the scale and the width.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [data, day, compact, showDependencies, appearance, selected, filtering, scale, viewWidth],
   );
   const laid = parts.layout;
   const tints = parts.tints;
@@ -175,24 +262,37 @@ export function TimelineView({
         onBlur: () => setFocused((current) => (current === key ? undefined : current)),
       },
       before:
-        focused === key && placed !== undefined ? (
-          <rect
-            data-testid="timeline-focus-ring"
-            x={placed.glyph.x - 3}
-            y={placed.glyph.y - 3}
-            width={placed.glyph.width + 6}
-            height={placed.glyph.height + 6}
-            rx={4}
-            fill="none"
-            stroke={EMPHASIS}
-            strokeWidth={1.5}
-            strokeDasharray="3 2"
-          />
-        ) : undefined,
+        placed === undefined ? undefined : (
+          <>
+            {/* The glyph's square, there to be pressed: a star is a path, and drawn paths
+                take no pointer, so without it only a milestone's label answered a click. */}
+            <rect
+              data-testid="timeline-hit"
+              x={placed.glyph.x}
+              y={placed.glyph.y}
+              width={placed.glyph.width}
+              height={placed.glyph.height}
+              fill="transparent"
+            />
+            {focused === key && (
+              <rect
+                data-testid="timeline-focus-ring"
+                x={placed.glyph.x - 3}
+                y={placed.glyph.y - 3}
+                width={placed.glyph.width + 6}
+                height={placed.glyph.height + 6}
+                rx={4}
+                fill="none"
+                stroke={EMPHASIS}
+                strokeWidth={1.5}
+                strokeDasharray="3 2"
+              />
+            )}
+          </>
+        ),
     };
   };
 
-  const inRange = "x" in laid.today ? laid.today : undefined;
 
   const [copied, setCopied] = useState<string | null>(null);
   /** The figure as a file would hold it: these display options, a dated line, nothing selected. */
@@ -205,6 +305,8 @@ export function TimelineView({
         onlyChanged: filtering,
         appearance: appearance ?? null,
         referenceLine: "dated",
+        // At the scale on screen; a fitted view at the density it is drawn at.
+        ...density,
       }),
     );
   const figureName = `timeline-${fileStem(data.title ?? "plan") || "plan"}.svg`;
@@ -229,20 +331,39 @@ export function TimelineView({
   };
 
   /**
-   * Open on today. A plan wider than its viewport otherwise opens on its first
-   * month, and the question it exists to answer — where are we now? — is a scroll
-   * away. Once, when the view mounts: after that the scroll position is the
-   * reader's, and moving it back under them would be the view fighting its user.
+   * Open on what the plan is about: a comparison on its first change, anything else
+   * on today. A plan wider than its viewport otherwise opens on its first month, and
+   * the question it exists to answer is a scroll away. Once, when the view mounts:
+   * after that the scroll position is the reader's, and moving it back under them
+   * would be the view fighting its user.
    */
-  const scrollerRef = useRef<HTMLDivElement>(null);
-  const todayX = inRange?.x;
   useEffect(() => {
     const scroller = scrollerRef.current;
-    if (scroller === null || todayX === undefined) return;
-    if (todayX > scroller.clientWidth * 0.8) scroller.scrollLeft = Math.max(0, todayX - scroller.clientWidth / 3);
+    if (scroller === null) return;
+    const opening = timelineOpeningScroll(laid, scroller.clientWidth);
+    if (opening !== undefined) scroller.scrollLeft = opening;
     // Mount only, on purpose; see above.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  /**
+   * Changing scale keeps the date at the middle of the view where it was. Read
+   * before the change, applied once the new drawing is laid out — the only scroll
+   * the view makes after it opens.
+   */
+  const middleDay = useRef<number | undefined>(undefined);
+  const chooseScale = (next: TimelineScaleChoice) => {
+    const scroller = scrollerRef.current;
+    if (scroller !== null) middleDay.current = laid.start + (scroller.scrollLeft + scroller.clientWidth / 2) / parts.pxPerDay;
+    setScale(next);
+  };
+  useLayoutEffect(() => {
+    const scroller = scrollerRef.current;
+    const middle = middleDay.current;
+    middleDay.current = undefined;
+    if (scroller === null || middle === undefined) return;
+    scroller.scrollLeft = Math.max(0, (middle - laid.start) * parts.pxPerDay - scroller.clientWidth / 2);
+  }, [parts.pxPerDay, laid.start]);
 
   return (
     <div
@@ -346,6 +467,22 @@ export function TimelineView({
       </div>
 
       <div className="flex flex-wrap items-center gap-2 border-t border-zinc-200 px-2 py-1 text-xs">
+          <span className="flex items-center gap-1 text-zinc-500" role="group" aria-label="Scale" data-testid="timeline-scale">
+            {SCALE_CHOICES.map((choice, index) => (
+              <span key={choice} className="flex items-center gap-1">
+                {index > 0 && <span aria-hidden="true">·</span>}
+                <button
+                  type="button"
+                  data-scale={choice}
+                  aria-pressed={scale === choice}
+                  className={scale === choice ? "font-semibold text-zinc-800" : "text-zinc-600 underline"}
+                  onClick={() => chooseScale(choice)}
+                >
+                  {choice}
+                </button>
+              </span>
+            ))}
+          </span>
           {isComparison && (
             <button
               type="button"
@@ -438,7 +575,9 @@ export function TimelineView({
             </svg>
             previous dates
           </span>
-          <span>· new: added since</span>
+          <span>
+            <i>(new)</i>: added since
+          </span>
           <span>
             <span className="line-through">removed</span>: dropped since
           </span>
@@ -451,24 +590,34 @@ export function TimelineView({
           {laid.periods.map((period) => {
             const declared = data.periods![period.index];
             return (
-              <li key={`p${period.index}`} className="flex items-center gap-1" data-period={period.index}>
+              <li
+                key={`p${period.index}`}
+                className="flex items-center gap-1"
+                data-period={period.index}
+                title={`${declared.label ?? "Period"}: ${declared.start} – ${declared.end}`}
+              >
                 <span
                   aria-hidden="true"
                   className="inline-block h-2.5 w-4 rounded-sm"
                   style={{ background: period.kind === undefined ? "#a1a1aa" : tintOf(period.kind).stroke, opacity: 0.35 }}
                 />
-                {declared.label ?? "Period"} {declared.start} – {declared.end}
+                {declared.label ?? "Period"}
               </li>
             );
           })}
           {laid.references.map((marked) => (
-            <li key={`r${marked.index}`} className="flex items-center gap-1" data-reference={marked.index}>
+            <li
+              key={`r${marked.index}`}
+              className="flex items-center gap-1"
+              data-reference={marked.index}
+              title={`${marked.label}: ${data.references![marked.index].date}`}
+            >
               <span
                 aria-hidden="true"
                 className="inline-block h-3 border-l-2 border-dashed"
                 style={{ borderColor: marked.kind === undefined ? "#3f3f46" : tintOf(marked.kind).stroke }}
               />
-              {marked.label} {marked.date}
+              {marked.label}
             </li>
           ))}
         </ul>

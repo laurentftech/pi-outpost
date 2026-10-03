@@ -68,6 +68,9 @@ const programme = (): any => ({
 const renderBody = (document: unknown = programme()) =>
   render(<structuredExchangePresentation.Expanded item={withStructured(document)} dispatch={vi.fn()} />);
 
+/** An item's drawn bar, not the transparent square the reader adds to press it by. */
+const DRAWN_RECT = 'rect:not([data-testid="timeline-hit"])';
+
 /** The inline copy: the enlarged view mounts a second one only when opened. */
 const timeline = () => screen.getAllByTestId("timeline")[0];
 const items = (type: "activity" | "milestone") => [...timeline().querySelectorAll(`[data-testid="timeline-${type}"]`)];
@@ -127,10 +130,10 @@ describe("a timeline is drawn natively", () => {
     document.data.rows[1].items[2].kind = "étude";
     document.data.rows[2].items[0].kind = "SRR";
     renderBody(document);
-    const fill = (row: number, item: number) => itemAt(row, item).querySelector("rect")!.getAttribute("fill");
+    const fill = (row: number, item: number) => itemAt(row, item).querySelector(DRAWN_RECT)!.getAttribute("fill");
     expect(fill(1, 0)).toBe(fill(1, 2));
     expect(fill(1, 0)).not.toBe(fill(4, 0));
-    expect(itemAt(4, 0).querySelector("rect")!.getAttribute("fill")).toBe("#e4e4e7");
+    expect(itemAt(4, 0).querySelector(DRAWN_RECT)!.getAttribute("fill")).toBe("#e4e4e7");
     // The bar and the star of one kind share its colour.
     expect(fill(2, 0)).toBe(itemAt(1, 1).querySelector("path")!.getAttribute("fill"));
     const entry = (kind: string) => within(timeline()).getByTestId("timeline-legend").querySelector(`[data-kind="${kind}"]`)!;
@@ -183,7 +186,7 @@ describe("TheFigureMatchesTheScreen", () => {
         const drawn = itemAt(Number(group.data!.row), Number(group.data!.item));
         const shape = group.primitives[0];
         if (shape.shape === "rect") {
-          const rect = drawn.querySelector("rect")!;
+          const rect = drawn.querySelector(DRAWN_RECT)!;
           expect([rect.getAttribute("x"), rect.getAttribute("y"), rect.getAttribute("width")]).toEqual([String(shape.x), String(shape.y), String(shape.width)]);
         } else if (shape.shape === "path") {
           expect(drawn.querySelector("path")!.getAttribute("d")).toBe(shape.d);
@@ -403,6 +406,22 @@ describe("AnItemCanBeInspected", () => {
     expect(itemAt(1, 1).getAttribute("aria-pressed")).toBe("true");
   });
 
+  it("the star itself can be pressed, not only its label", () => {
+    renderBody();
+    const star = itemAt(1, 1);
+    // Drawn paths take no pointer; the glyph's square, under the star, does.
+    expect(star.querySelector("path")!.getAttribute("pointer-events")).toBe("none");
+    const hit = star.querySelector('[data-testid="timeline-hit"]')!;
+    const glyph = star.querySelector("path")!.getAttribute("d")!;
+    const [cx] = /^M([\d.]+)/.exec(glyph)!.slice(1).map(Number);
+    expect(Number(hit.getAttribute("x"))).toBeLessThan(cx);
+    expect(Number(hit.getAttribute("x")) + Number(hit.getAttribute("width"))).toBeGreaterThan(cx);
+    expect(hit.getAttribute("fill")).toBe("transparent");
+    expect(hit.getAttribute("pointer-events")).toBeNull();
+    fireEvent.click(hit);
+    expect(within(timeline()).getByTestId("timeline-details")).toHaveTextContent("System Requirements Review");
+  });
+
   it("SelectingAnItemShowsItsDependencies", () => {
     renderBody();
     // CDR waits on dev (not satisfied) and on nothing else; SRR is between two arrows.
@@ -500,7 +519,11 @@ describe("a compared timeline in the reader", () => {
     const study = itemAt(1, 0);
     expect(study.getAttribute("data-change")).toBe("moved");
     expect(study.querySelector('[data-previous="true"]')).not.toBeNull();
-    expect(study.querySelector('[data-testid="timeline-annotation"]')!.textContent).toBe("Étude préliminaire +2 wk");
+    const annotation = study.querySelector('[data-testid="timeline-annotation"]')!;
+    expect(annotation.textContent).toBe("Étude préliminaire (+2w)");
+    // The shift is set apart in italics, never read as part of the name.
+    expect(annotation.querySelector("tspan")!.getAttribute("font-style")).toBe("italic");
+    expect(annotation.querySelector("tspan")!.textContent).toBe("(+2w)");
     const audit = itemAt(1, 5);
     expect(audit.getAttribute("data-change")).toBe("removed");
     expect(audit.querySelector('[data-testid="timeline-annotation"]')!.getAttribute("text-decoration")).toBe("line-through");
@@ -546,8 +569,8 @@ describe("a compared timeline in the reader", () => {
     fireEvent.click(screen.getByText("show text equivalent"));
     const text = screen.getByTestId("structured-text-equivalent").textContent!;
     expect(text).toContain("Compared with Plan of 1 September (2026-09-01)");
-    expect(text).toContain("activity 2026-11-01 to 2027-02-28: Étude préliminaire (etude-preliminaire) — moved +2 wk, was 2026-10-15 to 2027-02-11");
-    expect(text).toContain("milestone 2027-03-01: System Requirements Review [SRR] (srr) — moved +3 wk, was 2027-02-08");
+    expect(text).toContain("activity 2026-11-01 to 2027-02-28: Étude préliminaire (etude-preliminaire) — moved +2w, was 2026-10-15 to 2027-02-11");
+    expect(text).toContain("milestone 2027-03-01: System Requirements Review [SRR] (srr) — moved +3w, was 2027-02-08");
     expect(text).toContain("milestone 2027-04-01: Audit (audit) — removed");
     expect(text).toContain("Recette [T4] — new");
   });
@@ -565,5 +588,214 @@ describe("the downloaded file's name", () => {
     const started = performance.now();
     expect(fileStem(hostile)).toBe("x");
     expect(performance.now() - started).toBeLessThan(200);
+  });
+});
+
+describe("TheReaderChoosesTheScale", () => {
+  /**
+   * jsdom lays nothing out: the scroller is given a width, and a scroll offset that
+   * holds what is written to it, so the view's own arithmetic can be read back.
+   */
+  let viewWidth = 600;
+  const offsets = new WeakMap<Element, number>();
+  let observed: (() => void) | undefined;
+  beforeEach(() => {
+    viewWidth = 600;
+    observed = undefined;
+    vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockImplementation(function (this: HTMLElement) {
+      return this.dataset.testid === "timeline-scroller" ? viewWidth : 0;
+    });
+    Object.defineProperty(HTMLElement.prototype, "scrollLeft", {
+      configurable: true,
+      get(this: HTMLElement) {
+        return offsets.get(this) ?? 0;
+      },
+      set(this: HTMLElement, value: number) {
+        offsets.set(this, value);
+      },
+    });
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        constructor(callback: () => void) {
+          observed = callback;
+        }
+        observe() {}
+        disconnect() {}
+      },
+    );
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+    delete (HTMLElement.prototype as { scrollLeft?: number }).scrollLeft;
+  });
+
+  const scroller = () => within(timeline()).getByTestId("timeline-scroller");
+  const drawnWidth = () => Number(within(timeline()).getByTestId("timeline-header").getAttribute("width"));
+  const choose = (scale: string) => fireEvent.click(within(timeline()).getByTestId("timeline-scale").querySelector(`[data-scale="${scale}"]`)!);
+  const pressed = () => within(timeline()).getByTestId("timeline-scale").querySelector('[aria-pressed="true"]')!.getAttribute("data-scale");
+  const units = () => [...within(timeline()).getByTestId("timeline-header").querySelectorAll('[data-testid="timeline-unit"]')].map((text) => text.textContent);
+  const barWidth = () => Number(itemAt(1, 0).querySelector(DRAWN_RECT)!.getAttribute("width"));
+  const days = (from: string, to: string) => (Date.UTC(+to.slice(0, 4), +to.slice(5, 7) - 1, +to.slice(8)) - Date.UTC(+from.slice(0, 4), +from.slice(5, 7) - 1, +from.slice(8))) / 86_400_000;
+  // The programme runs from 2026-10-01 to 2028-03-31.
+  const SPAN = days("2026-10-01", "2028-03-31") + 1;
+
+  it("TheTimelineOpensAtItsDeclaredScale", () => {
+    const document = programme();
+    document.data.time.scale = "week";
+    renderBody(document);
+    expect(pressed()).toBe("week");
+    expect(drawnWidth()).toBe(SPAN * 12);
+    expect(units()).toContain("W40");
+  });
+
+  it("AQuarterIsNarrowerThanAMonth", () => {
+    // Narrower than the quarter drawing, so neither scale is stretched.
+    viewWidth = 300;
+    renderBody();
+    expect(pressed()).toBe("month");
+    const atMonth = barWidth();
+    choose("quarter");
+    expect(pressed()).toBe("quarter");
+    expect(barWidth()).toBeCloseTo((atMonth * 0.75) / 4);
+    expect(units()).toContain("Q1");
+    // Proportions hold: the study (120 days) against development (214 days).
+    const development = Number(itemAt(2, 0).querySelector(DRAWN_RECT)!.getAttribute("width"));
+    expect(development / barWidth()).toBeCloseTo(214 / 120);
+  });
+
+  it("AShortDrawingFillsTheView", () => {
+    renderBody();
+    choose("quarter");
+    // At its own density the 18-month plan is about 410 px; it is stretched to the view.
+    expect(SPAN * 0.75).toBeLessThan(viewWidth);
+    expect(drawnWidth()).toBeCloseTo(viewWidth);
+    expect(units()).toEqual(["Q4", "Q1", "Q2", "Q3", "Q4", "Q1"]);
+    expect(units()).not.toContain("Jan");
+  });
+
+  it("a short plan at the month scale fills the view and keeps months", () => {
+    const document = programme();
+    document.data.time = { start: "2027-01-01", end: "2027-02-28", scale: "month" };
+    document.data.rows = [{ type: "task", id: "T", label: "Work", items: [{ type: "activity", start: "2027-01-10", end: "2027-02-10" }] }];
+    delete document.data.dependencies;
+    renderBody(document);
+    expect(drawnWidth()).toBeCloseTo(viewWidth);
+    expect(units()).toEqual(["Jan", "Feb"]);
+  });
+
+  it("TheEnlargedViewKeepsTheScale", () => {
+    renderBody();
+    choose("quarter");
+    fireEvent.click(within(timeline()).getByTestId("timeline-compact-toggle"));
+    fireEvent.click(screen.getByText("⤢ enlarge"));
+    const enlarged = within(screen.getByTestId("structured-enlarged")).getByTestId("timeline");
+    expect(within(enlarged).getByTestId("timeline-scale").querySelector('[aria-pressed="true"]')!.getAttribute("data-scale")).toBe("quarter");
+    expect(within(enlarged).getAllByTestId("timeline-section-label").length).toBeGreaterThan(0);
+    expect([...enlarged.querySelectorAll('[data-testid="timeline-unit"]')].map((text) => text.textContent)).toContain("Q1");
+  });
+
+  it("AChoiceInTheEnlargedViewStays", () => {
+    renderBody();
+    fireEvent.click(screen.getByText("⤢ enlarge"));
+    const enlarged = within(screen.getByTestId("structured-enlarged")).getByTestId("timeline");
+    fireEvent.click(within(enlarged).getByTestId("timeline-scale").querySelector('[data-scale="week"]')!);
+    fireEvent.keyDown(screen.getByTestId("structured-enlarged"), { key: "Escape" });
+    expect(screen.queryByTestId("structured-enlarged")).toBeNull();
+    expect(pressed()).toBe("week");
+    expect(units()).toContain("W40");
+  });
+
+  it("FitShowsTheWholeRange", () => {
+    renderBody();
+    expect(drawnWidth()).toBeGreaterThan(viewWidth);
+    choose("fit");
+    expect(drawnWidth()).toBeCloseTo(viewWidth);
+  });
+
+  it("FitFollowsTheView", async () => {
+    renderBody();
+    choose("fit");
+    viewWidth = 400;
+    observed!();
+    await vi.waitFor(() => expect(drawnWidth()).toBeCloseTo(400));
+  });
+
+  it("ChangingScaleKeepsTheMiddleDate", () => {
+    renderBody();
+    const middle = days("2026-10-01", "2027-06-15");
+    scroller().scrollLeft = middle * 4 - viewWidth / 2;
+    choose("week");
+    expect(scroller().scrollLeft).toBeCloseTo(middle * 12 - viewWidth / 2);
+    choose("month");
+    expect(scroller().scrollLeft).toBeCloseTo(middle * 4 - viewWidth / 2);
+  });
+
+  it("ChangingScaleKeepsTheSelection", () => {
+    renderBody();
+    fireEvent.click(itemAt(1, 0));
+    const before = within(timeline()).getByTestId("timeline-details").textContent;
+    choose("quarter");
+    expect(itemAt(1, 0).getAttribute("aria-pressed")).toBe("true");
+    expect(within(timeline()).getByTestId("timeline-details").textContent).toBe(before);
+  });
+
+  it("TheDownloadedFigureFollowsTheScale", async () => {
+    renderBody();
+    choose("quarter");
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText } });
+    fireEvent.click(within(timeline()).getByTestId("timeline-copy-svg"));
+    await vi.waitFor(() => expect(writeText).toHaveBeenCalled());
+    const markup = writeText.mock.calls[0][0] as string;
+    expect(markup).toContain(">Q2</text>");
+    expect(markup).not.toContain(">Feb</text>");
+  });
+
+  it("a fitted view is saved at the width it is drawn at", async () => {
+    renderBody();
+    choose("fit");
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText } });
+    fireEvent.click(within(timeline()).getByTestId("timeline-copy-svg"));
+    await vi.waitFor(() => expect(writeText).toHaveBeenCalled());
+    const markup = writeText.mock.calls[0][0] as string;
+    // Same density as on screen: the study's bar has the width the screen gives it.
+    expect(markup).toContain(`width="${barWidth()}"`);
+  });
+
+  describe("TheViewOpensOnWhatItIsAbout", () => {
+    /** Every change early in the range; today, late in it, would pull the view away from them. */
+    const compared = () => {
+      const document = programme();
+      document.data.comparedTo = { label: "Plan of 1 September" };
+      document.data.rows[1].items[0].previous = { start: "2026-10-15", end: "2027-02-11" };
+      return document;
+    };
+
+    it("APlainPlanOpensOnToday", () => {
+      vi.setSystemTime(new Date(2028, 1, 1, 10, 0));
+      renderBody();
+      const todayX = days("2026-10-01", "2028-02-01") * 4 + 2;
+      expect(scroller().scrollLeft).toBeCloseTo(todayX - viewWidth / 3);
+    });
+
+    it("AComparisonOpensOnItsFirstChange", () => {
+      vi.setSystemTime(new Date(2028, 1, 1, 10, 0));
+      renderBody(compared());
+      // The earliest change, the study's previous start, is at the start of the range: in view.
+      expect(scroller().scrollLeft).toBe(0);
+      expect(days("2026-10-01", "2026-10-15") * 4).toBeLessThan(viewWidth);
+    });
+
+    it("TheReaderKeepsTheScroll", () => {
+      renderBody(compared());
+      scroller().scrollLeft = 500;
+      fireEvent.click(within(timeline()).getByTestId("timeline-comparison-toggle"));
+      expect(scroller().scrollLeft).toBe(500);
+      fireEvent.click(within(timeline()).getByTestId("timeline-comparison-toggle"));
+      expect(scroller().scrollLeft).toBe(500);
+    });
   });
 });

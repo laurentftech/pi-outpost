@@ -41,7 +41,7 @@ import { otherOrientation, type Orientation } from "@pi-outpost/shared/diagram-o
 import { resolveViewpoint, sameNarrowing, viewpointsOf } from "@pi-outpost/shared/structured-exchange/model";
 import type { StructuredViewpoint } from "@pi-outpost/shared/structured-exchange";
 import { downloadCsv, downloadMarkdown, downloadXlsx, tableExport } from "./tableExport";
-import { TimelineView } from "./TimelineView";
+import { initialTimelineDisplay, TimelineView, type TimelineDisplay } from "./TimelineView";
 import { Drawn, FigureMarkers } from "./figureDrawing";
 import { StructuredAppearanceContext } from "./structuredAppearance";
 import { timelineTextLines } from "@pi-outpost/shared/structured-exchange/timeline";
@@ -1256,6 +1256,12 @@ export function StructuredExchangeDocument({ envelope, source, rawOutput, dispat
   const [chosenOrientation, setChosenOrientation] = useState<Orientation | undefined>(undefined);
   /** The viewpoint the reader selected, by identifier. Undefined is the whole document. */
   const [selectedViewpoint, setSelectedViewpoint] = useState<string | undefined>(undefined);
+  /**
+   * A timeline's display options, held here for the same reason as the orientation:
+   * the copy in the conversation and the enlarged one are two instances, and a scale
+   * chosen in one must be the scale the other opens at. Undefined until first changed.
+   */
+  const [timelineDisplay, setTimelineDisplay] = useState<TimelineDisplay | undefined>(undefined);
   const mermaid = useMemo(() => toMermaid(envelope), [envelope]);
 
   const isProposal = envelope.target !== undefined;
@@ -1322,7 +1328,14 @@ export function StructuredExchangeDocument({ envelope, source, rawOutput, dispat
     ) : envelope.kind === "sequence" ? (
       <SequenceView data={envelope.data as StructuredSequenceData} isProposal={isProposal} />
     ) : envelope.kind === "timeline" ? (
-      <TimelineView data={envelope.data as StructuredTimelineData} appearance={appearance} />
+      <TimelineView
+        data={envelope.data as StructuredTimelineData}
+        appearance={appearance}
+        display={timelineDisplay ?? initialTimelineDisplay(envelope.data as StructuredTimelineData)}
+        onDisplayChange={(update) =>
+          setTimelineDisplay((current) => update(current ?? initialTimelineDisplay(envelope.data as StructuredTimelineData)))
+        }
+      />
     ) : (
       <TableView
         data={envelope.data as StructuredTableData}

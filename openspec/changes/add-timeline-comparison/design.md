@@ -43,9 +43,11 @@ items identifiers.
   annotations still avoid it.
 - Previous milestone: hollow dashed star; a thin dashed connector to the current star when on the same
   lane.
-- Shift text appended to the annotation: one signed amount when both ends moved equally, else
-  `start +1 wk, end +4 wk`. Units: days < 14 d, weeks < 10 wk, months otherwise (30.44 d), rounded.
-- Added: a small "new" badge after the annotation; removed: dashed bar or hollow star, struck annotation.
+- Shift text appended to the annotation in brackets, set in italics (a `tspan`) so it is not read as
+  part of the name: `(+3w)` when both ends moved equally, `(+1w, end+4w)` when they differ, `(end+4w)` or
+  `(start+1w)` when one end moved. Units: days < 14 (`d`), weeks < 10 (`w`), months otherwise (`mo`,
+  30.44 d), rounded.
+- Added: `(new)` after the annotation, in italics too; removed: dashed bar or hollow star, struck annotation.
 - Colour stays the kind's colour throughout; meaning is carried by dash and fill, which also survive
   print.
 

@@ -56,10 +56,10 @@ with the same reasons; the `v3-` cases exercise only the timeline. `unknown-vers
 moved to version 4 when version 3 was published, and the version 1 lock records why.
 
 Version 3 may still grow in place until a release publishes it, as version 2 did for
-viewpoints — compared timelines (`comparedTo`, `previous`, `role`) and calendar periods and reference dates
-(`periods`, `references`) were added that way. From that release on it is frozen like the other two: another timeline
-scale (`week`, `quarter`), another item or row type, or anything else a version 3
-document could not say before, is a version 4.
+viewpoints — compared timelines (`comparedTo`, `previous`, `role`), calendar periods and reference dates
+(`periods`, `references`) and the `week` and `quarter` scales were added that way. From that release on it is
+frozen like the other two: another timeline scale (`day`, `year`), another item or row type, or anything else a
+version 3 document could not say before, is a version 4.
 
 ## Rules that are not in the schema
 

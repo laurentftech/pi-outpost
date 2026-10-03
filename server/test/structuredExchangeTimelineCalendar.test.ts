@@ -74,11 +74,15 @@ describe("PeriodsAreDrawnAcrossEveryRow", () => {
     assert.equal(kinded.primitives.filter((primitive) => primitive.shape === "line").length, 0);
   });
 
-  test("the legend names every period and reference with its dates", () => {
+  test("the legend names every period and reference, and leaves their dates to the axis and hover", () => {
+    const parts = timelineFigureParts(plan(), { today });
+    const legend = parts.legend.groups.filter((group) => group.testId === "timeline-calendar-legend").flatMap((group) => group.primitives);
+    const texts = legend.filter((primitive) => primitive.shape === "text").map((primitive) => (primitive as { text: string }).text);
+    assert.deepEqual(texts, ["Year-end closure", "Summer holidays", "Inventory", "Contractual delivery"]);
+    // Dated where a pointer finds them.
+    assert.match(parts.rows.find((group) => group.id === "period-0")!.title!, /Year-end closure: 21 Dec 2026 – 3 Jan 2027/);
+    assert.match(parts.rows.find((group) => group.testId === "timeline-reference")!.title!, /Contractual delivery: 30 Jun 2027/);
     const svg = serializeFigure(timelineFigure(plan(), { today }));
-    for (const text of ["Year-end closure 21 Dec 2026 – 3 Jan 2027", "Summer holidays 2 Aug 2027 – 22 Aug 2027", "Inventory 12 Apr 2027 – 18 Apr 2027", "Contractual delivery 30 Jun 2027"]) {
-      assert.ok(svg.includes(text), `legend lacks ${text}`);
-    }
     // Kinds only periods or references carry are not listed among item kinds.
     assert.doesNotMatch(svg, /data-kind="closure"><path/);
   });
@@ -101,7 +105,10 @@ describe("ReferenceDatesAreNamedLines", () => {
   test("AContractDateIsANamedLine", () => {
     const laid = layoutTimeline(plan(), today);
     assert.equal(laid.references[0].x, x("2027-06-30") + TIMELINE_PX_PER_DAY / 2);
-    assert.deepEqual(laid.headerLabels.find((label) => label.of === "reference")?.text, "Contractual delivery");
+    const name = laid.headerLabels.find((label) => label.of === "reference")!;
+    assert.equal(name.text, "Contractual delivery");
+    // Centred over its line, not beside it.
+    assert.ok(Math.abs(name.x + name.width / 2 - laid.references[0].x) < 0.01, `${name.x} + ${name.width}/2 ≠ ${laid.references[0].x}`);
     const parts = timelineFigureParts(plan(), { today });
     const line = parts.rows.find((group) => group.testId === "timeline-reference")!.primitives[0] as { strokeDasharray?: string; y2: number; stroke: string };
     assert.equal(line.strokeDasharray, "6 3");
@@ -110,6 +117,14 @@ describe("ReferenceDatesAreNamedLines", () => {
     assert.equal(todayLine.strokeDasharray, undefined);
     assert.notEqual(todayLine.stroke, line.stroke);
   });
+});
+
+test("a reference's name near an edge is pulled inside the drawing", () => {
+  const data = plan();
+  data.references = [{ date: "2027-12-30", label: "Contractual delivery" }];
+  const laid = layoutTimeline(data, today);
+  const name = laid.headerLabels.find((label) => label.of === "reference")!;
+  assert.ok(name.x + name.width <= laid.width);
 });
 
 describe("PeriodsAndReferencesTravelWithTheTimeline", () => {

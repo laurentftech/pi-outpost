@@ -6,7 +6,7 @@
     "time": {
       "start": "2026-10-01",
       "end": "2028-03-31",
-      "scale": "week"
+      "scale": "day"
     },
     "rows": [
       {

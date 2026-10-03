@@ -88,12 +88,18 @@ const parameters = Type.Object({
     Type.Boolean({ description: "Timelines only: draw one row per section (a separator and its tasks) instead of one row per task." }),
   ),
   hide_dependencies: Type.Optional(Type.Boolean({ description: "Timelines only: leave the dependency arrows out." })),
+  scale: Type.Optional(
+    Type.Union([Type.Literal("week"), Type.Literal("month"), Type.Literal("quarter")], {
+      description:
+        "Timelines only: the scale to draw at — week (about 84 px a week, header in ISO weeks), month (about 120 px a month) or quarter (about 68 px a quarter). Defaults to the timeline's own `time.scale`. Use week for a few months, month for a year or two, quarter beyond.",
+    }),
+  ),
   width: Type.Optional(
     Type.Number({
       minimum: 300,
       maximum: 4000,
       description:
-        "Timelines only: fit the whole figure into this many pixels, e.g. 900 for a page. Durations stay proportional; rows grow to keep labels apart. Omit to draw at the reader's scale (about 120 px a month).",
+        "Timelines only: fit the whole figure into this many pixels, e.g. 900 for a page. Durations stay proportional; rows grow to keep labels apart; wins over `scale`. Omit to draw at the scale.",
     }),
   ),
   comparison: Type.Optional(
@@ -117,7 +123,7 @@ const DESCRIPTION = [
   "Write one figure per view worth having rather than one figure of everything: a narrowed figure is the reason this takes narrowing at all.",
   "When the document declares viewpoints — or the project holds it to a profile that does — name one with `viewpoint` instead of rebuilding its selection from hide lists: the figure then states which viewpoint it shows and the concern it frames, so a report can carry one figure per viewpoint.",
   "A relationship whose endpoint is hidden goes with it — an arrow to a box that is not drawn cannot be drawn.",
-  "A timeline is drawn too: give it `width` (e.g. 900) when it goes into a page, `compact` for one row per section, `hide_dependencies` to leave the arrows out; its date line is labelled with the day it is written, since the file outlives that day.",
+  "A timeline is drawn too: give it `width` (e.g. 900) when it goes into a page, `scale` to draw it by week, month or quarter at its natural size, `compact` for one row per section, `hide_dependencies` to leave the arrows out; its date line is labelled with the day it is written, since the file outlives that day.",
   "A table has no figure; export it as a spreadsheet instead.",
 ].join(" ");
 
@@ -148,6 +154,7 @@ export function createStructuredExchangeFigureToolDefinition(
         viewpoint,
         compact,
         hide_dependencies: hideDependencies,
+        scale,
         width,
         reference_line: referenceLine,
         comparison,
@@ -159,6 +166,7 @@ export function createStructuredExchangeFigureToolDefinition(
         viewpoint?: string;
         compact?: boolean;
         hide_dependencies?: boolean;
+        scale?: "week" | "month" | "quarter";
         width?: number;
         reference_line?: "dated" | "none";
         comparison?: "compare" | "new";
@@ -255,6 +263,7 @@ export function createStructuredExchangeFigureToolDefinition(
             today: localToday(),
             ...(compact === undefined ? {} : { compact }),
             ...(hideDependencies === undefined ? {} : { hideDependencies }),
+            ...(scale === undefined ? {} : { scale }),
             ...(width === undefined ? {} : { width }),
             ...(referenceLine === undefined ? {} : { referenceLine }),
             ...(comparison === undefined ? {} : { comparison }),

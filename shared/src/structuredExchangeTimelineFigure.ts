@@ -7,7 +7,7 @@
  * concatenates the same parts with a label column and a key into one SVG. Two
  * renderings of one decision cannot disagree about where a bar is.
  */
-import type { StructuredTimelineData } from "./structuredExchange.ts";
+import type { StructuredTimelineData, StructuredTimelineScale } from "./structuredExchange.ts";
 import {
   FIGURE_FONT,
   markerId,
@@ -25,14 +25,15 @@ import {
   dayNumber,
   dependencyText,
   layoutTimeline,
-  monthLabelFor,
+  unitLabelFor,
   TIMELINE_HEADER_HEIGHT,
-  TIMELINE_PX_PER_DAY,
+  TIMELINE_SCALE_PX_PER_DAY,
   TIMELINE_STAR_RADIUS,
   TIMELINE_TODAY_BAND,
   TIMELINE_YEAR_BAND,
   timelineLabelColumnWidth,
   type TimelineDependencyLayout,
+  type TimelineHeaderUnit,
   type TimelineItemLayout,
   type TimelineLayout,
 } from "./structuredExchangeTimeline.ts";
@@ -59,8 +60,14 @@ export interface TimelineFigureOptions {
   today: number;
   compact?: boolean;
   showDependencies?: boolean;
-  /** Fit the whole figure, label column included, into this many pixels. */
+  /** The scale to draw at; the timeline's declared one when omitted. */
+  scale?: StructuredTimelineScale;
+  /** Fit the whole figure, label column included, into this many pixels. Wins over `scale`. */
   width?: number;
+  /** An exact density, as the reader's fitted view draws at. Wins over `width` and `scale`. */
+  pxPerDay?: number;
+  /** The header's unit, never made finer; see `TimelineLayoutOptions.unit`. */
+  unit?: TimelineHeaderUnit;
   appearance?: ProjectAppearance | null;
   referenceLine?: ReferenceLine;
   /** The reader's selection, by task row and optionally item: emphasised, never saved. */
@@ -177,14 +184,24 @@ export function timelineFigureParts(document: StructuredTimelineData, options: T
     const probe = layoutTimeline(data, options.today, { compact: options.compact, pxPerDay: 1, onlyChanged: options.onlyChanged });
     return probe.end - probe.start + 1;
   })();
-  let pxPerDay = TIMELINE_PX_PER_DAY;
+  let pxPerDay = TIMELINE_SCALE_PX_PER_DAY[options.scale ?? data.time.scale] ?? TIMELINE_SCALE_PX_PER_DAY.month;
   let overWidth = false;
-  if (options.width !== undefined) {
+  if (options.pxPerDay !== undefined) {
+    pxPerDay = options.pxPerDay;
+  } else if (options.width !== undefined) {
     const fitted = (options.width - labelWidth - 2 * MARGIN) / span;
     pxPerDay = Math.max(TIMELINE_MIN_PX_PER_DAY, fitted);
     overWidth = fitted < TIMELINE_MIN_PX_PER_DAY;
   }
-  const layout = layoutTimeline(data, options.today, { compact: options.compact, pxPerDay, onlyChanged: options.onlyChanged });
+  // At a scale's own density its unit is labelled. Fitted to a width, the unit follows
+  // the density, never finer than a scale asked for alongside the width.
+  const unit = options.unit ?? (options.pxPerDay !== undefined || options.width !== undefined ? options.scale : (options.scale ?? data.time.scale));
+  const layout = layoutTimeline(data, options.today, {
+    compact: options.compact,
+    pxPerDay,
+    onlyChanged: options.onlyChanged,
+    ...(unit === undefined ? {} : { unit }),
+  });
   // Colour alone: in a timeline a dashed outline means a previous position, and a type
   // drawn dashed would read as a change that never happened.
   const tints = assignTints(layout.kinds, options.appearance?.kinds, { dashes: false });
@@ -199,7 +216,7 @@ export function timelineFigureParts(document: StructuredTimelineData, options: T
       id: "header-ground",
       primitives: [
         { shape: "rect", x: 0, y: 0, width: layout.width, height: TIMELINE_HEADER_HEIGHT, fill: "#ffffff" },
-        ...layout.monthLines.map(
+        ...layout.unitLines.map(
           (x): Primitive => ({ shape: "line", x1: x, x2: x, y1: TIMELINE_TODAY_BAND + TIMELINE_YEAR_BAND, y2: TIMELINE_HEADER_HEIGHT, stroke: RULE }),
         ),
         {
@@ -212,21 +229,33 @@ export function timelineFigureParts(document: StructuredTimelineData, options: T
         },
       ],
     },
-    ...layout.years.map(
-      (year): FigureGroup => ({
-        id: `year-${year.x}`,
-        testId: "timeline-year",
+    // Years, or months with their year when weeks are labelled under them.
+    ...layout.upper.map(
+      (band): FigureGroup => ({
+        id: `upper-${band.x}`,
+        testId: "timeline-upper",
         primitives: [
-          { shape: "line", x1: year.x, x2: year.x, y1: TIMELINE_TODAY_BAND, y2: TIMELINE_HEADER_HEIGHT, stroke: MUTED },
-          { shape: "text", x: year.x + 4, y: TIMELINE_TODAY_BAND + 14, text: year.label, fontSize: 11, fontWeight: 600, fill: INK, fontFamily: FIGURE_FONT },
+          { shape: "line", x1: band.x, x2: band.x, y1: TIMELINE_TODAY_BAND, y2: TIMELINE_HEADER_HEIGHT, stroke: MUTED },
+          {
+            shape: "text",
+            x: band.x + 4,
+            y: TIMELINE_TODAY_BAND + 14,
+            text: band.label,
+            fontSize: 11,
+            fontWeight: 600,
+            fill: INK,
+            fontFamily: FIGURE_FONT,
+            testId: "timeline-upper",
+          },
         ],
       }),
     ),
     {
       id: "year-repeats",
       // The year again at each quarter that opens no year band: scrolled or fitted
-      // past January, a reader would otherwise see months with no year at all.
-      primitives: layout.months
+      // past January, a reader would otherwise see months with no year at all. Only
+      // under months: a week's band already names its year, and so does a quarter's.
+      primitives: (layout.unit === "month" ? layout.months : [])
         .filter((month, index) => index > 0 && month.month % 3 === 0 && month.month !== 0)
         .map((month): Primitive => ({
           shape: "text",
@@ -240,17 +269,17 @@ export function timelineFigureParts(document: StructuredTimelineData, options: T
         })),
     },
     {
-      id: "months",
-      primitives: layout.months.map((month): Primitive => ({
+      id: "units",
+      primitives: layout.lower.map((band): Primitive => ({
         shape: "text",
-        x: month.x + month.width / 2,
+        x: band.x + band.width / 2,
         y: TIMELINE_TODAY_BAND + TIMELINE_YEAR_BAND + 14,
-        text: monthLabelFor(month),
+        text: unitLabelFor(band, layout.unit),
         fontSize: 10,
         textAnchor: "middle",
         fill: MUTED,
         fontFamily: FIGURE_FONT,
-        testId: "timeline-month",
+        testId: "timeline-unit",
       })),
     },
   ];
@@ -278,7 +307,9 @@ export function timelineFigureParts(document: StructuredTimelineData, options: T
         const kind = label.of === "period" ? layout.periods.find((p) => p.index === label.index)?.kind : layout.references.find((r) => r.index === label.index)?.kind;
         return {
           shape: "text",
-          x: label.x,
+          // A reference's name is anchored on its middle, so it sits centred over the line
+          // whatever the font's real widths; a period's starts where its band does.
+          ...(label.of === "reference" ? { x: label.x + label.width / 2, textAnchor: "middle" as const } : { x: label.x }),
           y: 12,
           text: label.text,
           fontSize: 10,
@@ -340,7 +371,7 @@ export function timelineFigureParts(document: StructuredTimelineData, options: T
       id: "rows-ground",
       primitives: [
         { shape: "rect", x: 0, y: 0, width: layout.width, height: layout.height, fill: "#ffffff" },
-        ...layout.monthLines.map((x): Primitive => ({ shape: "line", x1: x, x2: x, y1: 0, y2: layout.height, stroke: RULE })),
+        ...layout.unitLines.map((x): Primitive => ({ shape: "line", x1: x, x2: x, y1: 0, y2: layout.height, stroke: RULE })),
       ],
     },
     ...layout.rows.map(
@@ -512,7 +543,10 @@ export function timelineFigureParts(document: StructuredTimelineData, options: T
         shape: "text",
         x: item.label.x,
         y: item.label.y + 12,
-        text: item.label.text,
+        // The note — `(+2w)`, `(new)` — set apart in italics, never read as part of the name.
+        ...(item.label.note !== undefined && item.label.text.endsWith(item.label.note)
+          ? { text: item.label.text.slice(0, -item.label.note.length).trimEnd(), note: item.label.note }
+          : { text: item.label.text }),
         fontSize: 11,
         fill: INK,
         fontFamily: FIGURE_FONT,
@@ -630,13 +664,12 @@ export function timelineFigureParts(document: StructuredTimelineData, options: T
     });
     x += entryWidth;
   }
-  // Periods and reference dates, each named with its dates: whatever the header could not fit.
+  // Periods and reference dates by name: whatever the header could not fit. Their dates
+  // are where they are drawn on the axis, and on hover; written here too they crowded
+  // the key into a second calendar.
   const calendar = [
-    ...layout.periods.map((period) => {
-      const declared = data.periods![period.index];
-      return { kind: period.kind, line: false, text: `${declared.label ?? "Period"} ${writtenDate(dayNumber(declared.start)!)} – ${writtenDate(dayNumber(declared.end)!)}` };
-    }),
-    ...layout.references.map((marked) => ({ kind: marked.kind, line: true, text: `${marked.label} ${writtenDate(dayNumber(marked.date)!)}` })),
+    ...layout.periods.map((period) => ({ kind: period.kind, line: false, text: data.periods![period.index].label ?? "Period" })),
+    ...layout.references.map((marked) => ({ kind: marked.kind, line: true, text: marked.label })),
   ];
   if (calendar.length > 0) {
     if (x > 0) {
@@ -678,7 +711,8 @@ export function timelineFigureParts(document: StructuredTimelineData, options: T
     ];
     const afterPrevious = 22 + (`previous dates (${data.comparedTo.label})`.length + 3) * CHAR_WIDTH;
     marks.push(
-      { shape: "text", x: afterPrevious, y: top + 12, text: "· new: added since", fontSize: 10, fill: MUTED, fontFamily: FIGURE_FONT },
+      { shape: "text", x: afterPrevious, y: top + 12, text: "(new)", fontStyle: "italic", fontSize: 10, fill: MUTED, fontFamily: FIGURE_FONT },
+      { shape: "text", x: afterPrevious + 5 * CHAR_WIDTH, y: top + 12, text: ": added since", fontSize: 10, fill: MUTED, fontFamily: FIGURE_FONT },
       {
         shape: "text",
         x: afterPrevious + 20 * CHAR_WIDTH,

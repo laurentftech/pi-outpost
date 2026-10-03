@@ -136,23 +136,34 @@ describe("compareTimelines", () => {
 describe("shifts in words", () => {
   test("units follow the size, and carry a sign", () => {
     assert.equal(describeDays(0), "");
-    assert.equal(describeDays(3), "+3 d");
-    assert.equal(describeDays(-10), "−10 d");
-    assert.equal(describeDays(21), "+3 wk");
-    assert.equal(describeDays(-63), "−9 wk");
-    assert.equal(describeDays(91), "+3 mo");
+    assert.equal(describeDays(3), "+3d");
+    assert.equal(describeDays(-10), "−10d");
+    assert.equal(describeDays(21), "+3w");
+    assert.equal(describeDays(-63), "−9w");
+    assert.equal(describeDays(91), "+3mo");
+  });
+
+  test("the start's shift then the end's; a lone end named", () => {
+    const moved = (start: string, end: string, before: { start: string; end: string }) =>
+      shiftText({ type: "activity", start, end, previous: before });
+    const before = { start: "2027-03-01", end: "2027-03-29" };
+    assert.equal(moved("2027-03-15", "2027-04-26", before), "+2w, end+4w");
+    assert.equal(moved("2027-03-01", "2027-04-26", before), "end+4w");
+    assert.equal(moved("2027-03-15", "2027-03-29", before), "start+2w");
+    assert.equal(moved("2027-03-15", "2027-04-12", before), "+2w");
+    assert.equal(moved("2027-03-04", "2027-04-01", before), "+3d");
   });
 
   test("ASlippedActivityShowsBothPositions (text)", () => {
-    assert.equal(shiftText(item("T1", "study")), "+3 wk");
+    assert.equal(shiftText(item("T1", "study")), "+3w");
   });
 
   test("AStretchedActivityShowsBothEnds (text)", () => {
-    assert.equal(shiftText(item("T3", "tests")), "end +4 wk");
+    assert.equal(shiftText(item("T3", "tests")), "end+4w");
   });
 
   test("AMovedMilestoneShowsWhereItWas (text)", () => {
-    assert.equal(shiftText(item("T1", "srr")), "+3 wk");
+    assert.equal(shiftText(item("T1", "srr")), "+3w");
     assert.equal(shiftText(item("T1", "pdr")), "");
   });
 

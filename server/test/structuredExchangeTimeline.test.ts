@@ -15,6 +15,7 @@ import { describe, test } from "node:test";
 import { parseStructuredExchange } from "@pi-outpost/shared/structured-exchange/parse";
 import { checkStructuredExchangeSchema } from "@pi-outpost/shared/structured-exchange/schema-node";
 import { checkStructuredExchangeSchemaInBrowser } from "@pi-outpost/shared/structured-exchange/schema-browser";
+import { timelineFacts, timelineTextLines } from "@pi-outpost/shared/structured-exchange/timeline";
 import {
   STRUCTURED_EXCHANGE_CEILINGS_3,
   STRUCTURED_EXCHANGE_SCHEMA_V2,
@@ -138,10 +139,26 @@ describe("ATimelineDeclaresCalendarRowsAndItems", () => {
 
   test("AnUnsupportedScaleIsRefused", () => {
     const document = programme();
-    document.data.time.scale = "week";
+    document.data.time.scale = "day";
     const issues = issuesOf(document);
     assert.deepEqual(issues.map((issue) => `${issue.rule} ${issue.path}`), ["schema/enum /data/time/scale"]);
-    assert.match(issues[0].message, /"month"/);
+    for (const supported of ["week", "month", "quarter"]) assert.match(issues[0].message, new RegExp(`"${supported}"`));
+  });
+
+  test("EveryScaleIsValid", () => {
+    const at = (scale: string) => {
+      const document = programme();
+      document.data.time.scale = scale;
+      assert.deepEqual(issuesOf(document), [], scale);
+      assert.deepEqual(checkStructuredExchangeSchemaInBrowser(document), [], `${scale} in the browser`);
+      return document.data;
+    };
+    const facts = (scale: string) => JSON.stringify(timelineFacts(at(scale)));
+    const text = (scale: string) => timelineTextLines(at(scale)).join("\n").replace(`by ${scale}`, "by <scale>");
+    for (const scale of ["week", "quarter"]) {
+      assert.equal(facts(scale), facts("month"));
+      assert.equal(text(scale), text("month"));
+    }
   });
 
   test("ATaskWithoutAnIdentifierIsRefused", () => {

@@ -1202,7 +1202,9 @@
                 },
                 "scale": {
                   "enum": [
-                    "month"
+                    "week",
+                    "month",
+                    "quarter"
                   ]
                 }
               }

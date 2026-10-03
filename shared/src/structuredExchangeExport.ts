@@ -28,6 +28,7 @@ import type {
   StructuredSequenceData,
   StructuredViewpoint,
   StructuredTimelineData,
+  StructuredTimelineScale,
   ValidatedStructuredExchange,
 } from "./structuredExchange.ts";
 import { graphFigure, sequenceFigure, serializeFigure, shownGraph } from "./structuredExchangeFigure.ts";
@@ -110,6 +111,8 @@ export interface FigureNarrowing {
   timeline?: {
     compact?: boolean;
     hideDependencies?: boolean;
+    /** The scale to draw at; the timeline's declared one when omitted. A width wins over it. */
+    scale?: StructuredTimelineScale;
     width?: number;
     referenceLine?: "dated" | "none";
     /** A compared timeline: draw the comparison (default) or the new version alone. */
@@ -165,6 +168,7 @@ export function figureForEnvelope(
       today: options.today,
       compact: options.compact ?? false,
       showDependencies: !(options.hideDependencies ?? false),
+      ...(options.scale === undefined ? {} : { scale: options.scale }),
       ...(options.width === undefined ? {} : { width: options.width }),
       referenceLine: options.referenceLine ?? "dated",
       comparison: options.comparison ?? "compare",

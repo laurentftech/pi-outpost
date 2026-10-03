@@ -42,8 +42,9 @@ in the kind's colour or a neutral dark grey; *Today* stays solid orange, 2 px.
 
 Period and reference labels go in the top header band, shared with the *Today* tag, placed left to right
 with the same greedy collision rule as annotations (one lane; a label that does not fit its band or
-collides is left out of the header). Every period and reference is always named in the legend
-("Fermeture 21 Dec 2026 – 3 Jan 2027") and on hover (group title), so a hidden header label loses nothing.
+collides is left out of the header). Every period and reference is always named in the legend and,
+with its dates, on hover (group title), so a hidden header label loses nothing. The legend gives names
+only: dates written there too made the key a second calendar, and the band already sits on the axis.
 
 ### D5. Drawing order
 

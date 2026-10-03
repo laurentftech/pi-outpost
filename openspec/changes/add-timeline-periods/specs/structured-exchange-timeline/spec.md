@@ -45,7 +45,8 @@ The reader and every figure SHALL draw each period as a pale band from the start
 end of its last, across every row, under bars, stars, arrows and annotations, clipped to the range. Its
 colour SHALL follow its `kind` through the same palette and project colours items use; a period without a
 kind SHALL be drawn neutral and hatched. Its label SHALL be shown in the header above the band where it
-fits, and SHALL always be available on hover and in the legend, which names each period with its dates.
+fits. It SHALL always be named in the legend, and its dates SHALL be given on hover. The legend SHALL
+NOT repeat the dates, which the band already shows on the axis.
 
 #### Scenario: AClosureIsABandAcrossTheRows
 - **WHEN** a timeline declares a closure from 2026-12-21 to 2027-01-03
@@ -67,7 +68,8 @@ fits, and SHALL always be available on hover and in the legend, which names each
 
 The reader and every figure SHALL draw each reference date as a vertical line across every row at the
 middle of its day, labelled in the header, distinct from the *Today* line, from month reference lines and
-from period bands, and named in the legend with its date. Its colour SHALL follow its kind as periods do.
+from period bands, named in the legend, and dated on hover. Its colour SHALL follow its kind as periods
+do.
 
 #### Scenario: AContractDateIsANamedLine
 - **WHEN** a timeline declares a reference `{ "date": "2027-06-30", "label": "Contractual delivery" }`
