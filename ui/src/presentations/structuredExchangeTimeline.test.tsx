@@ -11,6 +11,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import type { ChatItem } from "@pi-outpost/shared";
 import { structuredExchangePresentation } from "./StructuredExchangeView";
+import { fileStem } from "./TimelineView";
 import { timelineFigureParts } from "@pi-outpost/shared/structured-exchange/timeline-figure";
 import { localToday } from "@pi-outpost/shared/structured-exchange/timeline";
 
@@ -549,5 +550,20 @@ describe("a compared timeline in the reader", () => {
     expect(text).toContain("milestone 2027-03-01: System Requirements Review [SRR] (srr) — moved +3 wk, was 2027-02-08");
     expect(text).toContain("milestone 2027-04-01: Audit (audit) — removed");
     expect(text).toContain("Recette [T4] — new");
+  });
+});
+
+describe("the downloaded file's name", () => {
+  it("keeps letters and digits, joins the rest with one dash, and trims dashes from both ends", () => {
+    expect(fileStem("Programme X — system A and B")).toBe("Programme-X-system-A-and-B");
+    expect(fileStem("  --Plan 2027--  ")).toBe("Plan-2027");
+    expect(fileStem("———")).toBe("");
+  });
+
+  it("stays linear on a title made of dashes", () => {
+    const hostile = `${"-".repeat(200_000)}x`;
+    const started = performance.now();
+    expect(fileStem(hostile)).toBe("x");
+    expect(performance.now() - started).toBeLessThan(200);
   });
 });

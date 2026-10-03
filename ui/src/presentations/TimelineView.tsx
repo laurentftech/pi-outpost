@@ -37,6 +37,20 @@ import { Drawn, FigureMarkers, type Interaction } from "./figureDrawing";
 const EMPHASIS = "#2563eb";
 const NEUTRAL: Tint = { fill: "#e4e4e7", stroke: "#52525b" };
 
+/**
+ * A title as a file name: runs of anything but letters, digits, `.`, `_` and `-` become
+ * one `-`, and dashes are trimmed from both ends by walking them rather than by an
+ * anchored `-+$`, which backtracks quadratically on a title made of dashes.
+ */
+export function fileStem(title: string): string {
+  const joined = title.replace(/[^\p{L}\p{N}._-]+/gu, "-");
+  let start = 0;
+  let end = joined.length;
+  while (start < end && joined[start] === "-") start += 1;
+  while (end > start && joined[end - 1] === "-") end -= 1;
+  return joined.slice(start, end);
+}
+
 type Selection = { type: "item"; row: number; item: number } | { type: "task"; row: number };
 
 function datesOf(item: StructuredTimelineItem): string {
@@ -193,7 +207,7 @@ export function TimelineView({
         referenceLine: "dated",
       }),
     );
-  const figureName = `timeline-${(data.title ?? "plan").replace(/[^\p{L}\p{N}._-]+/gu, "-").replace(/^-+|-+$/g, "") || "plan"}.svg`;
+  const figureName = `timeline-${fileStem(data.title ?? "plan") || "plan"}.svg`;
   const downloadFigure = () => {
     const url = URL.createObjectURL(new Blob([figureMarkup()], { type: "image/svg+xml" }));
     const link = document.createElement("a");
