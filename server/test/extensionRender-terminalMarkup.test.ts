@@ -23,7 +23,7 @@ const definitions = new Map([
 function renderer(): ExtensionRenderer {
   const configured = new ExtensionRenderer();
   configured.configure({
-    getToolDefinition: (name: string) => definitions.get(name) as never,
+    getToolRenderers: (name: string) => definitions.get(name) as never,
     getMessageRenderer: () => undefined,
     cwd,
   });

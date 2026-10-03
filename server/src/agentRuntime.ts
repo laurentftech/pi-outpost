@@ -193,6 +193,8 @@ export interface CredentialCapability {
  */
 export interface RenderCapability {
   getToolDefinition(name: string): unknown;
+  /** How calls to a tool are drawn: an extension's `registerToolRenderer` choice, else the tool's own. */
+  getToolRenderers(name: string): unknown;
   getMessageRenderer(customType: string): unknown;
 }
 

@@ -175,7 +175,7 @@ describe("a retired workspace releases its renderers", () => {
     // What `refreshExtensionRender` installs: closures over the workspace's live
     // agent. Held past retirement they keep the whole runtime reachable.
     alpha.renderer.configure({
-      getToolDefinition: () => undefined,
+      getToolRenderers: () => undefined,
       getMessageRenderer: () => ((() => ({ render: () => ["drawn by the extension"] })) as never),
       cwd: dirs.alpha,
     });

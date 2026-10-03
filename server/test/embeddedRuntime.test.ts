@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 import type { CreateAgentSessionRuntimeFactory } from "@earendil-works/pi-coding-agent";
 import type { RuntimeEvent } from "../src/agentRuntime.ts";
 import { EmbeddedRuntime } from "../src/embeddedRuntime.ts";
+import { ExtensionRenderer } from "../src/extensionRender.ts";
 
 describe("EmbeddedRuntime tool rebuilding", () => {
   it("retains the replacement factory when extension binding fails after the session switched", async () => {
@@ -41,6 +42,47 @@ describe("EmbeddedRuntime tool rebuilding", () => {
 
     await runtime.rebuildTools();
     assert.deepEqual(factoriesUsed, [newFactory, newFactory], "the next session still uses the replacement factory");
+  });
+});
+
+describe("EmbeddedRuntime tool card renderers", () => {
+  /**
+   * pi 1.0.1 draws a call through what the extensions chose for that tool
+   * (`registerToolRenderer`), falling back to the tool's own definition, and its
+   * HTML renderer now asks for exactly that. The runtime hands over the same
+   * resolution, so a card here is drawn the way pi's own export draws it.
+   */
+  const definitions: Record<string, unknown> = {
+    read: { renderCall: () => ({ render: () => ["read, as the tool draws it"], invalidate() {} }) },
+  };
+  const chosen: Record<string, unknown> = {
+    mcp_search: { renderCall: () => ({ render: () => ["search, as an extension draws it"], invalidate() {} }) },
+  };
+  const session = {
+    subscribe: () => () => {},
+    getToolDefinition: (name: string) => definitions[name],
+    extensionRunner: {
+      resolveToolRenderers: (name: string, base: () => unknown) => chosen[name] ?? base(),
+      getMessageRenderer: () => undefined,
+    },
+  };
+  const runtime = new EmbeddedRuntime({ session } as never, "/nowhere", (factory) => factory);
+
+  it("hands over an extension's choice, else the tool's own renderers", () => {
+    assert.equal(runtime.renderers.getToolRenderers("mcp_search"), chosen.mcp_search);
+    assert.equal(runtime.renderers.getToolRenderers("read"), definitions.read);
+    assert.equal(runtime.renderers.getToolRenderers("nothing"), undefined);
+  });
+
+  it("draws both into a card", () => {
+    const renderer = new ExtensionRenderer();
+    renderer.configure({
+      getToolRenderers: (name) => runtime.renderers.getToolRenderers(name) as never,
+      getMessageRenderer: () => undefined,
+      cwd: "/nowhere",
+    });
+    assert.match(renderer.renderToolCallHtml("c1", "mcp_search", {}) ?? "", /search, as an extension draws it/);
+    assert.match(renderer.renderToolCallHtml("c2", "read", {}) ?? "", /read, as the tool draws it/);
   });
 });
 
