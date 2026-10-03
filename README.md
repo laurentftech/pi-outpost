@@ -119,6 +119,9 @@ anything.
 > discouraged. Clients authenticate by opening `http://host:3141/?token=<secret>` once
 > (stored locally, stripped from the URL) or via the embed widget's `token` option. Use a
 > reverse proxy or Tailscale for transport encryption.
+>
+> The `sandbox` confines pi-outpost's file tools, not `bash`, extensions or MCP servers — see
+> [what is and is not confined](docs/sandboxing.md).
 
 ## How do I…
 
@@ -135,6 +138,7 @@ one needs, the command that proves it works, and the caution that goes with it.
 | [Read a big PDF, Word or Excel file](docs/how-to.md#let-the-agent-read-a-big-pdf-word-or-excel-file) | [Lock down a shared deployment](docs/how-to.md#lock-down-a-shared-deployment) |
 | [Put it inside your own web app](docs/how-to.md#put-it-inside-your-own-web-app) | [Use an existing pi installation](docs/how-to.md#use-an-existing-pi-installation) |
 | [Make a PowerPoint deck from a template](docs/how-to.md#make-a-powerpoint-deck-from-a-template) | [Write a Word document from a template](docs/how-to.md#write-a-word-document-from-a-template) |
+| [Confine the agent's shell with an extension](docs/sandboxing.md#hand-bash-to-the-extension-sandboxbashfrom) | [Run it in WSL on a managed Windows machine](docs/sandboxing.md#recipe-wsl-on-a-managed-windows-machine) |
 | [When something does not work](docs/how-to.md#when-something-does-not-work) | |
 
 ## What you get
@@ -483,6 +487,11 @@ in [`pi-outpost.config.example.json`](pi-outpost.config.example.json).
 | `files.watch` | Watch the directories the file browser has listed, so the tree follows the workspace whoever changed it (default `true`). Set `false` where a watch is a liability — a network mount that emits no events, a spent inotify budget. The tree's ↻ control re-lists by hand either way |
 
 ### Confining bash with an extension
+
+> **Installing a sandboxing extension is not enough.** Without `sandbox.bashFrom`, pi-outpost's own
+> `bash` shadows the extension's confined one: the extension loads, reports its sandbox as on, and the
+> agent's commands still run unconfined. [docs/sandboxing.md](docs/sandboxing.md) says what is and is
+> not confined, and how to check it.
 
 pi-outpost confines its file tools to the sandbox, but `bash` cannot be path-confined: once
 `allowBash` is on, a command runs with everything the server's user can do. A sandboxing
