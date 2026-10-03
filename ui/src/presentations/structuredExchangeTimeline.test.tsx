@@ -11,6 +11,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import type { ChatItem } from "@pi-outpost/shared";
 import { structuredExchangePresentation } from "./StructuredExchangeView";
+import { timelineFigureParts } from "@pi-outpost/shared/structured-exchange/timeline-figure";
+import { localToday } from "@pi-outpost/shared/structured-exchange/timeline";
 
 type ToolItem = Extract<ChatItem, { kind: "tool" }>;
 
@@ -161,33 +163,107 @@ describe("a timeline is drawn natively", () => {
     ]);
   });
 
-  it("offers no figure export for a timeline", () => {
+  it("offers its figure once, from the timeline's own controls", () => {
     renderBody();
-    expect(screen.queryByText("⤓ download SVG")).toBeNull();
-    expect(screen.queryByText("copy markup")).toBeNull();
+    // The timeline's own pair, built from the figure; not the graph's, which would
+    // serialize the live drawing with its selection in it.
+    expect(screen.getAllByText("⤓ download SVG")).toHaveLength(1);
+    expect(within(timeline()).getByTestId("timeline-download-svg")).toBeInTheDocument();
+    expect(screen.getAllByText("copy markup")).toHaveLength(1);
+  });
+});
+
+describe("TheFigureMatchesTheScreen", () => {
+  it("draws every bar, star and arrow at the figure's coordinates", () => {
+    renderBody();
+    const parts = timelineFigureParts(programme().data, { today: localToday(), referenceLine: "today" });
+    for (const group of parts.rows) {
+      if (group.testId === "timeline-activity" || group.testId === "timeline-milestone") {
+        const drawn = itemAt(Number(group.data!.row), Number(group.data!.item));
+        const shape = group.primitives[0];
+        if (shape.shape === "rect") {
+          const rect = drawn.querySelector("rect")!;
+          expect([rect.getAttribute("x"), rect.getAttribute("y"), rect.getAttribute("width")]).toEqual([String(shape.x), String(shape.y), String(shape.width)]);
+        } else if (shape.shape === "path") {
+          expect(drawn.querySelector("path")!.getAttribute("d")).toBe(shape.d);
+        }
+      }
+      if (group.testId === "timeline-dependency") {
+        const drawn = timeline().querySelector(`[data-testid="timeline-dependency"][data-from="${group.data!.from}"][data-to="${group.data!.to}"] path`)!;
+        expect(drawn.getAttribute("d")).toBe((group.primitives[0] as { d: string }).d);
+      }
+    }
+  });
+});
+
+describe("TheReaderCanSaveATimelineFigure", () => {
+  const copiedMarkup = async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText } });
+    fireEvent.click(within(timeline()).getByTestId("timeline-copy-svg"));
+    await vi.waitFor(() => expect(writeText).toHaveBeenCalled());
+    return writeText.mock.calls[0][0] as string;
+  };
+
+  it("TheDownloadedFigureFollowsTheDisplayOptions", async () => {
+    renderBody();
+    fireEvent.click(within(timeline()).getByTestId("timeline-compact-toggle"));
+    fireEvent.click(within(timeline()).getByTestId("timeline-dependencies-toggle"));
+    const markup = await copiedMarkup();
+    expect(markup.startsWith("<svg ")).toBe(true);
+    expect(markup).toContain('data-testid="timeline-section"');
+    expect(markup).not.toContain('data-testid="timeline-dependency"');
+    // A file outlives the day: dated, never "Today".
+    expect(markup).toContain(">15 Jan 2027<");
+    expect(markup).not.toContain("Today");
+  });
+
+  it("NoInteractionStateLeaves", async () => {
+    renderBody();
+    fireEvent.click(itemAt(1, 1));
+    fireEvent.focus(itemAt(1, 1));
+    const markup = await copiedMarkup();
+    expect(markup).not.toContain('data-selected="true"');
+    expect(markup).not.toContain('data-emphasised="true"');
+    expect(markup).not.toContain("timeline-focus-ring");
+    expect(markup).not.toContain("timeline-details");
+    expect(markup).not.toContain("tabindex");
+  });
+
+  it("downloads a file named after the plan", () => {
+    renderBody();
+    const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+    const created = vi.fn(() => "blob:x");
+    Object.assign(URL, { createObjectURL: created, revokeObjectURL: vi.fn() });
+    fireEvent.click(within(timeline()).getByTestId("timeline-download-svg"));
+    expect(click).toHaveBeenCalled();
+    expect((click.mock.contexts[0] as HTMLAnchorElement).download).toBe("timeline-Programme-X.svg");
+    click.mockRestore();
   });
 });
 
 describe("TheCurrentDateIsShownFromTheRenderingContext", () => {
   it("draws Today at the reader's date, across the rows, with its tag in the header", () => {
     renderBody();
-    const line = within(timeline()).getByTestId("timeline-today");
+    // The figure's group carries the name; the line is the shape inside it.
+    const group = within(timeline()).getByTestId("timeline-today");
+    const line = group.querySelector("line")!;
     // 2026-10-01 to 2027-01-15 is 106 days; half a day in, at four pixels a day.
     expect(Number(line.getAttribute("x1"))).toBe((106 + 0.5) * 4);
     expect(Number(line.getAttribute("y2"))).toBe(Number(within(timeline()).getByTestId("timeline-body").getAttribute("height")));
     expect(within(timeline()).getByTestId("timeline-today-tag")).toHaveTextContent("Today");
     // It is not an item a reader can select.
-    expect(line.getAttribute("tabindex")).toBeNull();
-    expect(line.getAttribute("role")).toBeNull();
+    expect(group.getAttribute("tabindex")).toBeNull();
+    expect(group.getAttribute("role")).toBeNull();
   });
 
   it("moves when the reader's date does, with the document unchanged", () => {
     const { unmount } = renderBody();
-    const first = Number(within(timeline()).getByTestId("timeline-today").getAttribute("x1"));
+    const first = Number(within(timeline()).getByTestId("timeline-today").querySelector("line")!.getAttribute("x1"));
     unmount();
     vi.setSystemTime(new Date(2027, 5, 15, 10, 0));
     renderBody();
-    expect(Number(within(timeline()).getByTestId("timeline-today").getAttribute("x1"))).toBeGreaterThan(first);
+    expect(Number(within(timeline()).getByTestId("timeline-today").querySelector("line")!.getAttribute("x1"))).toBeGreaterThan(first);
   });
 
   it("says which side of the range today is on, and draws no line, when it is outside", () => {
@@ -219,7 +295,7 @@ describe("DependenciesAreDrawnBetweenTheEndsTheyLink", () => {
       ["srr", "T2", "true"],
       ["dev", "cdr", "false"],
     ]);
-    expect(arrows[2].getAttribute("stroke-dasharray")).not.toBeNull();
+    expect(arrows[2].querySelector("path")!.getAttribute("stroke-dasharray")).not.toBeNull();
     // ArrowsDoNotHideLabels: every arrow precedes, in paint order, every item and annotation.
     const body = within(timeline()).getByTestId("timeline-body");
     const order = [...body.querySelectorAll('[data-testid="timeline-dependency"], [data-testid="timeline-annotation"]')];
@@ -397,5 +473,81 @@ describe("TheTextualEquivalentListsEveryItem", () => {
     renderBody();
     fireEvent.click(screen.getByText("show envelope"));
     expect(screen.getByTestId("structured-envelope").textContent).toContain('"kind": "timeline"');
+  });
+});
+
+describe("a compared timeline in the reader", () => {
+  /** The programme, compared with an earlier version where SRR and the study were earlier, audit existed, and T4 did not. */
+  const compared = () => {
+    const document = programme();
+    document.data.comparedTo = { label: "Plan of 1 September", date: "2026-09-01" };
+    document.data.rows[1].items[0].previous = { start: "2026-10-15", end: "2027-02-11" };
+    document.data.rows[1].items[1].previous = { date: "2027-02-08" };
+    document.data.rows[1].items.push({ type: "milestone", id: "audit", date: "2027-04-01", label: "Audit", role: "removed" });
+    document.data.rows[4].role = "added";
+    return document;
+  };
+
+  it("TheReferencePlanIsNamed", () => {
+    renderBody(compared());
+    expect(within(timeline()).getByTestId("timeline-compared-to")).toHaveTextContent("Compared with Plan of 1 September (2026-09-01)");
+    expect(within(timeline()).getByTestId("timeline-comparison-key")).toHaveTextContent("previous dates");
+  });
+
+  it("draws previous positions, shifts, new and removed marks", () => {
+    renderBody(compared());
+    const study = itemAt(1, 0);
+    expect(study.getAttribute("data-change")).toBe("moved");
+    expect(study.querySelector('[data-previous="true"]')).not.toBeNull();
+    expect(study.querySelector('[data-testid="timeline-annotation"]')!.textContent).toBe("Étude préliminaire +2 wk");
+    const audit = itemAt(1, 5);
+    expect(audit.getAttribute("data-change")).toBe("removed");
+    expect(audit.querySelector('[data-testid="timeline-annotation"]')!.getAttribute("text-decoration")).toBe("line-through");
+    expect(itemAt(4, 0).getAttribute("data-change")).toBe("added");
+  });
+
+  it("switches to the new version only, and back (TheNewVersionOnlyLooksLikeAPlainPlan, BackToTheComparison)", () => {
+    renderBody(compared());
+    fireEvent.click(within(timeline()).getByTestId("timeline-comparison-toggle"));
+    expect(within(timeline()).queryByTestId("timeline-compared-to")).toBeNull();
+    expect(timeline().querySelector('[data-previous="true"]')).toBeNull();
+    expect(timeline().querySelector("[data-change]")).toBeNull();
+    // The removed milestone is gone; everything else is the plan as presented.
+    expect(items("milestone")).toHaveLength(3);
+    fireEvent.click(within(timeline()).getByTestId("timeline-comparison-toggle"));
+    expect(timeline().querySelector('[data-previous="true"]')).not.toBeNull();
+    expect(items("milestone")).toHaveLength(4);
+  });
+
+  it("OnlyWhatMovedHidesUnchangedTasks", () => {
+    renderBody(compared());
+    fireEvent.click(within(timeline()).getByTestId("timeline-only-changed-toggle"));
+    expect(within(timeline()).getAllByTestId("timeline-task-label").map((label) => label.textContent)).toEqual(["Études système", "Recette"]);
+    expect(within(timeline()).getByTestId("timeline-unchanged-hidden")).toHaveTextContent("1 unchanged task hidden");
+  });
+
+  it("downloads the view on screen", async () => {
+    renderBody(compared());
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText } });
+    fireEvent.click(within(timeline()).getByTestId("timeline-copy-svg"));
+    await vi.waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
+    expect(writeText.mock.calls[0][0]).toContain("Compared with Plan of 1 September");
+    fireEvent.click(within(timeline()).getByTestId("timeline-comparison-toggle"));
+    fireEvent.click(within(timeline()).getByTestId("timeline-copy-svg"));
+    await vi.waitFor(() => expect(writeText).toHaveBeenCalledTimes(2));
+    expect(writeText.mock.calls[1][0]).not.toContain("Compared with");
+    expect(writeText.mock.calls[1][0]).not.toContain('data-previous="true"');
+  });
+
+  it("TheTextListsEveryChange", () => {
+    renderBody(compared());
+    fireEvent.click(screen.getByText("show text equivalent"));
+    const text = screen.getByTestId("structured-text-equivalent").textContent!;
+    expect(text).toContain("Compared with Plan of 1 September (2026-09-01)");
+    expect(text).toContain("activity 2026-11-01 to 2027-02-28: Étude préliminaire (etude-preliminaire) — moved +2 wk, was 2026-10-15 to 2027-02-11");
+    expect(text).toContain("milestone 2027-03-01: System Requirements Review [SRR] (srr) — moved +3 wk, was 2027-02-08");
+    expect(text).toContain("milestone 2027-04-01: Audit (audit) — removed");
+    expect(text).toContain("Recette [T4] — new");
   });
 });

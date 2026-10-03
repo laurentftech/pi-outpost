@@ -56,7 +56,7 @@ with the same reasons; the `v3-` cases exercise only the timeline. `unknown-vers
 moved to version 4 when version 3 was published, and the version 1 lock records why.
 
 Version 3 may still grow in place until a release publishes it, as version 2 did for
-viewpoints. From that release on it is frozen like the other two: another timeline
+viewpoints — compared timelines (`comparedTo`, `previous`, `role`) were added that way. From that release on it is frozen like the other two: another timeline
 scale (`week`, `quarter`), another item or row type, or anything else a version 3
 document could not say before, is a version 4.
 
@@ -89,6 +89,9 @@ JSON Schema decides shape. These are the relational rules that follow it, and th
 | `empty-task-endpoint` | a dependency naming a task that holds no item, so has no start or finish |
 | `self-dependency` | a dependency from something to itself, or between a task and one of its own items |
 | `duplicate-dependency` | the same `from`, `to` and type declared twice |
+| `comparison-without-reference` | previous dates or a change role in a timeline that declares no `comparedTo` |
+| `contradictory-change` | previous dates on an added or removed item, or an item role contradicting its task's |
+| `dependency-on-removed` | a dependency naming a task or item the plan dropped |
 | `dependency-cycle` | dependencies that loop, which no dates could honour; the message names the loop |
 | `unresolved-viewpoint-kind` | a viewpoint retaining a kind no element, or no relationship, of the document has — checked per vocabulary, and never corrected to a near miss |
 

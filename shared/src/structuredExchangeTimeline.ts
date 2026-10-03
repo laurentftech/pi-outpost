@@ -135,6 +135,71 @@ export function dependencySatisfied(
   return to[ends.to] >= from[ends.from];
 }
 
+/* ── Comparison ───────────────────────────────────────────────────────────────
+ *
+ * What moved in a compared timeline, in days and in words. Here rather than beside
+ * `compareTimelines` because the layout writes shifts beside the items it draws.
+ */
+
+/** An item's dates as day numbers, start and end; a milestone's are one day. */
+export function daysOf(item: { start: string; end: string } | { date: string }): { start: number; end: number } {
+  if ("date" in item) {
+    const day = dayNumber(item.date) ?? 0;
+    return { start: day, end: day };
+  }
+  return { start: dayNumber(item.start) ?? 0, end: dayNumber(item.end) ?? 0 };
+}
+
+/** Where an item stands now and where it stood, in days; zero when unmoved. */
+export function shiftOf(item: StructuredTimelineItem): { start: number; end: number } | undefined {
+  if (item.previous === undefined) return undefined;
+  const now = daysOf(item.type === "activity" ? { start: item.start, end: item.end } : { date: item.date });
+  const then = daysOf(item.previous);
+  return { start: now.start - then.start, end: now.end - then.end };
+}
+
+/**
+ * A number of days as a reader says it: days under two weeks, weeks under ten,
+ * months beyond, signed. `0` is unmoved and says nothing.
+ */
+export function describeDays(days: number): string {
+  if (days === 0) return "";
+  const sign = days > 0 ? "+" : "−";
+  const size = Math.abs(days);
+  if (size < 14) return `${sign}${size} d`;
+  if (size < 70) return `${sign}${Math.round(size / 7)} wk`;
+  return `${sign}${Math.round(size / 30.44)} mo`;
+}
+
+/**
+ * The shift written beside an item: one amount when both ends moved alike, else
+ * each end that moved. Empty when nothing moved.
+ */
+export function shiftText(item: StructuredTimelineItem): string {
+  const shift = shiftOf(item);
+  if (shift === undefined) return "";
+  if (shift.start === shift.end) return describeDays(shift.start);
+  return [
+    shift.start === 0 ? undefined : `start ${describeDays(shift.start)}`,
+    shift.end === 0 ? undefined : `end ${describeDays(shift.end)}`,
+  ]
+    .filter((part): part is string => part !== undefined)
+    .join(", ");
+}
+
+/** Whether an item holds a change the comparison shows. */
+export function itemChanged(item: StructuredTimelineItem, task?: StructuredTimelineTask): boolean {
+  if (item.role !== undefined || task?.role !== undefined) return true;
+  const shift = shiftOf(item);
+  return shift !== undefined && (shift.start !== 0 || shift.end !== 0);
+}
+
+/** Whether a task holds anything that changed: itself, or one of its items. */
+export function taskChanged(task: StructuredTimelineTask): boolean {
+  return task.role !== undefined || task.items.some((item) => itemChanged(item, task));
+}
+
+
 /* ── Layout ─────────────────────────────────────────────────────────────────
  *
  * Dates to coordinates, and nothing else: a pure function of the document, the
@@ -187,6 +252,8 @@ export interface TimelineLabel extends TimelineBox {
   text: string;
   /** Inside the bar it belongs to, or beside its glyph. */
   inside: boolean;
+  /** Struck through: the item was dropped from the plan. */
+  struck?: boolean;
 }
 
 export interface TimelineItemLayout {
@@ -202,6 +269,11 @@ export interface TimelineItemLayout {
   label?: TimelineLabel;
   kind?: string;
   days: { start: number; end: number };
+  /** In a compared timeline: what happened to the item since the previous plan. */
+  change?: "moved" | "added" | "removed";
+  /** Where a moved item stood: the previous bar, or the previous star's square. */
+  ghost?: TimelineBox;
+  ghostCenter?: { x: number; y: number };
 }
 
 export type TimelineRowLayout =
@@ -237,6 +309,19 @@ export interface TimelineLayout {
   today: { x: number; day: number } | { outside: "before" | "after"; day: number };
   /** Item kinds in order of first appearance, for the legend and the tints. */
   kinds: string[];
+  /** Tasks left out by "only what moved", so the view can say how many. */
+  hiddenTasks: number;
+}
+
+/**
+ * A month's header text for the room it has: the abbreviation, its initial, or
+ * nothing. A figure fitted to a page narrows months to a few pixels; an abbreviation
+ * run into its neighbours is worse than none, and the years stay labelled anyway.
+ */
+export function monthLabelFor(band: TimelineHeaderBand): string {
+  if (band.width >= 24) return band.label;
+  if (band.width >= 9) return band.label.charAt(0);
+  return "";
 }
 
 /** What an item is annotated with: its label, or a milestone's kind. Never invented. */
@@ -275,7 +360,7 @@ function monthDay(year: number, month: number): number {
   return Math.round(instant.getTime() / MS_PER_DAY);
 }
 
-type Occupant = { kind: "bar" | "star" | "label"; x0: number; x1: number };
+type Occupant = { kind: "bar" | "star" | "label" | "ghost"; x0: number; x1: number };
 
 /**
  * Whether two things may share a lane where they overlap.
@@ -285,7 +370,10 @@ type Occupant = { kind: "bar" | "star" | "label"; x0: number; x1: number };
  * two bars, two stars.
  */
 function compatible(a: Occupant["kind"], b: Occupant["kind"]): boolean {
-  return (a === "bar" && b === "star") || (a === "star" && b === "bar");
+  // A previous position is drawn dashed under the current one: a star may sit on it as
+  // it may on a bar, and nothing else may cross it.
+  const outline = (kind: Occupant["kind"]) => kind === "bar" || kind === "ghost";
+  return (outline(a) && b === "star") || (a === "star" && outline(b));
 }
 
 function overlaps(a: Occupant, b: Occupant): boolean {
@@ -296,12 +384,16 @@ function overlaps(a: Occupant, b: Occupant): boolean {
 export interface TimelineLayoutOptions {
   /** One row per section — a separator and the tasks under it — instead of one per task. */
   compact?: boolean;
+  /** Horizontal scale. The reader's is `TIMELINE_PX_PER_DAY`; a figure fitted to a page uses less. */
+  pxPerDay?: number;
+  /** In a compared timeline, draw only the tasks holding a change, under the separators that head them. */
+  onlyChanged?: boolean;
 }
 
 export function layoutTimeline(data: StructuredTimelineData, today: number, options: TimelineLayoutOptions = {}): TimelineLayout {
   const start = dayNumber(data.time.start) ?? 0;
   const end = dayNumber(data.time.end) ?? start;
-  const px = TIMELINE_PX_PER_DAY;
+  const px = options.pxPerDay ?? TIMELINE_PX_PER_DAY;
   const width = (end - start + 1) * px;
   const xOf = (day: number) => (day - start) * px;
 
@@ -342,10 +434,33 @@ export function layoutTimeline(data: StructuredTimelineData, today: number, opti
    * it — never above. Placed purely by date, a review falling before the next phase
    * took the top line and pushed that phase underneath it, which reads upside down.
    */
-  const place = (entries: { row: number; index: number; item: StructuredTimelineItem; text?: string }[], top: number) => {
+  const compared = data.comparedTo !== undefined;
+  /** The annotation in a comparison: the label, then what happened to the item. */
+  const comparedText = (item: StructuredTimelineItem, task: StructuredTimelineTask, base: string | undefined): string | undefined => {
+    if (!compared) return base;
+    if (item.role === "added" || task.role === "added") return base === undefined ? "new" : `${base} · new`;
+    const shift = shiftText(item);
+    return shift === "" ? base : base === undefined ? shift : `${base} ${shift}`;
+  };
+  const changeOf = (item: StructuredTimelineItem, task: StructuredTimelineTask): TimelineItemLayout["change"] => {
+    if (!compared) return undefined;
+    if (item.role === "removed" || task.role === "removed") return "removed";
+    if (item.role === "added" || task.role === "added") return "added";
+    return shiftText(item) === "" ? undefined : "moved";
+  };
+  const place = (
+    entries: { row: number; index: number; item: StructuredTimelineItem; text?: string; change?: TimelineItemLayout["change"] }[],
+    top: number,
+  ) => {
     const lanes: Occupant[][] = [];
     const placed: Omit<TimelineItemLayout, "glyph" | "center" | "label">[] = [];
-    const geometry: { label?: Omit<TimelineLabel, "y" | "height">; x0: number; x1: number; cx?: number }[] = [];
+    const geometry: {
+      label?: Omit<TimelineLabel, "y" | "height">;
+      x0: number;
+      x1: number;
+      cx?: number;
+      ghost?: { x0: number; x1: number; cx?: number };
+    }[] = [];
     const order = entries
       .map((entry) => ({ ...entry, days: itemDays(entry.item) }))
       .filter((entry): entry is typeof entry & { days: { start: number; end: number } } => entry.days !== undefined)
@@ -356,8 +471,20 @@ export function layoutTimeline(data: StructuredTimelineData, today: number, opti
           a.row - b.row ||
           a.index - b.index,
       );
-    for (const { item, index, row, days, text } of order) {
+    for (const { item, index, row, days, text, change } of order) {
       const occupants: Occupant[] = [];
+      // Where a moved item stood: an occupant like a bar, so no label lands on it.
+      let ghost: { x0: number; x1: number; cx?: number } | undefined;
+      if (change === "moved" && item.previous !== undefined) {
+        const then = daysOf(item.previous);
+        if (item.type === "activity") {
+          ghost = { x0: xOf(then.start), x1: xOf(then.end + 1) };
+        } else {
+          const cxThen = xOf(then.start) + px / 2;
+          ghost = { x0: cxThen - TIMELINE_STAR_RADIUS, x1: cxThen + TIMELINE_STAR_RADIUS, cx: cxThen };
+        }
+        occupants.push({ kind: "ghost", x0: ghost.x0, x1: ghost.x1 });
+      }
       let label: Omit<TimelineLabel, "y" | "height"> | undefined;
       let x0: number;
       let x1: number;
@@ -394,8 +521,16 @@ export function layoutTimeline(data: StructuredTimelineData, today: number, opti
         lanes.push([]);
       }
       lanes[lane].push(...occupants);
-      placed.push({ row, item: index, type: item.type, lane, days, ...(item.kind ? { kind: item.kind } : {}) });
-      geometry.push({ label, x0, x1, cx });
+      placed.push({
+        row,
+        item: index,
+        type: item.type,
+        lane,
+        days,
+        ...(item.kind ? { kind: item.kind } : {}),
+        ...(change === undefined ? {} : { change }),
+      });
+      geometry.push({ label: label === undefined ? undefined : { ...label, ...(change === "removed" ? { struck: true } : {}) }, x0, x1, cx, ghost });
     }
     placed.forEach((entry, position) => {
       const shape = geometry[position];
@@ -404,11 +539,20 @@ export function layoutTimeline(data: StructuredTimelineData, today: number, opti
         entry.type === "activity"
           ? { x: shape.x0, y: middle - TIMELINE_BAR_HEIGHT / 2, width: shape.x1 - shape.x0, height: TIMELINE_BAR_HEIGHT }
           : { x: shape.x0, y: middle - TIMELINE_STAR_RADIUS, width: 2 * TIMELINE_STAR_RADIUS, height: 2 * TIMELINE_STAR_RADIUS };
+      const ghost = shape.ghost;
       items.push({
         ...entry,
         glyph,
         ...(shape.cx !== undefined ? { center: { x: shape.cx, y: middle } } : {}),
         ...(shape.label !== undefined ? { label: { ...shape.label, y: middle - 8, height: 16 } } : {}),
+        ...(ghost === undefined
+          ? {}
+          : entry.type === "activity"
+            ? { ghost: { x: ghost.x0, y: middle - TIMELINE_BAR_HEIGHT / 2, width: ghost.x1 - ghost.x0, height: TIMELINE_BAR_HEIGHT } }
+            : {
+                ghost: { x: ghost.x0, y: middle - TIMELINE_STAR_RADIUS, width: 2 * TIMELINE_STAR_RADIUS, height: 2 * TIMELINE_STAR_RADIUS },
+                ghostCenter: { x: ghost.cx!, y: middle },
+              }),
       });
     });
     return Math.max(1, lanes.length);
@@ -417,7 +561,13 @@ export function layoutTimeline(data: StructuredTimelineData, today: number, opti
 
   const taskRow = (task: StructuredTimelineTask, rowIndex: number) => {
     const lanes = place(
-      task.items.map((item, index) => ({ row: rowIndex, index, item, text: annotationOf(item) })),
+      task.items.map((item, index) => ({
+        row: rowIndex,
+        index,
+        item,
+        text: comparedText(item, task, annotationOf(item)),
+        change: changeOf(item, task),
+      })),
       y,
     );
     const height = heightOf(lanes);
@@ -443,7 +593,8 @@ export function layoutTimeline(data: StructuredTimelineData, today: number, opti
             row,
             index,
             item,
-            text: annotationOf(item) ?? (item.type === "activity" ? task.label : undefined),
+            text: comparedText(item, task, annotationOf(item) ?? (item.type === "activity" ? task.label : undefined)),
+            change: changeOf(item, task),
           })),
         ),
         y,
@@ -463,7 +614,25 @@ export function layoutTimeline(data: StructuredTimelineData, today: number, opti
     section = undefined;
   };
 
+  // "Only what moved": the tasks holding a change, and the separators heading them.
+  const keep = (() => {
+    const kept = new Set<number>();
+    if (!(options.onlyChanged && compared)) return undefined;
+    let separator: number | undefined;
+    data.rows.forEach((row, rowIndex) => {
+      if (row.type === "separator") separator = rowIndex;
+      else if (taskChanged(row)) {
+        kept.add(rowIndex);
+        if (separator !== undefined) kept.add(separator);
+      }
+    });
+    return kept;
+  })();
+  const hiddenTasks =
+    keep === undefined ? 0 : data.rows.filter((row, rowIndex) => row.type === "task" && !keep.has(rowIndex)).length;
+
   data.rows.forEach((row, rowIndex) => {
+    if (keep !== undefined && !keep.has(rowIndex)) return;
     if (row.type === "separator") {
       if (options.compact) {
         flush();
@@ -504,6 +673,7 @@ export function layoutTimeline(data: StructuredTimelineData, today: number, opti
           ? { outside: "after", day: today }
           : { x: xOf(today) + px / 2, day: today },
     kinds,
+    hiddenTasks,
   };
 }
 
@@ -511,10 +681,12 @@ export function layoutTimeline(data: StructuredTimelineData, today: number, opti
 function besideLabel(text: string, x0: number, x1: number, width: number): Omit<TimelineLabel, "y" | "height"> {
   const textW = textWidth(text);
   const right = x1 + TIMELINE_LABEL_GAP;
-  if (right + textW <= width || x0 - TIMELINE_LABEL_GAP - textW < 0) {
-    return { text, inside: false, x: right, width: textW };
-  }
-  return { text, inside: false, x: x0 - TIMELINE_LABEL_GAP - textW, width: textW };
+  if (right + textW <= width) return { text, inside: false, x: right, width: textW };
+  const left = x0 - TIMELINE_LABEL_GAP - textW;
+  if (left >= 0) return { text, inside: false, x: left, width: textW };
+  // Room on neither side: pulled back inside the drawing, over its own glyph, rather
+  // than cut off at the edge of a figure — the end of a label is often the shift.
+  return { text, inside: false, x: Math.max(0, width - textW), width: textW };
 }
 
 function layoutDependencies(
@@ -629,6 +801,8 @@ export function timelineFacts(data: StructuredTimelineData): {
   milestones: number;
   dependencies: number;
   unsatisfied: StructuredTimelineDependency[];
+  /** In a compared timeline: what changed since the plan it is compared with. */
+  comparison?: { moved: number; added: number; removed: number; largestSlip?: { name: string; shift: string } };
 } {
   let tasks = 0;
   let activities = 0;
@@ -643,12 +817,38 @@ export function timelineFacts(data: StructuredTimelineData): {
   }
   const endpoints = timelineEndpoints(data);
   const dependencies = data.dependencies ?? [];
+  let comparison: ReturnType<typeof timelineFacts>["comparison"];
+  if (data.comparedTo !== undefined) {
+    let moved = 0;
+    let added = 0;
+    let removed = 0;
+    let largest: { days: number; name: string; shift: string } | undefined;
+    for (const row of data.rows) {
+      if (row.type !== "task") continue;
+      for (const item of row.items) {
+        const role = item.role ?? row.role;
+        if (role === "added") added += 1;
+        else if (role === "removed") removed += 1;
+        else {
+          const shift = shiftOf(item);
+          if (shift === undefined || (shift.start === 0 && shift.end === 0)) continue;
+          moved += 1;
+          // A slip is how much later the work finishes.
+          if (shift.end > 0 && (largest === undefined || shift.end > largest.days)) {
+            largest = { days: shift.end, name: annotationOf(item) ?? item.id ?? row.label, shift: describeDays(shift.end) };
+          }
+        }
+      }
+    }
+    comparison = { moved, added, removed, ...(largest === undefined ? {} : { largestSlip: { name: largest.name, shift: largest.shift } }) };
+  }
   return {
     tasks,
     activities,
     milestones,
     dependencies: dependencies.length,
     unsatisfied: dependencies.filter((dependency) => dependencySatisfied(dependency, endpoints) === false),
+    ...(comparison === undefined ? {} : { comparison }),
   };
 }
 
@@ -660,6 +860,9 @@ export function timelineFacts(data: StructuredTimelineData): {
 export function timelineTextLines(data: StructuredTimelineData): string[] {
   const lines: string[] = [];
   if (data.title !== undefined && data.title !== "") lines.push(data.title);
+  if (data.comparedTo !== undefined) {
+    lines.push(`Compared with ${data.comparedTo.label}${data.comparedTo.date === undefined ? "" : ` (${data.comparedTo.date})`}`);
+  }
   lines.push(`From ${data.time.start} to ${data.time.end}, by ${data.time.scale}`);
   for (const row of data.rows) {
     lines.push("");
@@ -667,13 +870,22 @@ export function timelineTextLines(data: StructuredTimelineData): string[] {
       lines.push(row.label ? `— ${row.label} —` : "———");
       continue;
     }
-    lines.push(`${row.label} [${row.id}]${row.items.length === 0 ? " — no items" : ""}`);
+    const taskChange = row.role === undefined ? "" : row.role === "added" ? " — new" : " — removed";
+    lines.push(`${row.label} [${row.id}]${row.items.length === 0 ? " — no items" : ""}${taskChange}`);
     for (const item of row.items) {
       const when = item.type === "activity" ? `${item.start} to ${item.end}` : item.date;
       const label = item.label === undefined ? "" : `: ${item.label}`;
       const kind = item.kind === undefined ? "" : ` [${item.kind}]`;
       const id = item.id === undefined ? "" : ` (${item.id})`;
-      lines.push(`  ${item.type} ${when}${label}${kind}${id}`);
+      const change = (() => {
+        if (item.role === "added") return " — new";
+        if (item.role === "removed") return " — removed";
+        const shift = shiftText(item);
+        if (shift === "" || item.previous === undefined) return "";
+        const was = "date" in item.previous ? item.previous.date : `${item.previous.start} to ${item.previous.end}`;
+        return ` — moved ${shift}, was ${was}`;
+      })();
+      lines.push(`  ${item.type} ${when}${label}${kind}${id}${change}`);
     }
   }
   const dependencies = data.dependencies ?? [];

@@ -734,6 +734,26 @@
         },
         "kind": {
           "$ref": "#/$defs/kind"
+        },
+        "previous": {
+          "description": "Where the activity stood in the plan named by comparedTo.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "start",
+            "end"
+          ],
+          "properties": {
+            "start": {
+              "$ref": "#/$defs/calendarDate"
+            },
+            "end": {
+              "$ref": "#/$defs/calendarDate"
+            }
+          }
+        },
+        "role": {
+          "$ref": "#/$defs/timelineChangeRole"
         }
       }
     },
@@ -760,6 +780,22 @@
         },
         "kind": {
           "$ref": "#/$defs/kind"
+        },
+        "previous": {
+          "description": "Where the milestone stood in the plan named by comparedTo.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "date"
+          ],
+          "properties": {
+            "date": {
+              "$ref": "#/$defs/calendarDate"
+            }
+          }
+        },
+        "role": {
+          "$ref": "#/$defs/timelineChangeRole"
         }
       }
     },
@@ -789,6 +825,9 @@
           "items": {
             "$ref": "#/$defs/timelineItem"
           }
+        },
+        "role": {
+          "$ref": "#/$defs/timelineChangeRole"
         }
       }
     },
@@ -913,6 +952,13 @@
             "$ref": "#/$defs/timelineSeparator"
           }
         }
+      ]
+    },
+    "timelineChangeRole": {
+      "description": "In a compared timeline: new since the previous plan, or dropped from it and kept so it can be shown.",
+      "enum": [
+        "added",
+        "removed"
       ]
     }
   },
@@ -1128,6 +1174,24 @@
               "maxItems": 2000,
               "items": {
                 "$ref": "#/$defs/timelineDependency"
+              }
+            },
+            "comparedTo": {
+              "description": "The plan this timeline is compared with. Its presence makes the timeline a comparison: items may then carry previous dates and roles.",
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "label"
+              ],
+              "properties": {
+                "label": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 500
+                },
+                "date": {
+                  "$ref": "#/$defs/calendarDate"
+                }
               }
             }
           }

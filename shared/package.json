@@ -34,6 +34,8 @@
     "./structured-exchange/project-views": "./src/structuredExchangeProjectViews.ts",
     "./structured-exchange/reply-blocks": "./src/structuredExchangeReplyBlocks.ts",
     "./structured-exchange/timeline": "./src/structuredExchangeTimeline.ts",
+    "./structured-exchange/timeline-figure": "./src/structuredExchangeTimelineFigure.ts",
+    "./structured-exchange/timeline-comparison": "./src/structuredExchangeTimelineComparison.ts",
     "./diagram-orientation": "./src/diagramOrientation.ts",
     "./docx": "./src/docx/index.ts",
     "./markdown-math": "./src/markdownMath.ts"

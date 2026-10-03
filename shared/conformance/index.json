@@ -92,6 +92,9 @@
     },
     {
       "file": "valid/v3-timeline-unsatisfied-dependency.json"
+    },
+    {
+      "file": "valid/v3-timeline-compared.json"
     }
   ],
   "invalid": [
@@ -330,6 +333,26 @@
     {
       "file": "invalid/v3-timeline-under-version-2.json",
       "expectedRule": "schema/enum"
+    },
+    {
+      "file": "invalid/v3-timeline-comparison-without-reference.json",
+      "expectedRule": "comparison-without-reference"
+    },
+    {
+      "file": "invalid/v3-timeline-contradictory-change.json",
+      "expectedRule": "contradictory-change"
+    },
+    {
+      "file": "invalid/v3-timeline-previous-outside-range.json",
+      "expectedRule": "item-outside-range"
+    },
+    {
+      "file": "invalid/v3-timeline-dependency-on-removed.json",
+      "expectedRule": "dependency-on-removed"
+    },
+    {
+      "file": "invalid/v3-timeline-previous-wrong-shape.json",
+      "expectedRule": "schema/additionalProperties"
     }
   ]
 }

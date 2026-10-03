@@ -206,6 +206,9 @@ function withAllowedValues(error: SchemaError): SchemaError {
  * `color`, a `shape` — and "must not have additional properties" at the item does
  * not say which of its fields was the one.
  */
+/** Names a producer reaches for when it tries to draw rather than describe. */
+const PRESENTATION_NAMES = new Set(["x", "y", "color", "colour", "fill", "stroke", "shape", "width", "height", "position", "style", "dash"]);
+
 function namedExtras(error: SchemaError): SchemaError[] {
   const names = (error.params as { additionalProperties?: unknown } | undefined)?.additionalProperties;
   if (!Array.isArray(names) || names.length === 0) return [error];
@@ -214,7 +217,9 @@ function namedExtras(error: SchemaError): SchemaError[] {
       ({
         ...error,
         instancePath: `${error.instancePath ?? ""}/${String(name).replace(/~/g, "~0").replace(/\//g, "~1")}`,
-        message: `"${String(name)}" is not defined here; a timeline carries what the plan means, and the renderer derives positions, colours and shapes`,
+        message: PRESENTATION_NAMES.has(String(name).toLowerCase())
+          ? `"${String(name)}" is not defined here; a timeline carries what the plan means, and the renderer derives positions, colours and shapes`
+          : `"${String(name)}" is not defined here`,
       }) as SchemaError,
   );
 }

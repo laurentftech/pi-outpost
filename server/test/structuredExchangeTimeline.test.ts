@@ -332,3 +332,89 @@ describe("ATimelineIsNotAProposal", () => {
     assert.deepEqual(rulesOf(document), ["viewpoints-without-graph /viewpoints"]);
   });
 });
+
+describe("ATimelineMayStateWhatItIsComparedWith", () => {
+  const compared = () => {
+    const document = programme();
+    document.data.comparedTo = { label: "Plan of 1 September", date: "2026-09-01" };
+    document.data.rows[1].items[2].previous = { start: "2027-03-01", end: "2027-06-30" };
+    document.data.rows[1].items[4].role = "added";
+    document.data.rows.push({ type: "task", id: "T9", label: "Dropped", role: "removed", items: [{ type: "milestone", id: "gone", date: "2027-04-01" }] });
+    return document;
+  };
+
+  test("AComparedTimelineIsValid", () => {
+    assert.deepEqual(rulesOf(compared()), []);
+  });
+
+  test("APlainTimelineIsUnchanged", () => {
+    assert.deepEqual(rulesOf(programme()), []);
+  });
+
+  test("PreviousDatesFollowTheItemShape", () => {
+    const document = compared();
+    document.data.rows[1].items[1].previous = { start: "2027-02-01", end: "2027-02-02" };
+    const issues = issuesOf(document);
+    assert.ok(issues.length > 0);
+    assert.ok(issues.every((issue) => issue.path.startsWith("/data/rows/1/items/1/previous")), JSON.stringify(issues));
+  });
+});
+
+describe("ComparisonDataIsCheckedAfterTheSchema", () => {
+  test("ComparisonWithoutReferenceIsRefused", () => {
+    const document = programme();
+    document.data.rows[1].items[1].previous = { date: "2027-02-01" };
+    document.data.rows[2].role = "added";
+    assert.deepEqual(rulesOf(document).sort(), [
+      "comparison-without-reference /data/rows/1/items/1/previous",
+      "comparison-without-reference /data/rows/2/role",
+    ]);
+  });
+
+  test("AnAddedItemWithPreviousDatesIsRefused", () => {
+    const document = programme();
+    document.data.comparedTo = { label: "Before" };
+    document.data.rows[1].items[1].role = "added";
+    document.data.rows[1].items[1].previous = { date: "2027-02-01" };
+    assert.deepEqual(rulesOf(document), ["contradictory-change /data/rows/1/items/1/previous"]);
+  });
+
+  test("an item removed inside an added task is contradictory", () => {
+    const document = programme();
+    document.data.comparedTo = { label: "Before" };
+    document.data.rows[2].role = "added";
+    document.data.rows[2].items[0].role = "removed";
+    document.data.dependencies = [];
+    assert.deepEqual(rulesOf(document), ["contradictory-change /data/rows/2/items/0/role"]);
+  });
+
+  test("previous dates are real days, in order", () => {
+    const document = programme();
+    document.data.comparedTo = { label: "Before" };
+    document.data.rows[1].items[0].previous = { start: "2027-02-30", end: "2027-03-31" };
+    document.data.rows[1].items[2].previous = { start: "2027-06-01", end: "2027-05-01" };
+    assert.deepEqual(rulesOf(document).sort(), [
+      "invalid-date /data/rows/1/items/0/previous/start",
+      "inverted-range /data/rows/1/items/2/previous",
+    ]);
+  });
+
+  test("PreviousDatesOutsideTheRangeAreRefused", () => {
+    const document = programme();
+    document.data.comparedTo = { label: "Before" };
+    document.data.rows[1].items[0].previous = { start: "2026-09-01", end: "2027-02-28" };
+    const issues = issuesOf(document);
+    assert.deepEqual(issues.map((issue) => `${issue.rule} ${issue.path}`), ["item-outside-range /data/rows/1/items/0/previous"]);
+    assert.match(issues[0].message, /covers both plans/);
+  });
+
+  test("ADependencyOnARemovedItemIsRefused", () => {
+    const document = programme();
+    document.data.comparedTo = { label: "Before" };
+    document.data.rows[1].items[1].role = "removed";
+    assert.deepEqual(rulesOf(document).sort(), [
+      "dependency-on-removed /data/dependencies/0/to",
+      "dependency-on-removed /data/dependencies/1/from",
+    ]);
+  });
+});

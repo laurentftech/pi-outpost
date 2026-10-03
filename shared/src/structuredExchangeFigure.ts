@@ -88,6 +88,8 @@ type PrimitiveShape =
       height: number;
       rx?: number;
       fill?: string;
+      /** The fill alone made lighter, so the outline keeps its full colour. */
+      fillOpacity?: number;
       stroke?: string;
       strokeWidth?: number;
       strokeDasharray?: string;
@@ -108,6 +110,8 @@ type PrimitiveShape =
       stroke?: string;
       strokeWidth?: number;
       paintOrder?: "stroke";
+      /** Struck through: a dropped item's name, still readable. */
+      textDecoration?: "line-through";
       /** Carried through to `data-testid`, for the assertions that name it. */
       testId?: string;
     }
@@ -317,6 +321,7 @@ function primitiveMarkup(primitive: Primitive): string {
         ["height", primitive.height],
         ["rx", primitive.rx],
         ["fill", primitive.fill],
+        ["fill-opacity", primitive.fillOpacity],
         ["stroke", primitive.stroke],
         ["stroke-width", primitive.strokeWidth],
         ["stroke-dasharray", primitive.strokeDasharray],
@@ -335,6 +340,7 @@ function primitiveMarkup(primitive: Primitive): string {
         ["stroke", primitive.stroke],
         ["stroke-width", primitive.strokeWidth],
         ["paint-order", primitive.paintOrder],
+        ["text-decoration", primitive.textDecoration],
         ["opacity", primitive.opacity],
         ["data-testid", primitive.testId],
         ...data,

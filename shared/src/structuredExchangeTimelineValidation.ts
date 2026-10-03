@@ -63,15 +63,66 @@ export function timelineIssues(data: StructuredTimelineData): StructuredExchange
     }
   };
 
+  // A comparison states what it is compared with; without that, previous dates and
+  // roles would be claims about an unnamed plan.
+  const compared = data.comparedTo !== undefined;
+  if (data.comparedTo?.date !== undefined) day(data.comparedTo.date, "/data/comparedTo/date");
+  const withoutReference = (at: string) =>
+    issues.push({
+      rule: "comparison-without-reference",
+      path: at,
+      message: "previous dates and change roles describe a comparison; declare `comparedTo` naming the plan they compare with",
+    });
+
   const kinds = new Set<string>();
   data.rows.forEach((row, rowIndex) => {
     if (row.type !== "task") return;
     const rowAt = `/data/rows/${rowIndex}`;
     identify(row.id, rowAt);
+    if (row.role !== undefined && !compared) withoutReference(`${rowAt}/role`);
     row.items.forEach((item, itemIndex) => {
       const at = `${rowAt}/items/${itemIndex}`;
       identify(item.id, at);
       if (item.kind !== undefined) kinds.add(item.kind);
+      if (item.role !== undefined && !compared) withoutReference(`${at}/role`);
+      if (item.previous !== undefined) {
+        if (!compared) withoutReference(`${at}/previous`);
+        // An added or removed thing has no previous position to show: it was not in
+        // one plan or the other.
+        if (item.role !== undefined || row.role !== undefined) {
+          issues.push({
+            rule: "contradictory-change",
+            path: `${at}/previous`,
+            message: `an item that is ${item.role ?? `in a task that is ${row.role}`} has no previous dates; it is new or dropped, not moved`,
+          });
+        }
+        const previous = item.previous as { start?: string; end?: string; date?: string };
+        const before =
+          item.type === "activity"
+            ? { first: day(previous.start!, `${at}/previous/start`), last: day(previous.end!, `${at}/previous/end`) }
+            : (() => {
+                const only = day(previous.date!, `${at}/previous/date`);
+                return { first: only, last: only };
+              })();
+        if (before.first !== undefined && before.last !== undefined) {
+          if (before.first > before.last) {
+            issues.push({ rule: "inverted-range", path: `${at}/previous`, message: `the previous dates start on ${previous.start}, after they end on ${previous.end}` });
+          } else if (range !== undefined && (before.first < range.start || before.last > range.end)) {
+            issues.push({
+              rule: "item-outside-range",
+              path: `${at}/previous`,
+              message: `the previous dates fall outside the timeline's range ${declaredRange}; the range covers both plans, so widen \`time\``,
+            });
+          }
+        }
+      }
+      if (item.role !== undefined && row.role !== undefined && item.role !== row.role) {
+        issues.push({
+          rule: "contradictory-change",
+          path: `${at}/role`,
+          message: `an item ${item.role} in a task that is ${row.role}`,
+        });
+      }
       let first: number | undefined;
       let last: number | undefined;
       if (item.type === "activity") {
@@ -113,6 +164,32 @@ export function timelineIssues(data: StructuredTimelineData): StructuredExchange
   }
 
   issues.push(...dependencyIssues(data, timelineEndpoints(data)));
+  issues.push(...removedDependencyIssues(data));
+  return issues;
+}
+
+/** A dependency on something the plan dropped: it no longer constrains anything. */
+function removedDependencyIssues(data: StructuredTimelineData): StructuredExchangeIssue[] {
+  const removed = new Set<string>();
+  for (const row of data.rows) {
+    if (row.type !== "task") continue;
+    if (row.role === "removed") removed.add(row.id);
+    for (const item of row.items) {
+      if (item.id !== undefined && (item.role === "removed" || row.role === "removed")) removed.add(item.id);
+    }
+  }
+  const issues: StructuredExchangeIssue[] = [];
+  (data.dependencies ?? []).forEach((dependency, index) => {
+    for (const side of ["from", "to"] as const) {
+      if (removed.has(dependency[side])) {
+        issues.push({
+          rule: "dependency-on-removed",
+          path: `/data/dependencies/${index}/${side}`,
+          message: `"${dependency[side]}" was dropped from the plan, so nothing can depend on it any more; remove the dependency`,
+        });
+      }
+    }
+  });
   return issues;
 }
 

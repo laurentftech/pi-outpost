@@ -534,6 +534,12 @@ export type StructuredCalendarDate = string;
 /** The only scale version 3 supports. */
 export type StructuredTimelineScale = "month";
 
+/**
+ * What a task or an item is in a compared timeline: new since the previous plan, or
+ * dropped from it and kept so it can be shown. A moved item carries `previous` instead.
+ */
+export type StructuredTimelineChangeRole = "added" | "removed";
+
 export interface StructuredTimelineActivity {
   type: "activity";
   start: StructuredCalendarDate;
@@ -541,6 +547,9 @@ export interface StructuredTimelineActivity {
   id?: string;
   label?: string;
   kind?: string;
+  /** Where it stood in the plan named by `comparedTo`. */
+  previous?: { start: StructuredCalendarDate; end: StructuredCalendarDate };
+  role?: StructuredTimelineChangeRole;
 }
 
 export interface StructuredTimelineMilestone {
@@ -549,6 +558,8 @@ export interface StructuredTimelineMilestone {
   id?: string;
   label?: string;
   kind?: string;
+  previous?: { date: StructuredCalendarDate };
+  role?: StructuredTimelineChangeRole;
 }
 
 export type StructuredTimelineItem = StructuredTimelineActivity | StructuredTimelineMilestone;
@@ -559,6 +570,7 @@ export interface StructuredTimelineTask {
   id: string;
   label: string;
   items: StructuredTimelineItem[];
+  role?: StructuredTimelineChangeRole;
 }
 
 /** A divider between groups of tasks. No dates; no part in the time axis. */
@@ -579,8 +591,15 @@ export interface StructuredTimelineDependency {
   type?: StructuredDependencyType;
 }
 
+/** The plan a compared timeline is compared with. Its presence is what makes a timeline a comparison. */
+export interface StructuredTimelineComparedTo {
+  label: string;
+  date?: StructuredCalendarDate;
+}
+
 export interface StructuredTimelineData {
   title?: string;
+  comparedTo?: StructuredTimelineComparedTo;
   time: { start: StructuredCalendarDate; end: StructuredCalendarDate; scale: StructuredTimelineScale };
   rows: StructuredTimelineRow[];
   dependencies?: StructuredTimelineDependency[];

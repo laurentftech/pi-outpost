@@ -64,7 +64,7 @@ export interface StructuredExchangeToolOptions {
 }
 
 /** A factual digest of the document, so the summary is never the only account of it. */
-function digest(envelope: ValidatedStructuredExchange): string {
+export function digest(envelope: ValidatedStructuredExchange): string {
   const parts: string[] = [];
   if (envelope.kind === "graph") {
     const data = envelope.data as StructuredGraphData;
@@ -79,6 +79,13 @@ function digest(envelope: ValidatedStructuredExchange): string {
       `timeline ${data.time.start} to ${data.time.end}: ${facts.tasks} tasks, ${facts.activities} activities, ` +
         `${facts.milestones} milestones, ${facts.dependencies} dependencies`,
     );
+    if (facts.comparison !== undefined) {
+      const { moved, added, removed, largestSlip } = facts.comparison;
+      parts.push(
+        `compared with "${data.comparedTo!.label}": ${moved} moved, ${added} added, ${removed} removed` +
+          (largestSlip === undefined ? "" : `; largest slip: "${largestSlip.name}" ${largestSlip.shift}`),
+      );
+    }
     // The agent will not see the arrows. A dependency the dates break is the one
     // thing in a plan it most needs to hear about, so it is named here, one by one.
     if (facts.unsatisfied.length > 0) {

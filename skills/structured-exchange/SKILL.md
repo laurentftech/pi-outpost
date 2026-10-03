@@ -631,8 +631,23 @@ line taken from the reader's own date.
   not satisfied**, not refused — tell the user, do not move dates to hide it. A cycle
   is refused.
 - A timeline is not a proposal: it has no `target`. To change one, present the whole
-  revised timeline again. It has no figure file yet: `write_structure_figure` and
-  `write_structure_table` refuse it.
+  revised timeline again. `write_structure_table` refuses it.
+- **To show what changed between two versions of a plan**, keep each version as its own
+  timeline file and call `compare_timelines` with the previous and the current one — never
+  work out the shifts yourself. It pairs tasks and items by `id`, so give every item an `id`
+  in a plan that will be compared; it tells you how many it could not pair. The reader sees
+  previous dates dashed, shifts like `+3 wk`, new and dropped items marked, and can switch to
+  the new version alone. Give `output_path` to keep the comparison for a report, and draw it
+  with `write_structure_figure` (`comparison: "new"` draws the new version alone). A compared
+  timeline carries `comparedTo`, `previous` dates and `role: "added" | "removed"`; do not write
+  these by hand.
+- **To put a timeline in a report**, write it with `write_structure_figure` and reference
+  the `.svg` from the Markdown. Give `width` (e.g. `900`) for a page — durations stay
+  proportional and rows grow to keep labels apart; `compact: true` for one row per section;
+  `hide_dependencies: true` to leave the arrows out. The figure's date line is labelled
+  with the day it is written (`reference_line: "none"` leaves it out), because the file
+  outlives that day. Graph options (`hide_element_kinds`, `viewpoint`…) are refused for a
+  timeline.
 
 ## Size
 

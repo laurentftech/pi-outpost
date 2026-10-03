@@ -1,3 +1,4 @@
+import { compareTimelines } from "../../shared/src/structuredExchangeTimelineComparison.ts";
 /**
  * A transcript with diagrams in it, served by the scripted RPC agent.
  *
@@ -469,6 +470,41 @@ export const SEEDED_TIMELINE = {
   },
 };
 
+/**
+ * The same programme as it stood a few weeks earlier: the detailed study and the CDR
+ * were planned earlier, development was shorter, an audit was still planned, and the
+ * PDR did not exist yet. Compared with it, the current plan shows every kind of change.
+ */
+export const SEEDED_TIMELINE_PREVIOUS = (() => {
+  const previous = JSON.parse(JSON.stringify(SEEDED_TIMELINE)) as typeof SEEDED_TIMELINE;
+  previous.data.title = "Programme X — plan of 1 September";
+  const studies = previous.data.rows[1] as { items: Record<string, unknown>[] };
+  studies.items = studies.items
+    .filter((item) => item.id !== "pdr")
+    .map((item) =>
+      item.id === "detail"
+        ? { ...item, start: on(0, "03-01"), end: on(0, "06-30") }
+        : item.id === "cdr"
+          ? { ...item, date: on(0, "07-01") }
+          : item,
+    );
+  studies.items.push({ type: "milestone", id: "audit", date: on(0, "04-15"), label: "Audit externe" });
+  const development = previous.data.rows[2] as { items: Record<string, unknown>[] };
+  development.items = development.items.map((item) => ({ ...item, end: on(0, "08-15") }));
+  return previous;
+})();
+
+/** The current plan compared with the earlier one, as `compare_timelines` presents it. */
+export const SEEDED_TIMELINE_COMPARED = {
+  schema: "urn:structured-exchange:3",
+  kind: "timeline",
+  data: compareTimelines(
+    SEEDED_TIMELINE_PREVIOUS.data as never,
+    SEEDED_TIMELINE.data as never,
+    "Plan of 1 September",
+  ).data,
+};
+
 export const SEEDED_EXTENSION_SECTION = [
   "The power train draws on two documents.",
   "",
@@ -618,6 +654,18 @@ export const SEEDED_MESSAGES = [
     toolName: "structured_exchange",
     content: "timeline with 4 tasks and 7 dependencies",
     details: SEEDED_TIMELINE,
+  },
+  { role: "user", content: "What changed since the plan of 1 September?" },
+  {
+    role: "assistant",
+    content: [{ type: "toolCall", id: "call-compare", name: "compare_timelines", arguments: { previous_path: "plans/v1.json", current_path: "plans/v2.json" } }],
+  },
+  {
+    role: "toolResult",
+    toolCallId: "call-compare",
+    toolName: "compare_timelines",
+    content: "compared with the plan of 1 September",
+    details: SEEDED_TIMELINE_COMPARED,
   },
   { role: "user", content: "Where does that come from?" },
   { role: "assistant", content: [{ type: "text", text: SEEDED_EXTENSION_SECTION }] },

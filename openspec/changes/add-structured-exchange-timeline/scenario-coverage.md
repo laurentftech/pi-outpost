@@ -88,7 +88,7 @@ click and keyboard, enlarge overlay, live-edited invalid files in the split view
 | ATimelineInAReplyIsDrawn | covered | `ui/src/components/ReplyStructuredExchange.test.tsx` — "draws a timeline as a timeline". |
 | ARefusedTimelineIsExplained | covered | `server/test/structuredExchangeTimelineTools.test.ts` — "ARefusedTimelineIsExplained": error, no details, `inverted-range` and the pointer in the text. |
 | TheTextualEquivalentListsEveryItem | covered | `ui/src/presentations/structuredExchangeTimeline.test.tsx` — "lists every row in order, every item, and every dependency with its verdict"; "keeps the envelope available". |
-| TheFigureWriterRefusesATimeline | covered | `server/test/structuredExchangeTimelineTools.test.ts` — "TheFigureWriterRefusesATimeline" and "the table writer refuses a timeline too…": error, reason names present_structure, no file at the destination. |
+| TheFigureWriterRefusesATimeline | covered | `server/test/structuredExchangeTimelineTools.test.ts` — "TheTableWriterStillRefusesATimeline, without sending the agent to the figure writer": error, reason, no file. The `write_structure_figure` half is superseded by `add-timeline-figures`, which makes it draw a timeline (its scenario *TheAgentWritesATimelineFigure*). |
 
 ## structured-exchange
 

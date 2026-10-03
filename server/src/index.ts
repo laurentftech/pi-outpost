@@ -189,6 +189,7 @@ import { STRUCTURED_EXCHANGE_PROFILE_REGISTRY_PATH } from "@pi-outpost/shared/st
 import { replyBlockKey, structuredExchangeBlocks } from "@pi-outpost/shared/structured-exchange/reply-blocks";
 import { checkPiPackages, listPiPackages, packageManagerFor } from "./piPackages.ts";
 import { createStructuredExchangeFigureToolDefinition } from "./structuredExchangeFigureTool.ts";
+import { createTimelineComparisonToolDefinition } from "./timelineComparisonTool.ts";
 import { createWorkPlanExtendedToolDefinition, createWorkPlanToolDefinition, WORK_PLAN_EXTENDED_TOOL, WORK_PLAN_TOOL } from "./workPlanTool.ts";
 import { DOCUMENT_TOOLS, documentToolsFor, documentToolsForToolCall, documentToolsForWrittenPaths } from "./documentTools.ts";
 import {
@@ -1244,6 +1245,12 @@ const makeCreateRuntime =
                 maxBytes: config.structuredExchange.maxBytes,
                 writableRoot: await fs.realpath(cwd),
                 projectRoot: cwd,
+              }),
+              createTimelineComparisonToolDefinition({
+                cwd,
+                allowedRoots: [await fs.realpath(cwd)],
+                maxBytes: config.structuredExchange.maxBytes,
+                writableRoot: await fs.realpath(cwd),
               }),
               createStructuredExchangeToolDefinition({ projectRoot: cwd }),
               workPlanTool,

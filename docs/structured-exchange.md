@@ -475,11 +475,47 @@ What a producer has to know:
   refused: it is drawn marked as not satisfied and reported to the agent, because a slip
   is exactly what a reader needs to see.
 - **A timeline is not a proposal.** It carries no `target`, `removals` or `viewpoints`;
-  a revision is the whole timeline presented again. No profile constrains it, and there
-  is no figure or table file for one yet.
+  a revision is the whole timeline presented again. No profile constrains it, and
+  `write_structure_table` refuses it.
+- **A timeline can state what it is compared with.** `comparedTo: { label, date? }` names
+  the previous plan; an activity may carry `previous: { start, end }`, a milestone
+  `previous: { date }`, and a task or item `role: "added" | "removed"`. The reader draws the
+  previous dates dashed beside the current ones with the shift written out, marks what is
+  new and strikes what was dropped, and offers the new version alone. Without `comparedTo`,
+  none of these may appear (`comparison-without-reference`); an added or removed item has no
+  `previous` (`contradictory-change`); nothing may depend on a removed item
+  (`dependency-on-removed`); previous dates fall inside `time`. The agent's
+  `compare_timelines` tool produces such a document from two plan files, pairing by `id`.
+- **A timeline leaves as a figure.** `write_structure_figure` writes it as one SVG — labels,
+  calendar, rows, arrows, key — with `width` to fit a page, `compact` and `hide_dependencies`
+  for the reader's display options, and a date line labelled with the day it was written
+  (`reference_line: "none"` omits it). The reader's "download SVG" saves the same figure for
+  the options on screen.
 - **Today is never in the document.** The reader draws a *Today* line at their own
   calendar date when it falls in the range, and says which side of the range it is on
   when it does not.
+
+A compared timeline, as `compare_timelines` writes it:
+
+```json
+{
+  "schema": "urn:structured-exchange:3",
+  "kind": "timeline",
+  "data": {
+    "title": "Validation campaign",
+    "comparedTo": { "label": "Plan of 1 September", "date": "2026-09-01" },
+    "time": { "start": "2027-01-01", "end": "2027-06-30", "scale": "month" },
+    "rows": [
+      { "type": "task", "id": "bench", "label": "Bench tests", "items": [
+        { "type": "activity", "id": "b1", "start": "2027-01-25", "end": "2027-03-12", "label": "Campaign 1",
+          "previous": { "start": "2027-01-11", "end": "2027-02-26" } },
+        { "type": "milestone", "id": "trr", "date": "2027-03-15", "kind": "TRR", "role": "added" },
+        { "type": "milestone", "id": "dry", "date": "2027-02-01", "label": "Dry run", "role": "removed" }
+      ] }
+    ]
+  }
+}
+```
 
 Only the `month` scale exists. Version 3 may still grow in place until a release
 publishes it; after that, another scale is a version 4.
