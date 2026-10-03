@@ -57,6 +57,24 @@ send `bashFrom`, so the apply carries it over. A rebuild that throws `SandboxDel
 rolled back like an extension's cancellation — runtime, workspace and file. Kept, it would make the
 next start refuse. Any other rebuild error keeps its existing handling.
 
+### D5. The agent may not write `.pi`
+
+pi-outpost leaves every project trusted: an extension asking gets `true`. pi-landstrip therefore
+reads the project's `.pi/sandbox.json` before every command (`loadSandboxConfig` in `exec`), merged
+over the global policy. Its default `toolFilesystemPolicy` is `host`, so pi-outpost's `write` could
+create that file and widen the next command's policy.
+
+The check, `piConfigWriteRefusal`, sits in the two places agent writes pass through:
+- `scopeToRoot` for `write` and `edit`;
+- `assertWritableDestination` for every tool that writes an output — documents, figures, tables,
+  comparisons, and mail attachments file by file.
+
+It refuses any path whose part below the writable zone has a `.pi` segment, after symlinks are
+resolved. A whole-directory rule rather than a list of file names: `.pi` also holds Pi's project
+settings and extensions, and a sandboxing extension may add files there that this list would not
+know. Commands stay the extension's to deny; the docs give pi-landstrip's settings for it
+(`denyWrite: [".pi/**"]`, `toolFilesystemPolicy: "sandbox"`).
+
 ## Risks / Trade-offs
 
 - **The extension's policy decides what bash can do.** pi-outpost proves only *whose* bash runs. The

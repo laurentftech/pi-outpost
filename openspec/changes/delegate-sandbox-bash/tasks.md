@@ -13,8 +13,13 @@
 
 - [x] 3.1 Carry `bashFrom` across a Settings apply, and roll back a change refused for want of the extension; verify *SettingsKeepTheDelegation* and *TurningBashOnWithoutTheDelegateIsRefused*, the latter on disk too
 
-## 4. Integration
+## 4. The agent may not write `.pi`
 
-- [x] 4.1 Check against the real pi-landstrip 0.19.4 installed by `pi install`, in an isolated agent directory: `bashFrom: "npm:pi-landstrip"` starts the session with landstrip's `bash`, and a wrong name refuses it, naming `npm:pi-landstrip`
-- [x] 4.2 Document the key and how to confine bash with an extension in `README.md`
-- [x] 4.3 Write `scenario-coverage.md`; run `npm run check:scenarios`, lint, typecheck and the server suite, then `openspec validate delegate-sandbox-bash --strict`
+- [x] 4.1 Refuse `write`, `edit` and every `assertWritableDestination` caller inside a `.pi` directory under the writable zone (`piConfigWriteRefusal`); verify *WriteAndEditRefuseAPiDirectory*, *ASymlinkIntoPiIsRefused*, *OtherPathsStayWritable*, *PiConfigurationStaysReadable* and *EveryFileWritingToolIsHeld*
+- [x] 4.2 Document it, with multi-project behaviour and pi-landstrip's settings, in `docs/sandboxing.md`
+
+## 5. Integration
+
+- [x] 5.1 Check against the real pi-landstrip 0.19.4 installed by `pi install`, in an isolated agent directory: `bashFrom: "npm:pi-landstrip"` starts the session with landstrip's `bash`, and a wrong name refuses it, naming `npm:pi-landstrip`
+- [x] 5.2 Document the key and how to confine bash with an extension in `README.md`
+- [x] 5.3 Write `scenario-coverage.md`; run `npm run check:scenarios`, lint, typecheck and the server suite, then `openspec validate delegate-sandbox-bash --strict`

@@ -13,7 +13,7 @@
  */
 import fs from "node:fs/promises";
 import path from "node:path";
-import { isWithin, realResolve } from "./sandbox.ts";
+import { isWithin, piConfigWriteRefusal, realResolve } from "./sandbox.ts";
 
 /** How much of the extraction reached the file, for the summary that replaces it. */
 export interface ExtractionCoverage {
@@ -61,6 +61,8 @@ export async function assertWritableDestination(
         `Ask for the extraction itself, or choose a path inside that zone.`,
     );
   }
+  const refusal = piConfigWriteRefusal(options.writableRoot, resolved, destination);
+  if (refusal !== undefined) throw new Error(refusal);
   return resolved;
 }
 

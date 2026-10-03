@@ -11,6 +11,8 @@ alone is not enough, and how to check that what you set up is really in force.
 - [What it does not](#what-it-does-not)
 - [Why installing an extension is not enough](#why-installing-an-extension-is-not-enough)
 - [Hand bash to the extension: `sandbox.bashFrom`](#hand-bash-to-the-extension-sandboxbashfrom)
+- [The agent cannot rewrite what confines it](#the-agent-cannot-rewrite-what-confines-it)
+- [Several projects open at once](#several-projects-open-at-once)
 - [Check that it is really confined](#check-that-it-is-really-confined)
 - [Recipe: WSL on a managed Windows machine](#recipe-wsl-on-a-managed-windows-machine)
 
@@ -98,6 +100,46 @@ Two practical points:
   the server with `PI_CODING_AGENT_DIR` set to the same directory as `agentDir`, or leave `agentDir`
   unset, so that the policy you wrote is the one it reads.
 
+## The agent cannot rewrite what confines it
+
+A sandboxing extension's policy can live in the project itself. pi-landstrip merges the project's
+`.pi/sandbox.json` over its global policy — later values win, lists add up — and reads it **before
+every command**. Every project open in pi-outpost counts as trusted, so that file is read. An agent
+able to write it could widen what its own next command may do: read the whole disk, reach the
+network, write elsewhere.
+
+So **none of pi-outpost's tools may write in a `.pi` directory** under the writable zone: `write`,
+`edit`, and every tool that writes a file (documents, figures, tables, comparisons, mail
+attachments). The refusal says why. The agent may still read those files, and you may edit them —
+from your editor, or from the file browser, which is your hand, not the agent's. `.pi-outpost/`,
+which holds the project's structured-exchange profiles, is not affected.
+
+What this does not cover, and what to set for it:
+
+- **Commands.** A `bash` command is not one of pi-outpost's tools. pi-outpost's own `bash` (without
+  `bashFrom`) can write anywhere the server's user can. pi-landstrip's denies writing
+  `.pi/sandbox.json` by default; add the rest of the directory to its policy:
+  `"filesystem": { "denyWrite": [".pi/**"] }`.
+- **The extension's own view of file tools.** With `"toolFilesystemPolicy": "sandbox"` in
+  `landstrip.json`, pi-landstrip also checks `read`, `write` and `edit` against its file policy — a
+  second opinion on pi-outpost's tools of those names. It does not know pi-outpost's other tools,
+  which the rule above covers.
+
+## Several projects open at once
+
+One server, one installation of the extension, loaded into **each project's session**:
+
+- `allowBash` and `bashFrom` are server-wide. Each project's session checks that its `bash` is the
+  extension's when it starts; turning bash on from Settings rebuilds every open project, and is
+  rolled back everywhere if the extension is missing.
+- Each project is confined to its own directory: pi-outpost's file tools to the project, and
+  pi-landstrip's `"."` to the session's working directory — that project. `"allowWrite": ["."]`
+  lets each project's commands write in that project only.
+- The extension's policy is its global file plus **each project's own `.pi/sandbox.json`**, which may
+  differ from one project to the next. Look at it when you open a project you did not write: a
+  repository can ship one.
+- The terminal panel, if enabled, is opened per project and confined by nothing.
+
 ## Check that it is really confined
 
 Do not stop at "the extension says it is on". Check what the agent's commands can do:
@@ -162,14 +204,20 @@ extension:
 large trees, not for ordinary editing.
 
 **4. Tighten the extension's policy.** For pi-landstrip, in the global `sandbox.json` of the agent
-directory it reads (see above) or in the project's `.pi/sandbox.json`:
+directory it reads (see above) — not in the project, which you want to keep from widening it:
 
 ```json
 {
   "shell": { "readAccess": "policy" },
-  "filesystem": { "allowWrite": ["."] },
+  "filesystem": { "allowWrite": ["."], "denyWrite": [".pi/**"] },
   "network": { "allowNetwork": false }
 }
+```
+
+and in `landstrip.json` beside it, so that it checks pi-outpost's `read`, `write` and `edit` too:
+
+```json
+{ "toolFilesystemPolicy": "sandbox" }
 ```
 
 If the agent must install packages, allow only the hosts it needs (`network.allowedDomains`, for

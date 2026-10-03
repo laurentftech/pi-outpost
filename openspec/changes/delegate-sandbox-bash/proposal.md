@@ -24,6 +24,11 @@ no other way to confine the agent's shell.
   is applied, and a change that would leave bash with nobody to supply it is rolled back, in memory
   and on disk, so the next start is not refused.
 - Without `allowBash`, nothing changes: no `bash` is registered, the extension's included.
+- **The agent cannot rewrite what confines it.** None of pi-outpost's file-writing tools may write
+  in a `.pi` directory under the writable zone. Every project counts as trusted, so pi-landstrip
+  merges the project's `.pi/sandbox.json` over its global policy before every command. The agent
+  could otherwise widen its own sandbox with `write`. Reading stays allowed, and so does the file
+  browser.
 
 ## Capabilities
 
@@ -34,7 +39,7 @@ no other way to confine the agent's shell.
 
 ### Modified Capabilities
 
-None.
+- `file`: the agent's file-writing tools refuse paths inside a `.pi` directory.
 
 ## Impact
 
@@ -48,5 +53,9 @@ None.
 - Tests:
   - `server/test/sandboxDelegatedBash.test.mjs`, on the real server and agent;
   - `server/test/config.test.ts`.
+- `server/src/sandbox.ts` and `server/src/extractionOutput.ts`: `piConfigWriteRefusal` in `write`/`edit` and in
+  `assertWritableDestination`, which every file-writing tool goes through.
+- `server/test/sandboxPiConfig.test.ts`.
 - `README.md`: the key, and a section on confining bash with an extension.
+- `docs/sandboxing.md` (new) and `docs/how-to.md`.
 - No UI change. Embedded runtime only: a sandbox is refused under the RPC runtime already.

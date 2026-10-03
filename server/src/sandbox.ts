@@ -127,6 +127,8 @@ function scopeToRoot(
   cwd: string,
   allowedRoot: string,
   readExceptions?: string[],
+  /** A tool that writes: it may not write Pi configuration (see piConfigWriteRefusal). */
+  writes = false,
 ): ToolDefinition {
   return {
     ...def,
@@ -139,10 +141,32 @@ function scopeToRoot(
         if (!inAllowed && !inException) {
           throw new Error(`Access denied: "${target}" is outside the sandbox (${allowedRoot})`);
         }
+        const refusal = writes ? piConfigWriteRefusal(allowedRoot, resolved, target) : undefined;
+        if (refusal !== undefined) throw new Error(refusal);
       }
       return def.execute(toolCallId, params, signal, onUpdate, withCwd(ctx, cwd));
     },
   };
+}
+
+/**
+ * Why a write to `resolved` is refused for being Pi configuration, or undefined when it is not.
+ *
+ * A `.pi` directory under the writable zone holds the configuration that confines the
+ * agent: Pi's project settings and extensions, and a sandboxing extension's policy —
+ * pi-landstrip reads `.pi/sandbox.json` of the project before every command it runs, and
+ * merges it over the global policy, so one written there widens what the next command may
+ * do. The agent may read it; none of pi-outpost's tools may write it. The file browser,
+ * which is the user's own hand, is not held to this.
+ */
+export function piConfigWriteRefusal(writableRoot: string, resolved: string, target: string): string | undefined {
+  const relative = path.relative(writableRoot, resolved);
+  if (relative === "" || relative.startsWith("..") || path.isAbsolute(relative)) return undefined;
+  if (!relative.split(path.sep).includes(".pi")) return undefined;
+  return (
+    `Cannot write "${target}": it is in a .pi directory, which holds the configuration that confines ` +
+    "the agent (Pi settings and extensions, sandbox policies). Edit it yourself if it needs to change."
+  );
 }
 
 /**
@@ -289,7 +313,7 @@ export async function createSandboxedTools(
       (cwd) => createEditToolDefinition(cwd) as ToolDefinition,
       (cwd) => createWriteToolDefinition(cwd) as ToolDefinition,
     ];
-    tools.push(...writeFactories.map((create) => scopeToRoot(create(realRoot), realRoot, realWritableRoot)));
+    tools.push(...writeFactories.map((create) => scopeToRoot(create(realRoot), realRoot, realWritableRoot, undefined, true)));
   }
 
   if (sandbox.allowBash && sandbox.bashFrom === undefined) {
