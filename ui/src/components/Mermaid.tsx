@@ -28,6 +28,10 @@ async function loadMermaid(theme: MermaidTheme) {
   module.default.initialize({
     startOnLoad: false,
     theme,
+    // Mermaid 12's own layout (ELK, its default), drawn in the classic look: crisp
+    // boxes, where its new default look puts a blurred halo round every box on a
+    // dark page. The Word export draws with the same look.
+    look: "classic",
     securityLevel: "strict",
     // On parse errors mermaid injects an error SVG into the document —
     // keep failures inside our fallback <pre> instead

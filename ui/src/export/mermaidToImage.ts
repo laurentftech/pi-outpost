@@ -192,6 +192,8 @@ export async function renderDiagram(source: string, id: string): Promise<Diagram
         startOnLoad: false,
         // A white page, whatever the reader's theme: the export is not a screenshot.
         theme: "default",
+        // The look the page draws with, so a figure in the document matches the screen.
+        look: "classic",
         securityLevel: "strict",
         suppressErrorRendering: true,
         // The reason the labels are not blank; see the note at the top.
@@ -205,7 +207,7 @@ export async function renderDiagram(source: string, id: string): Promise<Diagram
       // Whatever happened, the on-screen renderer is handed back what it had. The
       // component re-initialises on its next render, so restoring the default here
       // is enough to keep an export from changing the page behind it.
-      mermaid.initialize({ startOnLoad: false, securityLevel: "strict", suppressErrorRendering: true });
+      mermaid.initialize({ startOnLoad: false, look: "classic", securityLevel: "strict", suppressErrorRendering: true });
     }
 
     const { width, height } = svgDimensions(svg);

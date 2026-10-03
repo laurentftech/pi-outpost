@@ -240,6 +240,10 @@ describe("the mermaid configuration an export borrows", () => {
     const restoreCall = initialize.mock.calls[initialize.mock.calls.length - 1][0];
     expect(exportCall.htmlLabels).toBe(false);
     expect(exportCall.theme).toBe("default");
+    // Drawn as the page draws it: ELK's layout, the classic look.
+    expect(exportCall.look).toBe("classic");
+    expect(exportCall.layout).toBeUndefined();
+    expect(restoreCall.look).toBe("classic");
     expect(restoreCall.htmlLabels).toBeUndefined();
     expect(restoreCall.theme).toBeUndefined();
 
