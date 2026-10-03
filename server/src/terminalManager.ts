@@ -238,7 +238,35 @@ export function setPtyModuleForTesting(module: typeof pty | null): void {
   ptyLoadError = null;
 }
 
+/**
+ * A terminal's environment: the server's, with a terminal's own settings, and the
+ * overrides that put back what the user started the server with (undefined removes).
+ */
+export function terminalEnvironment(
+  serverEnv: NodeJS.ProcessEnv,
+  overrides: Record<string, string | undefined>,
+): Record<string, string | undefined> {
+  const env: Record<string, string | undefined> = {
+    ...serverEnv,
+    TERM: "xterm-256color",
+    COLORTERM: "truecolor",
+    NODE_V8_COVERAGE: "",
+  };
+  for (const [name, value] of Object.entries(overrides)) {
+    if (value === undefined) delete env[name];
+    else env[name] = value;
+  }
+  return env;
+}
+
 export class TerminalManager {
+  /**
+   * @param envOverrides Variables a terminal gets instead of the server's own — undefined
+   * removes one. The terminal is the user's shell, not the agent's: what the server
+   * set for its extensions (PI_CODING_AGENT_DIR) is put back as the user started it.
+   */
+  constructor(private readonly envOverrides: Record<string, string | undefined> = {}) {}
+
   /**
    * Sessions keyed by WebSocket connection, mapping terminalId -> TerminalSession.
    * Ensures absolute isolation across multiple connected clients.
@@ -344,12 +372,7 @@ export class TerminalManager {
       const { shell, args } = this.getDefaultShell(shellOptions);
       const resolvedCwd = path.resolve(cwd);
 
-      const env = {
-        ...process.env,
-        TERM: "xterm-256color",
-        COLORTERM: "truecolor",
-        NODE_V8_COVERAGE: "",
-      };
+      const env = terminalEnvironment(process.env, this.envOverrides);
 
       ensureSpawnHelperExecutable();
 

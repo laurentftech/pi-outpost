@@ -60,6 +60,14 @@ export interface SandboxConfig {
    */
   allowBash: boolean;
   /**
+   * The extension that supplies `bash`, instead of pi-outpost's own, when `allowBash`
+   * is on: its package source as pi lists it (`npm:pi-landstrip`), or the path of an
+   * extension file or directory. pi-outpost's `bash` runs unconfined; a sandboxing
+   * extension's runs confined, but the SDK's tool of the same name would shadow it.
+   * The session refuses to start unless that extension does register `bash`.
+   */
+  bashFrom?: string;
+  /**
    * Extra directories (absolute paths) that read tools (read/ls/grep/find) are
    * allowed to access in addition to `root`. Write tools are NOT affected — these
    * are read-only exceptions. Populated from `skillPaths`, `promptPaths`,
@@ -909,6 +917,10 @@ export function loadConfig(
     const root = optionalString(sandbox, "root");
     const allowWrite = optionalBoolean(sandbox, "allowWrite", false);
     const allowBash = optionalBoolean(sandbox, "allowBash", false);
+    const bashFrom = optionalString(sandbox, "bashFrom");
+    if (bashFrom !== undefined && bashFrom.trim() === "") {
+      fail(`"sandbox.bashFrom" must name an extension: its package source (e.g. "npm:pi-landstrip") or a path`);
+    }
 
     // A sandbox that only *reads* may follow the workspace the user just named —
     // that is what moving the workspace means. A sandbox that grants write or bash
@@ -936,6 +948,7 @@ export function loadConfig(
       allowWrite,
       writableRoot: resolvedWritableRoot,
       allowBash,
+      ...(bashFrom === undefined ? {} : { bashFrom: bashFrom.trim() }),
       readExceptions: [
         ...(optionalStringArray(raw, "skillPaths") ?? []).map(resolve),
         ...(optionalStringArray(raw, "userSkillPaths") ?? []).map(resolve),

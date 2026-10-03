@@ -207,7 +207,16 @@ import { Workspace, shouldRetireWorkspace, type WorkspaceOptions, type Workspace
 import { WorkspaceRegistry } from "./workspaceRegistry.ts";
 import { discoverSkillCatalogue, ResourceRepositoryService } from "./resourceRepositories.ts";
 import { deriveWorkspaceActivity, workspaceActivityNeedsAttention } from "./workspaceActivity.ts";
-import { assertNoUnconfinedBuiltIns, isWithin, realResolve, unsuppliedBuiltIns } from "./sandbox.ts";
+import {
+  assertDelegatedBash,
+  assertNoUnconfinedBuiltIns,
+  delegatedBuiltIns,
+  isWithin,
+  realResolve,
+  SandboxDelegationError,
+  shadowedBashWarning,
+  unsuppliedBuiltIns,
+} from "./sandbox.ts";
 import {
   firstExchange,
   generateSessionTitle,
@@ -469,6 +478,29 @@ if (cli.command === "config") {
 const PORT = config.port;
 const HOST = config.host;
 const AGENT_DIR = config.agentDir ?? getAgentDir();
+/**
+ * What the server was started with, for the terminal panel: the user's shell keeps it.
+ *
+ * An embedded session gets `agentDir` handed over, but an extension that looks Pi's agent
+ * directory up for itself reads `PI_CODING_AGENT_DIR` — pi-landstrip does, for its global
+ * `sandbox.json` — and without it `~/.pi/agent`. So a policy written beside the packages
+ * pi-outpost loads was never the one enforced. Exported here, before any session, so the
+ * extensions see the directory the server uses. The RPC runtime passes it to its child.
+ */
+const LAUNCH_PI_CODING_AGENT_DIR = process.env.PI_CODING_AGENT_DIR;
+
+/**
+ * Per project root: the warning that an extension's bash is shadowed by pi-outpost's (see
+ * shadowedBashWarning). Kept, because the session that found it usually starts before any
+ * browser is there to be told, and told again to each that binds to the project.
+ */
+const shadowedBashWarnings = new Map<string, string>();
+if (config.agentDir !== undefined && config.agentRuntime.mode !== "rpc" && process.env.PI_CODING_AGENT_DIR !== config.agentDir) {
+  if (LAUNCH_PI_CODING_AGENT_DIR !== undefined) {
+    console.log(`[pi] PI_CODING_AGENT_DIR ${LAUNCH_PI_CODING_AGENT_DIR} replaced by agentDir ${config.agentDir} for this server's extensions`);
+  }
+  process.env.PI_CODING_AGENT_DIR = config.agentDir;
+}
 // Own agentDir ⇒ own session store, fully separate from ~/.pi/agent
 const SESSION_DIR = config.agentDir ? path.join(config.agentDir, "sessions") : undefined;
 
@@ -1144,6 +1176,10 @@ const makeCreateRuntime =
   ): CreateAgentSessionRuntimeFactory =>
   async ({ cwd, sessionManager, sessionStartEvent }) => {
   const appendSystemPrompt = composeAppendSystemPrompt(config);
+  // What the toolset hands to an extension (bashFrom). Server-wide, like allowBash:
+  // a project's own sandbox differs only in its roots (see sandboxFor), and the server's
+  // project is still being created when its first session is.
+  const projectSandbox = config.sandbox;
 
   const extraFactories = [...seaExtensionFactories];
   // extensionScripts are loaded via the SDK's jiti-based loader (same as
@@ -1219,7 +1255,7 @@ const makeCreateRuntime =
         ? {
             noTools: "builtin" as const,
             customTools: sandboxedTools,
-            excludeTools: unsuppliedBuiltIns(sandboxedTools),
+            excludeTools: unsuppliedBuiltIns(sandboxedTools, delegatedBuiltIns(projectSandbox)),
           }
         : {}),
       ...(!sandboxedTools && config.tools ? { tools: config.tools } : {}),
@@ -1375,7 +1411,15 @@ const makeCreateRuntime =
           }),
     });
   if (sandboxedTools) {
+    // The delegation first: it names the cause when Pi's own bash is what remains.
+    assertDelegatedBash(created.session, projectSandbox);
     assertNoUnconfinedBuiltIns(created.session);
+    const shadowed = shadowedBashWarning(created.session.extensionRunner.getAllRegisteredTools(), projectSandbox);
+    if (shadowed !== undefined) console.warn(`[pi] WARNING ${shadowed}`);
+    if (publishInto) {
+      if (shadowed === undefined) shadowedBashWarnings.delete(publishInto.root);
+      else shadowedBashWarnings.set(publishInto.root, shadowed);
+    }
     activateDefaultTools(created.session, services.settingsManager.getDefaultTools());
   }
   return {
@@ -2035,6 +2079,10 @@ function bindClient(socket: WebSocket, target: Workspace, kind: "hello" | "works
   clients.set(socket, target);
   send(socket, { type: kind, ...snapshot(target) });
   for (const request of target.pendingDialogs.values()) send(socket, request);
+  const shadowed = shadowedBashWarnings.get(target.root);
+  if (shadowed !== undefined) {
+    send(socket, { type: "extension_ui_request", id: "sandbox-shadowed-bash", method: "notify", message: shadowed, notifyType: "warning" });
+  }
 }
 
 function workspaceInfos(): WorkspaceInfo[] {
@@ -2257,7 +2305,7 @@ function snapshot(workspace: Workspace): SessionSnapshot {
  * client bound elsewhere is the failure this map exists to make unstatable.
  */
 const clients = new Map<WebSocket, Workspace>();
-const terminalManager = new TerminalManager();
+const terminalManager = new TerminalManager({ PI_CODING_AGENT_DIR: LAUNCH_PI_CODING_AGENT_DIR });
 
 const WS_LOG_PATH = process.env.WS_LOG_PATH ? path.resolve(process.env.WS_LOG_PATH) : undefined;
 
@@ -3005,6 +3053,9 @@ async function handleUpdateConfig(
         allowWrite: mergedSandbox.allowWrite,
         allowBash: mergedSandbox.allowBash,
         writableRoot: mergedSandbox.writableRoot,
+        // Not edited from Settings: carried over, or an apply would hand bash back to
+        // pi-outpost's unconfined one until the next start.
+        ...(config.sandbox?.bashFrom === undefined ? {} : { bashFrom: config.sandbox.bashFrom }),
         readExceptions: [],
       };
     }
@@ -3030,12 +3081,11 @@ async function handleUpdateConfig(
     await workspace.rebuildResources({ cwd: workspace.settings.cwd, ...(rebuiltSandbox ? { sandbox: rebuiltSandbox } : {}) });
     // Replace the current session so the new runtime picks up the updated tools
     // and re-runs skill discovery over the new paths.
-    const replacement = await rebuildTools.call(workspace.agent, makeCreateRuntime(workspace.sandboxedTools, workspace));
-    if (replacement.cancelled) {
-      // newSession did not invalidate the old agent, so restore every other view
-      // of the boundary before reporting the refusal. Runtime first, disk second:
-      // even if the second atomic write unexpectedly fails, this process remains
-      // fail-safe and a restart will build both sides from the on-disk settings.
+    // newSession did not invalidate the old agent, so restore every other view of the
+    // boundary before reporting the refusal. Runtime first, disk second: even if the
+    // second atomic write unexpectedly fails, this process remains fail-safe and a
+    // restart will build both sides from the on-disk settings.
+    const rollBack = async (reason: string) => {
       config.userSkillPaths = previousSkillPaths;
       config.userExtensionPaths = previousExtensionPaths;
       config.userSkillCollections = previousCollections;
@@ -3046,7 +3096,20 @@ async function handleUpdateConfig(
         ...(restoredSandbox ? { sandbox: restoredSandbox } : {}),
       });
       persistEditableSettings(config, previousPersisted);
-      refuse("Settings change cancelled by an extension; the previous settings remain active");
+      refuse(reason);
+    };
+    let replacement: Awaited<ReturnType<NonNullable<typeof rebuildTools>>>;
+    try {
+      replacement = await rebuildTools.call(workspace.agent, makeCreateRuntime(workspace.sandboxedTools, workspace));
+    } catch (error) {
+      // Bash handed to an extension that does not supply it: a sandbox that cannot
+      // start, and — kept on disk — a server that would not start again either.
+      if (!(error instanceof SandboxDelegationError)) throw error;
+      await rollBack(`${error.message.replace(/; refusing to start the session\.$/, ".")} The previous settings remain active.`);
+      return undefined;
+    }
+    if (replacement.cancelled) {
+      await rollBack("Settings change cancelled by an extension; the previous settings remain active");
       return undefined;
     }
     for (const sibling of siblings) await rebuildSibling(sibling);
