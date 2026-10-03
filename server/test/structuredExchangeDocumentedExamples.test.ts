@@ -63,6 +63,10 @@ for (const file of [
   "docs/structured-exchange.md",
   "docs/structured-exchange-project-setup.md",
   "skills/structured-exchange/SKILL.md",
+  "skills/structured-exchange/references/timelines.md",
+  "skills/structured-exchange/references/proposals.md",
+  "skills/structured-exchange/references/graphs-and-tables.md",
+  "skills/structured-exchange/references/enriched-contract.md",
   "skills/structured-exchange-project/SKILL.md",
 ]) {
   describe(`${file} shows documents that validate`, () => {

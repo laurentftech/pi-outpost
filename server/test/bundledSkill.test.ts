@@ -63,6 +63,21 @@ describe("the skill that ships with the tool", () => {
     assert.deepEqual(diagnostics, [], "a skill that loads with warnings is a skill half-loaded");
   });
 
+  test("the authoring skill's references are named from its page and are not skills", () => {
+    // The page carries what every document needs and names one reference per job, read
+    // before writing that kind of document. A reference it does not name is never read;
+    // a name with no file sends the model looking for nothing.
+    const page = readFileSync(path.join(SKILLS, "structured-exchange/SKILL.md"), "utf8");
+    const named = [...new Set([...page.matchAll(/`references\/([a-z-]+\.md)`/g)].map((match) => match[1]))].sort();
+    const files = readdirSync(path.join(SKILLS, "structured-exchange/references")).sort();
+    assert.deepEqual(named, files);
+    assert.match(page, /`references\/timelines\.md`/);
+    // Loaded beside the page, they add no skill and no diagnostic.
+    const { skills, diagnostics } = load(bundledSkillPaths());
+    assert.equal(skills.filter((skill) => skill.filePath.includes(`${path.sep}references${path.sep}`)).length, 0);
+    assert.deepEqual(diagnostics, []);
+  });
+
   test("carries the description the model selects it by", () => {
     // A skill with no description is loaded and never chosen.
     const skill = load(bundledSkillPaths()).skills.find((each) => each.name === "structured-exchange")!;
