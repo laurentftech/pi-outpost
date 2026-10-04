@@ -28,6 +28,7 @@ One Node process runs the agent and serves the interface: streaming responses, l
 - [Running it as a service](#running-it-as-a-service)
 - [Installing it as an app](#installing-it-as-an-app)
 - [Embedding](#embedding)
+- [Plannings in Open WebUI](#plannings-in-open-webui)
 - [Work Plans](#work-plans)
 - [Workspace Outcome](#workspace-outcome)
 - [Development](#development)
@@ -853,6 +854,13 @@ installed app says it cannot reach it rather than showing a stale copy of a prev
 
 A mounted widget claims nothing on its host page: no manifest, no icon, no change to whether
 the host page itself is installable.
+
+## Plannings in Open WebUI
+
+The planning timelines also run in [Open WebUI](https://openwebui.com), without pi-outpost: a
+small server, shipped as a container image, keeps each user's plannings and shows them in the
+chat as the same interactive timeline. A `docker-compose.yml` brings up Open WebUI with it for a
+demo. See [docs/openwebui.md](docs/openwebui.md).
 
 ## Embedding
 

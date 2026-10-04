@@ -110,7 +110,7 @@
 
 ## 8. End to end in Open WebUI, and documentation
 
-- [ ] 8.1 Write `docs/openwebui.md`:
+- [x] 8.1 Write `docs/openwebui.md`:
   - a complete `docker-compose.yml` (Open WebUI + the image, internal network, volume, the two
     secrets, `TOOL_SERVER_CONNECTIONS`), brought up for real and used once;
   - running the server without Docker, and its configuration;

@@ -23,7 +23,7 @@ services:
       ENABLE_FORWARD_USER_INFO_HEADERS: "true"
       FORWARD_USER_INFO_HEADER_JWT_SECRET: ${PLANNING_IDENTITY_KEY:?set PLANNING_IDENTITY_KEY in .env}
       # The planning server, declared as a global tool server. Read at first start;
-      # afterwards Admin settings → External Tools holds it.
+      # afterwards Admin Settings → Integrations → External Tool Servers holds it.
       TOOL_SERVER_CONNECTIONS: >-
         [{"url": "http://plannings:8790", "path": "openapi.json", "type": "openapi",
           "auth_type": "bearer", "key": "${PLANNING_SECRET:?set PLANNING_SECRET in .env}",
