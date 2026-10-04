@@ -34,9 +34,12 @@ export function sameSecret(given: string, expected: string): boolean {
 /** True when the Authorization header carries exactly the configured bearer key. */
 export function bearerMatches(authorization: string | undefined, secret: string): boolean {
   if (typeof authorization !== "string") return false;
-  const match = /^Bearer\s+(.+)$/i.exec(authorization.trim());
-  if (!match) return false;
-  return sameSecret(match[1]!.trim(), secret);
+  // A prefix and a slice, not a regular expression: the header is the network's, and
+  // `\s+(.+)` backtracks polynomially on "Bearer" followed by a run of spaces.
+  const value = authorization.trim();
+  if (value.slice(0, 7).toLowerCase() !== "bearer ") return false;
+  const token = value.slice(7).trim();
+  return token.length > 0 && sameSecret(token, secret);
 }
 
 function base64urlJson(part: string): unknown {

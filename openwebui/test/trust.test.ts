@@ -49,6 +49,12 @@ test("bearer comparison takes exactly the configured key", () => {
   assert.equal(bearerMatches(`Bearer ${SECRET}x`, SECRET), false);
   assert.equal(bearerMatches(SECRET, SECRET), false);
   assert.equal(bearerMatches(undefined, SECRET), false);
+  assert.equal(bearerMatches("Bearer ", SECRET), false);
+  assert.equal(bearerMatches("Bearer\tx", SECRET), false);
+  // A run of spaces must cost nothing (CodeQL: polynomial regular expression).
+  const started = performance.now();
+  assert.equal(bearerMatches(`bearer ${" ".repeat(200_000)}x`, SECRET), false);
+  assert.ok(performance.now() - started < 50, "linear in the header's length");
 });
 
 // openlore: scenario=ARequestWithoutTheSecretIsRefused spec=openwebui-planning-server
