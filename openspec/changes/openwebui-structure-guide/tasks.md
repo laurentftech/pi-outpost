@@ -34,7 +34,7 @@
   themselves are unchanged (still deep-equal to the gate's).
 - [x] 3.2 Name the guide in the `show_structure` and `create_planning` descriptions. Extend the
   OpenAPI tests: seven tools, and `ShowStructureNamesTheGuide`.
-- [ ] 3.3 Live, on the compose stack with Codestral:
+- [x] 3.3 Live, on the compose stack with Codestral:
   - one request for a hard document: a version 2 requirements table with chapters and traceability;
   - one that should produce a proposal refusal.
 
@@ -43,10 +43,10 @@
 
 ## 4. Documentation and coverage
 
-- [ ] 4.1 Update `docs/openwebui.md` (the tool, and how the model learns the format) and
+- [x] 4.1 Update `docs/openwebui.md` (the tool, and how the model learns the format) and
   `docs/openwebui-architecture.md` (the guide shares its source with pi-outpost's skill, and is
   bundled at build). Note in `skills/structured-exchange/SKILL.md`'s maintainer comment, if it has
   one, or in `docs/development.md`, that the marked passages are left out of what Open WebUI's
   models read.
-- [ ] 4.2 Write `scenario-coverage.md` with every scenario covered. Run `npm run check:scenarios` and
+- [x] 4.2 Write `scenario-coverage.md` with every scenario covered. Run `npm run check:scenarios` and
   `openspec validate openwebui-structure-guide --strict`.

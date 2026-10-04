@@ -84,6 +84,7 @@ The skill manifest would cost about as much.
 | Topic | Page | Refusal rules that point to it |
 |---|---|---|
 | `proposals` | `proposals.md` | target, ref, set, removals, change rules (`change-*`, `*-without-target`, `removal-*`) |
+| `graphs-and-tables` | `graphs-and-tables.md` | a **table** with a target or removals (`kind-not-proposable`): a table reports a change through row roles, which this page teaches. Found live: pointed at `proposals`, the model retried a table proposal four times. |
 | `timelines` | `timelines.md` | any issue on a `timeline` document, or a `timeline-*` rule |
 | `enriched` | `enriched-contract.md` | version 2 fields: attributes, expectations, locations, artifacts, chapters, traceability, viewpoints |
 | `graphs-and-tables` | `graphs-and-tables.md` | anything else |

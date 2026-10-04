@@ -31,13 +31,16 @@ services:
           "config": {"enable": true,
                      "access_grants": [{"principal_type": "user", "principal_id": "*", "permission": "read"}]},
           "info": {"id": "plannings", "name": "Plannings",
-                   "description": "Personal project plannings, shown as interactive timelines"}}]
+                   "description": "Personal plannings, diagrams, sequences and tables, drawn in the chat"}}]
     volumes:
       - open-webui:/app/backend/data
     depends_on:
       - plannings
 
   plannings:
+    # Published with each pi-outpost release. To run an unreleased version, build it from
+    # a clone (docker build -f openwebui/Dockerfile -t pi-outpost-plannings .) and set
+    # PLANNINGS_IMAGE=pi-outpost-plannings in .env.
     image: ${PLANNINGS_IMAGE:-ghcr.io/laurentftech/pi-outpost-plannings:latest}
     restart: unless-stopped
     environment:

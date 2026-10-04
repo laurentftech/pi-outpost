@@ -11,6 +11,9 @@ Checked against **Open WebUI v0.11.4**.
 - **What it is:** a stateless HTTP service, one Node process in one container, with one volume. It
   receives tool calls from Open WebUI's backend, stores each user's plannings as files, and answers
   with JSON or with an HTML page that Open WebUI shows inside a sandboxed frame.
+- **The guide:** `read_structure_guide` returns the reference pages of pi-outpost's
+  structured-exchange skill. The build copies them beside the bundled server, from the skill's own
+  files, leaving out the passages marked as pi-outpost-only. Nothing is fetched at run time.
 - **Showing a diagram:** `show_structure` validates a structured document (a graph, a sequence, a
   table, a timeline, or a proposal) and answers with that page. It stores nothing.
 - **What it never does:** it opens no outbound connection, calls no model, holds no user password,
@@ -246,6 +249,9 @@ flowchart TB
     comparison.
 
   A change to a drawing or to the validation reaches both hosts at the next release.
+- **The guidance:** the structured-exchange skill's reference pages are one source for both hosts.
+  pi-outpost's agent reads them as files. The planning server serves them through
+  `read_structure_guide`, less the passages marked `<!-- only: pi-outpost -->`.
 - **The adapter's own:**
   - the trust boundary;
   - per-user storage with revisions;

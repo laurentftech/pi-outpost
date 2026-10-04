@@ -112,7 +112,7 @@ async function refusalOf(t: test.TestContext, fixture: string) {
 
 // openlore: scenario=AProposalRefusalPointsToProposals spec=openwebui-structure-guide
 test("AProposalRefusalPointsToProposals: change without a target, removal without one, a table proposed", async (t) => {
-  for (const fixture of ["change-without-target.json", "removal-without-target.json", "change-without-reference.json", "table-with-target.json"]) {
+  for (const fixture of ["change-without-target.json", "removal-without-target.json", "change-without-reference.json"]) {
     const refusal = await refusalOf(t, fixture);
     assert.equal(refusal.guide, "proposals", fixture);
     assert.match(refusal.error, /read_structure_guide with topic "proposals"/);
@@ -124,6 +124,15 @@ test("ATimelineRefusalPointsToTimelines: an inverted activity, a timeline with a
   for (const fixture of ["v3-timeline-inverted-activity.json", "v3-timeline-with-target.json"]) {
     assert.equal((await refusalOf(t, fixture)).guide, "timelines", fixture);
   }
+});
+
+// openlore: scenario=ATableProposalPointsToRowRoles spec=openwebui-structure-guide
+test("ATableProposalPointsToRowRoles: a table with a target, or with removals, goes to the page on row roles", async (t) => {
+  for (const fixture of ["table-with-target.json", "table-with-removal.json"]) {
+    assert.equal((await refusalOf(t, fixture)).guide, "graphs-and-tables", fixture);
+  }
+  const page = await fs.readFile(path.join(REFERENCES, "graphs-and-tables.md"), "utf8");
+  assert.match(page, /role/, "the page it points to does teach row roles");
 });
 
 test("other refusals point to the enriched contract for version 2, to graphs and tables otherwise", async (t) => {

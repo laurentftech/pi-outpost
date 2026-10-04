@@ -857,10 +857,15 @@ the host page itself is installable.
 
 ## Plannings in Open WebUI
 
-The planning timelines also run in [Open WebUI](https://openwebui.com), without pi-outpost: a
-small server, shipped as a container image, keeps each user's plannings and shows them in the
-chat as the same interactive timeline. A `docker-compose.yml` brings up Open WebUI with it for a
-demo. See [docs/openwebui.md](docs/openwebui.md).
+The planning timelines and structured documents also run in [Open WebUI](https://openwebui.com),
+without pi-outpost. A small server, shipped as a container image:
+- keeps each user's plannings and shows them in the chat as the same interactive timeline;
+- draws the model's diagrams, sequences, tables and proposals with pi-outpost's rendering;
+- serves the model the same structured-exchange guide pi-outpost's agent reads.
+
+A `docker-compose.yml` brings up Open WebUI with it for a demo. See
+[docs/openwebui.md](docs/openwebui.md) and its
+[architecture and security](docs/openwebui-architecture.md).
 
 ## Embedding
 

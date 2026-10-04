@@ -51,11 +51,17 @@ name a tool Open WebUI's models do not have. The examples in the pages SHALL rem
 
 A refusal from showing a structure SHALL name the guide topic that covers the rule it broke: a
 proposal rule SHALL point to the proposals page, a timeline rule to the timelines page, a version 2
-enrichment rule to the enriched contract page, and any other rule to the graphs and tables page.
+enrichment rule to the enriched contract page, and any other rule to the graphs and tables page. A table
+that tries to be a proposal SHALL point to the graphs and tables page, which shows how a table marks what
+a change did to its rows, since a table cannot be proposed.
 
 #### Scenario: AProposalRefusalPointsToProposals
 - **WHEN** a document declaring a change without a target is shown
 - **THEN** the refusal names the proposals topic and how to read it
+
+#### Scenario: ATableProposalPointsToRowRoles
+- **WHEN** a table naming a target is shown
+- **THEN** the refusal names the graphs and tables topic, not the proposals topic
 
 #### Scenario: ATimelineRefusalPointsToTimelines
 - **WHEN** a timeline whose activity ends before it starts is shown

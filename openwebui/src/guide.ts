@@ -125,6 +125,10 @@ export function guideTopicFor(document: unknown, issues: readonly StructuredExch
     parsed = undefined;
   }
   if (parsed?.kind === "timeline") return "timelines";
+  // A table cannot be a proposal. What a change did to a table is said with row roles,
+  // which the graphs-and-tables page teaches; sending the model to the proposals page
+  // had it retry a table proposal four times before giving up (live run, 2026-10-04).
+  if (parsed?.kind === "table" && issues.some((issue) => issue.rule === "kind-not-proposable")) return "graphs-and-tables";
   const proposal = issues.some(
     (issue) =>
       PROPOSAL_RULES.has(issue.rule) ||

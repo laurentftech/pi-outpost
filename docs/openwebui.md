@@ -65,6 +65,20 @@ Then:
 docker compose up -d
 ```
 
+**The image is published from the release that includes it.** To try a version not released yet,
+build the image from a clone of the repository, then name it in `.env`:
+
+```bash
+git clone https://github.com/laurentftech/pi-outpost.git
+cd pi-outpost && docker build -f openwebui/Dockerfile -t pi-outpost-plannings .
+# in .env, next to docker-compose.yml:
+PLANNINGS_IMAGE=pi-outpost-plannings
+```
+
+**Exposure:** `OPEN_WEBUI_PORT` decides where Open WebUI listens.
+- By default it listens on every interface, which suits a VM others connect to.
+- `OPEN_WEBUI_PORT=127.0.0.1:3000` keeps it to the machine itself.
+
 1. Open `http://<machine>:3000`. The first account created is the administrator.
 2. [Turn the planning tools on for a model](#turning-it-on-for-a-model).
 3. Ask, for example: *"Crée un planning pour la refonte du site web : maquettes de mi-janvier à fin
@@ -108,6 +122,18 @@ A model needs tool calling. Codestral, Mistral Medium and Gemini Flash all work.
 | "What changed since last week's version?" | `show_planning` with `compare_to` |
 | "Draw the order process", "show the architecture of…", "who talks to whom when…", "put this in a table" | `show_structure`: a graph, a sequence or a table |
 | "Propose replacing X by Y in this architecture" | `show_structure` with a proposal: additions, changes and removals marked |
+
+**How the model learns the format.** Open WebUI's models have no skill to read, so the planning
+server teaches them in three places:
+- **The tool descriptions:** the shapes, and a complete example of each kind.
+- **`read_structure_guide`:** the reference pages of pi-outpost's own structured-exchange skill, one
+  topic per job: graphs and tables, proposals, timelines, the enriched version 2 contract. Same
+  source as pi-outpost's skill, less the passages about pi-outpost's file tools.
+- **Refusals:** each one says what was wrong and which guide topic explains it. In practice this is
+  where the guide gets read. A model that has just been refused reads the page it is pointed to,
+  then corrects its document within the same reply.
+
+Nothing has to be installed for this: the guide comes with the server, in the server's version.
 
 **In the timeline:**
 - the reader changes scale (week, month, quarter, fit), hides dependencies, or draws one row per
