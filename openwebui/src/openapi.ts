@@ -52,7 +52,7 @@ export const UPDATE_EXAMPLE = {
   base_revision: 1,
   operations: [
     { op: "change_item", id: "inspection", changes: { date: "2031-05-28" } },
-    { op: "change_item", id: "frame", changes: { start: "2031-06-02" } },
+    { op: "change_item", id: "frame", changes: { start: "2031-06-02", end: "2031-08-15" } },
     { op: "add_task", after: "G2", task: { id: "G3", label: "Handover", items: [{ type: "milestone", id: "handover", date: "2031-09-12", label: "Keys handed over" }] } },
     { op: "add_dependency", dependency: { from: "frame", to: "handover" } },
   ],
@@ -79,8 +79,9 @@ Operations (by id; separators by their row index in data.rows):
 - {"op":"add_item","task":task id,"item":{…}} · {"op":"change_item","id","changes":{field: new value, null removes it, "task": move to another task}} · {"op":"remove_item","id"}
 - {"op":"add_separator","label"?,"before"|"after"|"index"} · {"op":"remove_separator","row":n}
 - {"op":"add_dependency","dependency":{"from","to","type"?}} · {"op":"remove_dependency","from","to"}
+To shift or delay an activity, change both its start and its end by the same amount; change only one to lengthen or shorten it.
 Removing a task or an item removes its dependencies. A refused update changes nothing and says why.
-Complete example, on another project (moves the inspection a week, shifts the frame, adds a handover milestone after it):${fence(UPDATE_EXAMPLE)}
+Complete example, on another project (delays the inspection a week, shifts the frame a week, both ends, adds a handover milestone after it):${fence(UPDATE_EXAMPLE)}
 Then call show_planning with compare_to set to the revision you started from, so the user sees what moved.`;
 
 const idProperty = { type: "string", description: "The planning's id (pl_…), from list_plannings or create_planning." };

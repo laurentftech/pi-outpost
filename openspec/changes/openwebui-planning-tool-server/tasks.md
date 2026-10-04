@@ -120,7 +120,7 @@
   - the Open WebUI version it was checked against.
 
   Link it from the README. Verify: the documented commands run, and the links resolve.
-- [ ] 8.2 In the local Open WebUI, drive it as a user, with a real model (Codestral or Gemini) and as
+- [x] 8.2 In the local Open WebUI, drive it as a user, with a real model (Codestral or Gemini) and as
   two different users:
   - create a planning, move a milestone, show it compared to the first revision, click a milestone;
   - check that the second user cannot see the first's planning.
@@ -130,5 +130,5 @@
   - a reopened chat, a server restart between create and update.
 
   Report what broke.
-- [ ] 8.3 Write `scenario-coverage.md` with every scenario covered. Run `npm run check:scenarios` and
+- [x] 8.3 Write `scenario-coverage.md` with every scenario covered. Run `npm run check:scenarios` and
   `openspec validate openwebui-planning-tool-server --strict`.

@@ -119,3 +119,38 @@ example in the tool description was also a website redesign. The model stored:
 
 **Re-run, same request:** "Refonte du site web", "Maquettes", "Revue de design", "Développement",
 "Mise en ligne", with 2027-01-15 → 2027-02-28, 2027-03-05, 2027-03-08 → 2027-05-31 and 2027-06-15.
+
+## 6. End to end on the compose stack (task 8.2)
+
+`openwebui/deploy/docker-compose.yml`, run as written, with Open WebUI v0.11.4, the image built
+from the branch and Codestral.
+
+**Two things the deployment needs that the first draft of the compose file lacked:**
+- **A tool server with no `access_grants` is admin-only** (`has_connection_access`). Bob, a plain
+  user, got no planning tools, and the model fell back on Open WebUI's built-in tools
+  (`search_calendar_events`). The compose file now grants the connection to every user.
+- **A model a plain user can see.** Open WebUI hides models from users until an admin grants
+  access. The doc says so, next to attaching the tools to the model.
+
+**What worked, driven by the model:**
+- **Laurent:** create from a French request, show, "décale la revue d'une semaine" → `get`,
+  `update`, `show` compared with revision 1 (+7d drawn).
+- **Bob:** an empty list. Laurent's planning, asked for by its exact id, answered "not found".
+
+**A model problem found, and fixed in the description:** "le développement d'autant" moved only the
+activity's start, because the update example changed only a start. The example now shifts both
+ends, and the description states the rule.
+
+**Destructive pass, straight at the container:**
+- 20 concurrent updates from one revision: 1 accepted, 19 told they were stale.
+- 30 rapid sequential updates: all accepted, revisions 2 to 32.
+- Hostile title and label (`R&D </script><script>…`, entities, RTL, emoji): stored. The embed holds
+  no `&` and a single `<script>`; the hostile text lives only in the compressed payload.
+- `__proto__` in changes: refused by Fastify's JSON parser, and nothing polluted.
+- Unknown op, non-list operations, empty list, date outside the range, self-dependency: all
+  refused with the reason, nothing changed.
+- A 2 MB label: refused at 413 with the ceiling named.
+- Invalid JSON: 400.
+- Another user reading the planning: 404.
+- Container restarted mid-sequence: the planning read back at revision 34, and the next update was
+  accepted.

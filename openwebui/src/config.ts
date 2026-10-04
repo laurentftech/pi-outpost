@@ -1,12 +1,11 @@
 /**
  * Where the planning server's settings come from: the environment, and nothing else.
  *
- * The server is meant to be run by somebody else's operations team, next to an Open
- * WebUI they already configure through environment variables, so it is configured
- * the same way. Every setting that guards something has no default: a server that
- * starts without its secret, or in signed mode without the key to check signatures,
- * would accept requests it cannot vouch for. It refuses to start instead, and says
- * which setting is missing.
+ * The server runs next to an Open WebUI that is configured through environment
+ * variables, so it is configured the same way. Every setting that guards something
+ * has no default: a server that starts without its secret, or in signed mode
+ * without the key to check signatures, would accept requests it cannot vouch for.
+ * It refuses to start instead, and says which setting is missing.
  */
 import path from "node:path";
 

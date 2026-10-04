@@ -13,6 +13,9 @@ there for the same reason, and every stored revision opens in pi-outpost as it i
 
 Checked against **Open WebUI v0.11.4**.
 
+For the architecture, the trust model, token and key management and what is stored, see
+[openwebui-architecture.md](openwebui-architecture.md).
+
 - [How it fits together](#how-it-fits-together)
 - [A demo in ten minutes](#a-demo-in-ten-minutes)
 - [Turning it on for a model](#turning-it-on-for-a-model)
@@ -84,6 +87,11 @@ A global tool server is available to everyone, but a chat uses it only when it i
 
 **One chat at a time instead:** a user switches **Plannings** on from the chat's integrations menu
 (the tools button under the message box).
+
+**Users must see the model too.** Open WebUI hides models from plain users until the admin
+grants access: *Admin Settings → Models*, the model, *Visibility* (or access), and open it to users
+or to a group. The planning tools are open to every user through the `access_grants` in the
+compose file. Without a grant, Open WebUI keeps a tool server to admins only.
 
 A model needs tool calling. Codestral, Mistral Medium and Gemini Flash all work.
 
