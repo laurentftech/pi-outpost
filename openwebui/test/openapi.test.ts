@@ -48,8 +48,8 @@ test("TheCreationExampleIsValid and TheUpdateExampleApplies: the examples as pub
   const applied = await call("update_planning", { ...update, id: created.json().id });
   assert.equal(applied.statusCode, 200, applied.body);
   assert.equal(applied.json().revision, 2);
-  // The example says it moves the review and adds a launch: it does.
+  // The example says it moves the inspection and adds a handover: it does.
   const items = applied.json().planning.data.rows.flatMap((row: { items?: Array<{ id: string; date?: string }> }) => row.items ?? []);
-  assert.equal(items.find((item: { id: string }) => item.id === "review").date, "2027-03-12");
-  assert.ok(items.some((item: { id: string }) => item.id === "launch"));
+  assert.equal(items.find((item: { id: string }) => item.id === "inspection").date, "2031-05-28");
+  assert.ok(items.some((item: { id: string }) => item.id === "handover"));
 });

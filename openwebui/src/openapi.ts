@@ -11,33 +11,38 @@
 import type { FastifyInstance } from "fastify";
 import { OPERATION_NAMES } from "./operations.ts";
 
-/** A complete minimal planning: the creation example. */
+/**
+ * A complete minimal planning: the creation example. Deliberately from an unrelated
+ * field, with odd dates: weak models copy an example's labels and dates when it looks
+ * like the request (observed with Codestral on a website request against a website
+ * example), so the example must not look like anything a user would ask for.
+ */
 export const CREATION_EXAMPLE = {
   schema: "urn:structured-exchange:3",
   kind: "timeline",
   data: {
-    title: "Website redesign",
-    time: { start: "2027-01-01", end: "2027-06-30", scale: "month" },
+    title: "Greenhouse construction",
+    time: { start: "2031-04-01", end: "2031-09-30", scale: "month" },
     rows: [
-      { type: "separator", label: "Design" },
+      { type: "separator", label: "Site" },
       {
         type: "task",
-        id: "T1",
-        label: "Mock-ups",
+        id: "G1",
+        label: "Foundations",
         items: [
-          { type: "activity", id: "mockups", start: "2027-01-11", end: "2027-02-26", label: "Mock-ups" },
-          { type: "milestone", id: "review", date: "2027-03-05", kind: "Review", label: "Design review" },
+          { type: "activity", id: "earthworks", start: "2031-04-07", end: "2031-05-16", label: "Earthworks" },
+          { type: "milestone", id: "inspection", date: "2031-05-21", kind: "Inspection", label: "Soil inspection" },
         ],
       },
-      { type: "separator", label: "Build" },
+      { type: "separator", label: "Structure" },
       {
         type: "task",
-        id: "T2",
-        label: "Development",
-        items: [{ type: "activity", id: "dev", start: "2027-03-08", end: "2027-05-28", label: "Development" }],
+        id: "G2",
+        label: "Frame and glazing",
+        items: [{ type: "activity", id: "frame", start: "2031-05-26", end: "2031-08-08", label: "Steel frame" }],
       },
     ],
-    dependencies: [{ from: "review", to: "dev" }],
+    dependencies: [{ from: "inspection", to: "frame" }],
   },
 };
 
@@ -46,10 +51,10 @@ export const UPDATE_EXAMPLE = {
   id: "pl_…",
   base_revision: 1,
   operations: [
-    { op: "change_item", id: "review", changes: { date: "2027-03-12" } },
-    { op: "change_item", id: "dev", changes: { start: "2027-03-15" } },
-    { op: "add_task", after: "T2", task: { id: "T3", label: "Launch", items: [{ type: "milestone", id: "launch", date: "2027-06-15", label: "Go live" }] } },
-    { op: "add_dependency", dependency: { from: "dev", to: "launch" } },
+    { op: "change_item", id: "inspection", changes: { date: "2031-05-28" } },
+    { op: "change_item", id: "frame", changes: { start: "2031-06-02" } },
+    { op: "add_task", after: "G2", task: { id: "G3", label: "Handover", items: [{ type: "milestone", id: "handover", date: "2031-09-12", label: "Keys handed over" }] } },
+    { op: "add_dependency", dependency: { from: "frame", to: "handover" } },
   ],
 };
 
@@ -63,7 +68,8 @@ The planning is a structured-exchange version 3 timeline document:
 - data.dependencies (optional): {"from":id,"to":id}, ids of tasks or items; type may be "finish-to-start" (default), "start-to-start", "finish-to-finish" or "start-to-finish".
 - data.periods (optional): closures, [{"start","end","label"}]. data.references (optional): key dates, [{"date","label"}].
 Every date must fall inside data.time. Give every item an id: you change items by id later. No colours, sizes or positions.
-Complete example of the planning argument:${fence(CREATION_EXAMPLE)}
+Write titles and labels in the user's language, with the user's own names and exact dates ("end of May" is the 31st). The example below only shows the form; take nothing else from it.
+Complete example of the planning argument (a different project):${fence(CREATION_EXAMPLE)}
 Then call show_planning with the returned id so the user sees it.`;
 
 const UPDATE_DESCRIPTION = `Changes a planning with a list of operations, all applied or none. Read the planning with get_planning first, and pass the revision you read as base_revision; if someone changed it since, you are told to read it again.
@@ -74,7 +80,7 @@ Operations (by id; separators by their row index in data.rows):
 - {"op":"add_separator","label"?,"before"|"after"|"index"} · {"op":"remove_separator","row":n}
 - {"op":"add_dependency","dependency":{"from","to","type"?}} · {"op":"remove_dependency","from","to"}
 Removing a task or an item removes its dependencies. A refused update changes nothing and says why.
-Complete example (moves the review a week, shifts development, adds a launch milestone after it):${fence(UPDATE_EXAMPLE)}
+Complete example, on another project (moves the inspection a week, shifts the frame, adds a handover milestone after it):${fence(UPDATE_EXAMPLE)}
 Then call show_planning with compare_to set to the revision you started from, so the user sees what moved.`;
 
 const idProperty = { type: "string", description: "The planning's id (pl_…), from list_plannings or create_planning." };

@@ -1,0 +1,49 @@
+# Open WebUI with the pi-outpost planning server, ready for a demo or a first install.
+#
+#   cp .env.example .env     # then fill it in
+#   docker compose up -d     # Open WebUI on http://<host>:3000
+#
+# The planning server is reachable from Open WebUI only: it publishes no port.
+# See docs/openwebui.md.
+name: openwebui-plannings
+
+services:
+  open-webui:
+    image: ghcr.io/open-webui/open-webui:${OPEN_WEBUI_VERSION:-v0.11.4}
+    restart: unless-stopped
+    ports:
+      - "${OPEN_WEBUI_PORT:-3000}:8080"
+    environment:
+      WEBUI_SECRET_KEY: ${WEBUI_SECRET_KEY:?set WEBUI_SECRET_KEY in .env}
+      # The model provider (any OpenAI-compatible API). Several: separate with ";".
+      OPENAI_API_BASE_URLS: ${OPENAI_API_BASE_URLS:?set OPENAI_API_BASE_URLS in .env}
+      OPENAI_API_KEYS: ${OPENAI_API_KEYS:?set OPENAI_API_KEYS in .env}
+      ENABLE_OLLAMA_API: "false"
+      # Who is asking: Open WebUI signs the user into every tool call.
+      ENABLE_FORWARD_USER_INFO_HEADERS: "true"
+      FORWARD_USER_INFO_HEADER_JWT_SECRET: ${PLANNING_IDENTITY_KEY:?set PLANNING_IDENTITY_KEY in .env}
+      # The planning server, declared as a global tool server. Read at first start;
+      # afterwards Admin settings → External Tools holds it.
+      TOOL_SERVER_CONNECTIONS: >-
+        [{"url": "http://plannings:8790", "path": "openapi.json", "type": "openapi",
+          "auth_type": "bearer", "key": "${PLANNING_SECRET:?set PLANNING_SECRET in .env}",
+          "config": {"enable": true},
+          "info": {"id": "plannings", "name": "Plannings",
+                   "description": "Personal project plannings, shown as interactive timelines"}}]
+    volumes:
+      - open-webui:/app/backend/data
+    depends_on:
+      - plannings
+
+  plannings:
+    image: ${PLANNINGS_IMAGE:-ghcr.io/laurentftech/pi-outpost-plannings:latest}
+    restart: unless-stopped
+    environment:
+      OWUI_PLANNING_SECRET: ${PLANNING_SECRET}
+      OWUI_PLANNING_IDENTITY_KEY: ${PLANNING_IDENTITY_KEY}
+    volumes:
+      - plannings:/data
+
+volumes:
+  open-webui:
+  plannings:

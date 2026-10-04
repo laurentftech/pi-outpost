@@ -104,3 +104,18 @@ that stay on 0.11.x, and halves what every chat stores.
 - the 9-task demo programme drew with all four dependency types;
 - the frame sized itself to 578 px;
 - clicking a milestone or a task label filled the input, and nothing was sent.
+
+## 5. Weak models copy an example that looks like the request
+
+**What happened:** Codestral was asked, in French, for a website-redesign planning. The creation
+example in the tool description was also a website redesign. The model stored:
+- the example's English labels ("Website redesign", "Mock-ups");
+- the example's dates, 02-26 and 05-28, where the user said "fin février" and "fin mai".
+
+**Fix:**
+- the example is now a greenhouse construction in 2031, which no request will resemble;
+- the description says to write in the user's language with the user's names and exact dates
+  ("end of May" is the 31st), and to take only the form from the example.
+
+**Re-run, same request:** "Refonte du site web", "Maquettes", "Revue de design", "Développement",
+"Mise en ligne", with 2027-01-15 → 2027-02-28, 2027-03-05, 2027-03-08 → 2027-05-31 and 2027-06-15.
