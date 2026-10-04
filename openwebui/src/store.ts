@@ -53,7 +53,12 @@ const PLANNING_ID = /^pl_[A-Za-z0-9_-]{16}$/;
 
 export function notFound(id: string): PlanningRefusal {
   // Identical for an unknown id and for another user's planning: existence is not disclosed.
-  return new PlanningRefusal(404, `no planning "${id}"`);
+  // Said to the model: Codestral once showed a planning by a placeholder id, in parallel
+  // with creating it, got this answer, and told the user the planning was on screen.
+  return new PlanningRefusal(
+    404,
+    `no planning "${id}". Nothing was shown — do not tell the user it was. Planning ids come from the answers of create_planning or list_plannings: use one of those, after it has answered.`,
+  );
 }
 
 function titleOf(document: TimelineDocument): string {

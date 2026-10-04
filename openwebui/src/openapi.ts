@@ -49,7 +49,7 @@ export const CREATION_EXAMPLE = {
 
 /** A complete update of the creation example, at revision 1. */
 export const UPDATE_EXAMPLE = {
-  id: "pl_…",
+  id: "<the id get_planning returned>",
   base_revision: 1,
   operations: [
     { op: "change_item", id: "inspection", changes: { date: "2031-05-28" } },
@@ -136,7 +136,7 @@ The planning is a structured-exchange version 3 timeline document:
 Every date must fall inside data.time. Give every item an id: you change items by id later. No colours, sizes or positions.
 Write titles and labels in the user's language, with the user's own names and exact dates ("end of May" is the 31st). The example below only shows the form; take nothing else from it.
 Complete example of the planning argument (a different project):${fence(CREATION_EXAMPLE)}
-Then call show_planning with the returned id so the user sees it. For dependencies, closures and key dates beyond this example, read_structure_guide with topic "timelines" has the full reference.`;
+Then, once this call has answered, call show_planning with the id it returned so the user sees it — never in the same step, since the id does not exist before. For dependencies, closures and key dates beyond this example, read_structure_guide with topic "timelines" has the full reference.`;
 
 const UPDATE_DESCRIPTION = `Changes a planning with a list of operations, all applied or none. Read the planning with get_planning first, and pass the revision you read as base_revision; if someone changed it since, you are told to read it again.
 Operations (by id; separators by their row index in data.rows):
@@ -158,7 +158,10 @@ Write labels in the user's language with the user's names. The examples below on
 For anything beyond them, read_structure_guide has the full reference, one topic per job: "graphs-and-tables" (containers, row roles, viewpoints), "proposals", "timelines", "enriched" (version 2: attributes, requirements tables with headings and traceability). Read the topic before writing a kind you have not written in this conversation.
 Graph:${fence(STRUCTURE_EXAMPLES.graph)}Sequence:${fence(STRUCTURE_EXAMPLES.sequence)}Table:${fence(STRUCTURE_EXAMPLES.table)}Proposal (changes one element, adds one, removes one):${fence(STRUCTURE_EXAMPLES.proposal)}`;
 
-const idProperty = { type: "string", description: "The planning's id (pl_…), from list_plannings or create_planning." };
+const idProperty = {
+  type: "string",
+  description: "The planning's id, exactly as list_plannings or create_planning returned it. Never guess one: call those first and wait for their answer.",
+};
 
 function operation(operationId: string, summary: string, description: string, properties: Record<string, unknown>, required: string[]) {
   return {

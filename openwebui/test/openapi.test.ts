@@ -89,3 +89,10 @@ test("ShowStructureNamesTheGuide: the structure and planning tools point to the 
   const guide = document.paths["/read_structure_guide"].post;
   assert.deepEqual(guide.requestBody.content["application/json"].schema.properties.topic.enum, ["graphs-and-tables", "proposals", "timelines", "enriched"]);
 });
+
+test("no description offers a copyable placeholder id, and show_planning waits for create_planning", async (t) => {
+  const { document } = await published(t);
+  const text = JSON.stringify(document);
+  assert.doesNotMatch(text, /pl_…|pl_\\u2026/, "a model copied `pl_…` as an id");
+  assert.match(document.paths["/create_planning"].post.description, /once this call has answered[\s\S]*never in the same step/);
+});
