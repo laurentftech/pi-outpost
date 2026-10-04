@@ -73,7 +73,7 @@
 
 ## 5. The embedded timeline
 
-- [ ] 5.1 Add a single-file Vite build entry that mounts `TimelineView` with the planning's data:
+- [x] 5.1 Add a single-file Vite build entry that mounts `TimelineView` with the planning's data:
   - optional comparison through `compareTimelines`;
   - height reporting through `ResizeObserver` → `iframe:height`;
   - `input:prompt` on a task or milestone click, never `input:prompt:submit`.
@@ -84,7 +84,7 @@
   The page makes no request to the server. Verify with tests for
   `ShowingAPlanningEmbedsTheTimeline` and `ShowingAComparisonDrawsWhatMoved` (the comparison present
   in the embedded data).
-- [ ] 5.3 Verify `TheEmbedRunsInTheDefaultSandbox` in a Playwright test:
+- [x] 5.3 Verify `TheEmbedRunsInTheDefaultSandbox` in a Playwright test:
   - a host page frames the HTML with `sandbox="allow-scripts"` and no same-origin;
   - check from the DOM that it draws every item, changes scale and opens details;
   - check from the host's received messages that it reports a height and fills, never submits.
