@@ -37,6 +37,16 @@ jobs:
         env:
           CI: true
 
+      - run: npm test --workspace @pi-outpost/openwebui
+
+      # The Open WebUI planning server as deployments run it: the image, its volume,
+      # its refusal to start without a secret.
+      - name: Planning server image
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          docker build -f openwebui/Dockerfile -t pi-outpost-plannings:dev .
+          bash openwebui/test/image.sh pi-outpost-plannings:dev
+
       # Coverage on one platform only, and over the unit suites alone. The .mjs
       # suites drive a real server in a subprocess: its coverage is not ours to
       # claim, and loading them all made node truncate its own report at 10 MB.

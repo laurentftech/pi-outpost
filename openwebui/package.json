@@ -1,0 +1,40 @@
+{
+  "name": "@pi-outpost/openwebui",
+  "private": true,
+  "type": "module",
+  "description": "An Open WebUI tool server that keeps personal structured-exchange plannings and shows them as an interactive timeline.",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "start": "node --import tsx src/main.ts",
+    "typecheck": "tsc --noEmit",
+    "build": "tsc --noEmit && npm run build:viewer && npm run build:server",
+    "pretest": "npm run build:viewer",
+    "test": "node --import tsx/esm --test --test-timeout=120000 test/*.test.ts",
+    "build:viewer": "vite build --config viewer/vite.config.ts",
+    "image": "docker build -f openwebui/Dockerfile -t pi-outpost-plannings:dev ..",
+    "build:server": "esbuild src/main.ts --bundle --platform=node --target=node24 --format=esm --outfile=dist/server.mjs --log-level=warning \"--banner:js=import { createRequire as __createRequire } from 'node:module'; const require = __createRequire(import.meta.url);\"",
+    "lint": "oxlint",
+    "test:image": "bash test/image.sh"
+  },
+  "dependencies": {
+    "@pi-outpost/shared": "*",
+    "fastify": "^5.12.5"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.3.2",
+    "@types/node": "^24.0.0",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.3",
+    "esbuild": "^0.28.2",
+    "oxlint": "^1.71.0",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
+    "tailwindcss": "^4.3.2",
+    "tsx": "^4.19.0",
+    "typescript": "^5.8.0",
+    "vite": "^8.1.1"
+  }
+}

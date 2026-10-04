@@ -12,7 +12,7 @@
  * is never in the document: a plan reopened next month shows next month's today.
  */
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
-import type { StructuredTimelineData, StructuredTimelineItem, StructuredTimelineScale } from "@pi-outpost/shared/structured-exchange";
+import type { StructuredTimelineData, StructuredTimelineItem, StructuredTimelineScale, StructuredTimelineTask } from "@pi-outpost/shared/structured-exchange";
 import { sharedDeclaredColours, type Tint } from "@pi-outpost/shared/structured-exchange/palette";
 import type { ProjectAppearance } from "@pi-outpost/shared/structured-exchange/profile";
 import type { FigureGroup } from "@pi-outpost/shared/structured-exchange/figure";
@@ -93,6 +93,7 @@ export function TimelineView({
   appearance,
   display: sharedDisplay,
   onDisplayChange,
+  onSelect,
 }: {
   data: StructuredTimelineData;
   today?: number;
@@ -101,6 +102,8 @@ export function TimelineView({
   /** The display options, when the caller holds them; otherwise this view keeps its own. */
   display?: TimelineDisplay;
   onDisplayChange?: TimelineDisplayUpdate;
+  /** Told what the reader just selected — a task, or an item of it — and told `undefined` when they unselect. */
+  onSelect?: (selection: { task: StructuredTimelineTask; item?: StructuredTimelineItem } | undefined) => void;
 }) {
   const day = today ?? localToday();
   const [ownDisplay, setOwnDisplay] = useState(() => initialTimelineDisplay(plan));
@@ -219,15 +222,20 @@ export function TimelineView({
 
   const tintOf = (kind: string | undefined) => (kind === undefined ? NEUTRAL : (tints.get(kind) ?? NEUTRAL));
 
-  const toggle = (next: Selection) =>
-    setSelected((current) =>
-      current !== undefined &&
-      current.type === next.type &&
-      current.row === next.row &&
-      (current.type === "task" || (next.type === "item" && current.item === next.item))
-        ? undefined
-        : next,
-    );
+  const sameSelection = (current: Selection | undefined, next: Selection) =>
+    current !== undefined &&
+    current.type === next.type &&
+    current.row === next.row &&
+    (current.type === "task" || (next.type === "item" && current.item === next.item));
+
+  const toggle = (next: Selection) => {
+    const unselecting = sameSelection(selected, next);
+    setSelected((current) => (sameSelection(current, next) ? undefined : next));
+    if (!onSelect) return;
+    const row = data.rows[next.row];
+    if (unselecting || row?.type !== "task") return onSelect(undefined);
+    onSelect(next.type === "item" ? { task: row, item: row.items[next.item] } : { task: row });
+  };
 
   const activate = (event: KeyboardEvent, next: Selection) => {
     if (event.key === "Enter" || event.key === " ") {

@@ -22,6 +22,13 @@ async function toolsOf(root, config) {
     return {
       active: hello.tools.filter((tool) => tool.active).map((tool) => tool.name),
       all: hello.tools.map((tool) => tool.name),
+      // For the failure message: this test has failed intermittently on CI runners
+      // and never locally, so a failure has to carry what the server saw and said.
+      diagnostics: () =>
+        `active: ${hello.tools.filter((tool) => tool.active).map((tool) => tool.name).join(", ") || "(none)"}\n` +
+        `registered: ${hello.tools.map((tool) => tool.name).join(", ") || "(none)"}\n` +
+        `agentStarting: ${hello.agentStarting === true}\n` +
+        `server log:\n${server.log()}`,
     };
   } finally {
     client.close();
@@ -54,8 +61,8 @@ test("UnconfinedBuiltInsAreNotRegistered: a read-only sandbox registers no write
 
 test("UnconfinedBuiltInsAreNotRegistered: allowBash supplies the sandbox's own bash", async () => {
   const root = await makeWorkspace();
-  const { active } = await toolsOf(root, { sandbox: { root, allowWrite: true, writableRoot: root, allowBash: true } });
-  assert.ok(active.includes("bash"), "the sandboxed bash is the one present");
+  const { active, diagnostics } = await toolsOf(root, { sandbox: { root, allowWrite: true, writableRoot: root, allowBash: true } });
+  assert.ok(active.includes("bash"), `the sandboxed bash is the one present\n${diagnostics()}`);
 });
 
 

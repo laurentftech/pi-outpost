@@ -63,7 +63,25 @@ export async function makeWorkspace(files = {}) {
  * absolute). Resolves once /health answers. Always `await server.stop()`.
  */
 export async function startServer(root, config = {}, options = {}) {
-  const port = config.server?.port ?? (await freePort());
+  // freePort() releases the port it found before the server binds it, and the test
+  // files run in parallel processes: another server can take it in between. The
+  // server then dies at bind, so a port this harness chose is retried on a new one.
+  // A port the test named is the test's to keep, and is never changed.
+  const chosenPort = config.server?.port === undefined;
+  for (let attempt = 1; ; attempt += 1) {
+    const port = chosenPort ? await freePort() : config.server.port;
+    try {
+      return await startServerOn(root, config, options, port);
+    } catch (error) {
+      if (!chosenPort || attempt >= 3 || !(error instanceof PortTakenError)) throw error;
+    }
+  }
+}
+
+/** The server died because its port was taken before it could bind it. */
+class PortTakenError extends Error {}
+
+async function startServerOn(root, config, options, port) {
   const full = {
     cwd: root,
     // Sessions, settings and extensions live inside the throwaway workspace: without
@@ -130,8 +148,15 @@ export async function startServer(root, config = {}, options = {}) {
 
   const base = `http://127.0.0.1:${port}`;
   const deadline = Date.now() + 60_000;
+  // The exit code can be known before the pipes are drained: wait for them, or the
+  // reason the server gave for dying is lost and the failure reads "exited (1):".
+  const drained = new Promise((resolve) => child.once("close", resolve));
   for (;;) {
-    if (child.exitCode !== null) throw new Error(`server exited (${child.exitCode}):\n${log}`);
+    if (child.exitCode !== null) {
+      await Promise.race([drained, new Promise((r) => setTimeout(r, 2_000))]);
+      const Failure = /EADDRINUSE|is already in use/.test(log) ? PortTakenError : Error;
+      throw new Failure(`server exited (${child.exitCode}):\n${log}`);
+    }
     try {
       const res = await fetch(`${base}/health`);
       if (res.ok) break;
