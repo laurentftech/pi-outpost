@@ -94,6 +94,11 @@ it passed.
 - the embed shrank from 265 kB to 111 kB;
 - `test/show.test.ts` asserts the page holds no `&`, even for a planning titled "R&D".
 
+**Upstream:** fixed on Open WebUI's `dev` branch by `c7caa1421` (2026-09-30), "fix: tool HTML embeds
+vanish when the HTML contains entities like &quot; (#31390)", which encodes the entities before
+storing. It is not in a release yet (v0.11.4, `main`). The workaround stays: it serves deployments
+that stay on 0.11.x, and halves what every chat stores.
+
 **Verified in the running app:**
 - Codestral called `list_plannings` then `show_planning`;
 - the 9-task demo programme drew with all four dependency types;

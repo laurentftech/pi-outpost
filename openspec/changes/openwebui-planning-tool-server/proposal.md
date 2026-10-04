@@ -52,5 +52,10 @@ tool server is a new consumer of them.
 - **`ui/`**: a single-file build of `TimelineView` for the embed. The component itself is not meant to
   change; the build entry is new.
 - **CI**: the new package's tests run with the others, Windows included.
-- **Not published to npm** by the release workflow until a hosting decision makes that useful.
-- **Docs**: a deployment page (Open WebUI admin settings, `ENABLE_FORWARD_USER_INFO_HEADERS`, secret).
+- **Shipped as a container image.** The release workflow publishes it to `ghcr.io`, versioned like
+  pi-outpost. Open WebUI deployments are container deployments, and the image is what an IT
+  department adds next to Open WebUI. The `Dockerfile` stays in the repository, so it can be rebuilt
+  behind a mirror registry. The package is not published to npm.
+- **Docs**: a deployment page, with a complete `docker-compose` example run for real: Open WebUI's
+  `TOOL_SERVER_CONNECTIONS`, `ENABLE_FORWARD_USER_INFO_HEADERS`, `FORWARD_USER_INFO_HEADER_JWT_SECRET`,
+  and the two secrets.

@@ -217,3 +217,29 @@ SHALL change nothing, and SHALL name the ceiling.
 #### Scenario: TheOldestRevisionsAreNotSilentlyLost
 - **WHEN** an update would take a planning past the revision ceiling
 - **THEN** the update is refused with the ceiling named, and every kept revision is unchanged
+
+### Requirement: TheServerShipsAsAContainerImage
+
+Each release SHALL publish a container image of the server, versioned like the release, that runs
+from environment settings alone and keeps every planning under one data directory meant to be a
+mounted volume. The image SHALL apply the same refusals to start as the server. A prerelease SHALL NOT
+move the image's `latest` tag. The repository SHALL carry the file the image is built from, so that
+a deployment may rebuild it internally.
+
+#### Scenario: TheImageServesFromItsEnvironment
+- **WHEN** the image is run with a secret, an identity key and a data volume, and a planning is
+  created through it
+- **THEN** it answers the OpenAPI description, and the planning's revision file is in the volume
+
+#### Scenario: TheImageRefusesToStartWithoutASecret
+- **WHEN** the image is run without a secret
+- **THEN** the container exits with an error naming the missing setting
+
+#### Scenario: APlanningOutlivesTheContainer
+- **WHEN** a planning is created, the container is replaced by a new one on the same volume, and the
+  planning is read
+- **THEN** it is read as it was stored
+
+#### Scenario: APrereleaseDoesNotMoveLatest
+- **WHEN** the release version is a prerelease
+- **THEN** the image is published under that version only, and `latest` is unchanged

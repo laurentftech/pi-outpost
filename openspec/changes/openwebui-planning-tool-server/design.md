@@ -145,6 +145,28 @@
   `TheCreationExampleIsValid` and `TheUpdateExampleApplies`), so the examples cannot rot.
 - **Rationale:** weak models read the tool description and nothing else.
 
+### Deployment: a container image next to Open WebUI
+
+- **What the IT department runs:** the image beside Open WebUI, on an internal network.
+  - Only Open WebUI's backend calls the server, so no port is exposed.
+  - Plannings live in a volume.
+  - Open WebUI is pointed at the server by configuration, not by clicks: `TOOL_SERVER_CONNECTIONS`
+    (read from the environment by v0.11.4, `config.py`).
+- **Open WebUI's community store is not the route:** it distributes Python Tools and Functions that
+  run inside Open WebUI's process. This server is Node and reuses `shared/` and the React viewer;
+  going there would mean a second implementation, which this change exists to avoid.
+- **Image:**
+  - multi-stage: the build stage installs the workspace and builds the viewer;
+  - the runtime stage is `node:24-slim` with the server's dependencies and `dist/viewer`, run as the
+    unprivileged `node` user;
+  - TypeScript runs through `tsx`, as pi-outpost's server does: Node's own type stripping cannot run
+    the parameter properties the store uses;
+  - inside a container the server listens on `0.0.0.0`, set in the image, since `127.0.0.1` would
+    be unreachable from Open WebUI's container; outside one, the default stays `127.0.0.1`.
+- **Publication:** a release job after `publish`, so the image only ships when the packages did,
+  pushes `ghcr.io/<owner>/pi-outpost-plannings:<version>`. It moves `latest` only for a stable
+  version (`scripts/release-channel.mjs` decides the channel, as it does for npm).
+
 ## Risks / Trade-offs
 
 - **Embed persistence**: no longer a risk. It was observed to persist on v0.11.4. A later Open

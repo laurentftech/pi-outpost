@@ -96,17 +96,31 @@
   `TheDescriptionNamesTheFiveTools`, `TheCreationExampleIsValid` and `TheUpdateExampleApplies`, run
   from the published document.
 
-## 7. End to end in Open WebUI, and documentation
+## 7. Container image
 
-- [ ] 7.1 Write `docs/openwebui.md`:
-  - running the server, its configuration and the secret;
-  - declaring it as a global tool server;
+- [ ] 7.1 Write `openwebui/Dockerfile` as in `design.md`: multi-stage, `node:24-slim`, the `node`
+  user, `OWUI_PLANNING_HOST=0.0.0.0` and `OWUI_PLANNING_DATA_DIR=/data` in the image, a `VOLUME
+  /data`. Add a `.dockerignore`. Verify with a script-driven check (`openwebui/test/image.sh`, run in
+  CI on Linux) for `TheImageServesFromItsEnvironment`, `TheImageRefusesToStartWithoutASecret` and
+  `APlanningOutlivesTheContainer`.
+- [ ] 7.2 Add an `image` job to `.github/workflows/release.yml`: after `publish`, build and push to
+  `ghcr.io` with the release version, and `latest` only for a stable channel. Verify
+  `APrereleaseDoesNotMoveLatest` with a unit test on the tag computation. Build the image by hand
+  from the branch, without pushing, to check the job runs.
+
+## 8. End to end in Open WebUI, and documentation
+
+- [ ] 8.1 Write `docs/openwebui.md`:
+  - a complete `docker-compose.yml` (Open WebUI + the image, internal network, volume, the two
+    secrets, `TOOL_SERVER_CONNECTIONS`), brought up for real and used once;
+  - running the server without Docker, and its configuration;
+  - declaring it as a global tool server by hand, as an alternative to `TOOL_SERVER_CONNECTIONS`;
   - `ENABLE_FORWARD_USER_INFO_HEADERS`, what fails without it;
   - signed versus plain identity, and the size of an embed in chat storage;
   - the Open WebUI version it was checked against.
 
   Link it from the README. Verify: the documented commands run, and the links resolve.
-- [ ] 7.2 In the local Open WebUI, drive it as a user, with a real model (Codestral or Gemini) and as
+- [ ] 8.2 In the local Open WebUI, drive it as a user, with a real model (Codestral or Gemini) and as
   two different users:
   - create a planning, move a milestone, show it compared to the first revision, click a milestone;
   - check that the second user cannot see the first's planning.
@@ -116,5 +130,5 @@
   - a reopened chat, a server restart between create and update.
 
   Report what broke.
-- [ ] 7.3 Write `scenario-coverage.md` with every scenario covered. Run `npm run check:scenarios` and
+- [ ] 8.3 Write `scenario-coverage.md` with every scenario covered. Run `npm run check:scenarios` and
   `openspec validate openwebui-planning-tool-server --strict`.
