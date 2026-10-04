@@ -1,8 +1,8 @@
-# Plannings in Open WebUI
+# pi-outpost in Open WebUI
 
 pi-outpost's planning timelines and structured documents also run inside
-[Open WebUI](https://openwebui.com), with no pi-outpost involved. A small server, the **planning
-server**, does four things:
+[Open WebUI](https://openwebui.com), with no pi-outpost involved. A small server,
+**pi-outpost's Open WebUI server** (*the server* below), does four things:
 
 - it keeps each user's plannings with every revision;
 - it lets the model create, read and change them;
@@ -32,7 +32,7 @@ For the architecture, the trust model, token and key management and what is stor
 ## How it fits together
 
 ```
-browser ──► Open WebUI ──(tool calls, bearer key + signed user)──► planning server ──► /data
+browser ──► Open WebUI ──(tool calls, bearer key + signed user)──► pi-outpost server ──► /data
                ▲                                                         │
                └──────────── the timeline, as HTML embedded in the chat ─┘
 ```
@@ -49,7 +49,7 @@ browser ──► Open WebUI ──(tool calls, bearer key + signed user)──�
 On any machine with Docker, for instance a VM:
 
 ```bash
-mkdir openwebui-plannings && cd openwebui-plannings
+mkdir openwebui-pi-outpost && cd openwebui-pi-outpost
 curl -LO https://raw.githubusercontent.com/laurentftech/pi-outpost/main/openwebui/deploy/docker-compose.yml
 curl -L -o .env https://raw.githubusercontent.com/laurentftech/pi-outpost/main/openwebui/deploy/.env.example
 ```
@@ -70,9 +70,9 @@ build the image from a clone of the repository, then name it in `.env`:
 
 ```bash
 git clone https://github.com/laurentftech/pi-outpost.git
-cd pi-outpost && docker build -f openwebui/Dockerfile -t pi-outpost-plannings .
+cd pi-outpost && docker build -f openwebui/Dockerfile -t pi-outpost-openwebui .
 # in .env, next to docker-compose.yml:
-PLANNINGS_IMAGE=pi-outpost-plannings
+OUTPOST_IMAGE=pi-outpost-openwebui
 ```
 
 **Exposure:** `OPEN_WEBUI_PORT` decides where Open WebUI listens.
@@ -87,10 +87,10 @@ PLANNINGS_IMAGE=pi-outpost-plannings
 
 The compose file runs two containers:
 - Open WebUI on port 3000;
-- the planning server (`ghcr.io/laurentftech/pi-outpost-plannings`), with no published port and its
-  plannings in the `plannings` volume.
+- pi-outpost's server (`ghcr.io/laurentftech/pi-outpost-openwebui`), with no published port and its
+  plannings in the `pi-outpost-data` volume.
 
-Open WebUI finds the planning server through `TOOL_SERVER_CONNECTIONS`. It reads that only on its
+Open WebUI finds the server through `TOOL_SERVER_CONNECTIONS`. It reads that only on its
 **first** start; afterwards the setting lives in *Admin Settings → Integrations → External Tool Servers*.
 
 ## Turning it on for a model
@@ -99,10 +99,10 @@ A global tool server is available to everyone, but a chat uses it only when it i
 **For a demo:** the admin attaches it to the model, so every chat with that model has it:
 
 1. Go to *Admin Settings → Models*, and edit the model, for instance `codestral-latest`.
-2. Under *Tools*, tick **Plannings**.
+2. Under *Tools*, tick **pi-outpost**.
 3. Save.
 
-**One chat at a time instead:** a user switches **Plannings** on from the chat's integrations menu
+**One chat at a time instead:** a user switches **pi-outpost** on from the chat's integrations menu
 (the tools button under the message box).
 
 **Users must see the model too.** Open WebUI hides models from plain users until the admin
@@ -165,19 +165,19 @@ planning.
 
 ## Configuration
 
-The planning server reads only its environment.
+The server reads only its environment.
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `OWUI_PLANNING_SECRET` | — (required) | The bearer key of the tool server connection in Open WebUI. Requests without it are refused before anything else is read. |
-| `OWUI_PLANNING_IDENTITY` | `signed` | `signed` or `plain`; see below. |
-| `OWUI_PLANNING_IDENTITY_KEY` | — (required when signed) | Open WebUI's `FORWARD_USER_INFO_HEADER_JWT_SECRET`. |
-| `OWUI_PLANNING_DATA_DIR` | `/data` in the image, `./planning-data` otherwise | Where plannings are stored. |
-| `OWUI_PLANNING_HOST` | `0.0.0.0` in the image, `127.0.0.1` otherwise | Listening address. |
-| `OWUI_PLANNING_PORT` | `8790` | Listening port. |
-| `OWUI_PLANNING_MAX_BYTES` | `1000000` | Largest planning, in bytes of JSON. |
-| `OWUI_PLANNING_MAX_REVISIONS` | `500` | Revisions kept per planning. Past it, updates are refused, never silently pruned. |
-| `OWUI_PLANNING_MAX_PLANNINGS` | `200` | Plannings per user. |
+| `OUTPOST_SECRET` | — (required) | The bearer key of the tool server connection in Open WebUI. Requests without it are refused before anything else is read. |
+| `OUTPOST_IDENTITY` | `signed` | `signed` or `plain`; see below. |
+| `OUTPOST_IDENTITY_KEY` | — (required when signed) | Open WebUI's `FORWARD_USER_INFO_HEADER_JWT_SECRET`. |
+| `OUTPOST_DATA_DIR` | `/data` in the image, `./planning-data` otherwise | Where plannings are stored. |
+| `OUTPOST_HOST` | `0.0.0.0` in the image, `127.0.0.1` otherwise | Listening address. |
+| `OUTPOST_PORT` | `8790` | Listening port. |
+| `OUTPOST_MAX_PLANNING_BYTES` | `1000000` | Largest planning, in bytes of JSON. |
+| `OUTPOST_MAX_REVISIONS` | `500` | Revisions kept per planning. Past it, updates are refused, never silently pruned. |
+| `OUTPOST_MAX_PLANNINGS` | `200` | Plannings per user. |
 
 The server refuses to start, and names the setting, when the secret is missing, or when it is in
 signed mode without a key.
@@ -185,16 +185,16 @@ signed mode without a key.
 **On the Open WebUI side:**
 - `ENABLE_FORWARD_USER_INFO_HEADERS=true`. Without it, no identity reaches the server and every
   planning request is refused;
-- `FORWARD_USER_INFO_HEADER_JWT_SECRET` set to the same value as `OWUI_PLANNING_IDENTITY_KEY`;
+- `FORWARD_USER_INFO_HEADER_JWT_SECRET` set to the same value as `OUTPOST_IDENTITY_KEY`;
 - the tool server connection, either through `TOOL_SERVER_CONNECTIONS` (see the compose file) or by
   hand in *Admin Settings → Integrations → External Tool Servers*:
   - type OpenAPI;
-  - URL `http://<planning server>:8790`, path `openapi.json`;
-  - authentication *Bearer*, with `OWUI_PLANNING_SECRET`.
+  - URL `http://<server>:8790`, path `openapi.json`;
+  - authentication *Bearer*, with `OUTPOST_SECRET`.
 
 ## Identity: signed or plain
 
-| Mode | What Open WebUI sends | What the planning server trusts |
+| Mode | What Open WebUI sends | What the server trusts |
 |---|---|---|
 | **signed** (default, recommended) | `X-OpenWebUI-User-Jwt`, an HS256 token naming the user, valid five minutes | The token's signature, issuer (`open-webui`) and expiry. The user is the token's subject; plain user headers are ignored. |
 | **plain** | `X-OpenWebUI-User-Id` and the other plain headers | The header, because the bearer key shows Open WebUI sent it |
@@ -211,12 +211,12 @@ Plain mode is only as safe as the bearer key and the network between the two con
 - **Opening a planning elsewhere:** any revision file opens in pi-outpost as a structured-exchange
   document.
 - **Upgrading:** replace the image and keep the volume. Plannings outlive the container.
-- **Images:** one tag per pi-outpost release, `ghcr.io/laurentftech/pi-outpost-plannings:<version>`;
+- **Images:** one tag per pi-outpost release, `ghcr.io/laurentftech/pi-outpost-openwebui:<version>`;
   `latest` follows stable releases only.
 - **Behind a mirror registry:** rebuild the image from the repository:
 
   ```bash
-  docker build -f openwebui/Dockerfile -t pi-outpost-plannings .
+  docker build -f openwebui/Dockerfile -t pi-outpost-openwebui .
   ```
 
 ## Without Docker
@@ -226,7 +226,7 @@ From a clone of the repository, with Node 24:
 ```bash
 npm ci
 npm run build --workspace @pi-outpost/openwebui
-OWUI_PLANNING_SECRET=… OWUI_PLANNING_IDENTITY_KEY=… node openwebui/dist/server.mjs
+OUTPOST_SECRET=… OUTPOST_IDENTITY_KEY=… node openwebui/dist/server.mjs
 ```
 
 `dist/server.mjs` is self-contained apart from `dist/viewer/`, which it embeds; copy both.

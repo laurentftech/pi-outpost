@@ -1,6 +1,6 @@
-# Planning server for Open WebUI — architecture and security
+# pi-outpost for Open WebUI — architecture and security
 
-The architecture of the planning server: its components, how it talks to Open WebUI, what it trusts
+The architecture of pi-outpost's Open WebUI server (*the server* below): its components, how it talks to Open WebUI, what it trusts
 and why, how tokens and keys are handled, and what it stores. Installation is described in
 [openwebui.md](openwebui.md).
 
@@ -37,7 +37,7 @@ flowchart LR
       DB[("Open WebUI database<br/>chats, users,<br/>tool server config")]
       BE --- DB
     end
-    subgraph ps["Planning server container"]
+    subgraph ps["pi-outpost server container"]
       API["HTTP API<br/>OpenAPI tools"]
       V[("Volume /data<br/>plannings, per user,<br/>every revision")]
       API --- V
@@ -54,8 +54,8 @@ flowchart LR
 ```
 
 - **Arrows that do not exist:**
-  - nothing goes from the browser to the planning server;
-  - nothing goes from the planning server to Open WebUI, the model provider or the internet.
+  - nothing goes from the browser to the server;
+  - nothing goes from the server to Open WebUI, the model provider or the internet.
 - **The embed:** the browser shows the timeline because Open WebUI stored it in the chat and hands
   it to its own page, which puts it in a sandboxed frame.
 
@@ -68,7 +68,7 @@ sequenceDiagram
   participant FE as Open WebUI (browser)
   participant BE as Open WebUI backend
   participant M as Model provider
-  participant PS as Planning server
+  participant PS as pi-outpost server
   participant D as /data volume
 
   U->>FE: "Move the design review a week later"
@@ -99,8 +99,8 @@ sequenceDiagram
 
 | Secret | Set in | Proves | Without it |
 |---|---|---|---|
-| Connection bearer key (`OWUI_PLANNING_SECRET`) | the tool server connection in Open WebUI, and the planning server | that the caller is Open WebUI | every request is refused with 401 before anything else is read, including the API description |
-| Identity signing key (`OWUI_PLANNING_IDENTITY_KEY` = Open WebUI's `FORWARD_USER_INFO_HEADER_JWT_SECRET`) | Open WebUI and the planning server | which user Open WebUI acts for | in signed mode, no request can name a user; the server refuses to start without it |
+| Connection bearer key (`OUTPOST_SECRET`) | the tool server connection in Open WebUI, and the server | that the caller is Open WebUI | every request is refused with 401 before anything else is read, including the API description |
+| Identity signing key (`OUTPOST_IDENTITY_KEY` = Open WebUI's `FORWARD_USER_INFO_HEADER_JWT_SECRET`) | Open WebUI and the server | which user Open WebUI acts for | in signed mode, no request can name a user; the server refuses to start without it |
 
 **Order of checks**, enforced in one hook that runs before any route:
 1. the bearer key, compared in constant time;
@@ -130,8 +130,8 @@ A refused request never reaches the code that reads or writes plannings.
 | Item | Lifetime | Rotation |
 |---|---|---|
 | User token (`X-OpenWebUI-User-Jwt`) | 300 s, minted by Open WebUI for each call (`FORWARD_USER_INFO_HEADER_JWT_EXPIRES_SECONDS`) | none: short-lived by design |
-| Identity signing key | until rotated | change `FORWARD_USER_INFO_HEADER_JWT_SECRET` and `OWUI_PLANNING_IDENTITY_KEY` together, then restart both containers. Calls in flight during the restart fail and are retried by the user. |
-| Connection bearer key | until rotated | change it in *Admin Settings → Integrations → External Tool Servers* (or `TOOL_SERVER_CONNECTIONS` before first start) and in `OWUI_PLANNING_SECRET`, then restart the planning server |
+| Identity signing key | until rotated | change `FORWARD_USER_INFO_HEADER_JWT_SECRET` and `OUTPOST_IDENTITY_KEY` together, then restart both containers. Calls in flight during the restart fail and are retried by the user. |
+| Connection bearer key | until rotated | change it in *Admin Settings → Integrations → External Tool Servers* (or `TOOL_SERVER_CONNECTIONS` before first start) and in `OUTPOST_SECRET`, then restart the server |
 
 **Key requirements:**
 - Generate both keys with `openssl rand -hex 32` and keep them out of images and repositories (a
@@ -139,7 +139,7 @@ A refused request never reaches the code that reads or writes plannings.
 - Open WebUI applies its signing key to **every** backend it forwards users to, not only this
   server. A deployment that already uses `FORWARD_USER_INFO_HEADER_JWT_SECRET` reuses the same key here.
 
-The planning server never sees a user's password, Open WebUI session or API key: Open WebUI sends it
+The server never sees a user's password, Open WebUI session or API key: Open WebUI sends it
 only the connection key and the short-lived token.
 
 ## What reaches the browser
@@ -152,7 +152,7 @@ an opaque origin:
 
 **What the page does:**
 - It loads nothing: the viewer, its stylesheet and the planning are inside it, compressed. The
-  browser never contacts the planning server.
+  browser never contacts the server.
 - It sends Open WebUI two kinds of messages:
   - its height;
   - a request to **pre-fill** the chat input when the user clicks a task or a milestone of a
@@ -194,16 +194,16 @@ viewer and planning) is stored in the chat, in Open WebUI's database. Deleting t
 
 | Limit | Default | Setting |
 |---|---|---|
-| Planning size | 1 MB of JSON | `OWUI_PLANNING_MAX_BYTES` |
-| Revisions per planning | 500, after which updates are refused rather than history pruned | `OWUI_PLANNING_MAX_REVISIONS` |
-| Plannings per user | 200 | `OWUI_PLANNING_MAX_PLANNINGS` |
+| Planning size | 1 MB of JSON | `OUTPOST_MAX_PLANNING_BYTES` |
+| Revisions per planning | 500, after which updates are refused rather than history pruned | `OUTPOST_MAX_REVISIONS` |
+| Plannings per user | 200 | `OUTPOST_MAX_PLANNINGS` |
 | Request body | twice the planning size, plus 64 kB | derived |
 
 Malformed input is refused with the reason (400, 413, 422); nothing is partially applied.
 
 ## Supply chain
 
-- **Image:** `ghcr.io/laurentftech/pi-outpost-plannings:<version>` contains `node:24-slim` and two
+- **Image:** `ghcr.io/laurentftech/pi-outpost-openwebui:<version>` contains `node:24-slim` and two
   artefacts. It is built by the project's release workflow from the release tag, after the full test
   suite, and checked by `openwebui/test/image.sh` before it is pushed. It runs as the unprivileged
   `node` user.
@@ -214,13 +214,13 @@ Malformed input is refused with the reason (400, 413, 422); nothing is partially
 - **Rebuilding internally:** the image can be rebuilt from the repository, for a mirror registry:
 
   ```bash
-  docker build -f openwebui/Dockerfile -t pi-outpost-plannings .
+  docker build -f openwebui/Dockerfile -t pi-outpost-openwebui .
   ```
 - **Logging:** the server logs its start-up line and nothing else, no request content.
 
 ## One code base, two hosts
 
-The planning server is not a second implementation. It is a thin adapter around the code
+The server is not a second implementation. It is a thin adapter around the code
 pi-outpost already uses:
 
 ```mermaid
@@ -233,7 +233,7 @@ flowchart TB
     PT["pi tools<br/>workspace files, sandbox"]
     PUI["pi-outpost web app"]
   end
-  subgraph ow["Planning server for Open WebUI"]
+  subgraph ow["pi-outpost server for Open WebUI"]
     R["HTTP routes, trust,<br/>per-user store, targeted updates,<br/>show_structure (stateless)"]
     E["embed viewer<br/>(bundles both views)"]
   end
@@ -250,7 +250,7 @@ flowchart TB
 
   A change to a drawing or to the validation reaches both hosts at the next release.
 - **The guidance:** the structured-exchange skill's reference pages are one source for both hosts.
-  pi-outpost's agent reads them as files. The planning server serves them through
+  pi-outpost's agent reads them as files. The server serves them through
   `read_structure_guide`, less the passages marked `<!-- only: pi-outpost -->`.
 - **The adapter's own:**
   - the trust boundary;

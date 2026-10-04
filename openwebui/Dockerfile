@@ -3,7 +3,7 @@
 # Built from the repository root, because the server reuses shared/ and the viewer
 # bundles ui/'s TimelineView:
 #
-#     docker build -f openwebui/Dockerfile -t pi-outpost-plannings .
+#     docker build -f openwebui/Dockerfile -t pi-outpost-openwebui .
 #
 # Run next to Open WebUI on an internal network; nothing needs to be published.
 # See docs/openwebui.md.
@@ -29,9 +29,9 @@ RUN npm run build:viewer --workspace @pi-outpost/openwebui \
 
 FROM node:24-slim
 ENV NODE_ENV=production \
-    OWUI_PLANNING_HOST=0.0.0.0 \
-    OWUI_PLANNING_PORT=8790 \
-    OWUI_PLANNING_DATA_DIR=/data
+    OUTPOST_HOST=0.0.0.0 \
+    OUTPOST_PORT=8790 \
+    OUTPOST_DATA_DIR=/data
 WORKDIR /app
 # One bundled file, the viewer it embeds and the guide it serves: no node_modules at run time.
 COPY --from=build /repo/openwebui/dist/server.mjs dist/server.mjs

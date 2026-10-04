@@ -13,7 +13,7 @@
     "pretest": "npm run build:viewer",
     "test": "node --import tsx/esm --test --test-timeout=120000 test/*.test.ts",
     "build:viewer": "vite build --config viewer/vite.config.ts",
-    "image": "docker build -f openwebui/Dockerfile -t pi-outpost-plannings:dev ..",
+    "image": "docker build -f openwebui/Dockerfile -t pi-outpost-openwebui:dev ..",
     "build:server": "esbuild src/main.ts --bundle --platform=node --target=node24 --format=esm --outfile=dist/server.mjs --log-level=warning \"--banner:js=import { createRequire as __createRequire } from 'node:module'; const require = __createRequire(import.meta.url);\" && node scripts/copy-guide.mjs",
     "lint": "oxlint",
     "test:image": "bash test/image.sh"

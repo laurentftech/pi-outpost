@@ -185,10 +185,10 @@ your own registry.
 ## The structured-exchange skill has two readers
 
 `skills/structured-exchange/references/*.md` is read by pi-outpost's agent as files, and served to
-Open WebUI's models by the planning server (`openwebui/src/guide.ts`, `read_structure_guide`). A
+Open WebUI's models by pi-outpost's Open WebUI server (`openwebui/src/guide.ts`, `read_structure_guide`). A
 passage that only makes sense with pi-outpost's tools — writing figure or table files, comparing
 timeline files — goes between `<!-- only: pi-outpost -->` and `<!-- end -->`, each on its own line;
-the planning server leaves it out. `openwebui/test/guide.test.ts` fails if a served page names a
+that server leaves it out. `openwebui/test/guide.test.ts` fails if a served page names a
 tool Open WebUI's models do not have.
 
 ## Specifications
@@ -257,13 +257,13 @@ by hand, on `main`.
    immediate 404. The GitHub Release carries notes generated from the merged PRs, and three
    executables.
 
-   The *image* job pushes the Open WebUI planning server to
-   `ghcr.io/laurentftech/pi-outpost-plannings:X.Y.Z`, and to `latest` for a stable version. Check
-   it with `docker manifest inspect ghcr.io/laurentftech/pi-outpost-plannings:X.Y.Z`.
+   The *image* job pushes pi-outpost's Open WebUI server to
+   `ghcr.io/laurentftech/pi-outpost-openwebui:X.Y.Z`, and to `latest` for a stable version. Check
+   it with `docker manifest inspect ghcr.io/laurentftech/pi-outpost-openwebui:X.Y.Z`.
 
    **The first time it is published,** GitHub creates the package as *private*, and the demo
    `docker-compose.yml` cannot pull it without a login. Make it public once: *Package settings →
-   Change visibility → Public*, at github.com/users/laurentftech/packages/container/package/pi-outpost-plannings.
+   Change visibility → Public*, at github.com/users/laurentftech/packages/container/package/pi-outpost-openwebui.
    GitHub's API cannot change a package's visibility.
 
 The executables can be built from any branch without publishing anything, to check a

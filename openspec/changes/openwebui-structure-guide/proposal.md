@@ -24,7 +24,7 @@ into single texts, and would leave each imported copy to drift from the server's
 
 ## What Changes
 
-- **A new tool on the planning server, `read_structure_guide(topic)`.** It returns the reference
+- **A new tool on pi-outpost's Open WebUI server, `read_structure_guide(topic)`.** It returns the reference
   page for a topic (timelines, proposals, graphs and tables, the enriched version 2 contract,
   figures). With no topic it returns the list of topics and what each is for. The model reads the
   answer, which is text, not an embed.

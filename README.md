@@ -28,7 +28,7 @@ One Node process runs the agent and serves the interface: streaming responses, l
 - [Running it as a service](#running-it-as-a-service)
 - [Installing it as an app](#installing-it-as-an-app)
 - [Embedding](#embedding)
-- [Plannings in Open WebUI](#plannings-in-open-webui)
+- [pi-outpost in Open WebUI](#pi-outpost-in-open-webui)
 - [Work Plans](#work-plans)
 - [Workspace Outcome](#workspace-outcome)
 - [Development](#development)
@@ -855,7 +855,7 @@ installed app says it cannot reach it rather than showing a stale copy of a prev
 A mounted widget claims nothing on its host page: no manifest, no icon, no change to whether
 the host page itself is installable.
 
-## Plannings in Open WebUI
+## pi-outpost in Open WebUI
 
 The planning timelines and structured documents also run in [Open WebUI](https://openwebui.com),
 without pi-outpost. A small server, shipped as a container image:

@@ -11,7 +11,7 @@
   - `PiOutpostStillReadsTheWholePage`: a test reads the file and finds each passage between its
     markers.
 
-## 2. The guide on the planning server
+## 2. The guide on pi-outpost's Open WebUI server
 
 - [x] 2.1 Add `openwebui/src/guide.ts`: the topics table, the pages (read from `skills/` from
   source, and from `dist/guide/` beside `dist/server.mjs`), and the stripping of

@@ -179,7 +179,7 @@ export function openApiDocument() {
   return {
     openapi: "3.1.0",
     info: {
-      title: "Plannings",
+      title: "pi-outpost",
       version: "0.1.0",
       description:
         "The user's project plannings (schedules, Gantt-like timelines), kept with every revision and shown as an interactive timeline in the chat; and diagrams, sequences and tables drawn in the chat.",

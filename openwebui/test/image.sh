@@ -1,19 +1,19 @@
 #!/usr/bin/env bash
 # The container image, run as a deployment runs it.
 #
-#   openwebui/test/image.sh [image]     (default: pi-outpost-plannings:dev)
+#   openwebui/test/image.sh [image]     (default: pi-outpost-openwebui:dev)
 #
 # Needs docker, curl and node. Covers the spec scenarios
 # TheImageServesFromItsEnvironment, TheImageRefusesToStartWithoutASecret and
 # APlanningOutlivesTheContainer. Exits non-zero on the first failure.
 set -euo pipefail
 
-IMAGE=${1:-pi-outpost-plannings:dev}
+IMAGE=${1:-pi-outpost-openwebui:dev}
 SECRET=image-test-secret
 KEY=image-test-identity-key-0123456789abcdef
 PORT=18790
-NAME=plannings-image-test
-VOLUME=plannings-image-test-data
+NAME=outpost-image-test
+VOLUME=outpost-image-test-data
 
 fail() { echo "FAIL: $*" >&2; exit 1; }
 cleanup() {
@@ -35,7 +35,7 @@ token() {
 
 start() {
   docker run -d --name "$NAME" -p "127.0.0.1:$PORT:8790" -v "$VOLUME:/data" \
-    -e OWUI_PLANNING_SECRET="$SECRET" -e OWUI_PLANNING_IDENTITY_KEY="$KEY" "$IMAGE" >/dev/null
+    -e OUTPOST_SECRET="$SECRET" -e OUTPOST_IDENTITY_KEY="$KEY" "$IMAGE" >/dev/null
   for _ in $(seq 1 60); do
     curl -sf -o /dev/null -H "Authorization: Bearer $SECRET" "http://127.0.0.1:$PORT/openapi.json" && return 0
     sleep 0.5
@@ -51,11 +51,11 @@ call() { # tool, json body
 
 echo "-- TheImageRefusesToStartWithoutASecret"
 set +e
-out=$(docker run --rm -e OWUI_PLANNING_IDENTITY_KEY="$KEY" "$IMAGE" 2>&1)
+out=$(docker run --rm -e OUTPOST_IDENTITY_KEY="$KEY" "$IMAGE" 2>&1)
 status=$?
 set -e
 [ "$status" -ne 0 ] || fail "started without a secret"
-grep -q "OWUI_PLANNING_SECRET is not set" <<<"$out" || fail "did not name the missing setting: $out"
+grep -q "OUTPOST_SECRET is not set" <<<"$out" || fail "did not name the missing setting: $out"
 
 echo "-- TheImageServesFromItsEnvironment"
 start

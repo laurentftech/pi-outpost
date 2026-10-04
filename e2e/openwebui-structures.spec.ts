@@ -1,5 +1,5 @@
 /**
- * show_structure's embed, in Open WebUI's sandbox: the page the planning server answers
+ * show_structure's embed, in Open WebUI's sandbox: the page the server answers
  * with, framed as Open WebUI v0.11.4 frames a tool's embed — scripts and downloads
  * allowed, no same-origin, content in `srcdoc`. Each kind is drawn by pi-outpost's own
  * rendering; a proposal shows what it would change and offers nothing to apply it.

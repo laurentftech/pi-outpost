@@ -1,13 +1,13 @@
 ## Purpose
 
 Give Open WebUI's models the structured-exchange reference pages pi-outpost's agent reads, served by
-the planning server from the same source, and point refusals at the page that would have helped.
+pi-outpost's Open WebUI server from the same source, and point refusals at the page that would have helped.
 
 ## ADDED Requirements
 
 ### Requirement: TheGuideIsReadThroughATool
 
-The planning server SHALL offer a tool that returns a structured-exchange reference page by topic,
+pi-outpost's Open WebUI server SHALL offer a tool that returns a structured-exchange reference page by topic,
 as text the model reads. Without a topic it SHALL return the topics and what each is for. An unknown
 topic SHALL be answered with the topics there are, not with an empty page. The tool SHALL sit behind
 the same trust boundary as the other tools, and SHALL store nothing.

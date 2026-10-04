@@ -258,7 +258,7 @@ jobs:
           fi
           gh release upload "$GITHUB_REF_NAME" executables/* --clobber --repo "$GITHUB_REPOSITORY"
 
-  # The Open WebUI planning server, as the container image deployments run next to
+  # pi-outpost's Open WebUI server, as the container image deployments run next to
   # Open WebUI (docs/openwebui.md). After `publish`, so an image only ships for a
   # release whose packages did. Plain docker CLI and the workflow's own token: no
   # third-party action holds a write credential to the registry.
@@ -275,20 +275,20 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version: 24
-      - name: Build, check and push the planning server image
+      - name: Build, check and push the Open WebUI server image
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           version="${GITHUB_REF_NAME#v}"
-          image="ghcr.io/${GITHUB_REPOSITORY_OWNER}/pi-outpost-plannings"
+          image="ghcr.io/${GITHUB_REPOSITORY_OWNER}/pi-outpost-openwebui"
           # The same channel rule as npm: a prerelease never moves `latest`.
           tags=$(node scripts/image-tags.mjs "$version" "$image")
-          docker build -f openwebui/Dockerfile -t pi-outpost-plannings:release \
+          docker build -f openwebui/Dockerfile -t pi-outpost-openwebui:release \
             --label "org.opencontainers.image.source=https://github.com/${GITHUB_REPOSITORY}" \
             --label "org.opencontainers.image.version=$version" .
-          bash openwebui/test/image.sh pi-outpost-plannings:release
+          bash openwebui/test/image.sh pi-outpost-openwebui:release
           echo "$GH_TOKEN" | docker login ghcr.io -u "${GITHUB_ACTOR}" --password-stdin
           for tag in $tags; do
-            docker tag pi-outpost-plannings:release "$tag"
+            docker tag pi-outpost-openwebui:release "$tag"
             docker push "$tag"
           done

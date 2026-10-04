@@ -22,7 +22,7 @@
 - a skill attached to a model, or mentioned with `$`, is injected in full;
 - there is no environment variable and no import from a directory.
 
-**The planning server:**
+**pi-outpost's Open WebUI server:**
 - a trust hook before every route;
 - `openapi.ts`;
 - `build:server` bundles `src/main.ts` with esbuild into `dist/server.mjs`;
@@ -44,7 +44,7 @@
 
 ### A tool, not an Open WebUI skill
 
-| | Tool on the planning server | Open WebUI skill |
+| | Tool on pi-outpost's Open WebUI server | Open WebUI skill |
 |---|---|---|
 | Deployment step | none | admin creates it, then grants access, per deployment |
 | Version | always the server's | the copy imported, drifts silently |
