@@ -34,7 +34,8 @@ test("ATopicReturnsItsPage and AServedPageIsTheSourceWithoutPiOnlyPassages: the 
     const response = await call("read_structure_guide", { topic: entry.topic });
     assert.equal(response.statusCode, 200, entry.topic);
     const text = await source(entry.file);
-    const expected = text.replace(/^[ \t]*<!-- only: pi-outpost -->[ \t]*\n[\s\S]*?^[ \t]*<!-- end -->[ \t]*\n/gm, "");
+    // `\r?\n`: Windows checks these files out with CRLF.
+    const expected = text.replace(/^[ \t]*<!-- only: pi-outpost -->[ \t]*\r?\n[\s\S]*?^[ \t]*<!-- end -->[ \t]*\r?\n/gm, "");
     assert.equal(response.json().page, expected, entry.topic);
     assert.equal(response.json().topic, entry.topic);
   }
