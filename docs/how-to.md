@@ -126,7 +126,8 @@ Two knobs, if the defaults do not suit:
 
 `workspaceIdleTimeoutMs` is how long an unused project stays alive before it is
 retired and rebuilt on next use (`0` never retires; a project running a turn is never
-retired). Waiting and ready-for-review projects are retained too. `workspaceLock: true`
+retired). Coming back to a retired project shows its files at once and restarts its agent
+behind them; set a longer timeout where agents start slowly and memory is not the constraint. Waiting and ready-for-review projects are retained too. `workspaceLock: true`
 pins the server to one project and removes the controls entirely. Use it for a deployment,
 embedded or standalone, whose project root must not change.
 

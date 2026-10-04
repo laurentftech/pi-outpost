@@ -22,6 +22,16 @@ in flight could not reach the server at all.
 - **Coming back reaches the server.** The project menu passes every click on. `switchWorkspace`
   ignores the project already shown only when no switch is in flight.
 
+- **A project's files come before its agent.** Starting the agent is the slow part of a switch, and the
+  file tree never needed it. A switch or open now binds the browser as soon as the project's files can be
+  served:
+  - `workspace_starting` carries the project and `agentStarting: true`;
+  - the files, git and terminal answer at once, and other requests wait for the agent, in order;
+  - `workspace_switched` follows when the agent is ready, keeping the tree and the open file.
+
+  A client that ignores the new message sees what it saw before. A failed start takes the browser back
+  to the server's project.
+
 ## Capabilities
 
 ### New Capabilities
@@ -30,7 +40,7 @@ None.
 
 ### Modified Capabilities
 
-- `multi-project-workspaces`: switching honours the latest request.
+- `multi-project-workspaces`: switching honours the latest request, and shows a project's files before its agent.
 
 ## Impact
 
@@ -41,5 +51,9 @@ None.
   - `server/test/workspaceSwitchOrder.test.mjs`, which reproduces the race;
   - `ui/src/useAgent.test.ts`;
   - `ui/src/components/ProjectMenu.test.tsx`.
-- Not in scope: making a cold start faster, or showing a project's files before its agent has started.
-  These are discussed separately.
+- Server: `projectFields`/`startingSnapshot`, `SERVED_WHILE_STARTING` and `startQueues`, two-phase
+  `ensureStarted` (`whenResourcesReady`, `announceAgentStarted`, `abandonStart`).
+- Protocol: `workspace_starting`, `SessionSnapshot.agentStarting`.
+- Interface: `agentStarting` state, "Starting the agent…" in the conversation, tree and open file kept on
+  the follow-up `workspace_switched`.
+- Docs: README (projects) and how-to (idle timeout).

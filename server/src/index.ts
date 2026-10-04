@@ -2096,7 +2096,7 @@ function askToBind(socket: WebSocket): () => boolean {
   return () => bindingAsks.get(socket) === ticket;
 }
 
-function bindClient(socket: WebSocket, target: Workspace, kind: "hello" | "workspace_switched"): void {
+function bindClient(socket: WebSocket, target: Workspace, kind: "hello" | "workspace_switched" | "workspace_starting"): void {
   // Binding happens after `ensureStarted`, and a client can close while a cold
   // workspace is still building. Its close handler has already forgotten it by
   // then, and no second close will come — so binding it here would leave a dead
@@ -2108,6 +2108,12 @@ function bindClient(socket: WebSocket, target: Workspace, kind: "hello" | "works
   }
   clients.set(socket, target);
   send(socket, { type: kind, ...snapshot(target) });
+  // While its agent starts there are no dialogs and no warnings yet: they come with workspace_switched.
+  if (target.started) sendBindingExtras(socket, target);
+}
+
+/** What a client bound to a project with a running agent gets after its snapshot. */
+function sendBindingExtras(socket: WebSocket, target: Workspace): void {
   for (const request of target.pendingDialogs.values()) send(socket, request);
   const shadowed = shadowedBashWarnings.get(target.root);
   if (shadowed !== undefined) {
@@ -2219,7 +2225,77 @@ async function announceReplyConformance(workspace: Workspace, items: readonly Ch
   }
 }
 
+/**
+ * What a client is told about a project that does not come from its agent: where it is,
+ * its files and git, the server's settings. Shared by the full snapshot and the one sent
+ * while the agent is still starting, so the two cannot disagree about the project.
+ */
+function projectFields(workspace: Workspace) {
+  return {
+    branding: config.branding,
+    // Always, whatever the number open. A selector's first job is to say where the
+    // user is; choosing is its second.
+    workspace: workspaceInfo(workspace),
+    workspaces: workspaceInfos(),
+    ...(outpostUpdate ? { outpostUpdate } : {}),
+    ...(piPackageLists.has(workspace.root) ? { piPackages: piPackageLists.get(workspace.root) } : {}),
+    ...(restartReasons.size > 0 ? { restartNeeded: [...restartReasons] } : {}),
+    ...(config.workspaceLock ? { workspaceLocked: true } : {}),
+    // Absent means "settings", so a client that predates the setting sees what it saw before.
+    ...(config.embed.workspaceControls !== "settings" ? { embedWorkspaceControls: config.embed.workspaceControls } : {}),
+    writableRoot: workspace.writableRoot,
+    // Not merely "a repository was found on disk": one git will actually read.
+    gitAvailable: workspace.repos.length > 0 && workspace.gitUnavailable === undefined,
+    ...(config.docx.template !== undefined ? { docxTemplate: path.basename(config.docx.template) } : {}),
+    ...(workspace.gitUnavailable ? { gitUnavailable: workspace.gitUnavailable } : {}),
+    // What is configured, not what got loaded; only these are the user's to edit.
+    skillPaths: config.skillPaths,
+    userSkillPaths: config.userSkillPaths,
+    configuredExtensionPaths: config.extensionPaths,
+    userExtensionPaths: config.userExtensionPaths,
+    ...(config.extensionLock ? { extensionLock: true } : {}),
+    sandbox: config.sandbox
+      ? {
+          root: config.sandbox.root,
+          allowWrite: config.sandbox.allowWrite ?? false,
+          allowBash: config.sandbox.allowBash ?? false,
+          writableRoot: config.sandbox.writableRoot,
+          locks: config.sandboxLocks,
+          projectRoot: workspace.browserRoot,
+          rootEditable: rootEditableFrom(workspace),
+        }
+      : undefined,
+    terminal: {
+      enabled: config.terminal?.enabled ?? false,
+      ...(config.sandboxLocks?.terminal ? { locked: true } : {}),
+    },
+  };
+}
+
+/**
+ * A project whose agent is still starting: its files, git and terminal, and an empty
+ * conversation. Built from the project alone — the agent does not exist yet, and asking
+ * it anything throws. `workspace_switched` follows with the rest.
+ */
+function startingSnapshot(workspace: Workspace): SessionSnapshot {
+  return {
+    ...projectFields(workspace),
+    agentStarting: true,
+    sessionId: "",
+    model: "",
+    thinkingLevel: "off",
+    isStreaming: false,
+    items: [],
+    models: [],
+    commands: [],
+    workPlan: null,
+    tools: [],
+    versions: { piOutpost: VERSION },
+  };
+}
+
 function snapshot(workspace: Workspace): SessionSnapshot {
+  if (!workspace.started) return startingSnapshot(workspace);
   const state = workspace.agent.snapshot();
   const items = historyToItems(
     state.messages as never,
@@ -2235,22 +2311,7 @@ function snapshot(workspace: Workspace): SessionSnapshot {
   void announceReplyConformance(workspace, items);
   void announceStructuredAppearance(workspace);
   return {
-    branding: config.branding,
-    // Always, whatever the number open. A selector's first job is to say where the
-    // user is; choosing is its second. Below two these were omitted, so a client had
-    // no name to show even when it wanted to — and the interface changed shape as
-    // the count crossed the threshold.
-    workspace: workspaceInfo(workspace),
-    workspaces: workspaceInfos(),
-    ...(outpostUpdate ? { outpostUpdate } : {}),
-    ...(piPackageLists.has(workspace.root) ? { piPackages: piPackageLists.get(workspace.root) } : {}),
-    ...(restartReasons.size > 0 ? { restartNeeded: [...restartReasons] } : {}),
-    ...(config.workspaceLock ? { workspaceLocked: true } : {}),
-    // Absent means "settings", so a client that predates the setting — or one
-    // that is not embedded — sees exactly what it saw before.
-    ...(config.embed.workspaceControls !== "settings"
-      ? { embedWorkspaceControls: config.embed.workspaceControls }
-      : {}),
+    ...projectFields(workspace),
     sessionId: state.sessionId,
     ...(state.sessionName ? { sessionName: state.sessionName } : {}),
     model: modelName(workspace),
@@ -2281,45 +2342,16 @@ function snapshot(workspace: Workspace): SessionSnapshot {
     // A runtime replacement is synchronous but its sidecar read is not. Never
     // combine the new transcript/session id with the previous session's plan.
     workPlan: sameSessionFile(state.sessionFile, workspace.workPlanSessionFile) ? workspace.workPlan : null,
-    writableRoot: workspace.writableRoot,
-    // Not merely "a repository was found on disk": one git will actually read
-    gitAvailable: workspace.repos.length > 0 && workspace.gitUnavailable === undefined,
-    ...(config.docx.template !== undefined ? { docxTemplate: path.basename(config.docx.template) } : {}),
-    ...(workspace.gitUnavailable ? { gitUnavailable: workspace.gitUnavailable } : {}),
     credentials: credentialStatus(workspace),
     // Omitted, not emptied, when the runtime cannot report an inventory: "none
     // loaded" and "this runtime never sees them" are different facts, and only one
     // of them is ours to state.
     ...(state.extensionPaths ? { extensionPaths: state.extensionPaths } : {}),
-    // What is configured, not what got loaded — built-in skills reach the menu
-    // through `commands` instead. The two lists are separate because only one of
-    // them is the user's to edit.
-    skillPaths: config.skillPaths,
-    userSkillPaths: config.userSkillPaths,
-    configuredExtensionPaths: config.extensionPaths,
-    userExtensionPaths: config.userExtensionPaths,
-    ...(config.extensionLock ? { extensionLock: true } : {}),
     tools: state.tools,
     // One line for what answers prompts: the SDK in this process, or the child.
     versions: {
       piOutpost: VERSION,
       ...(workspace.agent.agentLabel ? { agent: workspace.agent.agentLabel } : { piSdk: PI_SDK_VERSION }),
-    },
-    sandbox: config.sandbox
-      ? {
-          root: config.sandbox.root,
-          allowWrite: config.sandbox.allowWrite ?? false,
-          allowBash: config.sandbox.allowBash ?? false,
-          writableRoot: config.sandbox.writableRoot,
-          locks: config.sandboxLocks,
-          // The resolved directory, as the project selector names it.
-          projectRoot: workspace.browserRoot,
-          rootEditable: rootEditableFrom(workspace),
-        }
-      : undefined,
-    terminal: {
-      enabled: config.terminal?.enabled ?? false,
-      ...(config.sandboxLocks?.terminal ? { locked: true } : {}),
     },
   };
 }
@@ -3193,8 +3225,13 @@ async function handleOpenProject(socket: WebSocket, rawRoot: string): Promise<vo
   // share a session store while believing they did not.
   const already = workspaces.get(root);
   if (already) {
-    await ensureStarted(already);
-    if (stillWanted()) bindClient(socket, already, "workspace_switched");
+    const started = ensureStarted(already);
+    // As a switch does: its files at once, its agent's state with workspace_switched.
+    await whenResourcesReady(already);
+    const boundEarly = stillWanted() && !already.started;
+    if (boundEarly) bindClient(socket, already, "workspace_starting");
+    await started;
+    if (stillWanted() && !boundEarly) bindClient(socket, already, "workspace_switched");
     return;
   }
 
@@ -3247,17 +3284,23 @@ async function handleOpenProject(socket: WebSocket, rawRoot: string): Promise<vo
   // A concurrent open of the same directory may have won while this one built.
   const registered = workspaces.add(opened);
   if (registered !== opened) await opened.stop();
+  const started = ensureStarted(registered);
+  // Its files at once: they are built already, and only the agent is still to come. A
+  // client bound before the agent exists is safe — what needs it waits (startQueues).
+  await whenResourcesReady(registered);
+  const boundEarly = stillWanted() && !registered.started;
+  if (boundEarly) bindClient(socket, registered, "workspace_starting");
   try {
-    await ensureStarted(registered);
+    await started;
   } catch (error) {
-    // Bind only once there is a session to bind to. A socket left pointing at a
-    // runtime-less workspace would reach `agent` on its next command and throw,
-    // taking the handler with it — the client keeps the project it had.
     reportError(error);
-    send(socket, { type: "workspace_error", message: `Opened ${path.basename(root)}, but its session could not start: ${error instanceof Error ? error.message : String(error)}` });
+    // Bound early, the client was told and taken back already (abandonStart).
+    if (!boundEarly) {
+      send(socket, { type: "workspace_error", message: `Opened ${path.basename(root)}, but its session could not start: ${error instanceof Error ? error.message : String(error)}` });
+    }
     return;
   }
-  if (stillWanted()) bindClient(socket, registered, "workspace_switched");
+  if (stillWanted() && !boundEarly) bindClient(socket, registered, "workspace_switched");
   announceWorkspaceActivity();
 }
 
@@ -3459,10 +3502,17 @@ async function ensureStarted(target: Workspace): Promise<void> {
   if (target.started) return;
   const inFlight = starting.get(target.id);
   if (inFlight) return inFlight;
+  let resourcesBuilt!: () => void;
+  resourcesReady.set(target.id, new Promise<void>((resolve) => (resourcesBuilt = resolve)));
   const build = (async () => {
     // A retired project released its watcher along with its session; rebuild both,
     // so reopening one is indistinguishable from never having retired it.
-    if (target.retired) await target.rebuildResources(target.settings);
+    try {
+      if (target.retired) await target.rebuildResources(target.settings);
+    } finally {
+      // Its files can be served from here on; the agent is the slow part.
+      resourcesBuilt();
+    }
     const runtime = await buildRuntimeFor(target);
     target.attachRuntime(runtime);
     await refreshResourceInventory(target);
@@ -3487,9 +3537,59 @@ async function ensureStarted(target: Workspace): Promise<void> {
   announceWorkspaceActivity();
   try {
     await build;
+  } catch (error) {
+    abandonStart(target, error);
+    throw error;
   } finally {
     starting.delete(target.id);
+    resourcesReady.delete(target.id);
     announceWorkspaceActivity();
+  }
+  announceAgentStarted(target);
+}
+
+/** Per project starting: settles once its files can be served, before its agent is ready. */
+const resourcesReady = new Map<string, Promise<void>>();
+
+/**
+ * Settles once `target`'s files, git and terminal can be served: at once for a started or
+ * never-retired project, after the rebuild for a retired one. Call after `ensureStarted`.
+ */
+function whenResourcesReady(target: Workspace): Promise<void> {
+  if (target.started) return Promise.resolve();
+  return resourcesReady.get(target.id) ?? Promise.resolve();
+}
+
+/**
+ * The agent is ready: every client bound while it started gets the usual
+ * `workspace_switched`, then what they sent meanwhile is handled, in order — as if it had
+ * arrived just now.
+ */
+function announceAgentStarted(target: Workspace): void {
+  for (const [socket, bound] of clients) {
+    if (bound !== target || socket.readyState !== socket.OPEN) continue;
+    bindClient(socket, target, "workspace_switched");
+  }
+  const queued = startQueues.get(target) ?? [];
+  startQueues.delete(target);
+  for (const { socket, raw } of queued) {
+    // Sent to this project; a client that has moved on meant it for this one, not the next.
+    if (clients.get(socket) === target) handleClientMessage(socket, raw);
+  }
+}
+
+/**
+ * The agent could not start. A client bound while it started would otherwise sit before a
+ * project with no agent, its messages queued for ever: it is told why, and taken back to
+ * the server's own project. What it sent meanwhile is dropped.
+ */
+function abandonStart(target: Workspace, error: unknown): void {
+  startQueues.delete(target);
+  const message = `Could not start ${path.basename(target.root)}: ${error instanceof Error ? error.message : String(error)}`;
+  for (const [socket, bound] of clients) {
+    if (bound !== target) continue;
+    send(socket, { type: "workspace_error", message });
+    if (serverProject.started && serverProject !== target) bindClient(socket, serverProject, "workspace_switched");
   }
 }
 
@@ -5104,6 +5204,44 @@ async function handleSearchFiles(workspace: Workspace, socket: WebSocket, query:
 }
 
 /**
+ * Browser messages served for a project whose agent is still starting: none of them goes
+ * through the agent, and they are what makes a switched-to project usable at once — its
+ * file tree, its files, git, the terminal — and the way out of it. Everything else waits.
+ */
+const SERVED_WHILE_STARTING = new Set<ClientMessage["type"]>([
+  "list_directory",
+  "read_file",
+  "write_file",
+  "create_file",
+  "create_directory",
+  "delete_file",
+  "rename_file",
+  "move_file",
+  "copy_file",
+  "upload_file",
+  "search_files",
+  "open_native",
+  "reveal_native",
+  "git_status",
+  "git_diff",
+  "git_file_diff",
+  "git_file_log",
+  "git_log",
+  "git_show",
+  "terminal_open",
+  "terminal_input",
+  "terminal_resize",
+  "terminal_close",
+  "terminal_get_cwd",
+  "browse_server_directory",
+  "switch_workspace",
+  "open_project",
+]);
+
+/** Per project starting its agent: what its clients sent that needs the agent, in order. */
+const startQueues = new Map<Workspace, Array<{ socket: WebSocket; raw: string }>>();
+
+/**
  * Browser messages that need a working agent workspace.agent. Everything absent from this
  * set — the file browser, git, session listing and search — keeps working after a
  * runtime failure, because none of it goes through the agent.
@@ -5149,9 +5287,17 @@ function handleClientMessage(socket: WebSocket, raw: string): void {
   const workspace = clients.get(socket) ?? workspaces.default;
   // A frame from a socket that is no longer registered: it closed mid-flight.
   if (!workspace) return;
+  // Bound while its agent starts: the project's files, git and terminal are served now;
+  // anything else waits for the agent, in order (see flushStartQueue).
+  if (!workspace.started && !SERVED_WHILE_STARTING.has(message.type)) {
+    const queue = startQueues.get(workspace) ?? [];
+    queue.push({ socket, raw });
+    startQueues.set(workspace, queue);
+    return;
+  }
   // Fail closed. A prompt sent to a dead runtime must be refused where the user can
   // see it, not queued for a process that is never coming back.
-  if (!workspace.agent.ok && AGENT_COMMANDS.has(message.type)) {
+  if (workspace.started && !workspace.agent.ok && AGENT_COMMANDS.has(message.type)) {
     send(socket, { type: "error", message: `Agent runtime unavailable: ${workspace.agent.failure ?? "the runtime stopped"}` });
     return;
   }
@@ -5177,18 +5323,32 @@ function handleClientMessage(socket: WebSocket, raw: string): void {
       // lets an agent keep working while the user looks somewhere else.
       const leaving = clients.get(socket);
       const stillWanted = askToBind(socket);
-      ensureStarted(target)
+      const bind = () => {
+        // The project just left starts its idle clock now, not at the next sweep:
+        // one that had been watched for longer than the timeout would otherwise be
+        // retired on the very next pass, before its idle delay had elapsed at all.
+        if (leaving && leaving !== target && ![...clients.values()].includes(leaving)) {
+          leaving.lastUsedAt = Date.now();
+        }
+        bindClient(socket, target, "workspace_switched");
+      };
+      const started = ensureStarted(target);
+      // The files first: they need the project, not its agent, whose start is the slow
+      // part — seconds, more on Windows. workspace_switched follows when the agent is ready.
+      let boundEarly = false;
+      void whenResourcesReady(target).then(() => {
+        if (stillWanted() && !target.started) {
+          boundEarly = true;
+          bindClient(socket, target, "workspace_starting");
+        }
+      });
+      started
         .then(() => {
           // Asked for another project since: that answer is the one to show. This one
           // started all the same, and is ready when the user comes back to it.
           if (!stillWanted()) return;
-          // The project just left starts its idle clock now, not at the next sweep:
-          // one that had been watched for longer than the timeout would otherwise be
-          // retired on the very next pass, before its idle delay had elapsed at all.
-          if (leaving && leaving !== target && ![...clients.values()].includes(leaving)) {
-            leaving.lastUsedAt = Date.now();
-          }
-          bindClient(socket, target, "workspace_switched");
+          // Bound early, it has had workspace_switched from announceAgentStarted already.
+          if (!boundEarly) bind();
         })
         .catch((error: unknown) => {
           reportError(error);

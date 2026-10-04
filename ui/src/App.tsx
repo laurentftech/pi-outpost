@@ -1142,7 +1142,15 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
               {state.items.length === 0 && (
                 <div className="mt-24 text-center text-zinc-500 dark:text-zinc-600">
                   <div className="mb-2 text-4xl">{state.branding.title ?? "π"}</div>
-                  <p className="text-sm">{state.branding.welcome ?? "Send a message to start the agent."}</p>
+                  {state.agentStarting ? (
+                    // Files first: the tree and the files of this project work already;
+                    // a message sent now is answered once the agent is up.
+                    <p className="text-sm" role="status" data-testid="agent-starting">
+                      Starting the agent… The project's files are ready.
+                    </p>
+                  ) : (
+                    <p className="text-sm">{state.branding.welcome ?? "Send a message to start the agent."}</p>
+                  )}
                 </div>
               )}
               {state.olderHistory && <OlderMessages older={state.olderHistory} onLoad={loadOlder} />}
