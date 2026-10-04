@@ -78,8 +78,9 @@ describe("AgentWritesStayOutOfPiConfiguration", () => {
   });
 
   test("every tool that writes a file is held to it, through the one check they share", async () => {
-    // The real path, as every caller passes it (macOS puts the temp directory behind /var).
-    const zone = realpathSync(root);
+    // The real path, as every caller passes it: macOS puts the temp directory behind /var, and
+    // Windows hands it out by its short name (RUNNER~1) — `native` expands both, as the server does.
+    const zone = realpathSync.native(root);
     await assert.rejects(assertWritableDestination(".pi/sandbox.json", { cwd: zone, writableRoot: zone }), /in a \.pi directory/);
     await assert.rejects(assertWritableDestination(path.join(".pi", "sub", "x.md"), { cwd: zone, writableRoot: zone }), /in a \.pi directory/);
     // A real one, end to end: the table writer asked to put its Markdown in .pi.
