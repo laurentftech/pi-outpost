@@ -58,6 +58,71 @@ export const UPDATE_EXAMPLE = {
   ],
 };
 
+/**
+ * show_structure's examples, one per kind and one proposal. From subjects no request
+ * will resemble, for the reason the planning example is a greenhouse.
+ */
+export const STRUCTURE_EXAMPLES = {
+  graph: {
+    schema: "urn:structured-exchange:1",
+    kind: "graph",
+    data: {
+      nodes: [
+        { id: "member", label: "Member", kind: "actor" },
+        { id: "desk", label: "Loan desk", kind: "process" },
+        { id: "catalogue", label: "Catalogue", kind: "system" },
+        { id: "copy", label: "Book copy", kind: "object" },
+      ],
+      edges: [
+        { from: "member", to: "desk", kind: "request", label: "asks for a loan" },
+        { from: "desk", to: "catalogue", kind: "query", label: "checks availability" },
+        { from: "desk", to: "copy", kind: "handover", label: "lends" },
+      ],
+    },
+  },
+  sequence: {
+    schema: "urn:structured-exchange:1",
+    kind: "sequence",
+    data: {
+      participants: [
+        { id: "courier", label: "Courier" },
+        { id: "locker", label: "Parcel locker" },
+        { id: "app", label: "Recipient app" },
+      ],
+      messages: [
+        { from: "courier", to: "locker", label: "deposit parcel" },
+        { from: "locker", to: "app", label: "pickup code" },
+        { from: "app", to: "locker", label: "open compartment" },
+      ],
+    },
+  },
+  table: {
+    schema: "urn:structured-exchange:1",
+    kind: "table",
+    data: {
+      columns: ["Sample", "Origin", "Status"],
+      rows: [
+        ["S-104", "River outlet", "analysed"],
+        ["S-105", "Well 3", "in freezer"],
+      ],
+    },
+  },
+  proposal: {
+    schema: "urn:structured-exchange:1",
+    kind: "graph",
+    target: "library-lending",
+    removals: [{ type: "element", ref: "EL-4", label: "Card index" }],
+    data: {
+      nodes: [
+        { id: "desk", ref: "EL-2", label: "Loan desk", set: { label: "Self-service kiosk" } },
+        { id: "catalogue", ref: "EL-3", label: "Catalogue" },
+        { id: "reminder", label: "Return reminder", kind: "process" },
+      ],
+      edges: [{ from: "reminder", to: "catalogue", kind: "query", label: "reads due dates" }],
+    },
+  },
+};
+
 const fence = (value: unknown) => `\n\`\`\`json\n${JSON.stringify(value, null, 1)}\n\`\`\`\n`;
 
 const CREATE_DESCRIPTION = `Stores a new planning (a project schedule) for the user and returns its id and revision 1.
@@ -84,6 +149,13 @@ Removing a task or an item removes its dependencies. A refused update changes no
 Complete example, on another project (delays the inspection a week, shifts the frame a week, both ends, adds a handover milestone after it):${fence(UPDATE_EXAMPLE)}
 Then call show_planning with compare_to set to the revision you started from, so the user sees what moved.`;
 
+const STRUCTURE_DESCRIPTION = `Shows the user a structured document drawn natively in the chat: a graph (elements and relationships: an architecture, a process, a data flow), a sequence (participants exchanging messages in order), a table, or a timeline. Emit data, never diagram syntax and never coordinates or colours.
+The document is checked against the structured-exchange contract. If it is refused you get the rule and a pointer to the value: correct the document yourself and call again at once — never ask the user to fix it. You do not see the drawing: the document you pass stays in this conversation as your call's argument.
+Kinds: "graph" data {nodes:[{id,label,kind?}], edges:[{from,to,kind,label?}]} (every new relationship needs a kind, a free word such as "flow" or "uses"); "sequence" data {participants:[{id,label}], messages:[{from,to,label}]}; "table" data {columns:[…], rows:[[…]]}; a timeline is schema 3 (see create_planning for a planning to keep and change over time).
+To PROPOSE a change to something that already exists, set "target" (its name) and describe only what changes: a new element has no "ref"; an existing one carries its "ref", and its other fields only describe it — put what changes in "set": {"field": new value}; removals are listed in "removals" [{"type":"element"|"relationship","ref"}]. Every element a relationship touches must be in "nodes": an existing one as context, with its "ref" and its label and no "set". Omitting an element never removes it. A proposal is shown for the user to judge; nothing is applied, so never say it was.
+Write labels in the user's language with the user's names. The examples below only show the form; take nothing else from them.
+Graph:${fence(STRUCTURE_EXAMPLES.graph)}Sequence:${fence(STRUCTURE_EXAMPLES.sequence)}Table:${fence(STRUCTURE_EXAMPLES.table)}Proposal (changes one element, adds one, removes one):${fence(STRUCTURE_EXAMPLES.proposal)}`;
+
 const idProperty = { type: "string", description: "The planning's id (pl_…), from list_plannings or create_planning." };
 
 function operation(operationId: string, summary: string, description: string, properties: Record<string, unknown>, required: string[]) {
@@ -108,7 +180,7 @@ export function openApiDocument() {
       title: "Plannings",
       version: "0.1.0",
       description:
-        "The user's project plannings (schedules, Gantt-like timelines), kept with every revision and shown as an interactive timeline in the chat.",
+        "The user's project plannings (schedules, Gantt-like timelines), kept with every revision and shown as an interactive timeline in the chat; and diagrams, sequences and tables drawn in the chat.",
     },
     paths: {
       "/list_plannings": operation(
@@ -146,6 +218,19 @@ export function openApiDocument() {
           },
         },
         ["id", "base_revision", "operations"],
+      ),
+      "/show_structure": operation(
+        "show_structure",
+        "Show a diagram, sequence or table",
+        STRUCTURE_DESCRIPTION,
+        {
+          document: {
+            type: "object",
+            description: "The whole structured-exchange document: {\"schema\":\"urn:structured-exchange:1\",\"kind\":…,\"data\":{…}}, plus \"target\" and \"removals\" for a proposal.",
+          },
+          summary: { type: "string", description: "Optional: one sentence on what the document shows." },
+        },
+        ["document"],
       ),
       "/show_planning": operation(
         "show_planning",

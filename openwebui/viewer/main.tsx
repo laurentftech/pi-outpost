@@ -17,10 +17,20 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import type { StructuredTimelineData } from "@pi-outpost/shared/structured-exchange";
+import type { ValidatedStructuredExchange } from "@pi-outpost/shared/structured-exchange";
+import { StructuredExchangeDocument } from "../../ui/src/presentations/StructuredExchangeView";
 import { TimelineView } from "../../ui/src/presentations/TimelineView";
 import "./viewer.css";
 
+/** A document shown by show_structure: drawn as pi-outpost draws it, nothing to act on. */
+export interface EmbeddedStructure {
+  mode: "structure";
+  /** Already validated by the server, with pi-outpost's gate. */
+  envelope: ValidatedStructuredExchange;
+}
+
 export interface EmbeddedPlanning {
+  mode?: "planning";
   id: string;
   title: string;
   revision: number;
@@ -53,10 +63,10 @@ function promptFor(planning: EmbeddedPlanning, selection: Selection, language: s
   return `About ${item.type} "${name}" (${id}, task ${task.id}, ${when}) ${where}: `;
 }
 
-function readPlanning(): EmbeddedPlanning {
+function readPayload(): EmbeddedPlanning | EmbeddedStructure {
   const element = document.getElementById("planning");
-  if (!element?.textContent) throw new Error("no planning in this page");
-  return JSON.parse(element.textContent) as EmbeddedPlanning;
+  if (!element?.textContent) throw new Error("nothing to draw in this page");
+  return JSON.parse(element.textContent) as EmbeddedPlanning | EmbeddedStructure;
 }
 
 function prefersDark(): boolean {
@@ -77,19 +87,26 @@ function reportHeight() {
 new ResizeObserver(reportHeight).observe(container);
 
 try {
-  const planning = readPlanning();
+  const payload = readPayload();
   createRoot(container).render(
     <StrictMode>
-      <TimelineView
-        data={planning.data}
-        onSelect={(selection) => {
-          const text = promptFor(planning, selection);
-          if (text) parent.postMessage({ type: "input:prompt", text }, "*");
-        }}
-      />
+      {payload.mode === "structure" ? (
+        // No dispatch: a location the document points at is shown and not followable,
+        // as in pi-outpost's file viewer — there is no project here to open it in.
+        // The source pane shows the document exactly as validated.
+        <StructuredExchangeDocument envelope={payload.envelope} source={JSON.stringify(payload.envelope, null, 2)} />
+      ) : (
+        <TimelineView
+          data={payload.data}
+          onSelect={(selection) => {
+            const text = promptFor(payload, selection);
+            if (text) parent.postMessage({ type: "input:prompt", text }, "*");
+          }}
+        />
+      )}
     </StrictMode>,
   );
 } catch (error) {
-  container.textContent = `This planning could not be drawn: ${(error as Error).message}`;
+  container.textContent = `This could not be drawn: ${(error as Error).message}`;
   reportHeight();
 }

@@ -1,9 +1,10 @@
 @import "tailwindcss";
 
-/* Only the timeline is drawn here, so only its sources are scanned: the embed is stored
-   in every chat that shows a planning, and every unused utility would be stored with it. */
-@source "../../ui/src/presentations/TimelineView.tsx";
-@source "../../ui/src/presentations/figureDrawing.tsx";
+/* Only the structured-exchange views are drawn here, so only their sources are scanned:
+   the embed is stored in every chat that shows one, and every unused utility would be
+   stored with it. */
+@source "../../ui/src/presentations/*.tsx";
+@source "../../ui/src/components/EnlargedView.tsx";
 @source "./**/*.tsx";
 
 @custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
