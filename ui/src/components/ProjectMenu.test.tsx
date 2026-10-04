@@ -59,16 +59,19 @@ describe("what the selector offers", () => {
     }
   });
 
-  it("switches to the project that was clicked, and not to the current one", () => {
+  it("switches to the project that was clicked, the current one included", () => {
     const { props } = setup();
 
     fireEvent.click(screen.getByRole("button", { expanded: false }));
     fireEvent.click(screen.getByRole("menuitem", { name: /beta/ }));
     expect(props.onSwitch).toHaveBeenCalledWith("/srv/beta");
 
+    // The current project is passed on too: coming back to it while a switch away is
+    // still in flight must reach the server. useAgent's switchWorkspace ignores it when
+    // nothing is in flight ("says nothing when the project asked for is the one already bound").
     fireEvent.click(screen.getByRole("button", { expanded: false }));
     fireEvent.click(screen.getByRole("menuitem", { name: /alpha/ }));
-    expect(props.onSwitch).toHaveBeenCalledTimes(1);
+    expect(props.onSwitch).toHaveBeenLastCalledWith("/srv/alpha");
   });
 
   it("offers closing a project even while it works — the server owns the refusal", () => {

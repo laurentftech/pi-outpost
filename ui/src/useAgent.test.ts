@@ -490,6 +490,24 @@ describe("switching projects", () => {
     expect(result.current.state.switching).toBe(false);
   });
 
+  // openlore: scenario=TheLastSwitchWins spec=multi-project-workspaces
+  it("asks to come back to the bound project while a switch away is still in flight", async () => {
+    const { result } = renderHook(() => useAgent());
+    act(() => mockWs!.open());
+    act(() => mockWs!.receive(switched("/srv/beta")));
+    await waitFor(() => expect(result.current.state.workspace?.root).toBe("/srv/beta"));
+
+    act(() => result.current.switchWorkspace("/srv/alpha"));
+    // Changed their mind before alpha answered: the server must hear it, or alpha,
+    // answering later, takes the view to the project the user just left.
+    act(() => result.current.switchWorkspace("/srv/beta"));
+
+    expect(sentFrames().slice(-2)).toEqual([
+      { type: "switch_workspace", root: "/srv/alpha" },
+      { type: "switch_workspace", root: "/srv/beta" },
+    ]);
+  });
+
   it("opens a directory as a project, and waits the same way a switch does", async () => {
     const { result } = renderHook(() => useAgent());
     act(() => mockWs!.open());

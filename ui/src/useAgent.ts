@@ -2157,7 +2157,11 @@ export function useAgent(serverUrl = "", explicitToken?: string, embedded = fals
      * because losing typed text destroys work rather than resetting a view.
      */
     switchWorkspace: (root: string, id?: string) => {
-      if ((id ?? root) === boundKey) return;
+      // The project already shown needs no switch — unless one to another project is
+      // still in flight: coming back must then be asked for, or the slow one, answering
+      // later, takes the view to the project the user just left (the server binds the
+      // latest ask only).
+      if ((id ?? root) === boundKey && !state.switching) return;
       dispatch({ type: "workspace_switching" });
       sendMessage({ type: "switch_workspace", root, ...(id !== undefined && id !== root ? { id } : {}) });
     },

@@ -2078,6 +2078,24 @@ function workspaceActivity(target: Workspace): WorkspaceActivity {
  * reported as waiting and have no way to answer it, and the turn would stay
  * blocked forever.
  */
+/**
+ * Per browser, the latest project it asked to be bound to.
+ *
+ * Binding waits for the target to start, and a cold project — never watched, or retired
+ * after its idle period — starts far slower than a warm one. Asked for one after the
+ * other, the warm one answered first and the cold one, finishing later, took the browser
+ * back: the user was left on a project they had already left, its file tree with it.
+ * Each ask takes a ticket; an answer whose ticket is no longer the latest binds nothing.
+ */
+const bindingAsks = new WeakMap<WebSocket, number>();
+
+/** Take a ticket for binding `socket`; the function says whether it is still the latest ask. */
+function askToBind(socket: WebSocket): () => boolean {
+  const ticket = (bindingAsks.get(socket) ?? 0) + 1;
+  bindingAsks.set(socket, ticket);
+  return () => bindingAsks.get(socket) === ticket;
+}
+
 function bindClient(socket: WebSocket, target: Workspace, kind: "hello" | "workspace_switched"): void {
   // Binding happens after `ensureStarted`, and a client can close while a cold
   // workspace is still building. Its close handler has already forgotten it by
@@ -3155,6 +3173,8 @@ async function handleUpdateConfig(
  * same reason, as handleUpdateConfig.
  */
 async function handleOpenProject(socket: WebSocket, rawRoot: string): Promise<void> {
+  // An open binds the browser like a switch, and may take as long: the latest ask wins.
+  const stillWanted = askToBind(socket);
   if (config.workspaceLock) {
     send(socket, { type: "workspace_error", message: "This server is pinned to one project" });
     return;
@@ -3174,7 +3194,7 @@ async function handleOpenProject(socket: WebSocket, rawRoot: string): Promise<vo
   const already = workspaces.get(root);
   if (already) {
     await ensureStarted(already);
-    bindClient(socket, already, "workspace_switched");
+    if (stillWanted()) bindClient(socket, already, "workspace_switched");
     return;
   }
 
@@ -3237,7 +3257,7 @@ async function handleOpenProject(socket: WebSocket, rawRoot: string): Promise<vo
     send(socket, { type: "workspace_error", message: `Opened ${path.basename(root)}, but its session could not start: ${error instanceof Error ? error.message : String(error)}` });
     return;
   }
-  bindClient(socket, registered, "workspace_switched");
+  if (stillWanted()) bindClient(socket, registered, "workspace_switched");
   announceWorkspaceActivity();
 }
 
@@ -3333,6 +3353,7 @@ async function handleOpenSideSession(socket: WebSocket, rawRoot: string): Promis
   // switched elsewhere meanwhile chose where to be after asking: it is not pulled
   // back when the side session is ready — the selector lists it.
   const boundWhenAsked = clients.get(socket);
+  const stillWanted = askToBind(socket);
 
   let side: Workspace;
   try {
@@ -3374,7 +3395,7 @@ async function handleOpenSideSession(socket: WebSocket, rawRoot: string): Promis
     return;
   }
   await adoptProjectModel(side, project);
-  if (clients.get(socket) === boundWhenAsked) bindClient(socket, side, "workspace_switched");
+  if (stillWanted() && clients.get(socket) === boundWhenAsked) bindClient(socket, side, "workspace_switched");
   announceWorkspaceActivity();
 }
 
@@ -5155,8 +5176,12 @@ function handleClientMessage(socket: WebSocket, raw: string): void {
       // left keeps its session, its watcher and any turn in flight — which is what
       // lets an agent keep working while the user looks somewhere else.
       const leaving = clients.get(socket);
+      const stillWanted = askToBind(socket);
       ensureStarted(target)
         .then(() => {
+          // Asked for another project since: that answer is the one to show. This one
+          // started all the same, and is ready when the user comes back to it.
+          if (!stillWanted()) return;
           // The project just left starts its idle clock now, not at the next sweep:
           // one that had been watched for longer than the timeout would otherwise be
           // retired on the very next pass, before its idle delay had elapsed at all.
@@ -5167,6 +5192,7 @@ function handleClientMessage(socket: WebSocket, raw: string): void {
         })
         .catch((error: unknown) => {
           reportError(error);
+          if (!stillWanted()) return;
           send(socket, { type: "workspace_error", message: `Could not start ${path.basename(target.root)}: ${error instanceof Error ? error.message : String(error)}` });
         });
       return;
