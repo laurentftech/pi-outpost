@@ -23,8 +23,12 @@
 - [x] 5.1 Warn in the log and to each binding browser when an extension's `bash` is shadowed; verify *AShadowedExtensionBashIsWarnedAbout* and *NoWarningWhenTheExtensionsBashIsUsedOrThereIsNone*, and see the notification in the running app
 - [x] 5.2 Export `PI_CODING_AGENT_DIR` = `agentDir` in the embedded runtime, restoring the launch value in the terminal panel; verify *ExtensionsSeeTheServersAgentDirectory* and *TheTerminalKeepsTheUsersAgentDirectory*
 
-## 6. Integration
+## 6. Loaded skills are readable
 
-- [x] 6.1 Check against the real pi-landstrip 0.19.4 installed by `pi install`, in an isolated agent directory: `bashFrom: "npm:pi-landstrip"` starts the session with landstrip's `bash`, and a wrong name refuses it, naming `npm:pi-landstrip`
-- [x] 6.2 Document the key and how to confine bash with an extension in `README.md`
-- [x] 6.3 Write `scenario-coverage.md`; run `npm run check:scenarios`, lint, typecheck and the server suite, then `openspec validate delegate-sandbox-bash --strict`
+- [x] 6.1 Let the read tools read each loaded skill's directory, never a root, home, or one holding the agent directory; verify *LoadedSkillsAreReadable* and *OnlySkillsBecomeReadable* on the real server and agent
+
+## 7. Integration
+
+- [x] 7.1 Check against the real pi-landstrip 0.19.4 installed by `pi install`, in an isolated agent directory: `bashFrom: "npm:pi-landstrip"` starts the session with landstrip's `bash`, and a wrong name refuses it, naming `npm:pi-landstrip`
+- [x] 7.2 Document the key and how to confine bash with an extension in `README.md`
+- [x] 7.3 Write `scenario-coverage.md`; run `npm run check:scenarios`, lint, typecheck and the server suite, then `openspec validate delegate-sandbox-bash --strict`

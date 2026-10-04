@@ -129,6 +129,8 @@ function scopeToRoot(
   readExceptions?: string[],
   /** A tool that writes: it may not write Pi configuration (see piConfigWriteRefusal). */
   writes = false,
+  /** More read-only exceptions, asked on every call (see createSandboxedTools). */
+  extraReadRoots?: () => readonly string[],
 ): ToolDefinition {
   return {
     ...def,
@@ -137,7 +139,9 @@ function scopeToRoot(
       if (typeof target === "string" && target !== "") {
         const resolved = await realResolve(path.resolve(cwd, target));
         const inAllowed = isWithin(allowedRoot, resolved);
-        const inException = readExceptions && isWithinAny(readExceptions, resolved);
+        const inException =
+          (readExceptions && isWithinAny(readExceptions, resolved)) ||
+          (!writes && extraReadRoots !== undefined && isWithinAny([...extraReadRoots()], resolved));
         if (!inAllowed && !inException) {
           throw new Error(`Access denied: "${target}" is outside the sandbox (${allowedRoot})`);
         }
@@ -199,6 +203,11 @@ export async function createSandboxedTools(
    * that configures a sandbox, which is the default in this project's own tests.
    */
   onDocumentsWritten?: (paths: string[]) => void,
+  /**
+   * Directories read tools may also read, asked on every call: the loaded skills', which
+   * are only known once the session that loads them exists. Real paths. Read only.
+   */
+  skillReadRoots?: () => readonly string[],
 ): Promise<ToolDefinition[]> {
   const realRoot = await fs.realpath(sandbox.root);
   const readFactories: Array<(cwd: string) => ToolDefinition> = [
@@ -296,7 +305,7 @@ export async function createSandboxedTools(
   readFactories.push((cwd) => createDocxStylesToolDefinition({ cwd, ...word }));
   readFactories.push((cwd) => createDocxRenderToolDefinition({ cwd, ...word }));
   const tools = readFactories.map((create) =>
-    scopeToRoot(create(realRoot), realRoot, realRoot, readExceptions),
+    scopeToRoot(create(realRoot), realRoot, realRoot, readExceptions, false, skillReadRoots),
   );
   // Building a deck writes one: offered only where writing is.
   if (realWritableRoot !== null) {

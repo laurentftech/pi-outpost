@@ -475,7 +475,7 @@ in [`pi-outpost.config.example.json`](pi-outpost.config.example.json).
 |-----|--------|
 | `cwd` | Agent working directory, and the default project |
 | `agentDir` | Own config dir (auth, models, settings, sessions) — fully separate from `~/.pi/agent`. It starts with **no credentials**: see [Model credentials](#model-credentials). Exported as `PI_CODING_AGENT_DIR` for extensions that look it up themselves; the terminal panel keeps yours |
-| `sandbox.root` | Read-only zone: read/ls/grep/find are confined to this directory, symlinks resolved. Defaults to `cwd`. Applies to the `cwd` project; every other open project is confined to its own directory |
+| `sandbox.root` | Read-only zone: read/ls/grep/find are confined to this directory, symlinks resolved — plus, read-only, the directories of the skills the session loaded. Defaults to `cwd`. Applies to the `cwd` project; every other open project is confined to its own directory |
 | `sandbox.allowWrite` | Adds edit/write, confined to `sandbox.writableRoot` (default `false`). Never inside a `.pi` directory, which holds the configuration that confines the agent — see [docs/sandboxing.md](docs/sandboxing.md#the-agent-cannot-rewrite-what-confines-it) |
 | `sandbox.writableRoot` | Read-write zone: a subdirectory of `root` that edit/write are further confined to. Defaults to `root` itself. Ignored while `allowWrite` is false, and applies to the `cwd` project only: every other open project is writable in its whole directory |
 | `sandbox.allowBash` | Adds bash — **not path-confined**, explicit opt-in (default `false`) |

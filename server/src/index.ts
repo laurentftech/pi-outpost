@@ -70,6 +70,7 @@ import { createRpcRuntime } from "./rpcRuntime.ts";
 import { rpcResourceArgs, resolveToolsExtension } from "./rpcResourceArgs.ts";
 import { TOOLS_ENV_VAR, type PiOutpostToolsSettings } from "./piOutpostTools.ts";
 import { readInstalledPiSdkVersion } from "./piSdkVersion.ts";
+import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { CliError, helpText, parseCli, readSecret, runInit } from "./cli.ts";
@@ -1414,6 +1415,17 @@ const makeCreateRuntime =
     // The delegation first: it names the cause when Pi's own bash is what remains.
     assertDelegatedBash(created.session, projectSandbox);
     assertNoUnconfinedBuiltIns(created.session);
+    // The skills the agent is told about, made readable: they live outside the project.
+    if (publishInto) {
+      const skillDirs = services.resourceLoader.getSkills().skills.map((skill) => skill.baseDir || path.dirname(skill.filePath));
+      const real = await Promise.all([...new Set(skillDirs)].map((dir) => fs.realpath(dir).catch(() => path.resolve(dir))));
+      const agentDir = await fs.realpath(AGENT_DIR).catch(() => path.resolve(AGENT_DIR));
+      // Never a directory that would open more than skills: the disk's root, the home
+      // directory, or one holding the agent directory — where auth.json keeps the keys.
+      publishInto.setSkillReadRoots(
+        real.filter((dir) => dir !== path.parse(dir).root && dir !== os.homedir() && !isWithin(dir, agentDir)),
+      );
+    }
     const shadowed = shadowedBashWarning(created.session.extensionRunner.getAllRegisteredTools(), projectSandbox);
     if (shadowed !== undefined) console.warn(`[pi] WARNING ${shadowed}`);
     if (publishInto) {

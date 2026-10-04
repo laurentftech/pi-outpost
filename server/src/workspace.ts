@@ -118,6 +118,13 @@ export interface WorkspaceOptions {
    * (extensions, skills, prompt templates, RPC arguments).
    */
   createRuntime: (settings: WorkspaceSettings, sandboxedTools: ToolDefinition[] | undefined) => Promise<AgentRuntime>;
+  /**
+   * The directories of the skills this workspace's session loaded, readable by the
+   * sandboxed read tools though outside the root. Filled once the session exists (see
+   * `setSkillReadRoots`), and read on every call, so the toolset built before it sees it.
+   * Set by `Workspace.create`; one object shared by every rebuild of this workspace.
+   */
+  skillReadRoots?: { dirs: readonly string[] };
 }
 
 /** The identity of a project's `index`th side session. */
@@ -301,8 +308,9 @@ export class Workspace {
     // answer to a path its sessions are not stored under — SessionManager is keyed
     // by cwd — and let two different projects collide on one sandbox subtree.
     const root = await fs.realpath(options.settings.cwd);
-    const resources = await buildResources(options);
-    return new Workspace(root, undefined, resources, options, sideIndex);
+    const withSkillRoots = { ...options, skillReadRoots: options.skillReadRoots ?? { dirs: [] } };
+    const resources = await buildResources(withSkillRoots);
+    return new Workspace(root, undefined, resources, withSkillRoots, sideIndex);
   }
 
   /** Whether this is a side session rather than a project's main session. */
@@ -357,6 +365,15 @@ export class Workspace {
    * The runtime is untouched here: rebuilding its toolset is a separate step the
    * caller owns, because it replaces the live session in front of the user.
    */
+  /**
+   * The skills the session loaded, by directory: a skill the agent is told about must be
+   * one it can open. Bundled skills, those a package installed into the agent directory,
+   * `~/.agents/skills` — all outside the project, and the sandbox refused every one.
+   */
+  setSkillReadRoots(dirs: readonly string[]): void {
+    if (this.options.skillReadRoots) this.options.skillReadRoots.dirs = dirs;
+  }
+
   async rebuildResources(settings: WorkspaceSettings): Promise<void> {
     // Build first, adopt second. A failure here — a configured root that no longer
     // exists, a toolset that cannot be constructed — must leave the workspace
@@ -517,6 +534,7 @@ async function buildResources(options: WorkspaceOptions): Promise<WorkspaceResou
           limits.officeRender,
           limits.mailMaxBytes,
           options.onDocumentsWritten,
+          options.skillReadRoots ? () => options.skillReadRoots!.dirs : undefined,
         )),
         ...options.unconfinedTools,
       ])

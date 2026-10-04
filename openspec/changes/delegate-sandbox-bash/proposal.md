@@ -32,6 +32,11 @@ no other way to confine the agent's shell.
   its sessions. A policy written beside the server's packages was therefore never the one enforced.
   pi-outpost now exports `PI_CODING_AGENT_DIR` = `agentDir` in the embedded runtime. The terminal panel
   keeps the user's value.
+- **Loaded skills are readable.** Skills live outside the project: bundled with pi-outpost, installed
+  into the agent directory, in `~/.agents/skills`. The sandboxed `read` refused every one of them, so
+  the agent was shown a skill it could not open, and went looking for it in the installation. This
+  was seen often in the embedded widget. The read tools now also read each loaded skill's directory,
+  read-only. Never the disk's root, the home directory, or a directory holding the agent directory.
 - **The agent cannot rewrite what confines it.** None of pi-outpost's file-writing tools may write
   in a `.pi` directory under the writable zone. Every project counts as trusted, so pi-landstrip
   merges the project's `.pi/sandbox.json` over its global policy before every command. The agent
@@ -47,7 +52,9 @@ no other way to confine the agent's shell.
 
 ### Modified Capabilities
 
-- `file`: the agent's file-writing tools refuse paths inside a `.pi` directory.
+- `file`:
+  - the agent's file-writing tools refuse paths inside a `.pi` directory;
+  - its read tools also read the loaded skills' directories.
 
 ## Impact
 

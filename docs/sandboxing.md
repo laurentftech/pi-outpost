@@ -20,7 +20,11 @@ alone is not enough, and how to check that what you set up is really in force.
 
 With a `sandbox` in the configuration, pi-outpost replaces Pi's file tools with its own:
 
-- `read`, `ls`, `grep` and `find` are confined to `sandbox.root`, with symlinks resolved;
+- `read`, `ls`, `grep` and `find` are confined to `sandbox.root`, with symlinks resolved — plus,
+  read-only, the directory of each skill the session loaded (bundled with pi-outpost, installed into
+  the agent directory, `~/.agents/skills`…), so a skill the agent is told about is one it can open.
+  Never a directory that would open more: the disk's root, your home directory, or one holding the
+  agent directory, where `auth.json` keeps your keys;
 - `edit` and `write` are confined to `sandbox.writableRoot`, and only exist with `allowWrite`;
 - the document tools (PDF, Word, Excel, PowerPoint, mail) follow the same zones.
 

@@ -95,6 +95,16 @@ is enough. It is embedded only: the RPC child already gets it. The terminal pane
 shell, so `TerminalManager` takes overrides that restore the launch value, or remove it if there was
 none. A `pi` typed there keeps the user's own directory.
 
+### D8. Skills readable by directory, decided once the session knows them
+
+The sandboxed toolset is built before the session that loads the skills exists. So the read tools
+take a getter (`skillReadRoots`) that they ask on every call. The workspace holds the list in an
+object kept across rebuilds (`WorkspaceOptions.skillReadRoots`). The session factory fills it from
+`resourceLoader.getSkills()`, one `baseDir` per skill, with real paths. It drops any directory that
+is a filesystem root, the home directory, or an ancestor of the agent directory. The whole skill
+directory is readable, because a skill's references and schemas sit beside its `SKILL.md`. Write
+tools never consult the list.
+
 ## Risks / Trade-offs
 
 - **The extension's policy decides what bash can do.** pi-outpost proves only *whose* bash runs. The
