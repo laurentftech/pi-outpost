@@ -95,7 +95,8 @@
 
 - **Operations:** `set_title`, `set_time`, `add_task`, `change_task`, `move_task` (before/after an
   id, or to an index), `remove_task`, `add_item`, `change_item`, `remove_item`, `add_separator`,
-  `remove_separator`, `add_dependency`, `remove_dependency`.
+  `remove_separator`, `add_dependency`, `remove_dependency`, `set_periods`, `set_references`
+  (these two replace the whole list, which is short by nature).
 - **Addressing:** by identifier. Items need an `id` to be changed or removed. Creation may assign
   missing item ids (`<task>.<n>`), and the answer returns them.
 - **Separators:** they have no ids in the contract, so they are addressed by position, the row index

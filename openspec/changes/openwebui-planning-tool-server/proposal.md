@@ -2,7 +2,7 @@
 
 ## Why
 
-The IT department standardises on Open WebUI, and colleagues will not install pi-outpost to get
+Some IT department standardises on Open WebUI, and people will not install pi-outpost to get
 planning timelines. The structured-exchange timeline — contract, validation, comparison and the
 interactive viewer — is already independent of pi, so it can be offered inside Open WebUI without a
 second implementation. A planning is an artifact maintained over weeks, not a one-off answer, so it

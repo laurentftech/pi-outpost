@@ -1,0 +1,23 @@
+@import "tailwindcss";
+
+/* Only the timeline is drawn here, so only its sources are scanned: the embed is stored
+   in every chat that shows a planning, and every unused utility would be stored with it. */
+@source "../../ui/src/presentations/TimelineView.tsx";
+@source "../../ui/src/presentations/figureDrawing.tsx";
+@source "./**/*.tsx";
+
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+:root {
+  --accent: #1d4ed8;
+  color-scheme: light;
+  font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
+}
+:root[data-theme="dark"] {
+  --accent: #60a5fa;
+  color-scheme: dark;
+}
+body {
+  margin: 0;
+  background: transparent;
+}

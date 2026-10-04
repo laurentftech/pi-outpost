@@ -74,6 +74,9 @@ A planning SHALL be a structured-exchange version 3 document of kind `timeline`.
 the same schema, semantic rules and limits pi-outpost applies, and SHALL refuse what pi-outpost
 refuses, with the same diagnostics. A stored planning SHALL be readable by pi-outpost as it is.
 
+A planning SHALL be a plan, not a comparison: a document that declares what it is compared to, a
+previous position, or a change role SHALL be refused, since comparisons are drawn when showing.
+
 #### Scenario: AValidTimelineIsCreated
 - **WHEN** a user creates a planning from a valid version 3 timeline
 - **THEN** it is stored, and the answer carries its identifier, its first revision and its title
@@ -86,6 +89,10 @@ refuses, with the same diagnostics. A stored planning SHALL be readable by pi-ou
 #### Scenario: AnotherKindIsRefused
 - **WHEN** a user creates a planning from a valid version 3 document whose kind is not `timeline`
 - **THEN** it is refused, and nothing is stored
+
+#### Scenario: AComparisonIsNotAPlanning
+- **WHEN** a user creates a planning from a valid compared timeline
+- **THEN** it is refused, the answer says comparisons are drawn when showing, and nothing is stored
 
 #### Scenario: AStoredPlanningOpensInPiOutpost
 - **WHEN** a stored planning's current document is validated by pi-outpost's structured-exchange check
@@ -109,7 +116,7 @@ revision number; a user MAY read a named earlier revision.
 
 An update SHALL be a list of operations naming what they change by identifier: add, change, move or
 remove a task; add, change or remove an item of a task; add or remove a separator; add or remove a
-dependency; change the title or the time range. The operations of one update SHALL apply together or
+dependency; change the title, the time range, the periods or the references. The operations of one update SHALL apply together or
 not at all. The result SHALL be validated as a creation is; a refused update SHALL change nothing and
 SHALL return the diagnostics, including which operation could not apply.
 

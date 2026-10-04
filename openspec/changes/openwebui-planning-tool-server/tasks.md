@@ -23,7 +23,7 @@
 
   Wire it into the root workspaces, CI and lint. Verify: `npm run typecheck` and the CI matrix include
   it, Windows too.
-- [ ] 2.2 Trust boundary:
+- [x] 2.2 Trust boundary:
   - refuse to start without a secret, or in signed mode without an identity key;
   - check the bearer token in constant time before any route;
   - signed mode: verify the HS256 token, issuer `open-webui` and expiry; the owner is `sub`, and
@@ -46,7 +46,7 @@
 
   Verify with unit tests on a temporary directory, built with `path.join` (no string paths), covering
   `TheOldestRevisionsAreNotSilentlyLost` and `APlanningTooLargeIsRefused`.
-- [ ] 3.2 `create_planning`, `list_plannings` and `get_planning` (current or named revision):
+- [x] 3.2 `create_planning`, `list_plannings` and `get_planning` (current or named revision):
   - validation through `shared/`, kind `timeline` only;
   - item ids assigned where missing.
 
@@ -55,7 +55,7 @@
     `shared/`'s for the same document), `AnotherKindIsRefused`;
   - `AUserListsOnlyTheirOwnPlannings`, `AnotherUsersPlanningIsNotFound`;
   - `AnUnknownRevisionIsNotFound`, `ItemsWithoutIdentifiersCanBeNamedAfterCreation`.
-- [ ] 3.3 Verify `AStoredPlanningOpensInPiOutpost`: a test that validates a stored revision file with
+- [x] 3.3 Verify `AStoredPlanningOpensInPiOutpost`: a test that validates a stored revision file with
   the same `shared/` check pi-outpost's structured-exchange tool applies.
 
 ## 4. Targeted updates

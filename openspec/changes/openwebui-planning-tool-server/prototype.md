@@ -72,3 +72,30 @@ The token lasts 300 s by default (`FORWARD_USER_INFO_HEADER_JWT_EXPIRES_SECONDS`
 
 Open WebUI 0.11 has workspace **skills**, listed to the model with automatic discovery. They are a
 place for the planning guidance beyond the tool descriptions. That is a later change, not this one.
+
+## 4. Found later, with the real viewer: embeds must hold no `&`
+
+**What happened:** the first real embed, the 265 kB viewer with React, was accepted by Open WebUI
+(the model got the `ui_component` message) but never drawn.
+
+**Cause, in v0.11.4's own code:**
+- the embed is stored with `JSON.stringify` (`structuredOutput.ts`, `stringifyAttribute`);
+- it is read back through `html-entities`' `decode` before `JSON.parse` (`ToolCallDisplay.svelte`,
+  `ConsecutiveDetailsGroup.svelte`).
+
+React's bundle carries `&quot;` and `&amp;` as literal strings. They decode into raw quotes inside
+the JSON, the parse fails, and the failure is swallowed. The prototype page had no `&`, which is why
+it passed.
+
+**Fix:**
+- the page carries the stylesheet, the viewer and the planning gzipped and base64-encoded, an
+  alphabet with no `&`;
+- a bootstrap with no `&` inflates them with `DecompressionStream`;
+- the embed shrank from 265 kB to 111 kB;
+- `test/show.test.ts` asserts the page holds no `&`, even for a planning titled "R&D".
+
+**Verified in the running app:**
+- Codestral called `list_plannings` then `show_planning`;
+- the 9-task demo programme drew with all four dependency types;
+- the frame sized itself to 578 px;
+- clicking a milestone or a task label filled the input, and nothing was sent.
