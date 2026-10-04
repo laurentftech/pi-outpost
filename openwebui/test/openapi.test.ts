@@ -29,6 +29,7 @@ test("TheDescriptionNamesTheFiveTools: exactly the operations — the five plann
     "create_planning",
     "get_planning",
     "list_plannings",
+    "read_structure_guide",
     "show_planning",
     "show_structure",
     "update_planning",
@@ -76,4 +77,15 @@ test("EveryExampleIsShown: each example in show_structure's published descriptio
   }
   assert.match(description, /nothing is applied/);
   assert.match(description, /Omitting an element never removes it/);
+});
+
+// openlore: scenario=ShowStructureNamesTheGuide spec=openwebui-structure-guide
+test("ShowStructureNamesTheGuide: the structure and planning tools point to the guide and its topics", async (t) => {
+  const { document } = await published(t);
+  const structure: string = document.paths["/show_structure"].post.description;
+  assert.match(structure, /read_structure_guide/);
+  for (const topic of ["graphs-and-tables", "proposals", "timelines", "enriched"]) assert.ok(structure.includes(`"${topic}"`), topic);
+  assert.match(document.paths["/create_planning"].post.description, /read_structure_guide with topic "timelines"/);
+  const guide = document.paths["/read_structure_guide"].post;
+  assert.deepEqual(guide.requestBody.content["application/json"].schema.properties.topic.enum, ["graphs-and-tables", "proposals", "timelines", "enriched"]);
 });

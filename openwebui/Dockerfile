@@ -22,6 +22,7 @@ COPY openwebui/package.json openwebui/
 RUN npm ci --workspace @pi-outpost/openwebui --include-workspace-root=false --ignore-scripts --no-audit --no-fund
 COPY shared/ shared/
 COPY ui/src/ ui/src/
+COPY skills/structured-exchange/references/ skills/structured-exchange/references/
 COPY openwebui/ openwebui/
 RUN npm run build:viewer --workspace @pi-outpost/openwebui \
  && npm run build:server --workspace @pi-outpost/openwebui
@@ -32,9 +33,10 @@ ENV NODE_ENV=production \
     OWUI_PLANNING_PORT=8790 \
     OWUI_PLANNING_DATA_DIR=/data
 WORKDIR /app
-# One bundled file and the viewer it embeds: no node_modules at run time.
+# One bundled file, the viewer it embeds and the guide it serves: no node_modules at run time.
 COPY --from=build /repo/openwebui/dist/server.mjs dist/server.mjs
 COPY --from=build /repo/openwebui/dist/viewer dist/viewer/
+COPY --from=build /repo/openwebui/dist/guide dist/guide/
 RUN mkdir -p /data && chown node:node /data
 USER node
 VOLUME /data

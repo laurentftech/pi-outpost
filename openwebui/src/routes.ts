@@ -12,6 +12,7 @@ import type { PlanningServerConfig } from "./config.ts";
 import { compareTimelines } from "@pi-outpost/shared/structured-exchange/timeline-comparison";
 import { embedPage } from "./embed.ts";
 import { registerOpenApi } from "./openapi.ts";
+import { GUIDE_TOPICS, guidePage, guideTopicFor } from "./guide.ts";
 import { judgeStructure } from "./structure.ts";
 import { OperationError, applyOperations } from "./operations.ts";
 import { PlanningRefusal, type PlanningRevision, type PlanningStore } from "./store.ts";
@@ -104,11 +105,16 @@ export function planningRoutes(store: PlanningStore, _config: PlanningServerConf
       app.post<{ Body: { document?: unknown; summary?: unknown } }>("/show_structure", async (request, reply) => {
         const verdict = judgeStructure(request.body?.document);
         if (!verdict.valid) {
+          // The page that would have helped, named where the model is most likely to
+          // follow a pointer: in the refusal it has just received.
+          const guide = guideTopicFor(request.body?.document, verdict.issues);
           return reply.code(422).send({
             // Said to the model, not the user: Codestral read the first wording as a
             // message to relay, and asked the user to fix a document it had written.
             error:
-              "Nothing was shown: the structured-exchange contract refused this document. This message is for you, not for the user: correct the document using the issues below and call show_structure again now, in this same reply.",
+              "Nothing was shown: the structured-exchange contract refused this document. This message is for you, not for the user: correct the document using the issues below and call show_structure again now, in this same reply." +
+              ` If the rule is unclear, read_structure_guide with topic "${guide}" explains it.`,
+            guide,
             issues: verdict.issues,
           });
         }
@@ -117,6 +123,21 @@ export function planningRoutes(store: PlanningStore, _config: PlanningServerConf
           .header("Content-Disposition", "inline")
           .header("Access-Control-Expose-Headers", "Content-Disposition")
           .send(embedPage({ mode: "structure", envelope: verdict.envelope }));
+      });
+
+      // The guide: pi-outpost's skill reference pages, for the model to read. Text, not an
+      // embed, so the model sees it.
+      app.post<{ Body: { topic?: unknown } }>("/read_structure_guide", async (request, reply) => {
+        const topics = GUIDE_TOPICS.map(({ topic, purpose }) => ({ topic, purpose }));
+        const topic = request.body?.topic;
+        if (topic === undefined || topic === null || topic === "") {
+          return { topics, how: "Call read_structure_guide again with one topic, the one for the job at hand." };
+        }
+        const page = typeof topic === "string" ? guidePage(topic) : undefined;
+        if (page === undefined) {
+          return reply.code(404).send({ error: `there is no guide topic "${String(topic)}"`, topics });
+        }
+        return { topic, page };
       });
 
       app.post<{ Body: { id?: unknown; compare_to?: unknown } }>("/show_planning", async (request, reply) => {

@@ -68,11 +68,14 @@ The skill manifest would cost about as much.
   `SKILL.md`. Moving timeline-comparison guidance there would cost every pi-outpost request for one
   job.
 
-### Pages bundled at build time
+### Pages copied at build time
 
-- **How:** esbuild's text loader (`--loader:.md=text`) imports the five pages into `dist/server.mjs`,
-  so the image needs no extra files.
-- **From source** (tests, `npm start`), `tsx` reads the same files, with `fs` at module load.
+- **How:** `build:server` copies the reference pages into `dist/guide/`, beside `dist/server.mjs`. The
+  image copies `dist/guide` with the bundle.
+- **From source** (tests, `npm start`), `guide.ts` reads the same files where the skill keeps them. It
+  tries `dist/guide/` first, then `skills/structured-exchange/references/`.
+- **Why not esbuild's text loader:** it was the first plan, but `tsx`, which runs the server from
+  source, cannot import `.md`. Both paths would then have needed separate code.
 - **What it means:** a page edited in `skills/` reaches the image at its next build. No copy is kept
   in `openwebui/`.
 

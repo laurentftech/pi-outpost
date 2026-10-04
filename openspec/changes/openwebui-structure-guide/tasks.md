@@ -2,7 +2,7 @@
 
 ## 1. One source
 
-- [ ] 1.1 Mark the pi-only passages in `skills/structured-exchange/references/`: the
+- [x] 1.1 Mark the pi-only passages in `skills/structured-exchange/references/`: the
   `write_structure_figure` line in `graphs-and-tables.md`, the `SKILL.md` pointer in
   `enriched-contract.md`, and the file-tool paragraph in `timelines.md`, between
   `<!-- only: pi-outpost -->` and `<!-- end -->`. Verify:
@@ -13,8 +13,8 @@
 
 ## 2. The guide on the planning server
 
-- [ ] 2.1 Add `openwebui/src/guide.ts`: the topics table, the pages (read from `skills/` through
-  `fs` from source, and through esbuild's text loader in `dist/server.mjs`), and the stripping of
+- [x] 2.1 Add `openwebui/src/guide.ts`: the topics table, the pages (read from `skills/` from
+  source, and from `dist/guide/` beside `dist/server.mjs`), and the stripping of
   marked passages. Add `POST /read_structure_guide { topic? }` behind the trust hook. Verify with
   `openwebui/test/guide.test.ts`:
   - `TheIndexListsEveryTopic`, `ATopicReturnsItsPage`, `AnUnknownTopicListsTheTopics` and
@@ -22,17 +22,17 @@
   - `AServedPageIsTheSourceWithoutPiOnlyPassages`: the served page equals the file with the marked
     blocks cut, byte for byte;
   - `NoServedPageNamesAPiOnlyTool`.
-- [ ] 2.2 Bundle the pages: `build:server` gains `--loader:.md=text`, and the image check calls
+- [x] 2.2 Bundle the pages: `build:server` copies them to `dist/guide/` (see `design.md`), and the image check calls
   `read_structure_guide` for each topic against the bundled server. Verify: `image.sh` passes on a
   fresh build.
 
 ## 3. Pointing to it
 
-- [ ] 3.1 Compute the topic hint for a `show_structure` refusal, from the document's kind and the
+- [x] 3.1 Compute the topic hint for a `show_structure` refusal, from the document's kind and the
   issues' rules and paths, as in `design.md`. Add `guide` and the sentence to the refusal. Verify
   `AProposalRefusalPointsToProposals` and `ATimelineRefusalPointsToTimelines`, and that the issues
   themselves are unchanged (still deep-equal to the gate's).
-- [ ] 3.2 Name the guide in the `show_structure` and `create_planning` descriptions. Extend the
+- [x] 3.2 Name the guide in the `show_structure` and `create_planning` descriptions. Extend the
   OpenAPI tests: seven tools, and `ShowStructureNamesTheGuide`.
 - [ ] 3.3 Live, on the compose stack with Codestral:
   - one request for a hard document: a version 2 requirements table with chapters and traceability;

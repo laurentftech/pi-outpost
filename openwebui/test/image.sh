@@ -71,6 +71,11 @@ grep -q 'data-script="H4sI' <<<"$shown" || fail "show_planning did not embed the
 graph='{"schema":"urn:structured-exchange:1","kind":"graph","data":{"nodes":[{"id":"a","label":"A"},{"id":"b","label":"B"}],"edges":[{"from":"a","to":"b","kind":"flow"}]}}'
 structure=$(call show_structure "{\"document\":$graph}")
 grep -q 'data-script="H4sI' <<<"$structure" || fail "show_structure did not embed the viewer: ${structure:0:200}"
+for topic in graphs-and-tables proposals timelines enriched; do
+  guide=$(call read_structure_guide "{\"topic\":\"$topic\"}")
+  grep -q '"page":"' <<<"$guide" || fail "read_structure_guide $topic: ${guide:0:200}"
+  grep -q 'write_structure_figure\|compare_timelines' <<<"$guide" && fail "read_structure_guide $topic names a pi-only tool"
+done
 
 echo "-- APlanningOutlivesTheContainer"
 docker rm -f "$NAME" >/dev/null

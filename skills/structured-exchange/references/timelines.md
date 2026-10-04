@@ -53,7 +53,10 @@ line taken from the reader's own date.
   not satisfied**, not refused — tell the user, do not move dates to hide it. A cycle
   is refused.
 - A timeline is not a proposal: it has no `target`. To change one, present the whole
-  revised timeline again. `write_structure_table` refuses it.
+  revised timeline again.
+  <!-- only: pi-outpost -->
+  `write_structure_table` refuses it.
+  <!-- end -->
 - **Choose `time.scale` for the plan's length**: `week` for a few months (a test campaign),
   `month` for a year or two, `quarter` beyond (a multi-year programme). It is only the scale
   the plan opens at — the reader can switch to another or fit it to the screen — and it moves
@@ -62,6 +65,7 @@ line taken from the reader's own date.
   `label` and `kind`, e.g. `"fermeture"`) are drawn as bands across every row, and `references`
   (`date`, `label`, optional `kind`, e.g. a contractual date) as named lines. They constrain
   nothing. A period may run past the plan's range (drawn clipped); a reference must fall inside it.
+<!-- only: pi-outpost -->
 - **To show what changed between two versions of a plan**, keep each version as its own
   timeline file and call `compare_timelines` with the previous and the current one — never
   work out the shifts yourself. It pairs tasks and items by `id`, so give every item an `id`
@@ -80,3 +84,4 @@ line taken from the reader's own date.
   with the day it is written (`reference_line: "none"` leaves it out), because the file
   outlives that day. Graph options (`hide_element_kinds`, `viewpoint`…) are refused for a
   timeline.
+<!-- end -->

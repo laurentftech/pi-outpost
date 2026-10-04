@@ -108,6 +108,8 @@ leaving the reader to rebuild each one from the key:
 - **Something with no kind survives every viewpoint.** If an element must drop out of a
   reading, give it a kind.
 
+<!-- only: pi-outpost -->
 When you write a report with one chapter per reading, write one figure per viewpoint:
 `write_structure_figure` with `viewpoint: "power"`. Do not rebuild the same selection
 from hide lists — the viewpoint carries both the selection and the reason for it.
+<!-- end -->
