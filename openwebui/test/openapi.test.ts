@@ -1,0 +1,55 @@
+/**
+ * The description Open WebUI builds its tools from — tested as published, so the
+ * examples a model copies are the ones the server accepts.
+ */
+import assert from "node:assert/strict";
+import test from "node:test";
+import { SECRET, testApp } from "./helpers.ts";
+
+async function published(t: test.TestContext) {
+  const harness = await testApp(t);
+  const response = await harness.app.inject({ method: "GET", url: "/openapi.json", headers: { authorization: `Bearer ${SECRET}` } });
+  assert.equal(response.statusCode, 200);
+  return { ...harness, document: response.json() };
+}
+
+function exampleIn(description: string): unknown {
+  const match = /```json\n([\s\S]*?)\n```/.exec(description);
+  assert.ok(match, "a json example in the description");
+  return JSON.parse(match[1]!);
+}
+
+// openlore: scenario=TheDescriptionNamesTheFiveTools spec=openwebui-planning-server
+test("TheDescriptionNamesTheFiveTools: exactly the five operations, each described with an input schema", async (t) => {
+  const { document } = await published(t);
+  const operations = Object.values(document.paths as Record<string, { post: { operationId: string; description: string; requestBody: unknown } }>).map(
+    (path) => path.post,
+  );
+  assert.deepEqual(operations.map((op) => op.operationId).sort(), ["create_planning", "get_planning", "list_plannings", "show_planning", "update_planning"]);
+  for (const op of operations) {
+    assert.ok(op.description.length > 40, op.operationId);
+    assert.equal((op.requestBody as { content: Record<string, { schema: { type: string } }> }).content["application/json"]!.schema.type, "object");
+  }
+  // Each path is the tool's own name, so the route and the tool cannot disagree.
+  for (const [path, item] of Object.entries(document.paths as Record<string, { post: { operationId: string } }>)) {
+    assert.equal(path, `/${item.post.operationId}`);
+  }
+});
+
+// openlore: scenario=TheCreationExampleIsValid spec=openwebui-planning-server
+// openlore: scenario=TheUpdateExampleApplies spec=openwebui-planning-server
+test("TheCreationExampleIsValid and TheUpdateExampleApplies: the examples as published", async (t) => {
+  const { document, call } = await published(t);
+  const creation = exampleIn(document.paths["/create_planning"].post.description);
+  const created = await call("create_planning", { planning: creation });
+  assert.equal(created.statusCode, 201, created.body);
+
+  const update = exampleIn(document.paths["/update_planning"].post.description) as { id: string };
+  const applied = await call("update_planning", { ...update, id: created.json().id });
+  assert.equal(applied.statusCode, 200, applied.body);
+  assert.equal(applied.json().revision, 2);
+  // The example says it moves the review and adds a launch: it does.
+  const items = applied.json().planning.data.rows.flatMap((row: { items?: Array<{ id: string; date?: string }> }) => row.items ?? []);
+  assert.equal(items.find((item: { id: string }) => item.id === "review").date, "2027-03-12");
+  assert.ok(items.some((item: { id: string }) => item.id === "launch"));
+});

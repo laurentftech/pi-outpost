@@ -91,7 +91,7 @@
 
 ## 6. Tool descriptions and OpenAPI
 
-- [ ] 6.1 Generate the OpenAPI document from the route schemas. Write the five tool descriptions with
+- [x] 6.1 Generate the OpenAPI document from the route schemas. Write the five tool descriptions with
   a complete creation example and a complete update example. Verify with tests for
   `TheDescriptionNamesTheFiveTools`, `TheCreationExampleIsValid` and `TheUpdateExampleApplies`, run
   from the published document.
