@@ -200,6 +200,18 @@ export class LocalPlanningStore {
     return this.inside(path.join(this.root, meta.file));
   }
 
+  /**
+   * `<stem><suffix>`, or `<stem> (n)<suffix>` with the first free n: free regardless of
+   * case, as on macOS and Windows, so a folder copied or synced there never collides.
+   */
+  private async freeName(stem: string, suffix: string): Promise<string> {
+    const taken = new Set((await fs.readdir(this.root)).map((name) => name.normalize("NFC").toLowerCase()));
+    const free = (name: string) => !taken.has(name.normalize("NFC").toLowerCase());
+    let name = `${stem}${suffix}`;
+    for (let n = 2; !free(name); n += 1) name = `${stem} (${n})${suffix}`;
+    return name;
+  }
+
   private async writeAtomically(file: string, content: string): Promise<void> {
     const target = this.inside(file);
     const temporary = this.inside(path.join(path.dirname(target), `.${path.basename(target)}.${randomBytes(6).toString("hex")}.tmp`));
@@ -273,8 +285,7 @@ export class LocalPlanningStore {
     if (Buffer.byteLength(svg, "utf8") > MAX_FIGURE_BYTES) throw new PlanningRefusal("the figure is too large to save");
     const stem = fileStemOf(fileName.replace(/\.svg$/i, ""));
     return this.locked("folder", async () => {
-      let name = `${stem}.svg`;
-      for (let n = 2; await exists(this.inside(path.join(this.root, name))); n += 1) name = `${stem} (${n}).svg`;
+      const name = await this.freeName(stem, ".svg");
       await fs.writeFile(this.inside(path.join(this.root, name)), svg, { flag: "wx" });
       return name;
     });
@@ -406,8 +417,7 @@ export class LocalPlanningStore {
       let id = base;
       for (let n = 2; await exists(this.historyDir(id)); n += 1) id = `${base}-${n}`;
       const stem = fileStemOf(title);
-      let file = `${stem}${PLANNING_SUFFIX}`;
-      for (let n = 2; await exists(this.inside(path.join(this.root, file))); n += 1) file = `${stem} (${n})${PLANNING_SUFFIX}`;
+      const file = await this.freeName(stem, PLANNING_SUFFIX);
 
       const dir = this.historyDir(id);
       await fs.mkdir(dir, { recursive: true });
