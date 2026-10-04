@@ -20,7 +20,7 @@ import type { StructuredTimelineData } from "@pi-outpost/shared/structured-excha
 import type { ValidatedStructuredExchange } from "@pi-outpost/shared/structured-exchange";
 import { StructuredExchangeDocument } from "../../ui/src/presentations/StructuredExchangeView";
 import { TimelineView } from "../../ui/src/presentations/TimelineView";
-import "./viewer.css";
+import "@pi-outpost/apps-core/viewer.css";
 
 /** A document shown by show_structure: drawn as pi-outpost draws it, nothing to act on. */
 export interface EmbeddedStructure {

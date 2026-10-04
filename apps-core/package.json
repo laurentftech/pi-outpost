@@ -1,0 +1,27 @@
+{
+  "name": "@pi-outpost/apps-core",
+  "private": true,
+  "type": "module",
+  "description": "What every structured-exchange app server shares: the timeline gate, the targeted update operations, the guide, the tool descriptions and the viewer stylesheet.",
+  "exports": {
+    "./planning": "./src/planning.ts",
+    "./operations": "./src/operations.ts",
+    "./guide": "./src/guide.ts",
+    "./structure": "./src/structure.ts",
+    "./descriptions": "./src/descriptions.ts",
+    "./viewer.css": "./viewer/viewer.css",
+    "./scripts/copy-guide.mjs": "./scripts/copy-guide.mjs"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "lint": "oxlint"
+  },
+  "dependencies": {
+    "@pi-outpost/shared": "*"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "oxlint": "^1.71.0",
+    "typescript": "^5.8.0"
+  }
+}

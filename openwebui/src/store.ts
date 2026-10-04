@@ -20,7 +20,7 @@ import { createHash, randomBytes } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import type { PlanningServerConfig } from "./config.ts";
-import { judgePlanning, nameEveryItem, type TimelineDocument } from "./planning.ts";
+import { judgePlanning, nameEveryItem, type TimelineDocument } from "@pi-outpost/apps-core/planning";
 
 export interface PlanningMeta {
   id: string;

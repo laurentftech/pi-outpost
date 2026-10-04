@@ -36,6 +36,7 @@ import {
   TIMELINE_BAR_FILL_OPACITY,
   TIMELINE_MIN_PX_PER_DAY,
 } from "@pi-outpost/shared/structured-exchange/timeline-figure";
+import { copyText } from "./copyText";
 import { Drawn, FigureMarkers, type Interaction } from "./figureDrawing";
 
 const EMPHASIS = "#2563eb";
@@ -94,6 +95,7 @@ export function TimelineView({
   display: sharedDisplay,
   onDisplayChange,
   onSelect,
+  saveFigure,
 }: {
   data: StructuredTimelineData;
   today?: number;
@@ -104,6 +106,12 @@ export function TimelineView({
   onDisplayChange?: TimelineDisplayUpdate;
   /** Told what the reader just selected — a task, or an item of it — and told `undefined` when they unselect. */
   onSelect?: (selection: { task: StructuredTimelineTask; item?: StructuredTimelineItem } | undefined) => void;
+  /**
+   * Saves the figure as a file, for a frame that cannot download itself (an MCP Apps
+   * view asks its host). Resolves to what to tell the reader — where it went — or to
+   * `false` when it was not saved. Without it, the browser downloads the file.
+   */
+  saveFigure?: (fileName: string, markup: string) => Promise<string | false>;
 }) {
   const day = today ?? localToday();
   const [ownDisplay, setOwnDisplay] = useState(() => initialTimelineDisplay(plan));
@@ -318,23 +326,23 @@ export function TimelineView({
       }),
     );
   const figureName = `timeline-${fileStem(data.title ?? "plan") || "plan"}.svg`;
-  const downloadFigure = () => {
-    const url = URL.createObjectURL(new Blob([figureMarkup()], { type: "image/svg+xml" }));
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = figureName;
-    link.click();
-    URL.revokeObjectURL(url);
-    setCopied("SVG downloaded");
+  const downloadFigure = async () => {
+    if (saveFigure) {
+      const saved = await saveFigure(figureName, figureMarkup()).catch(() => false as const);
+      setCopied(saved === false ? "could not save" : saved);
+    } else {
+      const url = URL.createObjectURL(new Blob([figureMarkup()], { type: "image/svg+xml" }));
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = figureName;
+      link.click();
+      URL.revokeObjectURL(url);
+      setCopied("SVG downloaded");
+    }
     window.setTimeout(() => setCopied(null), 2500);
   };
   const copyFigure = async () => {
-    try {
-      await navigator.clipboard.writeText(figureMarkup());
-      setCopied("SVG markup copied");
-    } catch {
-      setCopied("could not copy");
-    }
+    setCopied((await copyText(figureMarkup())) ? "SVG markup copied" : "could not copy");
     window.setTimeout(() => setCopied(null), 2500);
   };
 
@@ -562,7 +570,7 @@ export function TimelineView({
           )}
           {/* Built from the figure, not the live drawing: what leaves is what the writer
               would produce for these options, with a dated line and no selection. */}
-          <button type="button" data-testid="timeline-download-svg" className="text-zinc-600 underline" onClick={downloadFigure}>
+          <button type="button" data-testid="timeline-download-svg" className="text-zinc-600 underline" onClick={() => void downloadFigure()}>
             ⤓ download SVG
           </button>
           <button type="button" data-testid="timeline-copy-svg" className="text-zinc-600 underline" onClick={() => void copyFigure()}>

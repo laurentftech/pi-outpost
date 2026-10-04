@@ -1,0 +1,47 @@
+{
+  "name": "@pi-outpost/mcp",
+  "private": true,
+  "type": "module",
+  "description": "A local MCP App: plannings kept in a folder the person picks, shown as pi-outpost's interactive timeline in Claude Desktop and other MCP Apps hosts.",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node --import tsx src/main.ts",
+    "typecheck": "tsc --noEmit",
+    "build": "tsc --noEmit && npm run build:viewer && npm run build:server",
+    "pretest": "npm run build:viewer",
+    "test": "node --import tsx/esm --test --test-timeout=120000 test/*.test.ts",
+    "build:viewer": "vite build --config viewer/vite.config.ts",
+    "build:server": "esbuild src/main.ts --bundle --platform=node --target=node20 --format=esm --outfile=dist/bundle/server/index.mjs --log-level=warning \"--banner:js=import { createRequire as __createRequire } from 'node:module'; const require = __createRequire(import.meta.url);\" && node ../apps-core/scripts/copy-guide.mjs dist/bundle/server",
+    "pack": "npm run build && node scripts/pack.mjs",
+    "lint": "oxlint",
+    "test:bundle": "node --import tsx/esm --test --test-timeout=120000 test-bundle/*.test.ts"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/ext-apps": "^2.0.3",
+    "@modelcontextprotocol/server": "^2.0.0",
+    "@pi-outpost/apps-core": "*",
+    "@pi-outpost/shared": "*",
+    "zod": "^4.2.0"
+  },
+  "devDependencies": {
+    "@anthropic-ai/mcpb": "^2.1.2",
+    "@modelcontextprotocol/client": "^2.0.0",
+    "@pi-outpost/ui": "*",
+    "@tailwindcss/vite": "^4.3.2",
+    "@types/node": "^24.0.0",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.3",
+    "esbuild": "^0.28.2",
+    "oxlint": "^1.71.0",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
+    "tailwindcss": "^4.3.2",
+    "tsx": "^4.19.0",
+    "typescript": "^5.8.0",
+    "vite": "^8.1.1",
+    "vite-plugin-singlefile": "^2.3.0"
+  }
+}

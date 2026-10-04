@@ -39,6 +39,13 @@ jobs:
 
       - run: npm test --workspace @pi-outpost/openwebui
 
+      # The MCP App for Claude Desktop: its tools, then the .mcpb a person installs,
+      # unpacked and started over stdio as the host starts it — on both platforms it
+      # declares.
+      - run: npm test --workspace @pi-outpost/mcp
+      - run: npm run pack --workspace @pi-outpost/mcp
+      - run: npm run test:bundle --workspace @pi-outpost/mcp
+
       # pi-outpost's Open WebUI server as deployments run it: the image, its volume,
       # its refusal to start without a secret.
       - name: Open WebUI server image
