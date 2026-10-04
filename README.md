@@ -359,6 +359,10 @@ projects you are not looking at.
 - Projects that nobody is using are retired after `workspaceIdleTimeoutMs` (30 minutes by
   default, `0` disables it) and rebuilt transparently on next use. A project running a turn,
   waiting for you, or ready for review is never retired
+- **Switching shows a project's files at once.** Starting a project's agent is the slow part —
+  seconds, more on Windows — so its file tree, files, git and terminal are there immediately,
+  with "Starting the agent…" where the conversation will be. A message sent meanwhile is
+  handled when the agent is up. Click several projects in a row and you land on the last
 - **Start a side session** with the **+** on a project's row: a second agent on the same
   project, in a fresh conversation on the model the project is using, running at the same
   time as the first — for a quick question or fix while a long task works. It is listed under its project, named after its

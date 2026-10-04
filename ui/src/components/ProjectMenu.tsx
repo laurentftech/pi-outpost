@@ -208,7 +208,11 @@ export function ProjectMenu(props: ProjectMenuProps) {
                   onClick={() => {
                     setOpen(false);
                     // A project's main session is addressed by its root, as it always was.
-                    if (!active) (side ? props.onSwitch(w.root, w.id) : props.onSwitch(w.root));
+                    // Passed on for the active row too: while a switch away is in flight,
+                    // coming back must reach the server, or the slow project answering later
+                    // takes the view. With nothing in flight, the switch ignores it.
+                    if (side) props.onSwitch(w.root, w.id);
+                    else props.onSwitch(w.root);
                   }}
                   className="flex min-w-0 flex-1 items-center gap-2.5 text-left"
                 >

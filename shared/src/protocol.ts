@@ -782,6 +782,12 @@ export interface SessionSnapshot {
   /** What waits on a restart to run; absent when nothing does. */
   restartNeeded?: string[];
   branding: Branding;
+  /**
+   * The project's agent is still starting. Its files, git and terminal are served; the
+   * conversation, models and tools are empty until `workspace_switched`, and what the client
+   * sends meanwhile that needs the agent waits for it, in order. Absent once started.
+   */
+  agentStarting?: boolean;
   sessionId: string;
   /**
    * The session's display name, when it has one. Absent for an unnamed session, where a
@@ -1213,6 +1219,13 @@ export type ServerMessage =
    * position do not survive a switch; an unsent draft does).
    */
   | ({ type: "workspace_switched" } & SessionSnapshot)
+  /**
+   * Bound to a project whose agent is still starting: its files, git and terminal are
+   * served now, the snapshot carries `agentStarting` and an empty conversation. The usual
+   * `workspace_switched` follows once the agent is ready — a client that ignores this
+   * message sees exactly what it saw before, only later.
+   */
+  | ({ type: "workspace_starting" } & SessionSnapshot)
   | { type: "workspace_error"; message: string }
   | { type: "terminal_data"; terminalId: string; data: string }
   | { type: "terminal_cwd"; terminalId: string; cwd: string }

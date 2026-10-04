@@ -490,6 +490,66 @@ describe("switching projects", () => {
     expect(result.current.state.switching).toBe(false);
   });
 
+  // openlore: scenario=FilesBeforeTheAgent spec=multi-project-workspaces
+  it("shows a project's files while its agent starts, and keeps them when the agent arrives", async () => {
+    const { result } = renderHook(() => useAgent());
+    act(() => mockWs!.open());
+    act(() => mockWs!.receive(switched("/srv/beta")));
+    await waitFor(() => expect(result.current.state.workspace?.root).toBe("/srv/beta"));
+
+    act(() => result.current.switchWorkspace("/srv/alpha"));
+    act(() => mockWs!.receive({ ...switched("/srv/alpha"), type: "workspace_starting", sessionId: "", agentStarting: true }));
+    await waitFor(() => expect(result.current.state.workspace?.root).toBe("/srv/alpha"));
+    expect(result.current.state.agentStarting).toBe(true);
+    expect(result.current.state.switching).toBe(false);
+
+    // The user works with alpha's files before its agent is there.
+    act(() => result.current.listDirectory(""));
+    const listing = JSON.parse(mockWs!.sent.at(-1)!) as { requestId: string };
+    act(() => mockWs!.receive({ type: "directory_listing", requestId: listing.requestId, path: "", entries: [{ name: "alpha.md", type: "file" }] }));
+    await waitFor(() => expect(result.current.state.fileTree[""]).toHaveLength(1));
+
+    // The agent is ready: its conversation arrives, and the tree stays.
+    act(() => mockWs!.receive({ ...switched("/srv/alpha"), items: [{ kind: "user", text: "hi" }] }));
+    await waitFor(() => expect(result.current.state.agentStarting).toBe(false));
+    expect(result.current.state.items).toHaveLength(1);
+    expect(result.current.state.fileTree[""]).toEqual([{ name: "alpha.md", type: "file" }]);
+  });
+
+  it("drops the tree as before when the next project is another one", async () => {
+    const { result } = renderHook(() => useAgent());
+    act(() => mockWs!.open());
+    act(() => mockWs!.receive({ ...switched("/srv/alpha"), type: "workspace_starting", sessionId: "", agentStarting: true }));
+    await waitFor(() => expect(result.current.state.agentStarting).toBe(true));
+    act(() => result.current.listDirectory(""));
+    const listing = JSON.parse(mockWs!.sent.at(-1)!) as { requestId: string };
+    act(() => mockWs!.receive({ type: "directory_listing", requestId: listing.requestId, path: "", entries: [{ name: "alpha.md", type: "file" }] }));
+    await waitFor(() => expect(result.current.state.fileTree[""]).toHaveLength(1));
+
+    act(() => mockWs!.receive(switched("/srv/beta")));
+    await waitFor(() => expect(result.current.state.workspace?.root).toBe("/srv/beta"));
+    expect(result.current.state.fileTree[""]).not.toEqual([{ name: "alpha.md", type: "file" }]);
+    expect(result.current.state.agentStarting).toBe(false);
+  });
+
+  // openlore: scenario=TheLastSwitchWins spec=multi-project-workspaces
+  it("asks to come back to the bound project while a switch away is still in flight", async () => {
+    const { result } = renderHook(() => useAgent());
+    act(() => mockWs!.open());
+    act(() => mockWs!.receive(switched("/srv/beta")));
+    await waitFor(() => expect(result.current.state.workspace?.root).toBe("/srv/beta"));
+
+    act(() => result.current.switchWorkspace("/srv/alpha"));
+    // Changed their mind before alpha answered: the server must hear it, or alpha,
+    // answering later, takes the view to the project the user just left.
+    act(() => result.current.switchWorkspace("/srv/beta"));
+
+    expect(sentFrames().slice(-2)).toEqual([
+      { type: "switch_workspace", root: "/srv/alpha" },
+      { type: "switch_workspace", root: "/srv/beta" },
+    ]);
+  });
+
   it("opens a directory as a project, and waits the same way a switch does", async () => {
     const { result } = renderHook(() => useAgent());
     act(() => mockWs!.open());

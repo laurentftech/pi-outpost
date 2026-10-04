@@ -259,6 +259,12 @@ export interface AgentState {
   embedWorkspaceControls: EmbedWorkspaceControls;
   /** A switch is in flight: the conversation fades rather than emptying. */
   switching: boolean;
+  /**
+   * Bound to a project whose agent is still starting (`workspace_starting`): its files
+   * are live, its conversation is not there yet. Cleared by the `workspace_switched` that
+   * follows.
+   */
+  agentStarting: boolean;
   /** The server refused our token (WS close 4401): show the token screen, stop reconnecting. */
   authRequired: boolean;
   /** The independent branding request has settled, so an embed may paint without a default-brand flash. */
@@ -412,6 +418,7 @@ const initialState: AgentState = {
   workspaceLocked: false,
   embedWorkspaceControls: "settings",
   switching: false,
+  agentStarting: false,
   authRequired: false,
   brandingReady: false,
   branding: {},
@@ -579,7 +586,8 @@ function applySnapshot(state: AgentState, message: ServerMessage & { sessionId: 
     message.type !== "hello" &&
     message.type !== "session_replaced" &&
     message.type !== "update_config_ack" &&
-    message.type !== "workspace_switched"
+    message.type !== "workspace_switched" &&
+    message.type !== "workspace_starting"
   )
     return state;
   const current = message.models.find((m) => `${m.provider}/${m.id}` === message.model);
@@ -588,7 +596,9 @@ function applySnapshot(state: AgentState, message: ServerMessage & { sessionId: 
     replyConformance: {},
     // Kept across a snapshot of the same project until the server says again, so a
     // drawing does not flash its automatic colours; another project's are dropped.
-    structuredAppearance: message.type === "workspace_switched" ? null : state.structuredAppearance,
+    structuredAppearance:
+      message.type === "workspace_switched" || message.type === "workspace_starting" ? null : state.structuredAppearance,
+    agentStarting: message.agentStarting === true,
     outpostUpdate: message.outpostUpdate ?? state.outpostUpdate,
     // Absent from a snapshot the server built before listing: keep what is known.
     piPackages: message.piPackages ?? state.piPackages,
@@ -672,7 +682,7 @@ function applySnapshot(state: AgentState, message: ServerMessage & { sessionId: 
     // clearing here would drop the answer to the very request that caused it. Only a
     // reconnect or another project makes the pending requests meaningless.
     agentResourceOperations:
-      message.type === "hello" || message.type === "workspace_switched"
+      message.type === "hello" || message.type === "workspace_switched" || message.type === "workspace_starting"
         ? emptyAgentResourceOperations()
         : state.agentResourceOperations,
   };
@@ -886,11 +896,30 @@ function reduce(state: AgentState, action: Action): AgentState {
   }
 
   const message = action.message;
+  // The agent of the project already shown has finished starting: its conversation
+  // arrives, and what the user did with its files meanwhile — the tree they opened, the
+  // file they are reading — stays. It was the same project all along.
+  if (
+    message.type === "workspace_switched" &&
+    state.agentStarting &&
+    state.workspace &&
+    message.workspace &&
+    workspaceKey(message.workspace) === workspaceKey(state.workspace)
+  ) {
+    return {
+      ...applySnapshot(state, message),
+      openFile: state.openFile,
+      gitDiff: state.gitDiff,
+      fileTree: state.fileTree,
+      directoryRequests: state.directoryRequests,
+    };
+  }
   switch (message.type) {
+    case "workspace_switched":
     case "hello":
     case "session_replaced":
     case "update_config_ack":
-    case "workspace_switched":
+    case "workspace_starting":
       // The view is deliberately not carried across a switch: coming back to a
       // project shows its conversation, not the screen it was left on. The
       // composer draft is the one exception and lives outside this reducer.
@@ -2003,6 +2032,7 @@ export function useAgent(serverUrl = "", explicitToken?: string, embedded = fals
           message.type === "hello" ||
           message.type === "session_replaced" ||
           message.type === "workspace_switched" ||
+          message.type === "workspace_starting" ||
           message.type === "update_config_ack"
         ) {
           settleOutcome();
@@ -2157,7 +2187,11 @@ export function useAgent(serverUrl = "", explicitToken?: string, embedded = fals
      * because losing typed text destroys work rather than resetting a view.
      */
     switchWorkspace: (root: string, id?: string) => {
-      if ((id ?? root) === boundKey) return;
+      // The project already shown needs no switch — unless one to another project is
+      // still in flight: coming back must then be asked for, or the slow one, answering
+      // later, takes the view to the project the user just left (the server binds the
+      // latest ask only).
+      if ((id ?? root) === boundKey && !state.switching) return;
       dispatch({ type: "workspace_switching" });
       sendMessage({ type: "switch_workspace", root, ...(id !== undefined && id !== root ? { id } : {}) });
     },
