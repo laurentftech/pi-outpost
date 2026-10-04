@@ -261,10 +261,12 @@ by hand, on `main`.
    `ghcr.io/laurentftech/pi-outpost-openwebui:X.Y.Z`, and to `latest` for a stable version. Check
    it with `docker manifest inspect ghcr.io/laurentftech/pi-outpost-openwebui:X.Y.Z`.
 
-   **The first time it is published,** GitHub creates the package as *private*, and the demo
-   `docker-compose.yml` cannot pull it without a login. Make it public once: *Package settings →
-   Change visibility → Public*, at github.com/users/laurentftech/packages/container/package/pi-outpost-openwebui.
-   GitHub's API cannot change a package's visibility.
+   **It must be pullable without a login,** or the demo `docker-compose.yml` fails at the pull:
+   `curl -s "https://ghcr.io/token?scope=repository:laurentftech/pi-outpost-openwebui:pull"` then
+   the manifest with that token must answer 200. It came out public on its first publish (v0.34.0),
+   inheriting the repository's visibility through the image's `org.opencontainers.image.source`
+   label. Should it ever come out private, make it public in *Package settings → Change visibility*
+   (GitHub's API cannot change a package's visibility).
 
 The executables can be built from any branch without publishing anything, to check a
 change to the single-executable build before it meets a tag: run the *Release* workflow by

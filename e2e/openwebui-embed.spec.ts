@@ -75,11 +75,10 @@ test("TheEmbedRunsInTheDefaultSandbox: draws, changes scale, opens details, repo
   await frame.locator('[data-row="1"][data-item="1"] [data-testid="timeline-hit"]').click();
   await expect(embed.getByTestId("timeline-details")).toContainText("Requirements review");
 
-  // Its height, measured from the timeline, not the frame's default 150 px.
-  const heights = (await received(page)).filter((m) => m.type === "iframe:height").map((m) => m.height!);
-  expect(heights.length).toBeGreaterThan(0);
+  // Its height, measured from the timeline, not the frame's default 150 px. Messages
+  // from the frame arrive asynchronously, so they are waited for, never read once.
   const drawn = await frame.evaluate(() => Math.ceil(document.getElementById("root")!.getBoundingClientRect().height));
-  expect(heights.at(-1)).toBe(drawn);
+  await expect.poll(async () => (await received(page)).filter((m) => m.type === "iframe:height").map((m) => m.height!).at(-1)).toBe(drawn);
   expect(drawn).toBeGreaterThan(150);
 });
 
@@ -91,8 +90,7 @@ test("ClickingAMilestoneFillsTheInput: asks the chat to fill its input, never to
   // Unselecting asks for nothing.
   await frame.locator('[data-testid="timeline-task-label"]', { hasText: "Build" }).click();
 
-  const prompts = (await received(page)).filter((m) => m.type?.startsWith("input:"));
-  expect(prompts).toEqual([
+  await expect.poll(async () => (await received(page)).filter((m) => m.type?.startsWith("input:"))).toEqual([
     {
       type: "input:prompt",
       text: 'About milestone "Requirements review" (srr, task T1, on 2027-04-15) in planning "Programme X" (pl_AAAAAAAAAAAAAAAA): ',
@@ -108,8 +106,7 @@ test.describe("in French", () => {
   test("the prompt follows the reader's language", async ({ page }) => {
     const frame = await host(page);
     await frame.locator('[data-row="1"][data-item="1"] [data-testid="timeline-hit"]').click();
-    const prompts = (await received(page)).filter((m) => m.type === "input:prompt");
-    expect(prompts.map((m) => m.text)).toEqual([
+    await expect.poll(async () => (await received(page)).filter((m) => m.type === "input:prompt").map((m) => m.text)).toEqual([
       "À propos du jalon « Requirements review » (srr, tâche T1, le 2027-04-15) dans le planning « Programme X » (pl_AAAAAAAAAAAAAAAA) : ",
     ]);
   });
