@@ -127,6 +127,10 @@ function scopeToRoot(
   cwd: string,
   allowedRoot: string,
   readExceptions?: string[],
+  /** A tool that writes: it may not write Pi configuration (see piConfigWriteRefusal). */
+  writes = false,
+  /** More read-only exceptions, asked on every call (see createSandboxedTools). */
+  extraReadRoots?: () => readonly string[],
 ): ToolDefinition {
   return {
     ...def,
@@ -135,14 +139,38 @@ function scopeToRoot(
       if (typeof target === "string" && target !== "") {
         const resolved = await realResolve(path.resolve(cwd, target));
         const inAllowed = isWithin(allowedRoot, resolved);
-        const inException = readExceptions && isWithinAny(readExceptions, resolved);
+        const inException =
+          (readExceptions && isWithinAny(readExceptions, resolved)) ||
+          (!writes && extraReadRoots !== undefined && isWithinAny([...extraReadRoots()], resolved));
         if (!inAllowed && !inException) {
           throw new Error(`Access denied: "${target}" is outside the sandbox (${allowedRoot})`);
         }
+        const refusal = writes ? piConfigWriteRefusal(allowedRoot, resolved, target) : undefined;
+        if (refusal !== undefined) throw new Error(refusal);
       }
       return def.execute(toolCallId, params, signal, onUpdate, withCwd(ctx, cwd));
     },
   };
+}
+
+/**
+ * Why a write to `resolved` is refused for being Pi configuration, or undefined when it is not.
+ *
+ * A `.pi` directory under the writable zone holds the configuration that confines the
+ * agent: Pi's project settings and extensions, and a sandboxing extension's policy —
+ * pi-landstrip reads `.pi/sandbox.json` of the project before every command it runs, and
+ * merges it over the global policy, so one written there widens what the next command may
+ * do. The agent may read it; none of pi-outpost's tools may write it. The file browser,
+ * which is the user's own hand, is not held to this.
+ */
+export function piConfigWriteRefusal(writableRoot: string, resolved: string, target: string): string | undefined {
+  const relative = path.relative(writableRoot, resolved);
+  if (relative === "" || relative.startsWith("..") || path.isAbsolute(relative)) return undefined;
+  if (!relative.split(path.sep).includes(".pi")) return undefined;
+  return (
+    `Cannot write "${target}": it is in a .pi directory, which holds the configuration that confines ` +
+    "the agent (Pi settings and extensions, sandbox policies). Edit it yourself if it needs to change."
+  );
 }
 
 /**
@@ -175,6 +203,11 @@ export async function createSandboxedTools(
    * that configures a sandbox, which is the default in this project's own tests.
    */
   onDocumentsWritten?: (paths: string[]) => void,
+  /**
+   * Directories read tools may also read, asked on every call: the loaded skills', which
+   * are only known once the session that loads them exists. Real paths. Read only.
+   */
+  skillReadRoots?: () => readonly string[],
 ): Promise<ToolDefinition[]> {
   const realRoot = await fs.realpath(sandbox.root);
   const readFactories: Array<(cwd: string) => ToolDefinition> = [
@@ -272,7 +305,7 @@ export async function createSandboxedTools(
   readFactories.push((cwd) => createDocxStylesToolDefinition({ cwd, ...word }));
   readFactories.push((cwd) => createDocxRenderToolDefinition({ cwd, ...word }));
   const tools = readFactories.map((create) =>
-    scopeToRoot(create(realRoot), realRoot, realRoot, readExceptions),
+    scopeToRoot(create(realRoot), realRoot, realRoot, readExceptions, false, skillReadRoots),
   );
   // Building a deck writes one: offered only where writing is.
   if (realWritableRoot !== null) {
@@ -289,10 +322,10 @@ export async function createSandboxedTools(
       (cwd) => createEditToolDefinition(cwd) as ToolDefinition,
       (cwd) => createWriteToolDefinition(cwd) as ToolDefinition,
     ];
-    tools.push(...writeFactories.map((create) => scopeToRoot(create(realRoot), realRoot, realWritableRoot)));
+    tools.push(...writeFactories.map((create) => scopeToRoot(create(realRoot), realRoot, realWritableRoot, undefined, true)));
   }
 
-  if (sandbox.allowBash) {
+  if (sandbox.allowBash && sandbox.bashFrom === undefined) {
     // Explicit opt-in: bash runs in the root but is NOT path-confined. The root
     // still has to be pinned onto the context, or the shell starts in the
     // project root instead — see `withCwd`.
@@ -324,9 +357,86 @@ export const PI_BUILTIN_TOOL_NAMES = ["read", "bash", "powershell", "edit", "wri
  * and a read-only one its unconfined `write` and `edit`. Excluding a name drops it
  * from the registry altogether, whoever registered it.
  */
-export function unsuppliedBuiltIns(sandboxedTools: ToolDefinition[]): string[] {
-  const supplied = new Set(sandboxedTools.map((tool) => tool.name));
+export function unsuppliedBuiltIns(sandboxedTools: ToolDefinition[], delegated: readonly string[] = []): string[] {
+  const supplied = new Set([...sandboxedTools.map((tool) => tool.name), ...delegated]);
   return PI_BUILTIN_TOOL_NAMES.filter((name) => !supplied.has(name));
+}
+
+/**
+ * The built-ins an extension supplies instead of the sandbox: `bash`, when the sandbox
+ * allows it and names the extension that provides it. Not excluded, so that extension's
+ * tool can register; checked by `assertDelegatedBash` once the session exists.
+ */
+export function delegatedBuiltIns(sandbox: Pick<SandboxConfig, "allowBash" | "bashFrom"> | undefined): string[] {
+  return sandbox?.allowBash && sandbox.bashFrom !== undefined ? ["bash"] : [];
+}
+
+/** Whether a tool's source is the extension `bashFrom` names: its package source, or a path at or under it. */
+export function isFromExtension(source: { source: string; path: string }, bashFrom: string): boolean {
+  if (source.source === bashFrom) return true;
+  if (source.source === "builtin" || source.source === "sdk") return false;
+  const named = path.resolve(bashFrom);
+  return path.isAbsolute(source.path) && isWithin(named, path.resolve(source.path));
+}
+
+/** How a registration is named in `bashFrom`: its package source, or its path for one loaded by path. */
+function extensionNameOf(source: { source: string; path: string }): string {
+  return ["cli", "local", "auto", "temporary"].includes(source.source) ? source.path : source.source;
+}
+
+/**
+ * Why an extension's `bash` is silently not the one the agent runs, or undefined.
+ *
+ * With `allowBash` and no `bashFrom`, pi-outpost supplies its own `bash`, and the SDK keeps
+ * it over an extension's of the same name. A sandboxing extension then loads, reports its
+ * sandbox as on, and confines nothing the agent runs — the trap this names, and the line
+ * that gets out of it.
+ */
+export function shadowedBashWarning(
+  registered: ReadonlyArray<{ definition: { name: string }; sourceInfo: { source: string; path: string } }>,
+  sandbox: Pick<SandboxConfig, "allowBash" | "bashFrom"> | undefined,
+): string | undefined {
+  if (!sandbox?.allowBash || sandbox.bashFrom !== undefined) return undefined;
+  const names = [...new Set(registered.filter((tool) => tool.definition.name === "bash").map((tool) => extensionNameOf(tool.sourceInfo)))];
+  if (names.length === 0) return undefined;
+  return (
+    `${names.join(", ")} registers its own bash, but the agent runs pi-outpost's, which is not confined: ` +
+    `"sandbox.allowBash" is on without "sandbox.bashFrom". To run the extension's, set ` +
+    `"sandbox.bashFrom": ${JSON.stringify(names[0])}. See docs/sandboxing.md.`
+  );
+}
+
+/** A session refused because `sandbox.bashFrom` names an extension that did not supply bash. */
+export class SandboxDelegationError extends Error {
+  override readonly name = "SandboxDelegationError";
+}
+
+/**
+ * Fail closed when bash was handed to an extension that did not supply it.
+ *
+ * Without this, a misspelt name or an extension that failed to load would leave Pi's
+ * own `bash` registered — unconfined, which `assertNoUnconfinedBuiltIns` refuses too,
+ * but without saying why — or another extension's `bash` in its place, which nothing
+ * else would notice. The sandbox's word is that bash runs where the user said it does.
+ */
+export function assertDelegatedBash(
+  session: Pick<AgentSession, "getAllTools">,
+  sandbox: Pick<SandboxConfig, "allowBash" | "bashFrom"> | undefined,
+): void {
+  if (!sandbox?.allowBash || sandbox.bashFrom === undefined) return;
+  const bash = session.getAllTools().find((tool) => tool.name === "bash");
+  if (bash === undefined || !isFromExtension(bash.sourceInfo, sandbox.bashFrom)) {
+    const found =
+      bash === undefined
+        ? "no extension registered one"
+        : bash.sourceInfo.source === "builtin"
+          ? "the only one is Pi's own, which is unconfined"
+          : `the one registered comes from ${bash.sourceInfo.source === "sdk" ? "pi-outpost" : bash.sourceInfo.source} (${bash.sourceInfo.path})`;
+    throw new SandboxDelegationError(
+      `"sandbox.bashFrom" hands bash to "${sandbox.bashFrom}", but ${found}. ` +
+        "Install and enable that extension, or remove sandbox.bashFrom; refusing to start the session.",
+    );
+  }
 }
 
 /**

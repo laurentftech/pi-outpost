@@ -119,6 +119,9 @@ anything.
 > discouraged. Clients authenticate by opening `http://host:3141/?token=<secret>` once
 > (stored locally, stripped from the URL) or via the embed widget's `token` option. Use a
 > reverse proxy or Tailscale for transport encryption.
+>
+> The `sandbox` confines pi-outpost's file tools, not `bash`, extensions or MCP servers — see
+> [what is and is not confined](docs/sandboxing.md).
 
 ## How do I…
 
@@ -135,6 +138,7 @@ one needs, the command that proves it works, and the caution that goes with it.
 | [Read a big PDF, Word or Excel file](docs/how-to.md#let-the-agent-read-a-big-pdf-word-or-excel-file) | [Lock down a shared deployment](docs/how-to.md#lock-down-a-shared-deployment) |
 | [Put it inside your own web app](docs/how-to.md#put-it-inside-your-own-web-app) | [Use an existing pi installation](docs/how-to.md#use-an-existing-pi-installation) |
 | [Make a PowerPoint deck from a template](docs/how-to.md#make-a-powerpoint-deck-from-a-template) | [Write a Word document from a template](docs/how-to.md#write-a-word-document-from-a-template) |
+| [Confine the agent's shell with an extension](docs/sandboxing.md#hand-bash-to-the-extension-sandboxbashfrom) | [Run it in WSL on a managed Windows machine](docs/sandboxing.md#recipe-wsl-on-a-managed-windows-machine) |
 | [When something does not work](docs/how-to.md#when-something-does-not-work) | |
 
 ## What you get
@@ -470,16 +474,44 @@ in [`pi-outpost.config.example.json`](pi-outpost.config.example.json).
 | Key | Effect |
 |-----|--------|
 | `cwd` | Agent working directory, and the default project |
-| `agentDir` | Own config dir (auth, models, settings, sessions) — fully separate from `~/.pi/agent`. It starts with **no credentials**: see [Model credentials](#model-credentials) |
-| `sandbox.root` | Read-only zone: read/ls/grep/find are confined to this directory, symlinks resolved. Defaults to `cwd`. Applies to the `cwd` project; every other open project is confined to its own directory |
-| `sandbox.allowWrite` | Adds edit/write, confined to `sandbox.writableRoot` (default `false`) |
+| `agentDir` | Own config dir (auth, models, settings, sessions) — fully separate from `~/.pi/agent`. It starts with **no credentials**: see [Model credentials](#model-credentials). Exported as `PI_CODING_AGENT_DIR` for extensions that look it up themselves; the terminal panel keeps yours |
+| `sandbox.root` | Read-only zone: read/ls/grep/find are confined to this directory, symlinks resolved — plus, read-only, the directories of the skills the session loaded. Defaults to `cwd`. Applies to the `cwd` project; every other open project is confined to its own directory |
+| `sandbox.allowWrite` | Adds edit/write, confined to `sandbox.writableRoot` (default `false`). Never inside a `.pi` directory, which holds the configuration that confines the agent — see [docs/sandboxing.md](docs/sandboxing.md#the-agent-cannot-rewrite-what-confines-it) |
 | `sandbox.writableRoot` | Read-write zone: a subdirectory of `root` that edit/write are further confined to. Defaults to `root` itself. Ignored while `allowWrite` is false, and applies to the `cwd` project only: every other open project is writable in its whole directory |
 | `sandbox.allowBash` | Adds bash — **not path-confined**, explicit opt-in (default `false`) |
+| `sandbox.bashFrom` | Hands bash to a sandboxing extension instead: its package source as pi lists it (`"npm:pi-landstrip"`) or the path of its file or directory. pi-outpost then supplies no `bash` of its own — which would otherwise shadow the extension's, since an application's tool wins over an extension's of the same name. The session refuses to start unless that extension registers `bash`, and a Settings change that would leave it without one is rolled back. Only while `allowBash` is on. See [Confining bash with an extension](#confining-bash-with-an-extension) |
 | `sandboxLocks` | Which sandbox fields Settings may **not** change: `root`, `writableRoot`, `allowWrite`, `allowBash` |
 | `workspaceLock` | Pin the server to one project: opening, closing and switching are refused, and no control is offered |
 | `workspaceIdleTimeoutMs` | How long an unused project stays alive before it is retired (default `1800000` — 30 min; `0` never retires). A project running a turn, waiting for you, or ready for review is never retired |
 | `openProjects` | The set of open projects. **Written by the server** when you open or close one — not hand-authored |
 | `files.watch` | Watch the directories the file browser has listed, so the tree follows the workspace whoever changed it (default `true`). Set `false` where a watch is a liability — a network mount that emits no events, a spent inotify budget. The tree's ↻ control re-lists by hand either way |
+
+### Confining bash with an extension
+
+> **Installing a sandboxing extension is not enough.** Without `sandbox.bashFrom`, pi-outpost's own
+> `bash` shadows the extension's confined one: the extension loads, reports its sandbox as on, and the
+> agent's commands still run unconfined. pi-outpost warns when it sees this, in its log and in the
+> browser. [docs/sandboxing.md](docs/sandboxing.md) says what is and is not confined, and how to check it.
+
+pi-outpost confines its file tools to the sandbox, but `bash` cannot be path-confined: once
+`allowBash` is on, a command runs with everything the server's user can do. A sandboxing
+extension such as [pi-landstrip](https://pi.dev/packages/pi-landstrip) supplies a `bash` that
+runs inside an operating-system sandbox (seccomp on Linux) with its own file and network
+policy. Install it with `pi install npm:pi-landstrip` (into the same agent directory the server
+uses), then name it:
+
+```json
+{
+  "sandbox": { "root": ".", "allowWrite": true, "allowBash": true, "bashFrom": "npm:pi-landstrip" }
+}
+```
+
+Without `bashFrom`, the extension loads but its `bash` is shadowed by pi-outpost's own, and
+commands run unconfined. With it, the session checks that the `bash` in place comes from that
+extension and refuses to start otherwise, naming the `bash` it found. The extension's policy is
+its own (pi-landstrip reads `~/.pi/agent/sandbox.json` and `.pi/sandbox.json`); pi-outpost does
+not interpret it. The terminal panel, when enabled (`terminal.enabled`), is a separate shell that
+no extension confines: leave it off where that matters, and lock it with `sandboxLocks.terminal`.
 
 ### Agent resources
 
