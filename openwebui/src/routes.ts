@@ -12,6 +12,7 @@ import type { PlanningServerConfig } from "./config.ts";
 import { compareTimelines } from "@pi-outpost/shared/structured-exchange/timeline-comparison";
 import { embedPage } from "./embed.ts";
 import { registerOpenApi } from "./openapi.ts";
+import { OperationError, applyOperations } from "./operations.ts";
 import { PlanningRefusal, type PlanningRevision, type PlanningStore } from "./store.ts";
 
 function revisionAnswer(revision: PlanningRevision) {
@@ -60,6 +61,38 @@ export function planningRoutes(store: PlanningStore, _config: PlanningServerConf
             return reply.code(422).send({ error: "revision, when given, is a revision number" });
           }
           return revisionAnswer(await store.get(request.owner, id, (revision ?? undefined) as number | undefined));
+        } catch (error) {
+          return refuse(reply, error);
+        }
+      });
+
+      app.post<{ Body: { id?: unknown; base_revision?: unknown; operations?: unknown } }>("/update_planning", async (request, reply) => {
+        try {
+          const { id, base_revision: base, operations } = request.body ?? {};
+          if (typeof id !== "string") return reply.code(422).send({ error: "id is required: the planning's identifier, from list_plannings" });
+          if (!Number.isInteger(base)) {
+            return reply.code(422).send({ error: "base_revision is required: the revision you read with get_planning" });
+          }
+          let failed: string | undefined;
+          try {
+            const revised = await store.revise(request.owner, id, base as number, (current) => {
+              try {
+                return applyOperations(current, operations);
+              } catch (error) {
+                if (error instanceof OperationError) failed = error.message;
+                throw error;
+              }
+            });
+            return revisionAnswer(revised);
+          } catch (error) {
+            if (error instanceof OperationError) {
+              return reply.code(422).send({ error: `nothing was changed: ${failed ?? error.message}` });
+            }
+            if (error instanceof PlanningRefusal && error.status === 422 && "issues" in error.details) {
+              return reply.code(422).send({ error: "nothing was changed: the result breaks the planning contract", ...error.details });
+            }
+            throw error;
+          }
         } catch (error) {
           return refuse(reply, error);
         }

@@ -38,7 +38,7 @@
 
 ## 3. Storage and revisions
 
-- [ ] 3.1 Implement the store:
+- [x] 3.1 Implement the store:
   - owner directory from a hash of the user id, random planning ids;
   - one file per revision plus `meta.json`;
   - temp-file-then-rename writes, a per-planning lock;
@@ -60,7 +60,7 @@
 
 ## 4. Targeted updates
 
-- [ ] 4.1 Implement the update operations from `design.md`:
+- [x] 4.1 Implement the update operations from `design.md`:
   - applied to a copy, all or nothing, the first failing operation reported by index;
   - validation of the result;
   - `base_revision` check.
@@ -68,7 +68,7 @@
   Verify with tests for `MovingOneMilestoneChangesOnlyThatMilestone` (deep diff of the two revisions),
   `AnOperationOnAMissingIdentifierRefusesTheWholeUpdate`, `AnUpdateThatBreaksTheContractIsRefused`,
   `AStaleUpdateIsRefused` and `AnUpdateKeepsThePreviousRevision`.
-- [ ] 4.2 Verify concurrent updates: two updates against the same base revision, sent at once,
+- [x] 4.2 Verify concurrent updates: two updates against the same base revision, sent at once,
   produce exactly one new revision and one stale refusal.
 
 ## 5. The embedded timeline
@@ -79,7 +79,7 @@
   - `input:prompt` on a task or milestone click, never `input:prompt:submit`.
 
   Verify with unit tests on the entry's message posting for `ClickingAMilestoneFillsTheInput`.
-- [ ] 5.2 `show_planning`: self-contained HTML (viewer inlined, planning as JSON in the page) with
+- [x] 5.2 `show_planning`: self-contained HTML (viewer inlined, planning as JSON in the page) with
   `Content-Type: text/html` and `Content-Disposition: inline`. Expose `Content-Disposition` to CORS.
   The page makes no request to the server. Verify with tests for
   `ShowingAPlanningEmbedsTheTimeline` and `ShowingAComparisonDrawsWhatMoved` (the comparison present
