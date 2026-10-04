@@ -15,7 +15,7 @@
 
 ## 2. Package and trust boundary
 
-- [ ] 2.1 Create the private workspace package `openwebui/`:
+- [x] 2.1 Create the private workspace package `openwebui/`:
   - Fastify, depending only on `@pi-outpost/shared`;
   - configuration for listen address (default `127.0.0.1`), port, storage root, secret, identity mode (signed or plain) and key,
     and ceilings;
@@ -98,12 +98,12 @@
 
 ## 7. Container image
 
-- [ ] 7.1 Write `openwebui/Dockerfile` as in `design.md`: multi-stage, `node:24-slim`, the `node`
+- [x] 7.1 Write `openwebui/Dockerfile` as in `design.md`: multi-stage, `node:24-slim`, the `node`
   user, `OWUI_PLANNING_HOST=0.0.0.0` and `OWUI_PLANNING_DATA_DIR=/data` in the image, a `VOLUME
   /data`. Add a `.dockerignore`. Verify with a script-driven check (`openwebui/test/image.sh`, run in
   CI on Linux) for `TheImageServesFromItsEnvironment`, `TheImageRefusesToStartWithoutASecret` and
   `APlanningOutlivesTheContainer`.
-- [ ] 7.2 Add an `image` job to `.github/workflows/release.yml`: after `publish`, build and push to
+- [x] 7.2 Add an `image` job to `.github/workflows/release.yml`: after `publish`, build and push to
   `ghcr.io` with the release version, and `latest` only for a stable channel. Verify
   `APrereleaseDoesNotMoveLatest` with a unit test on the tag computation. Build the image by hand
   from the branch, without pushing, to check the job runs.

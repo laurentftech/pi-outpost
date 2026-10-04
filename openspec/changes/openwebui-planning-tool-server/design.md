@@ -157,10 +157,12 @@
   going there would mean a second implementation, which this change exists to avoid.
 - **Image:**
   - multi-stage: the build stage installs the workspace and builds the viewer;
-  - the runtime stage is `node:24-slim` with the server's dependencies and `dist/viewer`, run as the
-    unprivileged `node` user;
-  - TypeScript runs through `tsx`, as pi-outpost's server does: Node's own type stripping cannot run
-    the parameter properties the store uses;
+  - the build stage also bundles the server into one file, `dist/server.mjs`, with esbuild;
+  - the runtime stage is `node:24-slim` with only that file and `dist/viewer`, run as the
+    unprivileged `node` user, with no `node_modules` at all (232 MB, the Node base).
+
+    A first version copied an `npm ci --omit=dev` tree. It weighed 339 MB, because a workspace
+    install keeps vite, rolldown and React that other workspaces declare.
   - inside a container the server listens on `0.0.0.0`, set in the image, since `127.0.0.1` would
     be unreachable from Open WebUI's container; outside one, the default stays `127.0.0.1`.
 - **Publication:** a release job after `publish`, so the image only ships when the packages did,

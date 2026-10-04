@@ -9,9 +9,13 @@
   "scripts": {
     "start": "node --import tsx src/main.ts",
     "typecheck": "tsc --noEmit",
-    "build": "tsc --noEmit && npm run build:viewer",
+    "build": "tsc --noEmit && npm run build:viewer && npm run build:server",
     "test": "node --import tsx/esm --test --test-timeout=120000 test/*.test.ts",
-    "build:viewer": "vite build --config viewer/vite.config.ts"
+    "build:viewer": "vite build --config viewer/vite.config.ts",
+    "image": "docker build -f openwebui/Dockerfile -t pi-outpost-plannings:dev ..",
+    "build:server": "esbuild src/main.ts --bundle --platform=node --target=node24 --format=esm --outfile=dist/server.mjs --log-level=warning \"--banner:js=import { createRequire as __createRequire } from 'node:module'; const require = __createRequire(import.meta.url);\"",
+    "lint": "oxlint",
+    "test:image": "bash test/image.sh"
   },
   "dependencies": {
     "@pi-outpost/shared": "*",
@@ -23,6 +27,8 @@
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.3",
+    "esbuild": "^0.28.2",
+    "oxlint": "^1.71.0",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "tailwindcss": "^4.3.2",
