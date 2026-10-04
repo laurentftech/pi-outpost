@@ -47,6 +47,22 @@ async function nthRequest(logFile, index, timeoutMs = 30_000) {
   }
 }
 
+/**
+ * Waits until `count` turns have ended. A prompt sent before the previous turn has
+ * ended races that turn's own end-of-turn accounting — the idle count that withdraws
+ * the extended tool — and on a loaded runner the count came out one turn short.
+ * Counted, not awaited: `waitFor("agent_end")` would resolve on an earlier one.
+ */
+async function turnsEnded(client, count, timeoutMs = 30_000) {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    const ended = client.received.filter((message) => message.type === "agent_end").length;
+    if (ended >= count) return;
+    if (Date.now() > deadline) throw new Error(`${count} turns never ended (${ended} so far)`);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+}
+
 test("the extended Work Plan tool is withdrawn once the plan stops being worked", async () => {
   const root = await makeWorkspace();
   const log = path.join(root, "work-plan-tools.jsonl");
@@ -71,6 +87,7 @@ test("the extended Work Plan tool is withdrawn once the plan stops being worked"
     // A turn that creates no plan leaves it withheld.
     client.send({ type: "prompt", text: "Just say ok." });
     const plain = await nthRequest(log, 0);
+    await turnsEnded(client, 1);
     assert.ok(!plain.includes(EXTENDED), "still withheld for a prompt that touches no plan");
     assert.ok(plain.includes("work_plan"), "the common half is there to create one with");
 
@@ -79,6 +96,7 @@ test("the extended Work Plan tool is withdrawn once the plan stops being worked"
     client.send({ type: "prompt", text: "MAKE A PLAN please." });
     await nthRequest(log, 1);
     const afterCreate = await nthRequest(log, 2);
+    await turnsEnded(client, 2);
     assert.ok(afterCreate.includes(EXTENDED), "creating a plan publishes the extended half within the turn");
 
     // It survives the quiet turns around the work: five of them, since the turn that
@@ -87,6 +105,7 @@ test("the extended Work Plan tool is withdrawn once the plan stops being worked"
     for (let turn = 1; turn <= 5; turn += 1) {
       client.send({ type: "prompt", text: `Quiet turn ${turn}.` });
       const during = await nthRequest(log, request++);
+      await turnsEnded(client, 2 + turn);
       assert.ok(during.includes(EXTENDED), `the extended half survives ${turn} idle turn(s)`);
     }
 
