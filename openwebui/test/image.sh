@@ -68,6 +68,9 @@ id=$(node -e 'process.stdout.write(JSON.parse(process.argv[1]).id ?? "")' "$crea
 docker exec "$NAME" sh -c "ls /data/*/$id/1.json" >/dev/null || fail "no revision file in the volume"
 shown=$(call show_planning "{\"id\":\"$id\"}")
 grep -q 'data-script="H4sI' <<<"$shown" || fail "show_planning did not embed the viewer"
+graph='{"schema":"urn:structured-exchange:1","kind":"graph","data":{"nodes":[{"id":"a","label":"A"},{"id":"b","label":"B"}],"edges":[{"from":"a","to":"b","kind":"flow"}]}}'
+structure=$(call show_structure "{\"document\":$graph}")
+grep -q 'data-script="H4sI' <<<"$structure" || fail "show_structure did not embed the viewer: ${structure:0:200}"
 
 echo "-- APlanningOutlivesTheContainer"
 docker rm -f "$NAME" >/dev/null

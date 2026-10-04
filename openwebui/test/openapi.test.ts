@@ -20,12 +20,19 @@ function exampleIn(description: string): unknown {
 }
 
 // openlore: scenario=TheDescriptionNamesTheFiveTools spec=openwebui-planning-server
-test("TheDescriptionNamesTheFiveTools: exactly the five operations, each described with an input schema", async (t) => {
+test("TheDescriptionNamesTheFiveTools: exactly the operations — the five planning tools and show_structure, each described with an input schema", async (t) => {
   const { document } = await published(t);
   const operations = Object.values(document.paths as Record<string, { post: { operationId: string; description: string; requestBody: unknown } }>).map(
     (path) => path.post,
   );
-  assert.deepEqual(operations.map((op) => op.operationId).sort(), ["create_planning", "get_planning", "list_plannings", "show_planning", "update_planning"]);
+  assert.deepEqual(operations.map((op) => op.operationId).sort(), [
+    "create_planning",
+    "get_planning",
+    "list_plannings",
+    "show_planning",
+    "show_structure",
+    "update_planning",
+  ]);
   for (const op of operations) {
     assert.ok(op.description.length > 40, op.operationId);
     assert.equal((op.requestBody as { content: Record<string, { schema: { type: string } }> }).content["application/json"]!.schema.type, "object");
@@ -52,4 +59,21 @@ test("TheCreationExampleIsValid and TheUpdateExampleApplies: the examples as pub
   const items = applied.json().planning.data.rows.flatMap((row: { items?: Array<{ id: string; date?: string }> }) => row.items ?? []);
   assert.equal(items.find((item: { id: string }) => item.id === "inspection").date, "2031-05-28");
   assert.ok(items.some((item: { id: string }) => item.id === "handover"));
+});
+
+// openlore: scenario=EveryExampleIsShown spec=openwebui-structured-exchange
+test("EveryExampleIsShown: each example in show_structure's published description is shown", async (t) => {
+  const { document, call } = await published(t);
+  const description: string = document.paths["/show_structure"].post.description;
+  const examples = [...description.matchAll(/```json\n([\s\S]*?)\n```/g)].map((match) => JSON.parse(match[1]!));
+  assert.deepEqual(
+    examples.map((example) => (example.target ? "proposal" : example.kind)),
+    ["graph", "sequence", "table", "proposal"],
+  );
+  for (const example of examples) {
+    const response = await call("show_structure", { document: example });
+    assert.equal(response.statusCode, 200, `${example.kind}${example.target ? " proposal" : ""}: ${response.body.slice(0, 300)}`);
+  }
+  assert.match(description, /nothing is applied/);
+  assert.match(description, /Omitting an element never removes it/);
 });

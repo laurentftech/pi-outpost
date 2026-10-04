@@ -42,12 +42,12 @@
   - `ShowingWithoutTheSecretIsRefused`.
 
   Run the valid conformance fixtures of every version and kind through it: all are accepted.
-- [ ] 2.2 Add `show_structure` to the image check in `openwebui/test/image.sh`: a graph is embedded by
+- [x] 2.2 Add `show_structure` to the image check in `openwebui/test/image.sh`: a graph is embedded by
   the bundled server. Verify: the script passes against a freshly built image.
 
 ## 3. Teaching the model
 
-- [ ] 3.1 Write the `show_structure` description:
+- [x] 3.1 Write the `show_structure` description:
   - the four kinds;
   - a proposal versus a description, with the inert default: an omission is never a removal, and
     fields beside a reference describe and do not change;
