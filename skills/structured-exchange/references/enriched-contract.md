@@ -1,6 +1,8 @@
 # The enriched contract: `urn:structured-exchange:2`
 
+<!-- only: pi-outpost -->
 Part of the `structured-exchange` skill. What a project's profile refuses, and what to do about it, is in its `SKILL.md`.
+<!-- end -->
 
 Everything in `SKILL.md` is version 1 and still works exactly as written. Declare version 2
 instead when you need any of what follows. Nothing is removed: change the identifier and

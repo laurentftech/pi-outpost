@@ -9,6 +9,7 @@
  * example cannot drift from what the server accepts.
  */
 import type { FastifyInstance } from "fastify";
+import { GUIDE_TOPICS } from "./guide.ts";
 import { OPERATION_NAMES } from "./operations.ts";
 
 /**
@@ -48,7 +49,7 @@ export const CREATION_EXAMPLE = {
 
 /** A complete update of the creation example, at revision 1. */
 export const UPDATE_EXAMPLE = {
-  id: "pl_…",
+  id: "<the id get_planning returned>",
   base_revision: 1,
   operations: [
     { op: "change_item", id: "inspection", changes: { date: "2031-05-28" } },
@@ -135,7 +136,7 @@ The planning is a structured-exchange version 3 timeline document:
 Every date must fall inside data.time. Give every item an id: you change items by id later. No colours, sizes or positions.
 Write titles and labels in the user's language, with the user's own names and exact dates ("end of May" is the 31st). The example below only shows the form; take nothing else from it.
 Complete example of the planning argument (a different project):${fence(CREATION_EXAMPLE)}
-Then call show_planning with the returned id so the user sees it.`;
+Then, once this call has answered, call show_planning with the id it returned so the user sees it — never in the same step, since the id does not exist before. For dependencies, closures and key dates beyond this example, read_structure_guide with topic "timelines" has the full reference.`;
 
 const UPDATE_DESCRIPTION = `Changes a planning with a list of operations, all applied or none. Read the planning with get_planning first, and pass the revision you read as base_revision; if someone changed it since, you are told to read it again.
 Operations (by id; separators by their row index in data.rows):
@@ -154,9 +155,13 @@ The document is checked against the structured-exchange contract. If it is refus
 Kinds: "graph" data {nodes:[{id,label,kind?}], edges:[{from,to,kind,label?}]} (every new relationship needs a kind, a free word such as "flow" or "uses"); "sequence" data {participants:[{id,label}], messages:[{from,to,label}]}; "table" data {columns:[…], rows:[[…]]}; a timeline is schema 3 (see create_planning for a planning to keep and change over time).
 To PROPOSE a change to something that already exists, set "target" (its name) and describe only what changes: a new element has no "ref"; an existing one carries its "ref", and its other fields only describe it — put what changes in "set": {"field": new value}; removals are listed in "removals" [{"type":"element"|"relationship","ref"}]. Every element a relationship touches must be in "nodes": an existing one as context, with its "ref" and its label and no "set". Omitting an element never removes it. A proposal is shown for the user to judge; nothing is applied, so never say it was.
 Write labels in the user's language with the user's names. The examples below only show the form; take nothing else from them.
+For anything beyond them, read_structure_guide has the full reference, one topic per job: "graphs-and-tables" (containers, row roles, viewpoints), "proposals", "timelines", "enriched" (version 2: attributes, requirements tables with headings and traceability). Read the topic before writing a kind you have not written in this conversation.
 Graph:${fence(STRUCTURE_EXAMPLES.graph)}Sequence:${fence(STRUCTURE_EXAMPLES.sequence)}Table:${fence(STRUCTURE_EXAMPLES.table)}Proposal (changes one element, adds one, removes one):${fence(STRUCTURE_EXAMPLES.proposal)}`;
 
-const idProperty = { type: "string", description: "The planning's id (pl_…), from list_plannings or create_planning." };
+const idProperty = {
+  type: "string",
+  description: "The planning's id, exactly as list_plannings or create_planning returned it. Never guess one: call those first and wait for their answer.",
+};
 
 function operation(operationId: string, summary: string, description: string, properties: Record<string, unknown>, required: string[]) {
   return {
@@ -177,7 +182,7 @@ export function openApiDocument() {
   return {
     openapi: "3.1.0",
     info: {
-      title: "Plannings",
+      title: "pi-outpost",
       version: "0.1.0",
       description:
         "The user's project plannings (schedules, Gantt-like timelines), kept with every revision and shown as an interactive timeline in the chat; and diagrams, sequences and tables drawn in the chat.",
@@ -231,6 +236,13 @@ export function openApiDocument() {
           summary: { type: "string", description: "Optional: one sentence on what the document shows." },
         },
         ["document"],
+      ),
+      "/read_structure_guide": operation(
+        "read_structure_guide",
+        "Read the structured-exchange guide",
+        "Returns the reference page for writing structured documents, by topic: graphs-and-tables, proposals, timelines, enriched. Without a topic, lists them. Read it before writing an unfamiliar kind, and when a refusal names a topic.",
+        { topic: { type: "string", enum: GUIDE_TOPICS.map((entry) => entry.topic), description: "The topic to read; omit to list them." } },
+        [],
       ),
       "/show_planning": operation(
         "show_planning",

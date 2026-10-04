@@ -1,5 +1,5 @@
 /**
- * The planning timeline as Open WebUI embeds it: the page the planning server answers
+ * The planning timeline as Open WebUI embeds it: the page the server answers
  * show_planning with, framed exactly as Open WebUI v0.11.4 frames a tool's embed —
  * `sandbox="allow-scripts allow-popups allow-downloads"`, no same-origin, content in
  * `srcdoc`. The host page records every message the frame posts, which is all Open

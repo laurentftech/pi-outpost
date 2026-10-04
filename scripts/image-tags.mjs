@@ -1,13 +1,13 @@
 /**
- * The tags a release pushes for the planning server's container image.
+ * The tags a release pushes for pi-outpost's Open WebUI server image.
  *
  * Every release is pushed under its own version. Only a release on the default
  * channel moves `latest` — the same rule, from the same function, that decides the
  * npm dist-tag (release-channel.mjs), so a prerelease can never become the image a
  * deployment pulls by default while npm says otherwise.
  *
- *     node scripts/image-tags.mjs 0.34.0 ghcr.io/owner/pi-outpost-plannings
- *     → ghcr.io/owner/pi-outpost-plannings:0.34.0 ghcr.io/owner/pi-outpost-plannings:latest
+ *     node scripts/image-tags.mjs 0.34.0 ghcr.io/owner/pi-outpost-openwebui
+ *     → ghcr.io/owner/pi-outpost-openwebui:0.34.0 ghcr.io/owner/pi-outpost-openwebui:latest
  */
 import { DEFAULT_CHANNEL, channelFor } from "./release-channel.mjs";
 

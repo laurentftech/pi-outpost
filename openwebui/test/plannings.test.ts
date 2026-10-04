@@ -134,6 +134,10 @@ test("AnotherUsersPlanningIsNotFound: answered exactly as an unknown id, and unc
     assert.equal(theirs.json().error.replace(id, "<id>"), missing.json().error.replace(unknown, "<id>"), tool);
   }
   assert.deepEqual(await filesUnder(config.dataDir), before);
+  // Said to the model, which once told the user a planning it never showed was on screen.
+  const unknownAnswer = (await call("show_planning", { id: "pl_…" }, "alice")).json().error as string;
+  assert.match(unknownAnswer, /Nothing was shown — do not tell the user it was/);
+  assert.match(unknownAnswer, /create_planning or list_plannings/);
   // A path in place of an id names nothing either.
   assert.equal((await call("get_planning", { id: "../x" }, "alice")).statusCode, 404);
 });

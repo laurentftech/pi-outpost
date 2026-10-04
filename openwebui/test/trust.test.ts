@@ -14,8 +14,8 @@ import { KEY, SECRET, filesUnder, mintToken, samplePlanning, testApp } from "./h
 const MAIN = fileURLToPath(new URL("../src/main.ts", import.meta.url));
 
 function startServer(env: Record<string, string>) {
-  // Only the variables given: the developer's own OWUI_PLANNING_* must not leak in.
-  const clean = Object.fromEntries(Object.entries(process.env).filter(([name]) => !name.startsWith("OWUI_PLANNING_")));
+  // Only the variables given: the developer's own OUTPOST_* must not leak in.
+  const clean = Object.fromEntries(Object.entries(process.env).filter(([name]) => !name.startsWith("OUTPOST_")));
   return spawnSync(process.execPath, ["--import", "tsx", MAIN], {
     cwd: path.dirname(MAIN),
     env: { ...clean, ...env, [ENV.port]: "0" },
@@ -28,7 +28,7 @@ function startServer(env: Record<string, string>) {
 test("TheServerWillNotStartWithoutASecret: it exits naming the setting and listens on nothing", () => {
   const run = startServer({ [ENV.identityKey]: KEY });
   assert.equal(run.status, 1);
-  assert.match(run.stderr, /OWUI_PLANNING_SECRET is not set/);
+  assert.match(run.stderr, /OUTPOST_SECRET is not set/);
   assert.doesNotMatch(run.stdout, /listening/);
   assert.throws(() => loadConfig({ [ENV.identityKey]: KEY }), ConfigError);
 });
@@ -37,7 +37,7 @@ test("TheServerWillNotStartWithoutASecret: it exits naming the setting and liste
 test("SignedModeWillNotStartWithoutAKey: signed is the default mode, and it needs the key", () => {
   const run = startServer({ [ENV.secret]: SECRET });
   assert.equal(run.status, 1);
-  assert.match(run.stderr, /OWUI_PLANNING_IDENTITY_KEY is not set/);
+  assert.match(run.stderr, /OUTPOST_IDENTITY_KEY is not set/);
   assert.doesNotMatch(run.stdout, /listening/);
   // Plain mode needs no key.
   assert.equal(loadConfig({ [ENV.secret]: SECRET, [ENV.identity]: "plain" }).identity, "plain");

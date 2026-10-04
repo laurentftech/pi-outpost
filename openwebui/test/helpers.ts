@@ -22,7 +22,7 @@ export function mintToken(sub: string, options: { key?: string; expiresIn?: numb
 }
 
 export async function tempDir(t: TestContext): Promise<string> {
-  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "planning-server-"));
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "outpost-openwebui-"));
   t.after(() => fs.rm(dir, { recursive: true, force: true }));
   return dir;
 }

@@ -1,11 +1,11 @@
-# Open WebUI with the pi-outpost planning server, ready for a demo or a first install.
+# Open WebUI with pi-outpost's Open WebUI server, ready for a demo or a first install.
 #
 #   cp .env.example .env     # then fill it in
 #   docker compose up -d     # Open WebUI on http://<host>:3000
 #
-# The planning server is reachable from Open WebUI only: it publishes no port.
+# pi-outpost's server is reachable from Open WebUI only: it publishes no port.
 # See docs/openwebui.md.
-name: openwebui-plannings
+name: openwebui-pi-outpost
 
 services:
   open-webui:
@@ -21,31 +21,34 @@ services:
       ENABLE_OLLAMA_API: "false"
       # Who is asking: Open WebUI signs the user into every tool call.
       ENABLE_FORWARD_USER_INFO_HEADERS: "true"
-      FORWARD_USER_INFO_HEADER_JWT_SECRET: ${PLANNING_IDENTITY_KEY:?set PLANNING_IDENTITY_KEY in .env}
-      # The planning server, declared as a global tool server open to every user (with
+      FORWARD_USER_INFO_HEADER_JWT_SECRET: ${OUTPOST_IDENTITY_KEY:?set OUTPOST_IDENTITY_KEY in .env}
+      # pi-outpost's server, declared as a global tool server open to every user (with
       # no access_grants, Open WebUI keeps it to admins). Read at first start;
       # afterwards Admin Settings → Integrations → External Tool Servers holds it.
       TOOL_SERVER_CONNECTIONS: >-
-        [{"url": "http://plannings:8790", "path": "openapi.json", "type": "openapi",
-          "auth_type": "bearer", "key": "${PLANNING_SECRET:?set PLANNING_SECRET in .env}",
+        [{"url": "http://pi-outpost:8790", "path": "openapi.json", "type": "openapi",
+          "auth_type": "bearer", "key": "${OUTPOST_SECRET:?set OUTPOST_SECRET in .env}",
           "config": {"enable": true,
                      "access_grants": [{"principal_type": "user", "principal_id": "*", "permission": "read"}]},
-          "info": {"id": "plannings", "name": "Plannings",
-                   "description": "Personal project plannings, shown as interactive timelines"}}]
+          "info": {"id": "pi-outpost", "name": "pi-outpost",
+                   "description": "Personal plannings, diagrams, sequences and tables, drawn in the chat"}}]
     volumes:
       - open-webui:/app/backend/data
     depends_on:
-      - plannings
+      - pi-outpost
 
-  plannings:
-    image: ${PLANNINGS_IMAGE:-ghcr.io/laurentftech/pi-outpost-plannings:latest}
+  pi-outpost:
+    # Published with each pi-outpost release. To run an unreleased version, build it from
+    # a clone (docker build -f openwebui/Dockerfile -t pi-outpost-openwebui .) and set
+    # OUTPOST_IMAGE=pi-outpost-openwebui in .env.
+    image: ${OUTPOST_IMAGE:-ghcr.io/laurentftech/pi-outpost-openwebui:latest}
     restart: unless-stopped
     environment:
-      OWUI_PLANNING_SECRET: ${PLANNING_SECRET}
-      OWUI_PLANNING_IDENTITY_KEY: ${PLANNING_IDENTITY_KEY}
+      OUTPOST_SECRET: ${OUTPOST_SECRET}
+      OUTPOST_IDENTITY_KEY: ${OUTPOST_IDENTITY_KEY}
     volumes:
-      - plannings:/data
+      - pi-outpost-data:/data
 
 volumes:
   open-webui:
-  plannings:
+  pi-outpost-data:

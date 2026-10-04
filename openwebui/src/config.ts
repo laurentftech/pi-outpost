@@ -1,5 +1,5 @@
 /**
- * Where the planning server's settings come from: the environment, and nothing else.
+ * Where the server's settings come from: the environment, and nothing else.
  *
  * The server runs next to an Open WebUI that is configured through environment
  * variables, so it is configured the same way. Every setting that guards something
@@ -31,15 +31,15 @@ export interface PlanningServerConfig {
 export class ConfigError extends Error {}
 
 export const ENV = {
-  host: "OWUI_PLANNING_HOST",
-  port: "OWUI_PLANNING_PORT",
-  secret: "OWUI_PLANNING_SECRET",
-  identity: "OWUI_PLANNING_IDENTITY",
-  identityKey: "OWUI_PLANNING_IDENTITY_KEY",
-  dataDir: "OWUI_PLANNING_DATA_DIR",
-  maxPlanningBytes: "OWUI_PLANNING_MAX_BYTES",
-  maxRevisions: "OWUI_PLANNING_MAX_REVISIONS",
-  maxPlanningsPerUser: "OWUI_PLANNING_MAX_PLANNINGS",
+  host: "OUTPOST_HOST",
+  port: "OUTPOST_PORT",
+  secret: "OUTPOST_SECRET",
+  identity: "OUTPOST_IDENTITY",
+  identityKey: "OUTPOST_IDENTITY_KEY",
+  dataDir: "OUTPOST_DATA_DIR",
+  maxPlanningBytes: "OUTPOST_MAX_PLANNING_BYTES",
+  maxRevisions: "OUTPOST_MAX_REVISIONS",
+  maxPlanningsPerUser: "OUTPOST_MAX_PLANNINGS",
 } as const;
 
 function positiveInteger(env: NodeJS.ProcessEnv, name: string, fallback: number): number {
