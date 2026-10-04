@@ -78,8 +78,7 @@ test("AGraphIsShown: every element and relationship drawn; a viewpoint can be se
   expect(await frame.locator("[data-element-id]").count()).toBeLessThanOrEqual(before);
 
   // The height reported is the content's, not the frame's default.
-  const heights = (await received(page)).filter((m) => m.type === "iframe:height").map((m) => m.height!);
-  expect(heights.at(-1)).toBeGreaterThan(150);
+  await expect.poll(async () => (await received(page)).filter((m) => m.type === "iframe:height").map((m) => m.height!).at(-1) ?? 0).toBeGreaterThan(150);
 });
 
 // openlore: scenario=EveryKindIsShown spec=openwebui-structured-exchange
