@@ -82,8 +82,12 @@ would be a cost with no reason, so it is accepted and ignored for display.
     here).
 - **The page:** the same bootstrap and packing as #274, so the "no `&`" property and the sandbox
   behaviour hold for both modes.
-- **Size:** the bundle grows (table exports, viewpoints, sequence rendering). It is measured in the
-  first task. If the gzipped embed passes about 400 kB, the XLSX export is split out and loaded only
+- **Size:** the bundle grows (table exports, viewpoints, sequence rendering).
+  - **Measured (task 1.1):** the viewer is 420 kB of JS (130 kB gzipped) plus 22 kB of CSS (5 kB
+    gzipped), up from 252 kB and 9 kB with the timeline alone. That is one file; the XLSX writer's
+    dynamic import is inlined.
+  - **Cost:** each embed grows from about 111 kB to about 180 kB base64.
+  - **Decision:** well under the threshold below, so nothing is split. If the gzipped embed passes about 400 kB, the XLSX export is split out and loaded only
   on use, from the same page — never from the network.
 - **No prompt pre-fill for structures in this change.** The rendering has no selection callback to
   hook. Adding one is a separate, additive `ui/` change if it is wanted.

@@ -2,13 +2,13 @@
 
 ## 1. Viewer: a structure mode
 
-- [ ] 1.1 Give `openwebui/viewer/main.tsx` the two modes from `design.md`:
+- [x] 1.1 Give `openwebui/viewer/main.tsx` the two modes from `design.md`:
   - `structure` mounts `StructuredExchangeDocument`, with a no-op `openFile` dispatch;
   - `planning` keeps today's behaviour.
 
   Build it and record the gzipped embed size for a small graph in `design.md`. Split the XLSX export
   only if the embed passes about 400 kB. Verify: `npm run build:viewer`, and the size is recorded.
-- [ ] 1.2 Extend `e2e/openwebui-embed.spec.ts` to show, in Open WebUI's sandbox (opaque origin):
+- [x] 1.2 Extend `e2e/openwebui-embed.spec.ts` to show, in Open WebUI's sandbox (opaque origin):
   - a graph: every element and relationship drawn, and a viewpoint selectable when declared;
   - a sequence: every participant and message;
   - a table: every row;

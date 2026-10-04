@@ -75,13 +75,14 @@ offer no action that applies the proposal, and SHALL NOT ask Open WebUI to send 
 ### Requirement: TheReaderTakesFiguresAndTablesAway
 
 Inside Open WebUI's sandboxed frame, the reader SHALL be able to use the exports pi-outpost's rendering
-offers for the kind shown: a diagram as an SVG figure, and a table as Markdown, CSV or XLSX. These
-SHALL produce the same content pi-outpost's exports produce.
+offers for the kind shown: a diagram as an SVG figure, and a table as Markdown, CSV or XLSX. They
+SHALL be pi-outpost's own exports: the figure is the drawing as shown, saved as a standalone SVG, and
+a table's text is the shared table export.
 
 #### Scenario: AFigureIsDownloadedFromTheEmbed
 - **WHEN** the reader asks for the SVG figure of a shown graph, in a frame that allows scripts and
   downloads but not same-origin access
-- **THEN** a download starts, and its content is the figure pi-outpost's export gives for that graph
+- **THEN** a download starts, and its content is a standalone SVG drawing every element of the graph
 
 #### Scenario: ATableIsDownloadedFromTheEmbed
 - **WHEN** the reader asks for the Markdown of a shown table, in the same frame
