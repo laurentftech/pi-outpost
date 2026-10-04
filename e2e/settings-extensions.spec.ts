@@ -94,7 +94,7 @@ test("an extension directory added through the resource manager is loaded, then 
   // Typed rather than walked: the picker browses the server's filesystem, and the
   // fixture sits in a temporary directory nobody wants to descend into by hand.
   await page.getByTestId("picker-path").fill(EXTENSIONS_DIR);
-  await page.getByRole("button", { name: "Go" }).click();
+  await page.getByTestId("server-path-picker").getByRole("button", { name: "Go", exact: true }).click();
   await page.getByRole("button", { name: "Use this directory" }).click();
   await expect(page.getByRole("textbox", { name: "Local resource folder" })).toHaveValue(EXTENSIONS_DIR);
 

@@ -17,7 +17,7 @@ test("Settings keeps the agent's sandbox and external resource access in sync", 
   await page.getByRole("button", { name: "Settings" }).click();
   await page.getByRole("button", { name: "Browse for sandbox root" }).click();
   await page.getByTestId("picker-path").fill(moved);
-  await page.getByTestId("server-path-picker").getByRole("button", { name: "Go" }).click();
+  await page.getByTestId("server-path-picker").getByRole("button", { name: "Go", exact: true }).click();
   await page.getByRole("button", { name: "Use this directory" }).click();
   await page.getByRole("textbox", { name: /Writable root/ }).fill(moved);
   await page.getByRole("button", { name: "Apply & restart session" }).click();
@@ -47,7 +47,7 @@ test("Settings keeps the agent's sandbox and external resource access in sync", 
   await page.getByRole("button", { name: "Add local folder…" }).click();
   await page.getByRole("button", { name: "Skill folder" }).click();
   await page.getByTestId("picker-path").fill(skillDir);
-  await page.getByTestId("server-path-picker").getByRole("button", { name: "Go" }).click();
+  await page.getByTestId("server-path-picker").getByRole("button", { name: "Go", exact: true }).click();
   await page.getByRole("button", { name: "Use this directory" }).click();
   await page.getByRole("button", { name: "Add folder" }).click();
   const ungrouped = page.getByRole("button", { name: /Provenance unavailable/ });
