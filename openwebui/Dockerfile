@@ -1,7 +1,7 @@
 # The planning tool server for Open WebUI.
 #
-# Built from the repository root, because the server reuses shared/ and the viewer
-# bundles ui/'s TimelineView:
+# Built from the repository root, because the server reuses shared/ and apps-core/, and
+# the viewer bundles ui/'s TimelineView:
 #
 #     docker build -f openwebui/Dockerfile -t pi-outpost-openwebui .
 #
@@ -18,10 +18,12 @@ COPY web/package.json web/
 COPY embed/package.json embed/
 COPY cli/package.json cli/
 COPY ui/package.json ui/
+COPY apps-core/package.json apps-core/
 COPY openwebui/package.json openwebui/
 RUN npm ci --workspace @pi-outpost/openwebui --include-workspace-root=false --ignore-scripts --no-audit --no-fund
 COPY shared/ shared/
 COPY ui/src/ ui/src/
+COPY apps-core/ apps-core/
 COPY skills/structured-exchange/references/ skills/structured-exchange/references/
 COPY openwebui/ openwebui/
 RUN npm run build:viewer --workspace @pi-outpost/openwebui \

@@ -29,6 +29,7 @@ One Node process runs the agent and serves the interface: streaming responses, l
 - [Installing it as an app](#installing-it-as-an-app)
 - [Embedding](#embedding)
 - [pi-outpost in Open WebUI](#pi-outpost-in-open-webui)
+- [Plannings in Claude Desktop](#plannings-in-claude-desktop)
 - [Work Plans](#work-plans)
 - [Workspace Outcome](#workspace-outcome)
 - [Development](#development)
@@ -866,6 +867,17 @@ without pi-outpost. A small server, shipped as a container image:
 A `docker-compose.yml` brings up Open WebUI with it for a demo. See
 [docs/openwebui.md](docs/openwebui.md) and its
 [architecture and security](docs/openwebui-architecture.md).
+
+## Plannings in Claude Desktop
+
+The planning timelines also run in Claude Desktop, free plan included, as an
+[MCP App](https://github.com/modelcontextprotocol/ext-apps) installed by double-clicking one file:
+- plannings are kept as readable files in a folder you choose, with every earlier version beside them;
+- they are drawn in the conversation as the same interactive timeline, compared with any earlier version;
+- click a task or a milestone, then ask Claude to change "it".
+
+Download `pi-outpost-plannings.mcpb` from the [latest release](https://github.com/laurentftech/pi-outpost/releases/latest).
+See [docs/claude-desktop.md](docs/claude-desktop.md).
 
 ## Embedding
 

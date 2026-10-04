@@ -72,6 +72,15 @@ dark redraw of the timeline.
   - a new revision is written to history (`wx`);
   - then the planning file and `meta.json` are replaced atomically (temporary file, then rename);
   - updates to one planning are serialised.
+- **The folder is the person's** (seen in the live round: a file renamed in the Finder vanished from
+  the listing, and a timeline file already in the folder was never listed). Listing reconciles the
+  folder with the history first:
+  - a planning whose file is gone is matched with a visible `.json` file no planning claims, whose
+    content equals its current revision: renamed, so `meta.json` follows the new name;
+  - any other unclaimed file holding a valid timeline is adopted: a new id from its title, revision 1
+    in history, the file left as it is;
+  - other files are ignored. A planning whose file is gone and not found is not listed; its history
+    stays.
 - **Edited by hand:** the file is judged on read. An invalid file is reported, with the gate's
   diagnostics, and an update starts from the last valid revision in history. The listing shows such
   a planning as unreadable, never drops it.
@@ -84,13 +93,14 @@ dark redraw of the timeline.
 
 | Tool | Visible to | Answer |
 |---|---|---|
-| `list_plannings` | model | text: titles, ids, revisions, and unreadable ones with why |
+| `list_plannings` | model, app | text: titles, ids, revisions, and unreadable ones with why; `structuredContent` `{folder, plannings}`; the same view, as a list |
 | `create_planning` | model | text: id, title, revision 1 |
 | `get_planning` | model | text: the document, the revision, **the current selection** |
 | `update_planning` | model | text: the new revision; or the refusal |
 | `show_planning` | model, app | text summary; `structuredContent` `{id, title, revision, data, comparedWith?}`; `_meta.ui.resourceUri: ui://pi-outpost/planning.html` |
 | `read_structure_guide` | model | text: the page |
 | `select_in_planning` | **app only** | records `{id, task?, item?}` or clears it |
+| `save_figure` | **app only** | writes the exported SVG into the folder, never over a file |
 
 - Descriptions come from `apps-core/descriptions.ts`, the same text as the Open WebUI server's.
 - Answers are text (and structured content), not HTML: MCP hosts show the view from the resource and
@@ -109,8 +119,19 @@ dark redraw of the timeline.
     server-side when `comparedWith` is set;
   - `onSelect` sends `app.callServerTool("select_in_planning", …)` and `app.updateModelContext(…)`;
   - a full-screen button calls `requestDisplayMode`.
+- **The list** (asked in the live round: Claude Desktop's file panel stays empty, since it shows only
+  files Claude makes itself): `list_plannings` declares the same view. Given `{folder, plannings}` it
+  draws the list; choosing a planning calls `show_planning` from the view and draws the timeline in
+  place, with a link back. One page for both, rather than a second 500 kB resource.
 - **Theme:** taken from the host context. In a dark host the timeline is drawn as a light card with
   dark text, readable as observed, rather than redrawn dark.
+- **Export:** a sandboxed frame's own download went nowhere in Claude Desktop, and its clipboard
+  API was refused (observed in the first live try). *Download SVG* asks the host
+  (`ui/download-file`) when it declares `downloadFile`, and otherwise calls `save_figure`, so the
+  file lands in the plannings folder. *Copy SVG markup* falls back to `execCommand("copy")`.
+- **Only `show_planning` names the view.** The app-only tools declare their visibility and no
+  `resourceUri`, and the resource declares no permissions: a first bundle that did both drew no
+  view at all in Claude Desktop, where the prototype, without them, drew it.
 - **Build:** single-file Vite build, with React deduplicated and the CSS from `apps-core`. The
   resource declares no CSP domains: everything is inline.
 - **Size:** about 540 kB. It is fetched once, as a resource, not stored in the conversation each time.

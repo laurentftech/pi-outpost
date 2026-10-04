@@ -1,5 +1,6 @@
 import type { StructuredConformance } from "@pi-outpost/shared";
 import { Fragment, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { copyText } from "./copyText";
 import { EnlargedView } from "../components/EnlargedView";
 import {
   readTableRow,
@@ -1417,12 +1418,7 @@ export function StructuredExchangeDocument({ envelope, source, rawOutput, dispat
   async function copyDiagram() {
     const markup = serializeDiagram();
     if (markup === undefined) return;
-    try {
-      await navigator.clipboard.writeText(markup);
-      setCopied("SVG markup copied");
-    } catch {
-      setCopied("could not copy");
-    }
+    setCopied((await copyText(markup)) ? "SVG markup copied" : "could not copy");
     window.setTimeout(() => setCopied(null), 2500);
   }
 

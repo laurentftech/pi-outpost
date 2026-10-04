@@ -12,9 +12,9 @@ import type { PlanningServerConfig } from "./config.ts";
 import { compareTimelines } from "@pi-outpost/shared/structured-exchange/timeline-comparison";
 import { embedPage } from "./embed.ts";
 import { registerOpenApi } from "./openapi.ts";
-import { GUIDE_TOPICS, guidePage, guideTopicFor } from "./guide.ts";
-import { judgeStructure } from "./structure.ts";
-import { OperationError, applyOperations } from "./operations.ts";
+import { GUIDE_TOPICS, guidePage, guideTopicFor } from "@pi-outpost/apps-core/guide";
+import { judgeStructure } from "@pi-outpost/apps-core/structure";
+import { OperationError, applyOperations } from "@pi-outpost/apps-core/operations";
 import { PlanningRefusal, type PlanningRevision, type PlanningStore } from "./store.ts";
 
 function revisionAnswer(revision: PlanningRevision) {

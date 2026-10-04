@@ -185,7 +185,7 @@ your own registry.
 ## The structured-exchange skill has two readers
 
 `skills/structured-exchange/references/*.md` is read by pi-outpost's agent as files, and served to
-Open WebUI's models by pi-outpost's Open WebUI server (`openwebui/src/guide.ts`, `read_structure_guide`). A
+Open WebUI's models by pi-outpost's Open WebUI server (`apps-core/src/guide.ts`, `read_structure_guide`). A
 passage that only makes sense with pi-outpost's tools — writing figure or table files, comparing
 timeline files — goes between `<!-- only: pi-outpost -->` and `<!-- end -->`, each on its own line;
 that server leaves it out. `openwebui/test/guide.test.ts` fails if a served page names a
@@ -203,7 +203,8 @@ behaviour broke.
 A release is a version tag. Pushing `vX.Y.Z` runs
 [`.github/workflows/release.yml`](../.github/workflows/release.yml), which builds the
 executables, publishes `pi-outpost` (`cli/`) and `@pi-outpost/embed` (`embed/`) to npm, and
-creates the GitHub Release with the executables attached. Everything before the tag is done
+creates the GitHub Release with the executables and the Claude Desktop bundle
+(`pi-outpost-plannings.mcpb`, at the release's version) attached. Everything before the tag is done
 by hand, on `main`.
 
 1. **Merge first.** Every PR meant for the release is merged, and CI on `main` is green.

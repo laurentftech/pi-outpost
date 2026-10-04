@@ -8,7 +8,9 @@
     "embed",
     "cli",
     "ui",
-    "openwebui"
+    "apps-core",
+    "openwebui",
+    "mcp"
   ],
   "scripts": {
     "postinstall": "node scripts/ensure-embedded-web.mjs",

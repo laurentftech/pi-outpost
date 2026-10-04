@@ -13,6 +13,8 @@ and SHALL refuse to start, naming the setting, when no folder is configured. Eac
 file in that folder holding its current version as a complete structured-exchange document, readable
 as it is by pi-outpost. Every revision SHALL be kept, unchanged, in a history kept beside the plannings
 and hidden from a casual listing of the folder. Nothing SHALL be written outside the configured folder.
+The folder SHALL remain the person's: a planning file renamed there SHALL keep its history, and a
+valid timeline file placed there SHALL be listed as a planning.
 
 #### Scenario: TheFolderIsCreatedWhenMissing
 - **WHEN** the server starts with a configured folder that does not exist
@@ -31,6 +33,17 @@ and hidden from a casual listing of the folder. Nothing SHALL be written outside
 - **WHEN** a planning is updated twice
 - **THEN** its file holds the third revision, the first two are readable unchanged from the hidden
   history, and listing the folder's visible files shows only the planning file
+
+#### Scenario: ARenamedFileKeepsItsHistory
+- **WHEN** a planning's file is renamed in the folder, unchanged, and plannings are listed
+- **THEN** the planning is listed under the same id with the same revision, and the next update is
+  written to the renamed file
+
+#### Scenario: ATimelineFileInTheFolderIsAPlanning
+- **WHEN** a valid timeline file the server did not create is placed in the folder, and plannings
+  are listed
+- **THEN** it is listed as a planning at revision 1, its file is left as it was, and it can be read,
+  shown and updated
 
 #### Scenario: NothingIsWrittenOutsideTheFolder
 - **WHEN** plannings are created, updated and shown, including one whose title contains `../` and `/`
@@ -82,6 +95,23 @@ view SHALL report its size to the host and SHALL remain readable in a host using
 #### Scenario: TheViewNeedsNoNetwork
 - **WHEN** the view's resource is read
 - **THEN** it declares no external domain, and its page references no external resource
+
+### Requirement: TheFolderIsShownInTheHost
+
+Listing plannings SHALL also declare the view, which SHALL show every planning of the folder — its
+title, revision, last change and file name, and whether its file is unreadable — under the folder's
+name. Choosing a planning in the list SHALL draw its timeline in the same view, with a way back to the
+list, and SHALL NOT send a message to the conversation.
+
+#### Scenario: TheListShowsTheFolder
+- **WHEN** the plannings are listed in an MCP Apps host
+- **THEN** the view shows each planning of the folder with its title, revision and file name, and marks
+  an unreadable one
+
+#### Scenario: ChoosingAPlanningDrawsIt
+- **WHEN** the person chooses a planning in the listed view, then goes back
+- **THEN** its timeline is drawn in place through the server's show tool, the list returns, and no
+  message is sent to the conversation
 
 ### Requirement: TheSelectionReachesTheModel
 

@@ -5,7 +5,8 @@
    stored with it. */
 @source "../../ui/src/presentations/*.tsx";
 @source "../../ui/src/components/EnlargedView.tsx";
-@source "./**/*.tsx";
+@source "../../openwebui/viewer/**/*.tsx";
+@source "../../mcp/viewer/**/*.tsx";
 
 @custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
 
