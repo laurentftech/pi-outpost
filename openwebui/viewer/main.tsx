@@ -29,14 +29,28 @@ export interface EmbeddedPlanning {
   comparedWith?: number;
 }
 
-function promptFor(planning: EmbeddedPlanning, selection: Parameters<NonNullable<Parameters<typeof TimelineView>[0]["onSelect"]>>[0]): string | undefined {
+type Selection = Parameters<NonNullable<Parameters<typeof TimelineView>[0]["onSelect"]>>[0];
+
+/**
+ * The sentence the chat input is filled with, in the reader's language: they finish
+ * it and send it, so it has to read as the start of what they would write. The
+ * identifiers stay as they are — they are what lets the model find the item.
+ */
+function promptFor(planning: EmbeddedPlanning, selection: Selection, language: string = navigator.language): string | undefined {
   if (!selection) return undefined;
-  const where = `in planning "${planning.title}" (${planning.id})`;
+  const french = language.toLowerCase().startsWith("fr");
   const { task, item } = selection;
-  if (!item) return `About task "${task.label}" (${task.id}) ${where}: `;
+  const where = french ? `dans le planning « ${planning.title} » (${planning.id})` : `in planning "${planning.title}" (${planning.id})`;
+  if (!item) return french ? `À propos de la tâche « ${task.label} » (${task.id}) ${where} : ` : `About task "${task.label}" (${task.id}) ${where}: `;
   const name = item.label ?? item.kind ?? item.id ?? item.type;
+  const id = item.id ?? (french ? "sans id" : "no id");
+  if (french) {
+    const what = item.type === "milestone" ? "du jalon" : "de l'activité";
+    const when = item.type === "milestone" ? `le ${item.date}` : `du ${item.start} au ${item.end}`;
+    return `À propos ${what} « ${name} » (${id}, tâche ${task.id}, ${when}) ${where} : `;
+  }
   const when = item.type === "milestone" ? `on ${item.date}` : `from ${item.start} to ${item.end}`;
-  return `About ${item.type} "${name}" (${item.id ?? "no id"}, task ${task.id}, ${when}) ${where}: `;
+  return `About ${item.type} "${name}" (${id}, task ${task.id}, ${when}) ${where}: `;
 }
 
 function readPlanning(): EmbeddedPlanning {

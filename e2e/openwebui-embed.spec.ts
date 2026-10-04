@@ -101,3 +101,16 @@ test("ClickingAMilestoneFillsTheInput: asks the chat to fill its input, never to
   ]);
   expect((await received(page)).some((m) => m.type === "input:prompt:submit" || m.type === "action:submit")).toBe(false);
 });
+
+test.describe("in French", () => {
+  test.use({ locale: "fr-FR" });
+
+  test("the prompt follows the reader's language", async ({ page }) => {
+    const frame = await host(page);
+    await frame.locator('[data-row="1"][data-item="1"] [data-testid="timeline-hit"]').click();
+    const prompts = (await received(page)).filter((m) => m.type === "input:prompt");
+    expect(prompts.map((m) => m.text)).toEqual([
+      "À propos du jalon « Requirements review » (srr, tâche T1, le 2027-04-15) dans le planning « Programme X » (pl_AAAAAAAAAAAAAAAA) : ",
+    ]);
+  });
+});
