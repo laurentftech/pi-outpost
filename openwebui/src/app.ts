@@ -7,6 +7,7 @@
  * for. A refused request never reaches a handler, so no handler can forget to check.
  */
 import Fastify, { type FastifyInstance, type FastifyRequest } from "fastify";
+import { STRUCTURED_EXCHANGE_BYTES_CEILING_ANY } from "@pi-outpost/shared/structured-exchange/bounds";
 import type { PlanningServerConfig } from "./config.ts";
 import { bearerMatches, resolveOwner } from "./trust.ts";
 
@@ -30,7 +31,11 @@ export function ownerOf(request: FastifyRequest): string {
 }
 
 export function buildApp(config: PlanningServerConfig, routes: PlanningRoutes): FastifyInstance {
-  const app = Fastify({ logger: false, bodyLimit: config.maxPlanningBytes * 2 + 64 * 1024 });
+  // Large enough for any document the contract accepts, even sent as a JSON string
+  // (escaping can double it), so an oversized one is refused by the contract, which
+  // names its ceiling, rather than by the HTTP layer, which names nothing.
+  const bodyLimit = Math.max(config.maxPlanningBytes, STRUCTURED_EXCHANGE_BYTES_CEILING_ANY) * 2 + 64 * 1024;
+  const app = Fastify({ logger: false, bodyLimit });
   app.decorateRequest("owner", "");
 
   app.addHook("onRequest", async (request, reply) => {

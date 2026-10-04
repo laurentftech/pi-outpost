@@ -1,5 +1,5 @@
 /**
- * The page Open WebUI embeds in the conversation when a planning is shown.
+ * The page Open WebUI embeds in the conversation when a planning or a structure is shown.
  *
  * Everything the page needs travels in it — the viewer's script and stylesheet, and
  * the planning — because the user's browser may have no route to this server; Open
@@ -21,7 +21,14 @@ import { fileURLToPath } from "node:url";
 import { gzipSync } from "node:zlib";
 import type { StructuredTimelineData } from "@pi-outpost/shared/structured-exchange";
 
+/** A document shown by show_structure. */
+export interface EmbeddedStructure {
+  mode: "structure";
+  envelope: unknown;
+}
+
 export interface EmbeddedPlanning {
+  mode?: "planning";
   id: string;
   title: string;
   revision: number;
@@ -97,18 +104,18 @@ const BOOTSTRAP = `
     viewer.textContent = parts[2];
     document.body.appendChild(viewer);
   }, function (error) {
-    document.getElementById("root").textContent = "This planning could not be drawn: " + error;
+    document.getElementById("root").textContent = "This could not be drawn: " + error;
   });
 })();
 `;
 
-export function embedPage(planning: EmbeddedPlanning, assets: ViewerAssets = viewerAssets()): string {
+export function embedPage(payload: EmbeddedPlanning | EmbeddedStructure, assets: ViewerAssets = viewerAssets()): string {
   const { script, style } = packedAssets(assets);
   return [
     "<!doctype html>",
     '<html lang="en"><head><meta charset="utf-8"></head><body>',
     '<div id="root"></div>',
-    `<div id="payload" hidden data-style="${style}" data-script="${script}" data-planning="${pack(JSON.stringify(planning))}"></div>`,
+    `<div id="payload" hidden data-style="${style}" data-script="${script}" data-planning="${pack(JSON.stringify(payload))}"></div>`,
     `<script>${BOOTSTRAP}</script>`,
     "</body></html>",
   ].join("");

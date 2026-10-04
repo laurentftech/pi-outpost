@@ -27,7 +27,7 @@
 
 ## 2. The `show_structure` route
 
-- [ ] 2.1 Add a generic judge next to the planning one (object or JSON string, the contract's gate,
+- [x] 2.1 Add a generic judge next to the planning one (object or JSON string, the contract's gate,
   no profiles), and `POST /show_structure` returning the embed, or the diagnostics.
 
   Verify with `openwebui/test/structures.test.ts`:

@@ -12,6 +12,7 @@ import type { PlanningServerConfig } from "./config.ts";
 import { compareTimelines } from "@pi-outpost/shared/structured-exchange/timeline-comparison";
 import { embedPage } from "./embed.ts";
 import { registerOpenApi } from "./openapi.ts";
+import { judgeStructure } from "./structure.ts";
 import { OperationError, applyOperations } from "./operations.ts";
 import { PlanningRefusal, type PlanningRevision, type PlanningStore } from "./store.ts";
 
@@ -96,6 +97,23 @@ export function planningRoutes(store: PlanningStore, _config: PlanningServerConf
         } catch (error) {
           return refuse(reply, error);
         }
+      });
+
+      // Stateless, as pi-outpost's present_structure is: nothing is stored, and the
+      // document stays in the conversation as this call's own argument.
+      app.post<{ Body: { document?: unknown; summary?: unknown } }>("/show_structure", async (request, reply) => {
+        const verdict = judgeStructure(request.body?.document);
+        if (!verdict.valid) {
+          return reply.code(422).send({
+            error: "the document was refused by the structured-exchange contract; nothing was shown. Fix these and call again",
+            issues: verdict.issues,
+          });
+        }
+        return reply
+          .header("Content-Type", "text/html; charset=utf-8")
+          .header("Content-Disposition", "inline")
+          .header("Access-Control-Expose-Headers", "Content-Disposition")
+          .send(embedPage({ mode: "structure", envelope: verdict.envelope }));
       });
 
       app.post<{ Body: { id?: unknown; compare_to?: unknown } }>("/show_planning", async (request, reply) => {
