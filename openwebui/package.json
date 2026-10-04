@@ -10,6 +10,7 @@
     "start": "node --import tsx src/main.ts",
     "typecheck": "tsc --noEmit",
     "build": "tsc --noEmit && npm run build:viewer && npm run build:server",
+    "pretest": "npm run build:viewer",
     "test": "node --import tsx/esm --test --test-timeout=120000 test/*.test.ts",
     "build:viewer": "vite build --config viewer/vite.config.ts",
     "image": "docker build -f openwebui/Dockerfile -t pi-outpost-plannings:dev ..",
