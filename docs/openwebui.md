@@ -1,15 +1,18 @@
 # Plannings in Open WebUI
 
-pi-outpost's planning timelines also run inside [Open WebUI](https://openwebui.com), with no
-pi-outpost involved. A small server, the **planning server**, does three things:
+pi-outpost's planning timelines and structured documents also run inside
+[Open WebUI](https://openwebui.com), with no pi-outpost involved. A small server, the **planning
+server**, does four things:
 
 - it keeps each user's plannings with every revision;
 - it lets the model create, read and change them;
 - it shows them in the chat as the interactive timeline pi-outpost draws. That covers scales,
-  "fit", dependencies, closures, key dates and comparisons between revisions.
+  "fit", dependencies, closures, key dates and comparisons between revisions;
+- it shows the model's diagrams, sequences and tables as pi-outpost draws them, including a
+  proposal as what it would change.
 
-It uses the same structured-exchange contract as pi-outpost. A planning refused here is refused
-there for the same reason, and every stored revision opens in pi-outpost as it is.
+It uses the same structured-exchange contract as pi-outpost. A document refused here is refused
+there for the same reason, and every stored planning revision opens in pi-outpost as it is.
 
 Checked against **Open WebUI v0.11.4**.
 
@@ -103,6 +106,8 @@ A model needs tool calling. Codestral, Mistral Medium and Gemini Flash all work.
 | "Show me the drone programme" | `list_plannings`, then `show_planning` |
 | "Move the CDR two weeks later", "add a test phase after integration" | `get_planning`, `update_planning`, then `show_planning` compared with the previous revision |
 | "What changed since last week's version?" | `show_planning` with `compare_to` |
+| "Draw the order process", "show the architecture of…", "who talks to whom when…", "put this in a table" | `show_structure`: a graph, a sequence or a table |
+| "Propose replacing X by Y in this architecture" | `show_structure` with a proposal: additions, changes and removals marked |
 
 **In the timeline:**
 - the reader changes scale (week, month, quarter, fit), hides dependencies, or draws one row per
@@ -110,6 +115,21 @@ A model needs tool calling. Codestral, Mistral Medium and Gemini Flash all work.
 - clicking a task or a milestone opens its details, and **pre-fills** the message box with a
   sentence naming it. It is never sent on its own: the user finishes the sentence ("…move it to
   June") and sends it.
+
+**Diagrams, sequences and tables:**
+- They are drawn by pi-outpost's own rendering:
+  - graphs, which can be enlarged, turned and narrowed to a viewpoint the document declares;
+  - sequences;
+  - tables, with their row roles;
+  - a text view of each;
+  - the document as written.
+- **Downloads:** the reader can download a diagram as SVG, and a table as Markdown, CSV or XLSX.
+- **Nothing is stored:** the document stays in the conversation, as the argument of the model's
+  call.
+- **A proposal is shown, never applied.** It marks what it would add, change and remove, for the user
+  to judge, and nothing on the page applies it.
+- **Refusals:** a document the contract refuses is not shown. The model receives the reason and
+  usually corrects it within the same reply.
 
 **Edits are targeted:** the model changes a milestone by naming it, never by re-typing the whole
 planning.

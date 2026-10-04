@@ -11,6 +11,8 @@ Checked against **Open WebUI v0.11.4**.
 - **What it is:** a stateless HTTP service, one Node process in one container, with one volume. It
   receives tool calls from Open WebUI's backend, stores each user's plannings as files, and answers
   with JSON or with an HTML page that Open WebUI shows inside a sandboxed frame.
+- **Showing a diagram:** `show_structure` validates a structured document (a graph, a sequence, a
+  table, a timeline, or a proposal) and answers with that page. It stores nothing.
 - **What it never does:** it opens no outbound connection, calls no model, holds no user password,
   and reads no other data from Open WebUI. Only Open WebUI's backend needs to reach it, so it
   publishes no port.
@@ -139,7 +141,7 @@ only the connection key and the short-lived token.
 
 ## What reaches the browser
 
-The timeline is HTML that Open WebUI renders in an iframe with
+The timeline, or any structure shown, is HTML that Open WebUI renders in an iframe with
 `sandbox="allow-scripts allow-popups allow-downloads"` and **no** `allow-same-origin`. The frame has
 an opaque origin:
 - it cannot read Open WebUI's page, cookies or storage;
@@ -150,9 +152,12 @@ an opaque origin:
   browser never contacts the planning server.
 - It sends Open WebUI two kinds of messages:
   - its height;
-  - a request to **pre-fill** the chat input when the user clicks a task or a milestone.
+  - a request to **pre-fill** the chat input when the user clicks a task or a milestone of a
+    planning.
 
-  It never asks Open WebUI to send a message.
+  It never asks Open WebUI to send a message, and nothing on it applies a proposal.
+- **Downloads:** a reader downloads a diagram (SVG) or a table (Markdown, CSV, XLSX). The file is
+  built in the frame and saved through `allow-downloads`; nothing is fetched.
 - **Planning content is data, never markup.** Labels and titles are rendered as text by React. A
   planning titled `</script><script>…` is stored as typed and shown as typed, and the page around
   it still holds a single script, the viewer's own. This is tested.
@@ -219,15 +224,15 @@ pi-outpost already uses:
 flowchart TB
   subgraph shared["Shared code (one copy)"]
     C["shared/<br/>structured-exchange contract,<br/>schemas, validation, limits,<br/>timeline layout and comparison"]
-    UIV["ui/ TimelineView<br/>the interactive timeline"]
+    UIV["ui/ TimelineView and StructuredExchangeDocument<br/>the timeline, graphs, sequences, tables"]
   end
   subgraph po["pi-outpost"]
     PT["pi tools<br/>workspace files, sandbox"]
     PUI["pi-outpost web app"]
   end
   subgraph ow["Planning server for Open WebUI"]
-    R["HTTP routes, trust,<br/>per-user store, targeted updates"]
-    E["embed viewer<br/>(bundles TimelineView)"]
+    R["HTTP routes, trust,<br/>per-user store, targeted updates,<br/>show_structure (stateless)"]
+    E["embed viewer<br/>(bundles both views)"]
   end
   C --> PT
   C --> R
@@ -236,10 +241,11 @@ flowchart TB
 ```
 
 - **Shared, for both hosts:**
-  - **the contract:** what a valid planning is, the diagnostics, and the limits;
-  - **the drawing:** layout, scales, dependencies, comparison, details.
+  - **the contract:** what a valid document is, of every kind, the diagnostics, and the limits;
+  - **the drawing:** layouts, viewpoints, the proposal view, exports, the timeline's scales and
+    comparison.
 
-  A change to the timeline's drawing or to its validation reaches both hosts at the next release.
+  A change to a drawing or to the validation reaches both hosts at the next release.
 - **The adapter's own:**
   - the trust boundary;
   - per-user storage with revisions;

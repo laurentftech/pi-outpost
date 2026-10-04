@@ -72,7 +72,8 @@ test("ADanglingRelationshipIsRefused: pi-outpost's diagnostics, nothing embedded
   const expected = parseSerializedStructuredExchange(JSON.stringify(JSON.parse(text)), checkStructuredExchangeSchema);
   assert.equal(expected.valid, false);
   assert.deepEqual(response.json().issues, expected.issues);
-  assert.match(response.json().error, /refused by the structured-exchange contract/);
+  assert.match(response.json().error, /refused this document/);
+  assert.match(response.json().error, /for you, not for the user/);
 });
 
 // openlore: scenario=AChangeWithoutATargetIsRefused spec=openwebui-structured-exchange

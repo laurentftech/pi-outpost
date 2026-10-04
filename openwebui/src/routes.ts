@@ -105,7 +105,10 @@ export function planningRoutes(store: PlanningStore, _config: PlanningServerConf
         const verdict = judgeStructure(request.body?.document);
         if (!verdict.valid) {
           return reply.code(422).send({
-            error: "the document was refused by the structured-exchange contract; nothing was shown. Fix these and call again",
+            // Said to the model, not the user: Codestral read the first wording as a
+            // message to relay, and asked the user to fix a document it had written.
+            error:
+              "Nothing was shown: the structured-exchange contract refused this document. This message is for you, not for the user: correct the document using the issues below and call show_structure again now, in this same reply.",
             issues: verdict.issues,
           });
         }

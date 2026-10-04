@@ -56,7 +56,7 @@
 
   Extend the `openapi.ts` tests: the description now names six tools, and `EveryExampleIsShown` takes
   each example from the published document and shows it.
-- [ ] 3.2 Run the stack from `openwebui/deploy` with Codestral, and drive it as a user:
+- [x] 3.2 Run the stack from `openwebui/deploy` with Codestral, and drive it as a user:
   - a request for a process diagram, then a sequence and a table, in French;
   - a "propose this change" on the diagram;
   - one request designed to make the model write an invalid document first.
@@ -67,8 +67,8 @@
 
 ## 4. Documentation and coverage
 
-- [ ] 4.1 Update `docs/openwebui.md`: the new tool, what users can ask, and that proposals are shown and
+- [x] 4.1 Update `docs/openwebui.md`: the new tool, what users can ask, and that proposals are shown and
   not applied. Update `docs/openwebui-architecture.md`: the route, the viewer's two modes, and that
   showing stores nothing. Verify: links and anchors resolve.
-- [ ] 4.2 Write `scenario-coverage.md` with every scenario covered. Run `npm run check:scenarios` and
+- [x] 4.2 Write `scenario-coverage.md` with every scenario covered. Run `npm run check:scenarios` and
   `openspec validate openwebui-structured-exchange --strict`.
