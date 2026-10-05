@@ -114,8 +114,10 @@ dark redraw of the timeline.
   - An update that removes the selected item clears it.
   - **`get_selection`**, with no argument, answers "it" when the planning is not named (live round:
     with three plannings, Claude asked which one rather than calling `get_planning` on each).
-    `list_plannings` carries it too. A recorded selection is written to stderr, which Claude Desktop
-    keeps in the server's log: the only trace that a click reached the server.
+    `list_plannings` carries it too. A recorded selection is written to stderr, for hosts that keep
+    a server's stderr; Claude Desktop, running the server with its built-in Node, does not.
+  - Live, 2026-10-05: a click on a milestone, then "décale-le d'une semaine", moved that milestone,
+    and Claude pointed out the dependency it then broke.
 
 ### The view
 
