@@ -58,7 +58,7 @@
   - `TheBundleValidates` (`mcpb validate`, a required directory setting with no default);
   - `TheBundledServerAnswersOverStdio`: a script unpacks the bundle and drives it over stdio with a
     temporary folder.
-- [ ] 4.2 CI runs the pack and the stdio check. The release workflow attaches the `.mcpb` to the
+- [x] 4.2 CI runs the pack and the stdio check. The release workflow attaches the `.mcpb` to the
   GitHub Release. Verify the workflows parse, and run the pack on a branch.
 
 ## 5. Live, documentation, coverage
