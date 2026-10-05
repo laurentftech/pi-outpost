@@ -53,7 +53,7 @@
     "prepack": "node scripts/build.mjs"
   },
   "dependencies": {
-    "@earendil-works/pi-coding-agent": "^1.0.2",
+    "@earendil-works/pi-coding-agent": "^1.0.3",
     "@fastify/static": "^10.1.2",
     "@fastify/websocket": "^11.0.2",
     "fastify": "^5.12.5",
