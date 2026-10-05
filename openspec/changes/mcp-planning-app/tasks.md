@@ -63,7 +63,9 @@
 
 ## 5. Live, documentation, coverage
 
-- [ ] 5.1 Live in Claude Desktop with the user:
+- [ ] 5.1 Live in Claude Desktop with the user (2026-10-05: install, folder picker, creation in
+  French, show, comparison, renamed and adopted files, and click → "décale-le d'une semaine" all
+  pass; SVG export and the breaking pass remain):
   - install from the `.mcpb` and pick the folder in the picker;
   - "crée un planning…" in French, then show it;
   - click a milestone, then "décale-le d'une semaine": record whether Claude found it through
