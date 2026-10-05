@@ -36,25 +36,18 @@ export function Shape({ primitive }: { primitive: Primitive }) {
           opacity={primitive.opacity}
         />
       );
-    case "text":
-      return (
-        <text
-          {...data}
-          data-testid={primitive.testId}
-          x={primitive.x}
-          y={primitive.y}
-          fontSize={primitive.fontSize}
-          fontFamily={primitive.fontFamily}
-          fontWeight={primitive.fontWeight}
-          fontStyle={primitive.fontStyle}
-          textAnchor={primitive.textAnchor}
-          fill={primitive.fill}
-          stroke={primitive.stroke}
-          strokeWidth={primitive.strokeWidth}
-          paintOrder={primitive.paintOrder}
-          textDecoration={primitive.textDecoration}
-          opacity={primitive.opacity}
-        >
+    case "text": {
+      const font = {
+        x: primitive.x,
+        y: primitive.y,
+        fontSize: primitive.fontSize,
+        fontFamily: primitive.fontFamily,
+        fontWeight: primitive.fontWeight,
+        fontStyle: primitive.fontStyle,
+        textAnchor: primitive.textAnchor,
+      };
+      const content = (
+        <>
           {primitive.text}
           {primitive.note !== undefined && (
             <>
@@ -62,8 +55,42 @@ export function Shape({ primitive }: { primitive: Primitive }) {
               <tspan fontStyle="italic">{primitive.note}</tspan>
             </>
           )}
+        </>
+      );
+      const haloed = primitive.paintOrder === "stroke";
+      const label = (
+        <text
+          {...data}
+          data-testid={primitive.testId}
+          {...font}
+          fill={primitive.fill}
+          stroke={haloed ? undefined : primitive.stroke}
+          strokeWidth={haloed ? undefined : primitive.strokeWidth}
+          textDecoration={primitive.textDecoration}
+          opacity={primitive.opacity}
+        >
+          {content}
         </text>
       );
+      if (!haloed) return label;
+      // The halo as a copy underneath, as the serializer writes it: a downloaded diagram
+      // is this DOM serialized, and Office paints a `paint-order` halo over the letters.
+      return (
+        <>
+          <text
+            {...font}
+            fill={primitive.stroke}
+            stroke={primitive.stroke}
+            strokeWidth={primitive.strokeWidth}
+            opacity={primitive.opacity}
+            aria-hidden="true"
+          >
+            {content}
+          </text>
+          {label}
+        </>
+      );
+    }
     case "line":
       return (
         <line

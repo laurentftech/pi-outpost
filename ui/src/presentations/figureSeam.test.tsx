@@ -173,6 +173,38 @@ describe("the browser and the serializer draw one picture", () => {
   });
 });
 
+// A label over a line keeps a white halo so the line does not cross its letters. Drawn
+// with `paint-order`, Office ignores the attribute and paints the halo over the text:
+// a sequence inserted into PowerPoint kept its participants and lost every message.
+// Both pictures — the file, and the DOM a "download SVG" serializes — must draw it as
+// a copy underneath instead.
+describe("a label's halo survives a renderer without paint-order", () => {
+  for (const [name, envelope, label] of [
+    ["a sequence's message", sequence, "400V"],
+    ["a graph's relationship", graph, "400V"],
+  ] as const) {
+    for (const [who, figure] of [
+      ["the file", serializedFigure],
+      ["the browser", browserFigure],
+    ] as const) {
+      it(`keeps ${name} readable in ${who}`, () => {
+        const svg = figure(envelope);
+        expect(svg.outerHTML).not.toMatch(/paint-order|paintOrder/);
+        const drawn = [...svg.querySelectorAll("text")].filter((text) => text.textContent === label);
+        expect(drawn).toHaveLength(2);
+        const [halo, letters] = drawn;
+        // The halo first, so the letters are painted over it, and hidden from a reader
+        expect(halo.getAttribute("aria-hidden")).toBe("true");
+        expect(halo.getAttribute("stroke")).toBe("#ffffff");
+        // The letters carry no stroke of their own: nothing can be painted over them
+        expect(letters.hasAttribute("stroke")).toBe(false);
+        expect(letters.getAttribute("fill")).not.toBe("#ffffff");
+        expect(letters.hasAttribute("aria-hidden")).toBe(false);
+      });
+    }
+  }
+});
+
 describe("a viewpoint's figure is the same whoever draws it", () => {
   /** A graph declaring a viewpoint, so the reader and the agent can each ask for it. */
   const withViewpoint = {

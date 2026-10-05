@@ -334,8 +334,11 @@ function primitiveMarkup(primitive: Primitive): string {
         ["opacity", primitive.opacity],
         ...data,
       ])} />`;
-    case "text":
-      return `<text${attributes([
+    case "text": {
+      const content = `${escapeText(primitive.text)}${
+        primitive.note === undefined ? "" : ` <tspan font-style="italic">${escapeText(primitive.note)}</tspan>`
+      }`;
+      const font: [string, string | number | undefined][] = [
         ["x", primitive.x],
         ["y", primitive.y],
         ["font-size", primitive.fontSize],
@@ -343,17 +346,34 @@ function primitiveMarkup(primitive: Primitive): string {
         ["font-weight", primitive.fontWeight],
         ["font-style", primitive.fontStyle],
         ["text-anchor", primitive.textAnchor],
+      ];
+      const label = `<text${attributes([
+        ...font,
         ["fill", primitive.fill],
-        ["stroke", primitive.stroke],
-        ["stroke-width", primitive.strokeWidth],
-        ["paint-order", primitive.paintOrder],
+        ...(primitive.paintOrder === "stroke"
+          ? []
+          : ([
+              ["stroke", primitive.stroke],
+              ["stroke-width", primitive.strokeWidth],
+            ] as [string, string | number | undefined][])),
         ["text-decoration", primitive.textDecoration],
         ["opacity", primitive.opacity],
         ["data-testid", primitive.testId],
         ...data,
-      ])}>${escapeText(primitive.text)}${
-        primitive.note === undefined ? "" : ` <tspan font-style="italic">${escapeText(primitive.note)}</tspan>`
-      }</text>`;
+      ])}>${content}</text>`;
+      if (primitive.paintOrder !== "stroke") return label;
+      // The halo as a copy of its own, underneath, rather than `paint-order`: Office does
+      // not implement it, paints the stroke over the letters, and a sequence's messages
+      // came out of PowerPoint as bare arrows.
+      return `<text${attributes([
+        ...font,
+        ["fill", primitive.stroke],
+        ["stroke", primitive.stroke],
+        ["stroke-width", primitive.strokeWidth],
+        ["opacity", primitive.opacity],
+        ["aria-hidden", "true"],
+      ])}>${content}</text>${label}`;
+    }
     case "line":
       return `<line${attributes([
         ["x1", primitive.x1],
