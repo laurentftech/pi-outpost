@@ -73,7 +73,7 @@ are.
     build.
 - **`openwebui/`** imports the core instead of holding it, with no behaviour change.
 - **Dependencies:** `@modelcontextprotocol/server` and `@modelcontextprotocol/ext-apps` (official
-  SDKs), and the `mcpb` CLI at build time.
+  SDKs). The `mcpb` CLI is run on demand at a pinned version when packing, not installed.
 - **CI and release:** build the `.mcpb`, validate it, smoke-test it over stdio, and attach it to the
   GitHub Release.
 - **Docs:** `docs/claude-desktop.md`, written for the person installing it, and a README entry.
