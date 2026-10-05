@@ -118,6 +118,8 @@ test("AClickedMilestoneIsReturnedByGetPlanning: the view's tool call reaches the
   expect((await hostLog(page)).find((entry) => entry.method === "tools/call")?.params).toMatchObject({ name: "select_in_planning", arguments: { id, task: "G1", item: "inspection" } });
   const read = json(await callTool("get_planning", { id }));
   expect(read.selected).toMatch(/^Selected in the view: milestone "Soil inspection" \(inspection\) of task "Foundations" \(G1\), on 2031-05-21, /);
+  // And without naming the planning, as "move it" does.
+  expect(json(await callTool("get_selection", {})).planning).toMatchObject({ id });
 
   // Unselecting clears it.
   await frame.locator('[data-row="1"][data-item="1"] [data-testid="timeline-hit"]').click();

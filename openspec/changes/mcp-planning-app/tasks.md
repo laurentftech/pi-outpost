@@ -46,7 +46,7 @@
   - *Download SVG* goes through the host's `ui/download-file`, or else `save_figure` into the
     folder; *Copy SVG markup* works without the clipboard API.
 
-- [ ] 3.2 The folder in the view: `list_plannings` declares the view and returns `{folder,
+- [x] 3.2 The folder in the view: `list_plannings` declares the view and returns `{folder,
   plannings}`; the view draws the list, and choosing one draws its timeline through `show_planning`,
   with a way back. Verify in the AppBridge spec: `TheListShowsTheFolder`, `ChoosingAPlanningDrawsIt`.
   Then live in Claude Desktop: the list appears under the tool call.
@@ -58,12 +58,14 @@
   - `TheBundleValidates` (`mcpb validate`, a required directory setting with no default);
   - `TheBundledServerAnswersOverStdio`: a script unpacks the bundle and drives it over stdio with a
     temporary folder.
-- [ ] 4.2 CI runs the pack and the stdio check. The release workflow attaches the `.mcpb` to the
+- [x] 4.2 CI runs the pack and the stdio check. The release workflow attaches the `.mcpb` to the
   GitHub Release. Verify the workflows parse, and run the pack on a branch.
 
 ## 5. Live, documentation, coverage
 
-- [ ] 5.1 Live in Claude Desktop with the user:
+- [x] 5.1 Live in Claude Desktop with the user (2026-10-05: install, folder picker, creation in
+  French, show, comparison, renamed and adopted files, and click → "décale-le d'une semaine" all
+  pass; then the folder list, SVG export and the breaking pass, confirmed by the user):
   - install from the `.mcpb` and pick the folder in the picker;
   - "crée un planning…" in French, then show it;
   - click a milestone, then "décale-le d'une semaine": record whether Claude found it through

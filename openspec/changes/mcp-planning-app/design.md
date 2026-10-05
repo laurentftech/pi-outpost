@@ -99,6 +99,7 @@ dark redraw of the timeline.
 | `update_planning` | model | text: the new revision; or the refusal |
 | `show_planning` | model, app | text summary; `structuredContent` `{id, title, revision, data, comparedWith?}`; `_meta.ui.resourceUri: ui://pi-outpost/planning.html` |
 | `read_structure_guide` | model | text: the page |
+| `get_selection` | model | text: the last selection — planning, item, task — or "nothing selected" |
 | `select_in_planning` | **app only** | records `{id, task?, item?}` or clears it |
 | `save_figure` | **app only** | writes the exported SVG into the folder, never over a file |
 
@@ -111,6 +112,12 @@ dark redraw of the timeline.
   - `get_planning` reports it as *"Selected in the view: milestone "CDR" (a2-cdr) of task A2,
     2 minutes ago"*.
   - An update that removes the selected item clears it.
+  - **`get_selection`**, with no argument, answers "it" when the planning is not named (live round:
+    with three plannings, Claude asked which one rather than calling `get_planning` on each).
+    `list_plannings` carries it too. A recorded selection is written to stderr, for hosts that keep
+    a server's stderr; Claude Desktop, running the server with its built-in Node, does not.
+  - Live, 2026-10-05: a click on a milestone, then "décale-le d'une semaine", moved that milestone,
+    and Claude pointed out the dependency it then broke.
 
 ### The view
 
@@ -147,6 +154,11 @@ dark redraw of the timeline.
 - **`npm run pack -w @pi-outpost/mcp`** bundles the server (esbuild, `--target=node20`, the same
   `require` banner as `openwebui`), builds the view, copies the guide pages, and runs `mcpb pack` to
   `mcp/dist/pi-outpost-plannings.mcpb`.
+- **No build tool with an open advisory in the lockfile.** The supply-chain scan flagged what two
+  build tools brought in, with no fixed version to move to: `braces` (through
+  `vite-plugin-singlefile`), `node-forge` and `tmp` (through the `mcpb` CLI). The view is inlined by
+  a dozen-line Vite plugin of our own, and the CLI is run at a pinned version through
+  `npm exec` (`mcp/scripts/mcpb.mjs`), so it is fetched when packing and is not a dependency.
 - **CI:** build, `mcpb validate`, and a stdio smoke test of the bundled server with a temporary
   folder. That is the `TheBundledServerAnswersOverStdio` scenario.
 - **Release:** the `attach` job adds the `.mcpb` to the GitHub Release.
