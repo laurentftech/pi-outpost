@@ -68,6 +68,8 @@ export interface ShownPlanning {
 /** What the view receives from list_plannings: the folder and what it holds. */
 export interface ListedPlannings {
   folder: string;
+  /** What the user last selected in a shown planning, if anything. */
+  selection?: { id: string; title: string; revision: number; selected: string };
   plannings: Array<{ id: string; title: string; revision: number; file: string; updated: string; unreadable?: unknown }>;
 }
 
@@ -84,6 +86,8 @@ export interface ServerOptions {
   version?: string;
   /** For tests: the clock the selection's age is measured with. */
   now?: () => number;
+  /** Diagnostics for the host's log (stderr in the bundle): what the view did, which the log does not show. */
+  log?: (line: string) => void;
 }
 
 function text(value: unknown): CallToolResult {
@@ -129,6 +133,26 @@ export function createServer(options: ServerOptions): McpServer {
   const { store } = options;
   const now = options.now ?? Date.now;
   const selections = new Map<string, Selection>();
+  const log = options.log ?? (() => undefined);
+
+  /**
+   * The latest selection across all plannings, said in full with its planning — or
+   * undefined. A selection whose item has gone since is dropped.
+   */
+  async function latestSelection(): Promise<{ id: string; title: string; revision: number; selected: string } | undefined> {
+    const latest = [...selections.entries()].sort((a, b) => b[1].at - a[1].at)[0];
+    if (!latest) return undefined;
+    const [planningId, selection] = latest;
+    try {
+      const found = await store.get(planningId);
+      const selected = describeSelection(found.document.data, selection, now());
+      if (selected) return { id: planningId, title: found.title, revision: found.revision, selected };
+    } catch (error) {
+      if (!(error instanceof PlanningRefusal)) throw error;
+    }
+    selections.delete(planningId);
+    return latestSelection();
+  }
   const server = new McpServer({ name: SERVER_NAME, version: options.version ?? "0.0.0" });
   const VIEW_URI = viewUriFor(options.viewHtml);
   const id = z.string().describe(PLANNING_ID_DESCRIPTION);
@@ -170,6 +194,7 @@ export function createServer(options: ServerOptions): McpServer {
       _meta: { ui: { resourceUri: VIEW_URI } },
     },
     async (): Promise<CallToolResult> => {
+      const selection = await latestSelection();
       const plannings = (await store.list()).map((listing) => ({
         id: listing.id,
         title: listing.title,
@@ -178,7 +203,7 @@ export function createServer(options: ServerOptions): McpServer {
         updated: listing.updated,
         ...(listing.unreadable ? { unreadable: { note: "the file was edited outside and is not a valid planning", issues: listing.unreadable } } : {}),
       }));
-      const listed: ListedPlannings = { folder: store.root, plannings };
+      const listed: ListedPlannings = { folder: store.root, plannings, ...(selection ? { selection } : {}) };
       return { ...text(listed), structuredContent: listed as unknown as Record<string, unknown> };
     },
   );
@@ -298,10 +323,28 @@ export function createServer(options: ServerOptions): McpServer {
     async ({ id: planningId, task, item }): Promise<CallToolResult> => {
       if (task === undefined && item === undefined) {
         selections.delete(planningId);
+        log(`selection cleared in ${planningId}`);
         return text("Selection cleared.");
       }
       selections.set(planningId, { ...(task !== undefined ? { task } : {}), ...(item !== undefined ? { item } : {}), at: now() });
+      log(`selection recorded in ${planningId}: task ${task ?? "-"}, item ${item ?? "-"}`);
       return text("Selection recorded.");
+    },
+  );
+
+  server.registerTool(
+    "get_selection",
+    {
+      title: "What the user selected in a timeline",
+      description:
+        'Returns what the user last selected (clicked) in a timeline shown in this conversation: the planning, the task or item, and their ids. Call it first whenever the user refers to something without naming it — "it", "this", "that milestone", "move it a week" — instead of asking them which one. Then read that planning with get_planning before changing it.',
+    },
+    async (): Promise<CallToolResult> => {
+      const selection = await latestSelection();
+      if (!selection) {
+        return text("Nothing is selected in any shown planning. If the user meant something on a timeline, ask them to click it, or which planning and item they mean.");
+      }
+      return text({ planning: { id: selection.id, title: selection.title, revision: selection.revision }, selected: selection.selected });
     },
   );
 

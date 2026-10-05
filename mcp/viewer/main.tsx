@@ -50,6 +50,7 @@ function sentenceFor(planning: ShownPlanning, selection: Selection): string {
 /** list_plannings' structured content (`ListedPlannings` in src/server.ts). */
 interface ListedPlannings {
   folder: string;
+  selection?: unknown;
   plannings: Array<{ id: string; title: string; revision: number; file: string; updated: string; unreadable?: unknown }>;
 }
 

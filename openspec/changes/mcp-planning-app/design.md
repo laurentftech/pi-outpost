@@ -99,6 +99,7 @@ dark redraw of the timeline.
 | `update_planning` | model | text: the new revision; or the refusal |
 | `show_planning` | model, app | text summary; `structuredContent` `{id, title, revision, data, comparedWith?}`; `_meta.ui.resourceUri: ui://pi-outpost/planning.html` |
 | `read_structure_guide` | model | text: the page |
+| `get_selection` | model | text: the last selection — planning, item, task — or "nothing selected" |
 | `select_in_planning` | **app only** | records `{id, task?, item?}` or clears it |
 | `save_figure` | **app only** | writes the exported SVG into the folder, never over a file |
 
@@ -111,6 +112,10 @@ dark redraw of the timeline.
   - `get_planning` reports it as *"Selected in the view: milestone "CDR" (a2-cdr) of task A2,
     2 minutes ago"*.
   - An update that removes the selected item clears it.
+  - **`get_selection`**, with no argument, answers "it" when the planning is not named (live round:
+    with three plannings, Claude asked which one rather than calling `get_planning` on each).
+    `list_plannings` carries it too. A recorded selection is written to stderr, which Claude Desktop
+    keeps in the server's log: the only trace that a click reached the server.
 
 ### The view
 
