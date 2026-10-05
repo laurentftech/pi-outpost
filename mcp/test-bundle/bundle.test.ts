@@ -6,7 +6,6 @@
  * Needs `npm run pack --workspace @pi-outpost/mcp` first.
  */
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -17,7 +16,8 @@ import { StdioClientTransport } from "@modelcontextprotocol/client/stdio";
 import { CREATION_EXAMPLE } from "@pi-outpost/apps-core/descriptions";
 
 const BUNDLE = fileURLToPath(new URL("../dist/pi-outpost-plannings.mcpb", import.meta.url));
-const MCPB = path.join(path.dirname(fileURLToPath(import.meta.resolve("@anthropic-ai/mcpb"))), "cli", "cli.js");
+// @ts-expect-error -- a plain .mjs script, shared with pack.
+import { mcpb } from "../scripts/mcpb.mjs";
 
 let scratch: string;
 let unpacked: string;
@@ -28,7 +28,7 @@ before(async () => {
   });
   scratch = await fs.mkdtemp(path.join(os.tmpdir(), "outpost-mcpb-"));
   unpacked = path.join(scratch, "bundle");
-  execFileSync(process.execPath, [MCPB, "unpack", BUNDLE, unpacked], { stdio: "pipe" });
+  mcpb(["unpack", BUNDLE, unpacked], { stdio: "pipe" });
 });
 
 after(async () => {
@@ -37,7 +37,7 @@ after(async () => {
 
 // openlore: scenario=TheBundleValidates spec=mcp-planning-app
 test("TheBundleValidates", async () => {
-  execFileSync(process.execPath, [MCPB, "validate", path.join(unpacked, "manifest.json")], { stdio: "pipe" });
+  mcpb(["validate", path.join(unpacked, "manifest.json")], { stdio: "pipe" });
   const manifest = JSON.parse(await fs.readFile(path.join(unpacked, "manifest.json"), "utf8"));
   const folder = manifest.user_config.plannings_dir;
   assert.equal(folder.type, "directory");

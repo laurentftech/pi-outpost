@@ -7,10 +7,10 @@
 //     dist/bundle/LICENSE
 //
 // then `mcpb validate` and `mcpb pack` to dist/pi-outpost-plannings.mcpb.
-import { execFileSync } from "node:child_process";
 import { copyFileSync, existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { mcpb } from "./mcpb.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(here, "..");
@@ -28,9 +28,6 @@ writeFileSync(path.join(bundle, "manifest.json"), `${JSON.stringify({ ...manifes
 copyFileSync(path.join(root, "dist", "viewer", "planning.html"), path.join(bundle, "server", "planning.html"));
 copyFileSync(path.join(repo, "LICENSE"), path.join(bundle, "LICENSE"));
 
-// The CLI's own entry, run with this Node: no npx, no .cmd shim on Windows.
-// Its package root is found from its main entry: the package does not export package.json.
-const mcpb = path.join(path.dirname(fileURLToPath(import.meta.resolve("@anthropic-ai/mcpb"))), "cli", "cli.js");
-execFileSync(process.execPath, [mcpb, "validate", path.join(bundle, "manifest.json")], { stdio: "inherit" });
+mcpb(["validate", path.join(bundle, "manifest.json")]);
 rmSync(output, { force: true });
-execFileSync(process.execPath, [mcpb, "pack", bundle, output], { stdio: "inherit" });
+mcpb(["pack", bundle, output]);
