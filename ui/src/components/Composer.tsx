@@ -115,17 +115,33 @@ export function Composer({
 
   // Grow with what is typed, soft-wrapped lines included: counting newlines left a long
   // paragraph on one line. The CSS max-height caps it, and past that it scrolls.
+  //
+  // The scrollbar is kept out of the measurement. Where it takes room (Windows), letting it
+  // appear while the box is collapsed narrows the text, which rewraps, which changes the
+  // height, which removes the scrollbar: at the end of a line the box flipped between one
+  // and two lines on every frame. So it is measured without one, gets one only once capped,
+  // and is refitted only when its outer width changes — not when its own scrollbar comes
+  // or goes.
   useLayoutEffect(() => {
     const el = textareaRef.current;
     if (!el) return;
+    let width = -1;
     const fit = () => {
+      width = el.offsetWidth;
+      el.style.overflowY = "hidden";
       el.style.height = "auto";
       el.style.height = `${el.scrollHeight}px`;
+      if (el.scrollHeight > el.clientHeight) el.style.overflowY = "auto";
     };
     fit();
     // A narrower box wraps the same text onto more lines.
-    const observer = typeof ResizeObserver === "undefined" ? undefined : new ResizeObserver(fit);
-    observer?.observe(el);
+    const observer =
+      typeof ResizeObserver === "undefined"
+        ? undefined
+        : new ResizeObserver(() => {
+            if (el.offsetWidth !== width) fit();
+          });
+    observer?.observe(el, { box: "border-box" });
     return () => observer?.disconnect();
   }, [text]);
 
@@ -456,7 +472,7 @@ export function Composer({
           }
           disabled={!connected}
           rows={1}
-          className="max-h-[min(40vh,20rem)] flex-1 resize-none overflow-y-auto bg-transparent px-2 py-1.5 text-[15px] outline-none placeholder:text-zinc-400 disabled:opacity-50 dark:placeholder:text-zinc-600"
+          className="max-h-[min(40vh,20rem)] flex-1 resize-none overflow-y-hidden bg-transparent px-2 py-1.5 text-[15px] outline-none placeholder:text-zinc-400 disabled:opacity-50 dark:placeholder:text-zinc-600"
         />
         {isStreaming && (
           <button

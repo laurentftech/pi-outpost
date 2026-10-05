@@ -551,14 +551,25 @@ describe("finding a command among many", () => {
   describe("height", () => {
     // jsdom lays nothing out, so scrollHeight is stubbed as the content's height: what
     // is checked is that the box follows it, wrapped lines included.
+    // The visible height is the content's, clipped by the CSS cap, here 200px.
     let contentHeight = 24;
-    const original = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "scrollHeight");
+    const cap = 200;
+    const originals = {
+      scrollHeight: Object.getOwnPropertyDescriptor(HTMLElement.prototype, "scrollHeight"),
+      clientHeight: Object.getOwnPropertyDescriptor(HTMLElement.prototype, "clientHeight"),
+    };
     beforeEach(() => {
       Object.defineProperty(HTMLElement.prototype, "scrollHeight", { configurable: true, get: () => contentHeight });
+      Object.defineProperty(HTMLElement.prototype, "clientHeight", {
+        configurable: true,
+        get: () => Math.min(contentHeight, cap),
+      });
     });
     afterEach(() => {
-      if (original) Object.defineProperty(HTMLElement.prototype, "scrollHeight", original);
-      else delete (HTMLElement.prototype as { scrollHeight?: number }).scrollHeight;
+      for (const [name, original] of Object.entries(originals)) {
+        if (original) Object.defineProperty(HTMLElement.prototype, name, original);
+        else delete (HTMLElement.prototype as unknown as Record<string, number>)[name];
+      }
     });
 
     it("grows with a long paragraph that has no newline", () => {
@@ -581,7 +592,19 @@ describe("finding a command among many", () => {
     it("is capped, and scrolls past the cap", () => {
       setup();
       expect(box().className).toMatch(/max-h-\[min\(40vh,20rem\)\]/);
-      expect(box()).toHaveClass("overflow-y-auto");
+      contentHeight = 400;
+      type("word ".repeat(400));
+      expect(box().style.overflowY).toBe("auto");
+    });
+
+    // A scrollbar that takes room narrows the text while the box is being measured; at
+    // the end of a line that flipped it between one and two lines on every frame.
+    it("shows no scrollbar while the text fits, so measuring cannot rewrap it", () => {
+      setup();
+      contentHeight = 48;
+      type("word ".repeat(30));
+      expect(box().style.height).toBe("48px");
+      expect(box().style.overflowY).toBe("hidden");
     });
   });
 });
