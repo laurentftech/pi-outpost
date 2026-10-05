@@ -140,11 +140,40 @@ test("A file edited by hand into an invalid planning is reported to the model", 
   assert.match((await call("show_planning", { id })).text, /edited outside into an invalid planning/);
 });
 
+test("ItIsFoundWithoutNamingThePlanning", async () => {
+  const { call, client, clock } = await connect();
+  const { tools } = await client.listTools();
+  const getSelection = tools.find((tool) => tool.name === "get_selection");
+  // Callable with nothing: the model need not know which planning.
+  assert.deepEqual(Object.keys((getSelection?.inputSchema as { properties?: object } | undefined)?.properties ?? {}), []);
+  assert.match(String(getSelection?.description), /"it"/);
+
+  assert.match((await call("get_selection")).text, /^Nothing is selected/);
+  const first = (await call("create_planning", { planning: planning("Cuisine") })).json?.id as string;
+  const second = (await call("create_planning", { planning: planning("Jardin") })).json?.id as string;
+  await call("create_planning", { planning: planning("Garage") });
+  await call("select_in_planning", { id: first, task: "G2" });
+  clock.now += 60_000;
+  await call("select_in_planning", { id: second, task: "G1", item: "inspection" });
+
+  const found = await call("get_selection");
+  assert.deepEqual(found.json?.planning, { id: second, title: "Jardin", revision: 1 });
+  assert.match(String(found.json?.selected), /milestone "Soil inspection" \(inspection\) of task "Foundations" \(G1\)/);
+  // The listing carries it too.
+  assert.equal(((await call("list_plannings")).json?.selection as { id: string } | undefined)?.id, second);
+
+  // Unselected there: the earlier selection, in the other planning, is the latest left.
+  await call("select_in_planning", { id: second });
+  assert.equal(((await call("get_selection")).json?.planning as { id: string } | undefined)?.id, first);
+  await call("select_in_planning", { id: first });
+  assert.match((await call("get_selection")).text, /^Nothing is selected/);
+});
+
 test("TheSelectionToolIsNotTheModels", async () => {
   const { client } = await connect();
   const { tools } = await client.listTools();
   const byName = new Map(tools.map((tool) => [tool.name, tool]));
-  assert.deepEqual([...byName.keys()].sort(), ["create_planning", "get_planning", "list_plannings", "read_structure_guide", "save_figure", "select_in_planning", "show_planning", "update_planning"]);
+  assert.deepEqual([...byName.keys()].sort(), ["create_planning", "get_planning", "get_selection", "list_plannings", "read_structure_guide", "save_figure", "select_in_planning", "show_planning", "update_planning"]);
   const ui = (name: string) => (byName.get(name)?._meta as { ui?: { visibility?: string[]; resourceUri?: string } } | undefined)?.ui;
   assert.deepEqual(ui("select_in_planning")?.visibility, ["app"]);
   assert.deepEqual(ui("save_figure")?.visibility, ["app"]);
@@ -154,7 +183,7 @@ test("TheSelectionToolIsNotTheModels", async () => {
   assert.equal(ui("show_planning")?.resourceUri, VIEW_URI);
   assert.equal(ui("list_plannings")?.resourceUri, VIEW_URI);
   // Every other tool is the model's: no visibility restriction.
-  for (const name of ["create_planning", "get_planning", "list_plannings", "read_structure_guide", "show_planning", "update_planning"]) {
+  for (const name of ["create_planning", "get_planning", "get_selection", "list_plannings", "read_structure_guide", "show_planning", "update_planning"]) {
     assert.ok(ui(name)?.visibility === undefined || ui(name)?.visibility?.includes("model"), name);
   }
 });

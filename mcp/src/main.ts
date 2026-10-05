@@ -22,7 +22,7 @@ async function readViewHtml(): Promise<string> {
 
 try {
   const store = await LocalPlanningStore.open(planningsDirFrom(process.env));
-  await createServer({ store, viewHtml: await readViewHtml() }).connect(new StdioServerTransport());
+  await createServer({ store, viewHtml: await readViewHtml(), log: (line) => process.stderr.write(`pi-outpost plannings: ${line}\n`) }).connect(new StdioServerTransport());
 } catch (error) {
   process.stderr.write(`pi-outpost plannings: ${error instanceof ConfigError ? error.message : (error as Error).stack ?? String(error)}\n`);
   process.exit(1);

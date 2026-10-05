@@ -5,8 +5,14 @@
   "version": "0.0.0",
   "description": "Build and change project plannings in the conversation, kept as files in a folder you choose, and shown as an interactive timeline.",
   "long_description": "Ask for a planning — tasks, activities, milestones, dependencies — and it is drawn as an interactive timeline in the conversation. Each planning is one readable file in the folder you choose, with every earlier version kept in a hidden history beside it. Click a task or a milestone, then ask to change \"it\". No account, no network: everything stays on this computer.",
-  "author": { "name": "pi-outpost", "url": "https://github.com/laurentftech/pi-outpost" },
-  "repository": { "type": "git", "url": "https://github.com/laurentftech/pi-outpost" },
+  "author": {
+    "name": "pi-outpost",
+    "url": "https://github.com/laurentftech/pi-outpost"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/laurentftech/pi-outpost"
+  },
   "homepage": "https://github.com/laurentftech/pi-outpost/blob/main/docs/claude-desktop.md",
   "license": "MIT",
   "server": {
@@ -14,8 +20,13 @@
     "entry_point": "server/index.mjs",
     "mcp_config": {
       "command": "node",
-      "args": ["${__dirname}/server/index.mjs", "--stdio"],
-      "env": { "PLANNINGS_DIR": "${user_config.plannings_dir}" }
+      "args": [
+        "${__dirname}/server/index.mjs",
+        "--stdio"
+      ],
+      "env": {
+        "PLANNINGS_DIR": "${user_config.plannings_dir}"
+      }
     }
   },
   "user_config": {
@@ -27,15 +38,42 @@
     }
   },
   "tools": [
-    { "name": "list_plannings", "description": "Lists your plannings." },
-    { "name": "create_planning", "description": "Creates a planning in your folder." },
-    { "name": "get_planning", "description": "Reads a planning, and what you selected in it." },
-    { "name": "update_planning", "description": "Changes a planning; every version is kept." },
-    { "name": "show_planning", "description": "Shows a planning as an interactive timeline, or what changed since an earlier version." },
-    { "name": "read_structure_guide", "description": "The reference for writing plannings." }
+    {
+      "name": "list_plannings",
+      "description": "Lists your plannings."
+    },
+    {
+      "name": "create_planning",
+      "description": "Creates a planning in your folder."
+    },
+    {
+      "name": "get_planning",
+      "description": "Reads a planning, and what you selected in it."
+    },
+    {
+      "name": "get_selection",
+      "description": "Tells Claude what you clicked in a timeline, so you can say \"move it\"."
+    },
+    {
+      "name": "update_planning",
+      "description": "Changes a planning; every version is kept."
+    },
+    {
+      "name": "show_planning",
+      "description": "Shows a planning as an interactive timeline, or what changed since an earlier version."
+    },
+    {
+      "name": "read_structure_guide",
+      "description": "The reference for writing plannings."
+    }
   ],
   "compatibility": {
-    "platforms": ["darwin", "win32"],
-    "runtimes": { "node": ">=20.0.0" }
+    "platforms": [
+      "darwin",
+      "win32"
+    ],
+    "runtimes": {
+      "node": ">=20.0.0"
+    }
   }
 }

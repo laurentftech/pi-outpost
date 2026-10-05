@@ -117,12 +117,19 @@ list, and SHALL NOT send a message to the conversation.
 
 When the person selects a task or an item in the view, the view SHALL record the selection through a
 tool only views can call, and SHALL also offer it to the host's model context. Reading the planning
-SHALL return the current selection, naming the task or item and its identifier. Unselecting SHALL clear
+SHALL return the current selection, naming the task or item and its identifier, and the model SHALL be
+able to ask for the current selection without knowing which planning it is in. Unselecting SHALL clear
 it. The view SHALL NOT send a message to the conversation on the person's behalf.
 
 #### Scenario: AClickedMilestoneIsReturnedByGetPlanning
 - **WHEN** the person clicks a milestone in the view, then the model reads the planning
 - **THEN** the answer names that milestone, its identifier and its task as the current selection
+
+#### Scenario: ItIsFoundWithoutNamingThePlanning
+- **WHEN** the person clicks a milestone in one of several plannings, then the model is asked to move
+  "it" without the planning being named
+- **THEN** a tool the model can call with no argument names that planning, the milestone, its
+  identifier and its task; with nothing selected, it says so
 
 #### Scenario: TheSelectionToolIsNotTheModels
 - **WHEN** the server's tools are listed
