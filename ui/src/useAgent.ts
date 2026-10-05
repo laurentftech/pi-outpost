@@ -1993,9 +1993,16 @@ export function useAgent(serverUrl = "", explicitToken?: string, embedded = fals
           refreshGitStatus();
           return;
         }
-        if (message.type === "hello" || message.type === "session_replaced") {
+        // A project switch rebinds this socket without a hello, so its snapshot is the
+        // only word on whether the new project has a repository
+        if (
+          message.type === "hello" ||
+          message.type === "session_replaced" ||
+          message.type === "workspace_switched" ||
+          message.type === "workspace_starting"
+        ) {
           gitAvailableRef.current = message.gitAvailable === true;
-          if (message.type === "hello") refreshGitStatus();
+          if (message.type !== "session_replaced") refreshGitStatus();
         }
         // Bash commands can change git state without any file_changed broadcast
         if (message.type === "agent_end") {
