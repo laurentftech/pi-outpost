@@ -1547,6 +1547,63 @@ describe("git messages", () => {
     );
   });
 
+  describe("across a project switch", () => {
+    /** The snapshot a switch answers with: the project now bound, git included. */
+    function switchedTo(gitAvailable: boolean, type = "workspace_switched") {
+      return {
+        type,
+        sessionId: "sess_2",
+        branding: {},
+        model: "",
+        thinkingLevel: "off",
+        models: [],
+        commands: [],
+        isStreaming: false,
+        items: [],
+        contextUsage: null,
+        gitAvailable,
+        ...(gitAvailable ? {} : { gitUnavailable: { reason: "no-repository" } }),
+        workspace: { root: "/srv/plain", name: "plain", activity: "idle", needsAttention: false },
+      };
+    }
+    const gitStatusesSince = (from: number) =>
+      mockWs.sent.slice(from).filter((raw) => JSON.parse(raw).type === "git_status");
+
+    // A switch rebinds the same socket, so no hello follows: the snapshot it answers
+    // with is the only word on whether the new project has a repository. Left with the
+    // first project's answer, every turn's end asked a repository-less project for its
+    // status, and every refusal landed in the banner as "git: git is not available".
+    for (const type of ["workspace_switched", "workspace_starting"]) {
+      it(`stops asking about git once ${type} binds a project without a repository`, async () => {
+        const result = await connected([], { gitAvailable: true });
+        // Settle the status hello asked for: one still in flight would queue the later
+        // requests rather than send them, and this test would pass for that reason alone
+        const [asked] = gitStatusesSince(0).map((raw) => JSON.parse(raw).requestId as string);
+        act(() => mockWs!.receive({ type: "git_status", requestId: asked, repos: [], files: [] }));
+        act(() => mockWs!.receive(switchedTo(false, type)));
+        await waitFor(() => expect(result.current.state.gitAvailable).toBe(false));
+        const before = mockWs.sent.length;
+
+        act(() => mockWs!.receive({ type: "agent_end" }));
+        act(() => mockWs!.receive({ type: "file_changed", path: "notes.md" }));
+        act(() => mockWs!.receive({ type: "directory_changed", path: "" }));
+
+        expect(gitStatusesSince(before)).toHaveLength(0);
+      });
+    }
+
+    it("asks about git once a switch binds a project that has a repository", async () => {
+      const result = await connected([], { gitAvailable: false });
+      const before = mockWs.sent.length;
+
+      act(() => mockWs!.receive(switchedTo(true)));
+
+      await waitFor(() => expect(result.current.state.gitAvailable).toBe(true));
+      // Its status, at once: the branch chip and the badges belong to this project now
+      await waitFor(() => expect(gitStatusesSince(before).length).toBeGreaterThan(0));
+    });
+  });
+
   it("stops describing repositories the workspace no longer has", async () => {
     const result = await connected([], { gitAvailable: true });
     act(() =>
