@@ -51,9 +51,11 @@ export function referenceUrl(
   src: string,
   serverUrl: string,
   token: string | null,
+  /** The project the document lives in — see `rawFileUrl`. */
+  workspace?: string,
 ): string | undefined {
   if (!isLoadableReference(src)) return undefined;
-  return rawFileUrl(serverUrl, resolveRelativeHref(docPath, src), token);
+  return rawFileUrl(serverUrl, resolveRelativeHref(docPath, src), token, undefined, workspace);
 }
 
 /**
@@ -69,8 +71,9 @@ export async function loadReference(
   src: string,
   serverUrl: string,
   token: string | null,
+  workspace?: string,
 ): Promise<ReferencedImage | undefined> {
-  const url = referenceUrl(docPath, src, serverUrl, token);
+  const url = referenceUrl(docPath, src, serverUrl, token, workspace);
   if (url === undefined) return undefined;
   try {
     const response = await fetch(url);

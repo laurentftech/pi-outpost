@@ -22,7 +22,7 @@ import { plainTextToDocx } from "./plainTextToDocx";
  * document references. Both are absent when nothing is referenced, and `""` with
  * a `null` token is the standalone, same-origin case.
  */
-export type ExportOptions = { serverUrl?: string; token?: string | null };
+export type ExportOptions = { serverUrl?: string; token?: string | null; workspace?: string };
 
 /**
  * What the download is called.

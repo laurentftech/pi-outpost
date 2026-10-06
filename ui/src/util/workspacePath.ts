@@ -59,9 +59,25 @@ export function hasPathExtractionTool(path: string): boolean {
  * send headers, so the auth token rides the query string (same trade-off as
  * the WebSocket URL). `serverUrl` is the embed widget's backend origin, "" when
  * same-origin.
+ *
+ * `workspace` is the id of the project the connection is bound to (the snapshot's
+ * `workspace.id`). The path is relative to *that* project's root; a server holding
+ * several projects reads it from the one it booted with when it is left out.
  */
-export function rawFileUrl(serverUrl: string, path: string, token: string | null, revision?: number): string {
+export function rawFileUrl(
+  serverUrl: string,
+  path: string,
+  token: string | null,
+  revision?: number,
+  workspace?: string,
+): string {
   const tokenParam = token ? `&token=${encodeURIComponent(token)}` : "";
   const revisionParam = revision === undefined ? "" : `&v=${encodeURIComponent(String(revision))}`;
-  return `${serverUrl}/files/raw?path=${encodeURIComponent(path)}${tokenParam}${revisionParam}`;
+  const workspaceParam = workspace === undefined ? "" : `&workspace=${encodeURIComponent(workspace)}`;
+  return `${serverUrl}/files/raw?path=${encodeURIComponent(path)}${tokenParam}${revisionParam}${workspaceParam}`;
+}
+
+/** The id `/files/raw` takes for a project: its `id`, or its `root` from a server that predates ids. */
+export function rawFileWorkspace(workspace: { root: string; id?: string } | null | undefined): string | undefined {
+  return workspace ? (workspace.id ?? workspace.root) : undefined;
 }

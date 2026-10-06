@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { hasPathExtractionTool, isExternalRef, resolveRelativeHref, isImageFile, isPdfFile, rawFileUrl } from "./workspacePath";
+import { hasPathExtractionTool, isExternalRef, resolveRelativeHref, isImageFile, isPdfFile, rawFileUrl, rawFileWorkspace } from "./workspacePath";
 
 describe("isExternalRef", () => {
   it("returns true for http/https URLs", () => {
@@ -123,5 +123,24 @@ describe("rawFileUrl", () => {
   it("works with empty serverUrl (same-origin)", () => {
     const url = rawFileUrl("", "file.ts", null);
     expect(url).toContain("/files/raw?path=");
+  });
+
+  it("names the project the path belongs to, encoded as a Windows root needs", () => {
+    const url = new URL(rawFileUrl("http://127.0.0.1:3001", "figures/plot.png", "t", 3, "C:\\Users\\me\\Projet B"));
+    expect(url.searchParams.get("path")).toBe("figures/plot.png");
+    expect(url.searchParams.get("workspace")).toBe("C:\\Users\\me\\Projet B");
+    expect(url.searchParams.get("v")).toBe("3");
+  });
+
+  it("names no project when none is given", () => {
+    expect(new URL(rawFileUrl("http://h", "a.png", null)).searchParams.has("workspace")).toBe(false);
+  });
+});
+
+describe("rawFileWorkspace", () => {
+  it("is the project's id, its root from a server without ids, nothing without a project", () => {
+    expect(rawFileWorkspace({ root: "/p", id: "/p#side-1" })).toBe("/p#side-1");
+    expect(rawFileWorkspace({ root: "/p" })).toBe("/p");
+    expect(rawFileWorkspace(null)).toBeUndefined();
   });
 });

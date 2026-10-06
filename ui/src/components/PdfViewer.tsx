@@ -90,9 +90,15 @@ function failureMessage(failure: PdfFailure): string {
 }
 
 /** Fetch the bytes, turning the server's refusals into the viewer's failure states. */
-async function fetchPdfBytes(serverUrl: string, path: string, token: string | null, revision: number): Promise<Uint8Array> {
+async function fetchPdfBytes(
+  serverUrl: string,
+  path: string,
+  token: string | null,
+  revision: number,
+  workspace: string | undefined,
+): Promise<Uint8Array> {
   // fetch can carry a header, unlike <img> — the token stays out of the URL here.
-  const response = await fetch(rawFileUrl(serverUrl, path, null, revision), {
+  const response = await fetch(rawFileUrl(serverUrl, path, null, revision, workspace), {
     headers: token ? { Authorization: `Bearer ${token}` } : {},
   });
   if (!response.ok) {
@@ -313,6 +319,8 @@ export const PdfViewer = forwardRef<
     path: string;
     serverUrl?: string;
     token?: string | null;
+    /** The project the path is relative to — see `rawFileUrl`. */
+    workspace?: string;
     /** Cache-buster incremented when the file changes without changing path. */
     revision?: number;
     /** Called once the document opened — a PDF that never displayed is not attachable. */
@@ -322,7 +330,7 @@ export const PdfViewer = forwardRef<
     /** Reported whenever the match count, current match, or indexing progress changes. */
     onFindStateChange?: (state: PdfFindState) => void;
   }
->(function PdfViewer({ path, serverUrl = "", token = null, revision = 0, onLoaded, findQuery = "", onFindStateChange }, ref) {
+>(function PdfViewer({ path, serverUrl = "", token = null, workspace, revision = 0, onLoaded, findQuery = "", onFindStateChange }, ref) {
   const [doc, setDoc] = useState<PdfDocumentProxy | null>(null);
   const [failure, setFailure] = useState<PdfFailure | null>(null);
   const [pageNumber, setPageNumber] = useState(1);
@@ -420,7 +428,7 @@ export const PdfViewer = forwardRef<
 
     (async () => {
       try {
-        const bytes = await fetchPdfBytes(serverUrl, path, token, revision);
+        const bytes = await fetchPdfBytes(serverUrl, path, token, revision, workspace);
         const { doc: document, task } = await openDocument(bytes);
         loading = task;
         if (cancelled) {
@@ -453,7 +461,7 @@ export const PdfViewer = forwardRef<
     // eslint-disable-next-line react-hooks/exhaustive-deps -- onLoaded is a
     // notification, not an input: a caller passing a fresh closure each render
     // must not refetch the document.
-  }, [path, serverUrl, token, revision]);
+  }, [path, serverUrl, token, workspace, revision]);
 
   const pageCount = doc?.numPages ?? 0;
 
