@@ -12,7 +12,10 @@ pi-outpost's planning timelines and structured documents also run inside
   proposal as what it would change.
 
 It uses the same structured-exchange contract as pi-outpost. A document refused here is refused
-there for the same reason, and every stored planning revision opens in pi-outpost as it is.
+there for the same reason, and every stored planning revision opens in pi-outpost as it is. One
+diagnostic is worded for plannings: when a planning's `schema` and `kind` are missing, wrong or
+placed inside `data`, the answer names that envelope and the form to write, rather than what every
+other kind of document would have needed.
 
 Checked against **Open WebUI v0.11.4**.
 

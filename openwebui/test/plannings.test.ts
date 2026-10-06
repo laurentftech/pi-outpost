@@ -63,6 +63,84 @@ test("AnotherKindIsRefused: a valid version 3 document that is not a timeline", 
   assert.deepEqual(await filesUnder(config.dataDir), []);
 });
 
+/** A planning with `schema` and `kind` inside `data`, as a model sent one. */
+function misplacedEnvelope(planning: ReturnType<typeof samplePlanning>) {
+  const { schema, kind, data } = planning;
+  return { data: { ...data, schema, kind } };
+}
+
+/** The other forms `data` can take, which a planning's diagnostics must never send the model to. */
+const OTHER_FORMS = /nodes|edges|participants|messages|columns/;
+
+// openlore: scenario=AMisplacedEnvelopeIsNamedWithTheRest spec=openwebui-planning-server
+test("AMisplacedEnvelopeIsNamedWithTheRest: schema and kind inside data, and an activity without an end", async (t) => {
+  const { call, config } = await testApp(t);
+  const broken = samplePlanning();
+  delete (broken.data.rows[1] as { items: Array<{ end?: string }> }).items[0]!.end;
+  const response = await call("create_planning", { planning: misplacedEnvelope(broken) });
+  assert.equal(response.statusCode, 422);
+  const issues = response.json().issues as Array<{ rule: string; path: string; message: string }>;
+  // What the contract says of the same planning with its envelope where it belongs.
+  const expected = parseSerializedStructuredExchange(JSON.stringify(broken), checkStructuredExchangeSchema);
+  assert.equal(expected.valid, false);
+  assert.deepEqual(issues.slice(2), expected.issues);
+  assert.deepEqual(issues.slice(0, 2).map(({ rule, path: at }) => ({ rule, path: at })), [
+    { rule: "planning-envelope", path: "/data/schema" },
+    { rule: "planning-envelope", path: "/data/kind" },
+  ]);
+  for (const issue of issues.slice(0, 2)) {
+    assert.match(issue.message, /beside "data"/);
+    assert.ok(issue.message.includes('{"schema":"urn:structured-exchange:3","kind":"timeline","data":{…}}'), issue.message);
+  }
+  assert.ok(issues.every((issue) => !OTHER_FORMS.test(issue.message)), JSON.stringify(issues));
+  assert.deepEqual(await filesUnder(config.dataDir), []);
+});
+
+// openlore: scenario=AMisplacedEnvelopeIsRefusedEvenWhenTheRestIsValid spec=openwebui-planning-server
+test("AMisplacedEnvelopeIsRefusedEvenWhenTheRestIsValid: only the envelope is named", async (t) => {
+  const { call, config } = await testApp(t);
+  const response = await call("create_planning", { planning: misplacedEnvelope(samplePlanning()) });
+  assert.equal(response.statusCode, 422);
+  const issues = response.json().issues as Array<{ rule: string; path: string }>;
+  assert.deepEqual(issues.map(({ rule, path: at }) => ({ rule, path: at })), [
+    { rule: "planning-envelope", path: "/data/schema" },
+    { rule: "planning-envelope", path: "/data/kind" },
+  ]);
+  assert.deepEqual(await filesUnder(config.dataDir), []);
+});
+
+// openlore: scenario=AWrongEnvelopeIsAnsweredWithTheEnvelopeAlone spec=openwebui-planning-server
+test("AWrongEnvelopeIsAnsweredWithTheEnvelopeAlone: a missing or foreign kind or schema, whatever data holds", async (t) => {
+  const { call, config } = await testApp(t);
+  const { schema, data } = samplePlanning();
+  // Each also carries an activity without an end, which only the timeline form would see.
+  delete (data.rows[1] as { items: Array<{ end?: string }> }).items[0]!.end;
+  const cases: Array<[Record<string, unknown>, Array<{ path: string; says: RegExp }>]> = [
+    [{ schema, data }, [{ path: "/kind", says: /"kind" is missing/ }]],
+    [{ schema, kind: "graph", data }, [{ path: "/kind", says: /not "graph"/ }]],
+    [{ kind: "timeline", data }, [{ path: "/schema", says: /"schema" is missing/ }]],
+    [{ schema: "urn:structured-exchange:2", kind: "timeline", data }, [{ path: "/schema", says: /not "urn:structured-exchange:2"/ }]],
+    [{ data }, [{ path: "/kind", says: /"kind" is missing/ }, { path: "/schema", says: /"schema" is missing/ }]],
+    // Moved from data, and still not a timeline's: named where it was found.
+    [{ data: { ...data, schema, kind: "table" } }, [{ path: "/data/kind", says: /not "table"/ }]],
+  ];
+  for (const [planning, want] of cases) {
+    const response = await call("create_planning", { planning });
+    assert.equal(response.statusCode, 422, JSON.stringify(planning).slice(0, 80));
+    const issues = response.json().issues as Array<{ rule: string; path: string; message: string }>;
+    const timeline = issues.filter((issue) => issue.rule === "planning-is-a-timeline");
+    assert.equal(timeline.length, want.length, JSON.stringify(issues));
+    want.forEach(({ path: at, says }, index) => {
+      assert.equal(timeline[index]!.path, at);
+      assert.match(timeline[index]!.message, says);
+      assert.ok(timeline[index]!.message.includes('"kind":"timeline"'), "the message shows the envelope to write");
+    });
+    assert.ok(issues.every((issue) => issue.rule === "planning-is-a-timeline" || issue.rule === "planning-envelope"), JSON.stringify(issues));
+    assert.ok(issues.every((issue) => !OTHER_FORMS.test(issue.message)), JSON.stringify(issues));
+  }
+  assert.deepEqual(await filesUnder(config.dataDir), []);
+});
+
 // openlore: scenario=AComparisonIsNotAPlanning spec=openwebui-planning-server
 test("AComparisonIsNotAPlanning: a compared timeline is refused, pointing at show_planning", async (t) => {
   const { call, config } = await testApp(t);

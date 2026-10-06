@@ -13,6 +13,12 @@
  * - **Every item can be named.** Updates address what they change by identifier, and
  *   the contract lets an item go without one. Creation gives each anonymous item an
  *   identifier, unique in the planning, so the model can name it afterwards.
+ *
+ * The envelope is settled before the contract is asked, and only the diagnostics change
+ * for it, never the verdict. Without a `kind` saying which form `data` takes, the schema
+ * tries every form and reports every failure — a planning refused for lacking `nodes` and
+ * `participants` — and a model reading that rewrites its planning into the wrong form.
+ * A planning can only be a timeline, so a wrong envelope is answered with the one fix.
  */
 import { parseSerializedStructuredExchange } from "@pi-outpost/shared/structured-exchange/parse";
 import { checkStructuredExchangeSchema } from "@pi-outpost/shared/structured-exchange/schema-node";
@@ -46,11 +52,73 @@ function comparisonIssues(data: StructuredTimelineData): StructuredExchangeIssue
   return issues;
 }
 
+const ENVELOPE = `{"schema":"${STRUCTURED_EXCHANGE_SCHEMA_V3}","kind":"timeline","data":{…}}`;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/**
+ * The envelope a planning must have, judged before the contract is.
+ *
+ * `issues` names what is wrong with `schema` and `kind`; when they are only misplaced
+ * inside `data`, `lifted` is the document with them put back where they belong, so the
+ * rest of it can be judged in the same answer. A document that is not an object is left
+ * to the contract, which says so.
+ */
+function envelopeIssues(document: unknown): { issues: StructuredExchangeIssue[]; lifted: unknown } {
+  if (!isRecord(document)) return { issues: [], lifted: document };
+  const issues: StructuredExchangeIssue[] = [];
+  const moved = new Set<string>();
+  let lifted: Record<string, unknown> = document;
+  if (isRecord(document.data)) {
+    const data = { ...document.data };
+    for (const field of ["schema", "kind"] as const) {
+      if (document[field] !== undefined || data[field] === undefined) continue;
+      issues.push({
+        rule: "planning-envelope",
+        path: `/data/${field}`,
+        message: `"${field}" belongs beside "data", at the top of the planning, not inside it: ${ENVELOPE}`,
+      });
+      moved.add(field);
+      lifted = { ...lifted, [field]: data[field] };
+      delete data[field];
+    }
+    if (moved.size > 0) lifted = { ...lifted, data };
+  }
+  const where = (field: string) => (moved.has(field) ? `/data/${field}` : `/${field}`);
+  if (lifted.kind !== "timeline") {
+    issues.push({
+      rule: "planning-is-a-timeline",
+      path: where("kind"),
+      message: lifted.kind === undefined
+        ? `a planning is a version 3 timeline, and "kind" is missing: ${ENVELOPE}`
+        : `a planning is a version 3 timeline (kind "timeline"), not ${JSON.stringify(lifted.kind)}: ${ENVELOPE}`,
+    });
+  }
+  if (lifted.schema !== STRUCTURED_EXCHANGE_SCHEMA_V3) {
+    issues.push({
+      rule: "planning-is-a-timeline",
+      path: where("schema"),
+      message: lifted.schema === undefined
+        ? `a planning is a version 3 timeline, and "schema" is missing: ${ENVELOPE}`
+        : `a planning is a version 3 timeline (schema "${STRUCTURED_EXCHANGE_SCHEMA_V3}"), not ${JSON.stringify(lifted.schema)}: ${ENVELOPE}`,
+    });
+  }
+  return { issues, lifted };
+}
+
 /**
  * The verdict on a candidate planning document.
  *
  * `maxBytes` is this deployment's own ceiling on a planning, applied to the document
  * as it will be stored, before anything else is read.
+ *
+ * A document whose envelope is not a timeline's is always refused. When `schema` and
+ * `kind` are right but sit inside `data`, the refusal says so first, then lists what the
+ * contract finds once they are moved, so every fix arrives in one answer; any other
+ * wrong envelope is answered with the envelope alone, since the contract's diagnostics
+ * for another form say nothing useful about a planning.
  */
 export function judgePlanning(document: unknown, maxBytes: number): PlanningVerdict {
   const serialized = JSON.stringify(document);
@@ -71,23 +139,15 @@ export function judgePlanning(document: unknown, maxBytes: number): PlanningVerd
       }],
     };
   }
-  const verdict = parseSerializedStructuredExchange(serialized, checkStructuredExchangeSchema);
-  if (!verdict.valid) return { valid: false, issues: verdict.issues };
-  const envelope = verdict.envelope;
-  if (envelope.kind !== "timeline" || (envelope.schema as string) !== STRUCTURED_EXCHANGE_SCHEMA_V3) {
-    return {
-      valid: false,
-      issues: [{
-        rule: "planning-is-a-timeline",
-        path: "/kind",
-        message: `a planning is a version 3 timeline (schema "${STRUCTURED_EXCHANGE_SCHEMA_V3}", kind "timeline"), not "${String(envelope.kind)}"`,
-      }],
-    };
-  }
-  const data = envelope.data as StructuredTimelineData;
-  const issues = comparisonIssues(data);
+  const envelope = envelopeIssues(document);
+  if (envelope.issues.some((issue) => issue.rule === "planning-is-a-timeline")) return { valid: false, issues: envelope.issues };
+  const judged = envelope.issues.length > 0 ? JSON.stringify(envelope.lifted) : serialized;
+  const verdict = parseSerializedStructuredExchange(judged, checkStructuredExchangeSchema);
+  if (!verdict.valid) return { valid: false, issues: [...envelope.issues, ...verdict.issues] };
+  const data = verdict.envelope.data as StructuredTimelineData;
+  const issues = [...envelope.issues, ...comparisonIssues(data)];
   if (issues.length > 0) return { valid: false, issues };
-  return { valid: true, document: envelope as unknown as TimelineDocument, serialized };
+  return { valid: true, document: verdict.envelope as unknown as TimelineDocument, serialized };
 }
 
 /** Every identifier a timeline declares: tasks and items. */
