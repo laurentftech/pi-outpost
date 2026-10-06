@@ -16,7 +16,7 @@ import { Compile } from "typebox/compile";
 import schemaModuleV1 from "../schemas/structured-exchange-1.json" with { type: "json" };
 import schemaModuleV2 from "../schemas/structured-exchange-2.json" with { type: "json" };
 import schemaModuleV3 from "../schemas/structured-exchange-3.json" with { type: "json" };
-import { declaredSchemaOf } from "./structuredExchangeDocument.ts";
+import { declaredSchemaOf, misplacedEnvelopeIssues } from "./structuredExchangeDocument.ts";
 import {
   STRUCTURED_EXCHANGE_SCHEMA_V1,
   STRUCTURED_EXCHANGE_SCHEMA_V2,
@@ -320,5 +320,9 @@ export const checkStructuredExchangeSchema: StructuredExchangeSchemaCheck = (doc
   // validator that decides which of its own reasons to show is a validator that
   // can hide the true one; they are ordered instead, so the deepest path — the one
   // naming the value the producer actually got wrong — is the line they read first.
-  return issues.sort((left, right) => right.path.split("/").length - left.path.split("/").length);
+  //
+  // Except an envelope nested in `data`, which goes before all of them. Every other
+  // reason is about a document the producer did not mean — version 1's forms, or each
+  // form `data` is not — and the fix for all of them is to move one field up a level.
+  return [...misplacedEnvelopeIssues(document), ...issues.sort((left, right) => right.path.split("/").length - left.path.split("/").length)];
 };

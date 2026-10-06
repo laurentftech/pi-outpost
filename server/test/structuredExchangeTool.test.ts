@@ -290,3 +290,15 @@ describe("when the agent should reach for present_structure, and when for mermai
     assert.doesNotMatch(guidance(), /When asked to draw, diagram, or model a structure/);
   });
 });
+
+// openlore: scenario=TheAgentReadsTheMisplacedEnvelopeFirst spec=structured-exchange
+test("TheAgentReadsTheMisplacedEnvelopeFirst: schema and kind inside data lead the refusal it is given", async () => {
+  const { schema, kind, data } = graph();
+  const result = await call({ data: { ...data, schema, kind } });
+  assert.equal(result.isError, true);
+  const lines = result.content[0].text.split("\n");
+  assert.equal(lines[1], '- envelope-inside-data at /data/schema: "schema" belongs beside "data", at the top of the document, not inside it');
+  assert.equal(lines[2], '- envelope-inside-data at /data/kind: "kind" belongs beside "data", at the top of the document, not inside it');
+  // The other reasons are still there, after it.
+  assert.ok(lines.slice(3).some((line) => /schema, kind/.test(line)), result.content[0].text);
+});

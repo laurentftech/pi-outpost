@@ -93,6 +93,25 @@ test("AnInvalidTimelineIsRefusedWithTheGatesDiagnostics", async () => {
   assert.deepEqual(await fs.readdir(folder), [], "nothing was written");
 });
 
+test("AMisplacedEnvelopeIsNamedInTheAnswer", async () => {
+  const { call, folder } = await connect();
+  const broken = planning();
+  delete (broken.data.rows[1] as { items: Array<{ end?: string }> }).items[0]!.end;
+  const { schema, kind, data } = broken;
+  const refused = await call("create_planning", { planning: { data: { ...data, schema, kind } } });
+  assert.equal(refused.isError, true);
+  const issues = refused.json?.issues as Array<{ rule: string; path: string; message: string }>;
+  const gate = parseSerializedStructuredExchange(JSON.stringify(broken), checkStructuredExchangeSchema);
+  assert.equal(gate.valid, false);
+  assert.deepEqual(issues.slice(2), gate.valid ? [] : gate.issues);
+  assert.deepEqual(issues.slice(0, 2).map(({ rule, path: at }) => ({ rule, path: at })), [
+    { rule: "envelope-inside-data", path: "/data/schema" },
+    { rule: "envelope-inside-data", path: "/data/kind" },
+  ]);
+  assert.ok(issues.every((issue) => !/nodes|edges|participants|messages|columns/.test(issue.message)), refused.text);
+  assert.deepEqual(await fs.readdir(folder), [], "nothing was written");
+});
+
 test("AnUpdateIsTargetedAndRevisioned", async () => {
   const { call, folder } = await connect();
   const created = await call("create_planning", { planning: planning() });

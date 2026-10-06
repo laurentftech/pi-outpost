@@ -127,6 +127,26 @@ test("ATimelineRefusalPointsToTimelines: an inverted activity, a timeline with a
   }
 });
 
+// openlore: scenario=AMisplacedEnvelopePointsToWhatTheDocumentMeant spec=openwebui-structure-guide
+test("AMisplacedEnvelopePointsToWhatTheDocumentMeant: kind or schema inside data still picks the page", async (t) => {
+  const { call } = await testApp(t);
+  const lifted = async (fixture: string, fields: string[]) => {
+    const document = JSON.parse(await fs.readFile(path.join(CONFORMANCE, fixture), "utf8")) as Record<string, unknown> & { data: object };
+    const moved = Object.fromEntries(fields.map((field) => [field, document[field]]));
+    const outside = Object.fromEntries(Object.entries(document).filter(([key]) => key !== "data" && !fields.includes(key)));
+    const response = await call("show_structure", { document: { ...outside, data: { ...document.data, ...moved } } });
+    assert.equal(response.statusCode, 422, fixture);
+    return response.json() as { guide: string; issues: Array<{ rule: string }> };
+  };
+  for (const fields of [["schema", "kind"], ["kind"]]) {
+    const refusal = await lifted("../valid/v3-timeline-programme.json", fields);
+    assert.equal(refusal.guide, "timelines", fields.join(","));
+    assert.equal(refusal.issues[0]!.rule, "envelope-inside-data");
+  }
+  assert.equal((await lifted("../valid/v2-graph-minimal.json", ["schema", "kind"])).guide, "enriched");
+  assert.equal((await lifted("../valid/graph-minimal.json", ["schema", "kind"])).guide, "graphs-and-tables");
+});
+
 // openlore: scenario=ATableProposalPointsToRowRoles spec=openwebui-structure-guide
 test("ATableProposalPointsToRowRoles: a table with a target, or with removals, goes to the page on row roles", async (t) => {
   for (const fixture of ["table-with-target.json", "table-with-removal.json"]) {

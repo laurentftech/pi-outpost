@@ -130,6 +130,18 @@ describe("the reference validator as it ships", () => {
     assert.deepEqual((verdict.issues as { rule: string }[]).map((issue) => issue.rule), ["change-without-target"]);
   });
 
+  // openlore: scenario=TheReferenceValidatorNamesTheMisplacedEnvelope spec=structured-exchange
+  test("TheReferenceValidatorNamesTheMisplacedEnvelope: led by where schema and kind belong, exit 1", () => {
+    const { code, verdict } = validate([], JSON.stringify({ data: { nodes: [{ id: "a", label: "A" }], edges: [], schema: "urn:structured-exchange:1", kind: "graph" } }));
+    assert.equal(code, 1);
+    assert.equal(verdict.valid, false);
+    const issues = verdict.issues as Array<{ rule: string; path: string }>;
+    assert.deepEqual(issues.slice(0, 2).map(({ rule, path: at }) => ({ rule, path: at })), [
+      { rule: "envelope-inside-data", path: "/data/schema" },
+      { rule: "envelope-inside-data", path: "/data/kind" },
+    ]);
+  });
+
   test("exits 2 when the input cannot be read, rather than blaming the schema", () => {
     const { code, verdict } = validate(["absent.json"]);
     assert.equal(code, 2);

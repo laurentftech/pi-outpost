@@ -56,6 +56,34 @@ export function declaredSchemaOf(document: unknown): string | undefined {
 }
 
 /**
+ * The envelope fields a document carries inside `data` instead of beside it.
+ *
+ * A producer that nests `schema` or `kind` in `data` sends a document the schema
+ * cannot place: with no `schema` it is judged as version 1, and with no `kind` every
+ * form `data` can take reports why it is not that form. Every one of those reasons is
+ * true and none of them is the fix, so this names the fix, at the path where the
+ * field was found. It adds to a refusal and never decides one: such a document
+ * already fails the schema, since a field `data` does not define is not allowed in it.
+ *
+ * Only a field missing beside `data` and present inside it. One present in both
+ * places is not misplaced; the copy inside is refused as a property `data` does not
+ * define, which says exactly that.
+ */
+export function misplacedEnvelopeIssues(document: unknown): StructuredExchangeIssue[] {
+  if (typeof document !== "object" || document === null || Array.isArray(document)) return [];
+  const envelope = document as Record<string, unknown>;
+  const data = envelope.data;
+  if (typeof data !== "object" || data === null || Array.isArray(data)) return [];
+  return (["schema", "kind"] as const)
+    .filter((field) => envelope[field] === undefined && (data as Record<string, unknown>)[field] !== undefined)
+    .map((field) => ({
+      rule: "envelope-inside-data",
+      path: `/data/${field}`,
+      message: `"${field}" belongs beside "data", at the top of the document, not inside it`,
+    }));
+}
+
+/**
  * Why a candidate is not one of ours.
  *
  * Two situations, and the difference matters to anyone editing: text that does not
