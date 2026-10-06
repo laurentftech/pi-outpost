@@ -124,6 +124,13 @@ export function guideTopicFor(document: unknown, issues: readonly StructuredExch
   } catch {
     parsed = undefined;
   }
+  // An envelope written inside `data` still says what the document meant to be, and the
+  // page for that is the one to read once the envelope is moved: a timeline sent to the
+  // graphs page would be fixed into a graph.
+  const data = (parsed as { data?: { kind?: unknown; schema?: unknown } } | undefined)?.data;
+  if (parsed !== undefined && parsed !== null && typeof data === "object" && data !== null) {
+    parsed = { ...parsed, kind: parsed.kind ?? data.kind, schema: parsed.schema ?? data.schema };
+  }
   if (parsed?.kind === "timeline") return "timelines";
   // A table cannot be a proposal. What a change did to a table is said with row roles,
   // which the graphs-and-tables page teaches; sending the model to the proposals page

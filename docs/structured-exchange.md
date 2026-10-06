@@ -82,7 +82,9 @@ and validates nothing — validation happens where the rendering decision is mad
 The agent can author these too, guided by [`skills/structured-exchange`](../skills/structured-exchange/SKILL.md).
 It presents one through the `present_structure` tool, which validates before showing
 anything and hands back the diagnostics when it refuses, so a document can be corrected
-without leaving the exchange.
+without leaving the exchange. When `schema` or `kind` was written inside `data`, the first
+diagnostic says so (`envelope-inside-data`), ahead of the schema's reasons about every form
+`data` could have taken.
 
 Some models write the document straight into their reply instead, as a ```` ```json ````
 block. Such a block is drawn in place, provided it declares the contract's `schema` and

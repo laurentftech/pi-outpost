@@ -143,3 +143,22 @@ test("ShowingWithoutTheSecretIsRefused: no bearer, or no identity, nothing embed
     assert.doesNotMatch(response.body, /data-planning/);
   }
 });
+
+// openlore: scenario=AMisplacedEnvelopeIsNamedFirstByShowStructure spec=openwebui-structured-exchange
+test("AMisplacedEnvelopeIsNamedFirstByShowStructure: the same diagnostics as pi-outpost, led by the envelope", async (t) => {
+  const { call, config } = await testApp(t);
+  const graph = await fixture("valid/graph-minimal.json");
+  const { schema, kind, data } = graph;
+  const document = { data: { ...data, schema, kind } };
+  const response = await call("show_structure", { document });
+  assert.equal(response.statusCode, 422);
+  const issues = response.json().issues as Array<{ rule: string; path: string }>;
+  const expected = parseSerializedStructuredExchange(JSON.stringify(document), checkStructuredExchangeSchema);
+  assert.equal(expected.valid, false);
+  assert.deepEqual(issues, expected.issues);
+  assert.deepEqual(issues.slice(0, 2).map(({ rule, path: at }) => ({ rule, path: at })), [
+    { rule: "envelope-inside-data", path: "/data/schema" },
+    { rule: "envelope-inside-data", path: "/data/kind" },
+  ]);
+  assert.deepEqual(await filesUnder(config.dataDir), []);
+});

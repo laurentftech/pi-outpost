@@ -105,8 +105,8 @@ test("AMisplacedEnvelopeIsNamedInTheAnswer", async () => {
   assert.equal(gate.valid, false);
   assert.deepEqual(issues.slice(2), gate.valid ? [] : gate.issues);
   assert.deepEqual(issues.slice(0, 2).map(({ rule, path: at }) => ({ rule, path: at })), [
-    { rule: "planning-envelope", path: "/data/schema" },
-    { rule: "planning-envelope", path: "/data/kind" },
+    { rule: "envelope-inside-data", path: "/data/schema" },
+    { rule: "envelope-inside-data", path: "/data/kind" },
   ]);
   assert.ok(issues.every((issue) => !/nodes|edges|participants|messages|columns/.test(issue.message)), refused.text);
   assert.deepEqual(await fs.readdir(folder), [], "nothing was written");

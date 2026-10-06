@@ -20,6 +20,7 @@
  * `participants` — and a model reading that rewrites its planning into the wrong form.
  * A planning can only be a timeline, so a wrong envelope is answered with the one fix.
  */
+import { misplacedEnvelopeIssues } from "@pi-outpost/shared/structured-exchange/document";
 import { parseSerializedStructuredExchange } from "@pi-outpost/shared/structured-exchange/parse";
 import { checkStructuredExchangeSchema } from "@pi-outpost/shared/structured-exchange/schema-node";
 import type { StructuredExchangeIssue } from "@pi-outpost/shared/structured-exchange/parse";
@@ -68,23 +69,20 @@ function isRecord(value: unknown): value is Record<string, unknown> {
  */
 function envelopeIssues(document: unknown): { issues: StructuredExchangeIssue[]; lifted: unknown } {
   if (!isRecord(document)) return { issues: [], lifted: document };
-  const issues: StructuredExchangeIssue[] = [];
-  const moved = new Set<string>();
+  // The same finding pi-outpost's own gate leads with, worded for a planning.
+  const issues = misplacedEnvelopeIssues(document).map((issue) => ({
+    ...issue,
+    message: `${issue.message.replace("the document", "the planning")}: ${ENVELOPE}`,
+  }));
+  const moved = new Set(issues.map((issue) => issue.path.slice("/data/".length)));
   let lifted: Record<string, unknown> = document;
-  if (isRecord(document.data)) {
-    const data = { ...document.data };
-    for (const field of ["schema", "kind"] as const) {
-      if (document[field] !== undefined || data[field] === undefined) continue;
-      issues.push({
-        rule: "planning-envelope",
-        path: `/data/${field}`,
-        message: `"${field}" belongs beside "data", at the top of the planning, not inside it: ${ENVELOPE}`,
-      });
-      moved.add(field);
+  if (moved.size > 0) {
+    const data = { ...(document.data as Record<string, unknown>) };
+    for (const field of moved) {
       lifted = { ...lifted, [field]: data[field] };
       delete data[field];
     }
-    if (moved.size > 0) lifted = { ...lifted, data };
+    lifted = { ...lifted, data };
   }
   const where = (field: string) => (moved.has(field) ? `/data/${field}` : `/${field}`);
   if (lifted.kind !== "timeline") {

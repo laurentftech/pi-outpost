@@ -85,8 +85,8 @@ test("AMisplacedEnvelopeIsNamedWithTheRest: schema and kind inside data, and an 
   assert.equal(expected.valid, false);
   assert.deepEqual(issues.slice(2), expected.issues);
   assert.deepEqual(issues.slice(0, 2).map(({ rule, path: at }) => ({ rule, path: at })), [
-    { rule: "planning-envelope", path: "/data/schema" },
-    { rule: "planning-envelope", path: "/data/kind" },
+    { rule: "envelope-inside-data", path: "/data/schema" },
+    { rule: "envelope-inside-data", path: "/data/kind" },
   ]);
   for (const issue of issues.slice(0, 2)) {
     assert.match(issue.message, /beside "data"/);
@@ -103,8 +103,8 @@ test("AMisplacedEnvelopeIsRefusedEvenWhenTheRestIsValid: only the envelope is na
   assert.equal(response.statusCode, 422);
   const issues = response.json().issues as Array<{ rule: string; path: string }>;
   assert.deepEqual(issues.map(({ rule, path: at }) => ({ rule, path: at })), [
-    { rule: "planning-envelope", path: "/data/schema" },
-    { rule: "planning-envelope", path: "/data/kind" },
+    { rule: "envelope-inside-data", path: "/data/schema" },
+    { rule: "envelope-inside-data", path: "/data/kind" },
   ]);
   assert.deepEqual(await filesUnder(config.dataDir), []);
 });
@@ -135,7 +135,7 @@ test("AWrongEnvelopeIsAnsweredWithTheEnvelopeAlone: a missing or foreign kind or
       assert.match(timeline[index]!.message, says);
       assert.ok(timeline[index]!.message.includes('"kind":"timeline"'), "the message shows the envelope to write");
     });
-    assert.ok(issues.every((issue) => issue.rule === "planning-is-a-timeline" || issue.rule === "planning-envelope"), JSON.stringify(issues));
+    assert.ok(issues.every((issue) => issue.rule === "planning-is-a-timeline" || issue.rule === "envelope-inside-data"), JSON.stringify(issues));
     assert.ok(issues.every((issue) => !OTHER_FORMS.test(issue.message)), JSON.stringify(issues));
   }
   assert.deepEqual(await filesUnder(config.dataDir), []);

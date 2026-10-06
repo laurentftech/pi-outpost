@@ -100,6 +100,14 @@ JSON Schema decides shape. These are the relational rules that follow it, and th
 Rules prefixed `schema/` come from the JSON Schema itself; the suffix is the keyword
 that refused it.
 
+One diagnostic only ever accompanies those. `envelope-inside-data` names a `schema` or
+`kind` written inside `data` instead of beside it, at its path there (`/data/kind`), and
+comes first: without a top-level `schema` a document is judged as version 1, and without
+a top-level `kind` every form `data` can take says why it is not that form, so the fix
+would otherwise be buried under reasons about graphs, sequences and tables nobody sent.
+It is added to a refusal the schema already makes, never decides one, and removes none
+of the other diagnostics.
+
 ## Running it here
 
 ```
