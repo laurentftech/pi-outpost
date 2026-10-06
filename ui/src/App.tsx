@@ -24,7 +24,7 @@ import { ToolCard } from "./components/ToolCard";
 import { createActionDispatch } from "./presentations/actions";
 import { UserMessage } from "./components/UserMessage";
 import { useTheme } from "./theme/useTheme";
-import { hasPathExtractionTool, isImageFile, isPdfFile, rawFileUrl } from "./util/workspacePath";
+import { hasPathExtractionTool, isImageFile, isPdfFile, rawFileUrl, rawFileWorkspace } from "./util/workspacePath";
 import {
   addPathAttachment,
   imagePreviewToAttachment,
@@ -185,6 +185,10 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
     setOutcomeActive,
     refreshOutcome,
   } = useAgent(serverUrl, token, embedded, workspace);
+  // Paths in the tree and in replies are relative to the project this connection is
+  // bound to, so its raw bytes are asked of that project — not of whichever one the
+  // server booted with.
+  const rawWorkspace = rawFileWorkspace(state.workspace);
   useWorkspaceNotifications(state.workspaces, state.workspace ? workspaceKey(state.workspace) : null);
   /**
    * Drop everything a switch must not carry across.
@@ -390,7 +394,7 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
     async function attachPreview() {
       const result = isImageFile(path)
         ? loadedPreviewImagePath === path
-          ? await imagePreviewToAttachment(path, rawFileUrl(serverUrl, path, authToken, state.previewRevision))
+          ? await imagePreviewToAttachment(path, rawFileUrl(serverUrl, path, authToken, state.previewRevision, rawWorkspace))
           : null
           : isPdfFile(path)
           ? // A PDF never reaches "loaded" — the text preview refuses it as binary.
@@ -415,7 +419,7 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
     return () => {
       cancelled = true;
     };
-  }, [state.openFile, state.previewRevision, serverUrl, authToken, loadedPreviewImagePath, loadedPreviewPdf]);
+  }, [state.openFile, state.previewRevision, serverUrl, authToken, rawWorkspace, loadedPreviewImagePath, loadedPreviewPdf]);
 
   function closePreview() {
     activePreviewPathRef.current = null;
@@ -739,7 +743,7 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
         // Absent when the deployment cannot read its own branch, which is what makes the
         // export refuse rather than quietly hand over the visible tail.
         ...(state.olderHistory ? { fetchOlderItems } : {}),
-        connection: { serverUrl, token: authToken },
+        connection: { serverUrl, token: authToken, workspace: rawWorkspace },
         meta: {
           ...(state.workspace ? { project: state.workspace.name } : {}),
           // The session's own name when it has one, its opening line when it does not,
@@ -757,7 +761,7 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
     } finally {
       setExportProgress(null);
     }
-  }, [state.items, state.olderHistory, state.workspace, state.model, sessionLabel, fetchOlderItems, serverUrl, authToken]);
+  }, [state.items, state.olderHistory, state.workspace, state.model, sessionLabel, fetchOlderItems, serverUrl, authToken, rawWorkspace]);
 
   const { jumpToItem, highlightIndex } = useConversationJump({
     items: state.items,
@@ -1099,6 +1103,7 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
               onSave={writeFile}
               serverUrl={serverUrl}
               token={authToken}
+              workspace={rawWorkspace}
               onImageLoad={setLoadedPreviewImagePath}
               onPdfLoad={(path) => setLoadedPreviewPdf({ path, revision: state.previewRevision })}
               rawRevision={state.previewRevision}
@@ -1216,6 +1221,7 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
                     hideReasoning={!filters.reasoning}
                     serverUrl={serverUrl}
                     token={authToken}
+                    workspace={rawWorkspace}
                     onOpenFile={(path) => {
                       setDiffOnOpen(false);
                       readFile(path);

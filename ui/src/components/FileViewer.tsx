@@ -59,6 +59,8 @@ interface FileViewerProps {
   serverUrl?: string;
   /** Auth token appended to /files/raw image URLs (img can't send headers). */
   token?: string | null;
+  /** The project the file's path is relative to — see `rawFileUrl`. */
+  workspace?: string;
   /** Confirms that an image preview decoded successfully before it becomes a chat attachment. */
   onImageLoad: (path: string) => void;
   /** Confirms that a PDF actually rendered before it becomes a chat attachment. */
@@ -162,6 +164,7 @@ export function FileViewer({
   onSave,
   serverUrl = "",
   token = null,
+  workspace,
   docxTemplate,
   onImageLoad,
   onPdfLoad,
@@ -637,7 +640,7 @@ export function FileViewer({
                   img: ({ src, alt, ...rest }) => {
                     const resolved =
                       typeof src === "string" && src !== "" && !/^[a-z][a-z0-9+.-]*:/i.test(src) && !src.startsWith("//")
-                        ? rawFileUrl(serverUrl, resolveRelativeHref(file.path, src), token)
+                        ? rawFileUrl(serverUrl, resolveRelativeHref(file.path, src), token, undefined, workspace)
                         : src;
                     return <img {...rest} src={resolved} alt={alt ?? ""} loading="lazy" className="max-w-full rounded-lg" />;
                   },
@@ -831,7 +834,7 @@ export function FileViewer({
             rather than a workspace write. Not offered for an image or a PDF (there
             is no text to carry), nor while the diff is showing (the reader is
             looking at changes, not at the document). */}
-        {loaded && !image && !pdf && !showGitDiff && <DocxExportButton text={editedText} path={file.path} serverUrl={serverUrl} token={token} template={docxTemplate} />}
+        {loaded && !image && !pdf && !showGitDiff && <DocxExportButton text={editedText} path={file.path} serverUrl={serverUrl} token={token} workspace={workspace} template={docxTemplate} />}
         {loaded && edit === null && <CopyButton text={loaded.content} />}
         {loaded && edit === null && !showGitDiff && writable && (
           <button
@@ -944,6 +947,7 @@ export function FileViewer({
                 path={file.path}
                 serverUrl={serverUrl}
                 token={token}
+                workspace={workspace}
                 revision={rawRevision}
                 findQuery={findMode === "pdf" ? effectiveFindQuery : ""}
                 onFindStateChange={setPdfFindState}
@@ -955,7 +959,7 @@ export function FileViewer({
         {image && edit === null && !showGitDiff && (
           <div className="flex h-full items-center justify-center p-4">
             <img
-              src={rawFileUrl(serverUrl, file.path, token, rawRevision)}
+              src={rawFileUrl(serverUrl, file.path, token, rawRevision, workspace)}
               alt={file.path}
               onLoad={() => onImageLoad(file.path)}
               className="max-h-full max-w-full rounded object-contain"

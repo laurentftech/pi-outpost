@@ -631,6 +631,16 @@ const workspace = await Workspace.create({
   },
 });
 
+/**
+ * The open projects. One today — the registry is what the second one arrives into,
+ * and what makes "already open" a lookup rather than a duplicate.
+ *
+ * Declared before the HTTP server starts, and filled once the boot project's runtime
+ * is attached (below): `/files/raw` looks a project up here, and a request arriving in
+ * between must find an empty registry, not a binding still in its temporal dead zone.
+ */
+const workspaces = new WorkspaceRegistry();
+
 // --- HTTP server ---------------------------------------------------------------
 //
 // Started now, before the AgentSessionRuntime below (which loads models, extensions,
@@ -917,6 +927,21 @@ app.post("/files/docx-template", { config: { rateLimit: { max: DOCX_TEMPLATE_EXP
   }
 });
 
+/**
+ * The project a `/files/raw` request reads from.
+ *
+ * The client names the project its connection is bound to — the `id` of the
+ * snapshot's `workspace`, exactly as this server sent it. Without that, every
+ * image and PDF was read from the boot project: the tree listed a file of the
+ * project being looked at, and its bytes were then looked for in another directory,
+ * which answered 404 and drew a broken image. Only a project already open is
+ * reachable; a name nothing here holds is refused, never opened. An unnamed request
+ * (a client that predates the parameter) keeps reading from the boot project.
+ */
+function rawFileWorkspace(named: string | undefined): Workspace | undefined {
+  return named === undefined ? workspace : workspaces.get(named);
+}
+
 // Raw bytes for workspace files referenced in assistant messages (inline
 // images). `<img>` cannot send headers, so the token rides the query string —
 // same trade-off as the WebSocket.
@@ -935,9 +960,11 @@ app.get("/files/raw", async (req, reply) => {
   }
   const relPath = typeof query.path === "string" ? query.path : undefined;
   if (!relPath) return reply.code(400).send({ error: "missing path" });
+  const target = rawFileWorkspace(typeof query.workspace === "string" ? query.workspace : undefined);
+  if (!target) return reply.code(404).send({ error: "not-found" });
   try {
     // PDFs and images are measured against the PDF ceiling; everything else keeps 1 MB.
-    const bytes = await readFileRaw(workspace.browserRoot, relPath, config.pdf.maxBytes);
+    const bytes = await readFileRaw(target.browserRoot, relPath, config.pdf.maxBytes);
     reply.header("X-Content-Type-Options", "nosniff");
     // Workspace content may be stale seconds later (agent regenerates a plot)
     reply.header("Cache-Control", "no-store");
@@ -1560,11 +1587,6 @@ const builtRuntime: AgentRuntime = await (async () => {
 // handler from driving the wrong project once the server holds more than one.
 workspace.attachRuntime(builtRuntime);
 
-/**
- * The open projects. One today — the registry is what the second one arrives into,
- * and what makes "already open" a lookup rather than a duplicate.
- */
-const workspaces = new WorkspaceRegistry();
 // Nothing to race with at boot: this is the first, so it is its own winner — and
 // the default, which is what an unnamed connection and a pinned embed both get.
 workspaces.add(workspace);
