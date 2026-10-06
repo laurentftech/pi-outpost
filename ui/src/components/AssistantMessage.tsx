@@ -91,6 +91,8 @@ interface AssistantMessageProps {
   serverUrl?: string;
   /** Auth token appended to /files/raw image URLs (img can't send headers). */
   token?: string | null;
+  /** The project the reply's paths are relative to — see `rawFileUrl`. */
+  workspace?: string;
   /** Opens a workspace-relative path in the file viewer. */
   onOpenFile?: (path: string) => void;
   /**
@@ -121,7 +123,7 @@ function ThinkingBlock({ text }: { text: string }) {
   );
 }
 
-export function AssistantMessage({ item, serverUrl = "", token = null, onOpenFile, hideReasoning = false }: AssistantMessageProps) {
+export function AssistantMessage({ item, serverUrl = "", token = null, workspace, onOpenFile, hideReasoning = false }: AssistantMessageProps) {
   const blocks = hideReasoning ? item.blocks.filter((block) => block.type !== "thinking") : item.blocks;
   const fullText = item.blocks
     .filter((b) => b.type === "text")
@@ -142,7 +144,7 @@ export function AssistantMessage({ item, serverUrl = "", token = null, onOpenFil
     function MarkdownImg({ src, alt, ...rest }: React.ImgHTMLAttributes<HTMLImageElement>) {
       const resolved =
         typeof src === "string" && src !== "" && !isExternalRef(src)
-          ? rawFileUrl(serverUrl, resolveRelativeHref("", src), token)
+          ? rawFileUrl(serverUrl, resolveRelativeHref("", src), token, undefined, workspace)
           : src;
       return <img {...rest} src={resolved} alt={alt ?? ""} loading="lazy" className="max-h-96 max-w-full rounded-lg object-contain" />;
     }
@@ -171,7 +173,7 @@ export function AssistantMessage({ item, serverUrl = "", token = null, onOpenFil
     }
 
     return { pre: ReplyMarkdownPre, img: MarkdownImg, a: MarkdownLink };
-  }, [serverUrl, token]);
+  }, [serverUrl, token, workspace]);
 
   // Nothing left to draw — a filtered-away message must not leave an empty frame
   // in the conversation. The list still keeps its scroll position: it renders a

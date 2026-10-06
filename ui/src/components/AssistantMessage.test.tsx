@@ -126,6 +126,13 @@ describe("AssistantMessage", () => {
       expect(img.getAttribute("src")).toContain("secret");
     });
 
+    it("asks for the image in the project the conversation runs in", () => {
+      setup({ item: item({ blocks: [{ type: "text", text: "![plot](out/plot.png)" }] }), workspace: "/work/beta" });
+      const src = new URL(screen.getByRole("img", { name: "plot" }).getAttribute("src")!, "http://host");
+      expect(src.searchParams.get("path")).toBe("out/plot.png");
+      expect(src.searchParams.get("workspace")).toBe("/work/beta");
+    });
+
     it("leaves an external image URL alone", () => {
       setup({ item: item({ blocks: [{ type: "text", text: "![remote](https://example.com/a.png)" }] }) });
       expect(screen.getByRole("img", { name: "remote" })).toHaveAttribute("src", "https://example.com/a.png");

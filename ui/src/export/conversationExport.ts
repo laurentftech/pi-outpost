@@ -27,6 +27,8 @@ import {
 export interface ExportConnection {
   serverUrl: string;
   token: string | null;
+  /** The project the conversation runs in — see `rawFileUrl`. */
+  workspace?: string;
 }
 
 export interface ConversationExportOptions {
@@ -63,7 +65,7 @@ async function inlineImageLoader(connection: ExportConnection): Promise<(src: st
   const cache = new Map<string, InlineImage | undefined>();
   return async (src: string) => {
     if (cache.has(src)) return cache.get(src);
-    const url = referenceUrl("", src, connection.serverUrl, connection.token);
+    const url = referenceUrl("", src, connection.serverUrl, connection.token, connection.workspace);
     let image: InlineImage | undefined;
     if (url !== undefined) {
       try {

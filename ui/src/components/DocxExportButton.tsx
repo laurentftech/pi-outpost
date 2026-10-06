@@ -16,12 +16,15 @@ export function DocxExportButton({
   path,
   serverUrl,
   token,
+  workspace,
   template,
 }: {
   text: string;
   path: string;
   serverUrl?: string;
   token?: string | null;
+  /** The project the document lives in — see `rawFileUrl`. */
+  workspace?: string;
   /** The configured Word template's name: offered as a second export when present. */
   template?: string;
 }) {
@@ -64,7 +67,7 @@ export function DocxExportButton({
       const { downloadDocx, downloadDocxInTemplate } = await import("../export/docxExport");
       // The origin and token the viewer reads this file through: the export
       // fetches the pictures the document references the same way.
-      await (kind === "template" ? downloadDocxInTemplate : downloadDocx)(text, path, { serverUrl, token });
+      await (kind === "template" ? downloadDocxInTemplate : downloadDocx)(text, path, { serverUrl, token, workspace });
       setState("idle");
     } catch (cause) {
       // Said out loud rather than swallowed: a download that silently does nothing

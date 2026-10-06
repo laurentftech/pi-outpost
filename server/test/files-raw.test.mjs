@@ -5,11 +5,11 @@
  */
 import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
-import { writeFile } from "node:fs/promises";
+import { realpath, writeFile } from "node:fs/promises";
 import { request as httpRequest } from "node:http";
 import path from "node:path";
 import { after, before, describe, test } from "node:test";
-import { makeWorkspace, PNG_BYTES, startServer } from "./harness.mjs";
+import { connect, makeWorkspace, PNG_BYTES, startServer } from "./harness.mjs";
 
 const TOKEN = "test-token-files-raw";
 
@@ -163,5 +163,88 @@ describe("GET /files/raw", () => {
       headers: { Authorization: `Bearer ${TOKEN}` },
     });
     assert.equal(bearer.status, 200);
+  });
+});
+
+/**
+ * A server holding several projects reads a file from the project the client names.
+ *
+ * Every path the interface holds — a tree entry, a reference in a reply — is relative
+ * to the project its connection is bound to. The route used to read from the project
+ * the server booted with whatever the client was looking at, so an image of any other
+ * project answered 404 and was drawn as a broken image.
+ */
+describe("GET /files/raw with several projects open", () => {
+  let server;
+  let alpha;
+  let beta;
+  let elsewhere;
+  // Distinct bytes under the same name, so a 200 from the wrong project cannot pass.
+  const ALPHA_PNG = Buffer.concat([PNG_BYTES, Buffer.from("alpha")]);
+  const BETA_PNG = Buffer.concat([PNG_BYTES, Buffer.from("beta-project")]);
+
+  before(async () => {
+    alpha = await realpath(await makeWorkspace({ "shared.png": ALPHA_PNG }));
+    beta = await realpath(await makeWorkspace({ "shared.png": BETA_PNG, "figures/only-beta.png": BETA_PNG }));
+    // A directory that exists, holds an image, and was never opened as a project.
+    elsewhere = await realpath(await makeWorkspace({ "shared.png": PNG_BYTES }));
+    server = await startServer(alpha, { openProjects: [beta] });
+  });
+  after(async () => {
+    await server?.stop();
+  });
+
+  /** The id the server gives a project, read from the snapshot as the interface reads it. */
+  async function projectIds() {
+    const client = connect(server.wsUrl());
+    try {
+      const hello = await client.waitFor((m) => m.type === "hello");
+      const idOf = (root) => {
+        const info = hello.workspaces.find((w) => w.root === root && w.sideOf === undefined);
+        assert.ok(info, `${root} is listed as open`);
+        return info.id ?? info.root;
+      };
+      return { alpha: idOf(alpha), beta: idOf(beta) };
+    } finally {
+      client.close();
+    }
+  }
+
+  const raw = (relPath, workspace) =>
+    fetch(`${server.base}/files/raw?path=${encodeURIComponent(relPath)}${workspace === undefined ? "" : `&workspace=${encodeURIComponent(workspace)}`}`);
+
+  // openlore: scenario=ServeFromTheNamedProject spec=api
+  test("ServeFromTheNamedProject: a named project's image is read from that project's root", async () => {
+    const ids = await projectIds();
+
+    const fromBeta = await raw("figures/only-beta.png", ids.beta);
+    assert.equal(fromBeta.status, 200, "a file only the other project holds is found there");
+    assert.equal(fromBeta.headers.get("content-type"), "image/png");
+    assert.deepEqual(Buffer.from(await fromBeta.arrayBuffer()), BETA_PNG);
+
+    // Same name in both projects: each answers with its own bytes.
+    assert.deepEqual(Buffer.from(await (await raw("shared.png", ids.beta)).arrayBuffer()), BETA_PNG);
+    assert.deepEqual(Buffer.from(await (await raw("shared.png", ids.alpha)).arrayBuffer()), ALPHA_PNG);
+  });
+
+  // openlore: scenario=UnnamedReadsTheBootProject spec=api
+  test("UnnamedReadsTheBootProject: a request naming no project keeps reading the boot project", async () => {
+    const unnamed = await raw("shared.png");
+    assert.equal(unnamed.status, 200);
+    assert.deepEqual(Buffer.from(await unnamed.arrayBuffer()), ALPHA_PNG);
+    assert.equal((await raw("figures/only-beta.png")).status, 404, "another project's file is not reached by accident");
+  });
+
+  // openlore: scenario=UnopenedProjectRefused spec=api
+  test("UnopenedProjectRefused: a project that is not open is refused, never opened", async () => {
+    for (const named of [elsewhere, path.join(beta, "figures"), "not-a-project"]) {
+      const res = await raw("shared.png", named);
+      assert.equal(res.status, 404, `${named} must not be served`);
+      const body = Buffer.from(await res.arrayBuffer());
+      assert.equal(body.includes(PNG_BYTES), false, `${named} leaked image bytes`);
+    }
+    // Confinement still applies inside a named project.
+    const ids = await projectIds();
+    assert.equal((await raw(`../${path.basename(alpha)}/shared.png`, ids.beta)).status, 404);
   });
 });

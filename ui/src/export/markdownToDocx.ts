@@ -14,14 +14,15 @@ export { parseMarkdown, diagramSize, ORDERED_NUMBERING, type DocxBlock } from "@
 
 export async function markdownToDocx(
   text: string,
-  options?: { path?: string; serverUrl?: string; token?: string | null },
+  options?: { path?: string; serverUrl?: string; token?: string | null; workspace?: string },
 ): Promise<DocxBlock[]> {
   const path = options?.path ?? "";
   const serverUrl = options?.serverUrl ?? "";
   const token = options?.token ?? null;
+  const workspace = options?.workspace;
   return mapMarkdown(text, {
-    imageKey: (src) => referenceUrl(path, src, serverUrl, token),
-    loadImage: (src) => loadReference(path, src, serverUrl, token),
+    imageKey: (src) => referenceUrl(path, src, serverUrl, token, workspace),
+    loadImage: (src) => loadReference(path, src, serverUrl, token, workspace),
     renderDiagram,
   });
 }

@@ -381,6 +381,21 @@ describe("FileViewer", () => {
       setup({ file: { status: "error", path: "plot.png", message: "binary" }, token: "secret-token" });
       expect(screen.getByRole("img", { name: "plot.png" })).toHaveAttribute("src", expect.stringContaining("secret-token"));
     });
+
+    it("asks the raw route for the file in the project the viewer shows", () => {
+      // A server holding several projects otherwise reads the path from the one it
+      // booted with, and the image of any other project comes back 404.
+      setup({ file: { status: "error", path: "plot.png", message: "binary" }, workspace: "C:\\work\\beta" });
+      const src = new URL(screen.getByRole("img", { name: "plot.png" }).getAttribute("src")!, "http://host");
+      expect(src.searchParams.get("workspace")).toBe("C:\\work\\beta");
+    });
+
+    it("names the same project for an image a viewed Markdown file references", () => {
+      setup({ file: loaded({ path: "docs/report.md", content: "![fig](fig.png)\n" }), workspace: "/work/beta" });
+      const src = new URL(screen.getByRole("img", { name: "fig" }).getAttribute("src")!, "http://host");
+      expect(src.searchParams.get("path")).toBe("docs/fig.png");
+      expect(src.searchParams.get("workspace")).toBe("/work/beta");
+    });
   });
 });
 
