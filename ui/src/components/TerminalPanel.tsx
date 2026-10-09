@@ -14,6 +14,10 @@ export interface TerminalPanelProps {
   open: boolean;
   onClose(): void;
   cwd?: string;
+  /** Set when every terminal runs inside a sandbox runner: the root it is confined to. */
+  confinedRoot?: string;
+  /** Why no terminal can be opened (the configured sandbox runner is unusable). */
+  unavailable?: string;
   onSetWorkspaceRoot?(root: string): void;
   openTerminal?(terminalId: string, cwd?: string, cols?: number, rows?: number): void;
   sendTerminalInput?(terminalId: string, data: string): void;
@@ -306,6 +310,8 @@ export function TerminalPanel({
   open,
   onClose,
   cwd,
+  confinedRoot,
+  unavailable,
   onSetWorkspaceRoot,
   openTerminal,
   sendTerminalInput,
@@ -490,6 +496,16 @@ export function TerminalPanel({
           </button>
         </div>
 
+        {confinedRoot && !unavailable && (
+          <span
+            data-testid="terminal-confined"
+            title={`This terminal runs in a sandbox: it reads and writes only within ${confinedRoot}`}
+            className="shrink-0 rounded bg-emerald-100 px-1.5 py-0.5 font-sans text-[11px] text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-200"
+          >
+            🔒 confined to {shortenPath(confinedRoot)}
+          </span>
+        )}
+
         {/* Center: Current PWD & Open as Project button */}
         {activeCwd && (
           <div className="hidden md:flex items-center space-x-1.5 px-2 text-xs font-mono text-zinc-500 dark:text-zinc-400">
@@ -562,7 +578,14 @@ export function TerminalPanel({
 
       {/* Terminal active view */}
       <div className="flex-1 min-h-0 relative">
-        {tabs.map((tab) => (
+        {/* An unusable sandbox runner means no shell at all — not one that is asked for
+            and refused, and never one that runs outside it. */}
+        {unavailable ? (
+          <div role="status" data-testid="terminal-unavailable" className="p-3 text-xs text-amber-700 dark:text-amber-300">
+            <p className="font-medium">The terminal is unavailable.</p>
+            <p className="mt-1 break-words font-mono">{unavailable}</p>
+          </div>
+        ) : tabs.map((tab) => (
           <SingleTerminalView
             key={tab.id}
             id={tab.id}

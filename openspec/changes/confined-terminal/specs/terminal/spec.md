@@ -69,4 +69,4 @@ the deployment — so a confined terminal SHALL NOT be a way to move the agent w
 #### Scenario: SyncUnderALockedSandbox
 - **GIVEN** a confined terminal in a workspace whose sandbox is locked by configuration
 - **WHEN** the user changes directory to `/usr` and asks to sync the agent to it
-- **THEN** the request is refused as the picker would refuse it, and the agent's root is unchanged
+- **THEN** the agent's root is unchanged, exactly as if `/usr` had been chosen with the picker

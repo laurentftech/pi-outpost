@@ -383,7 +383,7 @@ export interface AgentState {
   tools: { name: string; active: boolean }[];
   sandbox: { root: string; allowWrite: boolean; allowBash: boolean; writableRoot?: string; projectRoot?: string; rootEditable?: boolean } | null;
   /** Terminal configuration — whether the terminal is enabled and locked. */
-  terminal?: { enabled: boolean; locked?: boolean } | null;
+  terminal?: { enabled: boolean; locked?: boolean; confined?: boolean; unavailable?: string } | null;
   /**
    * Skill paths added through Settings — the list the user may add to and remove
    * from. The configuration file's own `skillPaths` are not carried into the UI:

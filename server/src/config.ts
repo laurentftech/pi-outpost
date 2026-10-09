@@ -105,6 +105,13 @@ export interface TerminalConfig {
    * Arguments passed to the shell process (defaults to ["-l"] on Unix login shells).
    */
   shellArgs?: string[];
+  /**
+   * A sandbox runner (landstrip's `landstrip` binary) every terminal runs inside, confined
+   * to its workspace's sandbox. Resolved against the configuration file. Configuration
+   * only: a setting that loosens confinement has no business being editable from the
+   * interface it confines. Absent: terminals run as before.
+   */
+  sandbox?: string;
 }
 
 export interface DocxConfig {
@@ -1278,10 +1285,12 @@ export function loadConfig(
   if (raw.terminal !== undefined) {
     const terminal = asObject(raw.terminal, "terminal");
     const shell = optionalString(terminal, "shell", "terminal.shell");
+    const sandbox = optionalString(terminal, "sandbox", "terminal.sandbox");
     config.terminal = {
       enabled: optionalBoolean(terminal, "enabled", false),
       shell: shell !== undefined && (shell.includes("/") || shell.includes("\\")) ? resolve(shell) : shell,
       shellArgs: optionalStringArray(terminal, "shellArgs"),
+      ...(sandbox !== undefined ? { sandbox: resolve(sandbox) } : {}),
     };
   }
   if (flags.terminal !== undefined) {

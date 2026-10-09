@@ -470,6 +470,29 @@ describe("loadConfig — resource path resolution", () => {
     });
   });
 
+  test("a terminal sandbox is absent until configured, and resolved against the config file", async () => {
+    await withTempDir(async (dir) => {
+      const configPath = path.join(dir, "config.json");
+      await writeFile(configPath, JSON.stringify({ terminal: { enabled: true } }, null, 2));
+      assert.equal(loadConfig(dir, { config: configPath }).terminal.sandbox, undefined);
+
+      await writeFile(configPath, JSON.stringify({ terminal: { enabled: true, sandbox: "./bin/landstrip" } }, null, 2));
+      assert.equal(loadConfig(dir, { config: configPath }).terminal.sandbox, path.join(dir, "bin", "landstrip"));
+
+      const absolute = path.resolve(path.sep, "opt", "landstrip", "landstrip");
+      await writeFile(configPath, JSON.stringify({ terminal: { sandbox: absolute } }, null, 2));
+      assert.equal(loadConfig(dir, { config: configPath }).terminal.sandbox, absolute);
+    });
+  });
+
+  test("an empty terminal sandbox is refused", async () => {
+    await withTempDir(async (dir) => {
+      const configPath = path.join(dir, "config.json");
+      await writeFile(configPath, JSON.stringify({ terminal: { sandbox: "" } }, null, 2));
+      assert.throws(() => loadConfig(dir, { config: configPath }), /terminal\.sandbox/);
+    });
+  });
+
   // openlore: scenario=SettingsModeIsTheDefault spec=config
   test("an embed policy is absent until one is configured, and absence means settings", async () => {
     await withTempDir(async (dir) => {

@@ -8,6 +8,7 @@ import fs from "node:fs/promises";
 import fsSync from "node:fs";
 import { createRequire } from "node:module";
 import { execFile, spawnSync } from "node:child_process";
+import { confinedEnvironment, prepareConfinedTerminal, type TerminalPolicy } from "./terminalSandbox.ts";
 import { promisify } from "node:util";
 import os from "node:os";
 import path from "node:path";
@@ -163,6 +164,14 @@ export interface TerminalSession {
    * ended". Detaching first makes the shutdown silent, whatever it takes.
    */
   listeners: pty.IDisposable[];
+  /**
+   * Set when the shell runs inside a sandbox runner. The runner stays alive as the
+   * shell's supervisor, so the pty's pid is the runner's, not the shell's: what the
+   * user's shell is doing has to be read from the runner's child.
+   */
+  confined?: boolean;
+  /** Removes the confined terminal's private directory (its temp files and policy). */
+  dispose?: () => Promise<void>;
 }
 
 /**
@@ -187,6 +196,7 @@ function endSession(session: TerminalSession): void {
     // Process might already be dead
   }
   killIfStillAlive(session.ptyProcess);
+  void session.dispose?.().catch(() => {});
 }
 
 /** How long a shell gets to act on SIGHUP before it is killed outright. */
@@ -338,6 +348,7 @@ export class TerminalManager {
     onData: (terminalId: string, data: string) => void,
     onExit: (terminalId: string, exitCode?: number) => void,
     shellOptions?: { shell?: string; shellArgs?: string[]; gitPath?: string },
+    confine?: TerminalConfinement,
   ): Promise<TerminalSession> {
     let socketInFlight = this.inFlightOpens.get(socket);
     if (!socketInFlight) {
@@ -369,16 +380,29 @@ export class TerminalManager {
         this.socketSessions.set(socket, userSessions);
       }
 
-      const { shell, args } = this.getDefaultShell(shellOptions);
-      const resolvedCwd = path.resolve(cwd);
-
-      const env = terminalEnvironment(process.env, this.envOverrides);
+      const { shell, args: shellArgs } = this.getDefaultShell(shellOptions);
+      let resolvedCwd = path.resolve(cwd);
+      let file = shell;
+      let args = shellArgs;
+      let env: NodeJS.ProcessEnv = terminalEnvironment(process.env, this.envOverrides);
+      let files: Awaited<ReturnType<typeof prepareConfinedTerminal>> | undefined;
+      if (confine) {
+        // The runner, not the shell, is what the pty spawns; the shell runs inside it
+        // with a policy written for this terminal alone and an environment built from
+        // nothing, so no key the server holds reaches it.
+        files = await prepareConfinedTerminal(confine.policy);
+        file = confine.runner;
+        args = ["run", "-p", files.policyFile, "--", shell, ...shellArgs];
+        env = confinedEnvironment(process.env, { root: confine.root, tmp: files.tmp, shell });
+        // A starting directory outside the root could not be entered from inside.
+        if (!isInside(resolvedCwd, confine.root)) resolvedCwd = confine.root;
+      }
 
       ensureSpawnHelperExecutable();
 
       let ptyProcess: pty.IPty;
       try {
-        ptyProcess = pty.spawn(shell, args, {
+        ptyProcess = pty.spawn(file, args, {
           name: "xterm-256color",
           cols: Math.max(10, cols),
           rows: Math.max(5, rows),
@@ -388,7 +412,7 @@ export class TerminalManager {
       } catch (err) {
         ensureSpawnHelperExecutable();
         try {
-          ptyProcess = pty.spawn(shell, args, {
+          ptyProcess = pty.spawn(file, args, {
             name: "xterm-256color",
             cols: Math.max(10, cols),
             rows: Math.max(5, rows),
@@ -396,6 +420,7 @@ export class TerminalManager {
             env,
           });
         } catch (retryErr) {
+          void files?.dispose().catch(() => {});
           const msg = retryErr instanceof Error ? retryErr.message : String(retryErr);
           if (msg.includes("posix_spawnp")) {
             throw new Error(
@@ -412,6 +437,7 @@ export class TerminalManager {
         socket,
         cwd: resolvedCwd,
         listeners: [],
+        ...(files ? { confined: true, dispose: files.dispose } : {}),
       };
 
       userSessions.set(terminalId, session);
@@ -429,6 +455,7 @@ export class TerminalManager {
             this.socketSessions.delete(socket);
           }
         }
+        void session.dispose?.().catch(() => {});
         onExit(terminalId, exitCode);
       }));
 
@@ -479,7 +506,7 @@ export class TerminalManager {
   async getCwd(socket: WebSocket, terminalId: string): Promise<string | undefined> {
     const session = this.socketSessions.get(socket)?.get(terminalId);
     if (!session) return undefined;
-    const pid = session.ptyProcess.pid;
+    const pid = session.confined ? ((await childOf(session.ptyProcess.pid)) ?? session.ptyProcess.pid) : session.ptyProcess.pid;
 
     if (process.platform === "linux") {
       try {
@@ -540,4 +567,47 @@ export class TerminalManager {
     }
     this.socketSessions.clear();
   }
+}
+
+/** How a terminal is confined: the runner to spawn, and what its policy allows. */
+export interface TerminalConfinement {
+  /** The sandbox runner (landstrip's binary). */
+  runner: string;
+  /** The root the shell starts in and calls home. */
+  root: string;
+  /** The policy for this terminal, given its private temporary directory. */
+  policy: (tmp: string) => TerminalPolicy;
+}
+
+function isInside(candidate: string, root: string): boolean {
+  const relative = path.relative(root, candidate);
+  return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
+}
+
+/**
+ * The first child of a process, on Linux: a sandbox runner's shell.
+ *
+ * `/proc/<pid>/task/<pid>/children` when the kernel exposes it, else a scan of
+ * `/proc/<n>/stat` for the parent pid. Undefined anywhere else, or once it is gone.
+ */
+async function childOf(pid: number): Promise<number | undefined> {
+  if (process.platform !== "linux") return undefined;
+  try {
+    const listed = (await fs.readFile(`/proc/${pid}/task/${pid}/children`, "utf8")).trim().split(/\s+/)[0];
+    if (listed) return Number(listed);
+  } catch {
+    // Not exposed by this kernel: fall back to the scan.
+  }
+  try {
+    for (const entry of await fs.readdir("/proc")) {
+      if (!/^\d+$/.test(entry)) continue;
+      const stat = await fs.readFile(`/proc/${entry}/stat`, "utf8").catch(() => "");
+      // The command name sits in parentheses and may hold spaces: read after the last ")".
+      const ppid = Number(stat.slice(stat.lastIndexOf(")") + 2).split(" ")[1]);
+      if (ppid === pid) return Number(entry);
+    }
+  } catch {
+    // /proc unreadable: the caller falls back to the runner's own pid.
+  }
+  return undefined;
 }
