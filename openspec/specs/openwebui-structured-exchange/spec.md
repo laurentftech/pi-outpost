@@ -51,6 +51,11 @@ pi-outpost reports for that document, so the model can correct it and show it ag
 - **WHEN** a document larger than the contract's ceiling is shown
 - **THEN** it is refused, the ceiling is named, and nothing is embedded
 
+#### Scenario: AMisplacedEnvelopeIsNamedFirstByShowStructure
+- **WHEN** a graph whose `schema` and `kind` are inside `data` is shown
+- **THEN** nothing is embedded, the answer's diagnostics equal those pi-outpost's gate gives for the
+  same document, and the first two are `envelope-inside-data` at `/data/schema` and `/data/kind`
+
 ### Requirement: TheDocumentIsShownAsValidated
 
 The embedded document SHALL be structurally identical to the document that was validated: no field,

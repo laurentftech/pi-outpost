@@ -64,6 +64,13 @@ SHALL carry text the model can read.
 - **WHEN** a timeline with an inverted activity is created
 - **THEN** nothing is written, and the diagnostics equal pi-outpost's gate's for that document
 
+#### Scenario: AMisplacedEnvelopeIsNamedInTheAnswer
+- **WHEN** a planning whose `schema` and `kind` are inside `data`, and one of whose activities has no
+  end, is created
+- **THEN** nothing is written, and the answer names `/data/schema` and `/data/kind` as misplaced, then
+  lists pi-outpost's gate's diagnostics for the planning with its envelope in place, and nothing about
+  nodes, edges, participants, messages or columns
+
 #### Scenario: AnUpdateIsTargetedAndRevisioned
 - **WHEN** an update moves one milestone against the current revision
 - **THEN** the planning file differs from the previous revision in that date only, and an update
