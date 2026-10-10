@@ -95,7 +95,34 @@ Sync already goes through `open_project` / `update_config`, which enforce the lo
 the requirement asks, so the design adds a server test that drives Sync with a locked sandbox, rather
 than a new code path.
 
+### D6. On Windows 11, MXC as the runner
+
+`terminal.sandbox` may name MXC's executor (`wxc-exec.exe`), recognised by its file name. Measured on
+Windows 11 24H2 (`docs/investigations/windows-sandboxing.md`, findings 7–8): its tier 1 has the OS apply
+the policy, and `NUL`, native git and busybox work there, where landstrip's AppContainer refuses them.
+
+- **Self-check**: `wxc-exec --probe`, accepting `tier: "base-container"` only. The lower tiers stamp
+  ACLs on every allowed tree at each launch, and this policy allows a whole drive for reading.
+- **Launch**: node-pty spawns `wxc-exec <request.json>`; the request carries the shell's command line,
+  its working directory and its environment (the executor passes none of its own), and MXC forwards the
+  pseudo-console to the confined shell (STDIO passthrough). Measured: interactive input and output, no
+  timeout over a 90 s session.
+- **Policy** (`mxcTerminalConfig`): read-write the writable zone and the private temp; read-only the
+  root's drive, the root and the shell's folder; denied by name every entry beside the path from the
+  drive root down to the root (`siblingsToDeny`), the agent directory and the configuration file. The
+  drive is readable because Git for Windows resolves its working directory by listing every parent —
+  the sandbox cannot reach the Mount Manager otherwise (microsoft/mxc#1464). Junctions, and files
+  another process holds open (tested with an exclusive open), are left out: either makes MXC reject the
+  whole launch. Win32k stays on (`ui.disable: false`): PowerShell and git load `user32.dll`.
+
 ## Risks / Trade-offs
+
+- [Windows 11, MXC: a deny list read at launch] → An entry created afterwards beside an ancestor of the
+  root, or a file held open at that moment, stays readable; so do `Program Files` and `ProgramData`.
+  Documented. microsoft/mxc#1464 would remove the need for the readable drive.
+- [Windows 11, MXC: a read-only folder can be neither listed nor entered] → `ls`, `cd` and git fail in
+  the read-only part of a root whose writable zone is narrower. Documented.
+
 
 - [`/proc/<pid>/environ` of the server stays readable from the sandbox: same user, no PID namespace] →
   The confined shell itself gets no secrets (D3). Keys in the *server's* environment remain readable,

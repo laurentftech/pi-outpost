@@ -11,6 +11,8 @@ alone is not enough, and how to check that what you set up is really in force.
 - [What it does not](#what-it-does-not)
 - [Why installing an extension is not enough](#why-installing-an-extension-is-not-enough)
 - [Hand bash to the extension: `sandbox.bashFrom`](#hand-bash-to-the-extension-sandboxbashfrom)
+- [Confine pi-outpost's own bash: `sandbox.bashRunner`](#confine-pi-outposts-own-bash-sandboxbashrunner)
+- [Confine the terminal: `terminal.sandbox`](#confine-the-terminal-terminalsandbox)
 - [The agent cannot rewrite what confines it](#the-agent-cannot-rewrite-what-confines-it)
 - [Several projects open at once](#several-projects-open-at-once)
 - [Check that it is really confined](#check-that-it-is-really-confined)
@@ -38,7 +40,7 @@ boundary: it holds for these tools, and for nothing else.
 
 | Path to the machine | Confined by pi-outpost? |
 | --- | --- |
-| `bash`, once `allowBash` is on | **No.** It starts in the project, and can do anything the server's user can. |
+| `bash`, once `allowBash` is on | **No**, unless `sandbox.bashRunner` names a sandbox runner (below), or `sandbox.bashFrom` hands it to a sandboxing extension. Otherwise it starts in the project, and can do anything the server's user can. |
 | Extensions | **No.** They run inside the server process, with all of its rights. |
 | MCP servers | **No.** They are separate processes, with the rights of the user who starts them. |
 | The terminal panel (`terminal.enabled`) | **Not by default.** It is a shell for you, not for the agent. Set `terminal.sandbox` to confine it to the sandbox (below). |
@@ -109,6 +111,77 @@ Two practical points:
 extension registers its own `bash`, the server log carries a `WARNING` naming the extension, and every
 browser that opens the project gets the same warning, with the `bashFrom` line to add.
 
+## Confine pi-outpost's own bash: `sandbox.bashRunner`
+
+Instead of handing `bash` to an extension, pi-outpost can keep its own and run **every command inside a
+sandbox runner** — the same runners, and the same policy, as a [confined terminal](#confine-the-terminal-terminalsandbox):
+
+```json
+{
+  "sandbox": {
+    "root": "C:\\work\\app",
+    "allowWrite": true,
+    "allowBash": true,
+    "bashRunner": "C:\\tools\\mxc\\wxc-exec.exe",
+    "bashShell": "C:\\tools\\sh.exe"
+  }
+}
+```
+
+- `bashRunner` is MXC's executor (`wxc-exec.exe`, Windows 11) or landstrip's binary (Linux). Paths are
+  resolved against the configuration file. Exclusive with `bashFrom`: naming both is refused at load.
+- `bashShell` is the shell the commands run in. Default `/bin/bash`. **On Windows it must be named**, and
+  it must be busybox-w32's `sh.exe`: Git Bash cannot start in any Windows sandbox (MSYS2's named objects,
+  microsoft/mxc#1061).
+- Each command is one launch of the runner: the command is written to a script in a private temporary
+  directory, and the shell runs it there. Output, exit status, timeout and cancellation behave as for pi's
+  own `bash`; cancelling ends the confined command too.
+- What a command may do is what a confined terminal in the same project may do: read the root, write the
+  writable zone, never the agent directory nor the configuration file, and none of the server's
+  environment variables — so no provider key.
+- If the runner is missing or fails its self-check, or no `bashShell` is named on Windows, **every `bash`
+  call is refused** with the reason, and nothing runs. The session and its other tools keep working.
+- Settings do not edit these two fields, and keep them when applying a sandbox change.
+
+### On Windows 11: MXC and busybox
+
+This is the setup that works on Windows today, measured on Windows 11 24H2 (build 26100.9457); the
+investigation is in [`docs/investigations/windows-sandboxing.md`](investigations/windows-sandboxing.md).
+
+1. **Windows 11 24H2 or 25H2 with the August 2026 update or later** (build 26100/26200.9278+): MXC's
+   tier 1, where Windows applies the policy itself. pi-outpost refuses the lower tiers (Windows 10 and
+   older builds), which would rewrite file ACLs at every launch.
+2. **MXC's executor**: `npm install @microsoft/mxc-sdk` in any folder (Node 24 or later), then point
+   `bashRunner` at `node_modules\@microsoft\mxc-sdk\bin\x64\wxc-exec.exe` (`arm64` on ARM).
+   `wxc-exec.exe --probe` must say `"tier": "base-container"`.
+3. **busybox-w32** as the shell: download `busybox64.exe` from frippery.org and save it as `sh.exe`.
+4. Run the server **in your interactive session**, not as a service nor over SSH.
+
+What works inside: busybox's commands and pipes, `/dev/null`, native git (`status`, `log`, `diff`,
+branches), `node`, `npm -v`, `cmd` and PowerShell; about 0.13 s per command. What to know:
+
+- **busybox is `ash`, not bash**: no `[[ ]]`, arrays or `$'…'`.
+- **The root's drive is readable, minus everything beside the path to the root.** Git for Windows finds
+  its working directory by listing every parent folder, and the sandbox cannot do that otherwise
+  (microsoft/mxc#1464). So `C:\` is readable and every entry of `C:\`, `C:\Users`, `C:\Users\you`…
+  that is not on the way down to the root is denied by name — your `.ssh`, `.gitconfig`, OneDrive,
+  other projects. The list is read at each launch: something created afterwards beside one of those
+  folders, or a file another program holds open at that moment, is not denied. Folders under
+  `C:\Program Files` and `C:\ProgramData` stay readable.
+- **A read-only folder can be neither listed nor entered**: with a `writableRoot` narrower than the root,
+  `ls` or `cd` in the read-only part fails, and so does git there. With the whole root writable (no
+  `writableRoot`), this does not arise.
+- **Network**: allowed, as for the terminal. `git push` needs credentials that the policy keeps out of
+  reach (the credential manager, `~\.ssh`); `npm` needs its cache somewhere writable
+  (`npm_config_cache` inside the writable zone).
+- **Signed commits** (`commit.gpgsign`) fail: gpg and its keyring are out of reach.
+
+### On Linux: landstrip
+
+Name landstrip's binary (see [the terminal's install steps](#confine-the-terminal-terminalsandbox)) and
+leave `bashShell` out to use `/bin/bash`. The policy is the terminal's: reads limited to the root, the
+system directories and the tools on the `PATH`.
+
 ## Confine the terminal: `terminal.sandbox`
 
 The terminal panel is a real shell, with every right of the account the server runs as. It ignores
@@ -154,7 +227,12 @@ What stays readable: the server's own environment, through `/proc/<pid>/environ`
 separate process namespace). Keep provider keys in the credential store (`pi-outpost login`, or
 Settings), not in the server's environment.
 
-**Platforms.** Linux (WSL included) is the supported one. On Windows the runner uses an AppContainer
+**Windows 11: MXC.** `terminal.sandbox` may name MXC's executor (`wxc-exec.exe`) instead, with the same
+requirements, policy and limits as [the agent's `bash` on Windows 11](#on-windows-11-mxc-and-busybox):
+`NUL`, git and busybox work there, and `cmd` or PowerShell open as the terminal's shell (or the one named in
+`terminal.shell`). Its self-check is `wxc-exec.exe --probe`, which must report tier 1 (`base-container`).
+
+**Platforms.** Linux (WSL included) is the supported one for landstrip. On Windows landstrip's runner uses an AppContainer
 and confines reads and writes the same way, and with no `terminal.shell` set the terminal opens PowerShell.
 `cmd`, PowerShell and busybox run inside it; Git Bash does not (MSYS2 needs global named objects an
 AppContainer may not create), and neither does `git`: the null device (`NUL`) is out of reach in the
@@ -214,7 +292,9 @@ which holds the project's structured-exchange profiles, is not affected.
 What this does not cover, and what to set for it:
 
 - **Commands.** A `bash` command is not one of pi-outpost's tools. pi-outpost's own `bash` (without
-  `bashFrom`) can write anywhere the server's user can. pi-landstrip's denies writing
+  `bashFrom` or `bashRunner`) can write anywhere the server's user can. With `bashRunner`, its commands
+  may write in the writable zone, `.pi` included — but that policy comes from the configuration file,
+  which a command can neither read nor write, so nothing it writes widens it. pi-landstrip's denies writing
   `.pi/sandbox.json` by default; add the rest of the directory to its policy:
   `"filesystem": { "denyWrite": [".pi/**"] }`.
 - **The extension's own view of file tools.** With `"toolFilesystemPolicy": "sandbox"` in
@@ -226,6 +306,8 @@ What this does not cover, and what to set for it:
 
 One server, one installation of the extension, loaded into **each project's session**:
 
+- `bashRunner` and `bashShell` are server-wide too; each project's commands are confined to that
+  project's root, with the same policy as its terminal.
 - `allowBash` and `bashFrom` are server-wide. Each project's session checks that its `bash` is the
   extension's when it starts; turning bash on from Settings rebuilds every open project, and is
   rolled back everywhere if the extension is missing.

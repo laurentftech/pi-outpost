@@ -16,6 +16,10 @@
 
 - [x] 3.1 Container test with the real landstrip runner under Docker's default profile, driving a PTY: ReadsStayInsideTheRoot, WritesStayInsideTheWritableZone, TheConfinedTerminalStaysInteractive, TheServerCannotBeSignalled. It runs on the Linux CI job and is skipped elsewhere with the reason printed.
 
+## 3b. Windows 11 (MXC)
+
+- [x] 3b.1 MXC's executor as a runner: `--probe` self-check (tier 1 only), `mxcTerminalConfig`, `siblingsToDeny`, launch through node-pty; unit tests (AnMxcRunnerBelowTier1MeansNoTerminal, the request, the deny walk) and a real test through `wxc-exec.exe` where `MXC_EXEC` is set (ReadsStayInsideTheRoot, WritesStayInsideTheWritableZone, OnWindowsWithMxcGitRunsConfined, KeysDoNotReachTheShell).
+
 ## 4. Sync and interface
 
 - [x] 4.1 SyncUnderALockedSandbox as a server test: a confined terminal's cwd outside the root, Sync refused, agent root unchanged.

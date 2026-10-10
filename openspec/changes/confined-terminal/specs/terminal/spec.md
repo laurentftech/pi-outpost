@@ -45,6 +45,23 @@ in `terminal.shell` SHALL still be used as configured.
 - **THEN** its shell is PowerShell, not Git Bash
 - **AND** with `terminal.shell` set, that shell is used instead
 
+### Requirement: OnWindows11MxcMayConfineTheTerminal
+
+`terminal.sandbox` MAY name MXC's executor (`wxc-exec.exe`). It SHALL be accepted only when its probe
+reports tier 1 (`base-container`); any other tier, or a host other than Windows, SHALL make the terminal
+unavailable with the reason. Under MXC the policy SHALL keep the read and write limits and the denied
+secrets of `TheTerminalMayRunConfined`, and git SHALL be able to run in a writable root.
+
+#### Scenario: AnMxcRunnerBelowTier1MeansNoTerminal
+- **GIVEN** `terminal.sandbox` naming MXC's executor on a host whose probe reports a tier other than `base-container`
+- **WHEN** the runner is checked
+- **THEN** it is refused with a reason naming the tier found and the one required
+
+#### Scenario: OnWindowsWithMxcGitRunsConfined
+- **GIVEN** a confined terminal under MXC tier 1 in a git repository that is its writable root
+- **WHEN** the user runs `git status` and reads the agent directory's `auth.json`
+- **THEN** git answers, and the read is refused
+
 ### Requirement: AConfinedTerminalGetsAMinimalEnvironment
 
 A confined terminal SHALL receive only the variables a shell needs — search path, locale, terminal type,

@@ -30,8 +30,9 @@ signals to the server.
 - Without `terminal.sandbox`, nothing changes.
 - Linux (including WSL) is the supported platform for confinement. On Windows reads and writes are
   confined as well and `cmd`, PowerShell, git and busybox run inside, but Git Bash cannot, and the
-  server has to run in the user's interactive session. macOS is untested; a runner that fails its
-  self-check disables the terminal, as above.
+  server has to run in the user's interactive session. On Windows 11 (24H2/25H2 with the August 2026
+  update) `terminal.sandbox` may name MXC's executor instead, where `NUL`, git and busybox work too.
+  macOS is untested; a runner that fails its self-check disables the terminal, as above.
 
 ## Capabilities
 
