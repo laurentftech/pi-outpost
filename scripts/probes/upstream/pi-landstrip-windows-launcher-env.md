@@ -1,4 +1,4 @@
-<!-- Draft issue (or PR) for landstrip/landstrip, package pi-landstrip. Title: -->
+<!-- Posted as https://github.com/landstrip/landstrip/issues/203 on 2026-10-10. -->
 # pi-landstrip on Windows: launcher environment lacks LOCALAPPDATA/SystemRoot (os error 203); with it fixed, a native shell works
 
 Windows 10 22H2, pi-landstrip **0.19.11** (also seen on 0.19.8), landstrip runner 0.19.11, Pi driving

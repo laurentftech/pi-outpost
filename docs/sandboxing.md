@@ -170,7 +170,7 @@ on Windows 10, interactive session; `scripts/probes/pi-landstrip-bash.mjs` repro
    first call stops on a permission question — in pi-outpost a dialog, and the tool call looks stuck
    until someone answers it.
 2. **Git allowed**: pi-landstrip launches its runner without `LOCALAPPDATA` and `SystemRoot`, and every
-   call fails with `os error 203`. This one needs a pi-landstrip fix (reported upstream; a local patch
+   call fails with `os error 203`. This one needs a pi-landstrip fix (reported upstream as landstrip/landstrip#203; a local patch
    is `scripts/probes/patch-pi-landstrip-launcher-env.cjs`).
 3. **Even then, Git Bash cannot start in an AppContainer** (MSYS2's global named objects).
 
