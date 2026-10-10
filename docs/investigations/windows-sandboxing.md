@@ -217,8 +217,9 @@ Git Bash under any Windows sandbox therefore waits for the MSYS runtime, and pro
 
 ## Next
 
-1. **Report the Mount Manager refusal to MXC** (finding 8) with `path-apis.cs`: it breaks git's cwd and
-   Node's `realpath.native`, and the fix would remove the need for the deny list.
+1. **Follow microsoft/mxc#1464**, the Mount Manager refusal (finding 8), reported 2026-10-10 with
+   `path-apis.cs`: it breaks git's cwd and Node's `realpath.native`, and the fix would remove the need
+   for the deny list.
 2. **Follow microsoft/mxc#1061** for Git Bash; until then pi's `bash` on Windows needs busybox.
 3. **Prototype the confined terminal on tier 1**: `terminal.sandbox` with an MXC kind beside landstrip,
    PowerShell or `cmd` as the shell, the project writable, `C:\` readable with the computed denies,
@@ -260,4 +261,6 @@ All in `scripts/probes/`, each with a header saying what it shows and how to run
   maintainer waiting for `CreateProcessInSandbox`).
 - `microsoft/mxc` — https://github.com/microsoft/mxc
 - microsoft/mxc#1061 — MSYS2/Cygwin runtimes cannot initialise in `processcontainer` (open).
+- microsoft/mxc#1464 — `GetFinalPathNameByHandleW(VOLUME_NAME_DOS)` fails under `BaseContainer`: git's
+  cwd, Node's `realpath.native` (ours, open).
 - buhuikongpan/dsh-win-gitbash#10 — Git Bash under a restricted token: named objects, then the signal pipe.
