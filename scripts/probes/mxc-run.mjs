@@ -33,6 +33,8 @@ for (const [label, cmd] of JSON.parse(process.argv[2])) {
       : { readwritePaths: [join(app, "out")], readonlyPaths: [app, ...list("MXC_READ")], deniedPaths: list("MXC_DENY") },
     // Without it anything loading user32.dll fails with 0xC0000142 (see mxc-probe.ps1).
     ui: { disable: false },
+    // Egress is denied by default; MXC_NET=allow opens it (git fetch/push, npm).
+    ...(process.env.MXC_NET ? { network: { egress: { default: process.env.MXC_NET } } } : {}),
   }));
   let out, code = 0;
   try { out = execFileSync(exe, [...(process.env.MXC_DEBUG ? ["--debug"] : []), cfg], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }); }

@@ -215,6 +215,27 @@ Git Bash under any Windows sandbox therefore waits for the MSYS runtime, and pro
 | A bash-compatible shell for pi's `bash` tool | only busybox-w32, an extra 700 KB executable |
 | Node tools inside (`npm`, `npx`, pi extensions) | at risk: `realpathSync.native` always fails (finding 8) |
 
+### The practicable combination today
+
+Run together on this repository (writable), MXC tier 1 with `C:\` readable, the computed denies,
+`~\.gitconfig` and `~\tools` read-only, busybox as the shell:
+
+| Check | Result |
+| --- | --- |
+| busybox pipes, `grep`, `sed`, `find \| xargs`, `2>/dev/null`, `&&`/`\|\|` | work |
+| git `status`, `log`, `diff`, `switch -c`, identity from `~\.gitconfig` | work |
+| `node -v`, `npm -v` | work |
+| network | denied by default (`getaddrinfo() thread failed to start`); with `network.egress.default: "allow"`, `git ls-remote` works |
+| `npm view` with egress allowed | fails: its cache defaults to the container's own `AppData\Local\Packages\sandbox.…\AC`, which the deny list covers; give it a writable cache |
+| `~\.ssh`, the rest of the profile | refused |
+| `git commit` with `commit.gpgsign = true` | fails (gpg and its keyring are denied) |
+| warnings | git cannot read `~\.config\git\ignore` (harmless; can be made readable) |
+
+Not tried: `git push` (credentials: Git Credential Manager, or an SSH key, both outside the policy). busybox
+is `ash`, not bash: no `[[ ]]`, arrays or `$'…'`.
+
+The SDK has `spawnWithPty`, which is what the confined terminal needs.
+
 ## Next
 
 1. **Follow microsoft/mxc#1464**, the Mount Manager refusal (finding 8), reported 2026-10-10 with
