@@ -12,6 +12,7 @@ import {
   runnerKind,
   siblingsToDeny,
   terminalPolicy,
+  userGitConfig,
 } from "../src/terminalSandbox.ts";
 
 // The Linux policy, whatever host runs the test: POSIX paths, platform pinned.
@@ -123,7 +124,11 @@ describe("confinedEnvironment", () => {
       { PATH: "/usr/bin", LANG: "fr_FR.UTF-8", LC_ALL: "C", OPENAI_API_KEY: "sk-secret", PI_OUTPOST_TOKEN: "t", HOME: "/home/server" },
       { root, tmp, shell: "/bin/bash", platform: "linux" },
     );
-    assert.deepEqual(env, { PATH: "/usr/bin", LANG: "fr_FR.UTF-8", LC_ALL: "C", TERM: "xterm-256color", SHELL: "/bin/bash", HOME: root, TMPDIR: tmp });
+    assert.deepEqual(env, {
+      PATH: "/usr/bin", LANG: "fr_FR.UTF-8", LC_ALL: "C", TERM: "xterm-256color", SHELL: "/bin/bash", HOME: root, TMPDIR: tmp,
+      // npm's cache in the private temp: the profile's is out of reach.
+      npm_config_cache: path.join(tmp, "npm-cache"),
+    });
   });
 });
 
@@ -275,6 +280,39 @@ describe("mxcTerminalConfig", () => {
     assert.equal(config.process.commandLine, '"C:\\Program Files\\PowerShell\\7\\pwsh.exe" -NoLogo -Command "echo \\"hi\\""');
     assert.equal(config.process.cwd, wroot);
     assert.deepEqual(config.process.env, ["PATH=C:\\Windows", `HOME=${wroot}`]);
+  });
+});
+
+describe("git's identity inside", () => {
+  // openlore: scenario=GitKnowsWhoCommits spec=terminal
+  test("the user's .gitconfig is passed as GIT_CONFIG_GLOBAL and readable on its own, in every policy", async () => {
+    const home = await mkdtemp(path.join(tmpdir(), "git-home-"));
+    try {
+      assert.equal(userGitConfig(home), undefined, "no file, nothing to pass");
+      await writeFile(path.join(home, ".gitconfig"), "[user]\n\tname = Me\n");
+      const gitConfig = userGitConfig(home)!;
+      assert.equal(gitConfig, path.join(home, ".gitconfig"));
+
+      const env = confinedEnvironment({}, { root, tmp, shell: "/bin/bash", platform: "linux", gitConfig });
+      assert.equal(env.GIT_CONFIG_GLOBAL, gitConfig);
+      assert.equal(confinedEnvironment({}, { root, tmp, shell: "/bin/bash", platform: "linux" }).GIT_CONFIG_GLOBAL, undefined);
+
+      // landstrip, Linux: the file is allowed back, not its folder.
+      const linuxPolicy = terminalPolicy({ ...linux, root, allowWrite: true, tmp, readOnlyFiles: ["/home/me/.gitconfig"] });
+      assert.ok(linuxPolicy.filesystem.allowRead.includes("/home/me/.gitconfig"));
+      assert.ok(!linuxPolicy.filesystem.allowRead.includes("/home/me"));
+      assert.ok(!linuxPolicy.filesystem.allowWrite.includes("/home/me/.gitconfig"), "read-only");
+      // MXC: read-only, and taken out of the deny list that names it as a sibling.
+      const mxc = mxcTerminalConfig({
+        root: "C:\\Users\\me\\work\\app", allowWrite: true, tmp: "C:\\t", shell: "cmd.exe", shellArgs: [], cwd: "C:\\Users\\me\\work\\app", env: {},
+        siblings: ["C:\\Users\\me\\.gitconfig", "C:\\Users\\me\\.ssh"], readOnlyFiles: ["C:\\Users\\me\\.gitconfig"],
+      });
+      assert.ok(mxc.filesystem.readonlyPaths.includes("C:\\Users\\me\\.gitconfig"));
+      assert.ok(!mxc.filesystem.readwritePaths.includes("C:\\Users\\me\\.gitconfig"), "read-only");
+      assert.deepEqual(mxc.filesystem.deniedPaths, ["C:\\Users\\me\\.ssh"], "the rest of the home stays denied");
+    } finally {
+      await rm(home, { recursive: true, force: true });
+    }
   });
 });
 

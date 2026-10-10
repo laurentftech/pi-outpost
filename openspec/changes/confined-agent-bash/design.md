@@ -55,7 +55,8 @@ it); one outside the root is clamped to the root, as for the terminal.
 
 ### D4. The terminal's environment
 
-`confinedEnvironment(process.env, { root, tmp, shell })`. Pi's `PI_*` session variables are not passed:
+`confinedEnvironment(process.env, { root, tmp, shell, gitConfig })`: the terminal's, with npm's cache in the
+command's temp and the user's `~/.gitconfig` as `GIT_CONFIG_GLOBAL`, readable on its own. Pi's `PI_*` session variables are not passed:
 their prefix is shared with the server's own (`PI_OUTPOST_TOKEN`), and building the list beats filtering
 it (`confined-terminal` D3).
 

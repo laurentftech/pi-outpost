@@ -46,14 +46,19 @@ command's output, exit status, timeout and cancellation SHALL behave as for an u
 ### Requirement: AConfinedCommandGetsAMinimalEnvironment
 
 A command run by a confined `bash` SHALL receive the environment of a confined terminal — search path,
-locale, terminal type, shell, a home inside the sandbox root, a private temporary directory, and on
-Windows the system's locations — and SHALL NOT receive the server's other variables, provider keys
+locale, terminal type, shell, a home inside the sandbox root, a private temporary directory and npm cache,
+the user's git configuration (read-only, nothing beside it), and on Windows the system's locations — and SHALL NOT receive the server's other variables, provider keys
 included.
 
 #### Scenario: KeysDoNotReachTheAgentsCommands
 - **GIVEN** the server started with `OPENAI_API_KEY` in its environment and `bash` confined by a runner
 - **WHEN** the agent lists its command's environment
 - **THEN** `OPENAI_API_KEY` is absent
+
+#### Scenario: TheAgentsCommitsCarryTheUsersIdentity
+- **GIVEN** a user whose git configuration names them and does not require signing, and `bash` confined by a runner
+- **WHEN** the agent commits, then appends to that configuration, then asks npm for its cache
+- **THEN** the commit's author is the user, the append is refused and the file unchanged, and npm's cache is in the command's private temporary directory
 
 ### Requirement: AnUnusableRunnerRefusesEveryCommand
 

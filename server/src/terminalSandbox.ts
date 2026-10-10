@@ -19,9 +19,9 @@
  * different document (`mxcTerminalConfig`) and it carries the shell's command line.
  */
 import { execFile } from "node:child_process";
-import { closeSync, constants as fsConstants, lstatSync, openSync, readdirSync } from "node:fs";
+import { closeSync, constants as fsConstants, existsSync, lstatSync, openSync, readdirSync } from "node:fs";
 import { access, mkdtemp, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import path from "node:path";
 
 /** Whether terminals can be confined, and if not, the reason a user is shown. */
@@ -149,6 +149,8 @@ export interface TerminalPolicyInput {
   tmp: string;
   /** The shell's search path: the programs it runs have to be readable. */
   searchPath?: string;
+  /** Single files readable besides the trees: the user's git configuration (see `userGitConfig`). */
+  readOnlyFiles?: string[];
   /** Whose rules: defaults to this host's. A parameter so both are tested everywhere. */
   platform?: NodeJS.Platform;
   /** Windows' system directory (`%SystemRoot%`), readable by every shell. */
@@ -186,7 +188,7 @@ export function terminalPolicy(input: TerminalPolicyInput): TerminalPolicy {
   return {
     filesystem: {
       denyRead: unique(denyRead),
-      allowRead: unique([...SYSTEM_READ, ...toolTrees(input.searchPath, path.posix), input.root, input.tmp]),
+      allowRead: unique([...SYSTEM_READ, ...toolTrees(input.searchPath, path.posix), input.root, input.tmp, ...(input.readOnlyFiles ?? [])]),
       allowWrite: unique([...writable, input.tmp, "/dev/null", "/dev/tty", "/dev/pts"]),
     },
     network: { allowNetwork: true },
@@ -210,7 +212,7 @@ function windowsTerminalPolicy(input: TerminalPolicyInput): TerminalPolicy {
   // Python) made a terminal take eleven seconds to appear.
   const profile = input.userProfile ? slash(input.userProfile).toLowerCase().replace(/\/+$/, "") + "/" : undefined;
   const tools = searchEntries(input.searchPath, path.win32).filter((entry) => !profile || !slash(entry).toLowerCase().startsWith(profile));
-  const allowRead = [input.systemRoot, ...tools, input.root, input.tmp]
+  const allowRead = [input.systemRoot, ...tools, input.root, input.tmp, ...(input.readOnlyFiles ?? [])]
     .filter((entry): entry is string => Boolean(entry))
     .map(slash);
   const denyRead = [...new Set(allowRead.map((entry) => `${path.win32.parse(entry).root.replaceAll("\\", "/")}`))];
@@ -278,6 +280,8 @@ export interface MxcTerminalInput {
   env: Record<string, string>;
   /** Everything beside the path down to the root, from `siblingsToDeny`. */
   siblings: string[];
+  /** Single files readable besides the trees: the user's git configuration. */
+  readOnlyFiles?: string[];
 }
 
 /**
@@ -299,7 +303,7 @@ export function mxcTerminalConfig(input: MxcTerminalInput): MxcTerminalConfig {
   const writable = input.allowWrite ? [input.writableRoot ?? input.root] : [];
   const shellDir = path.win32.isAbsolute(input.shell) ? [path.win32.dirname(input.shell)] : [];
   const readwritePaths = unique([...writable, input.tmp]);
-  const readonlyPaths = unique([drive, input.root, ...shellDir].filter((p) => !readwritePaths.includes(p)));
+  const readonlyPaths = unique([drive, input.root, ...shellDir, ...(input.readOnlyFiles ?? [])].filter((p) => !readwritePaths.includes(p)));
   const allowed = new Set([...readwritePaths, ...readonlyPaths].map((p) => p.toLowerCase()));
   const deniedPaths = unique([...input.siblings, input.agentDir, input.configFile].filter((p): p is string => Boolean(p)))
     // Denying a path that is also allowed leaves which one wins to the sandbox: never ask.
@@ -408,10 +412,24 @@ const WINDOWS_PASSED_THROUGH = [
   "LOCALAPPDATA",
 ];
 
+/**
+ * The user's own git configuration, when there is one: `~/.gitconfig` of the account the
+ * server runs as.
+ *
+ * A confined shell's HOME is its root, so git would look for `<root>/.gitconfig` and find
+ * no identity: every commit would stop on "Please tell me who you are". Passed instead as
+ * `GIT_CONFIG_GLOBAL`, and readable on its own — read-only, the rest of the home stays
+ * out. Files it includes (`include.path`) are not opened up.
+ */
+export function userGitConfig(home: string = homedir()): string | undefined {
+  const file = path.join(home, ".gitconfig");
+  return existsSync(file) ? file : undefined;
+}
+
 /** The environment of a confined shell: a home in its root, its own temp, no secrets. */
 export function confinedEnvironment(
   serverEnv: NodeJS.ProcessEnv,
-  options: { root: string; tmp: string; shell: string; platform?: NodeJS.Platform },
+  options: { root: string; tmp: string; shell: string; platform?: NodeJS.Platform; gitConfig?: string },
 ): Record<string, string> {
   const windows = (options.platform ?? process.platform) === "win32";
   const env: Record<string, string> = {};
@@ -426,6 +444,10 @@ export function confinedEnvironment(
   env.SHELL = options.shell;
   env.HOME = options.root;
   env.TMPDIR = options.tmp;
+  // npm's cache defaults to the user's profile, which is out of reach: a writable one, and
+  // a private one, in the temp. It goes with the terminal (or the command).
+  env.npm_config_cache = path.join(options.tmp, "npm-cache");
+  if (options.gitConfig) env.GIT_CONFIG_GLOBAL = options.gitConfig;
   if (windows) {
     // The private temp, not the root: Windows and PowerShell keep a profile's data under
     // USERPROFILE (AppData\Roaming\…\PSReadLine history, the container's own

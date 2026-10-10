@@ -55,7 +55,7 @@ describe("the agent's bash under MXC's real executor", { skip }, () => {
     if (base) await rm(base, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
   });
 
-  async function bash(command: string, options: { writableRoot?: string; signal?: AbortSignal; timeout?: number } = {}) {
+  async function bash(command: string, options: { writableRoot?: string; signal?: AbortSignal; timeout?: number; gitConfig?: string } = {}) {
     const ops = confinedBashOperations({
       runner: RUNNER!,
       shell: SHELL!,
@@ -63,6 +63,7 @@ describe("the agent's bash under MXC's real executor", { skip }, () => {
       ...(options.writableRoot ? { writableRoot: options.writableRoot } : {}),
       allowWrite: true,
       agentDir,
+      ...(options.gitConfig ? { gitConfig: options.gitConfig } : {}),
     });
     let output = "";
     const { exitCode } = await ops.exec(command, root, {
@@ -120,6 +121,25 @@ describe("the agent's bash under MXC's real executor", { skip }, () => {
     await new Promise((resolve) => setTimeout(resolve, 1000));
     assert.equal(shells(), before, "a confined sh.exe outlived its call");
     await assert.rejects(bash("sleep 60", { timeout: 2 }), /^Error: timeout:2$/);
+  });
+
+  // openlore: scenario=TheAgentsCommitsCarryTheUsersIdentity spec=sandbox-runner-bash
+  test("git commits with the user's identity, read from their .gitconfig, which stays unwritable; npm has a cache", async () => {
+    // Outside the root, like the real ~/.gitconfig: readable on its own, nothing beside it.
+    const gitConfig = path.join(base, "user.gitconfig");
+    await writeFile(gitConfig, "[user]\n\tname = Sandbox Tester\n\temail = tester@example.com\n[commit]\n\tgpgsign = false\n");
+    const gc = slash(gitConfig);
+    const result = await bash(
+      `git commit -q --allow-empty -m from-the-sandbox && git log -1 --format='author=%an <%ae>'; ` +
+        `echo tampered >> "${gc}"; echo "append-exit=$?"; cat "${slash(path.join(base, "other", "secret.txt"))}" >/dev/null 2>&1; echo "beside-exit=$?"; ` +
+        `echo "cache=$(npm config get cache)"`,
+      { gitConfig },
+    );
+    assert.match(result.output, /^author=Sandbox Tester <tester@example\.com>$/m, result.output);
+    assert.match(result.output, /^append-exit=[1-9]/m, "the git configuration was writable");
+    assert.doesNotMatch(await readFile(gitConfig, "utf8"), /tampered/);
+    assert.match(result.output, /^beside-exit=[1-9]/m, "opening the git configuration opened its folder");
+    assert.match(result.output, /^cache=.*pi-outpost-bash-.*npm-cache$/m, "npm's cache is not in the private temp");
   });
 
   // openlore: scenario=KeysDoNotReachTheAgentsCommands spec=sandbox-runner-bash

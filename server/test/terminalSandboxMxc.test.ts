@@ -163,9 +163,17 @@ describe("a confined terminal under MXC's real executor", { skip }, () => {
     const until = Date.now() + 20_000;
     while (!output.def.slice(start).includes("progress-done") && Date.now() < until) await new Promise((resolve) => setTimeout(resolve, 200));
     const seen = output.def.slice(start);
+    // A local script runs: the execution policy is given, since the registry holding it is refused.
+    const scriptStart = output.def.length;
+    manager.write(socket, "def", "Set-Content t.ps1 \"'script-' + 'ran'\"; .\\t.ps1; Remove-Item t.ps1\r");
+    const scriptUntil = Date.now() + 20_000;
+    while (!output.def.slice(scriptStart).includes("script-ran") && Date.now() < scriptUntil) await new Promise((resolve) => setTimeout(resolve, 200));
+    const script = output.def.slice(scriptStart);
     manager.close(socket, "def");
     assert.match(seen, /progress-done/, `the command did not finish: ${seen}`);
     assert.doesNotMatch(seen, /0x5|ReadConsoleOutput/, "drawing progress was refused");
+    assert.match(script, /script-ran/, `a local .ps1 did not run: ${script}`);
+    assert.doesNotMatch(script, /AuthorizationManager/);
   });
 
   // openlore: scenario=KeysDoNotReachTheShell spec=terminal

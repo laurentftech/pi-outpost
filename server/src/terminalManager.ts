@@ -269,6 +269,9 @@ export function terminalEnvironment(
   return env;
 }
 
+/** The default confined PowerShell's arguments (see getDefaultShell). */
+export const CONFINED_POWERSHELL_ARGS = ["-ExecutionPolicy", "RemoteSigned", "-NoExit", "-Command", "$ProgressPreference='SilentlyContinue'"];
+
 export class TerminalManager {
   /**
    * @param envOverrides Variables a terminal gets instead of the server's own — undefined
@@ -328,8 +331,11 @@ export class TerminalManager {
         // Confined, PowerShell's progress bars fail: drawing one reads the console buffer
         // back, which the sandbox refuses ("Accès refusé 0x5 … tampon de sortie de la
         // console"), and the command dies with it (Invoke-WebRequest, Expand-Archive…).
-        // Turned off for the session; a shell named in terminal.shell is left as given.
-        return { shell: powershellPath, args: options?.confined ? ["-NoExit", "-Command", "$ProgressPreference='SilentlyContinue'"] : [] };
+        // Turned off for the session. And its execution policy cannot be read there (the
+        // registry is refused), so every .ps1 - npm.ps1 included - fails
+        // "AuthorizationManager": given for the process, as Windows' own default.
+        // A shell named in terminal.shell is left as given.
+        return { shell: powershellPath, args: options?.confined ? CONFINED_POWERSHELL_ARGS : [] };
       }
 
       // 3. cmd as last resort
@@ -401,7 +407,7 @@ export class TerminalManager {
         const startIn = resolvedCwd;
         let shellEnv: Record<string, string> = {};
         files = await prepareConfinedTerminal((tmp) => {
-          shellEnv = confinedEnvironment(process.env, { root: confine.root, tmp, shell });
+          shellEnv = confinedEnvironment(process.env, { root: confine.root, tmp, shell, gitConfig: confine.gitConfig });
           return confine.policy({ tmp, shell, shellArgs, cwd: startIn, env: shellEnv });
         });
         file = confine.runner;
@@ -590,6 +596,8 @@ export interface TerminalConfinement {
   kind?: RunnerKind;
   /** The root the shell starts in and calls home. */
   root: string;
+  /** The user's git configuration, read-only inside (see `userGitConfig`): git's identity. */
+  gitConfig?: string;
   /** The policy for this terminal, given its private temporary directory and what it runs. */
   policy: (terminal: ConfinedShell) => TerminalPolicy | MxcTerminalConfig;
 }

@@ -1,6 +1,6 @@
 # Scenario coverage — confined-terminal
 
-Capability: `terminal` (6 added requirements, 12 scenarios). Three kinds of evidence:
+Capability: `terminal` (6 added requirements, 13 scenarios). Three kinds of evidence:
 
 - **Real runner, Linux**: `server/test/terminalSandboxReal.test.ts` drives a real pty through
   `TerminalManager` with landstrip's runner (`LANDSTRIP_BIN`, set by CI's Linux job; skipped elsewhere
@@ -24,6 +24,7 @@ Capability: `terminal` (6 added requirements, 12 scenarios). Three kinds of evid
 | AnMxcRunnerBelowTier1MeansNoTerminal | covered | `server/test/terminalSandbox.test.ts` — "only tier 1 is usable: a lower tier would stamp ACLs over the readable drive": `base-container` is accepted; `appcontainer-dacl` is refused with a reason naming it and `base-container`; a build that cannot deny paths is refused. "anywhere but Windows, or a probe that fails or says nothing usable, is a reason" covers the other refusals. |
 | OnWindowsWithMxcGitRunsConfined | covered | `server/test/terminalSandboxMxc.test.ts` — "git finds its work tree and runs, inside the sandbox": in a writable root, `git rev-parse` answers `true`, `git status` answers, `NUL` opens, and the agent directory's key file stays refused. |
 | KeysDoNotReachTheShell | covered | `server/test/terminalSandbox.test.ts` — "keys and other server variables stay out; the shell's own basics are set" (the exact environment) and "the request carries the command line, the start directory and only the given environment" (MXC's request carries only the built list); `server/test/terminalSandboxWire.test.mjs` — "a confined terminal is spawned through the runner with its policy, a built environment, and cleaned up" (the runner's recorded environment lacks the key); `server/test/terminalSandboxMxc.test.ts` — "the server's keys are not in the shell's environment" (`set` inside the real container). |
+| GitKnowsWhoCommits | covered | `server/test/terminalSandbox.test.ts` — "the user's .gitconfig is passed as GIT_CONFIG_GLOBAL and readable on its own, in every policy": the terminal's environment carries `GIT_CONFIG_GLOBAL`; landstrip's policy allows the file back, not its folder, read-only; MXC's lists it read-only and takes it out of the deny list while the rest of the home stays denied. The same environment and policy functions, run for real under MXC, are proven by `server/test/confinedBashMxc.test.ts` — "git commits with the user's identity…" (author, unwritable file, folder beside unreadable). |
 | ARunnerThatFailsItsSelfCheck | covered | `server/test/terminalSandboxWire.test.mjs` — "a runner that fails its self-check means no terminal, with its reason, and no shell": the open is refused with the runner's words, and the runner's log shows only `doctor`. |
 | AMissingRunner | covered | `server/test/terminalSandboxWire.test.mjs` — "a runner that does not exist means no terminal, with a reason naming the path". |
 | SyncUnderALockedSandbox | covered | `server/test/terminalSandboxWire.test.mjs` — "syncing the agent to a confined terminal's directory cannot move a locked root": the sync is refused and the agent's root is unchanged. |

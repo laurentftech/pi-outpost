@@ -65,13 +65,19 @@ secrets of `TheTerminalMayRunConfined`, and git SHALL be able to run in a writab
 ### Requirement: AConfinedTerminalGetsAMinimalEnvironment
 
 A confined terminal SHALL receive only the variables a shell needs — search path, locale, terminal type,
-shell and a home inside the sandbox root — and SHALL NOT receive the server's other variables, provider
-keys included.
+shell, a home inside the sandbox root, a private npm cache, and the user's git configuration as
+`GIT_CONFIG_GLOBAL` when they have one — and SHALL NOT receive the server's other variables, provider
+keys included. That git configuration file SHALL be readable inside, read-only, and nothing beside it.
 
 #### Scenario: KeysDoNotReachTheShell
 - **GIVEN** the server started with `OPENAI_API_KEY` in its environment and a confined terminal
 - **WHEN** the user lists the shell's environment
 - **THEN** `OPENAI_API_KEY` is absent
+
+#### Scenario: GitKnowsWhoCommits
+- **GIVEN** a user whose `~/.gitconfig` names them, and a confined terminal
+- **WHEN** git reads its identity in the terminal
+- **THEN** it is the user's, the file cannot be written, and the folder it sits in stays unreadable
 
 ### Requirement: AnUnusableRunnerMeansNoTerminal
 

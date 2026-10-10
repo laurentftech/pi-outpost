@@ -172,8 +172,11 @@ branches), `node`, `npm -v`, `cmd` and PowerShell; about 0.13 s per command. Wha
   `ls` or `cd` in the read-only part fails, and so does git there. With the whole root writable (no
   `writableRoot`), this does not arise.
 - **Network**: allowed, as for the terminal. `git push` needs credentials that the policy keeps out of
-  reach (the credential manager, `~\.ssh`); `npm` needs its cache somewhere writable
-  (`npm_config_cache` inside the writable zone).
+  reach (the credential manager, `~\.ssh`). npm's cache is set to the command's (or terminal's) private
+  temporary directory, so it works, and starts empty each time.
+- **Git's identity**: your `~\.gitconfig` is passed as `GIT_CONFIG_GLOBAL` and readable on its own,
+  read-only, so commits carry your name. Files it includes (`include.path`) are not opened up, and a
+  configuration that requires signing makes commits fail (next point).
 - **Signed commits** (`commit.gpgsign`) fail, and opening the keyring does not help: MXC's tier 1
   enforces ASLR, and GnuPG's Windows binaries (Gpg4win 4.x 32-bit and 5.1.1 64-bit alike) are built
   without it, so `gpg.exe` cannot start in the sandbox (`ERROR_ILLEGAL_DLL_RELOCATION`, 623). Windows
@@ -219,7 +222,7 @@ With `terminal.sandbox` set:
 | Reads | The sandbox root (the project root without a sandbox), the system directories, the tools on the `PATH`, and a private temporary directory. Nothing else — other projects, the home directory, `/opt`, `/var`. |
 | Writes | The writable zone and the private temporary directory. Nothing with `allowWrite: false`. |
 | Never | The agent directory (provider keys) and the configuration file, even under an allowed tree. |
-| Environment | `PATH`, the locale, `TERM`, `SHELL`, and `HOME` set to the root (on Windows, `USERPROFILE` is the private temporary directory, so a profile's data — PowerShell's history — never lands in the project). None of the server's other variables, so no key it holds. |
+| Environment | `PATH`, the locale, `TERM`, `SHELL`, `HOME` set to the root, npm's cache in the private temporary directory, and `GIT_CONFIG_GLOBAL` naming your `~/.gitconfig` (readable on its own, read-only, for git's identity) (on Windows, `USERPROFILE` is the private temporary directory, so a profile's data — PowerShell's history — never lands in the project). None of the server's other variables, so no key it holds. |
 | Other processes | Cannot be signalled from inside. |
 | "open as project" | Moves the agent only where the directory picker could: locks still hold. |
 

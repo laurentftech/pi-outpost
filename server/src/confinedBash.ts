@@ -40,6 +40,8 @@ export interface ConfinedBashOptions {
   agentDir?: string;
   /** Never readable. */
   configFile?: string;
+  /** The user's git configuration, read-only inside: git's identity (see `userGitConfig`). */
+  gitConfig?: string;
   /** Whose rules. A parameter so the Windows path is tested everywhere. */
   platform?: NodeJS.Platform;
   /** The runner's self-check. A parameter for tests; cached per runner otherwise. */
@@ -84,7 +86,8 @@ export function confinedBashOperations(options: ConfinedBashOptions): BashOperat
         await writeFile(script, command, { mode: 0o600 });
         // A start outside the root could not be entered from inside it.
         const startIn = isInside(cwd, options.root) ? cwd : options.root;
-        const env = confinedEnvironment(process.env, { root: options.root, tmp, shell, platform });
+        const env = confinedEnvironment(process.env, { root: options.root, tmp, shell, platform, gitConfig: options.gitConfig });
+        const readOnlyFiles = options.gitConfig ? [options.gitConfig] : [];
         const policyFile = path.join(tmp, "policy.json");
         let args: string[];
         if (kind === "mxc") {
@@ -100,6 +103,7 @@ export function confinedBashOperations(options: ConfinedBashOptions): BashOperat
             cwd: startIn,
             env,
             siblings: siblingsToDeny(options.root),
+            readOnlyFiles,
           });
           await writeFile(policyFile, JSON.stringify(request), { mode: 0o600 });
           args = [policyFile];
@@ -114,6 +118,7 @@ export function confinedBashOperations(options: ConfinedBashOptions): BashOperat
             searchPath: env.PATH,
             systemRoot: process.env.SystemRoot,
             userProfile: process.env.USERPROFILE,
+            readOnlyFiles,
             platform,
           });
           await writeFile(policyFile, JSON.stringify(policy), { mode: 0o600 });

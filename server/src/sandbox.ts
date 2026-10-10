@@ -55,6 +55,7 @@ import { createStructuredExchangeFigureToolDefinition } from "./structuredExchan
 import { createTimelineComparisonToolDefinition } from "./timelineComparisonTool.ts";
 import { createStructuredExchangeTableToolDefinition } from "./structuredExchangeTableTool.ts";
 import { confinedBashOperations } from "./confinedBash.ts";
+import { userGitConfig } from "./terminalSandbox.ts";
 
 /**
  * Resolve `target` following symlinks in its deepest existing ancestor, so a
@@ -341,6 +342,8 @@ export async function createSandboxedTools(
           ...(realWritableRoot !== null && realWritableRoot !== realRoot ? { writableRoot: realWritableRoot } : {}),
           allowWrite: realWritableRoot !== null,
           ...neverReadable,
+          // git's identity: the user's ~/.gitconfig, readable on its own.
+          gitConfig: userGitConfig(),
         })
       : undefined;
     const bash = createBashToolDefinition(realRoot, operations ? { operations } : undefined) as ToolDefinition;

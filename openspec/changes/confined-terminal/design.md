@@ -75,8 +75,10 @@ appear.
 
 ### D3. A minimal environment, built rather than filtered
 
-The confined shell gets `PATH`, `LANG`/`LC_*`, `TERM`, `SHELL`, `HOME=<root>` and `TMPDIR=<tmp>`, and
-nothing else from the server. On Windows it also gets the system's locations (`SystemRoot`,
+The confined shell gets `PATH`, `LANG`/`LC_*`, `TERM`, `SHELL`, `HOME=<root>`, `TMPDIR=<tmp>`,
+`npm_config_cache=<tmp>/npm-cache` and, when the user has one, `GIT_CONFIG_GLOBAL=~/.gitconfig` (that
+file alone allowed back for reading: git has the user's identity while HOME is the root), and nothing
+else from the server. On Windows it also gets the system's locations (`SystemRoot`,
 `ProgramData`, `LOCALAPPDATA`, `ComSpec`, `PATHEXT`…), with `USERPROFILE`, `TEMP` and `TMP` pointing
 into `tmp`. Without `ProgramData` and `LOCALAPPDATA` the runner cannot create its AppContainer.
 `USERPROFILE` was the root at first: PowerShell then wrote its PSReadLine history, and MXC its
