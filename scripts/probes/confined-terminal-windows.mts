@@ -32,7 +32,7 @@ const session = await manager.open(
   (_id, data) => { output += data; },
   (_id, code) => { output += `\n[exit ${code}]\n`; },
   {},
-  { runner, root, policy: (tmp) => terminalPolicy({ root, writableRoot: out, allowWrite: true, agentDir, tmp, searchPath: process.env.PATH, systemRoot: process.env.SystemRoot }) },
+  { runner, root, policy: (tmp) => terminalPolicy({ root, writableRoot: out, allowWrite: true, agentDir, tmp, searchPath: process.env.PATH, systemRoot: process.env.SystemRoot, userProfile: process.env.USERPROFILE }) },
 );
 report.shell = session.ptyProcess.process;
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));

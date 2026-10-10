@@ -69,6 +69,23 @@ describe("terminalPolicy on Windows", () => {
     assert.ok(policy.filesystem.denyRead.includes("C:/"), JSON.stringify(policy.filesystem.denyRead));
   });
 
+  test("search-path entries inside the user's profile are left out: per-user installs cost seconds per launch", () => {
+    const policy = terminalPolicy({
+      ...win,
+      root: wroot,
+      allowWrite: true,
+      tmp: wtmp,
+      userProfile: "C:\\Users\\me",
+      searchPath: "C:\\Program Files\\nodejs;C:\\Users\\me\\AppData\\Roaming\\npm;c:\\users\\ME\\.local\\bin",
+    });
+    assert.ok(policy.filesystem.allowRead.includes("C:/Program Files/nodejs"));
+    for (const userInstall of ["C:/Users/me/AppData/Roaming/npm", "c:/users/ME/.local/bin"]) {
+      assert.ok(!policy.filesystem.allowRead.some((entry) => entry.toLowerCase() === userInstall.toLowerCase()), userInstall);
+    }
+    // The root itself may sit in the profile, and stays readable.
+    assert.ok(policy.filesystem.allowRead.includes("C:/Users/me/work/app"));
+  });
+
   test("paths are written with forward slashes, the system and the root re-allowed", () => {
     const policy = terminalPolicy({
       ...win,

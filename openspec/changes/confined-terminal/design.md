@@ -110,7 +110,11 @@ than a new code path.
 - [Windows: Git Bash cannot start in an AppContainer (MSYS2's global named objects), the root's parent
   stays listable, and the server must run in the interactive session (over SSH or as a service, the
   containers get no window station: `0xC0000142`)] → Documented. In an interactive session `cmd`,
-  PowerShell, git and busybox run confined.
+  PowerShell and busybox run confined; `git` does not, because the container cannot open `NUL` (even
+  `type nul` is refused) and Git for Windows opens it at startup. That is landstrip's to fix.
+- [Windows: launch time grows with every allowed tree] → Search-path entries inside the user's profile
+  are left out (npm's global packages alone cost thirteen seconds); measured: 15.5 s → 5.5 s to the
+  first PowerShell prompt, 0.16 s for `cmd` with the system and the root only.
 - [Windows: the agent's `bash` through `pi-landstrip` (not this change) does not work out of the box as
   of 0.19.11] → Measured in an interactive session: a read permission question for Git's `bash.exe`, then
   `os error 203` (its launcher lacks `LOCALAPPDATA` and `SystemRoot`), then Git Bash cannot start. With

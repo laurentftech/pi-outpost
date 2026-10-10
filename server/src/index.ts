@@ -2427,7 +2427,7 @@ function terminalConfinement(workspace: Workspace): TerminalConfinement | undefi
   return {
     runner,
     root,
-    policy: (tmp) => terminalPolicy({ root, writableRoot, allowWrite, agentDir: AGENT_DIR, configFile: config.configFile, tmp, searchPath: process.env.PATH, systemRoot: process.env.SystemRoot }),
+    policy: (tmp) => terminalPolicy({ root, writableRoot, allowWrite, agentDir: AGENT_DIR, configFile: config.configFile, tmp, searchPath: process.env.PATH, systemRoot: process.env.SystemRoot, userProfile: process.env.USERPROFILE }),
   };
 }
 

@@ -155,8 +155,10 @@ separate process namespace). Keep provider keys in the credential store (`pi-out
 Settings), not in the server's environment.
 
 **Platforms.** Linux (WSL included) is the supported one. On Windows the runner uses an AppContainer
-and confines reads and writes the same way; `cmd`, PowerShell, `git` and busybox run inside it, Git Bash
-does not (MSYS2 needs global named objects an AppContainer may not create). The parent of the root can
+and confines reads and writes the same way, and with no `terminal.shell` set the terminal opens PowerShell.
+`cmd`, PowerShell and busybox run inside it; Git Bash does not (MSYS2 needs global named objects an
+AppContainer may not create), and neither does `git`: the null device (`NUL`) is out of reach in the
+container, and Git for Windows opens it at startup (even `type nul` is refused; reported upstream). The parent of the root can
 be listed (names, not contents). The server must run in the user's interactive session: started as a
 service or over SSH, its containers get no window station and most programs fail to start
 (`0xC0000142`). macOS is untested.

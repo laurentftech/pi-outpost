@@ -104,6 +104,12 @@ export interface TerminalPolicyInput {
   platform?: NodeJS.Platform;
   /** Windows' system directory (`%SystemRoot%`), readable by every shell. */
   systemRoot?: string;
+  /**
+   * Windows: the user's profile (`%USERPROFILE%`). Search-path entries inside it are left out:
+   * they hold per-user installs (global npm packages, Store aliases) whose trees AppContainer
+   * re-grants on every launch — npm's alone made a terminal take thirteen seconds to appear.
+   */
+  userProfile?: string;
 }
 
 /**
@@ -153,7 +159,9 @@ function windowsTerminalPolicy(input: TerminalPolicyInput): TerminalPolicy {
   // The search path's entries themselves, not their installations: AppContainer grants
   // access to every allowed tree on each launch, and whole installations (Git, Node,
   // Python) made a terminal take eleven seconds to appear.
-  const allowRead = [input.systemRoot, ...searchEntries(input.searchPath, path.win32), input.root, input.tmp]
+  const profile = input.userProfile ? slash(input.userProfile).toLowerCase().replace(/\/+$/, "") + "/" : undefined;
+  const tools = searchEntries(input.searchPath, path.win32).filter((entry) => !profile || !slash(entry).toLowerCase().startsWith(profile));
+  const allowRead = [input.systemRoot, ...tools, input.root, input.tmp]
     .filter((entry): entry is string => Boolean(entry))
     .map(slash);
   const denyRead = [...new Set(allowRead.map((entry) => `${path.win32.parse(entry).root.replaceAll("\\", "/")}`))];
