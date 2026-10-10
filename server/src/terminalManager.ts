@@ -305,7 +305,7 @@ export class TerminalManager {
    * On Windows: Git Bash -> PowerShell -> cmd.
    * On Unix: $SHELL (or /bin/zsh on macOS, /bin/bash on Linux) with login shell args ["-l"].
    */
-  getDefaultShell(options?: { shell?: string; shellArgs?: string[]; gitPath?: string }): { shell: string; args: string[] } {
+  getDefaultShell(options?: { shell?: string; shellArgs?: string[]; gitPath?: string; confined?: boolean }): { shell: string; args: string[] } {
     if (options?.shell) {
       return {
         shell: options.shell,
@@ -314,7 +314,9 @@ export class TerminalManager {
     }
 
     if (process.platform === "win32") {
-      const gitBash = findWindowsGitBash(options?.gitPath);
+      // Git Bash cannot start inside the sandbox runner's AppContainer: MSYS2 creates
+      // global named objects (\\BaseNamedObjects) a container may not. PowerShell can.
+      const gitBash = options?.confined ? undefined : findWindowsGitBash(options?.gitPath);
       if (gitBash) {
         return { shell: gitBash, args: ["-l"] };
       }
@@ -380,7 +382,7 @@ export class TerminalManager {
         this.socketSessions.set(socket, userSessions);
       }
 
-      const { shell, args: shellArgs } = this.getDefaultShell(shellOptions);
+      const { shell, args: shellArgs } = this.getDefaultShell({ ...shellOptions, confined: confine !== undefined });
       let resolvedCwd = path.resolve(cwd);
       let file = shell;
       let args = shellArgs;

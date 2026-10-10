@@ -49,6 +49,22 @@ describe("TerminalManager", () => {
     assert.deepEqual(custom.args, ["-e"]);
   });
 
+  // openlore: scenario=OnWindowsTheConfinedShellIsPowerShell spec=terminal
+  test("a confined terminal on Windows opens PowerShell, not Git Bash", { skip: process.platform !== "win32" && "Windows shell selection" }, () => {
+    const manager = new TerminalManager();
+    const confined = manager.getDefaultShell({ confined: true });
+    assert.match(confined.shell, /powershell\.exe$|cmd\.exe$/i, `a confined shell must not be Git Bash: ${confined.shell}`);
+    assert.doesNotMatch(confined.shell, /bash\.exe$/i);
+    // An explicit choice still wins, confined or not.
+    assert.equal(manager.getDefaultShell({ confined: true, shell: "C:\\tools\\sh.exe" }).shell, "C:\\tools\\sh.exe");
+  });
+
+  test("outside Windows, confinement does not change the shell", () => {
+    const manager = new TerminalManager();
+    if (process.platform === "win32") return;
+    assert.deepEqual(manager.getDefaultShell({ confined: true }), manager.getDefaultShell());
+  });
+
   test("findWindowsGitBash and Windows shell fallback resolution", () => {
     const manager = new TerminalManager();
     if (process.platform !== "win32") {

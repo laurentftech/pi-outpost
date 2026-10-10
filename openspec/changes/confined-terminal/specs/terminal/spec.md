@@ -33,6 +33,18 @@ SHALL behave as it does today.
 - **WHEN** a terminal is opened
 - **THEN** it behaves exactly as before this change
 
+### Requirement: OnWindowsAConfinedTerminalOpensANativeShell
+
+On Windows, when no shell is configured, a confined terminal SHALL open PowerShell (or `cmd` where
+PowerShell is absent) rather than Git Bash, which cannot start inside the sandbox runner. A shell named
+in `terminal.shell` SHALL still be used as configured.
+
+#### Scenario: OnWindowsTheConfinedShellIsPowerShell
+- **GIVEN** a Windows host with Git Bash installed, the terminal confined and no `terminal.shell`
+- **WHEN** a terminal is opened
+- **THEN** its shell is PowerShell, not Git Bash
+- **AND** with `terminal.shell` set, that shell is used instead
+
 ### Requirement: AConfinedTerminalGetsAMinimalEnvironment
 
 A confined terminal SHALL receive only the variables a shell needs — search path, locale, terminal type,
