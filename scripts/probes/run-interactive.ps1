@@ -1,7 +1,7 @@
 # Run a command in the logged-on user's interactive desktop session, from SSH.
 #
 # Processes started over SSH live in a non-interactive service session: AppContainers there get no
-# access to a window station, so anything loading user32.dll fails with 0xC0000142 — an artefact of
+# access to a window station, so anything loading user32.dll fails with 0xC0000142 - an artefact of
 # the probe, not of what is probed (it misled one investigation). A one-shot scheduled task with
 # /IT runs in the real session instead. Someone must be logged on to the VM's desktop.
 #   powershell -NoProfile -File scripts\probes\run-interactive.ps1 -Dir <cwd> -Command "<cmd line>" [-TimeoutSeconds 300]
