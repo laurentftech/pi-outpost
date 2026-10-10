@@ -1331,6 +1331,8 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
               open={terminalOpen}
               onClose={() => setTerminalOpen(false)}
               cwd={state.workspace?.root}
+              confinedRoot={state.terminal?.confined ? (state.sandbox?.root ?? state.workspace?.root) : undefined}
+              unavailable={state.terminal?.unavailable}
               onSetWorkspaceRoot={(newRoot) => {
                 if (openProject && !embedded) {
                   openProject(newRoot);

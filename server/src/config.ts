@@ -68,6 +68,14 @@ export interface SandboxConfig {
    */
   bashFrom?: string;
   /**
+   * A sandbox runner pi-outpost's own `bash` runs every command inside, while `allowBash`
+   * is on: MXC's executor (`wxc-exec.exe`, Windows 11) or landstrip's binary. Same policy
+   * as a confined terminal in the workspace. Exclusive with `bashFrom`. Absolute after load.
+   */
+  bashRunner?: string;
+  /** The shell `bashRunner` runs commands in. Default `/bin/bash`; required on Windows (busybox-w32). */
+  bashShell?: string;
+  /**
    * Extra directories (absolute paths) that read tools (read/ls/grep/find) are
    * allowed to access in addition to `root`. Write tools are NOT affected — these
    * are read-only exceptions. Populated from `skillPaths`, `promptPaths`,
@@ -105,6 +113,13 @@ export interface TerminalConfig {
    * Arguments passed to the shell process (defaults to ["-l"] on Unix login shells).
    */
   shellArgs?: string[];
+  /**
+   * A sandbox runner (landstrip's `landstrip` binary) every terminal runs inside, confined
+   * to its workspace's sandbox. Resolved against the configuration file. Configuration
+   * only: a setting that loosens confinement has no business being editable from the
+   * interface it confines. Absent: terminals run as before.
+   */
+  sandbox?: string;
 }
 
 export interface DocxConfig {
@@ -921,6 +936,11 @@ export function loadConfig(
     if (bashFrom !== undefined && bashFrom.trim() === "") {
       fail(`"sandbox.bashFrom" must name an extension: its package source (e.g. "npm:pi-landstrip") or a path`);
     }
+    const bashRunner = optionalString(sandbox, "bashRunner", "sandbox.bashRunner");
+    const bashShell = optionalString(sandbox, "bashShell", "sandbox.bashShell");
+    if (bashRunner !== undefined && bashFrom !== undefined) {
+      fail(`"sandbox.bashRunner" and "sandbox.bashFrom" both say who runs bash: keep one`);
+    }
 
     // A sandbox that only *reads* may follow the workspace the user just named —
     // that is what moving the workspace means. A sandbox that grants write or bash
@@ -949,6 +969,8 @@ export function loadConfig(
       writableRoot: resolvedWritableRoot,
       allowBash,
       ...(bashFrom === undefined ? {} : { bashFrom: bashFrom.trim() }),
+      ...(bashRunner === undefined ? {} : { bashRunner: resolve(bashRunner) }),
+      ...(bashShell === undefined ? {} : { bashShell: resolve(bashShell) }),
       readExceptions: [
         ...(optionalStringArray(raw, "skillPaths") ?? []).map(resolve),
         ...(optionalStringArray(raw, "userSkillPaths") ?? []).map(resolve),
@@ -1278,10 +1300,12 @@ export function loadConfig(
   if (raw.terminal !== undefined) {
     const terminal = asObject(raw.terminal, "terminal");
     const shell = optionalString(terminal, "shell", "terminal.shell");
+    const sandbox = optionalString(terminal, "sandbox", "terminal.sandbox");
     config.terminal = {
       enabled: optionalBoolean(terminal, "enabled", false),
       shell: shell !== undefined && (shell.includes("/") || shell.includes("\\")) ? resolve(shell) : shell,
       shellArgs: optionalStringArray(terminal, "shellArgs"),
+      ...(sandbox !== undefined ? { sandbox: resolve(sandbox) } : {}),
     };
   }
   if (flags.terminal !== undefined) {

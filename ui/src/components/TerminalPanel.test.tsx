@@ -30,6 +30,34 @@ describe("TerminalPanel", () => {
     expect(container.firstChild).toHaveClass("hidden");
   });
 
+  it("an unusable sandbox runner shows its reason and never asks for a shell", () => {
+    const openTerminal = vi.fn();
+    render(
+      <TerminalPanel
+        {...defaultProps}
+        openTerminal={openTerminal}
+        confinedRoot="/work/app"
+        unavailable="The terminal sandbox runner failed its self-check: landlock unavailable"
+      />,
+    );
+    expect(screen.getByTestId("terminal-unavailable")).toHaveTextContent("landlock unavailable");
+    expect(openTerminal).not.toHaveBeenCalled();
+    // No terminal exists, so nothing claims to be confined.
+    expect(screen.queryByTestId("terminal-confined")).toBeNull();
+  });
+
+  it("a confined terminal says what it is confined to", () => {
+    render(<TerminalPanel {...defaultProps} confinedRoot="/work/app" />);
+    const badge = screen.getByTestId("terminal-confined");
+    expect(badge).toHaveTextContent("confined to");
+    expect(badge.getAttribute("title")).toContain("/work/app");
+  });
+
+  it("an unconfined terminal carries no confinement badge", () => {
+    render(<TerminalPanel {...defaultProps} />);
+    expect(screen.queryByTestId("terminal-confined")).toBeNull();
+  });
+
   it("renders tabs and controls when open", () => {
     render(
       <ThemeContext.Provider value="dark">

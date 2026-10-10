@@ -915,6 +915,10 @@ export interface SessionSnapshot {
   terminal?: {
     enabled: boolean;
     locked?: boolean;
+    /** Terminals run inside a sandbox runner (`terminal.sandbox`), confined to the sandbox root. */
+    confined?: boolean;
+    /** Why no terminal can be opened, when the configured sandbox runner is unusable. */
+    unavailable?: string;
   };
 }
 

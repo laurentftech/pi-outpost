@@ -28,8 +28,11 @@ signals to the server.
 - Moving the agent to the terminal's directory ("Sync") stays bound by the same project and sandbox
   rules and locks as the directory picker, so a confined terminal widens nothing.
 - Without `terminal.sandbox`, nothing changes.
-- Linux (including WSL) is the supported platform for confinement. On macOS and Windows a configured
-  runner that fails its self-check disables the terminal, as above.
+- Linux (including WSL) is the supported platform for confinement. On Windows reads and writes are
+  confined as well and `cmd`, PowerShell, git and busybox run inside, but Git Bash cannot, and the
+  server has to run in the user's interactive session. On Windows 11 (24H2/25H2 with the August 2026
+  update) `terminal.sandbox` may name MXC's executor instead, where `NUL`, git and busybox work too.
+  macOS is untested; a runner that fails its self-check disables the terminal, as above.
 
 ## Capabilities
 

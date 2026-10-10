@@ -76,7 +76,8 @@ import { pathToFileURL } from "node:url";
 import { CliError, helpText, parseCli, readSecret, runInit } from "./cli.ts";
 import { bindFailureMessage, holdConsoleIfOwned } from "./startupFailure.ts";
 import { BuildExeError, buildExecutable } from "./buildExe.ts";
-import { probePty, TerminalManager } from "./terminalManager.ts";
+import { probePty, TerminalManager, type TerminalConfinement } from "./terminalManager.ts";
+import { checkRunner, mxcTerminalConfig, runnerKind, siblingsToDeny, terminalPolicy, userGitConfig, type RunnerCheck } from "./terminalSandbox.ts";
 import { browsableUrl, openBrowser, shouldOpenBrowser } from "./openBrowser.ts";
 import {
   currentEvidence,
@@ -570,6 +571,7 @@ function workspaceOptions(settings: WorkspaceSettings): Omit<WorkspaceOptions, "
       structuredExchangeMaxBytes: config.structuredExchange.maxBytes,
       mailMaxBytes: config.mail.maxBytes,
       officeRender: officeRenderSettings(),
+      neverReadable: { agentDir: AGENT_DIR, configFile: config.configFile },
     },
     watchFiles: config.files.watch,
     // `present_structure` has no path argument to confine, so it is unconfined on both
@@ -2290,6 +2292,10 @@ function projectFields(workspace: Workspace) {
     terminal: {
       enabled: config.terminal?.enabled ?? false,
       ...(config.sandboxLocks?.terminal ? { locked: true } : {}),
+      ...(config.terminal?.sandbox ? { confined: true } : {}),
+      // Only a settled failure: "still checking" is seconds long, and a snapshot carrying it
+      // would leave the panel saying so until the next reconnect.
+      ...(typeof terminalRunner === "object" && !terminalRunner.ok ? { unavailable: terminalRunner.reason } : {}),
     },
   };
 }
@@ -2390,6 +2396,56 @@ function snapshot(workspace: Workspace): SessionSnapshot {
  */
 const clients = new Map<WebSocket, Workspace>();
 const terminalManager = new TerminalManager({ PI_CODING_AGENT_DIR: LAUNCH_PI_CODING_AGENT_DIR });
+
+/**
+ * Whether terminals can be confined, when `terminal.sandbox` asks for it.
+ *
+ * Asked once, at start, and not awaited: a slow runner is no reason to hold the server
+ * back. Until it has answered — and whenever it answers no — no terminal opens: the
+ * whole point of naming a runner is that a shell never runs outside it.
+ */
+let terminalRunner: RunnerCheck | "checking" | undefined = config.terminal?.sandbox ? "checking" : undefined;
+if (config.terminal?.sandbox) {
+  const runner = config.terminal.sandbox;
+  void checkRunner(runner).then((result) => {
+    terminalRunner = result;
+    if (!result.ok && config.terminal?.enabled) console.warn(`[terminal] ${result.reason}`);
+  });
+}
+
+/**
+ * How a terminal in `workspace` is confined, when `terminal.sandbox` is set: the same
+ * root and writable zone as the agent's sandbox (the project root without one), and
+ * never the agent directory — the provider keys — nor the configuration.
+ */
+function terminalConfinement(workspace: Workspace): TerminalConfinement | undefined {
+  const runner = config.terminal?.sandbox;
+  if (!runner) return undefined;
+  const sandbox = workspace.settings.sandbox;
+  const root = path.resolve(sandbox?.root ?? workspace.browserRoot);
+  const writableRoot = sandbox?.writableRoot ? path.resolve(sandbox.writableRoot) : undefined;
+  const allowWrite = sandbox ? sandbox.allowWrite : true;
+  const kind = runnerKind(runner);
+  // git's identity: the user's ~/.gitconfig, readable on its own (see userGitConfig).
+  const gitConfig = userGitConfig();
+  const readOnlyFiles = gitConfig ? [gitConfig] : [];
+  return {
+    runner,
+    kind,
+    root,
+    ...(gitConfig ? { gitConfig } : {}),
+    policy: kind === "mxc"
+      ? (terminal) => mxcTerminalConfig({ root, writableRoot, allowWrite, agentDir: AGENT_DIR, configFile: config.configFile, ...terminal, siblings: siblingsToDeny(root), readOnlyFiles })
+      : ({ tmp }) => terminalPolicy({ root, writableRoot, allowWrite, agentDir: AGENT_DIR, configFile: config.configFile, tmp, searchPath: process.env.PATH, systemRoot: process.env.SystemRoot, userProfile: process.env.USERPROFILE, readOnlyFiles }),
+  };
+}
+
+/** Why a terminal cannot open right now, when a sandbox runner is configured and not usable. */
+function terminalUnavailableReason(): string | undefined {
+  if (terminalRunner === undefined) return undefined;
+  if (terminalRunner === "checking") return "The terminal sandbox runner is still being checked. Try again in a moment.";
+  return terminalRunner.ok ? undefined : terminalRunner.reason;
+}
 
 const WS_LOG_PATH = process.env.WS_LOG_PATH ? path.resolve(process.env.WS_LOG_PATH) : undefined;
 
@@ -3140,6 +3196,9 @@ async function handleUpdateConfig(
         // Not edited from Settings: carried over, or an apply would hand bash back to
         // pi-outpost's unconfined one until the next start.
         ...(config.sandbox?.bashFrom === undefined ? {} : { bashFrom: config.sandbox.bashFrom }),
+        // Likewise, or an apply would hand bash back unconfined.
+        ...(config.sandbox?.bashRunner === undefined ? {} : { bashRunner: config.sandbox.bashRunner }),
+        ...(config.sandbox?.bashShell === undefined ? {} : { bashShell: config.sandbox.bashShell }),
         readExceptions: [],
       };
     }
@@ -5812,6 +5871,11 @@ function handleClientMessage(socket: WebSocket, raw: string): void {
         });
         return;
       }
+      const unavailable = terminalUnavailableReason();
+      if (unavailable) {
+        send(socket, { type: "terminal_error", terminalId: message.terminalId, message: unavailable });
+        return;
+      }
       const allowBash = workspace.settings.sandbox ? workspace.settings.sandbox.allowBash : true;
       if (!allowBash) {
         send(socket, {
@@ -5831,6 +5895,7 @@ function handleClientMessage(socket: WebSocket, raw: string): void {
         (termId, data) => send(socket, { type: "terminal_data", terminalId: termId, data }),
         (termId, exitCode) => send(socket, { type: "terminal_exit", terminalId: termId, exitCode }),
         { ...config.terminal, gitPath: config.gitPath },
+        terminalConfinement(workspace),
       ).catch((error) => {
         send(socket, {
           type: "terminal_error",
@@ -5956,7 +6021,16 @@ console.log(`[pi] skills: ${runtimeSkills.join(", ") || "(none)"}`);
 if (config.sandbox) {
   const extras = [
     config.sandbox.allowWrite ? "write" : "read-only",
-    ...(config.sandbox.allowBash ? ["bash (UNCONFINED)"] : []),
+    // Who confines bash, if anyone: the line an operator reads to know what the agent can do.
+    ...(config.sandbox.allowBash
+      ? [
+          config.sandbox.bashRunner
+            ? `bash (confined by ${config.sandbox.bashRunner}, shell ${config.sandbox.bashShell ?? "/bin/bash"})`
+            : config.sandbox.bashFrom
+              ? `bash (from ${config.sandbox.bashFrom})`
+              : "bash (UNCONFINED)",
+        ]
+      : []),
   ].join(", ");
   console.log(`[pi] sandbox ${config.sandbox.root} · ${extras}`);
 }

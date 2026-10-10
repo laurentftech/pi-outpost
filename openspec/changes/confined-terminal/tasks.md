@@ -2,24 +2,28 @@
 
 ## 1. Configuration and self-check
 
-- [ ] 1.1 Parse `terminal.sandbox` (path resolved against the config file) in `server/src/config.ts`; verified by config tests (absent, relative, absolute; `path.join` expectations).
-- [ ] 1.2 Run `<runner> doctor` once at start with a timeout, keep availability and reason, report them in the snapshot; verified by ARunnerThatFailsItsSelfCheck and AMissingRunner with fake runner scripts (one failing `doctor`, one path missing), asserting no shell is spawned.
+- [x] 1.1 Parse `terminal.sandbox` (path resolved against the config file) in `server/src/config.ts`; verified by config tests (absent, relative, absolute; `path.join` expectations).
+- [x] 1.2 Run `<runner> doctor` once at start with a timeout, keep availability and reason, report them in the snapshot; verified by ARunnerThatFailsItsSelfCheck and AMissingRunner with fake runner scripts (one failing `doctor`, one path missing), asserting no shell is spawned.
 
 ## 2. Confined spawn
 
-- [ ] 2.1 `terminalPolicy()` pure function (deny agent dir, config file, `/home`, `/root`, root's parent; allow root and tmp; write writable zone, tmp, tty devices); unit tests for sandbox with and without writable zone, `allowWrite: false`, and no sandbox (project root).
-- [ ] 2.2 Spawn through the runner with the policy file in a `0600` per-terminal temp dir removed on close; verified by a test with a fake runner that records its argv and policy, and checks the temp dir is gone after close.
-- [ ] 2.3 Minimal environment (`PATH`, `LANG`/`LC_*`, `TERM`, `SHELL`, `HOME=root`, `TMPDIR`); verified by KeysDoNotReachTheShell against the fake runner's recorded environment.
-- [ ] 2.4 NoRunnerConfiguredKeepsTodaysTerminal: the existing terminal suite passes unchanged without `terminal.sandbox`.
+- [x] 2.1 `terminalPolicy()` pure function (deny agent dir, config file, `/home`, `/root`, root's parent; allow root and tmp; write writable zone, tmp, tty devices); unit tests for sandbox with and without writable zone, `allowWrite: false`, and no sandbox (project root).
+- [x] 2.2 Spawn through the runner with the policy file in a `0600` per-terminal temp dir removed on close; verified by a test with a fake runner that records its argv and policy, and checks the temp dir is gone after close.
+- [x] 2.3 Minimal environment (`PATH`, `LANG`/`LC_*`, `TERM`, `SHELL`, `HOME=root`, `TMPDIR`); verified by KeysDoNotReachTheShell against the fake runner's recorded environment.
+- [x] 2.4 NoRunnerConfiguredKeepsTodaysTerminal: the existing terminal suite passes unchanged without `terminal.sandbox`.
 
 ## 3. Real confinement (Linux)
 
-- [ ] 3.1 Container test with the real landstrip runner under Docker's default profile, driving a PTY: ReadsStayInsideTheRoot, WritesStayInsideTheWritableZone, TheConfinedTerminalStaysInteractive, TheServerCannotBeSignalled. It runs on the Linux CI job and is skipped elsewhere with the reason printed.
+- [x] 3.1 Container test with the real landstrip runner under Docker's default profile, driving a PTY: ReadsStayInsideTheRoot, WritesStayInsideTheWritableZone, TheConfinedTerminalStaysInteractive, TheServerCannotBeSignalled. It runs on the Linux CI job and is skipped elsewhere with the reason printed.
+
+## 3b. Windows 11 (MXC)
+
+- [x] 3b.1 MXC's executor as a runner: `--probe` self-check (tier 1 only), `mxcTerminalConfig`, `siblingsToDeny`, launch through node-pty; unit tests (AnMxcRunnerBelowTier1MeansNoTerminal, the request, the deny walk) and a real test through `wxc-exec.exe` where `MXC_EXEC` is set (ReadsStayInsideTheRoot, WritesStayInsideTheWritableZone, OnWindowsWithMxcGitRunsConfined, KeysDoNotReachTheShell).
 
 ## 4. Sync and interface
 
-- [ ] 4.1 SyncUnderALockedSandbox as a server test: a confined terminal's cwd outside the root, Sync refused, agent root unchanged.
-- [ ] 4.2 Terminal panel: show the unavailability reason in place of the shell, and mark a confined terminal (badge naming its root); UI tests plus the running app (bench with a fake runner).
+- [x] 4.1 SyncUnderALockedSandbox as a server test: a confined terminal's cwd outside the root, Sync refused, agent root unchanged.
+- [x] 4.2 Terminal panel: show the unavailability reason in place of the shell, and mark a confined terminal (badge naming its root); UI tests plus the running app (bench with a fake runner).
 
 ## 5. Documentation and verification
 

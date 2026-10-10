@@ -470,6 +470,58 @@ describe("loadConfig — resource path resolution", () => {
     });
   });
 
+  test("a terminal sandbox is absent until configured, and resolved against the config file", async () => {
+    await withTempDir(async (dir) => {
+      const configPath = path.join(dir, "config.json");
+      await writeFile(configPath, JSON.stringify({ terminal: { enabled: true } }, null, 2));
+      assert.equal(loadConfig(dir, { config: configPath }).terminal.sandbox, undefined);
+
+      await writeFile(configPath, JSON.stringify({ terminal: { enabled: true, sandbox: "./bin/landstrip" } }, null, 2));
+      assert.equal(loadConfig(dir, { config: configPath }).terminal.sandbox, path.join(dir, "bin", "landstrip"));
+
+      const absolute = path.resolve(path.sep, "opt", "landstrip", "landstrip");
+      await writeFile(configPath, JSON.stringify({ terminal: { sandbox: absolute } }, null, 2));
+      assert.equal(loadConfig(dir, { config: configPath }).terminal.sandbox, absolute);
+    });
+  });
+
+  // openlore: scenario=TheRunnerPathIsResolved spec=sandbox-runner-bash
+  test("bash's runner and shell are absent until configured, and resolved against the config file", async () => {
+    await withTempDir(async (dir) => {
+      const configPath = path.join(dir, "config.json");
+      await writeFile(configPath, JSON.stringify({ sandbox: { root: ".", allowBash: true } }, null, 2));
+      const plain = loadConfig(dir, { config: configPath }).sandbox!;
+      assert.equal(plain.bashRunner, undefined);
+      assert.equal(plain.bashShell, undefined);
+
+      await writeFile(configPath, JSON.stringify({ sandbox: { root: ".", allowBash: true, bashRunner: "./mxc/wxc-exec.exe", bashShell: "tools/sh.exe" } }, null, 2));
+      const confined = loadConfig(dir, { config: configPath }).sandbox!;
+      assert.equal(confined.bashRunner, path.join(dir, "mxc", "wxc-exec.exe"));
+      assert.equal(confined.bashShell, path.join(dir, "tools", "sh.exe"));
+    });
+  });
+
+  // openlore: scenario=BashRunnerAndBashFromAreExclusive spec=sandbox-runner-bash
+  test("a runner for bash and an extension supplying bash are refused together, and empty values alone", async () => {
+    await withTempDir(async (dir) => {
+      const configPath = path.join(dir, "config.json");
+      await writeFile(configPath, JSON.stringify({ sandbox: { root: ".", allowBash: true, bashRunner: "./wxc-exec.exe", bashFrom: "npm:pi-landstrip" } }, null, 2));
+      assert.throws(() => loadConfig(dir, { config: configPath }), /sandbox\.bashRunner.*sandbox\.bashFrom/);
+      await writeFile(configPath, JSON.stringify({ sandbox: { root: ".", bashRunner: "" } }, null, 2));
+      assert.throws(() => loadConfig(dir, { config: configPath }), /sandbox\.bashRunner/);
+      await writeFile(configPath, JSON.stringify({ sandbox: { root: ".", bashShell: "" } }, null, 2));
+      assert.throws(() => loadConfig(dir, { config: configPath }), /sandbox\.bashShell/);
+    });
+  });
+
+  test("an empty terminal sandbox is refused", async () => {
+    await withTempDir(async (dir) => {
+      const configPath = path.join(dir, "config.json");
+      await writeFile(configPath, JSON.stringify({ terminal: { sandbox: "" } }, null, 2));
+      assert.throws(() => loadConfig(dir, { config: configPath }), /terminal\.sandbox/);
+    });
+  });
+
   // openlore: scenario=SettingsModeIsTheDefault spec=config
   test("an embed policy is absent until one is configured, and absence means settings", async () => {
     await withTempDir(async (dir) => {

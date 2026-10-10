@@ -33,6 +33,18 @@ jobs:
       - run: npm run build --workspace @pi-outpost/embed
       - run: npm run lint
 
+      # The confined terminal's real test needs landstrip's runner, and only Linux confines.
+      # Fetched rather than depended on: the package is platform-specific, and nothing
+      # pi-outpost ships needs it.
+      - name: landstrip runner for the confined-terminal test
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          cd "$RUNNER_TEMP"
+          npm pack --silent @landstrip/landstrip-linux-x64@0.19.8
+          mkdir landstrip && tar xzf landstrip-landstrip-linux-x64-0.19.8.tgz -C landstrip
+          echo "LANDSTRIP_BIN=$RUNNER_TEMP/landstrip/package/bin/landstrip" >> "$GITHUB_ENV"
+          "$RUNNER_TEMP/landstrip/package/bin/landstrip" doctor
+
       - run: npm test --workspace server
         env:
           CI: true

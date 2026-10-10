@@ -8,6 +8,7 @@ import fs from "node:fs/promises";
 import fsSync from "node:fs";
 import { createRequire } from "node:module";
 import { execFile, spawnSync } from "node:child_process";
+import { confinedEnvironment, prepareConfinedTerminal, type MxcTerminalConfig, type RunnerKind, type TerminalPolicy } from "./terminalSandbox.ts";
 import { promisify } from "node:util";
 import os from "node:os";
 import path from "node:path";
@@ -163,6 +164,14 @@ export interface TerminalSession {
    * ended". Detaching first makes the shutdown silent, whatever it takes.
    */
   listeners: pty.IDisposable[];
+  /**
+   * Set when the shell runs inside a sandbox runner. The runner stays alive as the
+   * shell's supervisor, so the pty's pid is the runner's, not the shell's: what the
+   * user's shell is doing has to be read from the runner's child.
+   */
+  confined?: boolean;
+  /** Removes the confined terminal's private directory (its temp files and policy). */
+  dispose?: () => Promise<void>;
 }
 
 /**
@@ -187,6 +196,7 @@ function endSession(session: TerminalSession): void {
     // Process might already be dead
   }
   killIfStillAlive(session.ptyProcess);
+  void session.dispose?.().catch(() => {});
 }
 
 /** How long a shell gets to act on SIGHUP before it is killed outright. */
@@ -259,6 +269,9 @@ export function terminalEnvironment(
   return env;
 }
 
+/** The default confined PowerShell's arguments (see getDefaultShell). */
+export const CONFINED_POWERSHELL_ARGS = ["-ExecutionPolicy", "RemoteSigned", "-NoExit", "-Command", "$ProgressPreference='SilentlyContinue'"];
+
 export class TerminalManager {
   /**
    * @param envOverrides Variables a terminal gets instead of the server's own — undefined
@@ -295,7 +308,7 @@ export class TerminalManager {
    * On Windows: Git Bash -> PowerShell -> cmd.
    * On Unix: $SHELL (or /bin/zsh on macOS, /bin/bash on Linux) with login shell args ["-l"].
    */
-  getDefaultShell(options?: { shell?: string; shellArgs?: string[]; gitPath?: string }): { shell: string; args: string[] } {
+  getDefaultShell(options?: { shell?: string; shellArgs?: string[]; gitPath?: string; confined?: boolean }): { shell: string; args: string[] } {
     if (options?.shell) {
       return {
         shell: options.shell,
@@ -304,7 +317,9 @@ export class TerminalManager {
     }
 
     if (process.platform === "win32") {
-      const gitBash = findWindowsGitBash(options?.gitPath);
+      // Git Bash cannot start inside the sandbox runner's AppContainer: MSYS2 creates
+      // global named objects (\\BaseNamedObjects) a container may not. PowerShell can.
+      const gitBash = options?.confined ? undefined : findWindowsGitBash(options?.gitPath);
       if (gitBash) {
         return { shell: gitBash, args: ["-l"] };
       }
@@ -313,7 +328,14 @@ export class TerminalManager {
       const systemRoot = process.env.SystemRoot || process.env.windir || "C:\\Windows";
       const powershellPath = path.join(systemRoot, "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
       if (fsSync.existsSync(powershellPath)) {
-        return { shell: powershellPath, args: [] };
+        // Confined, PowerShell's progress bars fail: drawing one reads the console buffer
+        // back, which the sandbox refuses ("Accès refusé 0x5 … tampon de sortie de la
+        // console"), and the command dies with it (Invoke-WebRequest, Expand-Archive…).
+        // Turned off for the session. And its execution policy cannot be read there (the
+        // registry is refused), so every .ps1 - npm.ps1 included - fails
+        // "AuthorizationManager": given for the process, as Windows' own default.
+        // A shell named in terminal.shell is left as given.
+        return { shell: powershellPath, args: options?.confined ? CONFINED_POWERSHELL_ARGS : [] };
       }
 
       // 3. cmd as last resort
@@ -338,6 +360,7 @@ export class TerminalManager {
     onData: (terminalId: string, data: string) => void,
     onExit: (terminalId: string, exitCode?: number) => void,
     shellOptions?: { shell?: string; shellArgs?: string[]; gitPath?: string },
+    confine?: TerminalConfinement,
   ): Promise<TerminalSession> {
     let socketInFlight = this.inFlightOpens.get(socket);
     if (!socketInFlight) {
@@ -369,16 +392,36 @@ export class TerminalManager {
         this.socketSessions.set(socket, userSessions);
       }
 
-      const { shell, args } = this.getDefaultShell(shellOptions);
-      const resolvedCwd = path.resolve(cwd);
-
-      const env = terminalEnvironment(process.env, this.envOverrides);
+      const { shell, args: shellArgs } = this.getDefaultShell({ ...shellOptions, confined: confine !== undefined });
+      let resolvedCwd = path.resolve(cwd);
+      let file = shell;
+      let args = shellArgs;
+      let env: NodeJS.ProcessEnv = terminalEnvironment(process.env, this.envOverrides);
+      let files: Awaited<ReturnType<typeof prepareConfinedTerminal>> | undefined;
+      if (confine) {
+        // The runner, not the shell, is what the pty spawns; the shell runs inside it
+        // with a policy written for this terminal alone and an environment built from
+        // nothing, so no key the server holds reaches it.
+        // A starting directory outside the root could not be entered from inside.
+        if (!isInside(resolvedCwd, confine.root)) resolvedCwd = confine.root;
+        const startIn = resolvedCwd;
+        let shellEnv: Record<string, string> = {};
+        files = await prepareConfinedTerminal((tmp) => {
+          shellEnv = confinedEnvironment(process.env, { root: confine.root, tmp, shell, gitConfig: confine.gitConfig });
+          return confine.policy({ tmp, shell, shellArgs, cwd: startIn, env: shellEnv });
+        });
+        file = confine.runner;
+        // MXC's request carries the command line and the environment itself: its
+        // executor hands the child none of its own.
+        args = confine.kind === "mxc" ? [files.policyFile] : ["run", "-p", files.policyFile, "--", shell, ...shellArgs];
+        env = shellEnv;
+      }
 
       ensureSpawnHelperExecutable();
 
       let ptyProcess: pty.IPty;
       try {
-        ptyProcess = pty.spawn(shell, args, {
+        ptyProcess = pty.spawn(file, args, {
           name: "xterm-256color",
           cols: Math.max(10, cols),
           rows: Math.max(5, rows),
@@ -388,7 +431,7 @@ export class TerminalManager {
       } catch (err) {
         ensureSpawnHelperExecutable();
         try {
-          ptyProcess = pty.spawn(shell, args, {
+          ptyProcess = pty.spawn(file, args, {
             name: "xterm-256color",
             cols: Math.max(10, cols),
             rows: Math.max(5, rows),
@@ -396,6 +439,7 @@ export class TerminalManager {
             env,
           });
         } catch (retryErr) {
+          void files?.dispose().catch(() => {});
           const msg = retryErr instanceof Error ? retryErr.message : String(retryErr);
           if (msg.includes("posix_spawnp")) {
             throw new Error(
@@ -412,6 +456,7 @@ export class TerminalManager {
         socket,
         cwd: resolvedCwd,
         listeners: [],
+        ...(files ? { confined: true, dispose: files.dispose } : {}),
       };
 
       userSessions.set(terminalId, session);
@@ -429,6 +474,7 @@ export class TerminalManager {
             this.socketSessions.delete(socket);
           }
         }
+        void session.dispose?.().catch(() => {});
         onExit(terminalId, exitCode);
       }));
 
@@ -479,7 +525,7 @@ export class TerminalManager {
   async getCwd(socket: WebSocket, terminalId: string): Promise<string | undefined> {
     const session = this.socketSessions.get(socket)?.get(terminalId);
     if (!session) return undefined;
-    const pid = session.ptyProcess.pid;
+    const pid = session.confined ? ((await childOf(session.ptyProcess.pid)) ?? session.ptyProcess.pid) : session.ptyProcess.pid;
 
     if (process.platform === "linux") {
       try {
@@ -540,4 +586,60 @@ export class TerminalManager {
     }
     this.socketSessions.clear();
   }
+}
+
+/** How a terminal is confined: the runner to spawn, and what its policy allows. */
+export interface TerminalConfinement {
+  /** The sandbox runner: landstrip's binary, or MXC's executor (`wxc-exec.exe`). */
+  runner: string;
+  /** Which one: they take their policy, and the shell, differently. Default: landstrip. */
+  kind?: RunnerKind;
+  /** The root the shell starts in and calls home. */
+  root: string;
+  /** The user's git configuration, read-only inside (see `userGitConfig`): git's identity. */
+  gitConfig?: string;
+  /** The policy for this terminal, given its private temporary directory and what it runs. */
+  policy: (terminal: ConfinedShell) => TerminalPolicy | MxcTerminalConfig;
+}
+
+/** What a confined terminal runs, for a policy that has to carry it (MXC's). */
+export interface ConfinedShell {
+  tmp: string;
+  shell: string;
+  shellArgs: string[];
+  cwd: string;
+  env: Record<string, string>;
+}
+
+function isInside(candidate: string, root: string): boolean {
+  const relative = path.relative(root, candidate);
+  return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
+}
+
+/**
+ * The first child of a process, on Linux: a sandbox runner's shell.
+ *
+ * `/proc/<pid>/task/<pid>/children` when the kernel exposes it, else a scan of
+ * `/proc/<n>/stat` for the parent pid. Undefined anywhere else, or once it is gone.
+ */
+async function childOf(pid: number): Promise<number | undefined> {
+  if (process.platform !== "linux") return undefined;
+  try {
+    const listed = (await fs.readFile(`/proc/${pid}/task/${pid}/children`, "utf8")).trim().split(/\s+/)[0];
+    if (listed) return Number(listed);
+  } catch {
+    // Not exposed by this kernel: fall back to the scan.
+  }
+  try {
+    for (const entry of await fs.readdir("/proc")) {
+      if (!/^\d+$/.test(entry)) continue;
+      const stat = await fs.readFile(`/proc/${entry}/stat`, "utf8").catch(() => "");
+      // The command name sits in parentheses and may hold spaces: read after the last ")".
+      const ppid = Number(stat.slice(stat.lastIndexOf(")") + 2).split(" ")[1]);
+      if (ppid === pid) return Number(entry);
+    }
+  } catch {
+    // /proc unreadable: the caller falls back to the runner's own pid.
+  }
+  return undefined;
 }

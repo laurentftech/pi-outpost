@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { afterEach, describe, test } from "node:test";
-import { TERMINAL_KILL_GRACE_MS, TerminalManager as RealTerminalManager, findWindowsGitBash, terminalEnvironment } from "../src/terminalManager.ts";
+import { TERMINAL_KILL_GRACE_MS, TerminalManager as RealTerminalManager, findWindowsGitBash, setPtyModuleForTesting, terminalEnvironment } from "../src/terminalManager.ts";
 import type { WebSocket } from "ws";
 
 /**
@@ -47,6 +47,55 @@ describe("TerminalManager", () => {
     const custom = manager.getDefaultShell({ shell: "/bin/sh", shellArgs: ["-e"] });
     assert.equal(custom.shell, "/bin/sh");
     assert.deepEqual(custom.args, ["-e"]);
+  });
+
+  // openlore: scenario=OnWindowsTheConfinedShellIsPowerShell spec=terminal
+  test("a confined terminal on Windows opens PowerShell, not Git Bash", { skip: process.platform !== "win32" && "Windows shell selection" }, () => {
+    const manager = new TerminalManager();
+    const confined = manager.getDefaultShell({ confined: true });
+    assert.match(confined.shell, /powershell\.exe$|cmd\.exe$/i, `a confined shell must not be Git Bash: ${confined.shell}`);
+    assert.doesNotMatch(confined.shell, /bash\.exe$/i);
+    // Confined, PowerShell starts with its progress bars off (drawing one is refused there)
+    // and its execution policy given (reading it from the registry is refused there).
+    if (/powershell\.exe$/i.test(confined.shell)) {
+      assert.deepEqual(confined.args, ["-ExecutionPolicy", "RemoteSigned", "-NoExit", "-Command", "$ProgressPreference='SilentlyContinue'"]);
+    }
+    // A shell the user names keeps the arguments the user gave, confined or not.
+    assert.deepEqual(manager.getDefaultShell({ confined: true, shell: confined.shell }).args, []);
+    // An explicit choice still wins, confined or not.
+    assert.equal(manager.getDefaultShell({ confined: true, shell: "C:\\tools\\sh.exe" }).shell, "C:\\tools\\sh.exe");
+  });
+
+  // openlore: scenario=NoRunnerConfiguredKeepsTodaysTerminal spec=terminal
+  test("without a runner, the shell itself is spawned, with the server's environment, unconfined", async () => {
+    const spawned: Array<{ file: string; args: string[]; env: Record<string, string | undefined> }> = [];
+    const fakePty = {
+      spawn: (file: string, args: string[], options: { env: Record<string, string | undefined> }) => {
+        spawned.push({ file, args, env: options.env });
+        return { pid: 0, onData: () => ({ dispose() {} }), onExit: () => ({ dispose() {} }), kill() {}, resize() {}, write() {} };
+      },
+    };
+    setPtyModuleForTesting(fakePty as unknown as Parameters<typeof setPtyModuleForTesting>[0]);
+    const saved = process.env.PI_OUTPOST_TERMINAL_PROBE;
+    process.env.PI_OUTPOST_TERMINAL_PROBE = "server-variable";
+    try {
+      const manager = new TerminalManager();
+      const session = await manager.open({} as WebSocket, "plain", process.cwd(), 80, 24, () => {}, () => {}, { shell: "/bin/sh", shellArgs: ["-l"] });
+      assert.equal(session.confined, undefined, "marked confined without a runner");
+      assert.deepEqual(spawned.map(({ file, args }) => ({ file, args })), [{ file: "/bin/sh", args: ["-l"] }], "something other than the shell was spawned");
+      assert.equal(spawned[0].env.PI_OUTPOST_TERMINAL_PROBE, "server-variable", "the server's environment did not reach the shell, as it always has");
+      manager.closeAll();
+    } finally {
+      setPtyModuleForTesting(null);
+      if (saved === undefined) delete process.env.PI_OUTPOST_TERMINAL_PROBE;
+      else process.env.PI_OUTPOST_TERMINAL_PROBE = saved;
+    }
+  });
+
+  test("outside Windows, confinement does not change the shell", () => {
+    const manager = new TerminalManager();
+    if (process.platform === "win32") return;
+    assert.deepEqual(manager.getDefaultShell({ confined: true }), manager.getDefaultShell());
   });
 
   test("findWindowsGitBash and Windows shell fallback resolution", () => {

@@ -33,16 +33,51 @@ SHALL behave as it does today.
 - **WHEN** a terminal is opened
 - **THEN** it behaves exactly as before this change
 
+### Requirement: OnWindowsAConfinedTerminalOpensANativeShell
+
+On Windows, when no shell is configured, a confined terminal SHALL open PowerShell (or `cmd` where
+PowerShell is absent) rather than Git Bash, which cannot start inside the sandbox runner. A shell named
+in `terminal.shell` SHALL still be used as configured.
+
+#### Scenario: OnWindowsTheConfinedShellIsPowerShell
+- **GIVEN** a Windows host with Git Bash installed, the terminal confined and no `terminal.shell`
+- **WHEN** a terminal is opened
+- **THEN** its shell is PowerShell, not Git Bash
+- **AND** with `terminal.shell` set, that shell is used instead
+
+### Requirement: OnWindows11MxcMayConfineTheTerminal
+
+`terminal.sandbox` MAY name MXC's executor (`wxc-exec.exe`). It SHALL be accepted only when its probe
+reports tier 1 (`base-container`); any other tier, or a host other than Windows, SHALL make the terminal
+unavailable with the reason. Under MXC the policy SHALL keep the read and write limits and the denied
+secrets of `TheTerminalMayRunConfined`, and git SHALL be able to run in a writable root.
+
+#### Scenario: AnMxcRunnerBelowTier1MeansNoTerminal
+- **GIVEN** `terminal.sandbox` naming MXC's executor on a host whose probe reports a tier other than `base-container`
+- **WHEN** the runner is checked
+- **THEN** it is refused with a reason naming the tier found and the one required
+
+#### Scenario: OnWindowsWithMxcGitRunsConfined
+- **GIVEN** a confined terminal under MXC tier 1 in a git repository that is its writable root
+- **WHEN** the user runs `git status` and reads the agent directory's `auth.json`
+- **THEN** git answers, and the read is refused
+
 ### Requirement: AConfinedTerminalGetsAMinimalEnvironment
 
 A confined terminal SHALL receive only the variables a shell needs — search path, locale, terminal type,
-shell and a home inside the sandbox root — and SHALL NOT receive the server's other variables, provider
-keys included.
+shell, a home inside the sandbox root, a private npm cache, and the user's git configuration as
+`GIT_CONFIG_GLOBAL` when they have one — and SHALL NOT receive the server's other variables, provider
+keys included. That git configuration file SHALL be readable inside, read-only, and nothing beside it.
 
 #### Scenario: KeysDoNotReachTheShell
 - **GIVEN** the server started with `OPENAI_API_KEY` in its environment and a confined terminal
 - **WHEN** the user lists the shell's environment
 - **THEN** `OPENAI_API_KEY` is absent
+
+#### Scenario: GitKnowsWhoCommits
+- **GIVEN** a user whose `~/.gitconfig` names them, and a confined terminal
+- **WHEN** git reads its identity in the terminal
+- **THEN** it is the user's, the file cannot be written, and the folder it sits in stays unreadable
 
 ### Requirement: AnUnusableRunnerMeansNoTerminal
 
@@ -69,4 +104,4 @@ the deployment — so a confined terminal SHALL NOT be a way to move the agent w
 #### Scenario: SyncUnderALockedSandbox
 - **GIVEN** a confined terminal in a workspace whose sandbox is locked by configuration
 - **WHEN** the user changes directory to `/usr` and asks to sync the agent to it
-- **THEN** the request is refused as the picker would refuse it, and the agent's root is unchanged
+- **THEN** the agent's root is unchanged, exactly as if `/usr` had been chosen with the picker

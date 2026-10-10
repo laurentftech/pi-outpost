@@ -60,7 +60,8 @@ the sandbox as being that boundary rather than the `sandbox` key.
 
 A sandboxing extension such as pi-landstrip can confine it — but only if you also name it in
 `sandbox.bashFrom`. Installed alone, its confined `bash` is shadowed by pi-outpost's and nothing
-changes. See [Sandboxing: what is confined, and what is not](sandboxing.md), which also has a
+changes. Or name a sandbox runner in `sandbox.bashRunner`, and pi-outpost's own `bash` runs every
+command inside it — on Windows 11, with MXC and busybox-w32, the way that works there today. See [Sandboxing: what is confined, and what is not](sandboxing.md), which also has a
 recipe for WSL on a managed Windows machine.
 
 To grant it for yourself while preventing anyone from turning it on from the browser:

@@ -59,6 +59,8 @@ export interface WorkspaceToolLimits {
   mailMaxBytes: number;
   /** How `pptx_render` finds and runs an office application. */
   officeRender?: RenderSettings;
+  /** What a `bash` confined by `sandbox.bashRunner` may never read: the provider keys and the configuration. */
+  neverReadable?: { agentDir?: string; configFile?: string };
 }
 
 /** Facts needed to decide whether an open workspace may release its resources. */
@@ -535,6 +537,7 @@ async function buildResources(options: WorkspaceOptions): Promise<WorkspaceResou
           limits.mailMaxBytes,
           options.onDocumentsWritten,
           options.skillReadRoots ? () => options.skillReadRoots!.dirs : undefined,
+          limits.neverReadable,
         )),
         ...options.unconfinedTools,
       ])
