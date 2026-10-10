@@ -333,7 +333,9 @@ const WINDOWS_SYSTEM_FOLDERS = new Set(["windows", "program files", "program fil
  * is not denied, which the documentation says.
  */
 export function siblingsToDeny(root: string): string[] {
-  const { root: drive } = path.win32.parse(root);
+  // The host's own path rules: this walks the disk the server runs on (Windows for MXC,
+  // whatever the tests run on), and Windows rules on a POSIX host make "\tmp\…", unlistable.
+  const { root: drive } = path.parse(root);
   const parts = root.slice(drive.length).split(/[\\/]+/).filter(Boolean);
   const denied: string[] = [];
   let dir = drive;
@@ -347,10 +349,10 @@ export function siblingsToDeny(root: string): string[] {
     for (const name of names) {
       if (name.toLowerCase() === part.toLowerCase()) continue;
       if (dir === drive && WINDOWS_SYSTEM_FOLDERS.has(name.toLowerCase())) continue;
-      const entry = path.win32.join(dir, name);
+      const entry = path.join(dir, name);
       if (deniable(entry)) denied.push(entry);
     }
-    dir = path.win32.join(dir, part);
+    dir = path.join(dir, part);
   }
   return denied;
 }
