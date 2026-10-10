@@ -1,4 +1,4 @@
-<!-- Draft issue for landstrip/landstrip (runner, Windows). Not posted. Title: -->
+<!-- Posted as https://github.com/landstrip/landstrip/issues/204 on 2026-10-10. -->
 # Windows AppContainer: the null device (NUL) is not accessible, so Git for Windows cannot start
 
 landstrip 0.19.11 (win32-x64), Windows 10 22H2, interactive session, `appContainerMode: "standard"`
