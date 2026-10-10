@@ -380,6 +380,10 @@ function deniable(entry: string): boolean {
   }
   if (stats.isSymbolicLink()) return false; // Node reports junctions as symbolic links too.
   if (stats.isDirectory()) return true;
+  // Only a regular file is opened to test it: opening a FIFO for reading blocks until a
+  // writer comes — synchronously, forever (it hung CI's Linux job on a pipe in /tmp).
+  // Sockets and devices are left out with it.
+  if (!stats.isFile()) return false;
   try {
     closeSync(openSync(entry, process.platform === "win32" ? fsConstants.O_RDONLY | EXCLUSIVE_OPEN : "r"));
     return true;
