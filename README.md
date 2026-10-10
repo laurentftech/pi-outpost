@@ -517,7 +517,9 @@ commands run unconfined. With it, the session checks that the `bash` in place co
 extension and refuses to start otherwise, naming the `bash` it found. The extension's policy is
 its own (pi-landstrip reads `~/.pi/agent/sandbox.json` and `.pi/sandbox.json`); pi-outpost does
 not interpret it. The terminal panel, when enabled (`terminal.enabled`), is a separate shell that
-no extension confines: leave it off where that matters, and lock it with `sandboxLocks.terminal`.
+no extension confines — unless `terminal.sandbox` names a sandbox runner, which then confines every
+terminal to the sandbox (see [docs/sandboxing.md](docs/sandboxing.md#confine-the-terminal-terminalsandbox)).
+Otherwise leave it off where that matters, and lock it with `sandboxLocks.terminal`.
 
 ### Agent resources
 
@@ -570,6 +572,7 @@ no extension confines: leave it off where that matters, and lock it with `sandbo
 | `terminal.enabled` | Enable integrated interactive web terminal (default `false` — explicit opt-in only). See [Integrated Terminal](#integrated-terminal) |
 | `terminal.shell` | Path to the shell executable (default: Git Bash -> PowerShell on Windows; `$SHELL` -> `/bin/zsh` -> `/bin/bash` on Unix) |
 | `terminal.shellArgs` | Arguments passed to the shell (default: `["-l"]` on Unix login shells) |
+| `terminal.sandbox` | Path to a sandbox runner (landstrip's binary) every terminal runs inside, confined to the sandbox root, with no keys in its environment. A missing or failing runner means no terminal, never an unconfined one. See [docs/sandboxing.md](docs/sandboxing.md#confine-the-terminal-terminalsandbox) |
 | `embed.workspaceControls` | What a mounted widget offers: `"settings"` (default, one project), `"root"` (a compact root chooser), `"projects"` (open/switch/close) |
 | `updateCheck` / `updateRegistry` | See [Staying up to date](#staying-up-to-date) |
 | `gitPath` | Path to the git executable. Unset, git is found on `PATH` and then where installers put it. See [Git](#git) |

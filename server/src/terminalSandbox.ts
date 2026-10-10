@@ -150,7 +150,10 @@ export function terminalPolicy(input: TerminalPolicyInput): TerminalPolicy {
  */
 function windowsTerminalPolicy(input: TerminalPolicyInput): TerminalPolicy {
   const slash = (p: string) => p.replaceAll("\\", "/");
-  const allowRead = [input.systemRoot, ...toolTrees(input.searchPath, path.win32), input.root, input.tmp]
+  // The search path's entries themselves, not their installations: AppContainer grants
+  // access to every allowed tree on each launch, and whole installations (Git, Node,
+  // Python) made a terminal take eleven seconds to appear.
+  const allowRead = [input.systemRoot, ...searchEntries(input.searchPath, path.win32), input.root, input.tmp]
     .filter((entry): entry is string => Boolean(entry))
     .map(slash);
   const denyRead = [...new Set(allowRead.map((entry) => `${path.win32.parse(entry).root.replaceAll("\\", "/")}`))];
@@ -179,6 +182,16 @@ function toolTrees(searchPath: string | undefined, flavour: path.PlatformPath): 
     .filter((tree) => tree !== flavour.parse(tree).root);
 }
 
+/** A search path's absolute entries, roots excluded. */
+function searchEntries(searchPath: string | undefined, flavour: path.PlatformPath): string[] {
+  if (!searchPath) return [];
+  return searchPath
+    .split(flavour === path.win32 ? ";" : ":")
+    .filter((entry) => entry && flavour.isAbsolute(entry))
+    .map((entry) => entry.replace(/[\\/]+$/, "") || entry)
+    .filter((entry) => entry !== flavour.parse(entry).root);
+}
+
 function unique(values: string[]): string[] {
   return [...new Set(values)];
 }
@@ -186,13 +199,28 @@ function unique(values: string[]): string[] {
 /** Variables a shell needs. Everything else of the server's stays out. */
 const PASSED_THROUGH = ["PATH", "LANG", "TERM", "COLORTERM", "TZ"];
 
+/**
+ * What Windows itself needs on top — and what landstrip's runner needs to start an
+ * AppContainer at all ("Windows ProgramData is unavailable" without it). Locations and
+ * machine facts, no credentials.
+ */
+const WINDOWS_PASSED_THROUGH = [
+  "SystemRoot", "windir", "SystemDrive", "ProgramData", "ProgramFiles", "ProgramFiles(x86)", "ProgramW6432",
+  "CommonProgramFiles", "CommonProgramFiles(x86)", "CommonProgramW6432", "ComSpec", "PATHEXT",
+  "OS", "PROCESSOR_ARCHITECTURE", "PROCESSOR_IDENTIFIER", "NUMBER_OF_PROCESSORS",
+  // Where the runner keeps its AppContainer profile: without it, launching fails with
+  // os error 203. A location, outside the read allowlist: the shell cannot look in it.
+  "LOCALAPPDATA",
+];
+
 /** The environment of a confined shell: a home in its root, its own temp, no secrets. */
 export function confinedEnvironment(
   serverEnv: NodeJS.ProcessEnv,
-  options: { root: string; tmp: string; shell: string },
+  options: { root: string; tmp: string; shell: string; platform?: NodeJS.Platform },
 ): Record<string, string> {
+  const windows = (options.platform ?? process.platform) === "win32";
   const env: Record<string, string> = {};
-  for (const name of PASSED_THROUGH) {
+  for (const name of windows ? [...PASSED_THROUGH, ...WINDOWS_PASSED_THROUGH] : PASSED_THROUGH) {
     const value = serverEnv[name];
     if (value !== undefined) env[name] = value;
   }
@@ -203,6 +231,11 @@ export function confinedEnvironment(
   env.SHELL = options.shell;
   env.HOME = options.root;
   env.TMPDIR = options.tmp;
+  if (windows) {
+    env.USERPROFILE = options.root;
+    env.TEMP = options.tmp;
+    env.TMP = options.tmp;
+  }
   return env;
 }
 

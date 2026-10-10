@@ -28,8 +28,10 @@ signals to the server.
 - Moving the agent to the terminal's directory ("Sync") stays bound by the same project and sandbox
   rules and locks as the directory picker, so a confined terminal widens nothing.
 - Without `terminal.sandbox`, nothing changes.
-- Linux (including WSL) is the supported platform for confinement. On macOS and Windows a configured
-  runner that fails its self-check disables the terminal, as above.
+- Linux (including WSL) is the supported platform for confinement. Windows works too (AppContainer),
+  with known limits: the root's parent is listable, and some tools reached through `PATH` (Git for
+  Windows) do not start inside. macOS is untested: a runner that fails its self-check there disables
+  the terminal, as above.
 
 ## Capabilities
 

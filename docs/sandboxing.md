@@ -41,7 +41,7 @@ boundary: it holds for these tools, and for nothing else.
 | `bash`, once `allowBash` is on | **No.** It starts in the project, and can do anything the server's user can. |
 | Extensions | **No.** They run inside the server process, with all of its rights. |
 | MCP servers | **No.** They are separate processes, with the rights of the user who starts them. |
-| The terminal panel (`terminal.enabled`) | **No.** It is a shell for you, not for the agent, and nothing confines it. |
+| The terminal panel (`terminal.enabled`) | **Not by default.** It is a shell for you, not for the agent. Set `terminal.sandbox` to confine it to the sandbox (below). |
 | Anything a command starts | **No.** It inherits whatever confined, or did not confine, the command. |
 
 Where any of these is on, the real boundary is the account the server runs as and the machine
@@ -108,6 +108,73 @@ Two practical points:
 **If you forget `bashFrom`**, pi-outpost says so. When `allowBash` is on, `bashFrom` is not set, and an
 extension registers its own `bash`, the server log carries a `WARNING` naming the extension, and every
 browser that opens the project gets the same warning, with the `bashFrom` line to add.
+
+## Confine the terminal: `terminal.sandbox`
+
+The terminal panel is a real shell, with every right of the account the server runs as. It ignores
+`sandbox.root`, writes outside the writable zone, and can read the agent directory where the provider
+keys are. Name a sandbox runner and every terminal runs inside it instead:
+
+```json
+{
+  "terminal": { "enabled": true, "sandbox": "/opt/landstrip/bin/landstrip" },
+  "sandbox": { "root": "/work/app", "allowWrite": true, "writableRoot": "/work/app/out", "allowBash": true }
+}
+```
+
+The runner is landstrip's (the same project as pi-landstrip, which confines the agent's `bash`). It is
+not bundled: fetch the package for your platform and point `terminal.sandbox` at its binary.
+
+```bash
+npm pack @landstrip/landstrip-linux-x64            # -linux-arm64, -win32-x64, -darwin-arm64…
+tar xzf landstrip-landstrip-linux-x64-*.tgz        # the binary is package/bin/landstrip
+./package/bin/landstrip doctor                     # {"ok":true,…,"implementation":"landlock+seccomp"}
+```
+
+Run `doctor` **where pi-outpost runs** — inside its container when it has one. On Linux it needs
+Landlock (kernel 5.13 or later, enabled) and a seccomp filter that lets its calls through. Docker's
+default profile does; bubblewrap, by comparison, needed it loosened.
+
+With `terminal.sandbox` set:
+
+| | Confined terminal |
+| --- | --- |
+| Reads | The sandbox root (the project root without a sandbox), the system directories, the tools on the `PATH`, and a private temporary directory. Nothing else — other projects, the home directory, `/opt`, `/var`. |
+| Writes | The writable zone and the private temporary directory. Nothing with `allowWrite: false`. |
+| Never | The agent directory (provider keys) and the configuration file, even under an allowed tree. |
+| Environment | `PATH`, the locale, `TERM`, `SHELL`, and `HOME` set to the root. None of the server's other variables, so no key it holds. |
+| Other processes | Cannot be signalled from inside. |
+| "open as project" | Moves the agent only where the directory picker could: locks still hold. |
+
+If the runner is missing, or its self-check fails, there is **no terminal** — the panel shows why —
+and the rest of pi-outpost works. It never falls back to an unconfined shell. Without
+`terminal.sandbox` the terminal is what it always was.
+
+What stays readable: the server's own environment, through `/proc/<pid>/environ` (same account, no
+separate process namespace). Keep provider keys in the credential store (`pi-outpost login`, or
+Settings), not in the server's environment.
+
+**Platforms.** Linux (WSL included) is the supported one. On Windows the runner uses an AppContainer
+and confines reads and writes the same way, with two differences: the parent of the root can be
+listed (names, not contents), and tools reached only through the `PATH` may not start — `git` from Git
+for Windows does not, since allowing its whole installation made every terminal take eleven seconds to
+open. On macOS it is untested.
+
+### pi-landstrip's `bash` on Windows
+
+As of pi-landstrip 0.19.11 (and since at least 0.19.8), the agent's `bash` does not run through it on
+Windows (tested on Windows 10; `scripts/probes/pi-landstrip-bash.mjs` reproduces it):
+
+1. **Without configuration** it stops on a permission question: Git for Windows' `bash.exe` is
+   outside its `allowRead`. In pi-outpost the question appears as a dialog, and until someone answers
+   it the tool call looks stuck.
+2. **With Git allowed** (`"filesystem": { "allowRead": ["C:/Program Files/Git"] }` in pi-landstrip's
+   `sandbox.json`), its launcher omits `LOCALAPPDATA` and `SystemRoot`, and the launch fails with
+   `os error 203`.
+3. **With those passed** (a local patch), Git Bash fails to initialise inside the AppContainer
+   (`0xC0000142`).
+
+These are pi-landstrip's to fix. On Windows, use WSL (the recipe below) for a confined agent `bash`.
 
 ## The agent cannot rewrite what confines it
 

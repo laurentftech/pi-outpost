@@ -79,7 +79,8 @@ describe("terminalPolicy on Windows", () => {
       agentDir: "C:\\Users\\me\\.pi\\agent",
       searchPath: "C:\\Program Files\\Git\\bin;relative\\bin;D:\\tools",
     });
-    assert.deepEqual(policy.filesystem.allowRead, ["C:/Windows", "C:/Program Files/Git", "D:/tools", "C:/Users/me/work/app", "C:/Users/me/AppData/Local/Temp/pi-outpost-terminal-1"]);
+    // The entries themselves (not Git's whole installation): each allowed tree costs launch time.
+    assert.deepEqual(policy.filesystem.allowRead, ["C:/Windows", "C:/Program Files/Git/bin", "D:/tools", "C:/Users/me/work/app", "C:/Users/me/AppData/Local/Temp/pi-outpost-terminal-1"]);
     // Every drive named is denied as a whole; secrets by name.
     assert.deepEqual(policy.filesystem.denyRead, ["C:/", "D:/", "C:/Users/me/.pi/agent"]);
     assert.deepEqual(policy.filesystem.allowWrite, ["C:/Users/me/work/app/out", "C:/Users/me/AppData/Local/Temp/pi-outpost-terminal-1"]);
@@ -93,9 +94,24 @@ describe("confinedEnvironment", () => {
   test("keys and other server variables stay out; the shell's own basics are set", () => {
     const env = confinedEnvironment(
       { PATH: "/usr/bin", LANG: "fr_FR.UTF-8", LC_ALL: "C", OPENAI_API_KEY: "sk-secret", PI_OUTPOST_TOKEN: "t", HOME: "/home/server" },
-      { root, tmp, shell: "/bin/bash" },
+      { root, tmp, shell: "/bin/bash", platform: "linux" },
     );
     assert.deepEqual(env, { PATH: "/usr/bin", LANG: "fr_FR.UTF-8", LC_ALL: "C", TERM: "xterm-256color", SHELL: "/bin/bash", HOME: root, TMPDIR: tmp });
+  });
+});
+
+describe("confinedEnvironment on Windows", () => {
+  test("the system's locations pass (the runner needs them), credentials still do not", () => {
+    const env = confinedEnvironment(
+      { Path: "C:\\Windows", PATH: "C:\\Windows", SystemRoot: "C:\\Windows", ProgramData: "C:\\ProgramData", ComSpec: "C:\\Windows\\system32\\cmd.exe", OPENAI_API_KEY: "sk-secret", APPDATA: "C:\\Users\\server\\AppData\\Roaming" },
+      { root: "C:\\work\\app", tmp: "C:\\tmp\\t1", shell: "cmd.exe", platform: "win32" },
+    );
+    assert.equal(env.ProgramData, "C:\\ProgramData");
+    assert.equal(env.SystemRoot, "C:\\Windows");
+    assert.equal(env.OPENAI_API_KEY, undefined);
+    assert.equal(env.APPDATA, undefined, "the server user's profile is not the shell's");
+    assert.equal(env.USERPROFILE, "C:\\work\\app");
+    assert.equal(env.TEMP, "C:\\tmp\\t1");
   });
 });
 
