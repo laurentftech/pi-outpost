@@ -61,8 +61,11 @@ $busybox = @("$HOME\tools\sh.exe", "$HOME\busybox64.exe") | Where-Object { Test-
 $git = (Get-Command git.exe -ErrorAction SilentlyContinue).Source
 
 function Run-Contained([string]$label, [string]$commandLine, [switch]$Debug, [switch]$RootWritable) {
-  $fs = if ($RootWritable) { @{ readwritePaths = @($app); deniedPaths = @($other, $agent) } }
-        else { @{ readwritePaths = @($out); readonlyPaths = @($app); deniedPaths = @($other, $agent) } }
+  # busybox re-launches itself for pipes and non-final commands: its folder must be readable, or
+  # it answers "unable to spawn shell" and the /dev/null line measures that instead.
+  $tools = @(); if ($busybox) { $tools = @(Split-Path $busybox) }
+  $fs = if ($RootWritable) { @{ readwritePaths = @($app); readonlyPaths = $tools; deniedPaths = @($other, $agent) } }
+        else { @{ readwritePaths = @($out); readonlyPaths = @($app) + $tools; deniedPaths = @($other, $agent) } }
   $config = @{
     version = "1.0.0"
     containment = "processcontainer"
@@ -102,7 +105,11 @@ Run-Contained "NUL read"                 'cmd.exe /c type nul && echo nul-readab
 Run-Contained "NUL write"                'cmd.exe /c echo x > nul && echo nul-writable'
 Run-Contained "whoami"                   'whoami.exe'
 Run-Contained "powershell"               'powershell.exe -NoProfile -Command "Write-Output ps-ok"'
-if ($git) { Run-Contained "git --version" ('"{0}" --version' -f $git) } else { Note "git: not on PATH, skipped" }
+if ($git) {
+  Run-Contained "git --version" ('"{0}" --version' -f $git)
+  # Real work needs the working directory, which Git for Windows resolves by listing every parent.
+  Run-Contained "git init in writable zone" ('cmd.exe /c cd out && "{0}" init -q repo && echo init-ok' -f $git)
+} else { Note "git: not on PATH, skipped" }
 if ($busybox) {
   # busybox-w32 picks its applet from its own name: as sh.exe it is already sh.
   $sh = if ((Split-Path -Leaf $busybox) -ieq "sh.exe") { '"{0}"' -f $busybox } else { '"{0}" sh' -f $busybox }
