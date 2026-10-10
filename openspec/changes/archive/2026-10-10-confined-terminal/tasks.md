@@ -27,8 +27,8 @@
 
 ## 5. Documentation and verification
 
-- [ ] 5.1 `docs/sandboxing.md`: installing the runner, `terminal.sandbox`, the `doctor` check to run in the target container, what stays readable (server environment, host files outside the denied trees), keys as credentials; validate the commands.
-- [ ] 5.2 `scenario-coverage.md` mapping every scenario to its test; `npm run check:scenarios` and `openspec validate --strict` pass; suites green on Linux, macOS and Windows.
+- [x] 5.1 `docs/sandboxing.md`: installing the runner, `terminal.sandbox`, the `doctor` check to run in the target container, what stays readable (server environment, host files outside the denied trees), keys as credentials; validate the commands.
+- [x] 5.2 `scenario-coverage.md` mapping every scenario to its test; `npm run check:scenarios` and `openspec validate --strict` pass; suites green on Linux, macOS and Windows.
 
 ## Workflow follow-up
 
