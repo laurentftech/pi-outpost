@@ -1,23 +1,21 @@
 <!-- Draft issue (or PR) for landstrip/landstrip, package pi-landstrip. Title: -->
-# pi-landstrip on Windows: launcher environment lacks LOCALAPPDATA/SystemRoot (os error 203), and the default policy stops on Git Bash
+# pi-landstrip on Windows: launcher environment lacks LOCALAPPDATA/SystemRoot (os error 203); with it fixed, a native shell works
 
-Two pi-landstrip-side problems seen on Windows 10 22H2 with pi-landstrip **0.19.8 and 0.19.11**,
-driving the agent's `bash` through it (the runner-side `user32.dll` failure is reported separately,
-#NNN).
+Windows 10 22H2, pi-landstrip **0.19.11** (also seen on 0.19.8), landstrip runner 0.19.11, Pi driving
+the agent's `bash` through pi-landstrip. All runs below are from the user's interactive session (over
+SSH, sandboxed processes get no window station and fail for that reason alone).
 
-## 1. The launcher environment is too bare: `LAUNCH_FAILED … (os error 203)`
+## 1. Every launch fails with `os error 203`
 
 `createLandstripLauncherEnvironment` passes the runner `PATH`, `HOME` and, on Windows, `ProgramData`.
-With Git Bash allowed by the policy, every `bash` call fails with:
+Whatever the shell, each `bash` call fails:
 
 ```
-{"kind":"launch","code":"LAUNCH_FAILED","program":"C:\\Program Files\\Git\\bin\\bash.exe","message":"The system could not find the environment option that was entered. (os error 203)"}
+{"kind":"launch","code":"LAUNCH_FAILED","program":"C:\\Users\\me\\tools\\sh.exe","message":"The system could not find the environment option that was entered. (os error 203)"}
 ```
 
-Running the runner directly, I bisected this: with `ProgramData` alone the launch fails with
-error 203; adding **`LOCALAPPDATA`** makes the runner start. The launched program also needs
-**`SystemRoot`** (and usually `windir`, `ComSpec`, `PATHEXT`). Passing those through clears the
-error:
+Running the runner directly, `ProgramData` alone reproduces the error and adding `LOCALAPPDATA` clears
+it; the launched program also wants `SystemRoot`. Passing these through fixes it:
 
 ```js
 function createLandstripLauncherEnvironment(providerEnv, hostEnv = process.env, platform = process.platform) {
@@ -32,21 +30,36 @@ function createLandstripLauncherEnvironment(providerEnv, hostEnv = process.env, 
 }
 ```
 
-None of these are credentials: locations and machine facts. (With it, `bash` gets as far as the
-runner-side `0xC0000142`.)
+(Locations and machine facts, no credentials.)
 
-## 2. With the bundled policy, the first `bash` call waits on a permission question
+## 2. With that fixed, a native shell works; Git Bash still cannot
 
-The bundled `sandbox.json` does not allow reading the shell Pi selects on Windows, so the first call
-raises `Read blocked: "C:\Program Files\Git\bin\bash.exe" is not in allowRead` as a `select` dialog.
-In a host that relays dialogs to a web UI the tool call looks stuck until someone answers. Allowing
-the shell Pi selects (from `getShellConfig()`) by default on Windows, or failing with that message
-rather than asking, would make the state visible.
+Git Bash (Pi's default shell on Windows) still dies at start (`NtCreateDirectoryObject(\BaseNamedObjects\msys-2.0…)`,
+`0xC0000142`), as already noted in #40. A native shell does work: busybox-w32 copied as `sh.exe`, named in
+Pi's `shellPath`, with
+
+```json
+{ "shell": { "readAccess": "policy" },
+  "filesystem": { "allowRead": [".", "C:\\Windows", "C:\\tools\\sh.exe"] },
+  "windows": { "appContainerMode": "standard" } }
+```
+
+runs the agent's commands in the project, refuses a write outside it (`Permission denied`) and stops a
+read outside it on a permission question. In the default `lpac` mode busybox fails with
+`WSAStartup failed, error 18`, also as in #40.
+
+It might be worth documenting this as the supported Windows setup (native shell + standard container),
+since the default one cannot work.
+
+## 3. Default policy: the first call waits on a question about the shell itself
+
+With the bundled `sandbox.json`, the first `bash` call raises
+`Read blocked: "C:\Program Files\Git\bin\bash.exe" is not in allowRead` as a `select` dialog. In a host
+that relays dialogs to a web UI, the tool call looks stuck until someone answers. Allowing the shell Pi
+selects (`getShellConfig()`) by default, or failing with that message instead of asking, would make the
+state visible.
 
 ## Reproduction
 
-A pi host with `pi-landstrip` loaded and named as `bash`'s source, a scripted provider that calls
-`bash` once (`echo from-the-shell`), the tool result recorded. With the default policy: the dialog
-above, no result. With `{"shell":{"readAccess":"policy"},"filesystem":{"allowRead":[".","C:\\Windows","C:/Program Files/Git"]}}`
-in the agent dir's `sandbox.json`: the `os error 203` result above. With the launcher fix: exit
-`0xC0000142` (runner side).
+A Pi host loading pi-landstrip as the source of `bash`, a scripted provider that makes the agent call
+`bash` once, the tool result recorded; I can share the script. Happy to run anything else on this VM.

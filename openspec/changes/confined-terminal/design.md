@@ -107,15 +107,15 @@ than a new code path.
   secrets pi-outpost knows about. Secrets elsewhere on the host (e.g. `/etc/…` credentials) stay readable,
   as they are to the agent's `pi-landstrip` with `readAccess: "host"`; the documentation lists them.
 
-- [Windows: any program importing `user32.dll` fails to start in landstrip's AppContainer
-  (`0xC0000142`): git, PowerShell, `whoami`, busybox, Git Bash. Only `cmd.exe` and a few built-ins run,
-  and the root's parent stays listable] → Documented as "of little use on Windows; use WSL". It is
-  landstrip's to fix (desktop access for the container). pi-outpost keeps the Windows policy so that it
-  works the day it does.
-- [Windows: the agent's `bash` through `pi-landstrip` (not this change) does not work as of 0.19.11] →
-  Measured on Windows 10: it asks for a read permission for Git's `bash.exe`. Once allowed, its launcher
-  environment lacks `LOCALAPPDATA` and `SystemRoot` (`os error 203`). Once those are passed, Git Bash
-  fails to initialise in the AppContainer (`0xC0000142`). These are reported upstream and documented.
+- [Windows: Git Bash cannot start in an AppContainer (MSYS2's global named objects), the root's parent
+  stays listable, and the server must run in the interactive session (over SSH or as a service, the
+  containers get no window station: `0xC0000142`)] → Documented. In an interactive session `cmd`,
+  PowerShell, git and busybox run confined.
+- [Windows: the agent's `bash` through `pi-landstrip` (not this change) does not work out of the box as
+  of 0.19.11] → Measured in an interactive session: a read permission question for Git's `bash.exe`, then
+  `os error 203` (its launcher lacks `LOCALAPPDATA` and `SystemRoot`), then Git Bash cannot start. With
+  the launcher fix, busybox as pi's shell and a standard AppContainer it works and confines. Reported
+  upstream; documented.
 
 ## Migration Plan
 

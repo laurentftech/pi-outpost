@@ -29,9 +29,9 @@ signals to the server.
   rules and locks as the directory picker, so a confined terminal widens nothing.
 - Without `terminal.sandbox`, nothing changes.
 - Linux (including WSL) is the supported platform for confinement. On Windows reads and writes are
-  confined as well, but landstrip's AppContainer cannot start programs that load `user32.dll` (git,
-  PowerShell, most tools), so the terminal is little more than `cmd`: use WSL there. macOS is untested;
-  a runner that fails its self-check disables the terminal, as above.
+  confined as well and `cmd`, PowerShell, git and busybox run inside, but Git Bash cannot, and the
+  server has to run in the user's interactive session. macOS is untested; a runner that fails its
+  self-check disables the terminal, as above.
 
 ## Capabilities
 

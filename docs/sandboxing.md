@@ -155,32 +155,41 @@ separate process namespace). Keep provider keys in the credential store (`pi-out
 Settings), not in the server's environment.
 
 **Platforms.** Linux (WSL included) is the supported one. On Windows the runner uses an AppContainer
-and confines reads and writes the same way, but it is of little use as a shell: any program that loads
-`user32.dll` fails to start inside it (`0xC0000142`, the container gets no window station). That
-excludes `git`, PowerShell, `whoami`, `where`, busybox and Git Bash; `cmd.exe` and a few built-ins
-(`findstr`, `hostname`) run. The parent of the root can also be listed (names, not contents). On
-macOS it is untested. For a confined terminal on a Windows machine, run pi-outpost in WSL.
+and confines reads and writes the same way; `cmd`, PowerShell, `git` and busybox run inside it, Git Bash
+does not (MSYS2 needs global named objects an AppContainer may not create). The parent of the root can
+be listed (names, not contents). The server must run in the user's interactive session: started as a
+service or over SSH, its containers get no window station and most programs fail to start
+(`0xC0000142`). macOS is untested.
 
 ### pi-landstrip's `bash` on Windows
 
-As of pi-landstrip 0.19.11 (and since at least 0.19.8), the agent's `bash` does not run through it on
-Windows (tested on Windows 10; `scripts/probes/pi-landstrip-bash.mjs` reproduces it):
+As of pi-landstrip 0.19.11, the agent's `bash` does not run through it on Windows out of the box (tested
+on Windows 10, interactive session; `scripts/probes/pi-landstrip-bash.mjs` reproduces each step):
 
-1. **Without configuration** it stops on a permission question: Git for Windows' `bash.exe` is
-   outside its `allowRead`. In pi-outpost the question appears as a dialog, and until someone answers
-   it the tool call looks stuck.
-2. **With Git allowed** (`"filesystem": { "allowRead": ["C:/Program Files/Git"] }` in pi-landstrip's
-   `sandbox.json`), its launcher omits `LOCALAPPDATA` and `SystemRoot`, and the launch fails with
-   `os error 203`.
-3. **With those passed** (a local patch), Git Bash fails to initialise inside the AppContainer
-   (`0xC0000142`).
+1. **Default configuration**: pi's shell on Windows is Git Bash, outside pi-landstrip's `allowRead`, so the
+   first call stops on a permission question — in pi-outpost a dialog, and the tool call looks stuck
+   until someone answers it.
+2. **Git allowed**: pi-landstrip launches its runner without `LOCALAPPDATA` and `SystemRoot`, and every
+   call fails with `os error 203`. This one needs a pi-landstrip fix (reported upstream; a local patch
+   is `scripts/probes/patch-pi-landstrip-launcher-env.cjs`).
+3. **Even then, Git Bash cannot start in an AppContainer** (MSYS2's global named objects).
 
-The third is landstrip's runner, not pi-landstrip: inside its AppContainer, any program that imports
-`user32.dll` fails to start — Git Bash, busybox, PowerShell, even `whoami` and `where` — while `cmd.exe`,
-which does not import it, runs. Git Bash also needs global named objects (`\BaseNamedObjects\msys-2.0…`),
-which an AppContainer may not create. `scripts/probes/landstrip-shells.ps1`, `landstrip-run.mjs` and
-`pe-imports.mjs` show both. Until landstrip gives its containers a desktop, there is no confined `bash`
-on native Windows: use WSL (the recipe below).
+What works, with the fix for 2: a native shell. Copy busybox-w32 as `sh.exe`, name it as pi's shell, and
+put pi-landstrip in the standard AppContainer (its default, `lpac`, breaks busybox's networking):
+
+```json
+// <agentDir>/settings.json
+{ "shellPath": "C:\\tools\\sh.exe" }
+// <agentDir>/sandbox.json
+{
+  "shell": { "readAccess": "policy" },
+  "filesystem": { "allowRead": [".", "C:\\Windows", "C:\\tools\\sh.exe"] },
+  "windows": { "appContainerMode": "standard" }
+}
+```
+
+With that, the agent's commands run in the project, writes outside it are refused, and reads outside it
+stop on a permission question. Until pi-landstrip ships the fix, use WSL (the recipe below).
 
 ## The agent cannot rewrite what confines it
 

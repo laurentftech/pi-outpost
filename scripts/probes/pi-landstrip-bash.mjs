@@ -14,7 +14,15 @@
  * PLS_DIR: the directory, under the home directory, where pi-landstrip is installed
  * (`npm install pi-landstrip@<version>` there). Default "pls".
  * Variant "policy" writes pi-landstrip's sandbox.json allowing the system and Git for
- * Windows, which "default" leaves to its bundled policy.
+ * Windows, which "default" leaves to its bundled policy. Variant "busybox" swaps Git Bash
+ * for busybox-w32 as pi's shell (BUSYBOX_SH, default ~/tools/sh.exe) in a standard
+ * AppContainer.
+ *
+ * BASH_CALL_COMMAND_B64: another command for the agent to run, base64-encoded (default
+ * `echo from-the-shell`).
+ *
+ * On Windows, run it in the interactive session (scripts/probes/run-interactive.ps1): over
+ * SSH, sandboxed processes get no window station and fail for that reason alone.
  */
 import { readFile, realpath, writeFile, mkdir } from "node:fs/promises";
 import { writeFileSync } from "node:fs";
@@ -30,6 +38,18 @@ const variant = process.argv[2] ?? "default";
 
 const project = await realpath(await makeWorkspace({ "readme.txt": "mine" }));
 const log = path.join(project, "bash-result.json");
+if (variant === "busybox") {
+  // A native Windows shell instead of Git Bash (MSYS2 cannot start in an AppContainer):
+  // busybox-w32 copied as sh.exe (it picks the applet from its name), named as pi's shell,
+  // and pi-landstrip in the standard AppContainer (lpac breaks busybox's sockets: WSAStartup 18).
+  const sh = process.env.BUSYBOX_SH ?? path.join(os.homedir(), "tools", "sh.exe");
+  await mkdir(path.join(project, ".pi-agent"), { recursive: true });
+  await writeFile(path.join(project, ".pi-agent", "settings.json"), JSON.stringify({ shellPath: sh }));
+  await writeFile(
+    path.join(project, ".pi-agent", "sandbox.json"),
+    JSON.stringify({ shell: { readAccess: "policy" }, filesystem: { allowRead: [".", process.env.SystemRoot, sh] }, windows: { appContainerMode: "standard" } }),
+  );
+}
 if (variant === "policy") {
   await mkdir(path.join(project, ".pi-agent"), { recursive: true });
   await writeFile(
@@ -46,7 +66,14 @@ const server = await startServer(
     extensionPaths: [PLS, PROVIDER],
     allowedModels: [MODEL],
   },
-  { env: { BASH_CALL_LOG: log } },
+  {
+    env: {
+      BASH_CALL_LOG: log,
+      // The command, base64-encoded: passed through cmd.exe (run-interactive.ps1), a plain `>`
+      // or `|` would be run by cmd itself, outside the sandbox being tested.
+      ...(process.env.BASH_CALL_COMMAND_B64 ? { BASH_CALL_COMMAND: Buffer.from(process.env.BASH_CALL_COMMAND_B64, "base64").toString("utf8") } : {}),
+    },
+  },
 );
 const startedMs = Date.now() - t0;
 const client = connect(server.wsUrl());
