@@ -68,6 +68,14 @@ export interface SandboxConfig {
    */
   bashFrom?: string;
   /**
+   * A sandbox runner pi-outpost's own `bash` runs every command inside, while `allowBash`
+   * is on: MXC's executor (`wxc-exec.exe`, Windows 11) or landstrip's binary. Same policy
+   * as a confined terminal in the workspace. Exclusive with `bashFrom`. Absolute after load.
+   */
+  bashRunner?: string;
+  /** The shell `bashRunner` runs commands in. Default `/bin/bash`; required on Windows (busybox-w32). */
+  bashShell?: string;
+  /**
    * Extra directories (absolute paths) that read tools (read/ls/grep/find) are
    * allowed to access in addition to `root`. Write tools are NOT affected — these
    * are read-only exceptions. Populated from `skillPaths`, `promptPaths`,
@@ -928,6 +936,11 @@ export function loadConfig(
     if (bashFrom !== undefined && bashFrom.trim() === "") {
       fail(`"sandbox.bashFrom" must name an extension: its package source (e.g. "npm:pi-landstrip") or a path`);
     }
+    const bashRunner = optionalString(sandbox, "bashRunner", "sandbox.bashRunner");
+    const bashShell = optionalString(sandbox, "bashShell", "sandbox.bashShell");
+    if (bashRunner !== undefined && bashFrom !== undefined) {
+      fail(`"sandbox.bashRunner" and "sandbox.bashFrom" both say who runs bash: keep one`);
+    }
 
     // A sandbox that only *reads* may follow the workspace the user just named —
     // that is what moving the workspace means. A sandbox that grants write or bash
@@ -956,6 +969,8 @@ export function loadConfig(
       writableRoot: resolvedWritableRoot,
       allowBash,
       ...(bashFrom === undefined ? {} : { bashFrom: bashFrom.trim() }),
+      ...(bashRunner === undefined ? {} : { bashRunner: resolve(bashRunner) }),
+      ...(bashShell === undefined ? {} : { bashShell: resolve(bashShell) }),
       readExceptions: [
         ...(optionalStringArray(raw, "skillPaths") ?? []).map(resolve),
         ...(optionalStringArray(raw, "userSkillPaths") ?? []).map(resolve),

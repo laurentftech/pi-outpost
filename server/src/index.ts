@@ -571,6 +571,7 @@ function workspaceOptions(settings: WorkspaceSettings): Omit<WorkspaceOptions, "
       structuredExchangeMaxBytes: config.structuredExchange.maxBytes,
       mailMaxBytes: config.mail.maxBytes,
       officeRender: officeRenderSettings(),
+      neverReadable: { agentDir: AGENT_DIR, configFile: config.configFile },
     },
     watchFiles: config.files.watch,
     // `present_structure` has no path argument to confine, so it is unconfined on both
@@ -3191,6 +3192,9 @@ async function handleUpdateConfig(
         // Not edited from Settings: carried over, or an apply would hand bash back to
         // pi-outpost's unconfined one until the next start.
         ...(config.sandbox?.bashFrom === undefined ? {} : { bashFrom: config.sandbox.bashFrom }),
+        // Likewise, or an apply would hand bash back unconfined.
+        ...(config.sandbox?.bashRunner === undefined ? {} : { bashRunner: config.sandbox.bashRunner }),
+        ...(config.sandbox?.bashShell === undefined ? {} : { bashShell: config.sandbox.bashShell }),
         readExceptions: [],
       };
     }
@@ -6013,7 +6017,16 @@ console.log(`[pi] skills: ${runtimeSkills.join(", ") || "(none)"}`);
 if (config.sandbox) {
   const extras = [
     config.sandbox.allowWrite ? "write" : "read-only",
-    ...(config.sandbox.allowBash ? ["bash (UNCONFINED)"] : []),
+    // Who confines bash, if anyone: the line an operator reads to know what the agent can do.
+    ...(config.sandbox.allowBash
+      ? [
+          config.sandbox.bashRunner
+            ? `bash (confined by ${config.sandbox.bashRunner}, shell ${config.sandbox.bashShell ?? "/bin/bash"})`
+            : config.sandbox.bashFrom
+              ? `bash (from ${config.sandbox.bashFrom})`
+              : "bash (UNCONFINED)",
+        ]
+      : []),
   ].join(", ");
   console.log(`[pi] sandbox ${config.sandbox.root} · ${extras}`);
 }

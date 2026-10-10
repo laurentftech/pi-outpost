@@ -54,6 +54,7 @@ import type { RenderSettings } from "./presentationRender.ts";
 import { createStructuredExchangeFigureToolDefinition } from "./structuredExchangeFigureTool.ts";
 import { createTimelineComparisonToolDefinition } from "./timelineComparisonTool.ts";
 import { createStructuredExchangeTableToolDefinition } from "./structuredExchangeTableTool.ts";
+import { confinedBashOperations } from "./confinedBash.ts";
 
 /**
  * Resolve `target` following symlinks in its deepest existing ancestor, so a
@@ -208,6 +209,8 @@ export async function createSandboxedTools(
    * are only known once the session that loads them exists. Real paths. Read only.
    */
   skillReadRoots?: () => readonly string[],
+  /** What a `bash` confined by `sandbox.bashRunner` may never read. */
+  neverReadable: { agentDir?: string; configFile?: string } = {},
 ): Promise<ToolDefinition[]> {
   const realRoot = await fs.realpath(sandbox.root);
   const readFactories: Array<(cwd: string) => ToolDefinition> = [
@@ -326,10 +329,21 @@ export async function createSandboxedTools(
   }
 
   if (sandbox.allowBash && sandbox.bashFrom === undefined) {
-    // Explicit opt-in: bash runs in the root but is NOT path-confined. The root
-    // still has to be pinned onto the context, or the shell starts in the
-    // project root instead — see `withCwd`.
-    const bash = createBashToolDefinition(realRoot) as ToolDefinition;
+    // Explicit opt-in: bash runs in the root but is NOT path-confined — unless a
+    // runner is named, which runs every command inside an OS sandbox with the policy
+    // of a confined terminal. The root still has to be pinned onto the context, or
+    // the shell starts in the project root instead — see `withCwd`.
+    const operations = sandbox.bashRunner
+      ? confinedBashOperations({
+          runner: sandbox.bashRunner,
+          shell: sandbox.bashShell,
+          root: realRoot,
+          ...(realWritableRoot !== null && realWritableRoot !== realRoot ? { writableRoot: realWritableRoot } : {}),
+          allowWrite: realWritableRoot !== null,
+          ...neverReadable,
+        })
+      : undefined;
+    const bash = createBashToolDefinition(realRoot, operations ? { operations } : undefined) as ToolDefinition;
     tools.push({
       ...bash,
       execute: (toolCallId, params, signal, onUpdate, ctx) =>
