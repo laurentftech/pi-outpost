@@ -62,7 +62,7 @@ describe("a confined terminal under the real runner", { skip }, () => {
       {
         runner: RUNNER!,
         root,
-        policy: (tmp) =>
+        policy: ({ tmp }) =>
           terminalPolicy({ root, writableRoot: out, allowWrite: true, agentDir, tmp, searchPath: process.env.PATH }),
       },
     );

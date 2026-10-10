@@ -1,8 +1,18 @@
 import assert from "node:assert/strict";
-import { stat, readFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, stat, readFile, symlink, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, test } from "node:test";
-import { checkRunner, confinedEnvironment, prepareConfinedTerminal, terminalPolicy } from "../src/terminalSandbox.ts";
+import {
+  checkRunner,
+  confinedEnvironment,
+  mxcTerminalConfig,
+  prepareConfinedTerminal,
+  quoteWindowsArgument,
+  runnerKind,
+  siblingsToDeny,
+  terminalPolicy,
+} from "../src/terminalSandbox.ts";
 
 // The Linux policy, whatever host runs the test: POSIX paths, platform pinned.
 const p = (...parts: string[]) => path.posix.join("/", ...parts);
@@ -134,7 +144,8 @@ describe("confinedEnvironment on Windows", () => {
 
 describe("prepareConfinedTerminal", () => {
   test("writes the policy owner-only into a private directory that dispose removes", async () => {
-    const files = await prepareConfinedTerminal((dir) => terminalPolicy({ root, allowWrite: true, tmp: dir }));
+    // The Linux policy: Windows' writes its paths with "/", which this lookup does not.
+    const files = await prepareConfinedTerminal((dir) => terminalPolicy({ ...linux, root, allowWrite: true, tmp: dir }));
     const written = JSON.parse(await readFile(files.policyFile, "utf8"));
     assert.ok(written.filesystem.allowRead.includes(files.tmp), "the private dir is the policy's temp");
     if (process.platform !== "win32") assert.equal((await stat(files.policyFile)).mode & 0o777, 0o600);
@@ -165,5 +176,142 @@ describe("checkRunner", () => {
       throw Object.assign(new Error("Command failed"), { stdout: '{"ok":false,"error":"landlock is not available"}\n', stderr: "" });
     });
     assert.ok(!exited.ok && exited.reason.endsWith(": landlock is not available"), !exited.ok ? exited.reason : "");
+  });
+});
+
+describe("runnerKind", () => {
+  test("MXC's executor is known by its name, anything else is landstrip", () => {
+    assert.equal(runnerKind("C:\\mxc\\bin\\x64\\wxc-exec.exe"), "mxc");
+    assert.equal(runnerKind("C:/mxc/WXC-EXEC.EXE"), "mxc");
+    assert.equal(runnerKind("/opt/mxc/wxc-exec"), "mxc");
+    assert.equal(runnerKind("/opt/landstrip/bin/landstrip"), "landstrip");
+    assert.equal(runnerKind("C:\\tools\\wxc-exec-wrapper.exe"), "landstrip");
+  });
+});
+
+describe("checkRunner with MXC's executor", () => {
+  // The executor's file must exist to be checked at all: an empty one under MXC's name.
+  async function withExecutor(run: (runner: string) => Promise<void>): Promise<void> {
+    const dir = await mkdtemp(path.join(tmpdir(), "mxc-runner-"));
+    const runner = path.join(dir, "wxc-exec.exe");
+    await writeFile(runner, "", { mode: 0o755 });
+    try {
+      await run(runner);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  }
+  const probe = (tier: string, denyPaths = true) => async (_file: string, args: string[]) => {
+    assert.deepEqual(args, ["--probe"], "the self-check is the probe, which spawns no sandbox");
+    return { stdout: JSON.stringify({ tier, probes: { baseContainerSupportsDenyPaths: denyPaths } }), stderr: "" };
+  };
+
+  // openlore: scenario=AnMxcRunnerBelowTier1MeansNoTerminal spec=terminal
+  test("only tier 1 is usable: a lower tier would stamp ACLs over the readable drive", async () => {
+    await withExecutor(async (runner) => {
+      assert.deepEqual(await checkRunner(runner, probe("base-container"), "win32"), { ok: true });
+      const tier3 = await checkRunner(runner, probe("appcontainer-dacl"), "win32");
+      assert.ok(!tier3.ok && /appcontainer-dacl/.test(tier3.reason) && /base-container/.test(tier3.reason), !tier3.ok ? tier3.reason : "");
+      const noDeny = await checkRunner(runner, probe("base-container", false), "win32");
+      assert.ok(!noDeny.ok && /deny paths/.test(noDeny.reason));
+    });
+  });
+
+  test("anywhere but Windows, or a probe that fails or says nothing usable, is a reason", async () => {
+    await withExecutor(async (runner) => {
+      const linux = await checkRunner(runner, probe("base-container"), "linux");
+      assert.ok(!linux.ok && /Windows only/.test(linux.reason));
+      const failed = await checkRunner(runner, async () => {
+        throw Object.assign(new Error("Command failed"), { stderr: "processmodel.dll missing" });
+      }, "win32");
+      assert.ok(!failed.ok && /processmodel\.dll missing/.test(failed.reason));
+      const garbled = await checkRunner(runner, async () => ({ stdout: "not json", stderr: "" }), "win32");
+      assert.ok(!garbled.ok && /not JSON/.test(garbled.reason));
+    });
+  });
+});
+
+describe("mxcTerminalConfig", () => {
+  const wroot = "C:\\Users\\me\\work\\app";
+  const wtmp = "C:\\Users\\me\\AppData\\Local\\Temp\\pi-outpost-terminal-1";
+  const base = {
+    root: wroot,
+    allowWrite: true,
+    tmp: wtmp,
+    shell: "C:\\Users\\me\\tools\\sh.exe",
+    shellArgs: [],
+    cwd: wroot,
+    env: { PATH: "C:\\Windows", HOME: wroot },
+    siblings: ["C:\\Users\\me\\.ssh", "C:\\Users\\me\\tools", "C:\\Users\\me\\AppData", "C:\\Users\\other", "C:\\mxc-lab"],
+    agentDir: "C:\\Users\\me\\.pi\\agent",
+    configFile: "C:\\Users\\me\\work\\app\\pi-outpost.config.json",
+  };
+
+  test("the drive is readable for git, everything beside the root denied, secrets denied by name", () => {
+    const config = mxcTerminalConfig({ ...base, writableRoot: wroot + "\\out" });
+    assert.deepEqual(config.filesystem.readwritePaths, [wroot + "\\out", wtmp]);
+    assert.deepEqual(config.filesystem.readonlyPaths, ["C:\\", wroot, "C:\\Users\\me\\tools"]);
+    // The shell's own folder is allowed: denying it as well would leave the winner to the sandbox.
+    assert.deepEqual(config.filesystem.deniedPaths, ["C:\\Users\\me\\.ssh", "C:\\Users\\me\\AppData", "C:\\Users\\other", "C:\\mxc-lab", base.agentDir, base.configFile]);
+    assert.equal(config.containment, "processcontainer");
+    assert.deepEqual(config.ui, { disable: false }, "PowerShell and git need Win32k");
+    assert.deepEqual(config.network, { egress: { default: "allow" } }, "the terminal keeps the network, as the user's shell does");
+  });
+
+  test("the whole root writable, or nothing but the temp when writes are off", () => {
+    const writable = mxcTerminalConfig(base);
+    assert.deepEqual(writable.filesystem.readwritePaths, [wroot, wtmp]);
+    assert.ok(!writable.filesystem.readonlyPaths.includes(wroot), "not both writable and read-only");
+    const readOnly = mxcTerminalConfig({ ...base, allowWrite: false });
+    assert.deepEqual(readOnly.filesystem.readwritePaths, [wtmp]);
+    assert.ok(readOnly.filesystem.readonlyPaths.includes(wroot));
+  });
+
+  // openlore: scenario=KeysDoNotReachTheShell spec=terminal
+  test("the request carries the command line, the start directory and only the given environment", () => {
+    const config = mxcTerminalConfig({ ...base, shell: "C:\\Program Files\\PowerShell\\7\\pwsh.exe", shellArgs: ["-NoLogo", "-Command", 'echo "hi"'] });
+    assert.equal(config.process.commandLine, '"C:\\Program Files\\PowerShell\\7\\pwsh.exe" -NoLogo -Command "echo \\"hi\\""');
+    assert.equal(config.process.cwd, wroot);
+    assert.deepEqual(config.process.env, ["PATH=C:\\Windows", `HOME=${wroot}`]);
+  });
+});
+
+describe("quoteWindowsArgument", () => {
+  test("quotes what CommandLineToArgvW would split, doubling backslashes only where they escape", () => {
+    assert.equal(quoteWindowsArgument("plain"), "plain");
+    assert.equal(quoteWindowsArgument(""), '""');
+    assert.equal(quoteWindowsArgument("a b"), '"a b"');
+    assert.equal(quoteWindowsArgument('say "x"'), '"say \\"x\\""');
+    assert.equal(quoteWindowsArgument("C:\\dir with space\\"), '"C:\\dir with space\\\\"');
+    assert.equal(quoteWindowsArgument('a\\"b'), '"a\\\\\\"b"');
+  });
+});
+
+describe("siblingsToDeny", () => {
+  // A walk of the real drive is the Windows real-runner test's job; here a layout under a
+  // temp directory stands in, and the path down to the root is what must stay out.
+  test("everything beside the path to the root, not the path itself, nor links", async () => {
+    const base = await mkdtemp(path.join(tmpdir(), "siblings-"));
+    try {
+      const me = path.join(base, "users", "me");
+      const root = path.join(me, "work", "app");
+      await mkdir(root, { recursive: true });
+      await mkdir(path.join(me, ".ssh"));
+      await mkdir(path.join(base, "users", "other"));
+      await writeFile(path.join(me, ".gitconfig"), "[user]");
+      await mkdir(path.join(me, "work", "sibling-project"));
+      // A junction on Windows, a symlink elsewhere: MXC rejects a policy naming one.
+      await symlink(path.join(me, "work", "sibling-project"), path.join(me, "link"), "junction");
+      const denied = siblingsToDeny(root).map((entry) => path.resolve(entry));
+      for (const secret of [path.join(me, ".ssh"), path.join(base, "users", "other"), path.join(me, ".gitconfig"), path.join(me, "work", "sibling-project")]) {
+        assert.ok(denied.includes(secret), `${secret} is denied`);
+      }
+      for (const onTheWay of [path.join(base, "users"), me, path.join(me, "work"), root]) {
+        assert.ok(!denied.includes(onTheWay), `${onTheWay} is on the way down and stays`);
+      }
+      assert.ok(!denied.includes(path.join(me, "link")), "a link is never named");
+    } finally {
+      await rm(base, { recursive: true, force: true });
+    }
   });
 });

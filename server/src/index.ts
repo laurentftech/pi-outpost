@@ -77,7 +77,7 @@ import { CliError, helpText, parseCli, readSecret, runInit } from "./cli.ts";
 import { bindFailureMessage, holdConsoleIfOwned } from "./startupFailure.ts";
 import { BuildExeError, buildExecutable } from "./buildExe.ts";
 import { probePty, TerminalManager, type TerminalConfinement } from "./terminalManager.ts";
-import { checkRunner, terminalPolicy, type RunnerCheck } from "./terminalSandbox.ts";
+import { checkRunner, mxcTerminalConfig, runnerKind, siblingsToDeny, terminalPolicy, type RunnerCheck } from "./terminalSandbox.ts";
 import { browsableUrl, openBrowser, shouldOpenBrowser } from "./openBrowser.ts";
 import {
   currentEvidence,
@@ -2424,10 +2424,14 @@ function terminalConfinement(workspace: Workspace): TerminalConfinement | undefi
   const root = path.resolve(sandbox?.root ?? workspace.browserRoot);
   const writableRoot = sandbox?.writableRoot ? path.resolve(sandbox.writableRoot) : undefined;
   const allowWrite = sandbox ? sandbox.allowWrite : true;
+  const kind = runnerKind(runner);
   return {
     runner,
+    kind,
     root,
-    policy: (tmp) => terminalPolicy({ root, writableRoot, allowWrite, agentDir: AGENT_DIR, configFile: config.configFile, tmp, searchPath: process.env.PATH, systemRoot: process.env.SystemRoot, userProfile: process.env.USERPROFILE }),
+    policy: kind === "mxc"
+      ? (terminal) => mxcTerminalConfig({ root, writableRoot, allowWrite, agentDir: AGENT_DIR, configFile: config.configFile, ...terminal, siblings: siblingsToDeny(root) })
+      : ({ tmp }) => terminalPolicy({ root, writableRoot, allowWrite, agentDir: AGENT_DIR, configFile: config.configFile, tmp, searchPath: process.env.PATH, systemRoot: process.env.SystemRoot, userProfile: process.env.USERPROFILE }),
   };
 }
 

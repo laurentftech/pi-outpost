@@ -12,9 +12,14 @@
  * - `terminalPolicy` — what one terminal may read and write, from the workspace's sandbox.
  * - `confinedEnvironment` — the variables a confined shell gets. Built, not filtered:
  *   a filter for secret-looking names misses the next provider's variable.
+ *
+ * On Windows 11 the runner may instead be MXC's executor (`wxc-exec.exe`, Microsoft
+ * eXecution Containers), whose tier 1 has the OS apply the policy itself: `NUL`, git and
+ * busybox work there, where landstrip's AppContainer refuses them. Its policy is a
+ * different document (`mxcTerminalConfig`) and it carries the shell's command line.
  */
 import { execFile } from "node:child_process";
-import { constants as fsConstants } from "node:fs";
+import { closeSync, constants as fsConstants, lstatSync, openSync, readdirSync } from "node:fs";
 import { access, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -42,12 +47,13 @@ const defaultExec: Exec = (file, args, options) =>
  * Every failure is a reason, never a throw: an unusable runner makes the terminal
  * unavailable, and the server must start regardless.
  */
-export async function checkRunner(runner: string, exec: Exec = defaultExec): Promise<RunnerCheck> {
+export async function checkRunner(runner: string, exec: Exec = defaultExec, platform: NodeJS.Platform = process.platform): Promise<RunnerCheck> {
   try {
     await access(runner, fsConstants.X_OK);
   } catch {
     return { ok: false, reason: `The terminal sandbox runner was not found or is not executable: ${runner}` };
   }
+  if (runnerKind(runner) === "mxc") return checkMxcRunner(runner, exec, platform);
   let output: ExecFileResult;
   try {
     output = await exec(runner, ["doctor"], { timeout: RUNNER_CHECK_TIMEOUT_MS });
@@ -62,6 +68,49 @@ export async function checkRunner(runner: string, exec: Exec = defaultExec): Pro
   if (report?.ok === true) return { ok: true };
   const said = typeof report?.error === "string" ? report.error : output.stdout.trim() || output.stderr.trim();
   return { ok: false, reason: `The terminal sandbox runner reports this host cannot be sandboxed${said ? `: ${said}` : ""}` };
+}
+
+/** Which runner `terminal.sandbox` names: MXC's executor by its file name, landstrip otherwise. */
+export type RunnerKind = "landstrip" | "mxc";
+
+export function runnerKind(runner: string): RunnerKind {
+  return /^wxc-exec(\.exe)?$/i.test(path.win32.basename(runner)) ? "mxc" : "landstrip";
+}
+
+/**
+ * MXC's self-check: `wxc-exec --probe` names the tier it would pick.
+ *
+ * Only tier 1 (`base-container`, Windows 11 24H2 with the August 2026 update) is accepted.
+ * The lower tiers emulate it with AppContainer ACLs stamped on every allowed tree at each
+ * launch — and the terminal's policy allows a whole drive for reading (see
+ * `mxcTerminalConfig`): that would rewrite the ACLs of the disk.
+ */
+async function checkMxcRunner(runner: string, exec: Exec, platform: NodeJS.Platform): Promise<RunnerCheck> {
+  if (platform !== "win32") return { ok: false, reason: `MXC's executor confines terminals on Windows only: ${runner}` };
+  let output: ExecFileResult;
+  try {
+    output = await exec(runner, ["--probe"], { timeout: RUNNER_CHECK_TIMEOUT_MS });
+  } catch (error) {
+    const detail = error as { stderr?: string; stdout?: string; message?: string };
+    const said = (detail.stderr || detail.stdout || detail.message || "").trim();
+    return { ok: false, reason: `MXC's executor failed its probe${said ? `: ${said}` : ""}` };
+  }
+  let probe: { tier?: unknown; probes?: { baseContainerSupportsDenyPaths?: unknown } };
+  try {
+    probe = JSON.parse(output.stdout);
+  } catch {
+    return { ok: false, reason: `MXC's executor answered its probe with something that is not JSON: ${output.stdout.trim().slice(0, 200)}` };
+  }
+  if (probe.tier !== "base-container") {
+    return {
+      ok: false,
+      reason: `MXC would confine terminals with tier "${String(probe.tier)}"; a terminal needs "base-container" (Windows 11 24H2 or 25H2 with the August 2026 update or later)`,
+    };
+  }
+  if (probe.probes?.baseContainerSupportsDenyPaths === false) {
+    return { ok: false, reason: "This Windows build's sandbox cannot deny paths, which the terminal's policy needs" };
+  }
+  return { ok: true };
 }
 
 function lastJsonLine(text: string): Record<string, unknown> | undefined {
@@ -204,6 +253,142 @@ function unique(values: string[]): string[] {
   return [...new Set(values)];
 }
 
+/** MXC's request document (schema 1.0.0), as much of it as a terminal uses. */
+export interface MxcTerminalConfig {
+  version: "1.0.0";
+  containment: "processcontainer";
+  process: { commandLine: string; cwd: string; env: string[] };
+  filesystem: { readwritePaths: string[]; readonlyPaths: string[]; deniedPaths: string[] };
+  /** Win32k on: without it anything loading user32.dll (PowerShell, git) dies with 0xC0000142. */
+  ui: { disable: false };
+  network: { egress: { default: "allow" } };
+}
+
+export interface MxcTerminalInput {
+  root: string;
+  writableRoot?: string;
+  allowWrite: boolean;
+  agentDir?: string;
+  configFile?: string;
+  tmp: string;
+  shell: string;
+  shellArgs: string[];
+  cwd: string;
+  /** The shell's whole environment: MXC passes the executor's own to nobody. */
+  env: Record<string, string>;
+  /** Everything beside the path down to the root, from `siblingsToDeny`. */
+  siblings: string[];
+}
+
+/**
+ * What one terminal may touch, as MXC's tier 1 reads it.
+ *
+ * The root's drive is readable and everything beside the path down to the root is denied
+ * by name (`siblings`): Git for Windows finds its working directory by listing every
+ * parent folder, because the sandbox cannot reach the Mount Manager to turn a handle back
+ * into a `C:\` path (microsoft/mxc#1464). Without the drive, git cannot run a single
+ * command that needs its work tree. A more specific allow wins over a deny, so the root,
+ * the temporary directory (under the denied profile) and the shell's folder stay usable.
+ *
+ * The root is readable rather than only writable when no writable zone covers it: a
+ * `readonlyPaths` folder cannot be listed nor be a working directory under tier 1, so
+ * `cd` into a read-only subfolder is refused. That is the sandbox's, and it is documented.
+ */
+export function mxcTerminalConfig(input: MxcTerminalInput): MxcTerminalConfig {
+  const drive = path.win32.parse(input.root).root;
+  const writable = input.allowWrite ? [input.writableRoot ?? input.root] : [];
+  const shellDir = path.win32.isAbsolute(input.shell) ? [path.win32.dirname(input.shell)] : [];
+  const readwritePaths = unique([...writable, input.tmp]);
+  const readonlyPaths = unique([drive, input.root, ...shellDir].filter((p) => !readwritePaths.includes(p)));
+  const allowed = new Set([...readwritePaths, ...readonlyPaths].map((p) => p.toLowerCase()));
+  const deniedPaths = unique([...input.siblings, input.agentDir, input.configFile].filter((p): p is string => Boolean(p)))
+    // Denying a path that is also allowed leaves which one wins to the sandbox: never ask.
+    .filter((p) => !allowed.has(p.toLowerCase()));
+  return {
+    version: "1.0.0",
+    containment: "processcontainer",
+    process: {
+      commandLine: [input.shell, ...input.shellArgs].map(quoteWindowsArgument).join(" "),
+      cwd: input.cwd,
+      env: Object.entries(input.env).map(([name, value]) => `${name}=${value}`),
+    },
+    filesystem: { readwritePaths, readonlyPaths, deniedPaths },
+    ui: { disable: false },
+    network: { egress: { default: "allow" } },
+  };
+}
+
+/** Top-level folders of a drive a shell needs: readable, never denied. */
+const WINDOWS_SYSTEM_FOLDERS = new Set(["windows", "program files", "program files (x86)", "programdata"]);
+
+/**
+ * Every entry beside the path from the drive root down to `root`, for MXC to deny.
+ *
+ * The folders on the way down, and the system folders at the drive root, are left out.
+ * So are two kinds of entry that make MXC reject the whole policy: junctions and
+ * symbolic links (`0x8007010B` — the compatibility junctions such as `Application Data`
+ * point at folders denied or system anyway) and files another process holds open, such as
+ * a loaded `NTUSER.DAT` or a delete-on-close temp file (`0x80070020`, sharing violation).
+ * Read when a terminal opens: an entry created later, or a file held open at that moment,
+ * is not denied, which the documentation says.
+ */
+export function siblingsToDeny(root: string): string[] {
+  const { root: drive } = path.win32.parse(root);
+  const parts = root.slice(drive.length).split(/[\\/]+/).filter(Boolean);
+  const denied: string[] = [];
+  let dir = drive;
+  for (const part of parts) {
+    let names: string[];
+    try {
+      names = readdirSync(dir);
+    } catch {
+      break; // A folder the server cannot list: nothing beside it to name.
+    }
+    for (const name of names) {
+      if (name.toLowerCase() === part.toLowerCase()) continue;
+      if (dir === drive && WINDOWS_SYSTEM_FOLDERS.has(name.toLowerCase())) continue;
+      const entry = path.win32.join(dir, name);
+      if (deniable(entry)) denied.push(entry);
+    }
+    dir = path.win32.join(dir, part);
+  }
+  return denied;
+}
+
+/**
+ * libuv's exclusive open on Windows (no sharing at all). Node does not export it everywhere.
+ *
+ * MXC opens each denied file without sharing deletion, so a file another process holds
+ * with delete access (a delete-on-close `.tmp`) fails the whole launch with a sharing
+ * violation — while a plain open, which shares everything, succeeds. An exclusive open
+ * fails whenever anything holds the file: stricter than MXC, never looser.
+ */
+const EXCLUSIVE_OPEN = (fsConstants as { UV_FS_O_EXLOCK?: number }).UV_FS_O_EXLOCK ?? 0x10000000;
+
+function deniable(entry: string): boolean {
+  let stats;
+  try {
+    stats = lstatSync(entry);
+  } catch {
+    return false;
+  }
+  if (stats.isSymbolicLink()) return false; // Node reports junctions as symbolic links too.
+  if (stats.isDirectory()) return true;
+  try {
+    closeSync(openSync(entry, process.platform === "win32" ? fsConstants.O_RDONLY | EXCLUSIVE_OPEN : "r"));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** One argument of a Windows command line, quoted the way `CommandLineToArgvW` reads it back. */
+export function quoteWindowsArgument(argument: string): string {
+  if (argument !== "" && !/[\s"]/.test(argument)) return argument;
+  // Backslashes are literal except before a quote, where they escape it: double those.
+  return `"${argument.replace(/(\\*)"/g, '$1$1\\"').replace(/(\\+)$/, "$1$1")}"`;
+}
+
 /** Variables a shell needs. Everything else of the server's stays out. */
 const PASSED_THROUGH = ["PATH", "LANG", "TERM", "COLORTERM", "TZ"];
 
@@ -254,9 +439,9 @@ export interface ConfinedTerminalFiles {
   dispose(): Promise<void>;
 }
 
-/** Create the private directory and write the policy into it, readable by the owner only. */
+/** Create the private directory and write the policy (landstrip's, or MXC's request) into it, owner-only. */
 export async function prepareConfinedTerminal(
-  build: (tmp: string) => TerminalPolicy,
+  build: (tmp: string) => TerminalPolicy | MxcTerminalConfig,
 ): Promise<ConfinedTerminalFiles> {
   const tmp = await mkdtemp(path.join(tmpdir(), "pi-outpost-terminal-"));
   const policyFile = path.join(tmp, "policy.json");

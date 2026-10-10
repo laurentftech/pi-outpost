@@ -8,7 +8,7 @@ import fs from "node:fs/promises";
 import fsSync from "node:fs";
 import { createRequire } from "node:module";
 import { execFile, spawnSync } from "node:child_process";
-import { confinedEnvironment, prepareConfinedTerminal, type TerminalPolicy } from "./terminalSandbox.ts";
+import { confinedEnvironment, prepareConfinedTerminal, type MxcTerminalConfig, type RunnerKind, type TerminalPolicy } from "./terminalSandbox.ts";
 import { promisify } from "node:util";
 import os from "node:os";
 import path from "node:path";
@@ -392,12 +392,19 @@ export class TerminalManager {
         // The runner, not the shell, is what the pty spawns; the shell runs inside it
         // with a policy written for this terminal alone and an environment built from
         // nothing, so no key the server holds reaches it.
-        files = await prepareConfinedTerminal(confine.policy);
-        file = confine.runner;
-        args = ["run", "-p", files.policyFile, "--", shell, ...shellArgs];
-        env = confinedEnvironment(process.env, { root: confine.root, tmp: files.tmp, shell });
         // A starting directory outside the root could not be entered from inside.
         if (!isInside(resolvedCwd, confine.root)) resolvedCwd = confine.root;
+        const startIn = resolvedCwd;
+        let shellEnv: Record<string, string> = {};
+        files = await prepareConfinedTerminal((tmp) => {
+          shellEnv = confinedEnvironment(process.env, { root: confine.root, tmp, shell });
+          return confine.policy({ tmp, shell, shellArgs, cwd: startIn, env: shellEnv });
+        });
+        file = confine.runner;
+        // MXC's request carries the command line and the environment itself: its
+        // executor hands the child none of its own.
+        args = confine.kind === "mxc" ? [files.policyFile] : ["run", "-p", files.policyFile, "--", shell, ...shellArgs];
+        env = shellEnv;
       }
 
       ensureSpawnHelperExecutable();
@@ -573,12 +580,23 @@ export class TerminalManager {
 
 /** How a terminal is confined: the runner to spawn, and what its policy allows. */
 export interface TerminalConfinement {
-  /** The sandbox runner (landstrip's binary). */
+  /** The sandbox runner: landstrip's binary, or MXC's executor (`wxc-exec.exe`). */
   runner: string;
+  /** Which one: they take their policy, and the shell, differently. Default: landstrip. */
+  kind?: RunnerKind;
   /** The root the shell starts in and calls home. */
   root: string;
-  /** The policy for this terminal, given its private temporary directory. */
-  policy: (tmp: string) => TerminalPolicy;
+  /** The policy for this terminal, given its private temporary directory and what it runs. */
+  policy: (terminal: ConfinedShell) => TerminalPolicy | MxcTerminalConfig;
+}
+
+/** What a confined terminal runs, for a policy that has to carry it (MXC's). */
+export interface ConfinedShell {
+  tmp: string;
+  shell: string;
+  shellArgs: string[];
+  cwd: string;
+  env: Record<string, string>;
 }
 
 function isInside(candidate: string, root: string): boolean {
