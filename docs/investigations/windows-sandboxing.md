@@ -205,6 +205,24 @@ restricted token (buhuikongpan/dsh-win-gitbash#10, MSYS 3.6.10) hit the same nam
 MSYS's signal pipe (`couldn't create signal pipe, Win32 error 5`, its DACL lacks the sandbox's SID).
 Git Bash under any Windows sandbox therefore waits for the MSYS runtime, and probably for the OS.
 
+### 10. Signing commits inside MXC: GnuPG cannot start
+
+Measured 2026-10-10, same machine. With the public keyring (`%APPDATA%\gnupg`) and the agent's socket
+folder (`%LOCALAPPDATA%\gnupg`) readable and `private-keys-v1.d` denied (reading a key file is refused),
+`gpg.exe` itself never starts: `CreateProcessW … failed: WIN32_ERROR(623)`,
+`ERROR_ILLEGAL_DLL_RELOCATION`. Tier 1 enforces ASLR, and GnuPG's Windows executables carry no
+relocation table and no `DYNAMIC_BASE` — Gpg4win 4.4.1 (GnuPG 2.4.8, i386) and 5.1.1 (GnuPG 2.5.24,
+x86-64) alike; 32-bit programs as such run (`SysWOW64\cmd.exe` does). MXC's request has no setting to
+relax it. Outside the sandbox the same `gpg-agent` signs without a prompt once the passphrase is cached.
+
+Windows OpenSSH's `ssh-keygen` is built with ASLR, so git's SSH signing with the key held by Windows'
+`ssh-agent` is the probable route; not tried (the service is off by default, and starting it takes an
+administrator). A GnuPG build with `--dynamicbase` would be the real fix.
+
+Note: upgrading Gpg4win 4 → 5 moves GnuPG from `Program Files (x86)` to `Program Files`, leaving a
+`gpg.program` set to the old path in `~\.gitconfig` pointing at nothing: signed commits then fail
+everywhere until it is updated.
+
 ## Where this leaves the goal: a Windows sandbox with Git for Windows only
 
 | Piece | Today, MXC tier 1 |

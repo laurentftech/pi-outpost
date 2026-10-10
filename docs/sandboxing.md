@@ -174,7 +174,11 @@ branches), `node`, `npm -v`, `cmd` and PowerShell; about 0.13 s per command. Wha
 - **Network**: allowed, as for the terminal. `git push` needs credentials that the policy keeps out of
   reach (the credential manager, `~\.ssh`); `npm` needs its cache somewhere writable
   (`npm_config_cache` inside the writable zone).
-- **Signed commits** (`commit.gpgsign`) fail: gpg and its keyring are out of reach.
+- **Signed commits** (`commit.gpgsign`) fail, and opening the keyring does not help: MXC's tier 1
+  enforces ASLR, and GnuPG's Windows binaries (Gpg4win 4.x 32-bit and 5.1.1 64-bit alike) are built
+  without it, so `gpg.exe` cannot start in the sandbox (`ERROR_ILLEGAL_DLL_RELOCATION`, 623). Windows
+  OpenSSH's `ssh-keygen` is built with ASLR, so git's SSH signing (`gpg.format = ssh`, with the key in
+  Windows' `ssh-agent`) is the likely way in; not tried.
 
 ### On Linux: landstrip
 
