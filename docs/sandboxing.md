@@ -239,8 +239,10 @@ requirements, policy and limits as [the agent's `bash` on Windows 11](#on-window
 `NUL`, git and busybox work there, and `cmd` or PowerShell open as the terminal's shell (or the one named in
 `terminal.shell`). Its self-check is `wxc-exec.exe --probe`, which must report tier 1 (`base-container`).
 Inside the sandbox PowerShell cannot draw progress bars (drawing one reads the console back, which is
-refused, and the command fails), so the default confined PowerShell starts with
-`$ProgressPreference='SilentlyContinue'`; set it yourself in a shell you name.
+refused, and the command fails), nor read its execution policy from the registry (so every `.ps1`,
+`npm.ps1` included, fails "AuthorizationManager"). The default confined PowerShell therefore starts with
+`-ExecutionPolicy RemoteSigned` (Windows' own default) and `$ProgressPreference='SilentlyContinue'`; give
+both yourself to a shell you name.
 
 **Platforms.** Linux (WSL included) is the supported one for landstrip. On Windows landstrip's runner uses an AppContainer
 and confines reads and writes the same way, and with no `terminal.shell` set the terminal opens PowerShell.
