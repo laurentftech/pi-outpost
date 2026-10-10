@@ -158,7 +158,9 @@ Settings), not in the server's environment.
 and confines reads and writes the same way, and with no `terminal.shell` set the terminal opens PowerShell.
 `cmd`, PowerShell and busybox run inside it; Git Bash does not (MSYS2 needs global named objects an
 AppContainer may not create), and neither does `git`: the null device (`NUL`) is out of reach in the
-container, and Git for Windows opens it at startup (even `type nul` is refused; reported upstream as landstrip/landstrip#204). The parent of the root can
+container, and Git for Windows opens it at startup (even `type nul` is refused; reported upstream as landstrip/landstrip#204:
+`\Device\Null` grants no access to AppContainers, and only an administrator can change that, once per
+boot). The parent of the root can
 be listed (names, not contents). The server must run in the user's interactive session: started as a
 service or over SSH, its containers get no window station and most programs fail to start
 (`0xC0000142`). macOS is untested.
@@ -191,7 +193,9 @@ put pi-landstrip in the standard AppContainer (its default, `lpac`, breaks busyb
 ```
 
 With that, the agent's commands run in the project, writes outside it are refused, and reads outside it
-stop on a permission question. Until pi-landstrip ships the fix, use WSL (the recipe below).
+stop on a permission question — but any command touching `/dev/null` (`2>/dev/null`, `> /dev/null`)
+fails, because the null device is out of reach in an AppContainer (landstrip/landstrip#204; fixing it
+takes an administrator, once per boot). Until both are fixed upstream, use WSL (the recipe below).
 
 ## The agent cannot rewrite what confines it
 
