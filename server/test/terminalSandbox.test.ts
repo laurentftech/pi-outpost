@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { mkdir, mkdtemp, rm, stat, readFile, symlink, writeFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
+import { envWithoutCoverageSink } from "./childEnv.mjs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, test } from "node:test";
@@ -366,7 +367,7 @@ describe("siblingsToDeny", () => {
       // Run in a child with a deadline: a regression blocks synchronously, and would
       // otherwise hang this whole test file — which is how it was found.
       const script = `import { siblingsToDeny } from ${JSON.stringify(pathToFileURL(path.resolve("src/terminalSandbox.ts")).href)}; console.log(JSON.stringify(siblingsToDeny(${JSON.stringify(root)})));`;
-      const out = execFileSync(process.execPath, ["--import", "tsx/esm", "--input-type=module", "-e", script], { timeout: 20_000, encoding: "utf8" });
+      const out = execFileSync(process.execPath, ["--import", "tsx/esm", "--input-type=module", "-e", script], { timeout: 20_000, encoding: "utf8", env: envWithoutCoverageSink() });
       assert.ok(!JSON.parse(out).includes(path.join(base, "pipe")), "a FIFO was named, so it was opened");
     } finally {
       await rm(base, { recursive: true, force: true });
