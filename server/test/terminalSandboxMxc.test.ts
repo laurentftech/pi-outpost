@@ -12,7 +12,7 @@
  */
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { after, before, describe, test } from "node:test";
@@ -133,6 +133,21 @@ describe("a confined terminal under MXC's real executor", { skip }, () => {
     assert.match(await run("type nul && echo nul-ok", "whole"), /nul-ok/, "NUL, which landstrip's AppContainer refuses, opens");
     // Still confined: the drive is readable for git, the keys are not.
     assert.match(await run(`type "${path.join(agentDir, "auth.json")}"`, "whole"), /(Access is denied|Accès refusé)/i);
+  });
+
+  test("a profile's data never lands in the project: PowerShell's history, the container's own folders", async () => {
+    // PowerShell keeps PSReadLine history under USERPROFILE; the container keeps
+    // AppData\Local\Packages\sandbox.{…} there too. With USERPROFILE in the project, both did.
+    output.ps = "";
+    await manager.open(socket, "ps", root, 120, 40, (_id, data) => (output.ps += data), (_id, code) => (exited.ps = code ?? -1),
+      { shell: path.join(process.env.SystemRoot ?? "C:\\Windows", "System32", "WindowsPowerShell", "v1.0", "powershell.exe"), shellArgs: ["-NoLogo"] },
+      { runner: RUNNER!, kind: "mxc", root, policy: (terminal) => mxcTerminalConfig({ root, allowWrite: true, agentDir, ...terminal, siblings: siblingsToDeny(root) }) });
+    const deadline = Date.now() + 30_000;
+    while (!/PS [A-Z]:\\/.test(output.ps) && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 200));
+    manager.write(socket, "ps", "echo history-line\r");
+    await new Promise((resolve) => setTimeout(resolve, 3000));
+    manager.close(socket, "ps");
+    await assert.rejects(stat(path.join(root, "AppData")), "an AppData folder appeared in the project");
   });
 
   // openlore: scenario=KeysDoNotReachTheShell spec=terminal

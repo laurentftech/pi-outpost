@@ -215,7 +215,7 @@ With `terminal.sandbox` set:
 | Reads | The sandbox root (the project root without a sandbox), the system directories, the tools on the `PATH`, and a private temporary directory. Nothing else — other projects, the home directory, `/opt`, `/var`. |
 | Writes | The writable zone and the private temporary directory. Nothing with `allowWrite: false`. |
 | Never | The agent directory (provider keys) and the configuration file, even under an allowed tree. |
-| Environment | `PATH`, the locale, `TERM`, `SHELL`, and `HOME` set to the root. None of the server's other variables, so no key it holds. |
+| Environment | `PATH`, the locale, `TERM`, `SHELL`, and `HOME` set to the root (on Windows, `USERPROFILE` is the private temporary directory, so a profile's data — PowerShell's history — never lands in the project). None of the server's other variables, so no key it holds. |
 | Other processes | Cannot be signalled from inside. |
 | "open as project" | Moves the agent only where the directory picker could: locks still hold. |
 

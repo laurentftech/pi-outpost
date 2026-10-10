@@ -78,8 +78,9 @@ appear.
 The confined shell gets `PATH`, `LANG`/`LC_*`, `TERM`, `SHELL`, `HOME=<root>` and `TMPDIR=<tmp>`, and
 nothing else from the server. On Windows it also gets the system's locations (`SystemRoot`,
 `ProgramData`, `LOCALAPPDATA`, `ComSpec`, `PATHEXT`…), with `USERPROFILE`, `TEMP` and `TMP` pointing
-into the root and `tmp`. Without `ProgramData` and `LOCALAPPDATA` the runner cannot create its
-AppContainer. Filtering out "secret-looking" names would miss the next provider's
+into `tmp`. Without `ProgramData` and `LOCALAPPDATA` the runner cannot create its AppContainer.
+`USERPROFILE` was the root at first: PowerShell then wrote its PSReadLine history, and MXC its
+container's `AppData\Local\Packages\sandbox.{…}`, into the user's project (found in the running app). Filtering out "secret-looking" names would miss the next provider's
 variable; building the list cannot.
 
 ### D4. One self-check at start, reported in the snapshot

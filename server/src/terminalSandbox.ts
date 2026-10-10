@@ -425,7 +425,10 @@ export function confinedEnvironment(
   env.HOME = options.root;
   env.TMPDIR = options.tmp;
   if (windows) {
-    env.USERPROFILE = options.root;
+    // The private temp, not the root: Windows and PowerShell keep a profile's data under
+    // USERPROFILE (AppData\Roaming\…\PSReadLine history, the container's own
+    // AppData\Local\Packages\sandbox.{…}), and in the root that lands in the user's project.
+    env.USERPROFILE = options.tmp;
     env.TEMP = options.tmp;
     env.TMP = options.tmp;
   }

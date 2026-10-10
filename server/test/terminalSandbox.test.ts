@@ -137,7 +137,9 @@ describe("confinedEnvironment on Windows", () => {
     assert.equal(env.SystemRoot, "C:\\Windows");
     assert.equal(env.OPENAI_API_KEY, undefined);
     assert.equal(env.APPDATA, undefined, "the server user's profile is not the shell's");
-    assert.equal(env.USERPROFILE, "C:\\work\\app");
+    // The profile Windows and PowerShell write under is the private temp, never the project.
+    assert.equal(env.USERPROFILE, "C:\\tmp\\t1");
+    assert.equal(env.HOME, "C:\\work\\app");
     assert.equal(env.TEMP, "C:\\tmp\\t1");
   });
 });
