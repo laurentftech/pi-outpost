@@ -155,10 +155,11 @@ separate process namespace). Keep provider keys in the credential store (`pi-out
 Settings), not in the server's environment.
 
 **Platforms.** Linux (WSL included) is the supported one. On Windows the runner uses an AppContainer
-and confines reads and writes the same way, with two differences: the parent of the root can be
-listed (names, not contents), and tools reached only through the `PATH` may not start — `git` from Git
-for Windows does not, since allowing its whole installation made every terminal take eleven seconds to
-open. On macOS it is untested.
+and confines reads and writes the same way, but it is of little use as a shell: any program that loads
+`user32.dll` fails to start inside it (`0xC0000142`, the container gets no window station). That
+excludes `git`, PowerShell, `whoami`, `where`, busybox and Git Bash; `cmd.exe` and a few built-ins
+(`findstr`, `hostname`) run. The parent of the root can also be listed (names, not contents). On
+macOS it is untested. For a confined terminal on a Windows machine, run pi-outpost in WSL.
 
 ### pi-landstrip's `bash` on Windows
 
@@ -174,7 +175,12 @@ Windows (tested on Windows 10; `scripts/probes/pi-landstrip-bash.mjs` reproduces
 3. **With those passed** (a local patch), Git Bash fails to initialise inside the AppContainer
    (`0xC0000142`).
 
-These are pi-landstrip's to fix. On Windows, use WSL (the recipe below) for a confined agent `bash`.
+The third is landstrip's runner, not pi-landstrip: inside its AppContainer, any program that imports
+`user32.dll` fails to start — Git Bash, busybox, PowerShell, even `whoami` and `where` — while `cmd.exe`,
+which does not import it, runs. Git Bash also needs global named objects (`\BaseNamedObjects\msys-2.0…`),
+which an AppContainer may not create. `scripts/probes/landstrip-shells.ps1`, `landstrip-run.mjs` and
+`pe-imports.mjs` show both. Until landstrip gives its containers a desktop, there is no confined `bash`
+on native Windows: use WSL (the recipe below).
 
 ## The agent cannot rewrite what confines it
 

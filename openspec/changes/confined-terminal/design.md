@@ -107,9 +107,11 @@ than a new code path.
   secrets pi-outpost knows about. Secrets elsewhere on the host (e.g. `/etc/…` credentials) stay readable,
   as they are to the agent's `pi-landstrip` with `readAccess: "host"`; the documentation lists them.
 
-- [Windows: the root's parent stays listable (names, not contents), and tools reached only through
-  `PATH` may not start: Git for Windows' `git` does not] → Documented. Allowing whole installations
-  fixes that at the cost of an eleven-second launch.
+- [Windows: any program importing `user32.dll` fails to start in landstrip's AppContainer
+  (`0xC0000142`): git, PowerShell, `whoami`, busybox, Git Bash. Only `cmd.exe` and a few built-ins run,
+  and the root's parent stays listable] → Documented as "of little use on Windows; use WSL". It is
+  landstrip's to fix (desktop access for the container). pi-outpost keeps the Windows policy so that it
+  works the day it does.
 - [Windows: the agent's `bash` through `pi-landstrip` (not this change) does not work as of 0.19.11] →
   Measured on Windows 10: it asks for a read permission for Git's `bash.exe`. Once allowed, its launcher
   environment lacks `LOCALAPPDATA` and `SystemRoot` (`os error 203`). Once those are passed, Git Bash
