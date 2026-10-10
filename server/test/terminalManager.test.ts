@@ -55,6 +55,12 @@ describe("TerminalManager", () => {
     const confined = manager.getDefaultShell({ confined: true });
     assert.match(confined.shell, /powershell\.exe$|cmd\.exe$/i, `a confined shell must not be Git Bash: ${confined.shell}`);
     assert.doesNotMatch(confined.shell, /bash\.exe$/i);
+    // Confined, PowerShell starts with its progress bars off: drawing one is refused there.
+    if (/powershell\.exe$/i.test(confined.shell)) {
+      assert.deepEqual(confined.args, ["-NoExit", "-Command", "$ProgressPreference='SilentlyContinue'"]);
+    }
+    // A shell the user names keeps the arguments the user gave, confined or not.
+    assert.deepEqual(manager.getDefaultShell({ confined: true, shell: confined.shell }).args, []);
     // An explicit choice still wins, confined or not.
     assert.equal(manager.getDefaultShell({ confined: true, shell: "C:\\tools\\sh.exe" }).shell, "C:\\tools\\sh.exe");
   });

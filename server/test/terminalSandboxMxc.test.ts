@@ -150,6 +150,24 @@ describe("a confined terminal under MXC's real executor", { skip }, () => {
     await assert.rejects(stat(path.join(root, "AppData")), "an AppData folder appeared in the project");
   });
 
+  test("the default confined PowerShell draws progress without failing", async () => {
+    // No shell named: the confined default, PowerShell, with its progress bars off. A bar
+    // drawn inside the sandbox reads the console buffer back, which is refused.
+    output.def = "";
+    await manager.open(socket, "def", root, 120, 40, (_id, data) => (output.def += data), (_id, code) => (exited.def = code ?? -1), undefined,
+      { runner: RUNNER!, kind: "mxc", root, policy: (terminal) => mxcTerminalConfig({ root, allowWrite: true, agentDir, ...terminal, siblings: siblingsToDeny(root) }) });
+    const deadline = Date.now() + 30_000;
+    while (!/PS [A-Z]:\\/.test(output.def) && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 200));
+    const start = output.def.length;
+    manager.write(socket, "def", "1..3 | ForEach-Object { Write-Progress -Activity probe -PercentComplete ($_ * 30); Start-Sleep -Milliseconds 200 }; 'progress-' + 'done'\r");
+    const until = Date.now() + 20_000;
+    while (!output.def.slice(start).includes("progress-done") && Date.now() < until) await new Promise((resolve) => setTimeout(resolve, 200));
+    const seen = output.def.slice(start);
+    manager.close(socket, "def");
+    assert.match(seen, /progress-done/, `the command did not finish: ${seen}`);
+    assert.doesNotMatch(seen, /0x5|ReadConsoleOutput/, "drawing progress was refused");
+  });
+
   // openlore: scenario=KeysDoNotReachTheShell spec=terminal
   test("the server's keys are not in the shell's environment", async () => {
     // cmd's own words, in whichever language Windows speaks.

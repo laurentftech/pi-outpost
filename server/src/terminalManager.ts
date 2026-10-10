@@ -325,7 +325,11 @@ export class TerminalManager {
       const systemRoot = process.env.SystemRoot || process.env.windir || "C:\\Windows";
       const powershellPath = path.join(systemRoot, "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
       if (fsSync.existsSync(powershellPath)) {
-        return { shell: powershellPath, args: [] };
+        // Confined, PowerShell's progress bars fail: drawing one reads the console buffer
+        // back, which the sandbox refuses ("Accès refusé 0x5 … tampon de sortie de la
+        // console"), and the command dies with it (Invoke-WebRequest, Expand-Archive…).
+        // Turned off for the session; a shell named in terminal.shell is left as given.
+        return { shell: powershellPath, args: options?.confined ? ["-NoExit", "-Command", "$ProgressPreference='SilentlyContinue'"] : [] };
       }
 
       // 3. cmd as last resort

@@ -231,6 +231,9 @@ Settings), not in the server's environment.
 requirements, policy and limits as [the agent's `bash` on Windows 11](#on-windows-11-mxc-and-busybox):
 `NUL`, git and busybox work there, and `cmd` or PowerShell open as the terminal's shell (or the one named in
 `terminal.shell`). Its self-check is `wxc-exec.exe --probe`, which must report tier 1 (`base-container`).
+Inside the sandbox PowerShell cannot draw progress bars (drawing one reads the console back, which is
+refused, and the command fails), so the default confined PowerShell starts with
+`$ProgressPreference='SilentlyContinue'`; set it yourself in a shell you name.
 
 **Platforms.** Linux (WSL included) is the supported one for landstrip. On Windows landstrip's runner uses an AppContainer
 and confines reads and writes the same way, and with no `terminal.shell` set the terminal opens PowerShell.
