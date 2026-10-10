@@ -123,7 +123,7 @@ anything.
 > reverse proxy or Tailscale for transport encryption.
 >
 > The `sandbox` confines pi-outpost's file tools, not `bash`, extensions or MCP servers — see
-> [what is and is not confined](docs/sandboxing.md).
+> [what is and is not confined](docs/sandboxing.md), and the [setup to use on each platform](docs/sandboxing.md#recommended-setup).
 
 ## How do I…
 
@@ -140,7 +140,7 @@ one needs, the command that proves it works, and the caution that goes with it.
 | [Read a big PDF, Word or Excel file](docs/how-to.md#let-the-agent-read-a-big-pdf-word-or-excel-file) | [Lock down a shared deployment](docs/how-to.md#lock-down-a-shared-deployment) |
 | [Put it inside your own web app](docs/how-to.md#put-it-inside-your-own-web-app) | [Use an existing pi installation](docs/how-to.md#use-an-existing-pi-installation) |
 | [Make a PowerPoint deck from a template](docs/how-to.md#make-a-powerpoint-deck-from-a-template) | [Write a Word document from a template](docs/how-to.md#write-a-word-document-from-a-template) |
-| [Confine the agent's shell with an extension](docs/sandboxing.md#hand-bash-to-the-extension-sandboxbashfrom) | [Run it in WSL on a managed Windows machine](docs/sandboxing.md#recipe-wsl-on-a-managed-windows-machine) |
+| [Confine the agent's shell](docs/sandboxing.md#recommended-setup) | [Run it in WSL on a managed Windows machine](docs/sandboxing.md#recipe-wsl-on-a-managed-windows-machine) |
 | [When something does not work](docs/how-to.md#when-something-does-not-work) | |
 
 ## What you get

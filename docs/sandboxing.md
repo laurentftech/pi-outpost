@@ -1,12 +1,11 @@
 # Sandboxing: what is confined, and what is not
 
-**Installing a sandboxing extension does not, by itself, confine anything in pi-outpost.**
-An extension such as [pi-landstrip](https://pi.dev/packages/pi-landstrip) loads without an
-error, reports its sandbox as on, and — unless you also set
-[`sandbox.bashFrom`](#hand-bash-to-the-extension-sandboxbashfrom) — the agent's commands still
-run unconfined. This page says what pi-outpost confines, what it does not, why an extension
-alone is not enough, and how to check that what you set up is really in force.
+pi-outpost confines its own file tools, but not, by default, the agent's `bash` or the terminal
+panel: a command runs with every right of the account the server runs as. This page starts with
+the setup to use on each platform, then says what each piece confines, what it does not, and how to
+check that what you set up is really in force.
 
+- [Recommended setup](#recommended-setup)
 - [What pi-outpost confines](#what-pi-outpost-confines)
 - [What it does not](#what-it-does-not)
 - [Why installing an extension is not enough](#why-installing-an-extension-is-not-enough)
@@ -17,6 +16,74 @@ alone is not enough, and how to check that what you set up is really in force.
 - [Several projects open at once](#several-projects-open-at-once)
 - [Check that it is really confined](#check-that-it-is-really-confined)
 - [Recipe: WSL on a managed Windows machine](#recipe-wsl-on-a-managed-windows-machine)
+
+## Recommended setup
+
+**Confine the agent's `bash` and the terminal with a sandbox runner: `sandbox.bashRunner` and
+`terminal.sandbox`, both naming the same runner.** pi-outpost then writes the policy itself, from the
+configuration: commands read the sandbox root, write the writable zone and a private temporary
+directory, never see the agent directory (`auth.json`) nor the configuration file, and get none of
+the server's environment variables, so no provider key. The policy lives outside anything a command
+can reach, so the agent cannot widen it. A missing or failing runner refuses every command; nothing
+ever falls back to running unconfined.
+
+| Where the server runs | Runner | Shell | Read |
+| --- | --- | --- | --- |
+| **Linux, in a Docker container** (the usual deployment) | landstrip (Landlock + seccomp) | `/bin/bash` (default) | [Linux and Docker](#linux-and-docker) |
+| **Linux, on the host or a VM; WSL2** | landstrip | `/bin/bash` (default) | [On Linux: landstrip](#on-linux-landstrip) |
+| **Windows 11, up to date** (24H2/25H2, August 2026 update or later) | MXC (`wxc-exec.exe`, tier 1) | busybox-w32 `sh.exe` (required) | [On Windows 11](#on-windows-11-mxc-and-busybox) |
+| **Older Windows, or one where MXC reports a lower tier** | none works natively | — | [WSL](#recipe-wsl-on-a-managed-windows-machine), then the Linux setup |
+| **macOS** | untested | — | — |
+
+**`bashFrom` (hand `bash` to an extension) is the alternative, not the default.** Choose it when you need
+what the extension adds and the runner does not — a network filter, per-command allow/deny rules. Its
+policy is then the extension's, configured in its own files (some of them in the project), and
+it does not confine the terminal. See [Hand bash to the extension](#hand-bash-to-the-extension-sandboxbashfrom).
+
+**The network is open** under a runner, for `bash` and the terminal alike: `git fetch`, `npm install`
+and `curl` work. To close it, close it around the server: a Docker network, a firewall. Or use
+`bashFrom` with an extension that filters it.
+
+### Linux and Docker
+
+In a container, the container protects the host, not what the server keeps inside it: the agent
+directory with your keys, the configuration, the server's environment, every project mounted. Without
+a runner, the agent's `bash` runs as the server's user and reads all of it. So keep landstrip inside the
+container too:
+
+```json
+{
+  "sandbox": {
+    "root": "/work/app",
+    "allowWrite": true,
+    "allowBash": true,
+    "bashRunner": "/opt/landstrip/bin/landstrip"
+  },
+  "terminal": { "enabled": true, "sandbox": "/opt/landstrip/bin/landstrip" }
+}
+```
+
+- **Put landstrip in the image** ([install steps](#confine-the-terminal-terminalsandbox)) and run
+  `landstrip doctor` **inside the container**: it must report `"ok": true`. Landlock is the host
+  kernel's (5.13 or later, enabled), and its calls must pass the container's seccomp profile. Docker's
+  default profile lets them through; a bubblewrap-style runner, which needs user namespaces, would not
+  start there.
+- **Run the server as an ordinary user** in the container, not root. `--security-opt no-new-privileges`
+  is compatible.
+- **Mount only what the agent works on**: the projects, the agent directory. Never the Docker socket,
+  never `--privileged`.
+- **Keep provider keys in the credential store** (`pi-outpost login`, or Settings), not in the server's
+  environment: a confined command does not inherit the environment, but it can still read the server's
+  through `/proc/<pid>/environ` (same account, no separate process namespace).
+
+### What to expect on Windows 11
+
+The [MXC setup](#on-windows-11-mxc-and-busybox) confines reads, writes and keys like landstrip on Linux,
+and git works inside. It has limits Linux does not: the shell is busybox's `ash`, not bash; the root's
+drive stays readable except what lies beside the path down to the root; a folder that is readable but not
+writable cannot be listed, so leave the whole root writable (no narrower `writableRoot`) if git runs
+there; commits cannot be signed with GnuPG; `git push` has no credentials. Do not make the root of a
+drive the sandbox root: nothing then lies beside it to deny, and the whole drive is readable.
 
 ## What pi-outpost confines
 
@@ -329,24 +396,24 @@ One server, one installation of the extension, loaded into **each project's sess
 - The extension's policy is its global file plus **each project's own `.pi/sandbox.json`**, which may
   differ from one project to the next. Look at it when you open a project you did not write: a
   repository can ship one.
-- The terminal panel, if enabled, is opened per project and confined by nothing.
+- The terminal panel, if enabled, is opened per project: confined to that project's root with
+  `terminal.sandbox`, by nothing without it.
 
 ## Check that it is really confined
 
-Do not stop at "the extension says it is on". Check what the agent's commands can do:
+Do not stop at "the sandbox says it is on". Check what the agent's commands can do:
 
-1. **The session starts with `bashFrom` set.** That proves the `bash` the agent uses is the
-   extension's. A refusal at start names the `bash` it found instead.
-2. **A command the policy forbids is refused.** Ask the agent, in the chat, to run something your
-   policy denies — reading a directory outside the project (`ls ~`, which pi-landstrip's defaults
-   deny), writing outside it (`touch /tmp/outside-check`), or reaching the network
-   (`curl -sI https://example.com`). The tool result must be a refusal from the extension, not an
-   output.
-3. **Repeat after any change** to the configuration, the extension's policy, or the extension's
-   version.
+1. **The server says who confines `bash`.** With `bashRunner`, its startup line reads
+   `bash (confined by <runner>)`, never `bash (UNCONFINED)`; with `bashFrom`, the session starts only if
+   the `bash` the agent uses is the extension's, and a refusal names the `bash` it found instead.
+2. **A command the policy forbids is refused.** Ask the agent, in the chat, to run something the
+   policy denies — reading a sibling project or the agent directory's `auth.json`, writing outside the
+   writable zone (`touch ../outside-check`), listing its environment for a key (`env | grep -i key`).
+   The tool result must be a refusal or nothing, not the content.
+3. **Do the same in the terminal** if `terminal.sandbox` is set.
+4. **Repeat after any change** to the configuration, the runner or extension, or its policy.
 
-If step 2 succeeds where it should be refused, the commands are not confined, whatever the
-extension reports.
+If step 2 succeeds where it should be refused, the commands are not confined, whatever is reported.
 
 ## Recipe: WSL on a managed Windows machine
 
@@ -379,13 +446,14 @@ C:/Users/me/dev/project  /mnt/project  drvfs  rw,metadata,uid=1000,gid=1000,umas
 The rest of `C:` is not mounted. Prefer a distribution of its own for pi-outpost (`wsl --import`),
 separate from the one you work in.
 
-**3. Run pi-outpost as an ordinary user**, with the sandbox on that folder and bash handed to the
-extension:
+**3. Run pi-outpost as an ordinary user**, with the sandbox on that folder and bash and the terminal
+confined by landstrip ([install steps](#confine-the-terminal-terminalsandbox)):
 
 ```json
 {
   "cwd": "/mnt/project",
-  "sandbox": { "root": "/mnt/project", "allowWrite": true, "allowBash": true, "bashFrom": "npm:pi-landstrip" },
+  "sandbox": { "root": "/mnt/project", "allowWrite": true, "allowBash": true, "bashRunner": "/opt/landstrip/bin/landstrip" },
+  "terminal": { "enabled": true, "sandbox": "/opt/landstrip/bin/landstrip" },
   "files": { "watch": false }
 }
 ```
@@ -394,8 +462,10 @@ extension:
 ↻ re-lists by hand. Working on `/mnt/...` is slower than a Linux directory — noticeable for git and
 large trees, not for ordinary editing.
 
-**4. Tighten the extension's policy.** For pi-landstrip, in the global `sandbox.json` of the agent
-directory it reads (see above) — not in the project, which you want to keep from widening it:
+**4. If the network must be closed**, the runner leaves it open: close it around the distribution, or
+hand `bash` to pi-landstrip instead (`"bashFrom": "npm:pi-landstrip"` in place of `bashRunner`) and
+tighten its policy, in the global `sandbox.json` of the agent directory it reads (see above) — not in
+the project, which you want to keep from widening it:
 
 ```json
 {

@@ -58,11 +58,13 @@ agent everything the account running the server can do, inside the sandbox or no
 Where that matters, run pi-outpost as a dedicated user, or in a container, and treat
 the sandbox as being that boundary rather than the `sandbox` key.
 
-A sandboxing extension such as pi-landstrip can confine it — but only if you also name it in
-`sandbox.bashFrom`. Installed alone, its confined `bash` is shadowed by pi-outpost's and nothing
-changes. Or name a sandbox runner in `sandbox.bashRunner`, and pi-outpost's own `bash` runs every
-command inside it — on Windows 11, with MXC and busybox-w32, the way that works there today. See [Sandboxing: what is confined, and what is not](sandboxing.md), which also has a
-recipe for WSL on a managed Windows machine.
+To confine it, name a sandbox runner in `sandbox.bashRunner`: pi-outpost's own `bash` then runs every
+command inside it, reading the root, writing the writable zone, with no key in reach — landstrip on
+Linux (Docker included), MXC with busybox-w32 on Windows 11. A sandboxing extension such as pi-landstrip
+is the alternative, but only if you also name it in `sandbox.bashFrom`: installed alone, its confined
+`bash` is shadowed by pi-outpost's and nothing changes. See the
+[recommended setup for each platform](sandboxing.md#recommended-setup), which also points to a recipe
+for WSL on a managed Windows machine.
 
 To grant it for yourself while preventing anyone from turning it on from the browser:
 
