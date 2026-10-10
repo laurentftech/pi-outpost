@@ -71,10 +71,18 @@ async function cli(args, { cwd, env = {} } = {}) {
   }
 }
 
-/** The resolved configuration `pi-outpost config` printed (it logs a line before the JSON). */
+/**
+ * The resolved configuration `pi-outpost config` printed: the pretty-printed object, from
+ * its opening `{` line to its closing `}` line.
+ *
+ * Not "everything after the first brace": `out` is stdout then stderr, and stderr may
+ * carry the runtime's own warnings — Node 25+ prints an ExperimentalWarning about
+ * localStorage on every start — which would then be read as part of the JSON.
+ */
 function resolved(out) {
-  const json = out.slice(out.indexOf("{"));
-  return JSON.parse(json);
+  const json = /^\{\r?\n[\s\S]*?^\}\r?$/m.exec(out);
+  assert.ok(json, `no configuration object in the output:\n${out}`);
+  return JSON.parse(json[0]);
 }
 
 const configWithPort = (port) => JSON.stringify({ server: { port, host: "127.0.0.1" } });
