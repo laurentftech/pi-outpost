@@ -4,6 +4,7 @@ import { forwardRef, useImperativeHandle } from "react";
 import { FileViewer } from "./FileViewer";
 import type { GitDiffState, OpenFile } from "../useAgent";
 import type { PdfFindState, PdfViewerHandle } from "./PdfViewer";
+import { editorSelection, editorText, typeInEditor } from "./codeEditorTesting";
 
 const pdfFindNext = vi.fn();
 const pdfFindPrevious = vi.fn();
@@ -53,9 +54,6 @@ const ctrlF = () => fireEvent.keyDown(document, { key: "f", ctrlKey: true });
 const escape = () => fireEvent.keyDown(document, { key: "Escape" });
 const findInput = () => screen.getByLabelText("Find") as HTMLInputElement;
 const typeQuery = (text: string) => fireEvent.change(findInput(), { target: { value: text } });
-// `getByRole("textbox")` is ambiguous once the find input (also role
-// "textbox") is on screen alongside the edit-mode textarea.
-const editTextarea = () => document.querySelector("textarea") as HTMLTextAreaElement;
 
 describe("FileViewer find-in-page", () => {
   beforeEach(() => {
@@ -222,7 +220,7 @@ describe("FileViewer find-in-page", () => {
   });
 
   describe("edit-mode search", () => {
-    it("selects the current match's exact text in the textarea", async () => {
+    it("selects the current match's exact text in the editor", async () => {
       setup({ file: loadedFile({ content: "one fox two fox" }), writableRoot: undefined });
       fireEvent.click(screen.getByRole("button", { name: "✎ edit" }));
       ctrlF();
@@ -230,17 +228,26 @@ describe("FileViewer find-in-page", () => {
       typeQuery("fox");
 
       await waitFor(() => expect(screen.getByText("1/2")).toBeInTheDocument());
-      const textarea = editTextarea();
-      expect(textarea.value.slice(textarea.selectionStart ?? -1, textarea.selectionEnd ?? -1)).toBe("fox");
-      expect(textarea.selectionStart).toBe(4);
-      expect(textarea.selectionEnd).toBe(7);
-      // Focus bounces back to the find field once the selection (and its
-      // native scroll-into-view) is made, so Enter/Shift+Enter keep stepping
-      // through matches without the reader having to reclick the find box.
+      expect(editorSelection()).toEqual({ from: 4, to: 7, text: "fox" });
+      // The editor selects and scrolls without taking focus, so Enter/Shift+Enter
+      // keep stepping through matches without the reader reclicking the find box.
       expect(findInput()).toHaveFocus();
     });
 
-    it("does not mark the other matches while editing — a textarea's value carries no markup", async () => {
+    it("selects the match itself in a CRLF file, where a line break is one position", async () => {
+      setup({ file: loadedFile({ content: "one\r\ntwo\r\nfox" }), writableRoot: undefined });
+      fireEvent.click(screen.getByRole("button", { name: "✎ edit" }));
+      ctrlF();
+
+      typeQuery("fox");
+
+      await waitFor(() => expect(screen.getByText("1/1")).toBeInTheDocument());
+      expect(editorSelection().text).toBe("fox");
+      // And the line endings travel with the draft.
+      expect(editorText()).toBe("one\r\ntwo\r\nfox");
+    });
+
+    it("does not mark the other matches while editing — the selection is the match shown", async () => {
       setup({ file: loadedFile({ content: "one fox two fox" }), writableRoot: undefined });
       fireEvent.click(screen.getByRole("button", { name: "✎ edit" }));
       ctrlF();
@@ -258,12 +265,11 @@ describe("FileViewer find-in-page", () => {
       typeQuery("fox");
       await waitFor(() => expect(screen.getByText("1/2")).toBeInTheDocument());
 
-      const textarea = editTextarea();
       findInput().focus(); // simulate focus having returned to the find field
-      fireEvent.change(textarea, { target: { value: "one fox two fox three fox" } });
+      typeInEditor("one fox two fox three fox");
 
       await waitFor(() => expect(screen.getByText("1/3")).toBeInTheDocument());
-      // Typing in the document must not steal focus back to the textarea.
+      // Typing in the document must not steal focus back to the editor.
       expect(findInput()).toHaveFocus();
     });
 
@@ -276,11 +282,11 @@ describe("FileViewer find-in-page", () => {
 
       fireEvent.keyDown(findInput(), { key: "Enter" });
       await waitFor(() => expect(screen.getByText("2/2")).toBeInTheDocument());
-      expect(editTextarea().selectionStart).toBe(12);
+      expect(editorSelection().from).toBe(12);
 
       fireEvent.keyDown(findInput(), { key: "Enter" });
       await waitFor(() => expect(screen.getByText("1/2")).toBeInTheDocument());
-      expect(editTextarea().selectionStart).toBe(4);
+      expect(editorSelection().from).toBe(4);
     });
   });
 

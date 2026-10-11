@@ -189,8 +189,11 @@ one needs, the command that proves it works, and the caution that goes with it.
 - [Several projects open at once](#projects), each with its own agent, sandbox, sessions and
   history — switch between them while work continues in the ones you are not watching, and
   get a browser notification when a background project needs an answer or is ready for review
-- File browser: lazy-loaded tree, syntax-highlighted viewer, Markdown rendering, and an
-  editor that saves inside the writable zone. Create, rename, move, copy, delete, open a
+- File browser: lazy-loaded tree, syntax-highlighted viewer, Markdown rendering, and a code
+  editor (CodeMirror) that saves inside the writable zone — line numbers, syntax colours,
+  brackets closed and matched, Tab / Shift+Tab, several cursors (Ctrl+D, Alt-click), Alt+arrows
+  to move lines, Ctrl+/ to comment, folding; Ctrl+S (Cmd+S) saves and stays in the editor, and a
+  CRLF file is saved with CRLF. Create, rename, move, copy, delete, open a
   file with the system's own application, or show a file or folder in Finder, Explorer or
   the Linux file manager; anything outside the writable zone is dimmed.
   Ctrl+F (Cmd+F) finds text in the open file — source, rendered Markdown, or a live edit

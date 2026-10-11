@@ -6,6 +6,8 @@ import remarkMath from "remark-math";
 import type { GitFileState } from "@pi-outpost/shared";
 import type { GitDiffState, OpenFile } from "../useAgent";
 import { CodeHighlight } from "./CodeHighlight";
+import type { CodeEditorHandle } from "./CodeEditor";
+import { LazyCodeEditor, preloadCodeEditor } from "./lazyCodeEditor";
 import { CopyButton } from "./CopyButton";
 import { DocxExportButton } from "./DocxExportButton";
 import { HtmlPageFrame } from "./HtmlPageFrame";
@@ -150,7 +152,7 @@ interface EditState {
 
 /**
  * Full-size file viewer overlaying the chat pane: syntax-highlighted (or rendered
- * markdown) reading, and — inside the writable zone — a textarea edit mode whose
+ * markdown) reading, and — inside the writable zone — a code editor whose
  * saves go through write_file with an mtime conflict guard.
  */
 export function FileViewer({
@@ -190,7 +192,7 @@ export function FileViewer({
   );
   // "done" = a reply finished while this viewer was covering the chat
   const [agentActivity, setAgentActivity] = useState<"idle" | "streaming" | "done">("idle");
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const editorRef = useRef<CodeEditorHandle>(null);
   // Content of the last submitted save — the rebase effect below matches on it, not on
   // the live draft, so typing during the save round-trip can't wedge a false conflict
   const lastSubmitted = useRef<string | null>(null);
@@ -236,6 +238,10 @@ export function FileViewer({
   const roomForTwo = useRoomForTwo();
   // A PDF is never editable here: this viewer edits text, and there is no text.
   const writable = isWritable(file.path, writableRoot) && !pdf;
+  // A file the reader may edit: fetch the editor now, so it is there when asked for.
+  useEffect(() => {
+    if (writable) void preloadCodeEditor().catch(() => {});
+  }, [writable]);
   const dirty = edit !== null && edit.draft !== edit.baseContent;
   const saving = loaded?.pendingSave !== undefined;
   // The reducer refetches on file_changed, so a foreign write shows up as a new mtime
@@ -483,23 +489,19 @@ export function FileViewer({
     // else about what changed inside it is irrelevant to this effect.
   }, [findMode, effectiveFindQuery, mode, showRaw, codeRenderTick]);
 
-  /** Indicates the match by selection, per the edit-mode requirement — a
-   * textarea's value carries no markup, so this is the only match actually
-   * shown; the count above it stays accurate regardless. Focus moves to the
-   * textarea just long enough for the browser to scroll the selection into
-   * view, then back to the find field so Enter/Shift+Enter keep working. */
+  /** Indicates the match by selection, per the edit-mode requirement — the
+   * editor's selection is the match actually shown; the count above it stays
+   * accurate regardless. The editor scrolls it into view without taking focus,
+   * so Enter/Shift+Enter in the find field keep working. */
   function selectEditMatch(matches: { start: number; end: number }[], index: number) {
     const match = matches[index];
-    const textarea = textareaRef.current;
-    if (match === undefined || textarea === null) return;
-    textarea.focus();
-    textarea.setSelectionRange(match.start, match.end);
-    findInputRef.current?.focus();
+    if (match === undefined) return;
+    editorRef.current?.select(match.start, match.end);
   }
 
   // Jumps to (and selects) the first match when the query changes — but not
   // on every keystroke typed into the document itself: editMatches recomputes
-  // for those too, and refocusing the textarea on each one would fight typing.
+  // for those too, and reselecting in the editor on each one would fight typing.
   useEffect(() => {
     if (findMode !== "edit" || !findOpen) return;
     const matches = findMatchesInText(editedText, effectiveFindQuery);
@@ -575,24 +577,22 @@ export function FileViewer({
    * The editor, named once.
    *
    * The same element in both places it appears: full width in edit mode, and in one
-   * half of the split. A second textarea would be a second set of handlers, and the
+   * half of the split. A second editor would be a second set of handlers, and the
    * save path is the thing that must not fork.
    */
   const editor =
     edit === null ? null : (
-      <textarea
-        ref={textareaRef}
-        value={edit.draft}
-        onChange={(event) => setEdit({ ...edit, draft: event.target.value })}
-        onKeyDown={(event) => {
-          if ((event.metaKey || event.ctrlKey) && event.key === "s") {
-            event.preventDefault();
+      <Suspense fallback={<div className="p-4 text-sm text-zinc-400 dark:text-zinc-600">loading editor…</div>}>
+        <LazyCodeEditor
+          handle={editorRef}
+          path={file.path}
+          value={edit.draft}
+          onChange={(draft) => setEdit((current) => (current === null ? current : { ...current, draft }))}
+          onSave={() => {
             if (dirty && !saving && !conflict) save();
-          }
-        }}
-        spellCheck={false}
-        className="h-full w-full resize-none bg-transparent p-4 font-mono text-[13px] leading-relaxed text-zinc-800 outline-none ring-inset focus-visible:ring-1 focus-visible:ring-zinc-300 dark:text-zinc-200 dark:focus-visible:ring-zinc-700"
-      />
+          }}
+        />
+      </Suspense>
     );
 
   /**
@@ -717,9 +717,9 @@ export function FileViewer({
     else onClearGitDiff();
   }
 
-  // A successful save replaces content + mtime in state: leave edit mode back to the
-  // rendered view — unless the user typed during the round-trip, in which case keep
-  // the live draft and just rebase the baseline on the saved state.
+  // A successful save replaces content + mtime in state: stay in the editor, as an
+  // editor does, with the baseline rebased on the saved state — and the live draft
+  // kept, should the user have typed during the round-trip. Leaving is "done".
   useEffect(() => {
     if (
       edit !== null &&
@@ -728,13 +728,8 @@ export function FileViewer({
       loaded.content === lastSubmitted.current &&
       loaded.mtimeMs !== edit.baseMtimeMs
     ) {
-      const submitted = lastSubmitted.current;
       lastSubmitted.current = null;
-      if (edit.draft === submitted) {
-        setEdit(null);
-      } else {
-        setEdit({ ...edit, baseContent: loaded.content, baseMtimeMs: loaded.mtimeMs });
-      }
+      setEdit({ ...edit, baseContent: loaded.content, baseMtimeMs: loaded.mtimeMs });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loaded?.mtimeMs]);
@@ -899,7 +894,8 @@ export function FileViewer({
               }}
               className="shrink-0 rounded border border-zinc-300 px-2 py-0.5 text-xs text-zinc-500 hover:border-zinc-400 dark:border-zinc-700 dark:text-zinc-400 dark:hover:border-zinc-500"
             >
-              cancel
+              {/* A save keeps the editor open, so with nothing unsaved this is leaving, not discarding. */}
+              {dirty ? "cancel" : "done"}
             </button>
           </>
         )}
@@ -994,7 +990,7 @@ export function FileViewer({
           <div className="p-4 text-sm text-red-600 dark:text-red-400">{file.message}</div>
         )}
         {/* Keyed on `edit`, not `loaded`: the post-save file_changed refetch flips the file
-            to "loading" for a moment and must not unmount the textarea (focus/caret loss) */}
+            to "loading" for a moment and must not unmount the editor (focus/caret loss) */}
         {edit !== null && !splitting && editor}
         {loaded && edit === null && !splitting && !showGitDiff && markdown && !showRaw && (
           <div ref={contentRef}>{renderedMarkdown(loaded.content)}</div>

@@ -13,6 +13,7 @@ import { render, screen, fireEvent, act, within } from "@testing-library/react";
 import { STRUCTURED_EXCHANGE_SCHEMA_V1 as S } from "@pi-outpost/shared/structured-exchange";
 import { FileViewer } from "./FileViewer";
 import type { OpenFile } from "../useAgent";
+import { editorElement, editorText, typeInEditor } from "./codeEditorTesting";
 
 const documentOf = (batteryLabel: string, extra: Record<string, unknown> = {}) =>
   JSON.stringify(
@@ -58,7 +59,7 @@ const chooseSplit = () => fireEvent.click(screen.getByRole("button", { name: /sp
 
 /** Type into the editor, then let the debounce elapse. */
 function type(text: string) {
-  fireEvent.change(screen.getByRole("textbox"), { target: { value: text } });
+  typeInEditor(text);
   act(() => {
     vi.advanceTimersByTime(400);
   });
@@ -90,7 +91,7 @@ describe("editing a document beside its rendering", () => {
     chooseSplit();
     const split = screen.getByTestId("file-split");
     // Both halves, in one view: the text to change and the picture to read.
-    expect(within(split).getByRole("textbox")).toBeInTheDocument();
+    expect(editorElement(split)).not.toBeNull();
     expect(within(split).getByTestId("file-structured-exchange")).toBeInTheDocument();
     expect(drawn()).toContain("Batterie");
   });
@@ -175,7 +176,7 @@ describe("editing a document beside its rendering", () => {
     const issues = screen.getByTestId("file-split-issues");
     expect(issues.textContent).not.toBe("");
     // Still in the mode: the editor and the picture are both still there.
-    expect(screen.getByRole("textbox")).toBeInTheDocument();
+    expect(editorElement()).not.toBeNull();
     expect(screen.getByTestId("file-structured-exchange")).toBeInTheDocument();
   });
 
@@ -232,7 +233,7 @@ describe("editing a document beside its rendering", () => {
 
     expect(screen.getByTestId("file-split")).toBeInTheDocument();
     expect(screen.getByTestId("file-structured-exchange")).toBeInTheDocument();
-    expect(screen.queryByRole("textbox")).toBeNull();
+    expect(editorElement()).toBeNull();
     expect(screen.getByText("🔒 read-only")).toBeInTheDocument();
   });
 
@@ -247,7 +248,7 @@ describe("editing a document beside its rendering", () => {
     expect(confirm).toHaveBeenCalled();
     // Refused, so nothing was dropped: still in the mode, still holding the text.
     expect(screen.getByTestId("file-split")).toBeInTheDocument();
-    expect(screen.getByRole("textbox")).toHaveValue(documentOf("Batterie 800V"));
+    expect(editorText()).toBe(documentOf("Batterie 800V"));
   });
 
   it("cancelling discards the draft and keeps the mode", () => {
@@ -267,7 +268,7 @@ describe("editing a document beside its rendering", () => {
 
     expect(screen.getByTestId("file-split")).toBeInTheDocument();
     // Still writable, and back to what is on disk.
-    expect(screen.getByRole("textbox")).toHaveValue(VALID);
+    expect(editorText()).toBe(VALID);
     expect(drawn()).toContain("Batterie");
   });
 
@@ -294,7 +295,8 @@ describe("editing a document beside its rendering", () => {
       },
       media: query,
       addEventListener: (_: string, fn: () => void) => {
-        listeners.push(fn);
+        // The viewer's layout query only: the editor listens for "print" too.
+        if (query !== "print") listeners.push(fn);
       },
       removeEventListener: () => {},
     })) as unknown as typeof window.matchMedia;
@@ -312,7 +314,7 @@ describe("editing a document beside its rendering", () => {
 
     expect(screen.queryByTestId("file-split")).toBeNull();
     // The unsaved text is still there, and still the reader's to save.
-    expect(screen.getByRole("textbox")).toHaveValue(edited);
+    expect(editorText()).toBe(edited);
     expect(screen.getByRole("button", { name: "save" })).toBeEnabled();
   });
 
@@ -340,7 +342,7 @@ describe("editing a document beside its rendering", () => {
       chooseSplit();
 
       const split = screen.getByTestId("file-split");
-      expect(within(split).getByRole("textbox")).toBeInTheDocument();
+      expect(editorElement(split)).not.toBeNull();
       expect(within(split).getByRole("heading", { name: "Vehicle" })).toBeInTheDocument();
     });
 
