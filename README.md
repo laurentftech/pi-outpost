@@ -193,7 +193,8 @@ one needs, the command that proves it works, and the caution that goes with it.
   editor (CodeMirror) that saves inside the writable zone — line numbers, syntax colours,
   brackets closed and matched, Tab / Shift+Tab, several cursors (Ctrl+D, Alt-click), Alt+arrows
   to move lines, Ctrl+/ to comment, folding; Ctrl+S (Cmd+S) saves and stays in the editor, and a
-  CRLF file is saved with CRLF. Create, rename, move, copy, delete, open a
+  CRLF file is saved with CRLF. A file's source, when read rather than edited, is shown in the same
+  editor, read-only. Create, rename, move, copy, delete, open a
   file with the system's own application, or show a file or folder in Finder, Explorer or
   the Linux file manager; anything outside the writable zone is dimmed.
   Ctrl+F (Cmd+F) finds text in the open file — source, rendered Markdown, or a live edit

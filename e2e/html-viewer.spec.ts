@@ -68,9 +68,13 @@ test("ARelativeLinkOpensInTheViewer: a forged message opens nothing, the page's 
 test("HtmlIsEditedBesideItsRendering: the rendering follows the draft", async ({ page }) => {
   await openPage(page);
   await page.getByRole("button", { name: /split/ }).click();
-  const editor = page.getByTestId("file-split").locator("textarea");
+  const editor = page.getByTestId("file-split").getByTestId("file-editor").locator(".cm-content");
   await expect(editor).toBeVisible();
-  await editor.fill((await editor.inputValue()).replace("HTML report", "Edited report"));
+  // Typed over, as a reader would: select all in the editor, then the new text.
+  const source = (await editor.locator(".cm-line").allTextContents()).join("\n");
+  await editor.click();
+  await page.keyboard.press("ControlOrMeta+a");
+  await page.keyboard.insertText(source.replace("HTML report", "Edited report"));
   const frame = page.frameLocator('[data-testid="file-split-rendering"] [data-testid="html-page"]');
   await expect(frame.locator("#title")).toHaveText("Edited report");
   await expect(frame.locator("#title")).toHaveCSS("color", "rgb(1, 2, 3)");

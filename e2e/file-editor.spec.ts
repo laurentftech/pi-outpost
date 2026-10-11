@@ -153,6 +153,7 @@ test("SwitchingViewKeepsTheCurrentMatch: every match marked in the source, the r
   await page.getByTitle("Show files").click();
   await page.getByText("editor", { exact: true }).click();
   await page.getByText("find.md", { exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Fox" })).toBeVisible();
   await page.keyboard.press("ControlOrMeta+f");
   await page.getByRole("textbox", { name: "Find", exact: true }).fill("fox");
   const search = page.getByRole("search", { name: "Find in file" });
