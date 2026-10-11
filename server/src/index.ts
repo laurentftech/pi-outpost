@@ -1678,6 +1678,41 @@ function resourceInventoryInput(target: Workspace) {
   };
 }
 
+/**
+ * How long starting a project waits for its resource inventory.
+ *
+ * The inventory feeds the Agent resources panel and nothing on the way to a usable
+ * session, and it asks git about every repository a skill or extension comes from. A
+ * start does not wait for that past this grace: the inventory carries on and is sent
+ * to the project's clients when it lands. Inside the grace — the usual case — the
+ * snapshot carries it as before.
+ */
+const INVENTORY_START_GRACE_MS = 1_000;
+
+/** The inventory a start waits for, briefly; the rest of it arrives as a message. */
+async function startResourceInventory(target: Workspace): Promise<void> {
+  let landed = false;
+  const inventory = refreshResourceInventory(target).then(
+    (value) => {
+      landed = true;
+      return value;
+    },
+    (error: unknown) => {
+      landed = true;
+      reportError(error);
+      return undefined;
+    },
+  );
+  await Promise.race([inventory, new Promise((resolve) => setTimeout(resolve, INVENTORY_START_GRACE_MS).unref())]);
+  if (landed) return;
+  void inventory.then((value) => {
+    // Before startup completes no client is bound yet — and this module is still being
+    // evaluated, its client table not yet declared. The snapshot every client is sent
+    // on binding carries the inventory once it has landed.
+    if (value && startupComplete) broadcast(target, { type: "agent_resource_inventory", inventory: value });
+  });
+}
+
 async function refreshResourceInventory(target: Workspace, updatedRepositoryPath?: string): Promise<AgentResourceInventory> {
   const service = resourceService(target);
   let inventory = await service.buildInventory(resourceInventoryInput(target));
@@ -1693,7 +1728,7 @@ async function refreshResourceInventory(target: Workspace, updatedRepositoryPath
   return inventory;
 }
 
-await refreshResourceInventory(workspace);
+await startResourceInventory(workspace);
 
 /**
  * Projects opened in an earlier run. Their resources are built, their sessions are
@@ -3614,7 +3649,7 @@ async function ensureStarted(target: Workspace): Promise<void> {
     }
     const runtime = await buildRuntimeFor(target);
     target.attachRuntime(runtime);
-    await refreshResourceInventory(target);
+    await startResourceInventory(target);
     runtime.subscribe((event) => onRuntimeEvent(target, event));
     // A project opened or restored after startup gets its renderers here. Only the
     // boot workspace is refreshed at module level, so without this every other
