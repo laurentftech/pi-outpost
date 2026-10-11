@@ -547,6 +547,8 @@ the way that works today (MXC and busybox-w32); see
 | `userSkillCollections` | Git repositories added as skill collections: `[{ "path", "managed", "enabledSkills": ["folder/skill", …] }]`. Only the listed skill directories load, after `userSkillPaths`. Written by the server |
 | `noPromptTemplates` / `promptPaths` | Same for prompt templates (`agentDir` and the project's `cwd/.pi/prompts`) |
 | `allowedModels` | Restrict the model switcher to these `{ "provider", "id" }` pairs. Without it, every built-in model whose provider has auth is listed — often more variants than a deployment actually serves |
+| `blockedCommands` | Slash commands users may neither see nor run: globs over the command's name, without the slash (`["setup*", "skill:internal-*"]`), matched regardless of case. A blocked command is left out of the composer's list, and a prompt invoking it anyway is refused by the server with a message that does not name it. The extension that registered it stays loaded — its hooks, tools and other commands carry on |
+| `allowedCommands` | When set, the only slash commands offered and run; `blockedCommands` still wins. A message that only begins with a slash — `/tmp is full` — is still sent as a message |
 | `thinkingLevels` | Declare what thinking levels a model accepts, for one the runtime cannot describe. See [Thinking levels](#thinking-levels) |
 | `systemPrompt` / `systemPromptFile` | Replace pi's built-in system prompt entirely (mutually exclusive). Project context files, skills and `appendSystemPrompt` still layer on top |
 | `appendSystemPrompt` | Extra paragraphs appended after the system prompt |

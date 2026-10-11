@@ -74,6 +74,7 @@ import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { CliError, helpText, parseCli, readSecret, runInit } from "./cli.ts";
+import { COMMAND_NOT_AVAILABLE, offeredCommands, refusesPrompt, type CommandPolicy } from "./commandPolicy.ts";
 import { bindFailureMessage, holdConsoleIfOwned } from "./startupFailure.ts";
 import { BuildExeError, buildExecutable } from "./buildExe.ts";
 import { probePty, TerminalManager, type TerminalConfinement } from "./terminalManager.ts";
@@ -1992,6 +1993,23 @@ function contextUsage(workspace: Workspace): ContextUsage | undefined {
   return workspace.agent.snapshot().contextUsage;
 }
 
+/** The deployment's rule for the slash commands its users may see and run. */
+function commandPolicy(): CommandPolicy {
+  return {
+    ...(config.blockedCommands ? { blocked: config.blockedCommands } : {}),
+    ...(config.allowedCommands ? { allowed: config.allowedCommands } : {}),
+  };
+}
+
+/**
+ * Whether a prompt invokes a command this deployment keeps from its users. Checked where
+ * the user's text enters, before anything else runs; the extension that registered the
+ * command keeps doing everything else it does.
+ */
+function refusesCommand(workspace: Workspace, text: string): boolean {
+  return refusesPrompt(text, commandPolicy(), workspace.agent.snapshot().commands);
+}
+
 function availableModels(workspace: Workspace): ModelChoice[] {
   const models = workspace.agent.snapshot().models;
   if (!config.allowedModels) return models;
@@ -2364,7 +2382,7 @@ function snapshot(workspace: Workspace): SessionSnapshot {
       return older === undefined ? {} : { olderItems: older };
     })(),
     models: availableModels(workspace),
-    commands: state.commands,
+    commands: offeredCommands(state.commands, commandPolicy()),
     ...(resourceInventories.get(workspace.root) ? { agentResources: resourceInventories.get(workspace.root) } : {}),
     contextUsage: state.contextUsage,
     // A runtime replacement is synchronous but its sidecar read is not. Never
@@ -2793,7 +2811,7 @@ function onRuntimeEvent(workspace: Workspace, event: RuntimeEvent): void {
       // Commands and tools only. A snapshot would be the easy way to say "things
       // changed" and the wrong one: clients treat it as a session change and close
       // the file the user opened while waiting.
-      broadcast(workspace, { type: "extensions_bound", commands: state.commands, ...(state.tools ? { tools: state.tools } : {}) });
+      broadcast(workspace, { type: "extensions_bound", commands: offeredCommands(state.commands, commandPolicy()), ...(state.tools ? { tools: state.tools } : {}) });
       // Skills an extension contributed are inventory too, and the panel showing
       // them has its own message. Nothing else here waits on it.
       void refreshResourceInventory(workspace)
@@ -5477,6 +5495,10 @@ function handleClientMessage(socket: WebSocket, raw: string): void {
         return;
       }
       if (!text && !images?.length) return;
+      if (refusesCommand(workspace, text)) {
+        send(socket, { type: "error", message: COMMAND_NOT_AVAILABLE });
+        return;
+      }
       handlePrompt(workspace, text || "(see attached images)", images).catch(reportError);
       break;
     }
@@ -5684,6 +5706,11 @@ function handleClientMessage(socket: WebSocket, raw: string): void {
         return;
       }
       if (!editText && !editImages?.length) return;
+      // Before the rewind: a refused edit leaves the conversation where it was.
+      if (refusesCommand(workspace, editText)) {
+        send(socket, { type: "error", message: COMMAND_NOT_AVAILABLE });
+        return;
+      }
       editPrompt(workspace, socket, message.entryId, editText || "(see attached images)", editImages).catch(reportError);
       break;
     }

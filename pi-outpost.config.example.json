@@ -53,6 +53,7 @@
   "offline": false,
   "updateCheck": true,
   "allowedModels": [{ "provider": "anthropic", "id": "claude-sonnet-5" }],
+  "blockedCommands": ["setup*"],
   "appendSystemPrompt": ["Only discuss topics related to this project."],
   "openBrowser": true,
   "openIn": "window",
