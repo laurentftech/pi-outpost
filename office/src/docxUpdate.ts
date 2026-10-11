@@ -84,6 +84,11 @@ function headingsOf(children: XmlElement[], pkg: WordPackage): Heading[] {
   return headings;
 }
 
+/** A document's headings, in order, with their levels: its outline. */
+export function documentHeadings(pkg: WordPackage): { level: number; text: string }[] {
+  return headingsOf(bodyLayout(pkg.documentXml).children, pkg).map(({ level, text }) => ({ level, text }));
+}
+
 /** The outline, as the refusal messages show it. */
 function outline(headings: Heading[]): string {
   if (headings.length === 0) return "The document has no headings.";
@@ -334,7 +339,7 @@ export async function updateDocument(pkg: WordPackage, edits: DocxEdit[], option
       content = elements.map((element) => revisions.markBlock(element, "ins"));
     }
     contentFor.set(plan, content);
-    warnings.push(...contentWarnings(plan.edit.markdown, counting.source, counting.missed));
+    warnings.push(...contentWarnings(plan.edit.markdown, counting.source, counting.missed, counting.undrawn));
   }
   for (const plan of [...planned].sort((a, b) => b.from - a.from || b.order - a.order)) {
     const taken = children.slice(plan.from, plan.to);

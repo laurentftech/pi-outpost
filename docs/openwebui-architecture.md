@@ -16,6 +16,11 @@ Checked against **Open WebUI v0.11.4**.
   files, leaving out the passages marked as pi-outpost-only. Nothing is fetched at run time.
 - **Showing a diagram:** `show_structure` validates a structured document (a graph, a sequence, a
   table, a timeline, or a proposal) and answers with that page. It stores nothing.
+- **Writing a document:** `create_document` and `create_presentation` build a `.docx` or a `.pptx`
+  with pi-outpost's builders (`office/`) and answer with a page that carries the file. Mermaid is drawn
+  in a worker thread of the same process; pictures arrive in the call, and nothing is fetched. The
+  file is kept for the user under its name, so `update_presentation` and `update_document` can change
+  it later.
 - **What it never does:** it opens no outbound connection, calls no model, holds no user password,
   and reads no other data from Open WebUI. Only Open WebUI's backend needs to reach it, so it
   publishes no port.
@@ -159,8 +164,9 @@ an opaque origin:
     planning.
 
   It never asks Open WebUI to send a message, and nothing on it applies a proposal.
-- **Downloads:** a reader downloads a diagram (SVG) or a table (Markdown, CSV, XLSX). The file is
-  built in the frame and saved through `allow-downloads`; nothing is fetched.
+- **Downloads:** a reader downloads a diagram (SVG) or a table (Markdown, CSV, XLSX), or the Word or
+  PowerPoint file a document card carries. The file is built in the frame, or carried in it, and
+  saved through `allow-downloads`; nothing is fetched.
 - **Planning content is data, never markup.** Labels and titles are rendered as text by React. A
   planning titled `</script><script>…` is stored as typed and shown as typed, and the page around
   it still holds a single script, the viewer's own. This is tested.
@@ -171,10 +177,12 @@ an opaque origin:
 /data/<sha256(user id)>/<planning id>/meta.json     title, current revision, dates
 /data/<sha256(user id)>/<planning id>/1.json        each revision, a complete document
                                      /2.json …
+/data/documents/<sha256(user id)>/<sha256(file name)>.bin    a kept Word or PowerPoint file
+                                  /<sha256(file name)>.json   its name, type, template, date
 ```
 
-- **Contents:** only what users put in their plannings (titles, labels, dates, dependencies), plus
-  timestamps. No name, e-mail or role is stored: the user appears only as the SHA-256 of their Open
+- **Contents:** what users put in their plannings (titles, labels, dates, dependencies), and the
+  Word and PowerPoint files the document tools wrote for them, plus timestamps. No name, e-mail or role is stored: the user appears only as the SHA-256 of their Open
   WebUI id. That is pseudonymous, not anonymous; Open WebUI can map it back.
 - **History:**
   - every change adds a revision file, written once (`wx`) and never modified;
@@ -182,13 +190,16 @@ an opaque origin:
   - updates to one planning are serialised, and an update prepared against an old revision is
     refused, so two users or two chats cannot overwrite each other silently.
 - **Encryption at rest** is the volume's: the files are plain JSON.
-- **Deleting a user's plannings:** remove `/data/<sha256(user id)>`. There is no deletion tool for
+- **Deleting a user's data:** remove `/data/<sha256(user id)>` (plannings) and
+  `/data/documents/<sha256(user id)>` (kept documents). There is no deletion tool for
   users yet.
 - **Backups and restore** are a copy of the volume. Every revision file opens in pi-outpost as it
   is.
 
 **What Open WebUI stores:** each time a planning is shown, the embed (about 110 kB, compressed
-viewer and planning) is stored in the chat, in Open WebUI's database. Deleting the chat deletes it.
+viewer and planning) is stored in the chat, in Open WebUI's database. A document card also carries
+its file, compressed: up to `OUTPOST_MAX_FILE_BYTES` (5 MB by default) before compression. Deleting
+the chat deletes it.
 
 ## Limits enforced by the server
 
@@ -197,20 +208,30 @@ viewer and planning) is stored in the chat, in Open WebUI's database. Deleting t
 | Planning size | 1 MB of JSON | `OUTPOST_MAX_PLANNING_BYTES` |
 | Revisions per planning | 500, after which updates are refused rather than history pruned | `OUTPOST_MAX_REVISIONS` |
 | Plannings per user | 200 | `OUTPOST_MAX_PLANNINGS` |
-| Request body | twice the planning size, plus 64 kB | derived |
+| Word or PowerPoint file written | 5 MB | `OUTPOST_MAX_FILE_BYTES` |
+| Picture given in a call | 1 MB once decoded; PNG, JPEG or GIF only; never fetched from an address | `OUTPOST_MAX_IMAGE_BYTES` |
+| Mermaid diagram | 50,000 characters; 20 s to draw, after which its worker is stopped | fixed |
+| Kept documents per user | 20, the oldest dropped first | `OUTPOST_MAX_DOCUMENTS` |
+| Days a kept document stays | 30 after it was last written | `OUTPOST_DOCUMENT_DAYS` |
+| Request body | twice the larger of the planning size and the file size, plus 64 kB | derived |
 
 Malformed input is refused with the reason (400, 413, 422); nothing is partially applied.
 
 ## Supply chain
 
-- **Image:** `ghcr.io/laurentftech/pi-outpost-openwebui:<version>` contains `node:24-slim` and two
-  artefacts. It is built by the project's release workflow from the release tag, after the full test
-  suite, and checked by `openwebui/test/image.sh` before it is pushed. It runs as the unprivileged
-  `node` user.
-  - `dist/server.mjs`: the server, bundled into one file with its dependencies (Fastify, and the
-    project's structured-exchange contract);
-  - `dist/viewer/`: the timeline viewer.
-- **No `node_modules`:** none at run time, and no package is installed when the container starts.
+- **Image:** `ghcr.io/laurentftech/pi-outpost-openwebui:<version>` contains `node:24-slim`, the
+  Liberation Sans fonts (`fonts-liberation2`, metric-compatible with Arial) and these artefacts. It is built by the project's release
+  workflow from the release tag, after the full test suite, and checked by `openwebui/test/image.sh`
+  before it is pushed. It runs as the unprivileged `node` user.
+  - `dist/server.mjs`: the server, bundled into one file with its dependencies (Fastify, the
+    project's structured-exchange contract, the Word and PowerPoint builders);
+  - `dist/mermaid-worker.mjs`: Mermaid 12, bundled, run in a worker thread to draw diagrams;
+  - `dist/viewer/`: the viewer;
+  - `node_modules/`: the three packages that cannot be bundled — `@napi-rs/canvas` and
+    `@resvg/resvg-js` (native: text measurement and rasters) and `jsdom` (it reads files of its own) —
+    with their dependencies, copied from the build's `npm ci`, so at the lockfile's versions.
+- **Nothing installed at start:** no package is installed when the container starts. The document
+  tools grew the image from 232 MB to 313 MB, most of it the canvas binary.
 - **Rebuilding internally:** the image can be rebuilt from the repository, for a mirror registry:
 
   ```bash
@@ -227,6 +248,7 @@ pi-outpost already uses:
 flowchart TB
   subgraph shared["Shared code (one copy)"]
     C["shared/<br/>structured-exchange contract,<br/>schemas, validation, limits,<br/>timeline layout and comparison"]
+    O["office/<br/>Word and PowerPoint builders,<br/>Mermaid without a browser"]
     UIV["ui/ TimelineView and StructuredExchangeDocument<br/>the timeline, graphs, sequences, tables"]
   end
   subgraph po["pi-outpost"]
@@ -239,6 +261,8 @@ flowchart TB
   end
   C --> PT
   C --> R
+  O --> PT
+  O --> R
   UIV --> PUI
   UIV --> E
 ```
@@ -246,7 +270,9 @@ flowchart TB
 - **Shared, for both hosts:**
   - **the contract:** what a valid document is, of every kind, the diagnostics, and the limits;
   - **the drawing:** layouts, viewpoints, the proposal view, exports, the timeline's scales and
-    comparison.
+    comparison;
+  - **the documents:** the Word and PowerPoint builders, the same ones pi-outpost's `docx_create` and
+    `pptx_create` write with.
 
   A change to a drawing or to the validation reaches both hosts at the next release.
 - **The guidance:** the structured-exchange skill's reference pages are one source for both hosts.

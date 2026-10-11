@@ -18,10 +18,12 @@
  *    comes out empty. The real dimensions live in the `viewBox`.
  */
 
-import type { DiagramImage } from "@pi-outpost/shared/docx";
+import { viewBoxSize, withExplicitSize, type DiagramImage } from "@pi-outpost/shared/docx";
 import { withMermaid } from "../util/mermaidQueue";
 
 export type { DiagramImage };
+// Shared with the server's renderer, which sizes a diagram the same way.
+export { withExplicitSize };
 
 /** Raised when a diagram cannot be produced, so the caller can fall back. */
 export class DiagramError extends Error {
@@ -33,47 +35,9 @@ export class DiagramError extends Error {
 
 /** The diagram's own dimensions, read from the viewBox mermaid does set. */
 export function svgDimensions(svg: string): { width: number; height: number } {
-  const viewBox = /viewBox="\s*[\d.-]+[\s,]+[\d.-]+[\s,]+([\d.]+)[\s,]+([\d.]+)/.exec(svg);
-  const width = viewBox ? Number(viewBox[1]) : Number.NaN;
-  const height = viewBox ? Number(viewBox[2]) : Number.NaN;
-  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
-    throw new DiagramError("diagram has no usable viewBox");
-  }
-  return { width, height };
-}
-
-/**
- * The same SVG, carrying its size.
- *
- * `width="100%"` is what makes a mermaid diagram fill its container on a page and
- * what makes it draw as nothing on a canvas. Replacing it with the viewBox's own
- * numbers gives the image an intrinsic size without changing what it depicts.
- */
-export function withExplicitSize(svg: string, width: number, height: number): string {
-  /*
-   * Only the opening `<svg>` tag is touched, and that is the whole point.
-   *
-   * An unanchored replace of the first `height="…"` does not find the root's — a
-   * mermaid root carries `width="100%"` and no height at all, so the first height
-   * in the document belongs to a child. Rewriting that one gave the first node in
-   * every diagram the height of the entire drawing: a tall block sitting over the
-   * rest of the picture, in the vector and in the raster alike, because both are
-   * made from this string.
-   */
-  const opening = /^[\s\S]*?<svg\b[^>]*>/.exec(svg);
-  if (opening === null) return svg;
-
-  const tag = opening[0]
-    .replace(/\swidth="[^"]*"/, "")
-    .replace(/\sheight="[^"]*"/, "")
-    // The max-width mermaid sets would shrink the drawing again once it has a size.
-    .replace(/\sstyle="[^"]*"/, (style) => {
-      const cleaned = style.replace(/max-width:[^;"]*;?/, "");
-      return /style="\s*"/.test(cleaned) ? "" : cleaned;
-    })
-    .replace(/>$/, ` width="${width}" height="${height}">`);
-
-  return tag + svg.slice(opening[0].length);
+  const size = viewBoxSize(svg);
+  if (size === null) throw new DiagramError("diagram has no usable viewBox");
+  return size;
 }
 
 /**

@@ -13,12 +13,12 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { crc32, deflateSync } from "node:zlib";
 import { before, describe, test } from "node:test";
-import { readImageInfo } from "../src/imageInfo.ts";
-import { buildPresentation, PptxBuildError, readTemplate } from "../src/pptxBuild.ts";
-import { updatePresentation } from "../src/pptxUpdate.ts";
+import { readImageInfo } from "@pi-outpost/office/imageInfo.ts";
+import { buildPresentation, PptxBuildError, readTemplate } from "@pi-outpost/office/pptxBuild.ts";
+import { updatePresentation } from "@pi-outpost/office/pptxUpdate.ts";
 import { createPptxUpdateToolDefinition } from "../src/presentationTools.ts";
 import { realResolve } from "../src/sandbox.ts";
-import { readAllZipEntries } from "../src/zip.ts";
+import { readAllZipEntries } from "@pi-outpost/office/zip.ts";
 import { assertIntact } from "./ooxmlPackage.ts";
 
 const FIXTURES = path.join(path.dirname(fileURLToPath(import.meta.url)), "fixtures");

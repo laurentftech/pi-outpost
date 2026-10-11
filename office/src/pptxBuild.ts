@@ -320,7 +320,7 @@ export function describeTemplate(template: Template): string {
     `Slide size: ${inches(template.slideSize.cx)}" × ${inches(template.slideSize.cy)}"` +
       ` (${template.slideSize.cx * 3 > template.slideSize.cy * 4 + 1 ? "widescreen" : "4:3"}).`,
     `The template holds ${template.existingSlides} slide(s) of its own; pptx_create leaves them out.`,
-    "A content placeholder takes bullets, a picture, a table or a chart; a two-content layout puts bullets beside one of those.",
+    "A content placeholder takes bullets, a picture, a table or a chart; a two-content layout puts bullets beside one of those (a wide picture goes below the bullets instead).",
     "",
     "| # | Layout name | Type | Placeholders |",
     "| --- | --- | --- | --- |",
@@ -520,6 +520,41 @@ export function fitInside(area: Box, width: number, height: number): Box {
   return { x: area.x + (area.cx - cx) / 2, y: area.y + (area.cy - cy) / 2, cx, cy };
 }
 
+/** Bullets and a picture on one slide: where each goes. */
+export interface BulletsAndPicture {
+  text: Box;
+  picture: Box;
+  /** True when the picture went below the text, across the whole width. */
+  stacked: boolean;
+}
+
+/** About 28 pt, the body text of most templates' first level, in EMU: for estimating only. */
+const BODY_FONT_EMU = 355_600;
+
+/**
+ * Side by side, or the picture below the text across the width — whichever draws the
+ * picture larger.
+ *
+ * A wide diagram (a left-to-right flowchart) beside bullets is fitted into half a slide
+ * and comes out a strip a few labels high; below the text it can use the whole width.
+ * The text's height is estimated from its lines at body size, and kept between a fifth
+ * and a half of the area so neither part vanishes. The picture must come out clearly
+ * larger stacked (a fifth) before the layout leaves the template's two columns.
+ */
+export function placeBulletsAndPicture(area: Box, side: { text: Box; picture: Box }, bullets: string[], width: number, height: number): BulletsAndPicture {
+  const lineHeight = BODY_FONT_EMU * 1.2;
+  const charsPerLine = Math.max(10, Math.floor(area.cx / (BODY_FONT_EMU * 0.5)));
+  const lines = bullets.reduce((count, bullet) => count + Math.max(1, Math.ceil(bullet.length / charsPerLine)), 0);
+  const gap = Math.round(area.cy * 0.04);
+  const textHeight = Math.round(Math.min(area.cy * 0.5, Math.max(area.cy * 0.2, lines * lineHeight + lineHeight * 0.3)));
+  const below: Box = { x: area.x, y: area.y + textHeight + gap, cx: area.cx, cy: area.cy - textHeight - gap };
+  const scale = (box: Box) => Math.min(box.cx / width, box.cy / height);
+  if (below.cy > 0 && scale(below) > scale(side.picture) * 1.2) {
+    return { text: { x: area.x, y: area.y, cx: area.cx, cy: textHeight }, picture: below, stacked: true };
+  }
+  return { ...side, stacked: false };
+}
+
 /** A transparent 1×1 PNG: the fallback picture when no rasteriser is available. */
 function transparentPixel(): Buffer {
   const chunk = (type: string, data: Buffer) => {
@@ -614,6 +649,21 @@ export async function composeSlide(
       const top = validBox(title?.box) ? title.box.y + title.box.cy + margin / 2 : margin;
       imageArea = { x: margin, y: top, cx: template.slideSize.cx - 2 * margin, cy: template.slideSize.cy - top - margin };
       if (imageArea.cy <= 0) imageArea = { x: margin, y: margin, cx: template.slideSize.cx - 2 * margin, cy: template.slideSize.cy - 2 * margin };
+    }
+  }
+
+  // A picture beside bullets, in the template's columns or in a shared placeholder: below
+  // the text instead, across both, when that draws it larger (a wide diagram). A picture
+  // placeholder is the template author's choice and is kept.
+  if (slide.image !== undefined && bullets.length > 0 && imageArea !== undefined && validBox(textPlaceholder?.box) && !(validBox(picture?.box) && imageArea === picture.box)) {
+    const text = textBox ?? textPlaceholder.box;
+    const left = Math.min(text.x, imageArea.x);
+    const top = Math.min(text.y, imageArea.y);
+    const area = { x: left, y: top, cx: Math.max(text.x + text.cx, imageArea.x + imageArea.cx) - left, cy: Math.max(text.y + text.cy, imageArea.y + imageArea.cy) - top };
+    const placed = placeBulletsAndPicture(area, { text, picture: imageArea }, bullets, slide.image.info.width, slide.image.info.height);
+    if (placed.stacked) {
+      textBox = placed.text;
+      imageArea = placed.picture;
     }
   }
 

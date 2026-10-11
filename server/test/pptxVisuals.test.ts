@@ -16,7 +16,7 @@ import {
   validateChart,
   validateTable,
   type SlideChart,
-} from "../src/pptxVisuals.ts";
+} from "@pi-outpost/office/pptxVisuals.ts";
 import { extractXlsx } from "../src/xlsx.ts";
 
 const AREA = { x: 838200, y: 1825625, cx: 10515600, cy: 4351338 };

@@ -114,6 +114,29 @@ function reachable(parts: Map<string, Buffer>): Set<string> {
   return reached;
 }
 
+/** The deck's slides, in order, as its presentation part lists them. */
+function existingSlides(template: Template): ExistingSlide[] {
+  const parts = template.parts;
+  const presentationXml = decode(parts, template.presentationPart)!;
+  const presentationRels = parseRelationshipList(decode(parts, relsPartOf(template.presentationPart)), template.presentationPart);
+  const list = /<(\w+:)?sldIdLst\b[^>]*>([\s\S]*?)<\/(?:\w+:)?sldIdLst>/.exec(presentationXml);
+  const slides: ExistingSlide[] = [];
+  for (const match of (list?.[2] ?? "").matchAll(/<(?:\w+:)?sldId\b[^>]*?(?:\/>|>[\s\S]*?<\/(?:\w+:)?sldId>)/g)) {
+    const raw = match[0];
+    const id = Number(/\bid="(\d+)"/.exec(raw)?.[1]);
+    const rid = /\b[\w]+:id="([^"]*)"/.exec(raw)?.[1] ?? "";
+    const rel = presentationRels.find((candidate) => candidate.id === rid);
+    if (rel === undefined || rel.type !== REL_SLIDE || !parts.has(rel.target)) continue;
+    slides.push({ raw, id, rid, part: rel.target, title: slideTitle(decode(parts, rel.target) ?? "") });
+  }
+  return slides;
+}
+
+/** Each slide's title, in order: "" for a slide without one. */
+export function slideTitles(bytes: Uint8Array): string[] {
+  return existingSlides(readTemplate(bytes)).map((slide) => slide.title);
+}
+
 type Entry = { kind: "existing"; index: number } | { kind: "new"; edit: number; slide: NewSlide; rid: string; id: number };
 
 export async function updatePresentation(bytes: Uint8Array, edits: DeckEdit[], options: BuildOptions = {}): Promise<UpdatedDeck> {
@@ -127,15 +150,7 @@ export async function updatePresentation(bytes: Uint8Array, edits: DeckEdit[], o
 
   const list = /<(\w+:)?sldIdLst\b[^>]*>([\s\S]*?)<\/(?:\w+:)?sldIdLst>/.exec(presentationXml);
   const p = /<(\w+:)?presentation\b/.exec(presentationXml)?.[1] ?? "";
-  const slides: ExistingSlide[] = [];
-  for (const match of (list?.[2] ?? "").matchAll(/<(?:\w+:)?sldId\b[^>]*?(?:\/>|>[\s\S]*?<\/(?:\w+:)?sldId>)/g)) {
-    const raw = match[0];
-    const id = Number(/\bid="(\d+)"/.exec(raw)?.[1]);
-    const rid = /\b[\w]+:id="([^"]*)"/.exec(raw)?.[1] ?? "";
-    const rel = presentationRels.find((candidate) => candidate.id === rid);
-    if (rel === undefined || rel.type !== REL_SLIDE || !parts.has(rel.target)) continue;
-    slides.push({ raw, id, rid, part: rel.target, title: slideTitle(decode(parts, rel.target) ?? "") });
-  }
+  const slides = existingSlides(template);
   if (slides.length === 0 && edits.some((edit) => edit.action !== "insert_after")) throw new PptxBuildError("the deck has no slides");
 
   // Resolve everything against the deck as it is before changing anything.

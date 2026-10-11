@@ -21,15 +21,15 @@
  * wall-clock time, parsed rows and output size are all capped; entry names are
  * never used as filesystem paths.
  */
-import { renderMarkdownTable } from "./markdownTable.ts";
-import { parseRelationships as parseOoxmlRelationships } from "./ooxml.ts";
-import { scanXml, XmlError } from "./xml.ts";
+import { renderMarkdownTable } from "@pi-outpost/office/markdownTable.ts";
+import { parseRelationships as parseOoxmlRelationships } from "@pi-outpost/office/ooxml.ts";
+import { scanXml, XmlError } from "@pi-outpost/office/xml.ts";
 import {
   formatForStyle,
   renderNumericValue,
   type WorkbookStyles,
 } from "./xlsxFormats.ts";
-import { readZipEntry, ZipError, type ZipLimits } from "./zip.ts";
+import { readZipEntry, ZipError, type ZipLimits } from "@pi-outpost/office/zip.ts";
 
 export type XlsxErrorReason =
   /** Not a workbook, or damaged past reading. */

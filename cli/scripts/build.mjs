@@ -55,6 +55,13 @@ if (EMBED_WEB) {
 await rm(OUT_DIR, { recursive: true, force: true });
 await mkdir(OUT_DIR, { recursive: true });
 
+/**
+ * What Mermaid's renderer loads at run time and no bundle can carry: two native
+ * packages and jsdom, which reads files of its own. Installed with the package
+ * (cli/package.json); without them, Mermaid fences stay their source.
+ */
+const MERMAID_RUNTIME = ["jsdom", "@napi-rs/canvas", "@resvg/resvg-js"];
+
 console.log("[build] bundling the server …");
 await esbuild.build({
   entryPoints: [resolve(REPO_ROOT, "server/src/index.ts")],
@@ -71,6 +78,7 @@ await esbuild.build({
     "fastify",
     "node-pty",
     "ws",
+    ...MERMAID_RUNTIME,
   ],
   define: { __PI_OUTPOST_VERSION__: JSON.stringify(version), __PI_SDK_VERSION__: JSON.stringify(piSdkVersion) },
   banner: {
@@ -97,7 +105,25 @@ await esbuild.build({
   format: "esm",
   target: "node22",
   outfile: resolve(OUT_DIR, "pi-outpost-tools.mjs"),
-  external: ["@earendil-works/pi-coding-agent"],
+  external: ["@earendil-works/pi-coding-agent", ...MERMAID_RUNTIME],
+  banner: {
+    js: "import { createRequire as ___createRequire } from 'node:module'; const require = ___createRequire(import.meta.url);",
+  },
+});
+
+// Mermaid, drawn by docx_create and docx_update without a browser, runs in a worker
+// thread started from its own file: server/src/mermaid.ts looks for it beside the
+// bundle that starts it, which is this folder for both bundles above. Mermaid is
+// inlined; the packages it reaches at run time stay external, as in the server bundle.
+console.log("[build] bundling the Mermaid worker …");
+await esbuild.build({
+  entryPoints: [resolve(REPO_ROOT, "office/src/mermaidWorker.ts")],
+  bundle: true,
+  platform: "node",
+  format: "esm",
+  target: "node22",
+  outfile: resolve(OUT_DIR, "mermaid-worker.mjs"),
+  external: MERMAID_RUNTIME,
   banner: {
     js: "import { createRequire as ___createRequire } from 'node:module'; const require = ___createRequire(import.meta.url);",
   },

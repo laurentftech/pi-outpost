@@ -21,6 +21,7 @@
     "@fastify/rate-limit": "^11.2.0",
     "@fastify/static": "^10.1.2",
     "@fastify/websocket": "^11.0.2",
+    "@pi-outpost/office": "*",
     "@pi-outpost/shared": "*",
     "docx": "^9.7.1",
     "fastify": "^5.12.5",

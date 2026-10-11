@@ -6,3 +6,4 @@ export { docxDocument } from "./document.ts";
 export { latexToOmml, mathTreeFor, UnsupportedMathError } from "./mathmlToOmml.ts";
 export { xmlSafe } from "./xmlText.ts";
 export type { DiagramImage, PictureSource, RasterType, ReferencedImage } from "./images.ts";
+export { viewBoxSize, withExplicitSize } from "./svgSize.ts";

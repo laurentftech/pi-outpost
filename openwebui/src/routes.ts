@@ -16,6 +16,21 @@ import { GUIDE_TOPICS, guidePage, guideTopicFor } from "@pi-outpost/apps-core/gu
 import { judgeStructure } from "@pi-outpost/apps-core/structure";
 import { OperationError, applyOperations } from "@pi-outpost/apps-core/operations";
 import { PlanningRefusal, type PlanningRevision, type PlanningStore } from "./store.ts";
+import { createMermaidRenderer, type MermaidRenderer } from "@pi-outpost/office/mermaidRender.ts";
+import {
+  describeTemplates,
+  downloadName,
+  OfficeRefusal,
+  outlineOf,
+  POWERPOINT_MEDIA_TYPE,
+  updatePresentationFile,
+  updateWordFile,
+  writePresentation,
+  writeWordDocument,
+  type OfficeSettings,
+  type WrittenFile,
+} from "./office.ts";
+import { DocumentStore } from "./documents.ts";
 
 function revisionAnswer(revision: PlanningRevision) {
   return {
@@ -28,14 +43,138 @@ function revisionAnswer(revision: PlanningRevision) {
 }
 
 function refuse(reply: FastifyReply, error: unknown) {
-  if (error instanceof PlanningRefusal) return reply.code(error.status).send({ error: error.message, ...error.details });
+  if (error instanceof PlanningRefusal || error instanceof OfficeRefusal) return reply.code(error.status).send({ error: error.message, ...error.details });
   throw error;
 }
 
-export function planningRoutes(store: PlanningStore, _config: PlanningServerConfig): PlanningRoutes {
+/** The written file as the page Open WebUI embeds: the file inside, a download button on it. */
+function sendDownload(reply: FastifyReply, file: WrittenFile) {
+  return reply
+    .header("Content-Type", "text/html; charset=utf-8")
+    .header("Content-Disposition", "inline")
+    .header("Access-Control-Expose-Headers", "Content-Disposition")
+    .send(
+      embedPage({
+        mode: "download",
+        fileName: file.fileName,
+        mediaType: file.mediaType,
+        size: file.bytes.length,
+        data: file.bytes.toString("base64"),
+        outline: file.outline,
+        figures: file.figures,
+        template: file.template,
+      }),
+    );
+}
+
+export interface PlanningRouteOptions {
+  /** Draws Mermaid fences and slides; one is made, and closed with the server, when none is given. */
+  mermaid?: MermaidRenderer;
+  /** The Mermaid worker's module, for a bundled server; see `createMermaidRenderer`. */
+  mermaidWorker?: URL;
+}
+
+export function planningRoutes(store: PlanningStore, config: PlanningServerConfig, options: PlanningRouteOptions = {}): PlanningRoutes {
   return {
     register(app: FastifyInstance) {
       registerOpenApi(app);
+
+      const mermaid = options.mermaid ?? createMermaidRenderer(options.mermaidWorker ? { workerUrl: options.mermaidWorker } : {});
+      if (options.mermaid === undefined) app.addHook("onClose", () => mermaid.close());
+      const office: OfficeSettings = { templatesDir: config.templatesDir, maxFileBytes: config.maxFileBytes, maxImageBytes: config.maxImageBytes, mermaid };
+
+      // The file is packed into the embed, and kept under its name for the user, so a later
+      // call can change it (update_document, update_presentation) instead of rewriting it.
+      const documents = new DocumentStore(config);
+      const keep = async (owner: string, file: WrittenFile) => {
+        await documents.save(owner, file);
+        return file;
+      };
+      /** A kept file by the name the model gave it, or a refusal naming the ones there are. */
+      const kept = async (owner: string, given: unknown, extension: ".docx" | ".pptx") => {
+        const fileName = downloadName(given, extension);
+        const found = await documents.get(owner, fileName);
+        if (found !== undefined) return found;
+        const names = (await documents.list(owner)).filter((meta) => meta.fileName.toLowerCase().endsWith(extension)).map((meta) => meta.fileName);
+        throw new OfficeRefusal(
+          names.length === 0
+            ? `there is no ${extension} file named "${fileName}" kept for this user: write it first with ${extension === ".pptx" ? "create_presentation" : "create_document"}`
+            : `there is no ${extension} file named "${fileName}" kept for this user; the ones there are: ${names.join(", ")}`,
+          { documents: names },
+        );
+      };
+
+      app.post<{ Body: { file_name?: unknown; markdown?: unknown; template?: unknown; keep?: unknown } }>("/create_document", async (request, reply) => {
+        try {
+          return sendDownload(reply, await keep(request.owner, await writeWordDocument(office, request.body ?? {})));
+        } catch (error) {
+          return refuse(reply, error);
+        }
+      });
+
+      app.post<{ Body: { file_name?: unknown; slides?: unknown; template?: unknown } }>("/create_presentation", async (request, reply) => {
+        try {
+          return sendDownload(reply, await keep(request.owner, await writePresentation(office, request.body ?? {})));
+        } catch (error) {
+          return refuse(reply, error);
+        }
+      });
+
+      app.post<{ Body: { file_name?: unknown; edits?: unknown } }>("/update_document", async (request, reply) => {
+        try {
+          const fileName = downloadName(request.body?.file_name, ".docx");
+          const file = await documents.exclusive(request.owner, fileName, async () =>
+            keep(request.owner, await updateWordFile(office, await kept(request.owner, fileName, ".docx"), request.body ?? {})),
+          );
+          return sendDownload(reply, file);
+        } catch (error) {
+          return refuse(reply, error);
+        }
+      });
+
+      app.post<{ Body: { file_name?: unknown; edits?: unknown } }>("/update_presentation", async (request, reply) => {
+        try {
+          const fileName = downloadName(request.body?.file_name, ".pptx");
+          const file = await documents.exclusive(request.owner, fileName, async () =>
+            keep(request.owner, await updatePresentationFile(office, await kept(request.owner, fileName, ".pptx"), request.body ?? {})),
+          );
+          return sendDownload(reply, file);
+        } catch (error) {
+          return refuse(reply, error);
+        }
+      });
+
+      // Text, for the model: what it can change, and how to name a section or a slide.
+      app.post("/list_documents", async (request) => {
+        const listed = [];
+        for (const meta of await documents.list(request.owner)) {
+          const found = await documents.get(request.owner, meta.fileName);
+          const outline = found === undefined ? [] : outlineOf(meta.mediaType, found.bytes);
+          listed.push(
+            meta.mediaType === POWERPOINT_MEDIA_TYPE
+              ? { file_name: meta.fileName, format: "powerpoint", updated: meta.updated, slides: outline.map((entry, index) => ({ number: index + 1, title: entry.text })) }
+              : { file_name: meta.fileName, format: "word", updated: meta.updated, headings: outline.map((entry) => `${"#".repeat(entry.level)} ${entry.text}`) },
+          );
+        }
+        return {
+          documents: listed,
+          how:
+            listed.length === 0
+              ? "No documents are kept for this user yet: create_document and create_presentation keep what they write."
+              : "Change one with update_document or update_presentation, naming it by file_name and its sections by heading or its slides by number or title.",
+        };
+      });
+
+      app.post("/list_templates", async () => {
+        const templates = await describeTemplates(office);
+        return {
+          templates,
+          how:
+            templates.length === 0
+              ? "No templates are provided here: leave template out, and create_document and create_presentation use their built-in one."
+              : "Name a template by its name in create_document (a Word one) or create_presentation (a PowerPoint one), or leave template out for the built-in one.",
+        };
+      });
 
       app.post("/list_plannings", async (request, reply) => {
         try {

@@ -31,7 +31,7 @@ services:
           "config": {"enable": true,
                      "access_grants": [{"principal_type": "user", "principal_id": "*", "permission": "read"}]},
           "info": {"id": "pi-outpost", "name": "pi-outpost",
-                   "description": "Personal plannings, diagrams, sequences and tables, drawn in the chat"}}]
+                   "description": "Personal plannings, diagrams, sequences and tables, drawn in the chat; Word documents and PowerPoint decks to download"}}]
     volumes:
       - open-webui:/app/backend/data
     depends_on:
@@ -46,8 +46,12 @@ services:
     environment:
       OUTPOST_SECRET: ${OUTPOST_SECRET}
       OUTPOST_IDENTITY_KEY: ${OUTPOST_IDENTITY_KEY}
+      # The organisation's Word and PowerPoint templates, offered by name to the model.
+      OUTPOST_TEMPLATES_DIR: /templates
     volumes:
       - pi-outpost-data:/data
+      # Put .dotx/.docx/.potx/.pptx templates in this folder; empty, the built-in ones are used.
+      - ${OUTPOST_TEMPLATES:-./templates}:/templates:ro
 
 volumes:
   open-webui:

@@ -2,14 +2,16 @@
 
 pi-outpost's planning timelines and structured documents also run inside
 [Open WebUI](https://openwebui.com), with no pi-outpost involved. A small server,
-**pi-outpost's Open WebUI server** (*the server* below), does four things:
+**pi-outpost's Open WebUI server** (*the server* below), does five things:
 
 - it keeps each user's plannings with every revision;
 - it lets the model create, read and change them;
 - it shows them in the chat as the interactive timeline pi-outpost draws. That covers scales,
   "fit", dependencies, closures, key dates and comparisons between revisions;
 - it shows the model's diagrams, sequences and tables as pi-outpost draws them, including a
-  proposal as what it would change.
+  proposal as what it would change;
+- it writes Word documents and PowerPoint decks, with their diagrams and pictures, for the user to
+  download from the chat.
 
 It uses the same structured-exchange contract as pi-outpost. A document refused here is refused
 there for the same reason, and every stored planning revision opens in pi-outpost as it is. One
@@ -26,6 +28,7 @@ For the architecture, the trust model, token and key management and what is stor
 - [A demo in ten minutes](#a-demo-in-ten-minutes)
 - [Turning it on for a model](#turning-it-on-for-a-model)
 - [What users can ask](#what-users-can-ask)
+- [Word documents and PowerPoint decks](#word-documents-and-powerpoint-decks)
 - [Configuration](#configuration)
 - [Identity: signed or plain](#identity-signed-or-plain)
 - [Data, backups and upgrades](#data-backups-and-upgrades)
@@ -125,6 +128,10 @@ A model needs tool calling. Codestral, Mistral Medium and Gemini Flash all work.
 | "What changed since last week's version?" | `show_planning` with `compare_to` |
 | "Draw the order process", "show the architecture of…", "who talks to whom when…", "put this in a table" | `show_structure`: a graph, a sequence or a table |
 | "Propose replacing X by Y in this architecture" | `show_structure` with a proposal: additions, changes and removals marked |
+| "Write me a report on…", "put this in a Word document" | `create_document` |
+| "Make slides for the review", "a PowerPoint deck on…" | `create_presentation` |
+| "Use our company template" | `list_templates`, then `create_document` or `create_presentation` with it |
+| "Add a slide on the budget after the second one", "rewrite the risks section" | `update_presentation` or `update_document` (with `list_documents` first when needed) |
 
 **How the model learns the format.** Open WebUI's models have no skill to read, so the planning
 server teaches them in three places:
@@ -166,6 +173,42 @@ planning.
 - A change that would break the planning (an end before its start, a date outside the range) is
   refused with the reason, and nothing is stored.
 
+## Word documents and PowerPoint decks
+
+The model writes a Word document from Markdown (`create_document`) or a deck from a list of slides
+(`create_presentation`). The answer is a card in the chat with the file's name, its outline (headings
+or slide titles), its figures, and a **Download** button.
+
+- **Built with pi-outpost's own builders**, in a template's styles: headings, lists, tables, links,
+  quotes, code and equations in Word; titles, bullets, native tables and native charts in PowerPoint.
+- **Diagrams are drawn as pictures in their place:**
+  - a Mermaid diagram, written as a ` ```mermaid ` fence (Word) or a slide's `mermaid`;
+  - a structured-exchange graph, sequence or timeline, written as a ` ```json ` fence (Word) or a
+    slide's `diagram`, drawn exactly as `show_structure` draws it; a structured-exchange table
+    becomes a native table.
+
+  Each is an SVG picture with a PNG behind it. Word and PowerPoint 2016 and later show the SVG, sharp
+  at any zoom; LibreOffice, Google Docs and older Office show the PNG.
+- **Pictures travel in the call** as `data:` URIs: PNG, JPEG or GIF. The server fetches nothing: a
+  picture given as a web address is refused, and the model is asked for its bytes. The chat's
+  uploaded files are not reachable: Open WebUI does not hand them to a tool server.
+- **Templates:** without one, a built-in style close to Word's and PowerPoint's own blank document.
+  An administrator can offer the organisation's templates (`.dotx`, `.docx`, `.potx`, `.pptx`) by
+  putting them in a folder the server reads at `OUTPOST_TEMPLATES_DIR`. In the compose file that is
+  `./templates` next to it (`OUTPOST_TEMPLATES` in `.env` to move it), mounted read-only. The model
+  names a template by its file name, never by a path.
+- **Changing a file written earlier:** the server keeps each user's last files under their names, so
+  the model changes one by naming what to change — a slide by its number or title, a section by its
+  heading — with `update_presentation` or `update_document`; the rest stays as it was, and the user
+  gets the changed file in a new card. `list_documents` shows the model what is kept. A user keeps up
+  to `OUTPOST_MAX_DOCUMENTS` files (20), each for `OUTPOST_DOCUMENT_DAYS` days (30).
+- **Refusals:** a diagram the contract refuses, a Mermaid source that does not parse, a picture that
+  is not accepted or a template that does not exist refuses the whole call, with what to correct. The
+  model usually corrects it within the same reply. A document is never written with a part missing.
+
+Mermaid is drawn by Mermaid 12 inside the server, without a browser; its layout is close to what the
+browser draws, not identical.
+
 ## Configuration
 
 The server reads only its environment.
@@ -181,6 +224,11 @@ The server reads only its environment.
 | `OUTPOST_MAX_PLANNING_BYTES` | `1000000` | Largest planning, in bytes of JSON. |
 | `OUTPOST_MAX_REVISIONS` | `500` | Revisions kept per planning. Past it, updates are refused, never silently pruned. |
 | `OUTPOST_MAX_PLANNINGS` | `200` | Plannings per user. |
+| `OUTPOST_TEMPLATES_DIR` | — (no templates) | A folder of Word and PowerPoint templates the model may name. Read-only; only files directly in it are offered. |
+| `OUTPOST_MAX_FILE_BYTES` | `5242880` (5 MB) | Largest Word or PowerPoint file written. Larger results are refused with the size, since each one is stored in the chat. |
+| `OUTPOST_MAX_IMAGE_BYTES` | `1048576` (1 MB) | Largest picture a call may give, once decoded. |
+| `OUTPOST_MAX_DOCUMENTS` | `20` | Word and PowerPoint files kept per user for later changes; the oldest go first. |
+| `OUTPOST_DOCUMENT_DAYS` | `30` | Days a kept file stays after it was last written. |
 
 The server refuses to start, and names the setting, when the secret is missing, or when it is in
 signed mode without a key.
@@ -209,7 +257,8 @@ Plain mode is only as safe as the bearer key and the network between the two con
 ## Data, backups and upgrades
 
 - **Storage:** each planning is a directory of revision files, `1.json`, `2.json`, …, plus a small
-  `meta.json`, under a directory per user named by a hash of the user's id.
+  `meta.json`, under a directory per user named by a hash of the user's id. Kept Word and PowerPoint
+  files are under `documents/`, a directory per user named the same way.
 - **Backups:** a backup is a copy of the volume.
 - **Opening a planning elsewhere:** any revision file opens in pi-outpost as a structured-exchange
   document.
@@ -232,7 +281,12 @@ npm run build --workspace @pi-outpost/openwebui
 OUTPOST_SECRET=… OUTPOST_IDENTITY_KEY=… node openwebui/dist/server.mjs
 ```
 
-`dist/server.mjs` is self-contained apart from `dist/viewer/`, which it embeds; copy both.
+`dist/server.mjs` embeds `dist/viewer/` and starts `dist/mermaid-worker.mjs` to draw Mermaid; copy
+all three. Three packages cannot be bundled and must be installed beside them: `jsdom`,
+`@napi-rs/canvas` and `@resvg/resvg-js` (`npm ci` installs them; the image copies them with
+`openwebui/scripts/copy-runtime-modules.mjs`). Diagram labels need a font: the image installs Liberation
+Sans, which has Arial's metrics, so Word on Windows draws the labels at the widths they were laid out
+at; elsewhere, Arial or any installed sans-serif face is used.
 
 ## Known limits
 
@@ -241,6 +295,13 @@ OUTPOST_SECRET=… OUTPOST_IDENTITY_KEY=… node openwebui/dist/server.mjs
 - **The model does not see the timeline.** Open WebUI hands the model only a note that an embed is
   on screen, so the model reads a planning with `get_planning`.
 - **Plannings are personal.** Sharing within a team is not there yet.
+- **Documents live in the chat.** Each Word or PowerPoint file is stored by Open WebUI in the
+  conversation that asked for it, up to `OUTPOST_MAX_FILE_BYTES`. The server's own copy is a working
+  copy for changes, dropped after its days or past its count, not an archive to download again.
+- **Pictures cost the model tokens.** A picture's bytes are written by the model into its call, so
+  documents with large pictures are slow and expensive to produce.
+- **Uploaded documents cannot be changed.** Updating a `.docx` or `.pptx` the user attached, and
+  checking pages visually, are not available here.
 - **Open WebUI v0.11.4 bug, worked around.** This version drops embeds that contain HTML entities
   (fixed upstream by `c7caa1421`, not released yet). The server ships the timeline compressed, with
   no entity in it, so it works on v0.11.4 and later alike.

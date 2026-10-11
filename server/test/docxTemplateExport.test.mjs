@@ -15,7 +15,7 @@ import { after, before, describe, test } from "node:test";
 import { Packer } from "docx";
 import { docxDocument, markdownToDocx } from "@pi-outpost/shared/docx";
 import { connect, makeWorkspace, startServer } from "./harness.mjs";
-import { readAllZipEntries } from "../src/zip.ts";
+import { readAllZipEntries } from "@pi-outpost/office/zip.ts";
 
 const TEMPLATE = fileURLToPath(new URL("./fixtures/docx-template.dotx", import.meta.url));
 const DOCX = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";

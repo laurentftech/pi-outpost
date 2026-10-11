@@ -23,12 +23,12 @@ import path from "node:path";
 import { Type } from "typebox";
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { assertWritableDestination } from "./extractionOutput.ts";
-import { ImageError, readImageInfo } from "./imageInfo.ts";
+import { ImageError, readImageInfo } from "@pi-outpost/office/imageInfo.ts";
 import { PptxError, parseSlideRange, readSlideParagraphs } from "./pptx.ts";
-import { buildPresentation, describeTemplate, PptxBuildError, readTemplate, type SlideSpec } from "./pptxBuild.ts";
-import { updatePresentation, type DeckEdit } from "./pptxUpdate.ts";
-import { DEFAULT_TEMPLATE_NAME, defaultTemplateBytes } from "./defaultTemplate.ts";
-import { CHART_TYPES, MAX_TABLE_COLUMNS, MAX_TABLE_ROWS, type ChartType } from "./pptxVisuals.ts";
+import { buildPresentation, describeTemplate, PptxBuildError, readTemplate, type SlideSpec } from "@pi-outpost/office/pptxBuild.ts";
+import { updatePresentation, type DeckEdit } from "@pi-outpost/office/pptxUpdate.ts";
+import { DEFAULT_TEMPLATE_NAME, defaultTemplateBytes } from "@pi-outpost/office/defaultTemplate.ts";
+import { CHART_TYPES, MAX_TABLE_COLUMNS, MAX_TABLE_ROWS, type ChartType } from "@pi-outpost/office/pptxVisuals.ts";
 import {
   convertPresentationToPdf,
   countPdfPages,

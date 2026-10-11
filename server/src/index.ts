@@ -172,9 +172,9 @@ import {
   createPptxRenderToolDefinition,
   createPptxUpdateToolDefinition,
 } from "./presentationTools.ts";
-import { createFromContent } from "./docxBuild.ts";
-import { contentFromDocx } from "./docxGraft.ts";
-import { readWordPackage, WordTemplateError } from "./docxTemplate.ts";
+import { createFromContent } from "@pi-outpost/office/docxBuild.ts";
+import { contentFromDocx } from "@pi-outpost/office/docxGraft.ts";
+import { readWordPackage, WordTemplateError } from "@pi-outpost/office/docxTemplate.ts";
 import {
   createDocxCreateToolDefinition,
   createDocxRenderToolDefinition,

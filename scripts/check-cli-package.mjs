@@ -123,6 +123,7 @@ if (absent.length > 0) {
  */
 const runtime = [
   ["dist/pi-outpost-tools.mjs", "the tools extension an `agentRuntime.mode: \"rpc\"` child is started with"],
+  ["dist/mermaid-worker.mjs", "the worker docx_create and docx_update draw Mermaid diagrams in; without it they write the source"],
 ];
 
 const unshipped = runtime.filter(([relative]) => !packed.has(relative));

@@ -23,8 +23,8 @@ import {
 } from "../src/extractedPictures.ts";
 import { extractPdf } from "../src/pdf.ts";
 import { realResolve } from "../src/sandbox.ts";
-import { readAllZipEntries } from "../src/zip.ts";
-import { writeZip } from "../src/zipWriter.ts";
+import { readAllZipEntries } from "@pi-outpost/office/zip.ts";
+import { writeZip } from "@pi-outpost/office/zipWriter.ts";
 
 const FIXTURES = path.join(path.dirname(fileURLToPath(import.meta.url)), "fixtures");
 const unzip = (bytes: Uint8Array) => readAllZipEntries(Buffer.from(bytes), { maxEntries: 4096, maxInflatedBytes: 1e8, maxTotalBytes: 1e9 });

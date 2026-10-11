@@ -2,49 +2,92 @@
 
 ## 1. The `@pi-outpost/office` package
 
-- [ ] 1.1 Create `office/` as a workspace and move the builders into it with `git mv` (the list is in
+- [x] 1.1 Create `office/` as a workspace and move the builders into it with `git mv` (the list is in
   `proposal.md`). `server/src` imports them from `@pi-outpost/office`; the Dockerfiles and the
   standalone build follow. Verify: `npm test --workspace server`, the document tools' tests unchanged
   and green, `npm run build` and the standalone build.
-- [ ] 1.2 Generate a default Word template in code, as `defaultTemplate.ts` does for PowerPoint.
+- [x] 1.2 Generate a default Word template in code, as `defaultTemplate.ts` does for PowerPoint.
   Verify in `office/test`: `describeWordTemplate` lists `Title`, `Heading 1`–`Heading 3`, a bullet list
   and a table style; `createDocument` from it, with headings, a list and a table, opens in LibreOffice
   (`soffice --convert-to pdf` where present, skipped with the reason otherwise).
+  Done in `office/test/wordDocument.test.ts`. No LibreOffice on the development machine: the
+  document was opened in macOS Quick Look instead, and is opened in desktop Word in 5.3.
 
 ## 2. Diagrams in the builders' inputs
 
-- [ ] 2.1 A `renderDiagram` for Word: recognise a structured-exchange `json` fence, judge it with
+- [x] 2.1 A `renderDiagram` for Word: recognise a structured-exchange `json` fence, judge it with
   `judgeStructure`, draw a figure with `figureForEnvelope` + `serializeFigure` + `rasterizeSvg`, and turn
   a table into its Markdown export. A refusal throws an error naming the diagram's position and title.
   Verify: `AGraphBecomesAPictureInWord`, `ATableDocumentBecomesANativeTable` (Word),
   `OrdinaryJsonStaysCode`, `ARefusedDiagramRefusesTheDocument`.
-- [ ] 2.2 A slide `diagram` for PowerPoint: the same judge; a figure becomes the slide's SVG picture, a
+- [x] 2.2 A slide `diagram` for PowerPoint: the same judge; a figure becomes the slide's SVG picture, a
   table its native table. Verify: `ASequenceBecomesASlidePicture`, `ATableDocumentBecomesANativeTable`
   (PowerPoint).
+- [x] 2.3 **Mermaid spike, first.** Move the design session's spike into `scripts/probes/`
+  (`mermaid-node.mts`): mermaid 12 in Node over jsdom, `getBBox` from `@napi-rs/canvas` `measureText`,
+  `htmlLabels: false`, `look: "classic"`. Render flowchart, sequence, gantt, pie and class diagrams to
+  SVG, and check each in headless Chrome (`--screenshot`). Gate: every kind renders with its nodes,
+  labels and edges in place; a failure stops the Mermaid part and returns to the user (the design says
+  so). Then, if it passes: `renderMermaid(source, id)` in `office/` returning `{ svg, png, width,
+  height }`, the same shape as `DiagramImage`. A parse error throws with Mermaid's message. Verify:
+  `MermaidDiagramIsDrawnInWord`, `MermaidDiagramIsDrawnOnASlide`, `AnInvalidMermaidRefusesTheCall`.
+- [x] 2.4 Pictures: a `data:` URI in Markdown, read through the builder's `loadImage`; an `image` field
+  on a slide. Decode with `imageInfo`, refuse SVG and any mismatch between MIME type and bytes, and
+  refuse a picture over `OUTPOST_MAX_IMAGE_BYTES`, and refuse a URL without fetching it. Verify:
+  `ADataUriPictureIsEmbedded`, `AnUnsupportedPictureIsRefused`, `AURLPictureIsNotFetched` (a fake
+  HTTP server records zero requests).
 
 ## 3. The Open WebUI routes
 
-- [ ] 3.1 `OUTPOST_TEMPLATES_DIR` and `OUTPOST_MAX_FILE_BYTES` in `config.ts`; template lookup by name.
+- [x] 3.1 `OUTPOST_TEMPLATES_DIR`, `OUTPOST_MAX_FILE_BYTES` and `OUTPOST_MAX_IMAGE_BYTES` in `config.ts`;
+  template lookup by name.
   `list_templates`. Verify: `TemplatesAreListed`, `APathIsNotATemplateName`,
   `AWordTemplateIsRefusedForADeck`.
-- [ ] 3.2 `create_document` and `create_presentation`, returning the `download` embed or a 4xx the
-  model reads; their OpenAPI descriptions, with one example each that includes a diagram, run by the
-  tests. Verify: `AReportIsCreatedWithTheDefaultTemplate`, `ADeckIsCreatedWithTheDefaultTemplate`,
-  `AnAdministratorTemplateIsUsed`, `ATooLargeResultIsRefused`, `AnUnsignedCallIsRefused`.
+- [x] 3.2 `create_document` and `create_presentation`, returning the `download` embed or a 4xx the
+  model reads; their OpenAPI descriptions, with one example each that includes a diagram, a Mermaid
+  fence and a picture, run by the tests. Verify: `AReportIsCreatedWithTheDefaultTemplate`,
+  `ADeckIsCreatedWithTheDefaultTemplate`, `AnAdministratorTemplateIsUsed`, `ATooLargeResultIsRefused`,
+  `AnUnsignedCallIsRefused`.
 
 ## 4. The viewer's `download` mode
 
-- [ ] 4.1 Show the file's name, size, outline and figures, and a download button. Verify in
+- [x] 4.1 Show the file's name, size, outline and figures, and a download button. Verify in
   `e2e/openwebui-embed.spec.ts`, in Open WebUI's sandbox: `TheDownloadIsTheDocument` (bytes compared),
   and the embed survives Open WebUI's storage (`survivesOpenWebUIStorage`).
 
 ## 5. Image, docs, live run
 
-- [ ] 5.1 Bundle `@pi-outpost/office`; add `@napi-rs/canvas` and `fonts-dejavu-core`; record the image
-  size before and after in `design.md`. Verify: `npm run test:image` creates a document with a diagram
-  in the image and its PNG fallback is not blank.
-- [ ] 5.2 `docs/openwebui.md` (what users can ask, configuration, limits),
+- [x] 5.1 Bundle `@pi-outpost/office`; add `@napi-rs/canvas`, `mermaid` 12, `jsdom` and
+  `fonts-liberation2` (first `fonts-dejavu-core`, see design); record the image size before and after in `design.md`, with and without the
+  Mermaid dependencies, so their cost is visible. Verify: `npm run test:image` creates a document with a
+  structured-exchange diagram, a Mermaid diagram and a picture; each PNG fallback is not blank.
+- [x] 5.2 `docs/openwebui.md` (what users can ask, configuration, limits),
   `docs/openwebui-architecture.md`, `openwebui/deploy/.env.example`, the compose file's templates volume.
-- [ ] 5.3 Live run in Open WebUI with a real model (Codestral): a report with a graph and a table, a deck
-  with a sequence and a chart; open both files in Word or LibreOffice. Record it in `live-run.md`.
-- [ ] 5.4 `scenario-coverage.md`, `npm run check:scenarios`, `openspec validate --strict`.
+- [x] 5.3 Live run in Open WebUI with a real model (Codestral): a report with a graph, a table, a Mermaid
+  flowchart and a picture; a deck with a sequence, a chart and a Mermaid slide; open both files in Word
+  or LibreOffice and look at the diagrams. Record it in `live-run.md`. Done 2026-10-11 (Office web by the
+  user); one finding left open there: a picture given as a web address.
+- [x] 5.4 `scenario-coverage.md`, `npm run check:scenarios`, `openspec validate --strict`.
+
+## 6. pi-outpost's Word tools
+
+- [x] 6.1 `docx_create` and `docx_update` draw Mermaid through `sandboxPictures` and the server's shared
+  renderer; an undrawn fence is named in the answer; without a renderer the old note stays. Verify:
+  `AMermaidFenceBecomesAPicture`, `AnUndrawableMermaidIsNamed`, `WithoutARendererTheSourceStays`.
+- [x] 6.2 The CLI build emits `dist/mermaid-worker.mjs` and keeps jsdom, canvas and resvg external and
+  declared; `check:cli` requires the worker. Verify: pack, install into an isolated prefix, and draw
+  from the installed package (`scripts/probes/installed-mermaid.mjs`).
+- [x] 6.3 A wide picture beside bullets goes below them, across the width, when that draws it larger
+  (seen in the live run's architecture slides). Verify: `AWidePictureGoesBelowTheBullets`,
+  `ATallPictureStaysBesideTheBullets`, and in ONLYOFFICE's converter.
+
+## 7. Changing a file written earlier
+
+- [x] 7.1 Move `pptxUpdate.ts` and `docxUpdate.ts` into `@pi-outpost/office` (`git mv`); pi-outpost's
+  `pptx_update` and `docx_update` unchanged. Verify: their server tests.
+- [x] 7.2 Keep written files per user (`documents.ts`, `OUTPOST_MAX_DOCUMENTS`, `OUTPOST_DOCUMENT_DAYS`).
+  Verify: `KeptDocumentsArePersonal`, `OldDocumentsAreDropped`, two concurrent updates both landing.
+- [x] 7.3 `update_presentation`, `update_document`, `list_documents`, with examples in their descriptions.
+  Verify: `ASlideIsAddedToAKeptDeck`, `SlidesAreReplacedRemovedAndMoved`, `ARefusedUpdateChangesNothing`,
+  `AnUpdateOfAnUnknownFileIsRefused`, `ASectionIsAddedToAKeptDocument`, `DocumentsAreListed`, and the
+  update examples applied to the create examples' files.

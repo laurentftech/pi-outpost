@@ -21,7 +21,7 @@
  * Nothing is dropped silently: a tag this module has no rule for contributes its
  * text content. The worst outcome is plain-looking markdown, never missing prose.
  */
-import { renderMarkdownTable } from "./markdownTable.ts";
+import { renderMarkdownTable } from "@pi-outpost/office/markdownTable.ts";
 
 /** A tag, or a run of text between tags. Attribute names are lower-cased. */
 export type HtmlEvent =

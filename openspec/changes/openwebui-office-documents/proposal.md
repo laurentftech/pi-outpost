@@ -24,24 +24,40 @@ cost is moving those builders where the tool server can use them, and handing th
   Each is judged by the same gate as `show_structure` and drawn by the same figure code, as a vector
   picture with a raster behind it. One refused diagram refuses the whole call with its diagnostics,
   so the model corrects it and calls again.
+- **Mermaid diagrams in both.** A ` ```mermaid ` fence in `create_document`, or a slide's `mermaid` source,
+  is rendered to a vector picture with a raster behind it, by Mermaid 12 run in Node: no browser in the
+  image, the DOM and text measurement supplied by jsdom and `@napi-rs/canvas`, the classic look. The
+  rendering is gated by a spike (tasks 2.3): if it cannot draw the spike's diagram kinds, this part is
+  reconsidered before merge. A Mermaid source that fails to parse refuses the whole call, with Mermaid's
+  message, as a structured-exchange diagram does.
+- **Pictures in both.** The model passes a picture as a `data:` URI (`image/png`, `image/jpeg`, `image/gif`):
+  in Markdown, `![alt](data:image/png;base64,…)`; on a slide, an `image` field. The picture is embedded
+  as it is; the server fetches nothing. Each picture is limited (`OUTPOST_MAX_IMAGE_BYTES`), and an
+  unsupported or undecodable one refuses the call.
 - **The file is handed over in the chat.** The answer is an embed, like `show_structure`'s. It shows the
   file's name, its outline (headings or slide titles) and its figures, with a download button. The
-  file travels inside the embed; the server stores nothing.
+  file travels inside the embed.
+- **A file written can be changed.** The server keeps each user's last files under their names, for a
+  limited time and number; `update_presentation` and `update_document` change one by naming it and
+  what to change (a slide, a section), with pi-outpost's `pptx_update` and `docx_update`, now in the
+  shared package; `list_documents` shows what is kept. Asked to add a slide, a model otherwise had to
+  write the whole deck again, and sent only the new slide.
 - **Templates:**
   - with no template named, a built-in default (Office's own theme). PowerPoint already has one; Word
     gets one, generated the same way;
   - an administrator may mount a folder of `.dotx`/`.docx`/`.potx`/`.pptx` templates
     (`OUTPOST_TEMPLATES_DIR`). The model names one by its file name, never by a path.
 - **The builders move to a workspace package** (`@pi-outpost/office`), which pi-outpost's server and the
-  Open WebUI server both import. pi-outpost's tools behave exactly as before.
+  Open WebUI server both import. pi-outpost's tools behave as before, except that `docx_create` and
+  `docx_update` now draw Mermaid fences too (asked for once the Open WebUI side was checked in Word).
 
 **Out of scope, for later changes:**
 - changing a document the user uploaded (`docx_update`, `pptx_update`): the tool server never sees the
   chat's files;
 - checking pages visually (`docx_render`, `pptx_render`): needs LibreOffice in the image;
-- Mermaid diagrams and pictures: no browser to draw Mermaid, no workspace to read pictures from. A
-  Mermaid fence stays its source, and the description steers the model to a structured-exchange diagram;
-- keeping files on the server to download again later.
+- pictures the server must fetch (URLs, the chat's uploaded files): the tool server never sees the chat's
+  files, and fetching URLs chosen by the model needs an allowlist against internal addresses;
+- downloading a kept file again from a list: the user downloads it from the card it came in.
 
 ## Capabilities
 
@@ -53,7 +69,15 @@ cost is moving those builders where the tool server can use them, and handing th
 
 ### Modified Capabilities
 
-None. `docx-templates`, `pptx-presentations` and the structured-exchange contract are reused unchanged;
+- `openwebui-planning-server`: its OpenAPI description declares the three document tools beside the
+  planning and structure tools (`ToolsAreDescribedForOpenWebUI`), each with a complete example.
+- `pptx-presentations`: a wide picture beside bullets is placed below them, across the width
+  (`AWidePictureGoesBelowTheBullets`): the shared builder, so `pptx_create` gets it too.
+- `docx-templates`: pi-outpost's own `docx_create` and `docx_update` draw Mermaid fences with the same
+  renderer (`MermaidDiagramsAreDrawnInWordDocuments`), since the builders and the picture code are
+  shared; until now they wrote the source.
+
+`docx-templates`, `pptx-presentations` and the structured-exchange contract are reused unchanged;
 moving the builders into a package is not a behaviour change, and pi-outpost's existing tests guard it.
 
 ## Impact
@@ -64,6 +88,7 @@ moving the builders into a package is not a behaviour change, and pi-outpost's e
   `server/src` imports them from there.
 - **`openwebui/src`:** three routes, their OpenAPI descriptions, the template folder, a size limit.
 - **`openwebui/viewer`:** a third mode, `download`.
-- **Image:** `@pi-outpost/office` is bundled. `@napi-rs/canvas` and one font family are added for the
-  raster behind each figure; the image size before and after is measured.
+- **Image:** `@pi-outpost/office` is bundled. `@resvg/resvg-js` draws the raster behind each figure
+  and each Mermaid diagram; `mermaid` 12, `jsdom` and `@napi-rs/canvas` (text measurement) draw
+  Mermaid in Node; one font family is installed. The image size before and after is measured.
 - **Docs:** `docs/openwebui.md`, `docs/openwebui-architecture.md`, `openwebui/deploy/.env.example`.

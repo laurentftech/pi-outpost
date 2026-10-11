@@ -1,5 +1,5 @@
 /**
- * The timeline, alone, inside an Open WebUI chat.
+ * The timeline, alone, inside an Open WebUI chat — or a structure, or a written file to download.
  *
  * Open WebUI shows a tool's HTML answer in a sandboxed iframe — scripts allowed,
  * same-origin not — so this page cannot reach its parent's DOM, its storage, or our
@@ -20,6 +20,7 @@ import type { StructuredTimelineData } from "@pi-outpost/shared/structured-excha
 import type { ValidatedStructuredExchange } from "@pi-outpost/shared/structured-exchange";
 import { StructuredExchangeDocument } from "../../ui/src/presentations/StructuredExchangeView";
 import { TimelineView } from "../../ui/src/presentations/TimelineView";
+import { DownloadCard, type EmbeddedDownload } from "./DownloadCard";
 import "@pi-outpost/apps-core/viewer.css";
 
 /** A document shown by show_structure: drawn as pi-outpost draws it, nothing to act on. */
@@ -63,10 +64,10 @@ function promptFor(planning: EmbeddedPlanning, selection: Selection, language: s
   return `About ${item.type} "${name}" (${id}, task ${task.id}, ${when}) ${where}: `;
 }
 
-function readPayload(): EmbeddedPlanning | EmbeddedStructure {
+function readPayload(): EmbeddedPlanning | EmbeddedStructure | EmbeddedDownload {
   const element = document.getElementById("planning");
   if (!element?.textContent) throw new Error("nothing to draw in this page");
-  return JSON.parse(element.textContent) as EmbeddedPlanning | EmbeddedStructure;
+  return JSON.parse(element.textContent) as EmbeddedPlanning | EmbeddedStructure | EmbeddedDownload;
 }
 
 function prefersDark(): boolean {
@@ -90,7 +91,9 @@ try {
   const payload = readPayload();
   createRoot(container).render(
     <StrictMode>
-      {payload.mode === "structure" ? (
+      {payload.mode === "download" ? (
+        <DownloadCard file={payload} />
+      ) : payload.mode === "structure" ? (
         // No dispatch: a location the document points at is shown and not followable,
         // as in pi-outpost's file viewer — there is no project here to open it in.
         // The source pane shows the document exactly as validated.

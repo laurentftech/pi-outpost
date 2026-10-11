@@ -23,7 +23,7 @@ import {
   type PresentationToolOptions,
 } from "../src/presentationTools.ts";
 import { realResolve } from "../src/sandbox.ts";
-import { readAllZipEntries } from "../src/zip.ts";
+import { readAllZipEntries } from "@pi-outpost/office/zip.ts";
 
 const FIXTURES = path.join(path.dirname(fileURLToPath(import.meta.url)), "fixtures");
 

@@ -23,11 +23,30 @@ const OPENING = /^( {0,3}|\t?)(`{3,}|~{3,})[ \t]*([^\s`]*)[^`]*$/;
  * renderer removes it, so the text here is the text the reader's renderer holds.
  */
 export function structuredExchangeBlocks(markdown: string): string[] {
+  return structuredExchangeBlockRanges(markdown).map((block) => block.content);
+}
+
+/** A block, and the lines its fence spans in the Markdown with `\r\n` read as `\n`. */
+export interface StructuredExchangeBlockRange {
+  /** The opening fence's line, 0-based. */
+  firstLine: number;
+  /** The closing fence's line. */
+  lastLine: number;
+  content: string;
+}
+
+/**
+ * The blocks `structuredExchangeBlocks` returns, with where each one sits, for a caller
+ * that replaces a block by something else: a document written from a reply draws each
+ * one as a figure in its place.
+ */
+export function structuredExchangeBlockRanges(markdown: string): StructuredExchangeBlockRange[] {
   const lines = markdown.replace(/\r\n/g, "\n").split("\n");
-  const blocks: string[] = [];
+  const blocks: StructuredExchangeBlockRange[] = [];
   for (let i = 0; i < lines.length; i++) {
     const opening = OPENING.exec(lines[i]);
     if (!opening) continue;
+    const firstLine = i;
     const [, indent, fence, info] = opening;
     const closing = new RegExp(`^ {0,3}\\${fence[0]}{${fence.length},}[ \\t]*$`);
     const body: string[] = [];
@@ -41,7 +60,7 @@ export function structuredExchangeBlocks(markdown: string): string[] {
     }
     if (!closed || info.toLowerCase() !== "json") continue;
     const content = body.join("\n");
-    if (declaredStructuredExchangeSchema(content) !== undefined) blocks.push(content);
+    if (declaredStructuredExchangeSchema(content) !== undefined) blocks.push({ firstLine, lastLine: i, content });
   }
   return blocks;
 }

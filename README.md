@@ -872,7 +872,9 @@ The planning timelines and structured documents also run in [Open WebUI](https:/
 without pi-outpost. A small server, shipped as a container image:
 - keeps each user's plannings and shows them in the chat as the same interactive timeline;
 - draws the model's diagrams, sequences, tables and proposals with pi-outpost's rendering;
-- serves the model the same structured-exchange guide pi-outpost's agent reads.
+- serves the model the same structured-exchange guide pi-outpost's agent reads;
+- writes Word documents and PowerPoint decks, with Mermaid and structured-exchange diagrams and
+  pictures, for the user to download from the chat.
 
 A `docker-compose.yml` brings up Open WebUI with it for a demo. See
 [docs/openwebui.md](docs/openwebui.md) and its

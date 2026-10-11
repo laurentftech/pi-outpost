@@ -20,19 +20,25 @@ function exampleIn(description: string): unknown {
 }
 
 // openlore: scenario=TheDescriptionNamesTheFiveTools spec=openwebui-planning-server
-test("TheDescriptionNamesTheFiveTools: exactly the operations — the five planning tools and show_structure, each described with an input schema", async (t) => {
+test("TheDescriptionNamesTheFiveTools: exactly the operations — planning, structure and document tools, each described with an input schema", async (t) => {
   const { document } = await published(t);
   const operations = Object.values(document.paths as Record<string, { post: { operationId: string; description: string; requestBody: unknown } }>).map(
     (path) => path.post,
   );
   assert.deepEqual(operations.map((op) => op.operationId).sort(), [
+    "create_document",
     "create_planning",
+    "create_presentation",
     "get_planning",
+    "list_documents",
     "list_plannings",
+    "list_templates",
     "read_structure_guide",
     "show_planning",
     "show_structure",
+    "update_document",
     "update_planning",
+    "update_presentation",
   ]);
   for (const op of operations) {
     assert.ok(op.description.length > 40, op.operationId);
@@ -95,4 +101,12 @@ test("no description offers a copyable placeholder id, and show_planning waits f
   const text = JSON.stringify(document);
   assert.doesNotMatch(text, /pl_…|pl_\\u2026/, "a model copied `pl_…` as an id");
   assert.match(document.paths["/create_planning"].post.description, /once this call has answered[\s\S]*never in the same step/);
+});
+
+test("the creating tools send a change to the updating ones", async (t) => {
+  const { document } = await published(t);
+  const description = (tool: string) => (document.paths as Record<string, { post: { description: string } }>)[`/${tool}`]!.post.description;
+  // Codestral, asked to add a slide, sent create_presentation only the new one.
+  assert.match(description("create_presentation"), /use update_presentation with its file_name, not create_presentation/);
+  assert.match(description("create_document"), /use update_document with its file_name, not create_document/);
 });

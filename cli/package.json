@@ -2,7 +2,7 @@
   "name": "pi-outpost",
   "version": "0.35.2",
   "type": "module",
-  "description": "A web interface for the pi coding agent: a browser chat UI you run with npx — no clone, no build.",
+  "description": "A web interface for the pi coding agent: a browser chat UI you run with npx \u2014 no clone, no build.",
   "license": "MIT",
   "author": "Laurent Francoise",
   "homepage": "https://laurentftech.github.io/pi-outpost/",
@@ -57,9 +57,12 @@
     "@fastify/static": "^10.1.2",
     "@fastify/websocket": "^11.0.2",
     "fastify": "^5.12.5",
+    "jsdom": "^30.0.0",
     "ws": "^8.21.0"
   },
   "optionalDependencies": {
+    "@napi-rs/canvas": "^1.0.8",
+    "@resvg/resvg-js": "^2.6.2",
     "node-pty": "^1.1.0"
   },
   "devDependencies": {

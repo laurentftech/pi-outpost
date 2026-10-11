@@ -13,12 +13,12 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, test } from "node:test";
 import { crc32, deflateSync } from "node:zlib";
-import { createDocument } from "../src/docxBuild.ts";
-import { describeWordTemplate, formatTemplateDescription, MAX_LISTED_TABLE_STYLES, readWordPackage, WordTemplateError } from "../src/docxTemplate.ts";
-import { withUpdateFields } from "../src/docxGraft.ts";
-import { readAllZipEntries } from "../src/zip.ts";
-import { writeZip } from "../src/zipWriter.ts";
-import { bodyLayout, paragraphText, parseStyles, styleIsNumbered, withoutTypedNumber } from "../src/wordml.ts";
+import { createDocument } from "@pi-outpost/office/docxBuild.ts";
+import { describeWordTemplate, formatTemplateDescription, MAX_LISTED_TABLE_STYLES, readWordPackage, WordTemplateError } from "@pi-outpost/office/docxTemplate.ts";
+import { withUpdateFields } from "@pi-outpost/office/docxGraft.ts";
+import { readAllZipEntries } from "@pi-outpost/office/zip.ts";
+import { writeZip } from "@pi-outpost/office/zipWriter.ts";
+import { bodyLayout, paragraphText, parseStyles, styleIsNumbered, withoutTypedNumber } from "@pi-outpost/office/wordml.ts";
 
 const FIXTURES = path.join(path.dirname(fileURLToPath(import.meta.url)), "fixtures");
 const templateBytes = await readFile(path.join(FIXTURES, "docx-template.dotx"));
@@ -307,10 +307,25 @@ describe("docx_create: Markdown written into a template", () => {
       pictures: { imageKey: (src) => src, loadImage: async () => undefined },
     });
     assert.deepEqual(created.warnings, [
-      "1 mermaid diagram(s) written as their source, as code: diagrams are drawn only by the viewer's export",
+      "1 mermaid diagram(s) written as their source, as code: this installation cannot draw them",
       'picture "gone.png" could not be loaded; its alt text was written instead',
     ]);
     assert.match(text(unzip(created.bytes), "word/document.xml"), /graph TD; A--&gt;B/);
+  });
+
+  test("a mermaid diagram the renderer refuses is named, with its reason, and kept as its source", async () => {
+    const created = await createDocument(template(), "```mermaid\ngraph TD; A-->B\n```\n\n```mermaid\nnot a diagram\n```", {
+      pictures: {
+        renderDiagram: async (source) => {
+          if (source.startsWith("not")) throw new Error("Parse error on line 1:\nmore detail");
+          return { svg: '<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"/>', png: png(), width: 10, height: 10 };
+        },
+      },
+    });
+    assert.deepEqual(created.warnings, ["mermaid diagram 2 could not be drawn (Parse error on line 1:); its source was written as code"]);
+    const body = text(unzip(created.bytes), "word/document.xml");
+    assert.match(body, /not a diagram/);
+    assert.doesNotMatch(body, /graph TD/, "the first one was drawn");
   });
 });
 
