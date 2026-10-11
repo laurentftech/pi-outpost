@@ -460,7 +460,9 @@ async function prepare(font: string): Promise<{ mermaid: Mermaid; document: Docu
     securityLevel: "strict",
     suppressErrorRendering: true,
     fontFamily: font,
-    flowchart: { htmlLabels: false },
+    // Mermaid wraps a label at 120 px and breaks any longer word letter by letter
+    // ("Word/PowerPoin|t"). A page has the room: words up to 200 px stay whole.
+    flowchart: { htmlLabels: false, wrappingWidth: 200 },
     htmlLabels: false,
     // A gantt chart is as wide as its container, and a jsdom container is 0 wide.
     // The width of a page's text (`TEXT_WIDTH_PX` in the Word mapping), drawn larger

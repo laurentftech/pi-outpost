@@ -52,6 +52,17 @@ included: that is Keynote, not the file.) The render did show two defects, fixed
    list and knows no `system-ui`. In a file, the figure's list starts with Arial (`forOfficeReaders`);
    on screen it is unchanged. The figure's own list also names real faces after `system-ui` now.
 
+## Architecture slides (bullets and a diagram on each)
+
+Asked for slides describing pi-outpost's architecture, text and a diagram on each: seven slides,
+bullets beside a Mermaid diagram on each. Mermaid broke words longer than its 120 px wrapping width
+letter by letter ("Word/PowerPoin|t", "structured-excha|nge"); the server renderer wraps at 200 px,
+and words stay whole. Seen, not changed: a wide left-to-right diagram beside bullets is drawn small
+on half a slide.
+
+The user's real target model is **Gemma 4**, not available here: Codestral is a stand-in, and the
+tools were not tuned further to it.
+
 ## Open: a picture given as a web address
 
 The specification refuses the call so the model can correct it; Codestral answers the user instead
