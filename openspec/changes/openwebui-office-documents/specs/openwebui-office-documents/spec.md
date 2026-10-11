@@ -19,7 +19,7 @@ given file name with the `.docx` extension, and shows its headings. Nothing SHAL
 ### Requirement: APresentationIsCreatedFromSlides
 
 The Open WebUI server SHALL offer a tool that takes a file name and a list of slides — title, subtitle,
-bullets, native table, native chart, diagram — and writes a PowerPoint deck with pi-outpost's
+bullets, native table, native chart, diagram, Mermaid source, picture — and writes a PowerPoint deck with pi-outpost's
 presentation builder, in a template or the built-in default. The answer SHALL be an embed offering the
 deck as a `.pptx` download and listing its slide titles.
 
@@ -51,12 +51,51 @@ not declare the contract SHALL stay code.
 - **WHEN** the Markdown holds a `json` fence that does not declare the structured-exchange contract
 - **THEN** the document holds it as a code block
 
+### Requirement: MermaidDiagramsAreDrawnInTheFile
+
+A ` ```mermaid ` fence in a Word document, or a slide's `mermaid` source, SHALL be rendered by Mermaid
+12 in the server, without a browser, and written as an SVG picture with a PNG of it behind. The picture
+SHALL be what Mermaid draws for that source. A source Mermaid cannot parse SHALL refuse the whole call,
+with Mermaid's message and the position of the fence or slide.
+
+#### Scenario: MermaidDiagramIsDrawnInWord
+- **WHEN** `create_document` is called with Markdown holding a valid flowchart in a ` ```mermaid ` fence
+- **THEN** the document holds, in that place, an SVG picture and a PNG fallback that is not empty, and the SVG equals a fresh render of the same source
+
+#### Scenario: MermaidDiagramIsDrawnOnASlide
+- **WHEN** `create_presentation` is called with a slide whose `mermaid` is a valid sequence diagram
+- **THEN** that slide holds an SVG picture with a PNG fallback, and its labels are the sequence's messages
+
+#### Scenario: AnInvalidMermaidRefusesTheCall
+- **WHEN** `create_document` is called with a ` ```mermaid ` fence whose source does not parse
+- **THEN** no embed is returned, and the error names the fence's position and carries Mermaid's message
+
+### Requirement: PicturesAreEmbeddedFromTheCall
+
+A picture SHALL be embedded only when the call gives its bytes: a `data:` URI in Markdown image syntax,
+or a slide's `image`. The server SHALL fetch no picture. A PNG, JPEG or GIF SHALL be embedded as given. A
+picture that is SVG, does not decode, has a MIME type that does not match its bytes, or exceeds
+`OUTPOST_MAX_IMAGE_BYTES` SHALL refuse the call.
+
+#### Scenario: ADataUriPictureIsEmbedded
+- **WHEN** `create_document` is called with Markdown holding `![logo](data:image/png;base64,…)` for a valid PNG
+- **THEN** the document holds that PNG at that place, with its alternative text
+
+#### Scenario: AnUnsupportedPictureIsRefused
+- **WHEN** a call gives an SVG picture, or a `data:` URI whose bytes are not the MIME type it declares
+- **THEN** no embed is returned, and the error names the picture's position and the reason
+
+#### Scenario: AURLPictureIsNotFetched
+- **WHEN** Markdown holds `![x](https://example.com/a.png)`
+- **THEN** the server makes no request for it, no embed is returned, and the error names the picture's position and asks for its bytes as a `data:` URI
+
 ### Requirement: ARefusalExplainsWhatToFix
 
-When a diagram is refused, a template cannot be used, or the result exceeds the size limit, nothing
-SHALL be embedded. The answer SHALL be an error the model reads, saying what was refused and why: for a
-diagram, which one (its position, and its title when it has one), the gate's issues, and the guide topic
-that explains them.
+When a diagram or a picture is refused, a template cannot be used, a Mermaid source does not parse, or
+the result exceeds the size limit, nothing SHALL be embedded. The answer SHALL be an error the model
+reads, saying what was refused and why: for a diagram, which one (its position, and its title when it
+has one), the gate's issues, and the guide topic that explains them; for a Mermaid source, Mermaid's
+message; for a picture, its position and the reason.
 
 #### Scenario: ARefusedDiagramRefusesTheDocument
 - **WHEN** `create_document` is called with Markdown whose second diagram has a relationship naming a missing element

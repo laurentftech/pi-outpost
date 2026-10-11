@@ -21,16 +21,31 @@
 - [ ] 2.2 A slide `diagram` for PowerPoint: the same judge; a figure becomes the slide's SVG picture, a
   table its native table. Verify: `ASequenceBecomesASlidePicture`, `ATableDocumentBecomesANativeTable`
   (PowerPoint).
+- [ ] 2.3 **Mermaid spike, first.** Move the design session's spike into `scripts/probes/`
+  (`mermaid-node.mts`): mermaid 12 in Node over jsdom, `getBBox` from `@napi-rs/canvas` `measureText`,
+  `htmlLabels: false`, `look: "classic"`. Render flowchart, sequence, gantt, pie and class diagrams to
+  SVG, and check each in headless Chrome (`--screenshot`). Gate: every kind renders with its nodes,
+  labels and edges in place; a failure stops the Mermaid part and returns to the user (the design says
+  so). Then, if it passes: `renderMermaid(source, id)` in `office/` returning `{ svg, png, width,
+  height }`, the same shape as `DiagramImage`. A parse error throws with Mermaid's message. Verify:
+  `MermaidDiagramIsDrawnInWord`, `MermaidDiagramIsDrawnOnASlide`, `AnInvalidMermaidRefusesTheCall`.
+- [ ] 2.4 Pictures: a `data:` URI in Markdown, read through the builder's `loadImage`; an `image` field
+  on a slide. Decode with `imageInfo`, refuse SVG and any mismatch between MIME type and bytes, and
+  refuse a picture over `OUTPOST_MAX_IMAGE_BYTES`, and refuse a URL without fetching it. Verify:
+  `ADataUriPictureIsEmbedded`, `AnUnsupportedPictureIsRefused`, `AURLPictureIsNotFetched` (a fake
+  HTTP server records zero requests).
 
 ## 3. The Open WebUI routes
 
-- [ ] 3.1 `OUTPOST_TEMPLATES_DIR` and `OUTPOST_MAX_FILE_BYTES` in `config.ts`; template lookup by name.
+- [ ] 3.1 `OUTPOST_TEMPLATES_DIR`, `OUTPOST_MAX_FILE_BYTES` and `OUTPOST_MAX_IMAGE_BYTES` in `config.ts`;
+  template lookup by name.
   `list_templates`. Verify: `TemplatesAreListed`, `APathIsNotATemplateName`,
   `AWordTemplateIsRefusedForADeck`.
 - [ ] 3.2 `create_document` and `create_presentation`, returning the `download` embed or a 4xx the
-  model reads; their OpenAPI descriptions, with one example each that includes a diagram, run by the
-  tests. Verify: `AReportIsCreatedWithTheDefaultTemplate`, `ADeckIsCreatedWithTheDefaultTemplate`,
-  `AnAdministratorTemplateIsUsed`, `ATooLargeResultIsRefused`, `AnUnsignedCallIsRefused`.
+  model reads; their OpenAPI descriptions, with one example each that includes a diagram, a Mermaid
+  fence and a picture, run by the tests. Verify: `AReportIsCreatedWithTheDefaultTemplate`,
+  `ADeckIsCreatedWithTheDefaultTemplate`, `AnAdministratorTemplateIsUsed`, `ATooLargeResultIsRefused`,
+  `AnUnsignedCallIsRefused`.
 
 ## 4. The viewer's `download` mode
 
@@ -40,11 +55,13 @@
 
 ## 5. Image, docs, live run
 
-- [ ] 5.1 Bundle `@pi-outpost/office`; add `@napi-rs/canvas` and `fonts-dejavu-core`; record the image
-  size before and after in `design.md`. Verify: `npm run test:image` creates a document with a diagram
-  in the image and its PNG fallback is not blank.
+- [ ] 5.1 Bundle `@pi-outpost/office`; add `@napi-rs/canvas`, `mermaid` 12, `jsdom` and
+  `fonts-dejavu-core`; record the image size before and after in `design.md`, with and without the
+  Mermaid dependencies, so their cost is visible. Verify: `npm run test:image` creates a document with a
+  structured-exchange diagram, a Mermaid diagram and a picture; each PNG fallback is not blank.
 - [ ] 5.2 `docs/openwebui.md` (what users can ask, configuration, limits),
   `docs/openwebui-architecture.md`, `openwebui/deploy/.env.example`, the compose file's templates volume.
-- [ ] 5.3 Live run in Open WebUI with a real model (Codestral): a report with a graph and a table, a deck
-  with a sequence and a chart; open both files in Word or LibreOffice. Record it in `live-run.md`.
+- [ ] 5.3 Live run in Open WebUI with a real model (Codestral): a report with a graph, a table, a Mermaid
+  flowchart and a picture; a deck with a sequence, a chart and a Mermaid slide; open both files in Word
+  or LibreOffice and look at the diagrams. Record it in `live-run.md`.
 - [ ] 5.4 `scenario-coverage.md`, `npm run check:scenarios`, `openspec validate --strict`.

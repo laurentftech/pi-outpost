@@ -24,6 +24,16 @@ cost is moving those builders where the tool server can use them, and handing th
   Each is judged by the same gate as `show_structure` and drawn by the same figure code, as a vector
   picture with a raster behind it. One refused diagram refuses the whole call with its diagnostics,
   so the model corrects it and calls again.
+- **Mermaid diagrams in both.** A ` ```mermaid ` fence in `create_document`, or a slide's `mermaid` source,
+  is rendered to a vector picture with a raster behind it, by Mermaid 12 run in Node: no browser in the
+  image, the DOM and text measurement supplied by jsdom and `@napi-rs/canvas`, the classic look. The
+  rendering is gated by a spike (tasks 2.3): if it cannot draw the spike's diagram kinds, this part is
+  reconsidered before merge. A Mermaid source that fails to parse refuses the whole call, with Mermaid's
+  message, as a structured-exchange diagram does.
+- **Pictures in both.** The model passes a picture as a `data:` URI (`image/png`, `image/jpeg`, `image/gif`):
+  in Markdown, `![alt](data:image/png;base64,…)`; on a slide, an `image` field. The picture is embedded
+  as it is; the server fetches nothing. Each picture is limited (`OUTPOST_MAX_IMAGE_BYTES`), and an
+  unsupported or undecodable one refuses the call.
 - **The file is handed over in the chat.** The answer is an embed, like `show_structure`'s. It shows the
   file's name, its outline (headings or slide titles) and its figures, with a download button. The
   file travels inside the embed; the server stores nothing.
@@ -39,8 +49,8 @@ cost is moving those builders where the tool server can use them, and handing th
 - changing a document the user uploaded (`docx_update`, `pptx_update`): the tool server never sees the
   chat's files;
 - checking pages visually (`docx_render`, `pptx_render`): needs LibreOffice in the image;
-- Mermaid diagrams and pictures: no browser to draw Mermaid, no workspace to read pictures from. A
-  Mermaid fence stays its source, and the description steers the model to a structured-exchange diagram;
+- pictures the server must fetch (URLs, the chat's uploaded files): the tool server never sees the chat's
+  files, and fetching URLs chosen by the model needs an allowlist against internal addresses;
 - keeping files on the server to download again later.
 
 ## Capabilities
@@ -53,7 +63,10 @@ cost is moving those builders where the tool server can use them, and handing th
 
 ### Modified Capabilities
 
-None. `docx-templates`, `pptx-presentations` and the structured-exchange contract are reused unchanged;
+- `openwebui-planning-server`: its OpenAPI description declares the three document tools beside the
+  planning and structure tools (`ToolsAreDescribedForOpenWebUI`), each with a complete example.
+
+`docx-templates`, `pptx-presentations` and the structured-exchange contract are reused unchanged;
 moving the builders into a package is not a behaviour change, and pi-outpost's existing tests guard it.
 
 ## Impact
@@ -64,6 +77,7 @@ moving the builders into a package is not a behaviour change, and pi-outpost's e
   `server/src` imports them from there.
 - **`openwebui/src`:** three routes, their OpenAPI descriptions, the template folder, a size limit.
 - **`openwebui/viewer`:** a third mode, `download`.
-- **Image:** `@pi-outpost/office` is bundled. `@napi-rs/canvas` and one font family are added for the
-  raster behind each figure; the image size before and after is measured.
+- **Image:** `@pi-outpost/office` is bundled. `@resvg/resvg-js` draws the raster behind each figure
+  and each Mermaid diagram; `mermaid` 12, `jsdom` and `@napi-rs/canvas` (text measurement) draw
+  Mermaid in Node; one font family is installed. The image size before and after is measured.
 - **Docs:** `docs/openwebui.md`, `docs/openwebui-architecture.md`, `openwebui/deploy/.env.example`.
