@@ -23,6 +23,8 @@ import path from "node:path";
 import { Type } from "typebox";
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 import type { PictureSource, ReferencedImage } from "@pi-outpost/shared/docx";
+import type { MermaidRenderer } from "@pi-outpost/office/mermaidRender.ts";
+import { serverMermaidRenderer } from "./mermaid.ts";
 import { createDocument, type KeepPart } from "@pi-outpost/office/docxBuild.ts";
 import { describeWordTemplate, formatTemplateDescription, readWordPackage, WordTemplateError } from "@pi-outpost/office/docxTemplate.ts";
 import { restyleDocument, type RestyleInclude } from "./docxRestyle.ts";
@@ -56,6 +58,11 @@ export interface WordToolOptions {
   render: RenderSettings;
   /** How converters are found and run; the real machine unless a test says otherwise. */
   environment?: RenderEnvironment;
+  /**
+   * Draws Mermaid fences as pictures. Left out, the server's own renderer when this
+   * installation has one (`serverMermaidRenderer`); `null`, fences stay their source.
+   */
+  mermaid?: MermaidRenderer | null;
 }
 
 /** Page pictures returned by one render call — each one costs the model context. */
@@ -85,7 +92,8 @@ function isExternal(src: string): boolean {
  * A picture that fails any of that is left out and its alt text written instead — the
  * tool's answer names it.
  */
-export function sandboxPictures(options: Pick<WordToolOptions, "cwd" | "allowedRoots">, baseDir: string): PictureSource {
+export function sandboxPictures(options: Pick<WordToolOptions, "cwd" | "allowedRoots" | "mermaid">, baseDir: string): PictureSource {
+  const mermaid = options.mermaid === undefined ? serverMermaidRenderer() : options.mermaid;
   const resolveRef = (src: string): string | undefined => {
     if (isExternal(src)) return undefined;
     let decoded = src.split(/[?#]/)[0];
@@ -98,6 +106,9 @@ export function sandboxPictures(options: Pick<WordToolOptions, "cwd" | "allowedR
   };
   return {
     imageKey: resolveRef,
+    // A Mermaid fence as a picture, an SVG with a PNG behind it; one that does not draw
+    // is written as its source, and the answer says which and why.
+    ...(mermaid === null ? {} : { renderDiagram: (source: string) => mermaid.render(source) }),
     async loadImage(src): Promise<ReferencedImage | undefined> {
       const target = resolveRef(src);
       if (target === undefined) return undefined;
@@ -209,7 +220,7 @@ export function createDocxCreateToolDefinition(options: WordToolOptions): ToolDe
     description: [
       "Create a Word document (.docx) from a template (.dotx or .docx) and Markdown: headings, paragraphs, bold/italic, links, lists, tables, block quotes, code, LaTeX equations and pictures (PNG, JPEG, GIF, SVG) are written in the template's own styles, heading numbering, page setup, header, footer and theme.",
       "The template's sample text is left out; keep: [\"cover\", \"toc\"] keeps its cover page and table of contents (Word refreshes the table when the file is opened).",
-      "Mermaid diagrams are written as their source; draw them as SVG files and reference those instead.",
+      "A ```mermaid fence is drawn as a picture in its place (an SVG Word draws sharp, with a PNG behind it for other readers); one that does not parse is written as its source, and the answer says which.",
       "After creating a document, call docx_render on it and look at the pages before you say it is done.",
     ].join(" "),
     promptSnippet: "Create a Word document from Markdown in a template's styles",

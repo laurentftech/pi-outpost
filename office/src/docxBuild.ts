@@ -26,11 +26,25 @@ export interface CreatedDocument {
   warnings: string[];
 }
 
-/** A picture source that remembers which references it could not load. */
-export function countingPictures(source: PictureSource): { source: PictureSource; missed: string[] } {
+/** A Mermaid fence the source could not draw: written as its source instead. */
+export interface UndrawnDiagram {
+  /** 1-based, in document order among the Mermaid fences. */
+  position: number;
+  reason: string;
+}
+
+/**
+ * A picture source that remembers which references it could not load, and which
+ * Mermaid fences it could not draw — the mapping falls back on both without a word,
+ * so this is where the tool's answer learns of them.
+ */
+export function countingPictures(source: PictureSource): { source: PictureSource; missed: string[]; undrawn: UndrawnDiagram[] } {
   const missed: string[] = [];
+  const undrawn: UndrawnDiagram[] = [];
+  let fences = 0;
   return {
     missed,
+    undrawn,
     source: {
       ...source,
       loadImage:
@@ -41,15 +55,30 @@ export function countingPictures(source: PictureSource): { source: PictureSource
               if (loaded === undefined) missed.push(src);
               return loaded;
             },
+      renderDiagram:
+        source.renderDiagram === undefined
+          ? undefined
+          : async (diagram: string, id: string) => {
+              // The mapping names its fences `…-<index>`, in document order.
+              const index = Number(/(\d+)$/.exec(id)?.[1] ?? Number.NaN);
+              const position = Number.isFinite(index) ? index + 1 : ++fences;
+              try {
+                return await source.renderDiagram!(diagram, id);
+              } catch (error) {
+                undrawn.push({ position, reason: (error instanceof Error ? error.message : String(error)).split("\n")[0] });
+                throw error;
+              }
+            },
     },
   };
 }
 
 /** What the content could not carry, for the tool's answer. */
-export function contentWarnings(markdown: string, pictures: PictureSource, missed: string[]): string[] {
+export function contentWarnings(markdown: string, pictures: PictureSource, missed: string[], undrawn: UndrawnDiagram[] = []): string[] {
   const warnings: string[] = [];
   const diagrams = pictures.renderDiagram === undefined ? countDiagrams(markdown) : 0;
-  if (diagrams > 0) warnings.push(`${diagrams} mermaid diagram(s) written as their source, as code: diagrams are drawn only by the viewer's export`);
+  if (diagrams > 0) warnings.push(`${diagrams} mermaid diagram(s) written as their source, as code: this installation cannot draw them`);
+  for (const diagram of undrawn) warnings.push(`mermaid diagram ${diagram.position} could not be drawn (${diagram.reason}); its source was written as code`);
   for (const src of [...new Set(missed)]) warnings.push(`picture "${src}" could not be loaded; its alt text was written instead`);
   return warnings;
 }
@@ -59,7 +88,7 @@ export async function createDocument(template: WordPackage, markdown: string, op
   if (markdown.length > MAX_MARKDOWN_CHARS) throw new WordTemplateError(`the content is longer than ${MAX_MARKDOWN_CHARS} characters`);
   const counting = countingPictures(options.pictures ?? {});
   const generated = await generateContent(markdown, counting.source);
-  return createFromContent(template, generated, options.keep ?? [], contentWarnings(markdown, counting.source, counting.missed));
+  return createFromContent(template, generated, options.keep ?? [], contentWarnings(markdown, counting.source, counting.missed, counting.undrawn));
 }
 
 /**

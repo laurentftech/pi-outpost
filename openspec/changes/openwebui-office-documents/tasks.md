@@ -67,3 +67,12 @@
   flowchart and a picture; a deck with a sequence, a chart and a Mermaid slide; open both files in Word
   or LibreOffice and look at the diagrams. Record it in `live-run.md`.
 - [x] 5.4 `scenario-coverage.md`, `npm run check:scenarios`, `openspec validate --strict`.
+
+## 6. pi-outpost's Word tools
+
+- [x] 6.1 `docx_create` and `docx_update` draw Mermaid through `sandboxPictures` and the server's shared
+  renderer; an undrawn fence is named in the answer; without a renderer the old note stays. Verify:
+  `AMermaidFenceBecomesAPicture`, `AnUndrawableMermaidIsNamed`, `WithoutARendererTheSourceStays`.
+- [x] 6.2 The CLI build emits `dist/mermaid-worker.mjs` and keeps jsdom, canvas and resvg external and
+  declared; `check:cli` requires the worker. Verify: pack, install into an isolated prefix, and draw
+  from the installed package (`scripts/probes/installed-mermaid.mjs`).

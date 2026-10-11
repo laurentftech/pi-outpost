@@ -49,6 +49,14 @@ Two capabilities: `openwebui-office-documents` (7 added requirements, 20 scenari
 | TheUpdateExampleApplies | covered | `openwebui/test/openapi.test.ts` — the same test. |
 | TheDocumentExamplesAreWritten | covered | `openwebui/test/documents.test.ts` — "TheDocumentExamplesAreWritten": the published `create_document` example answers with a document holding its Mermaid diagram and its picture; the `create_presentation` example answers with one slide per slide given and its Mermaid slide drawn. |
 
+## docx-templates
+
+| Scenario | Coverage | Evidence |
+| --- | --- | --- |
+| AMermaidFenceBecomesAPicture | covered | `server/test/wordTools.test.ts` — "AMermaidFenceBecomesAPicture: docx_create draws a ```mermaid fence in its place, with nothing to report": one SVG carrying the labels and one PNG, between the paragraphs around the fence, the source not written, no note; "docx_update draws a Mermaid fence it appends, through the same pictures": the appended sequence is an SVG picture with its message and no note. The real renderer, not a fake. |
+| AnUndrawableMermaidIsNamed | covered | `server/test/wordTools.test.ts` — "AnUndrawableMermaidIsNamed": the answer's note names diagram 1 with Mermaid's parse error, and the source is in the document. `server/test/docxBuild.test.ts` — "a mermaid diagram the renderer refuses is named, with its reason, and kept as its source": position 2 named, its first message line kept, the first diagram drawn. |
+| WithoutARendererTheSourceStays | covered | `server/test/wordTools.test.ts` — "WithoutARendererTheSourceStays": with `mermaid: null`, the note says this installation cannot draw them and the document has no media. `server/test/docxBuild.test.ts` — "a mermaid diagram and a missing picture are reported, not silently dropped". |
+
 ## Not covered by a test here
 
 - **Desktop Word.** The user's target. The documents open and render in Chrome (the SVGs), in the

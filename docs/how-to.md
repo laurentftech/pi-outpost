@@ -591,8 +591,11 @@ opens a read-only copy of the document, invisibly, and never closes a document y
 it. Creating, updating and restyling need a writable workspace: in a read-only sandbox
 `docx_create`, `docx_update` and `docx_restyle` are not offered.
 
-Footnotes, comments, text boxes and section changes (landscape pages, columns) are not written, and
-a mermaid diagram is written as its source; the agent says what is missing rather than faking it.
+Footnotes, comments, text boxes and section changes (landscape pages, columns) are not written; the
+agent says what is missing rather than faking it. A ` ```mermaid ` fence is drawn as a picture in
+its place, sharp in Word (an SVG, with a PNG behind it for other readers). One Mermaid cannot parse is
+written as its source, and the answer names it. The single-file executable cannot draw Mermaid and
+writes the source, saying so.
 
 ### Export from the viewer into your template
 

@@ -134,6 +134,20 @@ answer means the whole document was written as asked.
 - **Rejected:** URLs fetched by the server (SSRF surface, needs an allowlist of hosts).
 - **Rejected:** the chat's uploaded files: the tool server never sees them.
 
+### pi-outpost's Word tools draw Mermaid too
+
+- **Choice:** `sandboxPictures`, the picture source `docx_create` and `docx_update` share, gets a
+  `renderDiagram` from the server's one renderer (`server/src/mermaid.ts`), made on the first diagram.
+  pi-outpost answers with notes rather than refusals, as it does for a missing picture: a fence that
+  does not draw keeps its source, and `countingPictures` now records it so `contentWarnings` names it.
+- **Where it runs:** from source, the office package's worker module; in the npm package, the build
+  emits `dist/mermaid-worker.mjs` beside the server bundle and the RPC tools extension, which both
+  look for it there. jsdom becomes a dependency of the published package, `@napi-rs/canvas` and
+  `@resvg/resvg-js` optional ones; the tarball grows from about 25 MB to 31.5 MB. The single-file
+  executable has no worker file: `mermaidUnavailable` says so first and fences stay their source.
+- **Rehearsed** in an isolated prefix with npm 12 (`scripts/probes/installed-mermaid.mjs`): the
+  installed worker draws with the installed jsdom, canvas and resvg.
+
 ### Raster: resvg and one font in the image
 
 Word 2016+ and PowerPoint 2016+ draw the SVG; desktop Word is the target that matters, the rest is

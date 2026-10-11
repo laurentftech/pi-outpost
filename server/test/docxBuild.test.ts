@@ -307,10 +307,25 @@ describe("docx_create: Markdown written into a template", () => {
       pictures: { imageKey: (src) => src, loadImage: async () => undefined },
     });
     assert.deepEqual(created.warnings, [
-      "1 mermaid diagram(s) written as their source, as code: diagrams are drawn only by the viewer's export",
+      "1 mermaid diagram(s) written as their source, as code: this installation cannot draw them",
       'picture "gone.png" could not be loaded; its alt text was written instead',
     ]);
     assert.match(text(unzip(created.bytes), "word/document.xml"), /graph TD; A--&gt;B/);
+  });
+
+  test("a mermaid diagram the renderer refuses is named, with its reason, and kept as its source", async () => {
+    const created = await createDocument(template(), "```mermaid\ngraph TD; A-->B\n```\n\n```mermaid\nnot a diagram\n```", {
+      pictures: {
+        renderDiagram: async (source) => {
+          if (source.startsWith("not")) throw new Error("Parse error on line 1:\nmore detail");
+          return { svg: '<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"/>', png: png(), width: 10, height: 10 };
+        },
+      },
+    });
+    assert.deepEqual(created.warnings, ["mermaid diagram 2 could not be drawn (Parse error on line 1:); its source was written as code"]);
+    const body = text(unzip(created.bytes), "word/document.xml");
+    assert.match(body, /not a diagram/);
+    assert.doesNotMatch(body, /graph TD/, "the first one was drawn");
   });
 });
 

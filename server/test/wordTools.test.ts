@@ -16,7 +16,8 @@ import { createDocument } from "@pi-outpost/office/docxBuild.ts";
 import { readWordPackage } from "@pi-outpost/office/docxTemplate.ts";
 import { loadCanvas, WORD_SCRIPT, type ProcessResult, type RenderEnvironment } from "../src/presentationRender.ts";
 import { realResolve } from "../src/sandbox.ts";
-import { createDocxCreateToolDefinition, createDocxRenderToolDefinition, type WordToolOptions } from "../src/wordTools.ts";
+import { createDocxCreateToolDefinition, createDocxRenderToolDefinition, createDocxUpdateToolDefinition, type WordToolOptions } from "../src/wordTools.ts";
+import { readAllZipEntries } from "@pi-outpost/office/zip.ts";
 
 const FIXTURES = path.join(path.dirname(fileURLToPath(import.meta.url)), "fixtures");
 const PDF = path.join(FIXTURES, "docx-rendered.pdf");
@@ -31,6 +32,7 @@ async function call(tool: Tool, params: Record<string, unknown>): Promise<Conten
   return result.content;
 }
 const firstText = (content: Content[]) => (content[0] as { text: string }).text;
+const unzipDocx = (bytes: Buffer) => readAllZipEntries(bytes, { maxEntries: 1000, maxInflatedBytes: 64 * 1024 * 1024, maxTotalBytes: 256 * 1024 * 1024 });
 
 interface Call {
   file: string;
@@ -81,6 +83,58 @@ describe("Word tools", () => {
     const answer = firstText(await call(create, { template_path: "brand.dotx", output_path: "report.docx", markdown: "# New", overwrite: true }));
     assert.match(answer, /report\.docx/);
     assert.equal(readWordPackage(await readFile(path.join(root, "report.docx")), "the result").isTemplate, false);
+  });
+
+  // openlore: scenario=AMermaidFenceBecomesAPicture spec=docx-templates
+  test("AMermaidFenceBecomesAPicture: docx_create draws a ```mermaid fence in its place, with nothing to report", async () => {
+    const create = createDocxCreateToolDefinition(options);
+    const answer = firstText(
+      await call(create, { template_path: "brand.dotx", output_path: "flow.docx", markdown: "Before.\n\n```mermaid\nflowchart LR\n  A[Ask] --> B[Write]\n```\n\nAfter.\n", overwrite: true }),
+    );
+    assert.doesNotMatch(answer, /Note:/, answer);
+    const parts = unzipDocx(await readFile(path.join(root, "flow.docx")));
+    const svgs = [...parts.keys()].filter((name) => name.startsWith("word/media/") && name.endsWith(".svg"));
+    assert.equal(svgs.length, 1);
+    assert.match(parts.get(svgs[0]!)!.toString("utf8").replace(/<[^>]+>/g, ""), /Ask[\s\S]*Write/);
+    assert.equal([...parts.keys()].filter((name) => name.startsWith("word/media/") && name.endsWith(".png")).length, 1);
+    const body = parts.get("word/document.xml")!.toString("utf8");
+    assert.ok(body.indexOf("Before.") < body.indexOf("svgBlip") && body.indexOf("svgBlip") < body.indexOf("After."), "in its place");
+    assert.doesNotMatch(body, /flowchart LR/, "not written as code");
+  });
+
+  // openlore: scenario=AnUndrawableMermaidIsNamed spec=docx-templates
+  test("AnUndrawableMermaidIsNamed: a fence Mermaid cannot parse stays its source, and the answer says which and why", async () => {
+    const create = createDocxCreateToolDefinition(options);
+    const answer = firstText(await call(create, { template_path: "brand.dotx", output_path: "broken.docx", markdown: "```mermaid\nflowchart LR\n  A -->\n```\n", overwrite: true }));
+    assert.match(answer, /- Note: mermaid diagram 1 could not be drawn \(Parse error[^)]*\); its source was written as code/);
+    assert.match(unzipDocx(await readFile(path.join(root, "broken.docx"))).get("word/document.xml")!.toString("utf8"), /flowchart LR/);
+  });
+
+  // openlore: scenario=WithoutARendererTheSourceStays spec=docx-templates
+  test("WithoutARendererTheSourceStays: an installation that cannot draw Mermaid writes the source and says so", async () => {
+    const create = createDocxCreateToolDefinition({ ...options, mermaid: null });
+    const answer = firstText(await call(create, { template_path: "brand.dotx", output_path: "plain.docx", markdown: "```mermaid\nflowchart LR\n  A --> B\n```\n", overwrite: true }));
+    assert.match(answer, /- Note: 1 mermaid diagram\(s\) written as their source, as code: this installation cannot draw them/);
+    assert.equal([...unzipDocx(await readFile(path.join(root, "plain.docx"))).keys()].filter((name) => name.startsWith("word/media/")).length, 0);
+  });
+
+  // openlore: scenario=AMermaidFenceBecomesAPicture spec=docx-templates
+  test("docx_update draws a Mermaid fence it appends, through the same pictures", async () => {
+    const update = createDocxUpdateToolDefinition(options);
+    const answer = firstText(
+      await call(update as unknown as Tool, {
+        path: "clean.docx",
+        output_path: "clean-flow.docx",
+        overwrite: true,
+        track_changes: false,
+        edits: [{ action: "append", markdown: "# Flow\n\n```mermaid\nsequenceDiagram\n  Alice->>Bob: Hello\n```\n" }],
+      }),
+    );
+    assert.doesNotMatch(answer, /could not be drawn|written as their source/, answer);
+    const parts = unzipDocx(await readFile(path.join(root, "clean-flow.docx")));
+    const svg = [...parts.keys()].find((name) => name.startsWith("word/media/") && name.endsWith(".svg"));
+    assert.ok(svg, "the appended diagram is a picture");
+    assert.match(parts.get(svg)!.toString("utf8"), /Hello/);
   });
 
   test("PagesHeadingsAndTextAreReported: page count, the two chapters as bookmarks, a clean text check, the pages", async () => {

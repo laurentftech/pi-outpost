@@ -334,7 +334,7 @@ export async function updateDocument(pkg: WordPackage, edits: DocxEdit[], option
       content = elements.map((element) => revisions.markBlock(element, "ins"));
     }
     contentFor.set(plan, content);
-    warnings.push(...contentWarnings(plan.edit.markdown, counting.source, counting.missed));
+    warnings.push(...contentWarnings(plan.edit.markdown, counting.source, counting.missed, counting.undrawn));
   }
   for (const plan of [...planned].sort((a, b) => b.from - a.from || b.order - a.order)) {
     const taken = children.slice(plan.from, plan.to);

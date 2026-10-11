@@ -11,6 +11,9 @@
  * A diagram that does not parse, does not finish in time, or cannot be drawn is an
  * error, never a blank picture: the caller decides what the document does about it.
  */
+import { existsSync } from "node:fs";
+import { createRequire } from "node:module";
+import { fileURLToPath } from "node:url";
 import { Worker } from "node:worker_threads";
 import type { DiagramImage } from "@pi-outpost/shared/docx";
 import type { MermaidReply, MermaidRequest } from "./mermaidWorker.ts";
@@ -34,6 +37,38 @@ export const MAX_MERMAID_CHARS = 50_000;
  */
 export const DEFAULT_MERMAID_FONT = '"DejaVu Sans", Helvetica, Arial, sans-serif';
 
+/** The worker's module when running from source; a bundle passes its own (`MermaidRendererOptions.workerUrl`). */
+export function defaultMermaidWorkerUrl(): URL {
+  return new URL("./mermaidWorker.ts", import.meta.url);
+}
+
+/** What the worker loads that cannot be bundled: two native packages and jsdom. */
+const RUNTIME_PACKAGES = ["jsdom", "@napi-rs/canvas", "@resvg/resvg-js"];
+
+/**
+ * Why Mermaid cannot be drawn by this installation, or `undefined` when it can.
+ *
+ * Not every build carries the renderer: the single-file executable has no worker file
+ * to start, and an install may lack a native package. A caller asks first and keeps
+ * its behaviour without diagrams, rather than failing every diagram one by one.
+ */
+export function mermaidUnavailable(workerUrl: URL = defaultMermaidWorkerUrl()): string | undefined {
+  try {
+    if (workerUrl.protocol === "file:" && !existsSync(fileURLToPath(workerUrl))) return "this installation does not include the diagram renderer";
+    const resolve = createRequire(workerUrl);
+    for (const name of RUNTIME_PACKAGES) {
+      try {
+        resolve.resolve(name);
+      } catch {
+        return `${name} is not installed`;
+      }
+    }
+    return undefined;
+  } catch (error) {
+    return error instanceof Error ? error.message : String(error);
+  }
+}
+
 export interface MermaidRendererOptions {
   /** The worker's module. The default suits running from source; a bundle passes its own. */
   workerUrl?: URL;
@@ -48,7 +83,7 @@ export interface MermaidRenderer {
 }
 
 export function createMermaidRenderer(options: MermaidRendererOptions = {}): MermaidRenderer {
-  const workerUrl = options.workerUrl ?? new URL("./mermaidWorker.ts", import.meta.url);
+  const workerUrl = options.workerUrl ?? defaultMermaidWorkerUrl();
   const font = options.font ?? DEFAULT_MERMAID_FONT;
   const timeoutMs = options.timeoutMs ?? 20_000;
   let worker: Worker | undefined;

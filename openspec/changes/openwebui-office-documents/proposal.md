@@ -43,7 +43,8 @@ cost is moving those builders where the tool server can use them, and handing th
   - an administrator may mount a folder of `.dotx`/`.docx`/`.potx`/`.pptx` templates
     (`OUTPOST_TEMPLATES_DIR`). The model names one by its file name, never by a path.
 - **The builders move to a workspace package** (`@pi-outpost/office`), which pi-outpost's server and the
-  Open WebUI server both import. pi-outpost's tools behave exactly as before.
+  Open WebUI server both import. pi-outpost's tools behave as before, except that `docx_create` and
+  `docx_update` now draw Mermaid fences too (asked for once the Open WebUI side was checked in Word).
 
 **Out of scope, for later changes:**
 - changing a document the user uploaded (`docx_update`, `pptx_update`): the tool server never sees the
@@ -65,6 +66,9 @@ cost is moving those builders where the tool server can use them, and handing th
 
 - `openwebui-planning-server`: its OpenAPI description declares the three document tools beside the
   planning and structure tools (`ToolsAreDescribedForOpenWebUI`), each with a complete example.
+- `docx-templates`: pi-outpost's own `docx_create` and `docx_update` draw Mermaid fences with the same
+  renderer (`MermaidDiagramsAreDrawnInWordDocuments`), since the builders and the picture code are
+  shared; until now they wrote the source.
 
 `docx-templates`, `pptx-presentations` and the structured-exchange contract are reused unchanged;
 moving the builders into a package is not a behaviour change, and pi-outpost's existing tests guard it.
