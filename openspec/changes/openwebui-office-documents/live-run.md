@@ -64,6 +64,18 @@ it now goes below the bullets, across the width, when that draws it larger
 The user's real target model is **Gemma 4**, not available here: Codestral is a stand-in, and the
 tools were not tuned further to it.
 
+## Changing a deck written earlier
+
+The user asked, in the same conversation, to add a slide to the architecture deck. Codestral called
+`create_presentation` with only the new slide and said the presentation was updated: the user got a
+one-slide deck. The tools write a whole new file each time and keep nothing; the model still has its
+earlier call's slides. The descriptions now say so, and that a change means calling again with all
+the slides (or the whole Markdown) and the same file name.
+
+Proposed, not done (a design change): keep each user's last file for a while and offer
+`update_presentation` / `update_document` that take only the change, on pi-outpost's `pptx_update`
+and `docx_update`. Sturdier for a weak model, at the cost of storing files.
+
 ## Open: a picture given as a web address
 
 The specification refuses the call so the model can correct it; Codestral answers the user instead

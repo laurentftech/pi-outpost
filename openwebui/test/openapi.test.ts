@@ -99,3 +99,12 @@ test("no description offers a copyable placeholder id, and show_planning waits f
   assert.doesNotMatch(text, /pl_…|pl_\\u2026/, "a model copied `pl_…` as an id");
   assert.match(document.paths["/create_planning"].post.description, /once this call has answered[\s\S]*never in the same step/);
 });
+
+test("the document tools say a change means writing the whole file again", async (t) => {
+  const { document } = await published(t);
+  const description = (tool: string) => (document.paths as Record<string, { post: { description: string } }>)[`/${tool}`]!.post.description;
+  // Codestral, asked to add a slide, sent only the new one, and called the one-slide deck "updated".
+  assert.match(description("create_presentation"), /ALL the slides/);
+  assert.match(description("create_presentation"), /never only the new slide/);
+  assert.match(description("create_document"), /WHOLE content/);
+});

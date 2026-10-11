@@ -58,6 +58,7 @@ export const PRESENTATION_EXAMPLE = {
 
 export const CREATE_DOCUMENT_DESCRIPTION = [
   "Write a Word document (.docx) the user downloads from the chat. Use it when the user asks for a report, a document, a memo or a Word file.",
+  "Each call writes one whole new file; it cannot change a file written earlier. To change or extend a document you wrote earlier in this conversation, call create_document again with the WHOLE content (the earlier markdown with the changes made) and the same file_name: never only the part that changed.",
   "Write the user's own content; when they leave a part unspecified, ask or write it from the conversation, never from the example below.",
   "Give the whole content in `markdown`: headings (#, ##, ###), paragraphs, **bold**, *italic*, lists, tables, links, block quotes, code and LaTeX equations are written in the template's own styles.",
   "Diagrams: write a Mermaid diagram as a ```mermaid fence, or a structured-exchange document (graph, sequence, timeline, table) as a ```json fence, exactly as you would in a reply; each is drawn as a picture in its place.",
@@ -70,6 +71,7 @@ export const CREATE_DOCUMENT_DESCRIPTION = [
 
 export const CREATE_PRESENTATION_DESCRIPTION = [
   "Write a PowerPoint deck (.pptx) the user downloads from the chat. Use it when the user asks for slides, a deck, a presentation or a PowerPoint file.",
+  "Each call writes one whole new file; it cannot change a file written earlier. To add, change or remove slides of a deck you wrote earlier in this conversation, call create_presentation again with ALL the slides (the earlier ones, changed or not, and the new ones, in order) and the same file_name: never only the new slide.",
   "Write the user's own content; when they leave a slide's content unspecified, ask or write it from the conversation, never from the example below.",
   "Give `slides` in order. Each slide may have a `title`, a `subtitle`, `bullets`, and at most ONE of: `table` (rows of texts, the first row the header), `chart` (column, bar, line or pie), `mermaid` (a Mermaid diagram's source), `diagram` (a structured-exchange document) or `image` ({\"data\": \"data:image/png;base64,...\", \"alt\": \"...\"}).",
   "The first slide with only a title and subtitle becomes the title slide. Put each visual on a slide of its own.",
