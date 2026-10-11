@@ -3,6 +3,7 @@ import { act, fireEvent, render, screen, waitFor, within } from "@testing-librar
 import type { ChatItem, TurnUsage } from "@pi-outpost/shared";
 import App from "./App";
 import { UploadError } from "./uploads";
+import { typeInEditor } from "./components/codeEditorTesting";
 
 // Mock useAgent to return a controlled state without WebSocket dependency
 const mockUseAgent = vi.fn();
@@ -849,7 +850,8 @@ describe("App — attachments", () => {
 
   it("closes the viewer on send, since the user wants the conversation back", () => {
     const { api } = mount({ openFile: { status: "loaded", path: "src/main.ts", content: "x", size: 1, mtimeMs: 1 } });
-    const box = screen.getByRole("textbox");
+    // The composer: the viewer's read-only source is a (read-only) textbox too.
+    const box = screen.getAllByRole("textbox").at(-1)!;
     fireEvent.change(box, { target: { value: "carry on" } });
     fireEvent.keyDown(box, { key: "Enter" });
     expect(api.closeFilePreview).toHaveBeenCalled();
@@ -861,7 +863,7 @@ describe("App — attachments", () => {
       sandbox: { root: "/w", allowWrite: true, allowBash: false },
     });
     fireEvent.click(screen.getByRole("button", { name: "✎ edit" }));
-    fireEvent.change(screen.getAllByRole("textbox")[0], { target: { value: "edited" } });
+    typeInEditor("edited");
 
     const composer = screen.getAllByRole("textbox").at(-1)!;
     fireEvent.change(composer, { target: { value: "carry on" } });

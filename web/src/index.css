@@ -171,6 +171,124 @@ body,
   @apply font-bold;
 }
 
+/* The file editor (CodeMirror 6): its chrome, and its tokens (classHighlighter's
+   tok-* classes) on the same palette as the read-only view above */
+.code-editor .cm-editor {
+  @apply h-full bg-transparent font-mono text-[13px] text-zinc-800 dark:text-zinc-200;
+}
+.code-editor .cm-editor.cm-focused {
+  @apply outline-none;
+}
+.code-editor .cm-scroller {
+  @apply font-mono leading-relaxed;
+}
+.code-editor .cm-content {
+  @apply py-3;
+  caret-color: currentColor;
+}
+.code-editor .cm-cursor,
+.code-editor .cm-dropCursor {
+  @apply border-l-zinc-800 dark:border-l-zinc-200;
+}
+.code-editor .cm-gutters {
+  @apply border-r border-zinc-200 bg-zinc-50 text-zinc-400 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-600;
+}
+.code-editor .cm-activeLine {
+  @apply bg-zinc-100/60 dark:bg-zinc-800/40;
+}
+.code-editor .cm-activeLineGutter {
+  @apply bg-zinc-200/60 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300;
+}
+.code-editor .cm-selectionBackground,
+.code-editor .cm-content ::selection {
+  @apply !bg-sky-200/70 dark:!bg-sky-900/70;
+}
+.code-editor .cm-focused .cm-selectionBackground {
+  @apply !bg-sky-300/70 dark:!bg-sky-800/80;
+}
+.code-editor .cm-selectionMatch {
+  @apply bg-amber-200/50 dark:bg-amber-900/40;
+}
+.code-editor .cm-matchingBracket {
+  @apply rounded-sm bg-emerald-200/70 outline outline-1 outline-emerald-500/60 dark:bg-emerald-900/60;
+}
+.code-editor .cm-nonmatchingBracket {
+  @apply bg-red-200/70 dark:bg-red-900/60;
+}
+.code-editor .cm-foldPlaceholder {
+  @apply border-zinc-300 bg-zinc-100 text-zinc-500 dark:border-zinc-700 dark:bg-zinc-800;
+}
+.code-editor .cm-tooltip {
+  @apply rounded border border-zinc-200 bg-white text-zinc-800 shadow dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200;
+}
+.code-editor .cm-tooltip-autocomplete ul li[aria-selected] {
+  @apply bg-sky-100 text-zinc-900 dark:bg-sky-900 dark:text-zinc-100;
+}
+.tok-comment {
+  @apply italic text-zinc-500;
+}
+.tok-keyword,
+.tok-bool,
+.tok-null,
+.tok-self,
+.tok-typeName,
+.tok-modifier,
+.tok-operatorKeyword,
+.tok-controlKeyword,
+.tok-definitionKeyword,
+.tok-moduleKeyword {
+  @apply text-indigo-600 dark:text-indigo-400;
+}
+.tok-string,
+.tok-string2,
+.tok-regexp,
+.tok-inserted {
+  @apply text-emerald-700 dark:text-emerald-400;
+}
+.tok-number,
+.tok-atom,
+.tok-literal {
+  @apply text-amber-700 dark:text-amber-400;
+}
+.tok-heading,
+.tok-className,
+.tok-function,
+.tok-variableName.tok-definition {
+  @apply text-sky-700 dark:text-sky-400;
+}
+.tok-heading {
+  @apply font-semibold;
+}
+.tok-propertyName,
+.tok-attributeName,
+.tok-labelName {
+  @apply text-teal-700 dark:text-teal-300;
+}
+.tok-tagName,
+.tok-angleBracket {
+  @apply text-rose-700 dark:text-rose-400;
+}
+.tok-meta,
+.tok-link,
+.tok-url,
+.tok-macroName,
+.tok-namespace {
+  @apply text-violet-700 dark:text-violet-400;
+}
+.tok-deleted,
+.tok-invalid {
+  @apply text-red-700 dark:text-red-400;
+}
+.tok-emphasis {
+  @apply italic;
+}
+.tok-strong {
+  @apply font-bold;
+}
+.tok-strikethrough {
+  @apply line-through;
+}
+
 /* PDF text layer — invisible, selectable text positioned over the rendered canvas.
    The subset of pdf.js's viewer stylesheet that the TextLayer actually needs: it
    emits spans carrying --font-height/--scale-x/--rotate and expects

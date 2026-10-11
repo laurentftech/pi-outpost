@@ -10,6 +10,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { FileViewer } from "./FileViewer";
 import type { OpenFile } from "../useAgent";
+import { editorText, typeInEditor } from "./codeEditorTesting";
 
 type ExportCall = { text: string; path: string; options?: { serverUrl?: string; token?: string | null } };
 
@@ -163,7 +164,7 @@ describe("what the export carries", () => {
     // that no longer exists in this session.
     setup();
     fireEvent.click(screen.getByRole("button", { name: /edit/ }));
-    fireEvent.change(screen.getByRole("textbox"), { target: { value: "# Edited\n\nNew body.\n" } });
+    typeInEditor("# Edited\n\nNew body.\n");
 
     fireEvent.click(exportButton()!);
 
@@ -174,7 +175,7 @@ describe("what the export carries", () => {
   it("leaves the viewer exactly as it was", async () => {
     const { onSave, onClose } = setup();
     fireEvent.click(screen.getByRole("button", { name: /edit/ }));
-    fireEvent.change(screen.getByRole("textbox"), { target: { value: "# Edited\n" } });
+    typeInEditor("# Edited\n");
 
     fireEvent.click(exportButton()!);
     await waitFor(() => expect(exported.calls).toHaveLength(1));
@@ -183,7 +184,7 @@ describe("what the export carries", () => {
     // unsaved marker showing.
     expect(onSave).not.toHaveBeenCalled();
     expect(onClose).not.toHaveBeenCalled();
-    expect(screen.getByRole("textbox")).toHaveValue("# Edited\n");
+    expect(editorText()).toBe("# Edited\n");
   });
 });
 

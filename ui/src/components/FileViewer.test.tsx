@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { FileViewer } from "./FileViewer";
 import type { GitDiffState, OpenFile } from "../useAgent";
+import { editorElement, editorText, typeInEditor } from "./codeEditorTesting";
 
 function loaded(overrides: Partial<Extract<OpenFile, { status: "loaded" }>> = {}): OpenFile {
   return { status: "loaded", path: "src/main.ts", content: "const a = 1;\n", size: 13, mtimeMs: 1000, ...overrides };
@@ -39,7 +40,7 @@ const queryButton = (name: string | RegExp) => screen.queryByRole("button", { na
 /** Enter edit mode and type, which is the precondition for most guards below. */
 function edit(text: string) {
   fireEvent.click(button("✎ edit"));
-  fireEvent.change(screen.getByRole("textbox"), { target: { value: text } });
+  typeInEditor(text);
 }
 
 describe("FileViewer", () => {
@@ -141,14 +142,14 @@ describe("FileViewer", () => {
     it("saves on the keyboard shortcut", () => {
       const { onSave } = setup();
       edit("const a = 2;\n");
-      fireEvent.keyDown(screen.getByRole("textbox"), { key: "s", metaKey: true });
+      fireEvent.keyDown(editorElement()!, { key: "s", metaKey: true });
       expect(onSave).toHaveBeenCalledTimes(1);
     });
 
     it("ignores the shortcut when there is nothing to save", () => {
       const { onSave } = setup();
       fireEvent.click(button("✎ edit"));
-      fireEvent.keyDown(screen.getByRole("textbox"), { key: "s", ctrlKey: true });
+      fireEvent.keyDown(editorElement()!, { key: "s", ctrlKey: true });
       expect(onSave).not.toHaveBeenCalled();
     });
 
@@ -169,7 +170,7 @@ describe("FileViewer", () => {
       edit("changed\n");
       fireEvent.click(button("cancel"));
       expect(confirmSpy).toHaveBeenCalled();
-      expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
+      expect(editorElement()).toBeNull();
     });
 
     it("keeps the draft when the discard prompt is declined", () => {
@@ -177,15 +178,15 @@ describe("FileViewer", () => {
       setup();
       edit("changed\n");
       fireEvent.click(button("cancel"));
-      expect(screen.getByRole("textbox")).toHaveValue("changed\n");
+      expect(editorText()).toBe("changed\n");
     });
 
     it("leaves a clean draft without asking", () => {
       setup();
       fireEvent.click(button("✎ edit"));
-      fireEvent.click(button("cancel"));
+      fireEvent.click(button("done"));
       expect(confirmSpy).not.toHaveBeenCalled();
-      expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
+      expect(editorElement()).toBeNull();
     });
 
     it("shows the save in flight and blocks a second submit", () => {
@@ -195,27 +196,37 @@ describe("FileViewer", () => {
       const saveButton = button("saving…");
       expect(saveButton).toBeDisabled();
       onSave.mockClear();
-      fireEvent.keyDown(screen.getByRole("textbox"), { key: "s", metaKey: true });
+      fireEvent.keyDown(editorElement()!, { key: "s", metaKey: true });
       expect(onSave).not.toHaveBeenCalled();
     });
 
-    it("leaves edit mode once the save lands", () => {
-      const { rerenderWith } = setup();
+    it("stays in the editor once a Ctrl+S save lands, clean, and done leaves without asking", () => {
+      const { rerenderWith, onSave } = setup();
       edit("const a = 2;\n");
-      fireEvent.click(button("save"));
+      fireEvent.keyDown(editorElement()!, { key: "s", ctrlKey: true });
+      expect(onSave).toHaveBeenCalledWith("src/main.ts", "const a = 2;\n", 1000, false);
       // The write is acknowledged: new content, new mtime
       rerenderWith({ file: loaded({ content: "const a = 2;\n", mtimeMs: 2000 }) });
-      expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
+      expect(editorText()).toBe("const a = 2;\n");
+      expect(button("save")).toBeDisabled();
+      // A second edit and save carries the new baseline, not the first one.
+      typeInEditor("const a = 3;\n");
+      fireEvent.keyDown(editorElement()!, { key: "s", ctrlKey: true });
+      expect(onSave).toHaveBeenLastCalledWith("src/main.ts", "const a = 3;\n", 2000, false);
+      rerenderWith({ file: loaded({ content: "const a = 3;\n", mtimeMs: 3000 }) });
+      fireEvent.click(button("done"));
+      expect(confirmSpy).not.toHaveBeenCalled();
+      expect(editorElement()).toBeNull();
     });
 
     it("keeps typing that happened during the round-trip", () => {
       const { rerenderWith } = setup();
       edit("const a = 2;\n");
       fireEvent.click(button("save"));
-      fireEvent.change(screen.getByRole("textbox"), { target: { value: "const a = 3;\n" } });
+      typeInEditor("const a = 3;\n");
       rerenderWith({ file: loaded({ content: "const a = 2;\n", mtimeMs: 2000 }) });
       // Still editing, and the newer draft survived the acknowledgement
-      expect(screen.getByRole("textbox")).toHaveValue("const a = 3;\n");
+      expect(editorText()).toBe("const a = 3;\n");
     });
 
     it("shows a save failure that is not a conflict", () => {
@@ -241,7 +252,7 @@ describe("FileViewer", () => {
       rerenderWith({ file: loaded({ mtimeMs: 5000 }) });
       fireEvent.click(button(/reload/));
       expect(onReload).toHaveBeenCalledWith("src/main.ts");
-      expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
+      expect(editorElement()).toBeNull();
     });
 
     it("offers to overwrite, forcing past the mtime check", () => {
@@ -410,7 +421,7 @@ describe("a file that moved underneath the viewer", () => {
 
     rerenderWith({ file: loaded({ content: "changed by someone else\n", mtimeMs: 2000 }) });
 
-    expect(screen.getByRole("textbox")).toHaveValue("my unsaved work\n");
+    expect(editorText()).toBe("my unsaved work\n");
   });
 
   it("says so, rather than silently resolving it, once the bytes have moved", () => {
