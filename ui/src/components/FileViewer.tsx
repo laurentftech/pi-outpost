@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import rehypeKatex from "rehype-katex";
 import remarkGfm from "remark-gfm";
@@ -238,10 +238,11 @@ export function FileViewer({
   const roomForTwo = useRoomForTwo();
   // A PDF is never editable here: this viewer edits text, and there is no text.
   const writable = isWritable(file.path, writableRoot) && !pdf;
-  // A file the reader may edit: fetch the editor now, so it is there when asked for.
+  // A text file shows its source in the editor, read or edited: fetch it now.
+  const hasText = loaded !== null && !image && !pdf;
   useEffect(() => {
-    if (writable) void preloadCodeEditor().catch(() => {});
-  }, [writable]);
+    if (hasText) void preloadCodeEditor().catch(() => {});
+  }, [hasText]);
   const dirty = edit !== null && edit.draft !== edit.baseContent;
   const saving = loaded?.pendingSave !== undefined;
   // The reducer refetches on file_changed, so a foreign write shows up as a new mtime
@@ -337,14 +338,17 @@ export function FileViewer({
    * not offered find in this version — a file with neither text nor a PDF's
    * bytes yet (still loading, or an image) has nothing to search either.
    */
-  type FindMode = "pdf" | "edit" | "dom" | "none";
+  type FindMode = "pdf" | "text" | "dom" | "none";
+  const editing = edit !== null;
+  // The source shown read-only, in the same editor as editing (CodeMirror).
+  const showingSource = loaded !== null && edit === null && !splitting && !showGitDiff && (!markdown || showRaw) && (!diagram || showRaw) && (!html || showRaw);
   const findMode: FindMode =
     showGitDiff || splitting
       ? "none"
       : pdf
         ? "pdf"
-        : edit !== null
-          ? "edit"
+        : edit !== null || showingSource
+          ? "text"
           : loaded !== null && !image
             ? "dom"
             : "none";
@@ -376,7 +380,8 @@ export function FileViewer({
    * navigation has to act on what is true now, not on what the render that
    * created the click handler happened to see. */
   const currentDomMatchRef = useRef(0);
-  /** The query the marks in the DOM were built from, so a rebuild can tell
+  /** The query the current matches were found for — by the rendered view's marks or by
+   * the editor's — so a rebuild can tell
    * "the reader typed something else" (start again at the first match) from
    * "the content underneath was re-rendered" (stay where the reader was). */
   const domQueryRef = useRef("");
@@ -400,8 +405,8 @@ export function FileViewer({
   // than leaving a stale highlight, or a stale PDF match, sitting on screen
   // after the bar that showed it has closed).
   const effectiveFindQuery = findOpen ? findQuery : "";
-  const editMatches = useMemo(
-    () => (findMode === "edit" ? findMatchesInText(editedText, effectiveFindQuery) : []),
+  const textMatches = useMemo(
+    () => (findMode === "text" ? findMatchesInText(editedText, effectiveFindQuery) : []),
     [findMode, editedText, effectiveFindQuery],
   );
 
@@ -412,27 +417,12 @@ export function FileViewer({
     if (findOpen && findMode === "none") setFindOpen(false);
   }, [findOpen, findMode]);
 
-  // Bumped by CodeHighlight's `onRendered` once its async syntax highlighting
-  // actually lands, replacing whatever was in its `<pre>` (the plain-text
-  // fallback, or a previous highlight's marks) with new DOM. That swap must
-  // re-run the effect below, or a highlight applied to the fallback vanishes
-  // the moment the real markup arrives. `onRendered` only means anything as
-  // an "actually changed" signal because CodeHighlight is memoized (see its
-  // own comment) — without that, this effect would need to reapply the
-  // highlight after *any* unrelated re-render of the viewer, since React
-  // resets a `dangerouslySetInnerHTML` element's real DOM on every render of
-  // the component that owns it, not only when the HTML string changes.
-  const [codeRenderTick, setCodeRenderTick] = useState(0);
-  const bumpCodeRenderTick = useCallback(() => setCodeRenderTick((tick) => tick + 1), []);
-
   /**
-   * Marks every occurrence in whatever is currently mounted at `contentRef` —
-   * the rendered Markdown or the highlighted source, never both, since they
-   * are mutually exclusive views.
+   * Marks every occurrence in whatever rendering is mounted at `contentRef` —
+   * the rendered Markdown or a diagram's text. (The source, read or edited, is
+   * searched by the editor instead: see `findMode`.)
    *
-   * Re-applied whenever the query changes, the view mode changes, or
-   * `codeRenderTick` says the mounted content was just replaced out from
-   * under it. Deliberately *not* driven by a `MutationObserver` on
+   * Re-applied whenever the query or the view mode changes. Deliberately *not* driven by a `MutationObserver` on
    * `contentRef`: this effect's own `highlightMatches`/`clear()` calls mutate
    * that same container, and no amount of disconnecting or ignore-flagging
    * around those calls proved reliable — a live run still produced a
@@ -440,10 +430,9 @@ export function FileViewer({
    * (the browser is free to split one synchronous batch of mutations across
    * more than one callback invocation, and only some of the ways of guarding
    * against that were tried before this was rewritten to not need it at
-   * all). Depending on an explicit, React-owned signal instead — a counter
-   * only `onRendered` increments — means this effect only ever reacts to a
-   * change *it did not cause itself*, which a DOM observer watching a
-   * container this same effect writes to cannot promise.
+   * all). Depending on React-owned state instead means this effect only ever
+   * reacts to a change *it did not cause itself*, which a DOM observer
+   * watching a container this same effect writes to cannot promise.
    */
   useEffect(() => {
     function clear() {
@@ -484,32 +473,43 @@ export function FileViewer({
 
     return clear;
     // eslint-disable-next-line react-hooks/exhaustive-deps -- `mode`/`showRaw`
-    // decide which element is mounted at contentRef; `codeRenderTick` is the
-    // signal that its content was just replaced (see above) — everything
-    // else about what changed inside it is irrelevant to this effect.
-  }, [findMode, effectiveFindQuery, mode, showRaw, codeRenderTick]);
+    // decide which element is mounted at contentRef — everything else about
+    // what changed inside it is irrelevant to this effect.
+  }, [findMode, effectiveFindQuery, mode, showRaw]);
 
-  /** Indicates the match by selection, per the edit-mode requirement — the
-   * editor's selection is the match actually shown; the count above it stays
-   * accurate regardless. The editor scrolls it into view without taking focus,
-   * so Enter/Shift+Enter in the find field keep working. */
-  function selectEditMatch(matches: { start: number; end: number }[], index: number) {
+  /** Selects the current match in the editor (edited or read-only) and scrolls
+   * it into view without taking focus, so Enter/Shift+Enter in the find field
+   * keep working. Every match is marked by the effect below. */
+  function selectTextMatch(matches: { start: number; end: number }[], index: number) {
     const match = matches[index];
     if (match === undefined) return;
     editorRef.current?.select(match.start, match.end);
   }
 
-  // Jumps to (and selects) the first match when the query changes — but not
-  // on every keystroke typed into the document itself: editMatches recomputes
-  // for those too, and reselecting in the editor on each one would fight typing.
+  // Jumps to (and selects) the first match when the query changes, and back to
+  // the reader's match when the view changes under the same query (rendered to
+  // source, reading to editing) — but not on every keystroke typed into the
+  // document itself: textMatches recomputes for those too, and reselecting in
+  // the editor on each one would fight typing.
   useEffect(() => {
-    if (findMode !== "edit" || !findOpen) return;
+    if (findMode !== "text" || !findOpen) return;
     const matches = findMatchesInText(editedText, effectiveFindQuery);
-    setFindCurrent(0);
-    if (matches.length > 0) selectEditMatch(matches, 0);
+    // The same memory as the rendered view's: a switch between them is not a new query.
+    const queryChanged = effectiveFindQuery !== domQueryRef.current;
+    domQueryRef.current = effectiveFindQuery;
+    const current = queryChanged ? 0 : Math.min(findCurrent, Math.max(matches.length - 1, 0));
+    setFindCurrent(current);
+    if (matches.length > 0) selectTextMatch(matches, current);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- reruns on the
-    // query (or entering edit mode with one already set), not on the buffer.
-  }, [effectiveFindQuery, findMode, findOpen]);
+    // query or the view (entering edit mode included), not on the buffer.
+  }, [effectiveFindQuery, findMode, findOpen, editing]);
+
+  // Every match marked in the editor, the current one apart — as typing or
+  // stepping changes them; cleared with the find bar.
+  useEffect(() => {
+    editorRef.current?.markMatches(findMode === "text" ? textMatches : [], findCurrent);
+    // `editing`: reading and editing are two editors; the one just mounted has no marks yet.
+  }, [findMode, textMatches, findCurrent, editing]);
 
   function openFind() {
     setFindOpen(true);
@@ -522,11 +522,11 @@ export function FileViewer({
   function findNext() {
     if (findMode === "pdf") {
       pdfViewerRef.current?.findNext();
-    } else if (findMode === "edit") {
-      if (editMatches.length === 0) return;
-      const next = (findCurrent + 1) % editMatches.length;
+    } else if (findMode === "text") {
+      if (textMatches.length === 0) return;
+      const next = (findCurrent + 1) % textMatches.length;
       setFindCurrent(next);
-      selectEditMatch(editMatches, next);
+      selectTextMatch(textMatches, next);
     } else {
       // From the refs, not the render's state: a rebuild in flight (late
       // syntax highlighting) can leave the state this handler closed over
@@ -542,11 +542,11 @@ export function FileViewer({
   function findPrevious() {
     if (findMode === "pdf") {
       pdfViewerRef.current?.findPrevious();
-    } else if (findMode === "edit") {
-      if (editMatches.length === 0) return;
-      const next = (findCurrent - 1 + editMatches.length) % editMatches.length;
+    } else if (findMode === "text") {
+      if (textMatches.length === 0) return;
+      const next = (findCurrent - 1 + textMatches.length) % textMatches.length;
       setFindCurrent(next);
-      selectEditMatch(editMatches, next);
+      selectTextMatch(textMatches, next);
     } else {
       const total = domMatchesRef.current.length;
       if (total === 0) return;
@@ -559,10 +559,10 @@ export function FileViewer({
   const findBarState =
     findMode === "pdf"
       ? { matchCount: pdfFindState.matchCount, currentIndex: pdfFindState.currentIndex, truncated: false, searching: pdfFindState.searching }
-      : findMode === "edit"
+      : findMode === "text"
         ? {
-            matchCount: editMatches.length,
-            currentIndex: editMatches.length > 0 ? Math.min(findCurrent, editMatches.length - 1) : -1,
+            matchCount: textMatches.length,
+            currentIndex: textMatches.length > 0 ? Math.min(findCurrent, textMatches.length - 1) : -1,
             truncated: false,
             searching: false,
           }
@@ -582,7 +582,9 @@ export function FileViewer({
    */
   const editor =
     edit === null ? null : (
-      <Suspense fallback={<div className="p-4 text-sm text-zinc-400 dark:text-zinc-600">loading editor…</div>}>
+      // Keyed apart from the read-only source view, which can sit in the same place
+      // (the split's left pane): the editor's mode is fixed when it is created.
+      <Suspense key="editor" fallback={<div className="p-4 text-sm text-zinc-400 dark:text-zinc-600">loading editor…</div>}>
         <LazyCodeEditor
           handle={editorRef}
           path={file.path}
@@ -594,6 +596,27 @@ export function FileViewer({
         />
       </Suspense>
     );
+
+  /**
+   * The file's source, read-only, in the same editor as editing — numbers, colours,
+   * folding — with highlight.js drawing it while the editor's code loads. `findable`:
+   * the one the find bar searches (not the split's left pane, which find skips).
+   */
+  function sourceView(findable: boolean) {
+    if (loaded === null) return null;
+    return (
+      <Suspense
+        key="source"
+        fallback={
+          <div className="p-4">
+            <CodeHighlight code={loaded.content} path={file.path} />
+          </div>
+        }
+      >
+        <LazyCodeEditor readOnly handle={findable ? editorRef : undefined} path={file.path} value={loaded.content} />
+      </Suspense>
+    );
+  }
 
   /**
    * The Markdown rendering, named once.
@@ -1006,13 +1029,9 @@ export function FileViewer({
                 diagram out of view, and a wide diagram must not widen the editor.
                 min-w-0 is what stops a wide child from pushing its half open. */}
             <div className="min-w-0 flex-1 overflow-auto border-r border-zinc-200 dark:border-zinc-800">
-              {editor ?? (
-                // Outside the writable zone there is nothing to type into, and the
-                // document still deserves to be read beside its picture.
-                <div className="p-4">
-                  <CodeHighlight code={loaded.content} path={file.path} />
-                </div>
-              )}
+              {/* Outside the writable zone there is nothing to type into, and the
+                  document still deserves to be read beside its picture. */}
+              {editor ?? sourceView(false)}
             </div>
             <div className="min-w-0 flex-1 overflow-auto" data-testid="file-split-rendering">
               {markdown && !recognised ? (
@@ -1112,11 +1131,7 @@ export function FileViewer({
             render. Shown as text.
           </div>
         )}
-        {loaded && edit === null && !splitting && !showGitDiff && (!markdown || showRaw) && (!diagram || showRaw) && (!html || showRaw) && (
-          <div ref={contentRef} className="p-4">
-            <CodeHighlight code={loaded.content} path={file.path} onRendered={bumpCodeRenderTick} />
-          </div>
-        )}
+        {showingSource && sourceView(true)}
       </div>
 
       {agentActivity !== "idle" && (

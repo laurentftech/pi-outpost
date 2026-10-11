@@ -4,7 +4,7 @@ import { forwardRef, useImperativeHandle } from "react";
 import { FileViewer } from "./FileViewer";
 import type { GitDiffState, OpenFile } from "../useAgent";
 import type { PdfFindState, PdfViewerHandle } from "./PdfViewer";
-import { editorSelection, editorText, typeInEditor } from "./codeEditorTesting";
+import { editorSelection, editorText, sourceElement, sourceSelection, typeInEditor } from "./codeEditorTesting";
 
 const pdfFindNext = vi.fn();
 const pdfFindPrevious = vi.fn();
@@ -144,30 +144,34 @@ describe("FileViewer find-in-page", () => {
     });
   });
 
-  describe("dom-mode search (source and rendered views)", () => {
-    it("marks every match and distinguishes the current one", async () => {
+  describe("search in the source, read or edited (the editor marks it)", () => {
+    it("marks every match in the source and distinguishes the current one", async () => {
       setup({ file: loadedFile({ content: "const fox = 1;\nconst fox2 = fox;\n" }) });
       ctrlF();
 
       typeQuery("fox");
 
       await waitFor(() => expect(screen.getByText("1/3")).toBeInTheDocument());
-      const marks = document.querySelectorAll("mark.find-match");
-      expect(marks).toHaveLength(3);
-      expect(document.querySelectorAll("mark.find-match-current")).toHaveLength(1);
+      const source = screen.getByTestId("file-source");
+      expect(source.querySelectorAll(".find-match, .find-match-current")).toHaveLength(3);
+      expect(source.querySelectorAll(".find-match-current")).toHaveLength(1);
+      expect(source.querySelector(".find-match-current")!.textContent).toBe("fox");
+      // The source view is the editor read-only: nothing to type into.
+      expect(sourceElement()).toHaveAttribute("contenteditable", "false");
     });
 
-    it("scrolls the current match into view when navigating", async () => {
+    it("moves the current match, and the selection with it, when navigating", async () => {
       setup({ file: loadedFile({ content: "fox fox fox" }) });
       ctrlF();
       typeQuery("fox");
       await waitFor(() => expect(screen.getByText("1/3")).toBeInTheDocument());
-      (Element.prototype.scrollIntoView as ReturnType<typeof vi.fn>).mockClear();
 
       fireEvent.click(screen.getByLabelText("Next match"));
 
       await waitFor(() => expect(screen.getByText("2/3")).toBeInTheDocument());
-      expect(Element.prototype.scrollIntoView).toHaveBeenCalled();
+      expect(sourceSelection()).toEqual({ from: 4, to: 7, text: "fox" });
+      const marks = Array.from(screen.getByTestId("file-source").querySelectorAll(".find-match, .find-match-current"));
+      expect(marks.map((mark) => mark.className.includes("find-match-current"))).toEqual([false, true, false]);
     });
 
     it("re-evaluates the query when switching from rendered to source view", async () => {
@@ -175,14 +179,13 @@ describe("FileViewer find-in-page", () => {
       ctrlF();
       typeQuery("fox");
       await waitFor(() => expect(screen.getByText("1/2")).toBeInTheDocument());
+      expect(document.querySelectorAll("mark.find-match, mark.find-match-current")).toHaveLength(2);
 
       fireEvent.click(screen.getByRole("button", { name: /source/ }));
 
-      // The count label reads "1/2" both before and after the switch (same
-      // query, same match count in this fixture) — waiting on it alone could
-      // pass without the source view ever actually being re-marked. Wait on
-      // the marks themselves instead.
-      await waitFor(() => expect(document.querySelectorAll("mark.find-match")).toHaveLength(2));
+      // Marked again, by the editor this time — the rendering's marks are gone with it.
+      await waitFor(() => expect(screen.getByTestId("file-source").querySelectorAll(".find-match, .find-match-current")).toHaveLength(2));
+      expect(document.querySelectorAll("mark.find-match")).toHaveLength(0);
       expect(screen.getByText("1/2")).toBeInTheDocument();
     });
 
@@ -197,18 +200,13 @@ describe("FileViewer find-in-page", () => {
 
       fireEvent.click(screen.getByRole("button", { name: /source/ }));
 
-      // One waitFor over the whole settled state: the source view mounts its
-      // own highlighter, which re-marks again when it finishes loading, so
-      // asserting between those two passes is asserting on a moment rather
-      // than on an outcome. FileViewer.findRerender.test.tsx drives that
-      // second pass deliberately instead of racing it.
-      await waitFor(() => {
-        expect(document.querySelectorAll("mark.find-match")).toHaveLength(3);
-        expect(document.querySelectorAll("mark.find-match-current")).toHaveLength(1);
-        expect(screen.getByText("3/3")).toBeInTheDocument();
-      });
+      await waitFor(() => expect(screen.getByText("3/3")).toBeInTheDocument());
+      expect(sourceSelection().from).toBe(8);
+      expect(screen.getByTestId("file-source").querySelector(".find-match-current")).not.toBeNull();
     });
+  });
 
+  describe("a query the file does not contain", () => {
     it("shows no matches, not an error, for a query the file does not contain", async () => {
       setup({ file: loadedFile({ content: "nothing interesting here" }) });
       ctrlF();
@@ -247,7 +245,7 @@ describe("FileViewer find-in-page", () => {
       expect(editorText()).toBe("one\r\ntwo\r\nfox");
     });
 
-    it("does not mark the other matches while editing — the selection is the match shown", async () => {
+    it("marks every match while editing too, the current one apart", async () => {
       setup({ file: loadedFile({ content: "one fox two fox" }), writableRoot: undefined });
       fireEvent.click(screen.getByRole("button", { name: "✎ edit" }));
       ctrlF();
@@ -255,7 +253,9 @@ describe("FileViewer find-in-page", () => {
       typeQuery("fox");
 
       await waitFor(() => expect(screen.getByText("1/2")).toBeInTheDocument());
-      expect(document.querySelectorAll("mark")).toHaveLength(0);
+      const editor = screen.getByTestId("file-editor");
+      expect(editor.querySelectorAll(".find-match, .find-match-current")).toHaveLength(2);
+      expect(editor.querySelectorAll(".find-match-current")).toHaveLength(1);
     });
 
     it("updates the match count as the buffer is edited, without moving the selection", async () => {

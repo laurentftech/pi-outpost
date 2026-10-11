@@ -850,7 +850,8 @@ describe("App — attachments", () => {
 
   it("closes the viewer on send, since the user wants the conversation back", () => {
     const { api } = mount({ openFile: { status: "loaded", path: "src/main.ts", content: "x", size: 1, mtimeMs: 1 } });
-    const box = screen.getByRole("textbox");
+    // The composer: the viewer's read-only source is a (read-only) textbox too.
+    const box = screen.getAllByRole("textbox").at(-1)!;
     fireEvent.change(box, { target: { value: "carry on" } });
     fireEvent.keyDown(box, { key: "Enter" });
     expect(api.closeFilePreview).toHaveBeenCalled();

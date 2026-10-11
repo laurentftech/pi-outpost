@@ -16,7 +16,9 @@ text coloured with the file's syntax as it is typed, brackets and quotes closed 
 and matching brackets shown, Tab typing the file's indentation unit at a bare cursor and indenting
 a selection, Shift+Tab outdenting, several cursors (the next occurrence of the selection added by
 Ctrl+D / Cmd+D), and an undo history. A file written with CRLF line endings SHALL be saved with
-CRLF line endings. Ctrl+S (Cmd+S) SHALL save. A successful save — by the shortcut or the
+CRLF line endings. A text file's source, whenever it is shown without being edited — the source
+view, and the side-by-side mode's left pane outside the writable zone — SHALL be shown in that
+same editor, read-only: the same line numbers, colours and folding, nothing to type into. Ctrl+S (Cmd+S) SHALL save. A successful save — by the shortcut or the
 save action — SHALL stay in the Edit mode with the saved text as the new baseline, keeping
 anything typed during the save round-trip; with nothing unsaved, the action that leaves the editor
 SHALL leave it without asking.
@@ -85,3 +87,7 @@ capability.
 - **GIVEN** a file whose lines end with CRLF
 - **WHEN** the user adds a line in the editor and saves
 - **THEN** every line of the saved file, the new one included, ends with CRLF
+
+#### Scenario: TheSourceIsReadInTheEditor
+- **WHEN** the user opens a source file without editing it
+- **THEN** it is shown in the editor's presentation — numbered lines, syntax colours — and typing changes nothing

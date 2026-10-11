@@ -122,3 +122,52 @@ test("ACrlfFileStaysCrlf: a CRLF file is saved with CRLF, the new line included"
   await page.keyboard.press("ControlOrMeta+s");
   await expect.poll(() => readFile(file, "utf8")).toBe("first\r\nsecond\r\nthird\r\n");
 });
+
+// openlore: scenario=TheSourceIsReadInTheEditor spec=file
+test("TheSourceIsReadInTheEditor: the source shows as the editor does, and typing changes nothing", async ({ page }) => {
+  const directory = path.join(process.env.PI_E2E_PRIMARY_PROJECT!, "editor");
+  await mkdir(directory, { recursive: true });
+  await writeFile(path.join(directory, "read.ts"), SOURCE);
+  await page.goto(process.env.PI_E2E_SERVER_URL!);
+  await expect(page.getByTitle("connected")).toBeVisible();
+  await page.getByTitle("Show files").click();
+  await page.getByText("editor", { exact: true }).click();
+  await page.getByText("read.ts", { exact: true }).click();
+  const source = page.getByTestId("file-source");
+  await expect(source.locator(".cm-lineNumbers .cm-gutterElement:not([style*='visibility: hidden'])")).toHaveText(["1", "2", "3", "4", "5", "6"]);
+  await expect(source.locator(".tok-keyword").first()).toHaveText("const");
+  await expect(source.locator(".cm-content")).toHaveAttribute("contenteditable", "false");
+  await source.locator(".cm-line").first().click();
+  await page.keyboard.type("typed");
+  await expect(source.locator(".cm-line").first()).toHaveText("const answer = 42;");
+  await expect(page.getByTestId("file-editor")).toHaveCount(0);
+});
+
+// openlore: scenario=SwitchingViewKeepsTheCurrentMatch spec=viewer-find-in-page
+test("SwitchingViewKeepsTheCurrentMatch: every match marked in the source, the reader's match kept from the rendering", async ({ page }) => {
+  const directory = path.join(process.env.PI_E2E_PRIMARY_PROJECT!, "editor");
+  await mkdir(directory, { recursive: true });
+  await writeFile(path.join(directory, "find.md"), "# Fox\n\nThe fox, a fox, the last fox.\n");
+  await page.goto(process.env.PI_E2E_SERVER_URL!);
+  await expect(page.getByTitle("connected")).toBeVisible();
+  await page.getByTitle("Show files").click();
+  await page.getByText("editor", { exact: true }).click();
+  await page.getByText("find.md", { exact: true }).click();
+  await page.keyboard.press("ControlOrMeta+f");
+  await page.getByRole("textbox", { name: "Find", exact: true }).fill("fox");
+  const search = page.getByRole("search", { name: "Find in file" });
+  await expect(search).toContainText("1/4");
+  await page.getByLabel("Next match").click();
+  await page.getByLabel("Next match").click();
+  await expect(search).toContainText("3/4");
+
+  await page.getByRole("button", { name: /source/ }).click();
+  const source = page.getByTestId("file-source");
+  await expect(source.locator(".find-match, .find-match-current")).toHaveCount(4);
+  await expect(search).toContainText("3/4");
+  // The third "fox" of the text is the current one: "a fox" on line 3.
+  const current = source.locator(".find-match-current");
+  await expect(current).toHaveCount(1);
+  const marks = await source.locator(".find-match, .find-match-current").evaluateAll((elements) => elements.map((element) => element.className.includes("find-match-current")));
+  expect(marks).toEqual([false, false, true, false]);
+});

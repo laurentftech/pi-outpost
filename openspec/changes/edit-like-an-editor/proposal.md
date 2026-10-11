@@ -14,19 +14,28 @@ saving without leaving the editor, and the rest of what one expects from one.
   closed and matched, Tab / Shift+Tab as in VS Code, several cursors (Ctrl+D, Alt-click, Alt-drag),
   moving and copying lines (Alt+arrows), Ctrl+/ comments, folding, undo history, completion on
   Ctrl+Space. Long lines wrap. Languages load per file kind.
-- **The viewer's find bar still searches the draft** in edit mode, selecting the match in the editor;
-  CodeMirror's own search panel is left out so Ctrl+F stays one thing.
+- **Reading looks like editing:** a text file's source (the source view, and the split's left pane
+  outside the writable zone) is shown in the same editor, read-only. highlight.js draws it only while
+  the editor's code loads.
+- **Find, in the source read or edited, goes through the editor:** every match marked by it (it
+  draws only the lines in view, so marks written into its DOM would be lost), the current one
+  selected and scrolled to. Matches are now marked while editing too. Switching view under the same
+  query keeps the current match. CodeMirror's own search panel is left out so Ctrl+F stays one thing.
 - **Saving stays in the editor.** Ctrl+S (Cmd+S) or the save action writes the file and keeps the
   editor open on the new baseline. The cancel action reads "done" when nothing is unsaved.
 - **CRLF files stay CRLF.**
-- **Loaded on demand:** the editor is its own chunk (~100 kB gzip), fetched when a writable file is
+- **Loaded on demand:** the editor is its own chunk (~100 kB gzip), fetched when a text file is
   shown, not with the application.
 
 ## Capabilities
 
 ### Modified Capabilities
 
-- `file`: `FullSizeFileViewer` — the Edit mode behaves as a code editor, and a save no longer leaves it.
+- `file`: `FullSizeFileViewer` — the Edit mode behaves as a code editor, a save no longer leaves it,
+  and a source read without editing is shown in the same editor, read-only.
+- `viewer-find-in-page`: `EditModeUsesNativeSelection` is removed for `SourceMatchesAreDrawnByTheEditor`
+  — matches in the source, read or edited, are drawn by the editor, all of them, and a view switch
+  keeps the current match.
 
 ## Impact
 
