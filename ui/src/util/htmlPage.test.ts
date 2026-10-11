@@ -71,6 +71,41 @@ describe("preparePage", () => {
     expect(asked.filter((path) => path === "logo.png")).toHaveLength(1);
   });
 
+  it("writes in an icon, the page's own <style> and style attributes, and leaves a missing script as written", async () => {
+    const { load } = workspace({ "favicon.png": PNG, "bg.png": PNG });
+    const page = parse(
+      await preparePage(
+        '<html><head><link rel="icon" href="favicon.png"><link rel="icon" href="gone.ico"><link rel="preload" href="bg.png"><style>body { background: url(bg.png); }</style></head><body><div id="box" style="background: url(\'bg.png\')"></div><script id="missing" src="nowhere.js"></script></body></html>',
+        "index.html",
+        load,
+      ),
+    );
+    const icons = page.querySelectorAll("link[rel=icon]");
+    expect(icons[0]!.getAttribute("href")).toMatch(/^data:image\/png;base64,/);
+    expect(icons[1]!.getAttribute("href")).toBe("gone.ico");
+    // Neither a stylesheet nor an icon: left alone.
+    expect(page.querySelector("link[rel=preload]")!.getAttribute("href")).toBe("bg.png");
+    expect(page.querySelector("head style")!.textContent).toMatch(/url\("data:image\/png;base64,/);
+    expect(page.getElementById("box")!.getAttribute("style")).toMatch(/url\("data:image\/png;base64,/);
+    expect(page.getElementById("missing")!.getAttribute("src")).toBe("nowhere.js");
+  });
+
+  it("keeps a page whose resources fail to load, and nests @import no deeper than the limit", async () => {
+    const sheets: Record<string, string> = {};
+    for (let depth = 0; depth < 8; depth++) sheets[`s${depth}.css`] = `@import "s${depth + 1}.css"; .d${depth} { color: red; }`;
+    const failing: LoadFile = async (path) => {
+      if (path === "boom.png") throw new Error("network");
+      const css = sheets[path];
+      return css === undefined ? undefined : new Blob([css]);
+    };
+    const page = parse(await preparePage('<link rel="stylesheet" href="s0.css"><img id="boom" src="boom.png">', "index.html", failing));
+    expect(page.getElementById("boom")!.getAttribute("src")).toBe("boom.png");
+    const css = page.querySelector("style")!.textContent!;
+    expect(css).toContain(".d4");
+    expect(css).not.toContain(".d5");
+    expect(css).toContain('@import "s5.css"');
+  });
+
   it("adds the link script first, so it sees every click", async () => {
     const page = parse(await preparePage("<html><head><script>/* page */</script></head><body></body></html>", "index.html", workspace({}).load));
     expect(page.head.querySelector("script")!.textContent).toBe(LINK_SCRIPT);

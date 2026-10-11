@@ -139,6 +139,9 @@ export async function preparePage(html: string, pagePath: string, load: LoadFile
     return css.replace(pattern, (whole, _quote, reference: string) => (written.has(reference) ? `url("${written.get(reference)}")` : whole));
   };
 
+  // The page's own sheets, taken before the linked ones are written in beside them: those
+  // are inlined already, and a second pass would follow their @import past the limit.
+  const pageStyles = Array.from(document.querySelectorAll("style"));
   for (const link of Array.from(document.querySelectorAll("link[href]"))) {
     const rel = (link.getAttribute("rel") ?? "").toLowerCase().split(/\s+/);
     const href = link.getAttribute("href");
@@ -158,7 +161,7 @@ export async function preparePage(html: string, pagePath: string, load: LoadFile
     }
   }
 
-  for (const style of Array.from(document.querySelectorAll("style"))) {
+  for (const style of pageStyles) {
     style.textContent = await inlineCss(style.textContent ?? "", pagePath);
   }
   for (const element of Array.from(document.querySelectorAll("[style]"))) {
