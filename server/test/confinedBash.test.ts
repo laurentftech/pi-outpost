@@ -9,7 +9,7 @@
  * them, and how it treats their answer.
  */
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { after, before, describe, test } from "node:test";
@@ -113,7 +113,9 @@ describe("confinedBashOperations", () => {
 
   test("a working directory outside the root starts the command in the root", async () => {
     await exec(`0`, { cwd: base });
-    assert.equal(path.resolve((await lastRecord()).cwd), path.resolve(root));
+    // Compared resolved: the runner reads its directory back through the OS, which
+    // answers with the real path — /private/var/… for /var/… on macOS.
+    assert.equal(await realpath((await lastRecord()).cwd), await realpath(root));
   });
 
   // openlore: scenario=CancellingACommandEndsIt spec=sandbox-runner-bash

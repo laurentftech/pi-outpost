@@ -159,7 +159,11 @@ async function startServerOn(root, config, options, port) {
     }
     try {
       const res = await fetch(`${base}/health`);
-      if (res.ok) break;
+      // Ready, and *ours*. freePort() let the port go before the child bound it, so
+      // another test file's server may hold it and answer here while the child is still
+      // on its way to dying at bind — harnessOwnServer.test.mjs. The child logs its
+      // session only after it has bound the port, so that line means the port is ours.
+      if (res.ok && log.includes("[pi] session ")) break;
     } catch {
       // not listening yet
     }
