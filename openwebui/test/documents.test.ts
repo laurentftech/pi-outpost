@@ -74,6 +74,21 @@ const media = (parts: Map<string, Buffer>, folder: string, extension: string) =>
 /** The text a picture's SVG shows, without its markup. */
 const shown = (svg: string) => svg.replace(/<[^>]+>/g, "");
 
+/**
+ * What a write leaves under the data directory: the file and its description, in the
+ * user's own folder of kept documents, and nothing else. Split on either separator: the
+ * relative paths are the platform's.
+ */
+function assertOnlyTheFileIsKept(files: string[]) {
+  const parts = files.map((file) => file.split(/[\\/]/));
+  assert.equal(files.length, 2, files.join(", "));
+  for (const [root, owner, name] of parts) {
+    assert.equal(root, "documents");
+    assert.match(owner!, /^[0-9a-f]{64}$/, "a folder per user, named by a hash");
+    assert.match(name!, /^[0-9a-f]{64}\.(bin|json)$/);
+  }
+}
+
 const mermaid = createMermaidRenderer();
 after(() => mermaid.close());
 const app = (t: Parameters<typeof testApp>[0], overrides: Parameters<typeof testApp>[1] = {}) => testApp(t, overrides, { mermaid });
@@ -87,7 +102,7 @@ async function templatesFolder(t: Parameters<typeof testApp>[0]): Promise<string
 
 describe("create_document", () => {
   // openlore: scenario=AReportIsCreatedWithTheDefaultTemplate spec=openwebui-office-documents
-  test("AReportIsCreatedWithTheDefaultTemplate: headings, list and table in the default styles, nothing stored", async (t) => {
+  test("AReportIsCreatedWithTheDefaultTemplate: headings, list and table in the default styles, only the file kept", async (t) => {
     const { call, config } = await app(t);
     const response = await call("create_document", { file_name: "report", markdown: "# Report\n\nIntro.\n\n## Detail\n\n- one\n- two\n\n| a | b |\n| - | - |\n| 1 | 2 |\n" });
     const { payload, parts } = downloadOf(response);
@@ -100,7 +115,7 @@ describe("create_document", () => {
     assert.match(body, /<w:numPr>/);
     assert.match(body, /<w:tbl>/);
     assert.match(text(parts, "word/styles.xml"), /w:styleId="Heading1"/, "the default template's own styles");
-    assert.deepEqual(await filesUnder(config.dataDir), []);
+    assertOnlyTheFileIsKept(await filesUnder(config.dataDir));
   });
 
   test("a file name is a name: a path is refused, the extension added once", async (t) => {
@@ -326,7 +341,7 @@ describe("create_presentation", () => {
     assert.match(slides[2]!, /<a:tbl>[\s\S]*v2/);
     assert.match(slides[3]!, /<c:chart\b/);
     assert.ok(!parts.has("ppt/slides/slide5.xml"));
-    assert.deepEqual(await filesUnder(config.dataDir), []);
+    assertOnlyTheFileIsKept(await filesUnder(config.dataDir));
   });
 
   // openlore: scenario=ASequenceBecomesASlidePicture spec=openwebui-office-documents
@@ -451,7 +466,7 @@ describe("list_templates", () => {
 test("AnUnsignedCallIsRefused: without the bearer key or a valid identity, before the body is read", async (t) => {
   const { app: server } = await app(t);
   const body = { file_name: "x", markdown: "# x" };
-  for (const tool of ["create_document", "create_presentation", "list_templates"]) {
+  for (const tool of ["create_document", "create_presentation", "list_templates", "update_document", "update_presentation", "list_documents"]) {
     const noKey = await server.inject({ method: "POST", url: `/${tool}`, headers: { "x-openwebui-user-jwt": mintToken("alice") }, payload: body });
     assert.equal(noKey.statusCode, 401, tool);
     const noIdentity = await server.inject({ method: "POST", url: `/${tool}`, headers: { authorization: `Bearer ${SECRET}` }, payload: body });

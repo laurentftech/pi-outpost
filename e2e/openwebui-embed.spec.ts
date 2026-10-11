@@ -138,6 +138,8 @@ async function writtenDocument(): Promise<{ html: string; bytes: Buffer; fileNam
     templatesDir: undefined,
     maxFileBytes: 5 * 1024 * 1024,
     maxImageBytes: 1024 * 1024,
+    maxDocuments: 20,
+    documentDays: 30,
   };
   const app = buildApp(config, planningRoutes(new PlanningStore(config), config));
   try {

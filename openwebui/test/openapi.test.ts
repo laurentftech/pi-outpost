@@ -30,12 +30,15 @@ test("TheDescriptionNamesTheFiveTools: exactly the operations — planning, stru
     "create_planning",
     "create_presentation",
     "get_planning",
+    "list_documents",
     "list_plannings",
     "list_templates",
     "read_structure_guide",
     "show_planning",
     "show_structure",
+    "update_document",
     "update_planning",
+    "update_presentation",
   ]);
   for (const op of operations) {
     assert.ok(op.description.length > 40, op.operationId);
@@ -100,11 +103,10 @@ test("no description offers a copyable placeholder id, and show_planning waits f
   assert.match(document.paths["/create_planning"].post.description, /once this call has answered[\s\S]*never in the same step/);
 });
 
-test("the document tools say a change means writing the whole file again", async (t) => {
+test("the creating tools send a change to the updating ones", async (t) => {
   const { document } = await published(t);
   const description = (tool: string) => (document.paths as Record<string, { post: { description: string } }>)[`/${tool}`]!.post.description;
-  // Codestral, asked to add a slide, sent only the new one, and called the one-slide deck "updated".
-  assert.match(description("create_presentation"), /ALL the slides/);
-  assert.match(description("create_presentation"), /never only the new slide/);
-  assert.match(description("create_document"), /WHOLE content/);
+  // Codestral, asked to add a slide, sent create_presentation only the new one.
+  assert.match(description("create_presentation"), /use update_presentation with its file_name, not create_presentation/);
+  assert.match(description("create_document"), /use update_document with its file_name, not create_document/);
 });

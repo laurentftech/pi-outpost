@@ -41,6 +41,8 @@ export async function testConfig(t: TestContext, overrides: Partial<PlanningServ
     templatesDir: undefined,
     maxFileBytes: 5 * 1024 * 1024,
     maxImageBytes: 1024 * 1024,
+    maxDocuments: 20,
+    documentDays: 30,
     ...overrides,
   };
 }

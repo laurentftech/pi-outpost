@@ -28,7 +28,7 @@ import { serverMermaidRenderer } from "./mermaid.ts";
 import { createDocument, type KeepPart } from "@pi-outpost/office/docxBuild.ts";
 import { describeWordTemplate, formatTemplateDescription, readWordPackage, WordTemplateError } from "@pi-outpost/office/docxTemplate.ts";
 import { restyleDocument, type RestyleInclude } from "./docxRestyle.ts";
-import { updateDocument, type DocxEdit } from "./docxUpdate.ts";
+import { updateDocument, type DocxEdit } from "@pi-outpost/office/docxUpdate.ts";
 import { assertWritableDestination } from "./extractionOutput.ts";
 import { ImageError, readImageInfo } from "@pi-outpost/office/imageInfo.ts";
 import {

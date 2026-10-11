@@ -36,7 +36,12 @@ cost is moving those builders where the tool server can use them, and handing th
   unsupported or undecodable one refuses the call.
 - **The file is handed over in the chat.** The answer is an embed, like `show_structure`'s. It shows the
   file's name, its outline (headings or slide titles) and its figures, with a download button. The
-  file travels inside the embed; the server stores nothing.
+  file travels inside the embed.
+- **A file written can be changed.** The server keeps each user's last files under their names, for a
+  limited time and number; `update_presentation` and `update_document` change one by naming it and
+  what to change (a slide, a section), with pi-outpost's `pptx_update` and `docx_update`, now in the
+  shared package; `list_documents` shows what is kept. Asked to add a slide, a model otherwise had to
+  write the whole deck again, and sent only the new slide.
 - **Templates:**
   - with no template named, a built-in default (Office's own theme). PowerPoint already has one; Word
     gets one, generated the same way;
@@ -52,7 +57,7 @@ cost is moving those builders where the tool server can use them, and handing th
 - checking pages visually (`docx_render`, `pptx_render`): needs LibreOffice in the image;
 - pictures the server must fetch (URLs, the chat's uploaded files): the tool server never sees the chat's
   files, and fetching URLs chosen by the model needs an allowlist against internal addresses;
-- keeping files on the server to download again later.
+- downloading a kept file again from a list: the user downloads it from the card it came in.
 
 ## Capabilities
 

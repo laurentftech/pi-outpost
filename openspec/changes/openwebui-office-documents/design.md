@@ -148,6 +148,27 @@ answer means the whole document was written as asked.
 - **Rehearsed** in an isolated prefix with npm 12 (`scripts/probes/installed-mermaid.mjs`): the
   installed worker draws with the installed jsdom, canvas and resvg.
 
+### Kept documents, changed by name
+
+- **Need:** asked to add a slide, Codestral called `create_presentation` again with only the new slide;
+  the user got a one-slide deck. Re-sending a whole deck to change one slide is long and lossy for a
+  weak model (the user's target is Gemma 4).
+- **Choice:** the server keeps the files the document tools write, and `update_presentation` /
+  `update_document` change one by naming what to change, with pi-outpost's deck and document update
+  (`pptxUpdate.ts`, `docxUpdate.ts`, moved into `@pi-outpost/office` with `git mv`).
+- **A file is named by its file name.** Open WebUI never shows the model a tool's embed, so an id
+  returned with the file would be invisible to it; the name is the one handle the model has, and the
+  user sees the same one. Writing a name again replaces the file (case does not make two).
+- **Storage:** `<dataDir>/documents/<sha256(user)>/<sha256(name)>.bin` and `.json`, apart from the
+  plannings' tree. At most `OUTPOST_MAX_DOCUMENTS` (20) per user, the oldest first, none older than
+  `OUTPOST_DOCUMENT_DAYS` (30): working copies, not an archive. Written through a sibling and a
+  rename; changes to one document are serialised, so two updates cannot start from the same file.
+- **Direct edits, not tracked changes:** the documents are the model's own drafts.
+- **`list_documents`** gives the model what it cannot see: each deck's slides (number, title) and each
+  document's headings, the names the updates take.
+- **Rejected:** telling the model to re-send everything (done first, as a stop-gap: the descriptions
+  said so) — it relies on the model getting a long call right each time.
+
 ### Raster: resvg and one font in the image
 
 Word 2016+ and PowerPoint 2016+ draw the SVG; desktop Word is the target that matters, the rest is

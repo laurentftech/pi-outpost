@@ -17,10 +17,10 @@
  *   pending change would leave its meaning to chance.
  */
 import type { PictureSource } from "@pi-outpost/shared/docx";
-import { contentWarnings, countingPictures, MAX_MARKDOWN_CHARS } from "@pi-outpost/office/docxBuild.ts";
-import { generateContent, renumberedNote, WordComposer } from "@pi-outpost/office/docxGraft.ts";
-import { WordTemplateError, type WordPackage } from "@pi-outpost/office/docxTemplate.ts";
-import { bodyLayout, childElements, headingLevelOf, paragraphText, type XmlElement } from "@pi-outpost/office/wordml.ts";
+import { contentWarnings, countingPictures, MAX_MARKDOWN_CHARS } from "./docxBuild.ts";
+import { generateContent, renumberedNote, WordComposer } from "./docxGraft.ts";
+import { WordTemplateError, type WordPackage } from "./docxTemplate.ts";
+import { bodyLayout, childElements, headingLevelOf, paragraphText, type XmlElement } from "./wordml.ts";
 
 export const MAX_EDITS = 50;
 export const REVISION_AUTHOR = "pi-outpost";
@@ -82,6 +82,11 @@ function headingsOf(children: XmlElement[], pkg: WordPackage): Heading[] {
     if (text !== "") headings.push({ index, level, text });
   });
   return headings;
+}
+
+/** A document's headings, in order, with their levels: its outline. */
+export function documentHeadings(pkg: WordPackage): { level: number; text: string }[] {
+  return headingsOf(bodyLayout(pkg.documentXml).children, pkg).map(({ level, text }) => ({ level, text }));
 }
 
 /** The outline, as the refusal messages show it. */

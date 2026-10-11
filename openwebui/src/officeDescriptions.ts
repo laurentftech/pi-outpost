@@ -58,7 +58,7 @@ export const PRESENTATION_EXAMPLE = {
 
 export const CREATE_DOCUMENT_DESCRIPTION = [
   "Write a Word document (.docx) the user downloads from the chat. Use it when the user asks for a report, a document, a memo or a Word file.",
-  "Each call writes one whole new file; it cannot change a file written earlier. To change or extend a document you wrote earlier in this conversation, call create_document again with the WHOLE content (the earlier markdown with the changes made) and the same file_name: never only the part that changed.",
+  "Each call writes one new document. To change one you wrote earlier — add, rewrite or remove a section — use update_document with its file_name, not create_document: never write it again from scratch, and never only the part that changed.",
   "Write the user's own content; when they leave a part unspecified, ask or write it from the conversation, never from the example below.",
   "Give the whole content in `markdown`: headings (#, ##, ###), paragraphs, **bold**, *italic*, lists, tables, links, block quotes, code and LaTeX equations are written in the template's own styles.",
   "Diagrams: write a Mermaid diagram as a ```mermaid fence, or a structured-exchange document (graph, sequence, timeline, table) as a ```json fence, exactly as you would in a reply; each is drawn as a picture in its place.",
@@ -71,7 +71,7 @@ export const CREATE_DOCUMENT_DESCRIPTION = [
 
 export const CREATE_PRESENTATION_DESCRIPTION = [
   "Write a PowerPoint deck (.pptx) the user downloads from the chat. Use it when the user asks for slides, a deck, a presentation or a PowerPoint file.",
-  "Each call writes one whole new file; it cannot change a file written earlier. To add, change or remove slides of a deck you wrote earlier in this conversation, call create_presentation again with ALL the slides (the earlier ones, changed or not, and the new ones, in order) and the same file_name: never only the new slide.",
+  "Each call writes one new deck. To change one you wrote earlier — add, replace, remove or move slides — use update_presentation with its file_name, not create_presentation: never write it again from scratch, and never with only the new slide.",
   "Write the user's own content; when they leave a slide's content unspecified, ask or write it from the conversation, never from the example below.",
   "Give `slides` in order. Each slide may have a `title`, a `subtitle`, `bullets`, and at most ONE of: `table` (rows of texts, the first row the header), `chart` (column, bar, line or pie), `mermaid` (a Mermaid diagram's source), `diagram` (a structured-exchange document) or `image` ({\"data\": \"data:image/png;base64,...\", \"alt\": \"...\"}).",
   "The first slide with only a title and subtitle becomes the title slide. Put each visual on a slide of its own.",
@@ -80,6 +80,44 @@ export const CREATE_PRESENTATION_DESCRIPTION = [
   "The answer shows the user a download button; you are not shown the file. Tell the user the deck is ready and what it contains.",
   `Example: ${JSON.stringify(PRESENTATION_EXAMPLE)}`,
 ].join("\n");
+
+export const UPDATE_PRESENTATION_EXAMPLE = {
+  file_name: "allotment-annual-meeting",
+  edits: [
+    { action: "insert_after", slide: "2", content: { title: "New rules", bullets: ["Hoses back on their reels", "Gates closed at dusk"] } },
+    { action: "replace", slide: "Harvest (kg)", content: { title: "Harvest (kg)", chart: { type: "column", categories: ["Beans", "Leeks", "Squash"], series: [{ name: "Harvest", values: [45, 30, 70] }] } } },
+    { action: "delete", slide: "3" },
+  ],
+};
+
+export const UPDATE_DOCUMENT_EXAMPLE = {
+  file_name: "allotment-newsletter",
+  edits: [
+    { action: "replace", section: "Plots", markdown: "- Plot 4 went to Sam\n- The compost bins are back at the south gate" },
+    { action: "insert_after", section: "Plots", markdown: "## Tools\n\nThe shed has a new lock: ask Ines for the code." },
+    { action: "append", markdown: "## Next meeting\n\nFirst Saturday of June, by the water tank." },
+  ],
+};
+
+export const UPDATE_PRESENTATION_DESCRIPTION = [
+  "Change a PowerPoint deck written earlier with create_presentation, named by its file_name: the slides you do not name stay as they are, and the user gets the changed deck to download.",
+  "Each edit: insert_after (a slide number or title, or 0 to put it first, and its content), replace (a slide and its new content), delete (a slide), move (a slide, and after: the slide to put it after, or 0). A slide is named by its number or its exact title, as list_documents shows them. Content is a slide as create_presentation takes it, with bullets, a table, a chart, a mermaid diagram, a structured-exchange diagram or an image.",
+  "Edits are applied together to the deck as it is now: number slides as they are before this call.",
+  "Call list_documents first when you are not sure of the file name or of the slides.",
+  `Example: ${JSON.stringify(UPDATE_PRESENTATION_EXAMPLE)}`,
+].join("\n");
+
+export const UPDATE_DOCUMENT_DESCRIPTION = [
+  "Change a Word document written earlier with create_document, named by its file_name: the sections you do not name stay as they are, and the user gets the changed document to download.",
+  "Each edit: replace (a section's content under its heading, which stays), insert_after (a new section after a whole section, subsections included), append (at the end), delete (a section with its subsections). A section is named by its heading's text, or by its path (Chapter/Section) when two headings share a text, as list_documents shows them. Markdown is written as create_document writes it, with Mermaid and structured-exchange diagrams and data: URI pictures.",
+  "Call list_documents first when you are not sure of the file name or of the headings.",
+  `Example: ${JSON.stringify(UPDATE_DOCUMENT_EXAMPLE)}`,
+].join("\n");
+
+export const LIST_DOCUMENTS_DESCRIPTION =
+  "List the Word documents and PowerPoint decks kept for this user from earlier calls — the last ones written, for a limited time — with each deck's slides (number and title) and each document's headings: what update_presentation and update_document can change, and how to name it.";
+
+export const EDITS_DESCRIPTION = "The changes, applied together to the file as it is now.";
 
 export const LIST_TEMPLATES_DESCRIPTION =
   "List the Word and PowerPoint templates this server's administrator provides, with the styles or layouts each offers. Call it only when the user wants a document in one of their organisation's templates; otherwise leave template out.";

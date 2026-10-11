@@ -32,6 +32,10 @@ export interface PlanningServerConfig {
   maxFileBytes: number;
   /** Largest picture a call may give, in bytes once decoded. */
   maxImageBytes: number;
+  /** Most Word and PowerPoint files kept per user for later changes; the oldest go first. */
+  maxDocuments: number;
+  /** Days a kept file stays after it was last written. */
+  documentDays: number;
 }
 
 export class ConfigError extends Error {}
@@ -49,6 +53,8 @@ export const ENV = {
   templatesDir: "OUTPOST_TEMPLATES_DIR",
   maxFileBytes: "OUTPOST_MAX_FILE_BYTES",
   maxImageBytes: "OUTPOST_MAX_IMAGE_BYTES",
+  maxDocuments: "OUTPOST_MAX_DOCUMENTS",
+  documentDays: "OUTPOST_DOCUMENT_DAYS",
 } as const;
 
 function positiveInteger(env: NodeJS.ProcessEnv, name: string, fallback: number): number {
@@ -91,5 +97,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env, cwd: string = p
     templatesDir: env[ENV.templatesDir]?.trim() ? path.resolve(cwd, env[ENV.templatesDir]!.trim()) : undefined,
     maxFileBytes: positiveInteger(env, ENV.maxFileBytes, 5 * 1024 * 1024),
     maxImageBytes: positiveInteger(env, ENV.maxImageBytes, 1024 * 1024),
+    maxDocuments: positiveInteger(env, ENV.maxDocuments, 20),
+    documentDays: positiveInteger(env, ENV.documentDays, 30),
   };
 }

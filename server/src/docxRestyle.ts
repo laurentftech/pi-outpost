@@ -26,7 +26,7 @@ import {
   reachableParts,
 } from "@pi-outpost/office/docxGraft.ts";
 import { CONTENT_TYPES, CT_NUMBERING, NS_R, REL_NUMBERING, REL_STYLES, ROOT_RELS, WordTemplateError, type WordPackage } from "@pi-outpost/office/docxTemplate.ts";
-import { PENDING, REVISION_AUTHOR } from "./docxUpdate.ts";
+import { PENDING, REVISION_AUTHOR } from "@pi-outpost/office/docxUpdate.ts";
 import { contentTypeOf, decode, parseRelationshipList, relativeTarget, relsPartOf, scanRawRelationships } from "@pi-outpost/office/ooxml.ts";
 import { bodyLayout, childElements, parseStyles, styleKey } from "@pi-outpost/office/wordml.ts";
 import { writeZip } from "@pi-outpost/office/zipWriter.ts";

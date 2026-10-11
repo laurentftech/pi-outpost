@@ -26,7 +26,7 @@ import { assertWritableDestination } from "./extractionOutput.ts";
 import { ImageError, readImageInfo } from "@pi-outpost/office/imageInfo.ts";
 import { PptxError, parseSlideRange, readSlideParagraphs } from "./pptx.ts";
 import { buildPresentation, describeTemplate, PptxBuildError, readTemplate, type SlideSpec } from "@pi-outpost/office/pptxBuild.ts";
-import { updatePresentation, type DeckEdit } from "./pptxUpdate.ts";
+import { updatePresentation, type DeckEdit } from "@pi-outpost/office/pptxUpdate.ts";
 import { DEFAULT_TEMPLATE_NAME, defaultTemplateBytes } from "@pi-outpost/office/defaultTemplate.ts";
 import { CHART_TYPES, MAX_TABLE_COLUMNS, MAX_TABLE_ROWS, type ChartType } from "@pi-outpost/office/pptxVisuals.ts";
 import {

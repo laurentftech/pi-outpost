@@ -29,6 +29,8 @@ import { defaultWordTemplateBytes, DEFAULT_WORD_TEMPLATE_NAME } from "@pi-outpos
 import { buildPresentation, describeTemplate, PptxBuildError, readTemplate, type SlideImage, type SlideSpec } from "@pi-outpost/office/pptxBuild.ts";
 import { defaultTemplateBytes, DEFAULT_TEMPLATE_NAME } from "@pi-outpost/office/defaultTemplate.ts";
 import { callPictures, readPictureDataUri, type PictureRefusal } from "@pi-outpost/office/callPictures.ts";
+import { documentHeadings, updateDocument, type DocxEdit } from "@pi-outpost/office/docxUpdate.ts";
+import { slideTitles, updatePresentation, type DeckEdit } from "@pi-outpost/office/pptxUpdate.ts";
 import { DEFAULT_MERMAID_FONT, MermaidError, type MermaidRenderer } from "@pi-outpost/office/mermaidRender.ts";
 import { RasterError, rasterizeSvg } from "@pi-outpost/office/svgRaster.ts";
 import { readImageInfo } from "@pi-outpost/office/imageInfo.ts";
@@ -286,31 +288,31 @@ function headingsOf(markdown: string): { level: number; text: string }[] {
   return headings;
 }
 
-export async function writeWordDocument(settings: OfficeSettings, body: { file_name?: unknown; markdown?: unknown; template?: unknown; keep?: unknown }): Promise<WrittenFile> {
-  const fileName = downloadName(body.file_name, ".docx");
-  if (typeof body.markdown !== "string" || body.markdown.trim() === "") throw new OfficeRefusal("markdown is required: the document's content, in Markdown");
-  const keep = body.keep ?? [];
-  if (!Array.isArray(keep) || keep.some((part) => part !== "cover" && part !== "toc")) throw new OfficeRefusal('keep, when given, lists "cover" and/or "toc"');
-  const font = settings.font ?? DEFAULT_MERMAID_FONT;
+/** Notes that report something already done, not something missing: they do not refuse a call. */
+function blocking(warnings: string[]): string[] {
+  return warnings.filter((warning) => !warning.startsWith("the typed number was removed"));
+}
 
-  const chosen = await templateBytes(settings, body.template, "word");
-  let template: WordPackage;
-  try {
-    template = readWordPackage(chosen?.bytes ?? defaultWordTemplateBytes(), chosen ? `"${chosen.name}"` : "the built-in template");
-  } catch (error) {
-    if (error instanceof WordTemplateError) throw new OfficeRefusal(error.message);
-    throw error;
-  }
+interface DrawnFences {
+  markdown: string;
+  vectors: Map<string, DiagramImage>;
+  figures: string[];
+  refused: DiagramRefusal[];
+}
 
-  // Each structured-exchange fence is drawn now and replaced in place: a figure by a
-  // picture reference the picture source answers, a table by its Markdown.
-  const lines = body.markdown.replace(/\r\n/g, "\n").split("\n");
+/**
+ * The Markdown with each structured-exchange fence drawn in place: a figure becomes a
+ * picture reference the picture source answers, a table its Markdown. Diagrams are
+ * numbered from `first`, so several pieces of one call number them in one sequence.
+ */
+function drawFences(source: string, font: string, first = 1): DrawnFences {
+  const lines = source.replace(/\r\n/g, "\n").split("\n");
   const vectors = new Map<string, DiagramImage>();
   const refused: DiagramRefusal[] = [];
   const figures: string[] = [];
-  const blocks = structuredExchangeBlockRanges(body.markdown);
+  const blocks = structuredExchangeBlockRanges(source);
   for (const [index, block] of [...blocks.entries()].reverse()) {
-    const position = index + 1;
+    const position = first + index;
     const drawn = drawStructure(block.content, position, font);
     if (!("kind" in drawn)) {
       refused.unshift(drawn);
@@ -327,13 +329,36 @@ export async function writeWordDocument(settings: OfficeSettings, body: { file_n
     figures.unshift(drawn.title ?? `Diagram ${position}`);
     lines.splice(block.firstLine, block.lastLine - block.firstLine + 1, replacement);
   }
-  if (refused.length > 0) refuseDiagrams(refused);
-  const markdown = lines.join("\n");
+  return { markdown: lines.join("\n"), vectors, figures, refused };
+}
 
-  const pictures = callPictures({ mermaid: settings.mermaid, maxImageBytes: settings.maxImageBytes, vectors });
+function mermaidFigures(markdown: string, first = 1): string[] {
+  const count = (markdown.match(/^ {0,3}(`{3,}|~{3,})\s*mermaid\b/gim) ?? []).length;
+  return Array.from({ length: count }, (_, index) => `Mermaid diagram ${first + index}`);
+}
+
+export async function writeWordDocument(settings: OfficeSettings, body: { file_name?: unknown; markdown?: unknown; template?: unknown; keep?: unknown }): Promise<WrittenFile> {
+  const fileName = downloadName(body.file_name, ".docx");
+  if (typeof body.markdown !== "string" || body.markdown.trim() === "") throw new OfficeRefusal("markdown is required: the document's content, in Markdown");
+  const keep = body.keep ?? [];
+  if (!Array.isArray(keep) || keep.some((part) => part !== "cover" && part !== "toc")) throw new OfficeRefusal('keep, when given, lists "cover" and/or "toc"');
+  const font = settings.font ?? DEFAULT_MERMAID_FONT;
+
+  const chosen = await templateBytes(settings, body.template, "word");
+  let template: WordPackage;
+  try {
+    template = readWordPackage(chosen?.bytes ?? defaultWordTemplateBytes(), chosen ? `"${chosen.name}"` : "the built-in template");
+  } catch (error) {
+    if (error instanceof WordTemplateError) throw new OfficeRefusal(error.message);
+    throw error;
+  }
+
+  const drawn = drawFences(body.markdown, font);
+  if (drawn.refused.length > 0) refuseDiagrams(drawn.refused);
+  const pictures = callPictures({ mermaid: settings.mermaid, maxImageBytes: settings.maxImageBytes, vectors: drawn.vectors });
   let created;
   try {
-    created = await createDocument(template, markdown, { keep: keep as KeepPart[], pictures: pictures.source });
+    created = await createDocument(template, drawn.markdown, { keep: keep as KeepPart[], pictures: pictures.source });
   } catch (error) {
     if (error instanceof WordTemplateError) throw new OfficeRefusal(error.message);
     throw error;
@@ -342,19 +367,85 @@ export async function writeWordDocument(settings: OfficeSettings, body: { file_n
   if (refusals.length > 0) refusePictures(refusals);
   // A requested cover page or table of contents the template does not have is what
   // is left in the warnings: the model asked for it, so it is told.
-  if (created.warnings.length > 0) throw new OfficeRefusal(`Nothing was written: ${created.warnings.join("; ")}`);
+  const warnings = blocking(created.warnings);
+  if (warnings.length > 0) throw new OfficeRefusal(`Nothing was written: ${warnings.join("; ")}`);
   checkSize(created.bytes, settings);
-
-  const mermaidCount = (markdown.match(/^ {0,3}(`{3,}|~{3,})\s*mermaid\b/gim) ?? []).length;
-  for (let n = 1; n <= mermaidCount; n++) figures.push(`Mermaid diagram ${n}`);
   return {
     fileName,
     mediaType: WORD_MEDIA_TYPE,
     bytes: created.bytes,
-    outline: headingsOf(markdown),
-    figures,
+    outline: headingsOf(drawn.markdown),
+    figures: [...drawn.figures, ...mermaidFigures(drawn.markdown)],
     template: chosen?.name ?? DEFAULT_WORD_TEMPLATE_NAME,
   };
+}
+
+const SECTION_ACTIONS = ["replace", "insert_after", "append", "delete"] as const;
+
+/**
+ * A Word document written earlier, changed section by section with pi-outpost's
+ * `docx_update`: a section is named by its heading path, and the rest of the document is
+ * kept as it is. Diagrams and pictures in the new content are drawn as at creation.
+ */
+export async function updateWordFile(settings: OfficeSettings, stored: { bytes: Buffer; meta: { fileName: string; template: string } }, body: { edits?: unknown }): Promise<WrittenFile> {
+  if (!Array.isArray(body.edits) || body.edits.length === 0) throw new OfficeRefusal("edits is required: the changes to make, in order");
+  const font = settings.font ?? DEFAULT_MERMAID_FONT;
+  const edits: DocxEdit[] = [];
+  const refused: DiagramRefusal[] = [];
+  const problems: string[] = [];
+  const figures: string[] = [];
+  const pictureSources: ReturnType<typeof callPictures>[] = [];
+  let nextDiagram = 1;
+  let nextMermaid = 1;
+  for (const [index, raw] of (body.edits as unknown[]).entries()) {
+    const label = `edit ${index + 1}`;
+    const edit = (raw ?? {}) as { action?: unknown; section?: unknown; markdown?: unknown };
+    if (typeof edit.action !== "string" || !(SECTION_ACTIONS as readonly string[]).includes(edit.action)) {
+      problems.push(`${label}: action is one of ${SECTION_ACTIONS.join(", ")}`);
+      continue;
+    }
+    if (edit.action !== "append" && (typeof edit.section !== "string" || edit.section.trim() === "")) {
+      problems.push(`${label}: section names the heading to ${edit.action === "delete" ? "delete" : edit.action === "replace" ? "replace the content of" : "insert after"}, as list_documents shows it`);
+      continue;
+    }
+    if (edit.action === "delete") {
+      edits.push({ action: "delete", section: edit.section as string });
+      continue;
+    }
+    if (typeof edit.markdown !== "string" || edit.markdown.trim() === "") {
+      problems.push(`${label}: markdown is the new content`);
+      continue;
+    }
+    const drawn = drawFences(edit.markdown, font, nextDiagram);
+    nextDiagram += structuredExchangeBlockRanges(edit.markdown).length;
+    refused.push(...drawn.refused);
+    figures.push(...drawn.figures, ...mermaidFigures(drawn.markdown, nextMermaid));
+    nextMermaid += mermaidFigures(drawn.markdown).length;
+    const pictures = callPictures({ mermaid: settings.mermaid, maxImageBytes: settings.maxImageBytes, vectors: drawn.vectors });
+    pictureSources.push(pictures);
+    edits.push(
+      edit.action === "append"
+        ? { action: "append", markdown: drawn.markdown, pictures: pictures.source }
+        : { action: edit.action as "replace" | "insert_after", section: edit.section as string, markdown: drawn.markdown, pictures: pictures.source },
+    );
+  }
+  if (refused.length > 0) refuseDiagrams(refused);
+  if (problems.length > 0) throw new OfficeRefusal(`Nothing was changed. Correct these and call again: ${problems.join("; ")}`);
+
+  let updated;
+  try {
+    // Written straight in, not as tracked changes: these are the model's own drafts.
+    updated = await updateDocument(readWordPackage(stored.bytes, `"${stored.meta.fileName}"`), edits, { trackChanges: false });
+  } catch (error) {
+    if (error instanceof WordTemplateError) throw new OfficeRefusal(`Nothing was changed: ${error.message}`);
+    throw error;
+  }
+  const refusals = pictureSources.flatMap((pictures) => pictures.refusals());
+  if (refusals.length > 0) refusePictures(refusals);
+  const warnings = blocking(updated.warnings);
+  if (warnings.length > 0) throw new OfficeRefusal(`Nothing was changed: ${warnings.join("; ")}`);
+  checkSize(updated.bytes, settings);
+  return { fileName: stored.meta.fileName, mediaType: WORD_MEDIA_TYPE, bytes: updated.bytes, outline: outlineOf(WORD_MEDIA_TYPE, updated.bytes), figures, template: stored.meta.template };
 }
 
 /* ── PowerPoint ─────────────────────────────────────────────────────────────── */
@@ -369,6 +460,98 @@ function stringArray(value: unknown): value is string[] {
 function svgPicture(image: DiagramImage, name: string, alt?: string): SlideImage {
   const bytes = Buffer.from(image.svg, "utf8");
   return { name, bytes, info: { kind: "svg", width: image.width, height: image.height }, ...(alt ? { alt } : {}) };
+}
+
+interface SlideParsing {
+  font: string;
+  refused: DiagramRefusal[];
+  problems: string[];
+  figures: string[];
+  diagrams: number;
+}
+
+/** One slide as the model gave it, as the builder takes it; what is wrong goes into `parsing`. */
+async function slideSpec(settings: OfficeSettings, raw: unknown, label: string, parsing: SlideParsing): Promise<SlideSpec | undefined> {
+  if (raw === null || typeof raw !== "object" || Array.isArray(raw)) {
+    parsing.problems.push(`${label} is not an object`);
+    return undefined;
+  }
+  const slide = raw as Record<string, unknown>;
+  const spec: SlideSpec = {};
+  for (const field of ["layout", "title", "subtitle"] as const) {
+    const value = slide[field];
+    if (value === undefined || value === null) continue;
+    if (typeof value !== "string") parsing.problems.push(`${label}: ${field} is text`);
+    else spec[field] = value;
+  }
+  if (slide.bullets !== undefined && slide.bullets !== null) {
+    if (stringArray(slide.bullets)) spec.bullets = slide.bullets;
+    else parsing.problems.push(`${label}: bullets is a list of texts`);
+  }
+  if (slide.table !== undefined && slide.table !== null) {
+    const table = slide.table as { rows?: unknown; header?: unknown };
+    if (!Array.isArray(table.rows) || !table.rows.every(stringArray)) parsing.problems.push(`${label}: table.rows is a list of rows, each a list of texts`);
+    else spec.table = { rows: table.rows as string[][], ...(typeof table.header === "boolean" ? { header: table.header } : {}) };
+  }
+  if (slide.chart !== undefined && slide.chart !== null) {
+    const chart = slide.chart as Record<string, unknown>;
+    spec.chart = {
+      type: chart.type as never,
+      categories: chart.categories as string[],
+      series: chart.series as { name: string; values: number[] }[],
+      ...(typeof chart.title === "string" ? { title: chart.title } : {}),
+      ...(typeof chart.stacked === "boolean" ? { stacked: chart.stacked } : {}),
+      ...(typeof chart.number_format === "string" ? { numberFormat: chart.number_format } : {}),
+      ...(typeof chart.show_values === "boolean" ? { showValues: chart.show_values } : {}),
+    };
+  }
+  if (slide.diagram !== undefined && slide.diagram !== null) {
+    const position = ++parsing.diagrams;
+    const drawn = drawStructure(slide.diagram, position, parsing.font);
+    if (!("kind" in drawn)) parsing.refused.push(drawn);
+    else if (drawn.kind === "table") {
+      // A table document becomes the slide's native table: its columns, then its rows.
+      spec.table = { rows: drawn.rows };
+      parsing.figures.push(drawn.title ?? `Table on ${label}`);
+    } else {
+      spec.image = svgPicture(drawn.image, `diagram ${position}`, drawn.title);
+      parsing.figures.push(drawn.title ?? `Diagram on ${label}`);
+    }
+  }
+  if (slide.mermaid !== undefined && slide.mermaid !== null) {
+    if (typeof slide.mermaid !== "string") parsing.problems.push(`${label}: mermaid is the diagram's Mermaid source, as text`);
+    else {
+      try {
+        spec.image = svgPicture(await settings.mermaid.render(slide.mermaid), `${label} Mermaid diagram`);
+        parsing.figures.push(`Mermaid diagram on ${label}`);
+      } catch (error) {
+        if (!(error instanceof MermaidError)) throw error;
+        parsing.problems.push(`${label}: Mermaid could not draw the diagram: ${error.message}`);
+      }
+    }
+  }
+  if (slide.image !== undefined && slide.image !== null) {
+    const image = slide.image as { data?: unknown; alt?: unknown };
+    const picture = typeof image.data === "string" ? readPictureDataUri(image.data, settings.maxImageBytes) : "image.data is the picture as a data: URI";
+    if (typeof picture === "string") parsing.problems.push(`${label}: picture: ${picture}`);
+    else spec.image = { name: `${label} picture`, bytes: picture.bytes, info: picture.info, ...(typeof image.alt === "string" ? { alt: image.alt } : {}) };
+  }
+  const visuals = ["table", "chart", "diagram", "mermaid", "image"].filter((field) => slide[field] !== undefined && slide[field] !== null);
+  if (visuals.length > 1) parsing.problems.push(`${label}: a slide holds one of table, chart, diagram, mermaid and image, not ${visuals.join(" and ")}: put the others on slides of their own`);
+  return spec;
+}
+
+function slideRasterizer(font: string) {
+  return {
+    rasterizeSvg: async (svg: Buffer) => {
+      try {
+        return Buffer.from(rasterizeSvg(svg.toString("utf8"), font));
+      } catch (error) {
+        if (error instanceof RasterError) return null;
+        throw error;
+      }
+    },
+  };
 }
 
 export async function writePresentation(settings: OfficeSettings, body: { file_name?: unknown; slides?: unknown; template?: unknown }): Promise<WrittenFile> {
@@ -386,96 +569,18 @@ export async function writePresentation(settings: OfficeSettings, body: { file_n
     throw error;
   }
 
+  const parsing: SlideParsing = { font, refused: [], problems: [], figures: [], diagrams: 0 };
   const specs: SlideSpec[] = [];
-  const figures: string[] = [];
-  const refused: DiagramRefusal[] = [];
-  const problems: string[] = [];
-  let diagramPosition = 0;
   for (const [index, raw] of (body.slides as unknown[]).entries()) {
-    const label = `slide ${index + 1}`;
-    if (raw === null || typeof raw !== "object" || Array.isArray(raw)) {
-      problems.push(`${label} is not an object`);
-      continue;
-    }
-    const slide = raw as Record<string, unknown>;
-    const spec: SlideSpec = {};
-    for (const field of ["layout", "title", "subtitle"] as const) {
-      const value = slide[field];
-      if (value === undefined || value === null) continue;
-      if (typeof value !== "string") problems.push(`${label}: ${field} is text`);
-      else spec[field] = value;
-    }
-    if (slide.bullets !== undefined && slide.bullets !== null) {
-      if (stringArray(slide.bullets)) spec.bullets = slide.bullets;
-      else problems.push(`${label}: bullets is a list of texts`);
-    }
-    if (slide.table !== undefined && slide.table !== null) {
-      const table = slide.table as { rows?: unknown; header?: unknown };
-      if (!Array.isArray(table.rows) || !table.rows.every(stringArray)) problems.push(`${label}: table.rows is a list of rows, each a list of texts`);
-      else spec.table = { rows: table.rows as string[][], ...(typeof table.header === "boolean" ? { header: table.header } : {}) };
-    }
-    if (slide.chart !== undefined && slide.chart !== null) {
-      const chart = slide.chart as Record<string, unknown>;
-      spec.chart = {
-        type: chart.type as never,
-        categories: chart.categories as string[],
-        series: chart.series as { name: string; values: number[] }[],
-        ...(typeof chart.title === "string" ? { title: chart.title } : {}),
-        ...(typeof chart.stacked === "boolean" ? { stacked: chart.stacked } : {}),
-        ...(typeof chart.number_format === "string" ? { numberFormat: chart.number_format } : {}),
-        ...(typeof chart.show_values === "boolean" ? { showValues: chart.show_values } : {}),
-      };
-    }
-    if (slide.diagram !== undefined && slide.diagram !== null) {
-      const position = ++diagramPosition;
-      const drawn = drawStructure(slide.diagram, position, font);
-      if (!("kind" in drawn)) refused.push(drawn);
-      else if (drawn.kind === "table") {
-        // A table document becomes the slide's native table: its columns, then its rows.
-        spec.table = { rows: drawn.rows };
-        figures.push(drawn.title ?? `Table on ${label}`);
-      } else {
-        spec.image = svgPicture(drawn.image, `diagram ${position}`, drawn.title);
-        figures.push(drawn.title ?? `Diagram on ${label}`);
-      }
-    }
-    if (slide.mermaid !== undefined && slide.mermaid !== null) {
-      if (typeof slide.mermaid !== "string") problems.push(`${label}: mermaid is the diagram's Mermaid source, as text`);
-      else {
-        try {
-          spec.image = svgPicture(await settings.mermaid.render(slide.mermaid), `${label} Mermaid diagram`);
-          figures.push(`Mermaid diagram on ${label}`);
-        } catch (error) {
-          if (!(error instanceof MermaidError)) throw error;
-          problems.push(`${label}: Mermaid could not draw the diagram: ${error.message}`);
-        }
-      }
-    }
-    if (slide.image !== undefined && slide.image !== null) {
-      const image = slide.image as { data?: unknown; alt?: unknown };
-      const picture = typeof image.data === "string" ? readPictureDataUri(image.data, settings.maxImageBytes) : "image.data is the picture as a data: URI";
-      if (typeof picture === "string") problems.push(`${label}: picture: ${picture}`);
-      else spec.image = { name: `${label} picture`, bytes: picture.bytes, info: picture.info, ...(typeof image.alt === "string" ? { alt: image.alt } : {}) };
-    }
-    const visuals = ["table", "chart", "diagram", "mermaid", "image"].filter((field) => slide[field] !== undefined && slide[field] !== null);
-    if (visuals.length > 1) problems.push(`${label}: a slide holds one of table, chart, diagram, mermaid and image, not ${visuals.join(" and ")}: put the others on slides of their own`);
-    specs.push(spec);
+    const spec = await slideSpec(settings, raw, `slide ${index + 1}`, parsing);
+    if (spec !== undefined) specs.push(spec);
   }
-  if (refused.length > 0) refuseDiagrams(refused);
-  if (problems.length > 0) throw new OfficeRefusal(`Nothing was written. Correct these and call again: ${problems.join("; ")}`);
+  if (parsing.refused.length > 0) refuseDiagrams(parsing.refused);
+  if (parsing.problems.length > 0) throw new OfficeRefusal(`Nothing was written. Correct these and call again: ${parsing.problems.join("; ")}`);
 
   let built;
   try {
-    built = await buildPresentation(template, specs, {
-      rasterizeSvg: async (svg) => {
-        try {
-          return Buffer.from(rasterizeSvg(svg.toString("utf8"), font));
-        } catch (error) {
-          if (error instanceof RasterError) return null;
-          throw error;
-        }
-      },
-    });
+    built = await buildPresentation(template, specs, slideRasterizer(font));
   } catch (error) {
     if (error instanceof PptxBuildError) throw new OfficeRefusal(`Nothing was written: ${error.message}`);
     throw error;
@@ -488,7 +593,80 @@ export async function writePresentation(settings: OfficeSettings, body: { file_n
     mediaType: POWERPOINT_MEDIA_TYPE,
     bytes: built.bytes,
     outline: specs.map((spec, index) => ({ level: 1, text: spec.title ?? `Slide ${index + 1}` })),
-    figures,
+    figures: parsing.figures,
     template: chosen?.name ?? DEFAULT_TEMPLATE_NAME,
   };
+}
+
+const SLIDE_ACTIONS = ["replace", "insert_after", "delete", "move"] as const;
+
+/** A slide named by its number (as a number or in digits) or its title, as list_documents shows them. */
+function slideRef(value: unknown): number | string | undefined {
+  if (typeof value === "number" && Number.isInteger(value)) return value;
+  if (typeof value === "string" && /^\s*\d+\s*$/.test(value)) return Number(value);
+  if (typeof value === "string" && value.trim() !== "") return value;
+  return undefined;
+}
+
+/**
+ * A deck written earlier, changed slide by slide with pi-outpost's `pptx_update`: the
+ * slides not named are kept as they are. A new or replaced slide is given as at creation.
+ */
+export async function updatePresentationFile(settings: OfficeSettings, stored: { bytes: Buffer; meta: { fileName: string; template: string } }, body: { edits?: unknown }): Promise<WrittenFile> {
+  if (!Array.isArray(body.edits) || body.edits.length === 0) throw new OfficeRefusal("edits is required: the changes to make, in order");
+  const font = settings.font ?? DEFAULT_MERMAID_FONT;
+  const parsing: SlideParsing = { font, refused: [], problems: [], figures: [], diagrams: 0 };
+  const edits: DeckEdit[] = [];
+  for (const [index, raw] of (body.edits as unknown[]).entries()) {
+    const label = `edit ${index + 1}`;
+    const edit = (raw ?? {}) as { action?: unknown; slide?: unknown; after?: unknown; content?: unknown };
+    if (typeof edit.action !== "string" || !(SLIDE_ACTIONS as readonly string[]).includes(edit.action)) {
+      parsing.problems.push(`${label}: action is one of ${SLIDE_ACTIONS.join(", ")}`);
+      continue;
+    }
+    const named = slideRef(edit.slide);
+    const slide = edit.action === "insert_after" && named === 0 ? 0 : named === 0 ? undefined : named;
+    if (slide === undefined) {
+      parsing.problems.push(`${label}: slide is the slide's number or title${edit.action === "insert_after" ? " (0 to insert first)" : ""}, as list_documents shows them`);
+      continue;
+    }
+    if (edit.action === "delete") {
+      edits.push({ action: "delete", slide: slide as number | string });
+      continue;
+    }
+    if (edit.action === "move") {
+      const after = slideRef(edit.after);
+      if (after === undefined) parsing.problems.push(`${label}: after is the slide to move it after, by number or title, or 0 to move it first`);
+      else edits.push({ action: "move", slide: slide as number | string, after });
+      continue;
+    }
+    const content = await slideSpec(settings, edit.content, `${label} content`, parsing);
+    if (content === undefined) continue;
+    edits.push(edit.action === "replace" ? { action: "replace", slide: slide as number | string, content } : { action: "insert_after", slide, content });
+  }
+  if (parsing.refused.length > 0) refuseDiagrams(parsing.refused);
+  if (parsing.problems.length > 0) throw new OfficeRefusal(`Nothing was changed. Correct these and call again: ${parsing.problems.join("; ")}`);
+
+  let updated;
+  try {
+    updated = await updatePresentation(stored.bytes, edits, slideRasterizer(font));
+  } catch (error) {
+    if (error instanceof PptxBuildError) throw new OfficeRefusal(`Nothing was changed: ${error.message}`);
+    throw error;
+  }
+  if (updated.warnings.length > 0) throw new OfficeRefusal(`Nothing was changed: ${updated.warnings.join("; ")}`);
+  checkSize(updated.bytes, settings);
+  return { fileName: stored.meta.fileName, mediaType: POWERPOINT_MEDIA_TYPE, bytes: updated.bytes, outline: outlineOf(POWERPOINT_MEDIA_TYPE, updated.bytes), figures: parsing.figures, template: stored.meta.template };
+}
+
+/* ── What a kept file holds ─────────────────────────────────────────────────── */
+
+/** A file's outline: a Word document's headings, a deck's slide titles. */
+export function outlineOf(mediaType: string, bytes: Buffer): { level: number; text: string }[] {
+  try {
+    if (mediaType === POWERPOINT_MEDIA_TYPE) return slideTitles(bytes).map((title, index) => ({ level: 1, text: title === "" ? `Slide ${index + 1}` : title }));
+    return documentHeadings(readWordPackage(bytes, "the document"));
+  } catch {
+    return [];
+  }
 }

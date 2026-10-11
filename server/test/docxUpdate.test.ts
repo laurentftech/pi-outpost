@@ -13,7 +13,7 @@ import { fileURLToPath } from "node:url";
 import { describe, test } from "node:test";
 import { createDocument } from "@pi-outpost/office/docxBuild.ts";
 import { readWordPackage, WordTemplateError } from "@pi-outpost/office/docxTemplate.ts";
-import { updateDocument, REVISION_AUTHOR, type DocxEdit } from "../src/docxUpdate.ts";
+import { updateDocument, REVISION_AUTHOR, type DocxEdit } from "@pi-outpost/office/docxUpdate.ts";
 import { bodyLayout, headingLevelOf, paragraphText } from "@pi-outpost/office/wordml.ts";
 import { readAllZipEntries } from "@pi-outpost/office/zip.ts";
 

@@ -18,7 +18,9 @@ Checked against **Open WebUI v0.11.4**.
   table, a timeline, or a proposal) and answers with that page. It stores nothing.
 - **Writing a document:** `create_document` and `create_presentation` build a `.docx` or a `.pptx`
   with pi-outpost's builders (`office/`) and answer with a page that carries the file. Mermaid is drawn
-  in a worker thread of the same process; pictures arrive in the call. It stores and fetches nothing.
+  in a worker thread of the same process; pictures arrive in the call, and nothing is fetched. The
+  file is kept for the user under its name, so `update_presentation` and `update_document` can change
+  it later.
 - **What it never does:** it opens no outbound connection, calls no model, holds no user password,
   and reads no other data from Open WebUI. Only Open WebUI's backend needs to reach it, so it
   publishes no port.
@@ -175,10 +177,12 @@ an opaque origin:
 /data/<sha256(user id)>/<planning id>/meta.json     title, current revision, dates
 /data/<sha256(user id)>/<planning id>/1.json        each revision, a complete document
                                      /2.json …
+/data/documents/<sha256(user id)>/<sha256(file name)>.bin    a kept Word or PowerPoint file
+                                  /<sha256(file name)>.json   its name, type, template, date
 ```
 
-- **Contents:** only what users put in their plannings (titles, labels, dates, dependencies), plus
-  timestamps. No name, e-mail or role is stored: the user appears only as the SHA-256 of their Open
+- **Contents:** what users put in their plannings (titles, labels, dates, dependencies), and the
+  Word and PowerPoint files the document tools wrote for them, plus timestamps. No name, e-mail or role is stored: the user appears only as the SHA-256 of their Open
   WebUI id. That is pseudonymous, not anonymous; Open WebUI can map it back.
 - **History:**
   - every change adds a revision file, written once (`wx`) and never modified;
@@ -186,7 +190,8 @@ an opaque origin:
   - updates to one planning are serialised, and an update prepared against an old revision is
     refused, so two users or two chats cannot overwrite each other silently.
 - **Encryption at rest** is the volume's: the files are plain JSON.
-- **Deleting a user's plannings:** remove `/data/<sha256(user id)>`. There is no deletion tool for
+- **Deleting a user's data:** remove `/data/<sha256(user id)>` (plannings) and
+  `/data/documents/<sha256(user id)>` (kept documents). There is no deletion tool for
   users yet.
 - **Backups and restore** are a copy of the volume. Every revision file opens in pi-outpost as it
   is.
@@ -206,6 +211,8 @@ the chat deletes it.
 | Word or PowerPoint file written | 5 MB | `OUTPOST_MAX_FILE_BYTES` |
 | Picture given in a call | 1 MB once decoded; PNG, JPEG or GIF only; never fetched from an address | `OUTPOST_MAX_IMAGE_BYTES` |
 | Mermaid diagram | 50,000 characters; 20 s to draw, after which its worker is stopped | fixed |
+| Kept documents per user | 20, the oldest dropped first | `OUTPOST_MAX_DOCUMENTS` |
+| Days a kept document stays | 30 after it was last written | `OUTPOST_DOCUMENT_DAYS` |
 | Request body | twice the larger of the planning size and the file size, plus 64 kB | derived |
 
 Malformed input is refused with the reason (400, 413, 422); nothing is partially applied.

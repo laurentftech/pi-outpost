@@ -81,7 +81,7 @@ done
 
 echo "-- ADocumentIsWrittenInTheImage"
 # A structured-exchange graph, a Mermaid flowchart and a picture: the image's own
-# worker, fonts and rasteriser draw them, and nothing is stored for it.
+# worker, fonts and rasteriser draw them, and the file is kept for later changes.
 document=$(node -e '
   const { createCanvas } = require("@napi-rs/canvas");
   const square = createCanvas(16, 16);
@@ -97,7 +97,9 @@ document=$(node -e '
 before=$(docker exec "$NAME" sh -c 'find /data -type f | wc -l')
 call create_document "$document" | node --import tsx/esm "$HERE/image-document-check.mts" 2 || fail "create_document did not write the document with its diagrams"
 after=$(docker exec "$NAME" sh -c 'find /data -type f | wc -l')
-[ "$before" = "$after" ] || fail "create_document stored something in /data"
+kept=$(docker exec "$NAME" sh -c 'find /data/documents -type f | wc -l')
+# The document and its description, kept for later changes, and nothing else.
+[ "$kept" = "2" ] && [ "$after" = "$((before + 2))" ] || fail "create_document kept $kept file(s) under /data/documents and wrote $((after - before)) in all; expected the document and its description"
 
 echo "-- APlanningOutlivesTheContainer"
 docker rm -f "$NAME" >/dev/null

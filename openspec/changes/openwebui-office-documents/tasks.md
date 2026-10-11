@@ -80,3 +80,14 @@
 - [x] 6.3 A wide picture beside bullets goes below them, across the width, when that draws it larger
   (seen in the live run's architecture slides). Verify: `AWidePictureGoesBelowTheBullets`,
   `ATallPictureStaysBesideTheBullets`, and in ONLYOFFICE's converter.
+
+## 7. Changing a file written earlier
+
+- [x] 7.1 Move `pptxUpdate.ts` and `docxUpdate.ts` into `@pi-outpost/office` (`git mv`); pi-outpost's
+  `pptx_update` and `docx_update` unchanged. Verify: their server tests.
+- [x] 7.2 Keep written files per user (`documents.ts`, `OUTPOST_MAX_DOCUMENTS`, `OUTPOST_DOCUMENT_DAYS`).
+  Verify: `KeptDocumentsArePersonal`, `OldDocumentsAreDropped`, two concurrent updates both landing.
+- [x] 7.3 `update_presentation`, `update_document`, `list_documents`, with examples in their descriptions.
+  Verify: `ASlideIsAddedToAKeptDeck`, `SlidesAreReplacedRemovedAndMoved`, `ARefusedUpdateChangesNothing`,
+  `AnUpdateOfAnUnknownFileIsRefused`, `ASectionIsAddedToAKeptDocument`, `DocumentsAreListed`, and the
+  update examples applied to the create examples' files.

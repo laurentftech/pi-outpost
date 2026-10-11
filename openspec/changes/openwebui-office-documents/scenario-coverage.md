@@ -40,6 +40,19 @@ Two capabilities: `openwebui-office-documents` (7 added requirements, 20 scenari
 | AWordTemplateIsRefusedForADeck | covered | `openwebui/test/documents.test.ts` — "AWordTemplateIsRefusedForADeck": refused, saying it is a Word template, with the PowerPoint templates offered. |
 | AnUnsignedCallIsRefused | covered | `openwebui/test/documents.test.ts` — "AnUnsignedCallIsRefused": for each of the three tools, no bearer key, no identity, and a token signed with the wrong key are all 401. |
 
+## openwebui-office-documents — changing a file written earlier
+
+| Scenario | Coverage | Evidence |
+| --- | --- | --- |
+| KeptDocumentsArePersonal | covered | `openwebui/test/documentUpdates.test.ts` — "KeptDocumentsArePersonal: another user neither lists nor changes them": bob's list is empty, his update is refused, alice still has her deck. |
+| OldDocumentsAreDropped | covered | `openwebui/test/documentUpdates.test.ts` — "OldDocumentsAreDropped: past the count the oldest goes, past the days every one does": with a limit of two, the first deck is gone after the third; after setting every file 31 days old, the list is empty and no file is left on disk. |
+| ASlideIsAddedToAKeptDeck | covered | `openwebui/test/documentUpdates.test.ts` — "ASlideIsAddedToAKeptDeck: the new slide in its place, every other slide as it was": four titles in order, and the three original slides' parts byte for byte equal to the created deck's. |
+| SlidesAreReplacedRemovedAndMoved | covered | `openwebui/test/documentUpdates.test.ts` — "SlidesAreReplacedRemovedAndMoved: by number or title, against the deck as it was": the resulting titles, and the replacing Mermaid slide's SVG. |
+| ARefusedUpdateChangesNothing | covered | `openwebui/test/documentUpdates.test.ts` — "ARefusedUpdateChangesNothing: a slide that does not exist, the kept deck untouched": 422 naming slide 9 with the deck's slides listed; the kept deck still lists its three slides, and the next update starts from them. |
+| AnUpdateOfAnUnknownFileIsRefused | covered | `openwebui/test/documentUpdates.test.ts` — "AnUpdateOfAnUnknownFileIsRefused: with the names there are, or how to start one": with none kept, the refusal says to write it with create_presentation; with one kept, it lists `review.pptx`. |
+| ASectionIsAddedToAKeptDocument | covered | `openwebui/test/documentUpdates.test.ts` — "ASectionIsAddedToAKeptDocument: inserted, appended and rewritten by heading, the rest untouched": headings in order, the replaced text gone, the untouched section kept, no `w:ins`, the Mermaid diagram drawn, the card's outline. |
+| DocumentsAreListed | covered | `openwebui/test/documentUpdates.test.ts` — "DocumentsAreListed: each kept file with its slides or headings, the latest first". |
+
 ## openwebui-planning-server
 
 | Scenario | Coverage | Evidence |
