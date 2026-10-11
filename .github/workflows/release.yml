@@ -296,6 +296,11 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version: 24
+      # image.sh runs node on the runner, not only in the container: it draws its test
+      # picture with @napi-rs/canvas and reads the document back with tsx. CI installs
+      # the dependencies before it; without this the check died here on v0.36.0, with
+      # "Cannot find module '@napi-rs/canvas'", and no image was pushed.
+      - run: npm ci
       - name: Build, check and push the Open WebUI server image
         env:
           GH_TOKEN: ${{ github.token }}
