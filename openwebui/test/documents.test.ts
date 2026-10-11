@@ -72,7 +72,7 @@ const text = (parts: Map<string, Buffer>, name: string) => {
 const media = (parts: Map<string, Buffer>, folder: string, extension: string) => [...parts.keys()].filter((name) => name.startsWith(folder) && name.endsWith(extension));
 
 /** The text a picture's SVG shows, without its markup. */
-const shown = (svg: string) => svg.replace(/<[^>]+>/g, "");
+const shown = (svg: string) => [...svg.matchAll(/>([^<]*)</g)].map((match) => match[1]).join("");
 
 /**
  * What a write leaves under the data directory: the file and its description, in the

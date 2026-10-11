@@ -43,7 +43,7 @@ try {
   const parts = readAllZipEntries(await readFile(target), { maxEntries: 500, maxInflatedBytes: 64 * 1024 * 1024, maxTotalBytes: 256 * 1024 * 1024 });
   const media = [...parts.keys()].filter((name) => name.startsWith("word/media/"));
   const svg = media.find((name) => name.endsWith(".svg"));
-  const shown = svg ? parts.get(svg)!.toString("utf8").replace(/<[^>]+>/g, " ") : "";
+  const shown = svg ? [...parts.get(svg)!.toString("utf8").matchAll(/>([^<]*)</g)].map((match) => match[1]).join(" ") : "";
   console.log(
     JSON.stringify(
       {

@@ -47,7 +47,7 @@ try {
         rootHasWidthAndHeight: /\swidth="[\d.]+"/.test(root) && /\sheight="[\d.]+"/.test(root),
         rootKeepsPercentWidth: /width="100%"/.test(root),
         stylesInlined: !/<style/.test(svg) && /\sfill="/.test(svg),
-        labels: ["Ask", "Clear?", "yes", "Write"].filter((label) => svg.replace(/<[^>]+>/g, "").includes(label)),
+        labels: ["Ask", "Clear?", "yes", "Write"].filter((label) => [...svg.matchAll(/>([^<]*)</g)].map((match) => match[1]).join("").includes(label)),
         consoleErrors: errors,
       },
       null,

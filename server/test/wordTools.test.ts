@@ -95,7 +95,7 @@ describe("Word tools", () => {
     const parts = unzipDocx(await readFile(path.join(root, "flow.docx")));
     const svgs = [...parts.keys()].filter((name) => name.startsWith("word/media/") && name.endsWith(".svg"));
     assert.equal(svgs.length, 1);
-    assert.match(parts.get(svgs[0]!)!.toString("utf8").replace(/<[^>]+>/g, ""), /Ask[\s\S]*Write/);
+    assert.match([...parts.get(svgs[0]!)!.toString("utf8").matchAll(/>([^<]*)</g)].map((match) => match[1]).join(""), /Ask[\s\S]*Write/);
     assert.equal([...parts.keys()].filter((name) => name.startsWith("word/media/") && name.endsWith(".png")).length, 1);
     const body = parts.get("word/document.xml")!.toString("utf8");
     assert.ok(body.indexOf("Before.") < body.indexOf("svgBlip") && body.indexOf("svgBlip") < body.indexOf("After."), "in its place");

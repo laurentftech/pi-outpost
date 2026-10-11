@@ -35,7 +35,7 @@ describe("createMermaidRenderer", () => {
   test("draws a flowchart as a styled vector and a raster that is not blank", async () => {
     const image = await renderer.render(FLOWCHART);
     // Mermaid writes each word in its own tspan: the text is read without the markup.
-    const text = image.svg.replace(/<[^>]+>/g, "");
+    const text = [...image.svg.matchAll(/>([^<]*)</g)].map((match) => match[1]).join("");
     for (const label of ["Start here", "Clear?", "yes", "no", "Write the", "document"]) assert.ok(text.includes(label), `the vector carries "${label}"`);
     assert.ok(image.width > 100 && image.height > 50, `a real size: ${image.width}×${image.height}`);
     assert.match(image.svg, /^<svg\b[^>]*\bwidth="[\d.]+"[^>]*\bheight="[\d.]+"/, "the root carries its own size");
