@@ -194,6 +194,10 @@ one needs, the command that proves it works, and the caution that goes with it.
   file with the system's own application, or show a file or folder in Finder, Explorer or
   the Linux file manager; anything outside the writable zone is dimmed.
   Ctrl+F (Cmd+F) finds text in the open file — source, rendered Markdown, or a live edit
+- HTML files open rendered, as Markdown does: the page's scripts run, and its stylesheets,
+  pictures and scripts next to it in the workspace are loaded. A relative link opens that file
+  in the viewer, an absolute one a new tab. The page is drawn in a sandboxed frame with an
+  opaque origin, so it reaches neither the application, its access token nor the server
 - Word export: any text file open in the viewer downloads as a real `.docx`. Markdown becomes
   Word's own structure — headings as chapter levels (navigation pane, table of contents), lists,
   tables, hyperlinks — LaTeX becomes native Word
@@ -207,7 +211,7 @@ one needs, the command that proves it works, and the caution that goes with it.
   (`docx.template`), a second button writes the same document into the template — its styles,
   heading numbering, page setup, header and footer; if the template cannot be used, that button
   says why and the plain export still works
-- Split view: a Markdown or structured document renders beside the editor, following what
+- Split view: a Markdown, HTML or structured document renders beside the editor, following what
   you type rather than what was last saved
 - Git: uncommitted-change badges in the tree, per-file diffs, log and commit inspection, and
   a per-file history graph (renames followed) that diffs any two revisions, working tree
