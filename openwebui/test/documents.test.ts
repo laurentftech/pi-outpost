@@ -16,6 +16,7 @@ import { parseSerializedStructuredExchange } from "@pi-outpost/shared/structured
 import { checkStructuredExchangeSchema } from "@pi-outpost/shared/structured-exchange/schema-node";
 import { judgeStructure } from "@pi-outpost/apps-core/structure";
 import { DOCUMENT_EXAMPLE, PRESENTATION_EXAMPLE } from "../src/openapi.ts";
+import { forOfficeReaders } from "../src/office.ts";
 import { SECRET, filesUnder, mintToken, tempDir, testApp } from "./helpers.ts";
 
 const FIXTURES = fileURLToPath(new URL("../../server/test/fixtures/", import.meta.url));
@@ -126,7 +127,7 @@ describe("create_document", () => {
     assert.ok(verdict.valid);
     const figure = figureForEnvelope(verdict.envelope);
     assert.ok(figure.ok);
-    assert.equal(text(parts, svgs[0]!), figure.svg, "equal to the figure show_structure draws");
+    assert.equal(text(parts, svgs[0]!), forOfficeReaders(figure.svg), "the figure show_structure draws, with a named face first");
     assert.ok(parts.get(pngs[0]!)!.length > 500, "a PNG fallback that is not empty");
     const body = text(parts, "word/document.xml");
     assert.ok(body.indexOf("Before.") < body.indexOf("svgBlip") && body.indexOf("svgBlip") < body.indexOf("After."), "in that place");
@@ -339,7 +340,7 @@ describe("create_presentation", () => {
     assert.ok(verdict.valid);
     const figure = figureForEnvelope(verdict.envelope);
     assert.ok(figure.ok);
-    assert.equal(text(parts, svgs[0]!), figure.svg);
+    assert.equal(text(parts, svgs[0]!), forOfficeReaders(figure.svg));
     assert.equal(media(parts, "ppt/media/", ".png").length, 1);
     assert.match(text(parts, "ppt/slides/slide1.xml"), /svgBlip/);
   });
@@ -408,6 +409,18 @@ describe("create_presentation", () => {
     const { payload } = downloadOf(await call("create_presentation", { file_name: "d", slides: [{ title: "x" }], template: "acme-deck.potx" }));
     assert.equal(payload.template, "acme-deck.potx");
   });
+});
+
+test("a figure in a file names Arial first, and is otherwise the figure show_structure draws", async () => {
+  const verdict = judgeStructure(await conformance("valid/graph-minimal.json"));
+  assert.ok(verdict.valid);
+  const figure = figureForEnvelope(verdict.envelope);
+  assert.ok(figure.ok);
+  const forFiles = forOfficeReaders(figure.svg);
+  assert.match(figure.svg, /font-family="system-ui/);
+  assert.doesNotMatch(forFiles, /font-family="system-ui/, "ONLYOFFICE reads only the first family, and knows no system-ui");
+  assert.match(forFiles, /font-family="Arial/);
+  assert.equal(forFiles.replace(/font-family="[^"]*"/g, ""), figure.svg.replace(/font-family="[^"]*"/g, ""));
 });
 
 describe("list_templates", () => {

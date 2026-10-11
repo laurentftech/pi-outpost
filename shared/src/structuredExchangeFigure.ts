@@ -205,7 +205,12 @@ export type Figure = {
   orientation?: Orientation;
 };
 
-export const FIGURE_FONT = "system-ui, sans-serif";
+/**
+ * Named faces after `system-ui`: a browser stops at the first, but a reader that draws
+ * the SVG itself — ONLYOFFICE, an office application — knows no generic family and fell
+ * back to a serif face. Unquoted, so no `&quot;` ever reaches an embed.
+ */
+export const FIGURE_FONT = "system-ui, Segoe UI, Arial, Helvetica, sans-serif";
 
 /**
  * A box, as the shapes it is drawn from.

@@ -62,6 +62,17 @@ describe("createMermaidRenderer", () => {
     }
   });
 
+  test("places every line of text in pixels, for readers that ignore em, dy and central baselines (ONLYOFFICE)", async () => {
+    for (const source of [FLOWCHART, "sequenceDiagram\n  participant U as User one\n  U->>U: Hello there"]) {
+      const { svg } = await renderer.render(source);
+      assert.doesNotMatch(svg, /\s(x|y|dx|dy)="-?[\d.]+em"/, "no position in em");
+      assert.doesNotMatch(svg, /dominant-baseline="(central|middle)"/, "no central baseline left to interpret");
+      for (const [tspan] of svg.matchAll(/<tspan\b[^>]*>/g)) assert.ok(!(/\sy="/.test(tspan) && /\sdy="/.test(tspan)), `a line has y or dy, not both: ${tspan}`);
+    }
+    // "Start here" is one tspan, not two words a reader could draw over each other.
+    assert.match((await renderer.render(FLOWCHART)).svg, />Start here</);
+  });
+
   test("sizes a pie chart's legend to its labels", async () => {
     const image = await renderer.render('pie title Where the time goes\n  "Writing" : 45\n  "Diagrams" : 30');
     // The legend sits right of the pie: the picture is wider than the pie alone (450).

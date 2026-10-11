@@ -345,6 +345,67 @@ function inlineStyles(svg: string, document: Document): string {
   }
 }
 
+/**
+ * Text placed in absolute terms, for readers that place it otherwise.
+ *
+ * Mermaid places a label's lines with `y` and `dy` in `em`, and centres a sequence
+ * diagram's labels with `dominant-baseline: central`. A browser and Word follow both;
+ * ONLYOFFICE ignores both, and drew every label a line too high, at the top of its box.
+ * Each `em` becomes pixels at the element's font size, and a central baseline becomes
+ * the shift it stands for, so every reader puts the text where a browser does.
+ */
+function explicitBaselines(svg: string, document: Document): string {
+  const holder = document.createElement("div");
+  holder.innerHTML = svg;
+  const root = holder.querySelector("svg");
+  if (root === null) return svg;
+  const pixels = (value: string, size: number) => {
+    const number = parseFloat(value);
+    return Number.isFinite(number) && value.trim().endsWith("em") ? String(Math.round(number * size * 100) / 100) : value;
+  };
+  for (const text of Array.from(root.querySelectorAll("text, tspan"))) {
+    const size = fontSizeOf(text);
+    for (const name of ["x", "y", "dx", "dy"]) {
+      const value = text.getAttribute(name);
+      if (value !== null) text.setAttribute(name, pixels(value, size));
+    }
+  }
+  for (const line of Array.from(root.querySelectorAll("tspan"))) {
+    // A line placed by both `y` and `dy`: ONLYOFFICE drops the `dy`, so it is folded in.
+    const y = parseFloat(line.getAttribute("y") ?? "");
+    const dy = parseFloat(line.getAttribute("dy") ?? "");
+    if (Number.isFinite(y) && Number.isFinite(dy)) {
+      line.setAttribute("y", String(Math.round((y + dy) * 100) / 100));
+      line.removeAttribute("dy");
+    }
+    // Mermaid writes each word in a tspan of its own; ONLYOFFICE starts each one at the
+    // line's own position, so the words of a line were drawn over one another. Words
+    // that all look alike are joined into the line; mixed bold and italic stay as they are.
+    const words = Array.from(line.children);
+    if (words.length === 0 || words.some((word) => word.tagName.toLowerCase() !== "tspan" || word.children.length > 0)) continue;
+    const look = (word: Element) => Array.from(word.attributes).map((attribute) => `${attribute.name}=${attribute.value}`).sort().join(";");
+    if (new Set(words.map(look)).size !== 1) continue;
+    for (const attribute of Array.from(words[0]!.attributes)) if (!line.hasAttribute(attribute.name)) line.setAttribute(attribute.name, attribute.value);
+    line.textContent = words.map((word) => word.textContent ?? "").join("");
+  }
+  for (const text of Array.from(root.querySelectorAll("text"))) {
+    const baseline = text.getAttribute("dominant-baseline") ?? text.getAttribute("alignment-baseline");
+    if (baseline !== "central" && baseline !== "middle") continue;
+    // The central baseline sits about 0.35 em above the alphabetic one.
+    const shift = 0.35 * fontSizeOf(text);
+    text.removeAttribute("dominant-baseline");
+    text.removeAttribute("alignment-baseline");
+    const move = (element: Element) => {
+      const y = parseFloat(element.getAttribute("y") ?? "");
+      if (Number.isFinite(y)) element.setAttribute("y", String(Math.round((y + shift) * 100) / 100));
+    };
+    move(text);
+    for (const line of Array.from(text.querySelectorAll("tspan"))) if (line.hasAttribute("y")) move(line);
+    if (!text.hasAttribute("y")) text.setAttribute("y", String(Math.round(shift * 100) / 100));
+  }
+  return root.outerHTML;
+}
+
 interface Mermaid {
   initialize(config: Record<string, unknown>): void;
   render(id: string, source: string): Promise<{ svg: string }>;
@@ -417,7 +478,7 @@ parentPort?.on("message", async (request: MermaidRequest) => {
     const size = viewBoxSize(svg);
     if (size === null) throw new Error("Mermaid drew a diagram with no usable size");
     const styled = withExplicitSize(svg, size.width, size.height);
-    parentPort!.postMessage({ id: request.id, svg: inlineStyles(styled, document), styled, ...size } satisfies MermaidReply);
+    parentPort!.postMessage({ id: request.id, svg: explicitBaselines(inlineStyles(styled, document), document), styled, ...size } satisfies MermaidReply);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     parentPort!.postMessage({ id: request.id, error: message } satisfies MermaidReply);

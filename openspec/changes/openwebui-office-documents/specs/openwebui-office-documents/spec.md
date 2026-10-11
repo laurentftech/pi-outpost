@@ -37,11 +37,11 @@ not declare the contract SHALL stay code.
 
 #### Scenario: AGraphBecomesAPictureInWord
 - **WHEN** `create_document` is called with Markdown holding a valid graph in a `json` fence
-- **THEN** the document holds, in that place, an SVG picture equal to `serializeFigure` of that graph's figure, and a PNG fallback that is not empty
+- **THEN** the document holds, in that place, an SVG picture equal to `serializeFigure` of that graph's figure but for its font list, which names Arial first, and a PNG fallback that is not empty
 
 #### Scenario: ASequenceBecomesASlidePicture
 - **WHEN** `create_presentation` is called with a slide whose `diagram` is a valid sequence
-- **THEN** that slide holds an SVG picture equal to the sequence's figure, with a PNG fallback
+- **THEN** that slide holds an SVG picture equal to the sequence's figure but for its font list, with a PNG fallback
 
 #### Scenario: ATableDocumentBecomesANativeTable
 - **WHEN** a valid structured-exchange table is given as a diagram, in Word and in PowerPoint

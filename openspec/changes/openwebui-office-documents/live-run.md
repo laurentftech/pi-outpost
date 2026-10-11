@@ -36,6 +36,22 @@ The user had already opened the documents written by the server in Office web: c
    call again and tell the user. Codestral still asked the user instead, twice: it does not retry
    after this refusal. Left as found (see below).
 
+## In ONLYOFFICE (the user's reader)
+
+The user reported a deck looking empty in ONLYOFFICE. Not reproduced: the package is sound, and
+ONLYOFFICE's own converter (`x2t`, with the user's font database) draws all five slides with their
+content. (Keynote's scripted export draws no text for any of these decks, ONLYOFFICE's own re-save
+included: that is Keynote, not the file.) The render did show two defects, fixed:
+
+1. **Mermaid labels drawn a line too high, and words drawn over each other.** ONLYOFFICE ignores `em`
+   positions, the `dy` of a line that also has a `y`, and `dominant-baseline: central`, and starts each
+   word's `tspan` at the line's position. The SVG put in the file now places every line in pixels,
+   folds `dy` into `y`, turns a central baseline into its shift, and joins a line's words when they
+   all look alike (`explicitBaselines` in `mermaidWorker.ts`). Browsers draw it as before.
+2. **Structured-exchange figures in a serif face.** ONLYOFFICE reads only the first family of a font
+   list and knows no `system-ui`. In a file, the figure's list starts with Arial (`forOfficeReaders`);
+   on screen it is unchanged. The figure's own list also names real faces after `system-ui` now.
+
 ## Open: a picture given as a web address
 
 The specification refuses the call so the model can correct it; Codestral answers the user instead

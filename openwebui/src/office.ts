@@ -17,6 +17,7 @@ import type { DiagramImage } from "@pi-outpost/shared/docx";
 import { parseMarkdown } from "@pi-outpost/shared/docx";
 import { structuredExchangeBlockRanges } from "@pi-outpost/shared/structured-exchange/reply-blocks";
 import { describeFigureRefusal, figureForEnvelope } from "@pi-outpost/shared/structured-exchange/export";
+import { FIGURE_FONT } from "@pi-outpost/shared/structured-exchange/figure";
 import { tableExport, tableMarkdown } from "@pi-outpost/shared/structured-exchange/table-export";
 import type { StructuredTableData } from "@pi-outpost/shared/structured-exchange";
 import type { StructuredExchangeIssue } from "@pi-outpost/shared/structured-exchange/parse";
@@ -208,17 +209,30 @@ function drawStructure(document: unknown, position: number, font: string): Drawn
     const issue = { rule: "figure", path: "", message: describeFigureRefusal(figure) } as StructuredExchangeIssue;
     return { position, ...(title ? { title } : {}), issues: [issue], guide: guideTopicFor(document, [issue]) };
   }
-  const info = readImageInfo(Buffer.from(figure.svg, "utf8"), `diagram ${position}`);
+  const svg = forOfficeReaders(figure.svg);
+  const info = readImageInfo(Buffer.from(svg, "utf8"), `diagram ${position}`);
   let png: Uint8Array;
   try {
-    png = rasterizeSvg(figure.svg, font);
+    png = rasterizeSvg(svg, font);
   } catch (error) {
     // The server's fault, not the document's: said as such, so the model does not
     // rewrite a diagram that was right.
     if (error instanceof RasterError) throw new OfficeRefusal(`Nothing was written: this server could not draw diagram ${position}: ${error.message}. Tell the user; rewriting the diagram will not help.`, {}, 500);
     throw error;
   }
-  return { kind: "figure", image: { svg: figure.svg, png, width: info.width, height: info.height }, ...(title ? { title } : {}) };
+  return { kind: "figure", image: { svg, png, width: info.width, height: info.height }, ...(title ? { title } : {}) };
+}
+
+/**
+ * A figure's SVG for a file, with a named face first in its font list.
+ *
+ * The figure names `system-ui` first, which a browser resolves; ONLYOFFICE reads only the
+ * first family, knows no `system-ui`, and drew every label in a serif face. In a file the
+ * list starts with Arial (Word on Windows has it; elsewhere Helvetica and Liberation Sans
+ * share its metrics); on screen the figure is unchanged.
+ */
+export function forOfficeReaders(svg: string): string {
+  return svg.replaceAll(`font-family="${FIGURE_FONT}"`, `font-family="Arial, Helvetica, Liberation Sans, sans-serif"`);
 }
 
 function refuseDiagrams(refused: DiagramRefusal[]): never {
