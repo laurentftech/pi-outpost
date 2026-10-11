@@ -203,9 +203,14 @@ test("offers the export for a file it cannot render, and not for the diff view",
 
   // Editing then exporting: the draft is what the reader sees, so the draft is
   // what must travel — asserted here through the running app rather than a mock.
-  await page.getByRole("button", { name: /edit/ }).click();
-  const editor = page.getByRole("textbox").first();
+  await page.getByRole("button", { name: "✎ edit" }).click();
+  // The editor itself, not "the first textbox": the editor is loaded on demand, and
+  // until it mounts the first textbox on the page is the chat composer — the draft
+  // then went there, and the export carried the file unchanged (main, d31e302).
+  const editor = page.getByTestId("file-editor").locator(".cm-content");
+  await expect(editor).toBeVisible();
   await editor.fill("# Edited in the browser\n\nA new body.\n");
+  await expect(editor).toContainText("Edited in the browser");
 
   const download = page.waitForEvent("download");
   await page.getByRole("button", { name: /download as a word document/i }).click();
