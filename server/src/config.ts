@@ -24,6 +24,7 @@ import os from "node:os";
 import path from "node:path";
 import { normalizeThinkingLevels, THEMES, type Theme, type ThinkingLevel } from "@pi-outpost/shared";
 import { STRUCTURED_EXCHANGE_BYTES_CEILING_ANY } from "@pi-outpost/shared/structured-exchange/bounds";
+import { normalizeCommandPattern } from "./commandPolicy.ts";
 import { OPEN_SHAPES, type OpenShape } from "./openBrowser.ts";
 
 export interface BrandingConfig {
@@ -503,6 +504,14 @@ export interface AppConfig {
    */
   allowedModels?: { provider: string; id: string }[];
   /**
+   * Slash commands the people using this deployment may not see or run: globs over the
+   * command's name (`setup*`, `skill:internal-*`). The extension that registered one keeps
+   * running; only the user's way into it closes. See `commandPolicy.ts`.
+   */
+  blockedCommands?: string[];
+  /** When set, the only slash commands offered and run; `blockedCommands` still wins. */
+  allowedCommands?: string[];
+  /**
    * What thinking levels a model accepts, for a model the runtime cannot describe.
    *
    * An entry without `id` covers every model of that provider — an in-house endpoint
@@ -762,6 +771,22 @@ export function optionalSkillCollections(
     });
   });
   return [...merged.values()];
+}
+
+/**
+ * `blockedCommands` / `allowedCommands`: globs over a command's name, a leading slash
+ * forgiven. An empty pattern would mean nothing at all, so it is refused rather than
+ * quietly kept — at boot, where a typo can still be fixed.
+ */
+export function optionalCommandPatterns(raw: Record<string, unknown>, key: string): string[] | undefined {
+  const value = optionalStringArray(raw, key);
+  if (value === undefined) return undefined;
+  return value.map((pattern, i) => {
+    const normalized = normalizeCommandPattern(pattern);
+    if (normalized === "") fail(`"${key}[${i}]" must name a command, like "setup*"`);
+    if (/\s/.test(normalized)) fail(`"${key}[${i}]" must be a command name without spaces, like "setup*"`);
+    return normalized;
+  });
 }
 
 export function optionalModelList(
@@ -1080,6 +1105,8 @@ export function loadConfig(
   config.noPromptTemplates = optionalBoolean(raw, "noPromptTemplates", false);
   config.promptPaths = (optionalStringArray(raw, "promptPaths") ?? []).map(resolve);
   config.allowedModels = optionalModelList(raw, "allowedModels");
+  config.blockedCommands = optionalCommandPatterns(raw, "blockedCommands");
+  config.allowedCommands = optionalCommandPatterns(raw, "allowedCommands");
   config.thinkingLevels = optionalThinkingLevels(raw, "thinkingLevels");
 
   const systemPrompt = optionalString(raw, "systemPrompt");

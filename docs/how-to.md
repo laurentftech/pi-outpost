@@ -659,6 +659,7 @@ For a server other people connect to, decide what the browser may change:
   "sandboxLocks": { "root": true, "writableRoot": true, "allowWrite": true, "allowBash": true },
   "extensionLock": true,
   "workspaceLock": true,
+  "blockedCommands": ["setup*", "config-*"],
   "noSkills": false
 }
 ```
@@ -667,6 +668,10 @@ For a server other people connect to, decide what the browser may change:
 - `extensionLock` forbids adding extension directories — that is loading *code*, which
   is why it is separate from skill paths, and why skill paths stay editable under it
 - `workspaceLock` pins the server to one project
+- `blockedCommands` keeps an extension's operator commands — reconfigure its credentials,
+  change what it captures — out of the users' composer, and refuses them if typed; the
+  extension itself keeps running. `allowedCommands` does the reverse: only the commands it
+  names are offered
 
 All of it is enforced by the server: a client that sends the request anyway is
 refused, nothing is persisted and no session is rebuilt. Add `server.token`, and read
