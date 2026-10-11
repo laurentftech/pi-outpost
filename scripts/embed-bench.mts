@@ -157,6 +157,26 @@ const root = await makeWorkspace({
   "readme.md": "# workspace\n\nA file the browser is allowed to see.\n",
   "docs/notes.md": "# notes\n\nAnother file, so the tree has a folder in it.\n",
   ".pi/prompts/greet.md": "---\ndescription: say hello\n---\n\nSay hello.\n",
+  // A generated report as an HTML file: relative stylesheet, script and picture, a link
+  // to another workspace file, anchors on a page long enough to scroll, one external
+  // link, one missing picture, and a script that tries to take the whole window.
+  "report/index.html": [
+    '<!doctype html><html><head><meta charset="utf-8"><title>Bench report</title><link rel="stylesheet" href="style.css"></head><body>',
+    '<h1 id="top">Bench report</h1><nav><a href="#end">to the end</a> · <a href="../docs/notes.md">the notes</a> · <a href="https://example.com/">example.com</a> · <a href="missing.html">a missing page</a></nav>',
+    '<img src="chart.svg" alt="chart"> <img src="nowhere.png" alt="missing picture">',
+    '<p id="counter">0</p><button id="more" type="button">count</button>',
+    '<button id="escape" type="button">take the window</button>',
+    ...Array.from({ length: 60 }, (_, index) => `<p>Line ${index + 1} of a long page.</p>`),
+    '<h2 id="end">End</h2><a href="#top">back to top</a>',
+    '<script src="app.js"></script></body></html>',
+  ].join("\n"),
+  "report/style.css": "body { font-family: Georgia, serif; } h1 { color: #b45309; } img { height: 60px; }\n",
+  "report/chart.svg": '<svg xmlns="http://www.w3.org/2000/svg" width="120" height="60"><rect width="40" height="60" fill="#2563eb"/><rect x="50" y="20" width="40" height="40" fill="#16a34a"/></svg>',
+  "report/app.js": [
+    'var count = 0;',
+    'document.getElementById("more").addEventListener("click", function () { document.getElementById("counter").textContent = String(++count); });',
+    'document.getElementById("escape").addEventListener("click", function () { try { top.location.href = "https://example.com/"; } catch (error) { document.getElementById("counter").textContent = "blocked: " + error.name; } });',
+  ].join("\n"),
   ...DOCUMENT_FILES,
 });
 

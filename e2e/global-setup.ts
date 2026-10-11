@@ -193,6 +193,26 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
     "docs/whole.svg": figureSvg("The whole architecture"),
     "docs/figures/power.svg": figureSvg("Power only"),
     "shared/legend.svg": figureSvg("The shared legend"),
+    // An HTML report with a stylesheet, a picture and a script beside it, a relative
+    // link, and a probe that reports what the page can reach of the application.
+    "site/index.html": [
+      "<!doctype html><html><head><meta charset=\"utf-8\">",
+      '<link rel="stylesheet" href="css/site.css"><script src="js/app.js"></script></head>',
+      '<body><h1 id="title">HTML report</h1><img id="logo" src="img/logo.svg" alt="logo">',
+      '<p id="written"></p><a id="relative" href="notes.md">the notes</a> <a id="anchor" href="#title">top</a>',
+      '<pre id="probe"></pre><script>',
+      "var seen = {};",
+      'try { seen.parentDocument = String(Boolean(parent.document.body)); } catch (error) { seen.parentDocument = "blocked"; }',
+      'try { seen.storage = String(localStorage.length); } catch (error) { seen.storage = "blocked"; }',
+      'try { seen.cookie = document.cookie === "" ? "empty" : "present"; } catch (error) { seen.cookie = "blocked"; }',
+      "seen.origin = String(window.origin);",
+      'document.getElementById("probe").textContent = JSON.stringify(seen);',
+      "</script></body></html>",
+    ].join("\n"),
+    "site/css/site.css": "h1 { color: rgb(1, 2, 3); }\n",
+    "site/js/app.js": 'document.addEventListener("DOMContentLoaded", function () { document.getElementById("written").textContent = "script ran"; });\n',
+    "site/img/logo.svg": '<svg xmlns="http://www.w3.org/2000/svg" width="40" height="20"><rect width="40" height="20" fill="#2563eb"/></svg>',
+    "site/notes.md": "# Site notes\n\nReached from the page.\n",
     // A prompt template, so `/` has something to autocomplete. Discovered from
     // the workspace's own .pi/prompts, the same way a real project's are.
     ".pi/prompts/greet.md": "---\ndescription: say hello\n---\n\nSay hello.\n",

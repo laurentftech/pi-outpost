@@ -8,6 +8,8 @@ import type { GitDiffState, OpenFile } from "../useAgent";
 import { CodeHighlight } from "./CodeHighlight";
 import { CopyButton } from "./CopyButton";
 import { DocxExportButton } from "./DocxExportButton";
+import { HtmlPageFrame } from "./HtmlPageFrame";
+import type { LoadFile } from "../util/htmlPage";
 import { SplitDiffBlock } from "./DiffBlocks";
 import { diffLines } from "../util/diff";
 import { isImageFile, isPdfFile, rawFileUrl, resolveRelativeHref } from "../util/workspacePath";
@@ -128,6 +130,10 @@ function isMarkdown(path: string): boolean {
   return /\.(md|markdown)$/i.test(path);
 }
 
+function isHtml(path: string): boolean {
+  return /\.html?$/i.test(path);
+}
+
 /** Client-side hint only — the server re-checks every write against the sandbox. */
 function isWritable(path: string, writableRoot: string | null | undefined): boolean {
   if (writableRoot === undefined) return true;
@@ -191,6 +197,8 @@ export function FileViewer({
 
   const loaded = file.status === "loaded" ? file : null;
   const markdown = loaded !== null && isMarkdown(file.path);
+  // Drawn like Markdown, in a sandboxed frame (HtmlPageFrame): open it, see the page.
+  const html = loaded !== null && isHtml(file.path);
   // Images can't travel the text-preview protocol (read_file answers "binary");
   // the viewer loads them straight from /files/raw instead and ignores that error.
   const image = isImageFile(file.path);
@@ -222,7 +230,7 @@ export function FileViewer({
    * It arrives with no notion of invalid — every text renders as something — so its
    * half of the split never goes stale.
    */
-  const renderable = recognised || markdown;
+  const renderable = recognised || markdown || html;
   /** The old boolean, derived: every existing branch keeps reading one thing. */
   const showRaw = mode === "source";
   const roomForTwo = useRoomForTwo();
@@ -595,6 +603,19 @@ export function FileViewer({
    * from a report that loaded in one mode and not the other would be the exact
    * confusion this rendering exists to avoid.
    */
+  /**
+   * A sibling file's bytes for an HTML page: fetched here, by the viewer, and written into
+   * the page — never linked from it, since the URL carries the token (see htmlPage.ts).
+   */
+  const loadPageResource = useCallback<LoadFile>(
+    (path) =>
+      fetch(rawFileUrl(serverUrl, path, token, undefined, workspace)).then(
+        (response) => (response.ok ? response.blob() : undefined),
+        () => undefined,
+      ),
+    [serverUrl, token, workspace],
+  );
+
   function renderedMarkdown(source: string) {
     return (
             <div className="prose-chat mx-auto max-w-3xl p-4 text-zinc-700 dark:text-zinc-300">
@@ -978,6 +999,11 @@ export function FileViewer({
         {loaded && edit === null && !splitting && !showGitDiff && markdown && !showRaw && (
           <div ref={contentRef}>{renderedMarkdown(loaded.content)}</div>
         )}
+        {loaded && edit === null && !splitting && !showGitDiff && html && !showRaw && (
+          <div className="h-full" data-testid="file-html">
+            <HtmlPageFrame source={loaded.content} path={file.path} load={loadPageResource} onOpen={onReload} />
+          </div>
+        )}
         {splitting && (
           <div className="flex h-full min-h-0" data-testid="file-split">
             {/* Each pane scrolls on its own: a long document must not scroll the
@@ -998,6 +1024,9 @@ export function FileViewer({
                 // something — so there is nothing here to mark stale or to explain.
                 // The same renderer as the full-width view, on the same debounce.
                 <div className="prose-chat p-4 text-zinc-700 dark:text-zinc-300">{renderedMarkdown(settledText)}</div>
+              ) : html && !recognised ? (
+                // The same frame as the full-width view, drawing the draft, on the same debounce.
+                <HtmlPageFrame source={settledText} path={file.path} load={loadPageResource} onOpen={onReload} />
               ) : (
                 <>
               {stale && (
@@ -1087,7 +1116,7 @@ export function FileViewer({
             render. Shown as text.
           </div>
         )}
-        {loaded && edit === null && !splitting && !showGitDiff && (!markdown || showRaw) && (!diagram || showRaw) && (
+        {loaded && edit === null && !splitting && !showGitDiff && (!markdown || showRaw) && (!diagram || showRaw) && (!html || showRaw) && (
           <div ref={contentRef} className="p-4">
             <CodeHighlight code={loaded.content} path={file.path} onRendered={bumpCodeRenderTick} />
           </div>
