@@ -209,10 +209,13 @@ export class ResourceRepositoryService {
     ];
     const resources = await normalizeResources(input.resources, declared);
     const byRoot = new Map<string, AgentResourceInfo[]>();
+    const lookup: RepositoryLookup = new Map();
+    // Looked up together; grouped below in the resources' own order.
+    const roots = await Promise.all(resources.map((resource) => (resource.path ? enclosingRepository(resource.path, lookup) : undefined)));
 
-    for (const resource of resources) {
+    for (const [index, resource] of resources.entries()) {
       if (!resource.path) continue;
-      const root = await enclosingRepository(resource.path);
+      const root = roots[index];
       if (!root) {
         resource.unavailableReason ??= "Not backed by a Git repository";
         continue;
@@ -229,7 +232,7 @@ export class ResourceRepositoryService {
     const missingCollections: SkillCollection[] = [];
     for (const collection of input.userSkillCollections ?? []) {
       const canonical = await canonicalExisting(collection.path);
-      const root = canonical ? await enclosingRepository(canonical) : undefined;
+      const root = canonical ? await enclosingRepository(canonical, lookup) : undefined;
       if (!root) {
         missingCollections.push(collection);
         continue;
@@ -241,31 +244,34 @@ export class ResourceRepositoryService {
     const loadedSkills = resources.filter((resource) => resource.kind === "skill" && resource.path);
 
     const next = new Map<string, KnownRepository>();
-    for (const [root, repoResources] of byRoot) {
-      const filesystemIdentity = await repositoryFilesystemIdentity(root);
-      const id = repositoryId(root, filesystemIdentity);
-      const containsExtensions = repoResources.some((resource) => resource.kind === "extension");
-      const previous = this.repositories.get(id);
-      const assessment =
-        input.extensionLock && containsExtensions
-          ? blockedAssessment(id, "locked", "Extension updates are locked by this deployment")
-          : previous?.assessment.status === "locked"
-            ? blockedAssessment(id, "unchecked")
-            : previous?.assessment ?? blockedAssessment(id, "unchecked");
-      const collection = collectionsByRoot.get(root);
-      const name = await repositoryDisplayName(root);
-      next.set(id, {
-        id,
-        path: root,
-        filesystemIdentity,
-        name,
-        resources: repoResources,
-        containsExtensions,
-        assessment,
-        ...(collection ? { collection: await collectionView(root, name, collection, loadedSkills) } : {}),
-        removal: removalFor(root, collection),
-      });
-    }
+    // Each repository's git questions are independent: asked together, kept in order.
+    const known = await Promise.all(
+      [...byRoot].map(async ([root, repoResources]): Promise<KnownRepository> => {
+        const [filesystemIdentity, name] = await Promise.all([repositoryFilesystemIdentity(root), repositoryDisplayName(root)]);
+        const id = repositoryId(root, filesystemIdentity);
+        const containsExtensions = repoResources.some((resource) => resource.kind === "extension");
+        const previous = this.repositories.get(id);
+        const assessment =
+          input.extensionLock && containsExtensions
+            ? blockedAssessment(id, "locked", "Extension updates are locked by this deployment")
+            : previous?.assessment.status === "locked"
+              ? blockedAssessment(id, "unchecked")
+              : previous?.assessment ?? blockedAssessment(id, "unchecked");
+        const collection = collectionsByRoot.get(root);
+        return {
+          id,
+          path: root,
+          filesystemIdentity,
+          name,
+          resources: repoResources,
+          containsExtensions,
+          assessment,
+          ...(collection ? { collection: await collectionView(root, name, collection, loadedSkills) } : {}),
+          removal: removalFor(root, collection),
+        };
+      }),
+    );
+    for (const repository of known) next.set(repository.id, repository);
     for (const collection of missingCollections) {
       const where = path.resolve(collection.path);
       const filesystemIdentity = `missing:${where}`;
@@ -872,13 +878,42 @@ async function canonicalDirectory(value: string): Promise<string> {
   }
 }
 
-async function enclosingRepository(resourcePath: string): Promise<string | undefined> {
+/**
+ * Git's answer to `--show-toplevel` per candidate working tree, asked once for the whole
+ * inventory: skills and extensions mostly live in a handful of repositories, and asking git
+ * once per resource cost a process each (~0.1 s apiece, seconds for a skill collection).
+ */
+type RepositoryLookup = Map<string, Promise<string | undefined>>;
+
+/** The nearest directory at or above `directory` holding a `.git` entry — a folder, or a file for a worktree or submodule. */
+async function nearestGitEntry(directory: string): Promise<string | undefined> {
+  for (let current = directory; ; ) {
+    try {
+      await fs.lstat(path.join(current, ".git"));
+      return current;
+    } catch {
+      const parent = path.dirname(current);
+      if (parent === current) return undefined;
+      current = parent;
+    }
+  }
+}
+
+async function enclosingRepository(resourcePath: string, lookup: RepositoryLookup = new Map()): Promise<string | undefined> {
   const canonical = await canonicalExisting(resourcePath);
   if (!canonical) return undefined;
   const cwd = (await fs.stat(canonical)).isDirectory() ? canonical : path.dirname(canonical);
-  const answer = await tryGit(cwd, ["rev-parse", "--show-toplevel"]);
-  if (!answer) return undefined;
-  const root = await canonicalExisting(answer.trim());
+  // No `.git` anywhere above: git would find no repository either, so it is not asked.
+  const candidate = await nearestGitEntry(cwd);
+  if (!candidate) return undefined;
+  // Git still has the last word — a `.git` it refuses (not a repository, dubious ownership)
+  // answers nothing — but once per candidate, not once per resource.
+  let answer = lookup.get(candidate);
+  if (!answer) {
+    answer = tryGit(candidate, ["rev-parse", "--show-toplevel"]).then((top) => (top ? canonicalExisting(top) : undefined));
+    lookup.set(candidate, answer);
+  }
+  const root = await answer;
   return root && isWithin(root, canonical) ? root : undefined;
 }
 
