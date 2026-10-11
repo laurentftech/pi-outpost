@@ -140,8 +140,23 @@ Word 2016+ and PowerPoint 2016+ draw the SVG; desktop Word is the target that ma
 best effort. LibreOffice, Google Docs and older Office show the PNG. A transparent pixel would leave
 them a blank space, so the image installs `@resvg/resvg-js` (rasters), `@napi-rs/canvas` (Mermaid's
 text measurement) and a font family (`fonts-dejavu-core`), the same face for measuring and drawing.
-The image size is measured before and after. A raster that cannot be drawn refuses the call rather
-than writing a blank picture.
+A raster that cannot be drawn refuses the call rather than writing a blank picture — including one
+whose text would be missing: resvg finds a Linux system's fonts through fontconfig's configuration,
+which the slim image does not have, so every label vanished from the PNG while shapes and arrows
+stayed. The font directories are passed explicitly, and a probe word is drawn once per font before
+any raster.
+
+**Measured** (`docker images`, both built from the same Dockerfile shape on 2026-10-11):
+
+| Image | Size |
+|---|---|
+| `main` before this change | 232 MB |
+| with the document tools | 312 MB (+80 MB) |
+
+The runtime `node_modules` is 42 packages; the largest part is `@napi-rs/canvas`'s native binary
+(~31 MB), used only to measure Mermaid's text. The worker bundle (Mermaid and its dependencies) is
+12.8 MB. If the size matters later, the measurement can move to resvg (`getBBox` of a one-word SVG)
+and canvas leave the image.
 
 ### Templates by name, from one folder
 

@@ -209,7 +209,16 @@ function drawStructure(document: unknown, position: number, font: string): Drawn
     return { position, ...(title ? { title } : {}), issues: [issue], guide: guideTopicFor(document, [issue]) };
   }
   const info = readImageInfo(Buffer.from(figure.svg, "utf8"), `diagram ${position}`);
-  return { kind: "figure", image: { svg: figure.svg, png: rasterizeSvg(figure.svg, font), width: info.width, height: info.height }, ...(title ? { title } : {}) };
+  let png: Uint8Array;
+  try {
+    png = rasterizeSvg(figure.svg, font);
+  } catch (error) {
+    // The server's fault, not the document's: said as such, so the model does not
+    // rewrite a diagram that was right.
+    if (error instanceof RasterError) throw new OfficeRefusal(`Nothing was written: this server could not draw diagram ${position}: ${error.message}. Tell the user; rewriting the diagram will not help.`, {}, 500);
+    throw error;
+  }
+  return { kind: "figure", image: { svg: figure.svg, png, width: info.width, height: info.height }, ...(title ? { title } : {}) };
 }
 
 function refuseDiagrams(refused: DiagramRefusal[]): never {

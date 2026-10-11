@@ -73,9 +73,11 @@ describe("pictures and Mermaid given in the call", () => {
     assert.equal(pngs.length, 1);
     assert.match(body(parts), /svgBlip/, "the picture carries the SVG extension Word 2016+ draws");
     assert.doesNotMatch(body(parts), /flowchart LR/, "the source is not written as code");
-    // The vector is what a fresh render of the same source draws.
+    // The vector is what a fresh render of the same source draws, but for the id each
+    // render is given.
     const fresh = await mermaid.render(source);
-    assert.equal(parts.get(svgs[0])!.toString("utf8").replace(/<[^>]+>/g, ""), fresh.svg.replace(/<[^>]+>/g, ""));
+    const withoutRenderId = (svg: string) => svg.replace(/mermaid-\d+/g, "mermaid-N");
+    assert.equal(withoutRenderId(parts.get(svgs[0])!.toString("utf8")), withoutRenderId(fresh.svg));
   });
 
   test("AnInvalidMermaidRefusesTheCall: the fence's position and Mermaid's message", async () => {

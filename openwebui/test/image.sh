@@ -3,12 +3,14 @@
 #
 #   openwebui/test/image.sh [image]     (default: pi-outpost-openwebui:dev)
 #
-# Needs docker, curl and node. Covers the spec scenarios
-# TheImageServesFromItsEnvironment, TheImageRefusesToStartWithoutASecret and
-# APlanningOutlivesTheContainer. Exits non-zero on the first failure.
+# Needs docker, curl, and node with the repository's dependencies installed. Covers the
+# spec scenarios TheImageServesFromItsEnvironment, TheImageRefusesToStartWithoutASecret
+# and APlanningOutlivesTheContainer, and that the image draws a document's diagrams.
+# Exits non-zero on the first failure.
 set -euo pipefail
 
 IMAGE=${1:-pi-outpost-openwebui:dev}
+HERE=$(cd "$(dirname "$0")" && pwd)
 SECRET=image-test-secret
 KEY=image-test-identity-key-0123456789abcdef
 PORT=18790
@@ -76,6 +78,26 @@ for topic in graphs-and-tables proposals timelines enriched; do
   grep -q '"page":"' <<<"$guide" || fail "read_structure_guide $topic: ${guide:0:200}"
   grep -q 'write_structure_figure\|compare_timelines' <<<"$guide" && fail "read_structure_guide $topic names a pi-only tool"
 done
+
+echo "-- ADocumentIsWrittenInTheImage"
+# A structured-exchange graph, a Mermaid flowchart and a picture: the image's own
+# worker, fonts and rasteriser draw them, and nothing is stored for it.
+document=$(node -e '
+  const { createCanvas } = require("@napi-rs/canvas");
+  const square = createCanvas(16, 16);
+  const context = square.getContext("2d");
+  context.fillStyle = "#2f5496";
+  context.fillRect(0, 0, 16, 16);
+  const png = square.toBuffer("image/png").toString("base64");
+  const graph = { schema: "urn:structured-exchange:1", kind: "graph", data: { nodes: [{ id: "a", label: "Alpha" }, { id: "b", label: "Beta" }], edges: [{ from: "a", to: "b", kind: "flow" }] } };
+  const fence = "```";
+  const markdown = ["# Image test", "", fence + "json", JSON.stringify(graph), fence, "", fence + "mermaid", "flowchart LR", "  A[Ask] --> B[Write]", fence, "", "![square](data:image/png;base64," + png + ")"].join("\n");
+  process.stdout.write(JSON.stringify({ file_name: "image-test", markdown }));
+')
+before=$(docker exec "$NAME" sh -c 'find /data -type f | wc -l')
+call create_document "$document" | node --import tsx/esm "$HERE/image-document-check.mts" 2 || fail "create_document did not write the document with its diagrams"
+after=$(docker exec "$NAME" sh -c 'find /data -type f | wc -l')
+[ "$before" = "$after" ] || fail "create_document stored something in /data"
 
 echo "-- APlanningOutlivesTheContainer"
 docker rm -f "$NAME" >/dev/null

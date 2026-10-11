@@ -149,7 +149,8 @@ describe("create_document", () => {
   test("OrdinaryJsonStaysCode", async (t) => {
     const { call } = await app(t);
     const { parts } = downloadOf(await call("create_document", { file_name: "j", markdown: '```json\n{"name": "plain"}\n```\n' }));
-    assert.match(text(parts, "word/document.xml"), /plain/);
+    // A code block: its line in a run of the monospace face the mapping writes listings in.
+    assert.match(text(parts, "word/document.xml"), /<w:r>(?:(?!<\/w:r>)[\s\S])*w:ascii="Consolas[^"]*"(?:(?!<\/w:r>)[\s\S])*name(?:(?!<\/w:r>)[\s\S])*plain/);
     assert.deepEqual(media(parts, "word/media/", ""), []);
   });
 
@@ -161,7 +162,9 @@ describe("create_document", () => {
     const svgs = media(parts, "word/media/", ".svg");
     assert.equal(svgs.length, 1);
     assert.ok(parts.get(media(parts, "word/media/", ".png")[0]!)!.length > 500);
-    assert.equal(shown(text(parts, svgs[0]!)), shown((await mermaid.render(source)).svg));
+    // A fresh render of the same source, but for the id each render is given.
+    const withoutRenderId = (svg: string) => svg.replace(/mermaid-\d+/g, "mermaid-N");
+    assert.equal(withoutRenderId(text(parts, svgs[0]!)), withoutRenderId((await mermaid.render(source)).svg));
     const body = text(parts, "word/document.xml");
     assert.ok(body.indexOf("Before.") < body.indexOf("svgBlip") && body.indexOf("svgBlip") < body.indexOf("After."));
     assert.deepEqual(payload.figures, ["Mermaid diagram 1"]);
@@ -237,7 +240,8 @@ describe("create_document", () => {
   test("ARefusedDiagramRefusesTheDocument: the second diagram named, show_structure's issues, a guide topic", async (t) => {
     const { call } = await app(t);
     const good = await conformance("valid/graph-minimal.json");
-    const badText = await fs.readFile(path.join(CONFORMANCE, "invalid/unresolved-endpoint.json"), "utf8");
+    // As a model writes it: checked out on Windows, the file has CRLF line endings.
+    const badText = (await fs.readFile(path.join(CONFORMANCE, "invalid/unresolved-endpoint.json"), "utf8")).replace(/\r\n/g, "\n");
     const response = await call("create_document", { file_name: "d", markdown: `\`\`\`json\n${JSON.stringify(good)}\n\`\`\`\n\n\`\`\`json\n${badText}\n\`\`\`\n` });
     assert.equal(response.statusCode, 422);
     assert.doesNotMatch(response.body, /data-planning/);
@@ -272,14 +276,19 @@ describe("create_document", () => {
 
   // openlore: scenario=APathIsNotATemplateName spec=openwebui-office-documents
   test("APathIsNotATemplateName: refused with the names offered, nothing read outside", async (t) => {
-    const dir = await templatesFolder(t);
-    await fs.mkdir(path.join(dir, "sub"));
+    const parent = await tempDir(t);
+    const dir = path.join(parent, "templates");
+    await fs.mkdir(path.join(dir, "sub"), { recursive: true });
+    await fs.copyFile(path.join(FIXTURES, "docx-template.dotx"), path.join(dir, "acme-report.dotx"));
     await fs.copyFile(path.join(FIXTURES, "docx-template.dotx"), path.join(dir, "sub", "acme.dotx"));
+    // Beside the folder: what a path would reach if it were followed.
+    await fs.writeFile(path.join(parent, "config.json"), '{"secret": "OUTSIDE-THE-FOLDER"}');
     const { call } = await app(t, { templatesDir: dir });
     for (const template of ["../config.json", "sub/acme.dotx", "sub\\acme.dotx", "missing.dotx"]) {
       const response = await call("create_document", { file_name: "r", markdown: "x", template });
       assert.equal(response.statusCode, 422, template);
       assert.deepEqual(response.json().templates, ["acme-report.dotx"], template);
+      assert.doesNotMatch(response.body, /OUTSIDE-THE-FOLDER/, template);
     }
   });
 

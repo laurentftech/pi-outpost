@@ -60,7 +60,7 @@ with Mermaid's message and the position of the fence or slide.
 
 #### Scenario: MermaidDiagramIsDrawnInWord
 - **WHEN** `create_document` is called with Markdown holding a valid flowchart in a ` ```mermaid ` fence
-- **THEN** the document holds, in that place, an SVG picture and a PNG fallback that is not empty, and the SVG equals a fresh render of the same source
+- **THEN** the document holds, in that place, an SVG picture and a PNG fallback that is not empty, and the SVG equals a fresh render of the same source but for the id each render is given
 
 #### Scenario: MermaidDiagramIsDrawnOnASlide
 - **WHEN** `create_presentation` is called with a slide whose `mermaid` is a valid sequence diagram
