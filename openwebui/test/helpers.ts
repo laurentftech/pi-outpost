@@ -5,7 +5,7 @@ import path from "node:path";
 import type { TestContext } from "node:test";
 import { buildApp } from "../src/app.ts";
 import type { PlanningServerConfig } from "../src/config.ts";
-import { planningRoutes } from "../src/routes.ts";
+import { planningRoutes, type PlanningRouteOptions } from "../src/routes.ts";
 import { PlanningStore } from "../src/store.ts";
 
 export const SECRET = "test-bearer-secret";
@@ -38,14 +38,17 @@ export async function testConfig(t: TestContext, overrides: Partial<PlanningServ
     maxPlanningBytes: 1_000_000,
     maxRevisions: 500,
     maxPlanningsPerUser: 200,
+    templatesDir: undefined,
+    maxFileBytes: 5 * 1024 * 1024,
+    maxImageBytes: 1024 * 1024,
     ...overrides,
   };
 }
 
-export async function testApp(t: TestContext, overrides: Partial<PlanningServerConfig> = {}) {
+export async function testApp(t: TestContext, overrides: Partial<PlanningServerConfig> = {}, routeOptions: PlanningRouteOptions = {}) {
   const config = await testConfig(t, overrides);
   const store = new PlanningStore(config);
-  const app = buildApp(config, planningRoutes(store, config));
+  const app = buildApp(config, planningRoutes(store, config, routeOptions));
   t.after(() => app.close());
   /** Calls a tool as Open WebUI would, for `user`. */
   const call = (tool: string, body: unknown = {}, user = "alice", headers: Record<string, string> = {}) =>

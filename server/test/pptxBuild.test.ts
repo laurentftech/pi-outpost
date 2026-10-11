@@ -12,7 +12,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { before, describe, test } from "node:test";
-import { readImageInfo } from "../src/imageInfo.ts";
+import { readImageInfo } from "@pi-outpost/office/imageInfo.ts";
 import { extractPptx } from "../src/pptx.ts";
 import {
   buildPresentation,
@@ -25,9 +25,9 @@ import {
   readTemplate,
   type SlideSpec,
   type Template,
-} from "../src/pptxBuild.ts";
-import { readAllZipEntries } from "../src/zip.ts";
-import { writeZip } from "../src/zipWriter.ts";
+} from "@pi-outpost/office/pptxBuild.ts";
+import { readAllZipEntries } from "@pi-outpost/office/zip.ts";
+import { writeZip } from "@pi-outpost/office/zipWriter.ts";
 import { assertIntact } from "./ooxmlPackage.ts";
 
 const FIXTURES = path.join(path.dirname(fileURLToPath(import.meta.url)), "fixtures");

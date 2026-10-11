@@ -17,10 +17,10 @@
  *   pending change would leave its meaning to chance.
  */
 import type { PictureSource } from "@pi-outpost/shared/docx";
-import { contentWarnings, countingPictures, MAX_MARKDOWN_CHARS } from "./docxBuild.ts";
-import { generateContent, renumberedNote, WordComposer } from "./docxGraft.ts";
-import { WordTemplateError, type WordPackage } from "./docxTemplate.ts";
-import { bodyLayout, childElements, headingLevelOf, paragraphText, type XmlElement } from "./wordml.ts";
+import { contentWarnings, countingPictures, MAX_MARKDOWN_CHARS } from "@pi-outpost/office/docxBuild.ts";
+import { generateContent, renumberedNote, WordComposer } from "@pi-outpost/office/docxGraft.ts";
+import { WordTemplateError, type WordPackage } from "@pi-outpost/office/docxTemplate.ts";
+import { bodyLayout, childElements, headingLevelOf, paragraphText, type XmlElement } from "@pi-outpost/office/wordml.ts";
 
 export const MAX_EDITS = 50;
 export const REVISION_AUTHOR = "pi-outpost";

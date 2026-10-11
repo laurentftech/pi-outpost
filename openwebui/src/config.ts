@@ -26,6 +26,12 @@ export interface PlanningServerConfig {
   maxRevisions: number;
   /** Most plannings one user may own. */
   maxPlanningsPerUser: number;
+  /** The administrator's Word and PowerPoint templates; none when unset. */
+  templatesDir: string | undefined;
+  /** Largest Word or PowerPoint file written, in bytes, before it is packed into the embed. */
+  maxFileBytes: number;
+  /** Largest picture a call may give, in bytes once decoded. */
+  maxImageBytes: number;
 }
 
 export class ConfigError extends Error {}
@@ -40,6 +46,9 @@ export const ENV = {
   maxPlanningBytes: "OUTPOST_MAX_PLANNING_BYTES",
   maxRevisions: "OUTPOST_MAX_REVISIONS",
   maxPlanningsPerUser: "OUTPOST_MAX_PLANNINGS",
+  templatesDir: "OUTPOST_TEMPLATES_DIR",
+  maxFileBytes: "OUTPOST_MAX_FILE_BYTES",
+  maxImageBytes: "OUTPOST_MAX_IMAGE_BYTES",
 } as const;
 
 function positiveInteger(env: NodeJS.ProcessEnv, name: string, fallback: number): number {
@@ -79,5 +88,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env, cwd: string = p
     maxPlanningBytes: positiveInteger(env, ENV.maxPlanningBytes, 1_000_000),
     maxRevisions: positiveInteger(env, ENV.maxRevisions, 500),
     maxPlanningsPerUser: positiveInteger(env, ENV.maxPlanningsPerUser, 200),
+    templatesDir: env[ENV.templatesDir]?.trim() ? path.resolve(cwd, env[ENV.templatesDir]!.trim()) : undefined,
+    maxFileBytes: positiveInteger(env, ENV.maxFileBytes, 5 * 1024 * 1024),
+    maxImageBytes: positiveInteger(env, ENV.maxImageBytes, 1024 * 1024),
   };
 }

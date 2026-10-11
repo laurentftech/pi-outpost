@@ -34,7 +34,9 @@ export function buildApp(config: PlanningServerConfig, routes: PlanningRoutes): 
   // Large enough for any document the contract accepts, even sent as a JSON string
   // (escaping can double it), so an oversized one is refused by the contract, which
   // names its ceiling, rather than by the HTTP layer, which names nothing.
-  const bodyLimit = Math.max(config.maxPlanningBytes, STRUCTURED_EXCHANGE_BYTES_CEILING_ANY) * 2 + 64 * 1024;
+  // A document's pictures travel in the call as base64, a third larger than the file
+  // they end up in, which the file limit bounds.
+  const bodyLimit = Math.max(Math.max(config.maxPlanningBytes, STRUCTURED_EXCHANGE_BYTES_CEILING_ANY) * 2, config.maxFileBytes * 2) + 64 * 1024;
   const app = Fastify({ logger: false, bodyLimit });
   app.decorateRequest("owner", "");
 

@@ -4,8 +4,8 @@
  */
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { readAllZipEntries, readZipEntry, ZipError } from "../src/zip.ts";
-import { writeZip } from "../src/zipWriter.ts";
+import { readAllZipEntries, readZipEntry, ZipError } from "@pi-outpost/office/zip.ts";
+import { writeZip } from "@pi-outpost/office/zipWriter.ts";
 
 const LIMITS = { maxEntries: 100, maxInflatedBytes: 1024 * 1024, maxTotalBytes: 4 * 1024 * 1024 };
 

@@ -10,8 +10,8 @@
  */
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { decodeEntities, scanXml, XmlError, type XmlEvent } from "../src/xml.ts";
-import { readZipEntry, ZipError } from "../src/zip.ts";
+import { decodeEntities, scanXml, XmlError, type XmlEvent } from "@pi-outpost/office/xml.ts";
+import { readZipEntry, ZipError } from "@pi-outpost/office/zip.ts";
 
 /** Every event the scanner emits for this document. */
 function events(source: string): XmlEvent[] {

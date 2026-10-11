@@ -13,12 +13,12 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, test } from "node:test";
 import { crc32, deflateSync } from "node:zlib";
-import { createDocument } from "../src/docxBuild.ts";
-import { describeWordTemplate, formatTemplateDescription, MAX_LISTED_TABLE_STYLES, readWordPackage, WordTemplateError } from "../src/docxTemplate.ts";
-import { withUpdateFields } from "../src/docxGraft.ts";
-import { readAllZipEntries } from "../src/zip.ts";
-import { writeZip } from "../src/zipWriter.ts";
-import { bodyLayout, paragraphText, parseStyles, styleIsNumbered, withoutTypedNumber } from "../src/wordml.ts";
+import { createDocument } from "@pi-outpost/office/docxBuild.ts";
+import { describeWordTemplate, formatTemplateDescription, MAX_LISTED_TABLE_STYLES, readWordPackage, WordTemplateError } from "@pi-outpost/office/docxTemplate.ts";
+import { withUpdateFields } from "@pi-outpost/office/docxGraft.ts";
+import { readAllZipEntries } from "@pi-outpost/office/zip.ts";
+import { writeZip } from "@pi-outpost/office/zipWriter.ts";
+import { bodyLayout, paragraphText, parseStyles, styleIsNumbered, withoutTypedNumber } from "@pi-outpost/office/wordml.ts";
 
 const FIXTURES = path.join(path.dirname(fileURLToPath(import.meta.url)), "fixtures");
 const templateBytes = await readFile(path.join(FIXTURES, "docx-template.dotx"));

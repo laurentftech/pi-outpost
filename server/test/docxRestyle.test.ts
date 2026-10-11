@@ -13,14 +13,14 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { before, describe, test } from "node:test";
-import { readWordPackage, WordTemplateError } from "../src/docxTemplate.ts";
+import { readWordPackage, WordTemplateError } from "@pi-outpost/office/docxTemplate.ts";
 import { assertTextUnchanged, restyleDocument, type RestyleOptions } from "../src/docxRestyle.ts";
 import { REVISION_AUTHOR } from "../src/docxUpdate.ts";
 import { realResolve } from "../src/sandbox.ts";
-import { bodyLayout } from "../src/wordml.ts";
+import { bodyLayout } from "@pi-outpost/office/wordml.ts";
 import { createDocxRestyleToolDefinition } from "../src/wordTools.ts";
-import { readAllZipEntries } from "../src/zip.ts";
-import { writeZip } from "../src/zipWriter.ts";
+import { readAllZipEntries } from "@pi-outpost/office/zip.ts";
+import { writeZip } from "@pi-outpost/office/zipWriter.ts";
 
 const FIXTURES = path.join(path.dirname(fileURLToPath(import.meta.url)), "fixtures");
 const driftedBytes = await readFile(path.join(FIXTURES, "docx-drifted.docx"));

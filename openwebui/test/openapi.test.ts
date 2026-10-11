@@ -20,15 +20,18 @@ function exampleIn(description: string): unknown {
 }
 
 // openlore: scenario=TheDescriptionNamesTheFiveTools spec=openwebui-planning-server
-test("TheDescriptionNamesTheFiveTools: exactly the operations — the five planning tools and show_structure, each described with an input schema", async (t) => {
+test("TheDescriptionNamesTheFiveTools: exactly the operations — planning, structure and document tools, each described with an input schema", async (t) => {
   const { document } = await published(t);
   const operations = Object.values(document.paths as Record<string, { post: { operationId: string; description: string; requestBody: unknown } }>).map(
     (path) => path.post,
   );
   assert.deepEqual(operations.map((op) => op.operationId).sort(), [
+    "create_document",
     "create_planning",
+    "create_presentation",
     "get_planning",
     "list_plannings",
+    "list_templates",
     "read_structure_guide",
     "show_planning",
     "show_structure",

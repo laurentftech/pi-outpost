@@ -48,7 +48,7 @@ async function results(file, count, timeoutMs = 180_000) {
 
 /** A part of a .docx, read with the server's own zip reader. */
 async function part(file, name) {
-  const { readAllZipEntries } = await import("../src/zip.ts");
+  const { readAllZipEntries } = await import("@pi-outpost/office/zip.ts");
   return readAllZipEntries(await readFile(file), { maxEntries: 4096, maxInflatedBytes: 1e8, maxTotalBytes: 1e9 }).get(name)?.toString("utf8") ?? "";
 }
 

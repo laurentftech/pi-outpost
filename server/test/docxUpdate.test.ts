@@ -11,11 +11,11 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, test } from "node:test";
-import { createDocument } from "../src/docxBuild.ts";
-import { readWordPackage, WordTemplateError } from "../src/docxTemplate.ts";
+import { createDocument } from "@pi-outpost/office/docxBuild.ts";
+import { readWordPackage, WordTemplateError } from "@pi-outpost/office/docxTemplate.ts";
 import { updateDocument, REVISION_AUTHOR, type DocxEdit } from "../src/docxUpdate.ts";
-import { bodyLayout, headingLevelOf, paragraphText } from "../src/wordml.ts";
-import { readAllZipEntries } from "../src/zip.ts";
+import { bodyLayout, headingLevelOf, paragraphText } from "@pi-outpost/office/wordml.ts";
+import { readAllZipEntries } from "@pi-outpost/office/zip.ts";
 
 const FIXTURES = path.join(path.dirname(fileURLToPath(import.meta.url)), "fixtures");
 const reportBytes = await readFile(path.join(FIXTURES, "docx-report.docx"));

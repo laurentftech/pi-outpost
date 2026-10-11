@@ -17,7 +17,7 @@ import path from "node:path";
 import { loadCanvas, type CanvasModule } from "./canvas.ts";
 import { encodeBitmap, pictureMarker, type Bitmap, type FoundPicture } from "./extractedPictures.ts";
 import { renderSpans, struckThroughNotice, STRIKE, type Span } from "./markdownSpans.ts";
-import { escapeCell } from "./markdownTable.ts";
+import { escapeCell } from "@pi-outpost/office/markdownTable.ts";
 import { commentsNotice, commentsOf, renderComments, UNREADABLE_COMMENTS } from "./pdfComments.ts";
 
 export type PdfMode = "text" | "tables" | "both";

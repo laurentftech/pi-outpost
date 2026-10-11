@@ -23,12 +23,12 @@ import path from "node:path";
 import { Type } from "typebox";
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 import type { PictureSource, ReferencedImage } from "@pi-outpost/shared/docx";
-import { createDocument, type KeepPart } from "./docxBuild.ts";
-import { describeWordTemplate, formatTemplateDescription, readWordPackage, WordTemplateError } from "./docxTemplate.ts";
+import { createDocument, type KeepPart } from "@pi-outpost/office/docxBuild.ts";
+import { describeWordTemplate, formatTemplateDescription, readWordPackage, WordTemplateError } from "@pi-outpost/office/docxTemplate.ts";
 import { restyleDocument, type RestyleInclude } from "./docxRestyle.ts";
 import { updateDocument, type DocxEdit } from "./docxUpdate.ts";
 import { assertWritableDestination } from "./extractionOutput.ts";
-import { ImageError, readImageInfo } from "./imageInfo.ts";
+import { ImageError, readImageInfo } from "@pi-outpost/office/imageInfo.ts";
 import {
   checkDocumentPdf,
   convertDocumentToPdf,
@@ -42,7 +42,7 @@ import {
   type RenderSettings,
 } from "./presentationRender.ts";
 import { MAX_IMAGE_BYTES, readSource } from "./presentationTools.ts";
-import { bodyLayout, paragraphText } from "./wordml.ts";
+import { bodyLayout, paragraphText } from "@pi-outpost/office/wordml.ts";
 
 export interface WordToolOptions {
   /** Paths the model gives are resolved against this. */

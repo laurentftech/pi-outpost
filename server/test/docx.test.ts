@@ -13,8 +13,8 @@ import { fileURLToPath } from "node:url";
 import { describe, test } from "node:test";
 import { DocxError, extractDocx, parseBlockRange, parseBody, renderBlock, toggleOn } from "../src/docx.ts";
 import { BOLD, ITALIC, STRIKE, renderSpans, struckThroughNotice } from "../src/markdownSpans.ts";
-import { readAllZipEntries } from "../src/zip.ts";
-import { writeZip } from "../src/zipWriter.ts";
+import { readAllZipEntries } from "@pi-outpost/office/zip.ts";
+import { writeZip } from "@pi-outpost/office/zipWriter.ts";
 
 const FIXTURES = path.join(path.dirname(fileURLToPath(import.meta.url)), "fixtures");
 

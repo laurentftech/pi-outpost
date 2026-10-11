@@ -27,6 +27,19 @@ export interface EmbeddedStructure {
   envelope: unknown;
 }
 
+/** A Word or PowerPoint file written by create_document or create_presentation, to download. */
+export interface EmbeddedDownload {
+  mode: "download";
+  fileName: string;
+  mediaType: string;
+  size: number;
+  /** The file, base64: it travels in the page, since the browser has no route to this server. */
+  data: string;
+  outline: { level: number; text: string }[];
+  figures: string[];
+  template: string;
+}
+
 export interface EmbeddedPlanning {
   mode?: "planning";
   id: string;
@@ -109,7 +122,7 @@ const BOOTSTRAP = `
 })();
 `;
 
-export function embedPage(payload: EmbeddedPlanning | EmbeddedStructure, assets: ViewerAssets = viewerAssets()): string {
+export function embedPage(payload: EmbeddedPlanning | EmbeddedStructure | EmbeddedDownload, assets: ViewerAssets = viewerAssets()): string {
   const { script, style } = packedAssets(assets);
   return [
     "<!doctype html>",

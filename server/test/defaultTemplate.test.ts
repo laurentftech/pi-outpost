@@ -13,15 +13,15 @@ import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { before, describe, test } from "node:test";
-import { DEFAULT_TEMPLATE_NAME, defaultTemplateBytes } from "../src/defaultTemplate.ts";
-import { describeTemplate, readTemplate } from "../src/pptxBuild.ts";
+import { DEFAULT_TEMPLATE_NAME, defaultTemplateBytes } from "@pi-outpost/office/defaultTemplate.ts";
+import { describeTemplate, readTemplate } from "@pi-outpost/office/pptxBuild.ts";
 import {
   createPptxCreateToolDefinition,
   createPptxLayoutsToolDefinition,
   type PresentationToolOptions,
 } from "../src/presentationTools.ts";
 import { realResolve } from "../src/sandbox.ts";
-import { readAllZipEntries, readZipEntry } from "../src/zip.ts";
+import { readAllZipEntries, readZipEntry } from "@pi-outpost/office/zip.ts";
 
 type Content = { type: "text"; text: string };
 type Tool = ReturnType<typeof createPptxCreateToolDefinition>;

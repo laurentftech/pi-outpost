@@ -14,8 +14,8 @@
  * DOCTYPE-refusing scanner as a template, and relationship targets stay names inside
  * the package.
  */
-import { IMAGE_CONTENT_TYPES, type ImageKind } from "./imageInfo.ts";
-import { decode, parseRelationshipList, relativeTarget, relsPartOf, scanRawRelationships } from "./ooxml.ts";
+import { IMAGE_CONTENT_TYPES, type ImageKind } from "@pi-outpost/office/imageInfo.ts";
+import { decode, parseRelationshipList, relativeTarget, relsPartOf, scanRawRelationships } from "@pi-outpost/office/ooxml.ts";
 import {
   composeSlide,
   CONTENT_TYPES,
@@ -36,9 +36,9 @@ import {
   type PartNames,
   type SlideSpec,
   type Template,
-} from "./pptxBuild.ts";
-import { CT_XLSX } from "./pptxVisuals.ts";
-import { writeZip } from "./zipWriter.ts";
+} from "@pi-outpost/office/pptxBuild.ts";
+import { CT_XLSX } from "@pi-outpost/office/pptxVisuals.ts";
+import { writeZip } from "@pi-outpost/office/zipWriter.ts";
 
 export const MAX_DECK_EDITS = 100;
 const REL_NOTES = `${NS_R}/notesSlide`;

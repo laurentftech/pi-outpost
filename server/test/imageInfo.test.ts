@@ -5,7 +5,7 @@
 import assert from "node:assert/strict";
 import { deflateSync, crc32 } from "node:zlib";
 import { describe, test } from "node:test";
-import { ImageError, readImageInfo } from "../src/imageInfo.ts";
+import { ImageError, readImageInfo } from "@pi-outpost/office/imageInfo.ts";
 
 function png(width: number, height: number): Buffer {
   const chunk = (type: string, data: Buffer) => {

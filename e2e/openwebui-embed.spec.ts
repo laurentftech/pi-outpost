@@ -111,3 +111,69 @@ test.describe("in French", () => {
     ]);
   });
 });
+
+/**
+ * create_document's answer, from the server itself: the page it embeds, and the bytes
+ * of the document it built, read back from that page's payload.
+ */
+async function writtenDocument(): Promise<{ html: string; bytes: Buffer; fileName: string }> {
+  const { mkdtemp, rm } = await import("node:fs/promises");
+  const { tmpdir } = await import("node:os");
+  const path = await import("node:path");
+  const { gunzipSync } = await import("node:zlib");
+  const { buildApp } = await import("../openwebui/src/app.ts");
+  const { planningRoutes } = await import("../openwebui/src/routes.ts");
+  const { PlanningStore } = await import("../openwebui/src/store.ts");
+  const dataDir = await mkdtemp(path.join(tmpdir(), "outpost-download-"));
+  const config = {
+    host: "127.0.0.1",
+    port: 0,
+    secret: "s",
+    identity: "plain" as const,
+    identityKey: undefined,
+    dataDir,
+    maxPlanningBytes: 1_000_000,
+    maxRevisions: 10,
+    maxPlanningsPerUser: 10,
+    templatesDir: undefined,
+    maxFileBytes: 5 * 1024 * 1024,
+    maxImageBytes: 1024 * 1024,
+  };
+  const app = buildApp(config, planningRoutes(new PlanningStore(config), config));
+  try {
+    const response = await app.inject({
+      method: "POST",
+      url: "/create_document",
+      headers: { authorization: "Bearer s", "x-openwebui-user-id": "alice" },
+      payload: { file_name: "R&D report", markdown: "# R&D report\n\n## Findings\n\nAll good.\n\n## Next steps\n\n- ship\n" },
+    });
+    expect(response.statusCode).toBe(200);
+    const payload = JSON.parse(gunzipSync(Buffer.from(/data-planning="([A-Za-z0-9+/=]*)"/.exec(response.body)![1]!, "base64")).toString("utf8"));
+    return { html: response.body, bytes: Buffer.from(payload.data, "base64"), fileName: payload.fileName };
+  } finally {
+    await app.close();
+    await rm(dataDir, { recursive: true, force: true });
+  }
+}
+
+// openlore: scenario=TheDownloadIsTheDocument spec=openwebui-office-documents
+test("TheDownloadIsTheDocument: the button inside Open WebUI's sandbox hands over the document the server built", async ({ page }) => {
+  const written = await writtenDocument();
+  // Stored by Open WebUI and read back through its entity decoder: a page with no `&`
+  // survives, even with one in the file's name and headings.
+  expect(written.html.includes("&")).toBe(false);
+  await page.setContent(`<!doctype html><body style="margin:0">
+    <iframe id="embed" sandbox="allow-scripts allow-popups allow-downloads" style="width:900px;border:0"></iframe></body>`);
+  await page.locator("#embed").evaluate((frame, html) => {
+    (frame as HTMLIFrameElement).srcdoc = html;
+  }, written.html);
+  const embed = page.frameLocator("#embed");
+  await expect(embed.getByTestId("download-name")).toHaveText("R&D report.docx");
+  await expect(embed.getByTestId("download-outline").locator("li")).toHaveText(["R&D report", "Findings", "Next steps"]);
+
+  const [download] = await Promise.all([page.waitForEvent("download"), embed.getByRole("button", { name: "Download" }).click()]);
+  expect(download.suggestedFilename()).toBe(written.fileName);
+  const { readFile } = await import("node:fs/promises");
+  const received = await readFile((await download.path())!);
+  expect(received.equals(written.bytes)).toBe(true);
+});

@@ -430,7 +430,7 @@ async function renderIn(env: Record<string, string>): Promise<string> {
 
 /** One part of a fixture package, as text — for the parsers that take XML. */
 async function partOf(name: string, part: string): Promise<string> {
-  const { readZipEntry } = await import("../src/zip.ts");
+  const { readZipEntry } = await import("@pi-outpost/office/zip.ts");
   const bytes = await readFile(path.join(FIXTURES, `${name}.xlsx`));
   const entry = readZipEntry(bytes, part, { maxEntries: 64, maxInflatedBytes: 8 * 1024 * 1024 });
   assert.ok(entry !== null, `fixture ${name} has no ${part}`);

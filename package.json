@@ -9,6 +9,7 @@
     "cli",
     "ui",
     "apps-core",
+    "office",
     "openwebui",
     "mcp"
   ],

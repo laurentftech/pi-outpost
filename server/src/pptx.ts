@@ -14,12 +14,12 @@
  * outside `ppt/` is refused rather than read — a slide is never fetched by a name
  * the package did not legitimately state.
  */
-import { escapeCell, renderMarkdownTable } from "./markdownTable.ts";
+import { escapeCell, renderMarkdownTable } from "@pi-outpost/office/markdownTable.ts";
 import { pictureMarker, type FoundPicture, type PictureMarker } from "./extractedPictures.ts";
-import { IMAGE_CONTENT_TYPES, readImageInfo } from "./imageInfo.ts";
-import { directoryOf, parseRelationships, relsPartOf } from "./ooxml.ts";
-import { scanXml, XmlError } from "./xml.ts";
-import { readZipEntry, ZipError, type ZipLimits } from "./zip.ts";
+import { IMAGE_CONTENT_TYPES, readImageInfo } from "@pi-outpost/office/imageInfo.ts";
+import { directoryOf, parseRelationships, relsPartOf } from "@pi-outpost/office/ooxml.ts";
+import { scanXml, XmlError } from "@pi-outpost/office/xml.ts";
+import { readZipEntry, ZipError, type ZipLimits } from "@pi-outpost/office/zip.ts";
 
 export type PptxErrorReason =
   /** Not a PowerPoint presentation, or damaged past reading. */
