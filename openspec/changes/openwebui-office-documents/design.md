@@ -153,7 +153,10 @@ answer means the whole document was written as asked.
 Word 2016+ and PowerPoint 2016+ draw the SVG; desktop Word is the target that matters, the rest is
 best effort. LibreOffice, Google Docs and older Office show the PNG. A transparent pixel would leave
 them a blank space, so the image installs `@resvg/resvg-js` (rasters), `@napi-rs/canvas` (Mermaid's
-text measurement) and a font family (`fonts-dejavu-core`), the same face for measuring and drawing.
+text measurement) and a font family (`fonts-liberation2`), the same face for measuring and drawing.
+Liberation Sans rather than DejaVu, found in the live run: Mermaid wraps a label at a fixed width, and
+DejaVu, wider than Arial, broke words ("Développe|ment") that Word, drawing the SVG in Arial on
+Windows, had room for. Liberation Sans has Arial's metrics, so the layout is the one Word draws.
 A raster that cannot be drawn refuses the call rather than writing a blank picture — including one
 whose text would be missing: resvg finds a Linux system's fonts through fontconfig's configuration,
 which the slim image does not have, so every label vanished from the PNG while shapes and arrows
@@ -165,7 +168,7 @@ any raster.
 | Image | Size |
 |---|---|
 | `main` before this change | 232 MB |
-| with the document tools | 312 MB (+80 MB) |
+| with the document tools | 313 MB (+81 MB) |
 
 The runtime `node_modules` is 42 packages; the largest part is `@napi-rs/canvas`'s native binary
 (~31 MB), used only to measure Mermaid's text. The worker bundle (Mermaid and its dependencies) is

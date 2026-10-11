@@ -87,7 +87,7 @@ picture that is SVG, does not decode, has a MIME type that does not match its by
 
 #### Scenario: AURLPictureIsNotFetched
 - **WHEN** Markdown holds `![x](https://example.com/a.png)`
-- **THEN** the server makes no request for it, no embed is returned, and the error names the picture's position and asks for its bytes as a `data:` URI
+- **THEN** the server makes no request for it, no embed is returned, and the error, addressed to the model, names the picture's position and tells it to write the document without the picture and tell the user which one is missing
 
 ### Requirement: ARefusalExplainsWhatToFix
 

@@ -22,7 +22,7 @@ const worker = new Worker(pathToFileURL(workerFile));
 const reply = await new Promise((resolve, reject) => {
   worker.once("message", resolve);
   worker.once("error", reject);
-  worker.postMessage({ id: 1, source: "flowchart LR\n  A[Installed] --> B{Draws?}\n  B -->|yes| C[Word]", font: '"DejaVu Sans", Helvetica, Arial, sans-serif' });
+  worker.postMessage({ id: 1, source: "flowchart LR\n  A[Installed] --> B{Draws?}\n  B -->|yes| C[Word]", font: '"Liberation Sans", Arial, Helvetica, sans-serif' });
 });
 await worker.terminate();
 if ("error" in reply) throw new Error(`the worker refused: ${reply.error}`);

@@ -9,51 +9,56 @@
 /** A small transparent PNG, so the examples hold a real picture without a page of base64. */
 const EXAMPLE_PNG = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
 
+// The examples are about allotment gardens on purpose: weak models copy an example's content
+// into a document the user left unspecified. Codestral filled a steering committee's deck
+// with a "rollout review" example's bullets and diagram, translated; nobody's real request
+// is about watering rotas.
 export const DOCUMENT_EXAMPLE = {
-  file_name: "rollout-report",
+  file_name: "allotment-newsletter",
   markdown: [
-    "# Rollout report",
+    "# Allotment society newsletter",
     "",
-    "The rollout is on track. Two risks remain.",
+    "The spring season opens on the first Saturday of April.",
     "",
-    "## Risks",
+    "## Plots",
     "",
-    "- Supplier delay on the boards",
-    "- Test bench availability in March",
+    "- Plot 4 is free again",
+    "- The shared compost bins moved to the north gate",
     "",
-    "| Risk | Owner | Status |",
+    "| Plot | Gardener | Crop |",
     "| --- | --- | --- |",
-    "| Supplier delay | Anna | open |",
-    "| Test bench | Marc | mitigated |",
+    "| 1 | Ines | beans |",
+    "| 2 | Tom | leeks |",
     "",
-    "## How a release flows",
+    "## Watering rota",
     "",
     "```mermaid",
     "flowchart LR",
-    "  A[Build] --> B{Tests pass?}",
-    "  B -->|yes| C[Release]",
-    "  B -->|no| A",
+    "  A[Fill the tank] --> B{Rain this week?}",
+    "  B -->|no| C[Water the beds]",
+    "  B -->|yes| D[Skip]",
     "```",
     "",
-    "## Our logo",
+    "## Our badge",
     "",
-    `![Company logo](${EXAMPLE_PNG})`,
+    `![Society badge](${EXAMPLE_PNG})`,
   ].join("\n"),
 };
 
 export const PRESENTATION_EXAMPLE = {
-  file_name: "rollout-review",
+  file_name: "allotment-annual-meeting",
   slides: [
-    { title: "Rollout review", subtitle: "October 2026" },
-    { title: "Where we are", bullets: ["Boards delivered", "Firmware in test", "Release planned for March"] },
-    { title: "Risks", table: { rows: [["Risk", "Owner", "Status"], ["Supplier delay", "Anna", "open"], ["Test bench", "Marc", "mitigated"]] } },
-    { title: "Budget", chart: { type: "column", categories: ["Q1", "Q2", "Q3"], series: [{ name: "Spent (k€)", values: [120, 180, 95] }] } },
-    { title: "Release flow", mermaid: "flowchart LR\n  A[Build] --> B{Tests pass?}\n  B -->|yes| C[Release]\n  B -->|no| A" },
+    { title: "Allotment society", subtitle: "Annual meeting" },
+    { title: "This year", bullets: ["Two new plots", "A second water tank", "The seed swap in May"] },
+    { title: "Plots", table: { rows: [["Plot", "Gardener", "Crop"], ["1", "Ines", "beans"], ["2", "Tom", "leeks"]] } },
+    { title: "Harvest (kg)", chart: { type: "column", categories: ["Beans", "Leeks", "Squash"], series: [{ name: "Harvest", values: [42, 30, 65] }] } },
+    { title: "Watering rota", mermaid: "flowchart LR\n  A[Fill the tank] --> B{Rain this week?}\n  B -->|no| C[Water the beds]\n  B -->|yes| D[Skip]" },
   ],
 };
 
 export const CREATE_DOCUMENT_DESCRIPTION = [
   "Write a Word document (.docx) the user downloads from the chat. Use it when the user asks for a report, a document, a memo or a Word file.",
+  "Write the user's own content; when they leave a part unspecified, ask or write it from the conversation, never from the example below.",
   "Give the whole content in `markdown`: headings (#, ##, ###), paragraphs, **bold**, *italic*, lists, tables, links, block quotes, code and LaTeX equations are written in the template's own styles.",
   "Diagrams: write a Mermaid diagram as a ```mermaid fence, or a structured-exchange document (graph, sequence, timeline, table) as a ```json fence, exactly as you would in a reply; each is drawn as a picture in its place.",
   "Pictures: give each picture's bytes in the Markdown as a data: URI, ![alt text](data:image/png;base64,...). PNG, JPEG or GIF only. A web address is not fetched and is refused.",
@@ -65,6 +70,7 @@ export const CREATE_DOCUMENT_DESCRIPTION = [
 
 export const CREATE_PRESENTATION_DESCRIPTION = [
   "Write a PowerPoint deck (.pptx) the user downloads from the chat. Use it when the user asks for slides, a deck, a presentation or a PowerPoint file.",
+  "Write the user's own content; when they leave a slide's content unspecified, ask or write it from the conversation, never from the example below.",
   "Give `slides` in order. Each slide may have a `title`, a `subtitle`, `bullets`, and at most ONE of: `table` (rows of texts, the first row the header), `chart` (column, bar, line or pie), `mermaid` (a Mermaid diagram's source), `diagram` (a structured-exchange document) or `image` ({\"data\": \"data:image/png;base64,...\", \"alt\": \"...\"}).",
   "The first slide with only a title and subtitle becomes the title slide. Put each visual on a slide of its own.",
   "Leave `template` out to use the built-in theme; call list_templates first only if the user asks for one of their organisation's templates.",

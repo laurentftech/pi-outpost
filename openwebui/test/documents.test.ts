@@ -232,7 +232,10 @@ describe("create_document", () => {
     assert.equal(response.statusCode, 422);
     assert.doesNotMatch(response.body, /data-planning/);
     assert.equal(response.json().pictures[0].position, 1);
-    assert.match(response.json().pictures[0].reason, /give the picture's bytes as a data: URI/);
+    assert.match(response.json().pictures[0].reason, /pictures are not fetched: leave it out/);
+    assert.match(response.json().error, /This message is for you, not for the user/);
+    assert.match(response.json().error, /remove its .* line and call create_document again now/);
+    assert.doesNotMatch(response.json().pictures[0].reason, /data: URI/);
     assert.equal(requests, 0);
   });
 
@@ -451,7 +454,8 @@ test("TheDocumentExamplesAreWritten: each description's example writes its file"
   const document = downloadOf(await call("create_document", DOCUMENT_EXAMPLE));
   assert.equal(media(document.parts, "word/media/", ".svg").length, 1, "the Mermaid diagram drawn");
   assert.equal(document.payload.figures.length, 1);
-  assert.match(text(document.parts, "word/document.xml"), /descr="Company logo"/, "the picture embedded");
+  const alt = /!\[([^\]]+)\]\(data:/.exec(DOCUMENT_EXAMPLE.markdown)![1]!;
+  assert.match(text(document.parts, "word/document.xml"), new RegExp(`descr="${alt}"`), "the picture embedded");
   const deck = downloadOf(await call("create_presentation", PRESENTATION_EXAMPLE));
   assert.equal(deck.payload.outline.length, PRESENTATION_EXAMPLE.slides.length);
   assert.equal(media(deck.parts, "ppt/media/", ".svg").length, 1, "the Mermaid slide drawn");

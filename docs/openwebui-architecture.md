@@ -213,7 +213,7 @@ Malformed input is refused with the reason (400, 413, 422); nothing is partially
 ## Supply chain
 
 - **Image:** `ghcr.io/laurentftech/pi-outpost-openwebui:<version>` contains `node:24-slim`, the
-  DejaVu fonts (`fonts-dejavu-core`) and these artefacts. It is built by the project's release
+  Liberation Sans fonts (`fonts-liberation2`, metric-compatible with Arial) and these artefacts. It is built by the project's release
   workflow from the release tag, after the full test suite, and checked by `openwebui/test/image.sh`
   before it is pushed. It runs as the unprivileged `node` user.
   - `dist/server.mjs`: the server, bundled into one file with its dependencies (Fastify, the
@@ -224,7 +224,7 @@ Malformed input is refused with the reason (400, 413, 422); nothing is partially
     `@resvg/resvg-js` (native: text measurement and rasters) and `jsdom` (it reads files of its own) —
     with their dependencies, copied from the build's `npm ci`, so at the lockfile's versions.
 - **Nothing installed at start:** no package is installed when the container starts. The document
-  tools grew the image from 232 MB to 312 MB, most of it the canvas binary.
+  tools grew the image from 232 MB to 313 MB, most of it the canvas binary.
 - **Rebuilding internally:** the image can be rebuilt from the repository, for a mirror registry:
 
   ```bash

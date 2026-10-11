@@ -276,8 +276,9 @@ OUTPOST_SECRET=… OUTPOST_IDENTITY_KEY=… node openwebui/dist/server.mjs
 `dist/server.mjs` embeds `dist/viewer/` and starts `dist/mermaid-worker.mjs` to draw Mermaid; copy
 all three. Three packages cannot be bundled and must be installed beside them: `jsdom`,
 `@napi-rs/canvas` and `@resvg/resvg-js` (`npm ci` installs them; the image copies them with
-`openwebui/scripts/copy-runtime-modules.mjs`). Diagram labels need a font: the image installs DejaVu
-Sans; elsewhere, any installed sans-serif face is used.
+`openwebui/scripts/copy-runtime-modules.mjs`). Diagram labels need a font: the image installs Liberation
+Sans, which has Arial's metrics, so Word on Windows draws the labels at the widths they were laid out
+at; elsewhere, Arial or any installed sans-serif face is used.
 
 ## Known limits
 

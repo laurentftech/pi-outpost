@@ -58,14 +58,15 @@
 ## 5. Image, docs, live run
 
 - [x] 5.1 Bundle `@pi-outpost/office`; add `@napi-rs/canvas`, `mermaid` 12, `jsdom` and
-  `fonts-dejavu-core`; record the image size before and after in `design.md`, with and without the
+  `fonts-liberation2` (first `fonts-dejavu-core`, see design); record the image size before and after in `design.md`, with and without the
   Mermaid dependencies, so their cost is visible. Verify: `npm run test:image` creates a document with a
   structured-exchange diagram, a Mermaid diagram and a picture; each PNG fallback is not blank.
 - [x] 5.2 `docs/openwebui.md` (what users can ask, configuration, limits),
   `docs/openwebui-architecture.md`, `openwebui/deploy/.env.example`, the compose file's templates volume.
-- [ ] 5.3 Live run in Open WebUI with a real model (Codestral): a report with a graph, a table, a Mermaid
+- [x] 5.3 Live run in Open WebUI with a real model (Codestral): a report with a graph, a table, a Mermaid
   flowchart and a picture; a deck with a sequence, a chart and a Mermaid slide; open both files in Word
-  or LibreOffice and look at the diagrams. Record it in `live-run.md`.
+  or LibreOffice and look at the diagrams. Record it in `live-run.md`. Done 2026-10-11 (Office web by the
+  user); one finding left open there: a picture given as a web address.
 - [x] 5.4 `scenario-coverage.md`, `npm run check:scenarios`, `openspec validate --strict`.
 
 ## 6. pi-outpost's Word tools

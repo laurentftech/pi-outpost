@@ -234,7 +234,15 @@ function refuseDiagrams(refused: DiagramRefusal[]): never {
 /** What the model must correct about pictures and Mermaid fences, in one refusal. */
 function refusePictures(refusals: PictureRefusal[]): never {
   const lines = refusals.map((refusal) => (refusal.kind === "mermaid" ? `Mermaid diagram ${refusal.position}: ${refusal.reason}` : `picture ${refusal.position}: ${refusal.reason}`));
-  throw new OfficeRefusal(`Nothing was written. Correct these and call again: ${lines.join("; ")}`, {
+  // Said to the model, not the user: Codestral relayed "give the picture as a data: URI"
+  // to a user who had only given a web address, and wrote nothing.
+  const unfetched = refusals.some((refusal) => refusal.kind === "picture" && refusal.reason.includes("are not fetched"));
+  throw new OfficeRefusal(
+    `Nothing was written. This message is for you, not for the user: correct these and call again now, in this same reply: ${lines.join("; ")}.` +
+      (unfetched
+        ? " For a picture given as a web address: remove its ![…](…) line and call create_document again now, then tell the user the document leaves that picture out because pictures cannot be fetched from a web address. Do not ask the user for anything."
+        : ""),
+    {
     pictures: refusals.filter((refusal) => refusal.kind === "picture").map(({ position, reason }) => ({ position, reason })),
     mermaid: refusals.filter((refusal) => refusal.kind === "mermaid").map(({ position, reason }) => ({ position, reason })),
   });

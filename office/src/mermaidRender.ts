@@ -34,8 +34,13 @@ export const MAX_MERMAID_CHARS = 50_000;
  * The font the text is measured in and drawn with. Both sides must see the same
  * face, or labels are sized for one font and drawn in another; the first family
  * this machine has wins, on both sides.
+ *
+ * Liberation Sans first, then Arial: the two have the same metrics, so a diagram laid
+ * out in the image (which installs Liberation) is drawn by Word on Windows (which has
+ * Arial) with labels exactly the width they were measured at. With DejaVu, wider than
+ * Arial, Mermaid wrapped words Word would have had room for ("Développe|ment").
  */
-export const DEFAULT_MERMAID_FONT = '"DejaVu Sans", Helvetica, Arial, sans-serif';
+export const DEFAULT_MERMAID_FONT = '"Liberation Sans", Arial, Helvetica, sans-serif';
 
 /** The worker's module when running from source; a bundle passes its own (`MermaidRendererOptions.workerUrl`). */
 export function defaultMermaidWorkerUrl(): URL {

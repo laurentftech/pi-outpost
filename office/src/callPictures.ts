@@ -70,7 +70,8 @@ function decodeDataUri(src: string): { mediaType: string; bytes: Buffer } | stri
  * worded for the model that sent it.
  */
 export function readPictureDataUri(src: string, maxBytes: number): { bytes: Buffer; info: ImageInfo } | string {
-  if (!/^data:/i.test(src)) return `"${shortened(src)}" is not fetched: give the picture's bytes as a data: URI (data:image/png;base64,…)`;
+  // No mention of data: URIs here: Codestral read one as something to ask the user for.
+  if (!/^data:/i.test(src)) return `"${shortened(src)}" is a web address or a file, and pictures are not fetched: leave it out`;
   const decoded = decodeDataUri(src);
   if (typeof decoded === "string") return decoded;
   const declared = ACCEPTED[decoded.mediaType];

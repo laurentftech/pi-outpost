@@ -147,7 +147,7 @@ describe("pictures and Mermaid given in the call", () => {
     assert.deepEqual(fetched, []);
     const [refusal] = pictures.refusals();
     assert.equal(refusal.kind, "picture");
-    assert.match(refusal.reason, /is not fetched: give the picture's bytes as a data: URI/);
+    assert.match(refusal.reason, /pictures are not fetched: leave it out/);
   });
 
   test("the default limit is one megabyte", () => {

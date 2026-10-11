@@ -38,9 +38,10 @@ ENV NODE_ENV=production \
     OUTPOST_PORT=8790 \
     OUTPOST_DATA_DIR=/data
 WORKDIR /app
-# One font family: Mermaid's labels are measured and drawn in it, so they fit their boxes.
+# Liberation Sans, metric-compatible with Arial: Mermaid's labels are measured and drawn
+# in it, and Word on Windows draws the same SVG in Arial at the same widths.
 RUN apt-get update \
- && apt-get install -y --no-install-recommends fonts-dejavu-core \
+ && apt-get install -y --no-install-recommends fonts-liberation2 \
  && rm -rf /var/lib/apt/lists/*
 # The bundled server and Mermaid's worker, the viewer it embeds and the guide it serves,
 # and the three packages that cannot be bundled (two native, jsdom reads its own files),
