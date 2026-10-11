@@ -76,13 +76,14 @@ Proposed, not done (a design change): keep each user's last file for a while and
 `update_presentation` / `update_document` that take only the change, on pi-outpost's `pptx_update`
 and `docx_update`. Sturdier for a weak model, at the cost of storing files.
 
-## Open: a picture given as a web address
+## Decided: a picture given as a web address stays refused
 
 The specification refuses the call so the model can correct it; Codestral answers the user instead
 ("fournissez le logo sous forme de données URI"), which a user cannot act on. Writing the document
 without the picture, and saying on the card which picture was left out and why, would serve the user
 better, since the model cannot fetch it either. That changes `AURLPictureIsNotFetched`, and is the
-user's call.
+user's call. **Decided (2026-10-11): left as it is.** An administrator's picture folder, or fetching from
+allowed hosts, were proposed to make pictures usable and set aside for now.
 
 ## Destructive pass
 
