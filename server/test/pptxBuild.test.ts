@@ -21,6 +21,7 @@ import {
   escapeXml,
   fitInside,
   MAX_SLIDES,
+  placeBulletsAndPicture,
   PptxBuildError,
   readTemplate,
   type SlideSpec,
@@ -290,6 +291,50 @@ describe("buildPresentation — pictures", () => {
     const [, textOff, pictureOff] = [...slide.matchAll(/<a:off x="(\d+)"/g)].map((match) => Number(match[1]));
     assert.equal(textOff, 838200);
     assert.ok(pictureOff > textOff + 10515600 / 2, "the picture is on the right half");
+  });
+
+  /** The picture's box on a slide, and the bullets' when the slide places them itself. */
+  const boxes = (slide: string) => {
+    const box = (xml: string | undefined) => {
+      const match = /<a:off x="(\d+)" y="(\d+)"\/><a:ext cx="(\d+)" cy="(\d+)"\/>/.exec(xml ?? "");
+      return match ? { x: +match[1]!, y: +match[2]!, cx: +match[3]!, cy: +match[4]! } : undefined;
+    };
+    return { picture: box(/<p:pic>[\s\S]*?<\/p:pic>/.exec(slide)?.[0]), text: box(/<p:sp>(?:(?!<\/p:sp>)[\s\S])*name="Content"[\s\S]*?<\/p:sp>/.exec(slide)?.[0]) };
+  };
+
+  // openlore: scenario=AWidePictureGoesBelowTheBullets spec=pptx-presentations
+  test("AWidePictureGoesBelowTheBullets: a wide diagram beside bullets moves below them, across both columns", async () => {
+    const wide = { name: "flow.png", bytes: SVG, info: { kind: "png" as const, width: 1200, height: 200 } };
+    const { parts, built } = await build([{ title: "Flow", bullets: ["One", "Two", "Three"], image: wide }]);
+    assert.equal(built.slides[0]!.layout, "Two Content");
+    const { picture, text: bullets } = boxes(text(parts, "ppt/slides/slide1.xml"));
+    assert.ok(picture && bullets, "both placed explicitly");
+    assert.ok(picture.y >= bullets.y + bullets.cy, "the picture starts below the bullets");
+    // The Two Content layout's columns span 838200 to 11353800: the picture takes more than one.
+    assert.ok(picture.cx > 10515600 / 2, `wider than a column: ${picture.cx}`);
+    assert.ok(bullets.cx > 10515600 / 2, "the bullets span the width too");
+  });
+
+  // openlore: scenario=ATallPictureStaysBesideTheBullets spec=pptx-presentations
+  test("ATallPictureStaysBesideTheBullets: a square or tall picture keeps its column", async () => {
+    const square = { name: "p.png", bytes: SVG, info: { kind: "png" as const, width: 300, height: 400 } };
+    const { parts } = await build([{ title: "Both", bullets: ["Left"], image: square }]);
+    const { picture, text: bullets } = boxes(text(parts, "ppt/slides/slide1.xml"));
+    assert.ok(picture, "the picture is placed");
+    assert.equal(bullets, undefined, "the bullets keep the layout's own column");
+    assert.ok(picture.x > 838200 + 10515600 / 2 - 1, "the picture is in the right column");
+  });
+
+  test("placeBulletsAndPicture stacks only when the picture comes out clearly larger", () => {
+    const area = { x: 0, y: 0, cx: 10_000_000, cy: 5_000_000 };
+    const side = { text: { x: 0, y: 0, cx: 4_800_000, cy: 5_000_000 }, picture: { x: 5_200_000, y: 0, cx: 4_800_000, cy: 5_000_000 } };
+    const wide = placeBulletsAndPicture(area, side, ["a", "b"], 600, 100);
+    assert.equal(wide.stacked, true);
+    assert.equal(wide.picture.cx, area.cx);
+    assert.ok(wide.text.cy >= area.cy * 0.2 && wide.text.cy <= area.cy * 0.5);
+    assert.equal(placeBulletsAndPicture(area, side, ["a"], 100, 100).stacked, false);
+    // Many bullets leave the picture too little height: it stays beside.
+    assert.equal(placeBulletsAndPicture(area, side, Array.from({ length: 12 }, () => "a long bullet that wraps across the width"), 160, 100).stacked, false);
   });
 
   test("embeds an SVG for PowerPoint with a raster fallback beside it", async () => {

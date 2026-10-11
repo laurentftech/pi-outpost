@@ -57,6 +57,13 @@ Two capabilities: `openwebui-office-documents` (7 added requirements, 20 scenari
 | AnUndrawableMermaidIsNamed | covered | `server/test/wordTools.test.ts` — "AnUndrawableMermaidIsNamed": the answer's note names diagram 1 with Mermaid's parse error, and the source is in the document. `server/test/docxBuild.test.ts` — "a mermaid diagram the renderer refuses is named, with its reason, and kept as its source": position 2 named, its first message line kept, the first diagram drawn. |
 | WithoutARendererTheSourceStays | covered | `server/test/wordTools.test.ts` — "WithoutARendererTheSourceStays": with `mermaid: null`, the note says this installation cannot draw them and the document has no media. `server/test/docxBuild.test.ts` — "a mermaid diagram and a missing picture are reported, not silently dropped". |
 
+## pptx-presentations
+
+| Scenario | Coverage | Evidence |
+| --- | --- | --- |
+| AWidePictureGoesBelowTheBullets | covered | `server/test/pptxBuild.test.ts` — "AWidePictureGoesBelowTheBullets: a wide diagram beside bullets moves below them, across both columns": in the Two Content layout, the picture's box starts below the bullets' box, and both are wider than a column; "placeBulletsAndPicture stacks only when the picture comes out clearly larger" covers the decision, including many bullets keeping the picture beside. |
+| ATallPictureStaysBesideTheBullets | covered | `server/test/pptxBuild.test.ts` — "ATallPictureStaysBesideTheBullets: a square or tall picture keeps its column": the bullets get no box of their own (the layout's column) and the picture is in the right column. |
+
 ## Not covered by a test here
 
 - **Desktop Word.** The user's target. The documents open and render in Chrome (the SVGs), in the

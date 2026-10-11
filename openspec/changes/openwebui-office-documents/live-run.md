@@ -57,8 +57,9 @@ included: that is Keynote, not the file.) The render did show two defects, fixed
 Asked for slides describing pi-outpost's architecture, text and a diagram on each: seven slides,
 bullets beside a Mermaid diagram on each. Mermaid broke words longer than its 120 px wrapping width
 letter by letter ("Word/PowerPoin|t", "structured-excha|nge"); the server renderer wraps at 200 px,
-and words stay whole. Seen, not changed: a wide left-to-right diagram beside bullets is drawn small
-on half a slide.
+and words stay whole. A wide left-to-right diagram beside bullets was drawn small on half a slide:
+it now goes below the bullets, across the width, when that draws it larger
+(`placeBulletsAndPicture`); a tall one stays beside.
 
 The user's real target model is **Gemma 4**, not available here: Codestral is a stand-in, and the
 tools were not tuned further to it.

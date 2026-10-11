@@ -77,3 +77,6 @@
 - [x] 6.2 The CLI build emits `dist/mermaid-worker.mjs` and keeps jsdom, canvas and resvg external and
   declared; `check:cli` requires the worker. Verify: pack, install into an isolated prefix, and draw
   from the installed package (`scripts/probes/installed-mermaid.mjs`).
+- [x] 6.3 A wide picture beside bullets goes below them, across the width, when that draws it larger
+  (seen in the live run's architecture slides). Verify: `AWidePictureGoesBelowTheBullets`,
+  `ATallPictureStaysBesideTheBullets`, and in ONLYOFFICE's converter.

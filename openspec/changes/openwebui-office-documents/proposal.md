@@ -66,6 +66,8 @@ cost is moving those builders where the tool server can use them, and handing th
 
 - `openwebui-planning-server`: its OpenAPI description declares the three document tools beside the
   planning and structure tools (`ToolsAreDescribedForOpenWebUI`), each with a complete example.
+- `pptx-presentations`: a wide picture beside bullets is placed below them, across the width
+  (`AWidePictureGoesBelowTheBullets`): the shared builder, so `pptx_create` gets it too.
 - `docx-templates`: pi-outpost's own `docx_create` and `docx_update` draw Mermaid fences with the same
   renderer (`MermaidDiagramsAreDrawnInWordDocuments`), since the builders and the picture code are
   shared; until now they wrote the source.
