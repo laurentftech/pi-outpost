@@ -242,8 +242,18 @@ A selected PDF SHALL be displayed as a rendered document rather than reported as
 binary content, and SHALL be read-only: no Edit action is offered for it whatever the writable zone
 says, because the viewer cannot produce PDF bytes back.
 Files the user may write (per the writable-zone state) SHALL offer an Edit mode with a save
-action; read-only files SHALL show a lock instead. A successful save returns to the rendered
-view (unless the user typed during the save round-trip, in which case the draft is kept).
+action; read-only files SHALL show a lock instead. The Edit mode SHALL behave as a code editor:
+each line numbered in a gutter, a wrapped line keeping one number, the current line marked, the
+text coloured with the file's syntax as it is typed, brackets and quotes closed as they are typed
+and matching brackets shown, Tab typing the file's indentation unit at a bare cursor and indenting
+a selection, Shift+Tab outdenting, several cursors (the next occurrence of the selection added by
+Ctrl+D / Cmd+D), and an undo history. A file written with CRLF line endings SHALL be saved with
+CRLF line endings. A text file's source, whenever it is shown without being edited — the source
+view, and the side-by-side mode's left pane outside the writable zone — SHALL be shown in that
+same editor, read-only: the same line numbers, colours and folding, nothing to type into. Ctrl+S (Cmd+S) SHALL save. A successful save — by the shortcut or the
+save action — SHALL stay in the Edit mode with the saved text as the new baseline, keeping
+anything typed during the save round-trip; with nothing unsaved, the action that leaves the editor
+SHALL leave it without asking.
 Closing the viewer with unsaved edits MUST require confirmation; the viewer is remounted per
 file path so a draft can never be saved onto another file. Once a file is successfully displayed,
 the frontend SHALL expose it as a removable attachment for the active composer — a text file or a
@@ -296,6 +306,23 @@ capability.
 #### Scenario: NoWordDownloadForBinaryOrDiff
 - **WHEN** the viewer is showing an image, a PDF, a file that failed to load, or the uncommitted diff
 - **THEN** no Word download action is offered
+
+#### Scenario: TheEditorNumbersAndColoursLines
+- **WHEN** the user edits a source file whose language the viewer knows
+- **THEN** every line, the last empty one included, carries its number, a long line that wraps carries one, the text shows its syntax colours as it is typed, an opened bracket is closed and matched, Tab and Shift+Tab indent and outdent, Ctrl+D adds the next occurrence as a second cursor, and undo takes an edit back
+
+#### Scenario: SavingKeepsTheEditorOpen
+- **WHEN** the user presses Ctrl+S (Cmd+S) in the editor and the save lands
+- **THEN** the file is written, the editor stays open on the draft with nothing left unsaved, and leaving it asks nothing
+
+#### Scenario: ACrlfFileStaysCrlf
+- **GIVEN** a file whose lines end with CRLF
+- **WHEN** the user adds a line in the editor and saves
+- **THEN** every line of the saved file, the new one included, ends with CRLF
+
+#### Scenario: TheSourceIsReadInTheEditor
+- **WHEN** the user opens a source file without editing it
+- **THEN** it is shown in the editor's presentation — numbered lines, syntax colours — and typing changes nothing
 
 ### Requirement: SearchFiles
 
@@ -788,6 +815,42 @@ sandbox SHALL become readable.
 #### Scenario: OnlySkillsBecomeReadable
 - **WHEN** the agent reads the agent directory's `auth.json`, or a file of pi-outpost's installation outside any skill
 - **THEN** each read is refused as outside the sandbox, and no key is returned
+
+### Requirement: HtmlFilesAreRendered
+
+An HTML file (`.html`, `.htm`) SHALL open rendered in the file viewer, with the modes a Markdown file
+has: rendered by default, source, and rendered beside the source while editing. Its scripts SHALL run,
+and its stylesheets, pictures and scripts referenced by relative path SHALL be drawn, with no choice
+asked of the user.
+
+#### Scenario: AnHtmlReportOpensRendered
+- **GIVEN** a workspace HTML page with a relative stylesheet, a relative picture and a relative script that writes into the page
+- **WHEN** the user opens it in the viewer
+- **THEN** the page is shown rendered with no choice asked: the stylesheet's rule applies, the picture shows, and the script's text is in the page
+
+#### Scenario: HtmlIsEditedBesideItsRendering
+- **WHEN** the user edits an HTML file in the side-by-side mode
+- **THEN** the rendering follows the draft
+
+### Requirement: ARenderedPageIsIsolated
+
+A rendered HTML page SHALL be drawn in a sandboxed frame with an opaque origin. Its relative resources
+SHALL be fetched by the viewer and written into the page, so that no address carrying the access token
+enters it. The server SHALL still answer an HTML file on `/files/raw` as an attachment.
+
+#### Scenario: ThePageCannotReachTheApplication
+- **WHEN** an opened page's script tries to read the application's document, its storage and the access token
+- **THEN** each attempt fails, and the page's document holds no `/files/raw` address and no token
+
+### Requirement: LinksInARenderedPage
+
+A relative link in a rendered page SHALL open the linked workspace file in the viewer, an absolute link
+a new tab, and an anchor SHALL stay in the page. Only the page's own frame SHALL be able to ask the
+viewer to open a file.
+
+#### Scenario: ARelativeLinkOpensInTheViewer
+- **WHEN** the user clicks a relative link in a rendered page
+- **THEN** the linked workspace file opens in the viewer, and a message from anything but the page's own frame opens nothing
 
 ## Technical Notes
 

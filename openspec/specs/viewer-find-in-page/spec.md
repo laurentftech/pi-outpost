@@ -109,26 +109,6 @@ current — by navigation, by opening the find bar, or by a query that changes w
 - **WHEN** the user moves to it
 - **THEN** the view scrolls so the match becomes visible
 
-### Requirement: EditModeUsesNativeSelection
-
-While the open file is being edited (the textarea buffer), the current match SHALL be indicated by
-selecting its text in the textarea and giving the textarea focus, relying on the browser's own
-scroll-into-view-on-selection behavior. Because a textarea's value carries no markup, matches other
-than the current one SHALL NOT be highlighted while editing; the match count SHALL still be
-accurate.
-
-#### Scenario: CurrentMatchIsSelectedInTheEditor
-- **GIVEN** a file open for editing with the find bar showing a current match
-- **WHEN** that match becomes current
-- **THEN** its exact text is selected in the textarea and the textarea is scrolled so the selection
-  is visible
-
-#### Scenario: OtherMatchesAreNotMarkedWhileEditing
-- **GIVEN** a file open for editing with several matches
-- **WHEN** the find bar is open
-- **THEN** only the current match is indicated (via selection); the others are not visually marked
-  on the page
-
 ### Requirement: PdfWholeDocumentSearch
 
 For a PDF, the find bar SHALL search the whole document's text, not only the pages currently
@@ -173,3 +153,24 @@ highlight the match.
 - **GIVEN** a page with more than one match
 - **WHEN** the user steps between matches on that same page
 - **THEN** the highlighted position moves between them without leaving the page
+
+### Requirement: SourceMatchesAreDrawnByTheEditor
+
+In the source of a file, read or edited, the find bar's matches SHALL be drawn by the code editor:
+every match marked, the current one distinguished, selected and scrolled into view without taking
+focus from the find field. A switch between views under the same query SHALL keep the current match.
+
+#### Scenario: CurrentMatchIsSelectedInTheEditor
+- **GIVEN** a file open for editing with the find bar showing a current match
+- **WHEN** that match becomes current
+- **THEN** its exact text is selected in the editor and scrolled into view, and the find field keeps focus
+
+#### Scenario: OtherMatchesAreMarkedWhileEditing
+- **GIVEN** a file open for editing with several matches
+- **WHEN** the find bar is open
+- **THEN** every match is marked in the editor and the current one is distinguished from the others
+
+#### Scenario: SwitchingViewKeepsTheCurrentMatch
+- **GIVEN** the find bar open on a rendered Markdown file, with the third of three matches current
+- **WHEN** the user switches to the source view
+- **THEN** the third match is still the current one, selected in the source
