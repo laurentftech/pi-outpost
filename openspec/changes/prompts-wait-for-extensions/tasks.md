@@ -4,4 +4,4 @@
 - [x] 1.2 `protocol.ts`, `agentRuntime.ts`, `index.ts`: `extensionsBinding` in the session snapshot.
 - [x] 1.3 `useAgent.ts`, `App.tsx`: the held message reads "waiting for extensions to start…" with cancel.
 - [x] 1.4 `server/test/promptWaitsForExtensionsWire.test.mjs`, `ui/src/useAgent.test.ts`, `ui/src/App.test.tsx`.
-- [ ] 1.5 Driven in the running app.
+- [x] 1.5 Driven in the running app: `scripts/probes/prompt-waits-for-extensions-ui.mts`.
