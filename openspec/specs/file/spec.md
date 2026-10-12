@@ -259,7 +259,7 @@ file path so a draft can never be saved onto another file. Once a file is succes
 the frontend SHALL expose it as a removable attachment for the active composer — a text file or a
 PDF by path reference, an image by its bytes within the image attachment limit.
 
-A successfully displayed text file SHALL additionally offer an action that downloads it as a Word
+A successfully displayed text file, other than a structured-exchange document, SHALL additionally offer an action that downloads it as a Word
 document. This action is independent of the writable zone — it produces a download rather than a
 workspace write, so a read-only file offers it exactly as a writable one does. It SHALL be offered
 whatever the current view mode, since it exports the document rather than the view. It SHALL NOT be
@@ -323,6 +323,11 @@ capability.
 #### Scenario: TheSourceIsReadInTheEditor
 - **WHEN** the user opens a source file without editing it
 - **THEN** it is shown in the editor's presentation — numbered lines, syntax colours — and typing changes nothing
+
+#### Scenario: AStructuredExchangeFileExportsWhatItDraws
+- **GIVEN** a structured-exchange document shown rendered
+- **WHEN** the reader looks at the viewer's toolbar
+- **THEN** a graph, a sequence or a timeline offers its figure as SVG, a table offers a Word document holding the table and an Excel workbook, and neither offers its JSON as Word text
 
 ### Requirement: SearchFiles
 
@@ -851,6 +856,22 @@ viewer to open a file.
 #### Scenario: ARelativeLinkOpensInTheViewer
 - **WHEN** the user clicks a relative link in a rendered page
 - **THEN** the linked workspace file opens in the viewer, and a message from anything but the page's own frame opens nothing
+
+### Requirement: EditingFromTheRenderingMovesToTheText
+
+When the reader opens the editor while a file with a rendering shows that rendering, the viewer SHALL
+show the editor beside the rendering, or the source alone when there is no room for two panes. Leaving
+the editor SHALL bring the rendering back, unless the reader chose another mode meanwhile.
+
+#### Scenario: EditFromTheRenderingGoesBesideIt
+- **GIVEN** a Markdown, HTML or structured-exchange file shown rendered, with room for two panes
+- **WHEN** the reader clicks edit, then done
+- **THEN** the side-by-side mode is shown with the editor and the rendering, and after done the rendering alone again
+
+#### Scenario: EditFromTheRenderingWithoutRoomShowsTheSource
+- **GIVEN** a file shown rendered, without room for two panes
+- **WHEN** the reader clicks edit, then done
+- **THEN** the source mode is shown with the editor, and after done the rendering again
 
 ## Technical Notes
 
