@@ -1,5 +1,6 @@
 import type { StructuredConformance } from "@pi-outpost/shared";
-import { Fragment, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useContext, useEffect, useImperativeHandle, useMemo, useRef, useState, type Ref } from "react";
+import type { DocumentExport } from "./documentExport";
 import { copyText } from "./copyText";
 import { EnlargedView } from "../components/EnlargedView";
 import {
@@ -41,7 +42,7 @@ import {
 import { otherOrientation, type Orientation } from "@pi-outpost/shared/diagram-orientation";
 import { resolveViewpoint, sameNarrowing, viewpointsOf } from "@pi-outpost/shared/structured-exchange/model";
 import type { StructuredViewpoint } from "@pi-outpost/shared/structured-exchange";
-import { downloadCsv, downloadMarkdown, downloadXlsx, tableExport } from "./tableExport";
+import { downloadCsv, downloadMarkdown, downloadXlsx, tableExport, tableMarkdown } from "./tableExport";
 import { initialTimelineDisplay, TimelineView, type TimelineDisplay } from "./TimelineView";
 import { Drawn, FigureMarkers } from "./figureDrawing";
 import { StructuredAppearanceContext } from "./structuredAppearance";
@@ -1205,6 +1206,11 @@ export interface StructuredExchangeDocumentProps {
    * is the same answer this gives for a scheme the safety policy does not allow.
    */
   dispatch?: ActionDispatch;
+  /**
+   * The document's exports, for buttons outside it — the file viewer's toolbar: the
+   * figure for a graph, a sequence or a timeline; the rows for a table.
+   */
+  exportRef?: Ref<DocumentExport | null>;
 }
 
 /**
@@ -1241,7 +1247,7 @@ function targetRef(envelope: ValidatedStructuredExchange): string | undefined {
   return undefined;
 }
 
-export function StructuredExchangeDocument({ envelope, source, rawOutput, dispatch, conformance }: StructuredExchangeDocumentProps) {
+export function StructuredExchangeDocument({ envelope, source, rawOutput, dispatch, conformance, exportRef }: StructuredExchangeDocumentProps) {
   const appearance = useContext(StructuredAppearanceContext);
   const [enlarged, setEnlarged] = useState(false);
   const [showText, setShowText] = useState(false);
@@ -1263,6 +1269,7 @@ export function StructuredExchangeDocument({ envelope, source, rawOutput, dispat
    * chosen in one must be the scale the other opens at. Undefined until first changed.
    */
   const [timelineDisplay, setTimelineDisplay] = useState<TimelineDisplay | undefined>(undefined);
+  const timelineExport = useRef<DocumentExport>(null);
   const mermaid = useMemo(() => toMermaid(envelope), [envelope]);
 
   const isProposal = envelope.target !== undefined;
@@ -1336,6 +1343,7 @@ export function StructuredExchangeDocument({ envelope, source, rawOutput, dispat
         onDisplayChange={(update) =>
           setTimelineDisplay((current) => update(current ?? initialTimelineDisplay(envelope.data as StructuredTimelineData)))
         }
+        exportRef={timelineExport}
       />
     ) : (
       <TableView
@@ -1401,6 +1409,21 @@ export function StructuredExchangeDocument({ envelope, source, rawOutput, dispat
    * pasted from the clipboard — it wants a file, inserted as a picture. Offering
    * only "copy" would look like a feature and fail at the one place it was for.
    */
+  // A timeline exports itself (its scale and options are its own); a graph or a sequence
+  // through downloadDiagram below; a table as the rows shown, as the buttons under it do.
+  useImperativeHandle<DocumentExport | null, DocumentExport | null>(exportRef, () =>
+    envelope.kind === "timeline"
+      ? { svg: () => timelineExport.current?.svg?.() }
+      : envelope.kind === "graph" || envelope.kind === "sequence"
+        ? { svg: downloadDiagram }
+        : envelope.kind === "table"
+          ? {
+              xlsx: () => void downloadXlsx(exportedTable(), `${exportBaseName}.xlsx`),
+              markdown: () => tableMarkdown(envelope.data as StructuredTableData, hidden, described.rows),
+            }
+          : null,
+  );
+
   function downloadDiagram() {
     const markup = serializeDiagram();
     if (markup === undefined) return;

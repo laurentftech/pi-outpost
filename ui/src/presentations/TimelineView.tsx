@@ -11,7 +11,8 @@
  * Today is read here, from the reader's own calendar, every time this renders. It
  * is never in the document: a plan reopened next month shows next month's today.
  */
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type Ref } from "react";
+import type { DocumentExport } from "./documentExport";
 import type { StructuredTimelineData, StructuredTimelineItem, StructuredTimelineScale, StructuredTimelineTask } from "@pi-outpost/shared/structured-exchange";
 import { sharedDeclaredColours, type Tint } from "@pi-outpost/shared/structured-exchange/palette";
 import type { ProjectAppearance } from "@pi-outpost/shared/structured-exchange/profile";
@@ -96,6 +97,7 @@ export function TimelineView({
   onDisplayChange,
   onSelect,
   saveFigure,
+  exportRef,
 }: {
   data: StructuredTimelineData;
   today?: number;
@@ -112,6 +114,8 @@ export function TimelineView({
    * `false` when it was not saved. Without it, the browser downloads the file.
    */
   saveFigure?: (fileName: string, markup: string) => Promise<string | false>;
+  /** The figure's export, for a button outside it — the same file its own button saves. */
+  exportRef?: Ref<DocumentExport>;
 }) {
   const day = today ?? localToday();
   const [ownDisplay, setOwnDisplay] = useState(() => initialTimelineDisplay(plan));
@@ -341,6 +345,7 @@ export function TimelineView({
     }
     window.setTimeout(() => setCopied(null), 2500);
   };
+  useImperativeHandle(exportRef, () => ({ svg: () => void downloadFigure() }));
   const copyFigure = async () => {
     setCopied((await copyText(figureMarkup())) ? "SVG markup copied" : "could not copy");
     window.setTimeout(() => setCopied(null), 2500);

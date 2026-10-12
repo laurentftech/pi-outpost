@@ -21,6 +21,7 @@ import { ViewerErrorBoundary } from "./ViewerErrorBoundary";
 import { readStructuredExchangeFile } from "../presentations/structuredExchange";
 import type { ValidatedStructuredExchange } from "@pi-outpost/shared/structured-exchange";
 import { StructuredExchangeDocument } from "../presentations/StructuredExchangeView";
+import type { DocumentExport } from "../presentations/documentExport";
 import { FindBar } from "./FindBar";
 import { findMatchesInText, highlightMatches, type DomMatch } from "../util/findInPage";
 import type { PdfFindState, PdfViewerHandle } from "./PdfViewer";
@@ -128,6 +129,10 @@ function validOpenedDocument(content: string): ValidatedStructuredExchange | und
  */
 type ViewMode = "rendered" | "source" | "split";
 
+/** The toolbar's export buttons, as the Word export draws its own. */
+const TOOLBAR_EXPORT =
+  "shrink-0 rounded px-1.5 py-0.5 text-xs text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700 dark:text-zinc-600 dark:hover:bg-zinc-800 dark:hover:text-zinc-300";
+
 function isMarkdown(path: string): boolean {
   return /\.(md|markdown)$/i.test(path);
 }
@@ -181,6 +186,12 @@ export function FileViewer({
   // One value rather than a flag per pane. "raw && split" means nothing, and a
   // second boolean is how a state that means nothing becomes representable.
   const [mode, setMode] = useState<ViewMode>("rendered");
+  /**
+   * The mode the reader was in when "edit" moved them out of the rendering, to go back
+   * to when they are done. Null once they choose a mode themselves: then the mode is
+   * theirs, and leaving the editor keeps it.
+   */
+  const [modeBeforeEdit, setModeBeforeEdit] = useState<ViewMode | null>(null);
   const [showGitDiff, setShowGitDiff] = useState(initialShowGitDiff);
   // A file created from the tree opens in edit mode: creating a file is wanting
   // to write in it. The viewer is remounted per path, so this only ever applies
@@ -319,6 +330,19 @@ export function FileViewer({
    * the mode; either way there is no second pane to show.
    */
   const splitting = mode === "split" && renderable && !showGitDiff && loaded !== null && roomForTwo;
+  /**
+   * The structured-exchange document drawn on screen, if any: the rendering, or the
+   * split's picture of the last good text. What the toolbar exports, through
+   * `documentExport`, is what that document shows.
+   */
+  const shownDocument = showGitDiff
+    ? undefined
+    : splitting
+      ? recognised ? lastGood : undefined
+      : edit === null && !showRaw && exchange?.status === "valid"
+        ? exchange.envelope
+        : undefined;
+  const documentExport = useRef<DocumentExport>(null);
   /**
    * What the fallback shows when there is no room for two panes.
    *
@@ -706,6 +730,7 @@ export function FileViewer({
   function changeMode(next: ViewMode) {
     if (mode === "split" && next !== "split" && dirty && !window.confirm("Discard unsaved changes?")) return;
     if (mode === "split" && next !== "split") setEdit(null);
+    setModeBeforeEdit(null);
     setMode(next);
   }
 
@@ -714,9 +739,36 @@ export function FileViewer({
     onClose();
   }
 
+  /**
+   * Open the editor.
+   *
+   * From the rendering, editing moves to the text: beside the rendering when there is
+   * room for two panes, the text alone otherwise — editing under a rendering that hides
+   * the editor's mode is editing blind. The rendering is where "done" brings them back.
+   */
   function startEdit() {
     if (!loaded) return;
+    if (renderable && mode === "rendered") {
+      setModeBeforeEdit("rendered");
+      setMode(roomForTwo ? "split" : "source");
+    }
     setEdit({ draft: loaded.content, baseContent: loaded.content, baseMtimeMs: loaded.mtimeMs });
+  }
+
+  /** Leave the editor: back to the rendering when "edit" came from it, else where the reader is. */
+  function leaveEditor() {
+    if (modeBeforeEdit !== null) {
+      setEdit(null);
+      setMode(modeBeforeEdit);
+      setModeBeforeEdit(null);
+      return;
+    }
+    // Cancelling in the side-by-side mode discards the draft and keeps the mode: the
+    // reader asked to look at this document beside its picture, and throwing away an
+    // edit is not a request to stop. A plain setEdit(null) left them in "split" with a
+    // read-only pane, because the effect that opens the editor watches the mode and not
+    // the buffer, so it never fired again.
+    setEdit(splitting && loaded !== null ? { draft: loaded.content, baseContent: loaded.content, baseMtimeMs: loaded.mtimeMs } : null);
   }
 
   function save(overwrite = false) {
@@ -873,7 +925,29 @@ export function FileViewer({
             rather than a workspace write. Not offered for an image or a PDF (there
             is no text to carry), nor while the diff is showing (the reader is
             looking at changes, not at the document). */}
-        {loaded && !image && !pdf && !showGitDiff && <DocxExportButton text={editedText} path={file.path} serverUrl={serverUrl} token={token} workspace={workspace} template={docxTemplate} />}
+        {/* A structured-exchange file exports what it draws, not its JSON as Word text:
+            a figure as SVG, a table as a Word table and a workbook. */}
+        {loaded && !image && !pdf && !showGitDiff && !recognised && <DocxExportButton text={editedText} path={file.path} serverUrl={serverUrl} token={token} workspace={workspace} template={docxTemplate} />}
+        {shownDocument?.kind === "table" && (
+          <>
+            <DocxExportButton
+              text={() => documentExport.current?.markdown?.() ?? ""}
+              path={`${file.path.replace(/\.[^./]*$/, "")}.md`}
+              serverUrl={serverUrl}
+              token={token}
+              workspace={workspace}
+              template={docxTemplate}
+            />
+            <button type="button" onClick={() => documentExport.current?.xlsx?.()} title="Download as an Excel workbook" aria-label="Download as an Excel workbook" className={TOOLBAR_EXPORT}>
+              ⤓ excel
+            </button>
+          </>
+        )}
+        {(shownDocument?.kind === "graph" || shownDocument?.kind === "sequence" || shownDocument?.kind === "timeline") && (
+          <button type="button" onClick={() => documentExport.current?.svg?.()} title="Download the figure as SVG" aria-label="Download the figure as SVG" className={TOOLBAR_EXPORT}>
+            ⤓ svg
+          </button>
+        )}
         {loaded && edit === null && <CopyButton text={loaded.content} />}
         {loaded && edit === null && !showGitDiff && writable && (
           <button
@@ -903,17 +977,7 @@ export function FileViewer({
               type="button"
               onClick={() => {
                 if (dirty && !window.confirm("Discard unsaved changes?")) return;
-                // Cancelling in the side-by-side mode discards the draft and keeps
-                // the mode: the reader asked to look at this document beside its
-                // picture, and throwing away an edit is not a request to stop. A
-                // plain setEdit(null) left them in "split" with a read-only pane,
-                // because the effect that opens the editor watches the mode and not
-                // the buffer, so it never fired again.
-                setEdit(
-                  splitting && loaded !== null
-                    ? { draft: loaded.content, baseContent: loaded.content, baseMtimeMs: loaded.mtimeMs }
-                    : null,
-                );
+                leaveEditor();
               }}
               className="shrink-0 rounded border border-zinc-300 px-2 py-0.5 text-xs text-zinc-500 hover:border-zinc-400 dark:border-zinc-700 dark:text-zinc-400 dark:hover:border-zinc-500"
             >
@@ -1078,7 +1142,7 @@ export function FileViewer({
               ) : (
                 <ViewerErrorBoundary label="This diagram">
                   <div className="p-4" data-testid="file-structured-exchange">
-                    <StructuredExchangeDocument envelope={lastGood} source={editedText} />
+                    <StructuredExchangeDocument envelope={lastGood} source={editedText} exportRef={documentExport} />
                   </div>
                 </ViewerErrorBoundary>
               )}
@@ -1090,7 +1154,7 @@ export function FileViewer({
         {loaded && edit === null && !splitting && !showGitDiff && diagram && !showRaw && exchange?.status === "valid" && (
           <ViewerErrorBoundary label="This diagram">
             <div className="mx-auto max-w-5xl p-4" data-testid="file-structured-exchange">
-              <StructuredExchangeDocument envelope={exchange.envelope} source={loaded.content} />
+              <StructuredExchangeDocument envelope={exchange.envelope} source={loaded.content} exportRef={documentExport} />
             </div>
           </ViewerErrorBoundary>
         )}

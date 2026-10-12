@@ -202,7 +202,9 @@ one needs, the command that proves it works, and the caution that goes with it.
   pictures and scripts next to it in the workspace are loaded. A relative link opens that file
   in the viewer, an absolute one a new tab. The page is drawn in a sandboxed frame with an
   opaque origin, so it reaches neither the application, its access token nor the server
-- Word export: any text file open in the viewer downloads as a real `.docx`. Markdown becomes
+- Word export: any text file open in the viewer downloads as a real `.docx` — except a
+  structured-exchange document, whose toolbar exports what it draws instead: a graph, sequence or
+  timeline as SVG, a table as a Word table and an Excel workbook. Markdown becomes
   Word's own structure — headings as chapter levels (navigation pane, table of contents), lists,
   tables, hyperlinks — LaTeX becomes native Word
   equations you can edit in the equation editor, and mermaid diagrams travel as vector images
