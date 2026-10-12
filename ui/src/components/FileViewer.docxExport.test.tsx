@@ -6,6 +6,8 @@
  * *looking at* rather than the text on disk, and that pressing it changes nothing
  * about the document underneath — no save, no closed viewer, no lost draft.
  */
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { FileViewer } from "./FileViewer";
@@ -31,6 +33,18 @@ vi.mock("../export/docxExport", () => ({
     if (exported.templateFail !== null) throw exported.templateFail;
   },
 }));
+
+const workbooks = vi.hoisted(() => ({ names: [] as string[], rows: [] as number[] }));
+vi.mock("../presentations/tableExport", async (importOriginal) => {
+  const original = await importOriginal<typeof import("../presentations/tableExport")>();
+  return {
+    ...original,
+    downloadXlsx: async (table: { rows: unknown[] }, fileName: string) => {
+      workbooks.names.push(fileName);
+      workbooks.rows.push(table.rows.length);
+    },
+  };
+});
 
 type Props = React.ComponentProps<typeof FileViewer>;
 
@@ -323,3 +337,77 @@ describe("with a configured Word template", () => {
     expect(plain()).not.toHaveTextContent(/failed/i);
   });
 });
+
+describe("a structured-exchange file exports what it draws", () => {
+  const sample = (name: string) => readFileSync(path.join(__dirname, "../../../shared/conformance/valid", name), "utf8");
+  const svgButton = () => screen.queryByRole("button", { name: "Download the figure as SVG" });
+  const excelButton = () => screen.queryByRole("button", { name: "Download as an Excel workbook" });
+
+  beforeEach(() => {
+    exported.calls.length = 0;
+    workbooks.names.length = 0;
+    workbooks.rows.length = 0;
+  });
+  afterEach(() => vi.restoreAllMocks());
+
+  it("offers a figure as SVG from the toolbar, and not as Word text", () => {
+    const content = sample("graph-minimal.json");
+    setup({}, { path: "figures/arch.json", content, size: content.length });
+
+    expect(exportButton()).toBeNull();
+    expect(excelButton()).toBeNull();
+    const clicked: string[] = [];
+    const realCreate = document.createElement.bind(document);
+    vi.spyOn(document, "createElement").mockImplementation((tag: string) => {
+      const element = realCreate(tag);
+      if (tag === "a") element.click = () => clicked.push(element.getAttribute("download") ?? "");
+      return element;
+    });
+    (URL as unknown as { createObjectURL: unknown }).createObjectURL = () => "blob:x";
+    (URL as unknown as { revokeObjectURL: unknown }).revokeObjectURL = () => {};
+
+    fireEvent.click(svgButton()!);
+
+    expect(clicked).toHaveLength(1);
+    expect(clicked[0]).toMatch(/\.svg$/);
+  });
+
+  it("offers a timeline as SVG too", () => {
+    const content = sample("v3-timeline-calendar.json");
+    setup({}, { path: "plans/programme.json", content, size: content.length });
+    expect(svgButton()).not.toBeNull();
+    expect(exportButton()).toBeNull();
+  });
+
+  it("offers a table as a Word table and an Excel workbook, not as a figure", async () => {
+    const content = sample("table-minimal.json");
+    setup({}, { path: "data/requirements.json", content, size: content.length });
+
+    expect(svgButton()).toBeNull();
+    fireEvent.click(excelButton()!);
+    expect(workbooks.names).toHaveLength(1);
+    expect(workbooks.names[0]).toMatch(/\.xlsx$/);
+
+    fireEvent.click(exportButton()!);
+    await waitFor(() => expect(exported.calls).toHaveLength(1));
+    // Written from the rows as Markdown, so the writer makes a Word table of them.
+    expect(exported.calls[0]!.path).toBe("data/requirements.md");
+    expect(exported.calls[0]!.text).toMatch(/^\|.*\|$/m);
+    expect(exported.calls[0]!.text).not.toContain("urn:structured-exchange");
+  });
+
+  it("offers nothing for the document's source, which is JSON", () => {
+    const content = sample("graph-minimal.json");
+    setup({}, { path: "figures/arch.json", content, size: content.length });
+    fireEvent.click(screen.getByRole("button", { name: /source/ }));
+    expect(svgButton()).toBeNull();
+    expect(exportButton()).toBeNull();
+  });
+
+  it("still offers Word for a Markdown file", () => {
+    setup();
+    expect(exportButton()).not.toBeNull();
+    expect(svgButton()).toBeNull();
+  });
+});
+

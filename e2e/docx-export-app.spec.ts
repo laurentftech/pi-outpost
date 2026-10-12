@@ -8,6 +8,7 @@
  * while one is in flight. Those are where the defects in this repository's history
  * have actually lived.
  */
+import path from "node:path";
 import { expect, test, type Page } from "@playwright/test";
 
 /** Open the workspace file that every one of these tests works from. */
@@ -225,4 +226,41 @@ test("offers the export for a file it cannot render, and not for the diff view",
   // Nothing was saved on the way: the editor still holds an unsaved draft.
   await expect(page.getByRole("button", { name: /^save$/ })).toBeVisible();
   expect(errors).toEqual([]);
+});
+
+test("a structured-exchange file exports what it draws: a figure as SVG, a table as a Word table and a workbook", async ({ page }) => {
+  const { mkdir, writeFile, readFile } = await import("node:fs/promises");
+  const sample = (name: string) => readFile(path.join(process.cwd(), "shared/conformance/valid", name), "utf8");
+  const directory = path.join(process.env.PI_E2E_PRIMARY_PROJECT!, "exports");
+  await mkdir(directory, { recursive: true });
+  await writeFile(path.join(directory, "figure.json"), await sample("graph-minimal.json"));
+  await writeFile(path.join(directory, "table.json"), await sample("table-minimal.json"));
+  await page.goto(process.env.PI_E2E_SERVER_URL!);
+  await expect(page.getByTitle("connected")).toBeVisible();
+  await page.getByTitle("Show files").click();
+  await page.getByText("exports", { exact: true }).click();
+
+  await page.getByText("figure.json", { exact: true }).click();
+  await expect(page.getByRole("button", { name: /download as a word document/i })).toHaveCount(0);
+  const svgDownload = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Download the figure as SVG" }).click();
+  const svg = await svgDownload;
+  expect(svg.suggestedFilename()).toMatch(/\.svg$/);
+  expect(await readFile(await svg.path(), "utf8")).toMatch(/^<svg[\s>]/);
+
+  await page.getByText("table.json", { exact: true }).click();
+  await expect(page.getByRole("button", { name: "Download the figure as SVG" })).toHaveCount(0);
+  const wordDownload = page.waitForEvent("download");
+  await page.getByRole("button", { name: /download as a word document/i }).click();
+  const word = await wordDownload;
+  expect(word.suggestedFilename()).toBe("table.docx");
+  const JSZip = (await import("jszip")).default;
+  const xml = await (await JSZip.loadAsync(await readFile(await word.path()))).file("word/document.xml")!.async("string");
+  expect(xml).toContain("<w:tbl>");
+  expect(xml).not.toContain("urn:structured-exchange");
+  const excelDownload = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Download as an Excel workbook" }).click();
+  const excel = await excelDownload;
+  expect(excel.suggestedFilename()).toMatch(/\.xlsx$/);
+  expect((await readFile(await excel.path())).subarray(0, 2).toString()).toBe("PK");
 });

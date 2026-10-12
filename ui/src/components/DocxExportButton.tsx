@@ -19,7 +19,8 @@ export function DocxExportButton({
   workspace,
   template,
 }: {
-  text: string;
+  /** The text to export, or how to get it when pressed — a rendered table's rows as shown. */
+  text: string | (() => string);
   path: string;
   serverUrl?: string;
   token?: string | null;
@@ -67,7 +68,8 @@ export function DocxExportButton({
       const { downloadDocx, downloadDocxInTemplate } = await import("../export/docxExport");
       // The origin and token the viewer reads this file through: the export
       // fetches the pictures the document references the same way.
-      await (kind === "template" ? downloadDocxInTemplate : downloadDocx)(text, path, { serverUrl, token, workspace });
+      const exported = typeof text === "function" ? text() : text;
+      await (kind === "template" ? downloadDocxInTemplate : downloadDocx)(exported, path, { serverUrl, token, workspace });
       setState("idle");
     } catch (cause) {
       // Said out loud rather than swallowed: a download that silently does nothing
