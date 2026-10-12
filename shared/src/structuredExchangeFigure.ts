@@ -988,16 +988,25 @@ export function graphFigure(data: StructuredGraphData, options: GraphFigureOptio
     const extent = shape === undefined ? undefined : pathExtent(shape.d);
     return extent === undefined ? [] : [extent];
   });
-  const left = Math.min(0, ...drawn.map((box) => box.x - 12), ...routes.map((route) => route.minX - 12));
-  const top = Math.min(0, ...drawn.map((box) => box.y - 12), ...routes.map((route) => route.minY - 14));
+  // Untouched, a figure keeps the layout's own canvas. Once the reader has moved a box
+  // the canvas fits what is drawn — boxes, containers, relationships — in every
+  // direction: it used to only grow, so boxes pulled closer to tighten a sprawling
+  // figure left their old space empty, on screen and in the exported SVG.
+  const fitted = nudges.size > 0 && drawn.length > 0;
+  const framed = enclosures.map((container) => ({ x: container.x, y: container.y, w: container.width, h: container.height }));
+  const floor = (value: number) => (fitted ? [] : [value]);
+  const left = Math.min(...floor(0), ...drawn.map((box) => box.x - 12), ...framed.map((box) => box.x - 12), ...routes.map((route) => route.minX - 12));
+  const top = Math.min(...floor(0), ...drawn.map((box) => box.y - 12), ...framed.map((box) => box.y - 14), ...routes.map((route) => route.minY - 14));
   const right = Math.max(
-    layout.width,
+    ...floor(layout.width),
     ...drawn.map((box) => box.x + box.w + 12),
+    ...framed.map((box) => box.x + box.w + 12),
     ...routes.map((route) => route.maxX + 12),
   );
   const bottom = Math.max(
-    layout.height,
+    ...floor(layout.height),
     ...drawn.map((box) => box.y + box.h + 12),
+    ...framed.map((box) => box.y + box.h + 12),
     ...routes.map((route) => route.maxY + 12),
   );
 

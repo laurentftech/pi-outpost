@@ -19,17 +19,23 @@ rendering the reader was looking at disappeared.
   workbook. Its JSON is no longer offered as Word text, which exported the source, not the drawing.
   The exports go through the rendered document, so they carry what the reader narrowed.
 
+- A graph the reader rearranged by dragging boxes fits its canvas to what is drawn, so pulling boxes
+  together shrinks the figure and its SVG — the canvas used to only grow. An untouched figure keeps its
+  layout's canvas.
+
 ## Capabilities
 
 ### Modified Capabilities
 
 - `file`: `EditingFromTheRenderingMovesToTheText` is added; `FullSizeFileViewer` no longer offers a
   structured-exchange document as Word text, and gains `AStructuredExchangeFileExportsWhatItDraws`.
+- `structured-exchange`: `ARearrangedFigureFitsWhatIsDrawn` is added.
 
 ## Impact
 
 - `ui/src/components/FileViewer.tsx`, `DocxExportButton.tsx` (text read when pressed);
   `ui/src/presentations/StructuredExchangeView.tsx`, `TimelineView.tsx`, `documentExport.ts` (the
   document's exports, offered to the toolbar).
-- Tests: `FileViewer.split.test.tsx`, `FileViewer.docxExport.test.tsx`, `e2e/file-editor.spec.ts`,
+- `shared/src/structuredExchangeFigure.ts`: the canvas extent once boxes are moved.
+- Tests: `server/test/structuredExchangeFigureFit.test.ts`, `FileViewer.split.test.tsx`, `FileViewer.docxExport.test.tsx`, `e2e/file-editor.spec.ts`,
   `e2e/docx-export-app.spec.ts`.
