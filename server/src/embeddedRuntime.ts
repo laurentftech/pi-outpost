@@ -50,9 +50,16 @@ export interface EmbeddedRuntimeOptions {
  * it has behind the extensions it does not have yet.
  *
  * Past it, startup serves the interface and a `/new` hands over its session; the
- * binding finishes behind either, and says so when it lands.
+ * binding finishes behind either, and says so when it lands. Short, because nothing
+ * the agent does can run ahead of the binding: a prompt waits for it (see `prompt`),
+ * so an extension that guards tool calls with rules it loads in `session_start` has
+ * them before the first tool call. The grace only decides how long the interface
+ * waits to show what the extensions contribute; they arrive with `extensions_bound`.
  */
-const BIND_STALL_MS = 5000;
+const BIND_STALL_MS = 1000;
+
+/** Told to the client when a prompt waiting for the extensions is cancelled by abort. */
+const PROMPT_CANCELLED_WHILE_BINDING = "The message was not sent: it was waiting for the extensions to finish starting.";
 
 /** Total build time past which startup says where the time went, rather than only being slow. */
 const SLOW_BUILD_MS = 2000;
@@ -166,6 +173,11 @@ export class EmbeddedRuntime implements AgentRuntime {
   private readonly listeners = new Set<(event: RuntimeEvent) => void>();
   private readonly bridge = new ExtensionUiBridge((request) => this.emit({ type: "extension_ui_request", request }));
   private unsubscribe: () => void = () => {};
+  /** The current session's extension binding, settled whether it succeeded or failed. */
+  private binding: Promise<void> = Promise.resolve();
+  private bindingDone = true;
+  /** Prompts waiting for the binding, released (cancelled) by abort. */
+  private readonly waitingPrompts = new Set<() => void>();
   /**
    * Events emitted before anything subscribed.
    *
@@ -238,6 +250,7 @@ export class EmbeddedRuntime implements AgentRuntime {
       thinkingLevel: session.thinkingLevel as ThinkingLevel,
       ...(thinkingLevels ? { thinkingLevels } : {}),
       isStreaming: session.isStreaming,
+      ...(this.bindingDone ? {} : { extensionsBinding: true }),
       messages: session.messages as unknown[],
       models: this.models(),
       commands: this.commands(),
@@ -391,6 +404,15 @@ export class EmbeddedRuntime implements AgentRuntime {
     const bound = this.session;
     const startedAt = Date.now();
     const binding = this.bindExtensions();
+    const settled = binding.then(
+      () => {},
+      () => {},
+    );
+    this.binding = settled;
+    this.bindingDone = false;
+    void settled.then(() => {
+      if (this.binding === settled) this.bindingDone = true;
+    });
     if (await settlesWithin(binding, options?.graceMs ?? BIND_STALL_MS)) return;
     console.warn(
       `[pi] extensions have not bound after ${seconds(options?.graceMs ?? BIND_STALL_MS)} — the session is usable now; they attach when they finish`,
@@ -507,7 +529,33 @@ export class EmbeddedRuntime implements AgentRuntime {
 
   // --- commands ------------------------------------------------------------
 
+  /**
+   * Send a prompt — once the session's extensions have finished binding.
+   *
+   * An extension may load in `session_start` the rules it applies to every tool call
+   * (pi-landstrip restores its agent's permission rules there); a turn run before
+   * that would call tools those rules were meant to judge. So a prompt, and an
+   * extension command typed as one, waits for the binding. A binding can wait on a
+   * question to the user, or never end: abort releases a waiting prompt, unsent.
+   */
   async prompt(text: string, options?: PromptOptions): Promise<void> {
+    if (!this.bindingDone) {
+      const binding = this.binding;
+      let release!: () => void;
+      const cancelled = new Promise<"cancelled">((resolve) => {
+        release = () => resolve("cancelled");
+      });
+      this.waitingPrompts.add(release);
+      try {
+        if ((await Promise.race([binding.then(() => "bound" as const), cancelled])) === "cancelled") {
+          options?.onAccepted?.(false);
+          this.emit({ type: "error", message: PROMPT_CANCELLED_WHILE_BINDING });
+          return;
+        }
+      } finally {
+        this.waitingPrompts.delete(release);
+      }
+    }
     const session = this.session;
     const images = options?.images;
     await session.prompt(text, {
@@ -518,6 +566,7 @@ export class EmbeddedRuntime implements AgentRuntime {
   }
 
   async abort(): Promise<void> {
+    for (const release of [...this.waitingPrompts]) release();
     await this.session.abort();
   }
 

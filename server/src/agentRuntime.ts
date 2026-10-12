@@ -108,6 +108,11 @@ export interface RuntimeSnapshot {
   extensionPaths?: string[];
   /** Tools registered by the runtime, with their current model visibility. */
   tools?: { name: string; active: boolean }[];
+  /**
+   * The session's extensions are still running their `session_start` handlers. A
+   * prompt sent meanwhile waits for them; absent where the runtime does not say.
+   */
+  extensionsBinding?: boolean;
 }
 
 /**
