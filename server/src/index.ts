@@ -2418,6 +2418,7 @@ function snapshot(workspace: Workspace): SessionSnapshot {
     })(),
     models: availableModels(workspace),
     commands: offeredCommands(state.commands, commandPolicy()),
+    ...(state.extensionsBinding ? { extensionsBinding: true } : {}),
     ...(resourceInventories.get(workspace.root) ? { agentResources: resourceInventories.get(workspace.root) } : {}),
     contextUsage: state.contextUsage,
     // A runtime replacement is synchronous but its sidecar read is not. Never

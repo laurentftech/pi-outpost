@@ -114,6 +114,7 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
     submitToken,
     prompt,
     abort,
+    cancelPendingPrompt,
     setModel,
     setThinking,
     newSession,
@@ -1242,7 +1243,22 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
                     canEdit={false}
                     onEdit={() => {}}
                   />
-                  <WorkingIndicator label="sending…" />
+                  {state.extensionsBinding ? (
+                    // The server holds the message until the session's extensions have
+                    // started, so a guard one of them loads applies to its first tool call.
+                    <div className="flex items-center gap-3" data-testid="prompt-waiting-for-extensions">
+                      <WorkingIndicator label="waiting for extensions to start…" />
+                      <button
+                        type="button"
+                        // Back into the composer, unless the user has typed another message since.
+                        onClick={() => cancelPendingPrompt(!drafts.current[boundKey ?? ""])}
+                        className="text-xs text-zinc-500 underline hover:text-zinc-700 dark:hover:text-zinc-300">
+                        cancel
+                      </button>
+                    </div>
+                  ) : (
+                    <WorkingIndicator label="sending…" />
+                  )}
                 </div>
               )}
 

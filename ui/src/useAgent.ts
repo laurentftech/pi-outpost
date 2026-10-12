@@ -280,6 +280,8 @@ export interface AgentState {
   thinkingLevels?: ThinkingLevel[];
   models: ModelChoice[];
   commands: CommandInfo[];
+  /** The session's extensions are still starting: a prompt sent now waits for them. */
+  extensionsBinding: boolean;
   sessions: SessionSummary[] | null;
   /** Active session search; null when the menu shows the plain list. */
   sessionSearch: SessionSearch | null;
@@ -429,6 +431,7 @@ const initialState: AgentState = {
   modelSupportsReasoning: false,
   models: [],
   commands: [],
+  extensionsBinding: false,
   sessions: null,
   sessionSearch: null,
   tree: null,
@@ -495,6 +498,7 @@ type Action =
   | { type: "auth_retrying" }
   | { type: "server"; message: ServerMessage }
   | { type: "prompt_sent"; text: string; images?: WireImage[] }
+  | { type: "pending_prompt_cancelled"; restoreText: boolean }
   | { type: "dismiss_notification"; id: string }
   | { type: "dialog_answered" }
   | { type: "dir_list_started"; path: string; requestId: string; preserveEntries?: boolean }
@@ -626,6 +630,7 @@ function applySnapshot(state: AgentState, message: ServerMessage & { sessionId: 
     modelSupportsReasoning: current?.reasoning ?? false,
     models: message.models,
     commands: message.commands,
+    extensionsBinding: message.extensionsBinding === true,
     isStreaming: message.isStreaming,
     items: message.items,
     // The snapshot is the only authority on what the session file still holds. A
@@ -713,6 +718,12 @@ function reduce(state: AgentState, action: Action): AgentState {
   if (action.type === "branding_loaded") return { ...state, brandingReady: true, branding: action.branding };
   if (action.type === "prompt_sent") {
     return { ...state, pendingPrompt: { text: action.text, ...(action.images?.length ? { images: action.images } : {}) } };
+  }
+  // The server answers the abort with an error that clears the placeholder; its text goes
+  // back to the composer first, unless the user has typed something else since.
+  if (action.type === "pending_prompt_cancelled") {
+    if (!action.restoreText || !state.pendingPrompt) return state;
+    return { ...state, editorPrefill: { text: state.pendingPrompt.text, nonce: state.editorPrefill ? state.editorPrefill.nonce + 1 : 1 } };
   }
   if (action.type === "dismiss_notification") {
     return { ...state, notifications: state.notifications.filter((n) => n.id !== action.id) };
@@ -1102,7 +1113,7 @@ function reduce(state: AgentState, action: Action): AgentState {
       // and tools exist now; everything else — the transcript, the open file, a
       // dialog one of them raised while binding — is untouched on purpose, which is
       // why this is not a snapshot.
-      return { ...state, commands: message.commands, tools: message.tools ?? state.tools };
+      return { ...state, commands: message.commands, tools: message.tools ?? state.tools, extensionsBinding: false };
     case "thinking_changed":
       return { ...state, thinkingLevel: message.level };
     case "work_plan_changed":
@@ -2242,6 +2253,10 @@ export function useAgent(serverUrl = "", explicitToken?: string, embedded = fals
       sendMessage({ type: "prompt", text, ...(images?.length ? { images } : {}) });
     },
     abort: () => sendMessage({ type: "abort" }),
+    cancelPendingPrompt: (restoreText: boolean) => {
+      dispatch({ type: "pending_prompt_cancelled", restoreText });
+      sendMessage({ type: "abort" });
+    },
     setModel: (provider: string, id: string) => sendMessage({ type: "set_model", provider, id }),
     setThinking: (level: ThinkingLevel) => sendMessage({ type: "set_thinking", level }),
     newSession: () => sendMessage({ type: "new_session" }),

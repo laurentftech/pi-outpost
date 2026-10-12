@@ -816,6 +816,11 @@ export interface SessionSnapshot {
   olderItems?: number;
   models: ModelChoice[];
   commands: CommandInfo[];
+  /**
+   * The session's extensions are still starting (their `session_start` handlers run).
+   * A prompt sent meanwhile waits for them; `extensions_bound` says when they are done.
+   */
+  extensionsBinding?: boolean;
   /** Git-aware skill and extension inventory. Optional for older servers/clients. */
   agentResources?: AgentResourceInventory;
   contextUsage?: ContextUsage;

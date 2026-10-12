@@ -92,6 +92,7 @@ function agentApi(state: ReturnType<typeof agentState>) {
     submitToken: vi.fn(),
     prompt: vi.fn(),
     abort: vi.fn(),
+    cancelPendingPrompt: vi.fn(),
     setModel: vi.fn(),
     setThinking: vi.fn(),
     newSession: vi.fn(),
@@ -2043,3 +2044,36 @@ describe("the pi-outpost update notice", () => {
   });
 });
 
+
+describe("APromptWaitsForTheExtensions", () => {
+  it("says a message is held while the extensions start, and cancel aborts it", () => {
+    const api = agentApi(agentState({ extensionsBinding: true, pendingPrompt: { text: "hello" } }));
+    mockUseAgent.mockReturnValue(api);
+    render(<App />);
+
+    const waiting = screen.getByTestId("prompt-waiting-for-extensions");
+    expect(waiting.textContent).toContain("waiting for extensions to start");
+    expect(screen.queryByText("sending…")).toBeNull();
+
+    fireEvent.click(within(waiting).getByRole("button", { name: "cancel" }));
+    expect(api.cancelPendingPrompt).toHaveBeenCalledWith(true);
+  });
+
+  it("does not ask for the held message back when the user has typed another since", () => {
+    const api = agentApi(agentState({ extensionsBinding: true, pendingPrompt: { text: "hello" } }));
+    mockUseAgent.mockReturnValue(api);
+    render(<App />);
+    fireEvent.change(screen.getByPlaceholderText(/message/i), { target: { value: "a newer draft" } });
+
+    fireEvent.click(within(screen.getByTestId("prompt-waiting-for-extensions")).getByRole("button", { name: "cancel" }));
+    expect(api.cancelPendingPrompt).toHaveBeenCalledWith(false);
+  });
+
+  it("says sending once the extensions have started", () => {
+    mockUseAgent.mockReturnValue(agentApi(agentState({ extensionsBinding: false, pendingPrompt: { text: "hello" } })));
+    render(<App />);
+
+    expect(screen.queryByTestId("prompt-waiting-for-extensions")).toBeNull();
+    expect(screen.getByText("sending…")).toBeTruthy();
+  });
+});

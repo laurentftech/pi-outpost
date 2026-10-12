@@ -1855,6 +1855,40 @@ describe("extensions_bound", () => {
     expect(result.current.state.tools).toEqual([{ name: "lens_diagnostics", active: true }]);
   });
 
+  it("knows the extensions are still starting from the greeting, and that they are done when they bind", async () => {
+    const result = await connected([], { extensionsBinding: true });
+    expect(result.current.state.extensionsBinding).toBe(true);
+
+    act(() => mockWs!.receive({ type: "extensions_bound", commands: [] }));
+
+    await waitFor(() => expect(result.current.state.extensionsBinding).toBe(false));
+  });
+
+  it("puts a cancelled held message back in the composer, then aborts", async () => {
+    const result = await connected([], { extensionsBinding: true });
+    act(() => result.current.prompt("held text"));
+
+    act(() => result.current.cancelPendingPrompt(true));
+
+    expect(result.current.state.editorPrefill?.text).toBe("held text");
+    expect(JSON.parse(mockWs!.sent.at(-1)!)).toEqual({ type: "abort" });
+  });
+
+  it("leaves the composer alone when told the user has typed since", async () => {
+    const result = await connected([], { extensionsBinding: true });
+    act(() => result.current.prompt("held text"));
+
+    act(() => result.current.cancelPendingPrompt(false));
+
+    expect(result.current.state.editorPrefill).toBeNull();
+    expect(JSON.parse(mockWs!.sent.at(-1)!)).toEqual({ type: "abort" });
+  });
+
+  it("assumes the extensions have started when the greeting does not say otherwise", async () => {
+    const result = await connected();
+    expect(result.current.state.extensionsBinding).toBe(false);
+  });
+
   it("keeps the file the user opened while waiting", async () => {
     // The reason this message exists rather than a snapshot: binding can land long
     // after the session became usable, and the user has been using it.
