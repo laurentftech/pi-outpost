@@ -4,7 +4,7 @@
  * rendered view of a structured-exchange JSON there is no SVG download".
  *
  *   npm run build --workspace web
- *   node --import tsx/esm scripts/probes/viewer-structured-exports.mts
+ *   node --import tsx/esm scripts/probes/viewer-structured-exports.mts [another document.json]
  */
 import { readFile } from "node:fs/promises";
 import path from "node:path";
@@ -17,6 +17,7 @@ const files: Record<string, string> = {
   "graph.json": await sample("v2-graph-minimal.json"),
   "sequence.json": await sample("sequence-minimal.json"),
   "timeline.json": await sample("v3-timeline-calendar.json"),
+  ...(process.argv[2] ? { [path.basename(process.argv[2])]: await readFile(process.argv[2], "utf8") } : {}),
 };
 const env: Record<string, string | undefined> = {
   ...Object.fromEntries(Object.keys(process.env).filter((key) => /API_KEY|AUTH_TOKEN|_TOKEN$/.test(key)).map((key) => [key, undefined])),
