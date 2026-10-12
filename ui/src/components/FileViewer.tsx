@@ -181,6 +181,12 @@ export function FileViewer({
   // One value rather than a flag per pane. "raw && split" means nothing, and a
   // second boolean is how a state that means nothing becomes representable.
   const [mode, setMode] = useState<ViewMode>("rendered");
+  /**
+   * The mode the reader was in when "edit" moved them out of the rendering, to go back
+   * to when they are done. Null once they choose a mode themselves: then the mode is
+   * theirs, and leaving the editor keeps it.
+   */
+  const [modeBeforeEdit, setModeBeforeEdit] = useState<ViewMode | null>(null);
   const [showGitDiff, setShowGitDiff] = useState(initialShowGitDiff);
   // A file created from the tree opens in edit mode: creating a file is wanting
   // to write in it. The viewer is remounted per path, so this only ever applies
@@ -706,6 +712,7 @@ export function FileViewer({
   function changeMode(next: ViewMode) {
     if (mode === "split" && next !== "split" && dirty && !window.confirm("Discard unsaved changes?")) return;
     if (mode === "split" && next !== "split") setEdit(null);
+    setModeBeforeEdit(null);
     setMode(next);
   }
 
@@ -714,9 +721,36 @@ export function FileViewer({
     onClose();
   }
 
+  /**
+   * Open the editor.
+   *
+   * From the rendering, editing moves to the text: beside the rendering when there is
+   * room for two panes, the text alone otherwise — editing under a rendering that hides
+   * the editor's mode is editing blind. The rendering is where "done" brings them back.
+   */
   function startEdit() {
     if (!loaded) return;
+    if (renderable && mode === "rendered") {
+      setModeBeforeEdit("rendered");
+      setMode(roomForTwo ? "split" : "source");
+    }
     setEdit({ draft: loaded.content, baseContent: loaded.content, baseMtimeMs: loaded.mtimeMs });
+  }
+
+  /** Leave the editor: back to the rendering when "edit" came from it, else where the reader is. */
+  function leaveEditor() {
+    if (modeBeforeEdit !== null) {
+      setEdit(null);
+      setMode(modeBeforeEdit);
+      setModeBeforeEdit(null);
+      return;
+    }
+    // Cancelling in the side-by-side mode discards the draft and keeps the mode: the
+    // reader asked to look at this document beside its picture, and throwing away an
+    // edit is not a request to stop. A plain setEdit(null) left them in "split" with a
+    // read-only pane, because the effect that opens the editor watches the mode and not
+    // the buffer, so it never fired again.
+    setEdit(splitting && loaded !== null ? { draft: loaded.content, baseContent: loaded.content, baseMtimeMs: loaded.mtimeMs } : null);
   }
 
   function save(overwrite = false) {
@@ -903,17 +937,7 @@ export function FileViewer({
               type="button"
               onClick={() => {
                 if (dirty && !window.confirm("Discard unsaved changes?")) return;
-                // Cancelling in the side-by-side mode discards the draft and keeps
-                // the mode: the reader asked to look at this document beside its
-                // picture, and throwing away an edit is not a request to stop. A
-                // plain setEdit(null) left them in "split" with a read-only pane,
-                // because the effect that opens the editor watches the mode and not
-                // the buffer, so it never fired again.
-                setEdit(
-                  splitting && loaded !== null
-                    ? { draft: loaded.content, baseContent: loaded.content, baseMtimeMs: loaded.mtimeMs }
-                    : null,
-                );
+                leaveEditor();
               }}
               className="shrink-0 rounded border border-zinc-300 px-2 py-0.5 text-xs text-zinc-500 hover:border-zinc-400 dark:border-zinc-700 dark:text-zinc-400 dark:hover:border-zinc-500"
             >

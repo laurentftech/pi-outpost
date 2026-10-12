@@ -172,3 +172,30 @@ test("SwitchingViewKeepsTheCurrentMatch: every match marked in the source, the r
   const marks = await source.locator(".find-match, .find-match-current").evaluateAll((elements) => elements.map((element) => element.className.includes("find-match-current")));
   expect(marks).toEqual([false, false, true, false]);
 });
+
+test("editing from the rendering moves beside it, and done brings the rendering back — Markdown, HTML and a diagram", async ({ page }) => {
+  const directory = path.join(process.env.PI_E2E_PRIMARY_PROJECT!, "editor");
+  await mkdir(directory, { recursive: true });
+  const graph = JSON.stringify({ schema: "urn:structured-exchange:2", kind: "graph", data: { nodes: [{ id: "a", label: "Alpha" }, { id: "b", label: "Beta" }], edges: [{ from: "a", to: "b" }] } }, null, 2);
+  await writeFile(path.join(directory, "rendered.md"), "# Rendered heading\n\nBody.\n");
+  await writeFile(path.join(directory, "rendered.html"), "<h1 id='t'>Rendered page</h1>\n");
+  await writeFile(path.join(directory, "rendered.json"), graph);
+  await page.goto(process.env.PI_E2E_SERVER_URL!);
+  await expect(page.getByTitle("connected")).toBeVisible();
+  await page.getByTitle("Show files").click();
+  await page.getByText("editor", { exact: true }).click();
+  const pressed = (name: RegExp) => page.getByRole("group", { name: "How to show this document" }).getByRole("button", { name });
+
+  for (const name of ["rendered.md", "rendered.html", "rendered.json"]) {
+    await page.getByText(name, { exact: true }).click();
+    await expect(pressed(/rendered/)).toHaveAttribute("aria-pressed", "true");
+    await page.getByRole("button", { name: "✎ edit" }).click();
+    await expect(pressed(/split/)).toHaveAttribute("aria-pressed", "true");
+    const split = page.getByTestId("file-split");
+    await expect(split.getByTestId("file-editor").locator(".cm-content")).toBeVisible();
+    await expect(page.getByTestId("file-split-rendering")).toBeVisible();
+    await page.getByRole("button", { name: "done", exact: true }).click();
+    await expect(pressed(/rendered/)).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByTestId("file-editor")).toHaveCount(0);
+  }
+});

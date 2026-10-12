@@ -334,6 +334,73 @@ describe("editing a document beside its rendering", () => {
     expect(screen.getByTestId("file-structured-exchange")).toBeInTheDocument();
   });
 
+  describe("editing from the rendering", () => {
+    const MD = "# Vehicle\n\nThe power path.\n";
+    const pressed = (name: RegExp) => screen.getByRole("button", { name }).getAttribute("aria-pressed");
+
+    it("moves beside the rendering, and done brings the rendering back", () => {
+      setup(MD, { writableRoot: undefined }, "reports/vehicle.md");
+      expect(pressed(/rendered/)).toBe("true");
+
+      fireEvent.click(screen.getByRole("button", { name: "✎ edit" }));
+
+      expect(pressed(/split/)).toBe("true");
+      const split = screen.getByTestId("file-split");
+      expect(editorElement(split)).not.toBeNull();
+      expect(within(split).getByRole("heading", { name: "Vehicle" })).toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole("button", { name: "done" }));
+      expect(pressed(/rendered/)).toBe("true");
+      expect(editorElement()).toBeNull();
+      expect(screen.getByRole("heading", { name: "Vehicle" })).toBeInTheDocument();
+    });
+
+    it("moves to the text alone when there is no room for two panes", () => {
+      window.matchMedia = ((query: string) => ({
+        matches: false,
+        media: query,
+        addEventListener: () => {},
+        removeEventListener: () => {},
+      })) as unknown as typeof window.matchMedia;
+      setup(MD, { writableRoot: undefined }, "reports/vehicle.md");
+
+      fireEvent.click(screen.getByRole("button", { name: "✎ edit" }));
+
+      expect(pressed(/source/)).toBe("true");
+      expect(editorElement()).not.toBeNull();
+      expect(screen.queryByTestId("file-split")).toBeNull();
+      fireEvent.click(screen.getByRole("button", { name: "done" }));
+      expect(pressed(/rendered/)).toBe("true");
+      expect(editorElement()).toBeNull();
+    });
+
+    it("cancels back to the rendering too, the draft dropped", () => {
+      setup(MD, { writableRoot: undefined }, "reports/vehicle.md");
+      fireEvent.click(screen.getByRole("button", { name: "✎ edit" }));
+      type("# Changed\n");
+      vi.spyOn(window, "confirm").mockReturnValue(true);
+
+      fireEvent.click(screen.getByRole("button", { name: "cancel" }));
+
+      expect(pressed(/rendered/)).toBe("true");
+      expect(screen.getByRole("heading", { name: "Vehicle" })).toBeInTheDocument();
+    });
+
+    it("keeps a mode the reader then chose: done leaves the editor and stays there", () => {
+      setup(MD, { writableRoot: undefined }, "reports/vehicle.md");
+      fireEvent.click(screen.getByRole("button", { name: "✎ edit" }));
+      fireEvent.click(screen.getByRole("button", { name: /source/ }));
+      // Leaving the split for the source left the editor, as choosing a mode always did.
+      expect(editorElement()).toBeNull();
+      fireEvent.click(screen.getByRole("button", { name: "✎ edit" }));
+      expect(pressed(/source/)).toBe("true");
+
+      fireEvent.click(screen.getByRole("button", { name: "done" }));
+      expect(pressed(/source/)).toBe("true");
+      expect(editorElement()).toBeNull();
+    });
+  });
+
   describe("Markdown, which has a rendering too", () => {
     const MD = "# Vehicle\n\nThe power path.\n";
 
