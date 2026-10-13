@@ -15,6 +15,7 @@ import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { bundledMxcExecutor, MXC_EXECUTOR_NAME } from "./mxcExecutor.ts";
 
 /** What `node --build-sea` needs, and the reason each field is here. */
 export interface SeaConfig {
@@ -201,6 +202,39 @@ export interface BuildResult {
   path: string;
   /** Which path produced it — the two artifacts differ, and someone debugging needs to know. */
   method: "build-sea" | "postject";
+  /** MXC's executor, placed beside a Windows executable so `"mxc"` finds it there. */
+  mxcExecutor?: string;
+}
+
+/**
+ * Put MXC's executor beside a Windows executable, where `"mxc"` looks for it.
+ *
+ * A standalone executable has no `node_modules`, so the executor the package ships would
+ * stay behind on the build machine. Copied, not embedded: it is Microsoft's signed file,
+ * and extracting a copy at run time would only add a writable place it could be swapped.
+ * Nothing to copy (the optional install was skipped) is said, not refused: the executable
+ * works without it, and `terminal.sandbox` can still name a path.
+ */
+export function placeMxcExecutor(
+  target: string,
+  options: { platform: NodeJS.Platform; force?: boolean; log: (line: string) => void; executor?: string | undefined },
+): string | undefined {
+  if (options.platform !== "win32") return undefined;
+  const source = "executor" in options ? options.executor : bundledMxcExecutor();
+  const destination = path.join(path.dirname(target), MXC_EXECUTOR_NAME);
+  if (source === undefined) {
+    if (fs.existsSync(destination)) return destination;
+    options.log(`[build-exe] MXC's executor is not installed: "mxc" will not resolve beside ${target}`);
+    return undefined;
+  }
+  if (path.resolve(source).toLowerCase() === path.resolve(destination).toLowerCase()) return destination;
+  if (fs.existsSync(destination) && options.force !== true) {
+    options.log(`[build-exe] kept the ${MXC_EXECUTOR_NAME} already beside it — pass --force to replace it`);
+    return destination;
+  }
+  fs.copyFileSync(source, destination);
+  options.log(`[build-exe] placed MXC's executor beside it: ${destination}`);
+  return destination;
 }
 
 /**
@@ -261,7 +295,7 @@ export function buildExecutable(options: BuildOptions = {}): BuildResult {
     if (platform === "darwin") resignMacho(target);
 
     const verdict = options.skipSmokeTest === true ? { ok: true, detail: "" } : producedExecutableRuns(target);
-    if (verdict.ok) return { path: target, method: "build-sea" };
+    if (verdict.ok) return withMxcExecutor({ path: target, method: "build-sea" }, platform, options.force, log);
 
     // Evidence, not a platform guess: `--build-sea` is the newer path and on some
     // builds it produces an executable that segfaults on its first invocation, while
@@ -329,7 +363,12 @@ export function buildExecutable(options: BuildOptions = {}): BuildResult {
   }
   if (platform === "darwin") resignMacho(target);
   assertItRuns(target, "postject", options);
-  return { path: target, method: "postject" };
+  return withMxcExecutor({ path: target, method: "postject" }, platform, options.force, log);
+}
+
+function withMxcExecutor(result: BuildResult, platform: NodeJS.Platform, force: boolean | undefined, log: (line: string) => void): BuildResult {
+  const executor = placeMxcExecutor(result.path, { platform, force, log });
+  return executor === undefined ? result : { ...result, mxcExecutor: executor };
 }
 
 /**

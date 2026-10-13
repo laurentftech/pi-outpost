@@ -23,6 +23,7 @@ import {
   seaConfigBytes,
   seaConfigFor,
   findBuildInputs,
+  placeMxcExecutor,
 } from "../src/buildExe.ts";
 
 describe("the generated SEA config", () => {
@@ -240,5 +241,55 @@ describe("the module does not poison the binary it builds", () => {
     assert.equal(source.includes(assembled), false, "buildExe.ts must assemble the sentinel, never spell it");
     // and what it assembles is still the right string
     assert.equal(SEA_SENTINEL_FUSE, assembled);
+  });
+});
+
+describe("MXC's executor beside a Windows executable", () => {
+  function withDirs(run: (dirs: { source: string; out: string; lines: string[] }) => void) {
+    const base = mkdtempSync(path.join(tmpdir(), "build-exe-mxc-"));
+    try {
+      const source = path.join(base, "pkg", "bin", "x64", "wxc-exec.exe");
+      mkdirSync(path.dirname(source), { recursive: true });
+      writeFileSync(source, "the executor");
+      const out = path.join(base, "out");
+      mkdirSync(out);
+      run({ source, out, lines: [] });
+    } finally {
+      rmSync(base, { recursive: true, force: true });
+    }
+  }
+
+  // openlore: scenario=AStandaloneExecutableFindsTheExecutorBesideIt spec=sandbox-runner-bash
+  test("is copied where the executable will look for it", () => {
+    withDirs(({ source, out, lines }) => {
+      const placed = placeMxcExecutor(path.join(out, "pi-outpost.exe"), { platform: "win32", executor: source, log: (l) => lines.push(l) });
+      assert.equal(placed, path.join(out, "wxc-exec.exe"));
+      assert.equal(readFileSync(placed!, "utf8"), "the executor");
+    });
+  });
+
+  test("an executor already there is kept unless --force, and nothing is placed off Windows", () => {
+    withDirs(({ source, out, lines }) => {
+      const beside = path.join(out, "wxc-exec.exe");
+      writeFileSync(beside, "older");
+      const log = (l: string) => lines.push(l);
+      placeMxcExecutor(path.join(out, "pi-outpost.exe"), { platform: "win32", executor: source, log });
+      assert.equal(readFileSync(beside, "utf8"), "older");
+      assert.match(lines.join(" "), /--force/);
+      placeMxcExecutor(path.join(out, "pi-outpost.exe"), { platform: "win32", executor: source, force: true, log });
+      assert.equal(readFileSync(beside, "utf8"), "the executor");
+
+      rmSync(beside);
+      assert.equal(placeMxcExecutor(path.join(out, "pi-outpost"), { platform: "linux", executor: source, log }), undefined);
+      assert.equal(existsSync(beside), false);
+    });
+  });
+
+  test("without the optional install, the build says so and still succeeds", () => {
+    withDirs(({ out, lines }) => {
+      const placed = placeMxcExecutor(path.join(out, "pi-outpost.exe"), { platform: "win32", executor: undefined, log: (l) => lines.push(l) });
+      assert.equal(placed, undefined);
+      assert.match(lines.join(" "), /not installed/);
+    });
   });
 });

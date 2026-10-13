@@ -140,7 +140,7 @@ one needs, the command that proves it works, and the caution that goes with it.
 | [Read a big PDF, Word or Excel file](docs/how-to.md#let-the-agent-read-a-big-pdf-word-or-excel-file) | [Lock down a shared deployment](docs/how-to.md#lock-down-a-shared-deployment) |
 | [Put it inside your own web app](docs/how-to.md#put-it-inside-your-own-web-app) | [Use an existing pi installation](docs/how-to.md#use-an-existing-pi-installation) |
 | [Make a PowerPoint deck from a template](docs/how-to.md#make-a-powerpoint-deck-from-a-template) | [Write a Word document from a template](docs/how-to.md#write-a-word-document-from-a-template) |
-| [Confine the agent's shell](docs/sandboxing.md#recommended-setup) | [Run it in WSL on an older Windows](docs/sandboxing.md#older-windows-wsl) |
+| [Confine the agent's shell](docs/sandboxing.md#recommended-setup) | [Confine it on Windows 11 with PowerShell](docs/sandboxing.md#windows-11-mxc-and-powershell) |
 | [When something does not work](docs/how-to.md#when-something-does-not-work) | |
 
 ## What you get
@@ -495,8 +495,9 @@ in [`pi-outpost.config.example.json`](pi-outpost.config.example.json).
 | `sandbox.allowWrite` | Adds edit/write, confined to `sandbox.writableRoot` (default `false`). Never inside a `.pi` directory, which holds the configuration that confines the agent — see [docs/sandboxing.md](docs/sandboxing.md#what-is-confined) |
 | `sandbox.writableRoot` | Read-write zone: a subdirectory of `root` that edit/write are further confined to. Defaults to `root` itself. Ignored while `allowWrite` is false, and applies to the `cwd` project only: every other open project is writable in its whole directory |
 | `sandbox.allowBash` | Adds bash — **not path-confined** unless `bashRunner` or `bashFrom` confines it, explicit opt-in (default `false`) |
-| `sandbox.bashRunner` | Runs every command of pi-outpost's own `bash` inside a sandbox runner — MXC's `wxc-exec.exe` (Windows 11) or landstrip's binary (Linux) — with the policy of a confined terminal: reads in the root, writes in the writable zone, no keys. A missing or failing runner refuses each command, never runs it unconfined. Exclusive with `bashFrom`. See [docs/sandboxing.md](docs/sandboxing.md#recommended-setup) |
-| `sandbox.bashShell` | The shell `bashRunner` runs commands in (default `/bin/bash`). Required on Windows: busybox-w32's `sh.exe`, since Git Bash cannot start in a Windows sandbox |
+| `sandbox.bashRunner` | Runs every command of pi-outpost's own `bash` inside a sandbox runner — MXC's `wxc-exec.exe` (Windows 11; `"mxc"` names the one installed with pi-outpost, see [MXC comes with pi-outpost](#mxc-comes-with-pi-outpost)) or landstrip's binary (Linux) — with the policy of a confined terminal: reads in the root, writes in the writable zone, no keys. A missing or failing runner refuses each command, never runs it unconfined. Exclusive with `bashFrom`. See [docs/sandboxing.md](docs/sandboxing.md#recommended-setup) |
+| `sandbox.bashShell` | The shell `bashRunner` runs commands in (default `/bin/bash`). Required on Windows, where Git Bash cannot start in a sandbox: `powershell.exe` (the agent then gets a `powershell` tool instead of `bash`), or busybox-w32's `sh.exe` |
+| `sandbox.bashImage` | Experimental, Windows 11 with MXC: a Linux image (e.g. `buildpack-deps:bookworm-scm`) every command of the agent's `bash` runs in, through MXC's WSLC backend — a real bash, with only the root mounted (at `/mnt/c/…`). Needs MXC as `bashRunner` and no `bashShell`; the writable zone is the whole root. See [docs/sandboxing.md](docs/sandboxing.md#a-real-bash-wslc-experimental) |
 | `sandbox.bashFrom` | Hands bash to a sandboxing extension instead: its package source as pi lists it (`"npm:pi-landstrip"`) or the path of its file or directory. pi-outpost then supplies no `bash` of its own — which would otherwise shadow the extension's, since an application's tool wins over an extension's of the same name. The session refuses to start unless that extension registers `bash`, and a Settings change that would leave it without one is rolled back. Only while `allowBash` is on. See [Confining bash with an extension](#confining-bash-with-an-extension) |
 | `sandboxLocks` | Which sandbox fields Settings may **not** change: `root`, `writableRoot`, `allowWrite`, `allowBash` |
 | `workspaceLock` | Pin the server to one project: opening, closing and switching are refused, and no control is offered |
@@ -535,8 +536,46 @@ Otherwise leave it off where that matters, and lock it with `sandboxLocks.termin
 
 Without an extension, `sandbox.bashRunner` confines pi-outpost's own `bash` with the same runners as
 the terminal: each command runs inside the runner, with the terminal's policy. On Windows 11 this is
-the way that works today (MXC and busybox-w32); see
+the way that works today (MXC with Windows PowerShell, nothing to install); see
 [docs/sandboxing.md](docs/sandboxing.md#recommended-setup).
+
+#### MXC comes with pi-outpost
+
+MXC's executor (`wxc-exec.exe`, signed by Microsoft, MIT) ships in
+[`@microsoft/mxc-sdk`](https://www.npmjs.com/package/@microsoft/mxc-sdk), which pi-outpost declares
+as an **optional dependency**. In npm, *optional* does not mean *opt-in*: `npm install -g
+pi-outpost`, `npx pi-outpost` and `npm ci` **install it by default**, with nothing to add. It only
+means that an install which fails for that package does not fail pi-outpost's install, and that
+`--omit=optional` (or `npm config set omit optional`) leaves it out. To use it, write the word
+`"mxc"` instead of a path:
+
+```json
+{
+  "sandbox": {
+    "root": "C:\\work\\app",
+    "allowWrite": true,
+    "allowBash": true,
+    "bashRunner": "mxc",
+    "bashShell": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"
+  },
+  "terminal": { "enabled": true, "sandbox": "mxc" }
+}
+```
+
+`"mxc"` resolves to the installed package's `wxc-exec.exe` for this machine's architecture
+(`x64` or `arm64`). If it is not there, the server refuses to start and says so; reinstall
+without `--omit=optional`:
+
+```powershell
+npm install -g pi-outpost --include=optional
+```
+
+The **standalone executable** has no `node_modules`: `"mxc"` looks for `wxc-exec.exe` **beside
+`pi-outpost.exe`**. `pi-outpost build-exe` puts it there on Windows when the package is installed;
+otherwise copy `node_modules\@microsoft\mxc-sdk\bin\x64\wxc-exec.exe` (`arm64` on ARM) next to
+the executable.
+The package is about 100 MB and is installed on every platform, though only Windows uses it; an
+install that must stay small can omit it and name no `"mxc"`.
 
 ### Agent resources
 
@@ -591,7 +630,7 @@ the way that works today (MXC and busybox-w32); see
 | `terminal.enabled` | Enable integrated interactive web terminal (default `false` — explicit opt-in only). See [Integrated Terminal](#integrated-terminal) |
 | `terminal.shell` | Path to the shell executable (default: Git Bash -> PowerShell on Windows; `$SHELL` -> `/bin/zsh` -> `/bin/bash` on Unix) |
 | `terminal.shellArgs` | Arguments passed to the shell (default: `["-l"]` on Unix login shells) |
-| `terminal.sandbox` | Path to a sandbox runner (landstrip's binary, or MXC's `wxc-exec.exe` on Windows 11) every terminal runs inside, confined to the sandbox root, with no keys in its environment. A missing or failing runner means no terminal, never an unconfined one. See [docs/sandboxing.md](docs/sandboxing.md#recommended-setup) |
+| `terminal.sandbox` | Path to a sandbox runner (landstrip's binary, or MXC's `wxc-exec.exe` on Windows 11 — `"mxc"` names the one installed with pi-outpost, see [MXC comes with pi-outpost](#mxc-comes-with-pi-outpost)) every terminal runs inside, confined to the sandbox root, with no keys in its environment. A missing or failing runner means no terminal, never an unconfined one. See [docs/sandboxing.md](docs/sandboxing.md#recommended-setup) |
 | `embed.workspaceControls` | What a mounted widget offers: `"settings"` (default, one project), `"root"` (a compact root chooser), `"projects"` (open/switch/close) |
 | `updateCheck` / `updateRegistry` | See [Staying up to date](#staying-up-to-date) |
 | `gitPath` | Path to the git executable. Unset, git is found on `PATH` and then where installers put it. See [Git](#git) |

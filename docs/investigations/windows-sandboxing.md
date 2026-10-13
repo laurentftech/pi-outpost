@@ -53,8 +53,9 @@ managed machine, that means IT. Reported with the proof in landstrip/landstrip#2
 | Git Bash / MSYS2 `sh` | cannot start: `NtCreateDirectoryObject(\BaseNamedObjects\msys-2.0S5-...)` — global named objects are forbidden to containers (also landstrip/landstrip#40) |
 | Git for Windows `git` | dies on `NUL` (finding 2) |
 
-pi's `bash` tool needs a bash-compatible shell, so PowerShell cannot stand in for the agent; the human
-terminal can use anything.
+pi's `bash` tool needs a bash-compatible shell. PowerShell can still serve the agent through pi's
+`powershell` tool, which pi-outpost registers instead of `bash` when `sandbox.bashShell` names
+PowerShell (change `confined-powershell`); the human terminal can use anything.
 
 ### 4. pi-landstrip on Windows (agent `bash`)
 
@@ -223,6 +224,34 @@ Note: upgrading Gpg4win 4 → 5 moves GnuPG from `Program Files (x86)` to `Progr
 `gpg.program` set to the old path in `~\.gitconfig` pointing at nothing: signed commits then fail
 everywhere until it is updated.
 
+### 11. MXC's WSLC backend: a real bash in a Linux container
+
+Measured 2026-10-13, Windows 11 Home 26100.9444, WSL 3.0.1, `@microsoft/mxc-sdk` 1.0.0 (whose
+`wxc-exec.exe` carries a valid Microsoft Authenticode signature, and runs alone, without the package's
+DLLs). `containment: "wslc"` runs the command in a container of the image named in `wslc.image`; the
+`readwritePaths` and `readonlyPaths` are mounted at `/mnt/<drive>/<path>` (virtiofs), the Windows `cwd`
+is translated the same way, the exit status comes back. `buildpack-deps:bookworm-scm` gives bash 5.2 and
+git 2.39, which read a mounted repository without complaint.
+
+- **The session name.** Without `containerId`, MXC names the WSLC session `CLI`, which WSL refuses:
+  `WslcCreateSession failed: HRESULT 0x80040608`, `WSLC_E_INVALID_SESSION_NAME`. Any lowercase
+  alphanumeric id works.
+- **The image store** defaults to `%TEMP%\mxc-wslc-sessions` — of the executor's environment, so under a
+  confined environment whose `TEMP` is per command, every command pulls the image again (35 s). Fixed
+  with `wslc.storagePath`.
+- **Two runs at once** on one store fail: `WslcListSessionImages failed: HRESULT 0x80070020` (sharing
+  violation). pi runs a turn's tool calls in parallel; three of four were refused before runs were
+  serialized.
+- **Nested mounts.** A `readwritePaths` folder inside a `readonlyPaths` one stays read-only
+  (`Read-only file system`): the parent's mount shadows it.
+- **The network** is all or nothing: egress, ingress and the host loopback must all be `allow`
+  (bridged) or all `deny` (isolated).
+- **Timing.** The first command after a pull about 10 s, then 4–8 s each, a container per command.
+  `WslcCreateContainer failed: HRESULT 0x80004005` came back twice in about ten runs, each on a folder's
+  first mount; the same command run again succeeded.
+- **Images.** `alpine/git` declares `git` as its entrypoint, which swallows the command line; the image
+  must have no entrypoint, or one that runs its arguments.
+
 ## Where this leaves the goal: a Windows sandbox with Git for Windows only
 
 | Piece | Today, MXC tier 1 |
@@ -231,6 +260,7 @@ everywhere until it is updated.
 | `cmd`, PowerShell as the terminal's shell | work |
 | Git Bash as the terminal's shell or pi's `bash` | **blocked** upstream (finding 9) |
 | A bash-compatible shell for pi's `bash` tool | only busybox-w32, an extra 700 KB executable |
+| Windows PowerShell 5.1 for pi's `powershell` tool | runs (finding 7); the agent's tool since `confined-powershell` |
 | Node tools inside (`npm`, `npx`, pi extensions) | at risk: `realpathSync.native` always fails (finding 8) |
 
 ### The practicable combination today

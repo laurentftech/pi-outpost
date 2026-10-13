@@ -25,7 +25,9 @@ import path from "node:path";
 import { normalizeThinkingLevels, THEMES, type Theme, type ThinkingLevel } from "@pi-outpost/shared";
 import { STRUCTURED_EXCHANGE_BYTES_CEILING_ANY } from "@pi-outpost/shared/structured-exchange/bounds";
 import { normalizeCommandPattern } from "./commandPolicy.ts";
+import { BUNDLED_MXC, bundledMxcExecutor } from "./mxcExecutor.ts";
 import { OPEN_SHAPES, type OpenShape } from "./openBrowser.ts";
+import { runnerKind } from "./terminalSandbox.ts";
 
 export interface BrandingConfig {
   /** Header title. Default: "π". */
@@ -71,11 +73,21 @@ export interface SandboxConfig {
   /**
    * A sandbox runner pi-outpost's own `bash` runs every command inside, while `allowBash`
    * is on: MXC's executor (`wxc-exec.exe`, Windows 11) or landstrip's binary. Same policy
-   * as a confined terminal in the workspace. Exclusive with `bashFrom`. Absolute after load.
+   * as a confined terminal in the workspace. Exclusive with `bashFrom`. `"mxc"` names the
+   * executor pi-outpost ships (`mxcExecutor.ts`). Absolute after load.
    */
   bashRunner?: string;
-  /** The shell `bashRunner` runs commands in. Default `/bin/bash`; required on Windows (busybox-w32). */
+  /**
+   * The shell `bashRunner` runs commands in. Default `/bin/bash`; required on Windows:
+   * PowerShell (the agent then gets a `powershell` tool) or busybox-w32's `sh.exe`.
+   */
   bashShell?: string;
+  /**
+   * Experimental, MXC only: a Linux image (e.g. `buildpack-deps:bookworm-scm`) every command
+   * of the agent's `bash` runs in, through MXC's WSLC backend — a real bash, with the root
+   * mounted at `/mnt/<drive>/…`. Exclusive with `bashShell`.
+   */
+  bashImage?: string;
   /**
    * Extra directories (absolute paths) that read tools (read/ls/grep/find) are
    * allowed to access in addition to `root`. Write tools are NOT affected — these
@@ -115,8 +127,9 @@ export interface TerminalConfig {
    */
   shellArgs?: string[];
   /**
-   * A sandbox runner (landstrip's `landstrip` binary) every terminal runs inside, confined
-   * to its workspace's sandbox. Resolved against the configuration file. Configuration
+   * A sandbox runner (landstrip's `landstrip` binary, or MXC's `wxc-exec.exe`) every terminal
+   * runs inside, confined to its workspace's sandbox. Resolved against the configuration
+   * file; `"mxc"` names the executor pi-outpost ships (`mxcExecutor.ts`). Configuration
    * only: a setting that loosens confinement has no business being editable from the
    * interface it confines. Absent: terminals run as before.
    */
@@ -935,6 +948,18 @@ export function loadConfig(
   }
   const baseDir = path.dirname(path.resolve(filePath));
   const resolve = (p: string) => path.resolve(baseDir, p);
+  /** A sandbox runner: a path, or `"mxc"` for the executor pi-outpost ships. */
+  const resolveRunner = (runner: string, field: string) => {
+    if (runner !== BUNDLED_MXC) return resolve(runner);
+    const executor = bundledMxcExecutor();
+    if (executor === undefined) {
+      fail(
+        `"${field}" is "${BUNDLED_MXC}", but MXC's executor is not installed for ${process.arch}: ` +
+          `reinstall pi-outpost with its optional dependencies, or put wxc-exec.exe beside ${process.execPath}`,
+      );
+    }
+    return executor;
+  };
   /** Settings still read under an old name, announced once the file has loaded. */
   const deprecations: string[] = [];
 
@@ -963,6 +988,10 @@ export function loadConfig(
     }
     const bashRunner = optionalString(sandbox, "bashRunner", "sandbox.bashRunner");
     const bashShell = optionalString(sandbox, "bashShell", "sandbox.bashShell");
+    const bashImage = optionalString(sandbox, "bashImage", "sandbox.bashImage");
+    if (bashImage !== undefined && (bashRunner === undefined || bashShell !== undefined || (bashRunner !== BUNDLED_MXC && runnerKind(bashRunner) !== "mxc"))) {
+      fail(`"sandbox.bashImage" runs bash in a WSLC container: it needs MXC as "sandbox.bashRunner", and no "sandbox.bashShell"`);
+    }
     if (bashRunner !== undefined && bashFrom !== undefined) {
       fail(`"sandbox.bashRunner" and "sandbox.bashFrom" both say who runs bash: keep one`);
     }
@@ -994,8 +1023,9 @@ export function loadConfig(
       writableRoot: resolvedWritableRoot,
       allowBash,
       ...(bashFrom === undefined ? {} : { bashFrom: bashFrom.trim() }),
-      ...(bashRunner === undefined ? {} : { bashRunner: resolve(bashRunner) }),
+      ...(bashRunner === undefined ? {} : { bashRunner: resolveRunner(bashRunner, "sandbox.bashRunner") }),
       ...(bashShell === undefined ? {} : { bashShell: resolve(bashShell) }),
+      ...(bashImage === undefined ? {} : { bashImage }),
       readExceptions: [
         ...(optionalStringArray(raw, "skillPaths") ?? []).map(resolve),
         ...(optionalStringArray(raw, "userSkillPaths") ?? []).map(resolve),
@@ -1332,7 +1362,7 @@ export function loadConfig(
       enabled: optionalBoolean(terminal, "enabled", false),
       shell: shell !== undefined && (shell.includes("/") || shell.includes("\\")) ? resolve(shell) : shell,
       shellArgs: optionalStringArray(terminal, "shellArgs"),
-      ...(sandbox !== undefined ? { sandbox: resolve(sandbox) } : {}),
+      ...(sandbox !== undefined ? { sandbox: resolveRunner(sandbox, "terminal.sandbox") } : {}),
     };
   }
   if (flags.terminal !== undefined) {

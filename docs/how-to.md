@@ -60,7 +60,7 @@ the sandbox as being that boundary rather than the `sandbox` key.
 
 To confine it, name a sandbox runner in `sandbox.bashRunner`: pi-outpost's own `bash` then runs every
 command inside it, reading the root, writing the writable zone, with no key in reach — landstrip on
-Linux (Docker included), MXC with busybox-w32 on Windows 11. A sandboxing extension such as pi-landstrip
+Linux (Docker included), MXC with Windows PowerShell on Windows 11. A sandboxing extension such as pi-landstrip
 is the alternative, but only if you also name it in `sandbox.bashFrom`: installed alone, its confined
 `bash` is shadowed by pi-outpost's and nothing changes. See the
 [recommended setup for each platform](sandboxing.md#recommended-setup), which also points to a recipe

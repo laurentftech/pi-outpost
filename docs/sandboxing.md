@@ -7,8 +7,8 @@ runs as.
 - [Recommended setup](#recommended-setup)
 - [What is confined](#what-is-confined)
 - [Linux: landstrip](#linux-landstrip)
-- [Windows 11: MXC and busybox](#windows-11-mxc-and-busybox)
-- [Older Windows: WSL](#older-windows-wsl)
+- [Windows 11: MXC and PowerShell](#windows-11-mxc-and-powershell)
+- [Older Windows](#older-windows)
 - [Check that it is really confined](#check-that-it-is-really-confined)
 - [Alternative: hand bash to an extension](#alternative-hand-bash-to-an-extension)
 
@@ -20,8 +20,8 @@ Name the same runner for the agent's `bash` (`sandbox.bashRunner`) and for the t
 | Where the server runs | Runner | Shell (`sandbox.bashShell`) |
 | --- | --- | --- |
 | Linux: a Docker container, the host, a VM, WSL2 | [landstrip](#linux-landstrip) | `/bin/bash`, the default |
-| Windows 11 with the August 2026 update or later | [MXC's `wxc-exec.exe`](#windows-11-mxc-and-busybox) | busybox-w32's `sh.exe`, required |
-| Older Windows | none works natively: use [WSL](#older-windows-wsl) | |
+| Windows 11 with the August 2026 update or later | [MXC](#windows-11-mxc-and-powershell): `"mxc"`, installed with pi-outpost | `powershell.exe` (the agent gets a `powershell` tool), busybox-w32's `sh.exe`, or — experimental — a real bash in a [Linux container](#a-real-bash-wslc-experimental) (`sandbox.bashImage`) |
+| Older Windows | none works natively: see [Older Windows](#older-windows) | |
 | macOS | untested | |
 
 pi-outpost writes the runner's policy from the configuration, so a command cannot widen it. A
@@ -37,7 +37,7 @@ that filters it.
 | --- | --- |
 | `read`, `ls`, `grep`, `find` | To `sandbox.root`, symlinks resolved, plus read-only the directories of the skills the session loaded — never the disk's root, the home directory, or one holding the agent directory. |
 | `edit`, `write`, document tools | To `sandbox.writableRoot`, with `allowWrite` only. Never inside a `.pi` directory, where an extension's policy may live. |
-| `bash` (`allowBash`) | **Only with `bashRunner`** (or `bashFrom`). Otherwise it can do anything the server's user can. |
+| `bash` (`allowBash`) | **Only with `bashRunner`** (or `bashFrom`). Otherwise it can do anything the server's user can. With a PowerShell `bashShell`, the agent's shell tool is `powershell` instead, confined the same way. |
 | The terminal panel | **Only with `terminal.sandbox`.** |
 | Extensions, MCP servers | **No.** They run with the server's rights, or their own process's. |
 
@@ -88,7 +88,7 @@ the agent directory, the configuration, every mounted project. Also:
 - keep provider keys in the credential store (`pi-outpost login`, or Settings), not in the server's
   environment: a command can still read it through `/proc/<pid>/environ` (same account).
 
-## Windows 11: MXC and busybox
+## Windows 11: MXC and PowerShell
 
 ```json
 {
@@ -96,25 +96,37 @@ the agent directory, the configuration, every mounted project. Also:
     "root": "C:\\work\\app",
     "allowWrite": true,
     "allowBash": true,
-    "bashRunner": "C:\\tools\\mxc\\node_modules\\@microsoft\\mxc-sdk\\bin\\x64\\wxc-exec.exe",
-    "bashShell": "C:\\tools\\sh.exe"
+    "bashRunner": "mxc",
+    "bashShell": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"
   },
-  "terminal": { "enabled": true, "sandbox": "C:\\tools\\mxc\\node_modules\\@microsoft\\mxc-sdk\\bin\\x64\\wxc-exec.exe" }
+  "terminal": { "enabled": true, "sandbox": "mxc" }
 }
 ```
 
 1. **Windows 11 24H2 or 25H2 with the August 2026 update or later** (build 26100/26200.9278+).
    `wxc-exec.exe --probe` must report `"tier": "base-container"`; pi-outpost refuses the lower tiers.
-2. **MXC's executor**: `npm install @microsoft/mxc-sdk` in any folder (Node 24 or later); `arm64`
-   instead of `x64` on ARM.
-3. **busybox-w32**: download `busybox64.exe` from frippery.org and save it as `sh.exe`. Git Bash
-   cannot start in a Windows sandbox (microsoft/mxc#1061).
-4. **Run the server in your interactive session**, not as a service nor over SSH.
+2. **MXC's executor comes with pi-outpost**: `wxc-exec.exe`, signed by Microsoft, in the optional
+   dependency `@microsoft/mxc-sdk` — installed by default, see
+   [MXC comes with pi-outpost](../README.md#mxc-comes-with-pi-outpost). `"mxc"` names it, for this
+   machine's architecture; a path to another `wxc-exec.exe` works too. The standalone executable looks
+   for `wxc-exec.exe` beside itself, where `pi-outpost build-exe` puts it.
+3. **Run the server in your interactive session**, not as a service nor over SSH.
 
-Inside: busybox's commands, native git (`status`, `log`, `diff`, branches, commits with your identity),
-`node`, `npm`, `cmd` and PowerShell. Limits:
+Nothing else is installed: Windows PowerShell 5.1 comes with Windows. `pwsh.exe` (PowerShell 7) works
+too. With a PowerShell `bashShell` the agent is given pi's `powershell` tool instead of `bash`, so the
+model writes PowerShell; every command runs from a script, without profile, with the execution policy
+given for the process (the sandbox cannot read the registry's), progress bars off (drawing one is
+refused inside) and output as plain text (PowerShell 7 colours tables and errors otherwise, and the model
+reads the escape codes). Its exit status is the one it sets with `exit`, else the failed native program's code,
+or 1 for a failed cmdlet.
 
-- busybox is `ash`, not bash: no `[[ ]]`, arrays or `$'…'`.
+**For a POSIX shell instead**, name busybox-w32: download `busybox64.exe` from frippery.org, save it as
+`sh.exe` and give its path as `bashShell`; the agent keeps `bash`. busybox is `ash`, not bash: no `[[ ]]`,
+arrays or `$'…'`. Git Bash cannot start in a Windows sandbox (microsoft/mxc#1061).
+
+Inside: native git (`status`, `log`, `diff`, branches, commits with your identity), `node`, `npm`,
+`cmd` and PowerShell. Limits:
+
 - The root's drive is readable, minus every folder beside the path down to the root (your `.ssh`,
   other projects…), denied by name at each launch — git needs it (microsoft/mxc#1464). Something created
   after the launch is not denied, and `Program Files` and `ProgramData` stay readable. Never make a
@@ -123,42 +135,63 @@ Inside: busybox's commands, native git (`status`, `log`, `diff`, branches, commi
   (no narrower `writableRoot`) where git runs.
 - `git push` has no credentials, and signed commits fail: GnuPG for Windows is built without ASLR, which
   the sandbox enforces.
-- The confined PowerShell starts with `-ExecutionPolicy RemoteSigned` and progress bars off; give both
-  yourself to a shell you name in `terminal.shell`.
+- The confined terminal's PowerShell starts with `-ExecutionPolicy RemoteSigned` and progress bars off;
+  give both yourself to a shell you name in `terminal.shell`.
 
 Details and probes: [`investigations/windows-sandboxing.md`](investigations/windows-sandboxing.md).
 
-## Older Windows: WSL
+### A real bash: WSLC (experimental)
 
-Without MXC's tier 1, no runner works natively (landstrip's AppContainer cannot run git:
-landstrip/landstrip#204). Run pi-outpost in WSL, with the Linux setup, after closing WSL's doors to
-Windows — by default it mounts every drive read-write and can start any Windows program, unconfined.
-
-In `/etc/wsl.conf`, then `wsl --shutdown`:
-
-```ini
-[interop]
-enabled = false
-appendWindowsPath = false
-
-[automount]
-enabled = false
-mountFsTab = true
+```json
+{
+  "sandbox": {
+    "root": "C:\\work\\app",
+    "allowWrite": true,
+    "allowBash": true,
+    "bashRunner": "mxc",
+    "bashImage": "buildpack-deps:bookworm-scm"
+  }
+}
 ```
 
-Mount only the project, in `/etc/fstab`:
+With `sandbox.bashImage`, each command of the agent's `bash` runs in a Linux container of that image,
+through MXC's WSLC backend (WSL containers): a real bash with the image's tools — git, curl and ssh in
+`buildpack-deps:bookworm-scm`. The agent keeps its `bash` tool. It needs WSL with container support
+(`wsl --version` 3.0 or later). The image is downloaded on the first command (about 20 s), then each
+command takes about 4 s. `bashShell` must be absent, and `bashRunner` must be MXC.
 
-```
-C:/Users/me/dev/project  /mnt/project  drvfs  rw,metadata,uid=1000,gid=1000,umask=022  0 0
-```
+Inside, only two folders of the host exist: the root, mounted at its Windows path under `/mnt/<drive>/`
+(`C:\work\app` is `/mnt/c/work/app`), read-only or writable with `allowWrite`; and the command's
+temporary folder. No profile, no key, no configuration, no other project: there is nothing to deny. The
+environment is the container's own. Limits, all the backend's:
 
-Then the [Linux configuration](#linux-landstrip) with `"root": "/mnt/project"`, plus
-`"files": { "watch": false }`: changes made from Windows raise no event inside WSL. Prefer a distribution
-of its own (`wsl --import`), and keep your Windows credentials and SSH agent out of it.
+- **The writable zone is the whole root or nothing.** A writable folder inside a read-only mount stays
+  read-only, so a `writableRoot` narrower than the root refuses every command.
+- **The network is open, the host's `localhost` included.** WSLC opens or closes it all at once:
+  services listening on the host's loopback are reachable from a command.
+- The model sees Windows paths in its file tools and `/mnt/c/…` in `bash`; relative paths work in both.
+- Commands run one at a time: two at once fail on WSLC's image store.
+- Creating a container occasionally fails on a folder's first mount (`WslcCreateContainer`,
+  `0x80004005`); running the command again works.
+- The terminal panel is not confined this way: `terminal.sandbox` keeps MXC's Windows container.
+
+## Older Windows
+
+Without MXC's tier 1, no runner confines natively: landstrip's AppContainer cannot run git
+(landstrip/landstrip#204), and MXC's lower tiers hit the same wall. Two ways out, neither easy:
+
+- **Update to Windows 11 with the August 2026 update**, then the setup above. This is the supported
+  path.
+- **Run pi-outpost inside WSL** with the [Linux setup](#linux-landstrip). WSL mounts every drive
+  read-write and can start any Windows program, unconfined, so this holds only after closing those doors
+  (`[interop] enabled = false`, `appendWindowsPath = false`, `[automount] enabled = false` in
+  `/etc/wsl.conf`, the project alone mounted from `/etc/fstab`, `"files": { "watch": false }`), in a
+  distribution of its own. It is fiddly to get right and easy to undo; prefer the update.
 
 ## Check that it is really confined
 
-1. The server's startup line reads `bash (confined by <runner>)`, never `bash (UNCONFINED)`.
+1. The server's startup line reads `bash (confined by <runner>, …)` — `powershell (confined by …)` with
+   a PowerShell shell, `… WSLC image <image>` with `bashImage` — never `bash (UNCONFINED)`.
 2. Ask the agent, in the chat, to read a sibling project and the agent directory's `auth.json`, to
    write outside the writable zone, and to list its environment for a key. Each must be refused or empty.
 3. Do the same in the terminal.
