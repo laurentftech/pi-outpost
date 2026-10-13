@@ -522,6 +522,7 @@ export class EmbeddedRuntime implements AgentRuntime {
   /** After a session replacement, `runtime.session` is a new object — rewire everything to it. */
   private async rebind(): Promise<void> {
     this.bridge.cancelAll();
+    this.emit({ type: "dialogs_cancelled" });
     this.unsubscribe();
     await this.bind();
     this.emit({ type: "session_replaced" });

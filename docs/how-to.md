@@ -419,6 +419,10 @@ what `noSkills` is for.
 Without it the switcher lists every built-in model whose provider has credentials —
 usually far more variants than a given deployment actually serves.
 
+With it, no turn runs on another model: a session that would start on the agent directory's
+default (`settings.json`) is moved to the first listed model — for that session only, the default
+is left alone — and a client asking for a model outside the list is refused.
+
 ## Let the agent read a big PDF, Word or Excel file
 
 Nothing to enable: `pdf_extract`, `docx_extract`, `xlsx_extract`, `pptx_extract` and
