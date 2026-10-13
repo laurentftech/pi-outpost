@@ -140,6 +140,11 @@ export type RuntimeEvent =
   /** The runtime replaced its session object and has finished re-binding to it. */
   | { type: "session_replaced" }
   /**
+   * Every question an extension had pending was cancelled: the session they belonged to is
+   * being replaced. Emitted before the new session binds, whose own questions follow.
+   */
+  | { type: "dialogs_cancelled" }
+  /**
    * Extensions finished binding after startup had stopped waiting for them.
    *
    * Only emitted on that late path: a `session_start` handler can contribute

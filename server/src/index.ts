@@ -1590,6 +1590,7 @@ const builtRuntime: AgentRuntime = await (async () => {
 // agent through it: there is no second name for the runtime, which is what stops a
 // handler from driving the wrong project once the server holds more than one.
 workspace.attachRuntime(builtRuntime);
+await keepToAllowedModel(workspace);
 
 // Nothing to race with at boot: this is the first, so it is its own winner — and
 // the default, which is what an unnamed connection and a pinned embed both get.
@@ -1947,7 +1948,13 @@ function queueWorkPlanSessionSync(workspace: Workspace, after?: Promise<unknown>
     // work plan tools, which enrol in the idle counts this clears.
     withholdDocumentTools(workspace);
     publishWorkPlanTools(workspace, plan);
+    // A new session starts from the default model again; a resumed one from its own.
+    await keepToAllowedModel(workspace);
     broadcast(workspace, { type: "session_replaced", ...snapshot(workspace) });
+    // The new session binds before this snapshot goes out, and its extensions may already
+    // have asked something in `session_start` — a question the snapshot just wiped from
+    // every client while the binding, and any prompt held for it, waits on the answer.
+    for (const request of workspace.pendingDialogs.values()) broadcast(workspace, request);
     if (inherited) broadcast(workspace, { type: "work_plan_changed", workPlan: plan });
     announceWorkspaceActivity();
     console.log(`[pi] session ${workspace.agent.snapshot().sessionId}`);
@@ -2044,6 +2051,36 @@ function commandPolicy(): CommandPolicy {
  */
 function refusesCommand(workspace: Workspace, text: string): boolean {
   return refusesPrompt(text, commandPolicy(), workspace.agent.snapshot().commands);
+}
+
+/** Whether `allowedModels` lets a session run on this model. No list: every model. */
+function isAllowedModel(model: { provider: string; id: string } | undefined): boolean {
+  const allowed = config.allowedModels;
+  if (!allowed) return true;
+  return model !== undefined && allowed.some((a) => a.provider === model.provider && a.id === model.id);
+}
+
+/**
+ * Put the session on a model `allowedModels` permits, when it is on another one.
+ *
+ * A session starts on the agent directory's default model, and a new one starts from it
+ * again — a choice the user made for pi, not the deployment's. The list filtered what the
+ * switcher offered and nothing else, so a deployment restricted to one model answered with
+ * the user's default until someone opened the switcher. Moved to the first allowed model,
+ * for this session only (the agent directory's default is left alone). Never throws: a
+ * start must not fail on it, and having no allowed model is `credentialStatus`'s to report.
+ * Whether the session is on an allowed model afterwards.
+ */
+async function keepToAllowedModel(workspace: Workspace): Promise<boolean> {
+  if (isAllowedModel(workspace.agent.snapshot().model)) return true;
+  const choice = availableModels(workspace)[0];
+  if (!choice) return false;
+  try {
+    await workspace.agent.setModel(choice.provider, choice.id);
+  } catch (error) {
+    reportError(error);
+  }
+  return isAllowedModel(workspace.agent.snapshot().model);
 }
 
 function availableModels(workspace: Workspace): ModelChoice[] {
@@ -2835,6 +2872,11 @@ function onRuntimeEvent(workspace: Workspace, event: RuntimeEvent): void {
         void refreshed.catch(reportError);
         void queueWorkPlanSessionSync(workspace, refreshed);
       }
+      break;
+    case "dialogs_cancelled":
+      // The replaced session's questions were cancelled; only the new session's remain.
+      workspace.pendingDialogs.clear();
+      announceWorkspaceActivity();
       break;
     case "extensions_bound": {
       const state = workspace.agent.snapshot();
@@ -3652,6 +3694,7 @@ async function ensureStarted(target: Workspace): Promise<void> {
     }
     const runtime = await buildRuntimeFor(target);
     target.attachRuntime(runtime);
+    await keepToAllowedModel(target);
     await startResourceInventory(target);
     runtime.subscribe((event) => onRuntimeEvent(target, event));
     // A project opened or restored after startup gets its renderers here. Only the
@@ -3842,6 +3885,12 @@ async function absolutizeMentions(workspace: Workspace, text: string): Promise<s
 }
 
 async function handlePrompt(workspace: Workspace, text: string, images?: WireImage[]): Promise<void> {
+  // The last word before a turn: whatever path put the session on a model, none runs on one
+  // the deployment excluded.
+  if (!(await keepToAllowedModel(workspace))) {
+    broadcast(workspace, { type: "error", message: `No model allowed by "allowedModels" can answer — check its credentials` });
+    return;
+  }
   const promptText = await absolutizeMentions(workspace, text);
   // Read now: a registry edited by hand since the last turn lists different files.
   workspace.projectModelFiles = await projectModelFiles(workspace.root);
@@ -5546,6 +5595,10 @@ function handleClientMessage(socket: WebSocket, raw: string): void {
     case "set_model": {
       if (typeof message.provider !== "string" || typeof message.id !== "string") return;
       const { provider, id } = message;
+      if (!isAllowedModel({ provider, id })) {
+        send(socket, { type: "error", message: `Model ${provider}/${id} is not available on this server` });
+        return;
+      }
       workspace.agent
         .setModel(provider, id)
         .then(async (model) => {

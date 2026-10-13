@@ -235,7 +235,7 @@ git 2.39, which read a mounted repository without complaint.
 
 - **The session name.** Without `containerId`, MXC names the WSLC session `CLI`, which WSL refuses:
   `WslcCreateSession failed: HRESULT 0x80040608`, `WSLC_E_INVALID_SESSION_NAME`. Any lowercase
-  alphanumeric id works.
+  alphanumeric id works. Reported as microsoft/mxc#1484.
 - **The image store** defaults to `%TEMP%\mxc-wslc-sessions` — of the executor's environment, so under a
   confined environment whose `TEMP` is per command, every command pulls the image again (35 s). Fixed
   with `wslc.storagePath`.
@@ -332,4 +332,6 @@ All in `scripts/probes/`, each with a header saying what it shows and how to run
 - microsoft/mxc#1061 — MSYS2/Cygwin runtimes cannot initialise in `processcontainer` (open).
 - microsoft/mxc#1464 — `GetFinalPathNameByHandleW(VOLUME_NAME_DOS)` fails under `BaseContainer`: git's
   cwd, Node's `realpath.native` (ours, open).
+- microsoft/mxc#1484 — a one-shot `wslc` run without `containerId` is named `CLI`, which WSL refuses
+  (ours, open).
 - buhuikongpan/dsh-win-gitbash#10 — Git Bash under a restricted token: named objects, then the signal pipe.
