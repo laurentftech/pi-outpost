@@ -154,5 +154,14 @@ describe("a confined PowerShell", () => {
       assert.match(output, /été ✓ 東京/);
       assert.match(output, /progress=SilentlyContinue/);
     });
+
+    // openlore: scenario=PowerShellOutputCarriesNoEscapeCodes spec=sandbox-runner-bash
+    test(`PowerShellOutputCarriesNoEscapeCodes (${label}): a table and an error, as plain text`, { skip }, async () => {
+      // PowerShell 7 colours table headers and errors by default; the model read `[32;1m`.
+      const { output } = await exec(shell!, "$PSVersionTable.PSVersion; Get-Item -LiteralPath (Join-Path $PWD 'no-such-file')");
+      assert.match(output, /Major/);
+      assert.match(output, /no-such-file/);
+      assert.doesNotMatch(output, /\u001b\[/);
+    });
   }
 });

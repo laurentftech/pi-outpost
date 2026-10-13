@@ -18,6 +18,7 @@ import {
 } from "../src/config.ts";
 import type { AppConfig, CliOptions } from "../src/config.ts";
 import { parseCli } from "../src/cli.ts";
+import { bundledMxcExecutor } from "../src/mxcExecutor.ts";
 import { STRUCTURED_EXCHANGE_BYTES_CEILING_ANY } from "@pi-outpost/shared/structured-exchange/bounds";
 
 // ---------------------------------------------------------------------------
@@ -498,6 +499,42 @@ describe("loadConfig — resource path resolution", () => {
       const confined = loadConfig(dir, { config: configPath }).sandbox!;
       assert.equal(confined.bashRunner, path.join(dir, "mxc", "wxc-exec.exe"));
       assert.equal(confined.bashShell, path.join(dir, "tools", "sh.exe"));
+    });
+  });
+
+  // openlore: scenario=MxcNamesTheBundledExecutor spec=sandbox-runner-bash
+  test('"mxc" names the executor pi-outpost ships, for bash and for the terminal', async () => {
+    const shipped = bundledMxcExecutor();
+    assert.ok(shipped, "@microsoft/mxc-sdk is an optional dependency, installed in this checkout");
+    await withTempDir(async (dir) => {
+      const configPath = path.join(dir, "config.json");
+      await writeFile(configPath, JSON.stringify({ sandbox: { root: ".", allowBash: true, bashRunner: "mxc" }, terminal: { sandbox: "mxc" } }, null, 2));
+      const config = loadConfig(dir, { config: configPath });
+      assert.equal(config.sandbox!.bashRunner, shipped);
+      assert.equal(config.terminal.sandbox, shipped);
+      // Only the bare word: a path that happens to end in it is still a path.
+      await writeFile(configPath, JSON.stringify({ sandbox: { root: ".", allowBash: true, bashRunner: "./mxc" } }, null, 2));
+      assert.equal(loadConfig(dir, { config: configPath }).sandbox!.bashRunner, path.join(dir, "mxc"));
+    });
+  });
+
+  // openlore: scenario=ABashImageNeedsMxcAndNoShell spec=sandbox-runner-bash
+  test("a bash image is kept with MXC as the runner, and refused without it or beside a shell", async () => {
+    await withTempDir(async (dir) => {
+      const configPath = path.join(dir, "config.json");
+      const image = "buildpack-deps:bookworm-scm";
+      await writeFile(configPath, JSON.stringify({ sandbox: { root: ".", allowBash: true, bashRunner: "mxc", bashImage: image } }, null, 2));
+      assert.equal(loadConfig(dir, { config: configPath }).sandbox!.bashImage, image);
+      await writeFile(configPath, JSON.stringify({ sandbox: { root: ".", allowBash: true, bashRunner: "./mxc/wxc-exec.exe", bashImage: image } }, null, 2));
+      assert.equal(loadConfig(dir, { config: configPath }).sandbox!.bashImage, image);
+      for (const sandbox of [
+        { bashImage: image },
+        { bashRunner: "./bin/landstrip", bashImage: image },
+        { bashRunner: "mxc", bashShell: "C:\\tools\\sh.exe", bashImage: image },
+      ]) {
+        await writeFile(configPath, JSON.stringify({ sandbox: { root: ".", allowBash: true, ...sandbox } }, null, 2));
+        assert.throws(() => loadConfig(dir, { config: configPath }), /sandbox\.bashImage/, JSON.stringify(sandbox));
+      }
     });
   });
 

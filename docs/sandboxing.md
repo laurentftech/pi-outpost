@@ -20,7 +20,7 @@ Name the same runner for the agent's `bash` (`sandbox.bashRunner`) and for the t
 | Where the server runs | Runner | Shell (`sandbox.bashShell`) |
 | --- | --- | --- |
 | Linux: a Docker container, the host, a VM, WSL2 | [landstrip](#linux-landstrip) | `/bin/bash`, the default |
-| Windows 11 with the August 2026 update or later | [MXC's `wxc-exec.exe`](#windows-11-mxc-and-powershell) | `powershell.exe` (the agent gets a `powershell` tool), or busybox-w32's `sh.exe` |
+| Windows 11 with the August 2026 update or later | [MXC](#windows-11-mxc-and-powershell): `"mxc"`, installed with pi-outpost | `powershell.exe` (the agent gets a `powershell` tool), busybox-w32's `sh.exe`, or — experimental — a real bash in a [Linux container](#a-real-bash-wslc-experimental) (`sandbox.bashImage`) |
 | Older Windows | none works natively: see [Older Windows](#older-windows) | |
 | macOS | untested | |
 
@@ -96,24 +96,28 @@ the agent directory, the configuration, every mounted project. Also:
     "root": "C:\\work\\app",
     "allowWrite": true,
     "allowBash": true,
-    "bashRunner": "C:\\tools\\mxc\\node_modules\\@microsoft\\mxc-sdk\\bin\\x64\\wxc-exec.exe",
+    "bashRunner": "mxc",
     "bashShell": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"
   },
-  "terminal": { "enabled": true, "sandbox": "C:\\tools\\mxc\\node_modules\\@microsoft\\mxc-sdk\\bin\\x64\\wxc-exec.exe" }
+  "terminal": { "enabled": true, "sandbox": "mxc" }
 }
 ```
 
 1. **Windows 11 24H2 or 25H2 with the August 2026 update or later** (build 26100/26200.9278+).
    `wxc-exec.exe --probe` must report `"tier": "base-container"`; pi-outpost refuses the lower tiers.
-2. **MXC's executor**: `npm install @microsoft/mxc-sdk` in any folder (Node 24 or later); `arm64`
-   instead of `x64` on ARM.
+2. **MXC's executor comes with pi-outpost**: `wxc-exec.exe`, signed by Microsoft, in the optional
+   dependency `@microsoft/mxc-sdk` — installed by default, see
+   [MXC comes with pi-outpost](../README.md#mxc-comes-with-pi-outpost). `"mxc"` names it, for this
+   machine's architecture; a path to another `wxc-exec.exe` works too. The standalone executable looks
+   for `wxc-exec.exe` beside itself, where `pi-outpost build-exe` puts it.
 3. **Run the server in your interactive session**, not as a service nor over SSH.
 
 Nothing else is installed: Windows PowerShell 5.1 comes with Windows. `pwsh.exe` (PowerShell 7) works
 too. With a PowerShell `bashShell` the agent is given pi's `powershell` tool instead of `bash`, so the
 model writes PowerShell; every command runs from a script, without profile, with the execution policy
-given for the process (the sandbox cannot read the registry's) and progress bars off (drawing one is
-refused inside). Its exit status is the one it sets with `exit`, else the failed native program's code,
+given for the process (the sandbox cannot read the registry's), progress bars off (drawing one is
+refused inside) and output as plain text (PowerShell 7 colours tables and errors otherwise, and the model
+reads the escape codes). Its exit status is the one it sets with `exit`, else the failed native program's code,
 or 1 for a failed cmdlet.
 
 **For a POSIX shell instead**, name busybox-w32: download `busybox64.exe` from frippery.org, save it as
@@ -136,6 +140,41 @@ Inside: native git (`status`, `log`, `diff`, branches, commits with your identit
 
 Details and probes: [`investigations/windows-sandboxing.md`](investigations/windows-sandboxing.md).
 
+### A real bash: WSLC (experimental)
+
+```json
+{
+  "sandbox": {
+    "root": "C:\\work\\app",
+    "allowWrite": true,
+    "allowBash": true,
+    "bashRunner": "mxc",
+    "bashImage": "buildpack-deps:bookworm-scm"
+  }
+}
+```
+
+With `sandbox.bashImage`, each command of the agent's `bash` runs in a Linux container of that image,
+through MXC's WSLC backend (WSL containers): a real bash with the image's tools — git, curl and ssh in
+`buildpack-deps:bookworm-scm`. The agent keeps its `bash` tool. It needs WSL with container support
+(`wsl --version` 3.0 or later). The image is downloaded on the first command (about 20 s), then each
+command takes about 4 s. `bashShell` must be absent, and `bashRunner` must be MXC.
+
+Inside, only two folders of the host exist: the root, mounted at its Windows path under `/mnt/<drive>/`
+(`C:\work\app` is `/mnt/c/work/app`), read-only or writable with `allowWrite`; and the command's
+temporary folder. No profile, no key, no configuration, no other project: there is nothing to deny. The
+environment is the container's own. Limits, all the backend's:
+
+- **The writable zone is the whole root or nothing.** A writable folder inside a read-only mount stays
+  read-only, so a `writableRoot` narrower than the root refuses every command.
+- **The network is open, the host's `localhost` included.** WSLC opens or closes it all at once:
+  services listening on the host's loopback are reachable from a command.
+- The model sees Windows paths in its file tools and `/mnt/c/…` in `bash`; relative paths work in both.
+- Commands run one at a time: two at once fail on WSLC's image store.
+- Creating a container occasionally fails on a folder's first mount (`WslcCreateContainer`,
+  `0x80004005`); running the command again works.
+- The terminal panel is not confined this way: `terminal.sandbox` keeps MXC's Windows container.
+
 ## Older Windows
 
 Without MXC's tier 1, no runner confines natively: landstrip's AppContainer cannot run git
@@ -151,8 +190,8 @@ Without MXC's tier 1, no runner confines natively: landstrip's AppContainer cann
 
 ## Check that it is really confined
 
-1. The server's startup line reads `bash (confined by <runner>)` — `powershell (confined by <runner>)`
-   with a PowerShell shell — never `bash (UNCONFINED)`.
+1. The server's startup line reads `bash (confined by <runner>, …)` — `powershell (confined by …)` with
+   a PowerShell shell, `… WSLC image <image>` with `bashImage` — never `bash (UNCONFINED)`.
 2. Ask the agent, in the chat, to read a sibling project and the agent directory's `auth.json`, to
    write outside the writable zone, and to list its environment for a key. Each must be refused or empty.
 3. Do the same in the terminal.

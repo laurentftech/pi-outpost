@@ -3254,6 +3254,7 @@ async function handleUpdateConfig(
         // Likewise, or an apply would hand bash back unconfined.
         ...(config.sandbox?.bashRunner === undefined ? {} : { bashRunner: config.sandbox.bashRunner }),
         ...(config.sandbox?.bashShell === undefined ? {} : { bashShell: config.sandbox.bashShell }),
+        ...(config.sandbox?.bashImage === undefined ? {} : { bashImage: config.sandbox.bashImage }),
         readExceptions: [],
       };
     }
@@ -6089,7 +6090,7 @@ if (config.sandbox) {
     ...(config.sandbox.allowBash
       ? [
           config.sandbox.bashRunner
-            ? `${isPowerShell(config.sandbox.bashShell) ? "powershell" : "bash"} (confined by ${config.sandbox.bashRunner}, shell ${config.sandbox.bashShell ?? "/bin/bash"})`
+            ? `${isPowerShell(config.sandbox.bashShell) ? "powershell" : "bash"} (confined by ${config.sandbox.bashRunner}, ${config.sandbox.bashImage ? `WSLC image ${config.sandbox.bashImage}` : `shell ${config.sandbox.bashShell ?? "/bin/bash"}`})`
             : config.sandbox.bashFrom
               ? `bash (from ${config.sandbox.bashFrom})`
               : "bash (UNCONFINED)",

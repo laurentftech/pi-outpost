@@ -339,6 +339,7 @@ export async function createSandboxedTools(
       ? confinedBashOperations({
           runner: sandbox.bashRunner,
           shell: sandbox.bashShell,
+          ...(sandbox.bashImage === undefined ? {} : { image: sandbox.bashImage }),
           root: realRoot,
           ...(realWritableRoot !== null && realWritableRoot !== realRoot ? { writableRoot: realWritableRoot } : {}),
           allowWrite: realWritableRoot !== null,

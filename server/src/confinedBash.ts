@@ -12,6 +12,7 @@
  * ever runs unconfined.
  */
 import { spawn, type ChildProcess } from "node:child_process";
+import { randomBytes } from "node:crypto";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -34,6 +35,11 @@ export interface ConfinedBashOptions {
    * PowerShell (see `isPowerShell`) runs the command as a `.ps1` script instead.
    */
   shell?: string;
+  /**
+   * `sandbox.bashImage`, experimental: with MXC, run each command in this Linux image
+   * through the WSLC backend instead (see `mxcWslcConfig`).
+   */
+  image?: string;
   /** The sandbox root: what a command may read, and where it starts. */
   root: string;
   /** Where it may write; undefined with `allowWrite`: the whole root. */
@@ -96,6 +102,8 @@ export function powerShellScript(command: string): string {
   return [
     "\uFEFF$ProgressPreference = 'SilentlyContinue'",
     "try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}",
+    // PowerShell 7 colours tables and errors by default; the model reads escape codes.
+    "try { $PSStyle.OutputRendering = 'PlainText' } catch {}",
     "$global:LASTEXITCODE = $null",
     command,
     "",
@@ -109,8 +117,9 @@ export function confinedBashOperations(options: ConfinedBashOptions): BashOperat
   const platform = options.platform ?? process.platform;
   const windows = platform === "win32";
   const kind = runnerKind(options.runner);
-  const shell = options.shell ?? (windows ? undefined : "/bin/bash");
-  const powerShell = isPowerShell(shell);
+  const wslc = options.image !== undefined && kind === "mxc";
+  const shell = wslc ? "/bin/bash" : (options.shell ?? (windows ? undefined : "/bin/bash"));
+  const powerShell = !wslc && isPowerShell(shell);
   return {
     exec: async (command, cwd, { onData, signal, timeout }) => {
       const timeoutMs = timeoutInMs(timeout);
@@ -134,7 +143,19 @@ export function confinedBashOperations(options: ConfinedBashOptions): BashOperat
         const readOnlyFiles = options.gitConfig ? [options.gitConfig] : [];
         const policyFile = path.join(tmp, "policy.json");
         let args: string[];
-        if (kind === "mxc") {
+        if (wslc) {
+          const request = mxcWslcConfig({
+            image: options.image!,
+            root: options.root,
+            writableRoot: options.writableRoot,
+            allowWrite: options.allowWrite,
+            tmp,
+            script,
+            cwd: startIn,
+          });
+          await writeFile(policyFile, JSON.stringify(request), { mode: 0o600 });
+          args = ["--config", policyFile];
+        } else if (kind === "mxc") {
           const request = mxcTerminalConfig({
             root: options.root,
             writableRoot: options.writableRoot,
@@ -168,12 +189,82 @@ export function confinedBashOperations(options: ConfinedBashOptions): BashOperat
           await writeFile(policyFile, JSON.stringify(policy), { mode: 0o600 });
           args = ["run", "-p", policyFile, "--", shell, ...shellArgs];
         }
-        return await run(options.runner, args, { cwd: startIn, env, onData, signal, timeoutMs, timeout, windows });
+        const launch = () => run(options.runner, args, { cwd: startIn, env, onData, signal, timeoutMs, timeout, windows });
+        return await (wslc ? oneWslcAtATime(launch) : launch());
       } finally {
         await rm(tmp, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }).catch(() => {});
       }
     },
   };
+}
+
+/** A Windows path as MXC's WSLC backend mounts it in the container: `C:\a\b` → `/mnt/c/a/b`. */
+export function wslcPath(windowsPath: string): string {
+  const { root } = path.win32.parse(windowsPath);
+  const rest = windowsPath.slice(root.length).split(/[\\/]+/).filter(Boolean);
+  return [`/mnt/${root.slice(0, 1).toLowerCase()}`, ...rest].join("/");
+}
+
+/**
+ * One command in a Linux container, through MXC's WSLC backend. Experimental.
+ *
+ * Only what is mounted exists inside: the root (read-only, or writable with `allowWrite`)
+ * and the command's temporary folder. Nothing else of the host — no profile, no keys, no
+ * configuration — so there is nothing to deny. The environment is the container's own,
+ * not the server's.
+ *
+ * Two limits of the backend, found by running it: a writable folder inside a read-only
+ * mount stays read-only (the parent shadows it), so the writable zone is the whole root
+ * or nothing; and the network is all or nothing — bridged with the host's loopback, or
+ * isolated. Bridged here: git and package managers need it.
+ *
+ * Every run needs its own container name: without one MXC names the session `CLI`,
+ * which WSLC refuses (`WSLC_E_INVALID_SESSION_NAME`).
+ */
+export function mxcWslcConfig(input: {
+  image: string;
+  root: string;
+  writableRoot?: string;
+  allowWrite: boolean;
+  tmp: string;
+  script: string;
+  cwd: string;
+}) {
+  if (input.allowWrite && input.writableRoot !== undefined && input.writableRoot !== input.root) {
+    throw new Error(
+      `bash runs in a WSLC container, which cannot make a folder inside a read-only mount writable: remove "sandbox.writableRoot", or give up "sandbox.bashImage"`,
+    );
+  }
+  return {
+    version: "1.0.0",
+    containment: "wslc",
+    containerId: `pioutpost${randomBytes(6).toString("hex")}`,
+    // The image store MXC defaults to under %TEMP% — which, for the runner, is this
+    // command's temporary folder: every command would pull the image again.
+    wslc: { image: input.image, storagePath: path.join(tmpdir(), "mxc-wslc-sessions") },
+    process: {
+      commandLine: `/bin/bash ${wslcPath(input.script)}`,
+      cwd: input.cwd,
+      env: ["PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin", "HOME=/root", "LANG=C.UTF-8", "TERM=dumb"],
+    },
+    filesystem: {
+      readwritePaths: input.allowWrite ? [input.root, input.tmp] : [input.tmp],
+      readonlyPaths: input.allowWrite ? [] : [input.root],
+    },
+    network: { egress: { default: "allow" }, ingress: { default: "allow", hostLoopback: "allow" } },
+  };
+}
+
+/**
+ * WSLC runs one after another. pi runs a turn's tool calls in parallel, and two runs
+ * sharing the image store fail on it (`WslcListSessionImages`, a sharing violation) —
+ * found with three of four commands of one turn refused.
+ */
+let wslcTail: Promise<unknown> = Promise.resolve();
+export function oneWslcAtATime<T>(launch: () => Promise<T>): Promise<T> {
+  const next = wslcTail.then(launch, launch);
+  wslcTail = next.catch(() => {});
+  return next;
 }
 
 function timeoutInMs(timeout: number | undefined): number | undefined {
