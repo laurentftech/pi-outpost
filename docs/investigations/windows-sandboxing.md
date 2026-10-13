@@ -53,8 +53,9 @@ managed machine, that means IT. Reported with the proof in landstrip/landstrip#2
 | Git Bash / MSYS2 `sh` | cannot start: `NtCreateDirectoryObject(\BaseNamedObjects\msys-2.0S5-...)` — global named objects are forbidden to containers (also landstrip/landstrip#40) |
 | Git for Windows `git` | dies on `NUL` (finding 2) |
 
-pi's `bash` tool needs a bash-compatible shell, so PowerShell cannot stand in for the agent; the human
-terminal can use anything.
+pi's `bash` tool needs a bash-compatible shell. PowerShell can still serve the agent through pi's
+`powershell` tool, which pi-outpost registers instead of `bash` when `sandbox.bashShell` names
+PowerShell (change `confined-powershell`); the human terminal can use anything.
 
 ### 4. pi-landstrip on Windows (agent `bash`)
 
@@ -231,6 +232,7 @@ everywhere until it is updated.
 | `cmd`, PowerShell as the terminal's shell | work |
 | Git Bash as the terminal's shell or pi's `bash` | **blocked** upstream (finding 9) |
 | A bash-compatible shell for pi's `bash` tool | only busybox-w32, an extra 700 KB executable |
+| Windows PowerShell 5.1 for pi's `powershell` tool | runs (finding 7); the agent's tool since `confined-powershell` |
 | Node tools inside (`npm`, `npx`, pi extensions) | at risk: `realpathSync.native` always fails (finding 8) |
 
 ### The practicable combination today

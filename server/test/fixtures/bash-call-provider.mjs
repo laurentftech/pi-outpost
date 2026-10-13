@@ -29,8 +29,9 @@ function stream(model, context) {
 
   if (!result) {
     // BASH_CALL_COMMAND lets a probe ask for something else; the suites use the default.
+    // BASH_CALL_TOOL names another shell tool (`powershell`).
     const command = process.env.BASH_CALL_COMMAND ?? "echo from-the-shell";
-    const call = { type: "toolCall", id: `bash-${Date.now()}`, name: "bash", arguments: { command } };
+    const call = { type: "toolCall", id: `bash-${Date.now()}`, name: process.env.BASH_CALL_TOOL ?? "bash", arguments: { command } };
     const partial = message(model, [call], "toolUse");
     queueMicrotask(() => {
       out.push({ type: "start", partial });

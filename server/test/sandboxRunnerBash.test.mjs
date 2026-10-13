@@ -41,7 +41,7 @@ async function waitForFile(file, timeoutMs = 60_000) {
 }
 
 /** Starts a server, has the agent call `bash` once with `command`, and returns the tool result. */
-async function runBash(t, { project, sandbox, command, afterHello, fake = true }) {
+async function runBash(t, { project, sandbox, command, afterHello, fake = true, tool }) {
   const log = path.join(path.dirname(project), `${path.basename(project)}-bash-result.json`);
   const server = await startServer(
     project,
@@ -50,6 +50,7 @@ async function runBash(t, { project, sandbox, command, afterHello, fake = true }
       env: {
         BASH_CALL_LOG: log,
         BASH_CALL_COMMAND: command,
+        ...(tool ? { BASH_CALL_TOOL: tool } : {}),
         OPENAI_API_KEY: "sk-server-secret",
         // The server's own environment only: a confined command gets a minimal one.
         // Forward slashes: NODE_OPTIONS reads a backslash inside quotes as an escape.
@@ -95,6 +96,30 @@ test("the agent's bash runs through the named runner, without the server's keys"
   assert.doesNotMatch(server.log(), /bash \(UNCONFINED\)/);
   assert.match(result, /via-the-runner/, `the command did not go through the runner: ${result}`);
   assert.match(result, /from-the-shell key=none/, "the command ran, without OPENAI_API_KEY");
+});
+
+// openlore: scenario=ThePowerShellToolReplacesBash spec=sandbox-runner-bash
+test("ThePowerShellToolReplacesBash: bashShell naming PowerShell gives the agent a confined powershell, and no bash", async (t) => {
+  const project = await realpath(await makeWorkspace());
+  // The runner records how it was asked to start the shell: no PowerShell is needed here.
+  await writeFile(
+    path.join(project, "run"),
+    `const args = process.argv.slice(2); process.stdout.write("via-the-runner " + JSON.stringify(args.slice(args.indexOf("--") + 1)));`,
+  );
+  const shell = path.join(project, "tools", "powershell.exe");
+  const { hello, server, result } = await runBash(t, {
+    project,
+    sandbox: { bashRunner: process.execPath, bashShell: shell },
+    command: "Get-ChildItem",
+    tool: "powershell",
+  });
+  assert.ok(hello.tools.some((tool) => tool.name === "powershell" && tool.active), "powershell is active");
+  assert.ok(!hello.tools.some((tool) => tool.name === "bash"), "bash is not registered at all");
+  assert.match(server.log(), /powershell \(confined by /);
+  assert.doesNotMatch(server.log(), /UNCONFINED/);
+  assert.match(result, /via-the-runner/, `the command did not go through the runner: ${result}`);
+  assert.match(result, /-NoProfile.*-NonInteractive.*-ExecutionPolicy.*Bypass.*-File/, result);
+  assert.match(result, /command\.ps1/, result);
 });
 
 // openlore: scenario=ApplyingSettingsKeepsTheRunner spec=sandbox-runner-bash

@@ -140,7 +140,7 @@ one needs, the command that proves it works, and the caution that goes with it.
 | [Read a big PDF, Word or Excel file](docs/how-to.md#let-the-agent-read-a-big-pdf-word-or-excel-file) | [Lock down a shared deployment](docs/how-to.md#lock-down-a-shared-deployment) |
 | [Put it inside your own web app](docs/how-to.md#put-it-inside-your-own-web-app) | [Use an existing pi installation](docs/how-to.md#use-an-existing-pi-installation) |
 | [Make a PowerPoint deck from a template](docs/how-to.md#make-a-powerpoint-deck-from-a-template) | [Write a Word document from a template](docs/how-to.md#write-a-word-document-from-a-template) |
-| [Confine the agent's shell](docs/sandboxing.md#recommended-setup) | [Run it in WSL on an older Windows](docs/sandboxing.md#older-windows-wsl) |
+| [Confine the agent's shell](docs/sandboxing.md#recommended-setup) | [Confine it on Windows 11 with PowerShell](docs/sandboxing.md#windows-11-mxc-and-powershell) |
 | [When something does not work](docs/how-to.md#when-something-does-not-work) | |
 
 ## What you get
@@ -496,7 +496,7 @@ in [`pi-outpost.config.example.json`](pi-outpost.config.example.json).
 | `sandbox.writableRoot` | Read-write zone: a subdirectory of `root` that edit/write are further confined to. Defaults to `root` itself. Ignored while `allowWrite` is false, and applies to the `cwd` project only: every other open project is writable in its whole directory |
 | `sandbox.allowBash` | Adds bash — **not path-confined** unless `bashRunner` or `bashFrom` confines it, explicit opt-in (default `false`) |
 | `sandbox.bashRunner` | Runs every command of pi-outpost's own `bash` inside a sandbox runner — MXC's `wxc-exec.exe` (Windows 11) or landstrip's binary (Linux) — with the policy of a confined terminal: reads in the root, writes in the writable zone, no keys. A missing or failing runner refuses each command, never runs it unconfined. Exclusive with `bashFrom`. See [docs/sandboxing.md](docs/sandboxing.md#recommended-setup) |
-| `sandbox.bashShell` | The shell `bashRunner` runs commands in (default `/bin/bash`). Required on Windows: busybox-w32's `sh.exe`, since Git Bash cannot start in a Windows sandbox |
+| `sandbox.bashShell` | The shell `bashRunner` runs commands in (default `/bin/bash`). Required on Windows, where Git Bash cannot start in a sandbox: `powershell.exe` (the agent then gets a `powershell` tool instead of `bash`), or busybox-w32's `sh.exe` |
 | `sandbox.bashFrom` | Hands bash to a sandboxing extension instead: its package source as pi lists it (`"npm:pi-landstrip"`) or the path of its file or directory. pi-outpost then supplies no `bash` of its own — which would otherwise shadow the extension's, since an application's tool wins over an extension's of the same name. The session refuses to start unless that extension registers `bash`, and a Settings change that would leave it without one is rolled back. Only while `allowBash` is on. See [Confining bash with an extension](#confining-bash-with-an-extension) |
 | `sandboxLocks` | Which sandbox fields Settings may **not** change: `root`, `writableRoot`, `allowWrite`, `allowBash` |
 | `workspaceLock` | Pin the server to one project: opening, closing and switching are refused, and no control is offered |
@@ -535,7 +535,7 @@ Otherwise leave it off where that matters, and lock it with `sandboxLocks.termin
 
 Without an extension, `sandbox.bashRunner` confines pi-outpost's own `bash` with the same runners as
 the terminal: each command runs inside the runner, with the terminal's policy. On Windows 11 this is
-the way that works today (MXC and busybox-w32); see
+the way that works today (MXC with Windows PowerShell, nothing to install); see
 [docs/sandboxing.md](docs/sandboxing.md#recommended-setup).
 
 ### Agent resources

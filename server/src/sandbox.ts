@@ -13,6 +13,7 @@ import path from "node:path";
 import {
   type AgentSession,
   createBashToolDefinition,
+  createPowerShellToolDefinition,
   createEditToolDefinition,
   createFindToolDefinition,
   createGrepToolDefinition,
@@ -54,7 +55,7 @@ import type { RenderSettings } from "./presentationRender.ts";
 import { createStructuredExchangeFigureToolDefinition } from "./structuredExchangeFigureTool.ts";
 import { createTimelineComparisonToolDefinition } from "./timelineComparisonTool.ts";
 import { createStructuredExchangeTableToolDefinition } from "./structuredExchangeTableTool.ts";
-import { confinedBashOperations } from "./confinedBash.ts";
+import { confinedBashOperations, isPowerShell } from "./confinedBash.ts";
 import { userGitConfig } from "./terminalSandbox.ts";
 
 /**
@@ -346,11 +347,15 @@ export async function createSandboxedTools(
           gitConfig: userGitConfig(),
         })
       : undefined;
-    const bash = createBashToolDefinition(realRoot, operations ? { operations } : undefined) as ToolDefinition;
+    // A confined PowerShell gets pi's `powershell` tool — its description tells the model
+    // which language to write — in place of `bash`, which is then never registered.
+    const shellTool = (operations && isPowerShell(sandbox.bashShell)
+      ? createPowerShellToolDefinition(realRoot, { operations })
+      : createBashToolDefinition(realRoot, operations ? { operations } : undefined)) as ToolDefinition;
     tools.push({
-      ...bash,
+      ...shellTool,
       execute: (toolCallId, params, signal, onUpdate, ctx) =>
-        bash.execute(toolCallId, params, signal, onUpdate, withCwd(ctx, realRoot)),
+        shellTool.execute(toolCallId, params, signal, onUpdate, withCwd(ctx, realRoot)),
     });
   }
   return tools;

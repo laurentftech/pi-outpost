@@ -79,6 +79,7 @@ import { bindFailureMessage, holdConsoleIfOwned } from "./startupFailure.ts";
 import { BuildExeError, buildExecutable } from "./buildExe.ts";
 import { probePty, TerminalManager, type TerminalConfinement } from "./terminalManager.ts";
 import { checkRunner, mxcTerminalConfig, runnerKind, siblingsToDeny, terminalPolicy, userGitConfig, type RunnerCheck } from "./terminalSandbox.ts";
+import { isPowerShell } from "./confinedBash.ts";
 import { browsableUrl, openBrowser, shouldOpenBrowser } from "./openBrowser.ts";
 import {
   currentEvidence,
@@ -6088,7 +6089,7 @@ if (config.sandbox) {
     ...(config.sandbox.allowBash
       ? [
           config.sandbox.bashRunner
-            ? `bash (confined by ${config.sandbox.bashRunner}, shell ${config.sandbox.bashShell ?? "/bin/bash"})`
+            ? `${isPowerShell(config.sandbox.bashShell) ? "powershell" : "bash"} (confined by ${config.sandbox.bashRunner}, shell ${config.sandbox.bashShell ?? "/bin/bash"})`
             : config.sandbox.bashFrom
               ? `bash (from ${config.sandbox.bashFrom})`
               : "bash (UNCONFINED)",

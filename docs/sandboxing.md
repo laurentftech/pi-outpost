@@ -7,8 +7,8 @@ runs as.
 - [Recommended setup](#recommended-setup)
 - [What is confined](#what-is-confined)
 - [Linux: landstrip](#linux-landstrip)
-- [Windows 11: MXC and busybox](#windows-11-mxc-and-busybox)
-- [Older Windows: WSL](#older-windows-wsl)
+- [Windows 11: MXC and PowerShell](#windows-11-mxc-and-powershell)
+- [Older Windows](#older-windows)
 - [Check that it is really confined](#check-that-it-is-really-confined)
 - [Alternative: hand bash to an extension](#alternative-hand-bash-to-an-extension)
 
@@ -20,8 +20,8 @@ Name the same runner for the agent's `bash` (`sandbox.bashRunner`) and for the t
 | Where the server runs | Runner | Shell (`sandbox.bashShell`) |
 | --- | --- | --- |
 | Linux: a Docker container, the host, a VM, WSL2 | [landstrip](#linux-landstrip) | `/bin/bash`, the default |
-| Windows 11 with the August 2026 update or later | [MXC's `wxc-exec.exe`](#windows-11-mxc-and-busybox) | busybox-w32's `sh.exe`, required |
-| Older Windows | none works natively: use [WSL](#older-windows-wsl) | |
+| Windows 11 with the August 2026 update or later | [MXC's `wxc-exec.exe`](#windows-11-mxc-and-powershell) | `powershell.exe` (the agent gets a `powershell` tool), or busybox-w32's `sh.exe` |
+| Older Windows | none works natively: see [Older Windows](#older-windows) | |
 | macOS | untested | |
 
 pi-outpost writes the runner's policy from the configuration, so a command cannot widen it. A
@@ -37,7 +37,7 @@ that filters it.
 | --- | --- |
 | `read`, `ls`, `grep`, `find` | To `sandbox.root`, symlinks resolved, plus read-only the directories of the skills the session loaded — never the disk's root, the home directory, or one holding the agent directory. |
 | `edit`, `write`, document tools | To `sandbox.writableRoot`, with `allowWrite` only. Never inside a `.pi` directory, where an extension's policy may live. |
-| `bash` (`allowBash`) | **Only with `bashRunner`** (or `bashFrom`). Otherwise it can do anything the server's user can. |
+| `bash` (`allowBash`) | **Only with `bashRunner`** (or `bashFrom`). Otherwise it can do anything the server's user can. With a PowerShell `bashShell`, the agent's shell tool is `powershell` instead, confined the same way. |
 | The terminal panel | **Only with `terminal.sandbox`.** |
 | Extensions, MCP servers | **No.** They run with the server's rights, or their own process's. |
 
@@ -88,7 +88,7 @@ the agent directory, the configuration, every mounted project. Also:
 - keep provider keys in the credential store (`pi-outpost login`, or Settings), not in the server's
   environment: a command can still read it through `/proc/<pid>/environ` (same account).
 
-## Windows 11: MXC and busybox
+## Windows 11: MXC and PowerShell
 
 ```json
 {
@@ -97,7 +97,7 @@ the agent directory, the configuration, every mounted project. Also:
     "allowWrite": true,
     "allowBash": true,
     "bashRunner": "C:\\tools\\mxc\\node_modules\\@microsoft\\mxc-sdk\\bin\\x64\\wxc-exec.exe",
-    "bashShell": "C:\\tools\\sh.exe"
+    "bashShell": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"
   },
   "terminal": { "enabled": true, "sandbox": "C:\\tools\\mxc\\node_modules\\@microsoft\\mxc-sdk\\bin\\x64\\wxc-exec.exe" }
 }
@@ -107,14 +107,22 @@ the agent directory, the configuration, every mounted project. Also:
    `wxc-exec.exe --probe` must report `"tier": "base-container"`; pi-outpost refuses the lower tiers.
 2. **MXC's executor**: `npm install @microsoft/mxc-sdk` in any folder (Node 24 or later); `arm64`
    instead of `x64` on ARM.
-3. **busybox-w32**: download `busybox64.exe` from frippery.org and save it as `sh.exe`. Git Bash
-   cannot start in a Windows sandbox (microsoft/mxc#1061).
-4. **Run the server in your interactive session**, not as a service nor over SSH.
+3. **Run the server in your interactive session**, not as a service nor over SSH.
 
-Inside: busybox's commands, native git (`status`, `log`, `diff`, branches, commits with your identity),
-`node`, `npm`, `cmd` and PowerShell. Limits:
+Nothing else is installed: Windows PowerShell 5.1 comes with Windows. `pwsh.exe` (PowerShell 7) works
+too. With a PowerShell `bashShell` the agent is given pi's `powershell` tool instead of `bash`, so the
+model writes PowerShell; every command runs from a script, without profile, with the execution policy
+given for the process (the sandbox cannot read the registry's) and progress bars off (drawing one is
+refused inside). Its exit status is the one it sets with `exit`, else the failed native program's code,
+or 1 for a failed cmdlet.
 
-- busybox is `ash`, not bash: no `[[ ]]`, arrays or `$'…'`.
+**For a POSIX shell instead**, name busybox-w32: download `busybox64.exe` from frippery.org, save it as
+`sh.exe` and give its path as `bashShell`; the agent keeps `bash`. busybox is `ash`, not bash: no `[[ ]]`,
+arrays or `$'…'`. Git Bash cannot start in a Windows sandbox (microsoft/mxc#1061).
+
+Inside: native git (`status`, `log`, `diff`, branches, commits with your identity), `node`, `npm`,
+`cmd` and PowerShell. Limits:
+
 - The root's drive is readable, minus every folder beside the path down to the root (your `.ssh`,
   other projects…), denied by name at each launch — git needs it (microsoft/mxc#1464). Something created
   after the launch is not denied, and `Program Files` and `ProgramData` stay readable. Never make a
@@ -123,42 +131,28 @@ Inside: busybox's commands, native git (`status`, `log`, `diff`, branches, commi
   (no narrower `writableRoot`) where git runs.
 - `git push` has no credentials, and signed commits fail: GnuPG for Windows is built without ASLR, which
   the sandbox enforces.
-- The confined PowerShell starts with `-ExecutionPolicy RemoteSigned` and progress bars off; give both
-  yourself to a shell you name in `terminal.shell`.
+- The confined terminal's PowerShell starts with `-ExecutionPolicy RemoteSigned` and progress bars off;
+  give both yourself to a shell you name in `terminal.shell`.
 
 Details and probes: [`investigations/windows-sandboxing.md`](investigations/windows-sandboxing.md).
 
-## Older Windows: WSL
+## Older Windows
 
-Without MXC's tier 1, no runner works natively (landstrip's AppContainer cannot run git:
-landstrip/landstrip#204). Run pi-outpost in WSL, with the Linux setup, after closing WSL's doors to
-Windows — by default it mounts every drive read-write and can start any Windows program, unconfined.
+Without MXC's tier 1, no runner confines natively: landstrip's AppContainer cannot run git
+(landstrip/landstrip#204), and MXC's lower tiers hit the same wall. Two ways out, neither easy:
 
-In `/etc/wsl.conf`, then `wsl --shutdown`:
-
-```ini
-[interop]
-enabled = false
-appendWindowsPath = false
-
-[automount]
-enabled = false
-mountFsTab = true
-```
-
-Mount only the project, in `/etc/fstab`:
-
-```
-C:/Users/me/dev/project  /mnt/project  drvfs  rw,metadata,uid=1000,gid=1000,umask=022  0 0
-```
-
-Then the [Linux configuration](#linux-landstrip) with `"root": "/mnt/project"`, plus
-`"files": { "watch": false }`: changes made from Windows raise no event inside WSL. Prefer a distribution
-of its own (`wsl --import`), and keep your Windows credentials and SSH agent out of it.
+- **Update to Windows 11 with the August 2026 update**, then the setup above. This is the supported
+  path.
+- **Run pi-outpost inside WSL** with the [Linux setup](#linux-landstrip). WSL mounts every drive
+  read-write and can start any Windows program, unconfined, so this holds only after closing those doors
+  (`[interop] enabled = false`, `appendWindowsPath = false`, `[automount] enabled = false` in
+  `/etc/wsl.conf`, the project alone mounted from `/etc/fstab`, `"files": { "watch": false }`), in a
+  distribution of its own. It is fiddly to get right and easy to undo; prefer the update.
 
 ## Check that it is really confined
 
-1. The server's startup line reads `bash (confined by <runner>)`, never `bash (UNCONFINED)`.
+1. The server's startup line reads `bash (confined by <runner>)` — `powershell (confined by <runner>)`
+   with a PowerShell shell — never `bash (UNCONFINED)`.
 2. Ask the agent, in the chat, to read a sibling project and the agent directory's `auth.json`, to
    write outside the writable zone, and to list its environment for a key. Each must be refused or empty.
 3. Do the same in the terminal.
