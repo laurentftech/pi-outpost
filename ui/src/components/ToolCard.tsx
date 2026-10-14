@@ -32,7 +32,8 @@ export function ToolCard({ item, dispatch = noopDispatch }: { item: ToolItem; di
   const [showRaw, setShowRaw] = useState(false);
   const pressedAt = useRef<{ x: number; y: number } | null>(null);
 
-  const summary = argsSummary(item.args);
+  const callHtml = presentation.compactHeader ? undefined : item.callHtml;
+  const summary = presentation.compactHeader ? "" : argsSummary(item.args);
   const Collapsed = presentation.Collapsed;
   const showCollapsed =
     !open && Collapsed !== undefined && (presentation.hasCollapsed?.(item) ?? true);
@@ -70,18 +71,18 @@ export function ToolCard({ item, dispatch = noopDispatch }: { item: ToolItem; di
         <button
           type="button"
           aria-expanded={open}
-          aria-label={item.callHtml ? item.toolName : undefined}
+          aria-label={callHtml ? item.toolName : undefined}
           className="flex shrink-0 items-center gap-2"
         >
           <span className={`h-2 w-2 shrink-0 rounded-full ${
             item.running ? "animate-pulse motion-reduce:animate-none bg-amber-400" : item.isError ? "bg-red-500" : "bg-emerald-500"
           }`} />
-          {!item.callHtml && (
+          {!callHtml && (
             <span className="font-mono font-medium text-zinc-700 dark:text-zinc-300">{item.toolName}</span>
           )}
         </button>
-        {item.callHtml ? (
-          <RenderedHtml as="span" html={item.callHtml} className="min-w-0 flex-1 text-zinc-700 dark:text-zinc-300" />
+        {callHtml ? (
+          <RenderedHtml as="span" html={callHtml} className="min-w-0 flex-1 text-zinc-700 dark:text-zinc-300" />
         ) : (
           summary && (
             // No visible scrollbar: on a one-line header an overlay scrollbar covers the

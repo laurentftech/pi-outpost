@@ -21,6 +21,30 @@ function cardRoot(container: HTMLElement): HTMLElement {
 }
 
 describe("ToolCard collapsed extension rendering", () => {
+  it("ACodemodeCardStartsCompact: hides every detail until expanded and keeps the user's choice through updates", () => {
+    const item = tool({ toolName: "codemode", running: true, args: { code: "tools.read()" }, callHtml: "<b>script input</b>", outputHtml: "<b>read running</b>", outputHtmlCollapsed: "<i>read preview</i>" });
+    const { container, rerender } = render(<ToolCard item={item} />);
+    const root = cardRoot(container);
+    expect(root).toHaveTextContent("codemode");
+    expect(root).not.toHaveTextContent("script input");
+    expect(root).not.toHaveTextContent("read");
+    fireEvent.click(root.querySelector("button")!);
+    expect(root).toHaveTextContent("script input");
+    expect(root).toHaveTextContent("read running");
+    rerender(<ToolCard item={{ ...item, running: false, outputHtml: "<b>read complete</b>" }} />);
+    expect(root.querySelector("button")).toHaveAttribute("aria-expanded", "true");
+    expect(root).toHaveTextContent("read complete");
+    fireEvent.click(root.querySelector("button")!);
+    expect(root).not.toHaveTextContent("read complete");
+  });
+
+  it("keeps a codemode script and raw result reachable without an extension renderer", () => {
+    const { container } = render(<ToolCard item={tool({ toolName: "codemode", args: { code: "tools.read()" }, output: "result" })} />);
+    fireEvent.click(cardRoot(container).querySelector("button")!);
+    expect(cardRoot(container)).toHaveTextContent("tools.read()");
+    expect(cardRoot(container)).toHaveTextContent("result");
+  });
+
   it("shows the compact rendering the extension supplied while folded", () => {
     const { container } = render(
       <ToolCard

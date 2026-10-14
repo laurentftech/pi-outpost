@@ -665,6 +665,27 @@ describe("strict RPC records and core interaction", () => {
     assert.deepEqual(prompt?.images, [{ type: "image", data: "aGVsbG8=", mimeType: "image/png" }]);
   });
 
+  test("keeps nested RPC executions inside the parent result", async () => {
+    const nested = { parentToolCallId: "parent", toolCallId: "child", toolName: "read" };
+    const { runtime } = await startFake({ state: { isStreaming: true }, commands_: { prompt: { after: [
+      { type: "tool_execution_start", toolCallId: "parent", toolName: "codemode", args: {} },
+      { type: "tool_execution_start", ...nested, args: {} },
+      { type: "tool_execution_update", ...nested, partialResult: { content: [] } },
+      { type: "tool_execution_end", ...nested, result: { content: [] }, isError: false },
+      { type: "tool_execution_update", toolCallId: "parent", toolName: "codemode", partialResult: { content: [], details: { calls: ["read"] } } },
+      { type: "tool_execution_end", toolCallId: "parent", toolName: "codemode", result: { content: [] }, isError: false },
+    ] } } });
+    const seen: RuntimeEvent[] = [];
+    const unsubscribe = runtime.subscribe((event) => { seen.push(event); });
+    const ended = waitForEvent(runtime, (event) => event.type === "tool_end");
+    await runtime.prompt("go");
+    await ended;
+    unsubscribe();
+    const tools = seen.filter((event) => event.type.startsWith("tool_"));
+    assert.deepEqual(tools.map((event) => (event as { toolCallId: string }).toolCallId), ["parent", "parent", "parent"]);
+    assert.deepEqual(tools[1], { type: "tool_update", toolCallId: "parent", toolName: "codemode", content: [], details: { calls: ["read"] }, progress: undefined });
+  });
+
   test("forwards a tool's completion fraction, and omits it when the tool sends none", async () => {
     const { runtime } = await startFake({
       state: { isStreaming: true },

@@ -110,7 +110,9 @@ describe("registry placement", () => {
 
   it("sits below the extension entry and above every shape guess", () => {
     const ids = PRESENTATIONS.map((presentation) => presentation.id);
-    expect(ids.indexOf("structured-exchange")).toBe(1);
+    for (const entry of PRESENTATIONS.filter((presentation) => presentation.extensionOwned)) {
+      expect(ids.indexOf(entry.id)).toBeLessThan(ids.indexOf("structured-exchange"));
+    }
     expect(ids.indexOf("structured-exchange")).toBeLessThan(ids.indexOf("code-search"));
     expect(ids.indexOf("structured-exchange")).toBeLessThan(ids.indexOf("pi-render"));
   });

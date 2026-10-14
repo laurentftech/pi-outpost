@@ -712,6 +712,10 @@ unconfined ones (a sandbox without `allowBash` stays without `bash`). A `tools` 
 server's config replaces `defaultTools` entirely, so name `codemode` and `tool_search` there
 if you use one.
 
+The `codemode` card starts compact. Expand it to see the script, its nested calls
+and their result, including while it is running. They remain in that card after
+reloading the conversation.
+
 **The embedded SDK runtime is the supported target; `rpc` is best effort.** Features are
 designed, measured and proven against the SDK session. The RPC dialect gets what it can
 express: where a capability has no equivalent there, it is reported as unavailable rather

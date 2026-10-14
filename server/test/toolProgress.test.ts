@@ -16,6 +16,7 @@ describe("toolUpdateEvent", () => {
       toolCallId: "t1",
       content: [{ type: "text", text: "…" }],
       progress: 0.4,
+      details: { progress: 0.4 },
     });
   });
 

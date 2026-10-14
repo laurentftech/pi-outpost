@@ -435,6 +435,8 @@ export class EmbeddedRuntime implements AgentRuntime {
   }
 
   private translate(event: any): void {
+    // Script-issued calls belong to the parent's persisted result and renderer.
+    if (event.parentToolCallId !== undefined && event.type.startsWith("tool_execution_")) return;
     switch (event.type) {
       case "agent_start":
         this.emit({ type: "agent_start" });
@@ -465,7 +467,7 @@ export class EmbeddedRuntime implements AgentRuntime {
         this.emit({ type: "tool_start", toolCallId: event.toolCallId, toolName: event.toolName, args: event.args });
         break;
       case "tool_execution_update":
-        this.emit(toolUpdateEvent(event.toolCallId, event.partialResult));
+        this.emit({ ...toolUpdateEvent(event.toolCallId, event.partialResult), toolName: event.toolName });
         break;
       case "tool_execution_end":
         this.emit({
