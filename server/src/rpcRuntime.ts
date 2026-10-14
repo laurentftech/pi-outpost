@@ -393,6 +393,7 @@ class RpcRuntime implements AgentRuntime {
   // --- incoming records ----------------------------------------------------
 
   private async onRecord(record: RpcIncoming): Promise<void> {
+    if (record.parentToolCallId !== undefined && record.type.startsWith("tool_execution_")) return;
     switch (record.type) {
       case "agent_start":
         this.streaming = true;
@@ -427,12 +428,13 @@ class RpcRuntime implements AgentRuntime {
         });
         break;
       case "tool_execution_update":
-        this.emit(
-          toolUpdateEvent(
+        this.emit({
+          ...toolUpdateEvent(
             String(record.toolCallId),
             record.partialResult as { content?: unknown; details?: { progress?: unknown } } | undefined,
           ),
-        );
+          toolName: typeof record.toolName === "string" ? record.toolName : undefined,
+        });
         break;
       case "tool_execution_end": {
         const result = record.result as { content?: unknown; details?: unknown } | undefined;

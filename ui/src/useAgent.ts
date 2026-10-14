@@ -1218,6 +1218,7 @@ function reduce(state: AgentState, action: Action): AgentState {
         ...state,
         items: upsertTool(state.items, message.toolCallId, "tool", {
           output: message.text,
+          ...(message.outputHtml !== undefined ? { outputHtml: message.outputHtml, outputHtmlCollapsed: message.outputHtmlCollapsed } : {}),
           // Only when this update carried one — a text-only update leaves the
           // last reported fraction in place.
           ...(typeof message.progress === "number" ? { progress: message.progress } : {}),

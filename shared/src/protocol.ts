@@ -1029,7 +1029,7 @@ export type ServerMessage =
    * this update; absent when it reported none. It is a hint, shown only while the
    * tool runs, and is never persisted to session history.
    */
-  | { type: "tool_update"; toolCallId: string; text: string; progress?: number }
+  | { type: "tool_update"; toolCallId: string; text: string; progress?: number; outputHtml?: string; outputHtmlCollapsed?: string }
   | {
       type: "tool_end";
       toolCallId: string;

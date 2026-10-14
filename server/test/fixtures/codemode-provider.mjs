@@ -44,7 +44,7 @@ function stream(model, context) {
   const turn = thisTurn(context);
   const result = turn.find((message) => message?.role === "toolResult");
   const prompt = textOf(turn[0]?.content);
-  const match = /RUN CODEMODE (\S+)/.exec(prompt);
+  const match = /RUN CODEMODE (.+)/.exec(prompt);
 
   if (result) {
     require("node:fs").writeFileSync(process.env.CODEMODE_LOG, textOf(result.content));
@@ -74,6 +74,12 @@ function stream(model, context) {
 }
 
 export default function (pi) {
+  // A browser probe can keep each read in flight long enough to inspect its card.
+  if (process.env.CODEMODE_READ_DELAY_MS) {
+    pi.on("tool_call", async (event) => {
+      if (event.toolName === "read") await new Promise((resolve) => setTimeout(resolve, Number(process.env.CODEMODE_READ_DELAY_MS)));
+    });
+  }
   pi.registerProvider("codemode-test", {
     baseUrl: "http://127.0.0.1",
     apiKey: "test",

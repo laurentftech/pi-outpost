@@ -2751,12 +2751,16 @@ function onRuntimeEvent(workspace: Workspace, event: RuntimeEvent): void {
     case "tool_update": {
       const text = contentText(event.content as never);
       const progress = toProgressFraction(event.progress);
+      const rendered = event.toolName ? workspace.renderer.renderToolResultHtml(
+        event.toolCallId, event.toolName, event.content as never, event.details, false, true,
+      ) : undefined;
       // A progress-only update carries no text; still send it so the bar can move.
-      if (text || progress !== undefined) {
+      if (text || progress !== undefined || rendered) {
         broadcast(workspace, {
           type: "tool_update",
           toolCallId: event.toolCallId,
           text: truncate(text),
+          ...(rendered ? { outputHtml: rendered.expanded, outputHtmlCollapsed: rendered.collapsed } : {}),
           ...(progress !== undefined ? { progress } : {}),
         });
       }

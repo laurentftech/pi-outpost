@@ -45,6 +45,30 @@ export const rawPresentation = {
 
 /* ── Extension-rendered ─────────────────────────────────────────────────────── */
 
+/** Codemode owns the rendered content; its script belongs in the details, not the header. */
+export const codemodePresentation = {
+  id: "codemode",
+  match: (item: ToolItem) => item.toolName === "codemode",
+  stable: true,
+  extensionOwned: true,
+  compactHeader: true,
+  showsRawReveal: true,
+  Expanded: ({ item }: PresentationProps) => (
+    <div className="flex flex-col gap-3">
+      <section aria-label="Script">
+        <h4 className="mb-1 text-xs font-medium text-zinc-500">Script</h4>
+        {item.callHtml ? <RenderedHtml html={item.callHtml} className="max-h-64 text-zinc-700 dark:text-zinc-300" /> : (
+          <pre className="max-h-64 overflow-auto whitespace-pre-wrap font-mono text-xs">{typeof (item.args as { code?: unknown } | null)?.code === "string" ? (item.args as { code: string }).code : JSON.stringify(item.args)}</pre>
+        )}
+      </section>
+      <section aria-label="Calls and result">
+        <h4 className="mb-1 text-xs font-medium text-zinc-500">Calls and result</h4>
+        {item.outputHtml ? <RenderedHtml html={item.outputHtml} className="max-h-96 text-zinc-700 dark:text-zinc-300" /> : <RawBody item={item} />}
+      </section>
+    </div>
+  ),
+} as const;
+
 export const extensionHtmlPresentation = {
   id: "extension-html",
   match: (item: ToolItem) => Boolean(item.outputHtml),

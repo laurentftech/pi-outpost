@@ -113,12 +113,14 @@ export class ExtensionRenderer {
   private deps?: ExtensionRenderDeps;
   private theme?: Theme;
   private toolRenderer?: ReturnType<typeof createToolHtmlRenderer>;
+  private callArgs = new Map<string, unknown>();
   /** The CSS values of the theme's panel backgrounds, to be dropped from what is rendered. */
   private panelBackgrounds = new Set<string>();
   /** Each text colour of the rendering theme, and its counterpart for a light widget. */
   private lightColors = new Map<string, string>();
 
   configure(next: ExtensionRenderDeps | undefined): void {
+    this.callArgs.clear();
     this.deps = next;
     this.theme = next ? (getThemeByName(next.themeName ?? "dark") ?? getThemeByName("dark")) : undefined;
     this.panelBackgrounds = new Set(
@@ -152,6 +154,7 @@ export class ExtensionRenderer {
 
   /** Render an extension's compact call header, if it provides one. */
   renderToolCallHtml(toolCallId: string, toolName: string, args: unknown): string | undefined {
+    this.callArgs.set(toolCallId, args);
     if (!this.toolRenderer) return undefined;
     try {
       const html = this.forTheWidget(this.toolRenderer.renderCall(toolCallId, toolName, args));
@@ -167,11 +170,14 @@ export class ExtensionRenderer {
     content: string | ToolContentBlock[] | undefined,
     details: unknown,
     isError: boolean,
+    isPartial = false,
   ): RenderedHtml | undefined {
     if (!this.toolRenderer) return undefined;
     try {
       const blocks = normalizeToolContent(content);
-      const rendered = this.toolRenderer.renderResult(toolCallId, toolName, blocks, details, isError);
+      const rendered = isPartial
+        ? this.renderPartial(toolCallId, toolName, blocks, details)
+        : this.toolRenderer.renderResult(toolCallId, toolName, blocks, details, isError);
       const expanded = this.forTheWidget(rendered?.expanded);
       const collapsed = this.forTheWidget(rendered?.collapsed);
       if (!expanded?.trim()) return undefined;
@@ -181,7 +187,26 @@ export class ExtensionRenderer {
       };
     } catch {
       return undefined;
+    } finally {
+      if (!isPartial) this.callArgs.delete(toolCallId);
     }
+  }
+
+  private renderPartial(toolCallId: string, toolName: string, content: ToolContentBlock[], details: unknown): RenderedHtml | undefined {
+    const render = this.deps?.getToolRenderers(toolName)?.renderResult;
+    if (!render || !this.theme || !this.deps) return undefined;
+    // Export's renderer always sets isPartial=false. Live results must keep their
+    // partial semantics. No terminal timer or invalidation loop belongs on a server.
+    const draw = (expanded: boolean) => {
+      const component = render({ content, details } as never, { expanded, isPartial: true }, this.theme!, {
+        toolCallId, args: this.callArgs.get(toolCallId), cwd: this.deps!.cwd, state: {},
+        invalidate() {}, lastComponent: undefined, executionStarted: false, argsComplete: true,
+        isPartial: true, expanded, showImages: false, isError: false,
+        durationMs: undefined, outputPad: 1,
+      });
+      return ansiLinesToHtml(component.render(RENDER_WIDTH));
+    };
+    return { collapsed: draw(false), expanded: draw(true) };
   }
 
   renderCustomMessageHtml(

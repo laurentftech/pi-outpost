@@ -125,6 +125,32 @@ describe("renderCustomMessageHtml", () => {
 });
 
 describe("tool rendering once configured", () => {
+  test("renders partial results as partial with the call's arguments, without starting a terminal timer", () => {
+    const contexts: any[] = [];
+    renderer.configure({ cwd: process.cwd(), getMessageRenderer: () => undefined, getToolRenderers: () => ({
+      renderResult: (_result: any, options: any, _theme: any, context: any) => {
+        contexts.push(context);
+        assert.equal(options.isPartial, true);
+        assert.equal(context.isPartial, true);
+        assert.equal(context.executionStarted, false);
+        assert.deepEqual(context.args, { code: "read" });
+        return component([options.expanded ? "full live calls" : "compact live calls"]);
+      },
+    }) });
+    renderer.renderToolCallHtml("parent", "codemode", { code: "read" });
+    const html = renderer.renderToolResultHtml("parent", "codemode", [], { calls: [] }, false, true);
+    assert.ok(html?.expanded.includes("full live calls"));
+    assert.ok(html?.collapsed?.includes("compact live calls"));
+    assert.equal(contexts.length, 2);
+  });
+
+  test("a broken partial renderer falls back without throwing", () => {
+    renderer.configure({ cwd: process.cwd(), getMessageRenderer: () => undefined, getToolRenderers: () => ({
+      renderResult() { throw new Error("broken extension"); },
+    }) });
+    assert.equal(renderer.renderToolResultHtml("parent", "codemode", [], {}, false, true), undefined);
+  });
+
   test("renders nothing for a tool no extension defines", () => {
     // getToolRenderers returns undefined for everything here: there is no renderer
     // to ask, and the answer must be "show the plain card", not a crash

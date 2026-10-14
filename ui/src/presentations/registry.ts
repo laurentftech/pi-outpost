@@ -1,4 +1,5 @@
 import {
+  codemodePresentation,
   extensionHtmlPresentation,
   fileEditPresentation,
   fileWritePresentation,
@@ -18,6 +19,7 @@ import type { Presentation, ToolItem } from "./types";
  * is total.
  */
 export const PRESENTATIONS: readonly Presentation[] = [
+  codemodePresentation,
   extensionHtmlPresentation,
   // Data a producer declared about itself, validated against the published
   // schema, outranks every entry below it — those infer a shape from output, and

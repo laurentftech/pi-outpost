@@ -131,7 +131,7 @@ export type RuntimeEvent =
   // `progress` is whatever the tool put in `partialResult.details.progress` — a
   // completion fraction, in principle `0..1`. Carried raw and sanitised once, at
   // the broadcast boundary in index.ts, so both runtimes stay pass-through.
-  | { type: "tool_update"; toolCallId: string; content: unknown; progress?: unknown }
+  | { type: "tool_update"; toolCallId: string; toolName?: string; content: unknown; details?: unknown; progress?: unknown }
   | { type: "tool_end"; toolCallId: string; toolName: string; content: unknown; details: unknown; isError: boolean }
   | { type: "queue"; steering: string[]; followUp: string[] }
   | { type: "thinking_changed"; level: ThinkingLevel }
@@ -170,7 +170,10 @@ export function toolUpdateEvent(
   toolCallId: string,
   partial: { content?: unknown; details?: { progress?: unknown } } | undefined,
 ): Extract<RuntimeEvent, { type: "tool_update" }> {
-  return { type: "tool_update", toolCallId, content: partial?.content, progress: partial?.details?.progress };
+  return {
+    type: "tool_update", toolCallId, content: partial?.content, progress: partial?.details?.progress,
+    ...(partial?.details !== undefined ? { details: partial.details } : {}),
+  };
 }
 
 export interface PromptOptions {

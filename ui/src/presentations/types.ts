@@ -52,6 +52,8 @@ export interface Presentation {
   extensionOwned?: boolean;
   /** Card opens expanded (the body is the point of the card, as for a diff). */
   startsExpanded?: boolean;
+  /** Keep the call's potentially multiline input inside the expanded body. */
+  compactHeader?: boolean;
   /** The expanded body reshapes the output, so offer the original alongside it. */
   showsRawReveal?: boolean;
   /**

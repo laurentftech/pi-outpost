@@ -2067,6 +2067,17 @@ describe("assembling a turn", () => {
     expect(result.current.state.items[0]).toMatchObject({ kind: "tool", toolName: "bash", output: "a.txt\nb.txt", running: false });
   });
 
+  it("retains partial tool HTML through text-only updates and replaces it on completion", async () => {
+    const result = await connected();
+    act(() => mockWs!.receive({ type: "tool_start", toolCallId: "cm", toolName: "codemode", args: {} }));
+    act(() => mockWs!.receive({ type: "tool_update", toolCallId: "cm", text: "", outputHtml: "<b>read running</b>", outputHtmlCollapsed: "<i>read</i>" }));
+    expect(result.current.state.items[0]).toMatchObject({ running: true, outputHtml: "<b>read running</b>", outputHtmlCollapsed: "<i>read</i>" });
+    act(() => mockWs!.receive({ type: "tool_update", toolCallId: "cm", text: "next" }));
+    expect(result.current.state.items[0]).toMatchObject({ outputHtml: "<b>read running</b>" });
+    act(() => mockWs!.receive({ type: "tool_end", toolCallId: "cm", text: "done", isError: false, outputHtml: "<b>read done</b>" }));
+    expect(result.current.state.items[0]).toMatchObject({ running: false, outputHtml: "<b>read done</b>", outputHtmlCollapsed: undefined });
+  });
+
   it("carries a tool's completion fraction, and keeps the last one when an update omits it", async () => {
     const result = await connected();
     act(() => mockWs!.receive({ type: "tool_start", toolCallId: "t1", toolName: "crawl", args: {} }));
