@@ -105,16 +105,15 @@ export function EnlargedView({
       aria-label={`${label}, full size`}
       data-testid={testId}
       onClick={onClose}
-      className="fixed inset-0 z-[100] flex items-center justify-center overflow-auto bg-black/60 p-6"
+      className="fixed inset-0 z-[100] flex items-center justify-center overflow-hidden bg-black/60 p-6"
     >
       <div
         onClick={(event) => event.stopPropagation()}
-        className="max-h-full w-auto max-w-[95vw] overflow-auto rounded-lg bg-white p-4 shadow-xl dark:bg-zinc-900"
+        className="flex max-h-full min-w-0 w-auto max-w-[95vw] flex-col overflow-hidden rounded-lg bg-white p-4 shadow-xl dark:bg-zinc-900"
       >
-        <div className="mb-2 flex items-center justify-between gap-4">
+        <div className="mb-2 flex shrink-0 items-center justify-between gap-4">
           <span className="text-xs text-zinc-500">{label}</span>
           <div className="flex items-center gap-3">
-            {actions}
             <button
               type="button"
               onClick={onClose}
@@ -125,9 +124,11 @@ export function EnlargedView({
             </button>
           </div>
         </div>
-        <div ref={containerRef} className="[&_svg]:!max-w-none">
+        <div ref={containerRef} role="region" aria-label={`${label} content`} tabIndex={0}
+          className="min-h-0 min-w-0 overflow-auto [&_svg]:!max-w-none">
           {children}
         </div>
+        {actions && <div className="mt-2 flex shrink-0 flex-wrap items-center justify-start gap-3">{actions}</div>}
       </div>
     </div>,
     host.current ?? globalThis.document.body,

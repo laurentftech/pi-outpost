@@ -150,7 +150,9 @@ one needs, the command that proves it works, and the caution that goes with it.
 - Streaming answers in markdown, with collapsible thinking blocks, mermaid diagrams, math,
   inline images and clickable workspace file links. A diagram too wide to read in the column
   is drawn down the page instead, whichever direction its source asked for, and says so — one
-  click puts it back
+  click puts it back. Mermaid controls stay visible below the picture, including an SVG
+  download for documents. In the full-size view, export actions stay at the bottom left
+  while the diagram scrolls
 - Sections an extension appends to an answer render as real markup — a `<details>` block of
   sources folds away, and its classes reach a host page's CSS. Reply text is untrusted whoever
   wrote it, so all of it is filtered first: scripts, event handlers, `javascript:` links, styles,

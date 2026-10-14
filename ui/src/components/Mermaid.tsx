@@ -10,6 +10,7 @@ import {
 } from "@pi-outpost/shared/diagram-orientation";
 import { orientableMermaid, orientationOfDirection } from "./mermaidDirection";
 import { withMermaid } from "../util/mermaidQueue";
+import { DIAGRAM_ACTION, DIAGRAM_ACTIONS } from "./diagramControls";
 
 type MermaidTheme = "dark" | "default";
 
@@ -105,10 +106,14 @@ export function Mermaid({ code }: { code: string }) {
   const id = useId().replace(/[^a-zA-Z0-9]/g, "");
   const theme = useThemeContext();
   const mermaidTheme: MermaidTheme = theme === "light" ? "default" : "dark";
-  const [drawn, setDrawn] = useState<{ svg: string; orientation: Orientation } | null>(null);
+  const [drawn, setDrawn] = useState<{ svg: string; orientation: Orientation; source: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showCode, setShowCode] = useState(false);
   const [enlarged, setEnlarged] = useState(false);
+  const [downloading, setDownloading] = useState(false);
+  const [downloadError, setDownloadError] = useState<string | null>(null);
+  const downloadPending = useRef(false);
+  const sourceGeneration = useRef(0);
   /**
    * How this source says it runs, and how to say the other — undefined for a notation
    * with no direction of its own, which is how the control knows not to appear.
@@ -134,6 +139,45 @@ export function Mermaid({ code }: { code: string }) {
   codeRef.current = code;
 
   useEffect(() => {
+    sourceGeneration.current += 1;
+    setDrawn(null);
+    setChosen(undefined);
+    setEnlarged(false);
+    setError(null);
+    setDownloadError(null);
+    return () => { sourceGeneration.current += 1; };
+  }, [code]);
+
+  async function downloadSvg() {
+    if (!drawn || downloadPending.current) return;
+    downloadPending.current = true;
+    setDownloading(true);
+    setDownloadError(null);
+    const generation = sourceGeneration.current;
+    try {
+      // The document exporter produces standalone SVG with text labels, explicit
+      // dimensions and inline appearance. Export the orientation currently shown.
+      const { renderDiagram } = await import("../export/mermaidToImage");
+      const image = await renderDiagram(drawn.source, `mermaid-download-${id}`);
+      if (generation !== sourceGeneration.current) return;
+      const url = URL.createObjectURL(new Blob([image.svg], { type: "image/svg+xml;charset=utf-8" }));
+      try {
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = "diagram.svg";
+        link.click();
+      } finally {
+        URL.revokeObjectURL(url);
+      }
+    } catch (error) {
+      if (generation === sourceGeneration.current) setDownloadError(error instanceof Error ? error.message : String(error));
+    } finally {
+      downloadPending.current = false;
+      setDownloading(false);
+    }
+  }
+
+  useEffect(() => {
     let cancelled = false;
     // Debounce: during streaming the code arrives in chunks and intermediate
     // states are invalid diagrams — only render once input settles.
@@ -150,14 +194,14 @@ export function Mermaid({ code }: { code: string }) {
           const wanted = chosen === asWritten ? source : read.turned;
           const { svg } = await mermaid.render(`mermaid-${id}`, wanted);
           if (!cancelled) {
-            setDrawn({ svg, orientation: chosen });
+            setDrawn({ svg, orientation: chosen, source: wanted });
             setError(null);
           }
           return;
         }
 
         const first = await mermaid.render(`mermaid-${id}`, source);
-        let result = { svg: first.svg, orientation: asWritten };
+        let result = { svg: first.svg, orientation: asWritten, source };
         const asDrawn = naturalWidth(first.svg);
         // The second render is what it costs to know whether turning would help, and
         // it is paid only by a diagram that is already too wide to read — never by
@@ -172,7 +216,7 @@ export function Mermaid({ code }: { code: string }) {
               asWritten === "landscape"
                 ? orientationFor(asDrawn, turnedWidth)
                 : orientationFor(turnedWidth, asDrawn);
-            if (better !== asWritten) result = { svg: second.svg, orientation: better };
+            if (better !== asWritten) result = { svg: second.svg, orientation: better, source: read.turned };
           }
         }
         if (!cancelled) {
@@ -180,7 +224,10 @@ export function Mermaid({ code }: { code: string }) {
           setError(null);
         }
       } catch (e) {
-        if (!cancelled) setError(e instanceof Error ? e.message : String(e));
+        if (!cancelled) {
+          setDrawn(null);
+          setError(e instanceof Error ? e.message : String(e));
+        }
       }
     }), 300);
     return () => {
@@ -193,19 +240,17 @@ export function Mermaid({ code }: { code: string }) {
     return (
       <div
         ref={blockRef}
-        className="group relative my-2 rounded-lg border border-zinc-200 bg-zinc-50 p-3 dark:border-zinc-800 dark:bg-zinc-900"
+        className="my-2 flex flex-col gap-2 rounded-lg border border-zinc-200 bg-zinc-50 p-3 dark:border-zinc-800 dark:bg-zinc-900"
       >
-        <div className="absolute left-2 top-2 z-10 opacity-0 transition-opacity group-hover:opacity-100">
+        <div className={`${DIAGRAM_ACTIONS} order-3`}>
           <button
             type="button"
             onClick={() => setShowCode(!showCode)}
             title={showCode ? "Show diagram" : "Show code"}
-            className="rounded px-1.5 py-0.5 text-xs text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700 dark:text-zinc-600 dark:hover:bg-zinc-800 dark:hover:text-zinc-300"
+            className={DIAGRAM_ACTION}
           >
             {showCode ? "⚏ diagram" : "⌗ code"}
           </button>
-        </div>
-        <div className="absolute right-2 top-2 z-10 flex items-center gap-2 opacity-0 transition-opacity group-hover:opacity-100">
           {/* Same reason the structured-exchange view has one: a wide diagram in a
               narrow column arrives as a sliver, and scrolling it sideways is not
               reading it. */}
@@ -225,7 +270,7 @@ export function Mermaid({ code }: { code: string }) {
                   : "Turn it down the page — it is drawn across"
               }
               aria-label={`Turn the diagram ${otherOrientation(drawn.orientation)}`}
-              className="rounded px-1.5 py-0.5 text-xs text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700 dark:text-zinc-600 dark:hover:bg-zinc-800 dark:hover:text-zinc-300"
+              className={DIAGRAM_ACTION}
             >
               {drawn.orientation === "portrait" ? "↔ landscape" : "↕ portrait"}
             </button>
@@ -238,12 +283,17 @@ export function Mermaid({ code }: { code: string }) {
               // enlarge control of its own, and a page carrying both would
               // otherwise offer two buttons called the same thing.
               aria-label="Show diagram at full size"
-              className="rounded px-1.5 py-0.5 text-xs text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700 dark:text-zinc-600 dark:hover:bg-zinc-800 dark:hover:text-zinc-300"
+              className={DIAGRAM_ACTION}
             >
               ⤢ enlarge
             </button>
           )}
-          <CopyButton text={code} />
+          <button type="button" className={DIAGRAM_ACTION} disabled={downloading} onClick={() => void downloadSvg()}
+            title="Save as .svg — insert it as a picture in a document">
+            {downloading ? "preparing SVG…" : "⤓ download SVG"}
+          </button>
+          <CopyButton text={code} className={DIAGRAM_ACTION} />
+          {downloadError && <span role="alert" className="text-red-600 dark:text-red-400">Could not download SVG: {downloadError}</span>}
         </div>
         {showCode ? (
           // The authored source, always. What was handed to mermaid may have had its
@@ -272,6 +322,9 @@ export function Mermaid({ code }: { code: string }) {
           open={enlarged}
           onClose={() => setEnlarged(false)}
           anchorRef={blockRef}
+          actions={<><button type="button" className={DIAGRAM_ACTION} disabled={downloading} onClick={() => void downloadSvg()}>
+            {downloading ? "preparing SVG…" : "⤓ download SVG"}
+          </button>{downloadError && <span role="alert" className="text-red-600 dark:text-red-400">Could not download SVG: {downloadError}</span>}</>}
         >
           <div
             style={{ width: naturalWidth(svg) }}

@@ -46,7 +46,7 @@
     "hast-util-to-html": "^9.0.5",
     "highlight.js": "^11.11.1",
     "katex": "^0.18.7",
-    "mermaid": "^12.1.0",
+    "mermaid": "^12.2.0",
     "pdfjs-dist": "6.2.108",
     "react-markdown": "^10.1.0",
     "rehype-katex": "^7.0.1",
