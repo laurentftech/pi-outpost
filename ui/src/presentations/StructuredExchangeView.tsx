@@ -43,6 +43,7 @@ import { otherOrientation, type Orientation } from "@pi-outpost/shared/diagram-o
 import { resolveViewpoint, sameNarrowing, viewpointsOf } from "@pi-outpost/shared/structured-exchange/model";
 import type { StructuredViewpoint } from "@pi-outpost/shared/structured-exchange";
 import { downloadCsv, downloadMarkdown, downloadXlsx, tableExport, tableMarkdown } from "./tableExport";
+import { DIAGRAM_ACTION, DIAGRAM_ACTIONS } from "../components/diagramControls";
 import { initialTimelineDisplay, TimelineView, type TimelineDisplay } from "./TimelineView";
 import { Drawn, FigureMarkers } from "./figureDrawing";
 import { StructuredAppearanceContext } from "./structuredAppearance";
@@ -1176,7 +1177,7 @@ export function describeRemoval(
 /* ── The presentation ───────────────────────────────────────────────────────── */
 
 /** The control row's link styling, shared with the same controls inside the modal. */
-const LINK_BUTTON = "text-xs text-zinc-500 underline hover:text-zinc-800 dark:hover:text-zinc-200";
+const LINK_BUTTON = DIAGRAM_ACTION;
 
 export interface StructuredExchangeDocumentProps {
   /** Already validated — this component renders documents, it does not judge them. */
@@ -1605,7 +1606,7 @@ export function StructuredExchangeDocument({ envelope, source, rawOutput, dispat
         </ul>
       )}
 
-      <div className="flex flex-wrap items-center gap-3 text-xs">
+      <div className={DIAGRAM_ACTIONS}>
         {/* Offered only when the document declares readings: an empty selector is a
             control that does nothing, and a native one is keyboard-reachable and states
             its current value without any focus handling of our own. */}
@@ -1629,7 +1630,7 @@ export function StructuredExchangeDocument({ envelope, source, rawOutput, dispat
         )}
         <button
           type="button"
-          className="text-zinc-500 underline"
+          className={DIAGRAM_ACTION}
           aria-label={`Show ${envelope.kind} view at full size`}
           onClick={() => setEnlarged(true)}
         >
@@ -1642,7 +1643,7 @@ export function StructuredExchangeDocument({ envelope, source, rawOutput, dispat
         {envelope.kind === "graph" && (
           <button
             type="button"
-            className="text-zinc-500 underline"
+            className={DIAGRAM_ACTION}
             data-testid="diagram-orientation"
             // Named for what the click does, the way every other control here is. The
             // state it would otherwise have announced is in the title, and in the
@@ -1711,7 +1712,7 @@ export function StructuredExchangeDocument({ envelope, source, rawOutput, dispat
           <>
             <button
               type="button"
-              className="text-zinc-500 underline"
+              className={DIAGRAM_ACTION}
               title="Save as .svg — insert it as a picture in a document"
               onClick={downloadDiagram}
             >
