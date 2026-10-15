@@ -13,18 +13,18 @@
     "lint": "oxlint"
   },
   "dependencies": {
-    "@napi-rs/canvas": "^1.0.8",
+    "@napi-rs/canvas": "^1.0.11",
     "@pi-outpost/shared": "*",
     "@resvg/resvg-js": "^2.6.2",
-    "docx": "^9.7.1",
-    "jsdom": "^30.0.0",
+    "docx": "^9.11.0",
+    "jsdom": "~30.0.1",
     "mermaid": "^12.2.0"
   },
   "devDependencies": {
     "@types/jsdom": "^21.1.7",
     "@types/node": "^24.0.0",
-    "oxlint": "^1.71.0",
-    "tsx": "^4.19.0",
+    "oxlint": "^1.88.0",
+    "tsx": "^4.23.15",
     "typescript": "^5.8.0"
   }
 }

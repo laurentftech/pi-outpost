@@ -33,6 +33,27 @@ developers.
 *your* configuration rather than the dev one. There is no hot reload in that mode: rebuild
 (`npm run build --workspace web`) and restart after a UI change.
 
+## Dependency maintenance
+
+Regenerate `package-lock.json` with npm 11 when changing dependencies. Keep the
+Playwright container tag in `.github/workflows/ci.yml` aligned with the locked
+`@playwright/test` version.
+
+Keep jsdom on `~30.0.1` for now: 30.1.2 breaks the Blob/object-URL path used by
+the Mermaid raster export tests (`Cannot read properties of undefined (reading
+'_buffer')`). Revisit this pin with those tests and the running-app export checks.
+
+The root `overrides` move `rehype-katex` and `micromark-extension-math` onto
+KaTeX 0.18 to avoid the prototype-pollution trust bypass in older KaTeX releases
+([GHSA-238p-pmpm-9mq7](https://github.com/advisories/GHSA-238p-pmpm-9mq7)).
+When changing these overrides, verify inline and display math in the running app
+and the document exports. Remove them when the plugins depend on a fixed version.
+
+`npm audit` also reports `sprintf-js` through API Extractor's argument parser
+([GHSA-hp3w-g68c-fv3c](https://github.com/advisories/GHSA-hp3w-g68c-fv3c)).
+At this update, npm has no patched `sprintf-js` release. Do not apply the unrelated
+package downgrades suggested by `npm audit fix --force` as a substitute for a fix.
+
 ## Tests
 
 ```bash

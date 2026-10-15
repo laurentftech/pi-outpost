@@ -54,19 +54,19 @@
   },
   "dependencies": {
     "@earendil-works/pi-coding-agent": "^1.2.0",
-    "@fastify/static": "^10.1.2",
-    "@fastify/websocket": "^11.0.2",
-    "fastify": "^5.12.5",
-    "jsdom": "^30.0.0",
-    "ws": "^8.21.0"
+    "@fastify/static": "^10.1.6",
+    "@fastify/websocket": "^11.3.4",
+    "fastify": "^5.12.7",
+    "jsdom": "~30.0.1",
+    "ws": "^8.22.0"
   },
   "optionalDependencies": {
     "@microsoft/mxc-sdk": "^1.0.0",
-    "@napi-rs/canvas": "^1.0.8",
+    "@napi-rs/canvas": "^1.0.11",
     "@resvg/resvg-js": "^2.6.2",
     "node-pty": "^1.1.0"
   },
   "devDependencies": {
-    "esbuild": "^0.28.1"
+    "esbuild": "^0.28.2"
   }
 }
