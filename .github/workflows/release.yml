@@ -124,10 +124,6 @@ jobs:
       # replaces its npm, so nothing before the tag ever showed it.
       - run: npm ci
 
-      # Trusted publishing (OIDC) needs npm >= 11.5.1. It is wanted for `npm publish`
-      # and for nothing else, so it goes after the install rather than before it.
-      - run: npm install -g npm@latest
-
       # A tag claims a version; at least one package must actually be at it, and none
       # may disagree with it.
       - name: Tag must match the packages it releases
@@ -199,8 +195,15 @@ jobs:
       # entry that stopped covering dist/, both land here and nowhere earlier.
       - run: npm run check:cli
 
-      # Le publish peut se faire en Node 24 sans problème.
-      #
+      # setup-node selects a separate npm installation for Node 26. Upgrade after
+      # the final Node switch so publish uses an npm with trusted publishing support
+      # (>= 11.5.1), while dependency installation keeps the bundled npm.
+      - name: Prepare npm for trusted publishing
+        run: |
+          npm install -g npm@latest
+          node --version
+          npm --version
+
       # The dist-tag comes from the version, never from an input: a release that
       # reached `beta`, or a beta that reached `latest`, would both be one forgotten
       # checkbox away. And `latest` is the tag the update check reads, so moving it
