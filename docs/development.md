@@ -43,6 +43,11 @@ Keep jsdom on `~30.0.1` for now: 30.1.2 breaks the Blob/object-URL path used by
 the Mermaid raster export tests (`Cannot read properties of undefined (reading
 '_buffer')`). Revisit this pin with those tests and the running-app export checks.
 
+Keep the direct TypeBox dependency at 1.3.18 until its generated validators and
+diagnostics can be migrated together. The 1.3.37 update changes both emitted
+validator code and the paths reported for invalid input; the existing contract
+tests intentionally check those details.
+
 The root `overrides` move `rehype-katex` and `micromark-extension-math` onto
 KaTeX 0.18 to avoid the prototype-pollution trust bypass in older KaTeX releases
 ([GHSA-238p-pmpm-9mq7](https://github.com/advisories/GHSA-238p-pmpm-9mq7)).
