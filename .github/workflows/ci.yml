@@ -139,7 +139,7 @@ jobs:
     # a browser older or newer than the client that drives it fails at launch, and
     # fails confusingly. The step below refuses the job when the two drift apart.
     container:
-      image: mcr.microsoft.com/playwright:v1.62.1-noble
+      image: mcr.microsoft.com/playwright:v1.64.1-noble
     steps:
       - name: Install build tools for native addons
         run: apt-get update && apt-get install -y build-essential

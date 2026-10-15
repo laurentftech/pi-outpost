@@ -40,8 +40,17 @@
     "check:export-chunk": "node scripts/check-export-chunk.mjs"
   },
   "devDependencies": {
-    "@playwright/test": "^1.61.1",
+    "@playwright/test": "^1.64.1",
+    "jsdom": "~30.0.1",
     "concurrently": "^10.0.6"
+  },
+  "overrides": {
+    "rehype-katex": {
+      "katex": "^0.18.10"
+    },
+    "micromark-extension-math": {
+      "katex": "^0.18.10"
+    }
   },
   "allowScripts": {
     "node-pty@1.1.0": true
