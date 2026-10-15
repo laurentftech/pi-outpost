@@ -142,13 +142,18 @@ jobs:
       image: mcr.microsoft.com/playwright:v1.64.1-noble
     steps:
       - name: Install build tools for native addons
-        run: apt-get update && apt-get install -y build-essential
+        run: apt-get update && apt-get install -y build-essential python3
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
         with:
           node-version: 24
           cache: npm
-      - run: npm ci
+      # node-pty is optional for users, but this job must exercise the terminal.
+      # Keep native build failures visible instead of discovering missing types
+      # in the subsequent TypeScript build.
+      - run: npm ci --foreground-scripts
+      - name: Native terminal binding loads
+        run: node -e "require('node-pty')"
       - name: The image must carry the Playwright this repo installs
         run: |
           image=$(grep -om1 'mcr.microsoft.com/playwright:v[0-9.]*' .github/workflows/ci.yml | sed 's/.*:v//')

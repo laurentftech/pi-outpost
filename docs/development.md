@@ -39,6 +39,11 @@ Regenerate `package-lock.json` with npm 11 when changing dependencies. Keep the
 Playwright container tag in `.github/workflows/ci.yml` aligned with the locked
 `@playwright/test` version.
 
+The browser CI container needs both `build-essential` and `python3` to compile
+`node-pty` on Linux. Its install step shows lifecycle output and checks that the
+native terminal binding loads before building: npm can silently omit this optional
+dependency when compilation fails.
+
 Keep jsdom on `~30.0.1` for now: 30.1.2 breaks the Blob/object-URL path used by
 the Mermaid raster export tests (`Cannot read properties of undefined (reading
 '_buffer')`). Revisit this pin with those tests and the running-app export checks.
