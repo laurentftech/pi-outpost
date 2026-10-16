@@ -16,8 +16,9 @@
  * It never sends a message on the reader's behalf (`ui/message`): a click is not consent
  * to say anything.
  *
- * In a dark host the timeline stays a light card, as it is drawn in pi-outpost: readable,
- * and the same figure the person would export.
+ * The card follows the host's theme, which the host states in its context and changes
+ * live: in a dark host the timeline is drawn in its night colours, as pi-outpost draws it
+ * on a dark page. What "Download SVG" saves is the light figure whatever the theme.
  */
 import { Component, StrictMode, useEffect, useState, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
@@ -93,21 +94,21 @@ function PlanningList({ listed, locale, onOpen }: { listed: ListedPlannings; loc
   };
   return (
     <div className="px-3 py-2 text-sm" data-testid="planning-list">
-      <p className="mb-2 text-neutral-500" title={listed.folder}>
-        Folder <span className="font-medium text-neutral-800">{folderName(listed.folder)}</span> · {listed.plannings.length}{" "}
+      <p className="mb-2 text-neutral-500 dark:text-zinc-400" title={listed.folder}>
+        Folder <span className="font-medium text-neutral-800 dark:text-zinc-100">{folderName(listed.folder)}</span> · {listed.plannings.length}{" "}
         {listed.plannings.length === 1 ? "planning" : "plannings"}
       </p>
       {listed.plannings.length === 0 ? (
-        <p className="text-neutral-500">No planning yet: ask for one.</p>
+        <p className="text-neutral-500 dark:text-zinc-400">No planning yet: ask for one.</p>
       ) : (
-        <ul className="divide-y divide-neutral-200">
+        <ul className="divide-y divide-neutral-200 dark:divide-zinc-700">
           {listed.plannings.map((planning) => (
             <li key={planning.id} data-planning={planning.id}>
-              <button type="button" className="flex w-full items-baseline gap-3 py-1.5 text-left hover:bg-neutral-50" onClick={() => onOpen(planning.id)}>
+              <button type="button" className="flex w-full items-baseline gap-3 py-1.5 text-left hover:bg-neutral-50 dark:hover:bg-zinc-800" onClick={() => onOpen(planning.id)}>
                 <span className="font-medium">{planning.title}</span>
-                <span className="text-xs text-neutral-500">revision {planning.revision}</span>
-                {planning.unreadable !== undefined && <span className="text-xs text-red-700">unreadable file</span>}
-                <span className="ml-auto truncate text-xs text-neutral-500" title={planning.file}>
+                <span className="text-xs text-neutral-500 dark:text-zinc-400">revision {planning.revision}</span>
+                {planning.unreadable !== undefined && <span className="text-xs text-red-700 dark:text-red-400">unreadable file</span>}
+                <span className="ml-auto truncate text-xs text-neutral-500 dark:text-zinc-400" title={planning.file}>
                   {planning.file} · {when(planning.updated)}
                 </span>
               </button>
@@ -143,8 +144,11 @@ function PlanningApp() {
   }, [app]);
 
   useEffect(() => {
-    // The page itself follows the host, so nothing glares around the card.
-    document.documentElement.dataset.hostTheme = context?.theme === "dark" ? "dark" : "light";
+    // On the root, so the colour scheme the figures' night colours resolve against
+    // follows the host as well as the classes do.
+    const theme = context?.theme === "dark" ? "dark" : "light";
+    document.documentElement.dataset.hostTheme = theme;
+    document.documentElement.dataset.theme = theme;
   }, [context?.theme]);
 
   if (error) return <p className="p-2 text-sm">This planning could not be drawn: {error.message}</p>;
@@ -156,7 +160,7 @@ function PlanningApp() {
   const fullscreenButton = canFullscreen && (
     <button
       type="button"
-      className="ml-auto rounded border border-neutral-300 px-2 py-0.5 text-xs hover:bg-neutral-100"
+      className="ml-auto rounded border border-neutral-300 px-2 py-0.5 text-xs hover:bg-neutral-100 dark:border-zinc-700 dark:hover:bg-zinc-800"
       onClick={() => void app.requestDisplayMode({ mode: fullscreen ? "inline" : "fullscreen" }).catch(() => undefined)}
     >
       {fullscreen ? "Exit full screen" : "Full screen"}
@@ -177,9 +181,9 @@ function PlanningApp() {
   if (shown.mode === "list") {
     const { listed } = shown;
     return (
-      <div className="planning-card rounded-lg bg-white text-neutral-900" data-theme="light">
+      <div className="planning-card rounded-lg bg-white text-neutral-900 dark:bg-zinc-900 dark:text-zinc-100">
         <div className="flex items-center gap-2 px-3 pt-2 text-sm">
-          {opening !== undefined && <span className="text-neutral-500">Opening…</span>}
+          {opening !== undefined && <span className="text-neutral-500 dark:text-zinc-400">Opening…</span>}
           {fullscreenButton}
         </div>
         <PlanningList listed={listed} locale={context?.locale} onOpen={(id) => void open(listed, id)} />
@@ -189,15 +193,15 @@ function PlanningApp() {
 
   const { planning, fromList } = shown;
   return (
-    <div className="planning-card rounded-lg bg-white text-neutral-900" data-theme="light">
+    <div className="planning-card rounded-lg bg-white text-neutral-900 dark:bg-zinc-900 dark:text-zinc-100">
       <div className="flex items-center gap-2 px-3 pt-2 text-sm">
         {fromList && (
-          <button type="button" className="text-neutral-600 underline" onClick={() => setShown({ mode: "list", listed: fromList })}>
+          <button type="button" className="text-neutral-600 underline dark:text-zinc-300" onClick={() => setShown({ mode: "list", listed: fromList })}>
             ← All plannings
           </button>
         )}
         {/* No title here: the timeline draws its own. */}
-        <span className="text-neutral-500">
+        <span className="text-neutral-500 dark:text-zinc-400">
           revision {planning.revision}
           {planning.comparedWith !== undefined ? ` · compared with revision ${planning.comparedWith}` : ""}
         </span>

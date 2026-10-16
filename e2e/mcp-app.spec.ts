@@ -166,25 +166,90 @@ test("full screen is asked of the host", async ({ page }) => {
   await expect(frame.getByRole("button", { name: "Exit full screen" })).toBeVisible();
 });
 
-test("a dark host context keeps the timeline readable", async ({ page }) => {
-  const id = await createPlanning("Dark planning");
-  const frame = await show(page, { id }, "dark");
-  expect(await frame.evaluate(() => document.documentElement.dataset.hostTheme)).toBe("dark");
-  const card = await frame.evaluate(() => {
+/** The card's background, a task label's colour and the timeline's ground, as RGB. */
+async function cardColours(frame: Frame) {
+  return frame.evaluate(() => {
     // Tailwind's colours compute as oklch(): paint each one to read it back as RGB.
     const rgb = (color: string) => {
       const context = document.createElement("canvas").getContext("2d")!;
       context.fillStyle = color;
       context.fillRect(0, 0, 1, 1);
-      return [...context.getImageData(0, 0, 1, 1).data.slice(0, 3)];
+      return Array.from(context.getImageData(0, 0, 1, 1).data.slice(0, 3));
     };
-    const element = document.querySelector(".planning-card")!;
+    const card = document.querySelector(".planning-card")!;
     const label = document.querySelector('[data-testid="timeline-task-label"]')!;
-    return { background: rgb(getComputedStyle(element).backgroundColor), text: rgb(getComputedStyle(label).color) };
+    const ground = [...document.querySelectorAll('[data-testid="timeline-body"] rect')].find((rect) => rect.getAttribute("fill") === "#ffffff")!;
+    return {
+      background: rgb(getComputedStyle(card).backgroundColor),
+      text: rgb(getComputedStyle(label).color),
+      ground: rgb(getComputedStyle(ground).fill),
+    };
   });
-  expect(card.background).toEqual([255, 255, 255]);
-  // Dark text on the light card.
-  for (const channel of card.text) expect(channel).toBeLessThan(110);
+}
+
+const dark = (rgb: number[]) => rgb.every((channel) => channel < 60);
+const light = (rgb: number[]) => rgb.every((channel) => channel > 200);
+
+// openlore: scenario=AViewFollowsADarkHost spec=mcp-planning-app
+test("AViewFollowsADarkHost: the card and the timeline take the host's dark theme", async ({ page }) => {
+  const id = await createPlanning("Dark planning");
+  const frame = await show(page, { id }, "dark");
+  expect(await frame.evaluate(() => document.documentElement.dataset.hostTheme)).toBe("dark");
+  const colours = await cardColours(frame);
+  expect(dark(colours.background), `card ${colours.background}`).toBe(true);
+  expect(dark(colours.ground), `ground ${colours.ground}`).toBe(true);
+  expect(light(colours.text), `label ${colours.text}`).toBe(true);
+  await page.screenshot({ path: test.info().outputPath("dark-planning.png") });
+});
+
+// openlore: scenario=AListFollowsADarkHost spec=mcp-planning-app
+test("AListFollowsADarkHost: the plannings list is readable on the host's dark theme", async ({ page }) => {
+  await createPlanning("Listed in the dark");
+  const frame = await show(page, {}, "dark", false, "list_plannings");
+  const colours = await frame.evaluate(() => {
+    const rgb = (color: string) => {
+      const context = document.createElement("canvas").getContext("2d")!;
+      context.fillStyle = color;
+      context.fillRect(0, 0, 1, 1);
+      return Array.from(context.getImageData(0, 0, 1, 1).data.slice(0, 3));
+    };
+    const title = document.querySelector("[data-planning] button span")!;
+    return { background: rgb(getComputedStyle(document.querySelector(".planning-card")!).backgroundColor), title: rgb(getComputedStyle(title).color) };
+  });
+  await page.screenshot({ path: test.info().outputPath("dark-list.png") });
+  expect(dark(colours.background), `card ${colours.background}`).toBe(true);
+  expect(light(colours.title), `title ${colours.title}`).toBe(true);
+});
+
+// openlore: scenario=AViewFollowsALightHost spec=mcp-planning-app
+test("AViewFollowsALightHost: the card and the timeline stay light", async ({ page }) => {
+  const id = await createPlanning("Light planning");
+  const frame = await show(page, { id }, "light");
+  const colours = await cardColours(frame);
+  expect(colours.background).toEqual([255, 255, 255]);
+  expect(colours.ground).toEqual([255, 255, 255]);
+  for (const channel of colours.text) expect(channel).toBeLessThan(110);
+});
+
+// openlore: scenario=AViewFollowsAThemeSwitchedLive spec=mcp-planning-app
+test("AViewFollowsAThemeSwitchedLive: the host changes theme while the planning is open", async ({ page }) => {
+  const id = await createPlanning("Switched planning");
+  const frame = await show(page, { id }, "light");
+  await page.evaluate(() => window.setHostTheme("dark"));
+  await expect.poll(async () => dark((await cardColours(frame)).ground)).toBe(true);
+  await page.evaluate(() => window.setHostTheme("light"));
+  await expect.poll(async () => (await cardColours(frame)).ground).toEqual([255, 255, 255]);
+});
+
+// openlore: scenario=ADownloadFromADarkHostIsTheLightFigure spec=mcp-planning-app
+test("ADownloadFromADarkHostIsTheLightFigure: Download SVG keeps the day colours", async ({ page }) => {
+  const id = await createPlanning("Dark export");
+  const frame = await show(page, { id }, "dark");
+  await frame.getByTestId("timeline-download-svg").click();
+  await expect(frame.getByRole("status")).toHaveText('Saved in your plannings folder as "timeline-Dark-export.svg"');
+  const saved = await fs.readFile(path.join(folder, "timeline-Dark-export.svg"), "utf8");
+  expect(saved).toContain('fill="#ffffff"');
+  expect(saved).not.toContain("light-dark");
 });
 
 test("Download SVG saves the figure in the plannings folder when the host cannot download", async ({ page }) => {
