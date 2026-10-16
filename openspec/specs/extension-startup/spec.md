@@ -46,3 +46,14 @@ message there since.
 - **GIVEN** a message shown as waiting for extensions to start, and the user has typed another message in the composer
 - **WHEN** the user presses cancel
 - **THEN** the client sends abort and the composer keeps what the user typed
+
+### Requirement: AQuestionAskedWhileASessionStartsIsShown
+
+A question an extension asks while a new session starts SHALL reach every client of the project
+after the snapshot announcing that session, whatever the order in which the binding and the
+announcement happen. Questions of the replaced session, cancelled with it, SHALL NOT be shown again.
+
+#### Scenario: ANewSessionsStartQuestionReachesTheClient
+- **GIVEN** an extension asking a question in every `session_start`, and the first session's question answered
+- **WHEN** the client starts a new session
+- **THEN** the new session's question arrives after `session_replaced`, the answered one is not sent again, and once it is answered the client is told the extensions have started
