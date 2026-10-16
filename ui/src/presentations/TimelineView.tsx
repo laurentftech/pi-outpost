@@ -39,6 +39,7 @@ import {
 } from "@pi-outpost/shared/structured-exchange/timeline-figure";
 import { copyText } from "./copyText";
 import { Drawn, FigureMarkers, type Interaction } from "./figureDrawing";
+import { screenColour, screenPaint } from "./nightPaint";
 
 const EMPHASIS = "#2563eb";
 const NEUTRAL: Tint = { fill: "#e4e4e7", stroke: "#52525b" };
@@ -306,6 +307,7 @@ export function TimelineView({
                 stroke={EMPHASIS}
                 strokeWidth={1.5}
                 strokeDasharray="3 2"
+                style={screenPaint({ stroke: EMPHASIS })}
               />
             )}
           </>
@@ -389,44 +391,44 @@ export function TimelineView({
   return (
     <div
       data-testid="timeline"
-      className="w-full min-w-0 rounded border border-zinc-200 bg-white text-zinc-800 dark:border-zinc-700"
+      className="w-full min-w-0 rounded border border-zinc-200 bg-white text-zinc-800 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100"
       onKeyDown={(event) => {
         if (event.key === "Escape") setSelected(undefined);
       }}
     >
       {data.title !== undefined && data.title !== "" && (
-        <p className="border-b border-zinc-200 px-2 py-1 text-sm font-medium" data-testid="timeline-title">
+        <p className="border-b border-zinc-200 px-2 py-1 text-sm font-medium dark:border-zinc-700" data-testid="timeline-title">
           {data.title}
         </p>
       )}
       {isComparison && comparison === "compare" && (
-        <p className="border-b border-zinc-200 px-2 py-0.5 text-xs text-zinc-500" data-testid="timeline-compared-to">
-          Compared with <span className="font-medium text-zinc-700">{plan.comparedTo!.label}</span>
+        <p className="border-b border-zinc-200 px-2 py-0.5 text-xs text-zinc-500 dark:border-zinc-700 dark:text-zinc-400" data-testid="timeline-compared-to">
+          Compared with <span className="font-medium text-zinc-700 dark:text-zinc-200">{plan.comparedTo!.label}</span>
           {plan.comparedTo!.date === undefined ? "" : ` (${plan.comparedTo!.date})`}
         </p>
       )}
       <div className="flex">
         {/* The labels, outside the scrolled area: they stay in view however far the
             reader scrolls the time axis. */}
-        <div className="shrink-0 border-r border-zinc-200 text-xs" style={{ width: labelWidth }} data-testid="timeline-labels">
+        <div className="shrink-0 border-r border-zinc-200 text-xs dark:border-zinc-700" style={{ width: labelWidth }} data-testid="timeline-labels">
           <div style={{ height: TIMELINE_HEADER_HEIGHT }} />
           {laid.rows.map((row) =>
             row.type === "section" ? (
               <div
                 key={row.row}
                 data-testid="timeline-section-label"
-                className="flex items-center border-t border-zinc-400 px-2 font-semibold text-zinc-600"
+                className="flex items-center border-t border-zinc-400 px-2 font-semibold text-zinc-600 dark:border-zinc-600 dark:text-zinc-300"
                 style={{ height: row.height }}
                 title={`${row.label ?? "Untitled section"}: ${row.tasks.length} ${row.tasks.length === 1 ? "task" : "tasks"}`}
               >
                 <span className="truncate">{row.label ?? ""}</span>
-                <span className="ml-1 shrink-0 font-normal text-zinc-400">({row.tasks.length})</span>
+                <span className="ml-1 shrink-0 font-normal text-zinc-400 dark:text-zinc-500">({row.tasks.length})</span>
               </div>
             ) : row.type === "separator" ? (
               <div
                 key={row.row}
                 data-testid="timeline-separator-label"
-                className="flex items-end border-t border-zinc-400 px-2 font-semibold text-zinc-600"
+                className="flex items-end border-t border-zinc-400 px-2 font-semibold text-zinc-600 dark:border-zinc-600 dark:text-zinc-300"
                 style={{ height: row.height }}
               >
                 {row.label ?? ""}
@@ -438,8 +440,8 @@ export function TimelineView({
                 data-testid="timeline-task-label"
                 aria-pressed={selected?.type === "task" && selected.row === row.row}
                 className={
-                  "block w-full truncate border-t border-zinc-100 px-2 text-left hover:bg-zinc-50 " +
-                  (selected?.type === "task" && selected.row === row.row ? "bg-blue-50 font-medium" : "")
+                  "block w-full truncate border-t border-zinc-100 px-2 text-left hover:bg-zinc-50 dark:border-zinc-800 dark:hover:bg-zinc-800 " +
+                  (selected?.type === "task" && selected.row === row.row ? "bg-blue-50 font-medium dark:bg-blue-950/50" : "")
                 }
                 style={{ height: row.height }}
                 title={`${row.label} (${row.id})`}
@@ -487,8 +489,8 @@ export function TimelineView({
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-2 border-t border-zinc-200 px-2 py-1 text-xs">
-          <span className="flex items-center gap-1 text-zinc-500" role="group" aria-label="Scale" data-testid="timeline-scale">
+      <div className="flex flex-wrap items-center gap-2 border-t border-zinc-200 px-2 py-1 text-xs dark:border-zinc-700">
+          <span className="flex items-center gap-1 text-zinc-500 dark:text-zinc-400" role="group" aria-label="Scale" data-testid="timeline-scale">
             {SCALE_CHOICES.map((choice, index) => (
               <span key={choice} className="flex items-center gap-1">
                 {index > 0 && <span aria-hidden="true">·</span>}
@@ -496,7 +498,7 @@ export function TimelineView({
                   type="button"
                   data-scale={choice}
                   aria-pressed={scale === choice}
-                  className={scale === choice ? "font-semibold text-zinc-800" : "text-zinc-600 underline"}
+                  className={scale === choice ? "font-semibold text-zinc-800 dark:text-zinc-100" : "text-zinc-600 underline dark:text-zinc-300"}
                   onClick={() => chooseScale(choice)}
                 >
                   {choice}
@@ -509,7 +511,7 @@ export function TimelineView({
               type="button"
               data-testid="timeline-comparison-toggle"
               aria-pressed={comparison === "new"}
-              className="text-zinc-600 underline"
+              className="text-zinc-600 underline dark:text-zinc-300"
               onClick={() => {
                 // Rows differ between the two views; a selection names a row.
                 setSelected(undefined);
@@ -524,7 +526,7 @@ export function TimelineView({
               type="button"
               data-testid="timeline-only-changed-toggle"
               aria-pressed={onlyChanged}
-              className="text-zinc-600 underline"
+              className="text-zinc-600 underline dark:text-zinc-300"
               onClick={() => {
                 setSelected(undefined);
                 setOnlyChanged((on) => !on);
@@ -534,7 +536,7 @@ export function TimelineView({
             </button>
           )}
           {filtering && laid.hiddenTasks > 0 && (
-            <span className="text-amber-700" data-testid="timeline-unchanged-hidden">
+            <span className="text-amber-700 dark:text-amber-400" data-testid="timeline-unchanged-hidden">
               {laid.hiddenTasks} unchanged {laid.hiddenTasks === 1 ? "task" : "tasks"} hidden
             </span>
           )}
@@ -543,7 +545,7 @@ export function TimelineView({
               type="button"
               data-testid="timeline-compact-toggle"
               aria-pressed={compact}
-              className="text-zinc-600 underline"
+              className="text-zinc-600 underline dark:text-zinc-300"
               onClick={() => {
                 // A selected task label stops existing in the compact view; keep an item
                 // selection, which survives, and drop a task one rather than strand it.
@@ -559,7 +561,7 @@ export function TimelineView({
             type="button"
             data-testid="timeline-dependencies-toggle"
             aria-pressed={!showDependencies}
-            className="text-zinc-600 underline"
+            className="text-zinc-600 underline dark:text-zinc-300"
             onClick={() => setShowDependencies((shown) => !shown)}
           >
             {showDependencies ? "hide dependencies" : "show dependencies"}
@@ -568,31 +570,31 @@ export function TimelineView({
           {!showDependencies && (
             // Said while the reader looks: a plan drawn without its arrows reads as one
             // whose tasks are independent.
-            <span className="text-amber-700" data-testid="timeline-dependencies-hidden">
+            <span className="text-amber-700 dark:text-amber-400" data-testid="timeline-dependencies-hidden">
               {laid.dependencies.length} {laid.dependencies.length === 1 ? "dependency" : "dependencies"} hidden
               {laid.dependencies.some((arrow) => !arrow.satisfied) ? ", some not satisfied by the dates" : ""}
             </span>
           )}
           {/* Built from the figure, not the live drawing: what leaves is what the writer
               would produce for these options, with a dated line and no selection. */}
-          <button type="button" data-testid="timeline-download-svg" className="text-zinc-600 underline" onClick={() => void downloadFigure()}>
+          <button type="button" data-testid="timeline-download-svg" className="text-zinc-600 underline dark:text-zinc-300" onClick={() => void downloadFigure()}>
             ⤓ download SVG
           </button>
-          <button type="button" data-testid="timeline-copy-svg" className="text-zinc-600 underline" onClick={() => void copyFigure()}>
+          <button type="button" data-testid="timeline-copy-svg" className="text-zinc-600 underline dark:text-zinc-300" onClick={() => void copyFigure()}>
             copy markup
           </button>
           {copied !== null && (
-            <span role="status" className="text-emerald-700">
+            <span role="status" className="text-emerald-700 dark:text-emerald-400">
               {copied}
             </span>
           )}
         </div>
 
       {isComparison && comparison === "compare" && (
-        <p className="flex flex-wrap items-center gap-3 border-t border-zinc-200 px-2 py-1 text-xs text-zinc-500" data-testid="timeline-comparison-key">
+        <p className="flex flex-wrap items-center gap-3 border-t border-zinc-200 px-2 py-1 text-xs text-zinc-500 dark:border-zinc-700 dark:text-zinc-400" data-testid="timeline-comparison-key">
           <span className="flex items-center gap-1">
             <svg width={18} height={12} aria-hidden="true">
-              <rect x={1} y={2} width={16} height={8} rx={2} fill="none" stroke="#71717a" strokeDasharray="4 3" />
+              <rect x={1} y={2} width={16} height={8} rx={2} fill="none" stroke="#71717a" strokeDasharray="4 3" style={screenPaint({ stroke: "#71717a" })} />
             </svg>
             previous dates
           </span>
@@ -607,7 +609,7 @@ export function TimelineView({
 
       {(laid.periods.length > 0 || laid.references.length > 0) && (
         // Every period and reference by name and dates: the header names only those it has room for.
-        <ul className="flex flex-wrap gap-3 border-t border-zinc-200 px-2 py-1 text-xs text-zinc-600" data-testid="timeline-calendar-legend">
+        <ul className="flex flex-wrap gap-3 border-t border-zinc-200 px-2 py-1 text-xs text-zinc-600 dark:border-zinc-700 dark:text-zinc-300" data-testid="timeline-calendar-legend">
           {laid.periods.map((period) => {
             const declared = data.periods![period.index];
             return (
@@ -620,7 +622,7 @@ export function TimelineView({
                 <span
                   aria-hidden="true"
                   className="inline-block h-2.5 w-4 rounded-sm"
-                  style={{ background: period.kind === undefined ? "#a1a1aa" : tintOf(period.kind).stroke, opacity: 0.35 }}
+                  style={{ background: screenColour(period.kind === undefined ? "#a1a1aa" : tintOf(period.kind).stroke), opacity: 0.35 }}
                 />
                 {declared.label ?? "Period"}
               </li>
@@ -636,7 +638,7 @@ export function TimelineView({
               <span
                 aria-hidden="true"
                 className="inline-block h-3 border-l-2 border-dashed"
-                style={{ borderColor: marked.kind === undefined ? "#3f3f46" : tintOf(marked.kind).stroke }}
+                style={{ borderColor: screenColour(marked.kind === undefined ? "#3f3f46" : tintOf(marked.kind).stroke) }}
               />
               {marked.label}
             </li>
@@ -645,7 +647,7 @@ export function TimelineView({
       )}
 
       {laid.kinds.some((kind) => kindShapes.has(kind)) && (
-        <ul className="flex flex-wrap gap-3 border-t border-zinc-200 px-2 py-1 text-xs" data-testid="timeline-legend">
+        <ul className="flex flex-wrap gap-3 border-t border-zinc-200 px-2 py-1 text-xs dark:border-zinc-700" data-testid="timeline-legend">
           {laid.kinds.filter((kind) => kindShapes.has(kind)).map((kind) => {
             const tint = tintOf(kind);
             return (
@@ -670,24 +672,25 @@ export function TimelineView({
                       fill={tint.stroke}
                       fillOpacity={TIMELINE_BAR_FILL_OPACITY}
                       stroke={tint.stroke}
+                      style={screenPaint({ fill: tint.stroke, stroke: tint.stroke })}
                     />
                     {tint.hatch !== undefined &&
                       hatch(1, 2, 16, 8, tint.hatch, tint.stroke, 4, 0.8).map((line, index) =>
                         line.shape === "line" ? (
-                          <line key={index} x1={line.x1} y1={line.y1} x2={line.x2} y2={line.y2} stroke={line.stroke} strokeWidth={line.strokeWidth} opacity={line.opacity} />
+                          <line key={index} x1={line.x1} y1={line.y1} x2={line.x2} y2={line.y2} stroke={line.stroke} strokeWidth={line.strokeWidth} opacity={line.opacity} style={screenPaint({ stroke: line.stroke })} />
                         ) : null,
                       )}
                   </svg>
                 )}
                 {kindShapes.get(kind)?.milestone && (
                   <svg width={14} height={14} aria-hidden="true" data-testid="timeline-legend-star">
-                    <path d={starPath(7, 7, 6)} fill={tint.stroke} />
+                    <path d={starPath(7, 7, 6)} fill={tint.stroke} style={screenPaint({ fill: tint.stroke })} />
                   </svg>
                 )}
                 <span className="font-mono">{kind}</span>
                 {tint.declared === true && <span className="sr-only"> (project colour)</span>}
                 {sharedColours.has(kind) && (
-                  <span className="text-zinc-500" data-testid="timeline-legend-shared">
+                  <span className="text-zinc-500 dark:text-zinc-400" data-testid="timeline-legend-shared">
                     (same colour as {sharedColours.get(kind)!.join(", ")})
                   </span>
                 )}
@@ -725,33 +728,33 @@ function TimelineDetails({
     </li>
   );
   return (
-    <div className="border-t border-zinc-200 px-2 py-1 text-xs" data-testid="timeline-details" role="status">
+    <div className="border-t border-zinc-200 px-2 py-1 text-xs dark:border-zinc-700" data-testid="timeline-details" role="status">
       <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5">
-        <dt className="text-zinc-500">Task</dt>
+        <dt className="text-zinc-500 dark:text-zinc-400">Task</dt>
         <dd>
-          {task.label} <span className="font-mono text-zinc-500">({task.id})</span>
+          {task.label} <span className="font-mono text-zinc-500 dark:text-zinc-400">({task.id})</span>
         </dd>
         {item !== undefined && (
           <>
-            <dt className="text-zinc-500">Type</dt>
+            <dt className="text-zinc-500 dark:text-zinc-400">Type</dt>
             <dd>{item.type}</dd>
-            <dt className="text-zinc-500">{item.type === "activity" ? "Dates" : "Date"}</dt>
+            <dt className="text-zinc-500 dark:text-zinc-400">{item.type === "activity" ? "Dates" : "Date"}</dt>
             <dd className="font-mono">{datesOf(item)}</dd>
             {item.label !== undefined && (
               <>
-                <dt className="text-zinc-500">Label</dt>
+                <dt className="text-zinc-500 dark:text-zinc-400">Label</dt>
                 <dd>{item.label}</dd>
               </>
             )}
             {item.kind !== undefined && (
               <>
-                <dt className="text-zinc-500">Kind</dt>
+                <dt className="text-zinc-500 dark:text-zinc-400">Kind</dt>
                 <dd className="font-mono">{item.kind}</dd>
               </>
             )}
             {item.id !== undefined && (
               <>
-                <dt className="text-zinc-500">Identifier</dt>
+                <dt className="text-zinc-500 dark:text-zinc-400">Identifier</dt>
                 <dd className="font-mono">{item.id}</dd>
               </>
             )}
@@ -759,7 +762,7 @@ function TimelineDetails({
         )}
         {predecessors.length > 0 && (
           <>
-            <dt className="text-zinc-500">Waits on</dt>
+            <dt className="text-zinc-500 dark:text-zinc-400">Waits on</dt>
             <dd>
               <ul data-testid="timeline-predecessors">{predecessors.map((arrow) => line(arrow, arrow.from))}</ul>
             </dd>
@@ -767,7 +770,7 @@ function TimelineDetails({
         )}
         {successors.length > 0 && (
           <>
-            <dt className="text-zinc-500">Needed by</dt>
+            <dt className="text-zinc-500 dark:text-zinc-400">Needed by</dt>
             <dd>
               <ul data-testid="timeline-successors">{successors.map((arrow) => line(arrow, arrow.to))}</ul>
             </dd>

@@ -46,6 +46,7 @@ import { downloadCsv, downloadMarkdown, downloadXlsx, tableExport, tableMarkdown
 import { DIAGRAM_ACTION, DIAGRAM_ACTIONS } from "../components/diagramControls";
 import { initialTimelineDisplay, TimelineView, type TimelineDisplay } from "./TimelineView";
 import { Drawn, FigureMarkers } from "./figureDrawing";
+import { screenPaint } from "./nightPaint";
 import { StructuredAppearanceContext } from "./structuredAppearance";
 import { timelineTextLines } from "@pi-outpost/shared/structured-exchange/timeline";
 import type { ActionDispatch, PresentationProps, ToolItem } from "./types";
@@ -395,6 +396,7 @@ function GraphView({
           width={figure.width}
           height={figure.height}
           fill={figure.background}
+          style={screenPaint({ fill: figure.background })}
         />
         <FigureMarkers markers={figure.markers} />
         {figure.groups.map((group) => (
@@ -433,7 +435,7 @@ function SequenceView({ data, isProposal }: { data: StructuredSequenceData; isPr
         height={figure.height}
         xmlns="http://www.w3.org/2000/svg"
       >
-        <rect x={0} y={0} width={figure.width} height={figure.height} fill={figure.background} />
+        <rect x={0} y={0} width={figure.width} height={figure.height} fill={figure.background} style={screenPaint({ fill: figure.background })} />
         <FigureMarkers markers={figure.markers} />
         {figure.groups.map((group) => (
           <Drawn
@@ -466,6 +468,20 @@ const ROW_ROLE_STYLE: Record<StructuredTableRowRole, string> = {
   changed: "bg-amber-50 dark:bg-amber-950/40",
   context: "bg-zinc-50 text-zinc-500 dark:bg-zinc-900/60 dark:text-zinc-400",
   removed: "bg-red-50 text-red-800 dark:bg-red-950/40 dark:text-red-200",
+};
+
+/**
+ * A role's swatch in the table's key: the row's tint, outlined in the role's own colour.
+ *
+ * The tint alone was the swatch once, and a pastel the size of a letter is not a colour
+ * anyone can name — nor, in the dark theme, any colour at all, since only its light
+ * class was taken. Outlined, it reads as the diagram's key does: pale fill, strong edge.
+ */
+const ROLE_KEY_STYLE: Record<StructuredTableRowRole, string> = {
+  added: "border-emerald-600 bg-emerald-100 dark:border-emerald-400 dark:bg-emerald-900",
+  changed: "border-amber-600 bg-amber-100 dark:border-amber-400 dark:bg-amber-900",
+  context: "border-zinc-400 bg-zinc-100 dark:border-zinc-500 dark:bg-zinc-800",
+  removed: "border-red-600 bg-red-100 dark:border-red-400 dark:bg-red-900",
 };
 
 /** Narrow enough to be a column still, wide enough to grab again. */
@@ -810,7 +826,7 @@ function TableView({
                   off ? "opacity-50" : ""
                 }`}
               >
-                <span className={`inline-block h-2.5 w-2.5 rounded-sm ${ROW_ROLE_STYLE[role].split(" ")[0]}`} />
+                <span data-role-swatch={role} className={`inline-block h-3 w-3 rounded-sm border-2 ${ROLE_KEY_STYLE[role]}`} />
                 <span>
                   {TABLE_ROLE_LABEL[role]}
                   {off ? " (hidden)" : ""}
@@ -1380,7 +1396,8 @@ export function StructuredExchangeDocument({ envelope, source, rawOutput, dispat
    * pointer can actually hit, because a one-pixel line and a ten-pixel swatch are
    * not targets. Both ride along into a serialized figure where there is no
    * pointer and nothing to drag — harmless to look at, and still wrong to put in a
-   * file someone inserts into a document.
+   * file someone inserts into a document. And every shape carries its night colour
+   * as a style the page's theme resolves; a file takes the day colours underneath.
    *
    * Taken from the live tree rather than recomputed, because what leaves has to be
    * what the reader arranged: the boxes they dragged are in these positions and in
@@ -1392,6 +1409,10 @@ export function StructuredExchangeDocument({ envelope, source, rawOutput, dispat
     for (const element of [clean, ...clean.querySelectorAll<SVGElement>("[style]")]) {
       element.style.removeProperty("cursor");
       element.style.removeProperty("touch-action");
+      // The screen's theme, not the figure's: the attributes underneath are the colours
+      // a file carries, so what leaves is the same picture whichever theme it left from.
+      element.style.removeProperty("fill");
+      element.style.removeProperty("stroke");
       if (element.getAttribute("style") === "") element.removeAttribute("style");
     }
     return clean;

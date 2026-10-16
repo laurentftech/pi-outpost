@@ -231,7 +231,10 @@ with a raster fallback. That path does not cover structured-exchange documents, 
 this section is about.)
 
 The markup stands on its own. Boxes are `rect` and `text` with colours as attributes
-and an explicit white ground, so what lands in the document is what was on screen. An
+and an explicit white ground, so what lands in the document is what was on screen in the
+light theme. In the dark theme the viewer paints each colour's night counterpart over those
+attributes, as a Mermaid diagram follows the theme, and the file still leaves with the light
+figure. An
 earlier version drew them as HTML inside `foreignObject`, which looks identical in the
 browser and loses everything the moment it is serialized.
 

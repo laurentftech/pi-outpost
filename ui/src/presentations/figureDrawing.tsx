@@ -6,6 +6,7 @@
  * serializer writes, and add only what a pointer needs.
  */
 import type { FigureGroup, FigureMarker, Primitive } from "@pi-outpost/shared/structured-exchange/figure";
+import { screenPaint } from "./nightPaint";
 
 /**
  * One shape, as an element.
@@ -34,6 +35,7 @@ export function Shape({ primitive }: { primitive: Primitive }) {
           strokeWidth={primitive.strokeWidth}
           strokeDasharray={primitive.strokeDasharray}
           opacity={primitive.opacity}
+          style={screenPaint(primitive)}
         />
       );
     case "text": {
@@ -68,6 +70,7 @@ export function Shape({ primitive }: { primitive: Primitive }) {
           strokeWidth={haloed ? undefined : primitive.strokeWidth}
           textDecoration={primitive.textDecoration}
           opacity={primitive.opacity}
+          style={screenPaint({ fill: primitive.fill, stroke: haloed ? undefined : primitive.stroke })}
         >
           {content}
         </text>
@@ -83,6 +86,7 @@ export function Shape({ primitive }: { primitive: Primitive }) {
             stroke={primitive.stroke}
             strokeWidth={primitive.strokeWidth}
             opacity={primitive.opacity}
+            style={screenPaint({ fill: primitive.stroke, stroke: primitive.stroke })}
             aria-hidden="true"
           >
             {content}
@@ -104,6 +108,7 @@ export function Shape({ primitive }: { primitive: Primitive }) {
           strokeDasharray={primitive.strokeDasharray}
           opacity={primitive.opacity}
           markerEnd={primitive.markerEnd === undefined ? undefined : `url(#${primitive.markerEnd})`}
+          style={screenPaint(primitive)}
         />
       );
     case "path":
@@ -119,6 +124,7 @@ export function Shape({ primitive }: { primitive: Primitive }) {
           opacity={primitive.opacity}
           markerEnd={primitive.markerEnd === undefined ? undefined : `url(#${primitive.markerEnd})`}
           pointerEvents="none"
+          style={screenPaint(primitive)}
         />
       );
   }
@@ -175,7 +181,7 @@ export function FigureMarkers({ markers }: { markers: FigureMarker[] }) {
           markerUnits="userSpaceOnUse"
           orient="auto"
         >
-          <path d="M0,0 L10,5 L0,10 z" fill={marker.paint} />
+          <path d="M0,0 L10,5 L0,10 z" fill={marker.paint} style={screenPaint({ fill: marker.paint })} />
         </marker>
       ))}
     </defs>
