@@ -139,3 +139,32 @@ test("ATableIsDownloadedFromTheEmbed: the shared Markdown export, from the sandb
   expect(markdown).toBe(expected);
   expect(download.suggestedFilename()).toMatch(/\.md$/);
 });
+
+/**
+ * The embed has no theme of its own to read — Open WebUI frames it without same-origin —
+ * so it follows the reader's system preference, and the figures follow the embed.
+ */
+test("AFigureFollowsTheDarkTheme in Open WebUI: the embed's figures and table key turn with the reader's preference", async ({ page }) => {
+  const painted = (frame: Frame, selector: string) =>
+    frame.locator(selector).first().evaluate((svg) => {
+      const ground = [...svg.querySelectorAll("rect")].find((rect) => rect.getAttribute("fill") === "#ffffff")!;
+      return { declared: ground.getAttribute("fill"), painted: getComputedStyle(ground).fill };
+    });
+  for (const scheme of ["dark", "light"] as const) {
+    await page.emulateMedia({ colorScheme: scheme });
+    const expected = scheme === "dark" ? "rgb(24, 24, 24)" : "rgb(255, 255, 255)";
+
+    let { frame } = await show(page, validated(conformance("graph-with-typed-relationship.json")));
+    expect(await painted(frame, 'svg[aria-label^="Graph of"]'), `graph ${scheme}`).toEqual({ declared: "#ffffff", painted: expected });
+
+    ({ frame } = await show(page, validated(conformance("v3-timeline-programme.json"))));
+    expect(await painted(frame, '[data-testid="timeline-body"]'), `timeline ${scheme}`).toEqual({ declared: "#ffffff", painted: expected });
+
+    ({ frame } = await show(page, validated(conformance("table-rows-with-roles.json"))));
+    const swatches = await frame.locator("[data-role-swatch]").evaluateAll((all) =>
+      all.map((swatch) => getComputedStyle(swatch).borderTopColor),
+    );
+    expect(swatches.length, `table key ${scheme}`).toBeGreaterThan(1);
+    expect(new Set(swatches).size, `table key ${scheme}`).toBe(swatches.length);
+  }
+});

@@ -12,9 +12,11 @@ import type { ChangeRole } from "./structuredExchangeModel.ts";
  * Explicit colours, and a ground to sit on.
  *
  * Attributes rather than classes, because a copied SVG carries its attributes and
- * leaves its stylesheet behind. One palette serves both themes: the diagram is a
- * figure with its own white ground, the way an exported chart is, rather than
- * something that changes with the page around it.
+ * leaves its stylesheet behind. These are the day colours, the ones a file carries:
+ * a figure with its own white ground, the way an exported chart is. On a dark page the
+ * browser paints each one's night counterpart over them (`ui/src/presentations/
+ * nightPaint.ts`), the way a Mermaid diagram follows the theme, and a download still
+ * leaves with these.
  */
 export const PAPER = "#ffffff";
 export const INK = "#27272a";
