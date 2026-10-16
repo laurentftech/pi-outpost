@@ -19,6 +19,8 @@ declare global {
     hostLog: HostLogEntry[];
     relayToolCall: (params: unknown) => Promise<CallToolResult>;
     startHost: (options: { html: string; toolInput: Record<string, unknown>; toolResult: CallToolResult; theme: "light" | "dark"; downloadFile?: boolean }) => Promise<void>;
+    /** The reader switches the host's theme while the view is open. */
+    setHostTheme: (theme: "light" | "dark") => void;
   }
 }
 
@@ -73,6 +75,7 @@ window.startHost = async ({ html, toolInput, toolResult, theme, downloadFile }) 
   await bridge.connect(new PostMessageTransport(iframe.contentWindow!, iframe.contentWindow!));
   iframe.srcdoc = html;
   await initialized;
+  window.setHostTheme = (next) => void bridge.sendHostContextChange({ theme: next });
   await bridge.sendToolInput({ arguments: toolInput });
   await bridge.sendToolResult(toolResult);
 };
