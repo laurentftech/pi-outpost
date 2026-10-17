@@ -80,7 +80,7 @@ grants) launches in about 0.3 s.
 
 ### 6. MXC — Microsoft eXecution Containers
 
-`microsoft/mxc` (MIT, SDK `@microsoft/mxc-sdk` 1.0.0, Node ≥ 24; executor `wxc-exec.exe` taking a JSON
+`microsoft/mxc` (MIT, SDK `@microsoft/mxc-sdk` 1.0.1, Node ≥ 24; executor `wxc-exec.exe` taking a JSON
 request). Backend `processcontainer` picks the strongest tier the host supports:
 1. **BaseContainer** — `Experimental_CreateProcessInSandbox` in `processmodel.dll`; the OS applies the
    policy itself. Windows 11 24H2/25H2 with the August 2026 update or later (26100/26200.9278+).
@@ -235,7 +235,8 @@ git 2.39, which read a mounted repository without complaint.
 
 - **The session name.** Without `containerId`, MXC names the WSLC session `CLI`, which WSL refuses:
   `WslcCreateSession failed: HRESULT 0x80040608`, `WSLC_E_INVALID_SESSION_NAME`. Any lowercase
-  alphanumeric id works. Reported as microsoft/mxc#1484.
+  alphanumeric id works. Reported as microsoft/mxc#1484, fixed in mxc-sdk 1.0.1 (the same request now
+  runs); pi-outpost still names every run, so parallel calls never share a session.
 - **The image store** defaults to `%TEMP%\mxc-wslc-sessions` — of the executor's environment, so under a
   confined environment whose `TEMP` is per command, every command pulls the image again (35 s). Fixed
   with `wslc.storagePath`.
@@ -333,5 +334,5 @@ All in `scripts/probes/`, each with a header saying what it shows and how to run
 - microsoft/mxc#1464 — `GetFinalPathNameByHandleW(VOLUME_NAME_DOS)` fails under `BaseContainer`: git's
   cwd, Node's `realpath.native` (ours, open).
 - microsoft/mxc#1484 — a one-shot `wslc` run without `containerId` is named `CLI`, which WSL refuses
-  (ours, open).
+  (ours, closed: fixed in 1.0.1).
 - buhuikongpan/dsh-win-gitbash#10 — Git Bash under a restricted token: named objects, then the signal pipe.

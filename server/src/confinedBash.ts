@@ -218,8 +218,9 @@ export function wslcPath(windowsPath: string): string {
  * or nothing; and the network is all or nothing — bridged with the host's loopback, or
  * isolated. Bridged here: git and package managers need it.
  *
- * Every run needs its own container name: without one MXC names the session `CLI`,
- * which WSLC refuses (`WSLC_E_INVALID_SESSION_NAME`, microsoft/mxc#1484).
+ * Every run gets its own container name, so a turn's parallel calls never share a session.
+ * Before mxc-sdk 1.0.1 it was also required: without one MXC named the session `CLI`, which
+ * WSLC refused (`WSLC_E_INVALID_SESSION_NAME`, microsoft/mxc#1484).
  */
 export function mxcWslcConfig(input: {
   image: string;
