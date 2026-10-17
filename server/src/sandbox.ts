@@ -355,6 +355,10 @@ export async function createSandboxedTools(
       : createBashToolDefinition(realRoot, operations ? { operations } : undefined)) as ToolDefinition;
     tools.push({
       ...shellTool,
+      // A model often batches dependent steps (create, then rename) in one message, and pi
+      // runs a message's calls together; a runner's second-long start makes the later step
+      // land first. Confined commands therefore run one at a time, in order.
+      ...(operations ? { executionMode: "sequential" as const } : {}),
       execute: (toolCallId, params, signal, onUpdate, ctx) =>
         shellTool.execute(toolCallId, params, signal, onUpdate, withCwd(ctx, realRoot)),
     });
