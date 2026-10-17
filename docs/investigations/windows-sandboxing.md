@@ -80,7 +80,7 @@ grants) launches in about 0.3 s.
 
 ### 6. MXC — Microsoft eXecution Containers
 
-`microsoft/mxc` (MIT, SDK `@microsoft/mxc-sdk` 1.0.0, Node ≥ 24; executor `wxc-exec.exe` taking a JSON
+`microsoft/mxc` (MIT, SDK `@microsoft/mxc-sdk` 1.0.1, Node ≥ 24; executor `wxc-exec.exe` taking a JSON
 request). Backend `processcontainer` picks the strongest tier the host supports:
 1. **BaseContainer** — `Experimental_CreateProcessInSandbox` in `processmodel.dll`; the OS applies the
    policy itself. Windows 11 24H2/25H2 with the August 2026 update or later (26100/26200.9278+).
