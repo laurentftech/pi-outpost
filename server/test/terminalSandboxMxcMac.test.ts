@@ -135,9 +135,10 @@ describe("a confined terminal under MXC's real macOS executor, in zsh as the def
 
   // openlore: scenario=OnMacOsWithMxcGitRunsInTheTerminal spec=terminal
   test("OnMacOsWithMxcGitRunsInTheTerminal: in zsh, git is the developer tools' own, quiet, and leaves nothing in the root", async () => {
-    manager.write(socket, "z", "git status --short --branch; echo GIT-DONE\r");
+    // The marker is computed, so the terminal's echo of the typed line does not end the wait.
+    manager.write(socket, "z", "git status --short --branch; echo GIT-$((40+2))-DONE\r");
     const deadline = Date.now() + 20_000;
-    while (!/GIT-DONE\r?\n/.test(output.replace(/\x1b\[[0-9;?]*[ -/]*[@-~]/g, "")) && Date.now() < deadline) {
+    while (!/GIT-42-DONE/.test(output) && Date.now() < deadline) {
       await new Promise((resolve) => setTimeout(resolve, 50));
     }
     const seen = output.replace(/\x1b\[[0-9;?]*[ -/]*[@-~]|\x1b\][^\x07]*\x07/g, "");
