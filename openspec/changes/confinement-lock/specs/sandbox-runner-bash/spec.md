@@ -1,0 +1,34 @@
+## ADDED Requirements
+
+### Requirement: ConfinementIsVerifiedBeforeItIsShown
+
+When `sandbox.bashRunner` is set and its self-check passes, the server SHALL run a canary through that
+runner, with the policy a command of the agent's shell gets, attempting to read a file in the agent
+directory and one beside the root, to write beside the root, to signal the server, and to read a value
+from the server's environment — and, under `sandbox.allowedHosts`, to reach an unlisted host. It SHALL
+run again when the sandbox settings change, and its verdict SHALL be part of the state sent to clients.
+
+#### Scenario: AVerifiedRunnerEarnsTheLock
+- **GIVEN** a configured runner that refuses every attempt of the canary
+- **WHEN** the interface shows the agent's shell
+- **THEN** a closed lock is shown, and its description names the runner, when it was checked, and each refusal
+
+#### Scenario: ALeakOpensTheLockAndSaysWhat
+- **GIVEN** a configured runner whose policy lets the canary read the agent directory
+- **WHEN** the canary runs
+- **THEN** the lock is shown open and marked as a failure, naming the agent directory as readable, and the configuration is left as it was
+
+#### Scenario: NoRunnerNoLock
+- **GIVEN** no `sandbox.bashRunner`
+- **WHEN** the interface shows the agent's shell
+- **THEN** no lock is shown
+
+### Requirement: DoctorRunsTheCanary
+
+`pi-outpost doctor` SHALL run the canary for each runner the configuration names and report, per
+attempt, whether it was refused; any attempt that succeeded SHALL be a failed check.
+
+#### Scenario: DoctorReportsWhatGotThrough
+- **GIVEN** a configuration whose runner lets a write beside the root succeed
+- **WHEN** `pi-outpost doctor` runs
+- **THEN** its report holds a failed check naming the write beside the root, and its exit status is non-zero
