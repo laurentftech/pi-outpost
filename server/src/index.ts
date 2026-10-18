@@ -42,6 +42,7 @@ import {
   type OutpostUpdateNotice,
   type PiPackageInfo,
   type SessionSnapshot,
+  type ConfinementVerdict,
   type WorkspaceActivity,
   type WorkspaceInfo,
   type SessionSummary,
@@ -78,7 +79,8 @@ import { COMMAND_NOT_AVAILABLE, offeredCommands, refusesPrompt, type CommandPoli
 import { bindFailureMessage, holdConsoleIfOwned } from "./startupFailure.ts";
 import { BuildExeError, buildExecutable } from "./buildExe.ts";
 import { probePty, TerminalManager, type TerminalConfinement } from "./terminalManager.ts";
-import { checkRunner, isPosixMxc, mxcPosixConfig, mxcTerminalConfig, seatbeltPolicy, runnerKind, siblingsToDeny, terminalPolicy, userGitConfig, type RunnerCheck } from "./terminalSandbox.ts";
+import { agentShellVerdict, buildTerminalConfinement, terminalVerdict } from "./confinementStatus.ts";
+import { checkRunner, type RunnerCheck } from "./terminalSandbox.ts";
 import { isPowerShell } from "./confinedBash.ts";
 import { browsableUrl, openBrowser, shouldOpenBrowser } from "./openBrowser.ts";
 import {
@@ -387,6 +389,27 @@ if (cli.command === "doctor") {
       }
     },
     loadPty: probePty,
+    confinement: async (loaded) => {
+      const agentDir = loaded.agentDir ?? getAgentDir();
+      const neverReadable = { agentDir, ...(loaded.configFile ? { configFile: loaded.configFile } : {}) };
+      const results: Array<{ surface: "shell" | "terminal"; verdict: ConfinementVerdict }> = [];
+      const sandbox = loaded.sandbox;
+      if (sandbox?.allowBash && sandbox.bashRunner && sandbox.bashFrom === undefined) {
+        results.push({ surface: "shell", verdict: await agentShellVerdict(sandbox, neverReadable) });
+      }
+      if (loaded.terminal.enabled && loaded.terminal.sandbox) {
+        const confine = buildTerminalConfinement({
+          runner: loaded.terminal.sandbox,
+          root: path.resolve(sandbox?.root ?? loaded.cwd),
+          ...(sandbox?.writableRoot ? { writableRoot: path.resolve(sandbox.writableRoot) } : {}),
+          allowWrite: sandbox ? sandbox.allowWrite : true,
+          ...neverReadable,
+        });
+        const shell = new TerminalManager().getDefaultShell({ ...loaded.terminal, confined: true }).shell;
+        results.push({ surface: "terminal", verdict: await terminalVerdict(confine, shell, agentDir, sandbox?.writableRoot) });
+      }
+      return results;
+    },
   });
   console.log(renderReport(checks));
   // A double-clicked executable owns its console: the report would close with the
@@ -2388,6 +2411,10 @@ function projectFields(workspace: Workspace) {
       // would leave the panel saying so until the next reconnect.
       ...(typeof terminalRunner === "object" && !terminalRunner.ok ? { unavailable: terminalRunner.reason } : {}),
     },
+    ...(() => {
+      const confinement = confinementOf(workspace);
+      return confinement ? { confinement } : {};
+    })(),
   };
 }
 
@@ -2506,6 +2533,45 @@ if (config.terminal?.sandbox) {
 }
 
 /**
+ * Whether confinement was seen holding, per surface: the canary's verdicts, keyed by what they
+ * were checked against, so a sandbox settings change asks again and nothing else does.
+ */
+const confinementVerdicts = new Map<string, ConfinementVerdict>();
+
+/** The project's verdicts for its snapshot, starting a canary for any surface not yet checked. */
+function confinementOf(workspace: Workspace): SessionSnapshot["confinement"] {
+  const result: NonNullable<SessionSnapshot["confinement"]> = {};
+  const sandbox = workspace.settings.sandbox;
+  if (sandbox?.allowBash && sandbox.bashRunner && sandbox.bashFrom === undefined) {
+    const neverReadable = { agentDir: AGENT_DIR, configFile: config.configFile };
+    result.bash = verdictFor(workspace, `bash\0${JSON.stringify(sandbox)}`, sandbox.bashRunner, () => agentShellVerdict(sandbox, neverReadable));
+  }
+  const confine = config.terminal?.enabled ? terminalConfinement(workspace) : undefined;
+  if (confine && typeof terminalRunner === "object" && terminalRunner.ok) {
+    const shell = terminalManager.getDefaultShell({ ...config.terminal, confined: true }).shell;
+    const writableRoot = sandbox?.writableRoot ? path.resolve(sandbox.writableRoot) : undefined;
+    const key = `terminal\0${confine.runner}\0${confine.root}\0${writableRoot ?? ""}\0${sandbox ? sandbox.allowWrite : true}\0${shell}`;
+    result.terminal = verdictFor(workspace, key, confine.runner, () => terminalVerdict(confine, shell, AGENT_DIR, writableRoot));
+  }
+  return result.bash || result.terminal ? result : undefined;
+}
+
+function verdictFor(workspace: Workspace, key: string, runner: string, check: () => Promise<ConfinementVerdict>): ConfinementVerdict {
+  const known = confinementVerdicts.get(key);
+  if (known) return known;
+  const checking: ConfinementVerdict = { state: "checking", runner };
+  confinementVerdicts.set(key, checking);
+  void check().then((verdict) => {
+    confinementVerdicts.set(key, verdict);
+    if (verdict.state === "leaking") console.warn(`[sandbox] ${runner} does not confine: ${verdict.reached.join(", ")} reached by the canary`);
+    if (verdict.state === "failed") console.warn(`[sandbox] could not check ${runner}'s confinement: ${verdict.reason}`);
+    const confinement = confinementOf(workspace);
+    if (confinement) broadcast(workspace, { type: "confinement", confinement });
+  });
+  return checking;
+}
+
+/**
  * How a terminal in `workspace` is confined, when `terminal.sandbox` is set: the same
  * root and writable zone as the agent's sandbox (the project root without one), and
  * never the agent directory — the provider keys — nor the configuration.
@@ -2514,26 +2580,14 @@ function terminalConfinement(workspace: Workspace): TerminalConfinement | undefi
   const runner = config.terminal?.sandbox;
   if (!runner) return undefined;
   const sandbox = workspace.settings.sandbox;
-  const root = path.resolve(sandbox?.root ?? workspace.browserRoot);
-  const writableRoot = sandbox?.writableRoot ? path.resolve(sandbox.writableRoot) : undefined;
-  const allowWrite = sandbox ? sandbox.allowWrite : true;
-  const kind = runnerKind(runner);
-  // git's identity: the user's ~/.gitconfig, readable on its own (see userGitConfig).
-  const gitConfig = userGitConfig();
-  const readOnlyFiles = gitConfig ? [gitConfig] : [];
-  return {
+  return buildTerminalConfinement({
     runner,
-    kind,
-    root,
-    ...(gitConfig ? { gitConfig } : {}),
-    policy: kind === "seatbelt"
-      ? (terminal) => seatbeltPolicy({ root, writableRoot, allowWrite, agentDir: AGENT_DIR, configFile: config.configFile, ...terminal, searchPath: terminal.env.PATH, readOnlyFiles })
-      : kind === "mxc" && isPosixMxc(runner)
-      ? (terminal) => mxcPosixConfig(runner, { root, writableRoot, allowWrite, agentDir: AGENT_DIR, configFile: config.configFile, ...terminal, searchPath: terminal.env.PATH, readOnlyFiles })
-      : kind === "mxc"
-      ? (terminal) => mxcTerminalConfig({ root, writableRoot, allowWrite, agentDir: AGENT_DIR, configFile: config.configFile, ...terminal, siblings: siblingsToDeny(root), readOnlyFiles })
-      : ({ tmp }) => terminalPolicy({ root, writableRoot, allowWrite, agentDir: AGENT_DIR, configFile: config.configFile, tmp, searchPath: process.env.PATH, systemRoot: process.env.SystemRoot, userProfile: process.env.USERPROFILE, readOnlyFiles }),
-  };
+    root: path.resolve(sandbox?.root ?? workspace.browserRoot),
+    ...(sandbox?.writableRoot ? { writableRoot: path.resolve(sandbox.writableRoot) } : {}),
+    allowWrite: sandbox ? sandbox.allowWrite : true,
+    agentDir: AGENT_DIR,
+    ...(config.configFile ? { configFile: config.configFile } : {}),
+  });
 }
 
 /** Why a terminal cannot open right now, when a sandbox runner is configured and not usable. */
