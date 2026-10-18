@@ -17,6 +17,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import type { BashOperations } from "@earendil-works/pi-coding-agent";
+import type { EgressProxy } from "./egressProxy.ts";
 import {
   checkRunner,
   confinedEnvironment,
@@ -51,6 +52,11 @@ export interface ConfinedBashOptions {
   configFile?: string;
   /** The user's git configuration, read-only inside: git's identity (see `userGitConfig`). */
   gitConfig?: string;
+  /**
+   * `sandbox.allowedHosts`' proxy (`egressProxy.ts`): MXC's process container only. The
+   * hosts it refuses while a command runs are named after the command's output.
+   */
+  networkProxy?: Pick<EgressProxy, "url" | "watchRefusals">;
   /** Whose rules. A parameter so the Windows path is tested everywhere. */
   platform?: NodeJS.Platform;
   /** The runner's self-check. A parameter for tests; cached per runner otherwise. */
@@ -104,6 +110,9 @@ export function powerShellScript(command: string): string {
     "try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}",
     // PowerShell 7 colours tables and errors by default; the model reads escape codes.
     "try { $PSStyle.OutputRendering = 'PlainText' } catch {}",
+    // Under sandbox.allowedHosts MXC sets HTTPS_PROXY, which Windows PowerShell's web
+    // cmdlets ignore: they would go direct, and be refused.
+    "if ($env:HTTPS_PROXY) { $PSDefaultParameterValues['Invoke-WebRequest:Proxy'] = $env:HTTPS_PROXY; $PSDefaultParameterValues['Invoke-RestMethod:Proxy'] = $env:HTTPS_PROXY }",
     "$global:LASTEXITCODE = $null",
     command,
     "",
@@ -169,6 +178,7 @@ export function confinedBashOperations(options: ConfinedBashOptions): BashOperat
             env,
             siblings: siblingsToDeny(options.root),
             readOnlyFiles,
+            ...(options.networkProxy === undefined ? {} : { networkProxy: options.networkProxy.url }),
           });
           await writeFile(policyFile, JSON.stringify(request), { mode: 0o600 });
           args = [policyFile];
@@ -190,7 +200,19 @@ export function confinedBashOperations(options: ConfinedBashOptions): BashOperat
           args = ["run", "-p", policyFile, "--", shell, ...shellArgs];
         }
         const launch = () => run(options.runner, args, { cwd: startIn, env, onData, signal, timeoutMs, timeout, windows });
-        return await (wslc ? oneWslcAtATime(launch) : launch());
+        // curl, git and PowerShell print only "403" for a refused tunnel: the model is told which
+        // host, and why. Commands of the agent's shell run one at a time, so these are this one's.
+        const refused = new Set<string>();
+        const unwatch = wslc ? undefined : options.networkProxy?.watchRefusals((host) => refused.add(host));
+        try {
+          return await (wslc ? oneWslcAtATime(launch) : launch());
+        } finally {
+          unwatch?.();
+          if (refused.size > 0) {
+            const hosts = [...refused].join(", ");
+            onData(Buffer.from(`\n[pi-outpost] network refused: ${hosts} — not in sandbox.allowedHosts. Ask the user to add ${refused.size > 1 ? "them" : "it"} there if the command needs ${refused.size > 1 ? "them" : "it"}.\n`));
+          }
+        }
       } finally {
         await rm(tmp, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }).catch(() => {});
       }

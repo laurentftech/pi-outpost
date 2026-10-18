@@ -538,6 +538,32 @@ describe("loadConfig — resource path resolution", () => {
     });
   });
 
+  // openlore: scenario=AnAllowlistNeedsMxcWithoutAnImage spec=sandbox-runner-bash
+  test("AnAllowlistNeedsMxcWithoutAnImage: allowed hosts are kept with MXC, refused without it, beside an image, or malformed", async () => {
+    await withTempDir(async (dir) => {
+      const configPath = path.join(dir, "config.json");
+      const hosts = ["Registry.npmjs.org", "*.githubusercontent.com"];
+      await writeFile(configPath, JSON.stringify({ sandbox: { root: ".", allowBash: true, bashRunner: "mxc", bashShell: "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe", allowedHosts: hosts } }, null, 2));
+      assert.deepEqual(loadConfig(dir, { config: configPath }).sandbox!.allowedHosts, ["registry.npmjs.org", "*.githubusercontent.com"]);
+      await writeFile(configPath, JSON.stringify({ sandbox: { root: ".", allowBash: true, bashRunner: "./mxc/wxc-exec.exe", allowedHosts: [] } }, null, 2));
+      assert.deepEqual(loadConfig(dir, { config: configPath }).sandbox!.allowedHosts, [], "an empty list closes the network entirely");
+      await writeFile(configPath, JSON.stringify({ sandbox: { root: ".", allowBash: true, bashRunner: "mxc" } }, null, 2));
+      assert.equal(loadConfig(dir, { config: configPath }).sandbox!.allowedHosts, undefined);
+      for (const sandbox of [
+        { allowedHosts: hosts },
+        { bashRunner: "./bin/landstrip", allowedHosts: hosts },
+        { bashRunner: "mxc", bashImage: "buildpack-deps:bookworm-scm", allowedHosts: hosts },
+      ]) {
+        await writeFile(configPath, JSON.stringify({ sandbox: { root: ".", allowBash: true, ...sandbox } }, null, 2));
+        assert.throws(() => loadConfig(dir, { config: configPath }), /"sandbox\.allowedHosts" needs MXC as "sandbox\.bashRunner", and no "sandbox\.bashImage"/, JSON.stringify(sandbox));
+      }
+      for (const allowedHosts of [["https://github.com"], ["github.com:443"], "github.com", [""]]) {
+        await writeFile(configPath, JSON.stringify({ sandbox: { root: ".", allowBash: true, bashRunner: "mxc", allowedHosts } }, null, 2));
+        assert.throws(() => loadConfig(dir, { config: configPath }), /sandbox\.allowedHosts|allowedHosts/, JSON.stringify(allowedHosts));
+      }
+    });
+  });
+
   // openlore: scenario=BashRunnerAndBashFromAreExclusive spec=sandbox-runner-bash
   test("a runner for bash and an extension supplying bash are refused together, and empty values alone", async () => {
     await withTempDir(async (dir) => {

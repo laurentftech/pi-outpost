@@ -24,13 +24,14 @@ server's proxy as its only way out, and the proxy SHALL relay a connection to a 
 ### Requirement: AnUnnamedHostIsRefusedAndNothingBypassesTheProxy
 
 Under `sandbox.allowedHosts`, the proxy SHALL refuse a host the list does not name with a response naming
-that host and `sandbox.allowedHosts`, and the server SHALL log the refusal. A direct connection, and any
-other service on the host's loopback, SHALL be unreachable from a command.
+that host and `sandbox.allowedHosts`, the command's output SHALL end with a note naming every host refused
+while it ran, and the server SHALL log the refusal. A direct connection, and any other service on the host's
+loopback, SHALL be unreachable from a command.
 
 #### Scenario: AnotherHostIsRefusedWithTheReason
 - **GIVEN** `sandbox.allowedHosts` and the agent's shell confined by MXC
 - **WHEN** a command fetches a host the list does not name
-- **THEN** it fails, the proxy's answer names that host and `sandbox.allowedHosts`, and the server logs the refusal
+- **THEN** it fails, the command's output ends with a note naming that host and `sandbox.allowedHosts` — curl, git and Windows PowerShell print only the status code — the proxy's own answer names them too, and the server logs the refusal
 
 #### Scenario: TheProxyCannotBeBypassed
 - **GIVEN** the same configuration

@@ -125,6 +125,14 @@ describe("a confined PowerShell", () => {
     assert.deepEqual(POWERSHELL_SCRIPT_ARGS.at(-1), "-File");
   });
 
+  test("the web cmdlets default to the sandbox's proxy when one is set, before the command runs", () => {
+    const script = powerShellScript("Invoke-WebRequest https://registry.npmjs.org/");
+    const proxyLine = script.indexOf("if ($env:HTTPS_PROXY) {");
+    assert.ok(proxyLine > 0 && proxyLine < script.indexOf("Invoke-WebRequest https://"), "the default is set before the command");
+    assert.match(script, /\$PSDefaultParameterValues\['Invoke-WebRequest:Proxy'\] = \$env:HTTPS_PROXY/);
+    assert.match(script, /\$PSDefaultParameterValues\['Invoke-RestMethod:Proxy'\] = \$env:HTTPS_PROXY/);
+  });
+
   const shells = [
     ["pwsh", found("pwsh")],
     ...(process.platform === "win32" ? [["powershell.exe 5.1", found("powershell.exe")]] : []),

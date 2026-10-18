@@ -275,6 +275,17 @@ describe("mxcTerminalConfig", () => {
     }
   });
 
+  // openlore: scenario=NoAllowlistKeepsTheNetwork spec=sandbox-runner-bash
+  test("NoAllowlistKeepsTheNetwork: without a proxy the network is open and none is set; with one, closed but for it", () => {
+    const open = mxcTerminalConfig(base);
+    assert.deepEqual(open.network, { egress: { default: "allow" } });
+    assert.equal(open.runtimeConfig, undefined);
+    const closed = mxcTerminalConfig({ ...base, networkProxy: "http://127.0.0.1:4567" });
+    assert.deepEqual(closed.network, { egress: { default: "deny" }, ingress: { default: "allow", hostLoopback: "allow" } });
+    assert.deepEqual(closed.runtimeConfig, { networkProxy: "http://127.0.0.1:4567" });
+    assert.deepEqual(closed.filesystem, open.filesystem, "the file limits are the same either way");
+  });
+
   test("the whole root writable, or nothing but the temp when writes are off", () => {
     const writable = mxcTerminalConfig(base);
     assert.deepEqual(writable.filesystem.readwritePaths, [wroot, wtmp]);
