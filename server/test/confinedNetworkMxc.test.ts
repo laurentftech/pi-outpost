@@ -88,7 +88,9 @@ describe("the agent's powershell under MXC, network only to allowed hosts", { sk
     assert.match(result.output, /curl=200/, result.output);
     assert.match(result.output, /^[0-9a-f]{40}\tHEAD/m, `git did not reach github.com: ${result.output}`);
     assert.doesNotMatch(result.output, /\[pi-outpost\] network refused/, "nothing was refused, so nothing is noted");
-    assert.ok(relayed.includes("registry.npmjs.org:443") && relayed.includes("github.com:443"), `not through the proxy: ${relayed.join(", ")}`);
+    // Exact targets, compared as a set: not a search through URLs.
+    const through = new Set(relayed);
+    assert.ok(through.has("registry.npmjs.org:443") && through.has("github.com:443"), `not through the proxy: ${relayed.join(", ")}`);
   });
 
   // openlore: scenario=PowerShellFetchesThroughTheProxy spec=sandbox-runner-bash
@@ -106,7 +108,7 @@ describe("the agent's powershell under MXC, network only to allowed hosts", { sk
     // What curl itself shows is "response 403": the note after the output is what names the host.
     assert.match(result.output, /\[pi-outpost\] network refused: example\.com — not in sandbox\.allowedHosts\.[^\n]*\s*$/, `no note naming the host ends the output: ${result.output}`);
     assert.match(result.output, /< HTTP\/1\.1 403 example\.com is not in sandbox\.allowedHosts/, `the proxy's own answer does not name it: ${result.output}`);
-    assert.ok(refused.some((line) => line.includes("example.com") && line.includes("sandbox.allowedHosts")), refused.join("\n"));
+    assert.ok(refused.some((line) => /^\[sandbox\] network: refused CONNECT example\.com:443 — example\.com is not in sandbox\.allowedHosts$/.test(line)), refused.join("\n"));
   });
 
   // openlore: scenario=TheProxyCannotBeBypassed spec=sandbox-runner-bash
