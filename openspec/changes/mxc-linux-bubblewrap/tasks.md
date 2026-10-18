@@ -6,5 +6,5 @@
 - [x] The Linux self-check: one confined `/bin/true` with the configuration's network shape; MXC's reason on refusal.
 - [x] The Bubblewrap request: filesystem, environment, network (open, or `sandbox.allowedHosts` with `ingress: deny` and the proxy).
 - [x] The terminal under MXC on Linux, or its refusal with the reason.
-- [ ] Unit tests; real-executor tests in a Docker container with the documented flags (an image and a script to run them); running-app check with the agent in that container. (Unit tests pass; `scripts/mxc-linux/` and both real-executor test files are written but have never run — see HANDOVER.md.)
-- [ ] `docs/sandboxing.md` (option, Docker flags and packages, trade-off), README rows; scenario coverage matrix; strict OpenSpec validation. (Docs written; matrix statuses wait for the real runs.)
+- [x] Unit tests; real-executor tests in a Docker container with the documented flags (an image and a script to run them); running-app check with the agent in that container. (Run on macOS/OrbStack: the documented flags gained `systempaths=unconfined` and `--init`, the image `iproute2`; `getCwd` steps past MXC's `sh -c` wrappers.)
+- [x] `docs/sandboxing.md` (option, Docker flags and packages, trade-off), README rows; scenario coverage matrix; strict OpenSpec validation.

@@ -91,7 +91,10 @@ describe("the agent's bash under MXC on Linux", { skip: skip || (EXPECT !== "con
     assert.match(result.output, /sibling=1/);
     assert.match(result.output, /agent=1/);
     assert.equal((await readFile(path.join(root, "in.txt"), "utf8")).trim(), "inside");
-    assert.match(result.output, /beside=1/);
+    // Bubblewrap builds the command's / on a private tmpfs, with the root's parents created there
+    // to mount it on: a write beside the root may succeed in that tmpfs, and vanish with it. What
+    // counts is the host.
+    assert.match(result.output, /beside=[01]/);
     await assert.rejects(stat(path.join(base, "out.txt")), "a write landed beside the root");
     assert.match(result.output, /node-visible=0/, "the server's process is visible to the command");
     assert.match(result.output, /key-visible=0/, "a process holding the server's key is visible to the command");

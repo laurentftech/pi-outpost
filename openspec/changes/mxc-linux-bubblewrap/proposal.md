@@ -43,13 +43,19 @@ Under the last line:
   not pursued.
 - Not measured: an interactive terminal (a pty) through `lxc-exec`.
 
+Re-measured on macOS (OrbStack, kernel 7.2.9, `node:24-bookworm`, MXC 1.0.1, 2026-10-18): with only
+the flags above, every request fails with `bwrap: Can't mount proc on /newroot/proc: Operation not
+permitted` — Docker's masked `/proc` paths make the kernel refuse a fresh proc mount in a user
+namespace. `--security-opt systempaths=unconfined` is needed too. Any `network.egress` rule also needs
+`ip` (iproute2) on the path: MXC says so when it is missing.
+
 ## What Changes
 
 - `"mxc"` resolves on Linux to the installed package's `bin/<arch>/lxc-exec`; a path whose file is
   `lxc-exec` names MXC too. Accepted as `sandbox.bashRunner` and `terminal.sandbox`.
 - The self-check on Linux runs one confined `/bin/true` with the network shape the configuration
   asks for, and refuses the runner with MXC's own reason when the host cannot (namespaces, AppArmor,
-  `/dev/net/tun`, a missing `bwrap`, `slirp4netns` or `iptables`).
+  `/dev/net/tun`, a missing `bwrap`, `slirp4netns`, `iptables` or `ip`).
 - The request: `containment: "bubblewrap"`; the root writable or read-only as today, the command's
   temporary folder writable, the system trees and the shell's folder read-only, the user's git
   configuration read-only, the agent directory and the configuration file denied; the minimal

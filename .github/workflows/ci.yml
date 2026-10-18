@@ -175,6 +175,19 @@ jobs:
           path: e2e/test-results/
           retention-days: 7
 
+  # MXC's Linux executor (lxc-exec, Bubblewrap) in the shape docs/sandboxing.md documents:
+  # a Docker container, refused under Docker's default profile with MXC's reason, confined
+  # under the documented flags. Unit tests cannot see what these runs found — a /proc mount
+  # refused under masked system paths, a missing `ip`, the wrong process read for the
+  # terminal's directory — so they run on every pull request, from the same script a
+  # developer runs (scripts/mxc-linux/test.sh). Its own job: Docker, not the suites' node.
+  mxc-linux:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - run: bash scripts/mxc-linux/test.sh
+
   # The badge, drawn and pushed here rather than by a marketplace action: this is
   # the only job that may write to the repository, and nothing outside it runs.
   # Main only — a badge is a claim about the shipped branch.

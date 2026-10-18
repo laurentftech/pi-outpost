@@ -619,21 +619,39 @@ function isInside(candidate: string, root: string): boolean {
 /**
  * A sandbox runner's shell, on Linux: the runner's child, through the runner's own layers.
  *
- * landstrip's shell is its child. MXC's sits under `lxc-exec` and two `bwrap` processes,
- * beside the `slirp4netns` that carries its network. Undefined anywhere else, or once gone.
+ * landstrip's shell is its child. MXC's sits under `lxc-exec` and two `bwrap` processes —
+ * beside the `sh -c` that supervises `slirp4netns` for its network — and under the `sh -c`
+ * MXC wraps every command line in. Undefined anywhere else, or once gone.
  */
 async function shellUnder(pid: number): Promise<number | undefined> {
   if (process.platform !== "linux") return undefined;
   let current: number | undefined;
   let parent = pid;
+  let underBwrap = false;
   for (let depth = 0; depth < 6; depth++) {
-    const children = (await childrenOf(parent)).filter((child) => child.name !== "slirp4netns");
+    const children = await childrenOf(parent);
     if (children.length === 0) break;
+    const layer = children.find((child) => RUNNER_LAYERS.has(child.name));
+    if (layer) {
+      current = parent = layer.pid;
+      underBwrap = layer.name === "bwrap";
+      continue;
+    }
     current = children[0].pid;
-    if (!RUNNER_LAYERS.has(children[0].name)) break;
-    parent = current;
+    // MXC's wrapper, not the shell: `sh -c <command line>`. An interactive shell is not run with -c.
+    if (underBwrap && children[0].name === "sh" && (await argv(current))[1] === "-c") {
+      underBwrap = false;
+      parent = current;
+      continue;
+    }
+    break;
   }
   return current;
+}
+
+/** A process's arguments, empty once it is gone. */
+async function argv(pid: number): Promise<string[]> {
+  return (await fs.readFile(`/proc/${pid}/cmdline`, "utf8").catch(() => "")).split("\0");
 }
 
 /** The processes a runner is made of, above the shell it runs. */

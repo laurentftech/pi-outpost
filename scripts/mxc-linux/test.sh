@@ -19,5 +19,6 @@ docker run --rm -e MXC_LINUX_EXPECT=refused "$image"
 echo "== The documented flags: confined"
 docker run --rm -e MXC_LINUX_EXPECT=confined \
   --security-opt seccomp=unconfined --security-opt apparmor=unconfined \
+  --security-opt systempaths=unconfined \
   --security-opt no-new-privileges --device /dev/net/tun \
   "$image"

@@ -2,10 +2,10 @@
 # Built and run by scripts/mxc-linux/test.sh, from the working tree.
 FROM node:24-bookworm
 
-# Bubblewrap is MXC's Linux backend; slirp4netns and iptables carry any network rule.
+# Bubblewrap is MXC's Linux backend; slirp4netns, iptables and iproute2 (`ip`) carry any network rule.
 # python3, make and g++ build node-pty for the terminal tests.
 RUN apt-get update -qq \
-  && apt-get install -y -qq --no-install-recommends bubblewrap slirp4netns iptables git curl ca-certificates python3 make g++ >/dev/null \
+  && apt-get install -y -qq --no-install-recommends bubblewrap slirp4netns iptables iproute2 git curl ca-certificates python3 make g++ >/dev/null \
   && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

@@ -127,7 +127,7 @@ async function checkMxcRunner(runner: string, exec: Exec, platform: NodeJS.Platf
  *
  * `lxc-exec --available-backends` lists Bubblewrap wherever `bwrap` is installed, even in a
  * container that refuses it user namespaces; only a run tells. The network shape is the
- * most demanding one a command is given (slirp4netns, `/dev/net/tun`, iptables), so a host
+ * most demanding one a command is given (slirp4netns, `/dev/net/tun`, iptables, `ip`), so a host
  * that passes runs both the open network and `sandbox.allowedHosts`' proxy. MXC says why it
  * cannot — namespaces, AppArmor, a missing tool — and that is the reason passed on.
  */

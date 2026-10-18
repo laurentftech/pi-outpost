@@ -18,7 +18,7 @@ import {
 } from "../src/config.ts";
 import type { AppConfig, CliOptions } from "../src/config.ts";
 import { parseCli } from "../src/cli.ts";
-import { bundledMxcExecutor } from "../src/mxcExecutor.ts";
+import { bundledMxcExecutor, mxcExecutorName } from "../src/mxcExecutor.ts";
 import { STRUCTURED_EXCHANGE_BYTES_CEILING_ANY } from "@pi-outpost/shared/structured-exchange/bounds";
 
 // ---------------------------------------------------------------------------
@@ -505,10 +505,14 @@ describe("loadConfig — resource path resolution", () => {
   // openlore: scenario=MxcNamesTheBundledExecutor spec=sandbox-runner-bash
   test('"mxc" names the executor pi-outpost ships, for bash and for the terminal', async () => {
     const shipped = bundledMxcExecutor();
-    assert.ok(shipped, "@microsoft/mxc-sdk is an optional dependency, installed in this checkout");
     await withTempDir(async (dir) => {
       const configPath = path.join(dir, "config.json");
       await writeFile(configPath, JSON.stringify({ sandbox: { root: ".", allowBash: true, bashRunner: "mxc" }, terminal: { sandbox: "mxc" } }, null, 2));
+      if (mxcExecutorName(process.platform) === undefined) {
+        assert.throws(() => loadConfig(dir, { config: configPath }), /MXC has no executor for /);
+        return;
+      }
+      assert.ok(shipped, "@microsoft/mxc-sdk is an optional dependency, installed in this checkout");
       const config = loadConfig(dir, { config: configPath });
       assert.equal(config.sandbox!.bashRunner, shipped);
       assert.equal(config.terminal.sandbox, shipped);
@@ -523,8 +527,8 @@ describe("loadConfig — resource path resolution", () => {
     await withTempDir(async (dir) => {
       const configPath = path.join(dir, "config.json");
       const image = "buildpack-deps:bookworm-scm";
-      await writeFile(configPath, JSON.stringify({ sandbox: { root: ".", allowBash: true, bashRunner: "mxc", bashImage: image } }, null, 2));
-      assert.equal(loadConfig(dir, { config: configPath }).sandbox!.bashImage, image);
+      // "mxc" names Linux's lxc-exec on a Linux machine, which refuses an image (tested below with
+      // the allowlist): name Windows' executor's file so the test means the same on every platform.
       await writeFile(configPath, JSON.stringify({ sandbox: { root: ".", allowBash: true, bashRunner: "./mxc/wxc-exec.exe", bashImage: image } }, null, 2));
       assert.equal(loadConfig(dir, { config: configPath }).sandbox!.bashImage, image);
       for (const sandbox of [
@@ -543,11 +547,11 @@ describe("loadConfig — resource path resolution", () => {
     await withTempDir(async (dir) => {
       const configPath = path.join(dir, "config.json");
       const hosts = ["Registry.npmjs.org", "*.githubusercontent.com"];
-      await writeFile(configPath, JSON.stringify({ sandbox: { root: ".", allowBash: true, bashRunner: "mxc", bashShell: "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe", allowedHosts: hosts } }, null, 2));
+      await writeFile(configPath, JSON.stringify({ sandbox: { root: ".", allowBash: true, bashRunner: "./mxc/wxc-exec.exe", bashShell: "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe", allowedHosts: hosts } }, null, 2));
       assert.deepEqual(loadConfig(dir, { config: configPath }).sandbox!.allowedHosts, ["registry.npmjs.org", "*.githubusercontent.com"]);
       await writeFile(configPath, JSON.stringify({ sandbox: { root: ".", allowBash: true, bashRunner: "./mxc/wxc-exec.exe", allowedHosts: [] } }, null, 2));
       assert.deepEqual(loadConfig(dir, { config: configPath }).sandbox!.allowedHosts, [], "an empty list closes the network entirely");
-      await writeFile(configPath, JSON.stringify({ sandbox: { root: ".", allowBash: true, bashRunner: "mxc" } }, null, 2));
+      await writeFile(configPath, JSON.stringify({ sandbox: { root: ".", allowBash: true, bashRunner: "./mxc/wxc-exec.exe" } }, null, 2));
       assert.equal(loadConfig(dir, { config: configPath }).sandbox!.allowedHosts, undefined);
       for (const sandbox of [
         { allowedHosts: hosts },

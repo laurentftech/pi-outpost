@@ -960,9 +960,12 @@ export function loadConfig(
     if (runner !== BUNDLED_MXC) return resolve(runner);
     const executor = bundledMxcExecutor();
     if (executor === undefined) {
+      if (mxcExecutorName(process.platform) === undefined) {
+        fail(`"${field}" is "${BUNDLED_MXC}", but MXC has no executor for ${process.platform}: it confines on Windows and Linux only`);
+      }
       fail(
         `"${field}" is "${BUNDLED_MXC}", but MXC's executor is not installed for ${process.arch}: ` +
-          `reinstall pi-outpost with its optional dependencies, or put ${mxcExecutorName(process.platform) ?? "wxc-exec.exe"} beside ${process.execPath}`,
+          `reinstall pi-outpost with its optional dependencies, or put ${mxcExecutorName(process.platform)} beside ${process.execPath}`,
       );
     }
     return executor;

@@ -113,24 +113,30 @@ folder — no home, no other project, no agent directory. What it adds over land
   traffic denied, the server's proxy the only way out. Without it, the network is open.
 
 **The price is Docker's own hardening.** Bubblewrap needs user namespaces, which Docker's default seccomp
-and AppArmor profiles refuse, and any network rule needs a tun device for slirp4netns:
+and AppArmor profiles refuse; it mounts a fresh `/proc` for the command, which the kernel refuses while
+Docker masks parts of the container's own (`systempaths`); and any network rule needs a tun device for
+slirp4netns:
 
 ```bash
 docker run \
   --security-opt seccomp=unconfined --security-opt apparmor=unconfined \
+  --security-opt systempaths=unconfined \
+  --init \
   --device /dev/net/tun \
   --security-opt no-new-privileges \
   …
 ```
 
-and the image needs `bubblewrap`, `slirp4netns` and `iptables`
-(`apt-get install bubblewrap slirp4netns iptables`). Under Docker's default profile the runner is
-refused at its self-check — a confined `/bin/true` — with MXC's reason, and every command with it. Keep
-the rest of the advice above: an ordinary user, no Docker socket, no `--privileged`. If loosening the
-container is not acceptable, landstrip is the runner.
+and the image needs `bubblewrap`, `slirp4netns`, `iptables` and `ip`
+(`apt-get install bubblewrap slirp4netns iptables iproute2`). Under Docker's default profile the runner is
+refused at its self-check — a confined `/bin/true` — with MXC's reason, and every command with it.
+`--init` puts an init in front of pi-outpost: a terminal closed under `lxc-exec` leaves its `bwrap`
+processes to the container's first process, and Node does not reap them — without it, three zombies
+pile up per closed terminal. Keep the rest of the advice above: an ordinary user, no Docker socket, no
+`--privileged`. If loosening the container is not acceptable, landstrip is the runner.
 
 `sandbox.bashImage` (WSLC) is Windows only. `scripts/mxc-linux/test.sh` runs this runner's tests in a
-container both ways.
+container both ways; CI's `mxc-linux` job runs it on every pull request.
 
 ## Windows 11: MXC and PowerShell
 
