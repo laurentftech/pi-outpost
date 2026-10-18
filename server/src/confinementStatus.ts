@@ -112,11 +112,13 @@ export async function terminalVerdict(confine: TerminalConfinement, shell: strin
       const shellArgs = powerShell ? ["-NoProfile", "-NonInteractive", "-Command", oneLine] : ["-c", oneLine];
       const launch = await confinedLaunch(confine, shell, shellArgs, confine.root);
       try {
-        return await new Promise<string>((resolve) =>
-          execFile(launch.file, launch.args, { env: launch.env, cwd: launch.cwd, timeout: CANARY_TIMEOUT_MS, windowsHide: true }, (_error, stdout, stderr) =>
+        return await new Promise<string>((resolve) => {
+          const child = execFile(launch.file, launch.args, { env: launch.env, cwd: launch.cwd, timeout: CANARY_TIMEOUT_MS, windowsHide: true }, (_error, stdout, stderr) =>
             resolve(`${stdout}${stderr}`),
-          ),
-        );
+          );
+          // Nothing to type: a shell or runner that reads its input gets its end, not a wait.
+          child.stdin?.end();
+        });
       } finally {
         await launch.files.dispose().catch(() => {});
       }
