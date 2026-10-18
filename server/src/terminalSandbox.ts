@@ -74,7 +74,12 @@ export async function checkRunner(runner: string, exec: Exec = defaultExec, plat
 export type RunnerKind = "landstrip" | "mxc";
 
 export function runnerKind(runner: string): RunnerKind {
-  return /^wxc-exec(\.exe)?$/i.test(path.win32.basename(runner)) ? "mxc" : "landstrip";
+  return /^wxc-exec(\.exe)?$/i.test(path.win32.basename(runner)) || isLinuxMxc(runner) ? "mxc" : "landstrip";
+}
+
+/** Whether a runner is MXC's Linux executor (`lxc-exec`): Bubblewrap, not Windows' containers. */
+export function isLinuxMxc(runner: string): boolean {
+  return path.win32.basename(runner) === "lxc-exec";
 }
 
 /**
@@ -86,7 +91,11 @@ export function runnerKind(runner: string): RunnerKind {
  * `mxcTerminalConfig`): that would rewrite the ACLs of the disk.
  */
 async function checkMxcRunner(runner: string, exec: Exec, platform: NodeJS.Platform): Promise<RunnerCheck> {
-  if (platform !== "win32") return { ok: false, reason: `MXC's executor confines terminals on Windows only: ${runner}` };
+  if (isLinuxMxc(runner)) {
+    if (platform !== "linux") return { ok: false, reason: `MXC's lxc-exec confines commands on Linux only: ${runner}` };
+    return checkLinuxMxcRunner(runner, exec);
+  }
+  if (platform !== "win32") return { ok: false, reason: `MXC's wxc-exec confines commands on Windows only — on Linux, "mxc" names lxc-exec: ${runner}` };
   let output: ExecFileResult;
   try {
     output = await exec(runner, ["--probe"], { timeout: RUNNER_CHECK_TIMEOUT_MS });
@@ -111,6 +120,53 @@ async function checkMxcRunner(runner: string, exec: Exec, platform: NodeJS.Platf
     return { ok: false, reason: "This Windows build's sandbox cannot deny paths, which the terminal's policy needs" };
   }
   return { ok: true };
+}
+
+/**
+ * MXC's Linux self-check: one confined `/bin/true` in its Bubblewrap backend, network open.
+ *
+ * `lxc-exec --available-backends` lists Bubblewrap wherever `bwrap` is installed, even in a
+ * container that refuses it user namespaces; only a run tells. The network shape is the
+ * most demanding one a command is given (slirp4netns, `/dev/net/tun`, iptables, `ip`), so a host
+ * that passes runs both the open network and `sandbox.allowedHosts`' proxy. MXC says why it
+ * cannot — namespaces, AppArmor, a missing tool — and that is the reason passed on.
+ */
+async function checkLinuxMxcRunner(runner: string, exec: Exec): Promise<RunnerCheck> {
+  const tmp = await mkdtemp(path.join(tmpdir(), "pi-outpost-mxc-check-"));
+  try {
+    const request = {
+      version: "1.0.0",
+      containment: "bubblewrap",
+      process: { commandLine: "/bin/true", cwd: tmp, env: ["PATH=/usr/bin:/bin"] },
+      filesystem: { readwritePaths: [tmp], readonlyPaths: linuxSystemTrees() },
+      network: { egress: { default: "allow" } },
+    };
+    const file = path.join(tmp, "check.json");
+    await writeFile(file, JSON.stringify(request), { mode: 0o600 });
+    try {
+      await exec(runner, [file], { timeout: RUNNER_CHECK_TIMEOUT_MS });
+      return { ok: true };
+    } catch (error) {
+      const detail = error as { stderr?: string; stdout?: string; message?: string };
+      return { ok: false, reason: `MXC cannot confine commands on this host: ${mxcErrorMessage(`${detail.stdout ?? ""}${detail.stderr ?? ""}`) || detail.message || "it failed"}` };
+    }
+  } finally {
+    await rm(tmp, { recursive: true, force: true }).catch(() => {});
+  }
+}
+
+/** MXC's `{"error":{"message":…}}`, which it writes after a human line; else the text itself, trimmed. */
+export function mxcErrorMessage(text: string): string {
+  const at = text.lastIndexOf('{"error"');
+  if (at >= 0) {
+    try {
+      const message = (JSON.parse(text.slice(at)) as { error?: { message?: unknown } }).error?.message;
+      if (typeof message === "string") return message.trim();
+    } catch {
+      // Not the whole object: fall back to the text.
+    }
+  }
+  return text.trim().slice(0, 500);
 }
 
 function lastJsonLine(text: string): Record<string, unknown> | undefined {
@@ -342,6 +398,101 @@ export function mxcTerminalConfig(input: MxcTerminalInput): MxcTerminalConfig {
   };
 }
 
+/**
+ * MXC's request on Linux (schema 1.0.0), for its Bubblewrap backend: a namespace holding only
+ * what is mounted into it. `/dev` and `/proc` are the sandbox's own (its processes alone).
+ */
+export interface MxcLinuxConfig {
+  version: "1.0.0";
+  containment: "bubblewrap";
+  process: { commandLine: string; cwd: string; env: string[] };
+  filesystem: { readwritePaths: string[]; readonlyPaths: string[]; deniedPaths: string[] };
+  /**
+   * Open, or — under `sandbox.allowedHosts` — closed but for the proxy. Unlike Windows,
+   * Bubblewrap refuses inbound traffic beside a proxy: its namespace is reached through
+   * slirp4netns, which forwards no port in.
+   */
+  network: { egress: { default: "allow" } } | { egress: { default: "deny" }; ingress: { default: "deny" } };
+  /** The only way out, with `egress` denied: MXC rewrites `HTTPS_PROXY` to slirp's address for it. */
+  runtimeConfig?: { networkProxy: string };
+}
+
+export interface MxcLinuxInput {
+  root: string;
+  writableRoot?: string;
+  allowWrite: boolean;
+  agentDir?: string;
+  configFile?: string;
+  tmp: string;
+  shell: string;
+  shellArgs: string[];
+  cwd: string;
+  /** The command's whole environment. The runner gets the same minimal one: `bwrap` shows its own inside. */
+  env: Record<string, string>;
+  /** The shell's search path: an installation it points into is mounted read-only. */
+  searchPath?: string;
+  /** Single files readable besides the trees: the user's git configuration. */
+  readOnlyFiles?: string[];
+  /** `sandbox.allowedHosts`' proxy: the network closed but for it. The agent's shell only. */
+  networkProxy?: string;
+  /** Which paths exist: only those are mounted. A parameter for tests. */
+  exists?: (file: string) => boolean;
+}
+
+/** The system trees a Linux shell needs, those this host has. Not `/dev`, `/proc`: the sandbox's own. */
+export function linuxSystemTrees(exists: (file: string) => boolean = existsSync): string[] {
+  return ["/usr", "/etc", "/lib", "/lib32", "/lib64", "/libx32", "/bin", "/sbin", "/run/systemd/resolve"].filter((tree) => exists(tree));
+}
+
+/**
+ * What one command or terminal may touch under MXC on Linux.
+ *
+ * An allowlist by construction: Bubblewrap's namespace holds the system trees, the tool
+ * installations on the search path, the root and the temporary directory, mounted
+ * read-only or writable, and nothing else — no other project, no home, no agent directory.
+ * The agent directory and the configuration are still denied by name, which holds when
+ * they sit under a mounted tree. A writable zone narrower than the root is a writable mount
+ * inside the read-only root.
+ */
+export function mxcLinuxConfig(input: MxcLinuxInput): MxcLinuxConfig {
+  const exists = input.exists ?? existsSync;
+  const writable = input.allowWrite ? [input.writableRoot ?? input.root] : [];
+  const readwritePaths = unique([...writable, input.tmp]);
+  const shellDir = path.posix.isAbsolute(input.shell) ? [path.posix.dirname(input.shell)] : [];
+  const readonlyPaths = unique([
+    ...linuxSystemTrees(exists),
+    ...toolTrees(input.searchPath, path.posix).filter((tree) => exists(tree)),
+    ...shellDir,
+    input.root,
+    ...(input.readOnlyFiles ?? []),
+  ]).filter((p) => !readwritePaths.includes(p) && !readwritePaths.some((rw) => isUnder(p, rw)));
+  const deniedPaths = unique([input.agentDir, input.configFile].filter((p): p is string => Boolean(p)));
+  return {
+    version: "1.0.0",
+    containment: "bubblewrap",
+    process: {
+      commandLine: [input.shell, ...input.shellArgs].map(quotePosixArgument).join(" "),
+      cwd: input.cwd,
+      env: Object.entries(input.env).map(([name, value]) => `${name}=${value}`),
+    },
+    filesystem: { readwritePaths, readonlyPaths, deniedPaths },
+    ...(input.networkProxy === undefined
+      ? { network: { egress: { default: "allow" } } }
+      : { network: { egress: { default: "deny" }, ingress: { default: "deny" } }, runtimeConfig: { networkProxy: input.networkProxy } }),
+  };
+}
+
+/** Whether `child` is `parent` or inside it (POSIX paths, as given). */
+function isUnder(child: string, parent: string): boolean {
+  const rel = path.posix.relative(parent, child);
+  return rel === "" || (!rel.startsWith("..") && !path.posix.isAbsolute(rel));
+}
+
+/** One argument of a POSIX command line: bare when safe, else single-quoted. */
+export function quotePosixArgument(argument: string): string {
+  return /^[\w@%+=:,./-]+$/.test(argument) ? argument : `'${argument.replaceAll("'", `'\\''`)}'`;
+}
+
 /** Top-level folders of a drive a shell needs: readable, never denied. */
 const WINDOWS_SYSTEM_FOLDERS = new Set(["windows", "program files", "program files (x86)", "programdata"]);
 
@@ -492,7 +643,7 @@ export interface ConfinedTerminalFiles {
 
 /** Create the private directory and write the policy (landstrip's, or MXC's request) into it, owner-only. */
 export async function prepareConfinedTerminal(
-  build: (tmp: string) => TerminalPolicy | MxcTerminalConfig,
+  build: (tmp: string) => TerminalPolicy | MxcTerminalConfig | MxcLinuxConfig,
 ): Promise<ConfinedTerminalFiles> {
   const tmp = await mkdtemp(path.join(tmpdir(), "pi-outpost-terminal-"));
   const policyFile = path.join(tmp, "policy.json");

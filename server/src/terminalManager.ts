@@ -8,7 +8,7 @@ import fs from "node:fs/promises";
 import fsSync from "node:fs";
 import { createRequire } from "node:module";
 import { execFile, spawnSync } from "node:child_process";
-import { confinedEnvironment, prepareConfinedTerminal, type MxcTerminalConfig, type RunnerKind, type TerminalPolicy } from "./terminalSandbox.ts";
+import { confinedEnvironment, prepareConfinedTerminal, type MxcLinuxConfig, type MxcTerminalConfig, type RunnerKind, type TerminalPolicy } from "./terminalSandbox.ts";
 import { promisify } from "node:util";
 import os from "node:os";
 import path from "node:path";
@@ -525,7 +525,7 @@ export class TerminalManager {
   async getCwd(socket: WebSocket, terminalId: string): Promise<string | undefined> {
     const session = this.socketSessions.get(socket)?.get(terminalId);
     if (!session) return undefined;
-    const pid = session.confined ? ((await childOf(session.ptyProcess.pid)) ?? session.ptyProcess.pid) : session.ptyProcess.pid;
+    const pid = session.confined ? ((await shellUnder(session.ptyProcess.pid)) ?? session.ptyProcess.pid) : session.ptyProcess.pid;
 
     if (process.platform === "linux") {
       try {
@@ -599,7 +599,7 @@ export interface TerminalConfinement {
   /** The user's git configuration, read-only inside (see `userGitConfig`): git's identity. */
   gitConfig?: string;
   /** The policy for this terminal, given its private temporary directory and what it runs. */
-  policy: (terminal: ConfinedShell) => TerminalPolicy | MxcTerminalConfig;
+  policy: (terminal: ConfinedShell) => TerminalPolicy | MxcTerminalConfig | MxcLinuxConfig;
 }
 
 /** What a confined terminal runs, for a policy that has to carry it (MXC's). */
@@ -617,29 +617,59 @@ function isInside(candidate: string, root: string): boolean {
 }
 
 /**
- * The first child of a process, on Linux: a sandbox runner's shell.
+ * A sandbox runner's shell, on Linux: the runner's child, through the runner's own layers.
  *
- * `/proc/<pid>/task/<pid>/children` when the kernel exposes it, else a scan of
- * `/proc/<n>/stat` for the parent pid. Undefined anywhere else, or once it is gone.
+ * landstrip's shell is its child. MXC's sits under `lxc-exec` and two `bwrap` processes —
+ * beside the `sh -c` that supervises `slirp4netns` for its network — and under the `sh -c`
+ * MXC wraps every command line in. Undefined anywhere else, or once gone.
  */
-async function childOf(pid: number): Promise<number | undefined> {
+async function shellUnder(pid: number): Promise<number | undefined> {
   if (process.platform !== "linux") return undefined;
-  try {
-    const listed = (await fs.readFile(`/proc/${pid}/task/${pid}/children`, "utf8")).trim().split(/\s+/)[0];
-    if (listed) return Number(listed);
-  } catch {
-    // Not exposed by this kernel: fall back to the scan.
+  let current: number | undefined;
+  let parent = pid;
+  let underBwrap = false;
+  for (let depth = 0; depth < 6; depth++) {
+    const children = await childrenOf(parent);
+    if (children.length === 0) break;
+    const layer = children.find((child) => RUNNER_LAYERS.has(child.name));
+    if (layer) {
+      current = parent = layer.pid;
+      underBwrap = layer.name === "bwrap";
+      continue;
+    }
+    current = children[0].pid;
+    // MXC's wrapper, not the shell: `sh -c <command line>`. An interactive shell is not run with -c.
+    if (underBwrap && children[0].name === "sh" && (await argv(current))[1] === "-c") {
+      underBwrap = false;
+      parent = current;
+      continue;
+    }
+    break;
   }
+  return current;
+}
+
+/** A process's arguments, empty once it is gone. */
+async function argv(pid: number): Promise<string[]> {
+  return (await fs.readFile(`/proc/${pid}/cmdline`, "utf8").catch(() => "")).split("\0");
+}
+
+/** The processes a runner is made of, above the shell it runs. */
+const RUNNER_LAYERS = new Set(["lxc-exec", "bwrap"]);
+
+/** A process's children, from a scan of `/proc/<n>/stat`: a runner's threads spawn them too. */
+async function childrenOf(pid: number): Promise<Array<{ pid: number; name: string }>> {
+  const children: Array<{ pid: number; name: string }> = [];
   try {
     for (const entry of await fs.readdir("/proc")) {
       if (!/^\d+$/.test(entry)) continue;
       const stat = await fs.readFile(`/proc/${entry}/stat`, "utf8").catch(() => "");
       // The command name sits in parentheses and may hold spaces: read after the last ")".
       const ppid = Number(stat.slice(stat.lastIndexOf(")") + 2).split(" ")[1]);
-      if (ppid === pid) return Number(entry);
+      if (ppid === pid) children.push({ pid: Number(entry), name: stat.slice(stat.indexOf("(") + 1, stat.lastIndexOf(")")) });
     }
   } catch {
     // /proc unreadable: the caller falls back to the runner's own pid.
   }
-  return undefined;
+  return children.sort((a, b) => a.pid - b.pid);
 }

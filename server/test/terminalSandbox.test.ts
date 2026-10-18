@@ -9,8 +9,12 @@ import { describe, test } from "node:test";
 import {
   checkRunner,
   confinedEnvironment,
+  isLinuxMxc,
+  mxcErrorMessage,
+  mxcLinuxConfig,
   mxcTerminalConfig,
   prepareConfinedTerminal,
+  quotePosixArgument,
   quoteWindowsArgument,
   runnerKind,
   siblingsToDeny,
@@ -196,6 +200,118 @@ describe("runnerKind", () => {
     assert.equal(runnerKind("/opt/mxc/wxc-exec"), "mxc");
     assert.equal(runnerKind("/opt/landstrip/bin/landstrip"), "landstrip");
     assert.equal(runnerKind("C:\\tools\\wxc-exec-wrapper.exe"), "landstrip");
+  });
+
+  // openlore: scenario=MxcNamesTheLinuxExecutor spec=sandbox-runner-bash
+  test("MxcNamesTheLinuxExecutor: a path ending in lxc-exec is MXC on Linux, and only that name", () => {
+    const shipped = "/opt/app/node_modules/@microsoft/mxc-sdk/bin/x64/lxc-exec";
+    assert.equal(runnerKind(shipped), "mxc");
+    assert.ok(isLinuxMxc(shipped));
+    assert.ok(!isLinuxMxc("C:\\mxc\\bin\\x64\\wxc-exec.exe"));
+    assert.equal(runnerKind("/opt/tools/lxc-exec-wrapper"), "landstrip");
+    assert.equal(runnerKind("/opt/tools/LXC-EXEC"), "landstrip", "Linux names are case-sensitive");
+  });
+});
+
+describe("checkRunner with MXC's Linux executor", () => {
+  async function withExecutor(run: (runner: string) => Promise<void>): Promise<void> {
+    const dir = await mkdtemp(path.join(tmpdir(), "mxc-linux-runner-"));
+    const runner = path.join(dir, "lxc-exec");
+    await writeFile(runner, "", { mode: 0o755 });
+    try {
+      await run(runner);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  }
+
+  test("the check runs one confined /bin/true in Bubblewrap, network open, and passes when it does", async () => {
+    await withExecutor(async (runner) => {
+      let request: Record<string, unknown> | undefined;
+      const ok = await checkRunner(runner, async (_file, args) => {
+        assert.equal(args.length, 1, "the request file alone");
+        request = JSON.parse(await readFile(args[0], "utf8"));
+        return { stdout: "", stderr: "" };
+      }, "linux");
+      assert.deepEqual(ok, { ok: true });
+      assert.equal(request?.containment, "bubblewrap");
+      assert.equal((request?.process as { commandLine: string }).commandLine, "/bin/true");
+      assert.deepEqual(request?.network, { egress: { default: "allow" } }, "the most demanding shape: a host that runs it runs the proxy too");
+    });
+  });
+
+  // openlore: scenario=AContainerWithoutNamespacesRefusesWithTheReason spec=sandbox-runner-bash
+  test("AContainerWithoutNamespacesRefusesWithTheReason: MXC's own message is the reason; elsewhere than Linux, refused", async () => {
+    await withExecutor(async (runner) => {
+      const said =
+        "Bubblewrap: network.egress requires unprivileged user and network namespaces, which this host refused (unshare --user --net exited with exit status: 1).";
+      const refused = await checkRunner(runner, async () => {
+        throw Object.assign(new Error("Command failed"), { stdout: `${said}{"error":{"code":"backend_error","message":"${said}"}}`, stderr: "" });
+      }, "linux");
+      assert.ok(!refused.ok && refused.reason === `MXC cannot confine commands on this host: ${said}`, !refused.ok ? refused.reason : "");
+      const windows = await checkRunner(runner, async () => ({ stdout: "", stderr: "" }), "win32");
+      assert.ok(!windows.ok && /Linux only/.test(windows.reason));
+    });
+  });
+
+  test("MXC's error object is read after its human line, and plain text passes through", () => {
+    assert.equal(mxcErrorMessage('Something.{"error":{"code":"x","message":"the reason"}}'), "the reason");
+    assert.equal(mxcErrorMessage("bwrap: No permissions to create new namespace\n"), "bwrap: No permissions to create new namespace");
+  });
+});
+
+describe("mxcLinuxConfig", () => {
+  const lroot = "/work/app";
+  const ltmp = "/tmp/pi-outpost-bash-1";
+  const present = new Set(["/usr", "/etc", "/lib", "/lib64", "/bin", "/sbin", "/opt/node"]);
+  const base = {
+    root: lroot,
+    allowWrite: true,
+    tmp: ltmp,
+    shell: "/bin/bash",
+    shellArgs: ["/tmp/pi-outpost-bash-1/command.sh"],
+    cwd: lroot,
+    env: { PATH: "/opt/node/bin:/usr/bin:/bin", HOME: lroot },
+    searchPath: "/opt/node/bin:/usr/bin:/bin:relative/bin",
+    agentDir: "/home/node/.pi/agent",
+    configFile: "/work/app/pi-outpost.config.json",
+    readOnlyFiles: ["/home/node/.gitconfig"],
+    exists: (file: string) => present.has(file),
+  };
+
+  // openlore: scenario=OnLinuxWithoutAnAllowlistTheNetworkIsOpen spec=sandbox-runner-bash
+  test("OnLinuxWithoutAnAllowlistTheNetworkIsOpen: Bubblewrap, the root and the temp writable, the system read-only, secrets denied", () => {
+    const config = mxcLinuxConfig(base);
+    assert.equal(config.containment, "bubblewrap");
+    assert.deepEqual(config.filesystem.readwritePaths, [lroot, ltmp]);
+    // Only trees this host has; a search path's installation; the shell's folder; git's identity.
+    assert.deepEqual(config.filesystem.readonlyPaths, ["/usr", "/etc", "/lib", "/lib64", "/bin", "/sbin", "/opt/node", "/home/node/.gitconfig"]);
+    assert.deepEqual(config.filesystem.deniedPaths, [base.agentDir, base.configFile]);
+    assert.equal(config.process.commandLine, "/bin/bash /tmp/pi-outpost-bash-1/command.sh");
+    assert.deepEqual(config.process.env, ["PATH=/opt/node/bin:/usr/bin:/bin", `HOME=${lroot}`]);
+    assert.deepEqual(config.network, { egress: { default: "allow" } });
+    assert.equal(config.runtimeConfig, undefined);
+  });
+
+  test("a narrower writable zone sits inside the read-only root; without write, only the temp", () => {
+    const zoned = mxcLinuxConfig({ ...base, writableRoot: `${lroot}/out` });
+    assert.deepEqual(zoned.filesystem.readwritePaths, [`${lroot}/out`, ltmp]);
+    assert.ok(zoned.filesystem.readonlyPaths.includes(lroot));
+    const readOnly = mxcLinuxConfig({ ...base, allowWrite: false });
+    assert.deepEqual(readOnly.filesystem.readwritePaths, [ltmp]);
+    assert.ok(readOnly.filesystem.readonlyPaths.includes(lroot));
+  });
+
+  test("under allowedHosts: outbound and inbound denied, the proxy the only way out", () => {
+    const config = mxcLinuxConfig({ ...base, networkProxy: "http://127.0.0.1:4567" });
+    assert.deepEqual(config.network, { egress: { default: "deny" }, ingress: { default: "deny" } }, "Bubblewrap refuses inbound beside a proxy");
+    assert.deepEqual(config.runtimeConfig, { networkProxy: "http://127.0.0.1:4567" });
+  });
+
+  test("arguments are quoted for a POSIX command line", () => {
+    assert.equal(quotePosixArgument("/bin/bash"), "/bin/bash");
+    assert.equal(quotePosixArgument("it's here"), `'it'\\''s here'`);
+    assert.equal(mxcLinuxConfig({ ...base, shellArgs: ["-c", "echo $HOME; ls"] }).process.commandLine, `/bin/bash -c 'echo $HOME; ls'`);
   });
 });
 

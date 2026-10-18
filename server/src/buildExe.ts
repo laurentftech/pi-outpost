@@ -220,7 +220,7 @@ export function placeMxcExecutor(
   options: { platform: NodeJS.Platform; force?: boolean; log: (line: string) => void; executor?: string | undefined },
 ): string | undefined {
   if (options.platform !== "win32") return undefined;
-  const source = "executor" in options ? options.executor : bundledMxcExecutor();
+  const source = "executor" in options ? options.executor : bundledMxcExecutor({ platform: "win32" });
   const destination = path.join(path.dirname(target), MXC_EXECUTOR_NAME);
   if (source === undefined) {
     if (fs.existsSync(destination)) return destination;

@@ -26,9 +26,9 @@ import { normalizeThinkingLevels, THEMES, type Theme, type ThinkingLevel } from 
 import { STRUCTURED_EXCHANGE_BYTES_CEILING_ANY } from "@pi-outpost/shared/structured-exchange/bounds";
 import { normalizeCommandPattern } from "./commandPolicy.ts";
 import { isAllowedHostPattern } from "./egressProxy.ts";
-import { BUNDLED_MXC, bundledMxcExecutor } from "./mxcExecutor.ts";
+import { BUNDLED_MXC, bundledMxcExecutor, mxcExecutorName } from "./mxcExecutor.ts";
 import { OPEN_SHAPES, type OpenShape } from "./openBrowser.ts";
-import { runnerKind } from "./terminalSandbox.ts";
+import { isLinuxMxc, runnerKind } from "./terminalSandbox.ts";
 
 export interface BrandingConfig {
   /** Header title. Default: "π". */
@@ -960,9 +960,12 @@ export function loadConfig(
     if (runner !== BUNDLED_MXC) return resolve(runner);
     const executor = bundledMxcExecutor();
     if (executor === undefined) {
+      if (mxcExecutorName(process.platform) === undefined) {
+        fail(`"${field}" is "${BUNDLED_MXC}", but MXC has no executor for ${process.platform}: it confines on Windows and Linux only`);
+      }
       fail(
         `"${field}" is "${BUNDLED_MXC}", but MXC's executor is not installed for ${process.arch}: ` +
-          `reinstall pi-outpost with its optional dependencies, or put wxc-exec.exe beside ${process.execPath}`,
+          `reinstall pi-outpost with its optional dependencies, or put ${mxcExecutorName(process.platform)} beside ${process.execPath}`,
       );
     }
     return executor;
@@ -1035,13 +1038,17 @@ export function loadConfig(
         fail(`"sandbox.writableRoot" must be inside "sandbox.root"`);
       }
     }
+    const resolvedBashRunner = bashRunner === undefined ? undefined : resolveRunner(bashRunner, "sandbox.bashRunner");
+    if (bashImage !== undefined && resolvedBashRunner !== undefined && isLinuxMxc(resolvedBashRunner)) {
+      fail(`"sandbox.bashImage" runs bash in a WSLC container, which MXC has on Windows only: on Linux, MXC's own runner is already a Linux sandbox — remove "sandbox.bashImage"`);
+    }
     config.sandbox = {
       root: resolvedRoot,
       allowWrite,
       writableRoot: resolvedWritableRoot,
       allowBash,
       ...(bashFrom === undefined ? {} : { bashFrom: bashFrom.trim() }),
-      ...(bashRunner === undefined ? {} : { bashRunner: resolveRunner(bashRunner, "sandbox.bashRunner") }),
+      ...(resolvedBashRunner === undefined ? {} : { bashRunner: resolvedBashRunner }),
       ...(bashShell === undefined ? {} : { bashShell: resolve(bashShell) }),
       ...(bashImage === undefined ? {} : { bashImage }),
       ...(allowedHosts === undefined ? {} : { allowedHosts: allowedHosts.map((host) => host.toLowerCase()) }),
