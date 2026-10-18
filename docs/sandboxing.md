@@ -128,7 +128,9 @@ or 1 for a failed cmdlet.
 arrays or `$'…'`. Git Bash cannot start in a Windows sandbox (microsoft/mxc#1061).
 
 Inside: native git (`status`, `log`, `diff`, branches, commits with your identity), `node`, `npm`,
-`cmd` and PowerShell. Limits:
+`cmd` and PowerShell. Your desktop is out of reach: a program the agent builds and runs there cannot
+type or click in your session, move the cursor, see your windows or read the clipboard — pi-outpost asks
+MXC for no clipboard and no input injection. Limits:
 
 - The root's drive is readable, minus every folder beside the path down to the root (your `.ssh`,
   other projects…), denied by name at each launch — git needs it (microsoft/mxc#1464). Something created

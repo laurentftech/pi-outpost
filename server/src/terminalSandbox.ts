@@ -261,8 +261,11 @@ export interface MxcTerminalConfig {
   containment: "processcontainer";
   process: { commandLine: string; cwd: string; env: string[] };
   filesystem: { readwritePaths: string[]; readonlyPaths: string[]; deniedPaths: string[] };
-  /** Win32k on: without it anything loading user32.dll (PowerShell, git) dies with 0xC0000142. */
-  ui: { disable: false };
+  /**
+   * Win32k on: without it anything loading user32.dll (PowerShell, git) dies with 0xC0000142.
+   * The user's desktop stays out of reach all the same: no clipboard, no keyboard or mouse input.
+   */
+  ui: { disable: false; clipboard: "none"; injection: false };
   network: { egress: { default: "allow" } };
 }
 
@@ -317,7 +320,8 @@ export function mxcTerminalConfig(input: MxcTerminalInput): MxcTerminalConfig {
       env: Object.entries(input.env).map(([name, value]) => `${name}=${value}`),
     },
     filesystem: { readwritePaths, readonlyPaths, deniedPaths },
-    ui: { disable: false },
+    // MXC's defaults deny both today; written out so a change of default cannot open them.
+    ui: { disable: false, clipboard: "none", injection: false },
     network: { egress: { default: "allow" } },
   };
 }
