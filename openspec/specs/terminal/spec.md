@@ -133,3 +133,48 @@ the deployment — so a confined terminal SHALL NOT be a way to move the agent w
 - **GIVEN** a confined terminal in a workspace whose sandbox is locked by configuration
 - **WHEN** the user changes directory to `/usr` and asks to sync the agent to it
 - **THEN** the agent's root is unchanged, exactly as if `/usr` had been chosen with the picker
+
+### Requirement: OnLinuxMxcMayConfineTheTerminal
+
+On Linux, `terminal.sandbox` MAY name MXC's Linux executor. When an interactive shell runs through it,
+the terminal SHALL keep the limits of `TheTerminalMayRunConfined`; when it cannot, the terminal SHALL be
+unavailable with the reason, and the agent's shell SHALL NOT be affected.
+
+#### Scenario: OnLinuxWithMxcGitRunsInTheTerminal
+- **GIVEN** a confined terminal under MXC's real Linux executor in a git repository that is its writable root
+- **WHEN** the user runs `git status` and reads the agent directory's `auth.json`
+- **THEN** git answers, and the read is refused
+
+### Requirement: OnMacOsMxcMayConfineTheTerminal
+
+On macOS on Apple silicon, `terminal.sandbox` MAY name MXC's macOS executor. The terminal SHALL then keep
+the limits of `TheTerminalMayRunConfined`, its size and resizes SHALL reach the shell, Ctrl-C SHALL
+interrupt the running command without ending the shell, and the shell's working directory SHALL be
+found as for an unconfined terminal.
+
+#### Scenario: OnMacOsWithMxcGitRunsInTheTerminal
+- **GIVEN** a confined terminal under MXC's real macOS executor in a git repository that is its writable root
+- **WHEN** the user runs `git status` — in the shell pi-outpost starts by default, zsh included — and reads the agent directory's key file
+- **THEN** git answers without warnings and leaves nothing in the root, and the read is refused
+
+#### Scenario: OnMacOsTheConfinedTerminalBehavesAsATerminal
+- **GIVEN** a confined terminal under MXC's real macOS executor, opened at 40 rows by 120 columns
+- **WHEN** the user asks the size, resizes it, interrupts a running `sleep`, and changes directory
+- **THEN** the shell reports each size, the interrupted command ends with status 130 while the shell lives, and the server finds the new working directory
+
+### Requirement: UnderMxcNothingConfinedReachesTheDesktop
+
+Under MXC, the request for a confined terminal and for the agent's confined shell SHALL ask for no
+clipboard access and no keyboard or mouse input injection, while keeping the user interface enabled
+that PowerShell and git need. A program run there SHALL NOT inject input into the user's session,
+move the cursor, see the user's windows, or open the clipboard.
+
+#### Scenario: TheRequestKeepsTheDesktopOutOfReach
+- **GIVEN** a terminal or a confined shell under MXC, with writes allowed, refused, or limited to a zone
+- **WHEN** its MXC request is built
+- **THEN** the request's user-interface policy is enabled, with clipboard `none` and injection off
+
+#### Scenario: AConfinedProgramCannotDriveTheDesktop
+- **GIVEN** the agent's `powershell` confined by MXC's real executor, and a program compiled outside the sandbox into the root
+- **WHEN** the command runs it, and it injects an absolute mouse move, sets the cursor, lists the visible windows and opens the clipboard
+- **THEN** the cursor is where neither call put it, setting it is refused, no window is visible, and the clipboard does not open

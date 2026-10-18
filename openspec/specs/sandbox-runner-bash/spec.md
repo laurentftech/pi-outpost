@@ -178,3 +178,135 @@ less than configured.
 - **GIVEN** `bash` confined by MXC with a `bashImage`
 - **WHEN** a turn runs several commands in parallel, one of which fails
 - **THEN** they run one after another, never overlapping, and the failure does not prevent the next
+
+### Requirement: OnLinuxMxcMayConfineBash
+
+On Linux, `"mxc"` SHALL name the installed MXC Linux executor (`lxc-exec`) for this architecture, and a
+path whose file is `lxc-exec` SHALL name MXC too. Its commands SHALL run in MXC's Bubblewrap backend with
+the same limits as a confined command elsewhere: the root writable or read-only, the agent directory and
+the configuration denied, the minimal environment for the command and for the runner, and none of the
+server's processes visible.
+
+#### Scenario: MxcNamesTheLinuxExecutor
+- **GIVEN** a Linux host with `@microsoft/mxc-sdk` installed
+- **WHEN** the configuration names `"mxc"` as `sandbox.bashRunner`, or a path ending in `lxc-exec`
+- **THEN** it resolves to the package's `lxc-exec` for this architecture, and is treated as MXC
+
+#### Scenario: OnLinuxACommandCannotReadOutsideTheRoot
+- **GIVEN** `bash` confined by MXC's real Linux executor in a container that allows it, a file beside the root and an agent directory with a key
+- **WHEN** a command reads both, writes in the root and beside it, lists the processes it sees, and runs git
+- **THEN** both reads fail, only the write in the root lands, no server process and no key is visible, and git answers
+
+### Requirement: OnLinuxAnMxcHostThatCannotConfineIsRefused
+
+The Linux self-check SHALL run one confined command with the network shape the configuration needs, and
+a host that cannot run it SHALL make every command refuse with MXC's own reason.
+
+#### Scenario: AContainerWithoutNamespacesRefusesWithTheReason
+- **GIVEN** MXC as `bashRunner` in a Docker container with the default seccomp and AppArmor profiles
+- **WHEN** a command is run
+- **THEN** it is refused, and the reason names the user namespaces the host refused
+
+### Requirement: OnLinuxTheNetworkFollowsAllowedHosts
+
+Under MXC on Linux, the agent's shell SHALL keep an open network without `sandbox.allowedHosts`, and with
+it SHALL reach only the listed hosts through the server's proxy, with outbound and inbound traffic denied.
+
+#### Scenario: OnLinuxAnAllowedHostIsReachedAndOthersAreRefused
+- **GIVEN** `sandbox.allowedHosts` naming `registry.npmjs.org`, and `bash` confined by MXC's real Linux executor
+- **WHEN** a command fetches that host, an unlisted host, and that host again ignoring the proxy, and reaches another service on the container's loopback
+- **THEN** only the first succeeds, through the proxy, and the output ends with the note naming the unlisted host
+
+#### Scenario: OnLinuxWithoutAnAllowlistTheNetworkIsOpen
+- **GIVEN** `bash` confined by MXC on Linux and no `sandbox.allowedHosts`
+- **WHEN** its request is built
+- **THEN** outbound traffic is allowed and no proxy is set
+
+### Requirement: OnMacOsMxcMayConfineBash
+
+On macOS on Apple silicon, `"mxc"` SHALL name the installed MXC macOS executor (`mxc-exec-mac`), and a
+path whose file is `mxc-exec-mac` SHALL name MXC too. Its commands SHALL run under Seatbelt with the
+limits of a confined command elsewhere, and SHALL signal no process outside the command.
+
+#### Scenario: MxcNamesTheMacOsExecutor
+- **GIVEN** a Mac on Apple silicon with `@microsoft/mxc-sdk` installed
+- **WHEN** the configuration names `"mxc"` as `sandbox.bashRunner`, or a path ending in `mxc-exec-mac`
+- **THEN** it resolves to the package's `mxc-exec-mac`, and is treated as MXC
+
+#### Scenario: OnAnIntelMacMxcIsRefused
+- **GIVEN** a Mac on an Intel processor
+- **WHEN** the configuration names `"mxc"` as `sandbox.bashRunner`
+- **THEN** loading the configuration fails, saying MXC has no executor for this architecture
+
+#### Scenario: OnMacOsACommandCannotReachOutsideTheRoot
+- **GIVEN** `bash` confined by MXC's real macOS executor, a file beside the root, an agent directory with a key, and a process of the server's user
+- **WHEN** a command reads both files, writes in the root and beside it, and signals that process
+- **THEN** both reads fail, only the write in the root lands, the signal is refused and the process lives, and no key is in the command's environment
+
+#### Scenario: OnMacOsGitAnswersQuietly
+- **GIVEN** `bash` confined by MXC's real macOS executor in a git repository that is its writable root
+- **WHEN** a command runs `git status`
+- **THEN** git answers, prints no warning about temporary or cache directories, and leaves no new file in the root
+
+#### Scenario: OnMacOsWithoutAnAllowlistTheNetworkIsOpen
+- **GIVEN** `bash` confined by MXC on macOS and no `sandbox.allowedHosts`
+- **WHEN** a command fetches a public host
+- **THEN** it is reached
+
+### Requirement: OnMacOsTheNetworkFollowsAllowedHosts
+
+Under MXC on macOS, the agent's shell SHALL keep an open network without `sandbox.allowedHosts`, and with
+it SHALL reach only the listed hosts through the server's proxy, with outbound and inbound traffic denied.
+
+#### Scenario: OnMacOsAnAllowedHostIsReachedAndOthersAreRefused
+- **GIVEN** `sandbox.allowedHosts` naming `registry.npmjs.org`, and `bash` confined by MXC's real macOS executor
+- **WHEN** a command fetches that host, an unlisted host, and that host again ignoring the proxy, and reaches another service on the loopback
+- **THEN** only the first succeeds, through the proxy, and the output ends with the note naming the unlisted host
+
+### Requirement: AConfinedShellMayReachOnlyNamedHosts
+
+`sandbox.allowedHosts` MAY list host names, exact or as a `*.` suffix. When it is set and MXC's process
+container confines the agent's shell, every command SHALL run with outbound traffic denied and the
+server's proxy as its only way out, and the proxy SHALL relay a connection to a listed host.
+
+#### Scenario: AnAllowedHostIsReached
+- **GIVEN** `sandbox.allowedHosts` naming `registry.npmjs.org`, and the agent's shell confined by MXC
+- **WHEN** a command fetches `https://registry.npmjs.org/` with curl, and runs `git ls-remote` against an allowed git host
+- **THEN** both succeed, through the server's proxy
+
+#### Scenario: PowerShellFetchesThroughTheProxy
+- **GIVEN** the same configuration with a PowerShell `bashShell`
+- **WHEN** a command calls `Invoke-WebRequest` on an allowed host without naming a proxy
+- **THEN** it succeeds
+
+#### Scenario: NoAllowlistKeepsTheNetwork
+- **GIVEN** the agent's shell confined by MXC and no `sandbox.allowedHosts`
+- **WHEN** its request is built
+- **THEN** outbound traffic is allowed and no proxy is set, as before
+
+### Requirement: AnUnnamedHostIsRefusedAndNothingBypassesTheProxy
+
+Under `sandbox.allowedHosts`, the proxy SHALL refuse a host the list does not name with a response naming
+that host and `sandbox.allowedHosts`, the command's output SHALL end with a note naming every host refused
+while it ran, and the server SHALL log the refusal. A direct connection, and any other service on the host's
+loopback, SHALL be unreachable from a command.
+
+#### Scenario: AnotherHostIsRefusedWithTheReason
+- **GIVEN** `sandbox.allowedHosts` and the agent's shell confined by MXC
+- **WHEN** a command fetches a host the list does not name
+- **THEN** it fails, the command's output ends with a note naming that host and `sandbox.allowedHosts` — curl, git and Windows PowerShell print only the status code — the proxy's own answer names them too, and the server logs the refusal
+
+#### Scenario: TheProxyCannotBeBypassed
+- **GIVEN** the same configuration
+- **WHEN** a command connects to an address directly, ignoring the proxy, or reaches another service listening on the host's loopback
+- **THEN** the connection is refused
+
+### Requirement: AnAllowlistNeedsMxcWithoutAnImage
+
+`sandbox.allowedHosts` SHALL be refused at load, with a reason naming the key and what it needs, unless
+MXC is the `bashRunner` and no `bashImage` is set: no other backend enforces it here.
+
+#### Scenario: AnAllowlistNeedsMxcWithoutAnImage
+- **GIVEN** `sandbox.allowedHosts` with no runner, with landstrip as `bashRunner`, or with `bashImage`
+- **WHEN** the configuration is loaded
+- **THEN** it is refused with a reason naming the key and what it needs
