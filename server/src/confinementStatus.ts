@@ -60,6 +60,14 @@ export function buildTerminalConfinement(input: {
 /** How long the canary may take, through a runner that starts slowly. */
 export const CANARY_TIMEOUT_MS = 60_000;
 
+/**
+ * Whether the agent has a confined shell to judge: bash allowed, run by a runner, not handed to an
+ * extension. Without bash there is no shell — and no lock to show for it.
+ */
+export function shellIsConfined(sandbox: SandboxConfig | undefined): sandbox is SandboxConfig & { bashRunner: string } {
+  return Boolean(sandbox?.allowBash && sandbox.bashRunner && sandbox.bashFrom === undefined);
+}
+
 /** The agent's shell: exactly what its `bash` (or `powershell`) tool runs with. */
 export async function agentShellVerdict(sandbox: SandboxConfig, neverReadable: { agentDir?: string; configFile?: string }): Promise<ConfinementVerdict> {
   const runner = sandbox.bashRunner!;

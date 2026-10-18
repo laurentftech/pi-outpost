@@ -18,7 +18,7 @@ when the sandbox settings change; its verdict SHALL be sent to clients.
 - **THEN** the lock is shown open and marked as a failure, naming the agent directory as readable, and the configuration is left as it was
 
 #### Scenario: NoRunnerNoLock
-- **GIVEN** no `sandbox.bashRunner`
+- **GIVEN** no `sandbox.bashRunner`, or a runner but `allowBash` off, or bash handed to an extension (`bashFrom`)
 - **WHEN** the interface shows the agent's shell
 - **THEN** no lock is shown
 

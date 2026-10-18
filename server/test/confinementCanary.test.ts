@@ -11,6 +11,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { after, before, describe, test } from "node:test";
 import { confinedBashOperations } from "../src/confinedBash.ts";
+import { shellIsConfined } from "../src/confinementStatus.ts";
 import { canaryScript, expectedAttempts, prepareBait, readCanary, runCanary, secretVariables, serverEnvironment } from "../src/confinementCanary.ts";
 
 const base = { runner: "/r", checkedAt: "2026-10-18T00:00:00.000Z", notChecked: [] };
@@ -207,4 +208,14 @@ describe("landstrip, whose commands can read the server's /proc environ", { skip
       await rm(dir, { recursive: true, force: true });
     }
   });
+});
+
+// openlore: scenario=NoRunnerNoLock spec=sandbox-runner-bash
+test("NoRunnerNoLock: the shell is judged only with bash allowed, a runner, and no extension running it", () => {
+  const base = { root: "/w", allowWrite: true, readExceptions: [] } as never as Parameters<typeof shellIsConfined>[0] & object;
+  assert.equal(shellIsConfined({ ...base, allowBash: true, bashRunner: "/usr/bin/sandbox-exec" }), true);
+  assert.equal(shellIsConfined({ ...base, allowBash: false, bashRunner: "/usr/bin/sandbox-exec" }), false, "no bash, no lock");
+  assert.equal(shellIsConfined({ ...base, allowBash: true }), false, "no runner, no lock");
+  assert.equal(shellIsConfined({ ...base, allowBash: true, bashRunner: "/r", bashFrom: "npm:pi-landstrip" }), false, "an extension runs bash");
+  assert.equal(shellIsConfined(undefined), false);
 });
