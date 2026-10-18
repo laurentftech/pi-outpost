@@ -56,6 +56,7 @@ import { createStructuredExchangeFigureToolDefinition } from "./structuredExchan
 import { createTimelineComparisonToolDefinition } from "./timelineComparisonTool.ts";
 import { createStructuredExchangeTableToolDefinition } from "./structuredExchangeTableTool.ts";
 import { confinedBashOperations, isPowerShell } from "./confinedBash.ts";
+import { sharedEgressProxy } from "./egressProxy.ts";
 import { userGitConfig } from "./terminalSandbox.ts";
 
 /**
@@ -346,6 +347,7 @@ export async function createSandboxedTools(
           ...neverReadable,
           // git's identity: the user's ~/.gitconfig, readable on its own.
           gitConfig: userGitConfig(),
+          ...(sandbox.allowedHosts === undefined ? {} : { networkProxy: await sharedEgressProxy(sandbox.allowedHosts) }),
         })
       : undefined;
     // A confined PowerShell gets pi's `powershell` tool — its description tells the model

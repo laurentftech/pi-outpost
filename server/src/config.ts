@@ -25,6 +25,7 @@ import path from "node:path";
 import { normalizeThinkingLevels, THEMES, type Theme, type ThinkingLevel } from "@pi-outpost/shared";
 import { STRUCTURED_EXCHANGE_BYTES_CEILING_ANY } from "@pi-outpost/shared/structured-exchange/bounds";
 import { normalizeCommandPattern } from "./commandPolicy.ts";
+import { isAllowedHostPattern } from "./egressProxy.ts";
 import { BUNDLED_MXC, bundledMxcExecutor } from "./mxcExecutor.ts";
 import { OPEN_SHAPES, type OpenShape } from "./openBrowser.ts";
 import { runnerKind } from "./terminalSandbox.ts";
@@ -88,6 +89,12 @@ export interface SandboxConfig {
    * mounted at `/mnt/<drive>/…`. Exclusive with `bashShell`.
    */
   bashImage?: string;
+  /**
+   * MXC's process container only: the hosts the agent's shell may reach — exact names, or
+   * `*.suffix` for the names under it. Every command then runs with outbound traffic denied
+   * and the server's proxy (`egressProxy.ts`) as its only way out. Absent: the network is open.
+   */
+  allowedHosts?: string[];
   /**
    * Extra directories (absolute paths) that read tools (read/ls/grep/find) are
    * allowed to access in addition to `root`. Write tools are NOT affected — these
@@ -995,6 +1002,17 @@ export function loadConfig(
     if (bashRunner !== undefined && bashFrom !== undefined) {
       fail(`"sandbox.bashRunner" and "sandbox.bashFrom" both say who runs bash: keep one`);
     }
+    const allowedHosts = optionalStringArray(sandbox, "allowedHosts");
+    if (allowedHosts !== undefined) {
+      // Only MXC's process container can close the network around the proxy here.
+      if (bashRunner === undefined || bashImage !== undefined || (bashRunner !== BUNDLED_MXC && runnerKind(bashRunner) !== "mxc")) {
+        fail(`"sandbox.allowedHosts" needs MXC as "sandbox.bashRunner", and no "sandbox.bashImage": no other backend can hold the network to it`);
+      }
+      const invalid = allowedHosts.find((host) => !isAllowedHostPattern(host));
+      if (invalid !== undefined) {
+        fail(`"sandbox.allowedHosts" holds ${JSON.stringify(invalid)}: name a host ("registry.npmjs.org") or a suffix ("*.githubusercontent.com")`);
+      }
+    }
 
     // A sandbox that only *reads* may follow the workspace the user just named —
     // that is what moving the workspace means. A sandbox that grants write or bash
@@ -1026,6 +1044,7 @@ export function loadConfig(
       ...(bashRunner === undefined ? {} : { bashRunner: resolveRunner(bashRunner, "sandbox.bashRunner") }),
       ...(bashShell === undefined ? {} : { bashShell: resolve(bashShell) }),
       ...(bashImage === undefined ? {} : { bashImage }),
+      ...(allowedHosts === undefined ? {} : { allowedHosts: allowedHosts.map((host) => host.toLowerCase()) }),
       readExceptions: [
         ...(optionalStringArray(raw, "skillPaths") ?? []).map(resolve),
         ...(optionalStringArray(raw, "userSkillPaths") ?? []).map(resolve),

@@ -3301,6 +3301,8 @@ async function handleUpdateConfig(
         ...(config.sandbox?.bashRunner === undefined ? {} : { bashRunner: config.sandbox.bashRunner }),
         ...(config.sandbox?.bashShell === undefined ? {} : { bashShell: config.sandbox.bashShell }),
         ...(config.sandbox?.bashImage === undefined ? {} : { bashImage: config.sandbox.bashImage }),
+        // Or an apply would open the network the file closed.
+        ...(config.sandbox?.allowedHosts === undefined ? {} : { allowedHosts: config.sandbox.allowedHosts }),
         readExceptions: [],
       };
     }
@@ -6147,7 +6149,7 @@ if (config.sandbox) {
     ...(config.sandbox.allowBash
       ? [
           config.sandbox.bashRunner
-            ? `${isPowerShell(config.sandbox.bashShell) ? "powershell" : "bash"} (confined by ${config.sandbox.bashRunner}, ${config.sandbox.bashImage ? `WSLC image ${config.sandbox.bashImage}` : `shell ${config.sandbox.bashShell ?? "/bin/bash"}`})`
+            ? `${isPowerShell(config.sandbox.bashShell) ? "powershell" : "bash"} (confined by ${config.sandbox.bashRunner}, ${config.sandbox.bashImage ? `WSLC image ${config.sandbox.bashImage}` : `shell ${config.sandbox.bashShell ?? "/bin/bash"}`}${config.sandbox.allowedHosts ? `, network only to ${config.sandbox.allowedHosts.join(", ") || "nothing"}` : ""})`
             : config.sandbox.bashFrom
               ? `bash (from ${config.sandbox.bashFrom})`
               : "bash (UNCONFINED)",

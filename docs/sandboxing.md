@@ -27,7 +27,8 @@ Name the same runner for the agent's `bash` (`sandbox.bashRunner`) and for the t
 pi-outpost writes the runner's policy from the configuration, so a command cannot widen it. A
 missing or failing runner refuses every command; nothing falls back to running unconfined.
 
-The network stays open (`git fetch`, `npm install` work). To close it, close it around the server —
+The network stays open (`git fetch`, `npm install` work). Under MXC, `sandbox.allowedHosts` limits it
+to the hosts you name ([below](#the-network-only-named-hosts)). Elsewhere, close it around the server —
 a Docker network, a firewall — or [hand `bash` to an extension](#alternative-hand-bash-to-an-extension)
 that filters it.
 
@@ -144,6 +145,48 @@ MXC for no clipboard and no input injection. Limits:
   give both yourself to a shell you name in `terminal.shell`.
 
 Details and probes: [`investigations/windows-sandboxing.md`](investigations/windows-sandboxing.md).
+
+### The network: only named hosts
+
+Confined, a command cannot read beside the root — but it can send what it reads inside it anywhere.
+`sandbox.allowedHosts` closes that: the agent's shell may then reach only the hosts it names.
+
+```json
+{
+  "sandbox": {
+    "root": "C:\\work\\app",
+    "allowWrite": true,
+    "allowBash": true,
+    "bashRunner": "mxc",
+    "bashShell": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+    "allowedHosts": ["registry.npmjs.org", "*.pki.goog", "github.com", "*.githubusercontent.com"]
+  }
+}
+```
+
+Each command runs with outbound traffic denied, and a proxy the server runs on its loopback as the only
+way out. MXC hands the command `HTTPS_PROXY` and `HTTP_PROXY`; curl, git and npm follow them, and
+PowerShell's `Invoke-WebRequest` and `Invoke-RestMethod` are pointed at the proxy too. The proxy relays a
+listed host on any port and refuses any other; a direct connection — or a program that ignores
+`HTTPS_PROXY` — is refused by the sandbox, as is any other service listening on your machine's loopback.
+The server logs each refusal (`[sandbox] network: refused …`), and the command's output ends with a note
+naming the hosts refused while it ran, so the agent can tell you what to add:
+
+```
+curl: (56) CONNECT tunnel failed, response 403
+
+[pi-outpost] network refused: example.com — not in sandbox.allowedHosts. Ask the user to add it there if the command needs it.
+```
+
+- A name matches that host only; `*.githubusercontent.com` matches the names under it, not
+  `githubusercontent.com` itself. An empty list closes the network entirely.
+- Plain `http://` is relayed like HTTPS, to the listed hosts only.
+- On Windows, list your hosts' certificate authorities too. `curl.exe` checks a certificate's
+  revocation by fetching the authority's list over plain HTTP, and fails when it cannot: for
+  registry.npmjs.org that is `*.pki.goog`. The note after the output names the host it was refused.
+- The agent's shell only, under MXC's process container: the key is refused without MXC as `bashRunner`,
+  and with `bashImage` (WSLC). The terminal panel is your own shell and keeps the network.
+- Without the key, the network is open, as before. A Settings apply keeps the list.
 
 ### A real bash: WSLC (experimental)
 

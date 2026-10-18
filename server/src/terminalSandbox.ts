@@ -266,7 +266,16 @@ export interface MxcTerminalConfig {
    * The user's desktop stays out of reach all the same: no clipboard, no keyboard or mouse input.
    */
   ui: { disable: false; clipboard: "none"; injection: false };
-  network: { egress: { default: "allow" } };
+  /**
+   * Open, or — under `sandbox.allowedHosts` — closed but for the proxy. MXC refuses a proxy
+   * without inbound allowed and the host's loopback open; the loopback then reaches the proxy
+   * alone (measured: another local service stays out of reach).
+   */
+  network:
+    | { egress: { default: "allow" } }
+    | { egress: { default: "deny" }; ingress: { default: "allow"; hostLoopback: "allow" } };
+  /** The only way out, with `egress` denied: MXC sets `HTTPS_PROXY` and `HTTP_PROXY` to it. */
+  runtimeConfig?: { networkProxy: string };
 }
 
 export interface MxcTerminalInput {
@@ -285,6 +294,8 @@ export interface MxcTerminalInput {
   siblings: string[];
   /** Single files readable besides the trees: the user's git configuration. */
   readOnlyFiles?: string[];
+  /** `sandbox.allowedHosts`' proxy: the network closed but for it. The agent's shell only. */
+  networkProxy?: string;
 }
 
 /**
@@ -322,7 +333,12 @@ export function mxcTerminalConfig(input: MxcTerminalInput): MxcTerminalConfig {
     filesystem: { readwritePaths, readonlyPaths, deniedPaths },
     // MXC's defaults deny both today; written out so a change of default cannot open them.
     ui: { disable: false, clipboard: "none", injection: false },
-    network: { egress: { default: "allow" } },
+    ...(input.networkProxy === undefined
+      ? { network: { egress: { default: "allow" } } }
+      : {
+          network: { egress: { default: "deny" }, ingress: { default: "allow", hostLoopback: "allow" } },
+          runtimeConfig: { networkProxy: input.networkProxy },
+        }),
   };
 }
 
