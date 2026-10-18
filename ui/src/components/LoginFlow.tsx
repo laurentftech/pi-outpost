@@ -75,13 +75,9 @@ function Question({ prompt, onAnswer }: { prompt: LoginPrompt; onAnswer: (value:
     );
   }
   return (
-    <form
+    <div
       data-testid="login-prompt"
       className="space-y-2"
-      onSubmit={(event) => {
-        event.preventDefault();
-        if (value.trim()) onAnswer(value.trim());
-      }}
     >
       <label className="block text-sm text-zinc-700 dark:text-zinc-200">
         {prompt.type === "manual_code" ? `${prompt.message} — or the whole address the browser was sent to` : prompt.message}
@@ -95,6 +91,12 @@ function Question({ prompt, onAnswer }: { prompt: LoginPrompt; onAnswer: (value:
           autoFocus
           value={value}
           onChange={(event) => setValue(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key !== "Enter") return;
+            event.preventDefault();
+            event.stopPropagation();
+            if (value.trim()) onAnswer(value.trim());
+          }}
         />
       </label>
       {loopbackCallback && (
@@ -102,10 +104,10 @@ function Question({ prompt, onAnswer }: { prompt: LoginPrompt; onAnswer: (value:
           If Pi Outpost runs on another computer, your browser may say it cannot connect to localhost. Copy the full address from that browser page and paste it above to finish signing in.
         </p>
       )}
-      <button type="submit" className={button} disabled={!value.trim()}>
+      <button type="button" className={button} disabled={!value.trim()} onClick={() => onAnswer(value.trim())}>
         Continue
       </button>
-    </form>
+    </div>
   );
 }
 

@@ -26,6 +26,9 @@ describe("LoginFlow", () => {
     expect(screen.getByRole("textbox")).toHaveAttribute("spellcheck", "false");
     fireEvent.click(screen.getByRole("button", { name: "Continue" }));
     expect(answer).toHaveBeenCalledWith("code-123");
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "code-456" } });
+    fireEvent.keyDown(screen.getByRole("textbox"), { key: "Enter" });
+    expect(answer).toHaveBeenCalledWith("code-456");
     rerender(<LoginFlow login={state({ prompt: { promptId: "p2", prompt: { type: "secret", message: "Password" } } })} providerName="Codex" onAnswer={answer} onCancel={vi.fn()} onDismiss={vi.fn()} />);
     expect(screen.getByLabelText("Password")).toHaveAttribute("type", "password");
     expect(screen.getByTestId("login-flow").querySelector("[aria-live='polite']")).toBeInTheDocument();

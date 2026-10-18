@@ -13,6 +13,16 @@ test("onboarding account sign-in works without crypto.randomUUID on an HTTP LAN 
   await expect(page.getByTestId("login-device-code")).toContainText("WDJB-MJHT");
 });
 
+test("onboarding submits a manual login answer without navigating or exposing it in the URL", async ({ page }) => {
+  const address = process.env.PI_E2E_ACCOUNT_ONBOARDING_URL!;
+  await page.goto(address);
+  await page.getByRole("button", { name: "Account Test", exact: true }).click();
+  await page.getByTestId("login-prompt").getByRole("textbox").fill("wrong-code");
+  await page.getByRole("button", { name: "Continue" }).click();
+  await expect(page.getByTestId("login-done")).toContainText("That code was not accepted");
+  expect(page.url()).toBe(address);
+});
+
 test("onboarding account buttons toggle the current flow and switch to another provider", async ({ page }) => {
   await page.goto(process.env.PI_E2E_ACCOUNT_ONBOARDING_URL!);
   await expect(page.getByText("Sign in with an account")).toBeVisible();
