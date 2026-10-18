@@ -55,7 +55,10 @@ Under a runner, a command (or a terminal) may:
 | Environment | `PATH`, locale, `TERM`, `SHELL`, `HOME` set to the root, npm's cache in the temporary directory, `GIT_CONFIG_GLOBAL` naming your `~/.gitconfig` (read-only, for git's identity); on Windows `USERPROFILE`, `TEMP` and `TMP` point to the temporary directory. None of the server's other variables, so no provider key. |
 | Signal | No process outside the sandbox. |
 
-Output, exit status, timeout and cancellation behave as for an unconfined `bash`. Each project's
+Output, exit status, timeout and cancellation behave as for an unconfined `bash`. Commands the model
+asks for in one message run one after another, in the order it wrote them, where pi would run them
+together: each starts a runner first, and a step that depends on the previous one (create, then
+rename) would otherwise overtake it. Each project's
 commands and terminals are confined to that project's root. Settings never edit `bashRunner` or
 `bashShell`.
 

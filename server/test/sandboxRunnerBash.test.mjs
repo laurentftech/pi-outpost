@@ -41,7 +41,7 @@ async function waitForFile(file, timeoutMs = 60_000) {
 }
 
 /** Starts a server, has the agent call `bash` once with `command`, and returns the tool result. */
-async function runBash(t, { project, sandbox, command, afterHello, fake = true, tool }) {
+async function runBash(t, { project, sandbox, command, commands, afterHello, fake = true, tool }) {
   const log = path.join(path.dirname(project), `${path.basename(project)}-bash-result.json`);
   const server = await startServer(
     project,
@@ -50,6 +50,7 @@ async function runBash(t, { project, sandbox, command, afterHello, fake = true, 
       env: {
         BASH_CALL_LOG: log,
         BASH_CALL_COMMAND: command,
+        ...(commands ? { BASH_CALL_COMMANDS: JSON.stringify(commands) } : {}),
         ...(tool ? { BASH_CALL_TOOL: tool } : {}),
         OPENAI_API_KEY: "sk-server-secret",
         // The server's own environment only: a confined command gets a minimal one.
@@ -120,6 +121,26 @@ test("ThePowerShellToolReplacesBash: bashShell naming PowerShell gives the agent
   assert.match(result, /via-the-runner/, `the command did not go through the runner: ${result}`);
   assert.match(result, /-NoProfile.*-NonInteractive.*-ExecutionPolicy.*Bypass.*-File/, result);
   assert.match(result, /command\.ps1/, result);
+});
+
+// openlore: scenario=ATurnsCommandsRunInOrder spec=sandbox-runner-bash
+test("ATurnsCommandsRunInOrder: commands batched in one message run one after another, in order", async (t) => {
+  const project = await fakeProject();
+  // The first writes a file late; the second reads it. Run together, the second would find nothing.
+  const stamp = (label) => `console.log("${label} " + Date.now())`;
+  const { result } = await runBash(t, {
+    project,
+    sandbox: { bashRunner: process.execPath, bashShell: process.execPath },
+    command: "unused",
+    commands: [
+      `${stamp("start-1")}; setTimeout(() => { require("fs").writeFileSync("step1.txt", "made"); ${stamp("end-1")}; }, 1500)`,
+      `${stamp("start-2")}; console.log("read " + require("fs").readFileSync("step1.txt", "utf8")); ${stamp("end-2")}`,
+    ],
+  });
+  const [first, second] = JSON.parse(result).map((content) => content.map((part) => part.text ?? "").join(""));
+  assert.match(second, /read made/, `the second command did not see the first's file: ${second}`);
+  const time = (text, label) => Number(new RegExp(`${label} (\\d+)`).exec(text)?.[1]);
+  assert.ok(time(first, "end-1") <= time(second, "start-2"), `the commands overlapped: ${first} / ${second}`);
 });
 
 // openlore: scenario=ApplyingSettingsKeepsTheRunner spec=sandbox-runner-bash

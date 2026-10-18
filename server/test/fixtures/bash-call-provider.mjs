@@ -2,6 +2,9 @@
  * Calls `bash` once — `echo from-the-shell` — then records the tool result the model
  * receives. Which `bash` ran is in that result: pi-outpost's runs the command, a
  * sandboxing extension's answers in its own words.
+ *
+ * BASH_CALL_COMMANDS (a JSON array) makes it call the tool once per command, all in one
+ * message, as a model does when it batches steps; every result is then recorded, in order.
  */
 import { createRequire } from "node:module";
 import { createAssistantMessageEventStream } from "@earendil-works/pi-ai/compat";
@@ -24,26 +27,31 @@ function message(model, content, stopReason) {
 function stream(model, context) {
   const messages = context.messages ?? [];
   const lastUserIndex = messages.findLastIndex((item) => item.role === "user");
-  const result = messages.findLast((item, index) => item.role === "toolResult" && index > lastUserIndex);
+  const results = messages.filter((item, index) => item.role === "toolResult" && index > lastUserIndex);
+  const batch = process.env.BASH_CALL_COMMANDS ? JSON.parse(process.env.BASH_CALL_COMMANDS) : undefined;
   const out = createAssistantMessageEventStream();
 
-  if (!result) {
+  if (results.length === 0) {
     // BASH_CALL_COMMAND lets a probe ask for something else; the suites use the default.
     // BASH_CALL_TOOL names another shell tool (`powershell`).
-    const command = process.env.BASH_CALL_COMMAND ?? "echo from-the-shell";
-    const call = { type: "toolCall", id: `bash-${Date.now()}`, name: process.env.BASH_CALL_TOOL ?? "bash", arguments: { command } };
-    const partial = message(model, [call], "toolUse");
+    const commands = batch ?? [process.env.BASH_CALL_COMMAND ?? "echo from-the-shell"];
+    const name = process.env.BASH_CALL_TOOL ?? "bash";
+    const calls = commands.map((command, i) => ({ type: "toolCall", id: `bash-${Date.now()}-${i}`, name, arguments: { command } }));
+    const partial = message(model, calls, "toolUse");
     queueMicrotask(() => {
       out.push({ type: "start", partial });
-      out.push({ type: "toolcall_start", contentIndex: 0, partial });
-      out.push({ type: "toolcall_end", contentIndex: 0, toolCall: call, partial });
+      calls.forEach((toolCall, contentIndex) => {
+        out.push({ type: "toolcall_start", contentIndex, partial });
+        out.push({ type: "toolcall_end", contentIndex, toolCall, partial });
+      });
       out.push({ type: "done", reason: "toolUse", message: partial });
     });
     return out;
   }
 
   const file = process.env.BASH_CALL_LOG;
-  if (file) require("node:fs").writeFileSync(file, JSON.stringify(result.content));
+  const recorded = batch ? results.map((item) => item.content) : results.at(-1).content;
+  if (file) require("node:fs").writeFileSync(file, JSON.stringify(recorded));
   const partial = message(model, [{ type: "text", text: "done" }], "stop");
   queueMicrotask(() => {
     out.push({ type: "start", partial });
