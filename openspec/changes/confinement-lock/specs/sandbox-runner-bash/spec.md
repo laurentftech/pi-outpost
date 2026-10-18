@@ -3,10 +3,9 @@
 ### Requirement: ConfinementIsVerifiedBeforeItIsShown
 
 When `sandbox.bashRunner` is set and its self-check passes, the server SHALL run a canary through that
-runner, with the policy a command of the agent's shell gets, attempting to read a file in the agent
-directory and one beside the root, to write beside the root, to signal the server, and to read a value
-from the server's environment — and, under `sandbox.allowedHosts`, to reach an unlisted host. It SHALL
-run again when the sandbox settings change, and its verdict SHALL be part of the state sent to clients.
+runner, with the agent shell's policy, attempting what confinement must refuse (see design: the agent
+directory, beside the root, a signal, the server's environment, an unlisted host). It SHALL run again
+when the sandbox settings change; its verdict SHALL be sent to clients.
 
 #### Scenario: AVerifiedRunnerEarnsTheLock
 - **GIVEN** a configured runner that refuses every attempt of the canary
