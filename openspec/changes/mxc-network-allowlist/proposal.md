@@ -30,7 +30,9 @@ not reach the proxy in the probe; not pursued). Windows PowerShell 5.1's `Invoke
 - A new `sandbox.allowedHosts`: a list of host names (`registry.npmjs.org`) or suffixes
   (`*.githubusercontent.com`). When set, every command of the agent's shell confined by MXC's
   process container runs with outbound traffic denied and the server's proxy as its only way out.
-- The server runs that proxy on its loopback: `CONNECT` to an allowed host is relayed (on any port: the host is the boundary),
+- The server runs that proxy on its loopback: `CONNECT` or a plain HTTP request to an allowed host is relayed (on any port: the host is the
+  boundary; plain HTTP because Windows' Schannel fetches revocation lists that way, and curl fails
+  without them),
   anything else is answered `403` with a body naming the host and `sandbox.allowedHosts`, so the
   model can say why and ask the user rather than retry blindly. Each refusal is logged. curl, git
   and Windows PowerShell print only the status code of a refused tunnel, so the command's output also

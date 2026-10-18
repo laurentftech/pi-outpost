@@ -159,7 +159,7 @@ Confined, a command cannot read beside the root — but it can send what it read
     "allowBash": true,
     "bashRunner": "mxc",
     "bashShell": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
-    "allowedHosts": ["registry.npmjs.org", "github.com", "*.githubusercontent.com"]
+    "allowedHosts": ["registry.npmjs.org", "*.pki.goog", "github.com", "*.githubusercontent.com"]
   }
 }
 ```
@@ -180,7 +180,10 @@ curl: (56) CONNECT tunnel failed, response 403
 
 - A name matches that host only; `*.githubusercontent.com` matches the names under it, not
   `githubusercontent.com` itself. An empty list closes the network entirely.
-- Plain `http://` through the proxy is refused: HTTPS only.
+- Plain `http://` is relayed like HTTPS, to the listed hosts only.
+- On Windows, list your hosts' certificate authorities too. `curl.exe` checks a certificate's
+  revocation by fetching the authority's list over plain HTTP, and fails when it cannot: for
+  registry.npmjs.org that is `*.pki.goog`. The note after the output names the host it was refused.
 - The agent's shell only, under MXC's process container: the key is refused without MXC as `bashRunner`,
   and with `bashImage` (WSLC). The terminal panel is your own shell and keeps the network.
 - Without the key, the network is open, as before. A Settings apply keeps the list.

@@ -4,13 +4,13 @@
  * MXC's process container runs each command with outbound traffic denied and this proxy as
  * its `runtimeConfig.networkProxy`: MXC sets `HTTPS_PROXY` and `HTTP_PROXY` in the command's
  * environment, curl, git and npm follow them, and a direct connection is refused by the
- * sandbox. The proxy relays a `CONNECT` to a listed host and answers anything else `403`,
- * with the host and the key in the status line — the part curl and git print — so the model
- * can tell the user what to add rather than retry.
+ * sandbox. The proxy relays a `CONNECT`, or a plain HTTP request, to a listed host and answers
+ * anything else `403`, with the host and the key in the status line, so the model can tell the
+ * user what to add rather than retry.
  *
  * The host is the boundary, not the port: a listed host is reachable on any port.
  */
-import { createServer, type IncomingMessage, type Server } from "node:http";
+import { createServer, request as httpRequest, type IncomingMessage, type Server } from "node:http";
 import { connect, type Socket } from "node:net";
 
 const HOST_LABEL = /^(?!-)[a-z0-9-]{1,63}(?<!-)$/i;
@@ -61,10 +61,29 @@ export async function startEgressProxy(options: EgressProxyOptions): Promise<Egr
   };
 
   const server: Server = createServer((request: IncomingMessage, response) => {
-    // Absolute-form requests: plain HTTP through the proxy. Not relayed — HTTPS is.
-    const host = URL.canParse(request.url ?? "") ? new URL(request.url!).hostname : String(request.url);
-    const reason = refuse(host, `${request.method} ${request.url}`, "plain HTTP is not relayed by pi-outpost's sandbox proxy: use https");
-    response.writeHead(403, reason, { "content-type": "text/plain" }).end(`${reason}\n`);
+    // Absolute-form requests: plain HTTP through the proxy, relayed to a listed host as a
+    // tunnel is. Windows' TLS needs it: Schannel fetches a certificate's revocation list from
+    // its authority over plain HTTP (`http://c.pki.goog/…`), and curl fails without it.
+    const url = URL.canParse(request.url ?? "") ? new URL(request.url!) : undefined;
+    if (!url || url.protocol !== "http:" || !hostAllowed(url.hostname, options.allowedHosts)) {
+      const host = url?.hostname || String(request.url);
+      const reason = refuse(host, `${request.method} ${request.url}`, `${host} is not in sandbox.allowedHosts`);
+      response.writeHead(403, reason, { "content-type": "text/plain", connection: "close" }).end(`${reason}\n`);
+      return;
+    }
+    const host = url.hostname.replace(/^\[|\]$/g, "");
+    const port = Number(url.port) || 80;
+    const headers = Object.fromEntries(Object.entries(request.headers).filter(([name]) => !/^proxy-/i.test(name)));
+    const upstream = httpRequest({ host, port, method: request.method, path: `${url.pathname}${url.search}`, headers }, (answer) => {
+      options.onRelayed?.(`${host}:${port}`);
+      response.writeHead(answer.statusCode ?? 502, answer.statusMessage, answer.headers);
+      answer.pipe(response);
+    });
+    upstream.on("error", (error) => {
+      if (!response.headersSent) response.writeHead(502, `${host} could not be reached`, { "content-type": "text/plain" });
+      response.end(`${host} could not be reached: ${error.message}\n`);
+    });
+    request.pipe(upstream);
   });
   server.on("connect", (request: IncomingMessage, client: Socket, head: Buffer) => {
     sockets.add(client);

@@ -48,7 +48,8 @@ describe("the agent's powershell under MXC, network only to allowed hosts", { sk
     await mkdir(root);
     execFileSync("git", ["init", "-q", root]);
     proxy = await startEgressProxy({
-      allowedHosts: ["registry.npmjs.org", "github.com"],
+      // registry.npmjs.org's certificate authority: Schannel (curl.exe) fetches its revocation list over plain HTTP.
+      allowedHosts: ["registry.npmjs.org", "github.com", "*.pki.goog"],
       onRefused: (line) => refused.push(line),
       onRelayed: (target) => relayed.push(target),
     });

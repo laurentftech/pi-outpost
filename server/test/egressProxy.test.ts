@@ -94,17 +94,34 @@ describe("the proxy", () => {
     assert.ok(refused.some((line) => /CONNECT example\.com:443/.test(line) && /sandbox\.allowedHosts/.test(line)), refused.join("\n"));
   });
 
-  test("plain HTTP through the proxy is refused, and says to use https", async () => {
-    const answer = await new Promise<{ code?: number; text: string }>((resolve, reject) => {
-      const req = request({ host: "127.0.0.1", port: proxyPort, path: `http://127.0.0.1:${upstreamPort}/`, method: "GET" }, (res) => {
+  /** A plain HTTP request through the proxy, in absolute form, as curl sends one with HTTP_PROXY. */
+  function viaProxy(target: string): Promise<{ code?: number; message?: string; text: string }> {
+    return new Promise((resolve, reject) => {
+      const req = request({ host: "127.0.0.1", port: proxyPort, path: target, method: "GET", headers: { "proxy-connection": "keep-alive" } }, (res) => {
         let text = "";
         res.on("data", (chunk) => (text += chunk));
-        res.on("end", () => resolve({ code: res.statusCode, text }));
+        res.on("end", () => resolve({ code: res.statusCode, message: res.statusMessage, text }));
       });
       req.on("error", reject);
       req.end();
     });
+  }
+
+  test("plain HTTP to a listed host is relayed — a certificate authority's revocation list comes this way on Windows", async () => {
+    relayed.length = 0;
+    const answer = await viaProxy(`http://127.0.0.1:${upstreamPort}/crl.crl`);
+    assert.equal(answer.code, 200);
+    assert.equal(answer.text, "from-upstream");
+    assert.deepEqual(relayed, [`127.0.0.1:${upstreamPort}`]);
+  });
+
+  test("plain HTTP to another host is refused with the host and the key, and told to a watcher", async () => {
+    const watched: string[] = [];
+    const unwatch = proxy.watchRefusals((host) => watched.push(host));
+    const answer = await viaProxy("http://c.pki.goog/r/gsr1.crl");
+    unwatch();
     assert.equal(answer.code, 403);
-    assert.match(answer.text, /use https/);
+    assert.equal(answer.message, "c.pki.goog is not in sandbox.allowedHosts");
+    assert.deepEqual(watched, ["c.pki.goog"]);
   });
 });
