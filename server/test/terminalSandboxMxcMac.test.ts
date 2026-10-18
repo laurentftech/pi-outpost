@@ -98,7 +98,9 @@ describe("a confined terminal under MXC's real macOS executor", { skip }, () => 
     manager.write(socket, "t", "sleep 30\r");
     await new Promise((resolve) => setTimeout(resolve, 500));
     manager.write(socket, "t", "\x03");
-    assert.match(await run("echo status=$?"), /status=130/);
+    // Kept before run(), whose own marker echo would reset $?.
+    manager.write(socket, "t", "interrupted=$?\r");
+    assert.match(await run("echo status=$interrupted"), /status=130/);
     assert.equal(exited, undefined, "Ctrl-C ended the shell");
     await run("cd sub");
     // lsof answers the real path: /var/folders is /private/var/folders.
