@@ -925,7 +925,33 @@ export interface SessionSnapshot {
     /** Why no terminal can be opened, when the configured sandbox runner is unusable. */
     unavailable?: string;
   };
+  /**
+   * Whether OS-level confinement was seen holding, for the agent's shell and the terminal: a
+   * canary run through the real runner tried what confinement must refuse. Absent for a surface
+   * with no runner. The interface's lock is drawn from this, never from the configuration alone.
+   */
+  confinement?: { bash?: ConfinementVerdict; terminal?: ConfinementVerdict };
 }
+
+/** One thing the confinement canary tries, which a confined command must not be able to do. */
+export type ConfinementAttempt =
+  | "agent-directory"
+  | "beside-root"
+  | "write-beside-root"
+  | "signal-process"
+  | "server-environment"
+  | "unlisted-host"
+  | "direct-connection";
+
+/**
+ * The canary's verdict. `verified`: every attempt it could make was refused. `leaking`: at least
+ * one got through. `failed`: the canary itself could not run or answer, so nothing is known.
+ */
+export type ConfinementVerdict =
+  | { state: "checking"; runner: string }
+  | { state: "verified"; runner: string; checkedAt: string; refused: ConfinementAttempt[]; notChecked: Array<{ attempt: ConfinementAttempt; why: string }> }
+  | { state: "leaking"; runner: string; checkedAt: string; reached: ConfinementAttempt[]; refused: ConfinementAttempt[] }
+  | { state: "failed"; runner: string; checkedAt: string; reason: string };
 
 /**
  * What the client needs to decide between "you have not set up a provider yet"
