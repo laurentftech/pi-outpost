@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
-import type { OutpostUpdateNotice, PiPackageInfo } from "@pi-outpost/shared";
+import type { LoginEvent, LoginPrompt, OutpostUpdateNotice, PiPackageInfo } from "@pi-outpost/shared";
 import type { ProjectAppearance, StructuredConformance } from "@pi-outpost/shared/structured-exchange/profile";
 import { workspaceKey } from "./util/workspaceKey";
 import { bootstrapToken, storedToken, storeToken } from "./authToken";
@@ -359,6 +359,8 @@ export interface AgentState {
   docxTemplate?: string;
   /** Which providers can answer; drives the onboarding screen. Never carries a key. */
   credentials: CredentialStatus | null;
+  /** The provider sign-in this browser is running, if any: what it showed, what it asks, how it ended. */
+  login: LoginFlowState | null;
   fileSearch: FileSearch | null;
   /** Refusal of the last creation request, for the tree row that asked for it. */
   createError: { path: string; message: string } | null;
@@ -413,7 +415,20 @@ export interface AgentState {
   gitFileDiff: GitFileDiffState | null;
 }
 
+/** A sign-in started from this browser (see the server's loginRelay). */
+export interface LoginFlowState {
+  flowId: string;
+  provider: string;
+  method: "oauth" | "api_key";
+  /** What the flow showed, oldest first: a link, a device code, progress. */
+  events: LoginEvent[];
+  /** The question it is waiting on. */
+  prompt: { promptId: string; prompt: LoginPrompt } | null;
+  done: { ok: boolean; cancelled?: boolean; message?: string } | null;
+}
+
 const initialState: AgentState = {
+  login: null,
   connected: false,
   workspace: null,
   workspaces: [],
@@ -497,6 +512,9 @@ type Action =
   | { type: "auth_required" }
   | { type: "auth_retrying" }
   | { type: "server"; message: ServerMessage }
+  | { type: "login_started"; flowId: string; provider: string; method: "oauth" | "api_key" }
+  | { type: "login_answered" }
+  | { type: "login_dismissed" }
   | { type: "prompt_sent"; text: string; images?: WireImage[] }
   | { type: "pending_prompt_cancelled"; restoreText: boolean }
   | { type: "dismiss_notification"; id: string }
@@ -701,6 +719,15 @@ function reduce(state: AgentState, action: Action): AgentState {
   }
   if (action.type === "auth_required") return { ...state, connected: false, authRequired: true };
   if (action.type === "auth_retrying") return { ...state, authRequired: false };
+  if (action.type === "login_started") {
+    return { ...state, login: { flowId: action.flowId, provider: action.provider, method: action.method, events: [], prompt: null, done: null } };
+  }
+  if (action.type === "login_answered") return state.login ? { ...state, login: { ...state.login, prompt: null } } : state;
+  if (action.type === "login_dismissed") return { ...state, login: null };
+  if (action.type === "disconnected" && state.login && !state.login.done) {
+    // The server aborts a flow whose page went away: say so rather than wait on a prompt forever.
+    state = { ...state, login: { ...state.login, prompt: null, done: { ok: false, message: "Connection lost — the sign-in was stopped. Start it again." } } };
+  }
   if (action.type === "disconnected") {
     // An in-flight save will never be answered on this socket — surface a retryable
     // error instead of leaving the editor stuck on "saving…"
@@ -1089,6 +1116,21 @@ function reduce(state: AgentState, action: Action): AgentState {
         modelSupportsReasoning: message.reasoning,
         // Replace outright — a message with no set means "offer the full set".
         thinkingLevels: message.thinkingLevels,
+      };
+    case "login_event":
+      if (state.login?.flowId !== message.flowId) return state;
+      return { ...state, login: { ...state.login, events: [...state.login.events, message.event] } };
+    case "login_prompt":
+      if (state.login?.flowId !== message.flowId) return state;
+      return { ...state, login: { ...state.login, prompt: { promptId: message.promptId, prompt: message.prompt } } };
+    case "login_prompt_cancelled":
+      if (state.login?.flowId !== message.flowId || state.login.prompt?.promptId !== message.promptId) return state;
+      return { ...state, login: { ...state.login, prompt: null } };
+    case "login_done":
+      if (state.login?.flowId !== message.flowId) return state;
+      return {
+        ...state,
+        login: { ...state.login, prompt: null, done: { ok: message.ok, ...(message.cancelled ? { cancelled: true } : {}), ...(message.message ? { message: message.message } : {}) } },
       };
     case "credentials_changed": {
       // Onboarding landed: new models, new status, same session — so nothing else here
@@ -2432,6 +2474,26 @@ export function useAgent(serverUrl = "", explicitToken?: string, embedded = fals
     clearGitFileDiff: () => dispatch({ type: "git_file_diff_cleared" }),
     /** Onboarding: store an API key for a provider the server already knows. */
     setCredential: (provider: string, apiKey: string) => sendMessage({ type: "set_credential", provider, apiKey }),
+    /** Start signing in to `provider`; its steps arrive in `state.login`. */
+    startLogin: (provider: string, method: "oauth" | "api_key") => {
+      const flowId = crypto.randomUUID();
+      dispatch({ type: "login_started", flowId, provider, method });
+      sendMessage({ type: "start_login", flowId, provider, method });
+    },
+    /** Answer the question the running sign-in waits on. */
+    answerLogin: (value: string) => {
+      const login = state.login;
+      if (!login?.prompt) return;
+      sendMessage({ type: "login_answer", flowId: login.flowId, promptId: login.prompt.promptId, value });
+      dispatch({ type: "login_answered" });
+    },
+    cancelLogin: () => {
+      const login = state.login;
+      if (login && !login.done) sendMessage({ type: "cancel_login", flowId: login.flowId });
+    },
+    /** Forget a finished (or stuck) sign-in's dialog. */
+    dismissLogin: () => dispatch({ type: "login_dismissed" }),
+    logoutProvider: (provider: string) => sendMessage({ type: "logout_provider", provider }),
     /** Onboarding: declare an OpenAI-compatible endpoint (corporate gateway, vLLM, Ollama…). */
     declareProvider: (declaration: { provider: string; baseUrl: string; apiKey: string; models: string[]; compat?: ProviderCompat }) =>
       sendMessage({ type: "declare_provider", ...declaration }),
