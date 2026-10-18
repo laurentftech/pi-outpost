@@ -41,11 +41,11 @@ two lists of system paths that have nothing in common. Paths are resolved (`/tmp
 **git without the `xcrun` shim.** `/usr/bin/git` is a shim that asks `confstr` for a per-user temp and
 cache directory (refused under Seatbelt), falls back to `/tmp` (not writable), warns on every call and
 leaves a `Library/` cache in `HOME`. The confined search path puts the real git's folder first —
-`<developer dir>/usr/bin` for Command Line Tools, `<developer dir>/Toolchains/XcodeDefault.xctoolchain/usr/bin`
-or `<developer dir>/usr/bin` for Xcode, whichever holds `git` — so the shim is never reached. Alternatives:
-making `/private/tmp` writable (shared with every user, rejected); `HOME` in the private temp (hides
-`Library/` but keeps the warnings). To be confirmed by the first real run; the fallback is a
-`DEVELOPER_DIR` plus `TMPDIR`-only approach if the real binaries also call `confstr`.
+`<developer dir>/usr/bin` (Xcode and Command Line Tools both keep `git` there) — so the shim is never
+reached. Measured (`mxc-macos-seatbelt-git-tree.sh`): Xcode's git answers `init`, `rev-parse` and
+`status` with no warning, and the root holds only `.git` afterwards. Alternatives: making `/private/tmp`
+writable (shared with every user, rejected); `HOME` in the private temp (hides `Library/` but keeps the
+warnings).
 
 **Network: the proxy shape of Linux.** `egress: deny`, `ingress: deny`, `runtimeConfig.networkProxy`
 (measured: the listed host relayed, nothing else reachable, the loopback included). `ingress: allow` is
@@ -55,9 +55,9 @@ accepted by Seatbelt but not needed.
 on as the reason — the Linux check with another command and backend. Refused off macOS for an
 `mxc-exec-mac` path, as `lxc-exec` is off Linux.
 
-**The terminal's working directory.** `shellUnder` (Linux, `/proc`) gets a macOS twin reading the
-process tree from `ps -A -o pid=,ppid=,comm=` (the server's `ps`, unconfined) and `lsof` for the shell's
-cwd. Which processes sit between the executor and the shell is measured in the first real run.
+**The terminal's working directory.** Measured: the shell is the executor's only child (no wrapper, no
+helper), and the server's `lsof` reads its cwd. `shellUnder` gets a macOS branch taking the executor's
+child (`pgrep -P`); `getCwd` already asks `lsof`.
 
 **Config:** `bashImage` refused with `mxc-exec-mac` (WSLC is Windows only); `"mxc"` on an Intel Mac
 refused naming the architecture (`bundledMxcExecutor` already returns none for x64 on darwin; the

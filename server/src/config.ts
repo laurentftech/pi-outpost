@@ -26,9 +26,9 @@ import { normalizeThinkingLevels, THEMES, type Theme, type ThinkingLevel } from 
 import { STRUCTURED_EXCHANGE_BYTES_CEILING_ANY } from "@pi-outpost/shared/structured-exchange/bounds";
 import { normalizeCommandPattern } from "./commandPolicy.ts";
 import { isAllowedHostPattern } from "./egressProxy.ts";
-import { BUNDLED_MXC, bundledMxcExecutor, mxcExecutorName } from "./mxcExecutor.ts";
+import { BUNDLED_MXC, bundledMxcExecutor, mxcExecutorName, mxcSupportsArch } from "./mxcExecutor.ts";
 import { OPEN_SHAPES, type OpenShape } from "./openBrowser.ts";
-import { isLinuxMxc, runnerKind } from "./terminalSandbox.ts";
+import { isPosixMxc, runnerKind } from "./terminalSandbox.ts";
 
 export interface BrandingConfig {
   /** Header title. Default: "π". */
@@ -961,7 +961,10 @@ export function loadConfig(
     const executor = bundledMxcExecutor();
     if (executor === undefined) {
       if (mxcExecutorName(process.platform) === undefined) {
-        fail(`"${field}" is "${BUNDLED_MXC}", but MXC has no executor for ${process.platform}: it confines on Windows and Linux only`);
+        fail(`"${field}" is "${BUNDLED_MXC}", but MXC has no executor for ${process.platform}: it confines on Windows, Linux and macOS only`);
+      }
+      if (!mxcSupportsArch(process.platform, process.arch)) {
+        fail(`"${field}" is "${BUNDLED_MXC}", but MXC has no executor for ${process.platform} on ${process.arch}: on macOS it ships for Apple silicon (arm64) only`);
       }
       fail(
         `"${field}" is "${BUNDLED_MXC}", but MXC's executor is not installed for ${process.arch}: ` +
@@ -1039,8 +1042,8 @@ export function loadConfig(
       }
     }
     const resolvedBashRunner = bashRunner === undefined ? undefined : resolveRunner(bashRunner, "sandbox.bashRunner");
-    if (bashImage !== undefined && resolvedBashRunner !== undefined && isLinuxMxc(resolvedBashRunner)) {
-      fail(`"sandbox.bashImage" runs bash in a WSLC container, which MXC has on Windows only: on Linux, MXC's own runner is already a Linux sandbox — remove "sandbox.bashImage"`);
+    if (bashImage !== undefined && resolvedBashRunner !== undefined && isPosixMxc(resolvedBashRunner)) {
+      fail(`"sandbox.bashImage" runs bash in a WSLC container, which MXC has on Windows only: on Linux and macOS, MXC's own runner confines bash already — remove "sandbox.bashImage"`);
     }
     config.sandbox = {
       root: resolvedRoot,

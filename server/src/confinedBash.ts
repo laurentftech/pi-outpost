@@ -21,8 +21,8 @@ import type { EgressProxy } from "./egressProxy.ts";
 import {
   checkRunner,
   confinedEnvironment,
-  isLinuxMxc,
-  mxcLinuxConfig,
+  isPosixMxc,
+  mxcPosixConfig,
   mxcTerminalConfig,
   runnerKind,
   siblingsToDeny,
@@ -166,8 +166,8 @@ export function confinedBashOperations(options: ConfinedBashOptions): BashOperat
           });
           await writeFile(policyFile, JSON.stringify(request), { mode: 0o600 });
           args = ["--config", policyFile];
-        } else if (kind === "mxc" && isLinuxMxc(options.runner)) {
-          const request = mxcLinuxConfig({
+        } else if (kind === "mxc" && isPosixMxc(options.runner)) {
+          const request = mxcPosixConfig(options.runner, {
             root: options.root,
             writableRoot: options.writableRoot,
             allowWrite: options.allowWrite,

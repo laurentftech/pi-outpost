@@ -16,10 +16,12 @@
  * On Windows 11 the runner may instead be MXC's executor (`wxc-exec.exe`, Microsoft
  * eXecution Containers), whose tier 1 has the OS apply the policy itself: `NUL`, git and
  * busybox work there, where landstrip's AppContainer refuses them. Its policy is a
- * different document (`mxcTerminalConfig`) and it carries the shell's command line.
+ * different document (`mxcTerminalConfig`) and it carries the shell's command line. On
+ * Linux it may be MXC's `lxc-exec` (Bubblewrap, `mxcLinuxConfig`), and on Apple-silicon
+ * macOS `mxc-exec-mac` (Seatbelt, `mxcMacConfig`): the same document, another backend.
  */
-import { execFile } from "node:child_process";
-import { closeSync, constants as fsConstants, existsSync, lstatSync, openSync, readdirSync } from "node:fs";
+import { execFile, execFileSync } from "node:child_process";
+import { closeSync, constants as fsConstants, existsSync, lstatSync, openSync, readdirSync, realpathSync } from "node:fs";
 import { access, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import path from "node:path";
@@ -74,12 +76,22 @@ export async function checkRunner(runner: string, exec: Exec = defaultExec, plat
 export type RunnerKind = "landstrip" | "mxc";
 
 export function runnerKind(runner: string): RunnerKind {
-  return /^wxc-exec(\.exe)?$/i.test(path.win32.basename(runner)) || isLinuxMxc(runner) ? "mxc" : "landstrip";
+  return /^wxc-exec(\.exe)?$/i.test(path.win32.basename(runner)) || isPosixMxc(runner) ? "mxc" : "landstrip";
 }
 
 /** Whether a runner is MXC's Linux executor (`lxc-exec`): Bubblewrap, not Windows' containers. */
 export function isLinuxMxc(runner: string): boolean {
   return path.win32.basename(runner) === "lxc-exec";
+}
+
+/** Whether a runner is MXC's macOS executor (`mxc-exec-mac`): Seatbelt. */
+export function isMacMxc(runner: string): boolean {
+  return path.win32.basename(runner) === "mxc-exec-mac";
+}
+
+/** MXC on Linux or macOS: a POSIX shell's command line, and the same request but for the backend. */
+export function isPosixMxc(runner: string): boolean {
+  return isLinuxMxc(runner) || isMacMxc(runner);
 }
 
 /**
@@ -93,9 +105,13 @@ export function isLinuxMxc(runner: string): boolean {
 async function checkMxcRunner(runner: string, exec: Exec, platform: NodeJS.Platform): Promise<RunnerCheck> {
   if (isLinuxMxc(runner)) {
     if (platform !== "linux") return { ok: false, reason: `MXC's lxc-exec confines commands on Linux only: ${runner}` };
-    return checkLinuxMxcRunner(runner, exec);
+    return checkPosixMxcRunner(runner, exec, "bubblewrap");
   }
-  if (platform !== "win32") return { ok: false, reason: `MXC's wxc-exec confines commands on Windows only — on Linux, "mxc" names lxc-exec: ${runner}` };
+  if (isMacMxc(runner)) {
+    if (platform !== "darwin") return { ok: false, reason: `MXC's mxc-exec-mac confines commands on macOS only: ${runner}` };
+    return checkPosixMxcRunner(runner, exec, "seatbelt");
+  }
+  if (platform !== "win32") return { ok: false, reason: `MXC's wxc-exec confines commands on Windows only — on Linux and macOS, "mxc" names that platform's executor: ${runner}` };
   let output: ExecFileResult;
   try {
     output = await exec(runner, ["--probe"], { timeout: RUNNER_CHECK_TIMEOUT_MS });
@@ -123,7 +139,8 @@ async function checkMxcRunner(runner: string, exec: Exec, platform: NodeJS.Platf
 }
 
 /**
- * MXC's Linux self-check: one confined `/bin/true` in its Bubblewrap backend, network open.
+ * MXC's Linux and macOS self-check: one confined `true` in its Bubblewrap or Seatbelt
+ * backend, network open.
  *
  * `lxc-exec --available-backends` lists Bubblewrap wherever `bwrap` is installed, even in a
  * container that refuses it user namespaces; only a run tells. The network shape is the
@@ -131,14 +148,15 @@ async function checkMxcRunner(runner: string, exec: Exec, platform: NodeJS.Platf
  * that passes runs both the open network and `sandbox.allowedHosts`' proxy. MXC says why it
  * cannot — namespaces, AppArmor, a missing tool — and that is the reason passed on.
  */
-async function checkLinuxMxcRunner(runner: string, exec: Exec): Promise<RunnerCheck> {
+async function checkPosixMxcRunner(runner: string, exec: Exec, containment: "bubblewrap" | "seatbelt"): Promise<RunnerCheck> {
   const tmp = await mkdtemp(path.join(tmpdir(), "pi-outpost-mxc-check-"));
   try {
+    const mac = containment === "seatbelt";
     const request = {
       version: "1.0.0",
-      containment: "bubblewrap",
-      process: { commandLine: "/bin/true", cwd: tmp, env: ["PATH=/usr/bin:/bin"] },
-      filesystem: { readwritePaths: [tmp], readonlyPaths: linuxSystemTrees() },
+      containment,
+      process: { commandLine: mac ? "/usr/bin/true" : "/bin/true", cwd: mac ? realPath(tmp) : tmp, env: ["PATH=/usr/bin:/bin"] },
+      filesystem: { readwritePaths: [mac ? realPath(tmp) : tmp], readonlyPaths: mac ? macSystemTrees() : linuxSystemTrees() },
       network: { egress: { default: "allow" } },
     };
     const file = path.join(tmp, "check.json");
@@ -482,6 +500,99 @@ export function mxcLinuxConfig(input: MxcLinuxInput): MxcLinuxConfig {
   };
 }
 
+/** MXC's request on macOS: Linux's document, run by Seatbelt. */
+export type MxcMacConfig = Omit<MxcLinuxConfig, "containment"> & { containment: "seatbelt" };
+
+export interface MxcMacInput extends MxcLinuxInput {
+  /** The developer tools' directory (`xcode-select -p`): git lives there. Default: asked once. */
+  developerDir?: string | null;
+  /** A path as Seatbelt sees it, symlinks resolved. A parameter for tests. */
+  realPath?: (file: string) => string;
+}
+
+/** The system trees a macOS shell needs, those this host has. */
+export function macSystemTrees(exists: (file: string) => boolean = existsSync): string[] {
+  return ["/usr", "/bin", "/sbin", "/System", "/Library", "/private/etc", "/private/var/db/xcode_select_link", "/opt/homebrew"].filter((tree) => exists(tree));
+}
+
+/** A path with its symlinks resolved (`/tmp` → `/private/tmp`), or as given when it does not exist. */
+function realPath(file: string): string {
+  try {
+    return realpathSync(file);
+  } catch {
+    return file;
+  }
+}
+
+let developerDirCache: string | null | undefined;
+
+/** `xcode-select -p`: Xcode's `…/Contents/Developer`, or the Command Line Tools. Null without either. */
+export function macDeveloperDir(): string | null {
+  if (developerDirCache !== undefined) return developerDirCache;
+  try {
+    developerDirCache = execFileSync("xcode-select", ["-p"], { encoding: "utf8", timeout: RUNNER_CHECK_TIMEOUT_MS }).trim() || null;
+  } catch {
+    developerDirCache = null;
+  }
+  return developerDirCache;
+}
+
+/**
+ * What one command or terminal may touch under MXC on macOS.
+ *
+ * Seatbelt's profile denies by default: the system trees, the search path's installations, the
+ * developer tools, the root and the temporary directory are allowed read-only or writable, and
+ * nothing else. Every path goes in resolved, as Seatbelt matches it (`/var/folders/…` is
+ * `/private/var/folders/…`).
+ *
+ * `/usr/bin/git` is Apple's `xcrun` shim: refused a per-user temp and cache directory under
+ * Seatbelt, it warns on every call and leaves a `Library/` cache in `HOME`. The developer
+ * directory's own `git` goes first on the search path, so the shim never runs.
+ */
+export function mxcMacConfig(input: MxcMacInput): MxcMacConfig {
+  const exists = input.exists ?? existsSync;
+  const real = input.realPath ?? realPath;
+  const developerDir = input.developerDir === undefined ? macDeveloperDir() : input.developerDir;
+  const gitDir = developerDir ? path.posix.join(developerDir, "usr", "bin") : undefined;
+  const gitFirst = gitDir && exists(path.posix.join(gitDir, "git")) ? gitDir : undefined;
+  // Xcode's tools load from the whole bundle; the Command Line Tools sit under /Library already.
+  const developerTree = developerDir?.endsWith("/Contents/Developer") ? developerDir.slice(0, -"/Contents/Developer".length) : developerDir;
+  const env = { ...input.env };
+  if (gitFirst) env.PATH = env.PATH ? `${gitFirst}:${env.PATH}` : gitFirst;
+  const writable = input.allowWrite ? [input.writableRoot ?? input.root] : [];
+  const readwritePaths = unique([...writable, input.tmp].map(real));
+  const shellDir = path.posix.isAbsolute(input.shell) ? [path.posix.dirname(input.shell)] : [];
+  const readonlyPaths = unique(
+    [
+      ...macSystemTrees(exists),
+      ...toolTrees(input.searchPath, path.posix).filter((tree) => exists(tree)),
+      ...(developerTree && exists(developerTree) ? [developerTree] : []),
+      ...shellDir,
+      input.root,
+      ...(input.readOnlyFiles ?? []),
+    ].map(real),
+  ).filter((p) => !readwritePaths.includes(p) && !readwritePaths.some((rw) => isUnder(p, rw)));
+  const deniedPaths = unique([input.agentDir, input.configFile].filter((p): p is string => Boolean(p)).map(real));
+  return {
+    version: "1.0.0",
+    containment: "seatbelt",
+    process: {
+      commandLine: [input.shell, ...input.shellArgs].map(quotePosixArgument).join(" "),
+      cwd: real(input.cwd),
+      env: Object.entries(env).map(([name, value]) => `${name}=${value}`),
+    },
+    filesystem: { readwritePaths, readonlyPaths, deniedPaths },
+    ...(input.networkProxy === undefined
+      ? { network: { egress: { default: "allow" } } }
+      : { network: { egress: { default: "deny" }, ingress: { default: "deny" } }, runtimeConfig: { networkProxy: input.networkProxy } }),
+  };
+}
+
+/** MXC's request on Linux or macOS, for the executor `runner` names. */
+export function mxcPosixConfig(runner: string, input: MxcMacInput): MxcLinuxConfig | MxcMacConfig {
+  return isMacMxc(runner) ? mxcMacConfig(input) : mxcLinuxConfig(input);
+}
+
 /** Whether `child` is `parent` or inside it (POSIX paths, as given). */
 function isUnder(child: string, parent: string): boolean {
   const rel = path.posix.relative(parent, child);
@@ -643,7 +754,7 @@ export interface ConfinedTerminalFiles {
 
 /** Create the private directory and write the policy (landstrip's, or MXC's request) into it, owner-only. */
 export async function prepareConfinedTerminal(
-  build: (tmp: string) => TerminalPolicy | MxcTerminalConfig | MxcLinuxConfig,
+  build: (tmp: string) => TerminalPolicy | MxcTerminalConfig | MxcLinuxConfig | MxcMacConfig,
 ): Promise<ConfinedTerminalFiles> {
   const tmp = await mkdtemp(path.join(tmpdir(), "pi-outpost-terminal-"));
   const policyFile = path.join(tmp, "policy.json");
