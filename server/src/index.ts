@@ -61,6 +61,7 @@ import { describeProviderError } from "@pi-outpost/shared/provider-error";
 import { composeWorkspaceOutcome, evidenceContributor, repositoryContributor, workPlanContributor } from "./outcome.ts";
 import {
   type AgentRuntime,
+  type CredentialCapability,
   type RuntimeEvent,
   type RuntimeTreeNode,
   RuntimeUnsupportedError,
@@ -78,6 +79,7 @@ import { COMMAND_NOT_AVAILABLE, offeredCommands, refusesPrompt, type CommandPoli
 import { bindFailureMessage, holdConsoleIfOwned } from "./startupFailure.ts";
 import { BuildExeError, buildExecutable } from "./buildExe.ts";
 import { probePty, TerminalManager, type TerminalConfinement } from "./terminalManager.ts";
+import { LoginRelay } from "./loginRelay.ts";
 import { checkRunner, gitReadOnlyFiles, isPosixMxc, mxcPosixConfig, mxcTerminalConfig, seatbeltPolicy, runnerKind, siblingsToDeny, terminalPolicy, userGitConfig, type RunnerCheck } from "./terminalSandbox.ts";
 import { isPowerShell } from "./confinedBash.ts";
 import { browsableUrl, openBrowser, shouldOpenBrowser } from "./openBrowser.ts";
@@ -2106,6 +2108,8 @@ function credentialStatus(workspace: Workspace, ): CredentialStatus {
     // Only while onboarding needs it: an absolute path names the server's OS account,
     // and there is no reason for a working server to tell every client where it lives.
     ...(usableModel ? {} : { agentDir: AGENT_DIR }),
+    ...(config.credentialsLock ? { locked: true } : {}),
+    ...(workspace.agent.credentials ? { signIn: true } : {}),
   };
 }
 
@@ -3843,6 +3847,72 @@ async function adoptUsableModel(workspace: Workspace, socket: WebSocket): Promis
   const usable = choices.some((choice) => choice.provider === current?.provider && choice.id === current?.id);
   if (!usable) await workspace.agent.credentials?.adoptModel(choices[0]);
   announce();
+}
+
+/** One sign-in per socket, driven by the browser that started it (see loginRelay.ts). */
+const loginRelay = new LoginRelay<WebSocket>();
+
+const CREDENTIALS_LOCKED =
+  'Credentials are locked on this server ("credentialsLock"): ask whoever runs it, or use "pi-outpost login" there.';
+
+/** Under `credentialsLock`, refuse a change to the server's credentials, saying why. */
+function credentialsRefused(socket: WebSocket): boolean {
+  if (!config.credentialsLock) return false;
+  send(socket, { type: "error", message: CREDENTIALS_LOCKED });
+  return true;
+}
+
+/**
+ * Sign in to a provider with an account (or run its API-key flow), from the browser.
+ *
+ * The SDK runs the flow and stores the credential in the agent directory, through the live model
+ * runtime — so the agent sees it at once. Every step it shows or asks goes to this socket only.
+ */
+async function handleStartLogin(workspace: Workspace, socket: WebSocket, flowId: string, provider: string, method: "oauth" | "api_key"): Promise<void> {
+  const fail = (message: string) => send(socket, { type: "login_done", flowId, ok: false, message });
+  if (config.credentialsLock) return fail(CREDENTIALS_LOCKED);
+  const credentials = workspace.agent.credentials;
+  if (!credentials) return fail(new RuntimeUnsupportedError("Signing in", workspace.agent.kind).message);
+  const outcome = await loginRelay.run(socket, flowId, (message) => send(socket, message), (interaction) =>
+    credentials.login(provider, method, interaction),
+  );
+  if (outcome.ok) await afterCredentialsChanged(workspace, socket, credentials);
+}
+
+/** Remove the credential this server stored for a provider. A key from the environment stays. */
+async function handleLogoutProvider(workspace: Workspace, socket: WebSocket, provider: string): Promise<void> {
+  if (credentialsRefused(socket)) return;
+  const credentials = workspace.agent.credentials;
+  if (!credentials) {
+    send(socket, { type: "error", message: new RuntimeUnsupportedError("Signing out", workspace.agent.kind).message });
+    return;
+  }
+  try {
+    await credentials.logout(provider, AbortSignal.timeout(CREDENTIAL_SYNC_TIMEOUT_MS));
+  } catch (error) {
+    send(socket, { type: "error", message: `Could not sign out of ${provider}: ${error instanceof Error ? error.message : String(error)}` });
+    return;
+  }
+  await afterCredentialsChanged(workspace, socket, credentials);
+}
+
+/**
+ * After a sign-in or a sign-out: re-read the model catalogs, keep the session on a model that can
+ * still answer, and tell every client. With no model left the onboarding screen comes back — that
+ * is what the snapshot says, and no error is due: the user removed it.
+ */
+async function afterCredentialsChanged(workspace: Workspace, socket: WebSocket, credentials: CredentialCapability): Promise<void> {
+  try {
+    const result = await credentials.refreshModels(AbortSignal.timeout(CREDENTIAL_SYNC_TIMEOUT_MS));
+    if (result?.aborted) console.warn(`[pi] the model refresh did not finish within ${CREDENTIAL_SYNC_TIMEOUT_MS / 1000}s`);
+  } catch (error) {
+    console.warn(`[pi] the model refresh failed: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  if (availableModels(workspace).length > 0) {
+    await adoptUsableModel(workspace, socket);
+    return;
+  }
+  broadcast(workspace, { type: "credentials_changed", models: availableModels(workspace), model: modelName(workspace), credentials: credentialStatus(workspace) });
 }
 
 /** Validate client-supplied attachments; reject anything that isn't a small image. */
@@ -5848,11 +5918,30 @@ function handleClientMessage(socket: WebSocket, raw: string): void {
       if (!isGitRevision(message.base) || !isGitRevision(message.target)) return;
       handleGitFileDiff(workspace, socket, message.base, message.target, message.requestId).catch(reportError);
       break;
+    case "start_login":
+      if (typeof message.flowId !== "string" || !validProviderId(message.provider)) return;
+      if (message.method !== "oauth" && message.method !== "api_key") return;
+      handleStartLogin(workspace, socket, message.flowId, message.provider, message.method).catch(reportError);
+      break;
+    case "login_answer":
+      if (typeof message.flowId !== "string" || typeof message.promptId !== "string" || typeof message.value !== "string") return;
+      loginRelay.answer(socket, message.flowId, message.promptId, message.value);
+      break;
+    case "cancel_login":
+      if (typeof message.flowId !== "string") return;
+      loginRelay.cancel(socket, message.flowId);
+      break;
+    case "logout_provider":
+      if (!validProviderId(message.provider)) return;
+      handleLogoutProvider(workspace, socket, message.provider).catch(reportError);
+      break;
     case "set_credential":
+      if (credentialsRefused(socket)) return;
       if (!validProviderId(message.provider) || typeof message.apiKey !== "string" || message.apiKey.trim() === "") return;
       handleSetCredential(workspace, socket, message.provider, message.apiKey).catch(reportError);
       break;
     case "declare_provider":
+      if (credentialsRefused(socket)) return;
       if (!validProviderId(message.provider) || !validBaseUrl(message.baseUrl)) return;
       if (typeof message.apiKey !== "string" || message.apiKey.trim() === "") return;
       if (!Array.isArray(message.models) || message.models.length === 0) return;
@@ -6096,6 +6185,8 @@ handleWsConnection = (socket, workspaceRoot) => {
   socket.on("message", (data: Buffer) => handleClientMessage(socket, data.toString()));
   socket.on("close", () => {
     terminalManager.closeAllForSocket(socket);
+    // A sign-in nobody can answer any more would hold the provider's credential lock.
+    loginRelay.cancel(socket);
     const bound = clients.get(socket);
     clients.delete(socket);
     // The idle clock starts when the last watcher leaves, not at the next sweep.

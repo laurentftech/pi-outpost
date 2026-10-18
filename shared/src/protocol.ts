@@ -935,7 +935,7 @@ export interface SessionSnapshot {
  */
 export interface CredentialStatus {
   /** Provider ids the registry knows, with whether each has usable auth. */
-  providers: { id: string; name: string; configured: boolean }[];
+  providers: ProviderAccount[];
   /** A model with usable credentials exists — the agent can answer. */
   usableModel: boolean;
   /**
@@ -945,7 +945,45 @@ export interface CredentialStatus {
    * included.
    */
   agentDir?: string;
+  /** `credentialsLock`: the interface shows the providers' states and offers no change to them. */
+  locked?: boolean;
+  /** Signing in with an account is possible here: the embedded runtime, which runs the flows. */
+  signIn?: boolean;
 }
+
+/** A provider the server knows, and how — never with what — it is authenticated. */
+export interface ProviderAccount {
+  id: string;
+  name: string;
+  configured: boolean;
+  /** How a credential can be set up for it: an account sign-in, an API key, or both. */
+  methods?: Array<"oauth" | "api_key">;
+  /** How it is authenticated now, when it is. */
+  auth?: "oauth" | "api_key";
+  /**
+   * Where that credential comes from: `stored` (this server's agent directory — removable),
+   * `environment`, `models_json_key`, `models_json_command`, `runtime`, `fallback`.
+   */
+  source?: string;
+  /** The SDK's own words for the source, e.g. the environment variable's name. */
+  label?: string;
+  /** The account is a subscription (Claude Pro/Max, ChatGPT…), not a pay-per-use key. */
+  subscription?: boolean;
+}
+
+/** A step a running sign-in asks the browser to show. Mirrors the SDK's `AuthEvent`. */
+export type LoginEvent =
+  | { type: "info"; message: string; links?: Array<{ url: string; label?: string }> }
+  | { type: "auth_url"; url: string; instructions?: string }
+  | { type: "device_code"; userCode: string; verificationUri: string; intervalSeconds?: number; expiresInSeconds?: number }
+  | { type: "progress"; message: string };
+
+/** A question a running sign-in asks the browser. Mirrors the SDK's `AuthPrompt`, without its signal. */
+export type LoginPrompt =
+  | { type: "text"; message: string; placeholder?: string }
+  | { type: "secret"; message: string; placeholder?: string }
+  | { type: "select"; message: string; options: Array<{ id: string; label: string; description?: string }> }
+  | { type: "manual_code"; message: string; placeholder?: string };
 
 /** Server -> client */
 export type ServerMessage =
@@ -990,6 +1028,14 @@ export type ServerMessage =
    * live extension dialogs, notifications, statuses and widgets the server still holds.
    */
   | { type: "credentials_changed"; models: ModelChoice[]; model: string; credentials: CredentialStatus }
+  /** A step of the sign-in this client started. Sent to that client only. */
+  | { type: "login_event"; flowId: string; event: LoginEvent }
+  /** A question of the sign-in this client started; answered with `login_answer`. */
+  | { type: "login_prompt"; flowId: string; promptId: string; prompt: LoginPrompt }
+  /** The flow no longer needs that answer (e.g. the redirect arrived on its own). */
+  | { type: "login_prompt_cancelled"; flowId: string; promptId: string }
+  /** The sign-in ended. `ok: false` with the reason, `cancelled` when the user stopped it. */
+  | { type: "login_done"; flowId: string; ok: boolean; cancelled?: boolean; message?: string }
   /**
    * Extensions finished binding after the session was already in use — their
    * `session_start` handlers ran late, and the commands and skills they contribute
@@ -1403,6 +1449,12 @@ export type ClientMessage =
    * without a token — so this write is never reachable unauthenticated from a network.
    */
   | { type: "set_credential"; provider: string; apiKey: string }
+  /** Sign in to a provider with an account (`oauth`) or start its API-key flow. */
+  | { type: "start_login"; flowId: string; provider: string; method: "oauth" | "api_key" }
+  | { type: "login_answer"; flowId: string; promptId: string; value: string }
+  | { type: "cancel_login"; flowId: string }
+  /** Remove the credential this server stored for a provider. */
+  | { type: "logout_provider"; provider: string }
   /** Declare an OpenAI-compatible endpoint (a corporate gateway, vLLM, Ollama…). */
   | { type: "declare_provider"; provider: string; baseUrl: string; apiKey: string; models: string[]; compat?: ProviderCompat }
   /** List the directories under one server-side path (absolute; `/` is the top). */

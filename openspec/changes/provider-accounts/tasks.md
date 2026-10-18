@@ -1,13 +1,13 @@
 ## 1. Server
 
-- [ ] 1.1 `accountRuntime` adapter over the embedded runtime's `modelRuntime`: providers with state, source, methods, removability; login; logout. Refused under the RPC runtime.
-- [ ] 1.2 Login relay: `start_login`, `login_event`, `login_prompt`, `login_prompt_cancelled`, `login_answer`, `cancel_login`, `login_done`; one flow per socket; aborted on close.
-- [ ] 1.3 `logout_provider`; refresh models and credentials after sign-in and sign-out; broadcast.
-- [ ] 1.4 `credentialsLock`: config, snapshot, refusals of every credential-changing message.
+- [x] 1.1 `accountRuntime` adapter over the embedded runtime's `modelRuntime`: providers with state, source, methods, removability; login; logout. Refused under the RPC runtime.
+- [x] 1.2 Login relay: `start_login`, `login_event`, `login_prompt`, `login_prompt_cancelled`, `login_answer`, `cancel_login`, `login_done`; one flow per socket; aborted on close.
+- [x] 1.3 `logout_provider`; refresh models and credentials after sign-in and sign-out; broadcast.
+- [x] 1.4 `credentialsLock`: config, snapshot, refusals of every credential-changing message.
 
 ## 2. Protocol
 
-- [ ] 2.1 Provider states in `CredentialStatus` (no secret); the login messages.
+- [x] 2.1 Provider states in `CredentialStatus` (no secret); the login messages.
 
 ## 3. Interface
 
@@ -21,10 +21,10 @@
 
 ## 5. Tests
 
-- [ ] 5.1 Server: a fake provider flow (device code, prompts, manual code, cancel, close), states and sources, removability, the lock, no secret in messages.
+- [x] 5.1 Server: a fake provider flow (device code, prompts, manual code, cancel, close), states and sources, removability, the lock, no secret in messages.
 - [ ] 5.2 UI: the accounts rows, the dialog's steps, the lock, onboarding.
 - [ ] 5.3 CLI: account flow and logout with a fake runtime.
-- [ ] 5.4 Running app: a real account sign-in and sign-out with a provider the developer has; monkey pass (cancel mid-flow, close the tab, two tabs, a wrong code).
+- [ ] 5.4 Running app: a real account sign-in and sign-out with OpenAI Codex (the developer's ChatGPT account: loopback redirect, with the paste-the-code path); monkey pass (cancel mid-flow, close the tab, two tabs, a wrong code).
 
 ## 6. Documentation and checks
 

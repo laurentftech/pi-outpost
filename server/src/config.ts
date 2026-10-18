@@ -448,6 +448,12 @@ export interface AppConfig {
    */
   extensionLock?: boolean;
   /**
+   * The interface shows the providers' states but offers no change to them: no sign-in, no
+   * key, no sign-out, no endpoint — and the server refuses those requests. For a deployment
+   * whose browser users must not change the server's credentials. The CLI still manages them.
+   */
+  credentialsLock?: boolean;
+  /**
    * How long an unused project stays alive before its session is released, in
    * milliseconds. 0 disables retirement entirely.
    *
@@ -1153,6 +1159,7 @@ export function loadConfig(
   config.extensionPaths = (optionalStringArray(raw, "extensionPaths") ?? []).map(resolve);
   config.userExtensionPaths = (optionalStringArray(raw, "userExtensionPaths") ?? []).map(resolve);
   if (raw.extensionLock !== undefined) config.extensionLock = optionalBoolean(raw, "extensionLock", false);
+  if (raw.credentialsLock !== undefined) config.credentialsLock = optionalBoolean(raw, "credentialsLock", false);
   config.extensionScripts = (optionalStringArray(raw, "extensionScripts") ?? []).map(resolve);
   config.noSkills = optionalBoolean(raw, "noSkills", false);
   config.skillPaths = (optionalStringArray(raw, "skillPaths") ?? []).map(resolve);
