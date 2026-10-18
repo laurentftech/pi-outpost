@@ -46,6 +46,23 @@ describe("the agent shell's lock", () => {
     expect(lock.getAttribute("title")).toMatch(/NOT confined[\s\S]*read the agent directory/);
   });
 
+  // openlore: scenario=SecretsInAReadableEnvironmentAreNamed spec=sandbox-runner-bash
+  it("SecretsInAReadableEnvironmentAreNamed: amber, partly confined, naming the variables and never a value", () => {
+    bar({ state: "partial", runner: "/opt/landstrip", checkedAt: "2026-10-18T10:00:00Z", refused: ["agent-directory"], exposed: ["OPENAI_API_KEY"], notChecked: [] });
+    const lock = screen.getByTestId("shell-confinement");
+    expect(lock).toHaveTextContent("🔐 shell partly confined");
+    expect(lock.className).toContain("amber");
+    expect(lock.getAttribute("title")).toMatch(/server's process environment, which holds OPENAI_API_KEY[\s\S]*agent directory/);
+  });
+
+  // openlore: scenario=AReadableEnvironmentWithoutSecretsKeepsTheLock spec=sandbox-runner-bash
+  it("AReadableEnvironmentWithoutSecretsKeepsTheLock: closed, saying the environment is readable and holds no secret", () => {
+    bar({ state: "verified", runner: "/opt/landstrip", checkedAt: "2026-10-18T10:00:00Z", refused: ["agent-directory"], notChecked: [], environmentReadable: true });
+    const lock = screen.getByTestId("shell-confinement");
+    expect(lock).toHaveTextContent("🔒 shell confined");
+    expect(lock.getAttribute("title")).toContain("readable, and holds no secret");
+  });
+
   it("a canary that could not answer is a warning, never a lock", () => {
     bar({ state: "failed", runner: "/opt/r", checkedAt: "2026-10-18T10:00:00Z", reason: "the canary did not report" });
     const lock = screen.getByTestId("shell-confinement");

@@ -407,7 +407,8 @@ const ATTEMPT_LABELS: Record<ConfinementAttempt, string> = {
   "beside-root": "read a file beside the root",
   "write-beside-root": "write beside the root",
   "signal-process": "signal another process of the server's user",
-  "server-environment": "read the server's environment",
+  "server-environment": "inherit the server's environment",
+  "server-process-environment": "read the server's process environment (/proc)",
   "unlisted-host": "reach a host not in sandbox.allowedHosts",
   "direct-connection": "connect around the proxy",
 };
@@ -427,8 +428,18 @@ export function confinementChecks(results: ReadonlyArray<{ surface: "shell" | "t
           status: "ok" as const,
           detail: [
             `confined by ${verdict.runner}: a command could not ${verdict.refused.map((a) => ATTEMPT_LABELS[a]).join(", ")}`,
+            ...(verdict.environmentReadable ? ["the server's process environment is readable, and holds no secret"] : []),
             ...verdict.notChecked.map((n) => `not checked: ${ATTEMPT_LABELS[n.attempt]} — ${n.why}`),
           ],
+        };
+      case "partial":
+        return {
+          name,
+          status: "warn" as const,
+          detail: [
+            `confined by ${verdict.runner}, except: a command can read the server's process environment, which holds ${verdict.exposed.join(", ")}`,
+          ],
+          remedy: ["Move these out of the server's environment — provider keys belong in the agent directory (pi-outpost login, or the setup screen)."],
         };
       case "leaking":
         return {

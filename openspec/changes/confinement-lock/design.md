@@ -63,6 +63,14 @@ runner is configured", e.g. for the startup notice).
 leaking (one line per reached attempt), `warn` not checked or canary failed. Uses the configuration's
 paths; the server need not be running.
 
+**A readable server environment.** landstrip on Linux cannot hide another process of the same user, so
+a command reads the server's `/proc/<pid>/environ`. The canary reports that attempt separately from
+its own environment (which must never hold the bait), and the server judges it by what its own start
+environment holds: variable names matching a key, token, secret, password or credential. None: the
+lock stays closed, the tooltip saying the environment is readable but holds no secret. Some: a
+`partial` verdict, amber, naming the variables (never their values) and pointing at the agent
+directory. A later change may remove the gap itself by re-executing the server without them.
+
 ## Risks / Trade-offs
 
 - [A canary that passes while the real use leaks — e.g. the terminal's interactive shell differs] →

@@ -580,5 +580,8 @@ describe("doctor — confinement", () => {
     assert.match(text(verified), /could not read the agent directory.*signal another process[\s\S]*not checked: read a file beside the root — the temp is inside the root/);
     assert.equal(failed.status, "warn");
     assert.equal(exitCodeFor([verified, failed]), 0);
+    const [partial] = confinementChecks([{ surface: "shell", verdict: { state: "partial", runner: "/opt/landstrip", checkedAt: "t", refused: ["agent-directory"], exposed: ["OPENAI_API_KEY"], notChecked: [] } }]);
+    assert.equal(partial.status, "warn", "a readable environment holding keys is a warning, not a failure");
+    assert.match(text(partial), /holds OPENAI_API_KEY[\s\S]*agent directory/);
   });
 });

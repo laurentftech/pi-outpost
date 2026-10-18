@@ -24,6 +24,12 @@
 - [x] 5.2 A leaking runner (a fake that runs the command unconfined) opens the lock naming each attempt; a real runner closes it — on this Mac (Seatbelt), in CI's `mxc-linux` and `mxc-macos`.
 - [x] 5.3 Running app: the lock closed under a real runner, open under the fake one; monkey pass (change sandbox settings while checking, reconnect, switch project).
 
+## 7. The server's readable environment (landstrip)
+
+- [x] 7.1 Split the environment attempt: the command's own environment (a leak, red) and the server's process environment.
+- [x] 7.2 A readable server environment is judged by its secret-looking variables: none — verified, noted; some — `partial`, naming them; `doctor` warns.
+- [x] 7.3 The amber "partly confined" lock and its tooltip; docs.
+
 ## 6. Documentation and checks
 
 - [x] 6.1 `docs/sandboxing.md` *Check that it is really confined*, README.

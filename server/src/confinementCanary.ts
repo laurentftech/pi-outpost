@@ -17,7 +17,7 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { existsSync } from "node:fs";
-import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import type { ConfinementAttempt, ConfinementVerdict } from "@pi-outpost/shared";
@@ -123,10 +123,10 @@ function posixCanary(bait: CanaryBait, options: ScriptOptions): string {
     lines.push(`(echo x > ${quoteSh(path.join(bait.besideDir, "written"))}) 2>/dev/null; r write-beside-root $?`);
   }
   if (bait.victim?.pid) lines.push(`kill -TERM ${bait.victim.pid} 2>/dev/null; r signal-process $?`);
-  // Its own environment, and — where there is a /proc — the server's.
-  lines.push(
-    `{ env | grep -q ${quoteSh(`${bait.envName}=`)} || { [ -r /proc/${options.serverPid}/environ ] && head -c 1 /proc/${options.serverPid}/environ >/dev/null 2>&1; }; }; r server-environment $?`,
-  );
+  // Its own environment must never carry the server's; where there is a /proc, the server's own
+  // environment must not be readable either (landstrip on Linux lets it be: judged by its content).
+  lines.push(`env | grep -q ${quoteSh(`${bait.envName}=`)}; r server-environment $?`);
+  lines.push(`[ -r /proc/${options.serverPid}/environ ] && head -c 1 /proc/${options.serverPid}/environ >/dev/null 2>&1; r server-process-environment $?`);
   if (options.proxied) {
     // One statement per line, so the script also runs joined into a single `-c` argument.
     lines.push(
@@ -158,12 +158,13 @@ function powerShellCanary(bait: CanaryBait, options: ScriptOptions): string {
 }
 
 /** Every attempt the canary should report, given its bait and options. */
-export function expectedAttempts(bait: CanaryBait, options: Pick<ScriptOptions, "proxied">): ConfinementAttempt[] {
+export function expectedAttempts(bait: CanaryBait, options: Pick<ScriptOptions, "proxied"> & { powerShell?: boolean }): ConfinementAttempt[] {
   return [
     ...(bait.agentMarker ? (["agent-directory"] as const) : []),
     ...(bait.besideDir ? (["beside-root", "write-beside-root"] as const) : []),
     ...(bait.victim?.pid ? (["signal-process"] as const) : []),
     "server-environment",
+    ...(options.powerShell ? [] : (["server-process-environment"] as const)),
     ...(options.proxied ? (["unlisted-host", "direct-connection"] as const) : []),
   ];
 }
@@ -175,7 +176,7 @@ export function expectedAttempts(bait: CanaryBait, options: Pick<ScriptOptions, 
 export function readCanary(
   output: string,
   expected: readonly ConfinementAttempt[],
-  host: { wroteBeside?: boolean; victimAlive?: boolean },
+  host: { wroteBeside?: boolean; victimAlive?: boolean; serverSecrets?: readonly string[] },
   base: { runner: string; checkedAt: string; notChecked: CanaryBait["notChecked"] },
 ): ConfinementVerdict {
   const said = new Map<string, string>();
@@ -198,9 +199,50 @@ export function readCanary(
     else if (outcome === "refused") refused.push(attempt);
     else notChecked.push({ attempt, why: "the shell has no curl" });
   }
+  // The server's process environment readable, and nothing else: landstrip's known gap, judged
+  // by what that environment holds.
+  const environmentReadable = reached.includes("server-process-environment");
+  if (environmentReadable && reached.length === 1) {
+    const exposed = [...(host.serverSecrets ?? [])];
+    return exposed.length > 0
+      ? { state: "partial", runner: base.runner, checkedAt: base.checkedAt, refused, exposed, notChecked }
+      : { state: "verified", runner: base.runner, checkedAt: base.checkedAt, refused, notChecked, environmentReadable: true };
+  }
   return reached.length > 0
     ? { state: "leaking", runner: base.runner, checkedAt: base.checkedAt, reached, refused }
     : { state: "verified", runner: base.runner, checkedAt: base.checkedAt, refused, notChecked };
+}
+
+/** Names that hold a secret: keys, tokens, secrets, passwords, credentials. */
+const SECRET_NAME = /(API_?KEY|ACCESS_?KEY|PRIVATE_?KEY|SECRET|TOKEN|PASSWORD|PASSWD|CREDENTIAL)/i;
+
+/** The secret-looking variables of an environment, by name only, non-empty values only. */
+export function secretVariables(environment: Readonly<Record<string, string | undefined>>): string[] {
+  return Object.entries(environment)
+    .filter(([name, value]) => value && SECRET_NAME.test(name) && !name.startsWith("PI_OUTPOST_CANARY_"))
+    .map(([name]) => name)
+    .sort();
+}
+
+/**
+ * The server's environment as another process reads it: on Linux, `/proc/self/environ` — fixed when
+ * the process started, whatever `process.env` became since. Elsewhere, `process.env`.
+ */
+export async function serverEnvironment(): Promise<Record<string, string>> {
+  if (process.platform === "linux") {
+    try {
+      const raw = await readFile("/proc/self/environ", "utf8");
+      return Object.fromEntries(
+        raw
+          .split("\0")
+          .filter(Boolean)
+          .map((entry) => [entry.slice(0, entry.indexOf("=")), entry.slice(entry.indexOf("=") + 1)]),
+      );
+    } catch {
+      // Fall through to what the process holds.
+    }
+  }
+  return Object.fromEntries(Object.entries(process.env).filter((entry): entry is [string, string] => entry[1] !== undefined));
 }
 
 export interface CanaryRun extends BaitOptions {
@@ -223,7 +265,8 @@ export async function runCanary(run: CanaryRun): Promise<ConfinementVerdict> {
     // A signal takes a moment to land.
     await new Promise((resolve) => setTimeout(resolve, 100));
     const victimAlive = bait.victim ? bait.victim.exitCode === null && bait.victim.signalCode === null : undefined;
-    return readCanary(output, expectedAttempts(bait, options), { wroteBeside, victimAlive }, { runner: run.runner, checkedAt, notChecked: bait.notChecked });
+    const serverSecrets = secretVariables(await serverEnvironment());
+    return readCanary(output, expectedAttempts(bait, options), { wroteBeside, victimAlive, serverSecrets }, { runner: run.runner, checkedAt, notChecked: bait.notChecked });
   } catch (error) {
     return { state: "failed", runner: run.runner, checkedAt, reason: (error as Error).message };
   } finally {

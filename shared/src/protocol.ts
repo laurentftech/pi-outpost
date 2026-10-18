@@ -940,16 +940,35 @@ export type ConfinementAttempt =
   | "write-beside-root"
   | "signal-process"
   | "server-environment"
+  | "server-process-environment"
   | "unlisted-host"
   | "direct-connection";
 
 /**
- * The canary's verdict. `verified`: every attempt it could make was refused. `leaking`: at least
- * one got through. `failed`: the canary itself could not run or answer, so nothing is known.
+ * The canary's verdict. `verified`: every attempt it could make was refused — or the server's
+ * process environment was readable but holds no secret (`environmentReadable`). `partial`: that
+ * environment was readable and holds secret-looking variables, named in `exposed` (never their
+ * values) — the one gap landstrip on Linux leaves. `leaking`: anything else got through. `failed`:
+ * the canary itself could not run or answer, so nothing is known.
  */
 export type ConfinementVerdict =
   | { state: "checking"; runner: string }
-  | { state: "verified"; runner: string; checkedAt: string; refused: ConfinementAttempt[]; notChecked: Array<{ attempt: ConfinementAttempt; why: string }> }
+  | {
+      state: "verified";
+      runner: string;
+      checkedAt: string;
+      refused: ConfinementAttempt[];
+      notChecked: Array<{ attempt: ConfinementAttempt; why: string }>;
+      environmentReadable?: boolean;
+    }
+  | {
+      state: "partial";
+      runner: string;
+      checkedAt: string;
+      refused: ConfinementAttempt[];
+      exposed: string[];
+      notChecked: Array<{ attempt: ConfinementAttempt; why: string }>;
+    }
   | { state: "leaking"; runner: string; checkedAt: string; reached: ConfinementAttempt[]; refused: ConfinementAttempt[] }
   | { state: "failed"; runner: string; checkedAt: string; reason: string };
 

@@ -11,7 +11,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { after, before, describe, test } from "node:test";
 import { confinedBashOperations } from "../src/confinedBash.ts";
-import { canaryScript, expectedAttempts, prepareBait, readCanary, runCanary } from "../src/confinementCanary.ts";
+import { canaryScript, expectedAttempts, prepareBait, readCanary, runCanary, secretVariables, serverEnvironment } from "../src/confinementCanary.ts";
 
 const base = { runner: "/r", checkedAt: "2026-10-18T00:00:00.000Z", notChecked: [] };
 
@@ -43,6 +43,33 @@ describe("readCanary", () => {
     const verdict = readCanary(lines("refused").replace(/.*server-environment.*/, "bash: something broke"), expected, {}, base);
     assert.equal(verdict.state, "failed");
     assert.match(verdict.state === "failed" ? verdict.reason : "", /did not report "server-environment".*something broke/);
+  });
+
+  // openlore: scenario=AReadableEnvironmentWithoutSecretsKeepsTheLock spec=sandbox-runner-bash
+  test("AReadableEnvironmentWithoutSecretsKeepsTheLock: only the server's process environment readable, and it holds no secret", () => {
+    const all = [...expected, "server-process-environment"] as const;
+    const output = `${lines("refused")}\nPI_OUTPOST_CANARY server-process-environment reached`;
+    const verdict = readCanary(output, all, { serverSecrets: [] }, base);
+    assert.equal(verdict.state, "verified");
+    assert.equal(verdict.state === "verified" && verdict.environmentReadable, true);
+  });
+
+  // openlore: scenario=SecretsInAReadableEnvironmentAreNamed spec=sandbox-runner-bash
+  test("SecretsInAReadableEnvironmentAreNamed: partial, naming the variables; anything else reached stays a leak", () => {
+    const all = [...expected, "server-process-environment"] as const;
+    const output = `${lines("refused")}\nPI_OUTPOST_CANARY server-process-environment reached`;
+    const partial = readCanary(output, all, { serverSecrets: ["OPENAI_API_KEY"] }, base);
+    assert.equal(partial.state, "partial");
+    assert.deepEqual(partial.state === "partial" && partial.exposed, ["OPENAI_API_KEY"]);
+    const worse = readCanary(output.replace("agent-directory refused", "agent-directory reached"), all, { serverSecrets: [] }, base);
+    assert.deepEqual(worse.state === "leaking" && worse.reached, ["agent-directory", "server-process-environment"]);
+  });
+
+  test("secret-looking names only, by name, non-empty, never the canary's own marker", () => {
+    assert.deepEqual(
+      secretVariables({ OPENAI_API_KEY: "sk", PI_OUTPOST_TOKEN: "t", GITHUB_TOKEN: "", DB_PASSWORD: "p", HOME: "/h", PATH: "/bin", PI_OUTPOST_CANARY_AB: "x", AWS_SECRET_ACCESS_KEY: "s" }),
+      ["AWS_SECRET_ACCESS_KEY", "DB_PASSWORD", "OPENAI_API_KEY", "PI_OUTPOST_TOKEN"],
+    );
   });
 
   test("an attempt the shell cannot make is not checked, not refused", () => {
@@ -78,7 +105,7 @@ describe("prepareBait", () => {
     try {
       assert.equal(bait.besideDir, undefined);
       assert.deepEqual(bait.notChecked.map((n) => n.attempt), ["agent-directory", "beside-root", "write-beside-root"]);
-      assert.deepEqual(expectedAttempts(bait, { proxied: false }), ["signal-process", "server-environment"]);
+      assert.deepEqual(expectedAttempts(bait, { proxied: false }), ["signal-process", "server-environment", "server-process-environment"]);
     } finally {
       await bait.cleanup();
     }
@@ -96,7 +123,9 @@ describe("a runner that confines nothing", { skip: process.platform === "win32" 
         new Promise<string>((resolve) => execFile("/bin/sh", ["-c", command], { env: process.env, cwd: root }, (_error, stdout) => resolve(stdout)));
       const verdict = await runCanary({ runner: "/bin/sh", agentDir: home, root, powerShell: false, proxied: false, exec });
       assert.equal(verdict.state, "leaking", JSON.stringify(verdict));
-      assert.deepEqual(verdict.state === "leaking" && verdict.reached, ["agent-directory", "beside-root", "write-beside-root", "signal-process", "server-environment"]);
+      // The server's process environment is readable where there is a /proc (Linux).
+      const proc = process.platform === "linux" ? (["server-process-environment"] as const) : [];
+      assert.deepEqual(verdict.state === "leaking" && verdict.reached, ["agent-directory", "beside-root", "write-beside-root", "signal-process", "server-environment", ...proc]);
       assert.deepEqual(await readdir(home), [], "the bait was removed");
     } finally {
       await rm(home, { recursive: true, force: true });
@@ -142,7 +171,40 @@ describe("a real runner", { skip: !REAL && "SEATBELT_EXEC (macOS) or MXC_LXC_EXE
     };
     const verdict = await runCanary({ runner: REAL!, agentDir, root, powerShell: false, proxied: false, exec });
     assert.equal(verdict.state, "verified", JSON.stringify(verdict));
-    assert.deepEqual(verdict.state === "verified" && verdict.refused, ["agent-directory", "beside-root", "write-beside-root", "signal-process", "server-environment"]);
+    assert.deepEqual(verdict.state === "verified" && verdict.refused, ["agent-directory", "beside-root", "write-beside-root", "signal-process", "server-environment", "server-process-environment"]);
+    assert.ok(verdict.state === "verified" && !verdict.environmentReadable, "the runner hides the server's process");
     assert.deepEqual(await readdir(agentDir), ["auth.json"], "the bait was removed");
+  });
+});
+
+const LANDSTRIP = process.platform === "linux" ? process.env.LANDSTRIP_BIN : undefined;
+
+// openlore: scenario=AReadableEnvironmentWithoutSecretsKeepsTheLock spec=sandbox-runner-bash
+describe("landstrip, whose commands can read the server's /proc environ", { skip: !LANDSTRIP && "LANDSTRIP_BIN is not set (CI's Linux job sets it)" }, () => {
+  test("the server's process environment reads as readable, and the verdict follows what it holds", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "canary-landstrip-"));
+    const root = path.join(dir, "app");
+    const agentDir = path.join(dir, "agent");
+    await mkdir(root);
+    await mkdir(agentDir);
+    try {
+      const ops = confinedBashOperations({ runner: LANDSTRIP!, root, allowWrite: true, agentDir });
+      const exec = async (command: string) => {
+        let output = "";
+        await ops.exec(command, root, { onData: (data) => (output += data.toString()) });
+        return output;
+      };
+      const verdict = await runCanary({ runner: LANDSTRIP!, agentDir, root, powerShell: false, proxied: false, exec });
+      const secrets = secretVariables(await serverEnvironment());
+      if (secrets.length === 0) {
+        assert.equal(verdict.state, "verified", JSON.stringify(verdict));
+        assert.equal(verdict.state === "verified" && verdict.environmentReadable, true, "landstrip leaves /proc/<pid>/environ readable");
+      } else {
+        assert.equal(verdict.state, "partial", JSON.stringify(verdict));
+        assert.deepEqual(verdict.state === "partial" && verdict.exposed, secrets);
+      }
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
   });
 });
