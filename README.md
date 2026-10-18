@@ -324,6 +324,11 @@ in `<agentDir>/models.json`.
 | **Settings → Accounts** | View each provider's authentication state and source, sign in, enter an API key, or remove this server's stored credential. `credentialsLock: true` makes the panel read-only |
 | **Environment** | `export ANTHROPIC_API_KEY=…` before starting. Nothing is written to disk |
 
+When signing in to OpenAI from a browser on another computer, the browser may fail to open
+`localhost:1455` after authorization. Copy the **full address** from that browser page and paste
+it into Pi Outpost's authorization code field to finish signing in. That address contains a
+temporary sign-in code; paste it only into Pi Outpost.
+
 ### An OpenAI-compatible endpoint of your own
 
 A corporate gateway, vLLM, SGLang, Ollama, LM Studio — anything speaking the OpenAI API.

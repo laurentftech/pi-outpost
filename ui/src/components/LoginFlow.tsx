@@ -59,6 +59,7 @@ function Step({ event }: { event: LoginEvent }) {
 
 function Question({ prompt, onAnswer }: { prompt: LoginPrompt; onAnswer: (value: string) => void }) {
   const [value, setValue] = useState("");
+  const loopbackCallback = prompt.type === "manual_code" && /^http:\/\/(?:localhost|127\.0\.0\.1):1455\/auth\/callback\/?$/.test(prompt.placeholder ?? "");
   if (prompt.type === "select") {
     return (
       <div data-testid="login-prompt" className="space-y-2">
@@ -96,6 +97,11 @@ function Question({ prompt, onAnswer }: { prompt: LoginPrompt; onAnswer: (value:
           onChange={(event) => setValue(event.target.value)}
         />
       </label>
+      {loopbackCallback && (
+        <p className="text-xs text-zinc-600 dark:text-zinc-300">
+          If Pi Outpost runs on another computer, your browser may say it cannot connect to localhost. Copy the full address from that browser page and paste it above to finish signing in.
+        </p>
+      )}
       <button type="submit" className={button} disabled={!value.trim()}>
         Continue
       </button>

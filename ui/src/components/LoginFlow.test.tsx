@@ -30,4 +30,14 @@ describe("LoginFlow", () => {
     expect(screen.getByLabelText("Password")).toHaveAttribute("type", "password");
     expect(screen.getByTestId("login-flow").querySelector("[aria-live='polite']")).toBeInTheDocument();
   });
+
+  it("explains how to finish a remote OpenAI loopback callback", () => {
+    render(<LoginFlow login={state({ prompt: { promptId: "p1", prompt: {
+      type: "manual_code",
+      message: "Paste the authorization code or redirect URL",
+      placeholder: "http://localhost:1455/auth/callback",
+    } } })} providerName="OpenAI" onAnswer={vi.fn()} onCancel={vi.fn()} onDismiss={vi.fn()} />);
+    expect(screen.getByText(/your browser may say it cannot connect to localhost/i)).toBeInTheDocument();
+    expect(screen.getByText(/copy the full address from that browser page/i)).toBeInTheDocument();
+  });
 });
