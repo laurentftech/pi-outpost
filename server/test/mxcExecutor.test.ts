@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { describe, test } from "node:test";
-import { BUNDLED_MXC, bundledMxcExecutor, MXC_EXECUTOR_NAME, MXC_LINUX_EXECUTOR_NAME, MXC_MAC_EXECUTOR_NAME, mxcExecutorName, mxcSupportsArch } from "../src/mxcExecutor.ts";
+import { BUNDLED_MXC, bundledMxcExecutor, MXC_EXECUTOR_NAME, MXC_LINUX_EXECUTOR_NAME, MXC_MAC_EXECUTOR_NAME, mxcExecutorName, mxcMissingReason, mxcSupportsArch } from "../src/mxcExecutor.ts";
 
 const pkg = path.resolve("/opt/app/node_modules/@microsoft/mxc-sdk");
 const manifest = path.join(pkg, "package.json");
@@ -55,6 +55,13 @@ describe("bundledMxcExecutor", () => {
     assert.equal(mxcSupportsArch("darwin", "x64"), false);
     assert.equal(mxcSupportsArch("darwin", "arm64"), true);
     assert.equal(mxcSupportsArch("linux", "x64"), true);
+  });
+
+  // openlore: scenario=OnAnIntelMacMxcIsRefused spec=sandbox-runner-bash
+  test("OnAnIntelMacMxcIsRefused: the reason names the architecture, not a missing install", () => {
+    assert.equal(mxcMissingReason("darwin", "x64", "/usr/local/bin/node"), "MXC has no executor for darwin on x64: on macOS it ships for Apple silicon (arm64) only");
+    assert.match(mxcMissingReason("darwin", "arm64", "/usr/local/bin/node"), /not installed for arm64: .* put mxc-exec-mac beside/);
+    assert.match(mxcMissingReason("freebsd", "x64", "/usr/local/bin/node"), /no executor for freebsd/);
   });
 
   test("the real installation: the optional dependency resolves to a file that exists", { skip: !mxcSupportsArch(process.platform, process.arch) || !mxcExecutorName(process.platform) }, () => {

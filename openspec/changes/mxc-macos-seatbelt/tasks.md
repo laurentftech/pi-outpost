@@ -18,18 +18,18 @@
 ## 4. Wiring
 
 - [x] 4.1 The agent's `bash` under the macOS executor (`confinedBash.ts`).
-- [ ] 4.2 The terminal under it (`index.ts` `terminalConfinement`); `getCwd` finds the shell under the executor on macOS (process tree measured on the real executor).
+- [x] 4.2 The terminal under it (`index.ts` `terminalConfinement`); `getCwd` finds the shell under the executor on macOS (process tree measured on the real executor).
 
 ## 5. Tests
 
 - [x] 5.1 Unit tests: resolution, `runnerKind`, config refusals, `mxcMacConfig` (paths, network shapes), the check's reason.
-- [ ] 5.2 Real-executor tests skipped unless `MXC_MAC_EXEC` names an executor: the agent's `bash` (reads, writes, signal, key, git quiet, network open, allowedHosts) and the terminal (git, key, size and resize, Ctrl-C, cwd).
-- [ ] 5.3 Run them on the Apple-silicon Mac over ssh (`scripts/mxc-macos/test.sh`).
-- [ ] 5.4 CI job `mxc-macos` on `macos-latest` running the real-executor tests.
+- [x] 5.2 Real-executor tests skipped unless `MXC_MAC_EXEC` names an executor: the agent's `bash` (reads, writes, signal, key, git quiet, network open, allowedHosts) and the terminal (git, key, size and resize, Ctrl-C, cwd).
+- [x] 5.3 Run them on an Apple-silicon Mac (`scripts/mxc-macos/test.sh`): CI's `macos-latest` runner, 6/6.
+- [x] 5.4 CI job `mxc-macos` on `macos-latest` running the real-executor tests.
 
 ## 6. Documentation and checks
 
-- [ ] 6.1 `docs/sandboxing.md`: *macOS: MXC* section, the recommended-setup row, allowedHosts wording; README rows (`sandbox.bashRunner`, `terminal.sandbox`, `sandbox.allowedHosts`, MXC section).
+- [x] 6.1 `docs/sandboxing.md`: *macOS: MXC* section, the recommended-setup row, allowedHosts wording; README rows (`sandbox.bashRunner`, `terminal.sandbox`, `sandbox.allowedHosts`, MXC section).
 - [ ] 6.2 Running-app check on the Apple-silicon Mac: the agent's shell and the terminal under `"mxc"`, read back from the transcript and the DOM; a monkey pass on the terminal.
 - [ ] 6.3 `scenario-coverage.md`, `openspec validate --strict`, `check:scenarios`, typecheck, lint.
 

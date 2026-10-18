@@ -8,6 +8,7 @@ runs as.
 - [What is confined](#what-is-confined)
 - [Linux: landstrip](#linux-landstrip)
 - [Linux, as an option: MXC](#linux-as-an-option-mxc)
+- [macOS on Apple silicon: MXC](#macos-on-apple-silicon-mxc)
 - [Windows 11: MXC and PowerShell](#windows-11-mxc-and-powershell)
 - [Older Windows](#older-windows)
 - [Check that it is really confined](#check-that-it-is-really-confined)
@@ -23,12 +24,13 @@ Name the same runner for the agent's `bash` (`sandbox.bashRunner`) and for the t
 | Linux: a Docker container, the host, a VM, WSL2 | [landstrip](#linux-landstrip) — or, loosening Docker's profile, [MXC](#linux-as-an-option-mxc) | `/bin/bash`, the default |
 | Windows 11 with the August 2026 update or later | [MXC](#windows-11-mxc-and-powershell): `"mxc"`, installed with pi-outpost | `powershell.exe` (the agent gets a `powershell` tool), busybox-w32's `sh.exe`, or — experimental — a real bash in a [Linux container](#a-real-bash-wslc-experimental) (`sandbox.bashImage`) |
 | Older Windows | none works natively: see [Older Windows](#older-windows) | |
-| macOS | untested | |
+| macOS on Apple silicon | [MXC](#macos-on-apple-silicon-mxc): `"mxc"`, installed with pi-outpost | `/bin/bash`, the default |
+| macOS on Intel | none: MXC ships no Intel executor | |
 
 pi-outpost writes the runner's policy from the configuration, so a command cannot widen it. A
 missing or failing runner refuses every command; nothing falls back to running unconfined.
 
-The network stays open (`git fetch`, `npm install` work). Under MXC, `sandbox.allowedHosts` limits it
+The network stays open (`git fetch`, `npm install` work). Under MXC (Windows 11, Linux, Apple-silicon macOS), `sandbox.allowedHosts` limits it
 to the hosts you name ([below](#the-network-only-named-hosts)). Elsewhere, close it around the server —
 a Docker network, a firewall — or [hand `bash` to an extension](#alternative-hand-bash-to-an-extension)
 that filters it.
@@ -140,6 +142,32 @@ pile up per closed terminal. Keep the rest of the advice above: an ordinary user
 
 `sandbox.bashImage` (WSLC) is Windows only. `scripts/mxc-linux/test.sh` runs this runner's tests in a
 container both ways; CI's `mxc-linux` job runs it on every pull request.
+
+## macOS on Apple silicon: MXC
+
+`@microsoft/mxc-sdk`, installed with pi-outpost, carries MXC's macOS executor, `mxc-exec-mac`, built on
+Seatbelt — the sandbox macOS applies to its own apps. Nothing has to be installed or loosened:
+
+```json
+{
+  "sandbox": { "root": "/Users/me/app", "allowWrite": true, "allowBash": true, "bashRunner": "mxc", "allowedHosts": ["registry.npmjs.org", "github.com"] },
+  "terminal": { "enabled": true, "sandbox": "mxc" }
+}
+```
+
+A command reads the root, the system, the tools on its search path and the developer tools; writes the
+writable zone and its private temporary directory; and cannot read the agent directory, the
+configuration or anything beside the root. It cannot signal a process outside itself — the server
+included — and gets the minimal environment. `sandbox.allowedHosts` holds the network to the hosts it
+names, as on Windows ([below](#the-network-only-named-hosts)).
+
+`/usr/bin/git` is Apple's `xcrun` shim, which cannot find its cache folders in the sandbox and warns
+on every call: the confined search path puts the developer tools' own `git` first (Xcode's or the
+Command Line Tools', whichever `xcode-select -p` names).
+
+The executor exists for Apple silicon only: on an Intel Mac `"mxc"` is refused at start, saying so.
+`sandbox.bashImage` (WSLC) is Windows only. CI's `mxc-macos` job runs this runner's tests on a real
+Mac (`scripts/mxc-macos/test.sh`, on any Apple-silicon Mac with `npm ci` done).
 
 ## Windows 11: MXC and PowerShell
 

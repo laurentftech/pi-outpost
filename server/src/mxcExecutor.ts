@@ -59,6 +59,18 @@ export interface MxcExecutorLookup {
   exists?: (file: string) => boolean;
 }
 
+/** Why `"mxc"` found no executor: none for this platform or architecture, or the package not installed. */
+export function mxcMissingReason(platform: NodeJS.Platform, arch: string, execPath: string): string {
+  const name = mxcExecutorName(platform);
+  if (name === undefined) return `MXC has no executor for ${platform}: it confines on Windows, Linux and macOS only`;
+  if (!mxcSupportsArch(platform, arch)) {
+    return platform === "darwin"
+      ? `MXC has no executor for ${platform} on ${arch}: on macOS it ships for Apple silicon (arm64) only`
+      : `MXC has no executor for ${platform} on ${arch}: it ships for x64 and arm64`;
+  }
+  return `MXC's executor is not installed for ${arch}: reinstall pi-outpost with its optional dependencies, or put ${name} beside ${execPath}`;
+}
+
 /** Where the installed `@microsoft/mxc-sdk` is: absent when the optional install was skipped or failed. */
 function installedPackageManifest(): string | undefined {
   try {

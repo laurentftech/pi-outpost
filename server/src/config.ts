@@ -26,7 +26,7 @@ import { normalizeThinkingLevels, THEMES, type Theme, type ThinkingLevel } from 
 import { STRUCTURED_EXCHANGE_BYTES_CEILING_ANY } from "@pi-outpost/shared/structured-exchange/bounds";
 import { normalizeCommandPattern } from "./commandPolicy.ts";
 import { isAllowedHostPattern } from "./egressProxy.ts";
-import { BUNDLED_MXC, bundledMxcExecutor, mxcExecutorName, mxcSupportsArch } from "./mxcExecutor.ts";
+import { BUNDLED_MXC, bundledMxcExecutor, mxcMissingReason } from "./mxcExecutor.ts";
 import { OPEN_SHAPES, type OpenShape } from "./openBrowser.ts";
 import { isPosixMxc, runnerKind } from "./terminalSandbox.ts";
 
@@ -959,18 +959,7 @@ export function loadConfig(
   const resolveRunner = (runner: string, field: string) => {
     if (runner !== BUNDLED_MXC) return resolve(runner);
     const executor = bundledMxcExecutor();
-    if (executor === undefined) {
-      if (mxcExecutorName(process.platform) === undefined) {
-        fail(`"${field}" is "${BUNDLED_MXC}", but MXC has no executor for ${process.platform}: it confines on Windows, Linux and macOS only`);
-      }
-      if (!mxcSupportsArch(process.platform, process.arch)) {
-        fail(`"${field}" is "${BUNDLED_MXC}", but MXC has no executor for ${process.platform} on ${process.arch}: on macOS it ships for Apple silicon (arm64) only`);
-      }
-      fail(
-        `"${field}" is "${BUNDLED_MXC}", but MXC's executor is not installed for ${process.arch}: ` +
-          `reinstall pi-outpost with its optional dependencies, or put ${mxcExecutorName(process.platform)} beside ${process.execPath}`,
-      );
-    }
+    if (executor === undefined) fail(`"${field}" is "${BUNDLED_MXC}", but ${mxcMissingReason(process.platform, process.arch, process.execPath)}`);
     return executor;
   };
   /** Settings still read under an old name, announced once the file has loaded. */
