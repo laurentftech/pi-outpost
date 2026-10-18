@@ -55,7 +55,7 @@ import type { RenderSettings } from "./presentationRender.ts";
 import { createStructuredExchangeFigureToolDefinition } from "./structuredExchangeFigureTool.ts";
 import { createTimelineComparisonToolDefinition } from "./timelineComparisonTool.ts";
 import { createStructuredExchangeTableToolDefinition } from "./structuredExchangeTableTool.ts";
-import { confinedBashOperations, isPowerShell } from "./confinedBash.ts";
+import { confinedBashOperations, isPowerShell, type ConfinedBashOptions } from "./confinedBash.ts";
 import { sharedEgressProxy } from "./egressProxy.ts";
 import { userGitConfig } from "./terminalSandbox.ts";
 
@@ -336,20 +336,7 @@ export async function createSandboxedTools(
     // runner is named, which runs every command inside an OS sandbox with the policy
     // of a confined terminal. The root still has to be pinned onto the context, or
     // the shell starts in the project root instead — see `withCwd`.
-    const operations = sandbox.bashRunner
-      ? confinedBashOperations({
-          runner: sandbox.bashRunner,
-          shell: sandbox.bashShell,
-          ...(sandbox.bashImage === undefined ? {} : { image: sandbox.bashImage }),
-          root: realRoot,
-          ...(realWritableRoot !== null && realWritableRoot !== realRoot ? { writableRoot: realWritableRoot } : {}),
-          allowWrite: realWritableRoot !== null,
-          ...neverReadable,
-          // git's identity: the user's ~/.gitconfig, readable on its own.
-          gitConfig: userGitConfig(),
-          ...(sandbox.allowedHosts === undefined ? {} : { networkProxy: await sharedEgressProxy(sandbox.allowedHosts) }),
-        })
-      : undefined;
+    const operations = sandbox.bashRunner ? confinedBashOperations(await agentBashOptions(sandbox, neverReadable)) : undefined;
     // A confined PowerShell gets pi's `powershell` tool — its description tells the model
     // which language to write — in place of `bash`, which is then never registered.
     const shellTool = (operations && isPowerShell(sandbox.bashShell)
@@ -386,6 +373,31 @@ export const PI_BUILTIN_TOOL_NAMES = ["read", "bash", "powershell", "edit", "wri
  * and a read-only one its unconfined `write` and `edit`. Excluding a name drops it
  * from the registry altogether, whoever registered it.
  */
+/**
+ * How the agent's shell is confined, from the sandbox: the options every command of it runs
+ * with, and the ones the confinement canary runs with, so that what is checked is what runs.
+ */
+export async function agentBashOptions(
+  sandbox: SandboxConfig,
+  neverReadable: { agentDir?: string; configFile?: string } = {},
+): Promise<ConfinedBashOptions> {
+  if (!sandbox.bashRunner) throw new Error("the agent's shell has no sandbox runner");
+  const realRoot = await fs.realpath(sandbox.root);
+  const realWritableRoot = !sandbox.allowWrite ? null : sandbox.writableRoot ? await fs.realpath(sandbox.writableRoot) : realRoot;
+  return {
+    runner: sandbox.bashRunner,
+    shell: sandbox.bashShell,
+    ...(sandbox.bashImage === undefined ? {} : { image: sandbox.bashImage }),
+    root: realRoot,
+    ...(realWritableRoot !== null && realWritableRoot !== realRoot ? { writableRoot: realWritableRoot } : {}),
+    allowWrite: realWritableRoot !== null,
+    ...neverReadable,
+    // git's identity: the user's ~/.gitconfig, readable on its own.
+    gitConfig: userGitConfig(),
+    ...(sandbox.allowedHosts === undefined ? {} : { networkProxy: await sharedEgressProxy(sandbox.allowedHosts) }),
+  };
+}
+
 export function unsuppliedBuiltIns(sandboxedTools: ToolDefinition[], delegated: readonly string[] = []): string[] {
   const supplied = new Set([...sandboxedTools.map((tool) => tool.name), ...delegated]);
   return PI_BUILTIN_TOOL_NAMES.filter((name) => !supplied.has(name));
