@@ -73,6 +73,8 @@ import { TOOLS_ENV_VAR, type PiOutpostToolsSettings } from "./piOutpostTools.ts"
 import { readInstalledPiSdkVersion } from "./piSdkVersion.ts";
 import os from "node:os";
 import path from "node:path";
+import { createInterface } from "node:readline/promises";
+import { runCliProviderLogin, runCliProviderLogout, type CliAccountRuntime } from "./cliAccounts.ts";
 import { pathToFileURL } from "node:url";
 import { CliError, helpText, parseCli, readSecret, runInit } from "./cli.ts";
 import { COMMAND_NOT_AVAILABLE, offeredCommands, refusesPrompt, type CommandPolicy } from "./commandPolicy.ts";
@@ -519,6 +521,56 @@ if (cli.command === "login") {
     }
     // A typo would otherwise store a key nothing reads, and say "stored" — leaving a
     // server that still reports no credentials, for no visible reason.
+    // A piped key keeps the established scripted path. On a terminal, prefer the
+    // provider's own account flow when it offers one, using the same ModelRuntime as
+    // the web server so OAuth storage and provider state remain consistent.
+    if (process.stdin.isTTY) {
+      const cliExtensionPaths = [...allExtensionPaths(config), ...config.extensionScripts];
+      const services = await createAgentSessionServices({
+        cwd: config.cwd,
+        agentDir: AGENT_DIR,
+        resourceLoaderOptions: {
+          ...(config.noExtensions ? { noExtensions: true } : {}),
+          ...(cliExtensionPaths.length > 0 ? { additionalExtensionPaths: cliExtensionPaths } : {}),
+        },
+      });
+      const modelRuntime = services.modelRuntime;
+      if (!modelRuntime.getProviders().some((provider) => provider.id === cli.login.provider)) {
+        throw new CliError(`unknown provider "${cli.login.provider}"`);
+      }
+      const controller = new AbortController();
+      try {
+        const cliRuntime = modelRuntime as unknown as CliAccountRuntime;
+        const signedIn = await runCliProviderLogin(cliRuntime, cli.login.provider, {
+          signal: controller.signal,
+          notify: (event) => {
+            if (event.type === "auth_url") process.stdout.write(`${String(event.instructions ?? "Open this page to sign in:")}\n${String(event.url)}\n`);
+            else if (event.type === "device_code") process.stdout.write(`Open ${String(event.verificationUri)} and enter ${String(event.userCode)}\n`);
+            else if (event.type === "info" || event.type === "progress") process.stdout.write(`${String(event.message)}\n`);
+          },
+          prompt: async (prompt) => {
+            if (prompt.signal?.aborted) throw new CliError("cancelled");
+            if (prompt.type === "secret") return readSecret(`${prompt.message}: `);
+            if (prompt.type === "select") {
+              process.stdout.write(`${prompt.message}\n${(prompt.options ?? []).map((option, index) => `${index + 1}. ${option.label}${option.description ? ` — ${option.description}` : ""}`).join("\n")}\n`);
+              const terminal = createInterface({ input: process.stdin, output: process.stdout });
+              let selected: string;
+              try { selected = await terminal.question("Choice: "); } finally { terminal.close(); }
+              const choice = Number(selected);
+              if (!Number.isInteger(choice) || choice < 1 || choice > (prompt.options?.length ?? 0)) throw new CliError("invalid choice");
+              return prompt.options![choice - 1]!.id;
+            }
+            const terminal = createInterface({ input: process.stdin, output: process.stdout });
+            try { return await terminal.question(`${prompt.message}: `); } finally { terminal.close(); }
+          },
+          getDeviceId: () => services.settingsManager.getOrCreateDeviceId(),
+        });
+        if (signedIn) {
+          console.log(`[pi] signed in to ${cli.login.provider}`);
+          process.exit(0);
+        }
+      } finally { controller.abort(); }
+    }
     const known = await knownProviders(AGENT_DIR);
     if (!known.includes(cli.login.provider)) {
       throw new CliError(`unknown provider "${cli.login.provider}" — known: ${known.join(", ")}`);
@@ -526,6 +578,27 @@ if (cli.command === "login") {
     const key = await readSecret(`API key for ${cli.login.provider} (not echoed): `);
     const written = await storeApiKey(AGENT_DIR, cli.login.provider, key);
     console.log(`[pi] stored ${cli.login.provider} credentials in ${written}\n[pi] run: pi-outpost`);
+    process.exit(0);
+  } catch (error) {
+    complain(error);
+    process.exit(1);
+  }
+}
+
+if (cli.command === "logout") {
+  try {
+    if (!validProviderId(cli.logout.provider)) throw new CliError("logout needs a provider: pi-outpost logout --provider anthropic");
+    const cliExtensionPaths = [...allExtensionPaths(config), ...config.extensionScripts];
+    const services = await createAgentSessionServices({
+      cwd: config.cwd,
+      agentDir: AGENT_DIR,
+      resourceLoaderOptions: {
+        ...(config.noExtensions ? { noExtensions: true } : {}),
+        ...(cliExtensionPaths.length > 0 ? { additionalExtensionPaths: cliExtensionPaths } : {}),
+      },
+    });
+    await runCliProviderLogout(services.modelRuntime as unknown as CliAccountRuntime, cli.logout.provider);
+    console.log(`[pi] signed out of ${cli.logout.provider}; environment credentials were left untouched`);
     process.exit(0);
   } catch (error) {
     complain(error);

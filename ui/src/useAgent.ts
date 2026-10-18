@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
+import { randomId } from "./util/randomId";
 import type { LoginEvent, LoginPrompt, OutpostUpdateNotice, PiPackageInfo } from "@pi-outpost/shared";
 import type { ProjectAppearance, StructuredConformance } from "@pi-outpost/shared/structured-exchange/profile";
 import { workspaceKey } from "./util/workspaceKey";
@@ -1750,7 +1751,7 @@ export function useAgent(serverUrl = "", explicitToken?: string, embedded = fals
       outcomeQueuedRef.current = true;
       return;
     }
-    const requestId = `outcome:${crypto.randomUUID()}`;
+    const requestId = `outcome:${randomId()}`;
     outcomeInFlightRef.current = requestId;
     const identity = outcomeIdentityRef.current;
     dispatch({ type: "outcome_started", requestId, ...identity });
@@ -1780,7 +1781,7 @@ export function useAgent(serverUrl = "", explicitToken?: string, embedded = fals
   const requestDirectory = useCallback(
     (path: string, preserveEntries = false) => {
       if (path === "") rootListingRequestedRef.current = true;
-      const requestId = `dir:${crypto.randomUUID()}`;
+      const requestId = `dir:${randomId()}`;
       dispatch({ type: "dir_list_started", path, requestId, preserveEntries });
       sendMessage({ type: "list_directory", path, requestId });
     },
@@ -1810,7 +1811,7 @@ export function useAgent(serverUrl = "", explicitToken?: string, embedded = fals
         return;
       }
       gitStatusInFlight.current.add(scope);
-      const requestId = `git:${crypto.randomUUID()}`;
+      const requestId = `git:${randomId()}`;
       gitStatusScopes.current.set(requestId, scope);
       sendMessage({ type: "git_status", ...(repo === undefined ? {} : { repo }), requestId });
     },
@@ -2010,13 +2011,13 @@ export function useAgent(serverUrl = "", explicitToken?: string, embedded = fals
           relistDirectory(parentDirectory(message.path));
           const openFile = openFileRef.current;
           if (openFile?.status === "loaded" && openFile.path === message.path) {
-            const requestId = `file:${crypto.randomUUID()}`;
+            const requestId = `file:${randomId()}`;
             dispatch({ type: "file_read_started", path: message.path, requestId, preserveContent: true });
             sendMessage({ type: "read_file", path: message.path, requestId });
           }
           // An open "± diff" pane for this file would silently go stale otherwise
           if (gitDiffPathRef.current === message.path) {
-            sendMessage({ type: "git_diff", path: message.path, requestId: `gitdiff:${crypto.randomUUID()}` });
+            sendMessage({ type: "git_diff", path: message.path, requestId: `gitdiff:${randomId()}` });
           }
           // One file moved: only its repository has anything new to say. Re-reading
           // thirty of them to learn that is thirty processes for one fact.
@@ -2035,14 +2036,14 @@ export function useAgent(serverUrl = "", explicitToken?: string, embedded = fals
             if (isImageFile(openFile.path) || isPdfFile(openFile.path)) {
               dispatch({ type: "raw_preview_changed", path: openFile.path });
             } else if (openFile.status === "loaded") {
-              const requestId = `file:${crypto.randomUUID()}`;
+              const requestId = `file:${randomId()}`;
               dispatch({ type: "file_read_started", path: openFile.path, requestId, preserveContent: true });
               sendMessage({ type: "read_file", path: openFile.path, requestId });
             }
           }
           const gitDiffPath = gitDiffPathRef.current;
           if (gitDiffPath !== null && parentDirectory(gitDiffPath) === message.path) {
-            sendMessage({ type: "git_diff", path: gitDiffPath, requestId: `gitdiff:${crypto.randomUUID()}` });
+            sendMessage({ type: "git_diff", path: gitDiffPath, requestId: `gitdiff:${randomId()}` });
           }
           refreshGitStatus();
           return;
@@ -2182,7 +2183,7 @@ export function useAgent(serverUrl = "", explicitToken?: string, embedded = fals
       if (!socket || socket.readyState !== WebSocket.OPEN) {
         return Promise.reject(new HistoryError("not connected to the server", "failed"));
       }
-      const requestId = `history:${crypto.randomUUID()}`;
+      const requestId = `history:${randomId()}`;
       return new Promise<HistoryWindow>((resolve, reject) => {
         // A dropped socket rejects every waiter; this covers the answer that never
         // comes on a socket that stays up. Left unsettled, the control would sit on
@@ -2272,7 +2273,7 @@ export function useAgent(serverUrl = "", explicitToken?: string, embedded = fals
     checkPiPackages: () => sendMessage({ type: "check_pi_packages" }),
     /** Install the newest version of one pi package. The caller has had the user confirm. */
     updatePiPackage: (source: string) => {
-      const requestId = `pkg:${crypto.randomUUID()}`;
+      const requestId = `pkg:${randomId()}`;
       dispatch({ type: "pi_package_update_started", requestId, source });
       sendMessage({ type: "update_pi_package", source, requestId });
     },
@@ -2310,7 +2311,7 @@ export function useAgent(serverUrl = "", explicitToken?: string, embedded = fals
     renameSession: (path: string, name: string) => sendMessage({ type: "rename_session", path, name }),
     /** Find sessions by name, first message or transcript content. */
     searchSessions: (query: string) => {
-      const requestId = `sessions:${crypto.randomUUID()}`;
+      const requestId = `sessions:${randomId()}`;
       dispatch({ type: "session_search_started", query, requestId });
       sendMessage({ type: "search_sessions", query, requestId });
     },
@@ -2344,14 +2345,14 @@ export function useAgent(serverUrl = "", explicitToken?: string, embedded = fals
      * document was approved against, rather than showing it.
      */
     readFile: (path: string, sha256?: string) => {
-      const requestId = `file:${crypto.randomUUID()}`;
+      const requestId = `file:${randomId()}`;
       dispatch({ type: "file_read_started", path, requestId });
       sendMessage({ type: "read_file", path, requestId, ...(sha256 === undefined ? {} : { sha256 }) });
     },
     closeFilePreview: () => dispatch({ type: "close_file_preview" }),
     /** Save the editor buffer back to disk; answered by file_written or a "write:" file_browser_error. */
     writeFile: (path: string, content: string, expectedMtimeMs: number, force = false) => {
-      const requestId = `write:${crypto.randomUUID()}`;
+      const requestId = `write:${randomId()}`;
       dispatch({ type: "file_save_started", path, requestId, content });
       sendMessage({ type: "write_file", path, content, expectedMtimeMs, ...(force ? { force } : {}), requestId });
     },
@@ -2362,7 +2363,7 @@ export function useAgent(serverUrl = "", explicitToken?: string, embedded = fals
      */
     createFile: (path: string) => {
       dispatch({ type: "file_create_started" });
-      sendMessage({ type: "create_file", path, requestId: `create:${crypto.randomUUID()}` });
+      sendMessage({ type: "create_file", path, requestId: `create:${randomId()}` });
     },
     /**
      * Copy a file supplied from outside the workspace into the uploads directory,
@@ -2380,7 +2381,7 @@ export function useAgent(serverUrl = "", explicitToken?: string, embedded = fals
         return Promise.reject(new UploadError("not connected to the server"));
       }
       const destinationDirectory = writableRoot ? `${writableRoot}/${UPLOADS_DIRECTORY}` : UPLOADS_DIRECTORY;
-      const requestId = `upload:${crypto.randomUUID()}`;
+      const requestId = `upload:${randomId()}`;
       return new Promise<string>((resolve, reject) => {
         // A dropped socket already rejects every waiter. This covers the other
         // shape: the socket stays up and the answer never comes. Without it the
@@ -2402,10 +2403,10 @@ export function useAgent(serverUrl = "", explicitToken?: string, embedded = fals
     /** Create one directory; answered with its (empty) listing. */
     createDirectory: (path: string) => {
       dispatch({ type: "file_create_started" });
-      sendMessage({ type: "create_directory", path, requestId: `create:${crypto.randomUUID()}` });
+      sendMessage({ type: "create_directory", path, requestId: `create:${randomId()}` });
     },
     openNative: (path: string) => {
-      const requestId = `fileop:${crypto.randomUUID()}`;
+      const requestId = `fileop:${randomId()}`;
       dispatch({ type: "file_operation_started", operation: "open_native", path, requestId });
       sendMessage({ type: "open_native", path, requestId });
     },
@@ -2414,33 +2415,33 @@ export function useAgent(serverUrl = "", explicitToken?: string, embedded = fals
       const now = Date.now();
       if (lastReveal.current?.path === path && now - lastReveal.current.at < REVEAL_REPEAT_MS) return;
       lastReveal.current = { path, at: now };
-      const requestId = `fileop:${crypto.randomUUID()}`;
+      const requestId = `fileop:${randomId()}`;
       dispatch({ type: "file_operation_started", operation: "reveal_native", path, requestId });
       sendMessage({ type: "reveal_native", path, requestId });
     },
     renameFile: (path: string, name: string) => {
-      const requestId = `fileop:${crypto.randomUUID()}`;
+      const requestId = `fileop:${randomId()}`;
       dispatch({ type: "file_operation_started", operation: "rename_file", path, requestId });
       sendMessage({ type: "rename_file", path, name, requestId });
     },
     deleteFile: (path: string) => {
-      const requestId = `fileop:${crypto.randomUUID()}`;
+      const requestId = `fileop:${randomId()}`;
       dispatch({ type: "file_operation_started", operation: "delete_file", path, requestId });
       sendMessage({ type: "delete_file", path, requestId });
     },
     moveFile: (path: string, destinationDirectory: string) => {
-      const requestId = `fileop:${crypto.randomUUID()}`;
+      const requestId = `fileop:${randomId()}`;
       dispatch({ type: "file_operation_started", operation: "move_file", path, requestId });
       sendMessage({ type: "move_file", path, destinationDirectory, requestId });
     },
     copyFile: (path: string, destinationDirectory: string) => {
-      const requestId = `fileop:${crypto.randomUUID()}`;
+      const requestId = `fileop:${randomId()}`;
       dispatch({ type: "file_operation_started", operation: "copy_file", path, requestId });
       sendMessage({ type: "copy_file", path, destinationDirectory, requestId });
     },
     /** Search file/directory names for the composer's `@` mention autocomplete. */
     searchFiles: (query: string) => {
-      const requestId = `search:${crypto.randomUUID()}`;
+      const requestId = `search:${randomId()}`;
       dispatch({ type: "file_search_started", query, requestId });
       sendMessage({ type: "search_files", query, requestId });
     },
@@ -2449,25 +2450,25 @@ export function useAgent(serverUrl = "", explicitToken?: string, embedded = fals
     fetchGitStatus: () => refreshGitStatus(),
     /** Worktree-vs-HEAD contents for one file (answers land in state.gitDiff). */
     fetchGitDiff: (path: string) => {
-      const requestId = `gitdiff:${crypto.randomUUID()}`;
+      const requestId = `gitdiff:${randomId()}`;
       dispatch({ type: "git_diff_started", path, requestId });
       sendMessage({ type: "git_diff", path, requestId });
     },
     clearGitDiff: () => dispatch({ type: "git_diff_cleared" }),
     fetchGitLog: (repo: string, limit?: number) =>
-      sendMessage({ type: "git_log", repo, ...(limit ? { limit } : {}), requestId: `gitlog:${crypto.randomUUID()}` }),
-    fetchGitShow: (repo: string, sha: string) => sendMessage({ type: "git_show", repo, sha, requestId: `gitshow:${crypto.randomUUID()}` }),
+      sendMessage({ type: "git_log", repo, ...(limit ? { limit } : {}), requestId: `gitlog:${randomId()}` }),
+    fetchGitShow: (repo: string, sha: string) => sendMessage({ type: "git_show", repo, sha, requestId: `gitshow:${randomId()}` }),
     clearGitShow: () => dispatch({ type: "git_show_cleared" }),
     /** Open the history pane for one file (answers land in state.gitFileHistory). */
     fetchGitFileHistory: (path: string, limit?: number) => {
-      const requestId = `gitfilelog:${crypto.randomUUID()}`;
+      const requestId = `gitfilelog:${randomId()}`;
       dispatch({ type: "git_file_history_started", path, requestId });
       sendMessage({ type: "git_file_log", path, ...(limit ? { limit } : {}), requestId });
     },
     closeGitFileHistory: () => dispatch({ type: "git_file_history_closed" }),
     /** Contents of one file at two revisions (answers land in state.gitFileDiff). */
     fetchGitFileDiff: (base: GitRevision, target: GitRevision) => {
-      const requestId = `gitfilediff:${crypto.randomUUID()}`;
+      const requestId = `gitfilediff:${randomId()}`;
       dispatch({ type: "git_file_diff_started", base, target, requestId });
       sendMessage({ type: "git_file_diff", base, target, requestId });
     },
@@ -2476,7 +2477,7 @@ export function useAgent(serverUrl = "", explicitToken?: string, embedded = fals
     setCredential: (provider: string, apiKey: string) => sendMessage({ type: "set_credential", provider, apiKey }),
     /** Start signing in to `provider`; its steps arrive in `state.login`. */
     startLogin: (provider: string, method: "oauth" | "api_key") => {
-      const flowId = crypto.randomUUID();
+      const flowId = randomId();
       dispatch({ type: "login_started", flowId, provider, method });
       sendMessage({ type: "start_login", flowId, provider, method });
     },
@@ -2499,23 +2500,23 @@ export function useAgent(serverUrl = "", explicitToken?: string, embedded = fals
       sendMessage({ type: "declare_provider", ...declaration }),
     /** List the directories under one server-side path, for a Settings path field. */
     browseServerDirectory: (path: string) => {
-      const requestId = `serverdir:${crypto.randomUUID()}`;
+      const requestId = `serverdir:${randomId()}`;
       dispatch({ type: "server_browse_started", path, requestId });
       sendMessage({ type: "browse_server_directory", path, requestId });
     },
     closeServerBrowser: () => dispatch({ type: "server_browse_closed" }),
     suggestAgentResourceClonePath: (repositoryUrl: string) => {
-      const requestId = `resource-clone-path:${crypto.randomUUID()}`;
+      const requestId = `resource-clone-path:${randomId()}`;
       dispatch({ type: "resource_clone_path_started", requestId });
       sendMessage({ type: "suggest_agent_resource_clone_path", repositoryUrl, requestId });
     },
     cloneAgentResourceRepository: (repositoryUrl: string, destinationPath: string) => {
-      const requestId = `resource-preview:${crypto.randomUUID()}`;
+      const requestId = `resource-preview:${randomId()}`;
       dispatch({ type: "resource_preview_started", requestId });
       sendMessage({ type: "clone_agent_resource_repository", repositoryUrl, destinationPath, requestId });
     },
     enrollAgentResourceRepository: (previewToken: string, skillRoots: string[], extensionRoots: string[], enabledSkills?: string[]) => {
-      const requestId = `resource-enroll:${crypto.randomUUID()}`;
+      const requestId = `resource-enroll:${randomId()}`;
       dispatch({ type: "resource_enrollment_started", requestId });
       sendMessage({
         type: "enroll_agent_resource_repository",
@@ -2528,17 +2529,17 @@ export function useAgent(serverUrl = "", explicitToken?: string, embedded = fals
     },
     /** Apply a collection's complete selection: every skill that should be on. */
     setAgentResourceSkills: (repositoryId: string, enabledSkills: string[]) => {
-      const requestId = `resource-skills:${crypto.randomUUID()}`;
+      const requestId = `resource-skills:${randomId()}`;
       dispatch({ type: "resource_skills_started", requestId, repositoryId });
       sendMessage({ type: "set_agent_resource_skills", repositoryId, enabledSkills, requestId });
     },
     removeAgentResourceRepository: (repositoryId: string) => {
-      const requestId = `resource-remove:${crypto.randomUUID()}`;
+      const requestId = `resource-remove:${randomId()}`;
       dispatch({ type: "resource_removal_started", requestId, repositoryId });
       sendMessage({ type: "remove_agent_resource_repository", repositoryId, requestId });
     },
     refreshAgentResourceRepositories: (repositoryId?: string) => {
-      const requestId = `resource-refresh:${crypto.randomUUID()}`;
+      const requestId = `resource-refresh:${randomId()}`;
       dispatch({ type: "resource_refresh_started", requestId, ...(repositoryId ? { repositoryId } : {}) });
       sendMessage({ type: "refresh_agent_resource_repositories", ...(repositoryId ? { repositoryId } : {}), requestId });
     },
@@ -2549,7 +2550,7 @@ export function useAgent(serverUrl = "", explicitToken?: string, embedded = fals
       upstreamRevision: string,
       allowExecutableChanges = false,
     ) => {
-      const requestId = `resource-update:${crypto.randomUUID()}`;
+      const requestId = `resource-update:${randomId()}`;
       dispatch({ type: "resource_update_started", requestId, repositoryId });
       sendMessage({
         type: "update_agent_resource_repository",

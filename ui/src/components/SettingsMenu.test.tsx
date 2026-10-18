@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, within } from "@testing-library/react";
 import { SettingsMenu } from "./SettingsMenu";
 
 type Props = React.ComponentProps<typeof SettingsMenu>;
@@ -42,11 +42,98 @@ function setup(overrides: Partial<Props> = {}) {
 }
 
 const openMenu = () => fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+const openAccounts = () => fireEvent.click(screen.getByText(/^Accounts/));
+const openAccount = (id: string) => fireEvent.click(screen.getByTestId(`account-${id}`).querySelector("summary")!);
 const field = (name: RegExp) => screen.getByRole("textbox", { name });
 const check = (name: RegExp) => screen.getByRole("checkbox", { name });
 const applyButton = () => screen.getByRole("button", { name: /Apply/ });
 
 describe("SettingsMenu", () => {
+  it("shows account sources and actions, and makes accounts read-only under the credentials lock", () => {
+    const start = vi.fn();
+    const logout = vi.fn();
+    setup({ credentials: { usableModel: true, providers: [
+      { id: "codex", name: "OpenAI Codex", configured: true, auth: "oauth", source: "stored", methods: ["oauth"] },
+      { id: "anthropic", name: "Anthropic", configured: false, methods: ["api_key"] },
+    ] }, onStartLogin: start, onLogoutProvider: logout });
+    openMenu();
+    expect(screen.getByTestId("accounts-panel")).not.toHaveAttribute("open");
+    expect(screen.getByTestId("account-codex")).not.toBeVisible();
+    openAccounts();
+    openAccount("codex");
+    expect(screen.getByText("oauth · stored")).toBeInTheDocument();
+    expect(screen.getByText("oauth · stored")).toHaveClass("text-emerald-700");
+    fireEvent.click(screen.getByRole("button", { name: "Sign out" }));
+    expect(logout).toHaveBeenCalledWith("codex");
+    openAccount("anthropic");
+    fireEvent.click(screen.getByRole("button", { name: "API key" }));
+    expect(start).toHaveBeenCalledWith("anthropic", "api_key");
+  });
+
+  it("labels removal of a stored API key clearly and keeps environment credentials read-only", () => {
+    const logout = vi.fn();
+    setup({ credentials: { usableModel: true, providers: [
+      { id: "anthropic", name: "Anthropic", configured: true, auth: "api_key", source: "stored", methods: ["api_key"] },
+      { id: "openai", name: "OpenAI", configured: true, auth: "api_key", source: "environment", methods: ["api_key"] },
+    ] }, onLogoutProvider: logout });
+    openMenu();
+    openAccounts();
+    openAccount("anthropic");
+    fireEvent.click(screen.getByRole("button", { name: "Remove API key" }));
+    expect(logout).toHaveBeenCalledWith("anthropic");
+    openAccount("openai");
+    expect(screen.getByTestId("account-openai")).toHaveTextContent("This key comes from the server environment. Remove it from there.");
+    expect(within(screen.getByTestId("account-openai")).queryByRole("button", { name: "Remove API key" })).not.toBeInTheDocument();
+  });
+
+  it("explains why a key loaded from models.json cannot be removed here", () => {
+    setup({ credentials: { usableModel: true, providers: [
+      { id: "omni", name: "Omni", configured: true, auth: "api_key", source: "models_json_key", methods: ["api_key"] },
+    ] } });
+    openMenu();
+    openAccounts();
+    const omni = screen.getByTestId("account-omni");
+    openAccount("omni");
+    expect(omni).toHaveTextContent("api_key · models.json");
+    expect(omni).toHaveTextContent("This key is managed in models.json. Remove it from that provider configuration.");
+    expect(within(omni).queryByRole("button", { name: "Remove API key" })).not.toBeInTheDocument();
+  });
+
+  it("offers no credential changes when credentials are locked", () => {
+    setup({ credentials: { usableModel: true, locked: true, providers: [{ id: "codex", name: "Codex", configured: true, source: "stored", methods: ["oauth", "api_key"] }] } });
+    openMenu();
+    openAccounts();
+    openAccount("codex");
+    expect(screen.getByText("Credentials are locked by this server.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Sign in" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "API key" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Sign out" })).not.toBeInTheDocument();
+  });
+
+  it.each(["Sign in", "API key"])("double-clicking %s closes only the provider and dismisses the pending flow", (label) => {
+    const cancel = vi.fn();
+    const dismiss = vi.fn();
+    const start = vi.fn();
+    const view = setup({
+      credentials: { usableModel: true, providers: [{ id: "codex", name: "Codex", configured: false, methods: ["oauth", "api_key"] }] },
+      onStartLogin: start,
+      onCancelLogin: cancel,
+      onDismissLogin: dismiss,
+    });
+    openMenu();
+    openAccounts();
+    openAccount("codex");
+    fireEvent.click(screen.getByRole("button", { name: label }));
+    expect(start).toHaveBeenCalledOnce();
+    view.rerenderWith({ login: { flowId: "flow-1", provider: "codex", method: "oauth", events: [], prompt: null, done: null } });
+    fireEvent.click(screen.getByRole("button", { name: label }));
+    expect(cancel).toHaveBeenCalledOnce();
+    expect(dismiss).toHaveBeenCalledOnce();
+    expect(screen.getByTestId("accounts-panel")).toHaveAttribute("open");
+    expect(screen.getByTestId("account-codex")).not.toHaveAttribute("open");
+    expect(screen.queryByText("Sign-in cancelled.")).not.toBeInTheDocument();
+  });
+
   it("shows the effective tools and loaded skills", () => {
     setup({
       tools: [{ name: "present_structure", active: true }, { name: "bash", active: false }],

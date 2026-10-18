@@ -53,7 +53,9 @@ Usage
   pi-outpost config [options]    print the configuration that would be used, and where it came from
   pi-outpost doctor [options]    check whether this installation can start and serve, and say what stops it
   pi-outpost login --provider <name>
-                                 store an API key for a provider in <agentDir>/auth.json
+                                 sign in to a provider, or store an API key
+  pi-outpost logout --provider <name>
+                                 remove this server's stored provider credential
   pi-outpost build-exe [options] build a standalone executable from this installation
   pi-outpost update [--check]    move to the newest published version, or just look
 
@@ -162,18 +164,19 @@ Agent runtime
 export class CliError extends Error {}
 
 export interface ParsedCli {
-  command: "serve" | "init" | "config" | "doctor" | "login" | "build-exe" | "update" | "help" | "version";
+  command: "serve" | "init" | "config" | "doctor" | "login" | "logout" | "build-exe" | "update" | "help" | "version";
   flags: CliOptions;
   init: { global: boolean; force: boolean };
   login: { provider?: string };
+  logout: { provider?: string };
   buildExe: { out?: string; force: boolean };
   update: { check: boolean };
   /** undefined when neither --open nor --no-open was given, so config still decides. */
   open?: boolean;
 }
 
-type Command = "init" | "config" | "doctor" | "login" | "build-exe" | "update";
-const COMMANDS: readonly string[] = ["init", "config", "doctor", "login", "build-exe", "update"] satisfies Command[];
+type Command = "init" | "config" | "doctor" | "login" | "logout" | "build-exe" | "update";
+const COMMANDS: readonly string[] = ["init", "config", "doctor", "login", "logout", "build-exe", "update"] satisfies Command[];
 
 function integerFlag(value: string | undefined, name: string): number | undefined {
   if (value === undefined) return undefined;
@@ -236,8 +239,8 @@ export function parseCli(argv: string[]): ParsedCli {
   if (values.check && command !== "update") {
     throw new CliError('"--check" belongs to "pi-outpost update" — see "pi-outpost --help"');
   }
-  if (values.provider !== undefined && command !== "login") {
-    throw new CliError('"--provider" belongs to "pi-outpost login" — see "pi-outpost --help"');
+  if (values.provider !== undefined && command !== "login" && command !== "logout") {
+    throw new CliError('"--provider" belongs to "pi-outpost login" or "pi-outpost logout" — see "pi-outpost --help"');
   }
   if (values.global && command !== "init") {
     throw new CliError('"--global" belongs to "pi-outpost init" — see "pi-outpost --help"');
@@ -276,6 +279,7 @@ export function parseCli(argv: string[]): ParsedCli {
     flags,
     init: { global: values.global, force: values.force },
     login: { provider: values.provider },
+    logout: { provider: values.provider },
     buildExe: { out: values.out, force: values.force },
     update: { check: values.check },
     // Left undefined unless asked for, so configuration still has its say.

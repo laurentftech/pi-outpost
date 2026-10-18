@@ -1,5 +1,7 @@
 import { useState } from "react";
 import type { CredentialStatus, ProviderCompat } from "@pi-outpost/shared";
+import type { LoginFlowState } from "../useAgent";
+import { LoginFlow } from "./LoginFlow";
 
 /**
  * First-run screen: the server has no provider that can answer, so a chat would only
@@ -11,6 +13,11 @@ interface OnboardingProps {
   credentials: CredentialStatus;
   /** Store a key for a provider the server already knows. */
   onSetCredential: (provider: string, apiKey: string) => void;
+  onStartLogin: (provider: string, method: "oauth" | "api_key") => void;
+  login: LoginFlowState | null;
+  onAnswerLogin: (value: string) => void;
+  onCancelLogin: () => void;
+  onDismissLogin: () => void;
   /** Declare an OpenAI-compatible endpoint of the user's own. */
   onDeclareProvider: (declaration: {
     provider: string;
@@ -27,7 +34,7 @@ const field =
   "w-full rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-800 placeholder:text-zinc-400 focus:border-zinc-400 focus:outline-none dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:placeholder:text-zinc-600";
 const label = "mb-1 block text-xs font-medium text-zinc-600 dark:text-zinc-400";
 
-export function Onboarding({ title, credentials, onSetCredential, onDeclareProvider, errors }: OnboardingProps) {
+export function Onboarding({ title, credentials, onSetCredential, onStartLogin, login, onAnswerLogin, onCancelLogin, onDismissLogin, onDeclareProvider, errors }: OnboardingProps) {
   const known = credentials.providers;
   const [tab, setTab] = useState<"known" | "custom">(known.length > 0 ? "known" : "custom");
   const [provider, setProvider] = useState(known[0]?.id ?? "");
@@ -38,6 +45,19 @@ export function Onboarding({ title, credentials, onSetCredential, onDeclareProvi
   const [modelId, setModelId] = useState("");
   const [developerRole, setDeveloperRole] = useState(true);
   const [reasoningEffort, setReasoningEffort] = useState(true);
+
+  function toggleAccountSignIn(providerId: string) {
+    if (login?.provider === providerId) {
+      if (!login.done) onCancelLogin();
+      onDismissLogin();
+      return;
+    }
+    if (login) {
+      if (!login.done) onCancelLogin();
+      onDismissLogin();
+    }
+    onStartLogin(providerId, "oauth");
+  }
 
   // Providers are configured, yet nothing is selectable: the key is not what is
   // missing — the configuration is. Sending this user to a key form would be a lie.
@@ -95,6 +115,22 @@ export function Onboarding({ title, credentials, onSetCredential, onDeclareProvi
                 </button>
               ))}
             </div>
+
+            {credentials.signIn && known.some((entry) => entry.methods?.includes("oauth")) && <section className="mb-4 rounded-lg border border-zinc-200 p-3 dark:border-zinc-800" data-testid="onboarding-account-signin">
+              <h2 className="mb-2 text-xs font-medium text-zinc-700 dark:text-zinc-300">Sign in with an account</h2>
+              <div className="flex flex-wrap gap-2">{known.filter((entry) => entry.methods?.includes("oauth")).map((entry) => {
+                const selected = login?.provider === entry.id;
+                return <button
+                  key={entry.id}
+                  type="button"
+                  aria-expanded={selected}
+                  aria-controls={`onboarding-login-flow-${entry.id}`}
+                  className={`rounded border px-3 py-2 text-xs ${selected ? "border-sky-500 bg-sky-50 text-sky-800 dark:bg-sky-950/40 dark:text-sky-200" : ""}`}
+                  onClick={() => toggleAccountSignIn(entry.id)}
+                >{entry.name}</button>;
+              })}</div>
+              {login && <div id={`onboarding-login-flow-${login.provider}`} className="mt-3"><LoginFlow login={login} providerName={known.find((entry) => entry.id === login.provider)?.name ?? login.provider} onAnswer={onAnswerLogin} onCancel={onCancelLogin} onDismiss={onDismissLogin} /></div>}
+            </section>}
 
             {tab === "known" ? (
               <>

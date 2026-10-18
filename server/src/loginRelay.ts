@@ -20,6 +20,8 @@ interface Flow {
   flowId: string;
   controller: AbortController;
   prompts: Map<string, { resolve(value: string): void; reject(error: Error): void }>;
+  finished: Promise<void>;
+  finish(): void;
 }
 
 /** Raised when the person stops the flow; the SDK reports it as "Login cancelled". */
@@ -42,13 +44,18 @@ export class LoginRelay<Client extends object> {
    * ended; the outcome is sent as `login_done`, never thrown.
    */
   async run(client: Client, flowId: string, send: Send, flow: (interaction: LoginInteraction) => Promise<void>): Promise<{ ok: boolean; cancelled?: boolean; message?: string }> {
-    if (this.flows.has(client)) {
-      const outcome = { ok: false, message: "A sign-in is already running here: finish or cancel it first." };
-      send({ type: "login_done", flowId, ...outcome });
-      return outcome;
+    // A new provider can replace the one the browser currently has open. Abort
+    // it and wait until its SDK flow releases the credential lock before starting
+    // the new one. Recheck after the wait in case two replacements raced.
+    while (this.flows.has(client)) {
+      const active = this.flows.get(client)!;
+      this.cancel(client, active.flowId);
+      await active.finished;
     }
+    let finish!: () => void;
+    const finished = new Promise<void>((resolve) => { finish = resolve; });
     const controller = new AbortController();
-    const state: Flow = { flowId, controller, prompts: new Map() };
+    const state: Flow = { flowId, controller, prompts: new Map(), finished, finish };
     this.flows.set(client, state);
     const interaction: LoginInteraction = {
       signal: controller.signal,
@@ -92,7 +99,11 @@ export class LoginRelay<Client extends object> {
       for (const pending of state.prompts.values()) pending.reject(new LoginCancelledError());
       this.flows.delete(client);
     }
-    send({ type: "login_done", flowId, ...outcome });
+    try {
+      send({ type: "login_done", flowId, ...outcome });
+    } finally {
+      state.finish();
+    }
     return outcome;
   }
 

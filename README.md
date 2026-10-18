@@ -36,9 +36,9 @@ One Node process runs the agent and serves the interface: streaming responses, l
 
 ## Start in 5 minutes
 
-You need Node ≥ 24 (what the pi SDK itself requires) and an API key for one model
-provider. You do *not* need [pi](https://github.com/earendil-works/pi) installed — its SDK
-is bundled here.
+You need Node ≥ 24 (what the pi SDK itself requires) and either an API key or an account
+login supported by a model provider. You do *not* need
+[pi](https://github.com/earendil-works/pi) installed — its SDK is bundled here.
 
 **1. Go to the project you want to work on.** The configuration is written here, and the
 agent starts out confined to this directory.
@@ -67,7 +67,7 @@ tabs, no address bar. `--open-in browser` puts it in a normal browser tab, `--no
 leaves it closed.
 
 **4. Give it a model.** With no credentials, the interface asks for them instead of showing
-a chat that could only fail: pick a provider and paste an API key, or declare an
+a chat that could only fail: pick a provider and sign in or paste an API key, or declare an
 OpenAI-compatible endpoint of your own — a corporate gateway, vLLM, Ollama, LM Studio.
 Nothing to restart; the chat works as soon as you save.
 
@@ -296,8 +296,8 @@ one needs, the command that proves it works, and the caution that goes with it.
 
 ### Setting it up and shipping it
 
-- First run in the browser asks for credentials instead of failing cryptically: paste an API
-  key, or declare your own OpenAI-compatible endpoint
+- First run in the browser asks for credentials instead of failing cryptically: sign in when
+  the provider supports it, paste an API key, or declare your own OpenAI-compatible endpoint
 - [Settings from the browser](#settings-from-the-browser): sandbox permissions and roots,
   skill and extension directories — persisted to your configuration file, no restart
 - A sandbox that decides what the agent can read, write and run, per project
@@ -320,7 +320,8 @@ in `<agentDir>/models.json`.
 | | |
 |---|---|
 | **The interface** | With no usable model, pi-outpost shows a setup screen instead of a chat that could only fail. Pasting a key for a built-in provider writes `<agentDir>/auth.json`; declaring your own endpoint writes the provider and its key to `<agentDir>/models.json`. Either takes effect immediately — no restart |
-| **`pi-outpost login`** | For headless servers, where no browser will ever open the interface:<br>`pi-outpost login --provider anthropic` (prompts, not echoed)<br>`echo "$KEY" \| pi-outpost login --provider anthropic` (scripted)<br>The key has no flag on purpose — argv is readable by anyone who can list processes |
+| **`pi-outpost login` / `logout`** | `pi-outpost login --provider openai` runs the provider's account sign-in when available; otherwise it prompts for an API key without echoing it. `echo "$KEY" \| pi-outpost login --provider anthropic` stores a piped key. `pi-outpost logout --provider openai` removes only credentials stored by this server. Secrets have no command-line flag because argv is visible to other processes |
+| **Settings → Accounts** | View each provider's authentication state and source, sign in, enter an API key, or remove this server's stored credential. `credentialsLock: true` makes the panel read-only |
 | **Environment** | `export ANTHROPIC_API_KEY=…` before starting. Nothing is written to disk |
 
 ### An OpenAI-compatible endpoint of your own
@@ -590,6 +591,7 @@ install that must stay small can omit it and name no `"mxc"`.
 | `noExtensions` / `extensionPaths` / `extensionScripts` | Disable extension discovery, or name extension files and directories the deployment loads |
 | `userExtensionPaths` | Extension directories added from Settings. Written by the server; `extensionPaths` stays yours |
 | `extensionLock` | Forbid adding or removing extension paths from Settings |
+| `credentialsLock` | Forbid credential changes from the browser; provider states remain visible and CLI login/logout remain available |
 | `noSkills` / `skillPaths` | Disable skill discovery, or name skill files and directories. `skillPaths` loads even under `noSkills`. Disabling matters for real isolation: skills otherwise also load from `~/.agents/skills` and from `.agents/skills` walked up from `cwd`, neither of which `agentDir` scopes |
 | `userSkillPaths` | Skill directories added from Settings, loaded after `skillPaths` |
 | `userSkillCollections` | Git repositories added as skill collections: `[{ "path", "managed", "enabledSkills": ["folder/skill", …] }]`. Only the listed skill directories load, after `userSkillPaths`. Written by the server |
@@ -753,7 +755,9 @@ pi-outpost init [options]     write a starter configuration file
 pi-outpost config [options]   print the configuration that would be used, and where it came from
 pi-outpost doctor [options]   check whether this installation can start and serve, and say what stops it
 pi-outpost login --provider <name>
-                              store an API key in <agentDir>/auth.json
+                              run account sign-in, or store an API key
+pi-outpost logout --provider <name>
+                              remove this server's stored credential
 pi-outpost build-exe [options]
                               build a standalone executable from this installation
 pi-outpost update [--check]   move to the newest published version, or just look
@@ -771,7 +775,8 @@ pi-outpost update [--check]   move to the newest published version, or just look
 | `--open-in <shape>` | `window` (its own window, the default) or `browser` (a tab) |
 | `--terminal` / `--no-terminal` | Enable or disable the integrated web terminal (default `false`) |
 | `-h, --help` / `-v, --version` | |
-| `login --provider <name>` | Store a key for that provider (prompted, or read from stdin — never a flag) |
+| `login --provider <name>` | Run account sign-in when supported; otherwise store a key (prompted, or read from stdin — never a flag) |
+| `logout --provider <name>` | Remove the credential stored by this server for that provider |
 | `init --global` | Write to the user config directory instead of `./` |
 | `init --force` | Overwrite an existing file |
 | `build-exe --out <path>` | Where to write the executable (default `./pi-outpost`, `.exe` on Windows) |

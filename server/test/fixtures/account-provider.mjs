@@ -27,12 +27,15 @@ function stream(model) {
 }
 
 export default function (pi) {
-  pi.registerProvider("account-test", {
-    name: "Account Test",
+  for (const [id, name, modelId] of [
+    ["account-test", "Account Test", "account-test-model"],
+    ["account-test-secondary", "Account Test Secondary", "account-test-secondary-model"],
+  ]) pi.registerProvider(id, {
+    name,
     baseUrl: "http://127.0.0.1",
     api: "account-test-api",
     oauth: {
-      name: "Account Test",
+      name,
       isSubscription: true,
       async login(callbacks) {
         callbacks.onDeviceCode({ userCode: "WDJB-MJHT", verificationUri: "https://example.test/device", expiresInSeconds: 600 });
@@ -49,8 +52,8 @@ export default function (pi) {
       },
     },
     models: [{
-      id: "account-test-model",
-      name: "Account Test Model",
+      id: modelId,
+      name: `${name} Model`,
       reasoning: false,
       input: ["text"],
       cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },

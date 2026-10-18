@@ -11,24 +11,26 @@
 
 ## 3. Interface
 
-- [ ] 3.1 Settings → Accounts: rows with state and source, Sign in / API key / Sign out; read-only under the lock.
-- [ ] 3.2 The sign-in dialog: link and copy for a URL, device code and address, prompts (text, secret, select, manual code), progress, Cancel; errors.
-- [ ] 3.3 Onboarding: "Sign in with an account".
+- [x] 3.1 Settings → Accounts: rows with state and source, Sign in / API key / Sign out; read-only under the lock.
+- [x] 3.2 The sign-in dialog: link and copy for a URL, device code and address, prompts (text, secret, select, manual code), progress, Cancel; errors.
+- [x] 3.3 Onboarding: "Sign in with an account".
+- [x] 3.4 Onboarding provider buttons toggle the selected flow or switch directly to another provider.
 
 ## 4. CLI
 
-- [ ] 4.1 `pi-outpost login --provider <id>` runs the account flow when there is one and no key is piped; `pi-outpost logout --provider <id>`.
+- [x] 4.1 `pi-outpost login --provider <id>` runs the account flow when there is one and no key is piped; `pi-outpost logout --provider <id>`.
 
 ## 5. Tests
 
 - [x] 5.1 Server: a fake provider flow (device code, prompts, manual code, cancel, close), states and sources, removability, the lock, no secret in messages.
-- [ ] 5.2 UI: the accounts rows, the dialog's steps, the lock, onboarding.
-- [ ] 5.3 CLI: account flow and logout with a fake runtime.
+- [x] 5.2 UI: the accounts rows, the dialog's steps, the lock, onboarding.
+- [x] 5.3 CLI: account flow and logout with a fake runtime.
+- [x] 5.5 Onboarding provider toggle/switch flow: UI tests and the fake-provider browser test.
 - [ ] 5.4 Running app: a real account sign-in and sign-out with OpenAI Codex (the developer's ChatGPT account: loopback redirect, with the paste-the-code path); monkey pass (cancel mid-flow, close the tab, two tabs, a wrong code).
 
 ## 6. Documentation and checks
 
-- [ ] 6.1 README *Model credentials* and the CLI table; the configuration reference (`credentialsLock`).
+- [x] 6.1 README *Model credentials* and the CLI table; the configuration reference (`credentialsLock`).
 - [ ] 6.2 `scenario-coverage.md`, `openspec validate --strict`, `check:scenarios`, typecheck, lint, suites.
 
 ## After merge

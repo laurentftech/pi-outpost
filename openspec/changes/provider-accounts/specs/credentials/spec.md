@@ -33,6 +33,13 @@ usable without a restart.
 - **WHEN** the user cancels it, or closes the page
 - **THEN** the flow is aborted, nothing is stored, and the provider's state is unchanged
 
+#### Scenario: OnboardingAccountSignInCanBeToggledOrSwitched
+- **GIVEN** the onboarding screen offers account sign-in for more than one provider
+- **WHEN** the user selects a provider a second time
+- **THEN** that provider's sign-in panel closes and its flow is cancelled without showing a cancellation error
+- **WHEN** a different provider is selected while a sign-in is open
+- **THEN** the open flow is cancelled and the newly selected provider's sign-in starts
+
 ### Requirement: SignOutRemovesOnlyWhatThisServerStored
 
 The interface SHALL remove a credential this server stored (an account sign-in or an API key in the agent

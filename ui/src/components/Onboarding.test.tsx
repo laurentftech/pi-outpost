@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import type { CredentialStatus } from "@pi-outpost/shared";
+import type { LoginFlowState } from "../useAgent";
 import { Onboarding } from "./Onboarding";
 
 function credentials(overrides: Partial<CredentialStatus> = {}): CredentialStatus {
@@ -20,15 +21,83 @@ type Props = React.ComponentProps<typeof Onboarding>;
 function setup(overrides: Partial<Props> = {}) {
   const onSetCredential = vi.fn();
   const onDeclareProvider = vi.fn();
-  const props: Props = { credentials: credentials(), errors: [], onSetCredential, onDeclareProvider, ...overrides };
-  render(<Onboarding {...props} />);
-  return { onSetCredential, onDeclareProvider };
+  const props: Props = { credentials: credentials(), errors: [], onSetCredential, onStartLogin: vi.fn(), login: null, onAnswerLogin: vi.fn(), onCancelLogin: vi.fn(), onDismissLogin: vi.fn(), onDeclareProvider, ...overrides };
+  const view = render(<Onboarding {...props} />);
+  const rerenderWith = (next: Partial<Props>) => view.rerender(<Onboarding {...props} {...next} />);
+  return { onSetCredential, onDeclareProvider, rerenderWith };
 }
 
 const submit = () => fireEvent.click(screen.getByRole("button", { name: "Save and start" }));
 const fill = (label: RegExp | string, value: string) => fireEvent.change(screen.getByLabelText(label), { target: { value } });
 
 describe("Onboarding", () => {
+  it("offers account sign-in during first-run setup", () => {
+    const onStartLogin = vi.fn();
+    setup({ credentials: credentials({ signIn: true, providers: [{ id: "codex", name: "OpenAI Codex", configured: false, methods: ["oauth"] }] }), onStartLogin });
+    fireEvent.click(screen.getByRole("button", { name: "OpenAI Codex" }));
+    expect(onStartLogin).toHaveBeenCalledWith("codex", "oauth");
+  });
+  it("closes the selected provider when clicked again without showing a cancellation result", () => {
+    const onStartLogin = vi.fn();
+    const onCancelLogin = vi.fn();
+    const onDismissLogin = vi.fn();
+    const view = setup({
+      credentials: credentials({ signIn: true, providers: [{ id: "anthropic", name: "Anthropic", configured: false, methods: ["oauth"] }] }),
+      login: { flowId: "flow-1", provider: "anthropic", method: "oauth", events: [], prompt: null, done: null },
+      onStartLogin, onCancelLogin, onDismissLogin,
+    });
+    const provider = screen.getByRole("button", { name: "Anthropic" });
+    expect(provider).toHaveAttribute("aria-expanded", "true");
+    fireEvent.click(provider);
+    expect(onStartLogin).not.toHaveBeenCalled();
+    expect(onCancelLogin).toHaveBeenCalledOnce();
+    expect(onDismissLogin).toHaveBeenCalledOnce();
+    view.rerenderWith({ login: null });
+    expect(screen.queryByTestId("login-flow")).not.toBeInTheDocument();
+    expect(screen.queryByText("Sign-in cancelled.")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Anthropic" })).toHaveAttribute("aria-expanded", "false");
+  });
+  it("switches directly to another account provider while a sign-in is running", () => {
+    const onStartLogin = vi.fn();
+    const onCancelLogin = vi.fn();
+    const onDismissLogin = vi.fn();
+    const view = setup({
+      credentials: credentials({ signIn: true, providers: [
+        { id: "anthropic", name: "Anthropic", configured: false, methods: ["oauth"] },
+        { id: "openai", name: "OpenAI", configured: false, methods: ["oauth"] },
+      ] }),
+      login: { flowId: "flow-1", provider: "anthropic", method: "oauth", events: [], prompt: null, done: null },
+      onStartLogin, onCancelLogin, onDismissLogin,
+    });
+    fireEvent.click(screen.getByRole("button", { name: "OpenAI" }));
+    expect(onCancelLogin).toHaveBeenCalledOnce();
+    expect(onDismissLogin).toHaveBeenCalledOnce();
+    expect(onStartLogin).toHaveBeenCalledWith("openai", "oauth");
+    view.rerenderWith({ login: { flowId: "flow-2", provider: "openai", method: "oauth", events: [], prompt: null, done: null } });
+    expect(screen.getByText("Signing in to OpenAI")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "OpenAI" })).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByRole("button", { name: "Anthropic" })).toHaveAttribute("aria-expanded", "false");
+  });
+  it("renders the account prompt and routes its answer and cancellation", () => {
+    const onAnswerLogin = vi.fn();
+    const onCancelLogin = vi.fn();
+    const login: LoginFlowState = {
+      provider: "codex",
+      events: [{ type: "auth_url", url: "https://example.test/sign-in" }],
+      prompt: { promptId: "p1", prompt: { type: "manual_code", message: "Paste the code" } },
+      done: null,
+    };
+    setup({
+      credentials: credentials({ signIn: true, providers: [{ id: "codex", name: "OpenAI Codex", configured: false, methods: ["oauth"] }] }),
+      login, onAnswerLogin, onCancelLogin,
+    });
+    expect(screen.getByRole("link", { name: "https://example.test/sign-in" })).toHaveAttribute("target", "_blank");
+    fireEvent.change(screen.getByLabelText(/Paste the code/), { target: { value: "  ABCD  " } });
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+    expect(onAnswerLogin).toHaveBeenCalledWith("ABCD");
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(onCancelLogin).toHaveBeenCalledOnce();
+  });
   describe("a provider the server already knows", () => {
     it("opens on the key form when there are known providers", () => {
       setup();

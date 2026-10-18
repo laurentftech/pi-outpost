@@ -31,6 +31,26 @@ describe("LoginRelay", () => {
     assert.ok(!("signal" in prompt.prompt), "the prompt's signal does not travel");
   });
 
+  test("starting another provider cancels the current flow and waits for it to release the socket", async () => {
+    const relay = new LoginRelay<object>();
+    const c = client();
+    const first = relay.run(c.key, "f1", c.send, async (interaction) => {
+      await interaction.prompt({ type: "secret", message: "First provider key" });
+    });
+    await until(() => c.sent.some((message) => message.type === "login_prompt"));
+
+    const second = relay.run(c.key, "f2", c.send, async (interaction) => {
+      interaction.notify({ type: "progress", message: "Second provider started" });
+    });
+
+    assert.deepEqual(await first, { ok: false, cancelled: true });
+    assert.deepEqual(await second, { ok: true });
+    const firstDone = c.sent.findIndex((message) => message.type === "login_done" && message.flowId === "f1");
+    const secondStarted = c.sent.findIndex((message) => message.type === "login_event" && message.flowId === "f2");
+    assert.ok(firstDone >= 0 && secondStarted > firstDone, "the old flow finishes before the new one starts");
+    assert.equal(relay.running(c.key), false);
+  });
+
   test("one flow per client; an answer for another flow or prompt is ignored", async () => {
     const relay = new LoginRelay<object>();
     const c = client();
@@ -39,8 +59,6 @@ describe("LoginRelay", () => {
       answered = await interaction.prompt({ type: "secret", message: "Key" });
     });
     await until(() => c.sent.some((m) => m.type === "login_prompt"));
-    const second = await relay.run(c.key, "f2", c.send, async () => {});
-    assert.deepEqual(second, { ok: false, message: "A sign-in is already running here: finish or cancel it first." });
     const prompt = c.sent.find((m) => m.type === "login_prompt");
     assert.ok(prompt && prompt.type === "login_prompt");
     relay.answer(c.key, "f2", prompt.promptId, "not-for-this-flow");

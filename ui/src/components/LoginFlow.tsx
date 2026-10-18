@@ -87,8 +87,10 @@ function Question({ prompt, onAnswer }: { prompt: LoginPrompt; onAnswer: (value:
         <input
           className={`${field} mt-1`}
           type={prompt.type === "secret" ? "password" : "text"}
+          name="provider-auth-response"
           placeholder={prompt.placeholder}
           autoComplete="off"
+          spellCheck={prompt.type !== "manual_code"}
           autoFocus
           value={value}
           onChange={(event) => setValue(event.target.value)}
@@ -117,25 +119,27 @@ export function LoginFlow({
   return (
     <div data-testid="login-flow" className="space-y-3 rounded-md border border-zinc-200 p-3 dark:border-zinc-700">
       <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Signing in to {providerName}</p>
-      {login.events.map((event, index) => (
-        <Step key={index} event={event} />
-      ))}
-      {login.prompt && <Question key={login.prompt.promptId} prompt={login.prompt.prompt} onAnswer={onAnswer} />}
-      {!login.done && !login.prompt && login.events.length === 0 && <p className="text-xs text-zinc-500 dark:text-zinc-400">Starting…</p>}
-      {login.done ? (
-        <div data-testid="login-done" data-ok={login.done.ok ? "true" : "false"} className="space-y-2">
+      <div aria-live="polite" aria-atomic="false">
+        {login.events.map((event, index) => (
+          <Step key={index} event={event} />
+        ))}
+        {login.prompt && <Question key={login.prompt.promptId} prompt={login.prompt.prompt} onAnswer={onAnswer} />}
+        {!login.done && !login.prompt && login.events.length === 0 && <p className="text-xs text-zinc-500 dark:text-zinc-400">Starting…</p>}
+        {login.done ? (
+          <div data-testid="login-done" data-ok={login.done.ok ? "true" : "false"} className="space-y-2">
           <p className={`text-sm ${login.done.ok ? "text-emerald-700 dark:text-emerald-400" : "text-red-700 dark:text-red-400"}`}>
             {login.done.ok ? `Signed in to ${providerName}.` : login.done.cancelled ? "Sign-in cancelled." : `Sign-in failed: ${login.done.message ?? "unknown error"}`}
           </p>
           <button type="button" className={button} onClick={onDismiss}>
             Close
           </button>
-        </div>
-      ) : (
-        <button type="button" className={button} onClick={onCancel}>
-          Cancel
-        </button>
-      )}
+          </div>
+        ) : (
+          <button type="button" className={button} onClick={onCancel}>
+            Cancel
+          </button>
+        )}
+      </div>
     </div>
   );
 }
