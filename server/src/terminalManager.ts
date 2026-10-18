@@ -8,7 +8,7 @@ import fs from "node:fs/promises";
 import fsSync from "node:fs";
 import { createRequire } from "node:module";
 import { execFile, spawnSync } from "node:child_process";
-import { confinedEnvironment, prepareConfinedTerminal, type MxcLinuxConfig, type MxcMacConfig, type MxcTerminalConfig, type SeatbeltPolicy, type RunnerKind, type TerminalPolicy } from "./terminalSandbox.ts";
+import { confinedEnvironment, prepareConfinedTerminal, type ConfinedTerminalFiles, type MxcLinuxConfig, type MxcMacConfig, type MxcTerminalConfig, type SeatbeltPolicy, type RunnerKind, type TerminalPolicy } from "./terminalSandbox.ts";
 import { promisify } from "node:util";
 import os from "node:os";
 import path from "node:path";
@@ -419,28 +419,9 @@ export class TerminalManager {
       let env: NodeJS.ProcessEnv = terminalEnvironment(process.env, this.envOverrides);
       let files: Awaited<ReturnType<typeof prepareConfinedTerminal>> | undefined;
       if (confine) {
-        // The runner, not the shell, is what the pty spawns; the shell runs inside it
-        // with a policy written for this terminal alone and an environment built from
-        // nothing, so no key the server holds reaches it.
-        // A starting directory outside the root could not be entered from inside.
-        if (!isInside(resolvedCwd, confine.root)) resolvedCwd = confine.root;
-        const startIn = resolvedCwd;
-        let shellEnv: Record<string, string> = {};
-        files = await prepareConfinedTerminal((tmp) => {
-          shellEnv = confinedEnvironment(process.env, { root: confine.root, tmp, shell, gitConfig: confine.gitConfig });
-          return confine.policy({ tmp, shell, shellArgs, cwd: startIn, env: shellEnv });
-        });
-        file = confine.runner;
-        // MXC's request carries the command line and the environment itself: its
-        // executor hands the child none of its own.
-        args =
-          confine.kind === "mxc"
-            ? [files.policyFile]
-            : confine.kind === "seatbelt"
-              ? ["-f", files.policyFile, shell, ...shellArgs]
-              : ["run", "-p", files.policyFile, "--", shell, ...shellArgs];
-        // sandbox-exec passes its environment on: the policy's (the developer tools' git first).
-        env = files.env ?? shellEnv;
+        const launch = await confinedLaunch(confine, shell, shellArgs, resolvedCwd);
+        ({ file, args, env, files } = launch);
+        resolvedCwd = launch.cwd;
       }
 
       ensureSpawnHelperExecutable();
@@ -613,6 +594,40 @@ export class TerminalManager {
     }
     this.socketSessions.clear();
   }
+}
+
+/** What to spawn for a shell under a terminal's confinement, and what to remove afterwards. */
+export interface ConfinedLaunch {
+  file: string;
+  args: string[];
+  env: Record<string, string>;
+  cwd: string;
+  files: ConfinedTerminalFiles;
+}
+
+/**
+ * The runner, not the shell, is what is spawned; the shell runs inside it with a policy written
+ * for this one launch and an environment built from nothing, so no key the server holds reaches
+ * it. Shared by the terminal and by the confinement canary, which must check what runs.
+ */
+export async function confinedLaunch(confine: TerminalConfinement, shell: string, shellArgs: string[], cwd: string): Promise<ConfinedLaunch> {
+  // A starting directory outside the root could not be entered from inside.
+  const startIn = isInside(path.resolve(cwd), confine.root) ? path.resolve(cwd) : confine.root;
+  let shellEnv: Record<string, string> = {};
+  const files = await prepareConfinedTerminal((tmp) => {
+    shellEnv = confinedEnvironment(process.env, { root: confine.root, tmp, shell, gitConfig: confine.gitConfig });
+    return confine.policy({ tmp, shell, shellArgs, cwd: startIn, env: shellEnv });
+  });
+  // MXC's request carries the command line and the environment itself: its executor hands
+  // the child none of its own.
+  const args =
+    confine.kind === "mxc"
+      ? [files.policyFile]
+      : confine.kind === "seatbelt"
+        ? ["-f", files.policyFile, shell, ...shellArgs]
+        : ["run", "-p", files.policyFile, "--", shell, ...shellArgs];
+  // sandbox-exec passes its environment on: the policy's (the developer tools' git first).
+  return { file: confine.runner, args, env: files.env ?? shellEnv, cwd: startIn, files };
 }
 
 /** How a terminal is confined: the runner to spawn, and what its policy allows. */

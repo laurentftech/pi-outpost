@@ -3,6 +3,8 @@ import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import { ThemeContext } from "../theme/ThemeContext";
+import type { ConfinementVerdict } from "@pi-outpost/shared";
+import { ConfinementLock } from "./ConfinementLock";
 import type {
   TerminalCwdListener,
   TerminalDataListener,
@@ -16,6 +18,8 @@ export interface TerminalPanelProps {
   cwd?: string;
   /** Set when every terminal runs inside a sandbox runner: the root it is confined to. */
   confinedRoot?: string;
+  /** Whether that confinement was seen holding: the badge is drawn from it. */
+  confinement?: ConfinementVerdict;
   /** Why no terminal can be opened (the configured sandbox runner is unusable). */
   unavailable?: string;
   onSetWorkspaceRoot?(root: string): void;
@@ -311,6 +315,7 @@ export function TerminalPanel({
   onClose,
   cwd,
   confinedRoot,
+  confinement,
   unavailable,
   onSetWorkspaceRoot,
   openTerminal,
@@ -497,13 +502,8 @@ export function TerminalPanel({
         </div>
 
         {confinedRoot && !unavailable && (
-          <span
-            data-testid="terminal-confined"
-            title={`This terminal runs in a sandbox: it reads and writes only within ${confinedRoot}`}
-            className="shrink-0 rounded bg-emerald-100 px-1.5 py-0.5 font-sans text-[11px] text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-200"
-          >
-            🔒 confined to {shortenPath(confinedRoot)}
-          </span>
+          // Closed only once the canary saw the limits hold; until it answers, "checking".
+          <ConfinementLock verdict={confinement ?? { state: "checking", runner: "" }} surface="terminal" root={shortenPath(confinedRoot)} />
         )}
 
         {/* Center: Current PWD & Open as Project button */}

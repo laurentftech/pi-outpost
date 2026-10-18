@@ -46,11 +46,43 @@ describe("TerminalPanel", () => {
     expect(screen.queryByTestId("terminal-confined")).toBeNull();
   });
 
-  it("a confined terminal says what it is confined to", () => {
+  // openlore: scenario=AnUnverifiedTerminalIsNotCalledConfined spec=terminal
+  it("AnUnverifiedTerminalIsNotCalledConfined: until the canary answers, the badge says it is checking", () => {
     render(<TerminalPanel {...defaultProps} confinedRoot="/work/app" />);
     const badge = screen.getByTestId("terminal-confined");
-    expect(badge).toHaveTextContent("confined to");
-    expect(badge.getAttribute("title")).toContain("/work/app");
+    expect(badge).toHaveAttribute("data-state", "checking");
+    expect(badge).toHaveTextContent("checking confinement");
+    expect(badge).not.toHaveTextContent("🔒");
+  });
+
+  it("a verified terminal says what it is confined to, and what was refused", () => {
+    render(
+      <TerminalPanel
+        {...defaultProps}
+        confinedRoot="/work/app"
+        confinement={{ state: "verified", runner: "/usr/bin/sandbox-exec", checkedAt: "2026-10-18T10:00:00Z", refused: ["agent-directory", "write-beside-root"], notChecked: [] }}
+      />,
+    );
+    const badge = screen.getByTestId("terminal-confined");
+    expect(badge).toHaveTextContent("🔒 confined to /work/app");
+    expect(badge.getAttribute("title")).toContain("/usr/bin/sandbox-exec");
+    expect(badge.getAttribute("title")).toContain("write beside the root");
+  });
+
+  // openlore: scenario=ALeakingTerminalSaysSo spec=terminal
+  it("ALeakingTerminalSaysSo: the badge is open, red, and names the write beside the root", () => {
+    render(
+      <TerminalPanel
+        {...defaultProps}
+        confinedRoot="/work/app"
+        confinement={{ state: "leaking", runner: "/opt/landstrip", checkedAt: "2026-10-18T10:00:00Z", reached: ["write-beside-root"], refused: ["agent-directory"] }}
+      />,
+    );
+    const badge = screen.getByTestId("terminal-confined");
+    expect(badge).toHaveAttribute("data-state", "leaking");
+    expect(badge).toHaveTextContent("🔓 not confined");
+    expect(badge.className).toContain("red");
+    expect(badge.getAttribute("title")).toMatch(/NOT confined[\s\S]*write beside the root/);
   });
 
   it("an unconfined terminal carries no confinement badge", () => {

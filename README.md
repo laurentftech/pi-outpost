@@ -797,6 +797,11 @@ problem:
   by something else
 - **web UI** — whether this installation actually has an interface to serve
 - **git**, and **node-pty** when the terminal is enabled
+- **shell sandbox** and **terminal sandbox**, when a runner confines them — a canary run through
+  the runner tries to read the agent directory, write beside the root, signal another process and
+  more; any attempt that gets through is a failure (see
+  [docs/sandboxing.md](docs/sandboxing.md#check-that-it-is-really-confined)). The interface shows the
+  same verdict as a lock beside the context indicator and on the terminal's badge
 
 It exits non-zero when something would stop the server from serving, so it can gate a
 script. Unlike `config`, it never needs a configuration file to run — that absence is

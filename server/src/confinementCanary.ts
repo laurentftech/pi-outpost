@@ -21,7 +21,6 @@ import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import type { ConfinementAttempt, ConfinementVerdict } from "@pi-outpost/shared";
-import { isWithin } from "./sandbox.ts";
 
 /** The line the canary prints for each attempt. */
 const MARK = "PI_OUTPOST_CANARY";
@@ -65,7 +64,7 @@ export async function prepareBait(options: BaitOptions): Promise<CanaryBait> {
   let besideDir: string | undefined = await realpath(await mkdtemp(path.join(tmpdir(), "pi-outpost-canary-")));
   await writeFile(path.join(besideDir, "marker"), "canary", { mode: 0o600 });
   const zones = [options.root, ...(options.writableRoot ? [options.writableRoot] : [])];
-  if (zones.some((zone) => isWithin(zone, besideDir!))) {
+  if (zones.some((zone) => contains(zone, besideDir!))) {
     const why = `the system's temporary directory (${tmpdir()}) is inside the sandbox root`;
     notChecked.push({ attempt: "beside-root", why }, { attempt: "write-beside-root", why });
     await rm(besideDir, { recursive: true, force: true });
@@ -90,6 +89,12 @@ export async function prepareBait(options: BaitOptions): Promise<CanaryBait> {
       if (besideDir) await rm(besideDir, { recursive: true, force: true });
     },
   };
+}
+
+/** Whether `target` is `zone` or inside it — a filesystem root included. */
+function contains(zone: string, target: string): boolean {
+  const relative = path.relative(zone, target);
+  return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
 }
 
 const quoteSh = (text: string) => `'${text.replaceAll("'", `'\\''`)}'`;
@@ -123,11 +128,9 @@ function posixCanary(bait: CanaryBait, options: ScriptOptions): string {
     `{ env | grep -q ${quoteSh(`${bait.envName}=`)} || { [ -r /proc/${options.serverPid}/environ ] && head -c 1 /proc/${options.serverPid}/environ >/dev/null 2>&1; }; }; r server-environment $?`,
   );
   if (options.proxied) {
+    // One statement per line, so the script also runs joined into a single `-c` argument.
     lines.push(
-      `if command -v curl >/dev/null 2>&1; then`,
-      `  curl -s -o /dev/null -m 10 https://canary.invalid/; r unlisted-host $?`,
-      `  curl -s -o /dev/null -m 5 --noproxy '*' https://1.1.1.1/; r direct-connection $?`,
-      `else echo "${MARK} unlisted-host unchecked"; echo "${MARK} direct-connection unchecked"; fi`,
+      `if command -v curl >/dev/null 2>&1; then curl -s -o /dev/null -m 10 https://canary.invalid/; r unlisted-host $?; curl -s -o /dev/null -m 5 --noproxy '*' https://1.1.1.1/; r direct-connection $?; else echo "${MARK} unlisted-host unchecked"; echo "${MARK} direct-connection unchecked"; fi`,
     );
   }
   lines.push("exit 0", "");

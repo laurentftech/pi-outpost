@@ -1114,6 +1114,8 @@ export type ServerMessage =
     }
   | { type: "queue"; steering: string[]; followUp: string[] }
   | { type: "context_usage"; usage: ContextUsage }
+  /** A confinement canary finished (or started): the project's verdicts as they now stand. */
+  | { type: "confinement"; confinement: NonNullable<SessionSnapshot["confinement"]> }
   | { type: "work_plan_changed"; workPlan: WorkPlan | null }
   | { type: "workspace_outcome"; requestId: string; outcome: WorkspaceOutcome }
   /**
