@@ -23,7 +23,7 @@
  * writes in the shape MXC generates (`seatbeltPolicy`).
  */
 import { execFile, execFileSync } from "node:child_process";
-import { closeSync, constants as fsConstants, existsSync, lstatSync, openSync, readdirSync, realpathSync } from "node:fs";
+import { closeSync, constants as fsConstants, existsSync, lstatSync, openSync, readdirSync, readFileSync, realpathSync } from "node:fs";
 import { access, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import path from "node:path";
@@ -828,6 +828,41 @@ const WINDOWS_PASSED_THROUGH = [
 export function userGitConfig(home: string = homedir()): string | undefined {
   const file = path.join(home, ".gitconfig");
   return existsSync(file) ? file : undefined;
+}
+
+/**
+ * What a confined shell may read of the user's git setup: the configuration, and the files it
+ * names for every repository — `core.excludesFile` (a global `.gitignore`) and
+ * `core.attributesFile`. Unreadable, git warns "unable to access" on every call.
+ *
+ * Read from the file, not asked of git: git may not be on the server's search path (Windows).
+ * Only those two keys, and only files that exist: a configuration cannot open a folder this way.
+ */
+export function gitReadOnlyFiles(gitConfig: string | undefined, home: string = homedir(), exists: (file: string) => boolean = existsSync): string[] {
+  if (!gitConfig) return [];
+  let text: string;
+  try {
+    text = readFileSync(gitConfig, "utf8");
+  } catch {
+    return [gitConfig];
+  }
+  const named: string[] = [];
+  let section = "";
+  for (const raw of text.split(/\r?\n/)) {
+    const line = raw.trim();
+    const header = /^\[\s*([^\]\s"]+)/.exec(line);
+    if (header) {
+      section = header[1].toLowerCase();
+      continue;
+    }
+    const entry = /^(excludesfile|attributesfile)\s*=\s*(.*)$/i.exec(line);
+    if (section !== "core" || !entry) continue;
+    let value = entry[2].replace(/\s[;#].*$/, "").trim();
+    if (value.startsWith('"') && value.endsWith('"') && value.length >= 2) value = value.slice(1, -1);
+    if (value.startsWith("~/") || value.startsWith("~\\")) value = path.join(home, value.slice(2));
+    if (value && path.isAbsolute(value) && exists(value)) named.push(value);
+  }
+  return [gitConfig, ...named];
 }
 
 /** The environment of a confined shell: a home in its root, its own temp, no secrets. */

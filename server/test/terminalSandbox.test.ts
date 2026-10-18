@@ -9,6 +9,7 @@ import { describe, test } from "node:test";
 import {
   checkRunner,
   confinedEnvironment,
+  gitReadOnlyFiles,
   isLinuxMxc,
   isMacMxc,
   mxcErrorMessage,
@@ -631,6 +632,44 @@ describe("mxcTerminalConfig", () => {
 });
 
 describe("git's identity inside", () => {
+  // openlore: scenario=GitAppliesTheGlobalIgnoreQuietly spec=terminal
+  test("GitAppliesTheGlobalIgnoreQuietly: the files .gitconfig names in [core] are readable too, existing ones only", async () => {
+    const home = await mkdtemp(path.join(tmpdir(), "git-home-"));
+    try {
+      const gitConfig = path.join(home, ".gitconfig");
+      const ignore = path.join(home, ".gitignore_global");
+      const attributes = path.join(home, "git", "attributes");
+      await mkdir(path.join(home, "git"));
+      await writeFile(ignore, "*.log\n");
+      await writeFile(attributes, "* text=auto\n");
+      await writeFile(
+        gitConfig,
+        [
+          "[user]",
+          "\texcludesfile = /not/core/ignored",
+          "[Core]",
+          "\tExcludesFile = ~/.gitignore_global ; a comment",
+          `\tattributesfile = "${attributes}"`,
+          "[core \"sub\"]",
+          "\texcludesfile = /also/not/core",
+          "[core]",
+          "\tattributesFile = ~/missing-file",
+          "",
+        ].join("\r\n"),
+      );
+      assert.deepEqual(gitReadOnlyFiles(gitConfig, home), [gitConfig, ignore, attributes]);
+      assert.deepEqual(gitReadOnlyFiles(undefined, home), []);
+      assert.deepEqual(gitReadOnlyFiles(path.join(home, "absent"), home), [path.join(home, "absent")], "an unreadable file is passed as it was");
+      // In a policy: the files, read-only; never their folder.
+      const policy = terminalPolicy({ ...linux, root, allowWrite: true, tmp, readOnlyFiles: gitReadOnlyFiles(gitConfig, home) });
+      assert.ok(policy.filesystem.allowRead.includes(ignore));
+      assert.ok(!policy.filesystem.allowRead.includes(home));
+      assert.ok(!policy.filesystem.allowWrite.includes(ignore), "read-only");
+    } finally {
+      await rm(home, { recursive: true, force: true });
+    }
+  });
+
   // openlore: scenario=GitKnowsWhoCommits spec=terminal
   test("the user's .gitconfig is passed as GIT_CONFIG_GLOBAL and readable on its own, in every policy", async () => {
     const home = await mkdtemp(path.join(tmpdir(), "git-home-"));

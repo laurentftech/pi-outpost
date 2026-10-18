@@ -86,6 +86,29 @@ describe("the agent's bash under Seatbelt (sandbox-exec)", { skip }, () => {
     assert.match(result.output, /^0$/m, "OPENAI_API_KEY reached the command");
   });
 
+  // openlore: scenario=GitAppliesTheGlobalIgnoreQuietly spec=terminal
+  test("GitAppliesTheGlobalIgnoreQuietly: the global ignore .gitconfig names is applied, quietly, and its folder stays shut", async () => {
+    const home = path.join(base, "home");
+    const repo = path.join(root, "ignoring");
+    await mkdir(home);
+    await mkdir(repo);
+    await writeFile(path.join(home, ".gitignore_global"), "*.log\n");
+    await writeFile(path.join(home, ".gitconfig"), `[user]\n\tname = Me\n\temail = me@example.com\n[core]\n\texcludesfile = ${path.join(home, ".gitignore_global")}\n`);
+    await writeFile(path.join(home, "secret.txt"), "home-secret");
+    await writeFile(path.join(repo, "debug.log"), "noise");
+    await writeFile(path.join(repo, "kept.txt"), "kept");
+    const ops = confinedBashOperations({ runner: RUNNER!, root, allowWrite: true, agentDir, gitConfig: path.join(home, ".gitconfig") });
+    let output = "";
+    const { exitCode } = await ops.exec(`cd ignoring && git init -q . && git status --short; ls ${home}; cat ${home}/secret.txt; echo "secret=$?"`, root, { onData: (data) => (output += data.toString()) });
+    assert.equal(exitCode, 0, output);
+    assert.doesNotMatch(output, /unable to access|warning/i, "git could not read the global ignore");
+    assert.match(output, /\?\? kept\.txt/, output);
+    assert.doesNotMatch(output, /debug\.log/, "the global ignore was not applied");
+    // The two files are opened, not their folder: nothing else of the home is listed or read.
+    assert.doesNotMatch(output, /secret\.txt\s|home-secret/, "the rest of the home folder was reached");
+    assert.match(output, /secret=(?!0\b)\d+/, output);
+  });
+
   // openlore: scenario=UnderSeatbeltGitAnswersQuietly spec=sandbox-runner-bash
   test("UnderSeatbeltGitAnswersQuietly: git answers, warns of nothing, and leaves nothing but .git in the root", async () => {
     const repo = path.join(root, "repo");

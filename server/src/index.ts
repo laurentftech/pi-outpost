@@ -78,7 +78,7 @@ import { COMMAND_NOT_AVAILABLE, offeredCommands, refusesPrompt, type CommandPoli
 import { bindFailureMessage, holdConsoleIfOwned } from "./startupFailure.ts";
 import { BuildExeError, buildExecutable } from "./buildExe.ts";
 import { probePty, TerminalManager, type TerminalConfinement } from "./terminalManager.ts";
-import { checkRunner, isPosixMxc, mxcPosixConfig, mxcTerminalConfig, seatbeltPolicy, runnerKind, siblingsToDeny, terminalPolicy, userGitConfig, type RunnerCheck } from "./terminalSandbox.ts";
+import { checkRunner, gitReadOnlyFiles, isPosixMxc, mxcPosixConfig, mxcTerminalConfig, seatbeltPolicy, runnerKind, siblingsToDeny, terminalPolicy, userGitConfig, type RunnerCheck } from "./terminalSandbox.ts";
 import { isPowerShell } from "./confinedBash.ts";
 import { browsableUrl, openBrowser, shouldOpenBrowser } from "./openBrowser.ts";
 import {
@@ -2520,7 +2520,7 @@ function terminalConfinement(workspace: Workspace): TerminalConfinement | undefi
   const kind = runnerKind(runner);
   // git's identity: the user's ~/.gitconfig, readable on its own (see userGitConfig).
   const gitConfig = userGitConfig();
-  const readOnlyFiles = gitConfig ? [gitConfig] : [];
+  const readOnlyFiles = gitReadOnlyFiles(gitConfig);
   return {
     runner,
     kind,

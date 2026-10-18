@@ -57,7 +57,7 @@ Under a runner, a command (or a terminal) may:
 | Read | The sandbox root, the system directories, the tools on the `PATH`, a private temporary directory. |
 | Write | The writable zone and the private temporary directory. Nothing with `allowWrite: false`. |
 | Never | The agent directory (`auth.json`, the keys) and the configuration file. |
-| Environment | `PATH`, locale, `TERM`, `SHELL`, `HOME` set to the root, npm's cache in the temporary directory, `GIT_CONFIG_GLOBAL` naming your `~/.gitconfig` (read-only, for git's identity); on Windows `USERPROFILE`, `TEMP` and `TMP` point to the temporary directory. None of the server's other variables, so no provider key. |
+| Environment | `PATH`, locale, `TERM`, `SHELL`, `HOME` set to the root, npm's cache in the temporary directory, `GIT_CONFIG_GLOBAL` naming your `~/.gitconfig` (read-only, for git's identity — with the global ignore and attributes files it names in `core.excludesFile` and `core.attributesFile`, read-only too); on Windows `USERPROFILE`, `TEMP` and `TMP` point to the temporary directory. None of the server's other variables, so no provider key. |
 | Signal | No process outside the sandbox. |
 
 Output, exit status, timeout and cancellation behave as for an unconfined `bash`. Commands the model

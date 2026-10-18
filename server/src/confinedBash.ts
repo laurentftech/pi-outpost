@@ -21,6 +21,7 @@ import type { EgressProxy } from "./egressProxy.ts";
 import {
   checkRunner,
   confinedEnvironment,
+  gitReadOnlyFiles,
   isPosixMxc,
   mxcPosixConfig,
   seatbeltPolicy,
@@ -152,7 +153,7 @@ export function confinedBashOperations(options: ConfinedBashOptions): BashOperat
         // A start outside the root could not be entered from inside it.
         const startIn = isInside(cwd, options.root) ? cwd : options.root;
         const env = confinedEnvironment(process.env, { root: options.root, tmp, shell, platform, gitConfig: options.gitConfig });
-        const readOnlyFiles = options.gitConfig ? [options.gitConfig] : [];
+        const readOnlyFiles = gitReadOnlyFiles(options.gitConfig);
         const policyFile = path.join(tmp, "policy.json");
         let args: string[];
         // sandbox-exec hands the command its own environment: the one its policy says.
