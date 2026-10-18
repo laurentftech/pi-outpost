@@ -163,6 +163,12 @@ through MXC's WSLC backend (WSL containers): a real bash with the image's tools 
 (`wsl --version` 3.0 or later). The image is downloaded on the first command (about 20 s), then each
 command takes about 4 s. `bashShell` must be absent, and `bashRunner` must be MXC.
 
+WSLC is WSL's own: neither Docker nor a WSL distribution (Ubuntu or any other) is needed, nor used
+when installed — both stay stopped. A standard account, outside Administrators, runs it too. The image
+is pulled from its registry — Docker Hub for `buildpack-deps` — so a corporate proxy or firewall must
+let that through; it is kept per Windows account under `%TEMP%\mxc-wslc-sessions` (about 500 MB for
+`buildpack-deps:bookworm-scm`), and pulled again only if that folder is emptied.
+
 Inside, only two folders of the host exist: the root, mounted at its Windows path under `/mnt/<drive>/`
 (`C:\work\app` is `/mnt/c/work/app`), read-only or writable with `allowWrite`; and the command's
 temporary folder. No profile, no key, no configuration, no other project: there is nothing to deny. The
