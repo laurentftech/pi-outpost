@@ -496,6 +496,7 @@ describe("seatbeltPolicy", () => {
 describe("checkRunner with macOS' sandbox-exec", () => {
   test("SeatbeltNamesTheSystemRunner: sandbox-exec is the seatbelt kind; the check runs /usr/bin/true under a profile, and is refused off macOS", async () => {
     assert.equal(runnerKind("/usr/bin/sandbox-exec"), "seatbelt");
+    assert.equal(runnerKind("C:\\tools\\sandbox-exec"), "seatbelt", "a Windows path is split too (the check refuses it there)");
     assert.equal(runnerKind("/opt/tools/sandbox-exec-wrapper"), "landstrip");
     const dir = await mkdtemp(path.join(tmpdir(), "seatbelt-runner-"));
     const runner = path.join(dir, "sandbox-exec");

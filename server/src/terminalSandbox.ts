@@ -80,7 +80,7 @@ export type RunnerKind = "landstrip" | "mxc" | "seatbelt";
 
 export function runnerKind(runner: string): RunnerKind {
   if (/^wxc-exec(\.exe)?$/i.test(path.win32.basename(runner)) || isPosixMxc(runner)) return "mxc";
-  return path.posix.basename(runner) === "sandbox-exec" ? "seatbelt" : "landstrip";
+  return path.win32.basename(runner) === "sandbox-exec" ? "seatbelt" : "landstrip";
 }
 
 /** macOS' own Seatbelt runner, which `"seatbelt"` names. */
