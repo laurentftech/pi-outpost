@@ -79,7 +79,7 @@ import { COMMAND_NOT_AVAILABLE, offeredCommands, refusesPrompt, type CommandPoli
 import { bindFailureMessage, holdConsoleIfOwned } from "./startupFailure.ts";
 import { BuildExeError, buildExecutable } from "./buildExe.ts";
 import { probePty, TerminalManager, type TerminalConfinement } from "./terminalManager.ts";
-import { agentShellVerdict, buildTerminalConfinement, terminalVerdict } from "./confinementStatus.ts";
+import { agentShellVerdict, buildTerminalConfinement, shellIsConfined, terminalVerdict } from "./confinementStatus.ts";
 import { checkRunner, type RunnerCheck } from "./terminalSandbox.ts";
 import { isPowerShell } from "./confinedBash.ts";
 import { browsableUrl, openBrowser, shouldOpenBrowser } from "./openBrowser.ts";
@@ -394,7 +394,7 @@ if (cli.command === "doctor") {
       const neverReadable = { agentDir, ...(loaded.configFile ? { configFile: loaded.configFile } : {}) };
       const results: Array<{ surface: "shell" | "terminal"; verdict: ConfinementVerdict }> = [];
       const sandbox = loaded.sandbox;
-      if (sandbox?.allowBash && sandbox.bashRunner && sandbox.bashFrom === undefined) {
+      if (shellIsConfined(sandbox)) {
         results.push({ surface: "shell", verdict: await agentShellVerdict(sandbox, neverReadable) });
       }
       if (loaded.terminal.enabled && loaded.terminal.sandbox) {
@@ -2542,7 +2542,7 @@ const confinementVerdicts = new Map<string, ConfinementVerdict>();
 function confinementOf(workspace: Workspace): SessionSnapshot["confinement"] {
   const result: NonNullable<SessionSnapshot["confinement"]> = {};
   const sandbox = workspace.settings.sandbox;
-  if (sandbox?.allowBash && sandbox.bashRunner && sandbox.bashFrom === undefined) {
+  if (shellIsConfined(sandbox)) {
     const neverReadable = { agentDir: AGENT_DIR, configFile: config.configFile };
     result.bash = verdictFor(workspace, `bash\0${JSON.stringify(sandbox)}`, sandbox.bashRunner, () => agentShellVerdict(sandbox, neverReadable));
   }
