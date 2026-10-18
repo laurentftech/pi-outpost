@@ -243,6 +243,12 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
   );
   const accountsRoot = await realpath(await makeWorkspace({ "readme.md": "# account UI\n" }));
   const accounts = await startServer(accountsRoot, { extensionPaths: [ACCOUNT_PROVIDER], noExtensions: false }, { env: onlyOneFakeProvider() });
+  const accountOnboardingRoot = await realpath(await makeWorkspace({ "readme.md": "# account onboarding\n" }));
+  const accountOnboarding = await startServer(
+    accountOnboardingRoot,
+    { extensionPaths: [ACCOUNT_PROVIDER], noExtensions: false },
+    { env: { ...onlyOneFakeProvider(), ANTHROPIC_API_KEY: undefined } },
+  );
 
   // Two more servers, one per embed workspace-control policy. The policy is
   // loaded configuration rather than a mount option, so the only way to see what
@@ -724,6 +730,7 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
   process.env.PI_E2E_HOST_URL = host.url;
   process.env.PI_E2E_SERVER_URL = server.base;
   process.env.PI_E2E_ACCOUNTS_URL = accounts.base;
+  process.env.PI_E2E_ACCOUNT_ONBOARDING_URL = accountOnboarding.base;
   process.env.PI_E2E_PRIMARY_PROJECT = await realpath(root);
   process.env.PI_E2E_SECOND_PROJECT = secondRoot;
   process.env.PI_E2E_EMBED_ROOT_URL = embedRootMode.base;
@@ -758,6 +765,7 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
   return async () => {
     await terminalServer.stop();
     await accounts.stop();
+    await accountOnboarding.stop();
     await outcome.stop();
     await reviewReady.stop();
     await thinking.stop();
@@ -775,6 +783,7 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
     await server.stop();
     await rm(secondRoot, { recursive: true, force: true });
     await rm(accountsRoot, { recursive: true, force: true });
+    await rm(accountOnboardingRoot, { recursive: true, force: true });
     await rm(projectsSecondRoot, { recursive: true, force: true });
     await rm(reviewReadySecond, { recursive: true, force: true });
     await rm(outcomeSecond, { recursive: true, force: true });

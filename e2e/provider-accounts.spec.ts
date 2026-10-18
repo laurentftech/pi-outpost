@@ -4,7 +4,7 @@ test("onboarding account sign-in works without crypto.randomUUID on an HTTP LAN 
   await page.addInitScript(() => {
     Object.defineProperty(crypto, "randomUUID", { configurable: true, value: undefined });
   });
-  await page.goto(process.env.PI_E2E_ACCOUNTS_URL!);
+  await page.goto(process.env.PI_E2E_ACCOUNT_ONBOARDING_URL!);
   await expect(page.getByText("Sign in with an account")).toBeVisible();
   expect(await page.evaluate(() => typeof crypto.randomUUID)).toBe("undefined");
 
@@ -14,7 +14,7 @@ test("onboarding account sign-in works without crypto.randomUUID on an HTTP LAN 
 });
 
 test("onboarding account buttons toggle the current flow and switch to another provider", async ({ page }) => {
-  await page.goto(process.env.PI_E2E_ACCOUNTS_URL!);
+  await page.goto(process.env.PI_E2E_ACCOUNT_ONBOARDING_URL!);
   await expect(page.getByText("Sign in with an account")).toBeVisible();
   const firstProvider = page.getByRole("button", { name: "Account Test", exact: true });
   const secondProvider = page.getByRole("button", { name: "Account Test Secondary", exact: true });
