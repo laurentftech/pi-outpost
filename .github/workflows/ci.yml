@@ -192,9 +192,9 @@ jobs:
       - run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
       - run: bash scripts/mxc-linux/test.sh
 
-  # MXC's macOS executor (mxc-exec-mac, Seatbelt) on a real Mac: it ships for Apple silicon
-  # only, which macos-latest is and no developer machine here is. The same script a developer
-  # on such a Mac runs (scripts/mxc-macos/test.sh); the real-executor tests skip elsewhere.
+  # macOS' sandbox runners on a real Mac: Seatbelt through sandbox-exec, and MXC's mxc-exec-mac,
+  # which ships for Apple silicon only — which macos-latest is and no developer machine here is.
+  # The same script a developer on a Mac runs (scripts/mxc-macos/test.sh); these tests skip elsewhere.
   mxc-macos:
     runs-on: macos-latest
     timeout-minutes: 20

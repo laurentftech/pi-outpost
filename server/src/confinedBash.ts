@@ -23,6 +23,7 @@ import {
   confinedEnvironment,
   isPosixMxc,
   mxcPosixConfig,
+  seatbeltPolicy,
   mxcTerminalConfig,
   runnerKind,
   siblingsToDeny,
@@ -154,7 +155,29 @@ export function confinedBashOperations(options: ConfinedBashOptions): BashOperat
         const readOnlyFiles = options.gitConfig ? [options.gitConfig] : [];
         const policyFile = path.join(tmp, "policy.json");
         let args: string[];
-        if (wslc) {
+        // sandbox-exec hands the command its own environment: the one its policy says.
+        let runnerEnv = env;
+        if (kind === "seatbelt") {
+          const policy = seatbeltPolicy({
+            root: options.root,
+            writableRoot: options.writableRoot,
+            allowWrite: options.allowWrite,
+            agentDir: options.agentDir,
+            configFile: options.configFile,
+            tmp,
+            shell,
+            shellArgs,
+            cwd: startIn,
+            env,
+            searchPath: env.PATH,
+            readOnlyFiles,
+            ...(options.networkProxy === undefined ? {} : { networkProxy: options.networkProxy.url }),
+          });
+          const profileFile = path.join(tmp, "policy.sb");
+          await writeFile(profileFile, policy.seatbelt, { mode: 0o600 });
+          args = ["-f", profileFile, shell, ...shellArgs];
+          runnerEnv = policy.env;
+        } else if (wslc) {
           const request = mxcWslcConfig({
             image: options.image!,
             root: options.root,
@@ -219,7 +242,7 @@ export function confinedBashOperations(options: ConfinedBashOptions): BashOperat
           await writeFile(policyFile, JSON.stringify(policy), { mode: 0o600 });
           args = ["run", "-p", policyFile, "--", shell, ...shellArgs];
         }
-        const launch = () => run(options.runner, args, { cwd: startIn, env, onData, signal, timeoutMs, timeout, windows });
+        const launch = () => run(options.runner, args, { cwd: startIn, env: runnerEnv, onData, signal, timeoutMs, timeout, windows });
         // curl, git and PowerShell print only "403" for a refused tunnel: the model is told which
         // host, and why. Commands of the agent's shell run one at a time, so these are this one's.
         const refused = new Set<string>();

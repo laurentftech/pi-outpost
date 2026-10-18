@@ -8,7 +8,7 @@ import fs from "node:fs/promises";
 import fsSync from "node:fs";
 import { createRequire } from "node:module";
 import { execFile, spawnSync } from "node:child_process";
-import { confinedEnvironment, prepareConfinedTerminal, type MxcLinuxConfig, type MxcMacConfig, type MxcTerminalConfig, type RunnerKind, type TerminalPolicy } from "./terminalSandbox.ts";
+import { confinedEnvironment, prepareConfinedTerminal, type MxcLinuxConfig, type MxcMacConfig, type MxcTerminalConfig, type SeatbeltPolicy, type RunnerKind, type TerminalPolicy } from "./terminalSandbox.ts";
 import { promisify } from "node:util";
 import os from "node:os";
 import path from "node:path";
@@ -170,6 +170,11 @@ export interface TerminalSession {
    * user's shell is doing has to be read from the runner's child.
    */
   confined?: boolean;
+  /**
+   * Which runner. `sandbox-exec` execs the shell in its own process, so the pty's pid is the
+   * shell and its child would be the command it runs; MXC's and landstrip's shell is their child.
+   */
+  runner?: RunnerKind;
   /** Removes the confined terminal's private directory (its temp files and policy). */
   dispose?: () => Promise<void>;
 }
@@ -428,8 +433,14 @@ export class TerminalManager {
         file = confine.runner;
         // MXC's request carries the command line and the environment itself: its
         // executor hands the child none of its own.
-        args = confine.kind === "mxc" ? [files.policyFile] : ["run", "-p", files.policyFile, "--", shell, ...shellArgs];
-        env = shellEnv;
+        args =
+          confine.kind === "mxc"
+            ? [files.policyFile]
+            : confine.kind === "seatbelt"
+              ? ["-f", files.policyFile, shell, ...shellArgs]
+              : ["run", "-p", files.policyFile, "--", shell, ...shellArgs];
+        // sandbox-exec passes its environment on: the policy's (the developer tools' git first).
+        env = files.env ?? shellEnv;
       }
 
       ensureSpawnHelperExecutable();
@@ -471,7 +482,7 @@ export class TerminalManager {
         socket,
         cwd: resolvedCwd,
         listeners: [],
-        ...(files ? { confined: true, dispose: files.dispose } : {}),
+        ...(files ? { confined: true, runner: confine?.kind ?? "landstrip", dispose: files.dispose } : {}),
       };
 
       userSessions.set(terminalId, session);
@@ -540,7 +551,8 @@ export class TerminalManager {
   async getCwd(socket: WebSocket, terminalId: string): Promise<string | undefined> {
     const session = this.socketSessions.get(socket)?.get(terminalId);
     if (!session) return undefined;
-    const pid = session.confined ? ((await shellUnder(session.ptyProcess.pid)) ?? session.ptyProcess.pid) : session.ptyProcess.pid;
+    const pid =
+      session.confined && session.runner !== "seatbelt" ? ((await shellUnder(session.ptyProcess.pid)) ?? session.ptyProcess.pid) : session.ptyProcess.pid;
 
     if (process.platform === "linux") {
       try {
@@ -614,7 +626,7 @@ export interface TerminalConfinement {
   /** The user's git configuration, read-only inside (see `userGitConfig`): git's identity. */
   gitConfig?: string;
   /** The policy for this terminal, given its private temporary directory and what it runs. */
-  policy: (terminal: ConfinedShell) => TerminalPolicy | MxcTerminalConfig | MxcLinuxConfig | MxcMacConfig;
+  policy: (terminal: ConfinedShell) => TerminalPolicy | MxcTerminalConfig | MxcLinuxConfig | MxcMacConfig | SeatbeltPolicy;
 }
 
 /** What a confined terminal runs, for a policy that has to carry it (MXC's). */

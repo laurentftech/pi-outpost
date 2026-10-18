@@ -15,6 +15,8 @@ import {
   mxcLinuxConfig,
   mxcMacConfig,
   mxcPosixConfig,
+  sbplString,
+  seatbeltPolicy,
   mxcTerminalConfig,
   prepareConfinedTerminal,
   quotePosixArgument,
@@ -424,6 +426,101 @@ describe("mxcMacConfig", () => {
   test("mxcPosixConfig picks the backend by the executor's name", () => {
     assert.equal(mxcPosixConfig("/x/bin/arm64/mxc-exec-mac", base).containment, "seatbelt");
     assert.equal(mxcPosixConfig("/x/bin/x64/lxc-exec", base).containment, "bubblewrap");
+  });
+});
+
+describe("seatbeltPolicy", () => {
+  const sroot = "/Users/me/app";
+  const stmp = "/private/var/folders/xy/T/pi-outpost-bash-1";
+  const developerDir = "/Applications/Xcode.app/Contents/Developer";
+  const present = new Set(["/usr", "/bin", "/sbin", "/System", "/Library", "/private/etc", "/Applications/Xcode.app", `${developerDir}/usr/bin/git`]);
+  const base = {
+    root: sroot,
+    allowWrite: true,
+    tmp: stmp,
+    shell: "/bin/bash",
+    shellArgs: [`${stmp}/command.sh`],
+    cwd: sroot,
+    env: { PATH: "/usr/bin:/bin", HOME: sroot },
+    searchPath: "/usr/bin:/bin",
+    agentDir: "/Users/me/.pi/agent",
+    configFile: "/Users/me/app/pi-outpost.config.json",
+    developerDir,
+    realPath: (file: string) => file,
+    exists: (file: string) => present.has(file),
+  };
+
+  // openlore: scenario=UnderSeatbeltWithoutAnAllowlistTheNetworkIsOpen spec=sandbox-runner-bash
+  test("MXC's shape: deny by default, the paths of mxcMacConfig, open network with the loopback closed, denied paths last", () => {
+    const { seatbelt, env } = seatbeltPolicy(base);
+    const lines = seatbelt.split("\n");
+    assert.deepEqual(lines.slice(0, 2), ["(version 1)", "(deny default)"]);
+    assert.ok(lines.includes("(allow signal (target same-sandbox))"), "a signal may reach only the sandbox's own processes");
+    assert.ok(seatbelt.includes(`(allow file-read* file-write* (subpath "${sroot}"))`));
+    assert.ok(seatbelt.includes(`(allow file-read* file-write* (subpath "${stmp}"))`));
+    assert.ok(seatbelt.includes('(subpath "/Applications/Xcode.app")'), "the developer tools are readable");
+    assert.ok(lines.includes("(allow network-outbound)"));
+    assert.ok(lines.includes('(deny network-outbound (remote ip "localhost:*"))'), "the server and local services stay out of reach");
+    const denied = lines.findIndex((line) => line.startsWith("(deny file-read* file-read-metadata file-write*"));
+    assert.equal(denied, lines.length - 4, "the denied paths come last, so they override every allow");
+    assert.ok(seatbelt.includes(`(subpath "${base.agentDir}")`) && seatbelt.includes(`(subpath "${base.configFile}")`));
+    assert.equal(env.PATH, `${developerDir}/usr/bin:/usr/bin:/bin`, "the developer tools' git first, as under MXC");
+    assert.equal(env.HTTPS_PROXY, undefined);
+  });
+
+  test("a writable zone inside the read-only root comes after it, so it wins", () => {
+    const { seatbelt } = seatbeltPolicy({ ...base, writableRoot: `${sroot}/out` });
+    const readOnly = seatbelt.indexOf(`(subpath "${sroot}")`);
+    const zone = seatbelt.indexOf(`(allow file-read* file-write* (subpath "${sroot}/out"))`);
+    assert.ok(readOnly > 0 && zone > readOnly, seatbelt);
+    assert.ok(!seatbelt.includes(`(allow file-read* file-write* (subpath "${sroot}"))`));
+  });
+
+  test("under allowedHosts: the proxy's port alone, and the proxy's variables set for the command", () => {
+    const { seatbelt, env } = seatbeltPolicy({ ...base, networkProxy: "http://127.0.0.1:4567" });
+    assert.ok(seatbelt.includes('(allow network-outbound (remote ip "localhost:4567"))'), seatbelt);
+    assert.ok(!seatbelt.includes("(allow network-outbound)\n"), "no open outbound rule");
+    for (const name of ["HTTPS_PROXY", "HTTP_PROXY", "ALL_PROXY", "https_proxy", "http_proxy", "all_proxy"]) {
+      assert.equal(env[name], "http://127.0.0.1:4567", name);
+    }
+  });
+
+  test("paths are quoted for SBPL: a quote or a backslash cannot end the string", () => {
+    assert.equal(sbplString('/Users/me/a "b"\\c'), '"/Users/me/a \\"b\\"\\\\c"');
+    const { seatbelt } = seatbeltPolicy({ ...base, root: '/Users/me/odd")(allow default' });
+    assert.ok(!seatbelt.includes('odd")(allow default"'), "the path broke out of its string");
+    assert.ok(seatbelt.includes('(subpath "/Users/me/odd\\")(allow default")'));
+  });
+});
+
+describe("checkRunner with macOS' sandbox-exec", () => {
+  test("SeatbeltNamesTheSystemRunner: sandbox-exec is the seatbelt kind; the check runs /usr/bin/true under a profile, and is refused off macOS", async () => {
+    assert.equal(runnerKind("/usr/bin/sandbox-exec"), "seatbelt");
+    assert.equal(runnerKind("/opt/tools/sandbox-exec-wrapper"), "landstrip");
+    const dir = await mkdtemp(path.join(tmpdir(), "seatbelt-runner-"));
+    const runner = path.join(dir, "sandbox-exec");
+    await writeFile(runner, "", { mode: 0o755 });
+    try {
+      let seen: string[] = [];
+      let profile = "";
+      const ok = await checkRunner(runner, async (_file, args) => {
+        seen = args;
+        profile = await readFile(args[1], "utf8");
+        return { stdout: "", stderr: "" };
+      }, "darwin");
+      assert.deepEqual(ok, { ok: true });
+      assert.equal(seen[0], "-f");
+      assert.equal(seen[2], "/usr/bin/true");
+      assert.match(profile, /^\(version 1\)\n\(deny default\)/);
+      const refused = await checkRunner(runner, async () => {
+        throw Object.assign(new Error("Command failed"), { stderr: "sandbox-exec: invalid profile", stdout: "" });
+      }, "darwin");
+      assert.ok(!refused.ok && refused.reason === "Seatbelt cannot confine commands on this host: sandbox-exec: invalid profile", !refused.ok ? refused.reason : "");
+      const linuxHost = await checkRunner(runner, async () => ({ stdout: "", stderr: "" }), "linux");
+      assert.ok(!linuxHost.ok && /macOS only/.test(linuxHost.reason));
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
   });
 });
 

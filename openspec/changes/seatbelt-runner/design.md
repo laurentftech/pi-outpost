@@ -33,7 +33,7 @@ The spawn is `sandbox-exec -f <profile> <shell> <args…>`, started in the root 
 environment — `sandbox-exec` hands the command its own environment and directory, so those are the
 command's.
 
-**The profile is MXC's shape, written by pi-outpost.** `seatbeltProfile(input)` takes `mxcMacConfig`'s
+**The profile is MXC's shape, written by pi-outpost.** `seatbeltPolicy(input)` takes `mxcMacConfig`'s
 input and output — `readwritePaths`, `readonlyPaths`, `deniedPaths`, network — and renders the
 baseline MXC generates (deny default; fork, exec, same-sandbox signals, sysctl reads, metadata, the
 five Mach services; `/` readable as data; system trees; devices and ttys; pty allocation), then the
