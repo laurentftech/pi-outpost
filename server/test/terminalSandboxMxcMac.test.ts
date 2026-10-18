@@ -10,7 +10,7 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { realpathSync } from "node:fs";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { after, before, describe, test } from "node:test";
@@ -105,5 +105,44 @@ describe("a confined terminal under MXC's real macOS executor", { skip }, () => 
     await run("cd sub");
     // lsof answers the real path: /var/folders is /private/var/folders.
     assert.equal(await manager.getCwd(socket, "t"), path.join(realpathSync(root), "sub"));
+  });
+});
+
+describe("a confined terminal under MXC's real macOS executor, in zsh as the default shell", { skip }, () => {
+  let base: string;
+  let root: string;
+  const manager = new TerminalManager();
+  const socket = {} as WebSocket;
+  let output = "";
+
+  before(async () => {
+    base = await mkdtemp(path.join(tmpdir(), "confined-terminal-mxc-mac-zsh-"));
+    root = path.join(base, "app");
+    await mkdir(root);
+    execFileSync("git", ["init", "-q", root]);
+    // No shellArgs: the arguments pi-outpost picks for a confined shell on macOS.
+    await manager.open(socket, "z", root, 120, 40, (_id, data) => (output += data), () => {}, { shell: "/bin/zsh" }, {
+      runner: RUNNER!,
+      kind: "mxc",
+      root,
+      policy: (terminal) => mxcMacConfig({ root, allowWrite: true, ...terminal, searchPath: terminal.env.PATH }),
+    });
+  });
+  after(async () => {
+    manager.closeAllForSocket(socket);
+    if (base) await rm(base, { recursive: true, force: true });
+  });
+
+  // openlore: scenario=OnMacOsWithMxcGitRunsInTheTerminal spec=terminal
+  test("OnMacOsWithMxcGitRunsInTheTerminal: in zsh, git is the developer tools' own, quiet, and leaves nothing in the root", async () => {
+    manager.write(socket, "z", "git status --short --branch; echo GIT-DONE\r");
+    const deadline = Date.now() + 20_000;
+    while (!/GIT-DONE\r?\n/.test(output.replace(/\x1b\[[0-9;?]*[ -/]*[@-~]/g, "")) && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    const seen = output.replace(/\x1b\[[0-9;?]*[ -/]*[@-~]|\x1b\][^\x07]*\x07/g, "");
+    assert.match(seen, /## No commits yet/, seen);
+    assert.doesNotMatch(seen, /DARWIN_USER|xcrun|xcodebuild/, "Apple's git shim ran");
+    assert.deepEqual((await readdir(root)).sort(), [".git"], "something appeared in the root");
   });
 });

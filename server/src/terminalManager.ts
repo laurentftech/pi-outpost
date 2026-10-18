@@ -269,6 +269,20 @@ export function terminalEnvironment(
   return env;
 }
 
+/**
+ * A confined shell's arguments on macOS: interactive, not login.
+ *
+ * A login shell runs `/etc/zprofile` (or `/etc/profile`), whose `path_helper` puts `/usr/bin`
+ * back ahead of the developer tools' folder MXC's request put first — and `/usr/bin/git` is
+ * Apple's `xcrun` shim, which under Seatbelt warns on every call and leaves a `Library/`
+ * folder in the root. Nothing a login shell would add is reachable anyway: `HOME` is the root.
+ */
+const CONFINED_MAC_SHELL_ARGS = ["-i"];
+
+function unixShellArgs(confined: boolean | undefined): string[] {
+  return confined && process.platform === "darwin" ? CONFINED_MAC_SHELL_ARGS : ["-l"];
+}
+
 /** The default confined PowerShell's arguments (see getDefaultShell). */
 export const CONFINED_POWERSHELL_ARGS = ["-ExecutionPolicy", "RemoteSigned", "-NoExit", "-Command", "$ProgressPreference='SilentlyContinue'"];
 
@@ -307,12 +321,13 @@ export class TerminalManager {
    * Determine the default shell for the host platform.
    * On Windows: Git Bash -> PowerShell -> cmd.
    * On Unix: $SHELL (or /bin/zsh on macOS, /bin/bash on Linux) with login shell args ["-l"].
+   * Confined on macOS: interactive, not login (see CONFINED_MAC_SHELL_ARGS).
    */
   getDefaultShell(options?: { shell?: string; shellArgs?: string[]; gitPath?: string; confined?: boolean }): { shell: string; args: string[] } {
     if (options?.shell) {
       return {
         shell: options.shell,
-        args: options.shellArgs ?? (process.platform === "win32" ? [] : ["-l"]),
+        args: options.shellArgs ?? (process.platform === "win32" ? [] : unixShellArgs(options.confined)),
       };
     }
 
@@ -345,7 +360,7 @@ export class TerminalManager {
 
     const shell = process.env.SHELL || (os.platform() === "darwin" ? "/bin/zsh" : "/bin/bash");
     // Login shell on Unix to source .zprofile / .bash_profile
-    return { shell, args: ["-l"] };
+    return { shell, args: unixShellArgs(options?.confined) };
   }
 
   /**
