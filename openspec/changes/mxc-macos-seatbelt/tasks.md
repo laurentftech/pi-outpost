@@ -30,8 +30,8 @@
 ## 6. Documentation and checks
 
 - [x] 6.1 `docs/sandboxing.md`: *macOS: MXC* section, the recommended-setup row, allowedHosts wording; README rows (`sandbox.bashRunner`, `terminal.sandbox`, `sandbox.allowedHosts`, MXC section).
-- [ ] 6.2 Running-app check on the Apple-silicon Mac: the agent's shell and the terminal under `"mxc"`, read back from the transcript and the DOM; a monkey pass on the terminal.
-- [ ] 6.3 `scenario-coverage.md`, `openspec validate --strict`, `check:scenarios`, typecheck, lint.
+- [x] 6.2 Running-app check on the Apple-silicon Mac: the agent's shell and the terminal under `"mxc"`, read back from the transcript and the DOM; a monkey pass on the terminal.
+- [x] 6.3 `scenario-coverage.md`, `openspec validate --strict`, `check:scenarios`, typecheck, lint.
 
 ## After merge
 

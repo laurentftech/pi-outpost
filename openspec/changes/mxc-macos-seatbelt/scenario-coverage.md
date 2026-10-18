@@ -19,3 +19,19 @@ run 2026-10-18: 6/6, none skipped.
 | OnMacOsAnAllowedHostIsReachedAndOthersAreRefused | covered | `server/test/confinedBashMxcMac.test.ts`: `OnMacOsAnAllowedHostIsReachedAndOthersAreRefused: …` — real executor and the server's proxy: `allowed=200`, non-zero exits for the unlisted host and for `--noproxy`, no body from another loopback service, the refusal note ending the output, `registry.npmjs.org:443` in the proxy's relayed list. |
 | OnMacOsWithMxcGitRunsInTheTerminal | covered | `server/test/terminalSandboxMxcMac.test.ts`: `OnMacOsWithMxcGitRunsInTheTerminal: …` — a real pty through `TerminalManager` and `mxc-exec-mac`: `git rev-parse` and `git status`, the agent's key file unreadable (`exit=1`), no server key in `env`. |
 | OnMacOsTheConfinedTerminalBehavesAsATerminal | covered | `server/test/terminalSandboxMxcMac.test.ts`: `OnMacOsTheConfinedTerminalBehavesAsATerminal: …` — `stty size` 40 120, then 50 150 after a resize; `sleep 30` interrupted by Ctrl-C with status 130 and the shell alive; `getCwd` after `cd sub` returns the real path of `sub`. |
+
+## Running app
+
+2026-10-18, on an Apple-silicon Mac (M1, macOS 15.6.1): pi-outpost from this branch, `bashRunner` and
+`terminal.sandbox` `"mxc"`, `allowedHosts: ["registry.npmjs.org"]`, driven through the web UI with
+Playwright over an SSH tunnel. No model key was put on that machine (a dummy endpoint unlocked the UI),
+so the agent's shell rests on the real-executor tests above; the terminal was driven in full.
+
+It found a defect no test had: the terminal's default `zsh -l` ran `path_helper`, which put Apple's
+`xcrun` shim ahead of the real git — a warning per call and a `Library/` folder in the root. Fixed (the
+confined shell on macOS is interactive, not login) and covered by the zsh test of
+`OnMacOsWithMxcGitRunsInTheTerminal`. After the fix, in zsh: git is Xcode's own, quiet, the root holds
+only what the user made; the agent directory and a file beside the root are refused ("Operation not
+permitted"), a write beside the root refused and absent; Ctrl-C ends `sleep` with 130 and the shell
+lives; `exit` ends the tab; three quick new tabs open; after the page disconnects, no executor and no
+zombie remain.
