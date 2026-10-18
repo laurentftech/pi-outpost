@@ -12,7 +12,8 @@ const ATTEMPTS: Record<ConfinementAttempt, string> = {
   "beside-root": "read a file beside the root",
   "write-beside-root": "write beside the root",
   "signal-process": "signal another process of the server's user",
-  "server-environment": "read the server's environment",
+  "server-environment": "inherit the server's environment",
+  "server-process-environment": "read the server's process environment (/proc)",
   "unlisted-host": "reach a host not in sandbox.allowedHosts",
   "direct-connection": "connect around the proxy",
 };
@@ -34,7 +35,15 @@ export function confinementDescription(verdict: ConfinementVerdict, surface: "sh
       return [
         `${what} is confined by ${verdict.runner}, checked at ${at(verdict.checkedAt)}. A command could not:`,
         ...describe(verdict.refused).map((line) => `• ${line}`),
+        ...(verdict.environmentReadable ? ["The server's process environment is readable, and holds no secret."] : []),
         ...(verdict.notChecked.length ? ["Not checked:", ...verdict.notChecked.map((n) => `• ${ATTEMPTS[n.attempt] ?? n.attempt} — ${n.why}`)] : []),
+      ].join("\n");
+    case "partial":
+      return [
+        `${what} is confined by ${verdict.runner}, checked at ${at(verdict.checkedAt)}, except one thing: a command can read the server's process environment, which holds ${verdict.exposed.join(", ")}.`,
+        "Move these out of the server's environment — provider keys belong in the agent directory.",
+        "A command could not:",
+        ...describe(verdict.refused).map((line) => `• ${line}`),
       ].join("\n");
     case "leaking":
       return [
@@ -52,7 +61,9 @@ export function ConfinementLock({ verdict, surface, root }: { verdict: Confineme
   const look =
     verdict.state === "verified"
       ? { icon: "🔒", text: `confined${where}`, tone: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-200" }
-      : verdict.state === "leaking"
+      : verdict.state === "partial"
+        ? { icon: "🔐", text: "partly confined", tone: "bg-amber-100 text-amber-800 dark:bg-amber-900/50 dark:text-amber-200" }
+        : verdict.state === "leaking"
         ? { icon: "🔓", text: "not confined", tone: "bg-red-100 text-red-800 dark:bg-red-900/50 dark:text-red-200" }
         : verdict.state === "failed"
           ? { icon: "⚠", text: "confinement unchecked", tone: "bg-amber-100 text-amber-800 dark:bg-amber-900/50 dark:text-amber-200" }
