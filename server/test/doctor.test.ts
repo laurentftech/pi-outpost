@@ -9,6 +9,7 @@ import {
   addressCheck,
   type Check,
   configurationCheck,
+  confinementChecks,
   type Diagnosis,
   diagnose,
   exitCodeFor,
@@ -549,5 +550,38 @@ describe("terminalUnavailableNotice", () => {
     assert.match(notice, /sudo apt install -y build-essential python3/);
     assert.match(notice, /npx -y npm@11 install -g pi-outpost/);
     assert.match(notice, /pi-outpost doctor/);
+  });
+});
+
+describe("doctor — confinement", () => {
+  // openlore: scenario=DoctorReportsWhatGotThrough spec=sandbox-runner-bash
+  test("DoctorReportsWhatGotThrough: a write beside the root is a failed check, and the exit status says so", async () => {
+    const config = { host: "127.0.0.1", port: 3141, cwd: "/work", agentRuntime: { mode: "embedded", args: [] }, terminal: { enabled: false } } as never;
+    const checks = await diagnose(
+      healthy({
+        loadConfig: () => config,
+        confinement: async () => [
+          { surface: "shell", verdict: { state: "leaking", runner: "/opt/landstrip", checkedAt: "t", reached: ["write-beside-root"], refused: ["agent-directory"] } },
+        ],
+      }),
+    );
+    const shell = checks.find((check) => check.name === "shell sandbox")!;
+    assert.equal(shell.status, "fail");
+    assert.match(text(shell), /NOT confined by \/opt\/landstrip[\s\S]*write beside the root/);
+    assert.equal(exitCodeFor(checks), 1);
+  });
+
+  test("verified is ok and names what was refused; a canary that could not tell is a warning", () => {
+    const [verified, failed] = confinementChecks([
+      { surface: "terminal", verdict: { state: "verified", runner: "/usr/bin/sandbox-exec", checkedAt: "t", refused: ["agent-directory", "signal-process"], notChecked: [{ attempt: "beside-root", why: "the temp is inside the root" }] } },
+      { surface: "shell", verdict: { state: "failed", runner: "/r", checkedAt: "t", reason: "the canary did not report" } },
+    ]);
+    assert.equal(verified.status, "ok");
+    assert.match(text(verified), /could not read the agent directory.*signal another process[\s\S]*not checked: read a file beside the root — the temp is inside the root/);
+    assert.equal(failed.status, "warn");
+    assert.equal(exitCodeFor([verified, failed]), 0);
+    const [partial] = confinementChecks([{ surface: "shell", verdict: { state: "partial", runner: "/opt/landstrip", checkedAt: "t", refused: ["agent-directory"], exposed: ["OPENAI_API_KEY"], notChecked: [] } }]);
+    assert.equal(partial.status, "warn", "a readable environment holding keys is a warning, not a failure");
+    assert.match(text(partial), /holds OPENAI_API_KEY[\s\S]*agent directory/);
   });
 });

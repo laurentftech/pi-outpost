@@ -110,6 +110,8 @@ async function recordingRunner(dir) {
 const fs = require("node:fs");
 const args = process.argv.slice(2);
 if (args[0] === "doctor") { console.log(JSON.stringify({ ok: true, implementation: "fake" })); process.exit(0); }
+// The confinement canary runs \`<shell> -c <script>\`: not the terminal this records. Done at once.
+if (args.slice(args.indexOf("--") + 1).includes("-c")) process.exit(0);
 const policyFile = args[args.indexOf("-p") + 1];
 fs.writeFileSync(${JSON.stringify(record)}, JSON.stringify({ args, env: process.env, cwd: process.cwd(), policy: JSON.parse(fs.readFileSync(policyFile, "utf8")) }));
 process.stdout.write("fake-shell-ready\\r\\n");

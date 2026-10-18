@@ -925,7 +925,52 @@ export interface SessionSnapshot {
     /** Why no terminal can be opened, when the configured sandbox runner is unusable. */
     unavailable?: string;
   };
+  /**
+   * Whether OS-level confinement was seen holding, for the agent's shell and the terminal: a
+   * canary run through the real runner tried what confinement must refuse. Absent for a surface
+   * with no runner. The interface's lock is drawn from this, never from the configuration alone.
+   */
+  confinement?: { bash?: ConfinementVerdict; terminal?: ConfinementVerdict };
 }
+
+/** One thing the confinement canary tries, which a confined command must not be able to do. */
+export type ConfinementAttempt =
+  | "agent-directory"
+  | "beside-root"
+  | "write-beside-root"
+  | "signal-process"
+  | "server-environment"
+  | "server-process-environment"
+  | "unlisted-host"
+  | "direct-connection";
+
+/**
+ * The canary's verdict. `verified`: every attempt it could make was refused — or the server's
+ * process environment was readable but holds no secret (`environmentReadable`). `partial`: that
+ * environment was readable and holds secret-looking variables, named in `exposed` (never their
+ * values) — the one gap landstrip on Linux leaves. `leaking`: anything else got through. `failed`:
+ * the canary itself could not run or answer, so nothing is known.
+ */
+export type ConfinementVerdict =
+  | { state: "checking"; runner: string }
+  | {
+      state: "verified";
+      runner: string;
+      checkedAt: string;
+      refused: ConfinementAttempt[];
+      notChecked: Array<{ attempt: ConfinementAttempt; why: string }>;
+      environmentReadable?: boolean;
+    }
+  | {
+      state: "partial";
+      runner: string;
+      checkedAt: string;
+      refused: ConfinementAttempt[];
+      exposed: string[];
+      notChecked: Array<{ attempt: ConfinementAttempt; why: string }>;
+    }
+  | { state: "leaking"; runner: string; checkedAt: string; reached: ConfinementAttempt[]; refused: ConfinementAttempt[] }
+  | { state: "failed"; runner: string; checkedAt: string; reason: string };
 
 /**
  * What the client needs to decide between "you have not set up a provider yet"
@@ -1088,6 +1133,8 @@ export type ServerMessage =
     }
   | { type: "queue"; steering: string[]; followUp: string[] }
   | { type: "context_usage"; usage: ContextUsage }
+  /** A confinement canary finished (or started): the project's verdicts as they now stand. */
+  | { type: "confinement"; confinement: NonNullable<SessionSnapshot["confinement"]> }
   | { type: "work_plan_changed"; workPlan: WorkPlan | null }
   | { type: "workspace_outcome"; requestId: string; outcome: WorkspaceOutcome }
   /**

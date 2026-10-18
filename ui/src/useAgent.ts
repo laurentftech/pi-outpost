@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
-import type { OutpostUpdateNotice, PiPackageInfo } from "@pi-outpost/shared";
+import type { OutpostUpdateNotice, PiPackageInfo, SessionSnapshot } from "@pi-outpost/shared";
 import type { ProjectAppearance, StructuredConformance } from "@pi-outpost/shared/structured-exchange/profile";
 import { workspaceKey } from "./util/workspaceKey";
 import { bootstrapToken, storedToken, storeToken } from "./authToken";
@@ -386,6 +386,8 @@ export interface AgentState {
   sandbox: { root: string; allowWrite: boolean; allowBash: boolean; writableRoot?: string; projectRoot?: string; rootEditable?: boolean } | null;
   /** Terminal configuration — whether the terminal is enabled and locked. */
   terminal?: { enabled: boolean; locked?: boolean; confined?: boolean; unavailable?: string } | null;
+  /** Whether confinement was seen holding (the canary's verdicts), per surface. */
+  confinement?: SessionSnapshot["confinement"] | null;
   /**
    * Skill paths added through Settings — the list the user may add to and remove
    * from. The configuration file's own `skillPaths` are not carried into the UI:
@@ -677,6 +679,7 @@ function applySnapshot(state: AgentState, message: ServerMessage & { sessionId: 
     tools: message.tools ?? [],
     sandbox: message.sandbox ?? null,
     terminal: message.terminal ?? null,
+    confinement: message.confinement ?? null,
     userSkillPaths: message.userSkillPaths ?? [],
     serverBrowse: null,
     settingsApply: null,
@@ -1263,6 +1266,8 @@ function reduce(state: AgentState, action: Action): AgentState {
       return { ...state, queue: { steering: message.steering, followUp: message.followUp } };
     case "context_usage":
       return { ...state, contextUsage: message.usage };
+    case "confinement":
+      return { ...state, confinement: message.confinement };
     case "compaction_start":
       return { ...state, isCompacting: true };
     case "compaction_end":

@@ -349,12 +349,44 @@ Without MXC's tier 1, no runner confines natively: landstrip's AppContainer cann
 
 ## Check that it is really confined
 
-1. The server's startup line reads `bash (confined by <runner>, …)` — `powershell (confined by …)` with
-   a PowerShell shell, `… WSLC image <image>` with `bashImage` — never `bash (UNCONFINED)`.
-2. Ask the agent, in the chat, to read a sibling project and the agent directory's `auth.json`, to
-   write outside the writable zone, and to list its environment for a key. Each must be refused or empty.
-3. Do the same in the terminal.
-4. Repeat after changing the configuration or the runner.
+pi-outpost checks it itself, and shows the answer. Once a runner has passed its self-check — and again
+whenever the sandbox settings change — the server runs a **canary** through that runner, with the very
+policy a command of the agent's shell (and, separately, of the terminal) gets. The canary tries what
+confinement must refuse:
+
+| Attempt | Judged by |
+| --- | --- |
+| read a marker file the server puts in the agent directory | the command |
+| read a marker file in a private folder outside the root | the command |
+| write a file into that folder | the host: did the file appear? |
+| signal a throwaway process of the server's user | the host: is it still alive? |
+| find the server's environment in its own | the command |
+| read the server's process environment (`/proc/<server>/environ`, Linux) | the command, then the server: what does that environment hold? |
+| under `sandbox.allowedHosts`: reach an unlisted host through the proxy, and connect around it | the command |
+
+The bait is removed afterwards. An attempt that cannot mean anything — the system's temporary folder
+inside the sandbox root, no `curl` in the shell — is reported "not checked", never as a leak.
+
+The verdict is shown next to the context indicator for the agent's shell, and as the terminal's badge:
+
+| | |
+| --- | --- |
+| 🔒 `shell confined` / `confined to <root>` | every attempt was refused; the tooltip lists them, with the runner and the time |
+| 🔐 `partly confined`, amber | only the server's process environment was readable, and it holds secret-looking variables (keys, tokens, secrets, passwords): the tooltip names them, never their values |
+| 🔓 `not confined`, in red | anything else got through; the tooltip names which. The configuration is left as it is: fix the runner or its host, or stop relying on it |
+| `checking confinement` | the canary is running |
+| ⚠ `confinement unchecked` | the canary could not answer; the tooltip says why |
+| nothing | no runner: the shell is not confined, as the settings say |
+
+`pi-outpost doctor` runs the same canary for each confined surface (`shell sandbox`, `terminal sandbox`)
+and exits non-zero when one leaks — the check for a headless server.
+
+On Linux, landstrip leaves the server's `/proc/<pid>/environ` readable (see
+[Linux: landstrip](#linux-landstrip)). The canary sees it, and the server judges it by what its start
+environment holds: nothing secret-looking, and the lock stays closed (its tooltip says the environment
+is readable); provider keys, `PI_OUTPOST_TOKEN` or any other key, token, secret or password, and the
+lock turns amber, naming them. Keep provider keys in the agent directory rather than in the server's
+environment; MXC's Linux runner hides the server's processes entirely.
 
 ## Alternative: hand bash to an extension
 
