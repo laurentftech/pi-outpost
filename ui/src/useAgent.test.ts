@@ -2190,6 +2190,16 @@ describe("assembling a turn", () => {
     await waitFor(() => expect(result.current.state.queue.steering).toEqual(["stop"]));
     expect(result.current.state.contextUsage).toMatchObject({ percent: 10 });
   });
+
+  it("takes the confinement verdicts a canary reports, replacing the checking state", async () => {
+    const result = await connected();
+    act(() => mockWs!.receive({ type: "confinement", confinement: { bash: { state: "checking", runner: "/r" } } }));
+    await waitFor(() => expect(result.current.state.confinement?.bash?.state).toBe("checking"));
+    act(() =>
+      mockWs!.receive({ type: "confinement", confinement: { bash: { state: "leaking", runner: "/r", checkedAt: "t", reached: ["agent-directory"], refused: [] } } }),
+    );
+    await waitFor(() => expect(result.current.state.confinement?.bash?.state).toBe("leaking"));
+  });
 });
 
 describe("compaction", () => {

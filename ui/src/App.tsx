@@ -1365,6 +1365,7 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
               onClose={() => setTerminalOpen(false)}
               cwd={state.workspace?.root}
               confinedRoot={state.terminal?.confined ? (state.sandbox?.root ?? state.workspace?.root) : undefined}
+              confinement={state.confinement?.terminal}
               unavailable={state.terminal?.unavailable}
               onSetWorkspaceRoot={(newRoot) => {
                 if (openProject && !embedded) {
@@ -1433,6 +1434,7 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
                 modelSupportsReasoning={state.modelSupportsReasoning}
                 isStreaming={state.isStreaming}
                 contextUsage={state.contextUsage}
+                shellConfinement={state.confinement?.bash}
                 sessionUsage={usage}
                 analysisOpen={analysisOpen}
                 onToggleAnalysis={toggleAnalysis}

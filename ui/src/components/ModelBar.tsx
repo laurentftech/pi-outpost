@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import type { ContextUsage, ModelChoice, ThinkingLevel } from "@pi-outpost/shared";
+import type { ConfinementVerdict, ContextUsage, ModelChoice, ThinkingLevel } from "@pi-outpost/shared";
+import { ConfinementLock } from "./ConfinementLock";
 import { THINKING_LEVELS } from "@pi-outpost/shared";
 import { formatCost, formatTokens, type SessionUsage } from "../util/sessionUsage";
 import { eventHitsNode } from "../util/clickOutside";
@@ -13,6 +14,8 @@ interface ModelBarProps {
   modelSupportsReasoning: boolean;
   isStreaming: boolean;
   contextUsage: ContextUsage | null;
+  /** The agent's shell's confinement, as observed: absent when it has no runner. */
+  shellConfinement?: ConfinementVerdict;
   /** Billed totals for the session so far; absent turns simply do not count. */
   sessionUsage: SessionUsage;
   /**
@@ -268,6 +271,12 @@ export function ModelBar(props: ModelBarProps) {
         />
       )}
 
+      {props.shellConfinement && (
+        <span className="ml-auto">
+          <ConfinementLock verdict={props.shellConfinement} surface="shell" />
+        </span>
+      )}
+
       <button
         type="button"
         onClick={props.onCompact}
@@ -277,7 +286,7 @@ export function ModelBar(props: ModelBarProps) {
             ? `${contextUsage.tokens.toLocaleString()} / ${contextUsage.contextWindow.toLocaleString()} tokens — click to compact`
             : "Click to compact the conversation context"
         }
-        className="ml-auto flex items-center gap-1.5 rounded-md border border-zinc-300 px-2 py-1 font-mono text-xs text-zinc-500 hover:border-zinc-400 disabled:opacity-50 dark:border-zinc-800 dark:text-zinc-400 dark:hover:border-zinc-600"
+        className={`${props.shellConfinement ? "" : "ml-auto "}flex items-center gap-1.5 rounded-md border border-zinc-300 px-2 py-1 font-mono text-xs text-zinc-500 hover:border-zinc-400 disabled:opacity-50 dark:border-zinc-800 dark:text-zinc-400 dark:hover:border-zinc-600`}
       >
         <ContextRing usage={contextUsage} />
         {isCompacting ? "compacting…" : contextUsage?.percent != null ? `${Math.round(contextUsage.percent)}%` : "context"}

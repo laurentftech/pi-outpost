@@ -21,6 +21,7 @@
  *    restating it is a diagnostic that will one day describe behaviour the product no
  *    longer has, confidently and in detail.
  */
+import type { ConfinementAttempt, ConfinementVerdict } from "@pi-outpost/shared";
 import fsSync from "node:fs";
 import path from "node:path";
 import { type AppConfig, implicitConfigCandidates, NoConfigError } from "./config.ts";
@@ -87,6 +88,8 @@ export interface Diagnosis {
   git: () => Promise<{ executable: string } | { error: string }>;
   /** Whether the optional PTY binding can actually be loaded here. */
   loadPty: () => Promise<{ ok: true } | { ok: false; error: string }>;
+  /** The confinement canary, run for each surface the configuration confines. */
+  confinement?: (config: AppConfig) => Promise<Array<{ surface: "shell" | "terminal"; verdict: ConfinementVerdict }>>;
 }
 
 /** One attempt at reading the configuration: the result, or whatever refused it. */
@@ -394,7 +397,63 @@ export async function diagnose(d: Diagnosis): Promise<Check[]> {
   const terminal = await terminalCheck(d, config?.terminal.enabled === true);
   if (terminal !== undefined) checks.push(terminal);
 
+  if (config !== undefined && d.confinement) checks.push(...confinementChecks(await d.confinement(config)));
+
   return checks;
+}
+
+const ATTEMPT_LABELS: Record<ConfinementAttempt, string> = {
+  "agent-directory": "read the agent directory (the provider keys)",
+  "beside-root": "read a file beside the root",
+  "write-beside-root": "write beside the root",
+  "signal-process": "signal another process of the server's user",
+  "server-environment": "inherit the server's environment",
+  "server-process-environment": "read the server's process environment (/proc)",
+  "unlisted-host": "reach a host not in sandbox.allowedHosts",
+  "direct-connection": "connect around the proxy",
+};
+
+/**
+ * Whether confinement holds, as the canary saw it: `ok` when every attempt was refused, `fail`
+ * naming each one that got through — the setting promises a sandbox the runner does not keep —
+ * and `warn` when the canary could not tell.
+ */
+export function confinementChecks(results: ReadonlyArray<{ surface: "shell" | "terminal"; verdict: ConfinementVerdict }>): Check[] {
+  return results.map(({ surface, verdict }) => {
+    const name = surface === "shell" ? "shell sandbox" : "terminal sandbox";
+    switch (verdict.state) {
+      case "verified":
+        return {
+          name,
+          status: "ok" as const,
+          detail: [
+            `confined by ${verdict.runner}: a command could not ${verdict.refused.map((a) => ATTEMPT_LABELS[a]).join(", ")}`,
+            ...(verdict.environmentReadable ? ["the server's process environment is readable, and holds no secret"] : []),
+            ...verdict.notChecked.map((n) => `not checked: ${ATTEMPT_LABELS[n.attempt]} — ${n.why}`),
+          ],
+        };
+      case "partial":
+        return {
+          name,
+          status: "warn" as const,
+          detail: [
+            `confined by ${verdict.runner}, except: a command can read the server's process environment, which holds ${verdict.exposed.join(", ")}`,
+          ],
+          remedy: ["Move these out of the server's environment — provider keys belong in the agent directory (pi-outpost login, or the setup screen)."],
+        };
+      case "leaking":
+        return {
+          name,
+          status: "fail" as const,
+          detail: [`NOT confined by ${verdict.runner}: a command could`, ...verdict.reached.map((a) => `  ${ATTEMPT_LABELS[a]}`)],
+          remedy: ["Check the runner and its host (docs/sandboxing.md), or remove it from the configuration rather than trust it."],
+        };
+      case "failed":
+        return { name, status: "warn" as const, detail: [`could not check ${verdict.runner}'s confinement: ${verdict.reason}`] };
+      case "checking":
+        return { name, status: "warn" as const, detail: [`${verdict.runner}'s confinement was not checked`] };
+    }
+  });
 }
 
 /** `fail` anywhere means the server would not serve; a script may rely on this. */
