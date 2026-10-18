@@ -264,8 +264,15 @@ describe("mxcTerminalConfig", () => {
     // The shell's own folder is allowed: denying it as well would leave the winner to the sandbox.
     assert.deepEqual(config.filesystem.deniedPaths, ["C:\\Users\\me\\.ssh", "C:\\Users\\me\\AppData", "C:\\Users\\other", "C:\\mxc-lab", base.agentDir, base.configFile]);
     assert.equal(config.containment, "processcontainer");
-    assert.deepEqual(config.ui, { disable: false }, "PowerShell and git need Win32k");
+    assert.equal(config.ui.disable, false, "PowerShell and git need Win32k");
     assert.deepEqual(config.network, { egress: { default: "allow" } }, "the terminal keeps the network, as the user's shell does");
+  });
+
+  // openlore: scenario=TheRequestKeepsTheDesktopOutOfReach spec=terminal
+  test("TheRequestKeepsTheDesktopOutOfReach: no clipboard and no input injection are asked for, in every case", () => {
+    for (const config of [mxcTerminalConfig(base), mxcTerminalConfig({ ...base, allowWrite: false }), mxcTerminalConfig({ ...base, writableRoot: wroot + "\\out" })]) {
+      assert.deepEqual(config.ui, { disable: false, clipboard: "none", injection: false });
+    }
   });
 
   test("the whole root writable, or nothing but the temp when writes are off", () => {

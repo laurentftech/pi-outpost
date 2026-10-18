@@ -11,9 +11,11 @@
  */
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
+import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { after, before, describe, test } from "node:test";
 import { confinedBashOperations } from "../src/confinedBash.ts";
 import { checkRunner } from "../src/terminalSandbox.ts";
@@ -103,6 +105,23 @@ describe("the agent's powershell under MXC's real executor", { skip }, () => {
     assert.equal((await ps("cmd.exe /c exit 5")).exitCode, 5);
     assert.equal((await ps("Get-Item -LiteralPath 'no-such-file'")).exitCode, 1);
     assert.equal((await ps("Write-Output fine")).exitCode, 0);
+  });
+
+  // openlore: scenario=AConfinedProgramCannotDriveTheDesktop spec=terminal
+  test("AConfinedProgramCannotDriveTheDesktop: no injected input, no cursor, no windows, no clipboard", async (t) => {
+    const csc = path.join(process.env.SystemRoot ?? "C:\\Windows", "Microsoft.NET", "Framework64", "v4.0.30319", "csc.exe");
+    if (!existsSync(csc)) return t.skip(".NET Framework's csc.exe is not installed");
+    const probe = path.join(root, "desktop-probe.exe");
+    execFileSync(csc, ["/nologo", `/out:${probe}`, fileURLToPath(new URL("./fixtures/desktop-probe.cs", import.meta.url))]);
+    const result = await ps("& ./desktop-probe.exe");
+    assert.equal(result.exitCode, 0, result.output);
+    // SendInput answers 1 inside — Windows drops the input silently — so the cursor is the proof.
+    assert.match(result.output, /after SendInput cursor=(\d+),(\d+)/, result.output);
+    assert.doesNotMatch(result.output, /after SendInput cursor=0,0\b/, "injected input moved the user's cursor");
+    assert.match(result.output, /SetCursorPos=False/, result.output);
+    assert.doesNotMatch(result.output, /SetCursorPos=\w+ cursor=1,1\b/, "the program moved the user's cursor");
+    assert.match(result.output, /visibleWindows=0\b/, "the user's windows were visible");
+    assert.match(result.output, /OpenClipboard=False/, "the user's clipboard was open to the program");
   });
 
   test("the server's keys are not in the command's environment", async () => {
