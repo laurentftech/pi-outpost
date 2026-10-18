@@ -559,12 +559,33 @@ describe("loadConfig — resource path resolution", () => {
         { bashRunner: "mxc", bashImage: "buildpack-deps:bookworm-scm", allowedHosts: hosts },
       ]) {
         await writeFile(configPath, JSON.stringify({ sandbox: { root: ".", allowBash: true, ...sandbox } }, null, 2));
-        assert.throws(() => loadConfig(dir, { config: configPath }), /"sandbox\.allowedHosts" needs MXC as "sandbox\.bashRunner", and no "sandbox\.bashImage"/, JSON.stringify(sandbox));
+        assert.throws(() => loadConfig(dir, { config: configPath }), /"sandbox\.allowedHosts" needs MXC or Seatbelt as "sandbox\.bashRunner", and no "sandbox\.bashImage"/, JSON.stringify(sandbox));
       }
       for (const allowedHosts of [["https://github.com"], ["github.com:443"], "github.com", [""]]) {
         await writeFile(configPath, JSON.stringify({ sandbox: { root: ".", allowBash: true, bashRunner: "mxc", allowedHosts } }, null, 2));
         assert.throws(() => loadConfig(dir, { config: configPath }), /sandbox\.allowedHosts|allowedHosts/, JSON.stringify(allowedHosts));
       }
+    });
+  });
+
+  // openlore: scenario=SeatbeltNamesTheSystemRunner spec=sandbox-runner-bash
+  test("SeatbeltNamesTheSystemRunner: \"seatbelt\" is /usr/bin/sandbox-exec on macOS and refused elsewhere; allowed hosts kept, an image refused", async () => {
+    await withTempDir(async (dir) => {
+      const configPath = path.join(dir, "config.json");
+      await writeFile(configPath, JSON.stringify({ sandbox: { root: ".", allowBash: true, bashRunner: "seatbelt", allowedHosts: ["registry.npmjs.org"] }, terminal: { sandbox: "seatbelt" } }, null, 2));
+      if (process.platform === "darwin") {
+        const config = loadConfig(dir, { config: configPath });
+        assert.equal(config.sandbox!.bashRunner, "/usr/bin/sandbox-exec");
+        assert.equal(config.terminal.sandbox, "/usr/bin/sandbox-exec");
+        assert.deepEqual(config.sandbox!.allowedHosts, ["registry.npmjs.org"]);
+      } else {
+        assert.throws(() => loadConfig(dir, { config: configPath }), /"seatbelt", macOS' own sandbox: it confines on macOS only/);
+      }
+      // A path to sandbox-exec is the same runner, whatever the platform the configuration is read on.
+      await writeFile(configPath, JSON.stringify({ sandbox: { root: ".", allowBash: true, bashRunner: "./bin/sandbox-exec", allowedHosts: ["registry.npmjs.org"] } }, null, 2));
+      assert.deepEqual(loadConfig(dir, { config: configPath }).sandbox!.allowedHosts, ["registry.npmjs.org"]);
+      await writeFile(configPath, JSON.stringify({ sandbox: { root: ".", allowBash: true, bashRunner: "./bin/sandbox-exec", bashImage: "buildpack-deps:bookworm-scm" } }, null, 2));
+      assert.throws(() => loadConfig(dir, { config: configPath }), /"sandbox\.bashImage" runs bash in a WSLC container: it needs MXC/);
     });
   });
 

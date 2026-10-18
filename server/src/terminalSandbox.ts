@@ -18,7 +18,9 @@
  * busybox work there, where landstrip's AppContainer refuses them. Its policy is a
  * different document (`mxcTerminalConfig`) and it carries the shell's command line. On
  * Linux it may be MXC's `lxc-exec` (Bubblewrap, `mxcLinuxConfig`), and on Apple-silicon
- * macOS `mxc-exec-mac` (Seatbelt, `mxcMacConfig`): the same document, another backend.
+ * macOS `mxc-exec-mac` (Seatbelt, `mxcMacConfig`): the same document, another backend. On any
+ * Mac, Intel included, it may be `/usr/bin/sandbox-exec` with a Seatbelt profile pi-outpost
+ * writes in the shape MXC generates (`seatbeltPolicy`).
  */
 import { execFile, execFileSync } from "node:child_process";
 import { closeSync, constants as fsConstants, existsSync, lstatSync, openSync, readdirSync, realpathSync } from "node:fs";
@@ -56,6 +58,7 @@ export async function checkRunner(runner: string, exec: Exec = defaultExec, plat
     return { ok: false, reason: `The terminal sandbox runner was not found or is not executable: ${runner}` };
   }
   if (runnerKind(runner) === "mxc") return checkMxcRunner(runner, exec, platform);
+  if (runnerKind(runner) === "seatbelt") return checkSeatbeltRunner(runner, exec, platform);
   let output: ExecFileResult;
   try {
     output = await exec(runner, ["doctor"], { timeout: RUNNER_CHECK_TIMEOUT_MS });
@@ -72,12 +75,16 @@ export async function checkRunner(runner: string, exec: Exec = defaultExec, plat
   return { ok: false, reason: `The terminal sandbox runner reports this host cannot be sandboxed${said ? `: ${said}` : ""}` };
 }
 
-/** Which runner `terminal.sandbox` names: MXC's executor by its file name, landstrip otherwise. */
-export type RunnerKind = "landstrip" | "mxc";
+/** Which runner `terminal.sandbox` names: MXC's executor or macOS' `sandbox-exec` by its file name, landstrip otherwise. */
+export type RunnerKind = "landstrip" | "mxc" | "seatbelt";
 
 export function runnerKind(runner: string): RunnerKind {
-  return /^wxc-exec(\.exe)?$/i.test(path.win32.basename(runner)) || isPosixMxc(runner) ? "mxc" : "landstrip";
+  if (/^wxc-exec(\.exe)?$/i.test(path.win32.basename(runner)) || isPosixMxc(runner)) return "mxc";
+  return path.win32.basename(runner) === "sandbox-exec" ? "seatbelt" : "landstrip";
 }
+
+/** macOS' own Seatbelt runner, which `"seatbelt"` names. */
+export const SANDBOX_EXEC = "/usr/bin/sandbox-exec";
 
 /** Whether a runner is MXC's Linux executor (`lxc-exec`): Bubblewrap, not Windows' containers. */
 export function isLinuxMxc(runner: string): boolean {
@@ -167,6 +174,41 @@ async function checkPosixMxcRunner(runner: string, exec: Exec, containment: "bub
     } catch (error) {
       const detail = error as { stderr?: string; stdout?: string; message?: string };
       return { ok: false, reason: `MXC cannot confine commands on this host: ${mxcErrorMessage(`${detail.stdout ?? ""}${detail.stderr ?? ""}`) || detail.message || "it failed"}` };
+    }
+  } finally {
+    await rm(tmp, { recursive: true, force: true }).catch(() => {});
+  }
+}
+
+/**
+ * The Seatbelt runner's self-check: `/usr/bin/true` under the profile a command gets, network open.
+ *
+ * `sandbox-exec` says why it refuses (a profile it cannot parse, a system that dropped it) on
+ * stderr, and that is the reason passed on.
+ */
+async function checkSeatbeltRunner(runner: string, exec: Exec, platform: NodeJS.Platform): Promise<RunnerCheck> {
+  if (platform !== "darwin") return { ok: false, reason: `sandbox-exec confines commands on macOS only: ${runner}` };
+  const tmp = realPath(await mkdtemp(path.join(tmpdir(), "pi-outpost-seatbelt-check-")));
+  try {
+    const { seatbelt } = seatbeltPolicy({
+      root: tmp,
+      allowWrite: true,
+      tmp,
+      shell: "/usr/bin/true",
+      shellArgs: [],
+      cwd: tmp,
+      env: { PATH: "/usr/bin:/bin" },
+      developerDir: null,
+    });
+    const file = path.join(tmp, "check.sb");
+    await writeFile(file, seatbelt, { mode: 0o600 });
+    try {
+      await exec(runner, ["-f", file, "/usr/bin/true"], { timeout: RUNNER_CHECK_TIMEOUT_MS });
+      return { ok: true };
+    } catch (error) {
+      const detail = error as { stderr?: string; stdout?: string; message?: string };
+      const said = (detail.stderr || detail.stdout || detail.message || "").trim();
+      return { ok: false, reason: `Seatbelt cannot confine commands on this host${said ? `: ${said}` : ""}` };
     }
   } finally {
     await rm(tmp, { recursive: true, force: true }).catch(() => {});
@@ -588,6 +630,82 @@ export function mxcMacConfig(input: MxcMacInput): MxcMacConfig {
   };
 }
 
+/** What `sandbox-exec` is given: the profile it applies, and the environment the command starts with. */
+export interface SeatbeltPolicy {
+  /** A Seatbelt profile (SBPL), written next to the command and passed with `-f`. */
+  seatbelt: string;
+  env: Record<string, string>;
+}
+
+/** A string in a Seatbelt profile: double-quoted, backslash and quote escaped. */
+export function sbplString(text: string): string {
+  return `"${text.replaceAll("\\", "\\\\").replaceAll('"', '\\"')}"`;
+}
+
+/**
+ * The Seatbelt profile and environment for one command or terminal under `sandbox-exec`.
+ *
+ * What it may touch is `mxcMacConfig`'s answer, so both macOS runners hold the same limits; the
+ * profile is the one MXC's `mxc-exec-mac` generates for that request (printed by its `--debug`):
+ * deny by default; fork, exec, signals within the sandbox, sysctl reads, file metadata and a few
+ * Mach services; `/` readable as data; the system trees, the standard devices and the tty; the
+ * read-only paths, then the read-write ones, deeper rules after shallower so a writable zone in a
+ * read-only root wins; the network; window server, pasteboard and input devices denied; the denied
+ * paths last, overriding everything. Seatbelt applies the last matching rule.
+ *
+ * `sandbox-exec` hands the command its own environment: the one returned here, with the proxy's
+ * variables under `sandbox.allowedHosts` (MXC sets those itself).
+ */
+export function seatbeltPolicy(input: MxcMacInput): SeatbeltPolicy {
+  const request = mxcMacConfig(input);
+  const env = Object.fromEntries(request.process.env.map((entry) => {
+    const at = entry.indexOf("=");
+    return [entry.slice(0, at), entry.slice(at + 1)];
+  }));
+  const proxy = request.runtimeConfig?.networkProxy;
+  if (proxy) for (const name of ["HTTPS_PROXY", "HTTP_PROXY", "ALL_PROXY", "https_proxy", "http_proxy", "all_proxy"]) env[name] = proxy;
+  const subpaths = (paths: string[]) => paths.map((p) => `    (subpath ${sbplString(p)})`).join("\n");
+  const byDepth = (paths: string[]) => [...paths].sort((a, b) => a.split("/").length - b.split("/").length);
+  const port = proxy ? new URL(proxy).port : undefined;
+  const lines = [
+    "(version 1)",
+    "(deny default)",
+    "(allow process-fork)",
+    "(allow process-exec)",
+    "(allow signal (target same-sandbox))",
+    "(allow sysctl-read)",
+    "(allow file-read-metadata)",
+    "(allow mach-lookup",
+    '    (global-name "com.apple.system.notification_center")',
+    '    (global-name "com.apple.system.logger")',
+    '    (global-name "com.apple.distributed_notifications@Uv3")',
+    '    (global-name "com.apple.CoreServices.coreservicesd")',
+    '    (global-name "com.apple.FSEvents"))',
+    '(allow file-read-data (literal "/"))',
+    "(allow file-read*",
+    subpaths(["/bin", "/sbin", "/usr/bin", "/usr/sbin", "/usr/lib", "/usr/libexec", "/usr/share", "/System", "/Library", "/private/var/db/timezone", "/private/var/db/dyld", "/private/var/select", "/private/etc"]) + ")",
+    '(allow file-read* file-write* (literal "/dev/null") (literal "/dev/zero") (literal "/dev/random") (literal "/dev/urandom"))',
+    '(allow file-read* file-write* file-ioctl (literal "/dev/tty") (regex #"^/dev/ttys[0-9]+$"))',
+    '(allow file-read* (subpath "/dev/fd"))',
+    "(allow pseudo-tty)",
+    '(allow file-read* file-write* file-ioctl (literal "/dev/ptmx"))',
+    ...(request.filesystem.readonlyPaths.length ? ["(allow file-read*", subpaths(byDepth(request.filesystem.readonlyPaths)) + ")"] : []),
+    ...byDepth(request.filesystem.readwritePaths).map((p) => `(allow file-read* file-write* (subpath ${sbplString(p)}))`),
+    ...(port
+      ? [`(allow network-outbound (remote ip ${sbplString(`localhost:${port}`)}))`]
+      : ["(allow network-outbound)", "(allow network-bind (local ip))", "(allow system-socket)", '(deny network-outbound (remote ip "localhost:*"))']),
+    "(deny mach-lookup",
+    '    (global-name "com.apple.windowserver.active")',
+    '    (global-name "com.apple.windowserver.session")',
+    '    (global-name "com.apple.coreservices.launchservicesd")',
+    '    (global-name "com.apple.pasteboard.1"))',
+    '(deny iokit-open (iokit-user-client-class "IOHIDLibUserClient"))',
+    ...(request.filesystem.deniedPaths.length ? ["(deny file-read* file-read-metadata file-write*", subpaths(request.filesystem.deniedPaths) + ")"] : []),
+    "",
+  ];
+  return { seatbelt: lines.join("\n"), env };
+}
+
 /** MXC's request on Linux or macOS, for the executor `runner` names. */
 export function mxcPosixConfig(runner: string, input: MxcMacInput): MxcLinuxConfig | MxcMacConfig {
   return isMacMxc(runner) ? mxcMacConfig(input) : mxcLinuxConfig(input);
@@ -749,15 +867,19 @@ export function confinedEnvironment(
 export interface ConfinedTerminalFiles {
   tmp: string;
   policyFile: string;
+  /** Under `sandbox-exec`: the environment the shell starts with, which the runner hands it as is. */
+  env?: Record<string, string>;
   dispose(): Promise<void>;
 }
 
-/** Create the private directory and write the policy (landstrip's, or MXC's request) into it, owner-only. */
+/** Create the private directory and write the policy (landstrip's, MXC's request, or a Seatbelt profile) into it, owner-only. */
 export async function prepareConfinedTerminal(
-  build: (tmp: string) => TerminalPolicy | MxcTerminalConfig | MxcLinuxConfig | MxcMacConfig,
+  build: (tmp: string) => TerminalPolicy | MxcTerminalConfig | MxcLinuxConfig | MxcMacConfig | SeatbeltPolicy,
 ): Promise<ConfinedTerminalFiles> {
   const tmp = await mkdtemp(path.join(tmpdir(), "pi-outpost-terminal-"));
-  const policyFile = path.join(tmp, "policy.json");
-  await writeFile(policyFile, JSON.stringify(build(tmp), null, 2), { mode: 0o600 });
-  return { tmp, policyFile, dispose: () => rm(tmp, { recursive: true, force: true }) };
+  const policy = build(tmp);
+  const seatbelt = "seatbelt" in policy && typeof policy.seatbelt === "string" ? (policy as SeatbeltPolicy) : undefined;
+  const policyFile = path.join(tmp, seatbelt ? "policy.sb" : "policy.json");
+  await writeFile(policyFile, seatbelt ? seatbelt.seatbelt : JSON.stringify(policy, null, 2), { mode: 0o600 });
+  return { tmp, policyFile, ...(seatbelt ? { env: seatbelt.env } : {}), dispose: () => rm(tmp, { recursive: true, force: true }) };
 }

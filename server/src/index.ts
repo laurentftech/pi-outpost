@@ -78,7 +78,7 @@ import { COMMAND_NOT_AVAILABLE, offeredCommands, refusesPrompt, type CommandPoli
 import { bindFailureMessage, holdConsoleIfOwned } from "./startupFailure.ts";
 import { BuildExeError, buildExecutable } from "./buildExe.ts";
 import { probePty, TerminalManager, type TerminalConfinement } from "./terminalManager.ts";
-import { checkRunner, isPosixMxc, mxcPosixConfig, mxcTerminalConfig, runnerKind, siblingsToDeny, terminalPolicy, userGitConfig, type RunnerCheck } from "./terminalSandbox.ts";
+import { checkRunner, isPosixMxc, mxcPosixConfig, mxcTerminalConfig, seatbeltPolicy, runnerKind, siblingsToDeny, terminalPolicy, userGitConfig, type RunnerCheck } from "./terminalSandbox.ts";
 import { isPowerShell } from "./confinedBash.ts";
 import { browsableUrl, openBrowser, shouldOpenBrowser } from "./openBrowser.ts";
 import {
@@ -2526,7 +2526,9 @@ function terminalConfinement(workspace: Workspace): TerminalConfinement | undefi
     kind,
     root,
     ...(gitConfig ? { gitConfig } : {}),
-    policy: kind === "mxc" && isPosixMxc(runner)
+    policy: kind === "seatbelt"
+      ? (terminal) => seatbeltPolicy({ root, writableRoot, allowWrite, agentDir: AGENT_DIR, configFile: config.configFile, ...terminal, searchPath: terminal.env.PATH, readOnlyFiles })
+      : kind === "mxc" && isPosixMxc(runner)
       ? (terminal) => mxcPosixConfig(runner, { root, writableRoot, allowWrite, agentDir: AGENT_DIR, configFile: config.configFile, ...terminal, searchPath: terminal.env.PATH, readOnlyFiles })
       : kind === "mxc"
       ? (terminal) => mxcTerminalConfig({ root, writableRoot, allowWrite, agentDir: AGENT_DIR, configFile: config.configFile, ...terminal, siblings: siblingsToDeny(root), readOnlyFiles })

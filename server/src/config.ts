@@ -27,8 +27,11 @@ import { STRUCTURED_EXCHANGE_BYTES_CEILING_ANY } from "@pi-outpost/shared/struct
 import { normalizeCommandPattern } from "./commandPolicy.ts";
 import { isAllowedHostPattern } from "./egressProxy.ts";
 import { BUNDLED_MXC, bundledMxcExecutor, mxcMissingReason } from "./mxcExecutor.ts";
+
+/** The value of `sandbox.bashRunner` and `terminal.sandbox` that names macOS' `sandbox-exec`. */
+const SEATBELT = "seatbelt";
 import { OPEN_SHAPES, type OpenShape } from "./openBrowser.ts";
-import { isPosixMxc, runnerKind } from "./terminalSandbox.ts";
+import { isPosixMxc, runnerKind, SANDBOX_EXEC } from "./terminalSandbox.ts";
 
 export interface BrandingConfig {
   /** Header title. Default: "π". */
@@ -955,8 +958,12 @@ export function loadConfig(
   }
   const baseDir = path.dirname(path.resolve(filePath));
   const resolve = (p: string) => path.resolve(baseDir, p);
-  /** A sandbox runner: a path, or `"mxc"` for the executor pi-outpost ships. */
+  /** A sandbox runner: a path, `"mxc"` for the executor pi-outpost ships, or `"seatbelt"` for macOS' own. */
   const resolveRunner = (runner: string, field: string) => {
+    if (runner === SEATBELT) {
+      if (process.platform !== "darwin") fail(`"${field}" is "${SEATBELT}", macOS' own sandbox: it confines on macOS only — on ${process.platform}, name another runner`);
+      return SANDBOX_EXEC;
+    }
     if (runner !== BUNDLED_MXC) return resolve(runner);
     const executor = bundledMxcExecutor();
     if (executor === undefined) fail(`"${field}" is "${BUNDLED_MXC}", but ${mxcMissingReason(process.platform, process.arch, process.execPath)}`);
@@ -999,9 +1006,10 @@ export function loadConfig(
     }
     const allowedHosts = optionalStringArray(sandbox, "allowedHosts");
     if (allowedHosts !== undefined) {
-      // Only MXC's process container can close the network around the proxy here.
-      if (bashRunner === undefined || bashImage !== undefined || (bashRunner !== BUNDLED_MXC && runnerKind(bashRunner) !== "mxc")) {
-        fail(`"sandbox.allowedHosts" needs MXC as "sandbox.bashRunner", and no "sandbox.bashImage": no other backend can hold the network to it`);
+      // Only MXC's process container, or Seatbelt, can close the network around the proxy here.
+      const holdsNetwork = bashRunner === BUNDLED_MXC || bashRunner === SEATBELT || (bashRunner !== undefined && runnerKind(bashRunner) !== "landstrip");
+      if (bashRunner === undefined || bashImage !== undefined || !holdsNetwork) {
+        fail(`"sandbox.allowedHosts" needs MXC or Seatbelt as "sandbox.bashRunner", and no "sandbox.bashImage": no other backend can hold the network to it`);
       }
       const invalid = allowedHosts.find((host) => !isAllowedHostPattern(host));
       if (invalid !== undefined) {

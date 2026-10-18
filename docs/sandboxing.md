@@ -9,6 +9,7 @@ runs as.
 - [Linux: landstrip](#linux-landstrip)
 - [Linux, as an option: MXC](#linux-as-an-option-mxc)
 - [macOS on Apple silicon: MXC](#macos-on-apple-silicon-mxc)
+- [macOS, every Mac: Seatbelt](#macos-every-mac-seatbelt)
 - [Windows 11: MXC and PowerShell](#windows-11-mxc-and-powershell)
 - [Older Windows](#older-windows)
 - [Check that it is really confined](#check-that-it-is-really-confined)
@@ -24,13 +25,13 @@ Name the same runner for the agent's `bash` (`sandbox.bashRunner`) and for the t
 | Linux: a Docker container, the host, a VM, WSL2 | [landstrip](#linux-landstrip) — or, loosening Docker's profile, [MXC](#linux-as-an-option-mxc) | `/bin/bash`, the default |
 | Windows 11 with the August 2026 update or later | [MXC](#windows-11-mxc-and-powershell): `"mxc"`, installed with pi-outpost | `powershell.exe` (the agent gets a `powershell` tool), busybox-w32's `sh.exe`, or — experimental — a real bash in a [Linux container](#a-real-bash-wslc-experimental) (`sandbox.bashImage`) |
 | Older Windows | none works natively: see [Older Windows](#older-windows) | |
-| macOS on Apple silicon | [MXC](#macos-on-apple-silicon-mxc): `"mxc"`, installed with pi-outpost | `/bin/bash`, the default |
-| macOS on Intel | none: MXC ships no Intel executor | |
+| macOS on Apple silicon | [MXC](#macos-on-apple-silicon-mxc): `"mxc"`, installed with pi-outpost — or [Seatbelt](#macos-every-mac-seatbelt): `"seatbelt"` | `/bin/bash`, the default |
+| macOS on Intel | [Seatbelt](#macos-every-mac-seatbelt): `"seatbelt"`, part of macOS | `/bin/bash`, the default |
 
 pi-outpost writes the runner's policy from the configuration, so a command cannot widen it. A
 missing or failing runner refuses every command; nothing falls back to running unconfined.
 
-The network stays open (`git fetch`, `npm install` work). Under MXC (Windows 11, Linux, Apple-silicon macOS), `sandbox.allowedHosts` limits it
+The network stays open (`git fetch`, `npm install` work). Under MXC (Windows 11, Linux, Apple-silicon macOS) or Seatbelt (macOS), `sandbox.allowedHosts` limits it
 to the hosts you name ([below](#the-network-only-named-hosts)). Elsewhere, close it around the server —
 a Docker network, a firewall — or [hand `bash` to an extension](#alternative-hand-bash-to-an-extension)
 that filters it.
@@ -165,9 +166,35 @@ names, as on Windows ([below](#the-network-only-named-hosts)).
 on every call: the confined search path puts the developer tools' own `git` first (Xcode's or the
 Command Line Tools', whichever `xcode-select -p` names).
 
-The executor exists for Apple silicon only: on an Intel Mac `"mxc"` is refused at start, saying so.
+The executor exists for Apple silicon only: on an Intel Mac `"mxc"` is refused at start, saying so —
+[Seatbelt](#macos-every-mac-seatbelt) is the runner there.
 `sandbox.bashImage` (WSLC) is Windows only. CI's `mxc-macos` job runs this runner's tests on a real
 Mac (`scripts/mxc-macos/test.sh`, on any Apple-silicon Mac with `npm ci` done).
+
+## macOS, every Mac: Seatbelt
+
+`"seatbelt"` names macOS' own `/usr/bin/sandbox-exec`, on Intel and Apple silicon alike, with nothing
+to install:
+
+```json
+{
+  "sandbox": { "root": "/Users/me/app", "allowWrite": true, "allowBash": true, "bashRunner": "seatbelt", "allowedHosts": ["registry.npmjs.org"] },
+  "terminal": { "enabled": true, "sandbox": "seatbelt" }
+}
+```
+
+pi-outpost writes the Seatbelt profile itself, in the shape MXC's `mxc-exec-mac` generates and from the
+same paths, so the limits are those of [MXC on macOS](#macos-on-apple-silicon-mxc): the root, the
+system, the search path's tools and the developer tools readable; the writable zone and a private
+temporary directory writable; the agent directory, the configuration and everything beside the root
+out of reach; no signal outside the command; the minimal environment; git the developer tools' own.
+The network is open, but not to the server or other services on the loopback; `sandbox.allowedHosts`
+holds it to the hosts it names.
+
+Apple marks `sandbox-exec` deprecated in its manual page; it ships and works on current macOS. Should
+a release drop it, the runner's self-check fails and every command is refused with the reason — never
+run unconfined. On Apple silicon either runner works; MXC's is maintained by Microsoft.
+`scripts/mxc-macos/test.sh` runs both runners' tests (Seatbelt's alone on Intel).
 
 ## Windows 11: MXC and PowerShell
 
