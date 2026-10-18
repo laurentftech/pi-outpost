@@ -12,6 +12,7 @@ import { agentBashOptions } from "./sandbox.ts";
 import type { SandboxConfig } from "./config.ts";
 import { confinedLaunch, type TerminalConfinement } from "./terminalManager.ts";
 import {
+  gitReadOnlyFiles,
   isPosixMxc,
   mxcPosixConfig,
   mxcTerminalConfig,
@@ -39,7 +40,7 @@ export function buildTerminalConfinement(input: {
   const kind = runnerKind(runner);
   // git's identity: the user's ~/.gitconfig, readable on its own (see userGitConfig).
   const gitConfig = userGitConfig();
-  const readOnlyFiles = gitConfig ? [gitConfig] : [];
+  const readOnlyFiles = gitReadOnlyFiles(gitConfig);
   const limits = { root, writableRoot, allowWrite, agentDir, configFile, readOnlyFiles };
   return {
     runner,
