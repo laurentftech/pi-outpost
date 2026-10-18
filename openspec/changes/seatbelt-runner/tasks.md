@@ -23,7 +23,7 @@
 
 - [x] 5.1 Unit tests: resolution and refusals, `runnerKind`, `seatbeltPolicy` (rules, order, quoting, network shapes), the check.
 - [x] 5.2 Real tests where `SEATBELT_EXEC` is set on macOS: the agent's `bash` (reads, writes, signal, key, git, network open with loopback closed, allowedHosts) and the terminal (git in zsh, key, size, resize, Ctrl-C, cwd).
-- [ ] 5.3 Run them on the developer's Intel Mac, and in CI's `mxc-macos` job on Apple silicon.
+- [x] 5.3 Run them on the developer's Intel Mac, and in CI's `mxc-macos` job on Apple silicon.
 
 ## 6. Documentation and checks
 

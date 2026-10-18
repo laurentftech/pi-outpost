@@ -7,7 +7,7 @@
 
 The real tests run where `SEATBELT_EXEC` names `sandbox-exec`, on macOS: `scripts/mxc-macos/test.sh`
 runs them on every Mac, and CI's `mxc-macos` job on `macos-latest`. First green run 2026-10-18 on the
-developer's Intel iMac (macOS 15.8, x86_64): 7/7, none skipped.
+developer's Intel iMac (macOS 15.8, x86_64): 7/7, none skipped; CI's `macos-latest` (Apple silicon) runs them with MXC's beside them.
 
 | Scenario | Status | Test file and name |
 |---|---|---|
