@@ -8,8 +8,9 @@ Desktop down) to macOS. Read with `proposal.md`, the two delta specs and `tasks.
 - `proposal/mxc-linux-bubblewrap` (this change, PR #328, draft) is stacked on
   `proposal/mxc-network-allowlist` (PR #327, draft: `sandbox.allowedHosts` and the egress proxy).
   #328's PR base is #327's branch; once #327 merges, retarget #328 to `main`.
-- PR #326 (`fix/mxc-explicit-ui-policy`: MXC `ui.clipboard: "none"`, `ui.injection: false`) touches
-  `mxcTerminalConfig` too: whichever of #326/#327 merges second needs a small rebase.
+- PR #326 (MXC `ui.clipboard: "none"`, `ui.injection: false`) is merged; #327 was rebased on it and
+  this branch on #327 (2026-10-18). #327 also gained: plain HTTP relayed to listed hosts (Windows'
+  Schannel fetches revocation lists that way — curl.exe failed without it) and a CodeQL fix in its test.
 
 ## Done (code, unit-tested, typecheck and lint clean)
 
