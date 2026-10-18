@@ -186,6 +186,10 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v5
+      # The runner is Ubuntu 24.04: AppArmor refuses unprivileged user namespaces to any
+      # process without a profile allowing them, container or not. The host setting
+      # docs/sandboxing.md tells an Ubuntu deployment to make, on an ephemeral host.
+      - run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
       - run: bash scripts/mxc-linux/test.sh
 
   # The badge, drawn and pushed here rather than by a marketplace action: this is

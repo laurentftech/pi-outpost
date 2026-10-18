@@ -130,7 +130,10 @@ docker run \
 and the image needs `bubblewrap`, `slirp4netns`, `iptables` and `ip`
 (`apt-get install bubblewrap slirp4netns iptables iproute2`). Under Docker's default profile the runner is
 refused at its self-check — a confined `/bin/true` — with MXC's reason, and every command with it.
-`--init` puts an init in front of pi-outpost: a terminal closed under `lxc-exec` leaves its `bwrap`
+On an Ubuntu 24.04+ host, AppArmor also refuses unprivileged user namespaces to every process outside a
+profile that allows them, inside a container or not: set `kernel.apparmor_restrict_unprivileged_userns=0`
+on the host (a host-wide loosening), or give the container an AppArmor profile that permits `userns`.
+MXC's refusal names this case. `--init` puts an init in front of pi-outpost: a terminal closed under `lxc-exec` leaves its `bwrap`
 processes to the container's first process, and Node does not reap them — without it, three zombies
 pile up per closed terminal. Keep the rest of the advice above: an ordinary user, no Docker socket, no
 `--privileged`. If loosening the container is not acceptable, landstrip is the runner.
