@@ -564,6 +564,18 @@ describe("loadConfig — resource path resolution", () => {
     });
   });
 
+  test("MXC's Linux executor is a runner like Windows': allowed hosts kept, a WSLC image refused", async () => {
+    await withTempDir(async (dir) => {
+      const configPath = path.join(dir, "config.json");
+      await writeFile(configPath, JSON.stringify({ sandbox: { root: ".", allowBash: true, bashRunner: "./mxc/lxc-exec", allowedHosts: ["registry.npmjs.org"] } }, null, 2));
+      const sandbox = loadConfig(dir, { config: configPath }).sandbox!;
+      assert.equal(sandbox.bashRunner, path.join(dir, "mxc", "lxc-exec"));
+      assert.deepEqual(sandbox.allowedHosts, ["registry.npmjs.org"]);
+      await writeFile(configPath, JSON.stringify({ sandbox: { root: ".", allowBash: true, bashRunner: "./mxc/lxc-exec", bashImage: "buildpack-deps:bookworm-scm" } }, null, 2));
+      assert.throws(() => loadConfig(dir, { config: configPath }), /"sandbox\.bashImage" runs bash in a WSLC container, which MXC has on Windows only/);
+    });
+  });
+
   // openlore: scenario=BashRunnerAndBashFromAreExclusive spec=sandbox-runner-bash
   test("a runner for bash and an extension supplying bash are refused together, and empty values alone", async () => {
     await withTempDir(async (dir) => {

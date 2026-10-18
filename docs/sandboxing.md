@@ -7,6 +7,7 @@ runs as.
 - [Recommended setup](#recommended-setup)
 - [What is confined](#what-is-confined)
 - [Linux: landstrip](#linux-landstrip)
+- [Linux, as an option: MXC](#linux-as-an-option-mxc)
 - [Windows 11: MXC and PowerShell](#windows-11-mxc-and-powershell)
 - [Older Windows](#older-windows)
 - [Check that it is really confined](#check-that-it-is-really-confined)
@@ -19,7 +20,7 @@ Name the same runner for the agent's `bash` (`sandbox.bashRunner`) and for the t
 
 | Where the server runs | Runner | Shell (`sandbox.bashShell`) |
 | --- | --- | --- |
-| Linux: a Docker container, the host, a VM, WSL2 | [landstrip](#linux-landstrip) | `/bin/bash`, the default |
+| Linux: a Docker container, the host, a VM, WSL2 | [landstrip](#linux-landstrip) — or, loosening Docker's profile, [MXC](#linux-as-an-option-mxc) | `/bin/bash`, the default |
 | Windows 11 with the August 2026 update or later | [MXC](#windows-11-mxc-and-powershell): `"mxc"`, installed with pi-outpost | `powershell.exe` (the agent gets a `powershell` tool), busybox-w32's `sh.exe`, or — experimental — a real bash in a [Linux container](#a-real-bash-wslc-experimental) (`sandbox.bashImage`) |
 | Older Windows | none works natively: see [Older Windows](#older-windows) | |
 | macOS | untested | |
@@ -91,6 +92,45 @@ the agent directory, the configuration, every mounted project. Also:
 - mount only the projects and the agent directory — never the Docker socket, never `--privileged`;
 - keep provider keys in the credential store (`pi-outpost login`, or Settings), not in the server's
   environment: a command can still read it through `/proc/<pid>/environ` (same account).
+
+## Linux, as an option: MXC
+
+```json
+{
+  "sandbox": { "root": "/work/app", "allowWrite": true, "allowBash": true, "bashRunner": "mxc", "allowedHosts": ["registry.npmjs.org", "github.com"] },
+  "terminal": { "enabled": true, "sandbox": "mxc" }
+}
+```
+
+On Linux, `"mxc"` names MXC's Linux executor (`lxc-exec`), installed with pi-outpost like Windows'
+`wxc-exec.exe`; a path ending in `lxc-exec` names it too. Its Bubblewrap backend runs each command, and
+each terminal, in namespaces holding only the system trees, the root and the command's temporary
+folder — no home, no other project, no agent directory. What it adds over landstrip:
+
+- **The server's processes are out of sight**: the command sees its sandbox's processes alone, so the
+  `/proc/<pid>/environ` read above finds nothing.
+- **`sandbox.allowedHosts`**, as on Windows ([below](#the-network-only-named-hosts)): outbound and inbound
+  traffic denied, the server's proxy the only way out. Without it, the network is open.
+
+**The price is Docker's own hardening.** Bubblewrap needs user namespaces, which Docker's default seccomp
+and AppArmor profiles refuse, and any network rule needs a tun device for slirp4netns:
+
+```bash
+docker run \
+  --security-opt seccomp=unconfined --security-opt apparmor=unconfined \
+  --device /dev/net/tun \
+  --security-opt no-new-privileges \
+  …
+```
+
+and the image needs `bubblewrap`, `slirp4netns` and `iptables`
+(`apt-get install bubblewrap slirp4netns iptables`). Under Docker's default profile the runner is
+refused at its self-check — a confined `/bin/true` — with MXC's reason, and every command with it. Keep
+the rest of the advice above: an ordinary user, no Docker socket, no `--privileged`. If loosening the
+container is not acceptable, landstrip is the runner.
+
+`sandbox.bashImage` (WSLC) is Windows only. `scripts/mxc-linux/test.sh` runs this runner's tests in a
+container both ways.
 
 ## Windows 11: MXC and PowerShell
 
@@ -184,8 +224,9 @@ curl: (56) CONNECT tunnel failed, response 403
 - On Windows, list your hosts' certificate authorities too. `curl.exe` checks a certificate's
   revocation by fetching the authority's list over plain HTTP, and fails when it cannot: for
   registry.npmjs.org that is `*.pki.goog`. The note after the output names the host it was refused.
-- The agent's shell only, under MXC's process container: the key is refused without MXC as `bashRunner`,
-  and with `bashImage` (WSLC). The terminal panel is your own shell and keeps the network.
+- The agent's shell only, under MXC — Windows' process container, or [Linux's](#linux-as-an-option-mxc)
+  Bubblewrap: the key is refused without MXC as `bashRunner`, and with `bashImage` (WSLC). The terminal
+  panel is your own shell and keeps the network.
 - Without the key, the network is open, as before. A Settings apply keeps the list.
 
 ### A real bash: WSLC (experimental)
