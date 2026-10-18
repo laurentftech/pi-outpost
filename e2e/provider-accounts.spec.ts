@@ -20,7 +20,7 @@ test("onboarding submits a manual login answer without navigating or exposing it
   await page.getByTestId("login-prompt").getByRole("textbox").fill("wrong-code");
   await page.getByRole("button", { name: "Continue" }).click();
   await expect(page.getByTestId("login-done")).toContainText("That code was not accepted");
-  expect(page.url()).toBe(address);
+  expect(page.url()).toBe(new URL(address).href);
 });
 
 test("onboarding account buttons toggle the current flow and switch to another provider", async ({ page }) => {
