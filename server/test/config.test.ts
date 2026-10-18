@@ -18,7 +18,7 @@ import {
 } from "../src/config.ts";
 import type { AppConfig, CliOptions } from "../src/config.ts";
 import { parseCli } from "../src/cli.ts";
-import { bundledMxcExecutor, mxcExecutorName } from "../src/mxcExecutor.ts";
+import { bundledMxcExecutor, mxcExecutorName, mxcSupportsArch } from "../src/mxcExecutor.ts";
 import { STRUCTURED_EXCHANGE_BYTES_CEILING_ANY } from "@pi-outpost/shared/structured-exchange/bounds";
 
 // ---------------------------------------------------------------------------
@@ -508,7 +508,7 @@ describe("loadConfig — resource path resolution", () => {
     await withTempDir(async (dir) => {
       const configPath = path.join(dir, "config.json");
       await writeFile(configPath, JSON.stringify({ sandbox: { root: ".", allowBash: true, bashRunner: "mxc" }, terminal: { sandbox: "mxc" } }, null, 2));
-      if (mxcExecutorName(process.platform) === undefined) {
+      if (mxcExecutorName(process.platform) === undefined || !mxcSupportsArch(process.platform, process.arch)) {
         assert.throws(() => loadConfig(dir, { config: configPath }), /MXC has no executor for /);
         return;
       }

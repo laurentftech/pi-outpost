@@ -8,7 +8,7 @@ import fs from "node:fs/promises";
 import fsSync from "node:fs";
 import { createRequire } from "node:module";
 import { execFile, spawnSync } from "node:child_process";
-import { confinedEnvironment, prepareConfinedTerminal, type MxcLinuxConfig, type MxcTerminalConfig, type RunnerKind, type TerminalPolicy } from "./terminalSandbox.ts";
+import { confinedEnvironment, prepareConfinedTerminal, type MxcLinuxConfig, type MxcMacConfig, type MxcTerminalConfig, type RunnerKind, type TerminalPolicy } from "./terminalSandbox.ts";
 import { promisify } from "node:util";
 import os from "node:os";
 import path from "node:path";
@@ -269,6 +269,20 @@ export function terminalEnvironment(
   return env;
 }
 
+/**
+ * A confined shell's arguments on macOS: interactive, not login.
+ *
+ * A login shell runs `/etc/zprofile` (or `/etc/profile`), whose `path_helper` puts `/usr/bin`
+ * back ahead of the developer tools' folder MXC's request put first — and `/usr/bin/git` is
+ * Apple's `xcrun` shim, which under Seatbelt warns on every call and leaves a `Library/`
+ * folder in the root. Nothing a login shell would add is reachable anyway: `HOME` is the root.
+ */
+const CONFINED_MAC_SHELL_ARGS = ["-i"];
+
+function unixShellArgs(confined: boolean | undefined): string[] {
+  return confined && process.platform === "darwin" ? CONFINED_MAC_SHELL_ARGS : ["-l"];
+}
+
 /** The default confined PowerShell's arguments (see getDefaultShell). */
 export const CONFINED_POWERSHELL_ARGS = ["-ExecutionPolicy", "RemoteSigned", "-NoExit", "-Command", "$ProgressPreference='SilentlyContinue'"];
 
@@ -307,12 +321,13 @@ export class TerminalManager {
    * Determine the default shell for the host platform.
    * On Windows: Git Bash -> PowerShell -> cmd.
    * On Unix: $SHELL (or /bin/zsh on macOS, /bin/bash on Linux) with login shell args ["-l"].
+   * Confined on macOS: interactive, not login (see CONFINED_MAC_SHELL_ARGS).
    */
   getDefaultShell(options?: { shell?: string; shellArgs?: string[]; gitPath?: string; confined?: boolean }): { shell: string; args: string[] } {
     if (options?.shell) {
       return {
         shell: options.shell,
-        args: options.shellArgs ?? (process.platform === "win32" ? [] : ["-l"]),
+        args: options.shellArgs ?? (process.platform === "win32" ? [] : unixShellArgs(options.confined)),
       };
     }
 
@@ -345,7 +360,7 @@ export class TerminalManager {
 
     const shell = process.env.SHELL || (os.platform() === "darwin" ? "/bin/zsh" : "/bin/bash");
     // Login shell on Unix to source .zprofile / .bash_profile
-    return { shell, args: ["-l"] };
+    return { shell, args: unixShellArgs(options?.confined) };
   }
 
   /**
@@ -599,7 +614,7 @@ export interface TerminalConfinement {
   /** The user's git configuration, read-only inside (see `userGitConfig`): git's identity. */
   gitConfig?: string;
   /** The policy for this terminal, given its private temporary directory and what it runs. */
-  policy: (terminal: ConfinedShell) => TerminalPolicy | MxcTerminalConfig | MxcLinuxConfig;
+  policy: (terminal: ConfinedShell) => TerminalPolicy | MxcTerminalConfig | MxcLinuxConfig | MxcMacConfig;
 }
 
 /** What a confined terminal runs, for a policy that has to carry it (MXC's). */
@@ -621,9 +636,11 @@ function isInside(candidate: string, root: string): boolean {
  *
  * landstrip's shell is its child. MXC's sits under `lxc-exec` and two `bwrap` processes —
  * beside the `sh -c` that supervises `slirp4netns` for its network — and under the `sh -c`
- * MXC wraps every command line in. Undefined anywhere else, or once gone.
+ * MXC wraps every command line in. On macOS MXC's shell is the executor's only child.
+ * Undefined anywhere else, or once gone.
  */
 async function shellUnder(pid: number): Promise<number | undefined> {
+  if (process.platform === "darwin") return firstChildOnMac(pid);
   if (process.platform !== "linux") return undefined;
   let current: number | undefined;
   let parent = pid;
@@ -647,6 +664,17 @@ async function shellUnder(pid: number): Promise<number | undefined> {
     break;
   }
   return current;
+}
+
+/** A process's first child, from `pgrep -P` (macOS has no `/proc`). */
+async function firstChildOnMac(pid: number): Promise<number | undefined> {
+  try {
+    const { stdout } = await execFileAsync("pgrep", ["-P", String(pid)]);
+    const children = stdout.split(/\s+/).filter(Boolean).map(Number).sort((a, b) => a - b);
+    return children[0];
+  } catch {
+    return undefined; // pgrep exits 1 with no child: the shell is gone.
+  }
 }
 
 /** A process's arguments, empty once it is gone. */

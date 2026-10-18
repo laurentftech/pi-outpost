@@ -10,8 +10,11 @@ import {
   checkRunner,
   confinedEnvironment,
   isLinuxMxc,
+  isMacMxc,
   mxcErrorMessage,
   mxcLinuxConfig,
+  mxcMacConfig,
+  mxcPosixConfig,
   mxcTerminalConfig,
   prepareConfinedTerminal,
   quotePosixArgument,
@@ -211,6 +214,55 @@ describe("runnerKind", () => {
     assert.equal(runnerKind("/opt/tools/lxc-exec-wrapper"), "landstrip");
     assert.equal(runnerKind("/opt/tools/LXC-EXEC"), "landstrip", "Linux names are case-sensitive");
   });
+
+  // openlore: scenario=MxcNamesTheMacOsExecutor spec=sandbox-runner-bash
+  test("MxcNamesTheMacOsExecutor: a path ending in mxc-exec-mac is MXC, and only that name", () => {
+    const shipped = "/opt/app/node_modules/@microsoft/mxc-sdk/bin/arm64/mxc-exec-mac";
+    assert.equal(runnerKind(shipped), "mxc");
+    assert.ok(isMacMxc(shipped));
+    assert.ok(!isLinuxMxc(shipped));
+    assert.ok(!isMacMxc("/opt/app/node_modules/@microsoft/mxc-sdk/bin/x64/lxc-exec"));
+    assert.equal(runnerKind("/opt/tools/mxc-exec-mac-wrapper"), "landstrip");
+  });
+});
+
+describe("checkRunner with MXC's macOS executor", () => {
+  async function withExecutor(run: (runner: string) => Promise<void>): Promise<void> {
+    const dir = await mkdtemp(path.join(tmpdir(), "mxc-mac-runner-"));
+    const runner = path.join(dir, "mxc-exec-mac");
+    await writeFile(runner, "", { mode: 0o755 });
+    try {
+      await run(runner);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  }
+
+  test("the check runs one confined /usr/bin/true under Seatbelt, network open, and passes when it does", async () => {
+    await withExecutor(async (runner) => {
+      let request: Record<string, unknown> | undefined;
+      const ok = await checkRunner(runner, async (_file, args) => {
+        request = JSON.parse(await readFile(args[0], "utf8"));
+        return { stdout: "", stderr: "" };
+      }, "darwin");
+      assert.deepEqual(ok, { ok: true });
+      assert.equal(request?.containment, "seatbelt");
+      assert.equal((request?.process as { commandLine: string }).commandLine, "/usr/bin/true");
+      assert.deepEqual(request?.network, { egress: { default: "allow" } });
+    });
+  });
+
+  test("MXC's own message is the reason; elsewhere than macOS, refused", async () => {
+    await withExecutor(async (runner) => {
+      const said = "Seatbelt: sandbox_init failed: profile rejected";
+      const refused = await checkRunner(runner, async () => {
+        throw Object.assign(new Error("Command failed"), { stdout: `${said}{"error":{"code":"backend_error","message":"${said}"}}`, stderr: "" });
+      }, "darwin");
+      assert.ok(!refused.ok && refused.reason === `MXC cannot confine commands on this host: ${said}`, !refused.ok ? refused.reason : "");
+      const linuxHost = await checkRunner(runner, async () => ({ stdout: "", stderr: "" }), "linux");
+      assert.ok(!linuxHost.ok && /macOS only/.test(linuxHost.reason));
+    });
+  });
 });
 
 describe("checkRunner with MXC's Linux executor", () => {
@@ -312,6 +364,66 @@ describe("mxcLinuxConfig", () => {
     assert.equal(quotePosixArgument("/bin/bash"), "/bin/bash");
     assert.equal(quotePosixArgument("it's here"), `'it'\\''s here'`);
     assert.equal(mxcLinuxConfig({ ...base, shellArgs: ["-c", "echo $HOME; ls"] }).process.commandLine, `/bin/bash -c 'echo $HOME; ls'`);
+  });
+});
+
+describe("mxcMacConfig", () => {
+  const mroot = "/Users/me/app";
+  const mtmp = "/var/folders/xy/T/pi-outpost-bash-1";
+  const developerDir = "/Applications/Xcode.app/Contents/Developer";
+  const present = new Set(["/usr", "/bin", "/sbin", "/System", "/Library", "/private/etc", "/opt/homebrew", "/Applications/Xcode.app", `${developerDir}/usr/bin/git`]);
+  // As Seatbelt sees them: /var is a symlink to /private/var.
+  const realPath = (file: string) => (file.startsWith("/var/") ? `/private${file}` : file);
+  const base = {
+    root: mroot,
+    allowWrite: true,
+    tmp: mtmp,
+    shell: "/bin/bash",
+    shellArgs: [`${mtmp}/command.sh`],
+    cwd: mroot,
+    env: { PATH: "/opt/homebrew/bin:/usr/bin:/bin", HOME: mroot },
+    searchPath: "/opt/homebrew/bin:/usr/bin:/bin",
+    agentDir: "/Users/me/.pi/agent",
+    configFile: "/Users/me/app/pi-outpost.config.json",
+    readOnlyFiles: ["/Users/me/.gitconfig"],
+    developerDir,
+    realPath,
+    exists: (file: string) => present.has(file),
+  };
+
+  // openlore: scenario=OnMacOsWithoutAnAllowlistTheNetworkIsOpen spec=sandbox-runner-bash
+  test("OnMacOsWithoutAnAllowlistTheNetworkIsOpen: Seatbelt, real paths, the developer tools readable, secrets denied", () => {
+    const config = mxcMacConfig(base);
+    assert.equal(config.containment, "seatbelt");
+    assert.deepEqual(config.filesystem.readwritePaths, [mroot, `/private${mtmp}`], "the temp as Seatbelt matches it");
+    assert.deepEqual(config.filesystem.readonlyPaths, ["/usr", "/bin", "/sbin", "/System", "/Library", "/private/etc", "/opt/homebrew", "/Applications/Xcode.app", "/Users/me/.gitconfig"]);
+    assert.deepEqual(config.filesystem.deniedPaths, [base.agentDir, base.configFile]);
+    assert.deepEqual(config.network, { egress: { default: "allow" } });
+    assert.equal(config.runtimeConfig, undefined);
+  });
+
+  // openlore: scenario=OnMacOsGitAnswersQuietly spec=sandbox-runner-bash
+  test("the developer directory's git comes before Apple's xcrun shim on the search path", () => {
+    assert.ok(mxcMacConfig(base).process.env.includes(`PATH=${developerDir}/usr/bin:/opt/homebrew/bin:/usr/bin:/bin`));
+    const without = mxcMacConfig({ ...base, developerDir: null });
+    assert.ok(without.process.env.includes("PATH=/opt/homebrew/bin:/usr/bin:/bin"), "no developer tools: the search path as given");
+    const clt = "/Library/Developer/CommandLineTools";
+    const tools = mxcMacConfig({ ...base, developerDir: clt, exists: (file) => present.has(file) || file === `${clt}/usr/bin/git` || file === clt });
+    assert.ok(tools.process.env.includes(`PATH=${clt}/usr/bin:/opt/homebrew/bin:/usr/bin:/bin`));
+  });
+
+  test("a narrower writable zone sits inside the read-only root; under allowedHosts, the proxy the only way out", () => {
+    const zoned = mxcMacConfig({ ...base, writableRoot: `${mroot}/out` });
+    assert.deepEqual(zoned.filesystem.readwritePaths, [`${mroot}/out`, `/private${mtmp}`]);
+    assert.ok(zoned.filesystem.readonlyPaths.includes(mroot));
+    const proxied = mxcMacConfig({ ...base, networkProxy: "http://127.0.0.1:4567" });
+    assert.deepEqual(proxied.network, { egress: { default: "deny" }, ingress: { default: "deny" } });
+    assert.deepEqual(proxied.runtimeConfig, { networkProxy: "http://127.0.0.1:4567" });
+  });
+
+  test("mxcPosixConfig picks the backend by the executor's name", () => {
+    assert.equal(mxcPosixConfig("/x/bin/arm64/mxc-exec-mac", base).containment, "seatbelt");
+    assert.equal(mxcPosixConfig("/x/bin/x64/lxc-exec", base).containment, "bubblewrap");
   });
 });
 

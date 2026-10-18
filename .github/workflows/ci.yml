@@ -192,6 +192,21 @@ jobs:
       - run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
       - run: bash scripts/mxc-linux/test.sh
 
+  # MXC's macOS executor (mxc-exec-mac, Seatbelt) on a real Mac: it ships for Apple silicon
+  # only, which macos-latest is and no developer machine here is. The same script a developer
+  # on such a Mac runs (scripts/mxc-macos/test.sh); the real-executor tests skip elsewhere.
+  mxc-macos:
+    runs-on: macos-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci --workspace server --workspace shared --workspace office --include-workspace-root=false
+      - run: bash scripts/mxc-macos/test.sh
+
   # The badge, drawn and pushed here rather than by a marketplace action: this is
   # the only job that may write to the repository, and nothing outside it runs.
   # Main only — a badge is a claim about the shipped branch.

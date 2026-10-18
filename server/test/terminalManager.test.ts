@@ -92,10 +92,15 @@ describe("TerminalManager", () => {
     }
   });
 
-  test("outside Windows, confinement does not change the shell", () => {
+  test("on Linux confinement does not change the shell; on macOS the confined shell is not a login shell", () => {
     const manager = new TerminalManager();
     if (process.platform === "win32") return;
-    assert.deepEqual(manager.getDefaultShell({ confined: true }), manager.getDefaultShell());
+    const confined = manager.getDefaultShell({ confined: true });
+    assert.equal(confined.shell, manager.getDefaultShell().shell);
+    // A login shell's path_helper would put Apple's xcrun shim ahead of the real git again.
+    assert.deepEqual(confined.args, process.platform === "darwin" ? ["-i"] : ["-l"]);
+    assert.deepEqual(manager.getDefaultShell({ confined: true, shell: "/bin/zsh" }).args, process.platform === "darwin" ? ["-i"] : ["-l"]);
+    assert.deepEqual(manager.getDefaultShell({ confined: true, shell: "/bin/zsh", shellArgs: ["-l"] }).args, ["-l"], "arguments named in the configuration are kept");
   });
 
   test("findWindowsGitBash and Windows shell fallback resolution", () => {
