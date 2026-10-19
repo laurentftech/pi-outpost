@@ -90,3 +90,99 @@ describe("CodeEditor", () => {
     expect(editorText()).toBe("replaced\n");
   });
 });
+
+describe("CodeEditor git gutter", () => {
+  function GutterEditor({ initial, baseline, readOnly = false }: { initial: string; baseline: string | null; readOnly?: boolean }) {
+    const [value, setValue] = useState(initial);
+    const [head, setHead] = useState(baseline);
+    return (
+      <>
+        <CodeEditor value={value} path="a.txt" onChange={setValue} readOnly={readOnly} baseline={head} />
+        <output data-testid="draft">{value}</output>
+        <button type="button" onClick={() => setHead(null)}>
+          no head
+        </button>
+        <button type="button" onClick={() => setHead(value)}>
+          commit the draft
+        </button>
+      </>
+    );
+  }
+  const marks = (container: HTMLElement) => Array.from(container.querySelectorAll<HTMLElement>(".cm-git-gutter [data-git-change]")).map((mark) => mark.dataset.gitChange);
+
+  // openlore: scenario=ChangedLinesAreMarked spec=git
+  it("ChangedLinesAreMarked: a changed line, an added line and a removal, each marked once against HEAD", () => {
+    const { container } = render(<GutterEditor initial={"a\nB\nc\nadded\nd"} baseline={"a\nb\nc\nd\ne"} />);
+    expect(marks(container)).toEqual(["modified", "added", "deleted"]);
+    // The removal was the last line: marked at the foot of what is now the last one.
+    expect(container.querySelector(".cm-git-gutter [data-git-change='deleted']")!.classList.contains("cm-git-at-end")).toBe(true);
+  });
+
+  // openlore: scenario=TheMarksFollowTheDraft spec=git
+  it("TheMarksFollowTheDraft: marks follow the draft as it is typed", () => {
+    const { container } = render(<GutterEditor initial={"a\nb\n"} baseline={"a\nb\n"} />);
+    expect(marks(container)).toEqual([]);
+    typeInEditor("a\nb\nadded\n");
+    expect(marks(container)).toEqual(["added"]);
+    typeInEditor("a\nb\n");
+    expect(marks(container)).toEqual([]);
+  });
+
+  // openlore: scenario=AClickShowsHeadsText spec=git
+  it("AClickShowsHeadsText: a click opens HEAD's text under the change, and its revert edits the draft", () => {
+    const { container, getByTestId, getByRole, queryByRole } = render(<GutterEditor initial={"one\nTWO\nthree"} baseline={"one\ntwo\nthree"} />);
+    const mark = container.querySelector<HTMLElement>(".cm-git-gutter [data-git-change='modified']")!;
+    fireEvent.mouseDown(mark);
+    const peek = getByRole("region", { name: "HEAD version of this change" });
+    expect(peek.querySelector(".cm-git-peek-old")?.textContent).toBe("two");
+    fireEvent.click(getByRole("button", { name: "Revert this change" }));
+    expect(getByTestId("draft").textContent).toBe("one\ntwo\nthree");
+    expect(marks(container)).toEqual([]);
+    expect(queryByRole("region", { name: "HEAD version of this change" })).toBeNull();
+  });
+
+  it("keeps the peek open while the draft is edited elsewhere", () => {
+    const { container, getByRole } = render(<GutterEditor initial={"one\nTWO\nthree"} baseline={"one\ntwo\nthree"} />);
+    fireEvent.mouseDown(container.querySelector<HTMLElement>(".cm-git-gutter [data-git-change='modified']")!);
+    const view = editorView();
+    act(() => view.dispatch({ changes: { from: view.state.doc.length, insert: "\nfour" } }));
+    expect(marks(container)).toEqual(["modified", "added"]);
+    expect(getByRole("region", { name: "HEAD version of this change" }).querySelector(".cm-git-peek-old")?.textContent).toBe("two");
+  });
+
+  it("leaves a press inside the peek to its buttons, not to the editor's selection", () => {
+    const { container, getByRole } = render(<GutterEditor initial={"one\nTWO\nthree"} baseline={"one\ntwo\nthree"} />);
+    fireEvent.mouseDown(container.querySelector<HTMLElement>(".cm-git-gutter [data-git-change='modified']")!);
+    const view = editorView();
+    act(() => view.dispatch({ selection: { anchor: 0 } }));
+    fireEvent.mouseDown(getByRole("button", { name: "Revert this change" }));
+    expect(view.state.selection.main.anchor).toBe(0);
+  });
+
+  it("shows HEAD's text in the read-only view without offering to revert", () => {
+    const { container, getByRole, queryByRole } = render(<GutterEditor readOnly initial={"one\nthree"} baseline={"one\ntwo\nthree"} />);
+    fireEvent.mouseDown(container.querySelector(".cm-git-gutter [data-git-change='deleted']")!);
+    expect(getByRole("region", { name: "HEAD version of this change" }).textContent).toContain("two");
+    expect(queryByRole("button", { name: "Revert this change" })).toBeNull();
+    fireEvent.click(getByRole("button", { name: "Close" }));
+    expect(queryByRole("region", { name: "HEAD version of this change" })).toBeNull();
+  });
+
+  // openlore: scenario=TheGutterFollowsHead spec=git
+  it("TheGutterFollowsHead: compares with the new HEAD once it moves, and closes a peek on the old one", () => {
+    const { container, getByText, queryByRole } = render(<GutterEditor initial={"one\nTWO"} baseline={"one\ntwo"} />);
+    fireEvent.mouseDown(container.querySelector<HTMLElement>(".cm-git-gutter [data-git-change='modified']")!);
+    fireEvent.click(getByText("commit the draft"));
+    expect(marks(container)).toEqual([]);
+    expect(queryByRole("region", { name: "HEAD version of this change" })).toBeNull();
+    typeInEditor("one\nTWO\nthree");
+    expect(marks(container)).toEqual(["added"]);
+  });
+
+  it("draws nothing without HEAD's text, and drops the marks when it goes", () => {
+    const { container, getByText } = render(<GutterEditor initial={"x\ny"} baseline={"x"} />);
+    expect(marks(container)).toEqual(["added"]);
+    fireEvent.click(getByText("no head"));
+    expect(marks(container)).toEqual([]);
+  });
+});

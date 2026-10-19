@@ -45,6 +45,8 @@ interface FileViewerProps {
   initialShowGitDiff?: boolean;
   /** Latest git_diff answer (may belong to another file — matched by path). */
   gitDiff: GitDiffState | null;
+  /** HEAD's text of this file, for the editor's git gutter; absent or null draws none. */
+  gitBaseline?: string | null;
   onFetchGitDiff: (path: string) => void;
   onClearGitDiff: () => void;
   /**
@@ -168,6 +170,7 @@ export function FileViewer({
   gitState,
   initialShowGitDiff = false,
   gitDiff,
+  gitBaseline = null,
   onFetchGitDiff,
   onClearGitDiff,
   inRepository,
@@ -613,6 +616,7 @@ export function FileViewer({
           handle={editorRef}
           path={file.path}
           value={edit.draft}
+          baseline={gitBaseline}
           onChange={(draft) => setEdit((current) => (current === null ? current : { ...current, draft }))}
           onSave={() => {
             if (dirty && !saving && !conflict) save();
@@ -637,7 +641,7 @@ export function FileViewer({
           </div>
         }
       >
-        <LazyCodeEditor readOnly handle={findable ? editorRef : undefined} path={file.path} value={loaded.content} />
+        <LazyCodeEditor readOnly handle={findable ? editorRef : undefined} path={file.path} value={loaded.content} baseline={gitBaseline} />
       </Suspense>
     );
   }

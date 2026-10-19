@@ -1249,6 +1249,8 @@ export type ServerMessage =
    * would ever bring the surface back.
    */
   | { type: "git_repositories_changed"; available: boolean; unavailable?: GitUnavailable }
+  /** A repository's own state moved (commit, checkout, reset…), from anywhere: re-read its status. */
+  | { type: "git_changed"; repo: string }
   /**
    * A watched directory's entries changed on disk, whatever caused it — this
    * server, the agent through bash, or nothing in this process at all.

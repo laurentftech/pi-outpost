@@ -152,6 +152,18 @@ export type GitDiffState =
   | { path: string; before: string; after: string }
   | { path: string; error: string };
 
+/**
+ * HEAD's text of the open file, for the editor's git gutter. Its own slot rather than
+ * `gitDiff`'s: the gutter asks whenever the file's status moves, and the "± diff" pane
+ * must not be overwritten by those answers, nor they by its. `text` is absent while
+ * the answer is awaited.
+ */
+export interface GitBaselineState {
+  path: string;
+  requestId: string;
+  text?: string;
+}
+
 export interface GitShowState {
   sha: string;
   patch: string;
@@ -410,6 +422,7 @@ export interface AgentState {
   gitStatus: GitStatusState | null;
   /** Worktree-vs-HEAD contents for the viewer's diff toggle. */
   gitDiff: GitDiffState | null;
+  gitBaseline: GitBaselineState | null;
   /** The last commit log, with the repository it belongs to — see `GitLogState`. */
   gitLog: GitLogState | null;
   gitShow: GitShowState | null;
@@ -501,6 +514,7 @@ const initialState: AgentState = {
   credentials: null,
   gitStatus: null,
   gitDiff: null,
+  gitBaseline: null,
   gitLog: null,
   gitShow: null,
   gitFileHistory: null,
@@ -538,6 +552,8 @@ type Action =
   | { type: "session_search_cleared" }
   | { type: "git_diff_started"; path: string; requestId: string }
   | { type: "git_diff_cleared" }
+  | { type: "git_baseline_started"; path: string; requestId: string }
+  | { type: "git_baseline_cleared" }
   | { type: "git_show_cleared" }
   | { type: "git_file_history_started"; path: string; requestId: string }
   | { type: "git_file_history_closed" }
@@ -840,6 +856,12 @@ function reduce(state: AgentState, action: Action): AgentState {
   }
   if (action.type === "git_diff_started") return { ...state, gitDiff: null };
   if (action.type === "git_diff_cleared") return { ...state, gitDiff: null };
+  if (action.type === "git_baseline_started") {
+    // Asking again for the same file keeps what it had, so the gutter does not blink.
+    const text = state.gitBaseline?.path === action.path ? state.gitBaseline.text : undefined;
+    return { ...state, gitBaseline: { path: action.path, requestId: action.requestId, ...(text !== undefined ? { text } : {}) } };
+  }
+  if (action.type === "git_baseline_cleared") return { ...state, gitBaseline: null };
   if (action.type === "git_show_cleared") return { ...state, gitShow: null, gitLog: state.gitLog };
   if (action.type === "git_file_history_started") {
     return {
@@ -952,6 +974,7 @@ function reduce(state: AgentState, action: Action): AgentState {
       ...applySnapshot(state, message),
       openFile: state.openFile,
       gitDiff: state.gitDiff,
+      gitBaseline: state.gitBaseline,
       fileTree: state.fileTree,
       directoryRequests: state.directoryRequests,
     };
@@ -969,6 +992,7 @@ function reduce(state: AgentState, action: Action): AgentState {
         ...applySnapshot(state, message),
         openFile: null,
         gitDiff: null,
+        gitBaseline: null,
         // The other project's tree, cached under paths that mean something else
         // there. Dropped rather than reused, the way a session replace already does.
         fileTree: {},
@@ -1431,12 +1455,14 @@ function reduce(state: AgentState, action: Action): AgentState {
             : state.openFile;
       const affectsHistory = state.gitFileHistory?.path === previousPath || state.gitFileHistory?.path === message.path;
       const affectsDiff = state.gitDiff?.path === previousPath || state.gitDiff?.path === message.path;
+      const affectsBaseline = state.gitBaseline?.path === previousPath || state.gitBaseline?.path === message.path;
       return {
         ...state,
         openFile,
         gitFileHistory: affectsHistory ? null : state.gitFileHistory,
         gitFileDiff: affectsHistory ? null : state.gitFileDiff,
         gitDiff: affectsDiff ? null : state.gitDiff,
+        gitBaseline: affectsBaseline ? null : state.gitBaseline,
         fileOperation: {
           status: "succeeded",
           operation: message.operation,
@@ -1522,6 +1548,11 @@ function reduce(state: AgentState, action: Action): AgentState {
         gitStatus: message.available ? state.gitStatus : null,
       };
     case "git_diff":
+      // The gutter's answers are told apart by their request, and only the latest counts
+      if (message.requestId.startsWith("gitbase:")) {
+        if (state.gitBaseline?.requestId !== message.requestId) return state;
+        return { ...state, gitBaseline: { ...state.gitBaseline, text: message.before } };
+      }
       return { ...state, gitDiff: { path: message.path, before: message.before, after: message.after } };
     case "git_log":
       return { ...state, gitLog: { repo: message.repo, entries: message.entries } };
@@ -1539,6 +1570,10 @@ function reduce(state: AgentState, action: Action): AgentState {
         gitFileDiff: { ...state.gitFileDiff, status: "loaded", beforeText: message.beforeText, afterText: message.afterText },
       };
     case "git_error":
+      // A file HEAD cannot be compared with (binary, too large) simply has no gutter
+      if (message.requestId.startsWith("gitbase:")) {
+        return state.gitBaseline?.requestId === message.requestId ? { ...state, gitBaseline: null } : state;
+      }
       // Diff failures belong in the viewer's diff pane (the error banner renders
       // under the full-pane overlay where nobody can see it)
       if (message.requestId.startsWith("gitdiff:")) {
@@ -1913,6 +1948,27 @@ export function useAgent(serverUrl = "", explicitToken?: string, embedded = fals
     requestOutcomeRef.current();
   }, [state.connected]);
 
+  /**
+   * HEAD's text of the open file, for the editor's git gutter: asked when a file whose
+   * status says it differs from HEAD is open, and again each time the status is
+   * re-read, since a commit moves HEAD. A clean or untracked file has no gutter.
+   */
+  const openFilePath = state.openFile?.path ?? null;
+  const openFileGitState = openFilePath === null ? undefined : state.gitStatus?.files[openFilePath];
+  const hasBaseline = state.gitBaseline !== null;
+  useEffect(() => {
+    const compared = openFileGitState === "modified" || openFileGitState === "added" || openFileGitState === "conflicted";
+    if (!state.connected || openFilePath === null || !compared) {
+      if (hasBaseline) dispatch({ type: "git_baseline_cleared" });
+      return;
+    }
+    const requestId = `gitbase:${randomId()}`;
+    dispatch({ type: "git_baseline_started", path: openFilePath, requestId });
+    sendMessage({ type: "git_diff", path: openFilePath, requestId });
+    // `hasBaseline` only decides whether there is anything to clear.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.connected, openFilePath, openFileGitState, state.gitStatus, sendMessage]);
+
   // Branding is pure config (no session dependency) and served as soon as the process
   // starts — fetch it directly instead of waiting on the WS "hello", which only arrives
   // once the (slower) AgentSession runtime is ready.
@@ -2075,6 +2131,12 @@ export function useAgent(serverUrl = "", explicitToken?: string, embedded = fals
           // connect that there was no repository here would otherwise never ask again
           gitAvailableRef.current = message.available;
           if (message.available) refreshGitStatus();
+        }
+        // A commit, checkout or reset made anywhere: only the git directory moved, which
+        // no listed directory reports, so the server watches it and says which repository
+        if (message.type === "git_changed") {
+          invalidateOutcome();
+          refreshGitStatus(message.repo === "" ? undefined : message.repo);
         }
         if (message.type === "git_status" || (message.type === "git_error" && message.requestId.startsWith("git:"))) {
           gitStatusSettled(message.requestId);

@@ -224,6 +224,46 @@ body,
 .code-editor .cm-tooltip-autocomplete ul li[aria-selected] {
   @apply bg-sky-100 text-zinc-900 dark:bg-sky-900 dark:text-zinc-100;
 }
+/* The git gutter (gitGutter.ts): a bar per added or changed line, a notch where lines
+   were removed, as in VS Code; a click opens HEAD's text under the change */
+.code-editor .cm-git-gutter .cm-gutterElement {
+  @apply relative w-[7px];
+}
+.code-editor .cm-git-mark {
+  @apply absolute inset-0 cursor-pointer;
+}
+.code-editor .cm-git-mark::before {
+  @apply absolute inset-y-0 left-[2px] w-[3px] content-[''];
+}
+.code-editor .cm-git-added::before {
+  @apply bg-emerald-500 dark:bg-emerald-400;
+}
+.code-editor .cm-git-modified::before {
+  @apply bg-sky-500 dark:bg-sky-400;
+}
+.code-editor .cm-git-deleted::before {
+  @apply bottom-auto left-0 h-0 w-0 border-y-[4px] border-l-[6px] border-y-transparent border-l-red-500 dark:border-l-red-400;
+  top: -4px;
+}
+.code-editor .cm-git-deleted.cm-git-at-end::before {
+  @apply top-auto;
+  bottom: -4px;
+}
+.code-editor .cm-git-peek {
+  @apply my-1 mr-2 overflow-hidden rounded border border-zinc-300 bg-white font-sans text-xs dark:border-zinc-700 dark:bg-zinc-900;
+}
+.code-editor .cm-git-peek-bar {
+  @apply flex items-center gap-2 border-b border-zinc-200 bg-zinc-50 px-2 py-1 text-zinc-500 dark:border-zinc-800 dark:bg-zinc-800/60 dark:text-zinc-400;
+}
+.code-editor .cm-git-peek-bar span {
+  @apply mr-auto;
+}
+.code-editor .cm-git-peek-bar button {
+  @apply rounded px-1.5 py-0.5 text-zinc-700 hover:bg-zinc-200 dark:text-zinc-300 dark:hover:bg-zinc-700;
+}
+.code-editor .cm-git-peek-old {
+  @apply m-0 whitespace-pre-wrap bg-red-50 px-3 py-1.5 font-mono text-[13px] leading-relaxed text-zinc-800 dark:bg-red-950/40 dark:text-zinc-200;
+}
 .tok-comment {
   @apply italic text-zinc-500;
 }

@@ -722,6 +722,7 @@ const workspace = await Workspace.create({
     workspace.noteDirectoryChange();
     broadcast(workspace, { type: "directory_changed", path: relPath });
   },
+  onGitChanged: (repo) => broadcast(workspace, { type: "git_changed", repo }),
   onRepositoriesChanged: () =>
         broadcast(workspace, {
           type: "git_repositories_changed",
@@ -1849,6 +1850,7 @@ for (const root of config.openProjects) {
         restored.noteDirectoryChange();
         broadcast(restored, { type: "directory_changed", path: relPath });
       },
+      onGitChanged: (repo) => broadcast(restored, { type: "git_changed", repo }),
       onRepositoriesChanged: () =>
         broadcast(restored, {
           type: "git_repositories_changed",
@@ -3579,6 +3581,7 @@ async function handleOpenProject(socket: WebSocket, rawRoot: string): Promise<vo
         opened.noteDirectoryChange();
         broadcast(opened, { type: "directory_changed", path: relPath });
       },
+      onGitChanged: (repo) => broadcast(opened, { type: "git_changed", repo }),
       onRepositoriesChanged: () =>
         broadcast(opened, {
           type: "git_repositories_changed",
@@ -3730,6 +3733,7 @@ async function handleOpenSideSession(socket: WebSocket, rawRoot: string): Promis
           side.noteDirectoryChange();
           broadcast(side, { type: "directory_changed", path: relPath });
         },
+        onGitChanged: (repo) => broadcast(side, { type: "git_changed", repo }),
         onRepositoriesChanged: () =>
           broadcast(side, {
             type: "git_repositories_changed",

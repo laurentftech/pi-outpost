@@ -23,6 +23,7 @@ import { DOCUMENT_TOOLS } from "./documentTools.ts";
 import { PROJECT_MODEL_TOOL } from "./projectModelTool.ts";
 import { STRUCTURED_EXCHANGE_PROFILE_REGISTRY_PATH } from "@pi-outpost/shared/structured-exchange/profile";
 import { type DirectoryWatcher, createDirectoryWatcher } from "./fileWatcher.ts";
+import { type GitMetadataWatcher, createGitMetadataWatcher } from "./gitMetadataWatcher.ts";
 import { resolveBrowserRoot, resolveWritableRoot } from "./fileBrowser.ts";
 import { discoverRepos, whyGitCannotServe, type GitRepo } from "./git.ts";
 import { ExtensionRenderer } from "./extensionRender.ts";
@@ -115,6 +116,11 @@ export interface WorkspaceOptions {
    */
   onRepositoriesChanged?: () => void;
   /**
+   * Where "this repository's state changed" goes — a commit, checkout or reset, from
+   * anywhere — with the repository's id. See `gitMetadataWatcher.ts`.
+   */
+  onGitChanged?: (repoId: string) => void;
+  /**
    * Builds the agent runtime for this workspace. Injected because the two runtime
    * flavours are assembled from configuration this object deliberately cannot see
    * (extensions, skills, prompt templates, RPC arguments).
@@ -181,6 +187,8 @@ export class Workspace {
   /** Why `repos` is empty, when it is. Undefined whenever the workspace holds one. */
   gitUnavailable: GitUnavailable | undefined;
   fileWatcher: DirectoryWatcher | undefined;
+  /** Watches each repository's git directory, for state changed from outside. */
+  gitWatcher: GitMetadataWatcher | undefined;
   sandboxedTools: ToolDefinition[] | undefined;
 
   /**
@@ -298,6 +306,7 @@ export class Workspace {
     this.fileWatcher = resources.fileWatcher;
     this.sandboxedTools = resources.sandboxedTools;
     this.options = options;
+    this.watchGit();
   }
 
   /**
@@ -391,6 +400,17 @@ export class Workspace {
     this.gitUnavailable = resources.gitUnavailable;
     this.fileWatcher = resources.fileWatcher;
     this.sandboxedTools = resources.sandboxedTools;
+    this.gitWatcher?.close();
+    this.gitWatcher = undefined;
+    this.watchGit();
+  }
+
+  /** Watch the current repositories' git directories, opening the watcher if it is closed. */
+  private watchGit(): void {
+    if (this.stopped || this.options.onGitChanged === undefined) return;
+    const onGitChanged = this.options.onGitChanged;
+    this.gitWatcher ??= createGitMetadataWatcher({ onChange: (repoId) => onGitChanged(repoId) });
+    void this.gitWatcher.watch(this.repos);
   }
 
   /**
@@ -434,6 +454,7 @@ export class Workspace {
       // The reason describes the set it was asked about, so it is asked again whenever
       // that set moves — a stale one would explain a state that has passed
       this.gitUnavailable = await whyGitCannotServe(this.browserRoot, repos);
+      if (!this.retired) this.watchGit();
       if (repos.map((repo) => repo.toplevel).join("\n") !== before) this.options.onRepositoriesChanged?.();
     } catch {
       // A scan that cannot read the tree is not a reason to forget the repositories
@@ -451,6 +472,8 @@ export class Workspace {
     this.repoRescan = undefined;
     this.fileWatcher?.close();
     this.fileWatcher = undefined;
+    this.gitWatcher?.close();
+    this.gitWatcher = undefined;
     this.renderer.configure(undefined);
     await this._runtime?.dispose();
     this._runtime = undefined;
@@ -467,6 +490,8 @@ export class Workspace {
     this.retired = true;
     this.fileWatcher?.close();
     this.fileWatcher = undefined;
+    this.gitWatcher?.close();
+    this.gitWatcher = undefined;
     // The renderers close over the session being disposed here, so a retired
     // workspace that kept them would hold its whole runtime alive for nothing.
     // `ensureStarted` reconfigures them when the project is next used.

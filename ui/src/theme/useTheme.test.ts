@@ -84,3 +84,38 @@ describe("useTheme precedence", () => {
     expect(result.current.theme).toBe("light");
   });
 });
+
+describe("useTheme following what changes after mount", () => {
+  it("takes the theme a host page posts, and ignores any other message or value", async () => {
+    const result = mount("light");
+    const post = (data: unknown) => act(() => window.dispatchEvent(new MessageEvent("message", { data })));
+    post({ type: "something-else", theme: "dark" });
+    post({ type: "pi-outpost:set-theme", theme: "purple" });
+    expect(result.current.theme).toBe("light");
+    post({ type: "pi-outpost:set-theme", theme: "dark" });
+    expect(result.current.theme).toBe("dark");
+  });
+
+  it("follows the system while set to system, as the OS switches", () => {
+    let listener: (() => void) | undefined;
+    const query = { matches: false, addEventListener: (_: string, next: () => void) => (listener = next), removeEventListener: () => {} };
+    const previous = window.matchMedia;
+    window.matchMedia = (() => query) as unknown as typeof window.matchMedia;
+    try {
+      const result = mount("system");
+      expect(result.current.theme).toBe("light");
+      query.matches = true;
+      act(() => listener?.());
+      expect(result.current.theme).toBe("dark");
+    } finally {
+      window.matchMedia = previous;
+    }
+  });
+
+  it("toggles to the other theme and remembers the pick", () => {
+    const result = mount("light");
+    act(() => result.current.toggle());
+    expect(result.current.theme).toBe("dark");
+    expect(localStorage.getItem(STORAGE_KEY)).toBe("dark");
+  });
+});
