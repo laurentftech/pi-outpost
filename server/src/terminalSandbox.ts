@@ -865,7 +865,7 @@ export function gitReadOnlyFiles(gitConfig: string | undefined, home: string = h
   return [gitConfig, ...named];
 }
 
-/** The environment of a confined shell: a home in its root, its own temp, no secrets. */
+/** The environment of a confined shell: a home in its root, its own temp (history included), no secrets. */
 export function confinedEnvironment(
   serverEnv: NodeJS.ProcessEnv,
   options: { root: string; tmp: string; shell: string; platform?: NodeJS.Platform; gitConfig?: string },
@@ -886,6 +886,15 @@ export function confinedEnvironment(
   // npm's cache defaults to the user's profile, which is out of reach: a writable one, and
   // a private one, in the temp. It goes with the terminal (or the command).
   env.npm_config_cache = path.join(options.tmp, "npm-cache");
+  if (!windows) {
+    // An interactive shell writes its history into HOME as it exits — the root, so the
+    // user's project gained a .bash_history or .zsh_history after every terminal. Sent to
+    // the private temp, as Windows sends the profile's data (below). zsh needs ZDOTDIR as
+    // well: macOS's /etc/zshrc sets HISTFILE to ${ZDOTDIR:-$HOME}/.zsh_history over ours,
+    // and with it zsh no longer reads startup files a project may carry in its root.
+    env.HISTFILE = path.join(options.tmp, ".shell_history");
+    env.ZDOTDIR = options.tmp;
+  }
   if (options.gitConfig) env.GIT_CONFIG_GLOBAL = options.gitConfig;
   if (windows) {
     // The private temp, not the root: Windows and PowerShell keep a profile's data under

@@ -141,6 +141,9 @@ describe("confinedEnvironment", () => {
       PATH: "/usr/bin", LANG: "fr_FR.UTF-8", LC_ALL: "C", TERM: "xterm-256color", SHELL: "/bin/bash", HOME: root, TMPDIR: tmp,
       // npm's cache in the private temp: the profile's is out of reach.
       npm_config_cache: path.join(tmp, "npm-cache"),
+      // The shell's history too, or it lands in the user's project.
+      HISTFILE: path.join(tmp, ".shell_history"),
+      ZDOTDIR: tmp,
     });
   });
 });

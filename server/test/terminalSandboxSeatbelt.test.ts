@@ -153,4 +153,16 @@ describe("a confined terminal under Seatbelt (sandbox-exec), in zsh as the defau
     assert.doesNotMatch(seen, /DARWIN_USER|xcrun|xcodebuild/, "Apple's git shim ran");
     assert.deepEqual((await readdir(root)).sort(), [".git"], "something appeared in the root");
   });
+
+  // openlore: scenario=AClosedTerminalLeavesNoHistoryInTheProject spec=terminal
+  test("AClosedTerminalLeavesNoHistoryInTheProject: zsh writes its history outside the root on closing", async () => {
+    // A line typed, so there is history to write: a shell with none writes nothing.
+    manager.write(socket, "z", "echo HIST-$((40+2))\r");
+    const deadline = Date.now() + 20_000;
+    while (!/HIST-42/.test(output) && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 50));
+    manager.closeAllForSocket(socket);
+    // Past the grace a closing shell has to act on SIGHUP, which is when history is written.
+    await new Promise((resolve) => setTimeout(resolve, 2_500));
+    assert.deepEqual((await readdir(root)).sort(), [".git"], "the shell left its history in the project");
+  });
 });
