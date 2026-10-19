@@ -60,7 +60,10 @@ describe("a confined terminal under Seatbelt (sandbox-exec)", { skip }, () => {
     manager.closeAllForSocket(socket);
     if (savedKey === undefined) delete process.env.OPENAI_API_KEY;
     else process.env.OPENAI_API_KEY = savedKey;
-    if (base) await rm(base, { recursive: true, force: true });
+    // The shell gets up to TERMINAL_KILL_GRACE_MS to act on SIGHUP, and an interactive
+    // one writes its history into HOME — the root — as it goes: a delete that does not
+    // wait for it meets a directory that is no longer empty (ENOTEMPTY).
+    if (base) await rm(base, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
   });
 
   /** Run one line in the terminal's bash and return what it printed between two markers. */
@@ -131,7 +134,10 @@ describe("a confined terminal under Seatbelt (sandbox-exec), in zsh as the defau
   });
   after(async () => {
     manager.closeAllForSocket(socket);
-    if (base) await rm(base, { recursive: true, force: true });
+    // The shell gets up to TERMINAL_KILL_GRACE_MS to act on SIGHUP, and an interactive
+    // one writes its history into HOME — the root — as it goes: a delete that does not
+    // wait for it meets a directory that is no longer empty (ENOTEMPTY).
+    if (base) await rm(base, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
   });
 
   // openlore: scenario=UnderSeatbeltGitRunsInTheTerminal spec=terminal
@@ -146,5 +152,17 @@ describe("a confined terminal under Seatbelt (sandbox-exec), in zsh as the defau
     assert.match(seen, /## No commits yet/, seen);
     assert.doesNotMatch(seen, /DARWIN_USER|xcrun|xcodebuild/, "Apple's git shim ran");
     assert.deepEqual((await readdir(root)).sort(), [".git"], "something appeared in the root");
+  });
+
+  // openlore: scenario=AClosedTerminalLeavesNoHistoryInTheProject spec=terminal
+  test("AClosedTerminalLeavesNoHistoryInTheProject: zsh writes its history outside the root on closing", async () => {
+    // A line typed, so there is history to write: a shell with none writes nothing.
+    manager.write(socket, "z", "echo HIST-$((40+2))\r");
+    const deadline = Date.now() + 20_000;
+    while (!/HIST-42/.test(output) && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 50));
+    manager.closeAllForSocket(socket);
+    // Past the grace a closing shell has to act on SIGHUP, which is when history is written.
+    await new Promise((resolve) => setTimeout(resolve, 2_500));
+    assert.deepEqual((await readdir(root)).sort(), [".git"], "the shell left its history in the project");
   });
 });

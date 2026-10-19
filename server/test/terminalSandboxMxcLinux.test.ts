@@ -12,6 +12,7 @@ import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
+import { existsSync } from "node:fs";
 import path from "node:path";
 import { after, before, describe, test } from "node:test";
 import type { WebSocket } from "ws";
@@ -66,7 +67,10 @@ describe("a confined terminal under MXC's real Linux executor", { skip }, () => 
     manager.closeAllForSocket(socket);
     if (savedKey === undefined) delete process.env.OPENAI_API_KEY;
     else process.env.OPENAI_API_KEY = savedKey;
-    if (base) await rm(base, { recursive: true, force: true });
+    // The shell gets up to TERMINAL_KILL_GRACE_MS to act on SIGHUP, and an interactive
+    // one writes its history into HOME — the root — as it goes: a delete that does not
+    // wait for it meets a directory that is no longer empty (ENOTEMPTY).
+    if (base) await rm(base, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
   });
 
   /** Run one line in the terminal's bash and return what it printed between two markers. */
@@ -106,5 +110,15 @@ describe("a confined terminal under MXC's real Linux executor", { skip }, () => 
   test("the shell's working directory is found under the runner's processes", async () => {
     await run("cd sub");
     assert.equal(await manager.getCwd(socket, "t"), path.join(root, "sub"));
+  });
+
+  // openlore: scenario=AClosedTerminalLeavesNoHistoryInTheProject spec=terminal
+  test("AClosedTerminalLeavesNoHistoryInTheProject: bash writes its history outside the root on closing", async () => {
+    // A line typed, so there is history to write: a shell with none writes nothing.
+    await run("true");
+    manager.closeAllForSocket(socket);
+    // Past the grace a closing shell has to act on SIGHUP, which is when history is written.
+    await new Promise((resolve) => setTimeout(resolve, 2_500));
+    assert.equal(existsSync(path.join(root, ".bash_history")), false, "the shell left its history in the project");
   });
 });
