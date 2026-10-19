@@ -3,6 +3,7 @@ import type { TreeNode } from "@pi-outpost/shared";
 import { Rail } from "./graph/Rail";
 import { branchColor, ROW_H, type RailRow } from "./graph/lanes";
 import { useClickOutside } from "../util/clickOutside";
+import { HEADER_CONTROL } from "./headerControl";
 
 interface TreeMenuProps {
   tree: TreeNode[] | null;
@@ -223,7 +224,7 @@ export function TreeMenu({ tree, isStreaming, onListTree, onNavigate, onFork }: 
           }
         }}
         title="conversation tree: go back to an earlier point or fork"
-        className="rounded-md border border-zinc-300 px-2 py-1 text-xs text-zinc-500 hover:border-zinc-400 hover:text-zinc-700 dark:border-zinc-800 dark:text-zinc-400 dark:hover:border-zinc-600 dark:hover:text-zinc-200"
+        className={`${HEADER_CONTROL} border-zinc-300 text-zinc-500 hover:border-zinc-400 hover:text-zinc-700 dark:border-zinc-800 dark:text-zinc-400 dark:hover:border-zinc-600 dark:hover:text-zinc-200`}
       >
         tree
       </button>

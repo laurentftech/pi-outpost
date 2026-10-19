@@ -19,6 +19,7 @@ import { useEffect, useRef, useState } from "react";
 import type { WorkspaceActivity, WorkspaceInfo } from "@pi-outpost/shared";
 import { eventHitsNode } from "../util/clickOutside";
 import { workspaceKey } from "../util/workspaceKey";
+import { HEADER_CONTROL_SHRINKS } from "./headerControl";
 
 interface ProjectMenuProps {
   workspace: WorkspaceInfo | null;
@@ -140,21 +141,21 @@ export function ProjectMenu(props: ProjectMenuProps) {
   const attention = workspaces.filter((w) => w.needsAttention);
 
   return (
-    <div ref={rootRef} className="relative">
+    <div ref={rootRef} className="relative min-w-[4rem] max-w-[16rem]">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
         aria-haspopup="menu"
         title={`Project: ${workspace.name} (${LABELS[workspace.activity]})`}
-        className={`flex items-center gap-1.5 rounded-md border px-2 py-1 text-xs ${
+        className={`${HEADER_CONTROL_SHRINKS} max-w-full gap-1.5 ${
           attention.length > 0
             ? "border-amber-500 bg-amber-50 text-zinc-700 dark:bg-amber-950/40 dark:text-zinc-200"
             : "border-zinc-400 bg-zinc-100 text-zinc-700 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-200"
         }`}
       >
         <ActivityMark activity={workspace.activity} />
-        <span className="font-medium">{workspace.name}</span>
+        <span className="truncate font-medium">{workspace.name}</span>
         {attention.length > 0 ? (
           <span className="flex items-center gap-1 text-amber-600 dark:text-amber-500">
             <AttentionGlyph className="h-3 w-3" />

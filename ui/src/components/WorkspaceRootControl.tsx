@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { ServerPathPicker } from "./ServerPathPicker";
 import type { ServerBrowseState, SettingsApplyState } from "../useAgent";
+import { HEADER_CONTROL, HEADER_CONTROL_SHRINKS } from "./headerControl";
 
 /** Only the parts of the sandbox this control reads: where it is, and whether it may move. */
 export interface WorkspaceRootSandbox {
@@ -79,7 +80,7 @@ export function WorkspaceRootControl(props: WorkspaceRootControlProps) {
   if (!sandbox) {
     return (
       <span
-        className="rounded-md border border-dashed border-zinc-300 px-2 py-1 text-xs text-zinc-400 dark:border-zinc-700 dark:text-zinc-500"
+        className={`${HEADER_CONTROL} border-dashed border-zinc-300 text-zinc-400 dark:border-zinc-700 dark:text-zinc-500`}
         title="This server runs without a sandbox, so there is no root to move"
       >
         No sandbox
@@ -91,7 +92,7 @@ export function WorkspaceRootControl(props: WorkspaceRootControlProps) {
   const label = basename(sandbox.root);
 
   return (
-    <div className="relative">
+    <div className="relative min-w-[4rem] max-w-[14rem]">
       <button
         type="button"
         disabled={locked}
@@ -102,7 +103,7 @@ export function WorkspaceRootControl(props: WorkspaceRootControlProps) {
           setPicking(true);
           props.onBrowse(sandbox.root);
         }}
-        className={`flex max-w-[14rem] items-center gap-1.5 rounded-md border px-2 py-1 text-xs ${
+        className={`${HEADER_CONTROL_SHRINKS} max-w-full gap-1.5 ${
           locked
             ? "cursor-not-allowed border-zinc-200 text-zinc-400 dark:border-zinc-800 dark:text-zinc-500"
             : "border-zinc-300 text-zinc-600 hover:border-zinc-400 hover:text-zinc-800 dark:border-zinc-700 dark:text-zinc-300 dark:hover:border-zinc-500 dark:hover:text-zinc-100"

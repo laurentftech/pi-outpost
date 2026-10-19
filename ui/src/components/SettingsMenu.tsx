@@ -11,6 +11,7 @@ import type { AgentResourceInventory, GitUnavailable } from "@pi-outpost/shared"
 import type { CredentialStatus } from "@pi-outpost/shared";
 import { LoginFlow } from "./LoginFlow";
 import type { LoginFlowState } from "../useAgent";
+import { HEADER_CONTROL } from "./headerControl";
 
 interface SandboxConfig {
   root: string;
@@ -321,7 +322,7 @@ export function SettingsMenu({
         onClick={() => setOpen(!open)}
         title="Settings"
         aria-label="Settings"
-        className="rounded-md border border-zinc-300 px-2 py-1 text-xs text-zinc-500 hover:border-zinc-400 hover:text-zinc-700 dark:border-zinc-800 dark:text-zinc-400 dark:hover:border-zinc-600 dark:hover:text-zinc-200"
+        className={`${HEADER_CONTROL} border-zinc-300 text-zinc-500 hover:border-zinc-400 hover:text-zinc-700 dark:border-zinc-800 dark:text-zinc-400 dark:hover:border-zinc-600 dark:hover:text-zinc-200`}
       >
         ⚙
       </button>

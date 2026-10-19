@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { PiPackageInfo } from "@pi-outpost/shared";
 import type { AgentState } from "../useAgent";
 import { MIN_SESSION_QUERY_LENGTH, type AgentResourceInventory, type GitUnavailable, type SessionSummary, type TreeNode, type WorkspaceInfo } from "@pi-outpost/shared";
@@ -17,6 +17,7 @@ import {
 import { GitMenu } from "./GitMenu";
 import { SettingsMenu } from "./SettingsMenu";
 import { TreeMenu } from "./TreeMenu";
+import { HEADER_CONTROL } from "./headerControl";
 
 interface HeaderProps {
   credentials?: AgentState["credentials"];
@@ -318,7 +319,7 @@ function SessionMenu({
           onClearSessionSearch();
           onListSessions();
         }}
-        className="rounded-md border border-zinc-300 px-2 py-1 text-xs text-zinc-500 hover:border-zinc-400 hover:text-zinc-700 dark:border-zinc-800 dark:text-zinc-400 dark:hover:border-zinc-600 dark:hover:text-zinc-200"
+        className={`${HEADER_CONTROL} border-zinc-300 text-zinc-500 hover:border-zinc-400 hover:text-zinc-700 dark:border-zinc-800 dark:text-zinc-400 dark:hover:border-zinc-600 dark:hover:text-zinc-200`}
       >
         sessions
       </button>
@@ -414,7 +415,7 @@ function ConversationFilterMenu({
         aria-haspopup="menu"
         aria-expanded={open}
         title="Choose what the conversation shows"
-        className={`rounded-md border px-2 py-1 text-xs ${
+        className={`${HEADER_CONTROL} ${
           hidden > 0
             ? "border-zinc-400 bg-zinc-100 text-zinc-700 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-200"
             : "border-zinc-300 text-zinc-500 hover:border-zinc-400 hover:text-zinc-700 dark:border-zinc-800 dark:text-zinc-400 dark:hover:border-zinc-600 dark:hover:text-zinc-200"
@@ -446,6 +447,120 @@ function ConversationFilterMenu({
   );
 }
 
+/**
+ * The extensions' statuses: in the bar while they fit, behind one button when they do not.
+ *
+ * They are the one part of the bar nobody chose — any extension may set any number, of
+ * any length — so they are what crowded it until the other controls wrapped. They stay
+ * inline while none of them is cut and the bar does not overflow; otherwise they fold into
+ * "N statuses", which lists them in full. Measured on the bar itself rather than the
+ * window, since an embedded widget is narrower than the page it sits in. They unfold when
+ * the bar has grown well past the width they folded at, so a bar on the edge does not
+ * flicker between the two.
+ */
+function ExtensionStatuses({ statuses, bar }: { statuses: Record<string, string>; bar: HTMLElement | null }) {
+  // Statuses come from the same terminal-rendered source as widgets. The header is a
+  // chrome strip, so the escapes are dropped rather than coloured — the text is what
+  // carries the meaning here.
+  const entries = Object.entries(statuses)
+    .map(([key, text]) => [key, stripAnsi(text)] as const)
+    .filter(([, text]) => text.trim() !== "");
+  const signature = entries.map(([key, text]) => `${key}\u0000${text}`).join("\u0001");
+  const [folded, setFolded] = useState(false);
+  const foldedAt = useRef<number | null>(null);
+  const inline = useRef<HTMLDivElement>(null);
+  const [open, setOpen] = useState(false);
+  const menu = useClickOutside(() => setOpen(false));
+
+  // Other statuses may fit where these did not: try them inline again.
+  useLayoutEffect(() => {
+    foldedAt.current = null;
+    setFolded(false);
+    setOpen(false);
+  }, [signature]);
+
+  useLayoutEffect(() => {
+    const header = bar;
+    if (header === null) return;
+    const measure = () => {
+      if (foldedAt.current !== null) {
+        if (header.clientWidth > foldedAt.current + 64) {
+          foldedAt.current = null;
+          setFolded(false);
+          // A list left open must not come back by itself at the next fold.
+          setOpen(false);
+        }
+        return;
+      }
+      const cut = Array.from(inline.current?.querySelectorAll<HTMLElement>("[data-status-text]") ?? []).some((text) => text.scrollWidth > text.clientWidth + 1);
+      if (cut || header.scrollWidth > header.clientWidth + 1) {
+        foldedAt.current = header.clientWidth;
+        setFolded(true);
+      }
+    };
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(header);
+    return () => observer.disconnect();
+  }, [bar, folded, signature]);
+
+  if (entries.length === 0) return null;
+  if (!folded) {
+    return (
+      // They never shrink: a status cut short is what folds them, so each keeps its width.
+      <div ref={inline} className="flex shrink-0 items-center gap-1.5">
+        {entries.map(([key, text]) => (
+          <span
+            key={key}
+            title={text}
+            className={`${HEADER_CONTROL} max-w-[16rem] border-zinc-200 text-zinc-500 dark:border-zinc-800 dark:text-zinc-400`}
+          >
+            <span data-status-text className="truncate">
+              {text}
+            </span>
+          </span>
+        ))}
+      </div>
+    );
+  }
+  const label = `${entries.length} ${entries.length === 1 ? "status" : "statuses"}`;
+  return (
+    <div
+      ref={menu}
+      className="relative shrink-0"
+      onKeyDown={(event) => {
+        if (event.key === "Escape" && open) {
+          event.stopPropagation();
+          setOpen(false);
+        }
+      }}
+    >
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        aria-expanded={open}
+        title={entries.map(([, text]) => text).join("\n")}
+        className={`${HEADER_CONTROL} border-zinc-200 text-zinc-500 hover:border-zinc-400 hover:text-zinc-700 dark:border-zinc-800 dark:text-zinc-400 dark:hover:border-zinc-600 dark:hover:text-zinc-200`}
+      >
+        {label} ▾
+      </button>
+      {open && (
+        <ul
+          aria-label="Extension statuses"
+          className="absolute left-0 top-full z-20 mt-1 w-max max-w-[24rem] rounded-md border border-zinc-200 bg-white py-1 shadow-lg dark:border-zinc-700 dark:bg-zinc-900"
+        >
+          {entries.map(([key, text]) => (
+            <li key={key} className="break-words px-3 py-1.5 text-xs text-zinc-600 dark:text-zinc-300">
+              {text}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 function ThemeToggle({ theme, onToggle }: { theme: "light" | "dark"; onToggle: () => void }) {
   return (
     <button
@@ -453,7 +568,7 @@ function ThemeToggle({ theme, onToggle }: { theme: "light" | "dark"; onToggle: (
       onClick={onToggle}
       title={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
       aria-label={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
-      className="rounded-md border border-zinc-300 px-2 py-1 text-xs text-zinc-500 hover:border-zinc-400 hover:text-zinc-700 dark:border-zinc-800 dark:text-zinc-400 dark:hover:border-zinc-600 dark:hover:text-zinc-200"
+      className={`${HEADER_CONTROL} border-zinc-300 text-zinc-500 hover:border-zinc-400 hover:text-zinc-700 dark:border-zinc-800 dark:text-zinc-400 dark:hover:border-zinc-600 dark:hover:text-zinc-200`}
     >
       {theme === "dark" ? "☀" : "☾"}
     </button>
@@ -462,13 +577,16 @@ function ThemeToggle({ theme, onToggle }: { theme: "light" | "dark"; onToggle: (
 
 export function Header(props: HeaderProps) {
   const { isStreaming, connected } = props;
+  // State rather than a ref: the statuses measure the bar from their own layout effect,
+  // which runs before a parent's ref is attached — a ref would still be empty then.
+  const [bar, setBar] = useState<HTMLElement | null>(null);
 
   return (
     // `relative z-30`: the dropdowns below (sessions, tree, git) are absolutely
     // positioned and spill over the content area. Without a stacking context of its
     // own, the header competes there on DOM order alone — and the open FileViewer,
     // declared after it, wins. The menus would open *behind* the file preview.
-    <header className="relative z-30 flex items-center gap-3 border-b border-zinc-200 px-4 py-2.5 dark:border-zinc-800">
+    <header ref={setBar} className="relative z-30 flex min-w-0 items-center gap-1.5 border-b border-zinc-200 px-4 py-2 dark:border-zinc-800">
       {/* The workspace affordance comes first: it scopes everything else in this
           bar. Which one appears is the deployment's choice; the project selector
           still renders nothing while a single project is open or on a pinned
@@ -502,7 +620,7 @@ export function Header(props: HeaderProps) {
         onClick={props.onToggleSidebar}
         title={props.sidebarOpen ? "Hide files (panel opens on the left)" : "Show files"}
         aria-pressed={props.sidebarOpen}
-        className={`rounded-md border px-2 py-1 text-xs ${
+        className={`${HEADER_CONTROL} ${
           props.sidebarOpen
             ? "border-zinc-400 bg-zinc-100 text-zinc-700 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-200"
             : "border-zinc-300 text-zinc-500 hover:border-zinc-400 hover:text-zinc-700 dark:border-zinc-800 dark:text-zinc-400 dark:hover:border-zinc-600 dark:hover:text-zinc-200"
@@ -515,7 +633,7 @@ export function Header(props: HeaderProps) {
         onClick={props.onToggleOutcome}
         aria-pressed={props.outcomeOpen}
         title="Review structured workspace Outcome"
-        className={`rounded-md border px-2 py-1 text-xs ${
+        className={`${HEADER_CONTROL} ${
           props.outcomeOpen
             ? "border-zinc-400 bg-zinc-100 text-zinc-700 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-200"
             : props.workspace?.activity === "ready-for-review"
@@ -535,23 +653,19 @@ export function Header(props: HeaderProps) {
         />
       )}
 
-      <span className="text-lg font-semibold tracking-tight" style={{ color: "var(--accent, inherit)" }}>
+      {/* The title gives way first: it names the deployment, which the reader knows,
+          while the project and the branch beside it say where the agent works. */}
+      <span
+        title={props.title ?? undefined}
+        className="min-w-[2.25rem] shrink-[4] truncate whitespace-nowrap text-lg font-semibold leading-tight tracking-tight"
+        style={{ color: "var(--accent, inherit)" }}
+      >
         {props.title ?? "π"}
       </span>
 
-      {Object.entries(props.statuses).map(([key, text]) => (
-        <span
-          key={key}
-          className="rounded-md border border-zinc-200 px-2 py-1 text-xs text-zinc-500 dark:border-zinc-800 dark:text-zinc-400"
-        >
-          {/* Statuses come from the same terminal-rendered source as widgets. The
-              header is a chrome strip, so the escapes are dropped rather than
-              coloured — the text is what carries the meaning here. */}
-          {stripAnsi(text)}
-        </span>
-      ))}
+      <ExtensionStatuses statuses={props.statuses} bar={bar} />
 
-      <div className="ml-auto flex items-center gap-2">
+      <div className="ml-auto flex shrink-0 items-center gap-1.5">
         <ConversationFilterMenu filters={props.filters} onFilterChange={props.onFilterChange} />
         {props.onExportConversation && (
           <button
@@ -561,7 +675,7 @@ export function Header(props: HeaderProps) {
             aria-busy={Boolean(props.exportProgress)}
             title="Save the whole conversation as one HTML file"
             aria-label="Export the conversation as HTML"
-            className="rounded-md border border-zinc-300 px-2 py-1 text-xs text-zinc-500 hover:border-zinc-400 hover:text-zinc-700 disabled:cursor-progress disabled:opacity-60 dark:border-zinc-800 dark:text-zinc-400 dark:hover:border-zinc-600 dark:hover:text-zinc-200"
+            className={`${HEADER_CONTROL} border-zinc-300 text-zinc-500 hover:border-zinc-400 hover:text-zinc-700 disabled:cursor-progress disabled:opacity-60 dark:border-zinc-800 dark:text-zinc-400 dark:hover:border-zinc-600 dark:hover:text-zinc-200`}
           >
             {props.exportProgress ?? "↓ html"}
           </button>
@@ -572,7 +686,7 @@ export function Header(props: HeaderProps) {
             onClick={props.onToggleTerminal}
             title={props.terminalOpen ? "Close Terminal (Ctrl+`)" : "Open Terminal (Ctrl+`)"}
             aria-pressed={props.terminalOpen}
-            className={`rounded-md border px-2 py-1 text-xs ${
+            className={`${HEADER_CONTROL} ${
               props.terminalOpen
                 ? "border-zinc-400 bg-zinc-100 text-zinc-700 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-200"
                 : "border-zinc-300 text-zinc-500 hover:border-zinc-400 hover:text-zinc-700 dark:border-zinc-800 dark:text-zinc-400 dark:hover:border-zinc-600 dark:hover:text-zinc-200"
@@ -586,7 +700,7 @@ export function Header(props: HeaderProps) {
           type="button"
           onClick={props.onNewSession}
           title="new session"
-          className="rounded-md border border-emerald-300 px-2 py-1 text-xs text-emerald-700 hover:border-emerald-500 hover:text-emerald-600 dark:border-emerald-900 dark:text-emerald-400 dark:hover:border-emerald-600 dark:hover:text-emerald-300"
+          className={`${HEADER_CONTROL} border-emerald-300 text-emerald-700 hover:border-emerald-500 hover:text-emerald-600 dark:border-emerald-900 dark:text-emerald-400 dark:hover:border-emerald-600 dark:hover:text-emerald-300`}
         >
           + new
         </button>
