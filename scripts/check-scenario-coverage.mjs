@@ -91,7 +91,10 @@ function changesTouchedSince(ref) {
   const names = new Set();
   for (const line of output.split("\n")) {
     const match = line.match(/^openspec\/changes\/([^/]+)\//);
-    if (match && match[1] !== "archive") names.add(match[1]);
+    // Only changes this tree has. Without a merge base — CI fetches the base one commit
+    // deep — the fallback diff also lists what the base gained since the branch started,
+    // and a change merged there in the meantime was reported here as "no such change".
+    if (match && match[1] !== "archive" && fs.existsSync(path.join(CHANGES_DIR, match[1]))) names.add(match[1]);
   }
   return [...names].sort();
 }
