@@ -252,6 +252,22 @@ test("show_planning hands the view the planning and the model a summary", async 
   assert.match(missing.text, /Nothing was shown/);
 });
 
+// Claude Code hands the model a result's structured content in place of its text
+// (scripts/probes/claude-structured-content), so the summary must be in both.
+test("TheSummaryReachesAHostThatReadsStructuredContent", async () => {
+  const { call, folder } = await connect();
+  const created = await call("create_planning", { planning: planning() });
+  const id = created.json?.id as string;
+  const shown = await call("show_planning", { id });
+  assert.match(shown.text, /^Shown to the user: planning "Travaux maison"/);
+  assert.equal((shown.structured as { summary?: string }).summary, shown.text);
+
+  await fs.writeFile(path.join(folder, created.json?.file as string), "{ not json");
+  const invalid = await call("show_planning", { id });
+  assert.match(invalid.text, /edited outside into an invalid planning/);
+  assert.equal((invalid.structured as { summary?: string }).summary, invalid.text);
+});
+
 test("TheViewNeedsNoNetwork", async () => {
   const { client } = await connect();
   const { resources } = await client.listResources();
