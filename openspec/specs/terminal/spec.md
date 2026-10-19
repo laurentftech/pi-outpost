@@ -178,3 +178,45 @@ move the cursor, see the user's windows, or open the clipboard.
 - **GIVEN** the agent's `powershell` confined by MXC's real executor, and a program compiled outside the sandbox into the root
 - **WHEN** the command runs it, and it injects an absolute mouse move, sets the cursor, lists the visible windows and opens the clipboard
 - **THEN** the cursor is where neither call put it, setting it is refused, no window is visible, and the clipboard does not open
+
+### Requirement: OnMacOsSeatbeltMayConfineTheTerminal
+
+On macOS, `terminal.sandbox` MAY name the Seatbelt runner. The terminal SHALL then keep the limits of
+`TheTerminalMayRunConfined`, its size and resizes SHALL reach the shell, Ctrl-C SHALL interrupt the
+running command without ending the shell, and the shell's working directory SHALL be found.
+
+#### Scenario: UnderSeatbeltGitRunsInTheTerminal
+- **GIVEN** a confined terminal under the Seatbelt runner in a git repository that is its writable root
+- **WHEN** the user runs `git status` — in the shell pi-outpost starts by default, zsh included — and reads the agent directory's key file
+- **THEN** git answers without warnings and leaves nothing in the root, and the read is refused
+
+#### Scenario: UnderSeatbeltTheConfinedTerminalBehavesAsATerminal
+- **GIVEN** a confined terminal under the Seatbelt runner, opened at 40 rows by 120 columns
+- **WHEN** the user asks the size, resizes it, interrupts a running `sleep`, and changes directory
+- **THEN** the shell reports each size, the interrupted command ends with status 130 while the shell lives, and the server finds the new working directory
+
+### Requirement: GitSeesTheUsersGlobalIgnore
+
+A confined shell SHALL be able to read, and not write, the files the user's `~/.gitconfig` names in
+`core.excludesFile` and `core.attributesFile`, when they exist; it SHALL NOT be given their folder.
+
+#### Scenario: GitAppliesTheGlobalIgnoreQuietly
+- **GIVEN** a user whose `~/.gitconfig` names a global ignore file in the home folder that ignores `*.log`, and a confined shell in a git repository holding `debug.log`
+- **WHEN** the shell runs `git status`
+- **THEN** git prints no warning about that file, does not list `debug.log`, and the home folder stays unreadable
+
+### Requirement: TheTerminalBadgeIsEarned
+
+The terminal's confined badge SHALL be shown closed only when the canary passed for the terminal's
+runner, with the terminal's policy; when an attempt got through, the badge SHALL be shown open and
+marked as a failure, naming it; while the canary runs, it SHALL say so.
+
+#### Scenario: AnUnverifiedTerminalIsNotCalledConfined
+- **GIVEN** `terminal.sandbox` set, a runner that passed its self-check, and a canary that has not finished
+- **WHEN** the terminal panel opens
+- **THEN** the badge says the confinement is being checked, not that it is confined
+
+#### Scenario: ALeakingTerminalSaysSo
+- **GIVEN** `terminal.sandbox` set and a canary that could write beside the root
+- **WHEN** the terminal panel opens
+- **THEN** the badge is open, marked as a failure, and names the write beside the root
