@@ -19,6 +19,13 @@ import { SettingsMenu } from "./SettingsMenu";
 import { TreeMenu } from "./TreeMenu";
 
 interface HeaderProps {
+  credentials?: AgentState["credentials"];
+  login?: AgentState["login"];
+  onStartLogin?: (provider: string, method: "oauth" | "api_key") => void;
+  onAnswerLogin?: (value: string) => void;
+  onCancelLogin?: () => void;
+  onDismissLogin?: () => void;
+  onLogoutProvider?: (provider: string) => void;
   title?: string;
   sessions: SessionSummary[] | null;
   /** Active session search (name / first message / transcript), null when the menu lists everything. */
@@ -602,6 +609,13 @@ export function Header(props: HeaderProps) {
           onClearSessionSearch={props.onClearSessionSearch}
         />
         <SettingsMenu
+          credentials={props.credentials}
+          login={props.login}
+          onStartLogin={props.onStartLogin}
+          onAnswerLogin={props.onAnswerLogin}
+          onCancelLogin={props.onCancelLogin}
+          onDismissLogin={props.onDismissLogin}
+          onLogoutProvider={props.onLogoutProvider}
           extensionPaths={props.extensionPaths}
           configuredExtensionPaths={props.configuredExtensionPaths}
           userExtensionPaths={props.userExtensionPaths}

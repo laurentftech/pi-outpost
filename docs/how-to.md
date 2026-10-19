@@ -252,8 +252,9 @@ sudo chown pi-outpost:pi-outpost /etc/pi-outpost/config.json
 sudo chmod 600 /etc/pi-outpost/config.json
 ```
 
-Store the model credential as the service identity. Replace `/usr/local/bin/pi-outpost` with
-the path printed by `command -v`:
+Store the model credential as the service identity. Use the provider's account sign-in when
+available, or enter an API key. Replace `/usr/local/bin/pi-outpost` with the path printed by
+`command -v`:
 
 ```bash
 sudo -u pi-outpost env PI_OUTPOST_CONFIG=/etc/pi-outpost/config.json \

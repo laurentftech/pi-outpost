@@ -92,6 +92,12 @@ describe("parseCli", () => {
     assert.equal(result.login.provider, "anthropic");
   });
 
+  test("logout subcommand", () => {
+    const result = parseCli(["logout", "--provider", "anthropic"]);
+    assert.equal(result.command, "logout");
+    assert.equal(result.logout.provider, "anthropic");
+  });
+
   test("login without --provider", () => {
     const result = parseCli(["login"]);
     assert.equal(result.command, "login");

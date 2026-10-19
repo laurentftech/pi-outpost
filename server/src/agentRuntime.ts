@@ -25,17 +25,12 @@ import type {
   ExtensionUIResponse,
   ModelChoice,
   ThinkingLevel,
-  WireImage,
-} from "@pi-outpost/shared";
+  WireImage, LoginEvent, LoginPrompt, ProviderAccount } from "@pi-outpost/shared";
 import type { CreateAgentSessionRuntimeFactory } from "@earendil-works/pi-coding-agent";
 import type { ProviderDeclaration } from "./credentials.ts";
 
-/** Provider identity + whether credentials resolve for it, for the onboarding screen. */
-export interface ProviderStatus {
-  id: string;
-  name: string;
-  configured: boolean;
-}
+/** Provider identity, whether and how credentials resolve for it — never the credential itself. */
+export type ProviderStatus = ProviderAccount;
 
 /** The selected model, as both backends can describe it. */
 export interface RuntimeModel {
@@ -191,8 +186,20 @@ export interface PromptOptions {
  * registry the live session resolves auth through, and Pi RPC exposes no command
  * that would reach the child's own registry.
  */
+/** What a sign-in flow may ask of the person running it: the SDK's own interaction. */
+export interface LoginInteraction {
+  signal: AbortSignal;
+  notify(event: LoginEvent): void;
+  /** Resolves with the answer; rejects when the person cancels or the prompt's own signal aborts. */
+  prompt(prompt: LoginPrompt & { signal?: AbortSignal }): Promise<string>;
+}
+
 export interface CredentialCapability {
   storeApiKey(provider: string, apiKey: string, signal: AbortSignal): Promise<void>;
+  /** Run a provider's sign-in (`oauth`) or API-key flow; the credential lands in the agent directory. */
+  login(provider: string, method: "oauth" | "api_key", interaction: LoginInteraction): Promise<void>;
+  /** Remove the credential this server stored for a provider. */
+  logout(provider: string, signal: AbortSignal): Promise<void>;
   declareProvider(declaration: ProviderDeclaration): Promise<void>;
   /** Re-fetch remote model catalogs. Resolves `aborted` when it hit its deadline. */
   refreshModels(signal: AbortSignal): Promise<{ aborted?: boolean } | undefined>;

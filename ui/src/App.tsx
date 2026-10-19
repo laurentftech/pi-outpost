@@ -159,6 +159,11 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
     fetchGitFileDiff,
     clearGitFileDiff,
     setCredential,
+    startLogin,
+    answerLogin,
+    cancelLogin,
+    dismissLogin,
+    logoutProvider,
     declareProvider,
     updateConfig,
     suggestAgentResourceClonePath,
@@ -844,6 +849,11 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
           title={state.branding.title}
           credentials={state.credentials}
           onSetCredential={setCredential}
+          onStartLogin={startLogin}
+          login={state.login}
+          onAnswerLogin={answerLogin}
+          onCancelLogin={cancelLogin}
+          onDismissLogin={dismissLogin}
           onDeclareProvider={declareProvider}
           errors={state.errors}
         />
@@ -981,6 +991,13 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
             onRestartServer={restartServer}
             restartNeeded={state.restartNeeded}
             title={state.branding.title}
+            credentials={state.credentials}
+            login={state.login}
+            onStartLogin={startLogin}
+            onAnswerLogin={answerLogin}
+            onCancelLogin={cancelLogin}
+            onDismissLogin={dismissLogin}
+            onLogoutProvider={logoutProvider}
             sessions={state.sessions}
             sessionSearch={state.sessionSearch}
             sessionId={state.sessionId}

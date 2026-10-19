@@ -23,6 +23,7 @@ import type {
   CredentialCapability,
   PromptOptions,
   ProviderStatus,
+  LoginInteraction,
   RenderCapability,
   RuntimeEntry,
   RuntimeEvent,
@@ -290,10 +291,17 @@ export class EmbeddedRuntime implements AgentRuntime {
     const providers = new Map<string, ProviderStatus>();
     for (const provider of modelRuntime.getProviders()) {
       if (providers.has(provider.id)) continue;
+      const status = modelRuntime.getProviderAuthStatus(provider.id);
+      const methods = [...(provider.auth.oauth ? (["oauth"] as const) : []), ...(provider.auth.apiKey?.login ? (["api_key"] as const) : [])];
       providers.set(provider.id, {
         id: provider.id,
         name: provider.name ?? provider.id,
-        configured: modelRuntime.getProviderAuthStatus(provider.id).configured,
+        configured: status.configured,
+        ...(methods.length ? { methods } : {}),
+        ...(status.configured ? { auth: modelRuntime.isUsingOAuth(provider.id) ? ("oauth" as const) : ("api_key" as const) } : {}),
+        ...(status.source ? { source: status.source } : {}),
+        ...(status.label ? { label: status.label } : {}),
+        ...(provider.auth.oauth?.isSubscription ? { subscription: true } : {}),
       });
     }
     return [...providers.values()];
@@ -698,6 +706,16 @@ export class EmbeddedRuntime implements AgentRuntime {
         this.runtime.services.modelRuntime.unregisterProvider(provider.provider);
         throw error instanceof CredentialError ? error : new Error(String(error));
       }
+    },
+    login: async (provider: string, method: "oauth" | "api_key", interaction: LoginInteraction) => {
+      await this.runtime.services.modelRuntime.login(provider, method, interaction, {
+        // The installation's stable id, as pi's own /login gives it: some providers (OpenAI)
+        // identify the agent host with it.
+        getDeviceId: () => this.runtime.services.settingsManager.getOrCreateDeviceId(),
+      });
+    },
+    logout: async (provider: string, signal: AbortSignal) => {
+      await this.runtime.services.modelRuntime.logout(provider, { signal });
     },
     refreshModels: async (signal: AbortSignal) => {
       return await this.runtime.services.modelRuntime.refresh({ signal });

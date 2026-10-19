@@ -893,6 +893,33 @@ describe("streaming", () => {
 // API methods
 // ---------------------------------------------------------------------------
 describe("API methods", () => {
+  it("starts an account sign-in when randomUUID is unavailable on an HTTP LAN origin", async () => {
+    vi.stubGlobal("crypto", {
+      getRandomValues: (bytes: Uint8Array) => {
+        bytes.fill(0);
+        return bytes;
+      },
+    });
+    const { result } = renderHook(() => useAgent());
+    act(() => mockWs!.open());
+
+    act(() => result.current.startLogin("openai-codex", "oauth"));
+
+    expect(result.current.state.login).toMatchObject({
+      flowId: "00000000-0000-4000-8000-000000000000",
+      provider: "openai-codex",
+      method: "oauth",
+      events: [],
+      done: null,
+    });
+    expect(JSON.parse(mockWs!.sent.at(-1)!)).toMatchObject({
+      type: "start_login",
+      flowId: "00000000-0000-4000-8000-000000000000",
+      provider: "openai-codex",
+      method: "oauth",
+    });
+  });
+
   it("submitToken stores the token and triggers reconnection", async () => {
     const { result } = renderHook(() => useAgent());
 

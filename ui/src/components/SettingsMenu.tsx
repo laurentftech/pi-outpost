@@ -8,6 +8,9 @@ import { ServerPathPicker } from "./ServerPathPicker";
 import { AgentResourceManager } from "./AgentResourceManager";
 import type { AgentResourceOperationState, ServerBrowseState, SettingsApplyState } from "../useAgent";
 import type { AgentResourceInventory, GitUnavailable } from "@pi-outpost/shared";
+import type { CredentialStatus } from "@pi-outpost/shared";
+import { LoginFlow } from "./LoginFlow";
+import type { LoginFlowState } from "../useAgent";
 
 interface SandboxConfig {
   root: string;
@@ -32,10 +35,28 @@ function sorted(values: string[]): string[] {
   return [...values].sort((a, b) => a.localeCompare(b));
 }
 
+function credentialSourceHint(source: string | undefined, label: string | undefined): string {
+  if (source === "models_json_key") return "This key is managed in models.json. Remove it from that provider configuration.";
+  if (source === "environment") return `This key comes from ${label ?? "the server environment"}. Remove it from there.`;
+  return `This key is managed by ${label ?? source ?? "the provider runtime"}. Remove it from that source.`;
+}
+
+function credentialSourceLabel(source: string | undefined, label: string | undefined): string | undefined {
+  if (source === "models_json_key") return "models.json";
+  return label ?? source;
+}
+
 /** Which path field the directory picker is currently open for. */
 type PickerField = "root" | "writableRoot";
 
 interface SettingsMenuProps {
+  credentials?: CredentialStatus | null;
+  login?: LoginFlowState | null;
+  onStartLogin?: (provider: string, method: "oauth" | "api_key") => void;
+  onAnswerLogin?: (value: string) => void;
+  onCancelLogin?: () => void;
+  onDismissLogin?: () => void;
+  onLogoutProvider?: (provider: string) => void;
   /**
    * Extension files the runtime reported loading, or null when it cannot report an
    * inventory. Null is not the empty list — see the extensions section below.
@@ -119,6 +140,7 @@ interface SettingsMenuProps {
 }
 
 export function SettingsMenu({
+  credentials, login, onStartLogin, onAnswerLogin, onCancelLogin, onDismissLogin, onLogoutProvider,
   extensionPaths,
   configuredExtensionPaths,
   userExtensionPaths,
@@ -156,6 +178,7 @@ export function SettingsMenu({
   onUpdateAgentResourceRepository = () => {},
 }: SettingsMenuProps) {
   const [open, setOpen] = useState(false);
+  const providerPanelRefs = useRef(new Map<string, HTMLDetailsElement>());
   const [resourcesOpen, setResourcesOpen] = useState(false);
   const settingsButtonRef = useRef<HTMLButtonElement>(null);
   const [sandboxRoot, setSandboxRoot] = useState("");
@@ -163,6 +186,17 @@ export function SettingsMenu({
   const [sandboxAllowWrite, setSandboxAllowWrite] = useState(false);
   const [sandboxAllowBash, setSandboxAllowBash] = useState(false);
   const [picking, setPicking] = useState<PickerField | null>(null);
+
+  const handleProviderLogin = (provider: string, method: "oauth" | "api_key") => {
+    if (login && !login.done) {
+      onCancelLogin?.();
+      onDismissLogin?.();
+      const activeProviderPanel = providerPanelRefs.current.get(login.provider);
+      if (activeProviderPanel) activeProviderPanel.open = false;
+      return;
+    }
+    onStartLogin?.(provider, method);
+  };
 
   useEffect(() => {
     // Yield to whichever picker opened after this one: two open at once would
@@ -325,6 +359,45 @@ export function SettingsMenu({
                 )}
               </section>
             )}
+            {credentials && <details className="mb-4" data-testid="accounts-panel">
+              <summary className="cursor-pointer text-xs font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Accounts · <span className="text-emerald-700 dark:text-emerald-400">{credentials.providers.filter((provider) => provider.configured).length} providers configured</span></summary>
+              <div className="mt-2">
+              <ul className="space-y-2">
+                {credentials.providers.map((provider) => (
+                  <li key={provider.id} className="rounded border border-zinc-200 p-2 dark:border-zinc-700">
+                    <details
+                      ref={(element) => {
+                        if (element) providerPanelRefs.current.set(provider.id, element);
+                        else providerPanelRefs.current.delete(provider.id);
+                      }}
+                      data-testid={`account-${provider.id}`}
+                    >
+                      <summary className="cursor-pointer">
+                        <span className="text-xs font-medium text-zinc-800 dark:text-zinc-200">{provider.name}</span>
+                        <span className={`ml-2 text-[11px] ${provider.configured ? "text-emerald-700 dark:text-emerald-400" : "text-zinc-500 dark:text-zinc-400"}`}>
+                          {provider.configured ? `${provider.auth ?? "Authenticated"}${provider.source ? ` · ${credentialSourceLabel(provider.source, provider.label)}` : ""}` : "Not signed in"}
+                        </span>
+                      </summary>
+                      <div className="mt-2">
+                        {provider.configured && provider.auth === "api_key" && provider.source !== "stored" && (
+                          <p className="mb-2 text-[11px] text-zinc-500 dark:text-zinc-400">{credentialSourceHint(provider.source, provider.label)}</p>
+                        )}
+                        {!credentials.locked && (
+                          <div className="flex flex-wrap gap-1">
+                            {provider.methods?.includes("oauth") && <button type="button" className="rounded border px-2 py-1 text-[11px]" onClick={() => handleProviderLogin(provider.id, "oauth")}>Sign in</button>}
+                            {provider.methods?.includes("api_key") && <button type="button" className="rounded border px-2 py-1 text-[11px]" onClick={() => handleProviderLogin(provider.id, "api_key")}>API key</button>}
+                            {provider.configured && provider.source === "stored" && <button type="button" className="rounded border px-2 py-1 text-[11px]" onClick={() => onLogoutProvider?.(provider.id)}>{provider.auth === "api_key" ? "Remove API key" : "Sign out"}</button>}
+                          </div>
+                        )}
+                        {login?.provider === provider.id && <div className="mt-2"><LoginFlow login={login} providerName={provider.name} onAnswer={(value) => onAnswerLogin?.(value)} onCancel={() => onCancelLogin?.()} onDismiss={() => onDismissLogin?.()} /></div>}
+                      </div>
+                    </details>
+                  </li>
+                ))}
+              </ul>
+              {credentials.locked && <p className="mt-2 text-xs text-zinc-500 dark:text-zinc-400">Credentials are locked by this server.</p>}
+              </div>
+            </details>}
             <section className="mb-4">
               <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Agent resources</h3>
               {tools.length === 0 ? <p className="text-xs text-zinc-400 dark:text-zinc-500">Tool inventory unavailable for this runtime</p> : <details data-testid="tools-loaded">
