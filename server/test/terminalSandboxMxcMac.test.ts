@@ -59,7 +59,10 @@ describe("a confined terminal under MXC's real macOS executor", { skip }, () => 
     manager.closeAllForSocket(socket);
     if (savedKey === undefined) delete process.env.OPENAI_API_KEY;
     else process.env.OPENAI_API_KEY = savedKey;
-    if (base) await rm(base, { recursive: true, force: true });
+    // The shell gets up to TERMINAL_KILL_GRACE_MS to act on SIGHUP, and an interactive
+    // one writes its history into HOME — the root — as it goes: a delete that does not
+    // wait for it meets a directory that is no longer empty (ENOTEMPTY).
+    if (base) await rm(base, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
   });
 
   /** Run one line in the terminal's bash and return what it printed between two markers. */
@@ -130,7 +133,10 @@ describe("a confined terminal under MXC's real macOS executor, in zsh as the def
   });
   after(async () => {
     manager.closeAllForSocket(socket);
-    if (base) await rm(base, { recursive: true, force: true });
+    // The shell gets up to TERMINAL_KILL_GRACE_MS to act on SIGHUP, and an interactive
+    // one writes its history into HOME — the root — as it goes: a delete that does not
+    // wait for it meets a directory that is no longer empty (ENOTEMPTY).
+    if (base) await rm(base, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
   });
 
   // openlore: scenario=OnMacOsWithMxcGitRunsInTheTerminal spec=terminal
