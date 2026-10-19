@@ -3,6 +3,7 @@ import type { GitRepoStatus } from "@pi-outpost/shared";
 import type { GitLogState, GitStatusState } from "../useAgent";
 import { useClickOutside } from "../util/clickOutside";
 import { repoForPath } from "../util/gitRepos";
+import { HEADER_CONTROL_SHRINKS } from "./headerControl";
 
 interface GitMenuProps {
   status: GitStatusState | null;
@@ -74,7 +75,7 @@ export function GitMenu({ status, selected, log, onFetchLog, onShowCommit }: Git
   }, [open, current?.repo, onFetchLog]);
 
   return (
-    <div className="relative" ref={ref}>
+    <div className="relative min-w-[4rem] max-w-[14rem] shrink-[2]" ref={ref}>
       <button
         type="button"
         disabled={current === null}
@@ -84,9 +85,11 @@ export function GitMenu({ status, selected, log, onFetchLog, onShowCommit }: Git
           if (!open) onFetchLog(current.repo);
         }}
         title={current === null ? "no repository selected" : `git history — ${current.repo === "" ? "this project" : current.repo}`}
-        className="rounded-md border border-zinc-300 px-2 py-1 font-mono text-xs text-zinc-500 hover:border-zinc-400 hover:text-zinc-700 disabled:cursor-default disabled:hover:border-zinc-300 disabled:hover:text-zinc-500 dark:border-zinc-800 dark:text-zinc-400 dark:hover:border-zinc-600 dark:hover:text-zinc-200 dark:disabled:hover:border-zinc-800 dark:disabled:hover:text-zinc-400"
+        className={`${HEADER_CONTROL_SHRINKS} max-w-full border-zinc-300 font-mono text-zinc-500 hover:border-zinc-400 hover:text-zinc-700 disabled:cursor-default disabled:hover:border-zinc-300 disabled:hover:text-zinc-500 dark:border-zinc-800 dark:text-zinc-400 dark:hover:border-zinc-600 dark:hover:text-zinc-200 dark:disabled:hover:border-zinc-800 dark:disabled:hover:text-zinc-400`}
       >
-        {prefix}⎇ {label}
+        <span className="truncate">
+          {prefix}⎇ {label}
+        </span>
         {counts}
       </button>
       {open && current !== null && (

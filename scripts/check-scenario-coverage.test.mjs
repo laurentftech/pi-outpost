@@ -49,6 +49,35 @@ after(() => {
 });
 
 describe("check-scenario-coverage", () => {
+  test("ignores a change only the base has, when the base shares no history with the branch", () => {
+    // CI fetches main one commit deep: no merge base, so the script falls back to a plain
+    // diff, which also lists what main gained since the branch started. A change merged
+    // there meanwhile was reported as "no such change" and failed every open PR.
+    const root = fixture({
+      specs: { alpha: oneScenario },
+      matrix: "| Scenario | Coverage | Evidence |\n|---|---|---|\n| It does the thing | covered | `scripts/check-scenario-coverage.mjs` — the checker itself, cited because it exists |\n",
+    });
+    fs.mkdirSync(path.join(root, "scripts"), { recursive: true });
+    fs.writeFileSync(path.join(root, "scripts", "check-scenario-coverage.mjs"), "// fixture\n");
+    const git = (...args) => execFileSync("git", ["-c", "user.email=t@t", "-c", "user.name=t", "-c", "commit.gpgsign=false", ...args], { cwd: root, stdio: "pipe" });
+    git("init", "-q", "-b", "branch");
+    git("add", "-A");
+    git("commit", "-qm", "the branch");
+    git("checkout", "-q", "--orphan", "base");
+    git("rm", "-rq", "--cached", ".");
+    fs.mkdirSync(path.join(root, "openspec", "changes", "merged-there"), { recursive: true });
+    // Content of its own: identical files would read as a rename, hiding the deletion.
+    fs.writeFileSync(path.join(root, "openspec", "changes", "merged-there", "tasks.md"), "- [x] merged on the base meanwhile\n");
+    git("add", "openspec/changes/merged-there");
+    git("commit", "-qm", "the base, unrelated");
+    git("checkout", "-q", "-f", "branch");
+    fs.rmSync(path.join(root, "openspec", "changes", "merged-there"), { recursive: true, force: true });
+    const { code, output } = run(root, ["--base", "base"]);
+    assert.doesNotMatch(output, /merged-there/);
+    assert.match(output, /a-change: 1 scenario\(s\), all covered/);
+    assert.equal(code, 0, output);
+  });
+
   test("accepts a change whose every scenario is covered with a real citation", () => {
     const root = fixture({
       specs: { alpha: oneScenario },

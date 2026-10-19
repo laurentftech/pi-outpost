@@ -108,6 +108,106 @@ describe("Header", () => {
       expect(screen.getByText("2 jobs")).toBeInTheDocument();
     });
 
+    // openlore: scenario=EveryControlIsOneHeight spec=components
+    it("EveryControlIsOneHeight: every control in the bar is one height and never wraps", () => {
+      const { container } = setup({
+        title: "π dev",
+        statuses: { omni: "OmniRoute ✓", other: "2 jobs" },
+        gitAvailable: true,
+        gitStatus: { repos: [{ repo: "", branch: "feat/a-long-branch", ahead: 0, behind: 0 }], files: {} },
+        workspaceControl: "projects",
+        workspace: { root: "/srv/alpha", name: "a-project-with-a-long-name", activity: "idle", needsAttention: false },
+        workspaces: [{ root: "/srv/alpha", name: "a-project-with-a-long-name", activity: "idle", needsAttention: false }],
+        onExportConversation: vi.fn(),
+        onToggleTerminal: vi.fn(),
+      } as Partial<Props>);
+      const header = container.querySelector("header")!;
+      // Everything the bar itself shows: its buttons, and the statuses' boxes — not the
+      // items of a menu, which open below it.
+      const controls = [...header.querySelectorAll<HTMLElement>("button, [data-status-text]")]
+        .map((element) => (element.matches("[data-status-text]") ? element.parentElement! : element))
+        .filter((element) => element.closest('[role="menu"], ul, [role="dialog"]') === null);
+      expect(controls.length).toBeGreaterThanOrEqual(12);
+      // Named by their labels, so a failure says which control broke the row.
+      const offRow = controls.filter((control) => !control.className.includes("h-7") || !control.className.includes("whitespace-nowrap")).map((control) => control.textContent);
+      expect(offRow).toEqual([]);
+    });
+
+    // openlore: scenario=ALongLabelIsCutNotWrapped spec=components
+    it("ALongLabelIsCutNotWrapped: a project or branch too long is cut, with its full name on hover", () => {
+      const { container } = setup({
+        gitAvailable: true,
+        gitStatus: { repos: [{ repo: "", branch: "feat/a-long-branch", ahead: 0, behind: 0 }], files: {} },
+        workspaceControl: "projects",
+        workspace: { root: "/srv/alpha", name: "a-project-with-a-long-name", activity: "idle", needsAttention: false },
+        workspaces: [{ root: "/srv/alpha", name: "a-project-with-a-long-name", activity: "idle", needsAttention: false }],
+      } as Partial<Props>);
+      const project = screen.getByRole("button", { name: /a-project-with-a-long-name/ });
+      expect(project.title).toContain("a-project-with-a-long-name");
+      expect(within(project).getByText("a-project-with-a-long-name").className).toContain("truncate");
+      const branch = [...container.querySelectorAll("header button")].find((button) => button.textContent?.includes("feat/a-long-branch"))!;
+      expect(branch.querySelector(".truncate")?.textContent).toContain("feat/a-long-branch");
+    });
+
+    describe("statuses that do not fit", () => {
+      // jsdom lays nothing out: the bar's widths are given, and the observer that
+      // watches it is driven by hand.
+      let barWidth = 800;
+      let contentWidth = 1200;
+      let resized: (() => void) | undefined;
+      beforeEach(() => {
+        barWidth = 800;
+        contentWidth = 1200;
+        vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockImplementation(function (this: HTMLElement) {
+          return this.tagName === "HEADER" ? barWidth : 0;
+        });
+        vi.spyOn(HTMLElement.prototype, "scrollWidth", "get").mockImplementation(function (this: HTMLElement) {
+          return this.tagName === "HEADER" ? contentWidth : 0;
+        });
+        vi.stubGlobal(
+          "ResizeObserver",
+          class {
+            constructor(callback: () => void) {
+              resized = callback;
+            }
+            observe() {}
+            disconnect() {}
+          },
+        );
+      });
+      afterEach(() => {
+        vi.restoreAllMocks();
+        vi.unstubAllGlobals();
+      });
+
+      // openlore: scenario=StatusesFoldWhenTheyDoNotFit spec=components
+      it("StatusesFoldWhenTheyDoNotFit: fold into one control that lists them in full, closed by Escape", () => {
+        setup({ statuses: { omni: "OmniRoute: falling back to the secondary provider", other: "2 jobs" } });
+        expect(screen.queryByText("2 jobs")).toBeNull();
+        fireEvent.click(screen.getByRole("button", { name: /2 statuses/ }));
+        const list = screen.getByRole("list", { name: "Extension statuses" });
+        expect(within(list).getByText("OmniRoute: falling back to the secondary provider")).toBeInTheDocument();
+        expect(within(list).getByText("2 jobs")).toBeInTheDocument();
+        fireEvent.keyDown(list, { key: "Escape" });
+        expect(screen.queryByRole("list", { name: "Extension statuses" })).toBeNull();
+      });
+
+      // openlore: scenario=StatusesUnfoldWhenRoomReturns spec=components
+      it("StatusesUnfoldWhenRoomReturns: come back inline once the bar has grown well past where they folded, with the list closed", () => {
+        setup({ statuses: { omni: "OmniRoute ✓", other: "2 jobs" } });
+        fireEvent.click(screen.getByRole("button", { name: /2 statuses/ }));
+        // A few pixels more is not enough: a bar on the edge must not flicker.
+        barWidth = 820;
+        act(() => resized?.());
+        expect(screen.getByRole("button", { name: /2 statuses/ })).toBeInTheDocument();
+        barWidth = 1400;
+        contentWidth = 1400;
+        act(() => resized?.());
+        expect(screen.getByText("OmniRoute ✓")).toBeInTheDocument();
+        expect(screen.queryByRole("list", { name: "Extension statuses" })).toBeNull();
+      });
+    });
+
     it("offers the theme toggle only when branding allows it", () => {
       const { rerenderWith, onToggleTheme } = setup({ theme: "light" });
       fireEvent.click(screen.getByRole("button", { name: "Switch to dark theme" }));
