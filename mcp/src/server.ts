@@ -7,7 +7,8 @@
  * from `@pi-outpost/apps-core`. What differs is where plannings live — one person's
  * folder — and how a planning is shown: `show_planning` declares an MCP Apps view, a
  * `ui://` resource the host draws in the conversation, and hands it the planning as
- * structured content while the model reads a text summary.
+ * structured content while the model reads a text summary — repeated in the structured
+ * content, which is what Claude Code gives its model instead.
  *
  * Exporting: a sandboxed view cannot download or always copy. "Download SVG" asks the
  * host (`ui/download-file`) when it offers that, and otherwise `save_figure`, a tool
@@ -63,6 +64,11 @@ export interface ShownPlanning {
   data: StructuredTimelineData;
   /** Set when `data` compares this revision with an earlier one. */
   comparedWith?: number;
+  /**
+   * The text the model reads, repeated here: Claude Code gives the model the structured
+   * content in place of the text, so a summary only in the text never reaches it there.
+   */
+  summary: string;
 }
 
 /** What the view receives from list_plannings: the folder and what it holds. */
@@ -295,7 +301,6 @@ export function createServer(options: ServerOptions): McpServer {
           const previous = await store.get(planningId, compareTo);
           data = compareTimelines(previous.document.data, current.document.data, `Revision ${compareTo}`).data;
         }
-        const shown: ShownPlanning = { id: planningId, title: current.title, revision: current.revision, data, ...(compareTo !== undefined ? { comparedWith: compareTo } : {}) };
         const tasks = current.document.data.rows.filter((row) => row.type === "task").length;
         const summary = [
           `Shown to the user: planning "${current.title}" (${planningId}), revision ${current.revision}, ${tasks} task${tasks === 1 ? "" : "s"}, from ${current.document.data.time.start} to ${current.document.data.time.end}`,
@@ -303,6 +308,7 @@ export function createServer(options: ServerOptions): McpServer {
           ". You do not see the drawing: use get_planning to read the planning.",
           current.invalidFile ? ` The file "${current.file}" was edited outside into an invalid planning, so the last valid revision is shown: read it with get_planning to see why.` : "",
         ].join("");
+        const shown: ShownPlanning = { id: planningId, title: current.title, revision: current.revision, data, ...(compareTo !== undefined ? { comparedWith: compareTo } : {}), summary };
         return { content: [{ type: "text", text: summary }], structuredContent: shown as unknown as Record<string, unknown> };
       } catch (error) {
         return refusal(error);
