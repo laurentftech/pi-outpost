@@ -1,5 +1,5 @@
-import { describe, it, expect, vi } from "vitest";
-import { render, screen, fireEvent, within } from "@testing-library/react";
+import { afterEach, beforeEach, describe, it, expect, vi } from "vitest";
+import { act, render, screen, fireEvent, within } from "@testing-library/react";
 import type { ChatItem } from "@pi-outpost/shared";
 import { STRUCTURED_EXCHANGE_SCHEMA_V1 as S } from "@pi-outpost/shared/structured-exchange";
 import { selectPresentation, PRESENTATIONS } from "./registry";
@@ -2943,5 +2943,85 @@ describe("a proposal that moves a member", () => {
     const text = screen.getByTestId("structured-text-equivalent").textContent ?? "";
     expect(text).toContain("(changed)");
     expect(text).toMatch(/container.*electrical.*control/);
+  });
+});
+
+/**
+ * Interactions that had no test of their own. Two of them clear a confirmation on a
+ * timer, which a test that never waits covered only when the run outlived it — the
+ * reason the suite's function coverage moved between machines.
+ */
+describe("the reader's own adjustments", () => {
+  const pair = {
+    schema: S,
+    kind: "graph",
+    data: {
+      nodes: [
+        { id: "a", label: "A" },
+        { id: "b", label: "B" },
+      ],
+      edges: [{ from: "a", to: "b", kind: "feeds" }],
+    },
+  };
+  const boxes = () => [...document.querySelectorAll('[data-draggable="node"]')].map((node) => node.outerHTML);
+
+  it("puts the boxes back where the layout had them on reset layout", () => {
+    renderBody(withStructured(pair));
+    const laidOut = boxes();
+    dragBox(0, { x: 40, y: 60 });
+    expect(boxes()).not.toEqual(laidOut);
+    fireEvent.click(screen.getByText("reset layout"));
+    expect(boxes()).toEqual(laidOut);
+    expect(screen.queryByText("reset layout")).toBeNull();
+  });
+
+  it("widens a column dragged by its divider, and stops following once released", () => {
+    const table = { schema: S, kind: "table", data: { columns: ["ID", "Requirement"], rows: [["REQ-1", "text"]] } };
+    const { container } = renderBody(withStructured(table));
+    const widthOf = (index: number) => parseFloat(container.querySelectorAll("col")[index]!.style.width || "0");
+    const divider = screen.getByLabelText("Resize column ID");
+
+    fireEvent.pointerDown(divider, { clientX: 100, button: 0, pointerId: 1 });
+    const start = widthOf(0);
+    fireEvent.pointerMove(window, { clientX: 160, pointerId: 1 });
+    expect(widthOf(0)).toBe(start + 60);
+    fireEvent.pointerUp(window, { clientX: 160, pointerId: 1 });
+    fireEvent.pointerMove(window, { clientX: 400, pointerId: 1 });
+    expect(widthOf(0)).toBe(start + 60);
+  });
+
+  it("shows a relationship's tooltip as the pointer enters it", () => {
+    renderBody(withStructured(pair));
+    fireEvent.pointerOver(document.querySelector("[data-relationship-role]")!, { clientX: 10, clientY: 10 });
+    expect(screen.getByTestId("diagram-tooltip").textContent).toContain("feeds");
+  });
+
+  describe("the diagram's export confirmation", () => {
+    beforeEach(() => {
+      vi.useFakeTimers();
+      (URL as unknown as { createObjectURL: unknown }).createObjectURL = () => "blob:x";
+      (URL as unknown as { revokeObjectURL: unknown }).revokeObjectURL = () => {};
+    });
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it("says the SVG was downloaded, then clears after a moment", () => {
+      renderBody(withStructured(pair));
+      fireEvent.click(screen.getByText(/download SVG/));
+      expect(screen.getByText("SVG downloaded")).toBeInTheDocument();
+      act(() => vi.advanceTimersByTime(2500));
+      expect(screen.queryByText("SVG downloaded")).toBeNull();
+    });
+
+    it("says the markup was copied, then clears after a moment", async () => {
+      Object.defineProperty(navigator, "clipboard", { value: { writeText: vi.fn().mockResolvedValue(undefined) }, configurable: true });
+      renderBody(withStructured(pair));
+      fireEvent.click(screen.getByText(/copy markup/));
+      await act(async () => {});
+      expect(screen.getByText("SVG markup copied")).toBeInTheDocument();
+      act(() => vi.advanceTimersByTime(2500));
+      expect(screen.queryByText("SVG markup copied")).toBeNull();
+    });
   });
 });

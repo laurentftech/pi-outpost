@@ -179,6 +179,15 @@ async function runGit(root: string, args: string[]): Promise<string> {
   }
 }
 
+/**
+ * The directory git keeps a repository's state in: `.git` itself, or for a linked work
+ * tree or a submodule (where `.git` is a file pointing elsewhere) the directory it names.
+ * It is where a commit, checkout or reset writes, whoever runs it.
+ */
+export async function gitDirOf(repo: GitRepo): Promise<string> {
+  return path.resolve((await runGit(repo.cwd, ["rev-parse", "--absolute-git-dir"])).trim());
+}
+
 /** Startup probe: toplevel of the work tree containing root, or null (no repo / no git). */
 export async function probeGit(root: string): Promise<{ toplevel: string } | null> {
   try {

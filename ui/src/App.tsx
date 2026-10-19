@@ -1112,6 +1112,7 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
               gitState={state.gitStatus?.files[state.openFile.path]}
               initialShowGitDiff={diffOnOpen}
               gitDiff={state.gitDiff}
+              gitBaseline={state.gitBaseline?.path === state.openFile.path ? (state.gitBaseline.text ?? null) : null}
               onFetchGitDiff={fetchGitDiff}
               onClearGitDiff={clearGitDiff}
               inRepository={repoForPath(state.gitStatus?.repos ?? [], state.openFile.path) !== null}

@@ -12,6 +12,9 @@
  * The viewer's own find bar searches the draft, so CodeMirror's search panel is left
  * out: one Ctrl+F, wherever the reader is. Mod-S saves through `onSave` and stays here.
  *
+ * The git gutter (`gitGutter.ts`) marks what changed since HEAD when `baseline` gives
+ * HEAD's text, in both modes: the draft is what it compares, as it is typed.
+ *
  * Line endings: a file written with CRLF is edited and saved with CRLF. CodeMirror counts
  * a line break as one position whatever its length, so `select` converts the draft's
  * string offsets (what the find bar computes) into document positions.
@@ -38,6 +41,7 @@ import {
 } from "@codemirror/view";
 import { classHighlighter } from "@lezer/highlight";
 import { languageFor } from "./codeEditorLanguages";
+import { gitGutter, setGitBaseline } from "./gitGutter";
 
 export interface CodeEditorHandle {
   focus(): void;
@@ -138,6 +142,7 @@ export function CodeEditor({
   onSave,
   handle,
   readOnly = false,
+  baseline = null,
   label = readOnly ? "File source" : "File editor",
 }: {
   value: string;
@@ -146,6 +151,8 @@ export function CodeEditor({
   onSave?: () => void;
   handle?: Ref<CodeEditorHandle>;
   readOnly?: boolean;
+  /** HEAD's text, for the git gutter to compare with; null draws none. */
+  baseline?: string | null;
   label?: string;
 }) {
   const host = useRef<HTMLDivElement>(null);
@@ -186,6 +193,7 @@ export function CodeEditor({
           EditorState.lineSeparator.of(value.includes("\r\n") ? "\r\n" : "\n"),
           indentUnit.of(detectIndentUnit(value)),
           lineNumbers(),
+          gitGutter(),
           highlightSpecialChars(),
           foldGutter(),
           drawSelection(),
@@ -201,6 +209,7 @@ export function CodeEditor({
       }),
     });
     view.current = editor;
+    if (baseline !== null) editor.dispatch({ effects: setGitBaseline.of(baseline) });
     // Entering the editor is asking to type; opening a file to read it is not.
     if (!readOnly) editor.focus();
     let current = true;
@@ -226,6 +235,15 @@ export function CodeEditor({
     if (editor === null || editor.state.sliceDoc() === value) return;
     editor.dispatch({ changes: { from: 0, to: editor.state.doc.length, insert: value } });
   }, [value]);
+
+  // HEAD's text arrives after the file, and changes when a commit moves HEAD.
+  const appliedBaseline = useRef(baseline);
+  useEffect(() => {
+    const editor = view.current;
+    if (editor === null || appliedBaseline.current === baseline) return;
+    appliedBaseline.current = baseline;
+    editor.dispatch({ effects: setGitBaseline.of(baseline) });
+  }, [baseline]);
 
   return <div ref={host} className="code-editor h-full w-full" data-testid={readOnly ? "file-source" : "file-editor"} />;
 }

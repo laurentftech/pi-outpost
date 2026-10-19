@@ -125,6 +125,33 @@ describe("FileViewer", () => {
     });
   });
 
+  describe("the git gutter", () => {
+    // openlore: scenario=AChangeIsRevertedIntoTheDraft spec=git
+    it("AChangeIsRevertedIntoTheDraft: reverting a change from its mark edits the draft and saves nothing", () => {
+      const { onSave, onDirtyChange, container } = setup({ file: loaded({ content: "const a = 2;\n" }), gitState: "modified", gitBaseline: "const a = 1;\n" });
+      fireEvent.click(button("✎ edit"));
+      fireEvent.mouseDown(container.querySelector("[data-testid='file-editor'] [data-git-change='modified']")!);
+      fireEvent.click(button("Revert this change"));
+      expect(editorText()).toBe("const a = 1;\n");
+      expect(container.querySelector("[data-testid='file-editor'] [data-git-change]")).toBeNull();
+      expect(onSave).not.toHaveBeenCalled();
+      expect(onDirtyChange).toHaveBeenLastCalledWith(true);
+    });
+
+    // openlore: scenario=TheSourceViewOffersNoRevert spec=git
+    it("TheSourceViewOffersNoRevert: the read-only source shows HEAD's text with no revert", async () => {
+      const { container } = setup({ file: loaded({ content: "const a = 2;\n" }), gitState: "modified", gitBaseline: "const a = 1;\n" });
+      const mark = await vi.waitFor(() => {
+        const found = container.querySelector<HTMLElement>("[data-testid='file-source'] [data-git-change='modified']");
+        if (found === null) throw new Error("no mark yet");
+        return found;
+      });
+      fireEvent.mouseDown(mark);
+      expect(screen.getByRole("region", { name: "HEAD version of this change" }).textContent).toContain("const a = 1;");
+      expect(queryButton("Revert this change")).toBeNull();
+    });
+  });
+
   describe("editing", () => {
     it("keeps save disabled until something changes", () => {
       setup();

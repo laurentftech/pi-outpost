@@ -1558,6 +1558,21 @@ describe("git messages", () => {
     ]);
   });
 
+  // openlore: scenario=AnOutsideCommitIsAnnounced spec=git
+  it("AnOutsideCommitIsAnnounced: re-reads the status of the repository the server says moved", async () => {
+    await connected([], { gitAvailable: true });
+    // Let the connect-time status requests go out first.
+    await waitFor(() => expect(mockWs!.sent.some((raw) => JSON.parse(raw).type === "git_status")).toBe(true));
+    for (const raw of mockWs!.sent) {
+      const frame = JSON.parse(raw) as { type: string; requestId?: string };
+      if (frame.type === "git_status") act(() => mockWs!.receive({ type: "git_status", requestId: frame.requestId, repos: [], files: [] }));
+    }
+    const before = mockWs!.sent.length;
+    act(() => mockWs!.receive({ type: "git_changed", repo: "projB" }));
+    const asked = mockWs!.sent.slice(before).map((raw) => JSON.parse(raw) as { type: string; repo?: string }).filter((frame) => frame.type === "git_status");
+    expect(asked).toEqual([expect.objectContaining({ repo: "projB" })]);
+  });
+
   it("starts asking about git when a workspace that had no repository gains one", async () => {
     // The gate that makes this message necessary: told at connect there was no
     // repository, the client suppresses every git request from then on
@@ -1732,6 +1747,64 @@ describe("git messages", () => {
 // ---------------------------------------------------------------------------
 // Streaming and tool lifecycle
 // ---------------------------------------------------------------------------
+describe("the git gutter's HEAD text", () => {
+  async function openWithStatus(status: "modified" | "untracked") {
+    const result = await connected();
+    act(() => result.current.readFile("a.ts"));
+    const read = JSON.parse(mockWs!.sent[mockWs!.sent.length - 1]) as { requestId: string };
+    act(() => mockWs!.receive({ type: "file_content", requestId: read.requestId, path: "a.ts", content: "new", size: 3, mtimeMs: 1 }));
+    act(() => mockWs!.receive({ type: "git_status", repos: [{ repo: "", branch: "main", ahead: 0, behind: 0 }], files: [{ path: "a.ts", status }] }));
+    return result;
+  }
+  const baselineAsks = () =>
+    mockWs!.sent.map((raw) => JSON.parse(raw) as { type: string; path?: string; requestId: string }).filter((frame) => frame.type === "git_diff" && frame.requestId.startsWith("gitbase:"));
+
+  it("asks for HEAD's text of an open modified file, and keeps it apart from the diff pane", async () => {
+    const result = await openWithStatus("modified");
+    await waitFor(() => expect(baselineAsks()).toHaveLength(1));
+    const [ask] = baselineAsks();
+    expect(ask!.path).toBe("a.ts");
+    act(() => mockWs!.receive({ type: "git_diff", requestId: ask!.requestId, path: "a.ts", before: "old", after: "new" }));
+    await waitFor(() => expect(result.current.state.gitBaseline).toEqual({ path: "a.ts", requestId: ask!.requestId, text: "old" }));
+    expect(result.current.state.gitDiff).toBeNull();
+  });
+
+  // openlore: scenario=TheGutterFollowsHead spec=git
+  it("TheGutterFollowsHead: asks again when the status is re-read, and only the latest answer counts", async () => {
+    const result = await openWithStatus("modified");
+    await waitFor(() => expect(baselineAsks()).toHaveLength(1));
+    act(() => mockWs!.receive({ type: "git_status", repos: [{ repo: "", branch: "main", ahead: 0, behind: 0 }], files: [{ path: "a.ts", status: "modified" }] }));
+    await waitFor(() => expect(baselineAsks()).toHaveLength(2));
+    const [stale, latest] = baselineAsks();
+    act(() => mockWs!.receive({ type: "git_diff", requestId: stale!.requestId, path: "a.ts", before: "before the commit", after: "new" }));
+    expect(result.current.state.gitBaseline?.text).toBeUndefined();
+    act(() => mockWs!.receive({ type: "git_diff", requestId: latest!.requestId, path: "a.ts", before: "after the commit", after: "new" }));
+    await waitFor(() => expect(result.current.state.gitBaseline?.text).toBe("after the commit"));
+  });
+
+  // openlore: scenario=NoMarksWithoutAComparableHead spec=git
+  it("NoMarksWithoutAComparableHead: no gutter for an untracked file, nor once the file is clean again", async () => {
+    const result = await openWithStatus("untracked");
+    expect(baselineAsks()).toHaveLength(0);
+    act(() => mockWs!.receive({ type: "git_status", repos: [{ repo: "", branch: "main", ahead: 0, behind: 0 }], files: [{ path: "a.ts", status: "modified" }] }));
+    await waitFor(() => expect(baselineAsks()).toHaveLength(1));
+    act(() => mockWs!.receive({ type: "git_diff", requestId: baselineAsks()[0]!.requestId, path: "a.ts", before: "old", after: "new" }));
+    await waitFor(() => expect(result.current.state.gitBaseline?.text).toBe("old"));
+    act(() => mockWs!.receive({ type: "git_status", repos: [{ repo: "", branch: "main", ahead: 0, behind: 0 }], files: [] }));
+    await waitFor(() => expect(result.current.state.gitBaseline).toBeNull());
+  });
+
+  // openlore: scenario=NoMarksWithoutAComparableHead spec=git
+  it("NoMarksWithoutAComparableHead: the gutter goes, without an error banner, when HEAD's text cannot be compared", async () => {
+    const result = await openWithStatus("modified");
+    await waitFor(() => expect(baselineAsks()).toHaveLength(1));
+    act(() => mockWs!.receive({ type: "git_error", requestId: baselineAsks()[0]!.requestId, message: "Binary file — diff not supported" }));
+    await waitFor(() => expect(result.current.state.gitBaseline).toBeNull());
+    expect(result.current.state.errors).toEqual([]);
+    expect(result.current.state.gitDiff).toBeNull();
+  });
+});
+
 describe("streaming lifecycle", () => {
   it("keeps two content blocks apart while they interleave", async () => {
     const result = await connected();
