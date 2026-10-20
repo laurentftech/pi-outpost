@@ -4,6 +4,7 @@ import { access, mkdir, readdir, readFile, realpath, rm, stat, writeFile } from 
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { SEEDED_MESSAGES, SEEDED_PLAN_FIGURE, SEEDED_PLAN_FIGURE_PATH } from "./fixtures/seeded-transcript";
+import { DRAWIO_REPLY_MESSAGES, SERVICES_DIAGRAM, SERVICES_DIAGRAM_PATH } from "./fixtures/drawio-conversation";
 // The same harness the server's own integration tests use: a real server, in its
 // own process group, against a throwaway workspace, with PI_OFFLINE set so the
 // SDK's model runtime never reaches the network.
@@ -743,6 +744,23 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
     { env: { ...onlyOneFakeProvider(), FAKE_PI_RPC_CONFIG: outcomeFakeConfig } },
   );
 
+  // A reply that references a .drawio, in a workspace that has it: drawn in the
+  // conversation, touched up and saved back. Its own server, because the specs write
+  // the file and must not disturb the transcript every other diagram spec reads.
+  const drawioChatRoot = await realpath(await makeWorkspace({ [SERVICES_DIAGRAM_PATH]: SERVICES_DIAGRAM }));
+  const drawioChatConfig = path.join(drawioChatRoot, "fake-rpc.json");
+  await writeFile(drawioChatConfig, JSON.stringify({ messages: DRAWIO_REPLY_MESSAGES, state: { sessionId: "drawio-chat-1" } }));
+  const drawioChat = await startServer(
+    drawioChatRoot,
+    {
+      server: { allowedOrigins: [host.url] },
+      branding: { title: "drawio chat", defaultTheme: "light" },
+      agentRuntime: { mode: "rpc", executable: process.execPath, args: [path.join(REPO, "server/test/fixtures/fake-pi-rpc.mjs")], startupTimeoutMs: 20_000 },
+      sandbox: undefined,
+    },
+    { env: { ...onlyOneFakeProvider(), FAKE_PI_RPC_CONFIG: drawioChatConfig } },
+  );
+
   process.env.PI_E2E_HOST_URL = host.url;
   process.env.PI_E2E_SERVER_URL = server.base;
   process.env.PI_E2E_ACCOUNTS_URL = accounts.base;
@@ -760,6 +778,8 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
   process.env.PI_E2E_EMBED_LOCKED_URL = embedLockedProjects.base;
   process.env.PI_E2E_GUARDED_URL = guarded.base;
   process.env.PI_E2E_DIAGRAMS_URL = diagrams.base;
+  process.env.PI_E2E_DRAWIO_CHAT_URL = drawioChat.base;
+  process.env.PI_E2E_DRAWIO_CHAT_ROOT = drawioChatRoot;
   process.env.PI_E2E_PLANS_URL = plans.base;
   process.env.PI_E2E_NOTIFY_URL = notifications.base;
   process.env.PI_E2E_PROGRESS_URL = progress.base;
@@ -790,6 +810,7 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
     await notifications.stop();
     await plans.stop();
     await diagrams.stop();
+    await drawioChat.stop();
     await guarded.stop();
     await extensionsLocked.stop();
     await embedLockedProjects.stop();

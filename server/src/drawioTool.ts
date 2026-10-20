@@ -50,6 +50,7 @@ export function createDrawioCheckToolDefinition(options: DrawioToolOptions): Too
     promptGuidelines: [
       "When the user wants a diagram they can open or edit in draw.io, write it as a .drawio file and check it with drawio_check; the interface draws it in the file viewer.",
       "After every write or edit of a .drawio file, run drawio_check and fix what it reports before saying the diagram is done.",
+      "Once drawio_check reports no error, show the diagram in your reply as a picture of the file — ![name](./path/to/file.drawio) — where the conversation draws it.",
     ],
     parameters,
     async execute(_toolCallId, params) {

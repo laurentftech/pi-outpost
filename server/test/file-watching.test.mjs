@@ -42,6 +42,7 @@ describe("watching the directories the browser has listed", () => {
       "inbox/report.txt": "report",
       "archive/.keep": "",
       "unopened/buried.txt": "buried",
+      "shown/diagram.drawio": "<mxfile/>",
     });
     server = await startServer(root, { sandbox: { root, allowWrite: true, writableRoot: root, allowBash: false } });
     client = connect(server.wsUrl());
@@ -76,6 +77,15 @@ describe("watching the directories the browser has listed", () => {
     // The user's own report: a file dragged somewhere else in Finder or Explorer.
     await rename(path.join(root, "inbox/report.txt"), path.join(root, "archive/report.txt"));
     await Promise.all([left, arrived]);
+  });
+
+  test("follows a file that was read, though nobody listed its folder", async () => {
+    // A diagram drawn in a reply, a file opened from a link: shown, never expanded
+    const read = await ask({ type: "read_file", path: "shown/diagram.drawio" });
+    assert.equal(read.type, "file_content");
+    const announced = client.waitFor(changedDirectory("shown"), ANNOUNCE_TIMEOUT_MS);
+    await writeFile(path.join(root, "shown/diagram.drawio"), "<mxfile><diagram/></mxfile>");
+    await announced;
   });
 
   test("says nothing about a directory nobody listed", async () => {

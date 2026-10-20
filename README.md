@@ -223,11 +223,19 @@ one needs, the command that proves it works, and the caution that goes with it.
   you type rather than what was last saved
 - draw.io diagrams: a `.drawio` file opens drawn, by draw.io's own viewer, with every page and zoom,
   offline — it runs in a sandboxed frame allowed no connection at all, so a diagram's remote images
-  or fonts are simply not fetched. **Open in draw.io** hands the file to the application associated
-  with it (draw.io desktop) for editing, and the view follows the saved file. The agent writes
-  `.drawio` files with its file tools, guided by the bundled `drawio` skill, and checks them with
+  or fonts are simply not fetched. A reply that references one as a picture
+  (`![overview](./diagrams/overview.drawio)`) draws it in the conversation too, with the controls
+  every diagram has — ⤢ enlarge, ⤓ download SVG (the page shown), ⤓ download .drawio, ↗ open.
+  **✎ touch up**, in the file viewer and at full size, makes it editable in place: move and resize
+  boxes, drag a wire's end to another box or draw a new one from a box's connection points,
+  retype a label, delete, undo (⌘/Ctrl+Z) — then save, which rewrites only the page shown and is
+  refused if the file changed on disk meanwhile; Escape leaves, asking first about unsaved
+  touch-ups. **Open in draw.io** hands the file to the application associated with it (draw.io
+  desktop) for anything more, and the view follows the saved file. The agent writes `.drawio`
+  files with its file tools, guided by the bundled `drawio` skill, checks them with
   `drawio_check` — dangling connectors, duplicate ids, missing parents, unusable geometry,
-  overlapping labelled shapes — since it cannot see the drawing
+  overlapping labelled shapes — since it cannot see the drawing, and shows the result in its
+  reply. In a conversation exported to HTML or Word, a diagram is a link to its file
 - Git: uncommitted-change badges in the tree, per-file diffs, a change gutter in the editor
   (what changed since HEAD beside each line, as you type; a click shows what was there and,
   while editing, reverts that change into the draft), the commit log drawn as a metro map
@@ -523,7 +531,7 @@ in [`pi-outpost.config.example.json`](pi-outpost.config.example.json).
 | `workspaceLock` | Pin the server to one project: opening, closing and switching are refused, and no control is offered |
 | `workspaceIdleTimeoutMs` | How long an unused project stays alive before it is retired (default `1800000` — 30 min; `0` never retires). A project running a turn, waiting for you, or ready for review is never retired |
 | `openProjects` | The set of open projects. **Written by the server** when you open or close one — not hand-authored |
-| `files.watch` | Watch the directories the file browser has listed, so the tree follows the workspace whoever changed it (default `true`). Set `false` where a watch is a liability — a network mount that emits no events, a spent inotify budget. The tree's ↻ control re-lists by hand either way |
+| `files.watch` | Watch the directories the file browser has listed, and those of the files being shown, so the tree and an open file or drawn diagram follow the workspace whoever changed it (default `true`). Set `false` where a watch is a liability — a network mount that emits no events, a spent inotify budget. The tree's ↻ control re-lists by hand either way |
 
 ### Confining bash with an extension
 

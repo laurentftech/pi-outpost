@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useReducer, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { randomId } from "./util/randomId";
 import type { LoginEvent, LoginPrompt, OutpostChanges, OutpostUpdateNotice, PiPackageInfo, SessionSnapshot } from "@pi-outpost/shared";
 import type { ProjectAppearance, StructuredConformance } from "@pi-outpost/shared/structured-exchange/profile";
@@ -42,6 +42,7 @@ import type {
 import { HISTORY_CHUNK } from "@pi-outpost/shared";
 import { HistoryError, type HistoryWindow } from "./conversationHistory";
 import { UPLOADS_DIRECTORY, UploadError } from "./uploads";
+import { FileIoError, type FileIo } from "./fileIo";
 import { isImageFile, isPdfFile } from "./util/workspacePath";
 
 type AssistantItem = Extract<ChatItem, { kind: "assistant" }>;
@@ -1655,6 +1656,8 @@ function wsUrlFor(serverUrl: string, token: string | null, workspace?: string): 
  * costs the user the attachment.
  */
 const UPLOAD_TIMEOUT_MS = 120_000;
+/** A read or write for `fileIo` that has had no answer by then has none coming. */
+const FILE_IO_TIMEOUT_MS = 30_000;
 
 /**
  * How long a request for older transcript may go unanswered.
@@ -1725,6 +1728,10 @@ export function useAgent(serverUrl = "", explicitToken?: string, embedded = fals
   // Waiters live outside the reducer for that reason, keyed by the same requestId
   // correlation every other file-browser request uses.
   const uploadWaitersRef = useRef(new Map<string, { resolve: (path: string) => void; reject: (error: UploadError) => void }>());
+  /** `fileIo` reads and writes awaiting their answer — see `fileIo.ts` for why not the reducer. */
+  const fileIoWaitersRef = useRef(new Map<string, { resolve: (answer: { content?: string; mtimeMs: number }) => void; reject: (error: FileIoError) => void }>());
+  /** `fileIo.onChanged` listeners, by path. */
+  const fileListenersRef = useRef(new Map<string, Set<() => void>>());
   /**
    * Requests for older transcript, awaiting their answer.
    *
@@ -2061,6 +2068,14 @@ export function useAgent(serverUrl = "", explicitToken?: string, embedded = fals
           }
           return;
         }
+        // A fileIo request is answered to its caller and nowhere else: it is not the open file
+        if ((message.type === "file_content" || message.type === "file_written" || message.type === "file_browser_error") && fileIoWaitersRef.current.has(message.requestId)) {
+          const waiter = fileIoWaitersRef.current.get(message.requestId)!;
+          fileIoWaitersRef.current.delete(message.requestId);
+          if (message.type === "file_browser_error") waiter.reject(new FileIoError(message.message, message.reason));
+          else waiter.resolve(message.type === "file_content" ? { content: message.content, mtimeMs: message.mtimeMs } : { mtimeMs: message.mtimeMs });
+          return;
+        }
         if (message.type === "file_uploaded") {
           const waiter = uploadWaitersRef.current.get(message.requestId);
           if (waiter) {
@@ -2077,6 +2092,7 @@ export function useAgent(serverUrl = "", explicitToken?: string, embedded = fals
         }
         if (message.type === "file_changed") {
           invalidateOutcome();
+          for (const listener of fileListenersRef.current.get(message.path) ?? []) listener();
           relistDirectory(parentDirectory(message.path));
           const openFile = openFileRef.current;
           if (openFile?.status === "loaded" && openFile.path === message.path) {
@@ -2095,6 +2111,10 @@ export function useAgent(serverUrl = "", explicitToken?: string, embedded = fals
         }
         if (message.type === "directory_changed") {
           invalidateOutcome();
+          // The watcher names the directory: a file in it may be what was removed or replaced
+          for (const [path, listeners] of fileListenersRef.current) {
+            if (parentDirectory(path) === message.path) for (const listener of listeners) listener();
+          }
           relistDirectory(message.path);
           // The watcher reports the directory, not the entry, so anything living
           // in it may be what moved. Re-reading the open file is one read and
@@ -2226,6 +2246,10 @@ export function useAgent(serverUrl = "", explicitToken?: string, embedded = fals
           waiter.reject(new UploadError("The connection dropped before the upload finished"));
         }
         uploadWaitersRef.current.clear();
+        for (const waiter of fileIoWaitersRef.current.values()) {
+          waiter.reject(new FileIoError("The connection dropped before the server answered"));
+        }
+        fileIoWaitersRef.current.clear();
         for (const waiter of historyWaitersRef.current.values()) {
           waiter.reject(new HistoryError("the connection dropped before the older messages arrived", "failed"));
         }
@@ -2313,8 +2337,43 @@ export function useAgent(serverUrl = "", explicitToken?: string, embedded = fals
     }
   }, [fetchOlderItems]);
 
+  // Stable: a diagram in a reply subscribes with it, and must not resubscribe per render
+  const fileIo = useMemo<FileIo>(() => {
+    function ask<T>(prefix: string, message: (requestId: string) => ClientMessage): Promise<T> {
+      const socket = socketRef.current;
+      if (!socket || socket.readyState !== WebSocket.OPEN) return Promise.reject(new FileIoError("not connected to the server"));
+      const requestId = `${prefix}:${randomId()}`;
+      return new Promise<T>((resolve, reject) => {
+        const timer = window.setTimeout(() => {
+          if (!fileIoWaitersRef.current.delete(requestId)) return;
+          reject(new FileIoError("the server did not answer"));
+        }, FILE_IO_TIMEOUT_MS);
+        fileIoWaitersRef.current.set(requestId, {
+          resolve: (answer) => { clearTimeout(timer); resolve(answer as T); },
+          reject: (error) => { clearTimeout(timer); reject(error); },
+        });
+        sendMessage(message(requestId));
+      });
+    }
+    return {
+      read: (path) => ask("fileio-read", (requestId) => ({ type: "read_file", path, requestId })),
+      write: (path, content, expectedMtimeMs) => ask("fileio-write", (requestId) => ({ type: "write_file", path, content, expectedMtimeMs, requestId })),
+      onChanged: (path, listener) => {
+        const listeners = fileListenersRef.current.get(path) ?? new Set<() => void>();
+        listeners.add(listener);
+        fileListenersRef.current.set(path, listeners);
+        return () => {
+          listeners.delete(listener);
+          if (listeners.size === 0) fileListenersRef.current.delete(path);
+        };
+      },
+    };
+  }, [sendMessage]);
+
   return {
     state,
+    /** Read, write and watch one file for a caller that is not the file viewer (a diagram in a reply). */
+    fileIo,
     /** Keep the server-derived Outcome fresh only while its drawer is visible. */
     setOutcomeActive,
     refreshOutcome: requestOutcome,

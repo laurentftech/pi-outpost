@@ -26,6 +26,7 @@ import remarkParse from "remark-parse";
 import remarkRehype from "remark-rehype";
 import { unified } from "unified";
 import type { ChatItem } from "@pi-outpost/shared";
+import { drawioLinkLabel, isDrawioReference } from "@pi-outpost/shared/docx";
 import { chatHtmlSchema } from "../components/AssistantMessage";
 import { normalizeMathDelimiters } from "../util/markdownMath";
 
@@ -135,6 +136,11 @@ async function inlineReferences(
 ): Promise<HastNode> {
   if (node.tagName === "img") {
     const src = typeof node.properties?.src === "string" ? node.properties.src : "";
+    // Drawn by the application, which the document does not carry: a link naming the file
+    if (isDrawioReference(src)) {
+      const alt = typeof node.properties?.alt === "string" ? node.properties.alt : "";
+      return { type: "element", tagName: "a", properties: { href: src }, children: [{ type: "text", value: drawioLinkLabel(src, alt) }] };
+    }
     const image = src ? await options.loadImage(src) : undefined;
     if (!image) {
       // The picture could not be had. Its alt text is what the reader gets, which is

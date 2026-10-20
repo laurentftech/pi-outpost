@@ -6,9 +6,11 @@
  * extension's write, or anything done outside the process at all left the tree
  * showing a workspace that no longer existed. This watches the disk instead.
  *
- * What is watched is exactly what a client has listed: `handleListDirectory` is
- * the one funnel every displayed directory passes through, so registering there
- * bounds the watch set by what somebody actually expanded. A collapsed directory
+ * What is watched is exactly what a client displays: `handleListDirectory` is the
+ * funnel every displayed directory passes through, and `handleReadFile` that of every
+ * displayed file (its directory is watched, so the file is followed even when its
+ * folder was never expanded). Registering there bounds the watch set by what somebody
+ * actually looked at. A collapsed directory
  * displays nothing, so nothing needs to know it changed — and a workspace with a
  * 40 000-directory `node_modules` costs nothing until someone opens it. This is
  * the whole reason there is no recursive watch on the root: on Linux that is one

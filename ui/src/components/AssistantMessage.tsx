@@ -10,7 +10,8 @@ import { defaultSchema, type Schema } from "hast-util-sanitize";
 import type { PluggableList } from "unified";
 import type { ChatItem } from "@pi-outpost/shared";
 import { normalizeMathDelimiters } from "../util/markdownMath";
-import { isExternalRef, rawFileUrl, resolveRelativeHref } from "../util/workspacePath";
+import { isDrawioFile, isExternalRef, rawFileUrl, resolveRelativeHref } from "../util/workspacePath";
+import { DrawioBlock } from "./DrawioBlock";
 import { CopyButton } from "./CopyButton";
 
 type AttributeSchema = NonNullable<Schema["attributes"]>;
@@ -102,6 +103,21 @@ interface AssistantMessageProps {
   hideReasoning?: boolean;
 }
 
+/** The workspace path a `.drawio` picture reference names: markdown URL-encodes spaces and the like. */
+function workspaceDrawioPath(src: string): string {
+  const path = resolveRelativeHref("", src);
+  try {
+    return decodeURIComponent(path);
+  } catch {
+    return path;
+  }
+}
+
+/** A picture reference to a `.drawio` file in the workspace. */
+function isWorkspaceDrawio(src: unknown): src is string {
+  return typeof src === "string" && src !== "" && !isExternalRef(src) && isDrawioFile(src.split(/[?#]/)[0]);
+}
+
 function ThinkingBlock({ text }: { text: string }) {
   const [open, setOpen] = useState(false);
   return (
@@ -142,6 +158,8 @@ export function AssistantMessage({ item, serverUrl = "", token = null, workspace
   // endpoint, links open the file viewer. External URLs pass through untouched.
   const components = useMemo(() => {
     function MarkdownImg({ src, alt, ...rest }: React.ImgHTMLAttributes<HTMLImageElement>) {
+      // A workspace .drawio referenced as a picture is drawn, not fetched as an image
+      if (isWorkspaceDrawio(src)) return <DrawioBlock path={workspaceDrawioPath(src)} variant="reply" />;
       const resolved =
         typeof src === "string" && src !== "" && !isExternalRef(src)
           ? rawFileUrl(serverUrl, resolveRelativeHref("", src), token, undefined, workspace)
@@ -172,7 +190,17 @@ export function AssistantMessage({ item, serverUrl = "", token = null, workspace
       );
     }
 
-    return { pre: ReplyMarkdownPre, img: MarkdownImg, a: MarkdownLink };
+    // A diagram is a block of its own: a paragraph holding only one is not a paragraph,
+    // and a <div> inside a <p> is not valid HTML
+    function MarkdownParagraph({ node, children, ...rest }: React.HTMLAttributes<HTMLParagraphElement> & { node?: { children?: { type: string; tagName?: string; properties?: { src?: unknown }; value?: string }[] } }) {
+      const content = (node?.children ?? []).filter((child) => !(child.type === "text" && (child.value ?? "").trim() === ""));
+      if (content.length > 0 && content.every((child) => child.type === "element" && child.tagName === "img" && isWorkspaceDrawio(child.properties?.src))) {
+        return <div className="my-2">{children}</div>;
+      }
+      return <p {...rest}>{children}</p>;
+    }
+
+    return { pre: ReplyMarkdownPre, img: MarkdownImg, a: MarkdownLink, p: MarkdownParagraph };
   }, [serverUrl, token, workspace]);
 
   // Nothing left to draw — a filtered-away message must not leave an empty frame
