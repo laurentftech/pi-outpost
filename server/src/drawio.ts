@@ -84,17 +84,28 @@ function quoted(name: string): string {
 
 /**
  * A label as a reader sees it: HTML labels are common, entities already decoded by the
- * scanner. Only ever quoted in the agent's text report, never written into a page — and
- * still no angle bracket survives, so no nesting (`<scr<script>ipt>`) can rebuild a tag.
+ * scanner. Only ever quoted in the agent's text report, never written into a page.
+ *
+ * Tags are dropped character by character rather than by pattern: whatever lies between
+ * a `<` and the next `>` goes, a line break becomes a space, and no bracket survives —
+ * so a nested `<scr<script>ipt>` cannot rebuild a tag the way one regex pass leaves it.
  */
 function plainLabel(value: string | undefined): string {
-  return (value ?? "")
-    .replace(/<br\s*\/?>/gi, " ")
-    .replace(/<[^>]*>/g, "")
-    .replace(/[<>]/g, "")
-    .replace(/&nbsp;/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
+  let text = "";
+  let tag: string | null = null;
+  for (const char of value ?? "") {
+    if (char === "<") {
+      tag = "";
+    } else if (char === ">") {
+      if (tag !== null && /^br\b/i.test(tag)) text += " ";
+      tag = null;
+    } else if (tag !== null) {
+      tag += char;
+    } else {
+      text += char;
+    }
+  }
+  return text.replace(/&nbsp;/g, " ").replace(/\s+/g, " ").trim();
 }
 
 function readGeometry(attributes: Record<string, string>): Geometry {
