@@ -39,6 +39,7 @@ import {
   type ModelChoice,
   type ServerMessage,
   type ChatItem,
+  type OutpostChanges,
   type OutpostUpdateNotice,
   type PiPackageInfo,
   type SessionSnapshot,
@@ -92,6 +93,7 @@ import {
   detectChannel,
   fetchLatestVersion,
   runStartupUpdateNotice,
+  defaultAgentDir,
   runUpdateCommand,
   updateCheckEnabled,
   whyCheckingDisabled,
@@ -242,10 +244,14 @@ import { seaExtensionFactories } from "./sea-extensions.ts";
 // Empty map in dev — see the comment at the static-serving block below.
 import { EMBEDDED_WEB } from "./embedded-web.ts";
 import { cacheControlFor } from "./webAssetCache.ts";
+import { recordRunningVersion } from "./changelog.ts";
 
 // Replaced at bundle time; `typeof` on an undeclared name is safe, so a source run says "dev".
 declare const __PI_OUTPOST_VERSION__: string;
 const VERSION = typeof __PI_OUTPOST_VERSION__ === "string" ? __PI_OUTPOST_VERSION__ : "dev";
+// CHANGELOG.md, inlined the same way so the npm package and the executables both carry it.
+declare const __PI_OUTPOST_CHANGELOG__: string;
+const CHANGELOG = typeof __PI_OUTPOST_CHANGELOG__ === "string" ? __PI_OUTPOST_CHANGELOG__ : "";
 
 // Resolved at bundle time (not from the SDK's runtime VERSION, which walks up
 // from __dirname for package.json and resolves the wrong file inside a SEA
@@ -453,6 +459,8 @@ const config = await (async () => {
 // with no message at all.
 /** A newer pi-outpost, once the startup check has found one — for the interface to say. */
 let outpostUpdate: OutpostUpdateNotice | undefined;
+/** What the update this run is changed, read from the bundled changelog — for the interface to say. */
+let outpostChanges: OutpostChanges | undefined;
 /**
  * Whether the module has finished starting. Until it has, nothing may be broadcast: the
  * startup check answers while startup is still awaiting the first agent, and the client
@@ -1264,17 +1272,30 @@ try {
   // reason Ctrl-C leaves a process behind. The third is the one that only shows up in
   // production, which is why it is a timer and not a bare call.
   const noticeTimer = setTimeout(() => {
-    void runStartupUpdateNotice({
-      version: VERSION,
-      ...(config.agentDir !== undefined ? { agentDir: config.agentDir } : {}),
-      settings: { updateCheck: config.updateCheck, offline: config.offline },
-      ...(config.updateRegistry !== undefined ? { registry: config.updateRegistry } : {}),
-      log: (line) => console.log(line),
-      onNewer: (notice) => {
-        outpostUpdate = notice;
-        if (startupComplete) broadcastServerWide({ type: "outpost_update", notice });
-      },
-    });
+    // The version is recorded first: the update check writes its cache in the same
+    // directory, and that cache is how an installation older than the marker is told
+    // from a first run - a check that answered first would make every run look like a
+    // second one.
+    void recordRunningVersion({ version: VERSION, changelog: CHANGELOG, agentDir: config.agentDir ?? defaultAgentDir() })
+      .then((changes) => {
+        // Recorded either way: switched back on later, it must not announce an old update
+        if (changes === undefined || config.changelogNotice === false) return;
+        outpostChanges = changes;
+        if (startupComplete) broadcastServerWide({ type: "outpost_changes", changes });
+      })
+      .finally(() =>
+        runStartupUpdateNotice({
+          version: VERSION,
+          ...(config.agentDir !== undefined ? { agentDir: config.agentDir } : {}),
+          settings: { updateCheck: config.updateCheck, offline: config.offline },
+          ...(config.updateRegistry !== undefined ? { registry: config.updateRegistry } : {}),
+          log: (line) => console.log(line),
+          onNewer: (notice) => {
+            outpostUpdate = notice;
+            if (startupComplete) broadcastServerWide({ type: "outpost_update", notice });
+          },
+        }),
+      );
   }, 0);
   noticeTimer.unref?.();
 }
@@ -2455,6 +2476,7 @@ function projectFields(workspace: Workspace) {
     workspace: workspaceInfo(workspace),
     workspaces: workspaceInfos(),
     ...(outpostUpdate ? { outpostUpdate } : {}),
+    ...(outpostChanges ? { outpostChanges } : {}),
     ...(piPackageLists.has(workspace.root) ? { piPackages: piPackageLists.get(workspace.root) } : {}),
     ...(restartReasons.size > 0 ? { restartNeeded: [...restartReasons] } : {}),
     ...(config.workspaceLock ? { workspaceLocked: true } : {}),
@@ -6357,6 +6379,7 @@ getHealth = () => (workspace.agent.ok ? { ok: true, sessionId: workspace.agent.s
 void refreshPiPackages(workspace);
 startupComplete = true;
 if (outpostUpdate) broadcastServerWide({ type: "outpost_update", notice: outpostUpdate });
+if (outpostChanges) broadcastServerWide({ type: "outpost_changes", changes: outpostChanges });
 
 console.log(`[pi] session ${workspace.agent.snapshot().sessionId}`);
 console.log(`[pi] agent runtime ${workspace.agent.kind}`);

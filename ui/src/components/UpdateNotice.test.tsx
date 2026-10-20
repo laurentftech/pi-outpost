@@ -11,6 +11,7 @@ const notice = (latest: string) => ({
   latest,
   instruction: 'Run "pi-outpost update" in a terminal, then restart it.',
   copy: "pi-outpost update",
+  releaseNotes: `https://github.com/laurentftech/pi-outpost/releases/tag/v${latest}`,
 });
 
 describe("the update notice", () => {
@@ -23,6 +24,14 @@ describe("the update notice", () => {
     expect(shown).toHaveTextContent("pi-outpost 0.27.0 is available (you have 0.26.0)");
     expect(shown).toHaveTextContent("pi-outpost update");
     expect(screen.getByRole("button", { name: /copy/i })).toBeInTheDocument();
+  });
+
+  // openlore: scenario=TheUpdateNoticeLinksItsReleaseNotes spec=update-changelog
+  it("TheUpdateNoticeLinksItsReleaseNotes: links the new version's release notes, in a new tab", () => {
+    render(<UpdateNotice notice={notice("0.27.0")} />);
+    const link = screen.getByRole("link", { name: "What's new" });
+    expect(link).toHaveAttribute("href", "https://github.com/laurentftech/pi-outpost/releases/tag/v0.27.0");
+    expect(link).toHaveAttribute("target", "_blank");
   });
 
   it("stays dismissed for that version, and comes back for the next one", () => {

@@ -31,6 +31,8 @@ const REPO_ROOT = resolve(SERVER_DIR, "..");
 const { version } = require(resolve(REPO_ROOT, "cli/package.json"));
 const piSdkMain = fileURLToPath(import.meta.resolve("@earendil-works/pi-coding-agent"));
 const piSdkVersion = JSON.parse(readFileSync(resolve(dirname(piSdkMain), "..", "package.json"), "utf-8")).version;
+// Inlined, so what changed in each release travels with the bundle, offline (server/src/changelog.ts).
+const changelog = readFileSync(resolve(REPO_ROOT, "CHANGELOG.md"), "utf-8");
 const OUT_DIR = resolve(SERVER_DIR, "dist");
 const BUNDLE_PATH = resolve(OUT_DIR, "bundle.mjs");
 const SEA_CONFIG_PATH = resolve(OUT_DIR, "sea-config.json");
@@ -71,7 +73,7 @@ await esbuild.build({
   format: "esm",
   target: "node26",
   outfile: BUNDLE_PATH,
-  define: { __PI_OUTPOST_VERSION__: JSON.stringify(version), __PI_SDK_VERSION__: JSON.stringify(piSdkVersion) },
+  define: { __PI_OUTPOST_VERSION__: JSON.stringify(version), __PI_SDK_VERSION__: JSON.stringify(piSdkVersion), __PI_OUTPOST_CHANGELOG__: JSON.stringify(changelog) },
   // Dependencies (e.g. cross-spawn) use CJS require() for Node builtins — esbuild's
   // ESM output needs this shim, since plain `import` can't do that at the top level.
   banner: {

@@ -821,12 +821,20 @@ describe("the startup notice", () => {
     const told: OutpostUpdateNotice[] = [];
     await notice({ version: "0.26.0", lookupImpl: countingLookup("0.27.0").lookupImpl, onNewer: (n) => told.push(n) });
     assert.deepEqual(told, [
-      { running: "0.26.0", latest: "0.27.0", instruction: 'Run "pi-outpost update" in a terminal, then restart it.', copy: "pi-outpost update" },
+      {
+        running: "0.26.0",
+        latest: "0.27.0",
+        instruction: 'Run "pi-outpost update" in a terminal, then restart it.',
+        copy: "pi-outpost update",
+        releaseNotes: "https://github.com/laurentftech/pi-outpost/releases/tag/v0.27.0",
+      },
     ]);
 
     const exe: OutpostUpdateNotice[] = [];
     await notice({ version: "0.26.0", channel: "executable", lookupImpl: countingLookup("0.27.0").lookupImpl, onNewer: (n) => exe.push(n) });
     assert.match(exe[0]?.instruction ?? "", /Download the new build/);
+    // openlore: scenario=TheUpdateNoticeLinksItsReleaseNotes spec=update-changelog
+    assert.equal(exe[0]?.releaseNotes, "https://github.com/laurentftech/pi-outpost/releases/tag/v0.27.0");
   });
 
   test("tells the interface nothing when current, when the check fails, when off, or for a one-off run", async () => {

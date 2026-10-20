@@ -52,3 +52,14 @@ test("PrereleasesAreNotWhatAnInstallationIsOffered: one derivation feeds both th
   assert.match(attachJob, /gh release edit "\$GITHUB_REF_NAME" --prerelease --repo/);
   assert.match(attachJob, /gh release edit "\$GITHUB_REF_NAME" --prerelease=false --latest --repo/);
 });
+
+// openlore: scenario=AReleaseWithoutASectionIsRefused spec=update-changelog
+test("AReleaseWithoutASectionIsRefused: the changelog is checked before npm, and becomes the release's notes", () => {
+  const publishJob = workflow.slice(workflow.indexOf("\n  publish:"), workflow.indexOf("\n  attach:"));
+  const attachJob = workflow.slice(workflow.indexOf("\n  attach:"));
+  const gate = publishJob.indexOf('node scripts/changelog-section.mjs "${GITHUB_REF_NAME#v}"');
+  assert.ok(gate >= 0, "the publish job must refuse a release the changelog does not describe");
+  assert.ok(gate < publishJob.indexOf("npm publish"), "and refuse it before anything is published");
+  assert.match(attachJob, /node scripts\/changelog-section\.mjs "\$\{GITHUB_REF_NAME#v\}" > release-notes\.md/);
+  assert.match(attachJob, /gh release create[\s\S]+--notes-file release-notes\.md[\s\S]+--generate-notes/);
+});

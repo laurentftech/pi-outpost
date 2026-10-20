@@ -17,7 +17,7 @@
  * blob, not another chance to substitute a version.
  */
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -34,6 +34,19 @@ const CACHE = fileURLToPath(new URL("../../node_modules/.cache", import.meta.url
 /** Deliberately unlike any real version, so a fallback cannot pass for the define. */
 const SDK_SENTINEL = "424.242.42-sdk-from-the-bundle";
 const OUTPOST_SENTINEL = "424.242.42-outpost-from-the-bundle";
+/** A changelog the bundle carries: one section for its own version, one older. */
+const CHANGELOG_SENTINEL = [
+  "# Changelog",
+  "",
+  `## [${OUTPOST_SENTINEL}] - 2026-01-02`,
+  "",
+  "- inlined into the bundle",
+  "",
+  "## [1.0.0] - 2026-01-01",
+  "",
+  "- older than the marker",
+  "",
+].join("\n");
 
 const dirs = [];
 after(async () => {
@@ -69,6 +82,7 @@ async function bundleServer({ externals, defines = true }) {
           define: {
             __PI_OUTPOST_VERSION__: JSON.stringify(OUTPOST_SENTINEL),
             __PI_SDK_VERSION__: JSON.stringify(SDK_SENTINEL),
+            __PI_OUTPOST_CHANGELOG__: JSON.stringify(CHANGELOG_SENTINEL),
           },
         }
       : {}),
@@ -122,4 +136,59 @@ test("a build with no version substituted says so rather than naming one it did 
     "a server that cannot resolve the SDK must not report a version it never read",
   );
   assert.equal(versions.piOutpost, UNKNOWN_VERSION);
+});
+
+// openlore: scenario=WhatChangedIsShownAfterAnUpdate spec=update-changelog
+test("a bundle carries its changelog, and an update is announced from it with no network", async () => {
+  const entry = await bundleServer({ externals: true });
+  const agentDir = await scratch(false);
+  // The version that ran before this one
+  await writeFile(path.join(agentDir, "outpost-version.json"), JSON.stringify({ version: "1.0.0" }));
+  const server = await startServer(await makeWorkspace(), { agentDir, updateCheck: false }, { entry });
+  try {
+    const client = connect(server.wsUrl());
+    await client.open();
+    const hello = await client.waitFor("hello");
+    const changes = (hello.state ?? hello).outpostChanges ?? (await client.waitFor("outpost_changes")).changes;
+    client.close();
+    assert.equal(changes.from, "1.0.0");
+    assert.equal(changes.to, OUTPOST_SENTINEL);
+    assert.deepEqual(
+      changes.entries.map((entry) => [entry.version, entry.markdown]),
+      [[OUTPOST_SENTINEL, "- inlined into the bundle"]],
+    );
+  } finally {
+    await server.stop();
+  }
+});
+
+// openlore: scenario=TheNoticeCanBeTurnedOff spec=update-changelog
+test("changelogNotice off: the update is recorded and not announced", async () => {
+  const entry = await bundleServer({ externals: true });
+  const agentDir = await scratch(false);
+  const marker = path.join(agentDir, "outpost-version.json");
+  await writeFile(marker, JSON.stringify({ version: "1.0.0" }));
+  const server = await startServer(await makeWorkspace(), { agentDir, updateCheck: false, changelogNotice: false }, { entry });
+  try {
+    const client = connect(server.wsUrl());
+    await client.open();
+    const hello = await client.waitFor("hello");
+    // The marker moving is the sign the startup recording has run
+    for (let i = 0; i < 100; i++) {
+      const recorded = JSON.parse(await readFile(marker, "utf8"));
+      if (recorded.version === OUTPOST_SENTINEL) break;
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    assert.deepEqual(JSON.parse(await readFile(marker, "utf8")), { version: OUTPOST_SENTINEL, updatedFrom: "1.0.0" });
+    // Past the moment a broadcast would have followed the recording
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    assert.equal((hello.state ?? hello).outpostChanges, undefined);
+    assert.equal(
+      client.received.some((message) => message.type === "outpost_changes"),
+      false,
+    );
+    client.close();
+  } finally {
+    await server.stop();
+  }
 });

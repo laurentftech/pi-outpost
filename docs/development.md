@@ -244,10 +244,18 @@ by hand, on `main`.
    alone a patch. A prerelease (`0.27.0-beta.1`) is published under its own identifier and
    never under `latest` — [`scripts/release-channel.mjs`](../scripts/release-channel.mjs)
    derives the channel from the version.
-3. **Bump both packages.** Set the same version in `cli/package.json` and
+3. **Write the changelog.** Add a `## [X.Y.Z] - YYYY-MM-DD` section at the top of
+   [`CHANGELOG.md`](../CHANGELOG.md): what a user notices, grouped under `### Added`,
+   `### Changed` and `### Fixed`, each line linking its PR with an absolute URL. The file is
+   inlined into the package and the executables, and the app shows these sections after an
+   update, offline — write them for the person who just updated, not for a reviewer. The
+   section also becomes the GitHub Release's notes, ahead of GitHub's list of merged PRs.
+   `npm run test:scripts` fails while the version the packages are at has no section, and
+   the release workflow refuses to publish without one.
+4. **Bump both packages.** Set the same version in `cli/package.json` and
    `embed/package.json`. Leave `web/`, `server/`, `ui/` and `shared/` alone: they are not
    published.
-4. **Update the lockfile with npm 11**, the npm CI runs:
+5. **Update the lockfile with npm 11**, the npm CI runs:
 
    ```bash
    npx -y npm@11 install --package-lock-only
@@ -258,15 +266,15 @@ by hand, on `main`.
    it inside an unrelated PR. Do not use npm 12 here: it writes a lockfile npm 11 does not,
    and drops `hasShrinkwrap` from any dependency published with a shrinkwrap (as
    `@earendil-works/pi-coding-agent` was up to 1.0.0).
-5. **Commit and push to `main`:**
+6. **Commit and push to `main`:**
 
    ```bash
-   git add cli/package.json embed/package.json package-lock.json
+   git add CHANGELOG.md cli/package.json embed/package.json package-lock.json
    git commit -m "chore(release): vX.Y.Z"
    git push origin main
    ```
 
-6. **Tag that commit and push the tag:**
+7. **Tag that commit and push the tag:**
 
    ```bash
    git tag -a vX.Y.Z -m "vX.Y.Z"
@@ -279,11 +287,11 @@ by hand, on `main`.
 
    The workflow refuses to publish when the tag disagrees with the packages' versions,
    and skips a package already on npm at that version.
-7. **Watch the run** (`gh run watch`). The executables for macOS arm64, Linux x64 and
+8. **Watch the run** (`gh run watch`). The executables for macOS arm64, Linux x64 and
    Windows x64 build first and gate the publish; the publish job then reruns typecheck,
    lint, both suites, the CSS, embed and CLI checks and the e2e suite before anything reaches
    npm.
-8. **Check the result.** `npm view pi-outpost@X.Y.Z version` and
+9. **Check the result.** `npm view pi-outpost@X.Y.Z version` and
    `npm view @pi-outpost/embed@X.Y.Z version`. The CLI is about 25 MB and can take a few
    minutes to show on npm after the publish log says it is done — trust the log before an
    immediate 404. The GitHub Release carries notes generated from the merged PRs, and three

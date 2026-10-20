@@ -29,7 +29,10 @@ export function UpdateNotice({ notice }: { notice: OutpostUpdateNotice }) {
       className="flex items-center gap-2 border-b border-sky-200 bg-sky-50 px-4 py-1.5 text-xs text-sky-900 dark:border-sky-900 dark:bg-sky-950/40 dark:text-sky-200"
     >
       <span className="min-w-0 flex-1">
-        pi-outpost {notice.latest} is available (you have {notice.running}). {notice.instruction}
+        pi-outpost {notice.latest} is available (you have {notice.running}). {notice.instruction}{" "}
+        <a href={notice.releaseNotes} target="_blank" rel="noreferrer" className="font-medium underline underline-offset-2">
+          What's new
+        </a>
       </span>
       <code className="shrink-0 rounded bg-white/70 px-1.5 py-0.5 font-mono dark:bg-sky-900/40">{notice.copy}</code>
       <CopyButton text={notice.copy} />

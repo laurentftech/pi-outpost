@@ -609,6 +609,12 @@ export interface AppConfig {
    */
   updateRegistry?: string;
   /**
+   * Whether the standalone interface says what an update changed; unset means yes. Off,
+   * the running version is still recorded, so turning it back on later does not
+   * announce an update that is long past.
+   */
+  changelogNotice?: boolean;
+  /**
    * The git executable to run. Unset, git is resolved from `PATH` and then from the
    * platform's standard install locations — this exists for a deployment that keeps
    * git somewhere neither would find.
@@ -1199,6 +1205,7 @@ export function loadConfig(
   // indistinguishable from "not mentioned", and "not mentioned" is what lets
   // `offline` decide.
   if (raw.updateCheck !== undefined) config.updateCheck = optionalBoolean(raw, "updateCheck", true);
+  if (raw.changelogNotice !== undefined) config.changelogNotice = optionalBoolean(raw, "changelogNotice", true);
   if (raw.updateRegistry !== undefined) {
     const registry = optionalString(raw, "updateRegistry");
     if (registry !== undefined) {

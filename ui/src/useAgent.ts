@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { randomId } from "./util/randomId";
-import type { LoginEvent, LoginPrompt, OutpostUpdateNotice, PiPackageInfo, SessionSnapshot } from "@pi-outpost/shared";
+import type { LoginEvent, LoginPrompt, OutpostChanges, OutpostUpdateNotice, PiPackageInfo, SessionSnapshot } from "@pi-outpost/shared";
 import type { ProjectAppearance, StructuredConformance } from "@pi-outpost/shared/structured-exchange/profile";
 import { workspaceKey } from "./util/workspaceKey";
 import { bootstrapToken, storedToken, storeToken } from "./authToken";
@@ -337,6 +337,8 @@ export interface AgentState {
   structuredAppearance: ProjectAppearance | null;
   /** A newer pi-outpost, when the server's startup check found one. */
   outpostUpdate: OutpostUpdateNotice | null;
+  /** What the update the server now runs changed, from its bundled changelog. */
+  outpostChanges: OutpostChanges | null;
   /** The npm pi packages this project's agent loads. Null until the server lists them. */
   piPackages: PiPackageInfo[] | null;
   /** The one package update in flight, or the last one's answer. */
@@ -474,6 +476,7 @@ const initialState: AgentState = {
   replyConformance: {},
   structuredAppearance: null,
   outpostUpdate: null,
+  outpostChanges: null,
   piPackages: null,
   piPackageUpdate: null,
   serverRestarting: false,
@@ -641,6 +644,7 @@ function applySnapshot(state: AgentState, message: ServerMessage & { sessionId: 
       message.type === "workspace_switched" || message.type === "workspace_starting" ? null : state.structuredAppearance,
     agentStarting: message.agentStarting === true,
     outpostUpdate: message.outpostUpdate ?? state.outpostUpdate,
+    outpostChanges: message.outpostChanges ?? state.outpostChanges,
     // Absent from a snapshot the server built before listing: keep what is known.
     piPackages: message.piPackages ?? state.piPackages,
     serverRestarting: false,
@@ -1315,6 +1319,8 @@ function reduce(state: AgentState, action: Action): AgentState {
       return { ...state, structuredAppearance: message.appearance };
     case "outpost_update":
       return { ...state, outpostUpdate: message.notice };
+    case "outpost_changes":
+      return { ...state, outpostChanges: message.changes };
     case "pi_packages":
       return { ...state, piPackages: message.packages };
     case "pi_package_update_result": {
