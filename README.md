@@ -223,7 +223,9 @@ one needs, the command that proves it works, and the caution that goes with it.
   you type rather than what was last saved
 - Git: uncommitted-change badges in the tree, per-file diffs, a change gutter in the editor
   (what changed since HEAD beside each line, as you type; a click shows what was there and,
-  while editing, reverts that change into the draft), log and commit inspection, and
+  while editing, reverts that change into the draft), the commit log drawn as a metro map
+  (the checked-out line and every local branch, with merges, branch names and tags) where a
+  click opens the commit, and
   a per-file history graph (renames followed) that diffs any two revisions, working tree
   included. A directory of independently versioned projects works too — each child
   repository answers for its own files. See [Git](#git)
@@ -666,7 +668,8 @@ another git: naming an executable is an instruction, and quietly running a diffe
 would answer questions about the wrong installation.
 
 The git state follows changes made anywhere — a commit, checkout or reset from a terminal or
-another tool updates the badges, the branch and the change gutter within a moment, though
+another tool updates the badges, the branch, the change gutter and an open commit map within
+a moment, though
 only the repository's own directory moved.
 
 When git features are missing, **Settings says why**: the executable could not be run, this

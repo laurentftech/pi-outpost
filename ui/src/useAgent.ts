@@ -23,7 +23,7 @@ import type {
   FileSearchEntry,
   GitFileLogEntry,
   GitFileState,
-  GitLogEntry,
+  GitCommitLogEntry,
   GitRepoStatus,
   GitRevision,
   GitUnavailable,
@@ -132,7 +132,7 @@ export type SessionSearch = {
  */
 export interface GitLogState {
   repo: string;
-  entries: GitLogEntry[];
+  entries: GitCommitLogEntry[];
 }
 
 /** Latest git working-tree status; null until the first git_status answer. */
@@ -1833,6 +1833,8 @@ export function useAgent(serverUrl = "", explicitToken?: string, embedded = fals
   // scope: a workspace holding thirty repositories would otherwise let one project's
   // refresh swallow another's, and they are answers to different questions.
   const gitAvailableRef = useRef(false);
+  /** The last log asked for, so a commit made elsewhere redraws an open history. */
+  const gitLogAskedRef = useRef<{ repo: string; limit?: number } | null>(null);
   /** The repository list as of the last status, for attributing a changed path. */
   const gitReposRef = useRef<GitRepoStatus[]>([]);
   useEffect(() => {
@@ -2137,6 +2139,11 @@ export function useAgent(serverUrl = "", explicitToken?: string, embedded = fals
         if (message.type === "git_changed") {
           invalidateOutcome();
           refreshGitStatus(message.repo === "" ? undefined : message.repo);
+          // The history menu stays open while the user works, so its map must move too
+          const asked = gitLogAskedRef.current;
+          if (asked !== null && asked.repo === message.repo) {
+            sendMessage({ type: "git_log", repo: asked.repo, ...(asked.limit ? { limit: asked.limit } : {}), requestId: `gitlog:${randomId()}` });
+          }
         }
         if (message.type === "git_status" || (message.type === "git_error" && message.requestId.startsWith("git:"))) {
           gitStatusSettled(message.requestId);
@@ -2522,8 +2529,10 @@ export function useAgent(serverUrl = "", explicitToken?: string, embedded = fals
       sendMessage({ type: "git_diff", path, requestId });
     },
     clearGitDiff: () => dispatch({ type: "git_diff_cleared" }),
-    fetchGitLog: (repo: string, limit?: number) =>
-      sendMessage({ type: "git_log", repo, ...(limit ? { limit } : {}), requestId: `gitlog:${randomId()}` }),
+    fetchGitLog: (repo: string, limit?: number) => {
+      gitLogAskedRef.current = { repo, limit };
+      sendMessage({ type: "git_log", repo, ...(limit ? { limit } : {}), requestId: `gitlog:${randomId()}` });
+    },
     fetchGitShow: (repo: string, sha: string) => sendMessage({ type: "git_show", repo, sha, requestId: `gitshow:${randomId()}` }),
     clearGitShow: () => dispatch({ type: "git_show_cleared" }),
     /** Open the history pane for one file (answers land in state.gitFileHistory). */
