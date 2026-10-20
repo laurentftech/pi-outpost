@@ -36,9 +36,12 @@ export function ChangesNotice({ changes }: { changes: OutpostChanges }) {
     <div
       role="status"
       data-testid="changes-notice"
-      className="border-b border-emerald-200 bg-emerald-50 text-xs text-emerald-950 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-100"
+      className="border-b border-zinc-200 bg-zinc-50 text-xs text-zinc-700 dark:border-zinc-800 dark:bg-zinc-900/60 dark:text-zinc-300"
     >
       <div className="flex items-center gap-2 px-4 py-1.5">
+        {/* The one spot of colour: news to notice, not an alarm to act on — and not
+            emerald, which this app keeps for "you are here" */}
+        <span className="shrink-0 rounded-full bg-sky-100 px-1.5 font-medium leading-4 text-sky-800 dark:bg-sky-900/50 dark:text-sky-200">New</span>
         <span className="min-w-0 flex-1">
           pi-outpost was updated to {changes.to} (from {changes.from}).
         </span>
@@ -47,12 +50,12 @@ export function ChangesNotice({ changes }: { changes: OutpostChanges }) {
             type="button"
             aria-expanded={open}
             onClick={() => setOpen(!open)}
-            className="shrink-0 rounded px-1.5 font-medium text-emerald-800 underline-offset-2 hover:underline dark:text-emerald-300"
+            className="shrink-0 rounded px-1.5 font-medium text-zinc-900 underline-offset-2 hover:underline dark:text-zinc-100"
           >
             {open ? "Hide what changed" : "What's changed"}
           </button>
         ) : (
-          <ExternalLink href={changes.releaseNotes} className="shrink-0 font-medium text-emerald-800 underline-offset-2 hover:underline dark:text-emerald-300">
+          <ExternalLink href={changes.releaseNotes} className="shrink-0 font-medium text-zinc-900 underline-offset-2 hover:underline dark:text-zinc-100">
             Release notes
           </ExternalLink>
         )}
@@ -67,27 +70,28 @@ export function ChangesNotice({ changes }: { changes: OutpostChanges }) {
             }
             setDismissed(changes.to);
           }}
-          className="shrink-0 rounded px-1.5 text-emerald-700 hover:bg-emerald-100 dark:text-emerald-300 dark:hover:bg-emerald-900/50"
+          className="shrink-0 rounded px-1.5 text-zinc-500 hover:bg-zinc-200 hover:text-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
         >
           ×
         </button>
       </div>
       {open && hasEntries && (
-        <div data-testid="changes-notice-body" className="max-h-[50vh] overflow-y-auto border-t border-emerald-200 px-4 py-2 dark:border-emerald-900">
+        <div data-testid="changes-notice-body" className="max-h-[50vh] overflow-y-auto border-t border-zinc-200 px-4 py-3 dark:border-zinc-800">
           {changes.entries.map((entry) => (
-            <section key={entry.version} className="mb-3 last:mb-0">
-              <h2 className="text-sm font-semibold">
+            // A measure a page of notes reads at, not the width of the window
+            <section key={entry.version} className="mb-4 max-w-2xl">
+              <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">
                 {entry.version}
-                {entry.date && <span className="ml-2 font-normal text-emerald-700 dark:text-emerald-400">{entry.date}</span>}
+                {entry.date && <span className="ml-2 font-normal text-zinc-500 dark:text-zinc-400">{entry.date}</span>}
               </h2>
-              <div className="prose-chat text-emerald-950 dark:text-emerald-100">
+              <div className="prose-chat text-zinc-800 dark:text-zinc-200">
                 <ReactMarkdown remarkPlugins={[remarkGfm]} components={{ a: ExternalLink }}>
                   {entry.markdown}
                 </ReactMarkdown>
               </div>
             </section>
           ))}
-          <ExternalLink href={changes.releaseNotes} className="font-medium text-emerald-800 underline-offset-2 hover:underline dark:text-emerald-300">
+          <ExternalLink href={changes.releaseNotes} className="font-medium text-zinc-900 underline-offset-2 hover:underline dark:text-zinc-100">
             Release notes on GitHub
           </ExternalLink>
         </div>
