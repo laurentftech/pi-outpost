@@ -8,7 +8,7 @@
  */
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -18,7 +18,6 @@ import type { StructuredTableData } from "@pi-outpost/shared/structured-exchange
 import { envWithoutCoverageSink } from "./childEnv.mjs";
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
-const BUNDLE = path.join(REPO, "shared/dist/validate-structured-exchange.mjs");
 const away = mkdtempSync(path.join(tmpdir(), "structured-exchange-rules-cli-"));
 const cli = path.join(away, "validate-structured-exchange.mjs");
 
@@ -152,8 +151,8 @@ const write = (name: string, value: unknown) => {
 
 describe("the reference validator's registry and rules checks, as they ship", () => {
   before(() => {
-    execFileSync(process.execPath, [path.join(REPO, "shared/scripts/build-validator.mjs")], { cwd: REPO, stdio: "ignore", env: envWithoutCoverageSink() });
-    copyFileSync(BUNDLE, cli);
+    // Built into this file's own directory, never shared/dist: other files build it too, in parallel
+    execFileSync(process.execPath, [path.join(REPO, "shared/scripts/build-validator.mjs"), cli], { cwd: REPO, stdio: "ignore", env: envWithoutCoverageSink() });
   });
 
   test("a usable registry is accepted with the digests of the files it read", () => {
@@ -273,8 +272,8 @@ describe("the reference validator's registry and rules checks, as they ship", ()
 
 describe("a specification validated requirement by requirement, as it ships", () => {
   before(() => {
-    execFileSync(process.execPath, [path.join(REPO, "shared/scripts/build-validator.mjs")], { cwd: REPO, stdio: "ignore", env: envWithoutCoverageSink() });
-    copyFileSync(BUNDLE, cli);
+    // Built into this file's own directory, never shared/dist: other files build it too, in parallel
+    execFileSync(process.execPath, [path.join(REPO, "shared/scripts/build-validator.mjs"), cli], { cwd: REPO, stdio: "ignore", env: envWithoutCoverageSink() });
   });
 
   const conforming = line("req-1", table([{ id: "req-1", text: "Stop within 40 m", attributes: { category: "direct", safety: "yes" } }]));
@@ -367,8 +366,8 @@ describe("a specification validated requirement by requirement, as it ships", ()
 
 describe("a table exported as Markdown by the validator", () => {
   before(() => {
-    execFileSync(process.execPath, [path.join(REPO, "shared/scripts/build-validator.mjs")], { cwd: REPO, stdio: "ignore", env: envWithoutCoverageSink() });
-    copyFileSync(BUNDLE, cli);
+    // Built into this file's own directory, never shared/dist: other files build it too, in parallel
+    execFileSync(process.execPath, [path.join(REPO, "shared/scripts/build-validator.mjs"), cli], { cwd: REPO, stdio: "ignore", env: envWithoutCoverageSink() });
   });
 
   test("writes the Markdown the reader's export writes for the same rows", () => {
@@ -400,8 +399,8 @@ describe("a table exported as Markdown by the validator", () => {
 
 describe("the documented batch example, as it ships", () => {
   before(() => {
-    execFileSync(process.execPath, [path.join(REPO, "shared/scripts/build-validator.mjs")], { cwd: REPO, stdio: "ignore", env: envWithoutCoverageSink() });
-    copyFileSync(BUNDLE, cli);
+    // Built into this file's own directory, never shared/dist: other files build it too, in parallel
+    execFileSync(process.execPath, [path.join(REPO, "shared/scripts/build-validator.mjs"), cli], { cwd: REPO, stdio: "ignore", env: envWithoutCoverageSink() });
   });
 
   test("runs through the bundle against the documented registry, profile and rules, with the exit status the page states", () => {
@@ -449,8 +448,8 @@ describe("the documented batch example, as it ships", () => {
 
 describe("a conformity report held to the registry it was checked against, as it ships", () => {
   before(() => {
-    execFileSync(process.execPath, [path.join(REPO, "shared/scripts/build-validator.mjs")], { cwd: REPO, stdio: "ignore", env: envWithoutCoverageSink() });
-    copyFileSync(BUNDLE, cli);
+    // Built into this file's own directory, never shared/dist: other files build it too, in parallel
+    execFileSync(process.execPath, [path.join(REPO, "shared/scripts/build-validator.mjs"), cli], { cwd: REPO, stdio: "ignore", env: envWithoutCoverageSink() });
   });
 
   test("passes, never held to the project's default profile", () => {
@@ -527,8 +526,8 @@ describe("the views a project's rules are reviewed on, written by the shipped va
 
 describe("the setup guide's commands, as they ship", () => {
   before(() => {
-    execFileSync(process.execPath, [path.join(REPO, "shared/scripts/build-validator.mjs")], { cwd: REPO, stdio: "ignore", env: envWithoutCoverageSink() });
-    copyFileSync(BUNDLE, cli);
+    // Built into this file's own directory, never shared/dist: other files build it too, in parallel
+    execFileSync(process.execPath, [path.join(REPO, "shared/scripts/build-validator.mjs"), cli], { cwd: REPO, stdio: "ignore", env: envWithoutCoverageSink() });
   });
 
   test("run against the guide's registry, profile and rules with the exit status the page states", () => {

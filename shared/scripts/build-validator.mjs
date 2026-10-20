@@ -15,7 +15,10 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const OUT = path.resolve(HERE, "../dist/validate-structured-exchange.mjs");
+// An explicit destination is for tests: the server suite runs its files in parallel
+// processes, and several building into one shared file is a race Windows loses — a file
+// one process has open cannot be replaced by another.
+const OUT = process.argv[2] ? path.resolve(process.argv[2]) : path.resolve(HERE, "../dist/validate-structured-exchange.mjs");
 
 await mkdir(path.dirname(OUT), { recursive: true });
 // The version a conformity report states: the CLI that ships this bundle.
