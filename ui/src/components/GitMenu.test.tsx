@@ -1,7 +1,8 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent, within } from "@testing-library/react";
-import type { GitLogEntry, GitRepoStatus } from "@pi-outpost/shared";
+import type { GitCommitLogEntry, GitRepoStatus } from "@pi-outpost/shared";
 import { GitMenu } from "./GitMenu";
+import { CURRENT_COLOR, laneX, ROW_H } from "./graph/lanes";
 import type { GitStatusState } from "../useAgent";
 
 /** One repository at the browser root — the shape a single-project workspace has. */
@@ -17,13 +18,31 @@ function status(repos: GitRepoStatus[] = ONE): GitStatusState {
   return { repos, files: {} };
 }
 
-const ENTRIES: GitLogEntry[] = [
-  { sha: "aaaaaaa1111", author: "Ada", date: new Date().toISOString(), subject: "most recent" },
-  { sha: "bbbbbbb2222", author: "Grace", date: new Date(Date.now() - 3 * 86400_000).toISOString(), subject: "three days back" },
+const ENTRIES: GitCommitLogEntry[] = [
+  {
+    sha: "aaaaaaa1111",
+    author: "Ada",
+    date: new Date().toISOString(),
+    subject: "most recent",
+    parents: ["bbbbbbb2222"],
+    refs: ["main"],
+    tags: [],
+    head: true,
+  },
+  {
+    sha: "bbbbbbb2222",
+    author: "Grace",
+    date: new Date(Date.now() - 3 * 86400_000).toISOString(),
+    subject: "three days back",
+    parents: [],
+    refs: [],
+    tags: [],
+    head: false,
+  },
 ];
 
 /** A log answered BY `repo` — the menu shows it only under that repository's chip. */
-const logFor = (repo: string, entries: GitLogEntry[] | null = ENTRIES) =>
+const logFor = (repo: string, entries: GitCommitLogEntry[] | null = ENTRIES) =>
   entries === null ? null : { repo, entries };
 
 /** The repository a browser-root-relative path belongs to, for the fixtures below. */
@@ -245,6 +264,90 @@ describe("GitMenu", () => {
       fireEvent.click(chip());
       expect(onFetchLog).not.toHaveBeenCalled();
       expect(screen.queryByText("most recent")).not.toBeInTheDocument();
+    });
+  });
+
+  describe("metro map", () => {
+    const at = (days: number) => new Date(Date.now() - days * 86400_000).toISOString();
+    /** A feature branch newer than HEAD, both off one base commit. */
+    const BRANCHED: GitCommitLogEntry[] = [
+      { sha: "fff0000", author: "Ada", date: at(0), subject: "on feature", parents: ["bbb0000"], refs: ["feature"], tags: [], head: false },
+      { sha: "hhh0000", author: "Ada", date: at(1), subject: "on main", parents: ["bbb0000"], refs: ["main"], tags: [], head: true },
+      { sha: "bbb0000", author: "Ada", date: at(2), subject: "base", parents: [], refs: [], tags: [], head: false },
+    ];
+
+    function openMap(entries: GitCommitLogEntry[] = BRANCHED) {
+      const view = setup({ log: logFor("", entries) });
+      fireEvent.click(chip());
+      return view;
+    }
+
+    /** The node of a commit's row: the rail's last circle, and its lane's x. */
+    function node(subject: string) {
+      const row = screen.getByText(subject).closest("button")!;
+      const circles = row.querySelectorAll("svg circle");
+      return circles[circles.length - 1];
+    }
+
+    // openlore: scenario=TheCheckedOutLineRunsOnTheFirstLane spec=git
+    it("TheCheckedOutLineRunsOnTheFirstLane: HEAD's commit sits on the first lane in the reserved colour", () => {
+      openMap();
+      expect(node("on main").getAttribute("cx")).toBe(String(laneX(0)));
+      expect(node("on main").getAttribute("fill")).toBe(CURRENT_COLOR);
+      expect(node("base").getAttribute("cx")).toBe(String(laneX(0)));
+      expect(node("on feature").getAttribute("cx")).toBe(String(laneX(1)));
+      expect(node("on feature").getAttribute("fill")).not.toBe(CURRENT_COLOR);
+      // Nothing on the first lane above HEAD: the feature row draws no line at x(0)
+      const featureRail = screen.getByText("on feature").closest("button")!.querySelector("svg")!;
+      const xs = [...featureRail.querySelectorAll("line")].map((line) => line.getAttribute("x1"));
+      expect(xs).not.toContain(String(laneX(0)));
+    });
+
+    // openlore: scenario=ABranchTipNamesItsBranch spec=git
+    it("ABranchTipNamesItsBranch: each tip names its branch, the checked-out one set apart", () => {
+      openMap();
+      const main = within(screen.getByText("on main").closest("button")!).getByText("main");
+      const feature = within(screen.getByText("on feature").closest("button")!).getByText("feature");
+      expect(main).toHaveClass("font-semibold");
+      expect(main).toHaveStyle({ color: CURRENT_COLOR });
+      expect(feature).not.toHaveClass("font-semibold");
+      expect(feature).not.toHaveStyle({ color: CURRENT_COLOR });
+      expect(within(screen.getByText("base").closest("button")!).queryByText(/main|feature/)).not.toBeInTheDocument();
+    });
+
+    // openlore: scenario=AMergeJoinsTwoLines spec=git
+    it("AMergeJoinsTwoLines: a merge draws a curve to its second parent's lane", () => {
+      openMap([
+        { sha: "mmm0000", author: "Ada", date: at(0), subject: "merge", parents: ["xxx0000", "yyy0000"], refs: ["main"], tags: [], head: true },
+        { sha: "xxx0000", author: "Ada", date: at(1), subject: "x", parents: ["zzz0000"], refs: [], tags: [], head: false },
+        { sha: "yyy0000", author: "Ada", date: at(2), subject: "y", parents: ["zzz0000"], refs: [], tags: [], head: false },
+        { sha: "zzz0000", author: "Ada", date: at(3), subject: "z", parents: [], refs: [], tags: [], head: false },
+      ]);
+      const curve = (subject: string) => screen.getByText(subject).closest("button")!.querySelector("svg path");
+      // Leaves the merge downward, ends on lane 1 at the row's foot
+      expect(curve("merge")?.getAttribute("d")).toMatch(new RegExp(`${laneX(1)} ${ROW_H}$`));
+      // Arrives at the base from lane 1 at the row's top
+      expect(curve("z")?.getAttribute("d")).toMatch(new RegExp(`${laneX(1)} 0$`));
+      expect(node("y").getAttribute("cx")).toBe(String(laneX(1)));
+    });
+
+    // openlore: scenario=ATaggedCommitShowsItsTag spec=git
+    it("ATaggedCommitShowsItsTag: a tag is named on its commit, unlike a branch", () => {
+      openMap([
+        { sha: "hhh0000", author: "Ada", date: at(0), subject: "release", parents: [], refs: ["main"], tags: ["v1.0.0"], head: true },
+      ]);
+      const row = within(screen.getByText("release").closest("button")!);
+      const tag = row.getByText(/v1\.0\.0/);
+      const branch = row.getByText("main");
+      expect(tag).toHaveAttribute("title", "tag v1.0.0");
+      expect(tag).not.toHaveClass("rounded-full");
+      expect(branch).toHaveClass("rounded-full");
+    });
+
+    it("still opens a commit's patch from the map", () => {
+      const { onShowCommit } = openMap();
+      fireEvent.click(screen.getByText("on feature"));
+      expect(onShowCommit).toHaveBeenCalledWith("", "fff0000");
     });
   });
 });

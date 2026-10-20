@@ -1573,6 +1573,22 @@ describe("git messages", () => {
     expect(asked).toEqual([expect.objectContaining({ repo: "projB" })]);
   });
 
+  // openlore: scenario=TheMapFollowsAnOutsideCommit spec=git
+  it("TheMapFollowsAnOutsideCommit: asks again for the log held of the repository that moved, and only that one", async () => {
+    const result = await connected([], { gitAvailable: true });
+    act(() => result.current.fetchGitLog("projB"));
+    const logsAfter = (from: number) =>
+      mockWs!.sent.slice(from).map((raw) => JSON.parse(raw) as { type: string; repo?: string }).filter((frame) => frame.type === "git_log");
+
+    let before = mockWs!.sent.length;
+    act(() => mockWs!.receive({ type: "git_changed", repo: "projA" }));
+    expect(logsAfter(before)).toEqual([]);
+
+    before = mockWs!.sent.length;
+    act(() => mockWs!.receive({ type: "git_changed", repo: "projB" }));
+    expect(logsAfter(before)).toEqual([expect.objectContaining({ type: "git_log", repo: "projB" })]);
+  });
+
   it("starts asking about git when a workspace that had no repository gains one", async () => {
     // The gate that makes this message necessary: told at connect there was no
     // repository, the client suppresses every git request from then on
@@ -1679,7 +1695,7 @@ describe("git messages", () => {
         type: "git_log",
         requestId: "gitlog:1",
         repo: "projA",
-        entries: [{ sha: "aaaaaaa", author: "Ada", date: new Date().toISOString(), subject: "in projA" }],
+        entries: [{ sha: "aaaaaaa", author: "Ada", date: new Date().toISOString(), subject: "in projA", parents: [], refs: ["main"], tags: [], head: true }],
       }),
     );
     await waitFor(() => expect(result.current.state.gitLog?.repo).toBe("projA"));

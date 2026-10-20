@@ -25,10 +25,10 @@ import { isWithin, realResolve } from "./sandbox.ts";
 import {
   WORKTREE_REVISION,
   type GitUnavailable,
+  type GitCommitLogEntry,
   type GitFileLogEntry,
   type GitFileState,
   type GitFileStatus,
-  type GitLogEntry,
   type GitRepoStatus,
 } from "@pi-outpost/shared";
 
@@ -534,16 +534,58 @@ export async function gitHeadContent(repo: GitRepo, relPath: string): Promise<st
 
 const SHA_PATTERN = /^[0-9a-f]{7,40}$/i;
 
-export async function gitLog(repo: GitRepo, limit: number): Promise<GitLogEntry[]> {
+/**
+ * A repository's recent history, drawn as a metro map: HEAD and every local branch,
+ * newest first, with the branch and tag names pointing at each commit.
+ *
+ * `--parents` is what makes `%P` usable here. The `-- .` pathspec hides commits that
+ * changed nothing under the browser root, and without it `%P` still names those
+ * hidden commits; with it git rewrites each parent to the nearest one it does list.
+ * `--date-order` keeps every commit above its parents while interleaving branches by
+ * date, which is how a map of parallel lines reads.
+ *
+ * HEAD is found with a second, one-commit walk under the same pathspec, since HEAD's
+ * own commit may be one of the hidden ones.
+ */
+export async function gitLog(repo: GitRepo, limit: number): Promise<GitCommitLogEntry[]> {
   const n = Math.max(1, Math.min(100, Math.floor(limit)));
-  const out = await runGit(repo.cwd, ["log", "--format=%H%x1f%an%x1f%aI%x1f%s", "-n", String(n), "--", "."]);
-  return out
+  const out = await runGit(repo.cwd, [
+    "log",
+    "--parents",
+    "--date-order",
+    "--decorate-refs=refs/heads",
+    "--decorate-refs=refs/tags",
+    "--format=%H%x1f%P%x1f%an%x1f%aI%x1f%D%x1f%s",
+    "-n",
+    String(n),
+    "HEAD",
+    "--branches",
+    "--",
+    ".",
+  ]);
+  const head = (await runGit(repo.cwd, ["log", "-1", "--format=%H", "HEAD", "--", "."])).trim();
+  const raw = out
     .split("\n")
     .filter((line) => line.includes("\x1f"))
     .map((line) => {
-      const [sha, author, date, subject] = line.split("\x1f");
-      return { sha, author, date, subject: subject ?? "" };
+      const [sha, parents, author, date, decoration, subject] = line.split("\x1f");
+      return { sha, parents: parents.split(" ").filter(Boolean), author, date, decoration, subject: subject ?? "" };
     });
+  const present = new Set(raw.map((entry) => entry.sha));
+  return raw.map(({ decoration, ...entry }) => {
+    // `--decorate-refs` leaves branch and tag names: "HEAD -> main, tag: v1, topic"
+    const names = decoration
+      .split(", ")
+      .map((ref) => ref.replace(/^HEAD -> /, ""))
+      .filter((ref) => ref !== "" && ref !== "HEAD");
+    return {
+      ...entry,
+      parents: entry.parents.filter((parent) => present.has(parent)),
+      refs: names.filter((ref) => !ref.startsWith("tag: ")),
+      tags: names.filter((ref) => ref.startsWith("tag: ")).map((ref) => ref.slice("tag: ".length)),
+      head: entry.sha === head,
+    };
+  });
 }
 
 // --- File history -----------------------------------------------------------

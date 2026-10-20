@@ -1,8 +1,11 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { GitRepoStatus } from "@pi-outpost/shared";
 import type { GitLogState, GitStatusState } from "../useAgent";
 import { useClickOutside } from "../util/clickOutside";
 import { repoForPath } from "../util/gitRepos";
+import { layoutCommitGraph } from "./graph/commitGraph";
+import { CURRENT_COLOR, laneColor, ROW_H } from "./graph/lanes";
+import { Rail } from "./graph/Rail";
 import { HEADER_CONTROL_SHRINKS } from "./headerControl";
 
 interface GitMenuProps {
@@ -31,7 +34,8 @@ function repoName(repo: string): string {
 }
 
 /**
- * Header branch chip; opens that repository's recent commits, click one for its diff.
+ * Header branch chip; opens that repository's recent commits as a metro map — the
+ * checked-out line and every local branch beside it — click one for its diff.
  *
  * A workspace holds a set of repositories, so there is no single branch to show and
  * the chip follows the selection instead — a file OR a directory, since walking into
@@ -63,6 +67,7 @@ export function GitMenu({ status, selected, log, onFetchLog, onShowCommit }: Git
   // commits under another's name - and clicking one asks for a commit id the named
   // repository has never heard of.
   const entries = current !== null && log?.repo === current.repo ? log.entries : null;
+  const graph = useMemo(() => (entries === null ? null : layoutCommitGraph(entries)), [entries]);
 
   // The menu is a panel, not a dialog: it stays open while the user walks the tree,
   // so the repository under it can change without it ever being reopened. Asking only
@@ -96,27 +101,57 @@ export function GitMenu({ status, selected, log, onFetchLog, onShowCommit }: Git
         <div className="absolute left-0 top-full z-20 mt-1 max-h-96 w-[26rem] max-w-[80vw] overflow-y-auto rounded-lg border border-zinc-200 bg-white py-1 shadow-xl dark:border-zinc-700 dark:bg-zinc-900">
           {entries === null && <div className="px-3 py-2 text-xs text-zinc-500">loading…</div>}
           {entries?.length === 0 && <div className="px-3 py-2 text-xs text-zinc-500">no commits</div>}
-          {entries?.map((entry) => (
-            <button
-              key={entry.sha}
-              type="button"
-              onClick={() => {
-                onShowCommit(current.repo, entry.sha);
-                setOpen(false);
-              }}
-              className="flex w-full items-baseline gap-2 px-3 py-1.5 text-left text-sm hover:bg-zinc-100 dark:hover:bg-zinc-800"
-            >
-              <span className="shrink-0 font-mono text-xs text-amber-600 dark:text-amber-500">{entry.sha.slice(0, 7)}</span>
-              {/* Same reason as the history graph: the list truncates, the tooltip
-                  gives back the end of the subject without opening the commit. */}
-              <span className="min-w-0 flex-1 truncate text-zinc-700 dark:text-zinc-300" title={entry.subject}>
-                {entry.subject}
-              </span>
-              <span className="shrink-0 text-xs text-zinc-400 dark:text-zinc-600">
-                {entry.author} · {relativeDate(entry.date)}
-              </span>
-            </button>
-          ))}
+          {graph?.rows.map((row) => {
+            const { entry } = row;
+            return (
+              <button
+                key={entry.sha}
+                type="button"
+                onClick={() => {
+                  onShowCommit(current.repo, entry.sha);
+                  setOpen(false);
+                }}
+                style={{ height: ROW_H }}
+                className="flex w-full items-center gap-2 pl-2 pr-3 text-left text-sm hover:bg-zinc-100 dark:hover:bg-zinc-800"
+              >
+                <Rail row={row} laneCount={graph.laneCount} />
+                <span className="shrink-0 font-mono text-xs text-amber-600 dark:text-amber-500">{entry.sha.slice(0, 7)}</span>
+                {entry.refs.map((ref) => {
+                  // The checked-out branch wears the line's emerald; the others their lane's colour
+                  const color = ref === current.branch ? CURRENT_COLOR : laneColor(row.lane);
+                  return (
+                    <span
+                      key={ref}
+                      style={{ borderColor: color, color }}
+                      className={`max-w-[8rem] shrink-0 truncate rounded-full border px-1.5 font-mono text-[10px] leading-4 ${
+                        ref === current.branch ? "font-semibold" : ""
+                      }`}
+                    >
+                      {ref}
+                    </span>
+                  );
+                })}
+                {entry.tags.map((tag) => (
+                  // Square, not round: a tag marks a commit, it is no line of its own
+                  <span
+                    key={`tag-${tag}`}
+                    title={`tag ${tag}`}
+                    className="max-w-[8rem] shrink-0 truncate rounded border border-zinc-300 px-1 font-mono text-[10px] leading-4 text-zinc-500 dark:border-zinc-600 dark:text-zinc-400"
+                  >
+                    ◆ {tag}
+                  </span>
+                ))}
+                {/* Same reason as the history graph: the list truncates, the tooltip
+                    gives back the end of the subject without opening the commit. */}
+                <span className="min-w-0 flex-1 truncate text-zinc-700 dark:text-zinc-300" title={entry.subject}>
+                  {entry.subject}
+                </span>
+                <span className="shrink-0 text-xs text-zinc-400 dark:text-zinc-600">
+                  {entry.author} · {relativeDate(entry.date)}
+                </span>
+              </button>
+            );
+          })}
         </div>
       )}
     </div>

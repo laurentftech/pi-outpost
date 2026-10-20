@@ -564,3 +564,121 @@ describe("file history edge cases", () => {
     assert.equal(await gitRevisionContent(selfRepo(root), log[0].sha, "-weird.txt"), "dashed\n");
   });
 });
+
+// ---------------------------------------------------------------------------
+// gitLog as a metro map: HEAD and every local branch, with parents
+// ---------------------------------------------------------------------------
+describe("gitLog metro map", () => {
+  let top: string;
+  /** The browser root: a directory inside the repository, so `-- .` hides commits outside it. */
+  let root: string;
+  let clock = 0;
+
+  /** Every commit a minute after the last, so date order is not left to ties. */
+  function git(...args: string[]): string {
+    const date = `2026-01-01T00:${String(clock).padStart(2, "0")}:00Z`;
+    return execFileSync("git", args, { cwd: top, env: { ...process.env, GIT_AUTHOR_DATE: date, GIT_COMMITTER_DATE: date } })
+      .toString()
+      .trim();
+  }
+
+  function commit(relPath: string, subject: string): string {
+    clock++;
+    mkdirSync(path.dirname(path.join(top, relPath)), { recursive: true });
+    writeFileSync(path.join(top, relPath), `${subject}\n`);
+    git("add", "--", relPath);
+    git("commit", "-q", "-m", subject);
+    return git("rev-parse", "HEAD");
+  }
+
+  const sha = {} as Record<string, string>;
+
+  before(() => {
+    top = mkdtempSync(path.join(tmpdir(), "pi-outpost-gitmap-"));
+    root = path.join(top, "sub");
+    git("init", "-q", "-b", "main");
+    git("config", "user.email", "test@test");
+    git("config", "user.name", "Test");
+    git("config", "commit.gpgsign", "false");
+    sha.base = commit("sub/a.txt", "base");
+    git("checkout", "-q", "-b", "feat");
+    sha.f1 = commit("sub/b.txt", "f1");
+    // feat's tip changes nothing under the browser root
+    sha.f2 = commit("outside.txt", "f2 outside");
+    git("checkout", "-q", "main");
+    sha.c2 = commit("sub/a.txt", "c2");
+    clock++;
+    git("merge", "-q", "--no-ff", "feat", "-m", "merge feat");
+    sha.merge = git("rev-parse", "HEAD");
+    // A branch off main's second commit, never merged, newer than the merge
+    git("checkout", "-q", "-b", "topic", sha.c2);
+    sha.t1 = commit("sub/t.txt", "t1");
+    git("checkout", "-q", "main");
+    git("tag", "v1", sha.c2);
+    git("tag", "-a", "v0", "-m", "annotated", sha.base);
+  });
+
+  after(() => rmSync(top, { recursive: true, force: true }));
+
+  const repo = (): GitRepo => ({ toplevel: top, cwd: root, id: "" });
+
+  // openlore: scenario=LogSpansLocalBranches spec=git
+  test("LogSpansLocalBranches: an unmerged branch is listed, named at its tip, and HEAD is marked once", async () => {
+    const log = await gitLog(repo(), 20);
+    assert.deepEqual(
+      log.map((entry) => entry.subject),
+      ["t1", "merge feat", "c2", "f1", "base"],
+    );
+    const tip = log.find((entry) => entry.subject === "t1")!;
+    assert.deepEqual(tip.refs, ["topic"]);
+    assert.deepEqual(log.find((entry) => entry.subject === "merge feat")!.refs, ["main"]);
+    assert.deepEqual(
+      log.filter((entry) => entry.head).map((entry) => entry.sha),
+      [sha.merge],
+    );
+  });
+
+  // openlore: scenario=ParentsSkipHiddenCommits spec=git
+  test("ParentsSkipHiddenCommits: a merge's second parent is rewritten past the hidden tip", async () => {
+    const log = await gitLog(repo(), 20);
+    const merge = log.find((entry) => entry.sha === sha.merge)!;
+    assert.deepEqual(merge.parents, [sha.c2, sha.f1]);
+    assert.equal(
+      log.some((entry) => entry.sha === sha.f2),
+      false,
+    );
+  });
+
+  // openlore: scenario=ParentsBeyondTheLimitAreDropped spec=git
+  test("ParentsBeyondTheLimitAreDropped: no entry names a parent left out by the limit", async () => {
+    const log = await gitLog(repo(), 3);
+    assert.equal(log.length, 3);
+    const listed = new Set(log.map((entry) => entry.sha));
+    for (const entry of log) for (const parent of entry.parents) assert.ok(listed.has(parent), `${entry.subject} names unlisted ${parent}`);
+    // c2's own parent (base) is beyond the limit
+    assert.deepEqual(log.find((entry) => entry.sha === sha.c2)!.parents, []);
+  });
+
+  // openlore: scenario=TagsAreNamed spec=git
+  test("TagsAreNamed: lightweight and annotated tags are listed at their commits, apart from branches", async () => {
+    const log = await gitLog(repo(), 20);
+    const at = (commit: string) => log.find((entry) => entry.sha === commit)!;
+    assert.deepEqual(at(sha.c2).tags, ["v1"]);
+    assert.deepEqual(at(sha.c2).refs, []);
+    assert.deepEqual(at(sha.base).tags, ["v0"]);
+    assert.deepEqual(at(sha.merge).tags, []);
+    assert.deepEqual(at(sha.merge).refs, ["main"]);
+  });
+
+  test("a detached HEAD names no branch for itself, and is still marked", async () => {
+    git("checkout", "-q", "--detach", sha.c2);
+    try {
+      const log = await gitLog(repo(), 20);
+      const head = log.find((entry) => entry.head)!;
+      assert.equal(head.sha, sha.c2);
+      assert.deepEqual(head.refs, []);
+    } finally {
+      git("checkout", "-q", "main");
+    }
+  });
+});
