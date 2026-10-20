@@ -593,6 +593,25 @@ export interface GitLogEntry {
   subject: string;
 }
 
+/**
+ * One commit of a repository's log, with what its metro map needs: the history of
+ * HEAD and of every local branch, not only the branch checked out.
+ */
+export interface GitCommitLogEntry extends GitLogEntry {
+  /**
+   * Parent commit ids, pruned to the commits present in the same response. A parent
+   * cut off by the limit, or hidden because it changed nothing under the browser
+   * root, is dropped rather than pointed at a commit the client cannot draw.
+   */
+  parents: string[];
+  /** Local branches whose tip is this commit (`refs/heads/` stripped). */
+  refs: string[];
+  /** Tags on this commit (`refs/tags/` stripped), annotated or not. */
+  tags: string[];
+  /** The newest listed commit reachable from HEAD: where the checked-out line starts. */
+  head: boolean;
+}
+
 /** One commit touching a single file, with what the graph needs to draw it. */
 export interface GitFileLogEntry extends GitLogEntry {
   /**
@@ -1274,7 +1293,7 @@ export type ServerMessage =
   | { type: "git_status"; requestId: string; repo?: string; repos: GitRepoStatus[]; files: GitFileStatus[] }
   | { type: "git_diff"; requestId: string; path: string; before: string; after: string }
   /** `repo` is echoed: a log rendered under another repository's chip is a lie. */
-  | { type: "git_log"; requestId: string; repo: string; entries: GitLogEntry[] }
+  | { type: "git_log"; requestId: string; repo: string; entries: GitCommitLogEntry[] }
   | { type: "git_show"; requestId: string; sha: string; patch: string; truncated: boolean }
   | { type: "git_file_log"; requestId: string; path: string; entries: GitFileLogEntry[] }
   /** Both revisions are echoed so the client can drop a reply its selection has moved past. */
