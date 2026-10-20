@@ -26,6 +26,7 @@
 import fs from "node:fs/promises";
 import type { ExtensionAPI, ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { createDocxExtractToolDefinition } from "./docxTool.ts";
+import { createDrawioCheckToolDefinition } from "./drawioTool.ts";
 import { createMailExtractToolDefinition } from "./mailTool.ts";
 import { createPdfExtractToolDefinition } from "./pdfTool.ts";
 import { createPptxExtractToolDefinition } from "./pptxTool.ts";
@@ -131,6 +132,8 @@ export async function createPiOutpostTools(settings: PiOutpostToolsSettings): Pr
     createStructuredExchangeFigureToolDefinition({ ...common, maxBytes: settings.maxBytes.structuredExchange, projectRoot: root }),
     createStructuredExchangeTableToolDefinition({ ...common, maxBytes: settings.maxBytes.structuredExchange, projectRoot: root }),
     createTimelineComparisonToolDefinition({ ...common, maxBytes: settings.maxBytes.structuredExchange }),
+    // Always published, unlike the extractors: a diagram is asked for before any .drawio exists
+    createDrawioCheckToolDefinition({ cwd, allowedRoots: common.allowedRoots }),
     createStructuredExchangeToolDefinition({ projectRoot: root }),
     createStructuredExchangeProjectModelToolDefinition({ projectRoot: root }),
     createWorkPlanToolDefinition(),

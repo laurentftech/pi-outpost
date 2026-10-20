@@ -7,6 +7,15 @@ version you had and the one you run now, without going online.
 Releases before 0.41.0 are described on
 [GitHub Releases](https://github.com/laurentftech/pi-outpost/releases).
 
+## [0.45.0]
+
+### Added
+
+- **draw.io diagrams, seen and made.** A `.drawio` file opens drawn in the file viewer, by
+  draw.io's own viewer — every page, zoom, dark mode — with nothing fetched from anywhere;
+  "open in draw.io" hands it to draw.io desktop for editing, and the view follows the saved
+  file. The agent writes draw.io diagrams and checks them with `drawio_check`.
+
 ## [0.44.0] - 2026-10-20
 
 ### Added

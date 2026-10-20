@@ -1127,6 +1127,7 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
               workspace={rawWorkspace}
               onImageLoad={setLoadedPreviewImagePath}
               onPdfLoad={(path) => setLoadedPreviewPdf({ path, revision: state.previewRevision })}
+              onOpenNative={openNative}
               rawRevision={state.previewRevision}
             />
           )}

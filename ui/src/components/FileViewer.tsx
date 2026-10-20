@@ -10,6 +10,7 @@ import type { CodeEditorHandle } from "./CodeEditor";
 import { LazyCodeEditor, preloadCodeEditor } from "./lazyCodeEditor";
 import { CopyButton } from "./CopyButton";
 import { DocxExportButton } from "./DocxExportButton";
+import { DrawioFrame } from "./DrawioFrame";
 import { HtmlPageFrame } from "./HtmlPageFrame";
 import type { LoadFile } from "../util/htmlPage";
 import { SplitDiffBlock } from "./DiffBlocks";
@@ -74,6 +75,8 @@ interface FileViewerProps {
   onPdfLoad?: (path: string) => void;
   /** Changes when raw bytes at the same workspace path must be fetched again. */
   rawRevision?: number;
+  /** Opens the file with the application associated with it — for a `.drawio`, draw.io desktop. */
+  onOpenNative?: (path: string) => void;
 }
 
 /**
@@ -139,6 +142,11 @@ function isMarkdown(path: string): boolean {
   return /\.(md|markdown)$/i.test(path);
 }
 
+/** A draw.io diagram: `.drawio`, or the older `.dio`. */
+export function isDrawio(path: string): boolean {
+  return /\.(drawio|dio)$/i.test(path);
+}
+
 function isHtml(path: string): boolean {
   return /\.html?$/i.test(path);
 }
@@ -185,6 +193,7 @@ export function FileViewer({
   onImageLoad,
   onPdfLoad,
   rawRevision = 0,
+  onOpenNative,
 }: FileViewerProps) {
   // One value rather than a flag per pane. "raw && split" means nothing, and a
   // second boolean is how a state that means nothing becomes representable.
@@ -215,6 +224,8 @@ export function FileViewer({
   const markdown = loaded !== null && isMarkdown(file.path);
   // Drawn like Markdown, in a sandboxed frame (HtmlPageFrame): open it, see the page.
   const html = loaded !== null && isHtml(file.path);
+  // Drawn by jgraph's viewer, in a frame that can reach nothing (DrawioFrame).
+  const drawio = loaded !== null && isDrawio(file.path);
   // Images can't travel the text-preview protocol (read_file answers "binary");
   // the viewer loads them straight from /files/raw instead and ignores that error.
   const image = isImageFile(file.path);
@@ -246,7 +257,7 @@ export function FileViewer({
    * It arrives with no notion of invalid — every text renders as something — so its
    * half of the split never goes stale.
    */
-  const renderable = recognised || markdown || html;
+  const renderable = recognised || markdown || html || drawio;
   /** The old boolean, derived: every existing branch keeps reading one thing. */
   const showRaw = mode === "source";
   const roomForTwo = useRoomForTwo();
@@ -368,7 +379,7 @@ export function FileViewer({
   type FindMode = "pdf" | "text" | "dom" | "none";
   const editing = edit !== null;
   // The source shown read-only, in the same editor as editing (CodeMirror).
-  const showingSource = loaded !== null && edit === null && !splitting && !showGitDiff && (!markdown || showRaw) && (!diagram || showRaw) && (!html || showRaw);
+  const showingSource = loaded !== null && edit === null && !splitting && !showGitDiff && (!markdown || showRaw) && (!diagram || showRaw) && (!html || showRaw) && (!drawio || showRaw);
   const findMode: FindMode =
     showGitDiff || splitting
       ? "none"
@@ -931,7 +942,20 @@ export function FileViewer({
             looking at changes, not at the document). */}
         {/* A structured-exchange file exports what it draws, not its JSON as Word text:
             a figure as SVG, a table as a Word table and a workbook. */}
-        {loaded && !image && !pdf && !showGitDiff && !recognised && <DocxExportButton text={editedText} path={file.path} serverUrl={serverUrl} token={token} workspace={workspace} template={docxTemplate} />}
+        {/* Editing a diagram happens in draw.io desktop, where the user already has it:
+            the file is saved there and this view follows it. */}
+        {drawio && onOpenNative && (
+          <button
+            type="button"
+            onClick={() => onOpenNative(file.path)}
+            title="Open with the application associated with .drawio files — draw.io desktop, where it is installed"
+            className="shrink-0 rounded border border-zinc-300 px-2 py-0.5 text-xs text-zinc-600 hover:border-zinc-400 hover:text-zinc-900 dark:border-zinc-700 dark:text-zinc-300 dark:hover:border-zinc-500 dark:hover:text-zinc-100"
+          >
+            ↗ open in draw.io
+          </button>
+        )}
+        {/* Not for a diagram: its text is XML, and a Word document of XML helps nobody. */}
+        {loaded && !image && !pdf && !drawio && !showGitDiff && !recognised && <DocxExportButton text={editedText} path={file.path} serverUrl={serverUrl} token={token} workspace={workspace} template={docxTemplate} />}
         {shownDocument?.kind === "table" && (
           <>
             <DocxExportButton
@@ -1086,6 +1110,11 @@ export function FileViewer({
         {loaded && edit === null && !splitting && !showGitDiff && markdown && !showRaw && (
           <div ref={contentRef}>{renderedMarkdown(loaded.content)}</div>
         )}
+        {loaded && edit === null && !splitting && !showGitDiff && drawio && !showRaw && (
+          <div className="h-full" data-testid="file-drawio">
+            <DrawioFrame xml={loaded.content} serverUrl={serverUrl} title={file.path} fallback={sourceView(false)} />
+          </div>
+        )}
         {loaded && edit === null && !splitting && !showGitDiff && html && !showRaw && (
           <div className="h-full" data-testid="file-html">
             <HtmlPageFrame source={loaded.content} path={file.path} load={loadPageResource} onOpen={onReload} />
@@ -1107,6 +1136,9 @@ export function FileViewer({
                 // something — so there is nothing here to mark stale or to explain.
                 // The same renderer as the full-width view, on the same debounce.
                 <div className="prose-chat p-4 text-zinc-700 dark:text-zinc-300">{renderedMarkdown(settledText)}</div>
+              ) : drawio && !recognised ? (
+                // The same frame as the full-width view, drawing the draft, on the same debounce.
+                <DrawioFrame xml={settledText} serverUrl={serverUrl} title={file.path} />
               ) : html && !recognised ? (
                 // The same frame as the full-width view, drawing the draft, on the same debounce.
                 <HtmlPageFrame source={settledText} path={file.path} load={loadPageResource} onOpen={onReload} />

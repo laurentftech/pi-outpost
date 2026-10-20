@@ -33,3 +33,6 @@ server/test/fixtures/*.msg     binary
 # A `.eml` is the opposite case, and is left to git on purpose: a message *is* text,
 # and a Windows checkout handing the reader CRLF where a Linux one hands it LF is
 # exactly the difference the reader has to tolerate. Declaring it would hide that.
+# A vendored third-party file is distributed as the exact bytes its README's checksum
+# names; no conversion, on any checkout.
+web/public/vendor/**           -text

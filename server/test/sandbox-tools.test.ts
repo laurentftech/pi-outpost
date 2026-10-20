@@ -147,6 +147,8 @@ describe("createSandboxedTools", () => {
         "docx_extract",
         "docx_render",
         "docx_styles",
+        // Checking a diagram only reads it
+        "drawio_check",
         "find",
         "grep",
         "ls",
@@ -178,6 +180,7 @@ describe("createSandboxedTools", () => {
         "docx_restyle",
         "docx_styles",
         "docx_update",
+        "drawio_check",
         "edit",
         "find",
         "grep",

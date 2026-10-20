@@ -54,6 +54,7 @@ import {
 import type { RenderSettings } from "./presentationRender.ts";
 import { createStructuredExchangeFigureToolDefinition } from "./structuredExchangeFigureTool.ts";
 import { createTimelineComparisonToolDefinition } from "./timelineComparisonTool.ts";
+import { createDrawioCheckToolDefinition } from "./drawioTool.ts";
 import { createStructuredExchangeTableToolDefinition } from "./structuredExchangeTableTool.ts";
 import { confinedBashOperations, isPowerShell, type ConfinedBashOptions } from "./confinedBash.ts";
 import { sharedEgressProxy } from "./egressProxy.ts";
@@ -291,6 +292,8 @@ export async function createSandboxedTools(
       writableRoot: realWritableRoot,
     }),
   );
+  // Checking a draw.io diagram only reads it: the read zone and its exceptions, no destination.
+  readFactories.push((cwd) => createDrawioCheckToolDefinition({ cwd, allowedRoots: documentRoots }));
   // Writing a table as Markdown reads a document and writes one file: the figure tool's twin.
   readFactories.push((cwd) =>
     createStructuredExchangeTableToolDefinition({

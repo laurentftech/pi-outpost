@@ -25,6 +25,10 @@ Or copy the directory into `.agents/skills/`, which the agent discovers on its o
   `present_project_model`, and the mistakes that validate yet check the wrong thing. Open it
   yourself with `/skill:structured-exchange-project`: models do not reliably open it alone. Pairs
   with [`docs/structured-exchange-project-setup.md`](../docs/structured-exchange-project-setup.md).
+- **`drawio/`** — writing a draw.io diagram (`.drawio`) the user opens and edits in draw.io:
+  the XML skeleton, shapes, connectors and containers that render everywhere, layout rules,
+  and the loop through `drawio_check`, since the agent cannot see the rendering. The file
+  viewer draws the result.
 - **`pptx-from-template/`** — building a PowerPoint deck from a `.potx`/`.pptx` template with
   `pptx_layouts`, `pptx_create` and `pptx_render`, and the render-and-fix loop that checks the
   slides are readable before the deck is handed over, and updating an existing deck slide by
