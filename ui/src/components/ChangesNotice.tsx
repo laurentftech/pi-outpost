@@ -77,23 +77,26 @@ export function ChangesNotice({ changes }: { changes: OutpostChanges }) {
       </div>
       {open && hasEntries && (
         <div data-testid="changes-notice-body" className="max-h-[50vh] overflow-y-auto border-t border-zinc-200 px-4 py-3 dark:border-zinc-800">
-          {changes.entries.map((entry) => (
-            // A measure a page of notes reads at, not the width of the window
-            <section key={entry.version} className="mb-4 max-w-2xl">
-              <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">
-                {entry.version}
-                {entry.date && <span className="ml-2 font-normal text-zinc-500 dark:text-zinc-400">{entry.date}</span>}
-              </h2>
-              <div className="prose-chat text-zinc-800 dark:text-zinc-200">
-                <ReactMarkdown remarkPlugins={[remarkGfm]} components={{ a: ExternalLink }}>
-                  {entry.markdown}
-                </ReactMarkdown>
-              </div>
-            </section>
-          ))}
-          <ExternalLink href={changes.releaseNotes} className="font-medium text-zinc-900 underline-offset-2 hover:underline dark:text-zinc-100">
-            Release notes on GitHub
-          </ExternalLink>
+          {/* On the conversation's own column: one reading axis down the page, at a
+              measure a page of notes reads at rather than the width of the window */}
+          <div className="mx-auto max-w-3xl">
+            {changes.entries.map((entry) => (
+              <section key={entry.version} className="mb-4">
+                <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">
+                  {entry.version}
+                  {entry.date && <span className="ml-2 font-normal text-zinc-500 dark:text-zinc-400">{entry.date}</span>}
+                </h2>
+                <div className="prose-chat text-zinc-800 dark:text-zinc-200">
+                  <ReactMarkdown remarkPlugins={[remarkGfm]} components={{ a: ExternalLink }}>
+                    {entry.markdown}
+                  </ReactMarkdown>
+                </div>
+              </section>
+            ))}
+            <ExternalLink href={changes.releaseNotes} className="font-medium text-zinc-900 underline-offset-2 hover:underline dark:text-zinc-100">
+              Release notes on GitHub
+            </ExternalLink>
+          </div>
         </div>
       )}
     </div>
