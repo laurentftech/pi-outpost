@@ -7,7 +7,7 @@ version you had and the one you run now, without going online.
 Releases before 0.41.0 are described on
 [GitHub Releases](https://github.com/laurentftech/pi-outpost/releases).
 
-## [0.45.0]
+## [0.45.0] - 2026-10-20
 
 ### Added
 
