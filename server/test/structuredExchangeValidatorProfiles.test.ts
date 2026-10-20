@@ -8,7 +8,7 @@
  */
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { copyFileSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -16,7 +16,6 @@ import { before, describe, test } from "node:test";
 import { envWithoutCoverageSink } from "./childEnv.mjs";
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
-const BUNDLE = path.join(REPO, "shared/dist/validate-structured-exchange.mjs");
 const away = mkdtempSync(path.join(tmpdir(), "structured-exchange-profile-cli-"));
 const cli = path.join(away, "validate-structured-exchange.mjs");
 
@@ -78,8 +77,8 @@ const write = (name: string, value: unknown) => {
 
 describe("the reference validator's profile checks, as they ship", () => {
   before(() => {
-    execFileSync(process.execPath, [path.join(REPO, "shared/scripts/build-validator.mjs")], { cwd: REPO, stdio: "ignore", env: envWithoutCoverageSink() });
-    copyFileSync(BUNDLE, cli);
+    // Built into this file's own directory, never shared/dist: other files build it too, in parallel
+    execFileSync(process.execPath, [path.join(REPO, "shared/scripts/build-validator.mjs"), cli], { cwd: REPO, stdio: "ignore", env: envWithoutCoverageSink() });
   });
 
   test("a usable profile checked on its own is accepted with status 0", () => {

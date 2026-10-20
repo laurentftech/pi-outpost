@@ -10,7 +10,7 @@
  */
 import assert from "node:assert/strict";
 import { execFileSync, execFileSync as run } from "node:child_process";
-import { copyFileSync, existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -18,7 +18,6 @@ import { before, describe, test } from "node:test";
 import { envWithoutCoverageSink } from "./childEnv.mjs";
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
-const BUNDLE = path.join(REPO, "shared/dist/validate-structured-exchange.mjs");
 
 /** Somewhere with no node_modules, no package.json, and no path back to the repo. */
 const away = mkdtempSync(path.join(tmpdir(), "structured-exchange-cli-"));
@@ -76,14 +75,12 @@ const enriched = (attributes?: Record<string, unknown>, relations?: unknown[]) =
 
 describe("the reference validator as it ships", () => {
   before(() => {
-    if (!existsSync(BUNDLE)) {
-      execFileSync(process.execPath, [path.join(REPO, "shared/scripts/build-validator.mjs")], {
-        cwd: REPO,
-        stdio: "ignore",
-        env: envWithoutCoverageSink(),
-      });
-    }
-    copyFileSync(BUNDLE, cli);
+    // Built into this file's own directory, never shared/dist: other files build it too, in parallel
+    execFileSync(process.execPath, [path.join(REPO, "shared/scripts/build-validator.mjs"), cli], {
+      cwd: REPO,
+      stdio: "ignore",
+      env: envWithoutCoverageSink(),
+    });
     writeFileSync(path.join(away, "good.json"), graph());
     writeFileSync(path.join(away, "not-json.txt"), "{ this is not json");
     writeFileSync(
