@@ -321,13 +321,21 @@ test("Escape while touching up is \"done\": it leaves the touch-up, asking first
   const alpha = await centreOf(page, frame, "Alpha");
   await drag(page, alpha, { x: alpha.x, y: alpha.y + 80 });
   await expect(page.getByTestId("drawio-touchup-status")).toHaveText("● unsaved");
-  // The keyboard is in the frame after the drag: its Escape is "done", which asks
-  page.once("dialog", (dialog) => void dialog.dismiss());
+  // The keyboard is in the frame after the drag: its Escape is "done", which asks — once
+  // per Escape, answered in turn: no, then yes
+  const answers = [false, true];
+  const asked: string[] = [];
+  page.on("dialog", (dialog) => {
+    asked.push(dialog.message());
+    void (answers.shift() ? dialog.accept() : dialog.dismiss());
+  });
   await page.keyboard.press("Escape");
+  await expect.poll(() => asked.length).toBe(1);
   await expect(overlay.getByRole("button", { name: "✓ save" })).toBeVisible();
-  page.once("dialog", (dialog) => void dialog.accept());
   await page.keyboard.press("Escape");
+  await expect.poll(() => asked.length).toBe(2);
   await expect(overlay.getByRole("button", { name: "✎ touch up" })).toBeVisible();
+  expect(asked).toEqual(["Discard the unsaved touch-ups to this diagram?", "Discard the unsaved touch-ups to this diagram?"]);
   // Still at full size, the touch-up dropped and the file untouched
   await expect(overlay).toBeVisible();
   expect(await readFile(FILE(), "utf8")).toBe(SERVICES_DIAGRAM);

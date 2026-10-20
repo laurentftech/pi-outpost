@@ -370,12 +370,13 @@ div.mxRubberband { position: absolute; overflow: hidden; border: 1px solid #29b6
   // The keyboard is in this frame once it has been clicked, so the application never sees
   // an Escape typed here: passed on, except while a label is typed, where Escape cancels
   // the label first, as in draw.io
-  document.addEventListener("keydown", function (event) {
+  // On the window, capturing: before mxGraph's own handlers, which take Escape to cancel
+  // a gesture in progress and can keep it from bubbling — right after a drag, it was lost
+  window.addEventListener("keydown", function (event) {
     if (event.key !== "Escape") return;
     if (viewer !== null && viewer.graph.isEditing()) return;
-    event.preventDefault();
     tell({ type: M.ESCAPE });
-  });
+  }, true);
 
   window.addEventListener("message", function (event) {
     // Only the application that holds this frame
