@@ -11,11 +11,12 @@ import { LazyCodeEditor, preloadCodeEditor } from "./lazyCodeEditor";
 import { CopyButton } from "./CopyButton";
 import { DocxExportButton } from "./DocxExportButton";
 import { DrawioFrame } from "./DrawioFrame";
+import { DrawioBlock } from "./DrawioBlock";
 import { HtmlPageFrame } from "./HtmlPageFrame";
 import type { LoadFile } from "../util/htmlPage";
 import { SplitDiffBlock } from "./DiffBlocks";
 import { diffLines } from "../util/diff";
-import { isImageFile, isPdfFile, rawFileUrl, resolveRelativeHref } from "../util/workspacePath";
+import { isDrawioFile, isImageFile, isPdfFile, rawFileUrl, resolveRelativeHref } from "../util/workspacePath";
 import { normalizeMathDelimiters } from "../util/markdownMath";
 import { MarkdownPre } from "./Mermaid";
 import { ViewerErrorBoundary } from "./ViewerErrorBoundary";
@@ -143,9 +144,7 @@ function isMarkdown(path: string): boolean {
 }
 
 /** A draw.io diagram: `.drawio`, or the older `.dio`. */
-export function isDrawio(path: string): boolean {
-  return /\.(drawio|dio)$/i.test(path);
-}
+export const isDrawio = isDrawioFile;
 
 function isHtml(path: string): boolean {
   return /\.html?$/i.test(path);
@@ -269,6 +268,9 @@ export function FileViewer({
     if (hasText) void preloadCodeEditor().catch(() => {});
   }, [hasText]);
   const dirty = edit !== null && edit.draft !== edit.baseContent;
+  // Touch-ups to a drawn diagram not yet saved: leaving the rendering would drop them too
+  const [touchUpDirty, setTouchUpDirty] = useState(false);
+  const unsaved = dirty || touchUpDirty;
   const saving = loaded?.pendingSave !== undefined;
   // The reducer refetches on file_changed, so a foreign write shows up as a new mtime
   const changedOnDisk = edit !== null && loaded !== null && loaded.mtimeMs !== edit.baseMtimeMs;
@@ -744,13 +746,14 @@ export function FileViewer({
    */
   function changeMode(next: ViewMode) {
     if (mode === "split" && next !== "split" && dirty && !window.confirm("Discard unsaved changes?")) return;
+    if (next !== mode && touchUpDirty && !window.confirm("Discard unsaved changes?")) return;
     if (mode === "split" && next !== "split") setEdit(null);
     setModeBeforeEdit(null);
     setMode(next);
   }
 
   function requestClose() {
-    if (dirty && !window.confirm("Discard unsaved changes?")) return;
+    if (unsaved && !window.confirm("Discard unsaved changes?")) return;
     onClose();
   }
 
@@ -763,6 +766,7 @@ export function FileViewer({
    */
   function startEdit() {
     if (!loaded) return;
+    if (touchUpDirty && !window.confirm("Discard unsaved changes?")) return;
     if (renderable && mode === "rendered") {
       setModeBeforeEdit("rendered");
       setMode(roomForTwo ? "split" : "source");
@@ -861,10 +865,10 @@ export function FileViewer({
   }, [isStreaming]);
 
   useEffect(() => {
-    onDirtyChange(dirty);
+    onDirtyChange(unsaved);
     return () => onDirtyChange(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dirty]);
+  }, [unsaved]);
 
   // Fetched diff contents are per-file: drop them when this viewer unmounts;
   // when opened straight onto the diff (badge click), fetch it now
@@ -933,7 +937,7 @@ export function FileViewer({
         )}
         <span className="min-w-0 flex-1 truncate font-mono text-xs text-zinc-500 dark:text-zinc-400" title={file.path}>
           {file.path}
-          {dirty && <span className="ml-1 text-amber-500">●</span>}
+          {unsaved && <span className="ml-1 text-amber-500">●</span>}
         </span>
         {/* Offered whatever the view mode and whatever the writable zone says: it
             exports the document rather than the view, and produces a download
@@ -942,8 +946,8 @@ export function FileViewer({
             looking at changes, not at the document). */}
         {/* A structured-exchange file exports what it draws, not its JSON as Word text:
             a figure as SVG, a table as a Word table and a workbook. */}
-        {/* Editing a diagram happens in draw.io desktop, where the user already has it:
-            the file is saved there and this view follows it. */}
+        {/* Touch-ups happen in the drawing (DrawioBlock); anything more in draw.io desktop,
+            where the user already has it: the file is saved there and this view follows it. */}
         {drawio && onOpenNative && (
           <button
             type="button"
@@ -1112,7 +1116,7 @@ export function FileViewer({
         )}
         {loaded && edit === null && !splitting && !showGitDiff && drawio && !showRaw && (
           <div className="h-full" data-testid="file-drawio">
-            <DrawioFrame xml={loaded.content} serverUrl={serverUrl} title={file.path} fallback={sourceView(false)} />
+            <DrawioBlock path={file.path} xml={loaded.content} variant="viewer" fallback={sourceView(false)} onTouchUpDirtyChange={setTouchUpDirty} />
           </div>
         )}
         {loaded && edit === null && !splitting && !showGitDiff && html && !showRaw && (

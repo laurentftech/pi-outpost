@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import type { ChatItem } from "@pi-outpost/shared";
 import { AssistantMessage, chatHtmlSchema } from "./AssistantMessage";
+import { DrawioFilesContext } from "./drawioFiles";
 
 type AssistantItem = Extract<ChatItem, { kind: "assistant" }>;
 
@@ -439,5 +440,34 @@ describe("AssistantMessage", () => {
       setup({ item: item({ blocks: [], errorMessage: "Connection lost" }) });
       expect(screen.getByText("Connection lost")).toBeInTheDocument();
     });
+  });
+});
+
+describe("a .drawio file referenced as a picture", () => {
+  function withFiles(text: string) {
+    const read = vi.fn().mockResolvedValue({ content: "<mxfile/>", mtimeMs: 1 });
+    render(
+      <DrawioFilesContext.Provider value={{ serverUrl: "", fileIo: { read, write: vi.fn(), onChanged: vi.fn(() => () => {}) } }}>
+        <AssistantMessage item={item({ blocks: [{ type: "text", text }] })} />
+      </DrawioFilesContext.Provider>,
+    );
+    return { read };
+  }
+
+  // openlore: scenario=AReferencedDiagramIsDrawnInTheReply spec=drawio-diagrams
+  it("AReferencedDiagramIsDrawnInTheReply: is drawn in place of a picture, as a block of its own", async () => {
+    const { read } = withFiles("Here it is:\n\n![architecture](./docs/architecture%20v2.drawio)\n\nDone.");
+    const block = await screen.findByTestId("drawio-block-reply");
+    expect(read).toHaveBeenCalledWith("docs/architecture v2.drawio");
+    expect(document.querySelector("img")).toBeNull();
+    // Not inside a <p>: a block in a paragraph is not valid HTML
+    expect(block.closest("p")).toBeNull();
+    expect(screen.getByText("Done.").tagName).toBe("P");
+  });
+
+  it("leaves other pictures, and a .drawio on another site, as pictures", () => {
+    withFiles("![logo](./logo.png) ![remote](https://example.com/a.drawio)");
+    expect(screen.queryByTestId("drawio-block-reply")).toBeNull();
+    expect(document.querySelectorAll("img")).toHaveLength(2);
   });
 });

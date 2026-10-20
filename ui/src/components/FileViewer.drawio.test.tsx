@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { FileViewer, isDrawio } from "./FileViewer";
 import type { OpenFile } from "../useAgent";
 import { DRAWIO_MESSAGE } from "../util/drawioPage";
+import { DrawioFilesContext } from "./drawioFiles";
 
 type Props = React.ComponentProps<typeof FileViewer>;
 
@@ -91,5 +92,58 @@ describe("a draw.io file in the viewer", () => {
     rerender(<FileViewer {...props} file={loaded(DIAGRAM("After"), 2000)} />);
     expect(screen.getByTestId("drawio-frame")).toBe(frame);
     expect(sent).toHaveBeenLastCalledWith(expect.objectContaining({ type: DRAWIO_MESSAGE.RENDER, xml: DIAGRAM("After") }), "*");
+  });
+});
+
+describe("touching up a draw.io file in the viewer", () => {
+  function openWithFiles(overrides: Partial<Props> = {}) {
+    const fileIo = {
+      read: vi.fn().mockResolvedValue({ content: DIAGRAM("Overview"), mtimeMs: 1000 }),
+      write: vi.fn().mockResolvedValue({ mtimeMs: 2000 }),
+      onChanged: vi.fn(() => () => {}),
+    };
+    const props: Props = {
+      file: loaded(DIAGRAM("Overview")),
+      isStreaming: false,
+      gitDiff: null,
+      inRepository: false,
+      serverUrl: "http://127.0.0.1:9",
+      onDirtyChange: vi.fn(),
+      onFetchGitDiff: vi.fn(),
+      onClearGitDiff: vi.fn(),
+      onOpenGitHistory: vi.fn(),
+      onClose: vi.fn(),
+      onReload: vi.fn(),
+      onSave: vi.fn(),
+      onImageLoad: vi.fn(),
+      ...overrides,
+    };
+    render(
+      <DrawioFilesContext.Provider value={{ serverUrl: "http://127.0.0.1:9", fileIo }}>
+        <FileViewer {...props} />
+      </DrawioFilesContext.Provider>,
+    );
+    return { props, fileIo };
+  }
+
+  // openlore: scenario=UnsavedTouchUpIsNotLostSilently spec=drawio-diagrams
+  it("UnsavedTouchUpIsNotLostSilently: unsaved touch-ups mark the file and are asked about before closing or changing mode", async () => {
+    const { props } = openWithFiles();
+    const frame = screen.getByTestId("drawio-frame") as HTMLIFrameElement;
+    const answer = (data: unknown) => act(() => {
+      window.dispatchEvent(new MessageEvent("message", { data, source: frame.contentWindow }));
+    });
+    answer({ type: DRAWIO_MESSAGE.READY });
+    fireEvent.click(screen.getByRole("button", { name: "✎ touch up" }));
+    await screen.findByRole("button", { name: "✓ save" });
+    answer({ type: DRAWIO_MESSAGE.CHANGED, dirty: true, canUndo: true, canRedo: false });
+    expect(props.onDirtyChange).toHaveBeenLastCalledWith(true);
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+    fireEvent.keyDown(document, { key: "Escape" });
+    fireEvent.click(screen.getByRole("button", { name: /source/ }));
+    expect(confirm).toHaveBeenCalledTimes(2);
+    expect(props.onClose).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "✓ save" })).toBeInTheDocument();
+    confirm.mockRestore();
   });
 });

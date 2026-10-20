@@ -3465,3 +3465,69 @@ describe("older history", () => {
     expect(result.current.state.items.map((item) => (item.kind === "user" ? item.text : ""))).toEqual(["kept"]);
   });
 });
+
+describe("fileIo: reading and writing a file that is not the open one", () => {
+  function connected() {
+    const { result } = renderHook(() => useAgent());
+    act(() => mockWs!.open());
+    return result;
+  }
+  const last = () => JSON.parse(mockWs!.sent[mockWs!.sent.length - 1]) as Record<string, unknown> & { requestId: string };
+
+  it("answers a read and a write to their caller, without touching the open file", async () => {
+    const result = connected();
+    const reading = result.current.fileIo.read("docs/a.drawio");
+    const read = last();
+    expect(read).toMatchObject({ type: "read_file", path: "docs/a.drawio" });
+    act(() => mockWs!.receive({ type: "file_content", requestId: read.requestId, path: "docs/a.drawio", content: "<mxfile/>", size: 9, mtimeMs: 1000 }));
+    await expect(reading).resolves.toEqual({ content: "<mxfile/>", mtimeMs: 1000 });
+    expect(result.current.state.openFile).toBeNull();
+
+    const writing = result.current.fileIo.write("docs/a.drawio", "<mxfile></mxfile>", 1000);
+    const write = last();
+    expect(write).toMatchObject({ type: "write_file", path: "docs/a.drawio", content: "<mxfile></mxfile>", expectedMtimeMs: 1000 });
+    act(() => mockWs!.receive({ type: "file_written", requestId: write.requestId, path: "docs/a.drawio", size: 17, mtimeMs: 2000 }));
+    await expect(writing).resolves.toEqual({ mtimeMs: 2000 });
+    expect(result.current.state.openFile).toBeNull();
+  });
+
+  it("rejects a refused write with the server's reason, so a conflict can be told apart", async () => {
+    const result = connected();
+    const writing = result.current.fileIo.write("docs/a.drawio", "x", 1000);
+    const write = last();
+    act(() => mockWs!.receive({ type: "file_browser_error", requestId: write.requestId, path: "docs/a.drawio", message: "changed on disk", reason: "conflict" }));
+    await expect(writing).rejects.toMatchObject({ name: "FileIoError", reason: "conflict", message: "changed on disk" });
+  });
+
+  it("rejects what is pending when the connection drops", async () => {
+    const result = connected();
+    const reading = result.current.fileIo.read("docs/a.drawio");
+    act(() => mockWs!.disconnect(1006));
+    await expect(reading).rejects.toThrow("connection dropped");
+  });
+
+  it("calls a path's listeners when it, or its directory, changes, and stops once unsubscribed", () => {
+    const result = connected();
+    const mine = vi.fn();
+    const other = vi.fn();
+    const stop = result.current.fileIo.onChanged("docs/a.drawio", mine);
+    result.current.fileIo.onChanged("docs/b.drawio", other);
+    act(() => mockWs!.receive({ type: "file_changed", path: "docs/a.drawio" }));
+    expect(mine).toHaveBeenCalledTimes(1);
+    expect(other).not.toHaveBeenCalled();
+    // A removal or replacement is reported for the directory
+    act(() => mockWs!.receive({ type: "directory_changed", path: "docs" }));
+    expect(mine).toHaveBeenCalledTimes(2);
+    expect(other).toHaveBeenCalledTimes(1);
+    stop();
+    act(() => mockWs!.receive({ type: "file_changed", path: "docs/a.drawio" }));
+    expect(mine).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps the same fileIo across renders, so subscribers do not churn", () => {
+    const { result, rerender } = renderHook(() => useAgent());
+    const first = result.current.fileIo;
+    rerender();
+    expect(result.current.fileIo).toBe(first);
+  });
+});

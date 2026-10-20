@@ -221,3 +221,15 @@ describe("the embedded content is bounded", () => {
     expect(onProgress).toHaveBeenCalledWith(2, 2);
   });
 });
+
+describe("a draw.io diagram in a reply", () => {
+  // openlore: scenario=AnExportCarriesALink spec=drawio-diagrams
+  it("AnExportCarriesALink: becomes a link naming the file, with no picture looked up", async () => {
+    const loadImage = vi.fn(async () => image());
+    const items: ChatItem[] = [{ kind: "assistant", blocks: [{ type: "text", text: "![architecture](./docs/voiture%20v2.drawio)" }] }];
+    const html = await conversationToHtml(items, options({ loadImage }));
+    expect(loadImage).not.toHaveBeenCalled();
+    expect(html).not.toContain("<img");
+    expect(html).toContain('<a href="./docs/voiture%20v2.drawio">architecture (draw.io diagram: docs/voiture v2.drawio)</a>');
+  });
+});

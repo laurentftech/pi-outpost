@@ -257,3 +257,17 @@ describe("drawio_check", () => {
     assert.match(result.content[0].text, /larger than/);
   });
 });
+
+describe("the agent is told to show the diagram", () => {
+  // openlore: scenario=TheGuidanceAsksToShowTheDiagram spec=drawio-diagrams
+  test("TheGuidanceAsksToShowTheDiagram: the check tool and the skill both ask for the file as a picture in the reply", () => {
+    const tool = createDrawioCheckToolDefinition({ cwd: tmpdir(), allowedRoots: [tmpdir()] });
+    const guidance = (tool.promptGuidelines ?? []).join("\n");
+    assert.match(guidance, /Once drawio_check reports no error, show the diagram in your reply as a picture of the file — !\[name\]\(\.\/path\/to\/file\.drawio\)/);
+    const skill = readFileSync(path.join(import.meta.dirname, "..", "..", "skills", "drawio", "SKILL.md"), "utf8");
+    // A step of the loop, with the picture syntax spelled out: weak models copy examples, not prose
+    assert.match(skill, /^4\. Show it in your reply, as a picture of the file/m);
+    assert.match(skill, /!\[Architecture overview\]\(\.\/diagrams\/architecture\.drawio\)/);
+    assert.match(skill.split("\n---\n")[0], /show it in the reply/);
+  });
+});

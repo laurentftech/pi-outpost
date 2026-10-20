@@ -1,0 +1,337 @@
+/**
+ * A .drawio file in a reply, as somebody reads and touches it up: drawn in place by
+ * draw.io's own viewer, its controls like every other diagram's, and touch-ups saved back
+ * into the file — read back from disk, since only the file says what was really saved.
+ *
+ * Every gesture is a real mouse or keyboard event on the drawn shapes: the viewer, its
+ * sandbox and mxGraph's handlers only meet in a browser.
+ */
+import { expect, test, type Frame, type Locator, type Page } from "@playwright/test";
+import { readFile, writeFile } from "node:fs/promises";
+import path from "node:path";
+import { SERVICES_DIAGRAM, SERVICES_DIAGRAM_PATH, SERVICES_SECOND_PAGE } from "./fixtures/drawio-conversation";
+
+const FILE = () => path.join(process.env.PI_E2E_DRAWIO_CHAT_ROOT!, SERVICES_DIAGRAM_PATH);
+
+// The specs write the file; each starts from the fixture
+test.describe.configure({ mode: "serial" });
+test.beforeEach(async () => {
+  await writeFile(FILE(), SERVICES_DIAGRAM);
+});
+
+async function openReply(page: Page): Promise<Locator> {
+  await page.goto(process.env.PI_E2E_DRAWIO_CHAT_URL!);
+  // The services diagram's block, by its frame: the gone one is a block too until its read fails
+  const block = page.getByTestId("drawio-block-reply").filter({ has: page.getByTitle(SERVICES_DIAGRAM_PATH, { exact: true }) });
+  await expect(block).toBeVisible();
+  return block;
+}
+
+async function frameOf(frame: Locator): Promise<Frame> {
+  await expect(frame).toBeVisible();
+  return (await (await frame.elementHandle())!.contentFrame())!;
+}
+
+/** The labels drawn, once each. */
+function labels(frame: Frame): Promise<string[]> {
+  return frame.evaluate(() => [...new Set([...document.querySelectorAll("svg foreignObject div")].filter((d) => d.querySelector("div") === null).map((d) => d.textContent?.trim() ?? "").filter(Boolean))]);
+}
+
+/** Where a shape's label is drawn, in page coordinates. */
+async function centreOf(page: Page, frame: Locator, label: string): Promise<{ x: number; y: number }> {
+  const inner = await frameOf(frame);
+  const box = (await frame.boundingBox())!;
+  const point = await inner.evaluate((name) => {
+    const el = [...document.querySelectorAll("svg foreignObject div")].find((d) => d.querySelector("div") === null && d.textContent?.trim() === name);
+    const r = el!.getBoundingClientRect();
+    return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+  }, label);
+  return { x: box.x + point.x, y: box.y + point.y };
+}
+
+async function drag(page: Page, from: { x: number; y: number }, to: { x: number; y: number }) {
+  await page.mouse.move(from.x, from.y);
+  await page.mouse.down();
+  await page.mouse.move(to.x, to.y, { steps: 12 });
+  await page.mouse.up();
+}
+
+/** A cell of the file's first page, as saved on disk. */
+async function savedCell(id: string): Promise<string> {
+  const text = await readFile(FILE(), "utf8");
+  const match = new RegExp(`<mxCell id="${id}"[^>]*?(?:/>|>[\\s\\S]*?</mxCell>)`).exec(text);
+  return match?.[0] ?? "";
+}
+
+// openlore: scenario=AReferencedDiagramIsDrawnInTheReply spec=drawio-diagrams
+test("AReferencedDiagramIsDrawnInTheReply: the reply draws the file, isolated, with the controls of every diagram", async ({ page }) => {
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(String(error)));
+  const block = await openReply(page);
+  const frame = block.getByTestId("drawio-frame");
+  await expect(frame).toHaveAttribute("sandbox", "allow-scripts");
+  await expect.poll(async () => labels(await frameOf(frame))).toEqual(["Alpha", "Bravo", "Charlie"]);
+  await expect(block.getByRole("button")).toHaveText(["⤢ enlarge", "⤓ download SVG", "⤓ download .drawio", "↗ open"]);
+  // Drawn as a diagram, not fetched as a picture, and not inside a paragraph
+  await expect(page.locator("img")).toHaveCount(0);
+  expect(await block.evaluate((element) => element.closest("p"))).toBeNull();
+  expect(errors).toEqual([]);
+});
+
+// openlore: scenario=AMissingDiagramSaysSo spec=drawio-diagrams
+test("AMissingDiagramSaysSo: a referenced file that is gone is named, with no empty frame", async ({ page }) => {
+  await openReply(page);
+  await expect(page.getByTestId("drawio-block-missing")).toContainText("The diagram diagrams/gone.drawio could not be shown");
+  await expect(page.getByTestId("drawio-frame")).toHaveCount(1);
+});
+
+// openlore: scenario=DownloadSvgSavesThePageShown spec=drawio-diagrams
+// openlore: scenario=DownloadDrawioSavesTheFile spec=drawio-diagrams
+test("DownloadSvgSavesThePageShown: the page shown as SVG with its labels as text, and the file as it is", async ({ page }) => {
+  const block = await openReply(page);
+  await expect.poll(async () => labels(await frameOf(block.getByTestId("drawio-frame")))).toContain("Alpha");
+
+  const svgDownload = page.waitForEvent("download");
+  await block.getByRole("button", { name: "⤓ download SVG" }).click();
+  const svg = await svgDownload;
+  expect(svg.suggestedFilename()).toBe("services-Services.svg");
+  const markup = await readFile((await svg.path())!, "utf8");
+  expect(markup).toMatch(/^<\?xml version="1\.0" encoding="UTF-8"\?>\n<svg /);
+  // Each label also as plain SVG text, for readers that ignore foreignObject (Word)
+  for (const label of ["Alpha", "Bravo", "Charlie"]) expect(markup).toMatch(new RegExp(`<text[^>]*>${label}</text>`));
+
+  const fileDownload = page.waitForEvent("download");
+  await block.getByRole("button", { name: "⤓ download .drawio" }).click();
+  const file = await fileDownload;
+  expect(file.suggestedFilename()).toBe("services.drawio");
+  expect(await readFile((await file.path())!, "utf8")).toBe(SERVICES_DIAGRAM);
+});
+
+// openlore: scenario=EnlargeShowsTheDiagramAtFullSize spec=drawio-diagrams
+test("EnlargeShowsTheDiagramAtFullSize: over the application, with its downloads, and back where it was", async ({ page }) => {
+  const block = await openReply(page);
+  await block.getByRole("button", { name: "Show diagram at full size" }).click();
+  const overlay = page.getByTestId("drawio-enlarged");
+  await expect(overlay).toBeVisible();
+  const full = overlay.getByTitle(`${SERVICES_DIAGRAM_PATH}, full size`);
+  await expect.poll(async () => labels(await frameOf(full))).toEqual(["Alpha", "Bravo", "Charlie"]);
+  const size = (await full.boundingBox())!;
+  const viewport = page.viewportSize()!;
+  expect(size.width).toBeGreaterThan(viewport.width * 0.8);
+  await expect(overlay.getByRole("button", { name: "⤓ download SVG" })).toBeVisible();
+  await expect(overlay.getByRole("button", { name: "⤓ download .drawio" })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(overlay).toHaveCount(0);
+  await expect(block).toBeVisible();
+});
+
+// openlore: scenario=OpenTheFileFromTheReply spec=drawio-diagrams
+test("OpenTheFileFromTheReply: the file opens in the file viewer, drawn there too", async ({ page }) => {
+  const block = await openReply(page);
+  await block.getByRole("button", { name: "↗ open" }).click();
+  const viewer = page.getByTestId("drawio-block-viewer");
+  await expect(viewer).toBeVisible();
+  await expect(page.getByText(SERVICES_DIAGRAM_PATH, { exact: true }).first()).toBeVisible();
+  await expect.poll(async () => labels(await frameOf(viewer.getByTestId("drawio-frame")))).toEqual(["Alpha", "Bravo", "Charlie"]);
+});
+
+// openlore: scenario=ReadingIsReadOnly spec=drawio-diagrams
+test("ReadingIsReadOnly: dragging a shape outside touch-up moves nothing", async ({ page }) => {
+  const block = await openReply(page);
+  await block.getByRole("button", { name: "↗ open" }).click();
+  const frame = page.getByTestId("drawio-block-viewer").getByTestId("drawio-frame");
+  await expect.poll(async () => labels(await frameOf(frame))).toContain("Alpha");
+  const before = await centreOf(page, frame, "Alpha");
+  await drag(page, before, { x: before.x + 100, y: before.y + 60 });
+  expect(await centreOf(page, frame, "Alpha")).toEqual(before);
+  expect(await readFile(FILE(), "utf8")).toBe(SERVICES_DIAGRAM);
+});
+
+// openlore: scenario=ShapesMoveAndConnectorsFollow spec=drawio-diagrams
+// openlore: scenario=UndoRestoresTheDiagram spec=drawio-diagrams
+// openlore: scenario=SavingKeepsTheRestOfTheFile spec=drawio-diagrams
+test("ShapesMoveAndConnectorsFollow: a shape moved in the file viewer is saved on the grid, its wire still on it, the rest untouched", async ({ page }) => {
+  const block = await openReply(page);
+  await block.getByRole("button", { name: "↗ open" }).click();
+  const viewer = page.getByTestId("drawio-block-viewer");
+  const frame = viewer.getByTestId("drawio-frame");
+  await expect.poll(async () => labels(await frameOf(frame))).toContain("Alpha");
+  await viewer.getByRole("button", { name: "✎ touch up" }).click();
+  await expect(viewer.getByRole("button", { name: "✓ save" })).toBeDisabled();
+
+  const alpha = await centreOf(page, frame, "Alpha");
+  await drag(page, alpha, { x: alpha.x + 3, y: alpha.y + 97 });
+  await expect(page.getByTestId("drawio-touchup-status")).toHaveText("● unsaved");
+  // Undo by keyboard puts it back, redo brings the move again
+  await page.keyboard.press("ControlOrMeta+z");
+  await expect.poll(() => centreOf(page, frame, "Alpha")).toEqual(alpha);
+  await viewer.getByRole("button", { name: "↷ redo" }).click();
+  await expect.poll(async () => (await centreOf(page, frame, "Alpha")).y).toBeGreaterThan(alpha.y + 50);
+
+  await viewer.getByRole("button", { name: "✓ save" }).click();
+  await expect(page.getByTestId("drawio-touchup-status")).not.toHaveText("● unsaved");
+  // On the grid, though the drop was not; the wire still from A to B; the other page byte for byte
+  await expect.poll(() => savedCell("a")).toMatch(/<mxGeometry[^>]*x="40"[^>]*y="1[34]0"/);
+  expect(await savedCell("a-b")).toMatch(/source="a"[^>]*target="b"|target="b"[^>]*source="a"/);
+  const text = await readFile(FILE(), "utf8");
+  expect(text).toContain(SERVICES_SECOND_PAGE);
+  expect(text).toMatch(/<mxGraphModel[^>]*pageWidth="1169"/);
+  expect(await savedCell("c")).toMatch(/x="320"[^>]*y="220"|y="220"[^>]*x="320"/);
+});
+
+// openlore: scenario=AConnectorIsReattached spec=drawio-diagrams
+// openlore: scenario=ALabelIsEditedInPlace spec=drawio-diagrams
+test("AConnectorIsReattached: at full size, a wire's end moved to another shape and a label retyped are saved", async ({ page }) => {
+  const block = await openReply(page);
+  await block.getByRole("button", { name: "Show diagram at full size" }).click();
+  const overlay = page.getByTestId("drawio-enlarged");
+  const frame = overlay.getByTitle(`${SERVICES_DIAGRAM_PATH}, full size`);
+  await expect.poll(async () => labels(await frameOf(frame))).toContain("Bravo");
+  await overlay.getByRole("button", { name: "✎ touch up" }).click();
+  await expect(overlay.getByRole("button", { name: "✓ save" })).toBeVisible();
+
+  // Select the wire on its path, then drag its end handle from Bravo onto Charlie
+  const inner = await frameOf(frame);
+  const box = (await frame.boundingBox())!;
+  const onWire = await inner.evaluate(() => {
+    // The page's only connector, A→B: boxes are <rect>s, a wire is the visible unfilled path
+    const wire = [...document.querySelectorAll<SVGPathElement>("svg path[fill='none']")].find((p) => p.getAttribute("visibility") !== "hidden" && p.getTotalLength() > 50)!;
+    const at = wire.getPointAtLength(wire.getTotalLength() / 2);
+    const m = wire.getScreenCTM()!;
+    const end = wire.getPointAtLength(wire.getTotalLength());
+    return { mid: { x: at.x * m.a + m.e, y: at.y * m.d + m.f }, end: { x: end.x * m.a + m.e, y: end.y * m.d + m.f } };
+  });
+  await page.mouse.click(box.x + onWire.mid.x, box.y + onWire.mid.y);
+  const charlie = await centreOf(page, frame, "Charlie");
+  await drag(page, { x: box.x + onWire.end.x + 2, y: box.y + onWire.end.y }, charlie);
+
+  // Retype Bravo's label in place — off its centre: the re-attached wire now runs through
+  // the middle of Bravo, and a double-click on a wire gives the wire a label instead
+  const bravo = await centreOf(page, frame, "Bravo");
+  await page.mouse.dblclick(bravo.x - 45, bravo.y + 18);
+  await page.keyboard.press("ControlOrMeta+a");
+  await page.keyboard.type("Bravo v2");
+  await page.mouse.click(box.x + box.width - 20, box.y + box.height - 20);
+
+  await overlay.getByRole("button", { name: "✓ save" }).click();
+  await expect.poll(() => savedCell("a-b")).toMatch(/target="c"/);
+  expect(await savedCell("b")).toContain('value="Bravo v2"');
+});
+
+// openlore: scenario=AFileChangedOnDiskIsNotOverwritten spec=drawio-diagrams
+// openlore: scenario=UnsavedTouchUpIsNotLostSilently spec=drawio-diagrams
+test("AFileChangedOnDiskIsNotOverwritten: a file changed meanwhile is refused, and leaving asks first", async ({ page }) => {
+  const block = await openReply(page);
+  await block.getByRole("button", { name: "↗ open" }).click();
+  const viewer = page.getByTestId("drawio-block-viewer");
+  const frame = viewer.getByTestId("drawio-frame");
+  await expect.poll(async () => labels(await frameOf(frame))).toContain("Alpha");
+  await viewer.getByRole("button", { name: "✎ touch up" }).click();
+  const alpha = await centreOf(page, frame, "Alpha");
+  await drag(page, alpha, { x: alpha.x, y: alpha.y + 100 });
+  await expect(page.getByTestId("drawio-touchup-status")).toHaveText("● unsaved");
+
+  const outside = SERVICES_DIAGRAM.replace('value="Charlie"', 'value="Charlie, by someone else"');
+  await writeFile(FILE(), outside);
+  await viewer.getByRole("button", { name: "✓ save" }).click();
+  await expect(page.getByTestId("drawio-touchup-problem")).toContainText("changed on disk, or was removed, since this touch-up began");
+  expect(await readFile(FILE(), "utf8")).toBe(outside);
+
+  // Leaving asks; refusing keeps the touch-up, agreeing drops it and shows the file as it is
+  page.once("dialog", (dialog) => void dialog.dismiss());
+  await viewer.getByRole("button", { name: "done" }).click();
+  await expect(viewer.getByRole("button", { name: "✓ save" })).toBeVisible();
+  page.once("dialog", (dialog) => void dialog.accept());
+  await viewer.getByRole("button", { name: "done" }).click();
+  await expect(viewer.getByRole("button", { name: "✎ touch up" })).toBeVisible();
+  await expect.poll(async () => labels(await frameOf(frame))).toContain("Charlie, by someone else");
+});
+
+// openlore: scenario=TheReplyFollowsTheFile spec=drawio-diagrams
+test("TheReplyFollowsTheFile: the reply redraws the file when it is saved", async ({ page }) => {
+  const block = await openReply(page);
+  const frame = block.getByTestId("drawio-frame");
+  await expect.poll(async () => labels(await frameOf(frame))).toContain("Alpha");
+  await writeFile(FILE(), SERVICES_DIAGRAM.replace('value="Alpha"', 'value="Alpha, renamed"'));
+  await expect.poll(async () => labels(await frameOf(frame))).toContain("Alpha, renamed");
+});
+
+test("a box dragged past the drawing's edge stays in reach: the page grows, as draw.io's does", async ({ page }) => {
+  const block = await openReply(page);
+  await block.getByRole("button", { name: "↗ open" }).click();
+  const viewer = page.getByTestId("drawio-block-viewer");
+  const frame = viewer.getByTestId("drawio-frame");
+  await expect.poll(async () => labels(await frameOf(frame))).toContain("Charlie");
+  await viewer.getByRole("button", { name: "✎ touch up" }).click();
+  const inner = await frameOf(frame);
+  const areaBefore = await inner.evaluate(() => (document.querySelector("[tabindex='-1']") as HTMLElement).offsetHeight);
+  const box = (await frame.boundingBox())!;
+  const charlie = await centreOf(page, frame, "Charlie");
+  // Down to the frame's bottom edge, past the drawing area the viewer sized at load
+  await drag(page, charlie, { x: charlie.x, y: box.y + box.height - 5 });
+  await expect.poll(() => inner.evaluate(() => (document.querySelector("[tabindex='-1']") as HTMLElement).offsetHeight)).toBeGreaterThan(areaBefore);
+  // Still drawn inside the area, so it can be grabbed again
+  const reach = await inner.evaluate(() => {
+    const area = (document.querySelector("[tabindex='-1']") as HTMLElement).getBoundingClientRect();
+    const label = [...document.querySelectorAll("svg foreignObject div")].find((d) => d.querySelector("div") === null && d.textContent?.trim() === "Charlie")!.getBoundingClientRect();
+    return label.bottom <= area.bottom;
+  });
+  expect(reach).toBe(true);
+});
+
+test("a new wire drawn from a shape's edge, and a shape deleted with the keyboard, are saved", async ({ page }) => {
+  const block = await openReply(page);
+  await block.getByRole("button", { name: "↗ open" }).click();
+  const viewer = page.getByTestId("drawio-block-viewer");
+  const frame = viewer.getByTestId("drawio-frame");
+  await expect.poll(async () => labels(await frameOf(frame))).toContain("Charlie");
+  await viewer.getByRole("button", { name: "✎ touch up" }).click();
+  const inner = await frameOf(frame);
+  const box = (await frame.boundingBox())!;
+  // First Bravo, selected and deleted from the keyboard — its wire goes with it, as in draw.io
+  const bravo = await centreOf(page, frame, "Bravo");
+  await page.mouse.click(bravo.x - 45, bravo.y + 18);
+  await page.keyboard.press("Delete");
+  await expect.poll(async () => labels(inner)).not.toContain("Bravo");
+
+  // Hovering Charlie shows its connection points, draw.io's small marks on the outline;
+  // a wire starts from one — the one in the middle of its right side — and ends on Alpha
+  const charlie = await centreOf(page, frame, "Charlie");
+  await page.mouse.move(charlie.x + 5, charlie.y + 5, { steps: 3 });
+  const marks = await inner.evaluate(() => [...document.querySelectorAll("svg image")].map((i) => i.getBoundingClientRect()).filter((r) => r.width > 0 && r.width < 12).map((r) => ({ x: r.left + r.width / 2, y: r.top + r.height / 2 })));
+  expect(marks.length).toBeGreaterThan(4);
+  const right = marks.sort((p, q) => q.x - p.x || Math.abs(p.y - (charlie.y - box.y)) - Math.abs(q.y - (charlie.y - box.y)))[0];
+  const alpha = await centreOf(page, frame, "Alpha");
+  await page.mouse.move(box.x + right.x, box.y + right.y, { steps: 3 });
+  await drag(page, { x: box.x + right.x, y: box.y + right.y }, alpha);
+  await expect(page.getByTestId("drawio-touchup-status")).toHaveText("● unsaved");
+  await viewer.getByRole("button", { name: "✓ save" }).click();
+  await expect.poll(() => readFile(FILE(), "utf8")).not.toContain('value="Bravo"');
+  const text = await readFile(FILE(), "utf8");
+  expect(text).toMatch(/<mxCell [^>]*edge="1"[^>]*source="c"[^>]*target="a"|<mxCell [^>]*source="c"[^>]*target="a"[^>]*edge="1"/);
+});
+
+test("Escape while touching up is \"done\": it leaves the touch-up, asking first, and nothing else", async ({ page }) => {
+  const block = await openReply(page);
+  await block.getByRole("button", { name: "Show diagram at full size" }).click();
+  const overlay = page.getByTestId("drawio-enlarged");
+  const frame = overlay.getByTitle(`${SERVICES_DIAGRAM_PATH}, full size`);
+  await expect.poll(async () => labels(await frameOf(frame))).toContain("Alpha");
+  await overlay.getByRole("button", { name: "✎ touch up" }).click();
+  const alpha = await centreOf(page, frame, "Alpha");
+  await drag(page, alpha, { x: alpha.x, y: alpha.y + 80 });
+  await expect(page.getByTestId("drawio-touchup-status")).toHaveText("● unsaved");
+  // The keyboard is in the frame after the drag: its Escape is "done", which asks
+  page.once("dialog", (dialog) => void dialog.dismiss());
+  await page.keyboard.press("Escape");
+  await expect(overlay.getByRole("button", { name: "✓ save" })).toBeVisible();
+  page.once("dialog", (dialog) => void dialog.accept());
+  await page.keyboard.press("Escape");
+  await expect(overlay.getByRole("button", { name: "✎ touch up" })).toBeVisible();
+  // Still at full size, the touch-up dropped and the file untouched
+  await expect(overlay).toBeVisible();
+  expect(await readFile(FILE(), "utf8")).toBe(SERVICES_DIAGRAM);
+  // Out of touch-up, Escape closes the view
+  await page.keyboard.press("Escape");
+  await expect(overlay).toHaveCount(0);
+});

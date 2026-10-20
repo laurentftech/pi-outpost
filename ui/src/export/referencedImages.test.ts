@@ -187,3 +187,19 @@ describe("a reference the export cannot obtain", () => {
     expect(visibleText(xml)).toContain("data");
   });
 });
+
+describe("a referenced draw.io diagram in the package", () => {
+  // openlore: scenario=AnExportCarriesALink spec=drawio-diagrams
+  it("AnExportCarriesALink: travels as a link naming the file, never fetched as a picture", async () => {
+    const fetching = serving({ "docs/architecture.drawio": new TextEncoder().encode("<mxfile/>") });
+    vi.stubGlobal("fetch", fetching);
+
+    const blob = await buildDocx("See ![the architecture](architecture.drawio).\n", "docs/report.md", { serverUrl: "", token: null });
+
+    expect(fetching).not.toHaveBeenCalled();
+    expect(await mediaNames(blob)).toEqual([]);
+    const zip = await openDocx(blob);
+    expect(visibleText(await partText(zip, "word/document.xml"))).toContain("the architecture (draw.io diagram: architecture.drawio)");
+    expect(await partText(zip, "word/_rels/document.xml.rels")).toMatch(/Target="architecture\.drawio" TargetMode="External"/);
+  });
+});

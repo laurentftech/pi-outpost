@@ -33,6 +33,11 @@ export function isImageFile(path: string): boolean {
   return /\.(png|jpe?g|gif|webp|svg|avif)$/i.test(path);
 }
 
+/** A draw.io diagram: `.drawio`, or the older `.dio`. */
+export function isDrawioFile(path: string): boolean {
+  return /\.(drawio|dio)$/i.test(path);
+}
+
 /**
  * A PDF the viewer renders itself, from the bytes of /files/raw — the text
  * preview protocol answers "binary" for it, as it does for an image.

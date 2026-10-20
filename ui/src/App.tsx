@@ -3,6 +3,7 @@ import { UpdateNotice } from "./components/UpdateNotice";
 import { ChangesNotice } from "./components/ChangesNotice";
 import { ReplyConformanceContext } from "./components/ReplyStructuredExchange";
 import { StructuredAppearanceContext } from "./presentations/structuredAppearance";
+import { DrawioFilesContext, type DrawioFiles } from "./components/drawioFiles";
 import { workspaceKey } from "./util/workspaceKey";
 import type { OutcomeTarget, Theme, WireImage } from "@pi-outpost/shared";
 import { AssistantMessage } from "./components/AssistantMessage";
@@ -191,6 +192,7 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
     subscribeTerminal,
     setOutcomeActive,
     refreshOutcome,
+    fileIo,
   } = useAgent(serverUrl, token, embedded, workspace);
   // Paths in the tree and in replies are relative to the project this connection is
   // bound to, so its raw bytes are asked of that project — not of whichever one the
@@ -262,6 +264,20 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
   const dismissedPreviewPathRef = useRef<string | null>(null);
   // Badge click in the tree opens the file straight onto its uncommitted diff
   const [diffOnOpen, setDiffOnOpen] = useState(false);
+  // A diagram drawn in a reply reads, writes and opens its file through these. Through a
+  // ref: the actions are new functions every render, and every drawn diagram would
+  // re-render with them
+  const drawioActions = useRef({ readFile, openNative });
+  drawioActions.current = { readFile, openNative };
+  const drawioFiles = useMemo<DrawioFiles>(() => ({
+    serverUrl,
+    fileIo,
+    onOpenFile: (path) => {
+      setDiffOnOpen(false);
+      drawioActions.current.readFile(path);
+    },
+    onOpenNative: (path) => drawioActions.current.openNative(path),
+  }), [serverUrl, fileIo]);
   // Conversation noise filters: tool cards and the model's reasoning (long
   // sessions drown in both). Nothing is CSS-hidden — filtered content must not
   // cost layout — and nothing is dropped from state, so clearing a filter
@@ -866,6 +882,7 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
     <ThemeContext.Provider value={theme}>
     <ReplyConformanceContext.Provider value={state.replyConformance}>
     <StructuredAppearanceContext.Provider value={state.structuredAppearance}>
+    <DrawioFilesContext.Provider value={drawioFiles}>
       <div
         className="relative flex h-full"
         onDragEnter={(e) => {
@@ -1454,6 +1471,7 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
 
       {state.dialogQueue[0] && <ExtensionDialog request={state.dialogQueue[0]} onRespond={respondToDialog} />}
       <ExtensionNotifications notifications={state.notifications} onDismiss={dismissNotification} />
+    </DrawioFilesContext.Provider>
     </StructuredAppearanceContext.Provider>
     </ReplyConformanceContext.Provider>
     </ThemeContext.Provider>

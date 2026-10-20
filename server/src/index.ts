@@ -4727,6 +4727,11 @@ async function handleReadFile(
       expectedDigest,
     );
     const documentIssues = documentIssuesFor(content);
+    // A file being shown is displayed as surely as a listed directory: its directory is
+    // watched too, so a change to it is announced even when nobody expanded the folder —
+    // a diagram drawn in a reply, a file opened from a link. Before the reply, as for a
+    // listing, and best-effort.
+    await workspace.fileWatcher?.watch(filePath.includes("/") ? filePath.slice(0, filePath.lastIndexOf("/")) : "").catch(() => {});
     send(socket, {
       type: "file_content",
       requestId,

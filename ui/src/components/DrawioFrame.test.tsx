@@ -1,6 +1,9 @@
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import { act, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { DrawioFrame, DRAWIO_SANDBOX } from "./DrawioFrame";
+import { createRef } from "react";
+import { DrawioFrame, DRAWIO_SANDBOX, type DrawioFrameHandle, type DrawioTouchUpState } from "./DrawioFrame";
 import { DRAWIO_MESSAGE, drawioFramePage, drawioViewerUrl } from "../util/drawioPage";
 import { ThemeContext } from "../theme/ThemeContext";
 
@@ -62,6 +65,30 @@ describe("drawioFramePage", () => {
     expect(drawioViewerUrl("", "http://127.0.0.1:3141/")).toBe("http://127.0.0.1:3141/vendor/drawio/viewer-static.min.js");
   });
 
+  it("carries touch-up inside the same isolation: the mxGraph rules it needs, and nothing loaded", () => {
+    const page = drawioFramePage(VIEWER);
+    // The label editor is placed by these; without them it opens at the foot of the page
+    expect(page).toMatch(/\.mxCellEditor \{ position: absolute;/);
+    expect(page).toContain("div.mxRubberband");
+    // Turned on and off by message, from the parent only
+    for (const type of [DRAWIO_MESSAGE.EDIT, DRAWIO_MESSAGE.SAVE, DRAWIO_MESSAGE.CLEAN, DRAWIO_MESSAGE.UNDO, DRAWIO_MESSAGE.REDO, DRAWIO_MESSAGE.EXPORT_SVG]) {
+      expect(page).toContain(JSON.stringify(type));
+    }
+    expect(page).toContain("if (event.source !== parent) return;");
+    // The viewer's no-op click is what keeps edges from ever being selected
+    expect(page).toContain("delete graph.click;");
+    // No stylesheet, font or frame is fetched for it
+    expect(page).not.toMatch(/<link|@import|url\(/);
+  });
+
+  it("relies on editing machinery the vendored viewer still has", () => {
+    // A jgraph release that drops one of these breaks touch-up: caught here, not by a reader
+    const viewer = readFileSync(path.resolve(import.meta.dirname, "../../../web/public/vendor/drawio/viewer-static.min.js"), "utf8");
+    for (const name of ["mxUndoManager", "mxKeyHandler", "mxCodec", "mxCellEditor", "getPrettyXml", "Graph.decompress", "Graph.prototype.getSvg", "updateGraphXml"]) {
+      expect(viewer).toContain(name);
+    }
+  });
+
   it("cannot be broken out of by a URL that closes the script", () => {
     const page = drawioFramePage("http://x/</script><script>alert(1)</script>/viewer-static.min.js");
     // The globals are JSON with < escaped and the src an escaped attribute, so the only
@@ -106,6 +133,13 @@ describe("DrawioFrame", () => {
     expect(sent).toHaveBeenLastCalledWith({ type: DRAWIO_MESSAGE.RENDER, xml: next, dark: false }, "*");
   });
 
+  it("draws again when a reloaded frame says READY once more", () => {
+    const { own, sent } = mount();
+    post({ type: DRAWIO_MESSAGE.READY }, own);
+    post({ type: DRAWIO_MESSAGE.READY }, own);
+    expect(sent.mock.calls.filter(([message]) => (message as { type: string }).type === DRAWIO_MESSAGE.RENDER)).toHaveLength(2);
+  });
+
   // openlore: scenario=AnUnreadableDiagramSaysWhy spec=drawio-diagrams
   it("AnUnreadableDiagramSaysWhy: says why and shows the source, then draws again once it can", () => {
     const { own, frame } = mount("<html/>");
@@ -119,5 +153,85 @@ describe("DrawioFrame", () => {
     post({ type: DRAWIO_MESSAGE.RENDERED, pages: 1 }, own);
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     expect(screen.queryByTestId("fallback")).not.toBeInTheDocument();
+  });
+});
+
+describe("DrawioFrame touch-up", () => {
+  function mountEditing(props: { editing: boolean; xml?: string; onTouchUpChange?: (state: DrawioTouchUpState) => void; onPageLocked?: () => void }) {
+    const handle = createRef<DrawioFrameHandle>();
+    const element = (p: typeof props) => (
+      <ThemeContext.Provider value="light">
+        <DrawioFrame ref={handle} xml={p.xml ?? XML} serverUrl="http://127.0.0.1:9" title="flow.drawio" editing={p.editing} onTouchUpChange={p.onTouchUpChange} onPageLocked={p.onPageLocked} />
+      </ThemeContext.Provider>
+    );
+    const view = render(element(props));
+    const frame = screen.getByTestId("drawio-frame") as HTMLIFrameElement;
+    const own = frame.contentWindow!;
+    const sent = vi.spyOn(own, "postMessage");
+    post({ type: DRAWIO_MESSAGE.READY }, own);
+    return { handle, own, sent, rerender: (p: typeof props) => view.rerender(element(p)) };
+  }
+  const types = (sent: ReturnType<typeof vi.spyOn>) => sent.mock.calls.map(([message]) => (message as { type: string }).type);
+
+  // openlore: scenario=ReadingIsReadOnly spec=drawio-diagrams
+  it("ReadingIsReadOnly: touch-up is asked of the frame only when editing is on", () => {
+    const { sent, rerender } = mountEditing({ editing: false });
+    expect(types(sent)).toEqual([DRAWIO_MESSAGE.RENDER]);
+    rerender({ editing: true });
+    expect(sent).toHaveBeenLastCalledWith({ type: DRAWIO_MESSAGE.EDIT, on: true }, "*");
+  });
+
+  it("holds a new text back while touching up, and draws it on leaving, once", () => {
+    const { sent, rerender } = mountEditing({ editing: true });
+    const next = XML.replace('name="P"', 'name="Saved"');
+    rerender({ editing: true, xml: next });
+    // Drawing it now would drop the reader's edits without asking
+    expect(sent.mock.calls.filter(([m]) => (m as { xml?: string }).xml === next)).toEqual([]);
+    rerender({ editing: false, xml: next });
+    expect(sent).toHaveBeenLastCalledWith({ type: DRAWIO_MESSAGE.EDIT, on: false, xml: next, dark: false }, "*");
+    expect(sent.mock.calls.filter(([m]) => (m as { xml?: string }).xml === next)).toHaveLength(1);
+  });
+
+  it("reports touch-up state and a refused page change from its own frame only", () => {
+    const onTouchUpChange = vi.fn();
+    const onPageLocked = vi.fn();
+    const { own } = mountEditing({ editing: true, onTouchUpChange, onPageLocked });
+    post({ type: DRAWIO_MESSAGE.CHANGED, dirty: true, canUndo: true, canRedo: false }, window);
+    expect(onTouchUpChange).not.toHaveBeenCalled();
+    post({ type: DRAWIO_MESSAGE.CHANGED, dirty: true, canUndo: true, canRedo: false }, own);
+    expect(onTouchUpChange).toHaveBeenLastCalledWith({ dirty: true, canUndo: true, canRedo: false });
+    post({ type: DRAWIO_MESSAGE.PAGE_LOCKED }, own);
+    expect(onPageLocked).toHaveBeenCalledOnce();
+  });
+
+  it("saves, undoes, redoes, marks clean and exports through the frame's messages", async () => {
+    const { handle, own, sent } = mountEditing({ editing: true });
+    const saving = handle.current!.save();
+    expect(sent).toHaveBeenLastCalledWith({ type: DRAWIO_MESSAGE.SAVE }, "*");
+    // Another window answering is not the frame
+    post({ type: DRAWIO_MESSAGE.SAVED, page: 9, xml: "<mxGraphModel/>" }, window);
+    post({ type: DRAWIO_MESSAGE.SAVED, page: 1, xml: "<mxGraphModel grid=\"1\"/>" }, own);
+    await expect(saving).resolves.toEqual({ page: 1, xml: "<mxGraphModel grid=\"1\"/>" });
+    act(() => {
+      handle.current!.markClean();
+      handle.current!.undo();
+      handle.current!.redo();
+    });
+    expect(types(sent).slice(-3)).toEqual([DRAWIO_MESSAGE.CLEAN, DRAWIO_MESSAGE.UNDO, DRAWIO_MESSAGE.REDO]);
+    const exporting = handle.current!.exportSvg();
+    post({ type: DRAWIO_MESSAGE.SVG, page: 0, name: "Overview", svg: "<svg/>" }, own);
+    await expect(exporting).resolves.toEqual({ page: 0, name: "Overview", svg: "<svg/>" });
+  });
+
+  it("fails a save the frame never answers, rather than leaving it pending", async () => {
+    vi.useFakeTimers();
+    try {
+      const { handle } = mountEditing({ editing: true });
+      const saving = handle.current!.save();
+      vi.advanceTimersByTime(10_001);
+      await expect(saving).rejects.toThrow("did not answer");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

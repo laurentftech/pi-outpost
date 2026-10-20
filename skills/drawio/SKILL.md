@@ -1,6 +1,6 @@
 ---
 name: drawio
-description: Write a draw.io diagram (.drawio) — flowchart, architecture, sequence of steps, org chart, network or data-flow map — as XML the user can open and edit in draw.io, then check it with drawio_check. Use whenever the user asks for a draw.io or diagrams.net diagram, an editable diagram file, or to change an existing .drawio file. The file viewer draws it; the user edits it in draw.io desktop.
+description: Write a draw.io diagram (.drawio) — flowchart, architecture, sequence of steps, org chart, network or data-flow map — as XML the user can open and edit in draw.io, then check it with drawio_check and show it in the reply. Use whenever the user asks for a draw.io or diagrams.net diagram, an editable diagram file, or to change an existing .drawio file. The conversation and the file viewer draw it; the user touches it up there, or edits it in draw.io desktop.
 license: MIT
 metadata:
   version: "1.0"
@@ -9,8 +9,9 @@ metadata:
 # draw.io diagrams
 
 A `.drawio` file is XML. You write it with your ordinary file tools, check it with
-`drawio_check` (you cannot see it rendered), and the user sees it drawn in the file viewer —
-and opens it in draw.io desktop to edit it there ("open in draw.io" in the viewer).
+`drawio_check` (you cannot see it rendered), and show it in your reply, where it is drawn.
+The user can touch it up there — move boxes, re-attach wires, fix labels — and opens it in
+draw.io desktop for anything more ("open in draw.io" in the file viewer).
 
 ## The loop
 
@@ -20,7 +21,14 @@ and opens it in draw.io desktop to edit it there ("open in draw.io" in the viewe
 3. Run `drawio_check` on it. Fix every **error** — draw.io would refuse or mis-draw them —
    and every **warning** you did not intend (overlapping shapes, a shape outside its
    container). Run it again until it reports no defect.
-4. Tell the user where the file is: it is drawn when they open it, and editable in draw.io.
+4. Show it in your reply, as a picture of the file — the conversation draws it there:
+
+   ```markdown
+   ![Architecture overview](./diagrams/architecture.drawio)
+   ```
+
+   The path is relative to the workspace, as for any picture. Show it again after each
+   change, so the user sees the version they asked about.
 
 ## The skeleton
 

@@ -126,6 +126,12 @@ function inlineRuns(nodes: readonly PhrasingContent[], refs: Refs, marks: Marks 
         out.push(new TextRun({ text: "", break: 1 }));
         break;
       case "image": {
+        // A draw.io diagram is drawn by the application, not by Word: it travels as a
+        // link naming the file, never as a picture that could not be had
+        if (isDrawioReference(node.url)) {
+          out.push(new ExternalHyperlink({ children: [runOf(drawioLinkLabel(node.url, node.alt), marks)], link: node.url }));
+          break;
+        }
         // A reference the export could load is the picture the reader saw; one it
         // could not — a file that is gone, a path the server refuses, an absolute
         // URL it will not reach for — falls back to the words the author wrote
@@ -280,13 +286,29 @@ type Refs = Map<Image, ReferencedImage>;
  * by path before fetching, so that file is asked for once. A reference that will
  * not load is simply absent from the map, and the walk falls back to its alt text.
  */
+/** A picture reference to a workspace `.drawio` file (not one on another site). */
+export function isDrawioReference(url: string): boolean {
+  return !/^[a-z][a-z0-9+.-]*:|^\/\//i.test(url) && /\.(drawio|dio)$/i.test(url.split(/[?#]/)[0]);
+}
+
+/** What a `.drawio` reference reads as where it cannot be drawn: its words, and the file. */
+export function drawioLinkLabel(url: string, alt: string | null | undefined): string {
+  let path = url.split(/[?#]/)[0].replace(/^\.\//, "");
+  try {
+    path = decodeURIComponent(path);
+  } catch {
+    // A path that is not valid percent-encoding is shown as written
+  }
+  return alt && alt.trim() !== "" ? `${alt.trim()} (draw.io diagram: ${path})` : `draw.io diagram: ${path}`;
+}
+
 async function loadReferences(root: Root, source: PictureSource): Promise<Refs> {
   const refs: Refs = new Map();
   const { imageKey, loadImage } = source;
   if (imageKey === undefined || loadImage === undefined) return refs;
   const nodes: Image[] = [];
   const walk = (node: { type: string; children?: unknown[] }) => {
-    if (node.type === "image") nodes.push(node as Image);
+    if (node.type === "image" && !isDrawioReference((node as Image).url)) nodes.push(node as Image);
     for (const child of (node.children ?? []) as { type: string; children?: unknown[] }[]) walk(child);
   };
   walk(root);
