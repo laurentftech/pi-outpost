@@ -694,6 +694,19 @@ describe("loadConfig — resource path resolution", () => {
     });
   });
 
+  // openlore: scenario=TheNoticeCanBeTurnedOff spec=update-changelog
+  test("TheNoticeCanBeTurnedOff: changelogNotice is read as a boolean, unset by default", async () => {
+    await withTempDir(async (dir) => {
+      const configPath = path.join(dir, "config.json");
+      await writeFile(configPath, JSON.stringify({}, null, 2));
+      assert.equal(loadConfig(dir, { config: configPath }).changelogNotice, undefined);
+      await writeFile(configPath, JSON.stringify({ changelogNotice: false }, null, 2));
+      assert.equal(loadConfig(dir, { config: configPath }).changelogNotice, false);
+      await writeFile(configPath, JSON.stringify({ changelogNotice: "no" }, null, 2));
+      assert.throws(() => loadConfig(dir, { config: configPath }));
+    });
+  });
+
   test("updateCheck refuses a value that is not a boolean", async () => {
     await withTempDir(async (dir) => {
       const configPath = path.join(dir, "config.json");

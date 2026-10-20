@@ -1,5 +1,6 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { UpdateNotice } from "./components/UpdateNotice";
+import { ChangesNotice } from "./components/ChangesNotice";
 import { ReplyConformanceContext } from "./components/ReplyStructuredExchange";
 import { StructuredAppearanceContext } from "./presentations/structuredAppearance";
 import { workspaceKey } from "./util/workspaceKey";
@@ -941,6 +942,7 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
           )}
           {/* The standalone app's reader runs the server; a widget's reader does not. */}
           {!embedded && state.outpostUpdate && <UpdateNotice notice={state.outpostUpdate} />}
+          {!embedded && state.outpostChanges && <ChangesNotice changes={state.outpostChanges} />}
           <Header
             workspace={state.workspace}
             workspaces={state.workspaces}

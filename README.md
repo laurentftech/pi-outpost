@@ -644,7 +644,7 @@ install that must stay small can omit it and name no `"mxc"`.
 | `terminal.shellArgs` | Arguments passed to the shell (default: `["-l"]` on Unix login shells) |
 | `terminal.sandbox` | Path to a sandbox runner (landstrip's binary, or MXC's `wxc-exec.exe` on Windows 11, `lxc-exec` on Linux or `mxc-exec-mac` on Apple-silicon macOS, or `"seatbelt"` for macOS' own `sandbox-exec` on any Mac — `"mxc"` names the one installed with pi-outpost, see [MXC comes with pi-outpost](#mxc-comes-with-pi-outpost)) every terminal runs inside, confined to the sandbox root, with no keys in its environment. A missing or failing runner means no terminal, never an unconfined one. See [docs/sandboxing.md](docs/sandboxing.md#recommended-setup) |
 | `embed.workspaceControls` | What a mounted widget offers: `"settings"` (default, one project), `"root"` (a compact root chooser), `"projects"` (open/switch/close) |
-| `updateCheck` / `updateRegistry` | See [Staying up to date](#staying-up-to-date) |
+| `updateCheck` / `updateRegistry` / `changelogNotice` | See [Staying up to date](#staying-up-to-date) |
 | `gitPath` | Path to the git executable. Unset, git is found on `PATH` and then where installers put it. See [Git](#git) |
 
 ### Git
@@ -873,9 +873,15 @@ message with it, waits for a keypress first.
 
 The server checks once a day whether a newer version has been published, and says so in one
 line if there is — in the terminal, and in the standalone interface as a notice with the
-command to copy, which can be dismissed for that version. **It never installs pi-outpost on
-its own** — `pi-outpost update` is the only thing that installs it, and only when you run it
-without `--check`.
+command to copy and a link to the new version's release notes, which can be dismissed for
+that version. **It never installs pi-outpost on its own** — `pi-outpost update` is the only
+thing that installs it, and only when you run it without `--check`.
+
+After an update, the standalone interface says which version you moved from and, on
+**What's changed**, shows the [changelog](CHANGELOG.md) sections in between. The changelog
+ships inside the package and the executables, so this needs no network and works with
+update checks turned off. It is shown for as long as the new version runs, until you dismiss
+it in that browser; a first install shows nothing, and `changelogNotice: false` turns it off.
 
 **pi packages** — extensions installed with `pi install npm:…`, such as
 `@gotgenes/pi-permission-system` or `openlore` — are listed in Settings with the version
@@ -905,6 +911,7 @@ check, and why, and exits non-zero.
 |------|------|
 | `updateCheck` | `false` disables checking entirely. `true` enables it **even under `offline`**. Unset, `offline` decides |
 | `updateRegistry` | Optional registry override, when npm's own configuration does not name the right one |
+| `changelogNotice` | `false` hides what an update changed. The running version is still recorded, so turning it back on does not announce a past update |
 
 Version checks normally run through `npm view`, so an existing `.npmrc` remains the source
 of truth for an internal registry, authentication, CA certificates and proxies. No duplicate

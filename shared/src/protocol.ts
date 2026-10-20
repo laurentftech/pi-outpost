@@ -742,6 +742,30 @@ export interface OutpostUpdateNotice {
   instruction: string;
   /** What the copy control copies. */
   copy: string;
+  /** The GitHub Release of `latest`, whose notes say what it changes. */
+  releaseNotes: string;
+}
+
+/** One release's section of the CHANGELOG.md that ships with pi-outpost. */
+export interface OutpostChangelogEntry {
+  version: string;
+  /** The date on its heading, as written there (ISO `YYYY-MM-DD` by convention). */
+  date?: string;
+  /** The section's body, Markdown, without its heading. */
+  markdown: string;
+}
+
+/**
+ * pi-outpost was updated: what changed between the version that ran before and this
+ * one, read from the changelog bundled with it — no network involved.
+ */
+export interface OutpostChanges {
+  from: string;
+  to: string;
+  /** The sections newer than `from` up to `to`, newest first; empty when none were written. */
+  entries: OutpostChangelogEntry[];
+  /** The GitHub Release of `to`. */
+  releaseNotes: string;
 }
 
 /** Snapshot of session state, sent on connect and after session replacement. */
@@ -777,6 +801,8 @@ export interface SessionSnapshot {
   workspaces?: WorkspaceInfo[];
   /** A newer pi-outpost, when the startup check found one. */
   outpostUpdate?: OutpostUpdateNotice;
+  /** Present after an update, for as long as the updated version runs. */
+  outpostChanges?: OutpostChanges;
   /** The npm pi packages this project's agent loads. Absent until first listed. */
   piPackages?: PiPackageInfo[];
   /** What waits on a restart to run; absent when nothing does. */
@@ -1156,6 +1182,7 @@ export type ServerMessage =
    * standalone interface shows it, an embedded widget does not.
    */
   | { type: "outpost_update"; notice: OutpostUpdateNotice }
+  | { type: "outpost_changes"; changes: OutpostChanges }
   /** The npm pi packages this project's agent loads, and what is known about newer versions. */
   | { type: "pi_packages"; packages: PiPackageInfo[] }
   /** pi-outpost is restarting; the connection drops and comes back. */

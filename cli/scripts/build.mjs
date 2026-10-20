@@ -32,6 +32,8 @@ const WEB_OUT = resolve(OUT_DIR, "web");
 const { version } = require(resolve(CLI_DIR, "package.json"));
 const piSdkMain = fileURLToPath(import.meta.resolve("@earendil-works/pi-coding-agent"));
 const piSdkVersion = JSON.parse(readFileSync(resolve(dirname(piSdkMain), "..", "package.json"), "utf-8")).version;
+// Inlined, so what changed in each release travels with the bundle, offline (server/src/changelog.ts).
+const changelog = readFileSync(resolve(REPO_ROOT, "CHANGELOG.md"), "utf-8");
 
 // Always rebuild web UI
 console.log("[build] building the web UI …");
@@ -80,7 +82,7 @@ await esbuild.build({
     "ws",
     ...MERMAID_RUNTIME,
   ],
-  define: { __PI_OUTPOST_VERSION__: JSON.stringify(version), __PI_SDK_VERSION__: JSON.stringify(piSdkVersion) },
+  define: { __PI_OUTPOST_VERSION__: JSON.stringify(version), __PI_SDK_VERSION__: JSON.stringify(piSdkVersion), __PI_OUTPOST_CHANGELOG__: JSON.stringify(changelog) },
   banner: {
     js: [
       "#!/usr/bin/env node",
@@ -139,7 +141,7 @@ await esbuild.build({
   format: "esm",
   target: "node26",
   outfile: SEA_BUNDLE,
-  define: { __PI_OUTPOST_VERSION__: JSON.stringify(version), __PI_SDK_VERSION__: JSON.stringify(piSdkVersion) },
+  define: { __PI_OUTPOST_VERSION__: JSON.stringify(version), __PI_SDK_VERSION__: JSON.stringify(piSdkVersion), __PI_OUTPOST_CHANGELOG__: JSON.stringify(changelog) },
   banner: {
     js: [
       "#!/usr/bin/env node",

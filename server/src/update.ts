@@ -128,6 +128,9 @@ export const PACKAGE_NAME = "pi-outpost";
  */
 export const RELEASES_URL = "https://github.com/laurentftech/pi-outpost/releases";
 
+/** A version's GitHub Release: the release workflow creates one per tag, notes included. */
+export const releaseNotesUrl = (version: string): string => `${RELEASES_URL}/tag/v${version}`;
+
 /** Used only when npm is not installed (not when npm reports a registry error). */
 export const PUBLIC_REGISTRY = "https://registry.npmjs.org";
 
@@ -957,9 +960,15 @@ export function updateNoticeFor(channel: InstallChannel, running: string, latest
   switch (channel) {
     case "global":
     case "unknown":
-      return { running, latest, instruction: `Run "${PACKAGE_NAME} update" in a terminal, then restart it.`, copy: `${PACKAGE_NAME} update` };
+      return {
+        running,
+        latest,
+        instruction: `Run "${PACKAGE_NAME} update" in a terminal, then restart it.`,
+        copy: `${PACKAGE_NAME} update`,
+        releaseNotes: releaseNotesUrl(latest),
+      };
     case "executable":
-      return { running, latest, instruction: `Download the new build from ${RELEASES_URL}.`, copy: RELEASES_URL };
+      return { running, latest, instruction: `Download the new build from ${RELEASES_URL}.`, copy: RELEASES_URL, releaseNotes: releaseNotesUrl(latest) };
     case "ephemeral":
     case "checkout":
       return undefined;

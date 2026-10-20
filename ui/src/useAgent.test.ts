@@ -1664,6 +1664,14 @@ describe("git messages", () => {
     expect(result.current.state.gitStatus).toBeNull();
   });
 
+  it("holds what the update changed, from the snapshot or announced later", async () => {
+    const changes = { from: "0.43.0", to: "0.44.0", entries: [], releaseNotes: "https://example.test/v0.44.0" };
+    const result = await connected([]);
+    expect(result.current.state.outpostChanges).toBeNull();
+    act(() => mockWs!.receive({ type: "outpost_changes", changes }));
+    await waitFor(() => expect(result.current.state.outpostChanges).toEqual(changes));
+  });
+
   it("keeps one repository's commits from rendering as another's", async () => {
     const result = await connected([], { gitAvailable: true });
     act(() =>

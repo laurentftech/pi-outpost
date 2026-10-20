@@ -153,6 +153,12 @@ jobs:
           fi
           echo "publish=$publish" >> "$GITHUB_OUTPUT"
 
+      # The changelog ships inside the packages and the executables, and the app shows
+      # it after an update: a release without its section would tell everyone nothing.
+      # Refused here, before anything reaches npm.
+      - name: The changelog must describe this release
+        run: node scripts/changelog-section.mjs "${GITHUB_REF_NAME#v}" > /dev/null
+
       # Tests et Lint en Node 22
       - run: npm run typecheck
       - run: npm run build --workspace @pi-outpost/embed
@@ -264,9 +270,12 @@ jobs:
           channel=$(node scripts/release-channel.mjs "${GITHUB_REF_NAME#v}")
           prerelease=""
           if [ "$channel" != "latest" ]; then prerelease="--prerelease"; fi
+          # The release's own section of CHANGELOG.md, with GitHub's list of merged PRs after it
+          node scripts/changelog-section.mjs "${GITHUB_REF_NAME#v}" > release-notes.md
           if ! gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
             gh release create "$GITHUB_REF_NAME" \
               --verify-tag \
+              --notes-file release-notes.md \
               --generate-notes \
               $prerelease \
               --title "$GITHUB_REF_NAME" \
