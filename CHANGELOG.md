@@ -7,6 +7,13 @@ version you had and the one you run now, without going online.
 Releases before 0.41.0 are described on
 [GitHub Releases](https://github.com/laurentftech/pi-outpost/releases).
 
+## [0.46.0] - 2026-10-20
+
+### Added
+
+- **Draw.io diagrams in replies.** Diagrams included in agent replies are interactive, and
+  you can ask the agent to adjust one in place. ([#345](https://github.com/laurentftech/pi-outpost/pull/345))
+
 ## [0.45.0] - 2026-10-20
 
 ### Added
