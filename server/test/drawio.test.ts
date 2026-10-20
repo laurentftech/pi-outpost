@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { deflateRawSync } from "node:zlib";
@@ -216,7 +216,9 @@ describe("checkDrawio", () => {
 });
 
 describe("drawio_check", () => {
-  const root = mkdtempSync(path.join(tmpdir(), "pi-outpost-drawio-"));
+  // Resolved, as every caller resolves it: on Windows the temporary directory comes back
+  // as an 8.3 short path (RUNNER~1) that the tool's own resolution of a file never matches
+  const root = realpathSync(mkdtempSync(path.join(tmpdir(), "pi-outpost-drawio-")));
   after(() => rmSync(root, { recursive: true, force: true }));
   const tool = createDrawioCheckToolDefinition({ cwd: root, allowedRoots: [root] });
   const run = (target: string) => (tool.execute as (id: string, params: unknown) => Promise<{ content: { text: string }[]; isError?: boolean }>)("call", { path: target });
@@ -230,7 +232,7 @@ describe("drawio_check", () => {
 
   // openlore: scenario=TheCheckerStaysInTheSandbox spec=drawio-diagrams
   test("TheCheckerStaysInTheSandbox: outside the read zone is refused, unreadable files say why", async () => {
-    const outside = mkdtempSync(path.join(tmpdir(), "pi-outpost-drawio-outside-"));
+    const outside = realpathSync(mkdtempSync(path.join(tmpdir(), "pi-outpost-drawio-outside-")));
     try {
       writeFileSync(path.join(outside, "secret.drawio"), CLEAN);
       await assert.rejects(() => run(path.join(outside, "secret.drawio")), /Access denied/);
