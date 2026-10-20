@@ -67,7 +67,7 @@
   Report what broke and fix it.
 - [x] 5.3 One live agent run (short): ask for a draw.io diagram and check from the session transcript that the reply references it and that it is drawn.
 - [x] 5.4 Send a downloaded SVG to the user for a check in desktop Word (labels shown).
-- [ ] 5.5 `scenario-coverage.md` with every scenario covered, `npm run check:scenarios`, `openspec validate --strict`, lint, and suites; documentation impact (README, `docs/`, the skills README).
+- [x] 5.5 `scenario-coverage.md` with every scenario covered, `npm run check:scenarios`, `openspec validate --strict`, lint, and suites; documentation impact (README, `docs/`, the skills README).
 
 ## Workflow follow-up
 
