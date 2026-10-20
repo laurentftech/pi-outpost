@@ -148,6 +148,12 @@ describe("checkDrawio", () => {
     assert.deepEqual(checkDrawio(model(box("a", 0, 0))).pages, [{ name: "Page-1", shapes: 1, connectors: 0 }]);
   });
 
+  test("an HTML label is read as its text, and no tag can be rebuilt from nested brackets", () => {
+    const cells = readDrawio(file(["P", model(box("a", 0, 0, "&lt;b&gt;Bold&lt;/b&gt;&lt;br&gt;line two") + box("b", 200, 0, "&lt;scr&lt;script&gt;ipt&gt;alert(1)"))]))[0].cells;
+    assert.equal(cells[2].label, "Bold line two");
+    assert.doesNotMatch(cells[3].label, /[<>]/);
+  });
+
   test("a cell wrapped in <UserObject> takes the wrapper's id and label", () => {
     const wrapped = file(["P", model(`<UserObject id="u" label="Wrapped &amp; named" link="https://example.test"><mxCell vertex="1" parent="1"><mxGeometry width="80" height="40" as="geometry"/></mxCell></UserObject>` + link("e", "u", "u"))]);
     const cells = readDrawio(wrapped)[0].cells;
@@ -181,7 +187,10 @@ describe("checkDrawio", () => {
     assert.match(reason('<!DOCTYPE x [<!ENTITY a "b">]><mxfile/>'), /not well-formed XML/);
     const binary = reason(`<\u0089PNG\u0001\u0002${"ÿ".repeat(80)}>`);
     // Printable ASCII, and the ellipsis that marks a cut: none of the file's bytes
-    assert.doesNotMatch(binary, /[\u0000-\u001f\u007f-\u00ff]/);
+    assert.equal(
+      [...binary].some((char) => char.charCodeAt(0) < 0x20 || (char.charCodeAt(0) >= 0x7f && char.charCodeAt(0) <= 0xff)),
+      false,
+    );
     assert.match(binary, /root is <\?PNG\?+…>/);
   });
 

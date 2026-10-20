@@ -82,11 +82,16 @@ function quoted(name: string): string {
   return printable.length > 40 ? `${printable.slice(0, 39)}…` : printable;
 }
 
-/** A label as a reader sees it: HTML labels are common, entities already decoded by the scanner. */
+/**
+ * A label as a reader sees it: HTML labels are common, entities already decoded by the
+ * scanner. Only ever quoted in the agent's text report, never written into a page — and
+ * still no angle bracket survives, so no nesting (`<scr<script>ipt>`) can rebuild a tag.
+ */
 function plainLabel(value: string | undefined): string {
   return (value ?? "")
     .replace(/<br\s*\/?>/gi, " ")
     .replace(/<[^>]*>/g, "")
+    .replace(/[<>]/g, "")
     .replace(/&nbsp;/g, " ")
     .replace(/\s+/g, " ")
     .trim();
