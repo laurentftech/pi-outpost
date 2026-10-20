@@ -32,7 +32,7 @@ const { loadSkills } = (await import(
 
 /** What the server enumerates: one path per skill, not the directory holding them. */
 function bundledSkillPaths(): string[] {
-  return ["docx-from-template", "pptx-from-template", "structured-exchange", "structured-exchange-project"]
+  return ["docx-from-template", "drawio", "pptx-from-template", "structured-exchange", "structured-exchange-project"]
     .map((name) => path.join(SKILLS, name))
     .filter((dir) => existsSync(path.join(dir, "SKILL.md")));
 }
@@ -43,6 +43,7 @@ describe("the skill that ships with the tool", () => {
   test("is enumerated at all", () => {
     assert.deepEqual(bundledSkillPaths(), [
       path.join(SKILLS, "docx-from-template"),
+      path.join(SKILLS, "drawio"),
       path.join(SKILLS, "pptx-from-template"),
       path.join(SKILLS, "structured-exchange"),
       path.join(SKILLS, "structured-exchange-project"),
@@ -59,7 +60,7 @@ describe("the skill that ships with the tool", () => {
     const { skills, diagnostics } = load(bundledSkillPaths());
 
     // BothBundledSkillsLoad — and the presentation skill beside them.
-    assert.deepEqual(skills.map((skill) => skill.name), ["docx-from-template", "pptx-from-template", "structured-exchange", "structured-exchange-project"]);
+    assert.deepEqual(skills.map((skill) => skill.name), ["docx-from-template", "drawio", "pptx-from-template", "structured-exchange", "structured-exchange-project"]);
     assert.deepEqual(diagnostics, [], "a skill that loads with warnings is a skill half-loaded");
   });
 

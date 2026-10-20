@@ -219,8 +219,15 @@ one needs, the command that proves it works, and the caution that goes with it.
   (`docx.template`), a second button writes the same document into the template — its styles,
   heading numbering, page setup, header and footer; if the template cannot be used, that button
   says why and the plain export still works
-- Split view: a Markdown, HTML or structured document renders beside the editor, following what
+- Split view: a Markdown, HTML, draw.io or structured document renders beside the editor, following what
   you type rather than what was last saved
+- draw.io diagrams: a `.drawio` file opens drawn, by draw.io's own viewer, with every page and zoom,
+  offline — it runs in a sandboxed frame allowed no connection at all, so a diagram's remote images
+  or fonts are simply not fetched. **Open in draw.io** hands the file to the application associated
+  with it (draw.io desktop) for editing, and the view follows the saved file. The agent writes
+  `.drawio` files with its file tools, guided by the bundled `drawio` skill, and checks them with
+  `drawio_check` — dangling connectors, duplicate ids, missing parents, unusable geometry,
+  overlapping labelled shapes — since it cannot see the drawing
 - Git: uncommitted-change badges in the tree, per-file diffs, a change gutter in the editor
   (what changed since HEAD beside each line, as you type; a click shows what was there and,
   while editing, reverts that change into the draft), the commit log drawn as a metro map

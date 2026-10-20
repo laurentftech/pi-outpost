@@ -214,6 +214,22 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
     "site/js/app.js": 'document.addEventListener("DOMContentLoaded", function () { document.getElementById("written").textContent = "script ran"; });\n',
     "site/img/logo.svg": '<svg xmlns="http://www.w3.org/2000/svg" width="40" height="20"><rect width="40" height="20" fill="#2563eb"/></svg>',
     "site/notes.md": "# Site notes\n\nReached from the page.\n",
+    // draw.io: one of draw.io's own templates (compressed page), a two-page file whose
+    // second page names a remote image and font, and a file that is not a diagram.
+    "diagrams/flow.drawio": await readFile(path.join(REPO, "server/test/fixtures/drawio/jgraph-flowchart.drawio"), "utf8"),
+    "diagrams/two-pages.drawio": [
+      '<mxfile host="e2e">',
+      '<diagram id="p1" name="Context"><mxGraphModel><root><mxCell id="0"/><mxCell id="1" parent="0"/>',
+      '<mxCell id="a" value="Client" style="rounded=1;html=1;" vertex="1" parent="1"><mxGeometry x="40" y="40" width="140" height="60" as="geometry"/></mxCell>',
+      '<mxCell id="b" value="API gateway" style="rounded=1;html=1;" vertex="1" parent="1"><mxGeometry x="260" y="40" width="140" height="60" as="geometry"/></mxCell>',
+      '<mxCell id="e" edge="1" parent="1" source="a" target="b"><mxGeometry relative="1" as="geometry"/></mxCell>',
+      "</root></mxGraphModel></diagram>",
+      '<diagram id="p2" name="Remote things"><mxGraphModel><root><mxCell id="0"/><mxCell id="1" parent="0"/>',
+      '<mxCell id="img" value="Remote image" style="shape=image;image=https://example.com/logo.png;html=1;" vertex="1" parent="1"><mxGeometry x="40" y="40" width="140" height="60" as="geometry"/></mxCell>',
+      '<mxCell id="font" value="Remote font" style="text;html=1;fontFamily=Lobster;fontSource=https%3A%2F%2Ffonts.googleapis.com%2Fcss%3Ffamily%3DLobster;" vertex="1" parent="1"><mxGeometry x="260" y="40" width="140" height="60" as="geometry"/></mxCell>',
+      "</root></mxGraphModel></diagram></mxfile>",
+    ].join(""),
+    "diagrams/broken.drawio": "<html><body>not a diagram</body></html>",
     // A prompt template, so `/` has something to autocomplete. Discovered from
     // the workspace's own .pi/prompts, the same way a real project's are.
     ".pi/prompts/greet.md": "---\ndescription: say hello\n---\n\nSay hello.\n",

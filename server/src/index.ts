@@ -202,6 +202,7 @@ import { replyBlockKey, structuredExchangeBlocks } from "@pi-outpost/shared/stru
 import { checkPiPackages, listPiPackages, packageManagerFor } from "./piPackages.ts";
 import { createStructuredExchangeFigureToolDefinition } from "./structuredExchangeFigureTool.ts";
 import { createTimelineComparisonToolDefinition } from "./timelineComparisonTool.ts";
+import { createDrawioCheckToolDefinition } from "./drawioTool.ts";
 import { createWorkPlanExtendedToolDefinition, createWorkPlanToolDefinition, WORK_PLAN_EXTENDED_TOOL, WORK_PLAN_TOOL } from "./workPlanTool.ts";
 import { DOCUMENT_TOOLS, documentToolsFor, documentToolsForToolCall, documentToolsForWrittenPaths } from "./documentTools.ts";
 import {
@@ -1440,6 +1441,7 @@ const makeCreateRuntime =
                 maxBytes: config.structuredExchange.maxBytes,
                 writableRoot: await fs.realpath(cwd),
               }),
+              createDrawioCheckToolDefinition({ cwd, allowedRoots: [await fs.realpath(cwd)] }),
               createStructuredExchangeToolDefinition({ projectRoot: cwd }),
               workPlanTool,
               workPlanExtendedTool,
