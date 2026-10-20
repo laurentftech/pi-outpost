@@ -600,6 +600,8 @@ describe("gitLog metro map", () => {
     git("config", "user.email", "test@test");
     git("config", "user.name", "Test");
     git("config", "commit.gpgsign", "false");
+    // A developer's tag.gpgSign would make `git tag v1` an annotated tag that demands a message
+    git("config", "tag.gpgsign", "false");
     sha.base = commit("sub/a.txt", "base");
     git("checkout", "-q", "-b", "feat");
     sha.f1 = commit("sub/b.txt", "f1");
