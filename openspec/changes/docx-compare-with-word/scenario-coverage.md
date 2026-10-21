@@ -44,6 +44,15 @@ that refusal came after Word had run, and now comes before. It then read both so
 produites par Word ; elles n'identifient pas les auteurs réels des changements." It named no
 person. The page's DOM showed the `docx_compare` tool cards.
 
+That cross-check was the reading the tool exists to replace: handed the full list, the agent still
+read both versions whole, to check that they carried no tracked changes (the description pointed
+documents that have them at `docx_extract`) and to compare. The answer now says whether either
+version holds a review layer of its own, and closes the list with "This is every difference Word
+found between the two versions. Reading the two versions is not needed to find them."; the
+description says the same. Rerun on a fresh project with the same model and prompt (53 s): one
+`docx_compare` call, no `docx_extract`, and the agent's plan recorded "liste complète de 8 marques
+de révision ; ni commentaires ni suivi préexistants".
+
 Fixed after that run: on a timeout, the Word started by the killed PowerShell stayed running,
 invisible, with the two copies open — on every timeout, not only after a crash. Killed during
 `New-Object` (a 1 s timeout), the script had not yet said which Word it started. The script now

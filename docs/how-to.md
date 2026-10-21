@@ -463,7 +463,9 @@ Microsoft Word installed, the agent calls `docx_compare`, and Word compares them
 { "original": "spec-v1.docx", "revised": "spec-v2.docx", "output_path": "spec-v1-v2-compared.docx" }
 ```
 
-The answer is the same review reading, opened by a line naming both files. Every change carries
+The answer is the same review reading, opened by a line naming both files and one saying whether
+either version holds tracked changes or comments of its own, and closed by a line saying the list
+is complete — so the agent does not read both versions again to check. Every change carries
 the author `Word comparison` and the date of the comparison, not those of whoever edited the
 document, and comments keep their own author. Formatting is not compared. Word works on private
 copies, so neither file is modified and nothing is written beside them. With `output_path`, Word's

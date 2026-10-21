@@ -281,6 +281,45 @@ describe("the answer", () => {
     assert.match(text, /\n\nSaved the compared document, with Word's tracked changes, to `out\/compared\.docx`\.$/);
   });
 
+  test("a complete list says so: reading the two versions is not needed", async () => {
+    const text = await comparisonAnswer(await readFile(WORD_RESULT), { original: "v1.docx", revised: "v2.docx", written: "c.docx" });
+    const paragraphs = text.split("\n\n");
+    // After the list, before the saved path.
+    assert.equal(
+      paragraphs[paragraphs.length - 2],
+      "> This is every difference Word found between the two versions. Reading the two versions is not needed to find them.",
+    );
+    // No such claim where there is nothing to list.
+    assert.doesNotMatch(await comparisonAnswer(await readFile(WORD_IDENTICAL), { original: "a.docx", revised: "b.docx" }), /every difference/);
+  });
+
+  test("the versions' own review layers are named after the opening line", async () => {
+    const none = { revisions: 0, comments: 0 };
+    const clean = await comparisonAnswer(await readFile(WORD_RESULT), { original: "v1.docx", revised: "v2.docx" }, { original: none, revised: none });
+    assert.equal(clean.split("\n\n")[1], "> Neither version holds tracked changes or comments of its own.");
+
+    const reviewed = await comparisonAnswer(
+      await readFile(WORD_RESULT),
+      { original: "v1.docx", revised: "v2.docx" },
+      { original: { revisions: 6, comments: 1 }, revised: { revisions: 1, comments: 0 } },
+    );
+    assert.equal(
+      reviewed.split("\n\n")[1],
+      '> "v1.docx" holds 6 tracked changes and 1 comment of its own; "v2.docx" holds 1 tracked change of its own, not listed here: read it with docx_extract and review: true to see them.',
+    );
+
+    // Said in the no-difference answer too, which is where "did they have changes?" comes next.
+    const identical = await comparisonAnswer(await readFile(WORD_IDENTICAL), { original: "a.docx", revised: "b.docx" }, { original: none, revised: { revisions: 0, comments: 2 } });
+    assert.deepEqual(identical.split("\n\n").slice(1), [
+      '> "b.docx" holds 2 comments of its own, not listed here: read it with docx_extract and review: true to see them.',
+      "Word found no difference between the two versions' text (formatting is not compared).",
+    ]);
+
+    // A version that could not be read is not described.
+    const unknown = await comparisonAnswer(await readFile(WORD_RESULT), { original: "v1.docx", revised: "v2.docx" }, { original: none });
+    assert.doesNotMatch(unknown, /of its own/);
+  });
+
   test("a result that is not a Word document is reported, not read as no difference", async () => {
     await assert.rejects(comparisonAnswer(Buffer.from("not a zip"), { original: "a.docx", revised: "b.docx" }), /^Error: Word's compared document could not be read: /);
   });
@@ -294,6 +333,29 @@ describe("docx_compare", () => {
     assert.deepEqual(await readFile(path.join(root, "compared-written.docx")), await readFile(WORD_RESULT));
     assert.match(text, /^> Compared by Microsoft Word: "v\/spec-v1\.docx" → "v\/spec-v2\.docx"\./);
     assert.match(text, /Saved the compared document, with Word's tracked changes, to `compared-written\.docx`\.$/);
+    // The tool reads each version's own review layer: here both carry one.
+    assert.equal(
+      text.split("\n\n")[1],
+      '> "v/spec-v1.docx" holds 6 tracked changes and 1 comment of its own; "v/spec-v2.docx" holds 12 tracked changes and 1 comment of its own, not listed here: read it with docx_extract and review: true to see them.',
+    );
+  });
+
+  test("the tool says when neither version holds a review layer", async () => {
+    const { environment } = machine();
+    const tool = createDocxCompareToolDefinition({ ...options, environment });
+    await writeFile(path.join(root, "v", "plain.docx"), await readFile(path.join(FIXTURES, "docx-text.docx")));
+    const text = await call(tool, { original: "v/plain.docx", revised: "v/plain.docx" });
+    assert.equal(text.split("\n\n")[1], "> Neither version holds tracked changes or comments of its own.");
+  });
+
+  test("a version this reader cannot open is not described, and Word still compares it", async () => {
+    const { environment, calls } = machine();
+    const tool = createDocxCompareToolDefinition({ ...options, environment });
+    await writeFile(path.join(root, "v", "damaged.docx"), await readFile(path.join(FIXTURES, "docx-corrupt.docx")));
+    const text = await call(tool, { original: "v/damaged.docx", revised: "v/spec-v2.docx" });
+    assert.equal(calls.length, 1);
+    assert.doesNotMatch(text, /of its own/);
+    assert.match(text, /Reading the two versions is not needed/);
   });
 
   test("SourcesUnchanged: both files are byte-identical afterwards and their directory holds no new file", async () => {

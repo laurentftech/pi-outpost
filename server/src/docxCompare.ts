@@ -164,11 +164,14 @@ function powershellError(result: ProcessResult): string | undefined {
 export async function comparisonAnswer(
   compared: Uint8Array,
   names: { original: string; revised: string; written?: string },
+  /** What each version's own review layer holds; unknown when a version could not be read. */
+  sources: { original?: ReviewCounts; revised?: ReviewCounts } = {},
 ): Promise<string> {
   const opening =
     `> Compared by Microsoft Word: "${names.original}" → "${names.revised}". ` +
     "The authors and dates on the changes below are the comparison's, not those of whoever edited the document.";
   const written = names.written === undefined ? [] : [`Saved the compared document, with Word's tracked changes, to \`${names.written}\`.`];
+  const own = sourcesLine(names, sources);
 
   let extraction: Awaited<ReturnType<typeof extractDocx>>;
   let truncated = false;
@@ -186,14 +189,58 @@ export async function comparisonAnswer(
   }
 
   if ((extraction.review?.revisions ?? 0) === 0) {
-    return [opening, "Word found no difference between the two versions' text (formatting is not compared).", ...written].join("\n\n");
+    return [opening, ...own, "Word found no difference between the two versions' text (formatting is not compared).", ...written].join("\n\n");
   }
+  // Seen live: handed the full list, an agent still read both versions whole to check
+  // them, which is the reading this tool exists to replace. The answer says it is
+  // complete, where the agent decides what to do next.
   const rest = !truncated
-    ? []
+    ? ["> This is every difference Word found between the two versions. Reading the two versions is not needed to find them."]
     : names.written !== undefined
       ? [`> Read the rest with docx_extract on \`${names.written}\` with review: true and the blocks named above.`]
       : ["> Call docx_compare again with output_path to keep the compared document, then read the rest with docx_extract, review: true and the blocks named above."];
-  return [opening, extraction.markdown, ...rest, ...written].join("\n\n");
+  return [opening, ...own, extraction.markdown, ...rest, ...written].join("\n\n");
+}
+
+export interface ReviewCounts {
+  revisions: number;
+  comments: number;
+}
+
+/**
+ * Whether the versions carry tracked changes or comments of their own.
+ *
+ * Said in the answer because the agent otherwise reads both versions to find out —
+ * seen live, prompted by the description's mention of documents that have them.
+ */
+function sourcesLine(names: { original: string; revised: string }, sources: { original?: ReviewCounts; revised?: ReviewCounts }): string[] {
+  const { original, revised } = sources;
+  if (original === undefined || revised === undefined) return [];
+  const holds = (counts: ReviewCounts) => counts.revisions > 0 || counts.comments > 0;
+  if (!holds(original) && !holds(revised)) return ["> Neither version holds tracked changes or comments of its own."];
+  const described = [
+    [names.original, original],
+    [names.revised, revised],
+  ]
+    .filter(([, counts]) => holds(counts as ReviewCounts))
+    .map(([name, counts]) => `"${name}" holds ${countOf(counts as ReviewCounts)} of its own`);
+  return [`> ${described.join("; ")}, not listed here: read it with docx_extract and review: true to see them.`];
+}
+
+function countOf(counts: ReviewCounts): string {
+  const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
+  return [counts.revisions > 0 ? plural(counts.revisions, "tracked change") : "", counts.comments > 0 ? plural(counts.comments, "comment") : ""]
+    .filter(Boolean)
+    .join(" and ");
+}
+
+/** A version's own review layer, or undefined when it cannot be read: Word may still compare it. */
+async function reviewLayerOf(bytes: Uint8Array): Promise<ReviewCounts | undefined> {
+  try {
+    return (await extractDocx(bytes, { review: true, maxBlocks: 1 })).review;
+  } catch {
+    return undefined;
+  }
 }
 
 /* ── docx_compare ───────────────────────────────────────────────────────────── */
@@ -226,7 +273,8 @@ export function createDocxCompareToolDefinition(options: DocxCompareToolOptions)
     description: [
       "Compare two versions of a Word document (.docx) with Microsoft Word, and return what changed in the review reading:",
       "{++inserted++} and {--deleted--} text, moves marked [mN] at both ends, each change listed at the end with its section.",
-      "Use it when a document was revised without tracked changes; a document that has them is read with docx_extract and review: true.",
+      "Use it whenever you have two versions of a document and need what changed between them, for instance a revision sent without tracked changes.",
+      "Its answer is the complete list of differences, and says whether either version holds tracked changes of its own: do not read the two versions to compare them yourself.",
       "Formatting is not compared. The authors and dates on the changes are the comparison's, not the editors'. Neither file is modified.",
       "output_path also saves Word's compared document, for the user to open in Word.",
     ].join(" "),
@@ -266,11 +314,19 @@ export function createDocxCompareToolDefinition(options: DocxCompareToolOptions)
           throw error;
         }
       }
-      const text = await comparisonAnswer(compared, {
-        original: p.original,
-        revised: p.revised,
-        ...(p.output_path === undefined ? {} : { written: p.output_path }),
-      });
+      const [ownOriginal, ownRevised] = await Promise.all([reviewLayerOf(original.bytes), reviewLayerOf(revised.bytes)]);
+      const text = await comparisonAnswer(
+        compared,
+        {
+          original: p.original,
+          revised: p.revised,
+          ...(p.output_path === undefined ? {} : { written: p.output_path }),
+        },
+        {
+          ...(ownOriginal === undefined ? {} : { original: ownOriginal }),
+          ...(ownRevised === undefined ? {} : { revised: ownRevised }),
+        },
+      );
       return { content: [{ type: "text", text }], details: undefined };
     },
   } as ToolDefinition;
