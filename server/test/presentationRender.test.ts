@@ -15,8 +15,10 @@ import { fileURLToPath } from "node:url";
 import { describe, test } from "node:test";
 import { readSlideParagraphs } from "../src/pptx.ts";
 import {
+  convertDocumentToPdf,
   convertPresentationToPdf,
   defaultRunner,
+  describeFailure,
   findLibreOffice,
   findOnlyOffice,
   findUnreadableText,
@@ -26,6 +28,7 @@ import {
   rasterizeSvg,
   RenderError,
   renderersFor,
+  WORD_SCRIPT,
   type ProcessResult,
   type RenderEnvironment,
   type RenderSettings,
@@ -280,6 +283,52 @@ describe("the default runner", () => {
     assert.notEqual(stopped.code, 0);
     assert.ok(Date.now() - started < 10_000, "killed on the signal, not after 20 s");
   });
+
+  // A child that names its process only after a while, as a script starting Word does.
+  const NAMES_LATE = "setTimeout(() => process.stdout.write('word-pid=1234\\n'), 1500); setTimeout(() => {}, 20000)";
+
+  test("a held end waits for the line it is held for, then ends the process", async () => {
+    const started = Date.now();
+    const result = await defaultRunner(process.execPath, ["-e", NAMES_LATE], { env: process.env, timeoutMs: 200, holdKillUntil: /^word-pid=/m });
+    const took = Date.now() - started;
+    assert.equal(result.timedOut, true);
+    assert.match(result.stdout, /^word-pid=1234$/m);
+    assert.ok(took >= 1_400 && took < 10_000, `ended once the line was out (${took} ms)`);
+  });
+
+  test("a held end on a stopped turn waits for the line too, and is not a timeout", async () => {
+    const result = await defaultRunner(process.execPath, ["-e", NAMES_LATE], {
+      env: process.env,
+      timeoutMs: 20_000,
+      signal: AbortSignal.timeout(200),
+      holdKillUntil: /^word-pid=/m,
+    });
+    assert.equal(result.timedOut, false);
+    assert.match(result.stdout, /^word-pid=1234$/m);
+  });
+
+  test("a held end gives up after its grace when the line never comes", async () => {
+    const started = Date.now();
+    const result = await defaultRunner(process.execPath, ["-e", "setTimeout(() => {}, 20000)"], {
+      env: process.env,
+      timeoutMs: 200,
+      holdKillUntil: /^word-pid=/m,
+      holdKillMs: 500,
+    });
+    assert.equal(result.timedOut, true);
+    assert.ok(Date.now() - started < 10_000, "ended after the grace, not after 20 s");
+  });
+
+  test("a line already out does not hold the end", async () => {
+    const started = Date.now();
+    const result = await defaultRunner(process.execPath, ["-e", "process.stdout.write('word-pid=9\\n'); setTimeout(() => {}, 20000)"], {
+      env: process.env,
+      timeoutMs: 800,
+      holdKillUntil: /^word-pid=/m,
+    });
+    assert.equal(result.timedOut, true);
+    assert.ok(Date.now() - started < 5_000);
+  });
 });
 
 describe("reading what was drawn", () => {
@@ -323,5 +372,52 @@ describe("reading what was drawn", () => {
     assert.ok(png !== null);
     assert.deepEqual([png.readUInt32BE(16), png.readUInt32BE(20)], [200, 100]);
     assert.equal(await rasterizeSvg(Buffer.from("not an svg"), 10, 10), null);
+  });
+});
+
+describe("a Word left behind by a killed script", () => {
+  /** Windows, where the Office script runs out of time — or is stopped — after naming its process. */
+  function killedRun(options: { timedOut: boolean; onRun?: () => void }): { environment: RenderEnvironment; kills: number[] } {
+    const kills: number[] = [];
+    const environment: RenderEnvironment = {
+      platform: "win32",
+      env: { SystemRoot: "C:\\Windows", PATH: "" },
+      isFile: async () => false,
+      kill: (pid) => kills.push(pid),
+      run: async () => {
+        options.onRun?.();
+        return { code: null, stdout: "word-pid=7373\r\n", stderr: "", timedOut: options.timedOut };
+      },
+    };
+    return { environment, kills };
+  }
+  const WORD_ONLY: RenderSettings = { renderer: "word", timeoutMs: 1_000 };
+
+  test("the Word script names the Word it started", () => {
+    assert.match(WORD_SCRIPT, /\$running = @\(Get-Process WINWORD[^\n]*\n {2}\$app = New-Object -ComObject Word\.Application\n[^\n]*\$running -notcontains[^\n]*\n[^\n]*'word-pid=' \+ \$\(if \(\$started\.Count -eq 1\) \{ \$started\[0\]\.Id \} else \{ 'unknown' \}\)/);
+  });
+
+  test("docx_render's Word is ended when its script times out", async () => {
+    const { environment, kills } = killedRun({ timedOut: true });
+    // Word only, then the others: none installed, so the rendering fails after Word's attempt.
+    await assert.rejects(convertDocumentToPdf(DECK, WORD_ONLY, environment), RenderError);
+    assert.deepEqual(kills, [7373]);
+  });
+
+  test("docx_render's Word is ended when the turn is stopped", async () => {
+    const controller = new AbortController();
+    const { environment, kills } = killedRun({ timedOut: false, onRun: () => controller.abort() });
+    await assert.rejects(convertDocumentToPdf(DECK, WORD_ONLY, environment, controller.signal));
+    assert.deepEqual(kills, [7373]);
+  });
+
+  test("PowerPoint is never ended: it is one instance shared with the user", async () => {
+    const { environment, kills } = killedRun({ timedOut: true });
+    await assert.rejects(convertPresentationToPdf(DECK, { renderer: "powerpoint", timeoutMs: 1_000 }, environment), RenderError);
+    assert.deepEqual(kills, []);
+  });
+
+  test("the process line is not read as the failure", () => {
+    assert.equal(describeFailure({ code: 1, stdout: "word-pid=7373\r\n", stderr: "", timedOut: false }, 1_000), "exited with code 1");
   });
 });

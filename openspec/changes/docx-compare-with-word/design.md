@@ -119,8 +119,13 @@ would otherwise read a person's name.
 - [Word shows a dialog, such as protected view or a conversion prompt, and hangs until the timeout]
   → open with `ConfirmConversions $false` and read-only; `IgnoreAllComparisonWarnings`; the timeout
   bounds the worst case and the failure names it.
-- [A Word left running after a crash] → `Quit` runs only when no document is open; a process left
-  behind is the same risk `docx_render` already takes, and has the same mitigation.
+- [A Word left running after a timeout or a stopped turn] → seen on every timeout in the Windows
+  run: the killed PowerShell's `finally` never runs, and its Word stays, invisible, holding the
+  copies. The script now prints the process `New-Object` started (`word-pid=`, from the
+  `WINWORD.EXE` list before and after; `unknown` when two appeared at once, never a guess), the
+  runner holds the kill until that line is out (at most 30 s), and the server then ends that
+  process. `docx_render`'s Word gets the same; PowerPoint, one instance shared with the user,
+  does not. Checked with real 1 s and 4 s timeouts: no `WINWORD.EXE` left.
 - [Users on Mac or WSL cannot use it] → the manual path is named in the tool's absence (docs) and in
   its failure (Windows without Word).
 

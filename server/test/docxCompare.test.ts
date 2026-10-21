@@ -38,6 +38,7 @@ interface Call {
   file: string;
   args: string[];
   env: NodeJS.ProcessEnv;
+  options: Parameters<RenderEnvironment["run"]>[2];
   /** The two copies Word was handed, read while it ran. */
   copies: { original: Buffer; revised: Buffer };
 }
@@ -46,29 +47,36 @@ interface Call {
 function machine(outcome: { result?: string; fail?: string; timeout?: boolean; platform?: NodeJS.Platform } = {}): {
   environment: RenderEnvironment;
   calls: Call[];
+  /** Process ids ended, in order. */
+  kills: number[];
 } {
   const calls: Call[] = [];
+  const kills: number[] = [];
   const environment: RenderEnvironment = {
     platform: outcome.platform ?? "win32",
     env: { SystemRoot: "C:\\Windows", PATH: "" },
     isFile: async () => false,
+    kill: (pid) => kills.push(pid),
     run: async (file, args, options): Promise<ProcessResult> => {
       calls.push({
         file,
         args,
         env: options.env,
+        options,
         copies: {
           original: await readFile(options.env.PI_OUTPOST_COMPARE_ORIGINAL!),
           revised: await readFile(options.env.PI_OUTPOST_COMPARE_REVISED!),
         },
       });
-      if (outcome.timeout) return { code: null, stdout: "", stderr: "", timedOut: true };
-      if (outcome.fail !== undefined) return { code: 1, stdout: "", stderr: outcome.fail, timedOut: false };
+      // The script names the Word it started before anything else, as the real one does.
+      const started = "word-pid=4242\r\n";
+      if (outcome.timeout) return { code: null, stdout: started, stderr: "", timedOut: true };
+      if (outcome.fail !== undefined) return { code: 1, stdout: started, stderr: outcome.fail, timedOut: false };
       await writeFile(options.env.PI_OUTPOST_COMPARE_OUTPUT!, await readFile(outcome.result ?? WORD_RESULT));
-      return { code: 0, stdout: "", stderr: "", timedOut: false };
+      return { code: 0, stdout: started, stderr: "", timedOut: false };
     },
   };
-  return { environment, calls };
+  return { environment, calls, kills };
 }
 
 type Tool = ReturnType<typeof createDocxCompareToolDefinition>;
@@ -112,6 +120,13 @@ describe("running Word", () => {
     // A failure is reported as its message, in UTF-8, not as PowerShell's wrapped error record.
     assert.match(COMPARE_SCRIPT, /^\[Console\]::OutputEncoding = \[Text\.Encoding\]::UTF8$/m);
     assert.match(COMPARE_SCRIPT, /^\} catch \{\n {2}\[Console\]::Error\.WriteLine\(\$_\.Exception\.Message\); exit 1\n\} finally \{$/m);
+    // The Word it starts is named on every path: the one new process, or "unknown".
+    assert.match(
+      COMPARE_SCRIPT,
+      /\$running = @\(Get-Process WINWORD[^\n]*\n {2}\$app = New-Object -ComObject Word\.Application\n {2}\$started = [^\n]*\$running -notcontains[^\n]*\n {2}\[Console\]::Out\.WriteLine\('word-pid=' \+ \$\(if \(\$started\.Count -eq 1\) \{ \$started\[0\]\.Id \} else \{ 'unknown' \}\)\)/,
+    );
+    // And the runner is told not to end the script before that line is out.
+    assert.equal(run.options.holdKillUntil?.source, "^word-pid=");
     // Word is never told to quit while a document is open in it.
     assert.match(COMPARE_SCRIPT, /if \(\$app -ne \$null -and \$app\.Documents\.Count -eq 0\) \{ \$app\.Quit\(\[ref\]0\) \}/);
   });
@@ -136,6 +151,27 @@ describe("running Word", () => {
       assert.match(error.message, /^Word did not finish the comparison within 7 s \(office\.renderTimeoutMs\)\./);
       return true;
     });
+  });
+
+  test("ComparisonTimesOut: the Word the killed script started is ended, not left running", async () => {
+    const { environment, kills } = machine({ timeout: true });
+    await assert.rejects(compareWithWord(Buffer.from("a"), Buffer.from("b"), { timeoutMs: 7_000 }, environment));
+    assert.deepEqual(kills, [4242]);
+  });
+
+  test("a script that finished on its own closed its Word: nothing is ended", async () => {
+    for (const outcome of [{}, { fail: "New-Object : boom" }]) {
+      const { environment, kills } = machine(outcome);
+      await compareWithWord(Buffer.from("a"), Buffer.from("b"), { timeoutMs: 5_000 }, environment).catch(() => {});
+      assert.deepEqual(kills, [], JSON.stringify(outcome));
+    }
+  });
+
+  test("a timed-out script that named no Word (two appeared at once) ends nothing", async () => {
+    const { environment, kills } = machine();
+    environment.run = async () => ({ code: null, stdout: "", stderr: "", timedOut: true });
+    await assert.rejects(compareWithWord(Buffer.from("a"), Buffer.from("b"), { timeoutMs: 5_000 }, environment), /did not finish/);
+    assert.deepEqual(kills, []);
   });
 
   test("WordMissing: a failed run says Word is unavailable and names the manual path", async () => {
@@ -190,12 +226,14 @@ describe("running Word", () => {
 
   test("a turn stopped while Word runs is reported as stopped, not as Word missing", async () => {
     const controller = new AbortController();
-    const { environment } = machine();
+    const { environment, kills } = machine();
     environment.run = async () => {
       controller.abort();
-      return { code: null, stdout: "", stderr: "AbortError: The operation was aborted", timedOut: false };
+      return { code: null, stdout: "word-pid=5151\n", stderr: "AbortError: The operation was aborted", timedOut: false };
     };
     await assert.rejects(compareWithWord(Buffer.from("a"), Buffer.from("b"), { timeoutMs: 5_000 }, environment, controller.signal), /The comparison was stopped/);
+    // Stopping the turn ends the Word it had started, as a timeout does.
+    assert.deepEqual(kills, [5151]);
   });
 });
 

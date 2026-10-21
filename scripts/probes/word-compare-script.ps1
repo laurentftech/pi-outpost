@@ -2,7 +2,10 @@ $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [Text.Encoding]::UTF8
 $app = $null; $original = $null; $revised = $null; $result = $null
 try {
+  $running = @(Get-Process WINWORD -ErrorAction SilentlyContinue | ForEach-Object { $_.Id })
   $app = New-Object -ComObject Word.Application
+  $started = @(Get-Process WINWORD -ErrorAction SilentlyContinue | Where-Object { $running -notcontains $_.Id })
+  if ($started.Count -eq 1) { [Console]::Out.WriteLine('word-pid=' + $started[0].Id) }
   $missing = [Type]::Missing
   $original = $app.Documents.Open($env:PI_OUTPOST_COMPARE_ORIGINAL, $false, $true, $false, $missing, $missing, $missing, $missing, $missing, 0, $missing, $false)
   $revised = $app.Documents.Open($env:PI_OUTPOST_COMPARE_REVISED, $false, $true, $false, $missing, $missing, $missing, $missing, $missing, 0, $missing, $false)

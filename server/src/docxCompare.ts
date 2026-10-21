@@ -25,6 +25,9 @@ import {
   describeFailure,
   powershellArgs,
   powershellPath,
+  startWordLines,
+  stopStartedWord,
+  WORD_STARTED_LINE,
   type ProcessResult,
   type RenderEnvironment,
   type RenderSettings,
@@ -64,13 +67,15 @@ export const MANUAL_COMPARISON =
  * - A failure writes the exception's message alone, in UTF-8. Left to PowerShell, the
  *   error record came back wrapped at the console's width and cut mid-sentence, in the
  *   OEM code page ("r�cup�ration"). `exit` in a `catch` still runs the `finally`.
+ * - The Word it starts is named on stdout, and ended by `compareWithWord` when the
+ *   script is killed on a timeout (`startWordLines`, `stopStartedWord`).
  */
 export const COMPARE_SCRIPT = [
   "$ErrorActionPreference = 'Stop'",
   "[Console]::OutputEncoding = [Text.Encoding]::UTF8",
   "$app = $null; $original = $null; $revised = $null; $result = $null",
   "try {",
-  "  $app = New-Object -ComObject Word.Application",
+  ...startWordLines(),
   "  $missing = [Type]::Missing",
   "  $original = $app.Documents.Open($env:PI_OUTPOST_COMPARE_ORIGINAL, $false, $true, $false, $missing, $missing, $missing, $missing, $missing, 0, $missing, $false)",
   "  $revised = $app.Documents.Open($env:PI_OUTPOST_COMPARE_REVISED, $false, $true, $false, $missing, $missing, $missing, $missing, $missing, 0, $missing, $false)",
@@ -121,7 +126,9 @@ export async function compareWithWord(
       },
       timeoutMs: settings.timeoutMs,
       signal,
+      holdKillUntil: WORD_STARTED_LINE,
     });
+    stopStartedWord(result, environment, signal);
     if (signal?.aborted) throw new Error("The comparison was stopped.");
     const bytes = result.code === 0 ? await fs.readFile(files.output).catch(() => null) : null;
     if (bytes !== null && bytes.length > 0) return bytes;
@@ -132,7 +139,8 @@ export async function compareWithWord(
     }
     throw new Error(`Microsoft Word is unavailable: ${powershellError(result) ?? describeFailure(result, settings.timeoutMs)}. ${MANUAL_COMPARISON}`);
   } finally {
-    await fs.rm(workDir, { recursive: true, force: true }).catch(() => {});
+    // Retried: a Word just ended may still hold the copies for a moment.
+    await fs.rm(workDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }).catch(() => {});
   }
 }
 

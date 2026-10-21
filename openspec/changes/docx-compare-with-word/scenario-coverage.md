@@ -24,7 +24,7 @@ Word is on no CI runner, so two kinds of evidence:
 | ComparedDocumentWritten | 5.7 s; 12 changes and 1 comment in the review reading, moves as `[m1]`/`[m2]`, every change `Word comparison, 2026-10-22`; `compared.docx` written (129 743 bytes) and named last. |
 | SourcesUnchanged | listing of the sources' folder unchanged; `spec-v1.docx` byte-identical. |
 | FormattingDifferencesAreIgnored | the original against a copy whose second paragraph's first word was made bold in Word: "Word found no difference between the two versions' text (formatting is not compared)." |
-| ComparisonTimesOut | 1 s timeout: "Word did not finish the comparison within 1 s (office.renderTimeoutMs). To compare by hand, …". The server stayed responsive. **A `WINWORD.EXE` was left running**: killing PowerShell does not stop the Word it started (see below). |
+| ComparisonTimesOut | 1 s timeout: "Word did not finish the comparison within 1 s (office.renderTimeoutMs). To compare by hand, …". The server stayed responsive. A `WINWORD.EXE` was left running: killing PowerShell does not stop the Word it started — fixed since (see below). |
 | UserDocumentsStayOpen | a visible Word with the user's document open throughout; the comparison started its own Word (process count 3 → 3 after it quit), and the user's document was still open afterwards (`still-open=True`). The script-only probe gave the same: no `WINWORD.EXE` left behind when none ran before. |
 | WordMissing | real PowerShell, real COM lookup of an unregistered class: "Microsoft Word is unavailable: La récupération de la fabrique de classes COM … 80040154 Classe non enregistrée (…REGDB_E_CLASSNOTREG). To compare by hand, open the revised document in Word, choose Review → Compare → Compare…, save the result, and read it with docx_extract and review: true." |
 
@@ -44,9 +44,12 @@ that refusal came after Word had run, and now comes before. It then read both so
 produites par Word ; elles n'identifient pas les auteurs réels des changements." It named no
 person. The page's DOM showed the `docx_compare` tool cards.
 
-Left open: on a timeout, the Word started by the killed PowerShell stays running, invisible, with
-the two copies open, until killed by hand. The design accepts this as the risk `docx_render`
-already takes; the run shows it happens on every timeout, not only after a crash.
+Fixed after that run: on a timeout, the Word started by the killed PowerShell stayed running,
+invisible, with the two copies open — on every timeout, not only after a crash. Killed during
+`New-Object` (a 1 s timeout), the script had not yet said which Word it started. The script now
+names its Word on stdout, the runner holds the kill until that line is out, and the server ends
+that process (design, Risks). Rerun against the real Word with 1 s, 4 s and 1 s timeouts: each
+`word-pid=` line came back, that process was ended, and no `WINWORD.EXE` was running 8 s later.
 
 ## Matrix
 
@@ -62,6 +65,6 @@ already takes; the run shows it happens on every timeout, not only after a crash
 | DestinationRefused | covered | `server/test/docxCompare.test.ts`: `DestinationRefused: …` — outside the writable zone, read-only sandbox, an existing file (left unchanged), and a non-`.docx` name: each refused with its reason and Word never run; `a destination folder that does not exist is named, before Word starts`; `a destination taken while Word ran is not overwritten`. |
 | InputOutsideTheSandbox | covered | `server/test/docxCompare.test.ts`: `InputOutsideTheSandbox: either path outside the root …` (absolute path for `original`, `../` for `revised`) and `InputOutsideTheSandbox: a link inside the root to a file outside it is refused` (a real symbolic link; skipped only where the account may not create one — it ran on the Windows machine); Word never run. |
 | OversizeInputRefused | covered | `server/test/docxCompare.test.ts`: `OversizeInputRefused: …` — exact message naming the 1 KB limit, Word never run. |
-| ComparisonTimesOut | covered | `server/test/docxCompare.test.ts`: `ComparisonTimesOut: …` — a timed-out run fails with "within 7 s (office.renderTimeoutMs)". Real run with a 1 s timeout above. |
+| ComparisonTimesOut | covered | `server/test/docxCompare.test.ts`: `ComparisonTimesOut: the failure names the timeout` ("within 7 s (office.renderTimeoutMs)") and `ComparisonTimesOut: the Word the killed script started is ended, not left running`; `server/test/presentationRender.test.ts`: `a held end waits for the line it is held for, then ends the process` and the other held-end tests on the real runner. Real runs with 1 s and 4 s timeouts above. |
 | NotOfferedOffWindows | covered | `server/test/documentTools.test.ts`: `NotOfferedOffWindows: …` (darwin and linux get the Word tools without it) and `on Windows a named Word document brings the comparison …`; `server/test/documentToolsWire.test.mjs`: `a document extractor is published when a document is named, and not before` — the real server's request to the model carries `docx_compare` exactly when the platform is `win32` (CI runs it on all three). |
 | WordMissing | covered | `server/test/docxCompare.test.ts`: `WordMissing: a failed run says Word is unavailable and names the manual path`, `WordMissing: PowerShell's error record is reduced to its message`, `off Windows nothing is run, and the manual path is named`, `a run that exits cleanly without writing the result is a failure, …`. Real run above. |
