@@ -9,7 +9,7 @@
 
 - [x] 2.1 In `parseBody`, ignore everything inside `w:rPrChange` and `w:pPrChange` (and the other `*PrChange` elements). Verify with the `PreviousParagraphStyleIsNotRead` and `PreviousRunFormattingIsNotRead` tests, in both readings.
 - [x] 2.2 Drop `w:moveFrom` content in the default reading, and drop table rows whose `w:trPr` holds `w:del`. Verify with the `MovedTextAppearsOnce` and `DeletedTableRowIsDropped` tests and the Office web fixture; the existing tracked-change and strikethrough tests stay green.
-- [ ] 2.3 Describe the visible effect of the default-reading fixes in the PR description, for the release changelog (written at release time per `docs/development.md` § Releasing): restyled headings, moved text, deleted rows, and the new hint line. Verify that the PR body names all four.
+- [x] 2.3 Describe the visible effect of the default-reading fixes in the PR description, for the release changelog (written at release time per `docs/development.md` § Releasing): restyled headings, moved text, deleted rows, and the new hint line. Verify that the PR body names all four.
 
 ## 3. Revisions in the review reading
 
