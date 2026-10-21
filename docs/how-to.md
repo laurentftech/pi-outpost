@@ -439,6 +439,22 @@ marker carries, which is also how to get one the budget held back. A picture who
 cannot be shown, a metafile or a missing part, is still named with the reason: nothing
 the document holds goes unmentioned.
 
+A Word document under review reads as its accepted text — every tracked change applied —
+and the answer opens by saying how many changes and comments it holds. Ask what changed, or
+for an impact analysis, and the agent calls `docx_extract` with `review: true`:
+
+```
+Le délai est de {--30--}[r1]{++45++}[r2] jours, voir {==l'annexe B==}[c1].
+…
+- [r1] deletion — J. Martin, 2026-10-12 — Exigences > Délais
+- [r2] insertion — J. Martin, 2026-10-12 — Exigences > Délais
+- [c1] comment, open — P. Leroy, 2026-10-14 — Exigences > Délais: « Laquelle ? »
+```
+
+A move is marked at both ends with one `[mN]`, a table row inserted or deleted is one change,
+and a comment's replies follow it in the list. Formatting changes are not reported, and the
+document is never modified — accepting or rejecting changes stays in Word.
+
 There is no OCR. A scanned PDF has no text layer, and its words are not searchable — but
 the page *is* an image, so `pdf_extract` returns it at the resolution the file holds and
 the agent can read it by looking. For a page carrying neither text nor an image — an
