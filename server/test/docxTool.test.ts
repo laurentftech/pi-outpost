@@ -33,6 +33,7 @@ describe("docx_extract", () => {
     root = await realResolve(await mkdtemp(path.join(tmpdir(), "pi-docxtool-")));
     await copyFile(path.join(FIXTURES, "docx-mixed.docx"), path.join(root, "report.docx"));
     await copyFile(path.join(FIXTURES, "docx-encrypted.docx"), path.join(root, "locked.docx"));
+    await copyFile(path.join(FIXTURES, "docx-review-office-web.docx"), path.join(root, "reviewed.docx"));
     await writeFile(path.join(root, "notes.txt"), "not a docx\n");
     tool = createDocxExtractToolDefinition({ cwd: root, allowedRoots: [root], maxBytes: 25 * 1024 * 1024, writableRoot: root });
   });
@@ -89,6 +90,40 @@ describe("docx_extract", () => {
         ),
       /larger than the 0 KB Word limit/,
     );
+  });
+  test("review is opt-in, and the default answer names it when the document has a review layer", async () => {
+    const accepted = await run({ path: "reviewed.docx" });
+    assert.match(accepted, /^> This document holds 6 tracked changes and 1 comment/);
+    assert.match(accepted, /Pass review: true/);
+    assert.doesNotMatch(accepted, /\{--|\[r1\]/);
+
+    const reviewed = await run({ path: "reviewed.docx", review: true });
+    assert.match(reviewed, /\{--a PowerPoint deck from slides;--\}\[r2\]/);
+    assert.match(reviewed, /^- \[c1\] comment, open — /m);
+  });
+
+  test("review composes with blocks and full", async () => {
+    const ranged = await run({ path: "reviewed.docx", review: true, blocks: "2" });
+    assert.match(ranged, /\{\+\+and for Claude Desktop\+\+\}\[r1\]/);
+    assert.match(ranged, /^- \[r1\] insertion/m);
+    assert.doesNotMatch(ranged, /\[r2\]|\[c1\]/);
+
+    const whole = await run({ path: "reviewed.docx", review: true, full: true });
+    assert.match(whole, /^- \[c1\] comment/m);
+    assert.doesNotMatch(whole, /Truncated/);
+  });
+
+  test("SourceUnchangedAfterReview: reading to the answer and to a file leaves the document's bytes alone", async () => {
+    const source = path.join(root, "reviewed.docx");
+    const before = await readFile(source);
+
+    await run({ path: "reviewed.docx", review: true });
+    const summary = await run({ path: "reviewed.docx", review: true, output_path: "reviewed-review.md" });
+
+    assert.ok((await readFile(source)).equals(before), "the source is byte-identical");
+    assert.match(summary, /reviewed-review\.md/);
+    const written = await readFile(path.join(root, "reviewed-review.md"), "utf8");
+    assert.match(written, /^- \[r6\] table row deletion/m);
   });
 });
 

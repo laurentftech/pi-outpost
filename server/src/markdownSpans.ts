@@ -23,6 +23,15 @@ export const ITALIC = 4;
 export interface Span {
   text: string;
   format: number;
+  /**
+   * A revision the text belongs to, as the markers that go around it. They wrap
+   * *outside* the formatting markers, so `~~` and a revision marker never
+   * interleave; two spans merge only when they carry the same markers, so one
+   * revision's runs become one span and two revisions never do.
+   */
+  revision?: { open: string; close: string };
+  /** Emitted exactly as written: a marker with no text of its own, never merged or wrapped. */
+  raw?: boolean;
 }
 
 /** Markers, outermost first, so combined formatting nests the same way every time. */
@@ -54,20 +63,32 @@ export function renderSpans(spans: Span[]): string {
   for (const span of spans) {
     if (span.text === "") continue;
     const last = merged[merged.length - 1];
-    if (last !== undefined && last.format === span.format) last.text += span.text;
-    else merged.push({ text: span.text, format: span.format });
+    if (last !== undefined && mergeable(last, span)) last.text += span.text;
+    else merged.push({ ...span });
   }
 
   return merged
     .map((span) => {
-      if (span.format === 0) return span.text;
+      if (span.raw === true || (span.format === 0 && span.revision === undefined)) return span.text;
       const match = /^(\s*)([\s\S]*?)(\s*)$/.exec(span.text);
       // A span with nothing visible in it — Word writes empty and whitespace-only
       // runs freely — contributes its whitespace and no markers.
       if (match === null || match[2] === "") return span.text;
-      return match[1] + wrapSpan(match[2], span.format) + match[3];
+      const formatted = wrapSpan(match[2], span.format);
+      const wrapped = span.revision === undefined ? formatted : span.revision.open + formatted + span.revision.close;
+      return match[1] + wrapped + match[3];
     })
     .join("");
+}
+
+function mergeable(a: Span, b: Span): boolean {
+  return (
+    a.raw !== true &&
+    b.raw !== true &&
+    a.format === b.format &&
+    a.revision?.open === b.revision?.open &&
+    a.revision?.close === b.revision?.close
+  );
 }
 
 /**

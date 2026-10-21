@@ -257,7 +257,11 @@ one needs, the command that proves it works, and the caution that goes with it.
   document declares, and its bytes come back on request — so a report's chart is never simply
   missing from what the agent read. Text a document crosses out comes back as `~~struck through~~` rather than
   as live content — in a `.docx` from the run's own formatting, in a PDF from the strike the
-  page draws over the glyphs. Each takes an `output_path`, to write the whole document to a
+  page draws over the glyphs. A Word document's tracked changes and comments are hidden by
+  default — the agent reads the accepted text, told how many changes it holds — and
+  `review: true` shows them for an impact analysis: insertions, deletions and moves marked
+  where they sit, comments on the text they are about, each listed with its author, date and
+  section. Each takes an `output_path`, to write the whole document to a
   file instead of spending the context on it twice. The extractors are described to
   the agent only once a document of that kind is named in the conversation — their schemas
   are a quarter of a session's prompt floor, and most sessions never open one. Named and never

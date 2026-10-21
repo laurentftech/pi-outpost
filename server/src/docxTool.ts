@@ -53,6 +53,12 @@ const parameters = Type.Object({
       description: "Write the whole extraction to this workspace path and return a summary instead of the content. The file must not already exist.",
     }),
   ),
+  review: Type.Optional(
+    Type.Boolean({
+      description:
+        "Show tracked changes and comments: insertions, deletions and moves marked where they sit, comments on the text they are about, and a closing list with each one's author, date and section. Use it for any question about what changed in a document or what its reviewers said.",
+    }),
+  ),
   images: imagesParameter,
 });
 
@@ -61,13 +67,14 @@ const DESCRIPTION = [
   "If the user wants the document saved, converted, or written anywhere, pass output_path: it writes the whole document there in one call and returns a short summary.",
   "Do not return the content and then write it yourself — that spends the context twice.",
   "Otherwise output is capped per call — when it is truncated it says so and names the block range to ask for next, or pass full:true to get everything at once.",
-  "Tracked changes are resolved to the accepted text: insertions are kept, deletions are not returned.",
+  "By default tracked changes are resolved to the accepted text — insertions kept, deletions not returned — and the answer opens with a line saying how many changes and comments the document holds.",
+  "Pass review: true to see them: {++inserted++}, {--deleted--}, a move marked at both ends, {==commented text==}, each with a reference such as [r1] or [c1] listed at the end with its author, date, section and, for a comment, its text, replies and whether it is resolved. Formatting changes are not reported. The document is never modified.",
   "Text the document crosses out is returned as ~~struck through~~ and means the document withdrew it — do not treat it as current, and say which passages are struck when you transcribe, quote or summarise the document.",
   "Bold and italic runs are returned as markdown emphasis; underline has no markdown equivalent and is not marked.",
   "Only formatting written on the run itself is read, so strikethrough applied through a character style is not detected.",
   "Each picture is named where it sits, as [picture 3: PNG 800×600 — \"its alt text\"]; pass images: \"all\" to get them as images too, or images: [\"3\"] for one by its number.",
   "A picture whose bytes cannot be shown — a metafile, a missing part — is still named, with the reason, so nothing the document holds goes unmentioned.",
-  "Headers, footers, footnotes, comments and text boxes are not read. Charts, diagrams and grouped shapes are not pictures and have no bytes to return; call docx_render to see those.",
+  "Headers, footers, footnotes and text boxes are not read, nor are comments unless review is true. Charts, diagrams and grouped shapes are not pictures and have no bytes to return; call docx_render to see those.",
 ].join(" ");
 
 /** Past this, an answer is large enough that the file option is worth naming again. */
@@ -96,8 +103,17 @@ export function createDocxExtractToolDefinition(options: DocxToolOptions): ToolD
         mode,
         full,
         output_path: destination,
+        review,
         images = "none",
-      } = params as { path: string; blocks?: string; mode?: DocxMode; full?: boolean; output_path?: string; images?: PictureRequest };
+      } = params as {
+        path: string;
+        blocks?: string;
+        mode?: DocxMode;
+        full?: boolean;
+        output_path?: string;
+        review?: boolean;
+        images?: PictureRequest;
+      };
 
       // SECURITY: scopeToRoot confines `path` and nothing else, so `output_path`
       // is checked by writeExtraction against the writable zone. Two arguments,
@@ -129,6 +145,7 @@ export function createDocxExtractToolDefinition(options: DocxToolOptions): ToolD
           ...(blocks === undefined ? {} : { blocks }),
           ...(mode === undefined ? {} : { mode }),
           ...(wholeDocument ? { full: true } : {}),
+          ...(review === true ? { review: true } : {}),
         });
       } catch (error) {
         // The reason is the useful part: "password-protected" and "not a Word

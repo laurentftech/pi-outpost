@@ -103,7 +103,7 @@ Per tool, largest first, in the state each is actually sent in:
 | `bash` (OpenCode) | 5 319 | ~1.3k | always |
 | `work_plan_extended` | 4 602 | ~1.2k | while a plan is being worked |
 | `work_plan` | 4 331 | ~1.1k | always |
-| `docx_extract` | 2 475 | ~0.6k | while a Word file is in play |
+| `docx_extract` | 3 256 | ~0.8k | while a Word file is in play |
 | `xlsx_extract` | 2 345 | ~0.6k | while a spreadsheet is in play |
 | `pdf_extract` | 2 322 | ~0.6k | while a PDF is in play |
 | `write_structure_figure` | 2 195 | ~0.5k | always |
