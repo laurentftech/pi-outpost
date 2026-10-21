@@ -33,7 +33,14 @@ export const WORD_TOOLS = ["docx_styles", "docx_create", "docx_update", "docx_re
 /** The skill that teaches the Word loop. */
 export const WORD_SKILL = "docx-from-template";
 
-/** Extension → the tools a document of that kind calls for. */
+/**
+ * Comparing two versions of a Word document, which drives Microsoft Word itself. Only
+ * Windows has it to drive; elsewhere the tool is not published, so its description is
+ * not paid for in a conversation that could never use it.
+ */
+export const WORD_COMPARE_TOOL = "docx_compare";
+
+/** Extension → the tools a document of that kind calls for, on any platform. */
 const EXTRACTORS: Record<string, string[]> = {
   // `pdf_render` travels with the extractor because it is the answer to something the
   // extractor says: a page carrying neither text nor an image tells the caller to draw
@@ -56,7 +63,14 @@ const EXTRACTORS: Record<string, string[]> = {
   emlx: ["mail_extract"],
 };
 
-export const DOCUMENT_TOOLS = [...new Set(Object.values(EXTRACTORS).flat())];
+/** Every tool published on demand, on whatever platform: the order they are registered in. */
+export const DOCUMENT_TOOLS = [...new Set(Object.values(EXTRACTORS).flat()), WORD_COMPARE_TOOL];
+
+/** The tools a document of this extension calls for on this platform. */
+function extractorsFor(extension: string, platform: NodeJS.Platform): string[] {
+  const tools = EXTRACTORS[extension] ?? [];
+  return extension === "docx" && platform === "win32" ? [...tools, WORD_COMPARE_TOOL] : tools;
+}
 
 /**
  * A path-like token ending in one of the document extensions.
@@ -84,10 +98,10 @@ const MENTION = /(?:^|[\s"'`<])(?:[^\s"'`<>]*[/\\])?[^\s"'`<>/\\]+\.(pdf|docx|do
  * `report.pdf`. Invoking the presentation skill by name (`/skill:pptx-from-template`)
  * calls for the presentation tools even before any file is named.
  */
-export function documentToolsFor(text: string): string[] {
+export function documentToolsFor(text: string, platform: NodeJS.Platform = process.platform): string[] {
   const found = new Set<string>();
   for (const match of text.matchAll(MENTION)) {
-    for (const tool of EXTRACTORS[match[1].toLowerCase()] ?? []) found.add(tool);
+    for (const tool of extractorsFor(match[1].toLowerCase(), platform)) found.add(tool);
   }
   if (new RegExp(`(?:^|\\s)/skill:${PRESENTATION_SKILL}(?=$|\\s)`).test(text)) {
     for (const tool of PRESENTATION_TOOLS) found.add(tool);

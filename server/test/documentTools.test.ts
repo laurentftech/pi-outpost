@@ -11,6 +11,7 @@ import {
   documentToolsForToolCall,
   documentToolsForWrittenPaths,
   PRESENTATION_TOOLS,
+  WORD_COMPARE_TOOL,
   WORD_TOOLS,
 } from "../src/documentTools.ts";
 
@@ -22,7 +23,7 @@ describe("documentToolsFor", () => {
     // the real server, where the tool existed, worked, and never reached the model.
     assert.deepEqual(documentToolsFor("Read report.pdf and summarise it"), ["pdf_extract", "pdf_render"]);
     // A Word document may be read, updated or written from, so it brings the Word tools.
-    assert.deepEqual(documentToolsFor("What does notes.docx say?"), ["docx_extract", ...WORD_TOOLS]);
+    assert.deepEqual(documentToolsFor("What does notes.docx say?", "linux"), ["docx_extract", ...WORD_TOOLS]);
     assert.deepEqual(documentToolsFor("Open budget.xlsx"), ["xlsx_extract"]);
     // A deck may be read or be the template of a new one, so it brings the presentation tools.
     assert.deepEqual(documentToolsFor("Check deck.pptx"), ["pptx_extract", ...PRESENTATION_TOOLS]);
@@ -62,8 +63,8 @@ describe("documentToolsFor", () => {
   });
 
   test("two kinds in one prompt publish two tools, in registration order", () => {
-    assert.deepEqual(documentToolsFor("see notes.docx and slides.pptx"), ["docx_extract", ...WORD_TOOLS, "pptx_extract", ...PRESENTATION_TOOLS]);
-    assert.deepEqual(documentToolsFor("a.pdf, b.docx."), ["pdf_extract", "pdf_render", "docx_extract", ...WORD_TOOLS]);
+    assert.deepEqual(documentToolsFor("see notes.docx and slides.pptx", "linux"), ["docx_extract", ...WORD_TOOLS, "pptx_extract", ...PRESENTATION_TOOLS]);
+    assert.deepEqual(documentToolsFor("a.pdf, b.docx.", "linux"), ["pdf_extract", "pdf_render", "docx_extract", ...WORD_TOOLS]);
   });
 
   test("the same document twice publishes one tool", () => {
@@ -89,11 +90,33 @@ describe("documentToolsFor", () => {
       "pptx_update",
       "pptx_render",
       "mail_extract",
+      "docx_compare",
     ]);
     // Not generated from the extension any more: a PDF brings its renderer as well as
     // its extractor, so the one-tool-per-kind shortcut no longer describes the map.
     assert.deepEqual(documentToolsFor("file.xlsx"), ["xlsx_extract"]);
     assert.deepEqual(documentToolsFor("file.pdf"), ["pdf_extract", "pdf_render"]);
+  });
+});
+
+describe("comparing Word documents", () => {
+  test("NotOfferedOffWindows: a Word document named on macOS or Linux publishes the Word tools without the comparison", () => {
+    for (const platform of ["darwin", "linux"] as const) {
+      assert.deepEqual(documentToolsFor("What changed between spec-v1.docx and spec-v2.docx?", platform), ["docx_extract", ...WORD_TOOLS], platform);
+    }
+  });
+
+  test("on Windows a named Word document brings the comparison with the Word tools", () => {
+    assert.deepEqual(documentToolsFor("What changed between spec-v1.docx and spec-v2.docx?", "win32"), ["docx_extract", ...WORD_TOOLS, WORD_COMPARE_TOOL]);
+    assert.equal(WORD_COMPARE_TOOL, "docx_compare");
+  });
+
+  test("a template alone does not bring it: there is nothing to compare", () => {
+    assert.deepEqual(documentToolsFor("Write the report from house.dotx", "win32"), WORD_TOOLS);
+  });
+
+  test("the platform defaults to the server's own", () => {
+    assert.deepEqual(documentToolsFor("notes.docx"), documentToolsFor("notes.docx", process.platform));
   });
 });
 

@@ -191,6 +191,7 @@ import {
   createDocxStylesToolDefinition,
   createDocxUpdateToolDefinition,
 } from "./wordTools.ts";
+import { createDocxCompareToolDefinition } from "./docxCompare.ts";
 import type { RenderSettings } from "./presentationRender.ts";
 import { createStructuredExchangeToolDefinition } from "./structuredExchangeTool.ts";
 import { createStructuredExchangeProjectModelToolDefinition } from "./structuredExchangeProjectModelTool.ts";
@@ -1559,6 +1560,18 @@ const makeCreateRuntime =
                 writableRoot: await fs.realpath(cwd),
                 render: officeRenderSettings(),
               }),
+              // Comparing two versions drives Word itself: Windows only.
+              ...(process.platform === "win32"
+                ? [
+                    createDocxCompareToolDefinition({
+                      cwd,
+                      allowedRoots: [await fs.realpath(cwd)],
+                      maxBytes: config.docx.maxBytes,
+                      writableRoot: await fs.realpath(cwd),
+                      render: officeRenderSettings(),
+                    }),
+                  ]
+                : []),
               // Published on demand too, when the conversation touches the project's model.
               createStructuredExchangeProjectModelToolDefinition({ projectRoot: cwd }),
             ],

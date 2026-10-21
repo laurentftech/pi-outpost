@@ -455,6 +455,25 @@ A move is marked at both ends with one `[mN]`, a table row inserted or deleted i
 and a comment's replies follow it in the list. Formatting changes are not reported, and the
 document is never modified — accepting or rejecting changes stays in Word.
 
+When the author sent a new version without tracking their changes, there are two files and no
+trace of the edits between them. Name both and ask what changed: on Windows, with desktop
+Microsoft Word installed, the agent calls `docx_compare`, and Word compares them.
+
+```json
+{ "original": "spec-v1.docx", "revised": "spec-v2.docx", "output_path": "spec-v1-v2-compared.docx" }
+```
+
+The answer is the same review reading, opened by a line naming both files. Every change carries
+the author `Word comparison` and the date of the comparison, not those of whoever edited the
+document, and comments keep their own author. Formatting is not compared. Word works on private
+copies, so neither file is modified and nothing is written beside them. With `output_path`, Word's
+compared document is also saved for you to open in Word. A Word that is already open keeps its
+documents: the comparison runs in a Word of its own. It is bounded by `office.renderTimeoutMs`.
+
+On macOS, Linux or WSL the tool is not offered. Do it by hand: in Word, Review → Compare →
+Compare…, choose both versions, save the result into the workspace, and ask the agent to read it;
+it calls `docx_extract` with `review: true`.
+
 There is no OCR. A scanned PDF has no text layer, and its words are not searchable — but
 the page *is* an image, so `pdf_extract` returns it at the resolution the file holds and
 the agent can read it by looking. For a page carrying neither text nor an image — an

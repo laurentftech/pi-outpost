@@ -130,5 +130,16 @@ None: a new tool, published only on Windows.
 
 ## Open Questions
 
-- Whether `CompareMoves` is a parameter or an option on the installed Word. Answered by task 1.1;
-  it changes one line of the script, not the design.
+None left. Answered by the probe (`scripts/probes/word-compare.ps1`, task 1.1–1.2) on Word 16.0
+build 20326:
+
+- `CompareMoves` is a parameter: the 16-argument call above works as written, and Word's result
+  marks the moved table cells as moves (`[m1]`, `[m2]` in the review reading).
+- `CompareDocuments` works on documents opened read-only and invisible (`Visible` false in
+  `Documents.Open`), as `docx_render` opens them. `Revisions.AcceptAll()` does not (no active
+  document window) — which only matters to the probe, which builds its two versions read-write.
+- Every revision carries `Word comparison`; comments keep their own author.
+- `New-Object -ComObject Word.Application` starts a Word of its own even while the user has one
+  open: it sees none of the user's documents, and the `Documents.Count -eq 0` guard quits it.
+  The user's document stayed open and no `WINWORD.EXE` was left behind.
+- A comparison of the fixture's two versions takes about 6 s.

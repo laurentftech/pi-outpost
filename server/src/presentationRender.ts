@@ -265,7 +265,7 @@ interface Attempt {
   failure: string;
 }
 
-function describeFailure(result: ProcessResult, timeoutMs: number): string {
+export function describeFailure(result: ProcessResult, timeoutMs: number): string {
   if (result.timedOut) return `did not finish within ${Math.round(timeoutMs / 1000)} s`;
   const detail = (result.stderr || result.stdout).trim().split(/\r?\n/).filter(Boolean).slice(-3).join(" ");
   return detail !== "" ? detail : `exited with code ${result.code ?? "unknown"}`;
@@ -277,6 +277,18 @@ async function hasOutput(file: string): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+/** Windows PowerShell, from `SystemRoot` rather than whatever PATH offers. */
+export function powershellPath(environment: RenderEnvironment): string {
+  return environment.env.SystemRoot
+    ? path.win32.join(environment.env.SystemRoot, "System32", "WindowsPowerShell", "v1.0", "powershell.exe")
+    : "powershell.exe";
+}
+
+/** The arguments that run a fixed script: no profile, no prompt, no execution policy in the way. */
+export function powershellArgs(script: string): string[] {
+  return ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", script];
 }
 
 async function convertWith(
@@ -292,12 +304,9 @@ async function convertWith(
   if (renderer === "powerpoint" || renderer === "word") {
     const application = renderer === "word" ? "Word" : "PowerPoint";
     if (environment.platform !== "win32") return { failure: `${application} automation is only available on Windows` };
-    const powershell = environment.env.SystemRoot
-      ? path.win32.join(environment.env.SystemRoot, "System32", "WindowsPowerShell", "v1.0", "powershell.exe")
-      : "powershell.exe";
     const result = await environment.run(
-      powershell,
-      ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", renderer === "word" ? WORD_SCRIPT : POWERPOINT_SCRIPT],
+      powershellPath(environment),
+      powershellArgs(renderer === "word" ? WORD_SCRIPT : POWERPOINT_SCRIPT),
       {
         env: { ...environment.env, PI_OUTPOST_RENDER_INPUT: input, PI_OUTPOST_RENDER_OUTPUT: output },
         timeoutMs: settings.timeoutMs,

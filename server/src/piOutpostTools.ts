@@ -45,6 +45,7 @@ import {
   createDocxRestyleToolDefinition,
   createDocxUpdateToolDefinition,
 } from "./wordTools.ts";
+import { createDocxCompareToolDefinition } from "./docxCompare.ts";
 import { createStructuredExchangeFigureToolDefinition } from "./structuredExchangeFigureTool.ts";
 import { createTimelineComparisonToolDefinition } from "./timelineComparisonTool.ts";
 import { createStructuredExchangeTableToolDefinition } from "./structuredExchangeTableTool.ts";
@@ -129,6 +130,8 @@ export async function createPiOutpostTools(settings: PiOutpostToolsSettings): Pr
     createDocxUpdateToolDefinition({ ...common, maxBytes: settings.maxBytes.docx, render }),
     createDocxRestyleToolDefinition({ ...common, maxBytes: settings.maxBytes.docx, render }),
     createDocxRenderToolDefinition({ ...common, maxBytes: settings.maxBytes.docx, render }),
+    // Comparing two versions drives Word itself: Windows only.
+    ...(process.platform === "win32" ? [createDocxCompareToolDefinition({ ...common, maxBytes: settings.maxBytes.docx, render })] : []),
     createStructuredExchangeFigureToolDefinition({ ...common, maxBytes: settings.maxBytes.structuredExchange, projectRoot: root }),
     createStructuredExchangeTableToolDefinition({ ...common, maxBytes: settings.maxBytes.structuredExchange, projectRoot: root }),
     createTimelineComparisonToolDefinition({ ...common, maxBytes: settings.maxBytes.structuredExchange }),
