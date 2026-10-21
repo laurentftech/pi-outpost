@@ -485,3 +485,44 @@ describe("a document reviewed in Office for the web", () => {
     );
   });
 });
+
+/**
+ * A document reviewed in desktop Word (`scripts/probes/make-docx-review-desktop.mts`):
+ * what Office for the web cannot be relied on to record. A paragraph moved between
+ * sections, as named move ranges; a heading restyled to body text, whose `w:pPrChange`
+ * keeps the old localized style (`Titre2`); strikethrough removed, kept in `w:rPrChange`;
+ * a comment with two replies, marked resolved in `commentsExtended.xml`. Four authors.
+ */
+describe("a document reviewed in desktop Word", () => {
+  const file = path.join(path.dirname(fileURLToPath(import.meta.url)), "fixtures", "docx-review-desktop.docx");
+  const read = async () => new Uint8Array(await readFile(file));
+
+  test("the accepted reading: moved text once, the restyled heading as body text, no strike", async () => {
+    const { markdown } = await extractDocx(await read());
+
+    assert.match(markdown, /^> This document holds 1 tracked change and 1 comment /);
+    assert.equal(markdown.split("Les factures sont archivées dix ans.").length - 1, 1);
+    assert.match(markdown, /## Exploitation\n\nLe portail accepte le paiement par chèque et le virement\.\n\nLes factures sont archivées dix ans\.\n\nLes sauvegardes/);
+    // The previous style is not read: no heading, no section named after it.
+    assert.match(markdown, /^Contexte réglementaire$/m);
+    assert.doesNotMatch(markdown, /#+ Contexte réglementaire/);
+    assert.doesNotMatch(markdown, /~~/);
+  });
+
+  test("the review reading: the move at both ends with its sections, the resolved thread with its replies", async () => {
+    const { markdown } = await extractDocx(await read(), { review: true });
+
+    assert.match(markdown, /^## Exigences\n\nLe fournisseur dépose ses factures au format PDF\.\n\n\{--Les factures sont archivées dix ans\.--\}\[m1\]$/m);
+    assert.match(markdown, /^\{\+\+Les factures sont archivées\+\+\}\[m1\] \{==\{\+\+dix ans\+\+\}\[m1\]==\}\[c1\]\{\+\+\.\+\+\}\[m1\]$/m);
+    // Formatting changes are not marked, and their previous state is not read either.
+    assert.match(markdown, /^Contexte réglementaire$/m);
+    assert.match(markdown, /^Le portail accepte le paiement par chèque et le virement\.$/m);
+    assert.doesNotMatch(markdown, /~~|\[r\d+\]/);
+
+    assert.match(markdown, /^- \[m1\] moved — Alice Martin, 2026-10-22 — from Portail fournisseurs > Exigences to Portail fournisseurs > Exploitation$/m);
+    assert.match(
+      markdown,
+      /^- \[c1\] comment, resolved — Chloé Durand, 2026-10-22 — Portail fournisseurs > Exploitation: « Dix ans, ou la durée légale \? »\n {4}- reply — Alice Martin, 2026-10-22: « Dix ans est la durée légale\. »\n {4}- reply — Bruno Petit, 2026-10-22: « D'accord, je clos\. »$/m,
+    );
+  });
+});
