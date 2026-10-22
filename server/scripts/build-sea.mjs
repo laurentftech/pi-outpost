@@ -22,6 +22,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { execFileSync } from "node:child_process";
 import esbuild from "esbuild";
+import { inlineSeaAssets } from "./sea-inline-assets.mjs";
 import { PRE_8237_BRANCH, upstreamHandlesSea } from "../../scripts/sea-jiti-shape.mjs";
 
 const require = createRequire(import.meta.url);
@@ -74,6 +75,9 @@ await esbuild.build({
   target: "node26",
   outfile: BUNDLE_PATH,
   define: { __PI_OUTPOST_VERSION__: JSON.stringify(version), __PI_SDK_VERSION__: JSON.stringify(piSdkVersion), __PI_OUTPOST_CHANGELOG__: JSON.stringify(changelog) },
+  // Nothing beside the executable: photon, QuickJS and codemode's worker travel inside
+  // the bundle, or the agent reads no image and runs no script (sea-inline-assets.mjs).
+  plugins: [inlineSeaAssets()],
   // Dependencies (e.g. cross-spawn) use CJS require() for Node builtins — esbuild's
   // ESM output needs this shim, since plain `import` can't do that at the top level.
   banner: {
