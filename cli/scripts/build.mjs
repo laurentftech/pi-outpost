@@ -20,6 +20,7 @@ import { fileURLToPath } from "node:url";
 
 const isWindows = process.platform === "win32";
 import esbuild from "esbuild";
+import { inlineSeaAssets } from "../../server/scripts/sea-inline-assets.mjs";
 
 const require = createRequire(import.meta.url);
 const CLI_DIR = dirname(dirname(fileURLToPath(import.meta.url)));
@@ -142,6 +143,9 @@ await esbuild.build({
   target: "node26",
   outfile: SEA_BUNDLE,
   define: { __PI_OUTPOST_VERSION__: JSON.stringify(version), __PI_SDK_VERSION__: JSON.stringify(piSdkVersion), __PI_OUTPOST_CHANGELOG__: JSON.stringify(changelog) },
+  // As in server/scripts/build-sea.mjs: photon, QuickJS and codemode's worker inside the
+  // bundle, or the executable reads no image and runs no script (sea-inline-assets.mjs).
+  plugins: [inlineSeaAssets()],
   banner: {
     js: [
       "#!/usr/bin/env node",

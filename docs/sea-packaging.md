@@ -214,6 +214,23 @@ bundle; nothing is written to disk, and nothing changes outside an executable �
 You get the same objects the agent itself uses, not a second copy: the versions are
 whatever the executable was built with, and an extension cannot pin its own.
 
+## Files the SDK reads beside its modules are inlined
+
+Three things the agent uses load a file found next to a module, and the executable has
+nothing next to it: photon's WebAssembly (the `read` tool resizes every image with it),
+QuickJS's `quickjs.wasm` (codemode runs scripts in it), and codemode's worker script.
+Without them the agent reads no image — `read` answers "[Image omitted: could not be
+resized …]" and the model describes a picture it never saw — and codemode fails on its first
+script. Both build paths (`server/scripts/build-sea.mjs` and `cli/scripts/build.mjs`'s
+`pi-outpost.sea.mjs`) inline them with `server/scripts/sea-inline-assets.mjs`: the wasm bytes
+into the code that reads them, the worker as a `data:` URL. If the SDK changes the code
+being replaced, the build stops instead of shipping an executable without them.
+
+Still read from disk, so absent from the executable: pdf.js's standard fonts, cMaps and
+JBIG2/JPEG 2000 decoders (`pdf_extract` reports such text as unextractable, and the images of
+a scan encoded that way do not decode), and Mermaid's renderer (a diagram is written as its
+source with a note). The npm package has neither limit.
+
 ## Slide pictures and SVG fallbacks need the canvas package
 
 `pptx_render` and `docx_render` draw slide and page pictures, and `pptx_create` and
