@@ -7,6 +7,33 @@ version you had and the one you run now, without going online.
 Releases before 0.41.0 are described on
 [GitHub Releases](https://github.com/laurentftech/pi-outpost/releases).
 
+## [0.47.0] - 2026-10-22
+
+### Added
+
+- **Tracked changes and comments in Word documents.** `docx_extract` with `review: true`
+  marks every insertion, deletion and move where it sits, anchors each comment on its text,
+  and closes with a list of them all — author, date, section, replies and whether the
+  thread is resolved — so the agent can analyse the impact of a revision. The default
+  reading now says when a document holds tracked changes or comments it does not show.
+  ([#347](https://github.com/laurentftech/pi-outpost/pull/347))
+- **Compare two versions of a Word document, on Windows.** When a document was revised
+  without tracked changes, `docx_compare` has desktop Microsoft Word compare the two
+  versions and returns every difference with the same markers, under its section; it can
+  also save Word's compared document for you to open. Where Word is not available, the
+  agent names the manual path: Review → Compare in Word.
+  ([#348](https://github.com/laurentftech/pi-outpost/pull/348))
+
+### Fixed
+
+- **Word documents read as they now stand.** Moved text comes back once, at its
+  destination; a table row deleted with tracking is no longer read as a row; and formatting
+  replaced by a tracked change is no longer read as current.
+  ([#347](https://github.com/laurentftech/pi-outpost/pull/347))
+- **No Word left running after a timeout.** When rendering or comparing a Word document
+  ran out of time, the Word it had started kept running, invisible; it is now ended.
+  ([#348](https://github.com/laurentftech/pi-outpost/pull/348))
+
 ## [0.46.0] - 2026-10-20
 
 ### Added
