@@ -105,6 +105,8 @@ describe("realResolve", () => {
   });
 });
 
+const WORD_COMPARE = process.platform === "win32" ? ["docx_compare"] : [];
+
 describe("createSandboxedTools", () => {
   let root: string;
   let outside: string;
@@ -144,6 +146,8 @@ describe("createSandboxedTools", () => {
       assert.deepEqual(names(tools), [
         // Comparing two plans reads them; an output it may write is held to the writable zone.
         "compare_timelines",
+        // Comparing two versions drives Word itself: Windows only, and it only reads.
+        ...WORD_COMPARE,
         "docx_extract",
         "docx_render",
         "docx_styles",
@@ -174,6 +178,7 @@ describe("createSandboxedTools", () => {
       const tools = await createSandboxedTools(config({ root, allowWrite: true }));
       assert.deepEqual(names(tools), [
         "compare_timelines",
+        ...WORD_COMPARE,
         "docx_create",
         "docx_extract",
         "docx_render",
