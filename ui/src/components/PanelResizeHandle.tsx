@@ -7,7 +7,7 @@ interface PointerResize {
   startWidth: number;
 }
 
-export function useResizablePanelWidth(config: PanelWidthConfig) {
+export function useResizablePanelWidth(config: PanelWidthConfig, axis: "x" | "y" = "x") {
   const [width, setWidth] = useState(() => readPanelWidth(config));
   const widthRef = useRef(width);
   const pointerResizeRef = useRef<PointerResize | null>(null);
@@ -33,12 +33,12 @@ export function useResizablePanelWidth(config: PanelWidthConfig) {
       if (event.isPrimary === false || (event.button ?? 0) !== 0) return;
       event.preventDefault();
       event.currentTarget.setPointerCapture?.(event.pointerId);
-      pointerResizeRef.current = { pointerId: event.pointerId, startX: event.clientX, startWidth: widthRef.current };
+      pointerResizeRef.current = { pointerId: event.pointerId, startX: axis === "y" ? event.clientY : event.clientX, startWidth: widthRef.current };
     },
     onPointerMove: (event: React.PointerEvent<HTMLDivElement>) => {
       const resize = pointerResizeRef.current;
       if (resize === null || resize.pointerId !== event.pointerId) return;
-      updateWidth(resize.startWidth + event.clientX - resize.startX);
+      updateWidth(resize.startWidth + (axis === "y" ? resize.startX - event.clientY : event.clientX - resize.startX));
     },
     onPointerUp: (event: React.PointerEvent<HTMLDivElement>) => {
       if (pointerResizeRef.current?.pointerId !== event.pointerId) return;
@@ -53,8 +53,8 @@ export function useResizablePanelWidth(config: PanelWidthConfig) {
     onLostPointerCapture: finishPointerResize,
     onKeyDown: (event: React.KeyboardEvent<HTMLDivElement>) => {
       let nextWidth: number | null = null;
-      if (event.key === "ArrowLeft") nextWidth = widthRef.current - config.keyboardStep;
-      else if (event.key === "ArrowRight") nextWidth = widthRef.current + config.keyboardStep;
+      if (event.key === (axis === "y" ? "ArrowDown" : "ArrowLeft")) nextWidth = widthRef.current - config.keyboardStep;
+      else if (event.key === (axis === "y" ? "ArrowUp" : "ArrowRight")) nextWidth = widthRef.current + config.keyboardStep;
       else if (event.key === "Home") nextWidth = config.defaultWidth;
       if (nextWidth === null) return;
       event.preventDefault();
@@ -66,6 +66,7 @@ export function useResizablePanelWidth(config: PanelWidthConfig) {
 }
 
 interface PanelResizeHandleProps {
+  axis?: "x" | "y";
   label: string;
   width: number;
   config: PanelWidthConfig;
@@ -73,21 +74,21 @@ interface PanelResizeHandleProps {
   className?: string;
 }
 
-export function PanelResizeHandle({ label, width, config, separatorProps, className = "" }: PanelResizeHandleProps) {
+export function PanelResizeHandle({ axis = "x", label, width, config, separatorProps, className = "" }: PanelResizeHandleProps) {
   return (
     <div
       {...separatorProps}
       role="separator"
       aria-label={label}
-      aria-orientation="vertical"
+      aria-orientation={axis === "y" ? "horizontal" : "vertical"}
       aria-valuemin={config.minWidth}
       aria-valuemax={config.maxWidth}
       aria-valuenow={width}
       tabIndex={0}
       title={label}
-      className={`group absolute inset-y-0 -right-1 z-20 w-2 cursor-col-resize touch-none outline-none ${className}`}
+      className={`group absolute z-20 touch-none outline-none ${axis === "y" ? "inset-x-0 -top-1 h-2 cursor-row-resize" : "inset-y-0 -right-1 w-2 cursor-col-resize"} ${className}`}
     >
-      <span className="pointer-events-none absolute inset-y-0 left-1/2 w-px bg-transparent transition-colors group-hover:bg-blue-400 group-focus-visible:bg-blue-500 group-active:bg-blue-500 dark:group-hover:bg-blue-500" />
+      <span className={`pointer-events-none absolute ${axis === "y" ? "inset-x-0 top-1/2 h-px" : "inset-y-0 left-1/2 w-px"} bg-transparent transition-colors group-hover:bg-blue-400 group-focus-visible:bg-blue-500 group-active:bg-blue-500 dark:group-hover:bg-blue-500`} />
     </div>
   );
 }

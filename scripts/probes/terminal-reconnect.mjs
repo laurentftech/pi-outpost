@@ -1,0 +1,10 @@
+/** Running-app regression probe: Git Bash keeps accepting commands after a real WebSocket reconnect.
+ * node scripts/probes/terminal-reconnect.mjs <widget URL>
+ */
+import {chromium} from '@playwright/test';
+const browser=await chromium.launch();const page=await browser.newPage();const events=[];const sent=[];
+await page.addInitScript(()=>{const Native=window.WebSocket;window.__testSockets=[];window.WebSocket=class extends Native{constructor(...args){super(...args);window.__testSockets.push(this);}};});
+page.on('websocket',ws=>{ws.on('framereceived',e=>{try{events.push(JSON.parse(String(e.payload)));}catch{}});ws.on('framesent',e=>{try{sent.push(JSON.parse(String(e.payload)));}catch{}});});
+const wait=async(fn,label)=>{for(let i=0;i<100;i++){if(fn())return;await page.waitForTimeout(100);}throw Error('Timeout '+label);};
+try{await page.goto(process.argv[2] ?? 'http://127.0.0.1:4420/?server=http://127.0.0.1:4419');await page.getByRole('button',{name:/>_ terminal/i}).click();await page.getByRole('combobox',{name:'Shell for new terminal'}).selectOption('git-bash');await page.getByTitle('New Terminal Tab').click();await wait(()=>sent.filter(e=>e.type==='terminal_open').length===2,'opens');await page.waitForTimeout(1000);
+const command=async text=>{await page.locator('.xterm-screen:visible').click();await page.keyboard.type(text);await page.keyboard.press('Enter');};await command("printf 'BEFORE_%s\\n' RECONNECT");await wait(()=>events.some(e=>e.type==='terminal_data'&&e.data.includes('BEFORE_RECONNECT')),'initial typing');console.log('BEFORE_OK');const hellos=events.filter(e=>e.type==='hello').length;await page.evaluate(()=>window.__testSockets.at(-1).close());await wait(()=>events.filter(e=>e.type==='hello').length>hellos,'reconnect');console.log('RECONNECTED');await command("printf 'AFTER_%s\\n' RECONNECT");await wait(()=>events.some(e=>e.type==='terminal_data'&&e.data.includes('AFTER_RECONNECT')),'typing after reconnect');console.log('AFTER_OK');}finally{console.log('OPENS',sent.filter(e=>e.type==='terminal_open'));await browser.close();}

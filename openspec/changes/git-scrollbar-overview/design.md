@@ -1,0 +1,5 @@
+# Design
+
+OpenLore orient located gitGutter.ts and CodeEditor. Graph unavailable: targeted rg inspection confirms one shared state field already computes HEAD/draft hunks. Existing git-change-gutter delta specifies the left marks and peek; the main git spec has no right overview requirement. Reuse that state rather than compute another diff, and add an independent git capability requirement.
+
+A CodeMirror view plugin owns a fixed right rail, beside the native scrollbar without covering it. One marker per hunk uses estimated/measured document block coordinates from lineBlockAt and contentHeight, scaled over the rail. Minimum marker height keeps single-line changes visible; EOF removals clamp to the bottom. requestMeasure batches geometry reads/writes after layout and viewport/resize changes. Buttons jump to the current hunk in the current state and center it without editing. Existing left peek behavior stays unchanged. Dispose removes the rail, and missing/comparable-clean baseline hides it.

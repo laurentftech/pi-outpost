@@ -238,6 +238,15 @@ body,
 .code-editor .cm-git-added::before {
   @apply bg-emerald-500 dark:bg-emerald-400;
 }
+.code-editor .cm-git-overview-added {
+  @apply bg-emerald-500 dark:bg-emerald-400;
+}
+.code-editor .cm-git-overview-modified {
+  @apply bg-sky-500 dark:bg-sky-400;
+}
+.code-editor .cm-git-overview-deleted {
+  @apply bg-red-500 dark:bg-red-400;
+}
 .code-editor .cm-git-modified::before {
   @apply bg-sky-500 dark:bg-sky-400;
 }

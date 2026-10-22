@@ -77,5 +77,5 @@ export function useTheme(
 
   const toggle = useCallback(() => setTheme(resolved === "dark" ? "light" : "dark"), [resolved, setTheme]);
 
-  return { theme: resolved, toggle, setTheme };
+  return { theme: resolved, preference, toggle, setTheme };
 }

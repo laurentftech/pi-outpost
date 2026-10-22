@@ -964,6 +964,7 @@ export interface SessionSnapshot {
   /** Terminal configuration — whether the integrated web terminal is enabled and whether it is locked. */
   terminal?: {
     enabled: boolean;
+    shells?: Array<{ id: string; label: string }>;
     locked?: boolean;
     /** Terminals run inside a sandbox runner (`terminal.sandbox`), confined to the sandbox root. */
     confined?: boolean;
@@ -1441,6 +1442,7 @@ export type ClientMessage =
   | { type: "abort" }
   | { type: "set_model"; provider: string; id: string }
   | { type: "set_thinking"; level: ThinkingLevel }
+  | { type: "restart_session" }
   | { type: "new_session" }
   | { type: "switch_session"; path: string }
   | { type: "delete_session"; path: string }
@@ -1605,7 +1607,7 @@ export type ClientMessage =
        */
       userExtensionPaths?: string[];
     }
-  | { type: "terminal_open"; terminalId: string; cwd?: string; cols?: number; rows?: number }
+  | { type: "terminal_open"; terminalId: string; cwd?: string; cols?: number; rows?: number; shellId?: string }
   | { type: "terminal_input"; terminalId: string; data: string }
   | { type: "terminal_resize"; terminalId: string; cols: number; rows: number }
   | { type: "terminal_get_cwd"; terminalId: string }

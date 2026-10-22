@@ -739,101 +739,44 @@ describe("App — attachments", () => {
     expect(screen.getByRole("button", { name: "Reference readme.md in the prompt" })).toHaveAttribute("aria-pressed", "false");
   });
 
-  it.each(["docs/report.docx", "sheets/budget.xlsx"])(
-    "automatically references a tool-readable binary file: %s",
+  it.each(["docs/report.docx", "sheets/budget.xlsx", "deck.pptx", "archive.zip", "report.pdf", "plot.png", "readme.md"])(
+    "OpenFilesWithoutAttaching: previewing %s leaves the prompt unchanged",
     async (path) => {
-      const { api } = mount({
-        openFile: { status: "error", path, message: "Binary file — preview not supported" },
-      });
-
-      await waitFor(() =>
-        expect(screen.getByTitle(`${path} — sent as a reference; the agent reads the file itself`)).toBeInTheDocument(),
-      );
-
-      const box = screen.getByRole("textbox");
-      fireEvent.change(box, { target: { value: "summarize it" } });
+      const file = path.endsWith(".md")
+        ? { status: "loaded", path, content: "Preview contents", size: 16, mtimeMs: 1 }
+        : { status: "error", path, message: "Binary file — preview not supported" };
+      const { api } = mount({ openFile: file });
+      if (path.endsWith(".png")) fireEvent.load(screen.getByRole("img", { name: path }));
+      if (path.endsWith(".pdf")) fireEvent.click(await screen.findByRole("button", { name: "Confirm PDF render" }));
+      const footer = within(screen.getByRole("contentinfo"));
+      expect(footer.queryByTitle(/sent as a reference/)).not.toBeInTheDocument();
+      expect(footer.queryByText(path)).not.toBeInTheDocument();
+      const box = footer.getByRole("textbox");
+      fireEvent.change(box, { target: { value: "continue" } });
       fireEvent.keyDown(box, { key: "Enter" });
-      expect(api.prompt).toHaveBeenCalledWith(expect.stringContaining(`@${path}`), undefined);
+      expect(api.prompt).toHaveBeenCalledWith("continue", undefined);
     },
   );
 
-  it("does not attach an unsupported binary file", async () => {
-    mount({ openFile: { status: "error", path: "archive.zip", message: "Binary file — preview not supported" } });
-
-    await waitFor(() => expect(screen.getByText("Binary file — preview not supported")).toBeInTheDocument());
-    expect(screen.queryByTitle(/archive\.zip — sent as a reference/)).not.toBeInTheDocument();
-  });
-
-  it("drops stale preview bytes when an image refresh fails", async () => {
-    const originalFetch = globalThis.fetch;
-    const fetchPreview = vi
-      .fn()
-      .mockResolvedValueOnce({
-        ok: true,
-        headers: { get: () => "image/png" },
-        arrayBuffer: async () => new Uint8Array([1, 2, 3]).buffer,
-      })
-      .mockResolvedValueOnce({ ok: false, headers: { get: () => null } });
-    globalThis.fetch = fetchPreview;
-    try {
-      const path = "plot.png";
-      const firstApi = agentApi(
-        agentState({
-          openFile: { status: "error", path, message: "Binary file — preview not supported" },
-          previewRevision: 1,
-        }),
-      );
-      mockUseAgent.mockReturnValue(firstApi);
-      const view = render(<App />);
-      fireEvent.load(screen.getByRole("img", { name: path }));
-      await waitFor(() => expect(within(screen.getByRole("contentinfo")).getByText(path)).toBeInTheDocument());
-
-      const refreshedApi = agentApi(
-        agentState({
-          openFile: { status: "error", path, message: "Binary file — preview not supported" },
-          previewRevision: 2,
-        }),
-      );
-      mockUseAgent.mockReturnValue(refreshedApi);
-      view.rerender(<App />);
-
-      await waitFor(() => expect(fetchPreview).toHaveBeenCalledTimes(2));
-      await waitFor(() => expect(within(screen.getByRole("contentinfo")).queryByText(path)).not.toBeInTheDocument());
-      const box = screen.getByRole("textbox");
-      fireEvent.change(box, { target: { value: "describe it" } });
-      fireEvent.keyDown(box, { key: "Enter" });
-      expect(refreshedApi.prompt).toHaveBeenCalledWith("describe it", undefined);
-    } finally {
-      globalThis.fetch = originalFetch;
+  it("PreserveExplicitAttachmentsWhileBrowsing: selection, refresh and close never replace a manual reference", async () => {
+    const state = { fileTree: { "": [{ name: "pinned.md", type: "file" }] } };
+    const first = mount(state);
+    fireEvent.click(sidebarToggle());
+    fireEvent.click(screen.getByRole("button", { name: "Reference pinned.md in the prompt" }));
+    for (const path of ["other.md", "plot.png", "report.pdf"]) {
+      mockUseAgent.mockReturnValue(agentApi(agentState({ ...state, openFile: path.endsWith(".md") ? { status: "loaded", path, content: "other", size: 5, mtimeMs: 1 } : { status: "error", path, message: "Binary file — preview not supported" }, previewRevision: 2 })));
+      first.rerender(<App />);
+      expect(within(screen.getByRole("contentinfo")).getByText("pinned.md")).toBeInTheDocument();
+      expect(within(screen.getByRole("contentinfo")).queryByText(path)).not.toBeInTheDocument();
     }
-  });
-
-  it("requires the current PDF revision to render before attaching it", async () => {
-    const path = "report.pdf";
-    const firstApi = agentApi(
-      agentState({
-        openFile: { status: "error", path, message: "Binary file — preview not supported" },
-        previewRevision: 1,
-      }),
-    );
-    mockUseAgent.mockReturnValue(firstApi);
-    const view = render(<App />);
-    fireEvent.click(await screen.findByRole("button", { name: "Confirm PDF render" }));
-    await waitFor(() => expect(within(screen.getByRole("contentinfo")).getByText(path)).toBeInTheDocument());
-
-    mockUseAgent.mockReturnValue(
-      agentApi(
-        agentState({
-          openFile: { status: "error", path, message: "Binary file — preview not supported" },
-          previewRevision: 2,
-        }),
-      ),
-    );
-    view.rerender(<App />);
-
-    await waitFor(() => expect(within(screen.getByRole("contentinfo")).queryByText(path)).not.toBeInTheDocument());
-    fireEvent.click(screen.getByRole("button", { name: "Confirm PDF render" }));
-    await waitFor(() => expect(within(screen.getByRole("contentinfo")).getByText(path)).toBeInTheDocument());
+    const lastApi = agentApi(agentState(state));
+    mockUseAgent.mockReturnValue(lastApi);
+    first.rerender(<App />);
+    expect(within(screen.getByRole("contentinfo")).getByText("pinned.md")).toBeInTheDocument();
+    const box = within(screen.getByRole("contentinfo")).getByRole("textbox");
+    fireEvent.change(box, { target: { value: "use this" } });
+    fireEvent.keyDown(box, { key: "Enter" });
+    expect(lastApi.prompt).toHaveBeenCalledWith(expect.stringContaining("@pinned.md"), undefined);
   });
 
   it("sends the prompt and clears what was attached to it", () => {

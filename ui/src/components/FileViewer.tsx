@@ -71,7 +71,7 @@ interface FileViewerProps {
   /** The project the file's path is relative to — see `rawFileUrl`. */
   workspace?: string;
   /** Confirms that an image preview decoded successfully before it becomes a chat attachment. */
-  onImageLoad: (path: string) => void;
+  onImageLoad?: (path: string) => void;
   /** Confirms that a PDF actually rendered before it becomes a chat attachment. */
   onPdfLoad?: (path: string) => void;
   /** Changes when raw bytes at the same workspace path must be fetched again. */
@@ -1097,7 +1097,7 @@ export function FileViewer({
             <img
               src={rawFileUrl(serverUrl, file.path, token, rawRevision, workspace)}
               alt={file.path}
-              onLoad={() => onImageLoad(file.path)}
+              onLoad={() => onImageLoad?.(file.path)}
               className="max-h-full max-w-full rounded object-contain"
             />
           </div>

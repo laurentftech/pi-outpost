@@ -26,6 +26,14 @@ export const HISTORY_LIST_WIDTH: PanelWidthConfig = {
   storageKey: "pi-outpost.history-list-width.v1",
 };
 
+export const TERMINAL_PANEL_HEIGHT: PanelWidthConfig = {
+  defaultWidth: 288,
+  minWidth: 160,
+  maxWidth: 640,
+  keyboardStep: 16,
+  storageKey: "pi-outpost.terminal-height.v1",
+};
+
 interface StorageReader {
   getItem(key: string): string | null;
 }

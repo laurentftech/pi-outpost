@@ -200,6 +200,8 @@ one needs, the command that proves it works, and the caution that goes with it.
   file with the system's own application, or show a file or folder in Finder, Explorer or
   the Linux file manager; anything outside the writable zone is dimmed.
   Ctrl+F (Cmd+F) finds text in the open file — source, rendered Markdown, or a live edit
+- Opening a file only previews it; it does not attach it to your next message. Use the
+  file tree’s reference button, an `@` mention, or **Attach files** to add context explicitly.
 - HTML files open rendered, as Markdown does: the page's scripts run, and its stylesheets,
   pictures and scripts next to it in the workspace are loaded. A relative link opens that file
   in the viewer, an absolute one a new tab. The page is drawn in a sandboxed frame with an
@@ -238,7 +240,8 @@ one needs, the command that proves it works, and the caution that goes with it.
   reply. In a conversation exported to HTML or Word, a diagram is a link to its file
 - Git: uncommitted-change badges in the tree, per-file diffs, a change gutter in the editor
   (what changed since HEAD beside each line, as you type; a click shows what was there and,
-  while editing, reverts that change into the draft), the commit log drawn as a metro map
+  while editing, reverts that change into the draft), plus a colored overview beside the
+  scrollbar to locate changes throughout the file and jump to one with a click. The commit log is drawn as a metro map
   (the checked-out line and every local branch, with merges, branch names and tags) where a
   click opens the commit, and
   a per-file history graph (renames followed) that diffs any two revisions, working tree
@@ -431,6 +434,16 @@ The browser tab is titled with the project shown, and the side session when it i
 The gear menu changes what the agent may do, without editing a file or restarting the
 server. Accepted changes are written to the configuration file that is loaded and applied to
 a fresh agent session immediately.
+
+**Restart session** is also available with no pending settings and without a sandbox.
+It starts a fresh conversation and reloads extensions and MCP connections without changing
+the configuration file; the previous conversation stays in the session history. A busy
+session must finish first, and an extension can refuse the restart. This is separate from
+**Restart pi-outpost**, which restarts the server.
+
+**Credits**, at the bottom of Settings, shows the project website and open-source
+acknowledgements. **Third-party notices** opens their full license texts locally.
+Returning to Settings preserves pending edits.
 
 | What | Notes |
 |---|---|
@@ -665,12 +678,17 @@ install that must stay small can omit it and name no `"mxc"`.
 | `branding.defaultTheme` | `"light"` \| `"dark"` \| `"system"` (default), used when the client has no stored preference |
 | `branding.allowThemeToggle` | Show the theme toggle (default `true`). Set `false` when a host app drives the theme |
 | `terminal.enabled` | Enable integrated interactive web terminal (default `false` — explicit opt-in only). See [Integrated Terminal](#integrated-terminal) |
-| `terminal.shell` | Path to the shell executable (default: Git Bash -> PowerShell on Windows; `$SHELL` -> `/bin/zsh` -> `/bin/bash` on Unix) |
+| `terminal.shell` | Path to the shell executable (default: PowerShell -> cmd on Windows; `$SHELL` -> `/bin/zsh` -> `/bin/bash` on Unix) |
 | `terminal.shellArgs` | Arguments passed to the shell (default: `["-l"]` on Unix login shells) |
 | `terminal.sandbox` | Path to a sandbox runner (landstrip's binary, or MXC's `wxc-exec.exe` on Windows 11, `lxc-exec` on Linux or `mxc-exec-mac` on Apple-silicon macOS, or `"seatbelt"` for macOS' own `sandbox-exec` on any Mac — `"mxc"` names the one installed with pi-outpost, see [MXC comes with pi-outpost](#mxc-comes-with-pi-outpost)) every terminal runs inside, confined to the sandbox root, with no keys in its environment. A missing or failing runner means no terminal, never an unconfined one. See [docs/sandboxing.md](docs/sandboxing.md#recommended-setup) |
 | `embed.workspaceControls` | What a mounted widget offers: `"settings"` (default, one project), `"root"` (a compact root chooser), `"projects"` (open/switch/close) |
 | `updateCheck` / `updateRegistry` / `changelogNotice` | See [Staying up to date](#staying-up-to-date) |
 | `gitPath` | Path to the git executable. Unset, git is found on `PATH` and then where installers put it. See [Git](#git) |
+
+
+Drag the terminal’s top border up or down to adjust its height; the browser remembers the setting. The focused border also accepts Up/Down and Home. Maximizing then restoring keeps the chosen height.
+
+Choose an installed shell beside the terminal’s `+` button before opening a new tab. Existing tabs keep their shell. On Windows, PowerShell is the default unless `terminal.shell` is configured; Git Bash is offered only without terminal confinement. `Ctrl+C` copies selected output, or interrupts the command when nothing is selected. `Ctrl+V` and `Ctrl+Shift+V` paste into the terminal (`Cmd+C/V` on macOS). After a connection loss, open terminals start a new shell session and say so in their buffer; previous running processes are not resumed.
 
 ### Git
 
@@ -738,6 +756,9 @@ Light and dark themes ship with the interface. Precedence: a local pick from the
 (persisted in `localStorage`) or an explicit override (the embed widget's `theme` option or
 `setTheme()`, or a host page's `postMessage`) beats `branding.defaultTheme`, which falls
 back to the OS preference.
+
+The header's theme menu offers **Light**, **Dark** and **System**. System follows OS
+color-scheme changes immediately; the browser remembers the selected preference.
 
 ### Agent runtimes
 
