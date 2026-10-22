@@ -32,6 +32,19 @@ async function frameOf(frame: Locator): Promise<Frame> {
   return (await (await frame.elementHandle())!.contentFrame())!;
 }
 
+/**
+ * Starts a touch-up and waits until the frame has it. The click only tells the frame,
+ * by a message, to turn the editor on; until that lands, a gesture or a measurement
+ * meets the viewer, which edits nothing. The graph's container taking `tabindex="-1"`
+ * (`startTouchUp` in ui/src/util/drawioPage.ts) is the editor being on.
+ */
+async function touchUp(scope: Locator, frame: Locator): Promise<Frame> {
+  await scope.getByRole("button", { name: "✎ touch up" }).click();
+  const inner = await frameOf(frame);
+  await expect.poll(() => inner.evaluate(() => document.querySelector("[tabindex='-1']") !== null)).toBe(true);
+  return inner;
+}
+
 /** The labels drawn, once each. */
 function labels(frame: Frame): Promise<string[]> {
   return frame.evaluate(() => [...new Set([...document.querySelectorAll("svg foreignObject div")].filter((d) => d.querySelector("div") === null).map((d) => d.textContent?.trim() ?? "").filter(Boolean))]);
@@ -156,7 +169,7 @@ test("ShapesMoveAndConnectorsFollow: a shape moved in the file viewer is saved o
   const viewer = page.getByTestId("drawio-block-viewer");
   const frame = viewer.getByTestId("drawio-frame");
   await expect.poll(async () => labels(await frameOf(frame))).toContain("Alpha");
-  await viewer.getByRole("button", { name: "✎ touch up" }).click();
+  await touchUp(viewer, frame);
   await expect(viewer.getByRole("button", { name: "✓ save" })).toBeDisabled();
 
   const alpha = await centreOf(page, frame, "Alpha");
@@ -187,7 +200,7 @@ test("AConnectorIsReattached: at full size, a wire's end moved to another shape 
   const overlay = page.getByTestId("drawio-enlarged");
   const frame = overlay.getByTitle(`${SERVICES_DIAGRAM_PATH}, full size`);
   await expect.poll(async () => labels(await frameOf(frame))).toContain("Bravo");
-  await overlay.getByRole("button", { name: "✎ touch up" }).click();
+  await touchUp(overlay, frame);
   await expect(overlay.getByRole("button", { name: "✓ save" })).toBeVisible();
 
   // Select the wire on its path, then drag its end handle from Bravo onto Charlie
@@ -226,7 +239,7 @@ test("AFileChangedOnDiskIsNotOverwritten: a file changed meanwhile is refused, a
   const viewer = page.getByTestId("drawio-block-viewer");
   const frame = viewer.getByTestId("drawio-frame");
   await expect.poll(async () => labels(await frameOf(frame))).toContain("Alpha");
-  await viewer.getByRole("button", { name: "✎ touch up" }).click();
+  await touchUp(viewer, frame);
   const alpha = await centreOf(page, frame, "Alpha");
   await drag(page, alpha, { x: alpha.x, y: alpha.y + 100 });
   await expect(page.getByTestId("drawio-touchup-status")).toHaveText("● unsaved");
@@ -262,8 +275,7 @@ test("a box dragged past the drawing's edge stays in reach: the page grows, as d
   const viewer = page.getByTestId("drawio-block-viewer");
   const frame = viewer.getByTestId("drawio-frame");
   await expect.poll(async () => labels(await frameOf(frame))).toContain("Charlie");
-  await viewer.getByRole("button", { name: "✎ touch up" }).click();
-  const inner = await frameOf(frame);
+  const inner = await touchUp(viewer, frame);
   const areaBefore = await inner.evaluate(() => (document.querySelector("[tabindex='-1']") as HTMLElement).offsetHeight);
   const box = (await frame.boundingBox())!;
   const charlie = await centreOf(page, frame, "Charlie");
@@ -285,8 +297,7 @@ test("a new wire drawn from a shape's edge, and a shape deleted with the keyboar
   const viewer = page.getByTestId("drawio-block-viewer");
   const frame = viewer.getByTestId("drawio-frame");
   await expect.poll(async () => labels(await frameOf(frame))).toContain("Charlie");
-  await viewer.getByRole("button", { name: "✎ touch up" }).click();
-  const inner = await frameOf(frame);
+  const inner = await touchUp(viewer, frame);
   const box = (await frame.boundingBox())!;
   // First Bravo, selected and deleted from the keyboard — its wire goes with it, as in draw.io
   const bravo = await centreOf(page, frame, "Bravo");
@@ -317,7 +328,7 @@ test("Escape while touching up is \"done\": it leaves the touch-up, asking first
   const overlay = page.getByTestId("drawio-enlarged");
   const frame = overlay.getByTitle(`${SERVICES_DIAGRAM_PATH}, full size`);
   await expect.poll(async () => labels(await frameOf(frame))).toContain("Alpha");
-  await overlay.getByRole("button", { name: "✎ touch up" }).click();
+  await touchUp(overlay, frame);
   const alpha = await centreOf(page, frame, "Alpha");
   await drag(page, alpha, { x: alpha.x, y: alpha.y + 80 });
   await expect(page.getByTestId("drawio-touchup-status")).toHaveText("● unsaved");
