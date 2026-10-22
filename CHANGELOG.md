@@ -7,6 +7,48 @@ version you had and the one you run now, without going online.
 Releases before 0.41.0 are described on
 [GitHub Releases](https://github.com/laurentftech/pi-outpost/releases).
 
+## [0.48.0] - 2026-10-23
+
+### Added
+
+- **Update the agent's pi packages from the terminal.** `pi-outpost update --extensions`
+  installs the newest version of every npm pi package the agent loads, with the same rules
+  as Settings: pinned packages stay put, a failed lookup is reported rather than called up to
+  date, and `extensionLock` refuses. `pi-outpost update --all` updates pi-outpost, then the
+  packages, and works from a standalone executable too. Plain `pi-outpost update` now ends
+  by naming the packages that have a newer version.
+  ([#351](https://github.com/laurentftech/pi-outpost/pull/351))
+- **Choose the shell of each terminal.** A new terminal tab offers the shells installed on
+  the machine, and defaults to PowerShell on Windows. The terminal's height can be resized
+  and is remembered, the usual copy and paste shortcuts work, and its shell sessions come
+  back after a reconnect. ([#355](https://github.com/laurentftech/pi-outpost/pull/355))
+- **A System theme.** Next to Light and Dark, the header offers System, which follows your
+  operating system. ([#355](https://github.com/laurentftech/pi-outpost/pull/355))
+- **Git changes beside the scrollbar.** The file editor and the read-only source view mark
+  every Git change next to the scrollbar; click a marker to jump to it, even when it is
+  out of view. ([#355](https://github.com/laurentftech/pi-outpost/pull/355))
+- **Credits.** Settings have a Credits page listing the third-party software pi-outpost
+  includes, readable offline. ([#355](https://github.com/laurentftech/pi-outpost/pull/355))
+
+### Changed
+
+- **Opening a file no longer attaches it to your message.** Files you browse stay out of
+  the composer; attach or pin one when you want the agent to see it.
+  ([#355](https://github.com/laurentftech/pi-outpost/pull/355))
+- **Restart the session at any time.** Settings always offer a session restart, to reload
+  extensions and MCP servers without changing the configuration.
+  ([#355](https://github.com/laurentftech/pi-outpost/pull/355))
+
+### Fixed
+
+- **Images and codemode in the standalone executable.** The agent saw no image (`read` on
+  a picture answered "Image omitted") and codemode scripts failed to start; both now work in
+  the executable as they do from npm.
+  ([#353](https://github.com/laurentftech/pi-outpost/pull/353))
+- **A Mermaid diagram drawn again no longer vanishes.** Turning a diagram back to an
+  orientation it already had left the block with its buttons and no picture.
+  ([#354](https://github.com/laurentftech/pi-outpost/pull/354))
+
 ## [0.47.0] - 2026-10-22
 
 ### Added
