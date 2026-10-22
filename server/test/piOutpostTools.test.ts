@@ -138,6 +138,9 @@ describe("parseToolsSettings", () => {
   });
 });
 
+/** Comparing two versions drives Word itself, so the tool is registered on Windows only. */
+const WORD_COMPARE = process.platform === "win32" ? ["docx_compare"] : [];
+
 describe("createPiOutpostTools", () => {
   let root: string;
   const roots: string[] = [];
@@ -152,7 +155,7 @@ describe("createPiOutpostTools", () => {
 
   test("returns the tools the agent needs, in the documented order", async () => {
     const tools = await createPiOutpostTools({ cwd: root, maxBytes: VALID.maxBytes });
-    assert.equal(tools.length, 22);
+    assert.equal(tools.length, 22 + WORD_COMPARE.length);
     const names = tools.map((t) => t.name);
     assert.deepEqual(names, [
       "pdf_extract",
@@ -171,6 +174,7 @@ describe("createPiOutpostTools", () => {
       "docx_update",
       "docx_restyle",
       "docx_render",
+      ...WORD_COMPARE,
       "write_structure_figure",
       "write_structure_table",
       "compare_timelines",
@@ -236,7 +240,7 @@ describe("default export (extension entry)", () => {
 
       await piOutpostExtension(pi);
 
-      assert.equal(registered.length, 22);
+      assert.equal(registered.length, 22 + WORD_COMPARE.length);
       assert.deepEqual(
         registered.map((t) => t.name),
         [
@@ -254,6 +258,7 @@ describe("default export (extension entry)", () => {
           "docx_update",
           "docx_restyle",
           "docx_render",
+          ...WORD_COMPARE,
           "write_structure_figure",
           "write_structure_table",
           "compare_timelines",
