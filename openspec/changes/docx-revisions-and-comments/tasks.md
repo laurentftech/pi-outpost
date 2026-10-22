@@ -2,7 +2,7 @@
 
 ## 1. Fixtures
 
-- [ ] 1.1 Add a review fixture written by desktop Word: a move between sections, a tracked restyle of a heading to body text, a tracked strikethrough removal, and a comment with two replies marked resolved. Office for the web cannot be relied on for these. Check it in under `server/test/fixtures/`, and verify that its assertions in `server/test/docxReview.test.ts` pass.
+- [x] 1.1 Add a review fixture written by desktop Word: a move between sections, a tracked restyle of a heading to body text, a tracked strikethrough removal, and a comment with two replies marked resolved. Office for the web cannot be relied on for these. Check it in under `server/test/fixtures/`, and verify that its assertions in `server/test/docxReview.test.ts` pass.
 - [x] 1.2 Check in the document edited in Office for the web as `server/test/fixtures/docx-review-office-web.docx` (insertion, deletion, a replaced cell, an inserted and a deleted row, an open comment on a heading). Build the packages for every other scenario inline in `server/test/docxReview.test.ts`, in Word's markup. That covers a revision with no author or date, a forged marker, an insertion split across runs, a comment over an insertion, a formatting-only revision and revisions spread across blocks. The existing fixtures are not regenerated. Verify that `server/test/docxReview.test.ts` reads the Office web fixture and every inline package.
 
 ## 2. Accepted reading fixes
