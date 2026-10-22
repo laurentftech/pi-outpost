@@ -58,6 +58,8 @@ Usage
                                  remove this server's stored provider credential
   pi-outpost build-exe [options] build a standalone executable from this installation
   pi-outpost update [--check]    move to the newest published version, or just look
+  pi-outpost update --extensions [--check]
+                                 the same for the agent's pi packages (--all: both)
 
 Options
   --config <path>    configuration file to use
@@ -88,11 +90,14 @@ build-exe options
 
 update options
   --check            report what is available and install nothing
+  --extensions       update the npm pi packages the agent loads instead of pi-outpost
+  --all              update pi-outpost, then those packages
 
 Nothing installs on its own: the server may say a newer version exists, and only
 "pi-outpost update" acts on that. What it does depends on how this copy was
 installed — a global package is upgraded in place, a checkout, a one-off npx run
-and a standalone executable are each told what to do instead.
+and a standalone executable are each told what to do instead. The pi packages are
+updated wherever pi-outpost came from, and run once pi-outpost restarts.
 
 The executable carries the server and the web UI and needs nothing installed to run.
 Released builds are attached to https://github.com/laurentftech/pi-outpost/releases —
@@ -170,7 +175,7 @@ export interface ParsedCli {
   login: { provider?: string };
   logout: { provider?: string };
   buildExe: { out?: string; force: boolean };
-  update: { check: boolean };
+  update: { check: boolean; extensions: boolean; all: boolean };
   /** undefined when neither --open nor --no-open was given, so config still decides. */
   open?: boolean;
 }
@@ -206,6 +211,8 @@ export function parseCli(argv: string[]): ParsedCli {
         provider: { type: "string" },
         out: { type: "string" },
         check: { type: "boolean", default: false },
+        extensions: { type: "boolean", default: false },
+        all: { type: "boolean", default: false },
         open: { type: "boolean", default: false },
         "no-open": { type: "boolean", default: false },
         "open-in": { type: "string" },
@@ -238,6 +245,11 @@ export function parseCli(argv: string[]): ParsedCli {
   }
   if (values.check && command !== "update") {
     throw new CliError('"--check" belongs to "pi-outpost update" — see "pi-outpost --help"');
+  }
+  for (const flag of ["extensions", "all"] as const) {
+    if (values[flag] && command !== "update") {
+      throw new CliError(`"--${flag}" belongs to "pi-outpost update" — see "pi-outpost --help"`);
+    }
   }
   if (values.provider !== undefined && command !== "login" && command !== "logout") {
     throw new CliError('"--provider" belongs to "pi-outpost login" or "pi-outpost logout" — see "pi-outpost --help"');
@@ -281,7 +293,7 @@ export function parseCli(argv: string[]): ParsedCli {
     login: { provider: values.provider },
     logout: { provider: values.provider },
     buildExe: { out: values.out, force: values.force },
-    update: { check: values.check },
+    update: { check: values.check, extensions: values.extensions, all: values.all },
     // Left undefined unless asked for, so configuration still has its say.
     ...(values.open ? { open: true } : values["no-open"] ? { open: false } : {}),
   };

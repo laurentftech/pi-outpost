@@ -303,6 +303,23 @@ describe("build-exe and the browser flags", () => {
     assert.throws(() => parseCli(["build-exe", "--check"]), CliError);
   });
 
+  test("--extensions and --all are recognised, and combine with --check", () => {
+    assert.deepEqual(parseCli(["update"]).update, { check: false, extensions: false, all: false });
+    assert.deepEqual(parseCli(["update", "--extensions", "--check"]).update, { check: true, extensions: true, all: false });
+    assert.deepEqual(parseCli(["update", "--all"]).update, { check: false, extensions: false, all: true });
+    const help = helpText();
+    assert.match(help, /--extensions/);
+    assert.match(help, /--all/);
+  });
+
+  test("TheExtensionFlagsBelongToUpdate", () => {
+    for (const flag of ["--extensions", "--all"]) {
+      for (const argv of [[flag], ["init", flag], ["doctor", flag]]) {
+        assert.throws(() => parseCli(argv), (error: unknown) => error instanceof CliError && error.message.includes(`"${flag}" belongs to "pi-outpost update"`), argv.join(" "));
+      }
+    }
+  });
+
   test("neither flag leaves the decision to configuration", () => {
     assert.equal(parseCli([]).open, undefined);
     assert.equal(parseCli(["--open"]).open, true);

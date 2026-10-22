@@ -68,6 +68,6 @@ file watcher and stops itself after 15 minutes without use.
   them back on keyword search:
   `npm i @lancedb/lancedb@0.22.4-beta.3 --no-save --legacy-peer-deps`, run in
   `~/.pi/agent/npm/node_modules/openlore`. An OpenLore update undoes it.
-- **Updating** is done from pi-outpost's Settings, as for any pi package — or with pi's
-  updater, `npx -y @earendil-works/pi-coding-agent update npm:openlore`, then a restart.
+- **Updating** is done from pi-outpost's Settings, as for any pi package — or from a
+  terminal with `pi-outpost update --extensions`, then a restart.
 
