@@ -61,8 +61,22 @@ export interface ProcessResult {
 export type ProcessRunner = (
   file: string,
   args: string[],
-  options: { env: NodeJS.ProcessEnv; timeoutMs: number; signal?: AbortSignal },
+  options: {
+    env: NodeJS.ProcessEnv;
+    timeoutMs: number;
+    signal?: AbortSignal;
+    /**
+     * Out of time or stopped, the process is ended only once its stdout matches this,
+     * or `holdKillMs` later. A script starting Word is ended after it has said which
+     * Word it started, never in the middle of starting it (see `startWordLines`).
+     */
+    holdKillUntil?: RegExp;
+    holdKillMs?: number;
+  },
 ) => Promise<ProcessResult>;
+
+/** How long a held end waits for the line it is held for. Word's cold start is seconds. */
+export const HOLD_KILL_MS = 30_000;
 
 export interface RenderEnvironment {
   platform: NodeJS.Platform;
@@ -70,6 +84,8 @@ export interface RenderEnvironment {
   run: ProcessRunner;
   /** Whether an executable exists at this path. */
   isFile: (file: string) => Promise<boolean>;
+  /** Ends a process by id; see `stopStartedWord`. Left out, nothing is ended. */
+  kill?: (pid: number) => void;
 }
 
 export class RenderError extends Error {
@@ -81,22 +97,45 @@ export class RenderError extends Error {
 
 export const defaultRunner: ProcessRunner = (file, args, options) =>
   new Promise((resolve) => {
-    execFile(
-      file,
-      args,
-      // The signal is the turn's: a user who stops the agent must not leave an office
-      // application converting in the background for minutes.
-      { env: options.env, timeout: options.timeoutMs, windowsHide: true, maxBuffer: 4 * 1024 * 1024, ...(options.signal ? { signal: options.signal } : {}) },
-      (error, stdout, stderr) => {
-        const failure = error as (NodeJS.ErrnoException & { killed?: boolean; code?: number | string }) | null;
-        resolve({
-          code: failure === null ? 0 : typeof failure.code === "number" ? failure.code : null,
-          stdout: String(stdout ?? ""),
-          stderr: String(stderr ?? "") || (failure !== null && typeof failure.code === "string" ? `${failure.code}: ${failure.message}` : ""),
-          timedOut: failure?.killed === true,
-        });
-      },
-    );
+    const { signal, holdKillUntil } = options;
+    let timedOut = false;
+    let seen = "";
+    let held = false;
+    let grace: NodeJS.Timeout | undefined;
+    const child = execFile(file, args, { env: options.env, windowsHide: true, maxBuffer: 4 * 1024 * 1024 }, (error, stdout, stderr) => {
+      clearTimeout(timer);
+      clearTimeout(grace);
+      signal?.removeEventListener("abort", stop);
+      const failure = error as (NodeJS.ErrnoException & { code?: number | string }) | null;
+      resolve({
+        code: failure === null ? 0 : typeof failure.code === "number" ? failure.code : null,
+        stdout: String(stdout ?? ""),
+        stderr: String(stderr ?? "") || (failure !== null && typeof failure.code === "string" ? `${failure.code}: ${failure.message}` : ""),
+        timedOut,
+      });
+    });
+    child.stdout?.on("data", (chunk) => {
+      seen += String(chunk);
+      if (held && holdKillUntil?.test(seen)) child.kill();
+    });
+    const end = () => {
+      if (held) return;
+      if (holdKillUntil === undefined || holdKillUntil.test(seen)) {
+        child.kill();
+        return;
+      }
+      held = true;
+      grace = setTimeout(() => child.kill(), options.holdKillMs ?? HOLD_KILL_MS);
+    };
+    const timer = setTimeout(() => {
+      timedOut = true;
+      end();
+    }, options.timeoutMs);
+    // The signal is the turn's: a user who stops the agent must not leave an office
+    // application converting in the background for minutes.
+    const stop = () => end();
+    if (signal?.aborted) stop();
+    else signal?.addEventListener("abort", stop, { once: true });
   });
 
 export function defaultEnvironment(): RenderEnvironment {
@@ -104,6 +143,13 @@ export function defaultEnvironment(): RenderEnvironment {
     platform: process.platform,
     env: process.env,
     run: defaultRunner,
+    kill: (pid) => {
+      try {
+        process.kill(pid);
+      } catch {
+        // Already gone: what was wanted.
+      }
+    },
     isFile: async (file) => {
       try {
         const stat = await fs.stat(file);
@@ -239,12 +285,14 @@ export const POWERPOINT_SCRIPT = [
  *   the `finally`, so the PDF is written and the script still exits non-zero — the
  *   conversion is discarded and the Word process is left running. `Close` takes its 0
  *   by value, which is why only this call needs the cast.
+ * - The Word it starts is named on stdout (`startWordLines`), so that a script killed on
+ *   a timeout does not leave it running (`stopStartedWord`).
  */
 export const WORD_SCRIPT = [
   "$ErrorActionPreference = 'Stop'",
   "$app = $null; $doc = $null",
   "try {",
-  "  $app = New-Object -ComObject Word.Application",
+  ...startWordLines(),
   "  $missing = [Type]::Missing",
   "  $doc = $app.Documents.Open($env:PI_OUTPOST_RENDER_INPUT, $false, $true, $false, $missing, $missing, $missing, $missing, $missing, 0, $missing, $false)",
   "  for ($i = 1; $i -le $doc.TablesOfContents.Count; $i++) { try { $doc.TablesOfContents.Item($i).Update() } catch { } }",
@@ -254,6 +302,46 @@ export const WORD_SCRIPT = [
   "  if ($app -ne $null -and $app.Documents.Count -eq 0) { $app.Quit([ref]0) }",
   "}",
 ].join("\n");
+
+/**
+ * Starting Word, in a script, and saying which process it is.
+ *
+ * A script that runs out of time is killed, and its `finally` never runs: the Word it
+ * started stays behind, invisible, holding the private copies open, until someone ends
+ * it by hand — seen on every timeout, not only after a crash. COM gives no process id,
+ * so the script lists the `WINWORD.EXE` processes before and after `New-Object` and
+ * prints the new one. `New-Object` always starts a Word of its own, so that process is
+ * never the user's; when more than one appeared (the user opened Word in that instant),
+ * it prints `word-pid=unknown` rather than a guess.
+ *
+ * A script killed while `New-Object` is still starting Word prints nothing, and the Word
+ * it asked for starts anyway — seen with a 1 s timeout. So the runner is told to hold
+ * the end until the line is out (`WORD_STARTED_LINE`), which is why it is printed on
+ * every path.
+ */
+export function startWordLines(): string[] {
+  return [
+    "  $running = @(Get-Process WINWORD -ErrorAction SilentlyContinue | ForEach-Object { $_.Id })",
+    "  $app = New-Object -ComObject Word.Application",
+    "  $started = @(Get-Process WINWORD -ErrorAction SilentlyContinue | Where-Object { $running -notcontains $_.Id })",
+    "  [Console]::Out.WriteLine('word-pid=' + $(if ($started.Count -eq 1) { $started[0].Id } else { 'unknown' }))",
+  ];
+}
+
+/** The line `startWordLines` prints once Word is started: what a held end waits for. */
+export const WORD_STARTED_LINE = /^word-pid=/m;
+const STARTED_WORD = /^word-pid=(\d+)\s*$/m;
+
+/**
+ * Ends the Word a script started, when the script itself was ended — on a timeout, or
+ * because the turn was stopped. A script that finished on its own closed its Word in
+ * its `finally`, and is left alone.
+ */
+export function stopStartedWord(result: ProcessResult, environment: RenderEnvironment, signal?: AbortSignal): void {
+  if (!result.timedOut && signal?.aborted !== true) return;
+  const pid = STARTED_WORD.exec(result.stdout)?.[1];
+  if (pid !== undefined) environment.kill?.(Number(pid));
+}
 
 /** The Document Builder script: open, save as PDF, close. Paths are JSON string literals. */
 export function onlyOfficeScript(input: string, output: string): string {
@@ -265,9 +353,14 @@ interface Attempt {
   failure: string;
 }
 
-function describeFailure(result: ProcessResult, timeoutMs: number): string {
+export function describeFailure(result: ProcessResult, timeoutMs: number): string {
   if (result.timedOut) return `did not finish within ${Math.round(timeoutMs / 1000)} s`;
-  const detail = (result.stderr || result.stdout).trim().split(/\r?\n/).filter(Boolean).slice(-3).join(" ");
+  const detail = (result.stderr || result.stdout.replace(/^word-pid=\S*\s*$/gm, ""))
+    .trim()
+    .split(/\r?\n/)
+    .filter(Boolean)
+    .slice(-3)
+    .join(" ");
   return detail !== "" ? detail : `exited with code ${result.code ?? "unknown"}`;
 }
 
@@ -277,6 +370,18 @@ async function hasOutput(file: string): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+/** Windows PowerShell, from `SystemRoot` rather than whatever PATH offers. */
+export function powershellPath(environment: RenderEnvironment): string {
+  return environment.env.SystemRoot
+    ? path.win32.join(environment.env.SystemRoot, "System32", "WindowsPowerShell", "v1.0", "powershell.exe")
+    : "powershell.exe";
+}
+
+/** The arguments that run a fixed script: no profile, no prompt, no execution policy in the way. */
+export function powershellArgs(script: string): string[] {
+  return ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", script];
 }
 
 async function convertWith(
@@ -292,18 +397,18 @@ async function convertWith(
   if (renderer === "powerpoint" || renderer === "word") {
     const application = renderer === "word" ? "Word" : "PowerPoint";
     if (environment.platform !== "win32") return { failure: `${application} automation is only available on Windows` };
-    const powershell = environment.env.SystemRoot
-      ? path.win32.join(environment.env.SystemRoot, "System32", "WindowsPowerShell", "v1.0", "powershell.exe")
-      : "powershell.exe";
     const result = await environment.run(
-      powershell,
-      ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", renderer === "word" ? WORD_SCRIPT : POWERPOINT_SCRIPT],
+      powershellPath(environment),
+      powershellArgs(renderer === "word" ? WORD_SCRIPT : POWERPOINT_SCRIPT),
       {
         env: { ...environment.env, PI_OUTPOST_RENDER_INPUT: input, PI_OUTPOST_RENDER_OUTPUT: output },
         timeoutMs: settings.timeoutMs,
         signal,
+        ...(renderer === "word" ? { holdKillUntil: WORD_STARTED_LINE } : {}),
       },
     );
+    // PowerPoint is one instance shared with the user: only a Word of the script's own is ended.
+    if (renderer === "word") stopStartedWord(result, environment, signal);
     if (result.code === 0 && (await hasOutput(output))) return { pdf: output };
     return { failure: describeFailure(result, settings.timeoutMs) };
   }
@@ -396,7 +501,8 @@ async function convertToPdf(
       ].join("\n"),
     );
   } finally {
-    await fs.rm(workDir, { recursive: true, force: true }).catch(() => {});
+    // Retried: a Word just ended may still hold the copy for a moment.
+    await fs.rm(workDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }).catch(() => {});
   }
 }
 

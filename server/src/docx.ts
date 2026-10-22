@@ -76,6 +76,8 @@ export interface DocxExtraction {
    * asking for the bytes selects from.
    */
   pictures: FoundPicture[];
+  /** In the review reading, what the review layer holds over the whole document. */
+  review?: { revisions: number; comments: number };
 }
 
 /** Caps chosen so one call cannot spend a session's context on a long specification. */
@@ -1126,6 +1128,7 @@ export async function extractDocx(bytes: Uint8Array, options: DocxExtractOptions
       blocks: [],
       blockCount: 0,
       pictures,
+      ...(show ? { review: reviewCounts(layer) } : {}),
     };
   }
 
@@ -1201,6 +1204,7 @@ export async function extractDocx(bytes: Uint8Array, options: DocxExtractOptions
     ...(nextBlock === undefined ? {} : { nextBlock }),
     blockCount,
     pictures,
+    ...(show ? { review: reviewCounts(layer) } : {}),
   };
 }
 

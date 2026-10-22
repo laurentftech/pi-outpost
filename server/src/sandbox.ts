@@ -51,6 +51,7 @@ import {
   createDocxRestyleToolDefinition,
   createDocxUpdateToolDefinition,
 } from "./wordTools.ts";
+import { createDocxCompareToolDefinition } from "./docxCompare.ts";
 import type { RenderSettings } from "./presentationRender.ts";
 import { createStructuredExchangeFigureToolDefinition } from "./structuredExchangeFigureTool.ts";
 import { createTimelineComparisonToolDefinition } from "./timelineComparisonTool.ts";
@@ -313,6 +314,9 @@ export async function createSandboxedTools(
   const word = { allowedRoots: documentRoots, maxBytes: docxMaxBytes, writableRoot: realWritableRoot, render: officeRender };
   readFactories.push((cwd) => createDocxStylesToolDefinition({ cwd, ...word }));
   readFactories.push((cwd) => createDocxRenderToolDefinition({ cwd, ...word }));
+  // Comparing two versions reads both, and drives Word itself: Windows only. Its
+  // output_path is measured against the writable zone, like the rendering's pdf_path.
+  if (process.platform === "win32") readFactories.push((cwd) => createDocxCompareToolDefinition({ cwd, ...word }));
   const tools = readFactories.map((create) =>
     scopeToRoot(create(realRoot), realRoot, realRoot, readExceptions, false, skillReadRoots),
   );

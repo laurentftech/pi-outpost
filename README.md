@@ -261,7 +261,11 @@ one needs, the command that proves it works, and the caution that goes with it.
   default — the agent reads the accepted text, told how many changes it holds — and
   `review: true` shows them for an impact analysis: insertions, deletions and moves marked
   where they sit, comments on the text they are about, each listed with its author, date and
-  section. Each takes an `output_path`, to write the whole document to a
+  section. Two versions revised without tracked changes are compared by `docx_compare`, on
+  Windows: desktop Word compares them (formatting ignored, comments kept), and its result comes
+  back in the same review reading, opened by a line saying the authors and dates are the
+  comparison's. Elsewhere it is not offered; Word's Review → Compare, then `docx_extract` with
+  `review: true` on the result, does the same by hand. Each extractor takes an `output_path`, to write the whole document to a
   file instead of spending the context on it twice. The extractors are described to
   the agent only once a document of that kind is named in the conversation — their schemas
   are a quarter of a session's prompt floor, and most sessions never open one. Named and never
@@ -643,7 +647,7 @@ install that must stay small can omit it and name no `"mxc"`.
 | `docx.template` | The Word template (`.dotx` or `.docx`) the viewer's Word export can write into, relative to the configuration file. A file that is missing or unusable is reported when the export is used, not at startup |
 | `office.renderer` | Which application `pptx_render` and `docx_render` draw with: `"auto"` (default — on Windows PowerPoint for decks and Word for documents, then LibreOffice, then ONLYOFFICE), `"powerpoint"`, `"word"`, `"libreoffice"` or `"onlyoffice"`. `"powerpoint"` and `"word"` each apply to their own kind of file; the other kind is drawn as with `"auto"` |
 | `office.libreofficePath` / `office.onlyofficePath` | The `soffice` or `docbuilder` executable, when it is not where it installs by default. Relative to the configuration file |
-| `office.renderTimeoutMs` | How long one rendering may take (default `120000`) |
+| `office.renderTimeoutMs` | How long one rendering, or one `docx_compare` comparison, may take (default `120000`) |
 | `pptx.renderer`, `pptx.libreofficePath`, `pptx.onlyofficePath`, `pptx.renderTimeoutMs` | Deprecated since 0.30: the 0.29 names of the `office.*` keys above. Still read, each named in a warning at startup; when both are set, the `office.*` key wins and the conflict is logged |
 | `structuredExchange.maxBytes` | Largest structured-exchange document the viewer may open (default `8000000`, the widest ceiling any supported schema version declares). Each version's own ceiling is applied after the document says which one it claims, so a version 1 document is still bounded at its published 4 MB. Recognition is by the document's declared `schema`, never by its extension, so other JSON keeps the 1 MB preview limit. A larger value is clamped to the contract's |
 
