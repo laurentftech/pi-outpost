@@ -115,6 +115,14 @@ export function Mermaid({ code }: { code: string }) {
   const downloadPending = useRef(false);
   const sourceGeneration = useRef(0);
   /**
+   * A fresh id for every render. Mermaid removes the element already carrying the id it
+   * is given (`removeExistingElements`), and the SVG it returns carries that id — so one
+   * id for every render deletes the diagram on screen each time, and keeps it deleted
+   * when the new SVG is identical, since React does not rewrite an unchanged innerHTML.
+   */
+  const renders = useRef(0);
+  const renderId = () => `mermaid-${id}-${++renders.current}`;
+  /**
    * How this source says it runs, and how to say the other — undefined for a notation
    * with no direction of its own, which is how the control knows not to appear.
    */
@@ -192,7 +200,7 @@ export function Mermaid({ code }: { code: string }) {
         // drawn, once, and nothing about the size of it changes that.
         if (chosen !== undefined && read !== undefined) {
           const wanted = chosen === asWritten ? source : read.turned;
-          const { svg } = await mermaid.render(`mermaid-${id}`, wanted);
+          const { svg } = await mermaid.render(renderId(), wanted);
           if (!cancelled) {
             setDrawn({ svg, orientation: chosen, source: wanted });
             setError(null);
@@ -200,14 +208,14 @@ export function Mermaid({ code }: { code: string }) {
           return;
         }
 
-        const first = await mermaid.render(`mermaid-${id}`, source);
+        const first = await mermaid.render(renderId(), source);
         let result = { svg: first.svg, orientation: asWritten, source };
         const asDrawn = naturalWidth(first.svg);
         // The second render is what it costs to know whether turning would help, and
         // it is paid only by a diagram that is already too wide to read — never by
         // the ones that arrived fine, which is nearly all of them.
         if (read !== undefined && asDrawn !== undefined && asDrawn > READING_WIDTH) {
-          const second = await mermaid.render(`mermaid-${id}-turned`, read.turned);
+          const second = await mermaid.render(renderId(), read.turned);
           const turnedWidth = naturalWidth(second.svg);
           if (turnedWidth !== undefined) {
             // The rule takes the landscape width first, whichever of the two that is
