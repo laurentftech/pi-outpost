@@ -13,7 +13,7 @@
  */
 import { diff } from "@codemirror/merge";
 import { RangeSet, StateEffect, StateField, Text, type EditorState, type Extension } from "@codemirror/state";
-import { Decoration, type DecorationSet, EditorView, GutterMarker, WidgetType, gutter } from "@codemirror/view";
+import { Decoration, type DecorationSet, EditorView, GutterMarker, ViewPlugin, type ViewUpdate, WidgetType, gutter } from "@codemirror/view";
 
 /** One run of changed lines: HEAD's `[fromA, toA)` became the document's `[fromB, toB)`, zero-based. */
 export interface Hunk {
@@ -270,10 +270,92 @@ function peekDecorations(state: EditorState): DecorationSet {
   return Decoration.set(Decoration.widget({ widget, block: true, side: after ? 1 : -1 }).range(after ? line.to : line.from));
 }
 
-/** The gutter and its peek. Inert until `setGitBaseline` gives it HEAD's text. */
+/** Fixed beside the native scrollbar, not part of its scrolling content. */
+const overview = ViewPlugin.fromClass(class {
+  readonly dom = document.createElement("div");
+  readonly view: EditorView;
+  private destroyed = false;
+  constructor(view: EditorView) {
+    this.view = view;
+    this.dom.className = "cm-git-overview";
+    this.dom.setAttribute("role", "group");
+    this.dom.setAttribute("aria-label", "Git changes in this file");
+    view.dom.append(this.dom);
+    this.rebuild();
+  }
+  update(update: ViewUpdate) {
+    if (update.startState.field(gutterField).hunks !== update.state.field(gutterField).hunks) this.rebuild();
+    else if (update.geometryChanged || update.viewportChanged || update.startState.field(gutterField).open !== update.state.field(gutterField).open) this.measure();
+  }
+  rebuild() {
+    const { hunks } = this.view.state.field(gutterField);
+    this.dom.replaceChildren();
+    this.dom.hidden = hunks.length === 0;
+    for (const [index, hunk] of hunks.entries()) {
+      const kind = hunkKind(hunk);
+      const line = Math.min(hunk.fromB + 1, this.view.state.doc.lines);
+      const mark = document.createElement("button");
+      mark.type = "button";
+      mark.className = `cm-git-overview-mark cm-git-overview-${kind}`;
+      mark.dataset.gitChange = kind;
+      mark.dataset.line = String(line);
+      mark.title = `${{ added: "Added", modified: "Changed", deleted: "Deleted" }[kind]} since HEAD, line ${line}: jump to change`;
+      mark.setAttribute("aria-label", mark.title);
+      mark.addEventListener("mousedown", event => event.preventDefault());
+      mark.addEventListener("click", () => {
+        const current = this.view.state.field(gutterField).hunks[index];
+        if (!current) return;
+        const target = this.view.state.doc.line(Math.min(current.fromB + 1, this.view.state.doc.lines)).from;
+        this.view.dispatch({ selection: { anchor: target }, effects: EditorView.scrollIntoView(target, { y: "center" }) });
+        this.view.focus();
+      });
+      this.dom.append(mark);
+    }
+    this.measure();
+  }
+  measure() {
+    this.view.requestMeasure({
+      key: this,
+      read: view => {
+        const height = Math.max(1, view.contentHeight);
+        return view.state.field(gutterField).hunks.map(hunk => {
+          const start = view.lineBlockAt(view.state.doc.line(Math.min(hunk.fromB + 1, view.state.doc.lines)).from);
+          const end = view.lineBlockAt(view.state.doc.line(Math.min(Math.max(hunk.fromB + 1, hunk.toB), view.state.doc.lines)).from);
+          const top = hunk.fromB >= view.state.doc.lines ? end.bottom : start.top;
+          return { top: Math.min(1, top / height), height: Math.max(0, (end.bottom - top) / height) };
+        });
+      },
+      write: positions => {
+        if (this.destroyed) return;
+        positions.forEach((position, index) => {
+          const mark = this.dom.children[index] as HTMLElement | undefined;
+          if (!mark) return;
+          // Keep a three-pixel deletion/single-line marker inside the rail at EOF.
+          mark.style.top = `min(${position.top * 100}%, calc(100% - 3px))`;
+          mark.style.height = `max(3px, ${position.height * 100}%)`;
+        });
+      },
+    });
+  }
+  destroy() {
+    this.destroyed = true;
+    this.dom.remove();
+  }
+});
+
+/** The gutter, peek and overview. Inert until `setGitBaseline` gives it HEAD's text. */
 export function gitGutter(): Extension {
   return [
     gutterField,
+    overview,
+    EditorView.theme({
+      "&": { position: "relative" },
+      ".cm-scroller": { marginRight: "10px" },
+      ".cm-git-overview": { position: "absolute", right: "0", top: "0", bottom: "0", width: "9px", overflow: "hidden" },
+      ".cm-git-overview[hidden]": { display: "none" },
+      ".cm-git-overview-mark": { position: "absolute", right: "1px", width: "7px", minHeight: "3px", padding: "0", border: "0", borderRadius: "1px", cursor: "pointer" },
+      ".cm-git-overview-mark:focus-visible": { outline: "1px solid currentColor", outlineOffset: "1px" },
+    }),
     // Block widgets must come from a facet computed from state, not from a view plugin.
     EditorView.decorations.compute([gutterField], peekDecorations),
     gutter({

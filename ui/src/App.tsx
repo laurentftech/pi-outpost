@@ -26,17 +26,13 @@ import { ToolCard } from "./components/ToolCard";
 import { createActionDispatch } from "./presentations/actions";
 import { UserMessage } from "./components/UserMessage";
 import { useTheme } from "./theme/useTheme";
-import { hasPathExtractionTool, isImageFile, isPdfFile, rawFileUrl, rawFileWorkspace } from "./util/workspacePath";
+import { rawFileWorkspace } from "./util/workspacePath";
 import {
   addPathAttachment,
-  imagePreviewToAttachment,
-  pdfPreviewToAttachment,
   type Attachment,
   filesToAttachments,
   needsUpload,
   removeAttachment,
-  replacePreviewAttachment,
-  textPreviewToAttachment,
 } from "./attachments";
 import { Composer } from "./components/Composer";
 import { ExtensionDialog } from "./components/ExtensionDialog";
@@ -184,6 +180,7 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
     checkPiPackages,
     updatePiPackage,
     restartServer,
+    restartSession,
     openTerminal,
     sendTerminalInput,
     getTerminalCwd,
@@ -220,9 +217,6 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   // Paths the composer's draft names with `@`: they reference a file as surely as a chip does
   const [draftMentions, setDraftMentions] = useState<string[]>([]);
-  const [previewAttachmentError, setPreviewAttachmentError] = useState<string | null>(null);
-  const [loadedPreviewImagePath, setLoadedPreviewImagePath] = useState<string | null>(null);
-  const [loadedPreviewPdf, setLoadedPreviewPdf] = useState<{ path: string; revision: number } | null>(null);
   const [viewerDirty, setViewerDirty] = useState(false);
   /**
    * Unsent composer text, per workspace (`workspaceKey`): a side session keeps its own.
@@ -260,8 +254,6 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
     state.embedWorkspaceControls === "projects" ? "projects" : state.embedWorkspaceControls === "root" ? "root" : "none";
   const drafts = useRef<Record<string, string>>({});
   const attachmentsRef = useRef<Attachment[]>([]);
-  const activePreviewPathRef = useRef<string | null>(null);
-  const dismissedPreviewPathRef = useRef<string | null>(null);
   // Badge click in the tree opens the file straight onto its uncommitted diff
   const [diffOnOpen, setDiffOnOpen] = useState(false);
   // A diagram drawn in a reply reads, writes and opens its file through these. Through a
@@ -384,69 +376,7 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
     attachmentsRef.current = attachments;
   }, [attachments]);
 
-  useEffect(() => {
-    const file = state.openFile;
-    // Closing the viewer must not discard its context: the user needs to close the
-    // overlay before they can use the composer. A newly opened file replaces it.
-    if (!file) return;
-    const path = file.path;
-    const loaded = file.status === "loaded";
-    const toolReadableBinary =
-      file.status === "error" &&
-      file.message === "Binary file — preview not supported" &&
-      hasPathExtractionTool(path);
-
-    if (activePreviewPathRef.current !== path) {
-      activePreviewPathRef.current = path;
-      dismissedPreviewPathRef.current = null;
-      setAttachments((current) => current.filter((attachment) => attachment.source !== "preview"));
-      setPreviewAttachmentError(null);
-      setLoadedPreviewImagePath(null);
-      setLoadedPreviewPdf(null);
-    }
-    if (dismissedPreviewPathRef.current === path) return;
-
-    // A raw preview revision means the bytes at this path may have changed. Drop
-    // the previous automatic attachment before attempting the replacement so a
-    // failed refresh cannot leave stale image bytes queued for the next prompt.
-    if (isImageFile(path) || isPdfFile(path)) {
-      setAttachments((current) => current.filter((attachment) => attachment.source !== "preview"));
-    }
-
-    let cancelled = false;
-    async function attachPreview() {
-      const result = isImageFile(path)
-        ? loadedPreviewImagePath === path
-          ? await imagePreviewToAttachment(path, rawFileUrl(serverUrl, path, authToken, state.previewRevision, rawWorkspace))
-          : null
-          : isPdfFile(path)
-          ? // A PDF never reaches "loaded" — the text preview refuses it as binary.
-            // Its own viewer says when it displayed, and only then is it attachable.
-            loadedPreviewPdf?.path === path && loadedPreviewPdf.revision === state.previewRevision
-            ? pdfPreviewToAttachment(path)
-            : null
-          : toolReadableBinary
-            ? textPreviewToAttachment(path)
-          : loaded
-            ? textPreviewToAttachment(path)
-            : null;
-      if (cancelled || result === null || activePreviewPathRef.current !== path || dismissedPreviewPathRef.current === path) return;
-      if (typeof result === "string") {
-        setPreviewAttachmentError(result);
-        return;
-      }
-      setPreviewAttachmentError(null);
-      setAttachments((current) => replacePreviewAttachment(current, result));
-    }
-    void attachPreview();
-    return () => {
-      cancelled = true;
-    };
-  }, [state.openFile, state.previewRevision, serverUrl, authToken, rawWorkspace, loadedPreviewImagePath, loadedPreviewPdf]);
-
   function closePreview() {
-    activePreviewPathRef.current = null;
-    dismissedPreviewPathRef.current = null;
     closeFilePreview();
   }
 
@@ -461,18 +391,12 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
   /** Tree pin: reference a file in the prompt, or drop the reference it already has. */
   function toggleAttachPath(path: string) {
     const index = attachmentsRef.current.findIndex((attachment) => attachment.kind === "path" && attachment.data === path);
-    // Removing through the same path as the chip's ✕ keeps the preview-suppression bookkeeping in one place
     if (index >= 0) handleRemoveAttachment(index);
     // A path the draft already mentions needs no chip — and the tree must not edit the user's text
     else if (!draftMentions.includes(path)) setAttachments((current) => addPathAttachment(current, path));
   }
 
   function handleRemoveAttachment(index: number) {
-    const attachment = attachmentsRef.current[index];
-    if (attachment?.source === "preview") {
-      dismissedPreviewPathRef.current = attachment.previewPath ?? activePreviewPathRef.current;
-      setPreviewAttachmentError(null);
-    }
     setAttachments((current) => removeAttachment(current, index));
   }
 
@@ -480,7 +404,6 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
     prompt(text, images);
     setAttachments([]);
     setAttachmentErrors([]);
-    setPreviewAttachmentError(null);
     // Sending a message means the user wants the conversation back — close the file
     // viewer unless it holds unsaved edits (the viewer's activity strip covers that case)
     if (!viewerDirty) closePreview();
@@ -491,7 +414,7 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
     setDragDepth(0);
     if (e.dataTransfer.files.length > 0) void attachFiles(Array.from(e.dataTransfer.files));
   }
-  const { theme, toggle: toggleTheme, setTheme } = useTheme(
+  const { theme, preference: themePreference, toggle: toggleTheme, setTheme } = useTheme(
     state.branding.defaultTheme ?? "system",
     state.branding.allowThemeToggle !== false,
     accentTarget,
@@ -1035,6 +958,8 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
             {...(state.items.length > 0 ? { onExportConversation: () => void exportConversationToFile() } : {})}
             exportProgress={exportProgress}
             onToggleTheme={toggleTheme}
+            themePreference={themePreference}
+            onSetTheme={setTheme}
             onNewSession={newSession}
             onSwitchSession={switchSession}
             onDeleteSession={deleteSession}
@@ -1067,6 +992,7 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
             onCloseServerBrowser={closeServerBrowser}
             settingsPickerBlocked={headerPicker !== null && headerPicker !== "settings"}
             onSettingsPickerOpened={() => setHeaderPicker("settings")}
+            onRestartSession={restartSession}
             onUpdateConfig={updateConfig}
             onSuggestAgentResourceClonePath={suggestAgentResourceClonePath}
             onCloneAgentResourceRepository={cloneAgentResourceRepository}
@@ -1142,8 +1068,6 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
               serverUrl={serverUrl}
               token={authToken}
               workspace={rawWorkspace}
-              onImageLoad={setLoadedPreviewImagePath}
-              onPdfLoad={(path) => setLoadedPreviewPdf({ path, revision: state.previewRevision })}
               onOpenNative={openNative}
               rawRevision={state.previewRevision}
             />
@@ -1328,11 +1252,6 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
                   {error}
                 </div>
               ))}
-              {previewAttachmentError && (
-                <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-300">
-                  {previewAttachmentError}
-                </div>
-              )}
               {exportError && (
                 <div className="rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-300">
                   {exportError}
@@ -1411,6 +1330,7 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
                   });
                 }
               }}
+              shells={state.terminal?.shells}
               openTerminal={openTerminal}
               sendTerminalInput={sendTerminalInput}
               getTerminalCwd={getTerminalCwd}

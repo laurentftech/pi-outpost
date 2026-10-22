@@ -1367,6 +1367,7 @@ const makeCreateRuntime =
      * made — it is the factory's own result — so the lookup has to be late.
      */
     publishInto?: Workspace,
+    reloadResources = false,
   ): CreateAgentSessionRuntimeFactory =>
   async ({ cwd, sessionManager, sessionStartEvent }) => {
   const appendSystemPrompt = composeAppendSystemPrompt(config);
@@ -1430,6 +1431,7 @@ const makeCreateRuntime =
       ],
     },
   });
+  if (reloadResources) await services.resourceLoader.reload();
   const extResult = services.resourceLoader.getExtensions();
   if (extResult.errors.length > 0) {
     for (const err of extResult.errors) {
@@ -2561,6 +2563,7 @@ function projectFields(workspace: Workspace) {
       : undefined,
     terminal: {
       enabled: config.terminal?.enabled ?? false,
+      ...(config.terminal?.enabled ? { shells: terminalManager.getShells({ ...config.terminal, gitPath: config.gitPath, confined: !!config.terminal.sandbox }).map(({ id, label }) => ({ id, label })) } : {}),
       ...(config.sandboxLocks?.terminal ? { locked: true } : {}),
       ...(config.terminal?.sandbox ? { confined: true } : {}),
       // Only a settled failure: "still checking" is seconds long, and a snapshot carrying it
@@ -3319,6 +3322,35 @@ async function rebuildSibling(sibling: Workspace): Promise<void> {
     reportError(error);
   } finally {
     sibling.replacingSession = false;
+  }
+}
+
+/** Manual reload changes no settings and affects only the current session. */
+async function handleRestartSession(workspace: Workspace, socket: WebSocket): Promise<void> {
+  const refuse = (message: string) => send(socket, { type: "error", message });
+  if (workspace.replacingSession || workspace.isBusy()) {
+    refuse("The session is working or changing — wait for it to finish before restarting");
+    return;
+  }
+  const rebuild = workspace.agent.rebuildTools;
+  if (!rebuild) {
+    refuse(new RuntimeUnsupportedError("Restarting the session", workspace.agent.kind).message);
+    return;
+  }
+  workspace.replacingSession = true;
+  try {
+    const result = await rebuild.call(workspace.agent, makeCreateRuntime(workspace.sandboxedTools, workspace, true));
+    if (result.cancelled) {
+      refuse("Session restart cancelled by an extension; the previous session remains active");
+      return;
+    }
+    await refreshResourceInventory(workspace);
+    await workspace.workPlanSync;
+    send(socket, { type: "update_config_ack", ...snapshot(workspace) });
+  } catch (error) {
+    refuse(`Could not restart the session: ${error instanceof Error ? error.message : String(error)}`);
+  } finally {
+    workspace.replacingSession = false;
   }
 }
 
@@ -5717,6 +5749,7 @@ const AGENT_COMMANDS = new Set<ClientMessage["type"]>([
   "set_model",
   "set_thinking",
   "new_session",
+  "restart_session",
   "switch_session",
   "compact",
   "rename_session",
@@ -5914,6 +5947,9 @@ function handleClientMessage(socket: WebSocket, raw: string): void {
         .catch(reportError);
       break;
     }
+    case "restart_session":
+      void handleRestartSession(workspace, socket);
+      break;
     case "new_session":
       void replaceSession(workspace, socket, () => workspace.agent.newSession());
       break;
@@ -6301,6 +6337,11 @@ function handleClientMessage(socket: WebSocket, raw: string): void {
         });
         return;
       }
+      const selectedShell = message.shellId === undefined ? undefined : terminalManager.getShells({ ...config.terminal, gitPath: config.gitPath, confined: !!config.terminal.sandbox }).find(shell => shell.id === message.shellId);
+      if (message.shellId !== undefined && !selectedShell) {
+        send(socket, { type: "terminal_error", terminalId: message.terminalId, message: "The selected shell is no longer available. Choose an installed shell." });
+        return;
+      }
       const termCwd = message.cwd && typeof message.cwd === "string" ? message.cwd : workspace.settings.cwd;
       terminalManager.open(
         socket,
@@ -6310,7 +6351,7 @@ function handleClientMessage(socket: WebSocket, raw: string): void {
         message.rows ?? 24,
         (termId, data) => send(socket, { type: "terminal_data", terminalId: termId, data }),
         (termId, exitCode) => send(socket, { type: "terminal_exit", terminalId: termId, exitCode }),
-        { ...config.terminal, gitPath: config.gitPath },
+        { ...config.terminal, gitPath: config.gitPath, ...(selectedShell ? { shell: selectedShell.shell, shellArgs: selectedShell.args } : {}) },
         terminalConfinement(workspace),
       ).catch((error) => {
         send(socket, {

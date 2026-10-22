@@ -403,7 +403,7 @@ export interface AgentState {
   tools: { name: string; active: boolean }[];
   sandbox: { root: string; allowWrite: boolean; allowBash: boolean; writableRoot?: string; projectRoot?: string; rootEditable?: boolean } | null;
   /** Terminal configuration — whether the terminal is enabled and locked. */
-  terminal?: { enabled: boolean; locked?: boolean; confined?: boolean; unavailable?: string } | null;
+  terminal?: { enabled: boolean; locked?: boolean; confined?: boolean; unavailable?: string; shells?: Array<{ id: string; label: string }> } | null;
   /** Whether confinement was seen holding (the canary's verdicts), per surface. */
   confinement?: SessionSnapshot["confinement"] | null;
   /**
@@ -1767,6 +1767,10 @@ export function useAgent(serverUrl = "", explicitToken?: string, embedded = fals
   // keeps the root listed across reconnects and snapshots — see its comment.
   const rootListingRequestedRef = useRef(false);
   const terminalListenersRef = useRef(new Map<string, TerminalListeners>());
+  const terminalRequestsRef = useRef(new Map<string, {
+    message: Extract<ClientMessage, { type: "terminal_open" }>;
+    socket: WebSocket | null;
+  }>());
   const boundKey = state.workspace ? workspaceKey(state.workspace) : null;
   const outcomeIdentityRef = useRef({ workspaceRoot: boundKey, sessionId: state.sessionId });
   useEffect(() => {
@@ -2024,6 +2028,16 @@ export function useAgent(serverUrl = "", explicitToken?: string, embedded = fals
         } catch {
           return; // ignore malformed frames
         }
+        if (message.type === "hello") {
+          for (const request of terminalRequestsRef.current.values()) {
+            if (request.socket === socket) continue;
+            for (const listener of terminalListenersRef.current.get(request.message.terminalId)?.onData ?? []) {
+              listener("\r\n[Connection restored; starting a new terminal session.]\r\n");
+            }
+            request.socket = socket;
+            socket.send(JSON.stringify(request.message));
+          }
+        }
         if (message.type === "terminal_data") {
           const listeners = terminalListenersRef.current.get(message.terminalId);
           if (listeners) {
@@ -2032,6 +2046,8 @@ export function useAgent(serverUrl = "", explicitToken?: string, embedded = fals
           return;
         }
         if (message.type === "terminal_cwd") {
+          const request = terminalRequestsRef.current.get(message.terminalId);
+          if (request) request.message.cwd = message.cwd;
           const listeners = terminalListenersRef.current.get(message.terminalId);
           if (listeners) {
             for (const listener of listeners.onCwd) listener(message.cwd);
@@ -2039,6 +2055,7 @@ export function useAgent(serverUrl = "", explicitToken?: string, embedded = fals
           return;
         }
         if (message.type === "terminal_exit") {
+          terminalRequestsRef.current.delete(message.terminalId);
           const listeners = terminalListenersRef.current.get(message.terminalId);
           if (listeners) {
             for (const listener of listeners.onExit) listener(message.exitCode);
@@ -2046,6 +2063,7 @@ export function useAgent(serverUrl = "", explicitToken?: string, embedded = fals
           return;
         }
         if (message.type === "terminal_error") {
+          terminalRequestsRef.current.delete(message.terminalId);
           const listeners = terminalListenersRef.current.get(message.terminalId);
           if (listeners) {
             for (const listener of listeners.onError) listener(message.message);
@@ -2418,6 +2436,10 @@ export function useAgent(serverUrl = "", explicitToken?: string, embedded = fals
     },
     /** Restart pi-outpost to load updated packages. The caller has had the user confirm. */
     restartServer: () => sendMessage({ type: "restart_server" }),
+    restartSession: () => {
+      dispatch({ type: "settings_apply_started" });
+      sendMessage({ type: "restart_session" });
+    },
     openSideSession: (root: string) => {
       dispatch({ type: "workspace_switching" });
       sendMessage({ type: "open_side_session", root });
@@ -2715,15 +2737,22 @@ export function useAgent(serverUrl = "", explicitToken?: string, embedded = fals
       dispatch({ type: "settings_apply_started" });
       sendMessage({ type: "update_config", ...update });
     },
-    openTerminal: (terminalId: string, cwd?: string, cols?: number, rows?: number) =>
-      sendMessage({ type: "terminal_open", terminalId, cwd, cols, rows }),
+    openTerminal: (terminalId: string, cwd?: string, cols?: number, rows?: number, shellId?: string) => {
+      const message: Extract<ClientMessage, { type: "terminal_open" }> = { type: "terminal_open", terminalId, cwd, cols, rows, ...(shellId ? { shellId } : {}) };
+      terminalRequestsRef.current.set(terminalId, { message, socket: socketRef.current?.readyState === WebSocket.OPEN ? socketRef.current : null });
+      sendMessage(message);
+    },
     sendTerminalInput: (terminalId: string, data: string) =>
       sendMessage({ type: "terminal_input", terminalId, data }),
     getTerminalCwd: (terminalId: string) =>
       sendMessage({ type: "terminal_get_cwd", terminalId }),
-    resizeTerminal: (terminalId: string, cols: number, rows: number) =>
-      sendMessage({ type: "terminal_resize", terminalId, cols, rows }),
+    resizeTerminal: (terminalId: string, cols: number, rows: number) => {
+      const request = terminalRequestsRef.current.get(terminalId);
+      if (request) Object.assign(request.message, { cols, rows });
+      sendMessage({ type: "terminal_resize", terminalId, cols, rows });
+    },
     closeTerminal: (terminalId: string) => {
+      terminalRequestsRef.current.delete(terminalId);
       sendMessage({ type: "terminal_close", terminalId });
       terminalListenersRef.current.delete(terminalId);
     },

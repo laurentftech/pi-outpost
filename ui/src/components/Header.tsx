@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import type { PiPackageInfo } from "@pi-outpost/shared";
+import type { PiPackageInfo, Theme } from "@pi-outpost/shared";
 import type { AgentState } from "../useAgent";
 import { MIN_SESSION_QUERY_LENGTH, type AgentResourceInventory, type GitUnavailable, type SessionSummary, type TreeNode, type WorkspaceInfo } from "@pi-outpost/shared";
 import { ProjectMenu } from "./ProjectMenu";
@@ -72,6 +72,8 @@ interface HeaderProps {
   /** What waits on a restart to run. */
   restartNeeded?: string[];
   theme: "light" | "dark";
+  themePreference?: Theme;
+  onSetTheme?: (theme: Theme) => void;
   showThemeToggle: boolean;
   /** Extension setStatus() key/text pairs — see extensions.md#custom-ui. */
   statuses: Record<string, string>;
@@ -106,6 +108,7 @@ interface HeaderProps {
   settingsPickerBlocked?: boolean;
   /** Settings opened a picker, so the other header controls close theirs. */
   onSettingsPickerOpened?: () => void;
+  onRestartSession?: () => void;
   onUpdateConfig: (update: {
     sandbox?: { root: string; allowWrite: boolean; allowBash: boolean; writableRoot?: string };
     userSkillPaths?: string[];
@@ -561,17 +564,45 @@ function ExtensionStatuses({ statuses, bar }: { statuses: Record<string, string>
   );
 }
 
-function ThemeToggle({ theme, onToggle }: { theme: "light" | "dark"; onToggle: () => void }) {
+function ThemeToggle({ theme, preference = theme, onToggle, onSetTheme }: { theme: "light" | "dark"; preference?: Theme; onToggle: () => void; onSetTheme?: (theme: Theme) => void }) {
+  const [open, setOpen] = useState(false);
+  const trigger = useRef<HTMLButtonElement>(null);
+  const ref = useClickOutside(() => setOpen(false));
+  useEffect(() => {
+    if (open) ref.current?.querySelector<HTMLElement>('[aria-checked="true"]')?.focus();
+  }, [open]);
+  const label = { light: "Light", dark: "Dark", system: "System" }[preference];
   return (
+    <div ref={ref} className="relative" onKeyDown={event => {
+      if (event.key === "Escape") { event.stopPropagation(); setOpen(false); trigger.current?.focus(); }
+      if (open && ["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) {
+        event.preventDefault();
+        const items = Array.from(ref.current?.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]') ?? []);
+        const current = items.findIndex(item => item.matches(":focus"));
+        const next = event.key === "Home" ? 0 : event.key === "End" ? items.length - 1 : (current + (event.key === "ArrowDown" ? 1 : -1) + items.length) % items.length;
+        items[next]?.focus();
+      }
+    }}>
     <button
+      ref={trigger}
       type="button"
-      onClick={onToggle}
-      title={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
-      aria-label={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
+      onClick={() => setOpen(value => !value)}
+      title={`Theme: ${label}`}
+      aria-label={`Theme: ${label}`}
+      aria-haspopup="menu"
+      aria-expanded={open}
       className={`${HEADER_CONTROL} border-zinc-300 text-zinc-500 hover:border-zinc-400 hover:text-zinc-700 dark:border-zinc-800 dark:text-zinc-400 dark:hover:border-zinc-600 dark:hover:text-zinc-200`}
     >
-      {theme === "dark" ? "☀" : "☾"}
+      {preference === "system" ? "◐" : theme === "dark" ? "☾" : "☀"}
     </button>
+    {open && <div role="menu" aria-label="Theme" className="absolute right-0 top-full z-40 mt-2 min-w-32 rounded-lg border border-zinc-300 bg-white p-1 shadow-lg dark:border-zinc-700 dark:bg-zinc-900">
+      {(["light", "dark", "system"] as const).map(value => <button key={value} role="menuitemradio" aria-checked={preference === value} type="button" className="block w-full rounded px-3 py-1.5 text-left text-xs text-zinc-700 hover:bg-zinc-100 focus:bg-zinc-100 dark:text-zinc-200 dark:hover:bg-zinc-800 dark:focus:bg-zinc-800" onClick={() => {
+        if (onSetTheme) onSetTheme(value);
+        else if (value !== theme) onToggle();
+        setOpen(false); trigger.current?.focus();
+      }}>{value === "light" ? "Light" : value === "dark" ? "Dark" : "System"}</button>)}
+    </div>}
+    </div>
   );
 }
 
@@ -695,7 +726,7 @@ export function Header(props: HeaderProps) {
             &gt;_ terminal
           </button>
         )}
-        {props.showThemeToggle && <ThemeToggle theme={props.theme} onToggle={props.onToggleTheme} />}
+        {props.showThemeToggle && <ThemeToggle theme={props.theme} preference={props.themePreference} onSetTheme={props.onSetTheme} onToggle={props.onToggleTheme} />}
         <button
           type="button"
           onClick={props.onNewSession}
@@ -759,6 +790,7 @@ export function Header(props: HeaderProps) {
           onCloseServerBrowser={props.onCloseServerBrowser}
           pickerBlocked={props.settingsPickerBlocked}
           onPickerOpened={props.onSettingsPickerOpened}
+          onRestartSession={props.onRestartSession}
           onUpdateConfig={props.onUpdateConfig}
           onSuggestAgentResourceClonePath={props.onSuggestAgentResourceClonePath}
           onCloneAgentResourceRepository={props.onCloneAgentResourceRepository}

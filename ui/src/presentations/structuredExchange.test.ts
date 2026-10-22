@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { beforeAll, describe, it, expect } from "vitest";
 import {
   displayLabel,
   elementRole,
@@ -420,20 +420,29 @@ describe("producer text can never become diagram structure", () => {
     expect(mermaid.split("\n").filter(hasArrow)).toHaveLength(1);
   });
 
-  it("stays parseable by mermaid itself", async () => {
-    const mermaid = (await import("mermaid")).default;
-    mermaid.initialize({ startOnLoad: false, securityLevel: "strict", suppressErrorRendering: true });
+  describe("real Mermaid parser", () => {
+    let mermaid: typeof import("mermaid")["default"];
+    beforeAll(async () => {
+      // Cold imports also load each diagram's parser lazily. Keep that setup out
+      // of the hostile-input assertions' timeout, particularly on Windows.
+      mermaid = (await import("mermaid")).default;
+      mermaid.initialize({ startOnLoad: false, securityLevel: "strict", suppressErrorRendering: true });
+      await mermaid.parse("sequenceDiagram\nA->>B: ready");
+      await mermaid.parse("graph TD\nA-->B");
+    }, 30_000);
 
-    for (const hostile of HOSTILE) {
-      await expect(
-        mermaid.parse(toMermaid(sequenceOf([hostile, "Plain"]))!),
-        `sequence for ${JSON.stringify(hostile)}`,
-      ).resolves.toBeTruthy();
-      await expect(
-        mermaid.parse(toMermaid(graphOf([hostile, "Plain"]))!),
-        `graph for ${JSON.stringify(hostile)}`,
-      ).resolves.toBeTruthy();
-    }
+    it("stays parseable by mermaid itself", async () => {
+      for (const hostile of HOSTILE) {
+        await expect(
+          mermaid.parse(toMermaid(sequenceOf([hostile, "Plain"]))!),
+          `sequence for ${JSON.stringify(hostile)}`,
+        ).resolves.toBeTruthy();
+        await expect(
+          mermaid.parse(toMermaid(graphOf([hostile, "Plain"]))!),
+          `graph for ${JSON.stringify(hostile)}`,
+        ).resolves.toBeTruthy();
+      }
+    });
   });
 
   it("is still deterministic under hostile input", () => {

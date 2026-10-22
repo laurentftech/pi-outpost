@@ -208,17 +208,28 @@ describe("Header", () => {
       });
     });
 
-    it("offers the theme toggle only when branding allows it", () => {
-      const { rerenderWith, onToggleTheme } = setup({ theme: "light" });
-      fireEvent.click(screen.getByRole("button", { name: "Switch to dark theme" }));
-      expect(onToggleTheme).toHaveBeenCalled();
-      rerenderWith({ showThemeToggle: false });
-      expect(screen.queryByRole("button", { name: /Switch to/ })).not.toBeInTheDocument();
+    it("ChooseSystemTheme: offers Light, Dark and System with the current preference marked", () => {
+      const onSetTheme = vi.fn();
+      setup({ theme: "dark", themePreference: "system", onSetTheme });
+      fireEvent.click(screen.getByRole("button", { name: "Theme: System" }));
+      expect(screen.getByRole("menuitemradio", { name: "System" })).toHaveAttribute("aria-checked", "true");
+      fireEvent.click(screen.getByRole("menuitemradio", { name: "System" }));
+      expect(onSetTheme).toHaveBeenCalledWith("system");
+      expect(screen.queryByRole("menu")).not.toBeInTheDocument();
     });
 
-    it("names the toggle after where it takes you", () => {
+    it("offers the theme toggle only when branding allows it", () => {
+      const { rerenderWith, onToggleTheme } = setup({ theme: "light" });
+      fireEvent.click(screen.getByRole("button", { name: "Theme: Light" }));
+      fireEvent.click(screen.getByRole("menuitemradio", { name: "Dark" }));
+      expect(onToggleTheme).toHaveBeenCalled();
+      rerenderWith({ showThemeToggle: false });
+      expect(screen.queryByRole("button", { name: /Theme:/ })).not.toBeInTheDocument();
+    });
+
+    it("names the theme control after the current preference", () => {
       setup({ theme: "dark" });
-      expect(screen.getByRole("button", { name: "Switch to light theme" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Theme: Dark" })).toBeInTheDocument();
     });
 
     it("shows the branch chip only when git is available", () => {

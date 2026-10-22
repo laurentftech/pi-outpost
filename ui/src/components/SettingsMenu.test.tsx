@@ -46,9 +46,32 @@ const openAccounts = () => fireEvent.click(screen.getByText(/^Accounts/));
 const openAccount = (id: string) => fireEvent.click(screen.getByTestId(`account-${id}`).querySelector("summary")!);
 const field = (name: RegExp) => screen.getByRole("textbox", { name });
 const check = (name: RegExp) => screen.getByRole("checkbox", { name });
-const applyButton = () => screen.getByRole("button", { name: /Apply/ });
+const applyButton = () => screen.getByRole("button", { name: /Apply|^Restart session$|^Restarting…$/ });
 
 describe("SettingsMenu", () => {
+  it("BrowseCredits: opens credits without versions and preserves settings on return", () => {
+    setup({ versions: undefined });
+    openMenu();
+    const root = field(/^Root/);
+    fireEvent.change(root, { target: { value: "/draft" } });
+    fireEvent.click(screen.getByRole("button", { name: "Credits →" }));
+    expect(screen.getByRole("heading", { name: "Credits", exact: true })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Project website" })).toHaveAttribute("href", "https://laurentftech.github.io/pi-outpost/");
+    expect(screen.getByText("draw.io / diagrams.net")).toBeVisible();
+    expect(screen.getAllByRole("link")).toHaveLength(1);
+    expect(document.querySelector("details")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Third-party notices" }));
+    expect(screen.getAllByText(/TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION/)[0]).toBeVisible();
+    expect(screen.getByText(/Copyright \(c\) Meta Platforms/)).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: /Back to credits/ }));
+    expect(screen.getByText("Open-source acknowledgements")).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: /Back to settings/ }));
+    expect(field(/^Root/)).toHaveValue("/draft");
+    fireEvent.click(screen.getByRole("button", { name: "Credits →" }));
+    openMenu();
+    openMenu();
+    expect(screen.getByRole("heading", { name: "Settings", exact: true })).toBeInTheDocument();
+  });
   it("shows account sources and actions, and makes accounts read-only under the credentials lock", () => {
     const start = vi.fn();
     const logout = vi.fn();
@@ -279,16 +302,25 @@ describe("SettingsMenu", () => {
   });
 
   describe("applying the sandbox", () => {
-    it("offers no Apply until something in the section has changed, so an untouched sandbox is never rewritten", () => {
-      const { onUpdateConfig } = setup({ sandbox: sandbox() });
+    it("RestartWithoutChanges: restarts without submitting an untouched sandbox", () => {
+      const restart = vi.fn();
+      const { onUpdateConfig } = setup({ sandbox: sandbox(), onRestartSession: restart });
       openMenu();
-      expect(applyButton()).toBeDisabled();
-      fireEvent.click(applyButton());
+      fireEvent.click(screen.getByRole("button", { name: "Restart session" }));
+      expect(restart).toHaveBeenCalledOnce();
       expect(onUpdateConfig).not.toHaveBeenCalled();
       fireEvent.click(check(/Allow write/));
       expect(applyButton()).toBeEnabled();
       fireEvent.click(check(/Allow write/));
-      expect(applyButton()).toBeDisabled();
+      expect(screen.getByRole("button", { name: "Restart session" })).toBeEnabled();
+    });
+
+    it("RestartWithoutSandbox: remains available without sandbox settings", () => {
+      const restart = vi.fn();
+      setup({ sandbox: null, onRestartSession: restart });
+      openMenu();
+      fireEvent.click(screen.getByRole("button", { name: "Restart session" }));
+      expect(restart).toHaveBeenCalledOnce();
     });
 
     it("with several projects open, shows the agent's permissions and this project's own folder, and no root to edit", () => {

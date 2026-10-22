@@ -3,8 +3,75 @@ import { act, fireEvent, render, screen } from "@testing-library/react";
 import { TerminalPanel } from "./TerminalPanel";
 import { ThemeContext } from "../theme/ThemeContext";
 import { Terminal } from "@xterm/xterm";
+import { TERMINAL_PANEL_HEIGHT } from "../util/panelWidth";
 
 describe("TerminalPanel", () => {
+  it("ResizeTerminalHeight: upward dragging grows the panel, commits and restores its height", () => {
+    localStorage.removeItem(TERMINAL_PANEL_HEIGHT.storageKey);
+    const props = { open: true, onClose() {} };
+    const first = render(<TerminalPanel {...props} />);
+    const handle = screen.getByRole("separator", { name: "Resize Terminal panel" });
+    expect(handle).toHaveAttribute("aria-orientation", "horizontal");
+    fireEvent.pointerDown(handle, { pointerId: 4, clientY: 500, button: 0, isPrimary: true });
+    fireEvent.pointerMove(handle, { pointerId: 4, clientY: 400 });
+    expect(handle.parentElement).toHaveStyle({ height: "388px" });
+    expect(localStorage.getItem(TERMINAL_PANEL_HEIGHT.storageKey)).toBeNull();
+    fireEvent.pointerUp(handle, { pointerId: 4 });
+    expect(localStorage.getItem(TERMINAL_PANEL_HEIGHT.storageKey)).toBe("388");
+    fireEvent.click(screen.getByTitle("Maximize Terminal Panel"));
+    fireEvent.click(screen.getByTitle("Restore Terminal Panel"));
+    expect(screen.getByRole("separator").parentElement).toHaveStyle({ height: "388px" });
+    first.unmount();
+    render(<TerminalPanel {...props} />);
+    expect(screen.getByRole("separator").parentElement).toHaveStyle({ height: "388px" });
+    localStorage.removeItem(TERMINAL_PANEL_HEIGHT.storageKey);
+  });
+
+  it("TerminalHeightBoundsAndCancel: clamps height and reverts cancelled drags", () => {
+    localStorage.removeItem(TERMINAL_PANEL_HEIGHT.storageKey);
+    render(<TerminalPanel open onClose={() => {}} />);
+    const handle = screen.getByRole("separator");
+    fireEvent.pointerDown(handle, { pointerId: 4, clientY: 500, button: 0, isPrimary: true });
+    fireEvent.pointerMove(handle, { pointerId: 4, clientY: -1000 });
+    expect(handle).toHaveAttribute("aria-valuenow", "640");
+    fireEvent.pointerMove(handle, { pointerId: 4, clientY: 2000 });
+    expect(handle).toHaveAttribute("aria-valuenow", "160");
+    fireEvent.pointerCancel(handle, { pointerId: 4 });
+    expect(handle).toHaveAttribute("aria-valuenow", "288");
+    expect(localStorage.getItem(TERMINAL_PANEL_HEIGHT.storageKey)).toBeNull();
+    fireEvent.keyDown(handle, { key: "ArrowUp" });
+    expect(handle).toHaveAttribute("aria-valuenow", "304");
+    fireEvent.keyDown(handle, { key: "ArrowDown" });
+    expect(handle).toHaveAttribute("aria-valuenow", "288");
+    fireEvent.keyDown(handle, { key: "Home" });
+    localStorage.removeItem(TERMINAL_PANEL_HEIGHT.storageKey);
+  });
+
+  it("ChooseShellPerTab: the selected shell applies only to new tabs", () => {
+    const openTerminal = vi.fn();
+    render(<TerminalPanel open onClose={() => {}} openTerminal={openTerminal} shells={[{ id: "powershell", label: "Windows PowerShell" }, { id: "git-bash", label: "Git Bash" }]} />);
+    expect(openTerminal).toHaveBeenCalledTimes(1);
+    fireEvent.change(screen.getByRole("combobox", { name: "Shell for new terminal" }), { target: { value: "git-bash" } });
+    expect(openTerminal).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByTitle("New Terminal Tab"));
+    expect(openTerminal).toHaveBeenLastCalledWith(expect.any(String), undefined, expect.any(Number), expect.any(Number), "git-bash");
+    fireEvent.change(screen.getByRole("combobox"), { target: { value: "powershell" } });
+    fireEvent.click(screen.getByTitle("New Terminal Tab"));
+    expect(openTerminal).toHaveBeenLastCalledWith(expect.any(String), undefined, expect.any(Number), expect.any(Number), "powershell");
+    expect(new Set(openTerminal.mock.calls.map(call => call[0])).size).toBe(3);
+  });
+
+  it("ShellListChanges: a disappeared choice resets to the server default", () => {
+    const openTerminal = vi.fn();
+    const props = { open: true, onClose() {}, openTerminal };
+    const { rerender } = render(<TerminalPanel {...props} shells={[{ id: "bash", label: "Bash" }]} />);
+    fireEvent.change(screen.getByRole("combobox"), { target: { value: "bash" } });
+    rerender(<TerminalPanel {...props} shells={[{ id: "powershell", label: "PowerShell" }]} />);
+    expect(screen.getByRole("combobox")).toHaveValue("");
+    fireEvent.click(screen.getByTitle("New Terminal Tab"));
+    expect(openTerminal.mock.calls.at(-1)).toHaveLength(4);
+  });
+
   const defaultProps = {
     open: true,
     onClose: vi.fn(),

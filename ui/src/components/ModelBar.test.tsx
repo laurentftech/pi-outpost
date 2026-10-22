@@ -200,7 +200,8 @@ describe("ModelBar controls", () => {
 
   it("reports how full the context is, and what compaction would act on", () => {
     renderFull({ contextUsage: { tokens: 45_000, contextWindow: 200_000, percent: 22.5 } });
-    const button = screen.getByTitle(/45,000 \/ 200,000 tokens/);
+    const button = screen.getByRole("button", { name: "23%" });
+    expect(button).toHaveAttribute("title", `${(45_000).toLocaleString()} / ${(200_000).toLocaleString()} tokens — click to compact`);
     expect(button.textContent).toContain("23%");
   });
 

@@ -14,6 +14,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { connect, makeWorkspace, startServer } from "./harness.mjs";
+import fs from "node:fs/promises";
+import path from "node:path";
 
 const openTerminal = async (client, terminalId) => {
   client.send({ type: "terminal_open", terminalId, cols: 80, rows: 24 });
@@ -21,6 +23,39 @@ const openTerminal = async (client, terminalId) => {
     (m) => (m.type === "terminal_error" || m.type === "terminal_data" || m.type === "terminal_exit") && m.terminalId === terminalId,
   );
 };
+
+test("UnknownShellIsRefused: only advertised shell identifiers may be opened", async (t) => {
+  const root = await makeWorkspace();
+  const server = await startServer(root, { sandbox: undefined, terminal: { enabled: true } });
+  t.after(() => server.stop());
+  const client = connect(server.wsUrl());
+  t.after(() => client.close());
+  const hello = await client.waitFor(m => m.type === "hello");
+  const shells = (hello.state ?? hello).terminal.shells;
+  assert.ok(shells.length > 0);
+  assert.ok(shells.every(shell => typeof shell.id === "string" && typeof shell.label === "string" && !("shell" in shell)));
+  client.send({ type: "terminal_open", terminalId: "unknown-shell", shellId: "../../arbitrary-command" });
+  const answer = await client.waitFor(m => m.type === "terminal_error" && m.terminalId === "unknown-shell");
+  assert.match(answer.message, /no longer available/);
+  client.send({ type: "terminal_input", terminalId: "unknown-shell", data: "echo should-not-run\r" });
+  await assert.rejects(client.waitFor(m => m.type === "terminal_data" && m.terminalId === "unknown-shell", 500));
+});
+
+test("InstalledShellsOnly: removing an advertised executable refuses a stale choice", async (t) => {
+  const root = await makeWorkspace();
+  const executable = path.join(root, process.platform === "win32" ? "removed-shell.exe" : "removed-shell");
+  await fs.writeFile(executable, "#!/bin/sh\n", { mode: 0o755 });
+  const server = await startServer(root, { sandbox: undefined, terminal: { enabled: true, shell: executable } });
+  t.after(() => server.stop());
+  const client = connect(server.wsUrl());
+  t.after(() => client.close());
+  const hello = await client.waitFor(m => m.type === "hello");
+  assert.ok((hello.state ?? hello).terminal.shells.some(shell => shell.id === "configured"));
+  await fs.unlink(executable);
+  client.send({ type: "terminal_open", terminalId: "removed", shellId: "configured" });
+  const answer = await client.waitFor(m => m.type === "terminal_error" && m.terminalId === "removed");
+  assert.match(answer.message, /no longer available/);
+});
 
 test("a server with no terminal configured advertises none and refuses to open one", async (t) => {
   const root = await makeWorkspace();

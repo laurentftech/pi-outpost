@@ -15,6 +15,8 @@ import path from "node:path";
 import type * as pty from "node-pty";
 import type { WebSocket } from "ws";
 
+import { installedTerminalShells } from "./terminalShells.ts";
+
 const execFileAsync = promisify(execFile);
 
 let ptyModule: typeof pty | null = null;
@@ -324,7 +326,7 @@ export class TerminalManager {
 
   /**
    * Determine the default shell for the host platform.
-   * On Windows: Git Bash -> PowerShell -> cmd.
+   * On Windows: PowerShell -> cmd. Git Bash is an explicit tab choice.
    * On Unix: $SHELL (or /bin/zsh on macOS, /bin/bash on Linux) with login shell args ["-l"].
    * Confined on macOS: interactive, not login (see CONFINED_MAC_SHELL_ARGS).
    */
@@ -337,14 +339,7 @@ export class TerminalManager {
     }
 
     if (process.platform === "win32") {
-      // Git Bash cannot start inside the sandbox runner's AppContainer: MSYS2 creates
-      // global named objects (\\BaseNamedObjects) a container may not. PowerShell can.
-      const gitBash = options?.confined ? undefined : findWindowsGitBash(options?.gitPath);
-      if (gitBash) {
-        return { shell: gitBash, args: ["-l"] };
-      }
-
-      // 2. PowerShell: check standard Windows installation
+      // PowerShell: check standard Windows installation
       const systemRoot = process.env.SystemRoot || process.env.windir || "C:\\Windows";
       const powershellPath = path.join(systemRoot, "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
       if (fsSync.existsSync(powershellPath)) {
@@ -366,6 +361,15 @@ export class TerminalManager {
     const shell = process.env.SHELL || (os.platform() === "darwin" ? "/bin/zsh" : "/bin/bash");
     // Login shell on Unix to source .zprofile / .bash_profile
     return { shell, args: unixShellArgs(options?.confined) };
+  }
+
+  getShells(options: { shell?: string; shellArgs?: string[]; gitPath?: string; confined?: boolean } = {}) {
+    return installedTerminalShells({
+      defaultShell: this.getDefaultShell(options),
+      configured: !!options.shell,
+      confined: options.confined,
+      gitBash: options.confined ? undefined : findWindowsGitBash(options.gitPath),
+    });
   }
 
   /**

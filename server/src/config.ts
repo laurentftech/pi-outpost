@@ -129,7 +129,7 @@ export interface TerminalConfig {
   enabled: boolean;
   /**
    * Path to the shell executable to spawn (e.g. "/bin/zsh", "bash.exe", "powershell.exe").
-   * When unset, the platform default is automatically detected (Git Bash -> PowerShell -> cmd on Windows; $SHELL -> zsh -> bash on Unix).
+   * When unset, the platform default is automatically detected (PowerShell -> cmd on Windows; $SHELL -> zsh -> bash on Unix).
    */
   shell?: string;
   /**

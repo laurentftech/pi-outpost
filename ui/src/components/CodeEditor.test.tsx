@@ -110,6 +110,45 @@ describe("CodeEditor git gutter", () => {
   }
   const marks = (container: HTMLElement) => Array.from(container.querySelectorAll<HTMLElement>(".cm-git-gutter [data-git-change]")).map((mark) => mark.dataset.gitChange);
 
+  it("DistantChangesInOverview: all hunks including end deletion have right-side navigation markers", () => {
+    const lines = Array.from({ length: 2000 }, (_, index) => `line ${index}`);
+    const draft = [...lines]; draft[4] = "changed"; draft.splice(1000, 0, "added"); draft.pop();
+    const { container } = render(<GutterEditor initial={draft.join("\n")} baseline={lines.join("\n")} />);
+    const overview = container.querySelector(".cm-git-overview")!;
+    const buttons = Array.from(overview.querySelectorAll<HTMLButtonElement>("button"));
+    expect(buttons.map(button => button.dataset.gitChange)).toEqual(["modified", "added", "deleted"]);
+    expect(buttons.map(button => button.dataset.line)).toEqual(["5", "1001", "2000"]);
+    expect(buttons.every(button => button.getAttribute("aria-label")?.includes("jump to change"))).toBe(true);
+    expect(overview.parentElement).toHaveClass("cm-editor");
+    expect(overview.closest(".cm-scroller")).toBeNull();
+  });
+
+  it.each([false, true])("NavigateFromOverview: jumps without changing the document (readOnly=%s)", readOnly => {
+    const { container, getByTestId } = render(<GutterEditor readOnly={readOnly} initial={"a\nB\nc"} baseline={"a\nb\nc"} />);
+    fireEvent.click(container.querySelector(".cm-git-overview button")!);
+    const view = EditorView.findFromDOM(container.querySelector(".cm-content")!)!;
+    expect(view.state.selection.main.head).toBe(2);
+    expect(view.state.doc.toString()).toBe("a\nB\nc");
+    expect(getByTestId("draft").textContent).toBe("a\nB\nc");
+  });
+
+  it("OverviewFollowsCurrentDocument: changes, undo, HEAD refresh, and missing HEAD clear current marks", () => {
+    const { container, getByText } = render(<GutterEditor initial="a" baseline="a" />);
+    const overview = container.querySelector<HTMLElement>(".cm-git-overview")!;
+    expect(overview.hidden).toBe(true);
+    typeInEditor("a\nnew");
+    expect(overview.querySelectorAll("button")).toHaveLength(1);
+    typeInEditor("a");
+    expect(overview.querySelectorAll("button")).toHaveLength(0);
+    typeInEditor("a\nnew");
+    fireEvent.click(getByText("commit the draft"));
+    expect(overview.hidden).toBe(true);
+    typeInEditor("changed");
+    fireEvent.click(getByText("no head"));
+    expect(overview.hidden).toBe(true);
+    expect(overview.querySelectorAll("button")).toHaveLength(0);
+  });
+
   // openlore: scenario=ChangedLinesAreMarked spec=git
   it("ChangedLinesAreMarked: a changed line, an added line and a removal, each marked once against HEAD", () => {
     const { container } = render(<GutterEditor initial={"a\nB\nc\nadded\nd"} baseline={"a\nb\nc\nd\ne"} />);

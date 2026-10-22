@@ -5,6 +5,9 @@ import { WebLinksAddon } from "@xterm/addon-web-links";
 import { ThemeContext } from "../theme/ThemeContext";
 import type { ConfinementVerdict } from "@pi-outpost/shared";
 import { ConfinementLock } from "./ConfinementLock";
+import { terminalKeyboardHandler } from "./terminalKeyboard";
+import { PanelResizeHandle, useResizablePanelWidth } from "./PanelResizeHandle";
+import { TERMINAL_PANEL_HEIGHT } from "../util/panelWidth";
 import type {
   TerminalCwdListener,
   TerminalDataListener,
@@ -23,7 +26,8 @@ export interface TerminalPanelProps {
   /** Why no terminal can be opened (the configured sandbox runner is unusable). */
   unavailable?: string;
   onSetWorkspaceRoot?(root: string): void;
-  openTerminal?(terminalId: string, cwd?: string, cols?: number, rows?: number): void;
+  shells?: Array<{ id: string; label: string }>;
+  openTerminal?(terminalId: string, cwd?: string, cols?: number, rows?: number, shellId?: string): void;
   sendTerminalInput?(terminalId: string, data: string): void;
   getTerminalCwd?(terminalId: string): void;
   resizeTerminal?(terminalId: string, cols: number, rows: number): void;
@@ -40,11 +44,13 @@ export interface TerminalPanelProps {
 }
 
 interface TabItem {
+  shellId?: string;
   id: string;
   title: string;
 }
 
 interface SingleTerminalViewProps {
+  shellId?: string;
   id: string;
   cwd?: string;
   isActive: boolean;
@@ -126,6 +132,7 @@ function shortenPath(p: string): string {
 
 function SingleTerminalView({
   id,
+  shellId,
   cwd,
   isActive,
   isPanelOpen,
@@ -195,6 +202,12 @@ function SingleTerminalView({
     term.open(containerRef.current);
     fitAddon.fit();
 
+    term.attachCustomKeyEventHandler(terminalKeyboardHandler(
+      term,
+      text => navigator.clipboard.writeText(text),
+      () => term.writeln("\r\n[Clipboard copy was refused by the browser.]"),
+    ));
+
     terminalRef.current = term;
     fitAddonRef.current = fitAddon;
 
@@ -204,7 +217,7 @@ function SingleTerminalView({
     });
 
     // Notify server to spawn shell
-    callbacksRef.current.openTerminal?.(id, callbacksRef.current.cwd, term.cols, term.rows);
+    callbacksRef.current.openTerminal?.(id, callbacksRef.current.cwd, term.cols, term.rows, ...(shellId ? [shellId] as const : []));
 
     let cwdDebounceTimer: ReturnType<typeof setTimeout> | null = null;
     let lastCwdQueryTime = 0;
@@ -311,6 +324,7 @@ function SingleTerminalView({
 }
 
 export function TerminalPanel({
+  shells,
   open,
   onClose,
   cwd,
@@ -325,6 +339,8 @@ export function TerminalPanel({
   closeTerminal,
   subscribeTerminal,
 }: TerminalPanelProps) {
+  const [selectedShellId, setSelectedShellId] = useState("");
+  const shellId = shells?.some(shell => shell.id === selectedShellId) ? selectedShellId : "";
   const [hasBeenOpened, setHasBeenOpened] = useState(open);
 
   useEffect(() => {
@@ -337,6 +353,7 @@ export function TerminalPanel({
   const [editingTitle, setEditingTitle] = useState("");
   const [cwdMap, setCwdMap] = useState<Record<string, string>>({});
   const [isMaximized, setIsMaximized] = useState(false);
+  const heightResize = useResizablePanelWidth(TERMINAL_PANEL_HEIGHT, "y");
   const [syncedConfirm, setSyncedConfirm] = useState(false);
   const clearHandlersRef = useRef<Map<string, () => void>>(new Map());
 
@@ -350,11 +367,11 @@ export function TerminalPanel({
 
   const addTab = useCallback(() => {
     const nextNum = tabs.length + 1;
-    const newId = `term-${Date.now()}-${nextNum}`;
-    const newTab: TabItem = { id: newId, title: `terminal ${nextNum}` };
+    const newId = `term-${crypto.randomUUID()}`;
+    const newTab: TabItem = { id: newId, title: `terminal ${nextNum}`, ...(shellId ? { shellId } : {}) };
     setTabs((prev) => [...prev, newTab]);
     setActiveTabId(newId);
-  }, [tabs.length]);
+  }, [tabs.length, shellId]);
 
   const removeTab = useCallback(
     (idToRemove: string, e: React.MouseEvent) => {
@@ -432,12 +449,12 @@ export function TerminalPanel({
 
   return (
     <div
-      className={`flex-col border-t border-zinc-200 dark:border-zinc-800 bg-zinc-100 dark:bg-zinc-900 transition-all duration-150 ${
+      style={{ height: isMaximized ? "85vh" : heightResize.width, maxHeight: isMaximized ? "85vh" : "65vh" }}
+      className={`flex-col shrink-0 border-t border-zinc-200 dark:border-zinc-800 bg-zinc-100 dark:bg-zinc-900 ${
         open ? "flex" : "hidden"
-      } ${
-        isMaximized ? "h-[85vh]" : "h-72"
       } relative z-20`}
     >
+      {!isMaximized && <PanelResizeHandle axis="y" label="Resize Terminal panel" width={heightResize.width} config={TERMINAL_PANEL_HEIGHT} separatorProps={heightResize.separatorProps} />}
       {/* Terminal Toolbar */}
       <div className="flex items-center justify-between px-2 py-1 border-b border-zinc-200 dark:border-zinc-800 select-none bg-zinc-50 dark:bg-zinc-950 text-xs">
         {/* Left: Tab list */}
@@ -489,6 +506,13 @@ export function TerminalPanel({
               );
             })}
           </div>
+          {shells && shells.length > 0 && (
+            <select aria-label="Shell for new terminal" value={shellId} onChange={event => setSelectedShellId(event.target.value)} disabled={!!unavailable}
+              className="min-w-0 max-w-40 rounded border border-zinc-300 bg-zinc-50 text-xs text-zinc-800 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-200">
+              <option value="">Default shell</option>
+              {shells.map(shell => <option key={shell.id} value={shell.id}>{shell.label}</option>)}
+            </select>
+          )}
           <button
             onClick={addTab}
             type="button"
@@ -589,6 +613,7 @@ export function TerminalPanel({
           <SingleTerminalView
             key={tab.id}
             id={tab.id}
+            shellId={tab.shellId}
             cwd={cwd}
             isActive={tab.id === activeTabId}
             isPanelOpen={open}

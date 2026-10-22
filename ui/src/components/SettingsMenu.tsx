@@ -1,3 +1,4 @@
+import { Credits } from "./Credits";
 import { useEffect, useRef, useState } from "react";
 import type { PiPackageInfo } from "@pi-outpost/shared";
 import type { AgentState } from "../useAgent";
@@ -120,6 +121,7 @@ interface SettingsMenuProps {
   versions?: { piOutpost: string; piSdk?: string; agent?: string } | null;
   onBrowseServerPath: (path: string) => void;
   onCloseServerBrowser: () => void;
+  onRestartSession?: () => void;
   onUpdateConfig: (update: {
     sandbox?: SandboxConfig;
     userSkillPaths?: string[];
@@ -153,6 +155,7 @@ export function SettingsMenu({
   onCheckPiPackages,
   onUpdatePiPackage,
   onRestartServer,
+  onRestartSession,
   restartNeeded = [],
   tools,
   commands,
@@ -179,6 +182,7 @@ export function SettingsMenu({
   onUpdateAgentResourceRepository = () => {},
 }: SettingsMenuProps) {
   const [open, setOpen] = useState(false);
+  const [creditsOpen, setCreditsOpen] = useState(false);
   const providerPanelRefs = useRef(new Map<string, HTMLDetailsElement>());
   const [resourcesOpen, setResourcesOpen] = useState(false);
   const settingsButtonRef = useRef<HTMLButtonElement>(null);
@@ -246,6 +250,7 @@ export function SettingsMenu({
   }, [applyState, applying]);
 
   function close() {
+    setCreditsOpen(false);
     setOpen(false);
     setPicking(null);
     onCloseServerBrowser();
@@ -319,7 +324,7 @@ export function SettingsMenu({
       <button
         ref={settingsButtonRef}
         type="button"
-        onClick={() => setOpen(!open)}
+        onClick={() => { setCreditsOpen(false); if (open) close(); else setOpen(true); }}
         title="Settings"
         aria-label="Settings"
         className={`${HEADER_CONTROL} border-zinc-300 text-zinc-500 hover:border-zinc-400 hover:text-zinc-700 dark:border-zinc-800 dark:text-zinc-400 dark:hover:border-zinc-600 dark:hover:text-zinc-200`}
@@ -329,10 +334,12 @@ export function SettingsMenu({
       {open && (
         <div className="absolute right-0 top-full z-20 mt-1 flex max-h-[80vh] w-[380px] flex-col rounded-lg border border-zinc-200 bg-white shadow-xl dark:border-zinc-700 dark:bg-zinc-900">
           <div className="border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
-            <h2 className="text-sm font-semibold text-zinc-800 dark:text-zinc-200">Settings</h2>
+            {creditsOpen && <button type="button" onClick={() => setCreditsOpen(false)} className="mb-2 text-xs text-zinc-600 hover:underline dark:text-zinc-400">← Back to settings</button>}
+            <h2 className="text-sm font-semibold text-zinc-800 dark:text-zinc-200">{creditsOpen ? "Credits" : "Settings"}</h2>
           </div>
 
           <div className="min-h-0 overflow-y-auto p-4">
+            {creditsOpen ? <Credits /> : <>
             {/* Truthy, not `!== null`: a prop that never arrives must not take the whole
                 panel down with it — every other section here is unrelated to git. */}
             {gitUnavailable && (
@@ -590,7 +597,7 @@ export function SettingsMenu({
               <p className="text-xs text-zinc-400 dark:text-zinc-500">No sandbox configured</p>
             )}
 
-            {sandbox && <div className="mt-4 space-y-2">
+            <div className="mt-4 space-y-2">
               {applyError && (
                 <p role="alert" className="rounded-md border border-red-300 bg-red-50 px-2 py-1 text-xs text-red-700 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-300">
                   {applyError}
@@ -598,16 +605,16 @@ export function SettingsMenu({
               )}
               <button
                 type="button"
-                disabled={applying || !sandboxChanged || (sandbox !== null && !sandboxRoot.trim())}
-                onClick={handleApply}
+                disabled={applying || (sandboxChanged && !sandboxRoot.trim())}
+                onClick={sandboxChanged ? handleApply : onRestartSession}
                 className="w-full rounded-md bg-zinc-800 px-3 py-1.5 text-xs font-medium text-white hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-zinc-200 dark:text-zinc-900 dark:hover:bg-zinc-300"
               >
-                {applying ? "Applying…" : "Apply & restart session"}
+                {applying ? "Restarting…" : sandboxChanged ? "Apply & restart session" : "Restart session"}
               </button>
               <p className="text-[11px] text-zinc-400 dark:text-zinc-500">
-                Saved to the server's configuration file, then the session is rebuilt — the change survives a restart.
+                {sandboxChanged ? "Saved to the server's configuration file, then the session is rebuilt — the change survives a restart." : "Start a fresh session to reload extensions and MCP connections. Settings are kept."}
               </p>
-            </div>}
+            </div>
 
             {/* Versions section */}
             {versions && (
@@ -634,6 +641,8 @@ export function SettingsMenu({
                 </div>
               </section>
             )}
+            <button type="button" onClick={() => setCreditsOpen(true)} className="mt-4 w-full border-t border-zinc-200 pt-3 text-left text-sm text-zinc-600 hover:text-zinc-900 dark:border-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-100">Credits →</button>
+            </>}
           </div>
         </div>
       )}

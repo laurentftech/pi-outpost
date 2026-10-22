@@ -893,6 +893,32 @@ describe("streaming", () => {
 // API methods
 // ---------------------------------------------------------------------------
 describe("API methods", () => {
+  it("TerminalRecoversAfterReconnect: restarts live tabs with their shell, latest cwd and size only once", async () => {
+    const result = await connected();
+    const onData = vi.fn();
+    act(() => {
+      result.current.subscribeTerminal("live", { onData });
+      result.current.openTerminal("live", "/original", 80, 24, "git-bash");
+      result.current.openTerminal("closed", "/original", 80, 24);
+      result.current.closeTerminal("closed");
+      result.current.openTerminal("exited", "/original", 80, 24);
+      mockWs!.receive({ type: "terminal_exit", terminalId: "exited", exitCode: 0 });
+      mockWs!.receive({ type: "terminal_cwd", terminalId: "live", cwd: "/latest" });
+      result.current.resizeTerminal("live", 120, 40);
+    });
+    const previous = mockWs;
+    act(() => result.current.submitToken("new-token"));
+    await waitFor(() => expect(mockWs).not.toBe(previous));
+    act(() => mockWs!.open());
+    const hello = { type: "hello", sessionId: "sess_1", cwd: "/original", model: "", models: [], commands: [], items: [], isStreaming: false, thinkingLevel: "off", contextUsage: null, gitAvailable: false };
+    act(() => mockWs!.receive(hello));
+    const opens = () => mockWs!.sent.map(frame => JSON.parse(frame)).filter(frame => frame.type === "terminal_open");
+    expect(opens()).toEqual([{ type: "terminal_open", terminalId: "live", cwd: "/latest", cols: 120, rows: 40, shellId: "git-bash" }]);
+    expect(onData).toHaveBeenCalledWith(expect.stringContaining("starting a new terminal session"));
+    act(() => mockWs!.receive(hello));
+    expect(opens()).toHaveLength(1);
+  });
+
   it("starts an account sign-in when randomUUID is unavailable on an HTTP LAN origin", async () => {
     vi.stubGlobal("crypto", {
       getRandomValues: (bytes: Uint8Array) => {

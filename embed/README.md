@@ -54,6 +54,10 @@ Strongest first:
 
 So pass `theme` when your page has a look the widget has to match, and leave it out when the deployment's own `branding.defaultTheme` should decide.
 
+The widget's theme menu offers **Light**, **Dark** and **System**. System follows OS
+color-scheme changes and is remembered across visits. Set `branding.allowThemeToggle: false`
+to hide this control when the host alone should choose the theme.
+
 ## Server-rendered apps
 
 Importing the package is safe anywhere, but `mount()` needs a real DOM: it attaches a shadow root to the element you give it. In Next.js, Remix or Astro, call it from an effect (client-side only):
