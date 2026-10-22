@@ -101,6 +101,8 @@ import {
 import {
   allExtensionPaths,
   allSkillPaths,
+  applyDirectories,
+  type AppConfig,
   ConfigWriteError,
   declaredThinkingLevels,
   type EditableSettings,
@@ -200,7 +202,7 @@ import { structuredConformanceFor } from "./structuredExchangeProfiles.ts";
 import { readProjectAppearance } from "@pi-outpost/shared/structured-exchange/project-registry";
 import { STRUCTURED_EXCHANGE_PROFILE_REGISTRY_PATH } from "@pi-outpost/shared/structured-exchange/profile";
 import { replyBlockKey, structuredExchangeBlocks } from "@pi-outpost/shared/structured-exchange/reply-blocks";
-import { checkPiPackages, listPiPackages, packageManagerFor } from "./piPackages.ts";
+import { checkPiPackages, hintPiPackagesBehind, installNewerPiPackage, listPiPackages, runPiPackagesUpdate, unlistedPiPackageSources } from "./piPackages.ts";
 import { createStructuredExchangeFigureToolDefinition } from "./structuredExchangeFigureTool.ts";
 import { createTimelineComparisonToolDefinition } from "./timelineComparisonTool.ts";
 import { createDrawioCheckToolDefinition } from "./drawioTool.ts";
@@ -329,7 +331,14 @@ if (cli.command === "build-exe") {
 // has not written a config yet would be an obstacle invented for its own sake. So the
 // file is read when there is one, and its absence is simply no settings.
 if (cli.command === "update") {
-  const settings = (() => {
+  const settings: {
+    updateCheck?: boolean;
+    offline?: boolean;
+    registry?: string;
+    agentDir?: string;
+    cwd?: string;
+    extensionLock?: boolean;
+  } = (() => {
     try {
       const loaded = loadConfig(LAUNCH_DIR, cli.flags);
       return {
@@ -337,6 +346,8 @@ if (cli.command === "update") {
         offline: loaded.offline,
         registry: loaded.updateRegistry,
         agentDir: loaded.agentDir,
+        cwd: loaded.cwd,
+        extensionLock: loaded.extensionLock,
       };
     } catch (error) {
       // Only *absence* is tolerated, and only because refusing to say what the newest
@@ -345,21 +356,50 @@ if (cli.command === "update") {
       // `--config` path that does not exist, or an invalid `updateCheck`, means the
       // operator asked for settings this command would then have ignored — and
       // ignoring them could mean making a request they had switched off.
-      if (error instanceof NoConfigError) return {};
+      if (error instanceof NoConfigError) {
+        // No file, but the directories still come from the command line and the
+        // environment: the pi packages updated are the ones the server would load.
+        const directories = { cwd: LAUNCH_DIR } as AppConfig;
+        applyDirectories(directories, cli.flags, process.env);
+        return { cwd: directories.cwd, agentDir: directories.agentDir };
+      }
       complain(error);
       process.exit(1);
     }
   })();
 
   const enabled = updateCheckEnabled(settings);
-  process.exit(
-    await runUpdateCommand({
-      version: VERSION,
+  const disabled = enabled ? {} : { checkingDisabled: true, disabledReason: whyCheckingDisabled(settings) };
+  const registry = settings.registry !== undefined ? { registry: settings.registry } : {};
+  // The agent directory the server uses, and the project of the directory the command runs in.
+  const agentDir = settings.agentDir ?? getAgentDir();
+  const cwd = settings.cwd ?? LAUNCH_DIR;
+  const packages = {
+    list: () => listPiPackages(cwd, agentDir),
+    lookup: (packageName: string, installed: string) => fetchLatestVersion(installed, { packageName, ...registry }),
+  };
+  // pi's own flags: --extensions for the packages alone, --all for pi-outpost and then them.
+  const updatesSelf = cli.update.all || !cli.update.extensions;
+  const updatesPackages = cli.update.all || cli.update.extensions;
+
+  let code = 0;
+  if (updatesSelf) {
+    code = await runUpdateCommand({ version: VERSION, checkOnly: cli.update.check, ...disabled, ...registry });
+    if (!updatesPackages && enabled) await hintPiPackagesBehind(packages);
+  }
+  if (updatesPackages) {
+    // Whatever installed pi-outpost: the packages live in the agent directory either way.
+    const packagesCode = await runPiPackagesUpdate({
       checkOnly: cli.update.check,
-      ...(enabled ? {} : { checkingDisabled: true, disabledReason: whyCheckingDisabled(settings) }),
-      ...(settings.registry !== undefined ? { registry: settings.registry } : {}),
-    }),
-  );
+      ...disabled,
+      locked: settings.extensionLock === true,
+      ...packages,
+      unlisted: () => unlistedPiPackageSources(cwd, agentDir),
+      install: (entry) => installNewerPiPackage(cwd, agentDir, entry),
+    });
+    code = code || packagesCode;
+  }
+  process.exit(code);
 }
 
 // Before the configuration is loaded, and that is the entire point: the failure this
@@ -5331,22 +5371,8 @@ async function handleUpdatePiPackage(workspace: Workspace, socket: WebSocket, so
 
   updatingPiPackages.add(entry.name);
   try {
-    try {
-      await (await packageManagerFor(workspace.settings.cwd, AGENT_DIR)).update(entry.source);
-    } catch (error) {
-      answer("failed", `${entry.name} was not updated: ${error instanceof Error ? error.message : String(error)}`);
-      return;
-    }
-    // The package manager returns without a word when it decides not to install — in
-    // pi's offline mode, or when its own look at the registry failed. What is on disk
-    // afterwards is the only answer to "did it update".
-    const installed = (await listPiPackages(workspace.settings.cwd, AGENT_DIR)).find((candidate) => candidate.source === source)?.installed;
-    if (installed === undefined || installed === entry.installed) {
-      const offline = process.env.PI_OFFLINE ? " — pi's offline mode (PI_OFFLINE) is on" : "";
-      answer("failed", `${entry.name} is still at ${entry.installed ?? "no version"}: the package manager installed nothing${offline}`);
-      return;
-    }
-    answer("installed", `${entry.name} ${installed} is installed — restart pi-outpost to use it`);
+    const result = await installNewerPiPackage(workspace.settings.cwd, AGENT_DIR, entry);
+    answer(result.outcome, result.outcome === "installed" ? `${result.message} — restart pi-outpost to use it` : result.message);
   } finally {
     updatingPiPackages.delete(entry.name);
     const roots = new Set(affected.map((open) => open.root).concat(workspace.root));

@@ -798,6 +798,8 @@ pi-outpost logout --provider <name>
 pi-outpost build-exe [options]
                               build a standalone executable from this installation
 pi-outpost update [--check]   move to the newest published version, or just look
+pi-outpost update --extensions [--check]
+                              the same for the agent's pi packages (--all: both)
 ```
 
 | Flag | Effect |
@@ -819,6 +821,8 @@ pi-outpost update [--check]   move to the newest published version, or just look
 | `build-exe --out <path>` | Where to write the executable (default `./pi-outpost`, `.exe` on Windows) |
 | `build-exe --force` | Replace an existing file at that path |
 | `update --check` | Report what is available and install nothing |
+| `update --extensions` | Update the agent's npm pi packages instead of pi-outpost |
+| `update --all` | Update pi-outpost, then those packages |
 
 There is deliberately **no `--token` flag**: a secret on the command line is readable by
 anyone who can list processes. Use `PI_OUTPOST_TOKEN` or the file's `server.token`.
@@ -918,6 +922,16 @@ and **Restart pi-outpost** stops and starts the server again in the same termina
 open window reconnects by itself and conversations are kept. Restarting is refused while an
 agent is running a turn, and is never offered in an embedded widget; `extensionLock` forbids
 updating. A version changed from a terminal (`pi update`) is marked the same way.
+
+From a terminal, `pi-outpost update --extensions` does the same for every npm pi package at
+once — the agent directory's, the one the server uses (`agentDir`, `--agent-dir`), and the
+current directory's project — and `pi-outpost update --all` updates pi-outpost first, then
+them. It works however pi-outpost was installed, the standalone executable included.
+`--check` reports and installs nothing; pinned packages are left as they are; a failed
+lookup, an install that installed nothing or an unreadable `settings.json` exits non-zero;
+`extensionLock` refuses; git and local packages are named and left to `pi update`. The new
+versions run once pi-outpost restarts. A plain `pi-outpost update` ends by naming the
+packages that have a newer version.
 
 What `update` does depends on how this copy was installed, which it works out rather than
 asking:
