@@ -1,0 +1,35 @@
+## 1. Compatibility and design evidence
+- [ ] Run OpenLore orient in the implementation checkout; reconcile shared-package boundaries with current specs and source.
+- [ ] Pin ONLYOFFICE version; document licensing, lifecycle statuses and required network routes.
+- [ ] Probe actual Claude Desktop inline editor, CSP, frame/storage behavior, link opening and browser fallback; record host versions and decide default.
+
+## 2. Shared service and persistence
+- [ ] Extract host-neutral Office orchestration, schemas and descriptions; keep OOXML builders shared.
+- [ ] Implement authenticated principals and explicit cross-adapter mappings.
+- [ ] Implement immutable revisions, atomic commits, checksums, read APIs, revision preconditions and collision handling across processes.
+- [ ] Migrate existing kept documents without rewriting bytes; define persistent quotas, backups and retention separately from legacy temporary mode.
+
+## 3. ONLYOFFICE lifecycle and security
+- [ ] Implement editor sessions, snapshot downloads, document keys and confirmed final-save lifecycle.
+- [ ] Implement editing/saving/recovery exclusion, reconnection, informed abandonment and rejection of stale generations.
+- [ ] Implement scoped single-use launch tickets and browser sessions without credentials in chat/model payloads.
+- [ ] Verify JWT/session binding, replay handling, outbound URL/redirect constraints, file/archive limits and package validation.
+
+## 4. Claude first
+- [ ] Add Office service settings and tools to the stdio adapter and MCP bundle; preserve existing planning configuration.
+- [ ] Add Office MCP App card, app-only launch, download, accurate status and browser fallback; isolate Office CSP from planning resources.
+- [ ] Exercise Claude creation of Word and PowerPoint, manual editing, confirmed saving and a guarded agent update in the running integration.
+
+## 5. Open WebUI reuse
+- [ ] Route document operations through the shared core/service; preserve existing names and download envelopes.
+- [ ] Add read/revision/status information, require base_revision for updates and update tool guidance.
+- [ ] Add the shared editor action while preserving the existing tool authentication boundary and download-only mode.
+
+## 6. Qualification and documentation
+- [ ] Obtain representative teacher fixtures; qualify Word and PowerPoint fidelity, matching fonts and reopening in Microsoft Office.
+- [ ] Explain layout-rebuilding agent operations; refuse unsupported lossless requests or offer a separate copy.
+- [ ] Test cross-process races, save failure/recovery, callback replay, unauthorized access and migration/restart behavior.
+- [ ] Exercise UI happy paths and disruptive interactions with Playwright in running integrations; include stale cards, double clicks, disconnects and failed saves.
+- [ ] Record actual Claude Desktop compatibility separately from the MCP test host; record DS220+ observations without promising capacity.
+- [ ] Update README, Claude and Open WebUI guides, architecture/security docs, bundle configuration and NAS deployment examples.
+- [ ] Complete scenario-to-test matrix by reading assertions; run focused tests, relevant suites, strict OpenSpec validation and bundle validation.
