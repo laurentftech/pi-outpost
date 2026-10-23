@@ -7,6 +7,23 @@ version you had and the one you run now, without going online.
 Releases before 0.41.0 are described on
 [GitHub Releases](https://github.com/laurentftech/pi-outpost/releases).
 
+## [0.49.0] - 2026-10-23
+
+### Added
+
+- **Coloured extension statuses.** Status badges keep the foreground colours, bold,
+  dim, italic and underline styling sent by extensions, both in the header and in
+  the overflow list. Hover titles remain plain text.
+  ([#356](https://github.com/laurentftech/pi-outpost/pull/356))
+- **Release notes readable by agents.** The npm package now carries `CHANGELOG.md`
+  at its root, so agents and tools can read what changed without starting the server.
+  ([#356](https://github.com/laurentftech/pi-outpost/pull/356))
+
+### Changed
+
+- **Pi SDK 1.4.0.** The npm CLI and server use the updated SDK.
+  ([#356](https://github.com/laurentftech/pi-outpost/pull/356))
+
 ## [0.48.0] - 2026-10-23
 
 ### Added
