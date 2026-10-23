@@ -165,6 +165,17 @@ jobs:
           echo "Playwright $installed, browsers from the image at $PLAYWRIGHT_BROWSERS_PATH"
       # web/dist is what the server serves, embed/dist is what the host page imports
       - run: npm run build
+      - name: Capture extension status colours
+        run: npm run test:e2e -- e2e/extension-status-colours.spec.ts
+        env:
+          CI: true
+      - name: Keep status colour previews
+        uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: status-colour-previews
+          path: e2e/test-results/**/status-*.png
+          retention-days: 7
       - run: npm run test:e2e
         env:
           CI: true

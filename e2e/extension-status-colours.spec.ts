@@ -4,7 +4,7 @@ import { expect, test } from "@playwright/test";
 // @ts-expect-error -- shared integration harness is JavaScript
 import { makeWorkspace, startServer } from "../server/test/harness.mjs";
 
-test("extension status ANSI styles survive folding, resizing and a fresh update after reload", async ({ page }) => {
+test("extension status ANSI styles survive folding, resizing and a fresh update after reload", async ({ page }, testInfo) => {
   const root = await makeWorkspace({
     "status.ts": `export default pi => {
       pi.registerCommand("status-colours", { handler: async (_args, ctx) => {
@@ -36,11 +36,13 @@ test("extension status ANSI styles survive folding, resizing and a fresh update 
     await expect(ready).toHaveCSS("font-weight", "600");
     await expect(page.getByTitle("Ready plain")).toBeVisible();
     await assertThemedGauges();
+    await page.screenshot({ path: testInfo.outputPath("status-header.png") });
     await page.setViewportSize({ width: 420, height: 800 });
     const folded = page.getByRole("button", { name: /2 status/ });
     await expect(folded).toBeVisible();
     await folded.click();
     await assertThemedGauges();
+    await page.screenshot({ path: testInfo.outputPath("status-overflow.png") });
     await expect(ready).toHaveCSS("color", "rgb(22, 163, 74)");
     await page.keyboard.press("Escape");
     await expect(page.getByRole("list", { name: "Extension statuses" })).toHaveCount(0);
