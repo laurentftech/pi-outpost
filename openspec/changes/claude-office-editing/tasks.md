@@ -33,3 +33,12 @@
 - [ ] Record actual Claude Desktop compatibility separately from the MCP test host; record DS220+ observations without promising capacity.
 - [ ] Update README, Claude and Open WebUI guides, architecture/security docs, bundle configuration and NAS deployment examples.
 - [ ] Complete scenario-to-test matrix by reading assertions; run focused tests, relevant suites, strict OpenSpec validation and bundle validation.
+
+## 7. Native pi-outpost (required for completion)
+- [ ] Add DOCX/PPTX binary routing to FileViewer with shared rendered page/slide preview, navigation, zoom and enlarge.
+- [ ] Register existing workspace Office files with stable shared identities and project-scoped access, without mounting the workspace into ONLYOFFICE.
+- [ ] Embed the shared editor for writable files; enforce read-only mode and permission revocation server-side.
+- [ ] Coordinate native agent writes and human sessions; add external content-hash conflicts and recoverable workspace/revision publication.
+- [ ] Refresh preview and agent reads after confirmed saves; prevent stale views/callbacks across project switches.
+- [ ] Test native running-app rendering/editing, read-only boundaries, unavailable service, external edits, crash recovery and disruptive UI transitions with Playwright.
+- [ ] Update native usage/configuration documentation and scenario coverage; retain Claude as the first delivery while requiring all three adapters for completion.
