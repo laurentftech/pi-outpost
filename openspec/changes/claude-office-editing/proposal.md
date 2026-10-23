@@ -1,0 +1,23 @@
+# Edit Office documents from Claude with a shared ONLYOFFICE service
+
+## Why
+
+A teacher asks Claude to produce a worksheet or presentation, then needs to adjust its text and layout herself before asking for more changes. Downloading, editing and re-uploading breaks that workflow. Fidelity of DOCX and PPTX content and layout is essential, although ONLYOFFICE cannot promise identical rendering to Microsoft Office.
+
+## What Changes
+
+- Prioritize Claude Desktop: add Office tools and a document card to the existing stdio MCP extension, backed by a separately hosted document service and ONLYOFFICE Docs.
+- Extract reusable Office orchestration from the Open WebUI adapter into a shared package; keep the existing `office/` builders. Share storage, revisions, update rules, editor sessions and save handling across both adapters.
+- Store immutable document revisions; require the revision read by the agent for writes and exclude agent mutations during human editing or unresolved saves.
+- Open the same hosted editor in the MCP App when verified compatible, otherwise through an explicit browser action. Prove Claude compatibility before committing to inline editing.
+- Route existing Open WebUI document operations through the shared implementation, preserving their download responses. Add editing access to the same service without a second editor implementation.
+- Preserve existing planning behavior and its offline MCP resource. Office support is optional and does not require ONLYOFFICE for existing document downloads.
+
+## Impact
+
+New capabilities: `shared-office-documents`, `mcp-office-app`. Extend `openwebui-office-documents`.
+Likely implementation surface: `office/`, `apps-core/` or a new document package, `mcp/src/`, `mcp/viewer/`, `mcp/manifest.json`, `openwebui/src/{office,documents,routes,app,trust,embed,openapi}.ts`, the download card, deployment and user documentation.
+
+The hosted editor introduces browser-to-service and service-to-ONLYOFFICE traffic absent from today's Open WebUI architecture. It requires scoped credentials, explicit network configuration and a new security review. Existing kept documents need migration into revisioned storage; their current expiration policy cannot silently apply to persistent teaching materials.
+
+No implementation, deployment or publishing is included in this proposal. First delivery is an end-to-end Claude flow; Open WebUI reuse is part of the same design and completion criteria.
