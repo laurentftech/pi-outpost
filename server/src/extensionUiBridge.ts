@@ -11,6 +11,7 @@
  * must not live in a function that only the embedded path can reach.
  */
 import { randomUUID } from "node:crypto";
+import { getThemeByName, SYSTEM_THEME_NAME } from "../../node_modules/@earendil-works/pi-coding-agent/dist/modes/interactive/theme/theme.js";
 import type { ExtensionUIRequest, ExtensionUIResponse } from "@pi-outpost/shared";
 
 type PendingExtensionRequest = { resolve: (response: ExtensionUIResponse) => void };
@@ -77,7 +78,7 @@ export class ExtensionUiBridge {
   /**
    * Build the ExtensionUIContext bound to the current AgentSession. TUI-only
    * concerns (custom components, footers/headers, editor replacement, terminal
-   * input, themes) have no web equivalent and are no-ops, same as pi's own RPC
+   * input) have no web equivalent and are no-ops, same as pi's own RPC
    * mode — extensions relying on those still work in the pi CLI, just not here.
    */
   createContext() {
@@ -178,24 +179,16 @@ export class ExtensionUiBridge {
       getEditorComponent() {
         return undefined;
       },
-      // Terminal ANSI theming has no web equivalent. Identity-returning stub (no
-      // colors) rather than throwing, in case an extension reads it defensively.
+      // Extensions such as pi-blackhole style statuses through ctx.ui.theme, not
+      // by writing escapes themselves. Keep the SDK's semantic colours; the web
+      // renderer interprets their ANSI sequences. Like ExtensionRenderer, use a
+      // standalone theme rather than the process-global interactive TUI theme.
       get theme() {
-        const identity = (_color: unknown, text: string) => text;
-        return {
-          fg: identity,
-          bg: identity,
-          bold: (text: string) => text,
-          italic: (text: string) => text,
-          underline: (text: string) => text,
-          inverse: (text: string) => text,
-          strikethrough: (text: string) => text,
-          getFgAnsi: () => "",
-          getBgAnsi: () => "",
-          getColorMode: () => "truecolor" as const,
-          getThinkingBorderColor: () => (text: string) => text,
-          getBashModeBorderColor: () => (text: string) => text,
-        };
+        // Bundled/SEA builds have no SDK JSON files beside them. The SDK's
+        // generated system theme needs no files and still supplies real colours.
+        const theme = getThemeByName("dark") ?? getThemeByName(SYSTEM_THEME_NAME);
+        if (!theme) throw new Error("The Pi extension theme is unavailable");
+        return theme;
       },
       getAllThemes() {
         return [];
@@ -213,3 +206,4 @@ export class ExtensionUiBridge {
     };
   }
 }
+

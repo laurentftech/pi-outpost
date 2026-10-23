@@ -46,9 +46,16 @@ describe("parseAnsi", () => {
   });
 
   it("consumes a 256-colour sequence rather than leaving its digits as text", () => {
-    // The colour is not mapped, but "5;208" must not survive into the output.
+    // A headless SDK can emit indexed colours even without a terminal.
     const segments = parseAnsi(`${sgr("38;5;208")}orange`);
-    expect(segments.map((s) => s.text).join("")).toBe("orange");
+    expect(segments).toEqual([{ text: "orange", color: "rgb(255 135 0)" }]);
+  });
+
+  it("maps indexed basic, cube endpoints and greys, and resets the colour", () => {
+    for (const [index, color] of [[1, "#dc2626"], [9, "#ef4444"], [16, "rgb(0 0 0)"], [231, "rgb(255 255 255)"], [232, "rgb(8 8 8)"], [255, "rgb(238 238 238)"]] as const) {
+      expect(parseAnsi(`${sgr(`38;5;${index}`)}x${sgr("39")}y`)).toEqual([{ text: "x", color }, { text: "y" }]);
+    }
+    expect(parseAnsi(`${sgr("38;5;256")}x`)).toEqual([{ text: "x" }]);
   });
 
   it("drops cursor control, which has no meaning in a div", () => {
@@ -79,3 +86,4 @@ describe("stripAnsi", () => {
     expect(stripAnsi("lint: 3 problems")).toBe("lint: 3 problems");
   });
 });
+

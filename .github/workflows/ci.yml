@@ -32,6 +32,8 @@ jobs:
       - run: npm run typecheck
       - run: npm run build --workspace @pi-outpost/embed
       - run: npm run lint
+      - name: Extension theme and packaged server regressions
+        run: node --import tsx/esm --test --test-timeout=300000 server/test/extensionUiBridge.test.ts server/test/extensionUiBridgeBundled.test.mjs server/test/versionsBundled.test.mjs
 
       # The confined terminal's real test needs landstrip's runner, and only Linux confines.
       # Fetched rather than depended on: the package is platform-specific, and nothing
@@ -165,6 +167,17 @@ jobs:
           echo "Playwright $installed, browsers from the image at $PLAYWRIGHT_BROWSERS_PATH"
       # web/dist is what the server serves, embed/dist is what the host page imports
       - run: npm run build
+      - name: Capture extension status colours
+        run: npm run test:e2e -- e2e/extension-status-colours.spec.ts
+        env:
+          CI: true
+      - name: Keep status colour previews
+        uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: status-colour-previews
+          path: e2e/test-results/**/status-*.png
+          retention-days: 7
       - run: npm run test:e2e
         env:
           CI: true

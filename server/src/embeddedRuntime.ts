@@ -515,7 +515,7 @@ export class EmbeddedRuntime implements AgentRuntime {
   private async bindExtensions(): Promise<void> {
     await this.session.bindExtensions({
       // Cast: structurally satisfies ExtensionUIContext (verified against the SDK's
-      // own RPC-mode implementation); see the `theme` getter for the one gap.
+      // own RPC-mode implementation). The bridge also supplies a real SDK theme.
       uiContext: this.bridge.createContext() as any,
       mode: "rpc",
       shutdownHandler: () => {
