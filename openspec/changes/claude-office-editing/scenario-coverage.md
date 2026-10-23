@@ -63,3 +63,11 @@ At implementation time, replace planned boundaries with exact test files and tit
 | pi-outpost-office-viewer | ProjectSwitchDoesNotLeakTheOldDocument | uncovered | native server integration + running app/Playwright |
 | pi-outpost-office-viewer | UnavailableRenderingIsExplicit | uncovered | native server integration + running app/Playwright |
 | pi-outpost-office-viewer | InterruptedWorkspacePublicationRecovers | uncovered | native server integration + running app/Playwright |
+
+## Open-source-only addition
+
+| Capability | Scenario | Status | Planned test boundary |
+|---|---|---|---|
+| shared-office-documents | CommunityWorksWithoutCommercialEntitlements | uncovered | clean Community integration + dependency/API inventory review |
+| shared-office-documents | APaidOnlyOperationIsNotUsed | uncovered | clean Community integration + dependency/API inventory review |
+| shared-office-documents | DependenciesHaveAnAuditableLicenseInventory | uncovered | clean Community integration + dependency/API inventory review |
