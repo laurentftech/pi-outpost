@@ -9,6 +9,8 @@ test("extension status ANSI styles survive folding, resizing and a fresh update 
     "status.ts": `export default pi => {
       pi.registerCommand("status-colours", { handler: async (_args, ctx) => {
         ctx.ui.setStatus("colour", "\\x1b[32;1mReady\\x1b[0m plain");
+        const t = ctx.ui.theme;
+        ctx.ui.setStatus("blackhole", t.fg("success", "bh") + " " + t.fg("warning", "warning-gauge") + " " + t.fg("error", "error-gauge"));
       }});
     };`,
   });
@@ -22,14 +24,23 @@ test("extension status ANSI styles survive folding, resizing and a fresh update 
     await composer.press("Escape");
     await composer.press("Enter");
     const ready = page.getByText("Ready", { exact: true });
+    const warning = page.getByText("warning-gauge", { exact: true });
+    const error = page.getByText("error-gauge", { exact: true });
+    const assertThemedGauges = async () => {
+      await expect(warning).toHaveAttribute("style", /color:/);
+      await expect(error).toHaveAttribute("style", /color:/);
+      expect(await warning.evaluate((el) => getComputedStyle(el).color)).not.toBe(await error.evaluate((el) => getComputedStyle(el).color));
+    };
     await expect(ready).toBeVisible();
     await expect(ready).toHaveCSS("color", "rgb(22, 163, 74)");
     await expect(ready).toHaveCSS("font-weight", "600");
     await expect(page.getByTitle("Ready plain")).toBeVisible();
+    await assertThemedGauges();
     await page.setViewportSize({ width: 420, height: 800 });
-    const folded = page.getByRole("button", { name: /1 status/ });
+    const folded = page.getByRole("button", { name: /2 status/ });
     await expect(folded).toBeVisible();
     await folded.click();
+    await assertThemedGauges();
     await expect(ready).toHaveCSS("color", "rgb(22, 163, 74)");
     await page.keyboard.press("Escape");
     await expect(page.getByRole("list", { name: "Extension statuses" })).toHaveCount(0);
@@ -43,6 +54,7 @@ test("extension status ANSI styles survive folding, resizing and a fresh update 
     await composer.press("Escape");
     await composer.press("Enter");
     await expect(ready).toHaveCSS("color", "rgb(22, 163, 74)");
+    await assertThemedGauges();
     expect(await page.locator("header").textContent()).not.toContain("\u001b");
   } catch (error) {
     console.log(server.log());
@@ -52,3 +64,4 @@ test("extension status ANSI styles survive folding, resizing and a fresh update 
     await rm(root, { recursive: true, force: true });
   }
 });
+

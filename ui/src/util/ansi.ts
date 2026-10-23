@@ -49,6 +49,19 @@ const BASIC: Record<number, string> = {
   97: "#d4d4d8",
 };
 
+/** Indexed ANSI colour: the basic palette, 6×6×6 cube, then 24 greys. */
+function indexedColor(index: number): string | undefined {
+  if (!Number.isInteger(index) || index < 0 || index > 255) return undefined;
+  if (index < 16) return BASIC[index < 8 ? 30 + index : 90 + index - 8];
+  if (index >= 232) {
+    const grey = 8 + (index - 232) * 10;
+    return `rgb(${grey} ${grey} ${grey})`;
+  }
+  const value = index - 16;
+  const level = (component: number) => component === 0 ? 0 : 55 + component * 40;
+  return `rgb(${level(Math.floor(value / 36))} ${level(Math.floor(value / 6) % 6)} ${level(value % 6)})`;
+}
+
 /** CSI sequences (colour and cursor alike) plus the two-character escapes. */
 const ANSI_PATTERN = /\u001B\[[0-9;:]*[A-Za-z]|\u001B[()][A-Za-z0-9]|\u001B[A-Za-z]/g;
 
@@ -82,6 +95,8 @@ function applySgr(style: Style, params: number[]): Style {
         if ([r, g, b].every((v) => Number.isFinite(v))) next.color = `rgb(${r} ${g} ${b})`;
         i += 4;
       } else if (params[i + 1] === 5) {
+        const color = indexedColor(params[i + 2]);
+        if (color !== undefined) next.color = color;
         i += 2;
       }
     }
@@ -120,3 +135,4 @@ export function parseAnsi(text: string): AnsiSegment[] {
 export function stripAnsi(text: string): string {
   return text.replace(ANSI_PATTERN, "");
 }
+

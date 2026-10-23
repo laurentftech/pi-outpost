@@ -274,26 +274,29 @@ describe("ExtensionUiBridge", () => {
       assert.equal(await new ExtensionUiBridge(emit).createContext().custom(), undefined);
     });
 
-    test("theme returns identity stylers that leave text untouched", () => {
-      const { emit } = recorder();
-      const theme = new ExtensionUiBridge(emit).createContext().theme;
-      assert.equal(theme.fg("red", "text"), "text");
-      assert.equal(theme.bg("red", "text"), "text");
-      assert.equal(theme.bold("text"), "text");
-      assert.equal(theme.italic("text"), "text");
-      assert.equal(theme.underline("text"), "text");
-      assert.equal(theme.inverse("text"), "text");
-      assert.equal(theme.strikethrough("text"), "text");
-      assert.equal(theme.getFgAnsi(), "");
-      assert.equal(theme.getBgAnsi(), "");
-      assert.equal(theme.getColorMode(), "truecolor");
+    test("semantic theme colours reach setStatus, as used by pi-blackhole", () => {
+      const { emit, sent } = recorder();
+      const ctx = new ExtensionUiBridge(emit).createContext();
+      const t = ctx.theme;
+      const success = t.fg("success", "bh");
+      const warning = t.fg("warning", "▕██████░░▏");
+      const error = t.fg("error", "▕████████▏");
+      assert.match(success, /\u001b\[/);
+      assert.notEqual(t.getFgAnsi("success"), t.getFgAnsi("warning"));
+      assert.notEqual(t.getFgAnsi("warning"), t.getFgAnsi("error"));
+      ctx.setStatus("blackhole", `${success} ${warning} ${error}`);
+      assert.equal(sent[0].statusText, `${success} ${warning} ${error}`);
+      assert.equal(sent[0].statusKey, "blackhole");
+      assert.ok(t.getFgAnsi("dim"));
+      assert.ok(t.getFgAnsi("muted"));
+      assert.ok(t.getFgAnsi("accent"));
     });
 
-    test("the theme accessors return identity functions", () => {
+    test("theme border accessors preserve semantic ANSI styles", () => {
       const { emit } = recorder();
       const theme = new ExtensionUiBridge(emit).createContext().theme;
-      assert.equal(theme.getThinkingBorderColor()("text"), "text");
-      assert.equal(theme.getBashModeBorderColor()("text"), "text");
+      assert.equal(theme.getThinkingBorderColor("high")("text"), theme.fg("thinkingHigh", "text"));
+      assert.equal(theme.getBashModeBorderColor()("text"), theme.fg("bashMode", "text"));
     });
 
     test("getAllThemes, getTheme, getToolsExpanded return their empty defaults", () => {
@@ -316,3 +319,4 @@ describe("ExtensionUiBridge", () => {
     });
   });
 });
+
