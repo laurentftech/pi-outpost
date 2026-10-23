@@ -23,3 +23,7 @@ Likely implementation surface: `office/`, `apps-core/` or a new document package
 The hosted editor introduces browser-to-service and service-to-ONLYOFFICE traffic absent from today's Open WebUI architecture. It requires scoped credentials, explicit network configuration and a new security review. Existing kept documents need migration into revisioned storage; their current expiration policy cannot silently apply to persistent teaching materials.
 
 No implementation, deployment or publishing is included in this proposal. First delivery is an end-to-end Claude flow; Open WebUI reuse is part of the same design and completion criteria.
+
+## Open-source-only constraint
+
+All required rendering, editing and agent capabilities SHALL use open-source components and APIs available without paid entitlement. ONLYOFFICE Docs Community is the target edition. Exclude Automation API/createConnector, Developer/Enterprise-only methods, trials, commercial add-ons and subscription-dependent features. Unsupported operations must fail clearly or use a verified open-source implementation; a paid fallback is not acceptable. Preserve pi-outpost's MIT licensing intent; do not assume that public source or a separate container resolves AGPL obligations.

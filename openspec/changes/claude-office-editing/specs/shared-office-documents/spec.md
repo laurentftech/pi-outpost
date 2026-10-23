@@ -114,3 +114,18 @@ The service SHALL keep original packages and previous revisions and SHALL NOT us
 #### Scenario: RepresentativeFilesAreQualified
 - **WHEN** the feature is prepared for release
 - **THEN** recorded comparisons cover agreed Word and PowerPoint fixtures, matching fonts and relevant layout/content features, including any accepted differences
+
+### Requirement: OnlyOpenSourceCommunityCapabilitiesAreUsed
+All required capabilities SHALL use open-source components and APIs available in the pinned ONLYOFFICE Docs Community edition without paid entitlement. Automation API/createConnector, paid-only methods, commercial editions, trials and subscription-dependent fallbacks SHALL NOT be used. Component licenses, API availability and distribution obligations SHALL be recorded and reviewed against pi-outpost's MIT licensing intent. Unsupported operations SHALL be refused explicitly rather than invoking a paid feature or bypassing entitlement checks.
+
+#### Scenario: CommunityWorksWithoutCommercialEntitlements
+- **WHEN** rendering, manual editing, saving and each supported agent operation run on a clean Community installation without a license key or trial
+- **THEN** they succeed using only verified open-source capabilities and no paid API or subscription service is called
+
+#### Scenario: APaidOnlyOperationIsNotUsed
+- **WHEN** an operation requires Automation API, createConnector or another paid-only method
+- **THEN** it is not exposed as supported and any request is refused with the limitation, without a paid fallback or entitlement bypass
+
+#### Scenario: DependenciesHaveAnAuditableLicenseInventory
+- **WHEN** implementation dependencies and API methods are selected for release
+- **THEN** the inventory records exact versions, upstream licenses, notices and Community availability for runtime code, plugins, helpers, types, fonts and assets, with unresolved incompatible components excluded

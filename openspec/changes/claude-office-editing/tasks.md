@@ -1,6 +1,6 @@
 ## 1. Compatibility and design evidence
 - [ ] Run OpenLore orient in the implementation checkout; reconcile shared-package boundaries with current specs and source.
-- [ ] Pin ONLYOFFICE version; document licensing, lifecycle statuses and required network routes.
+- [ ] Pin ONLYOFFICE Docs Community version; document licensing, lifecycle statuses and required network routes.
 - [ ] Probe actual Claude Desktop inline editor, CSP, frame/storage behavior, link opening and browser fallback; record host versions and decide default.
 
 ## 2. Shared service and persistence
@@ -42,3 +42,9 @@
 - [ ] Refresh preview and agent reads after confirmed saves; prevent stale views/callbacks across project switches.
 - [ ] Test native running-app rendering/editing, read-only boundaries, unavailable service, external edits, crash recovery and disruptive UI transitions with Playwright.
 - [ ] Update native usage/configuration documentation and scenario coverage; retain Claude as the first delivery while requiring all three adapters for completion.
+
+## 8. Open-source-only release gate
+- [ ] Inventory all integration APIs, plugin methods, runtime helpers, fonts and assets with exact versions, upstream licenses and notices; exclude paid-only methods and incompatible dependencies.
+- [ ] Verify AGPL integration/distribution obligations while preserving the intended MIT boundary; record unresolved restrictions instead of silently relicensing.
+- [ ] Prove rendering, manual editing, saves and supported agent operations on a clean Community installation with no paid entitlement or trial.
+- [ ] Assert no Automation API/createConnector, commercial license activation or subscription service is required; reject unsupported operations clearly.
