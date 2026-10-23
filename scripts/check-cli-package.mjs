@@ -68,6 +68,10 @@ function packedFiles() {
 
 const packed = new Set(packedFiles().map((f) => f.path.replace(/\\/g, "/")));
 
+if (!packed.has("CHANGELOG.md")) {
+  fail("the tarball is missing CHANGELOG.md — run `npm run build --workspace cli` so agents can read release notes");
+}
+
 /** What `build-exe` reads, and why the build is dead without each one. */
 const required = [
   ["dist/pi-outpost.sea.mjs", "the inlined bundle every build path starts from"],

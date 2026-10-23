@@ -12,6 +12,9 @@ like `ANTHROPIC_API_KEY`, or the setup screen). The default embedded runtime alr
 the [pi coding agent](https://github.com/earendil-works/pi); a separate `pi` executable is
 needed only when `agentRuntime.mode` is `"rpc"`.
 
+The npm package includes [CHANGELOG.md](CHANGELOG.md) at its root, so agents and
+other tools can read release notes directly without starting pi-outpost.
+
 When extensions are enabled, the embedded runtime also loads Pi's built-in `codemode`,
 `tool_search` and MCP extensions. Pi settings and MCP configuration decide which tools are active.
 

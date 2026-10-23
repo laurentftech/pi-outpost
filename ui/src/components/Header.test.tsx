@@ -108,6 +108,15 @@ describe("Header", () => {
       expect(screen.getByText("2 jobs")).toBeInTheDocument();
     });
 
+    it("renders ANSI status colours and resets while keeping the tooltip plain", () => {
+      const { container } = setup({ statuses: { lint: "\u001b[32;1mReady\u001b[0m plain", empty: "\u001b[31m\u001b[0m" } });
+      expect(screen.getByText("Ready")).toHaveStyle({ color: "#16a34a", fontWeight: 600 });
+      expect(screen.getByText("plain").style.color).toBe("");
+      expect(screen.getByTitle("Ready plain")).toBeInTheDocument();
+      expect(container.querySelectorAll("[data-status-text]")).toHaveLength(1);
+      expect(container.textContent).not.toContain("\u001b");
+    });
+
     // openlore: scenario=EveryControlIsOneHeight spec=components
     it("EveryControlIsOneHeight: every control in the bar is one height and never wraps", () => {
       const { container } = setup({

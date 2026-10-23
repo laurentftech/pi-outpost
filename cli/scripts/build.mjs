@@ -35,6 +35,8 @@ const piSdkMain = fileURLToPath(import.meta.resolve("@earendil-works/pi-coding-a
 const piSdkVersion = JSON.parse(readFileSync(resolve(dirname(piSdkMain), "..", "package.json"), "utf-8")).version;
 // Inlined, so what changed in each release travels with the bundle, offline (server/src/changelog.ts).
 const changelog = readFileSync(resolve(REPO_ROOT, "CHANGELOG.md"), "utf-8");
+// Also ship plain Markdown so agents can read release notes without running the server.
+await writeFile(resolve(CLI_DIR, "CHANGELOG.md"), changelog, "utf-8");
 
 // Always rebuild web UI
 console.log("[build] building the web UI …");
