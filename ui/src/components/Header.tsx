@@ -6,6 +6,7 @@ import { ProjectMenu } from "./ProjectMenu";
 import { WorkspaceRootControl, type WorkspaceRootSandbox } from "./WorkspaceRootControl";
 import type { AgentResourceOperationState, GitLogState, GitStatusState, ServerBrowseState, SessionSearch, SettingsApplyState } from "../useAgent";
 import { stripAnsi } from "../util/ansi";
+import { AnsiText } from "./AnsiText";
 import { useClickOutside } from "../util/clickOutside";
 import {
   CONVERSATION_FILTER_KINDS,
@@ -462,12 +463,9 @@ function ConversationFilterMenu({
  * flicker between the two.
  */
 function ExtensionStatuses({ statuses, bar }: { statuses: Record<string, string>; bar: HTMLElement | null }) {
-  // Statuses come from the same terminal-rendered source as widgets. The header is a
-  // chrome strip, so the escapes are dropped rather than coloured — the text is what
-  // carries the meaning here.
+  // Keep terminal styling for display; titles and emptiness checks use plain text.
   const entries = Object.entries(statuses)
-    .map(([key, text]) => [key, stripAnsi(text)] as const)
-    .filter(([, text]) => text.trim() !== "");
+    .filter(([, text]) => stripAnsi(text).trim() !== "");
   const signature = entries.map(([key, text]) => `${key}\u0000${text}`).join("\u0001");
   const [folded, setFolded] = useState(false);
   const foldedAt = useRef<number | null>(null);
@@ -516,11 +514,11 @@ function ExtensionStatuses({ statuses, bar }: { statuses: Record<string, string>
         {entries.map(([key, text]) => (
           <span
             key={key}
-            title={text}
+            title={stripAnsi(text)}
             className={`${HEADER_CONTROL} max-w-[16rem] border-zinc-200 text-zinc-500 dark:border-zinc-800 dark:text-zinc-400`}
           >
             <span data-status-text className="truncate">
-              {text}
+              <AnsiText text={text} />
             </span>
           </span>
         ))}
@@ -543,7 +541,7 @@ function ExtensionStatuses({ statuses, bar }: { statuses: Record<string, string>
         type="button"
         onClick={() => setOpen(!open)}
         aria-expanded={open}
-        title={entries.map(([, text]) => text).join("\n")}
+        title={entries.map(([, text]) => stripAnsi(text)).join("\n")}
         className={`${HEADER_CONTROL} border-zinc-200 text-zinc-500 hover:border-zinc-400 hover:text-zinc-700 dark:border-zinc-800 dark:text-zinc-400 dark:hover:border-zinc-600 dark:hover:text-zinc-200`}
       >
         {label} ▾
@@ -555,7 +553,7 @@ function ExtensionStatuses({ statuses, bar }: { statuses: Record<string, string>
         >
           {entries.map(([key, text]) => (
             <li key={key} className="break-words px-3 py-1.5 text-xs text-zinc-600 dark:text-zinc-300">
-              {text}
+              <AnsiText text={text} />
             </li>
           ))}
         </ul>

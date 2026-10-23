@@ -24,6 +24,9 @@ exemples/
 # rebuilt web/ — index.ts prefers the inlined bundle over web/dist.
 server/src/embedded-web.ts
 
+# Release notes copied from the root by the npm package build.
+/cli/CHANGELOG.md
+
 # Test coverage artifacts (vitest --coverage)
 coverage/
 

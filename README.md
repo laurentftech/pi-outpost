@@ -1088,7 +1088,9 @@ Extensions using pi's [Custom
 UI](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/extensions.md#custom-ui)
 (`ctx.ui.select/confirm/input/editor/notify/setStatus/setWidget/setTitle/setEditorText`) work
 in the web interface: dialogs render as a modal, `notify()` as a toast, `setStatus()` as a
-header badge, `setWidget()` above or below the composer. The bridge binds with `mode: "rpc"`,
+header badge, `setWidget()` above or below the composer. Status badges preserve ANSI
+foreground colours and text styles, including in the overflow list; hover titles use plain text.
+The bridge binds with `mode: "rpc"`,
 mirroring pi's own RPC-mode protocol — so `ctx.hasUI` is `true` and dialogs get real answers,
 while TUI-only features (`custom()`, custom footers/headers/editors, terminal input, themes)
 are no-ops, same as in RPC mode.
