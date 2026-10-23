@@ -184,7 +184,10 @@ export class ExtensionUiBridge {
       // renderer interprets their ANSI sequences. Like ExtensionRenderer, use a
       // standalone theme rather than the process-global interactive TUI theme.
       get theme() {
-        // Bundled/SEA builds have no SDK JSON files beside them. The SDK\'s\n        // generated system theme needs no files and still supplies real colours.\n        const theme = getThemeByName("dark") ?? getThemeByName(SYSTEM_THEME_NAME);\n        if (!theme) throw new Error("The Pi extension theme is unavailable");
+        // Bundled/SEA builds have no SDK JSON files beside them. The SDK's
+        // generated system theme needs no files and still supplies real colours.
+        const theme = getThemeByName("dark") ?? getThemeByName(SYSTEM_THEME_NAME);
+        if (!theme) throw new Error("The Pi extension theme is unavailable");
         return theme;
       },
       getAllThemes() {
