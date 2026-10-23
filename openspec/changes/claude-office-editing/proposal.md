@@ -13,9 +13,11 @@ A teacher asks Claude to produce a worksheet or presentation, then needs to adju
 - Route existing Open WebUI document operations through the shared implementation, preserving their download responses. Add editing access to the same service without a second editor implementation.
 - Preserve existing planning behavior and its offline MCP resource. Office support is optional and does not require ONLYOFFICE for existing document downloads.
 
+- Include the native pi-outpost web app: render Word pages and PowerPoint slides in the file viewer and open the shared ONLYOFFICE editor in place. Native support is required for completion, with Claude still the first delivery.
+
 ## Impact
 
-New capabilities: `shared-office-documents`, `mcp-office-app`. Extend `openwebui-office-documents`.
+New capabilities: `shared-office-documents`, `mcp-office-app`, `pi-outpost-office-viewer`. Extend `openwebui-office-documents`.
 Likely implementation surface: `office/`, `apps-core/` or a new document package, `mcp/src/`, `mcp/viewer/`, `mcp/manifest.json`, `openwebui/src/{office,documents,routes,app,trust,embed,openapi}.ts`, the download card, deployment and user documentation.
 
 The hosted editor introduces browser-to-service and service-to-ONLYOFFICE traffic absent from today's Open WebUI architecture. It requires scoped credentials, explicit network configuration and a new security review. Existing kept documents need migration into revisioned storage; their current expiration policy cannot silently apply to persistent teaching materials.

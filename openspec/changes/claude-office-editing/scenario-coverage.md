@@ -47,3 +47,19 @@ Specification only: implementation and tests have not been added. Every scenario
 | openwebui-office-documents | DownloadOnlyDeploymentsDoNotRequireAnEditor | uncovered | Open WebUI HTTP + running embed/Playwright |
 
 At implementation time, replace planned boundaries with exact test files and titles, inspect assertions, and include all affected existing scenarios from `mcp-planning-app` and `openwebui-office-documents`. Fidelity qualification also needs recorded real Office rendering comparisons; a fake editor or screenshot alone is insufficient.
+
+## Native pi-outpost addition
+
+| Capability | Scenario | Status | Planned test boundary |
+|---|---|---|---|
+| pi-outpost-office-viewer | WordOpensAsRenderedPages | uncovered | native server integration + running app/Playwright |
+| pi-outpost-office-viewer | PowerPointOpensAsRenderedSlides | uncovered | native server integration + running app/Playwright |
+| pi-outpost-office-viewer | PreviewDoesNotLockTheDocument | uncovered | native server integration + running app/Playwright |
+| pi-outpost-office-viewer | NativeEditingUsesTheSharedSession | uncovered | native server integration + running app/Playwright |
+| pi-outpost-office-viewer | ReadOnlyCannotSave | uncovered | native server integration + running app/Playwright |
+| pi-outpost-office-viewer | SaveUpdatesTheWorkspaceAndAgentRead | uncovered | native server integration + running app/Playwright |
+| pi-outpost-office-viewer | AnExternalEditIsNotOverwritten | uncovered | native server integration + running app/Playwright |
+| pi-outpost-office-viewer | WorkspaceAccessCannotEscapeTheProject | uncovered | native server integration + running app/Playwright |
+| pi-outpost-office-viewer | ProjectSwitchDoesNotLeakTheOldDocument | uncovered | native server integration + running app/Playwright |
+| pi-outpost-office-viewer | UnavailableRenderingIsExplicit | uncovered | native server integration + running app/Playwright |
+| pi-outpost-office-viewer | InterruptedWorkspacePublicationRecovers | uncovered | native server integration + running app/Playwright |

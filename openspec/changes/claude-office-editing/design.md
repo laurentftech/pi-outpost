@@ -67,3 +67,17 @@ Excel, simultaneous human co-editing, Microsoft Office/WOPI integration, arbitra
 ## Risks and decisions to verify
 
 Claude iframe/CSP support and private-network access require the early probe; inline support is not assumed. ONLYOFFICE licensing/version and font licenses must be documented for the chosen deployment. The DS220+ is a deployment target to measure with representative files, not a promised performance level. Exact ONLYOFFICE status handling and force-save behavior must be derived from the pinned version's API and tested; do not implement from guessed status numbers.
+
+## Native pi-outpost rendering and editing (required scope)
+
+The native web app is the third adapter, alongside Claude MCP and Open WebUI. `ui/src/components/FileViewer.tsx` already routes PDF, HTML and draw.io rendering and writable-zone actions; add explicit DOCX/PPTX handling there. Do not pass binary Office files to the text editor or show an outline as if it were a document preview.
+
+Use a shared Office view/launch component where host restrictions permit, backed by the same document sessions and ONLYOFFICE rendering. Opening DOCX displays actual pages; opening PPTX displays actual slides, with navigation, zoom and an enlarge action. View-only access must not acquire an editing lock. Enable Modify only where server-side project and writable-root authorization permit; a read-only ONLYOFFICE session must not expose a save path.
+
+Workspace files remain real DOCX/PPTX at their original paths. The native adapter securely binds a project-relative path to a shared document identity; importing/registering existing workspace packages for viewing/editing is included in this scope. Do not mount workspace roots into ONLYOFFICE. At registration and every save, enforce resolved-path/symlink containment and current project permissions. The service's committed bytes and workspace publication need a recoverable transaction: do not report saved or release the lock until both are consistent. Crash recovery reconciles a pending publication without discarding either version.
+
+Bind sessions to project, file identity and base content hash. Agent tools and native saves participate in the same revision/editing guard. External filesystem changes that bypass those tools are detected before publication: preserve both versions and require conflict resolution, never overwrite the external change. The native agent's next read must consume the actual latest committed workspace bytes. Switching projects/files must dispose old views and prevent late callbacks rendering or saving under the new context.
+
+If ONLYOFFICE is missing or unreachable, show an explicit preview-unavailable state with retry/download/native-open where supported. Never silently replace fidelity-sensitive rendering with extracted text. Native embedded viewing/editing must be validated in the running app; a browser fallback alone does not satisfy native viewer acceptance.
+
+Delivery sequence amendment: after the first Claude walkthrough, integrate the native viewer and shared save guards, then complete Open WebUI reuse. Completion requires all three adapters. Update the native UI and server/workspace boundary tests and documentation alongside the MCP and Open WebUI guides.
