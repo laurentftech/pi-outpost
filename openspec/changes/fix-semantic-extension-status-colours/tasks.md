@@ -5,3 +5,8 @@
 - [ ] Run server extensionUiBridge tests and UI ANSI suite with the pinned SDK installed.
 - [ ] Run the actual app with Playwright; test semantic statuses, overflow, resize, rapid toggles and reload, then exercise pi-blackhole itself.
 - [ ] Complete scenario coverage, strict OpenSpec validation, typecheck and relevant suites before marking fixed.
+
+## Packaged startup correction
+- [x] Diagnose CI: missing SDK dark JSON in bundled context binding; retain a generated SDK system theme as asset-free fallback.
+- [x] Add a real isolated-bundle status regression and run it with packaged-server tests early on Linux and Windows.
+- [ ] Confirm the new targeted tests, full server suites and browser regression pass on the updated commit.

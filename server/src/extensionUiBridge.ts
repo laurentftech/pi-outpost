@@ -11,7 +11,7 @@
  * must not live in a function that only the embedded path can reach.
  */
 import { randomUUID } from "node:crypto";
-import { getThemeByName } from "../../node_modules/@earendil-works/pi-coding-agent/dist/modes/interactive/theme/theme.js";
+import { getThemeByName, SYSTEM_THEME_NAME } from "../../node_modules/@earendil-works/pi-coding-agent/dist/modes/interactive/theme/theme.js";
 import type { ExtensionUIRequest, ExtensionUIResponse } from "@pi-outpost/shared";
 
 type PendingExtensionRequest = { resolve: (response: ExtensionUIResponse) => void };
@@ -184,8 +184,7 @@ export class ExtensionUiBridge {
       // renderer interprets their ANSI sequences. Like ExtensionRenderer, use a
       // standalone theme rather than the process-global interactive TUI theme.
       get theme() {
-        const theme = getThemeByName("dark");
-        if (!theme) throw new Error("The built-in Pi dark theme is unavailable");
+        // Bundled/SEA builds have no SDK JSON files beside them. The SDK\'s\n        // generated system theme needs no files and still supplies real colours.\n        const theme = getThemeByName("dark") ?? getThemeByName(SYSTEM_THEME_NAME);\n        if (!theme) throw new Error("The Pi extension theme is unavailable");
         return theme;
       },
       getAllThemes() {

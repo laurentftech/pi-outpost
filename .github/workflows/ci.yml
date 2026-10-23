@@ -32,6 +32,8 @@ jobs:
       - run: npm run typecheck
       - run: npm run build --workspace @pi-outpost/embed
       - run: npm run lint
+      - name: Extension theme and packaged server regressions
+        run: node --import tsx/esm --test --test-timeout=300000 server/test/extensionUiBridge.test.ts server/test/extensionUiBridgeBundled.test.mjs server/test/versionsBundled.test.mjs
 
       # The confined terminal's real test needs landstrip's runner, and only Linux confines.
       # Fetched rather than depended on: the package is platform-specific, and nothing

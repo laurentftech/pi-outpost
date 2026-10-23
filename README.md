@@ -1091,7 +1091,8 @@ in the web interface: dialogs render as a modal, `notify()` as a toast, `setStat
 header badge, `setWidget()` above or below the composer. Status badges preserve ANSI
 foreground colours and text styles, including in the overflow list; hover titles use plain text.
 Extensions using `ctx.ui.theme.fg()` (for example pi-blackhole's gauges) receive the SDK's
-built-in dark theme rather than unstyled text. Both truecolor and indexed ANSI foregrounds
+built-in dark theme rather than unstyled text, falling back to its generated system theme
+in standalone bundles where SDK theme files are unavailable. Both truecolor and indexed ANSI foregrounds
 are rendered; this does not enable switching the interactive terminal theme from the browser.
 The bridge binds with `mode: "rpc"`,
 mirroring pi's own RPC-mode protocol — so `ctx.hasUI` is `true` and dialogs get real answers,
