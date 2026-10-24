@@ -12,6 +12,7 @@
  */
 import { mountEditor, type DeliveredFile } from "@pi-outpost/posters/editor";
 import type { PosterFormat } from "@pi-outpost/posters/format";
+import { followHostTheme } from "./hostTheme";
 import "@pi-outpost/posters/editor.css";
 
 export interface EmbeddedPoster {
@@ -48,10 +49,7 @@ export const CANNOT_EDIT_NOTICE =
 const editor = mountEditor(root, { deliver, notice: TOUCH_UPS_NOTICE, cannotEditNotice: CANNOT_EDIT_NOTICE });
 editor.setDisplayMode("inline");
 
-// Open WebUI sends its frames no theme: the page follows the system's, as the other embeds do.
-const dark = window.matchMedia?.("(prefers-color-scheme: dark)");
-editor.setTheme(dark?.matches ? "dark" : "light");
-dark?.addEventListener?.("change", (event) => editor.setTheme(event.matches ? "dark" : "light"));
+followHostTheme((theme) => editor.setTheme(theme));
 
 // Open WebUI sizes the frame from this message (as the planning embed does).
 function reportHeight() {

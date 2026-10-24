@@ -52,6 +52,14 @@ async function embed(tab: Page, sandbox: string) {
   return { frame, requests };
 }
 
+async function themedEmbed(tab: Page, sandbox: string, dark: boolean) {
+  await tab.setContent(`<!doctype html><html class="${dark ? "dark" : ""}"><body style="margin:0"><iframe id="embed" sandbox="${sandbox}" style="width:1000px;height:900px;border:0"></iframe></body></html>`);
+  await tab.locator("#embed").evaluate((frame, html) => ((frame as HTMLIFrameElement).srcdoc = html), page);
+  const frame = tab.frameLocator("#embed");
+  await expect(frame.locator(".poster-shell")).toBeVisible({ timeout: 30_000 });
+  return frame;
+}
+
 // openlore: scenario=TheDefaultSandboxStillShowsThePoster spec=openwebui-posters
 // openlore: scenario=TheLimitIsSaid spec=openwebui-posters
 test("TheDefaultSandboxStillShowsThePoster: read-only, the setting named, the limit said, no save", async ({ page: tab }) => {
@@ -75,6 +83,29 @@ test("TheEditorAppearsInTheChat: with the setting on, the editor runs on the pos
   await expect(title).toHaveText("Edited in the embed");
   await expect(frame.locator('button[data-action="save"]')).toBeHidden();
   await expect(frame.locator(".poster-notice")).toContainText("Your changes stay in this page");
+});
+
+// openlore: scenario=DarkOpenWebUIOnALightSystem spec=openwebui-embed-theme
+// openlore: scenario=TheUserSwitchesOpenWebUIsTheme spec=openwebui-embed-theme
+test("Poster theme follows Open WebUI when readable and preserves poster colours", async ({ page: tab }) => {
+  await tab.emulateMedia({ colorScheme: "light" });
+  const frame = await themedEmbed(tab, SAME_ORIGIN_SANDBOX, true);
+  await expect(frame.locator("html")).toHaveAttribute("data-theme", "dark");
+  const editorFrame = frame.frameLocator("iframe.gjs-frame");
+  const posterColor = await editorFrame.locator("body").evaluate((element) => getComputedStyle(element).backgroundColor);
+  await tab.locator("html").evaluate((element) => element.classList.remove("dark"));
+  await expect(frame.locator("html")).toHaveAttribute("data-theme", "light");
+  expect(await editorFrame.locator("body").evaluate((element) => getComputedStyle(element).backgroundColor)).toBe(posterColor);
+});
+
+// openlore: scenario=TheDefaultFrameFollowsTheSystem spec=openwebui-embed-theme
+test("Poster default sandbox follows system theme changes", async ({ page: tab }) => {
+  await tab.emulateMedia({ colorScheme: "light" });
+  const frame = await themedEmbed(tab, DEFAULT_SANDBOX, false);
+  await expect(frame.locator(".poster-readonly")).toBeVisible();
+  await expect(frame.locator("html")).toHaveAttribute("data-theme", "light");
+  await tab.emulateMedia({ colorScheme: "dark" });
+  await expect(frame.locator("html")).toHaveAttribute("data-theme", "dark");
 });
 
 // openlore: scenario=AWordFileFromTheEmbed spec=openwebui-posters

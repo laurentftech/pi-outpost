@@ -47,6 +47,7 @@ html[data-display="fullscreen"] .poster-shell { height: 100vh; padding-bottom: 9
 .poster-bar button:hover { background: var(--button-hover); }
 .poster-bar button.primary { background: #1f6feb; border-color: #1f6feb; color: #fff; }
 .poster-bar button:disabled { opacity: 0.6; cursor: default; }
+.poster-bar button.primary:disabled { color: var(--muted); background: var(--button); border-color: var(--line); }
 /* Hidden wins over any display a button sets for itself (the save icon's inline-flex). */
 .poster-shell [hidden] { display: none !important; }
 .poster-bar button[aria-pressed="true"] { background: var(--pressed); border-color: var(--pressed-line); }

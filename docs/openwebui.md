@@ -218,6 +218,7 @@ file viewer and the Claude Desktop extension.
 - **Downloads:** **↓ word** gives an A4 (or A3) page with narrow margins, to print; **↓ powerpoint**
   one 16:9 slide, to show; **↓ html** the page itself. The poster travels as a picture at print
   resolution, built in the browser: the server is not called.
+- **Theme and editing:** the embed follows Open WebUI's theme when **iframe Sandbox Allow Same Origin** is enabled, including live theme switches; otherwise it follows the system theme.
 - **Retouching needs a setting.** Open WebUI draws a tool's embed in a frame that cannot reach the
   editor's canvas unless the user turns on **iframe Sandbox Allow Same Origin** in their settings.
   Without it the poster is shown as it is, with its downloads, and the embed says so. With it, the

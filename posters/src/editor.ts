@@ -149,11 +149,12 @@ export function mountEditor(root: HTMLElement, host: PosterHost): PosterEditor {
   const redo = button("redo", "↷", "Redo");
   const zoom = element("span", { class: "poster-group", role: "group", "aria-label": "Zoom" });
   zoom.append(button("zoom-out", "−", "Zoom out"), button("zoom-fit", "Fit", "See the whole page"), button("zoom-in", "+", "Zoom in"));
-  const style = button("style", "Style", "Colours, fonts and sizes of the selected element", { "aria-pressed": "false" });
+  const style = button("style", "Format", "Change the selected element's colours, fonts and sizes", { "aria-pressed": "false" });
   // Save is an icon, first of the controls: it keeps the poster, where the three
   // downloads beside the exports make files of it; alike, they read as one kind of action.
   const save = button("save", "", "Save your changes", { class: "primary poster-icon", "aria-label": "Save" });
   save.append(FLOPPY());
+  save.disabled = true;
   const word = button("word", "↓ word", "Download an A4 page to print, the poster as a picture", { "aria-label": "Download for Word" });
   const powerpoint = button("powerpoint", "↓ powerpoint", "Download a slide to show, the poster as a picture", { "aria-label": "Download for PowerPoint" });
   const htmlFile = button("html", "↓ html", "Download the poster as a web page, to print from a browser", { "aria-label": "Download as a web page" });
@@ -186,6 +187,7 @@ export function mountEditor(root: HTMLElement, host: PosterHost): PosterEditor {
   const setDirty = (value: boolean) => {
     if (dirty === value) return;
     dirty = value;
+    save.disabled = !dirty || saving;
     host.onDirtyChange?.(value);
   };
   const status = (message: string, kind: "info" | "error" | "ok" = "info") => {
@@ -214,7 +216,7 @@ export function mountEditor(root: HTMLElement, host: PosterHost): PosterEditor {
   }
 
   async function doSave() {
-    if (!host.save || !shown || shown.readOnly || saving) return;
+    if (!host.save || !shown || shown.readOnly || saving || !dirty) return;
     const poster = current();
     if (!poster) return;
     const opened = shown;
@@ -235,7 +237,7 @@ export function mountEditor(root: HTMLElement, host: PosterHost): PosterEditor {
       if (!destroyed && shown === opened) status(`Not saved: ${(error as Error).message}`, "error");
     } finally {
       saving = false;
-      save.disabled = false;
+      save.disabled = !dirty;
     }
   }
 
