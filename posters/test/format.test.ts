@@ -103,3 +103,15 @@ test("The guide's example is itself a poster every check accepts", async () => {
   assert.deepEqual(readPage(pageOf("Example", content)), { ...content, title: "Example" });
   for (const name of FORMAT_NAMES) assert.match(POSTER_GUIDE, new RegExp(`${name} ${FORMATS[name].width} x ${FORMATS[name].height}`));
 });
+
+test("readPage stays fast on a file repeating its opening tags (no polynomial backtracking)", () => {
+  const page = pageOf("T", { html: HTML, css: CSS, format: "A4-portrait" });
+  const crafted = page.replace("<title>", "<title>a".repeat(100_000)).replace("<style data-poster>", "<style data-poster>".repeat(100_000));
+  const started = performance.now();
+  try {
+    readPage(crafted);
+  } catch {
+    // Read or refused: either is fine, as long as it is quick.
+  }
+  assert.ok(performance.now() - started < 500, "read in under half a second");
+});

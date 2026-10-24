@@ -97,10 +97,11 @@ const URL_ATTRIBUTES = ["href", "src", "xlink:href", "action", "formaction", "da
  * A second layer under each host's Content-Security-Policy (design.md, decision 4).
  */
 export function sanitizePosterHtml(html: string): string {
-  const template = document.createElement("template");
-  template.innerHTML = html;
-  for (const element of template.content.querySelectorAll(DROPPED_ELEMENTS)) element.remove();
-  for (const element of template.content.querySelectorAll("*")) {
+  // An inert document: nothing parsed into it runs or loads while it is cleaned.
+  const holder = document.implementation.createHTMLDocument("").createElement("div");
+  holder.innerHTML = html;
+  for (const element of holder.querySelectorAll(DROPPED_ELEMENTS)) element.remove();
+  for (const element of holder.querySelectorAll("*")) {
     // A copy: removing an attribute while walking the live list would skip the next one.
     // oxlint-disable-next-line unicorn/no-useless-spread
     for (const attribute of [...element.attributes]) {
@@ -112,7 +113,7 @@ export function sanitizePosterHtml(html: string): string {
       }
     }
   }
-  return template.innerHTML;
+  return holder.innerHTML;
 }
 
 /** A floppy disk, Lucide's "save" (ISC): drawn here so the page fetches nothing. */

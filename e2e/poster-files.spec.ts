@@ -105,7 +105,6 @@ test("APosterCannotReachTheApplication: a handler in the poster does not run, no
     await editor.locator('button[data-action="word"]').click();
     await download;
     expect(answered).toEqual([]);
-    console.log("refused:", refused.filter((entry) => entry.includes("example.com")));
     // The editor page carries the policy that holds its canvas.
     const policy = await page.evaluate(async (url) => (await (await fetch(url)).text()).match(/Content-Security-Policy"\s+content="([^"]+)"/)?.[1], `${server}/poster-editor.html`);
     expect(policy).toContain("script-src 'self'");

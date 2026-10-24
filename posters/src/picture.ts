@@ -29,7 +29,10 @@ export function pictureScale(page: PageSize): number {
  * foreignObject at its own size whatever the viewBox, leaving the page at 1:1 in a corner.
  */
 export function pageSvg(page: PageSize, html: string, css: string, scale = pictureScale(page)): string {
-  const holder = document.createElement("div");
+  // Parsed in an inert document, never in the page's: an element of the live document
+  // loads its images and runs their handlers (`<img onerror>`) even when not attached.
+  // Nothing in an inert document runs or loads; it is only serialised.
+  const holder = document.implementation.createHTMLDocument("").createElement("div");
   holder.innerHTML = `<style>*,*::before,*::after{box-sizing:border-box}${css}</style>${html}`;
   holder.setAttribute(
     "style",

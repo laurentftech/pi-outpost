@@ -86,7 +86,9 @@ test("The embed's policy lets only its own two scripts run, by hash, and fetches
   assert.match(policy, /default-src 'none'/);
   assert.match(policy, /connect-src 'none'/);
   assert.doesNotMatch(policy, /script-src[^;]*'unsafe-inline'/);
-  const bootstrap = /<script>([\s\S]*?)<\/script>/.exec(html)![1]!;
+  // The page's one inline script, by position: the page is ours and holds exactly one.
+  const opening = html.indexOf("<script>") + "<script>".length;
+  const bootstrap = html.slice(opening, html.indexOf("</script>", opening));
   const hash = (text: string) => `'sha256-${createHash("sha256").update(text).digest("base64")}'`;
   assert.ok(policy.includes(hash(bootstrap)), "the bootstrap is allowed by its hash");
   assert.ok(policy.includes(hash(posterViewerAssets().script)), "the editor is allowed by its hash");

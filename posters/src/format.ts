@@ -118,8 +118,21 @@ ${css.replace(STYLE_END, "<\\/style")}
 }
 
 const FORMAT_MARKER = /<meta\s+name="poster-format"\s+content="([^"]*)"\s*\/?>/i;
-const TITLE = /<title>([\s\S]*?)<\/title>/i;
-const STYLESHEET = /<style\s+data-poster\s*>(?:\r?\n)?([\s\S]*?)(?:\r?\n)?<\/style>/i;
+
+/**
+ * The text between `open` (an opening tag's start, matched without regard to case) and the
+ * next `close`, or undefined. Searched, not matched with a lazy pattern: a lazy `[\s\S]*?`
+ * between two tags is polynomial on a file repeating the opening one (CodeQL
+ * js/polynomial-redos), and these are files a person can edit.
+ */
+function between(text: string, lower: string, open: string, close: string): string | undefined {
+  const start = lower.indexOf(open);
+  if (start === -1) return undefined;
+  const tagEnd = lower.indexOf(">", start + open.length);
+  if (tagEnd === -1) return undefined;
+  const end = lower.indexOf(close, tagEnd + 1);
+  return end === -1 ? undefined : text.slice(tagEnd + 1, end);
+}
 const PAGE_OPEN = /<div\s+class="poster-page"\s*>/i;
 const PAGE_CLOSE = /<\/div>\s*<\/body>/i;
 
@@ -132,16 +145,19 @@ export function readPage(text: string): PosterPage {
   const format = FORMAT_MARKER.exec(text)?.[1];
   if (format === undefined) throw new PosterRefusal('this is not a poster: it has no <meta name="poster-format"> naming its format');
   if (!isPosterFormat(format)) throw new PosterRefusal(`unknown format "${format}"`, { formats: FORMAT_NAMES });
-  const stylesheet = STYLESHEET.exec(text);
-  if (!stylesheet) throw new PosterRefusal("this is not a poster: it has no <style data-poster> holding its stylesheet");
+  const lower = text.toLowerCase();
+  const stylesheet = between(text, lower, "<style data-poster", "</style>");
+  if (stylesheet === undefined) throw new PosterRefusal("this is not a poster: it has no <style data-poster> holding its stylesheet");
   const open = PAGE_OPEN.exec(text);
   if (!open) throw new PosterRefusal('this is not a poster: it has no <div class="poster-page"> holding its markup');
   const rest = text.slice(open.index + open[0].length);
   const close = [...rest.matchAll(new RegExp(PAGE_CLOSE.source, "gi"))].at(-1);
   if (!close || close.index === undefined) throw new PosterRefusal('this is not a poster: its <div class="poster-page"> is not closed before </body>');
-  const content: PosterContent = { html: rest.slice(0, close.index), css: stylesheet[1]!.replace(ESCAPED_STYLE_END, "</style"), format };
+  // pageOf puts the stylesheet on lines of its own: those two line breaks are not the poster's.
+  const css = stylesheet.replace(/^\r?\n/, "").replace(/\r?\n$/, "").replace(ESCAPED_STYLE_END, "</style");
+  const content: PosterContent = { html: rest.slice(0, close.index), css, format };
   checkPoster(content);
-  return { ...content, title: unescapeText(TITLE.exec(text)?.[1]?.trim() ?? "") };
+  return { ...content, title: unescapeText(between(text, lower, "<title", "</title>")?.trim() ?? "") };
 }
 
 /** `Class rules` → `class-rules`: lower case, no accents, words joined by dashes; "poster" when nothing is left. */
