@@ -31,6 +31,7 @@ import {
   type WrittenFile,
 } from "./office.ts";
 import { DocumentStore } from "./documents.ts";
+import { PosterStore, registerPosterRoutes } from "./posters.ts";
 
 function revisionAnswer(revision: PlanningRevision) {
   return {
@@ -78,6 +79,7 @@ export function planningRoutes(store: PlanningStore, config: PlanningServerConfi
   return {
     register(app: FastifyInstance) {
       registerOpenApi(app);
+      registerPosterRoutes(app, new PosterStore(config));
 
       const mermaid = options.mermaid ?? createMermaidRenderer(options.mermaidWorker ? { workerUrl: options.mermaidWorker } : {});
       if (options.mermaid === undefined) app.addHook("onClose", () => mermaid.close());

@@ -234,8 +234,8 @@ behaviour broke.
 A release is a version tag. Pushing `vX.Y.Z` runs
 [`.github/workflows/release.yml`](../.github/workflows/release.yml), which builds the
 executables, publishes `pi-outpost` (`cli/`) and `@pi-outpost/embed` (`embed/`) to npm, and
-creates the GitHub Release with the executables and the Claude Desktop bundle
-(`pi-outpost-plannings.mcpb`, at the release's version) attached. Everything before the tag is done
+creates the GitHub Release with the executables and the Claude Desktop bundles
+(`pi-outpost-plannings.mcpb` and `pi-outpost-posters.mcpb`, at the release's version) attached. Everything before the tag is done
 by hand, on `main`.
 
 1. **Merge first.** Every PR meant for the release is merged, and CI on `main` is green.

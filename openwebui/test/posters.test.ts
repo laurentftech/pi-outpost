@@ -1,0 +1,124 @@
+/**
+ * Posters on the Open WebUI tool server: the tools, kept per user, and the embed the
+ * user retouches them in. The scenarios are openwebui-posters'.
+ */
+import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
+import test from "node:test";
+import { gunzipSync } from "node:zlib";
+import { POSTER_EXAMPLE, POSTER_GUIDE } from "@pi-outpost/posters/guide";
+import { SECRET, testApp } from "./helpers.ts";
+import { posterViewerAssets } from "../src/posters.ts";
+
+const POSTER = { title: "Class rules", html: POSTER_EXAMPLE.html, css: POSTER_EXAMPLE.css, format: POSTER_EXAMPLE.format };
+
+function payloadOf(html: string, name: string): string {
+  const match = new RegExp(`data-${name}="([A-Za-z0-9+/=]*)"`).exec(html);
+  assert.ok(match, `payload ${name}`);
+  return gunzipSync(Buffer.from(match[1]!, "base64")).toString("utf8");
+}
+
+// openlore: scenario=EachUserSeesTheirOwnPosters spec=openwebui-posters
+test("EachUserSeesTheirOwnPosters: a poster is listed for its owner only, and another's id is not found", async (t) => {
+  const { call } = await testApp(t);
+  const alices = (await call("create_poster", POSTER, "alice")).json();
+  await call("create_poster", { ...POSTER, title: "Bob's" }, "bob");
+  assert.deepEqual((await call("list_posters", {}, "alice")).json().posters.map((p: { title: string }) => p.title), ["Class rules"]);
+  assert.deepEqual((await call("list_posters", {}, "bob")).json().posters.map((p: { title: string }) => p.title), ["Bob's"]);
+  const stolen = await call("get_poster", { id: alices.id }, "bob");
+  assert.equal(stolen.statusCode, 404);
+  assert.equal((await call("show_poster", { id: alices.id }, "bob")).statusCode, 404);
+});
+
+test("PosterTools: a change needs the revision it starts from, and a stale one is refused", async (t) => {
+  const { call } = await testApp(t);
+  const { id } = (await call("create_poster", POSTER)).json();
+  const read = (await call("get_poster", { id })).json();
+  assert.equal(read.revision, 1);
+  assert.equal(read.html, POSTER.html);
+  const changed = await call("update_poster", { id, base_revision: 1, html: POSTER.html.replace("I listen", "I listen well"), css: POSTER.css, format: "A4-portrait" });
+  assert.equal(changed.json().revision, 2);
+  const stale = await call("update_poster", { id, base_revision: 1, html: "<p>late</p>", css: "", format: "A4-portrait" });
+  assert.equal(stale.statusCode, 409);
+  assert.match(stale.json().error, /is at revision 2, not 1: read it again with get_poster/);
+  assert.match((await call("get_poster", { id })).json().html, /I listen well/);
+  assert.equal((await call("get_poster", { id, revision: 1 })).json().html, POSTER.html);
+  assert.equal((await call("update_poster", { id, html: "x", css: "", format: "A4-portrait" })).statusCode, 422);
+});
+
+test("PosterTools refuse what the format refuses: a script, an unknown format, an oversized poster", async (t) => {
+  const { call } = await testApp(t);
+  const script = await call("create_poster", { ...POSTER, html: "<p>x</p><script>steal()</script>" });
+  assert.equal(script.statusCode, 422);
+  assert.match(script.json().error, /holds no script/);
+  const format = await call("create_poster", { ...POSTER, format: "Letter" });
+  assert.equal(format.statusCode, 422);
+  assert.deepEqual(format.json().formats, ["A4-portrait", "A4-landscape", "A3-portrait", "A3-landscape", "slide-16:9"]);
+  const huge = await call("create_poster", { ...POSTER, html: "x".repeat(2_000_001) });
+  assert.equal(huge.statusCode, 413);
+  assert.deepEqual((await call("list_posters")).json().posters, []);
+});
+
+// openlore: scenario=TheEditorAppearsInTheChat spec=openwebui-posters
+test("TheEditorAppearsInTheChat: show_poster answers a self-contained page carrying the editor and the poster", async (t) => {
+  const { call } = await testApp(t);
+  const { id } = (await call("create_poster", { ...POSTER, title: 'R&D "rules" <A>' })).json();
+  const response = await call("show_poster", { id });
+  assert.equal(response.statusCode, 200);
+  assert.match(String(response.headers["content-type"]), /^text\/html/);
+  assert.equal(response.headers["content-disposition"], "inline");
+  const html = response.body;
+  // Open WebUI reads embeds back through an HTML-entity decoder: no & may be in the page.
+  assert.ok(!html.includes("&"), "no & anywhere, even with one in the title");
+  assert.doesNotMatch(html, /\b(src|href)=/, "the page loads nothing");
+  const poster = JSON.parse(payloadOf(html, "poster"));
+  assert.deepEqual(poster, { id, title: 'R&D "rules" <A>', revision: 1, html: POSTER.html, css: POSTER.css, format: "A4-portrait" });
+  assert.equal(payloadOf(html, "script"), posterViewerAssets().script);
+  assert.match(payloadOf(html, "script"), /mountEditor|poster-shell/);
+});
+
+test("The embed's policy lets only its own two scripts run, by hash, and fetches nothing", async (t) => {
+  const { call } = await testApp(t);
+  const { id } = (await call("create_poster", POSTER)).json();
+  const html = (await call("show_poster", { id })).body;
+  const policy = /<meta http-equiv="Content-Security-Policy" content="([^"]+)">/.exec(html)?.[1];
+  assert.ok(policy, "a policy in the page");
+  assert.match(policy, /default-src 'none'/);
+  assert.match(policy, /connect-src 'none'/);
+  assert.doesNotMatch(policy, /script-src[^;]*'unsafe-inline'/);
+  const bootstrap = /<script>([\s\S]*?)<\/script>/.exec(html)![1]!;
+  const hash = (text: string) => `'sha256-${createHash("sha256").update(text).digest("base64")}'`;
+  assert.ok(policy.includes(hash(bootstrap)), "the bootstrap is allowed by its hash");
+  assert.ok(policy.includes(hash(posterViewerAssets().script)), "the editor is allowed by its hash");
+});
+
+// openlore: scenario=TheLimitIsSaid spec=openwebui-posters
+// openlore: scenario=TheDefaultSandboxStillShowsThePoster spec=openwebui-posters
+test("TheLimitIsSaid: the embed's editor carries the notice, and names the setting editing needs", () => {
+  const script = posterViewerAssets().script;
+  assert.match(script, /Your changes stay in this page: your downloads carry them, but the model does not see them/);
+  assert.match(script, /iframe Sandbox Allow Same Origin/);
+});
+
+// openlore: scenario=EveryHostGivesTheSameGuide spec=poster-documents
+test("EveryHostGivesTheSameGuide (Open WebUI): create_poster and update_poster carry the shared guide", async (t) => {
+  const { app } = await testApp(t);
+  const document = (await app.inject({ method: "GET", url: "/openapi.json", headers: { authorization: `Bearer ${SECRET}` } })).json();
+  for (const tool of ["create_poster", "update_poster"]) assert.ok(document.paths[`/${tool}`].post.description.includes(POSTER_GUIDE), tool);
+  assert.match(document.paths["/get_poster"].post.description, /touch-ups in the embed are not here/);
+});
+
+// openlore: scenario=TheModelStartsFromItsOwnVersion spec=openwebui-posters
+test("TheModelStartsFromItsOwnVersion: nothing the embed does reaches the server, so get_poster is what the model wrote", async (t) => {
+  const { call } = await testApp(t);
+  const { id } = (await call("create_poster", POSTER)).json();
+  await call("show_poster", { id });
+  // The embed has no save and no route back (its policy refuses every connection): the
+  // only revisions are the model's.
+  const read = (await call("get_poster", { id })).json();
+  assert.equal(read.revision, 1);
+  assert.equal(read.html, POSTER.html);
+  // GrapesJS carries fetch code (its telemetry, turned off); the page's policy refuses every
+  // connection whatever it holds, which the policy test checks.
+  assert.doesNotMatch(posterViewerAssets().script, /save_poster/);
+});

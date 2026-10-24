@@ -101,6 +101,14 @@ kept=$(docker exec "$NAME" sh -c 'find /data/documents -type f | wc -l')
 # The document and its description, kept for later changes, and nothing else.
 [ "$kept" = "2" ] && [ "$after" = "$((before + 2))" ] || fail "create_document kept $kept file(s) under /data/documents and wrote $((after - before)) in all; expected the document and its description"
 
+echo "-- The image shows a poster in its editor"
+poster=$(call create_poster '{"title":"Image poster","html":"<div class=\"poster\"><h1>Hello</h1></div>","css":".poster{width:100%;height:100%}","format":"A4-portrait"}')
+poster_id=$(node -e 'process.stdout.write(JSON.parse(process.argv[1]).id ?? "")' "$poster")
+[ -n "$poster_id" ] || fail "create_poster answered $poster"
+shown_poster=$(call show_poster "{\"id\":\"$poster_id\"}")
+grep -q 'data-poster="H4sI' <<<"$shown_poster" || fail "show_poster did not embed the poster"
+grep -q 'data-script="H4sI' <<<"$shown_poster" || fail "show_poster did not embed the editor (dist/viewer-poster missing from the image?)"
+
 echo "-- APlanningOutlivesTheContainer"
 docker rm -f "$NAME" >/dev/null
 start

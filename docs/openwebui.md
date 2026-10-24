@@ -209,6 +209,26 @@ or slide titles), its figures, and a **Download** button.
 Mermaid is drawn by Mermaid 12 inside the server, without a browser; its layout is close to what the
 browser draws, not identical.
 
+## Posters
+
+The model composes a poster, a worksheet or a slide in HTML and CSS (`create_poster`) and shows it
+(`show_poster`): the answer is the poster in an editor, in the chat. The same editor as pi-outpost's
+file viewer and the Claude Desktop extension.
+
+- **Downloads:** **↓ word** gives an A4 (or A3) page with narrow margins, to print; **↓ powerpoint**
+  one 16:9 slide, to show; **↓ html** the page itself. The poster travels as a picture at print
+  resolution, built in the browser: the server is not called.
+- **Retouching needs a setting.** Open WebUI draws a tool's embed in a frame that cannot reach the
+  editor's canvas unless the user turns on **iframe Sandbox Allow Same Origin** in their settings.
+  Without it the poster is shown as it is, with its downloads, and the embed says so. With it, the
+  user can correct texts, move pictograms and change colours before downloading. The embed carries
+  its own Content-Security-Policy — only its two scripts run, by their hashes, and nothing is
+  fetched — so a poster's own markup cannot act in Open WebUI's origin when the setting is on.
+- **Touch-ups stay in the browser.** The user's browser has no route to this server, so what they
+  change in the embed is in their downloads, and the model does not see it; the embed says so. To
+  have the model change the poster, the user asks it (`get_poster`, then `update_poster`).
+- **Kept per user,** as plannings are, with every revision (`list_posters`, `get_poster`).
+
 ## Configuration
 
 The server reads only its environment.
@@ -258,7 +278,8 @@ Plain mode is only as safe as the bearer key and the network between the two con
 
 - **Storage:** each planning is a directory of revision files, `1.json`, `2.json`, …, plus a small
   `meta.json`, under a directory per user named by a hash of the user's id. Kept Word and PowerPoint
-  files are under `documents/`, a directory per user named the same way.
+  files are under `documents/`, and posters under `posters/`, a directory per user named the same
+  way; each revision of a poster is one file.
 - **Backups:** a backup is a copy of the volume.
 - **Opening a planning elsewhere:** any revision file opens in pi-outpost as a structured-exchange
   document.
@@ -292,6 +313,9 @@ at; elsewhere, Arial or any installed sans-serif face is used.
 
 - **Embed size.** Each time a planning is shown, Open WebUI stores the timeline in the chat, about
   110 kB.
+  A poster's embed carries its editor: about 425 kB each time one is shown.
+- **Poster touch-ups do not reach the model.** See [Posters](#posters): a browser-reachable route
+  for them is not there yet.
 - **The model does not see the timeline.** Open WebUI hands the model only a note that an embed is
   on screen, so the model reads a planning with `get_planning`.
 - **Plannings are personal.** Sharing within a team is not there yet.

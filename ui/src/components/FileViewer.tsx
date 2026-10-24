@@ -11,6 +11,7 @@ import { LazyCodeEditor, preloadCodeEditor } from "./lazyCodeEditor";
 import { CopyButton } from "./CopyButton";
 import { DocxExportButton } from "./DocxExportButton";
 import { DrawioFrame } from "./DrawioFrame";
+import { PosterFrame } from "./PosterFrame";
 import { DrawioBlock } from "./DrawioBlock";
 import { HtmlPageFrame } from "./HtmlPageFrame";
 import type { LoadFile } from "../util/htmlPage";
@@ -150,6 +151,11 @@ function isHtml(path: string): boolean {
   return /\.html?$/i.test(path);
 }
 
+/** A poster (@pi-outpost/posters): a page of its own kind, opened in the poster editor. */
+export function isPoster(path: string): boolean {
+  return /\.poster\.html$/i.test(path);
+}
+
 /** Client-side hint only — the server re-checks every write against the sandbox. */
 function isWritable(path: string, writableRoot: string | null | undefined): boolean {
   if (writableRoot === undefined) return true;
@@ -221,8 +227,10 @@ export function FileViewer({
 
   const loaded = file.status === "loaded" ? file : null;
   const markdown = loaded !== null && isMarkdown(file.path);
+  // Opened in the poster editor (PosterFrame), where its texts and pictograms are retouched.
+  const poster = loaded !== null && isPoster(file.path);
   // Drawn like Markdown, in a sandboxed frame (HtmlPageFrame): open it, see the page.
-  const html = loaded !== null && isHtml(file.path);
+  const html = loaded !== null && isHtml(file.path) && !poster;
   // Drawn by jgraph's viewer, in a frame that can reach nothing (DrawioFrame).
   const drawio = loaded !== null && isDrawio(file.path);
   // Images can't travel the text-preview protocol (read_file answers "binary");
@@ -256,6 +264,8 @@ export function FileViewer({
    * It arrives with no notion of invalid — every text renders as something — so its
    * half of the split never goes stale.
    */
+  // A poster has no split: its editor is the rendering, and a second editor beside it on
+  // the same file would race it.
   const renderable = recognised || markdown || html || drawio;
   /** The old boolean, derived: every existing branch keeps reading one thing. */
   const showRaw = mode === "source";
@@ -381,7 +391,7 @@ export function FileViewer({
   type FindMode = "pdf" | "text" | "dom" | "none";
   const editing = edit !== null;
   // The source shown read-only, in the same editor as editing (CodeMirror).
-  const showingSource = loaded !== null && edit === null && !splitting && !showGitDiff && (!markdown || showRaw) && (!diagram || showRaw) && (!html || showRaw) && (!drawio || showRaw);
+  const showingSource = loaded !== null && edit === null && !splitting && !showGitDiff && (!markdown || showRaw) && (!diagram || showRaw) && (!html || showRaw) && (!drawio || showRaw) && (!poster || showRaw);
   const findMode: FindMode =
     showGitDiff || splitting
       ? "none"
@@ -770,6 +780,9 @@ export function FileViewer({
     if (renderable && mode === "rendered") {
       setModeBeforeEdit("rendered");
       setMode(roomForTwo ? "split" : "source");
+    } else if (poster && mode === "rendered") {
+      setModeBeforeEdit("rendered");
+      setMode("source");
     }
     setEdit({ draft: loaded.content, baseContent: loaded.content, baseMtimeMs: loaded.mtimeMs });
   }
@@ -884,7 +897,7 @@ export function FileViewer({
         {/* Three modes rather than two, and only for a document with a rendering to
             sit beside: revising a model by hand means reading the picture and
             changing the text in one motion, which a toggle makes a round trip. */}
-        {renderable && !showGitDiff && (
+        {(renderable || poster) && !showGitDiff && (
           <div className="flex shrink-0 items-center gap-0.5" role="group" aria-label="How to show this document">
             {(
               [
@@ -892,7 +905,10 @@ export function FileViewer({
                 ["split", "⇹ split", "Edit the file beside its rendering"],
                 ["source", "⌗ source", "Show the file as written"],
               ] as const
-            ).map(([value, label, title]) => (
+            )
+              // A poster's rendering is its editor: no second one beside it.
+              .filter(([value]) => !(poster && value === "split"))
+              .map(([value, label, title]) => (
               <button
                 key={value}
                 type="button"
@@ -959,7 +975,7 @@ export function FileViewer({
           </button>
         )}
         {/* Not for a diagram: its text is XML, and a Word document of XML helps nobody. */}
-        {loaded && !image && !pdf && !drawio && !showGitDiff && !recognised && <DocxExportButton text={editedText} path={file.path} serverUrl={serverUrl} token={token} workspace={workspace} template={docxTemplate} />}
+        {loaded && !image && !pdf && !drawio && !poster && !showGitDiff && !recognised && <DocxExportButton text={editedText} path={file.path} serverUrl={serverUrl} token={token} workspace={workspace} template={docxTemplate} />}
         {shownDocument?.kind === "table" && (
           <>
             <DocxExportButton
@@ -1117,6 +1133,11 @@ export function FileViewer({
         {loaded && edit === null && !splitting && !showGitDiff && drawio && !showRaw && (
           <div className="h-full" data-testid="file-drawio">
             <DrawioBlock path={file.path} xml={loaded.content} variant="viewer" fallback={sourceView(false)} onTouchUpDirtyChange={setTouchUpDirty} />
+          </div>
+        )}
+        {loaded && edit === null && !splitting && !showGitDiff && poster && !showRaw && (
+          <div className="h-full" data-testid="file-poster">
+            <PosterFrame path={file.path} content={loaded.content} writable={writable} fallback={sourceView(false)} onTouchUpDirtyChange={setTouchUpDirty} />
           </div>
         )}
         {loaded && edit === null && !splitting && !showGitDiff && html && !showRaw && (

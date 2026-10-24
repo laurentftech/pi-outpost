@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <!--
+      The poster editor frame (poster-editor design, decision 4). Same origin as the server,
+      because GrapesJS draws in a nested frame it must reach; held by this policy instead of
+      an opaque sandbox: only this page's own bundle runs, nothing is fetched, nothing is
+      submitted. GrapesJS's canvas is about:blank and inherits it. Probed in
+      scripts/probes/poster-isolation.mts.
+    -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src data: blob:; font-src data:; connect-src 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'"
+    />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Poster editor</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/posterEditorFrame.ts"></script>
+  </body>
+</html>

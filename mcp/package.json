@@ -9,19 +9,22 @@
   "scripts": {
     "start": "node --import tsx src/main.ts",
     "typecheck": "tsc --noEmit",
-    "build": "tsc --noEmit && npm run build:viewer && npm run build:server",
-    "pretest": "npm run build:viewer",
+    "build": "tsc --noEmit && npm run build:viewer && npm run build:viewer-poster && npm run build:server",
+    "pretest": "npm run build:viewer && npm run build:viewer-poster",
     "test": "node --import tsx/esm --test --test-timeout=120000 test/*.test.ts",
     "build:viewer": "vite build --config viewer/vite.config.ts",
     "build:server": "esbuild src/main.ts --bundle --platform=node --target=node20 --format=esm --outfile=dist/bundle/server/index.mjs --log-level=warning \"--banner:js=import { createRequire as __createRequire } from 'node:module'; const require = __createRequire(import.meta.url);\" && node ../apps-core/scripts/copy-guide.mjs dist/bundle/server",
-    "pack": "npm run build && node scripts/pack.mjs",
+    "pack": "npm run build && npm run build:server-posters && node scripts/pack.mjs && node scripts/pack-posters.mjs",
     "lint": "oxlint",
-    "test:bundle": "node --import tsx/esm --test --test-timeout=120000 test-bundle/*.test.ts"
+    "test:bundle": "node --import tsx/esm --test --test-timeout=120000 test-bundle/*.test.ts",
+    "build:viewer-poster": "vite build --config viewer/vite.poster.config.ts",
+    "build:server-posters": "esbuild src/posters/main.ts --bundle --platform=node --target=node20 --format=esm --outfile=dist/bundle-posters/server/index.mjs --log-level=warning \"--banner:js=import { createRequire as __createRequire } from 'node:module'; const require = __createRequire(import.meta.url);\""
   },
   "dependencies": {
     "@modelcontextprotocol/ext-apps": "^2.0.3",
     "@modelcontextprotocol/server": "^2.3.1",
     "@pi-outpost/apps-core": "*",
+    "@pi-outpost/posters": "*",
     "@pi-outpost/shared": "*",
     "zod": "^4.6.7"
   },

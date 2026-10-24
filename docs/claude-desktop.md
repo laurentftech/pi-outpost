@@ -75,10 +75,65 @@ delete it yourself if you no longer want it.
   *Settings › Extensions*, then start a new conversation.
 - **"No planning …"** — ask Claude to list your plannings first; it then uses the right one.
 
+## Posters
+
+A second extension, **Posters (pi-outpost)**, lets Claude make posters, worksheets and slides that
+you then touch up yourself, in the conversation: correct a word, move a pictogram, change a colour.
+Then export the poster to **Word**, to print it, or to **PowerPoint**, to show it. Claude starts
+from your version when you ask it for more changes. It installs on its own, beside the plannings
+or without them, and also works on the free plan.
+
+### Install it
+
+1. Download **[pi-outpost-posters.mcpb](https://github.com/laurentftech/pi-outpost/releases/latest/download/pi-outpost-posters.mcpb)**
+   (from the latest [release](https://github.com/laurentftech/pi-outpost/releases/latest)).
+2. Double-click it, and Claude Desktop offers to install **Posters (pi-outpost)**.
+3. Under **Posters folder**, choose a folder, for example *Documents › Posters*. It may be the
+   same folder as your plannings.
+4. Click **Install**, then make sure the extension is enabled.
+
+### What to ask
+
+- *"Make me an A4 poster of our class rules, with pictograms."*
+- *"A slide about the water cycle, to show in class."* (a 16:9 slide)
+- *"Show me my poster on prepositions."*
+- *"Make the title bigger and add a rule about tidying up."* (Claude reads your touch-ups first)
+
+### In the editor
+
+- **Double-click a text** to correct it; it rewraps in its box. Click elsewhere when done.
+- **Click an element, then drag it** to move it. **Style** opens the colours, fonts and sizes of
+  the selected element.
+- **↶ ↷** undo and redo. **− Fit +** zoom; scroll with two fingers to move around the page.
+- **💾 Save** (the first button) keeps your version: Claude starts from it. If Claude changed the poster in the meantime,
+  the save is refused and says so, rather than overwriting either version.
+- **↓ word** makes an A4 (or A3) page with narrow margins, to print. **↓ powerpoint** makes a
+  16:9 slide. Both carry the poster **as a picture**: correct the texts in the editor, then export again.
+  The file is downloaded, and also kept beside the poster in your folder. **↓ html** gives the
+  page itself, to print from a browser.
+- **Full screen** gives the editor the whole window, with the Style panel open.
+
+### Where your posters are
+
+```
+Posters/
+  Class rules.poster.html   ← the poster: opens and prints in any browser
+  Class rules.docx          ← a Word export; a second one is "Class rules (2).docx"
+  .posters/                 ← every earlier version (hidden)
+```
+
+An export never replaces an earlier one, in case you added things to it in Word or PowerPoint.
+
+If the editor ever stays invisible under Claude's answer, turn on **Debug log** under
+*Settings › Extensions › Posters (pi-outpost) › Configure*: the extension then writes what Claude
+Desktop asked of it to `.posters/debug.log` in your folder.
+
 ---
 
 For developers: the server is `mcp/` in this repository, an [MCP Apps](https://github.com/modelcontextprotocol/ext-apps)
-server over stdio. `npm run pack --workspace @pi-outpost/mcp` builds `mcp/dist/pi-outpost-plannings.mcpb`,
-and `npm run test:bundle --workspace @pi-outpost/mcp` starts the packed server over stdio. It shares
+server over stdio. `npm run pack --workspace @pi-outpost/mcp` builds `mcp/dist/pi-outpost-plannings.mcpb` and
+`mcp/dist/pi-outpost-posters.mcpb`, and `npm run test:bundle --workspace @pi-outpost/mcp` starts both
+packed servers over stdio. The posters editor, format, guide and Word/PowerPoint export are
+`posters/` (`@pi-outpost/posters`), shared with pi-outpost and the Open WebUI server. It shares
 its planning gate, update operations, guide and tool descriptions with the
 [Open WebUI server](openwebui.md), through `apps-core/`.

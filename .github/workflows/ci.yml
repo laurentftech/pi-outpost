@@ -56,6 +56,9 @@ jobs:
       # The Word and PowerPoint builders, and Mermaid drawn without a browser.
       - run: npm test --workspace @pi-outpost/office
 
+      # Posters: the page format, its guide and the Word and PowerPoint packaging.
+      - run: npm test --workspace @pi-outpost/posters
+
       # The MCP App for Claude Desktop: its tools, then the .mcpb a person installs,
       # unpacked and started over stdio as the host starts it — on both platforms it
       # declares.

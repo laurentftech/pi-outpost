@@ -58,11 +58,13 @@ describe("SettingsMenu", () => {
     expect(screen.getByRole("heading", { name: "Credits", exact: true })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Project website" })).toHaveAttribute("href", "https://laurentftech.github.io/pi-outpost/");
     expect(screen.getByText("draw.io / diagrams.net")).toBeVisible();
+    expect(screen.getByText("GrapesJS")).toBeVisible();
     expect(screen.getAllByRole("link")).toHaveLength(1);
     expect(document.querySelector("details")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Third-party notices" }));
     expect(screen.getAllByText(/TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION/)[0]).toBeVisible();
     expect(screen.getByText(/Copyright \(c\) Meta Platforms/)).toBeVisible();
+    expect(screen.getByText(/Copyright \(c\) 2017-current, Artur Arseniev/)).toBeVisible();
     fireEvent.click(screen.getByRole("button", { name: /Back to credits/ }));
     expect(screen.getByText("Open-source acknowledgements")).toBeVisible();
     fireEvent.click(screen.getByRole("button", { name: /Back to settings/ }));

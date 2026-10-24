@@ -29,6 +29,10 @@ Or copy the directory into `.agents/skills/`, which the agent discovers on its o
   the XML skeleton, shapes, connectors and containers that render everywhere, layout rules,
   and the loop through `drawio_check`, since the agent cannot see the rendering, ending with
   the diagram shown in the reply as a picture of the file, where the conversation draws it.
+- **`posters/`** — making a poster, a worksheet or a slide as a `.poster.html` page the user
+  opens in the file viewer's poster editor, retouches there and exports to Word or PowerPoint:
+  the shared poster guide (the same words the Claude extension and the Open WebUI server give),
+  the page skeleton with its three markers, and a complete example to start from.
 - **`pptx-from-template/`** — building a PowerPoint deck from a `.potx`/`.pptx` template with
   `pptx_layouts`, `pptx_create` and `pptx_render`, and the render-and-fix loop that checks the
   slides are readable before the deck is handed over, and updating an existing deck slide by
