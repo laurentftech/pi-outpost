@@ -102,16 +102,16 @@ or without them, and also works on the free plan.
 ### In the editor
 
 - **Double-click a text** to correct it; it rewraps in its box. Click elsewhere when done.
-- **Click an element, then drag it** to move it. **Style** opens the colours, fonts and sizes of
+- **Click an element, then drag it** to move it. **Format** opens the colours, fonts and sizes of
   the selected element.
 - **↶ ↷** undo and redo. **− Fit +** zoom; scroll with two fingers to move around the page.
-- **💾 Save** (the first button) keeps your version: Claude starts from it. If Claude changed the poster in the meantime,
+- **💾 Save** (the first button) is disabled until you make a change, then keeps your version: Claude starts from it. If Claude changed the poster in the meantime,
   the save is refused and says so, rather than overwriting either version.
 - **↓ word** makes an A4 (or A3) page with narrow margins, to print. **↓ powerpoint** makes a
   16:9 slide. Both carry the poster **as a picture**: correct the texts in the editor, then export again.
   The file is downloaded, and also kept beside the poster in your folder. **↓ html** gives the
   page itself, to print from a browser.
-- **Full screen** gives the editor the whole window, with the Style panel open.
+- **Full screen** gives the editor the whole window, with the Format panel open.
 
 ### Where your posters are
 

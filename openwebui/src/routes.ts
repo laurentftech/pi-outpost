@@ -79,7 +79,7 @@ export function planningRoutes(store: PlanningStore, config: PlanningServerConfi
   return {
     register(app: FastifyInstance) {
       registerOpenApi(app);
-      registerPosterRoutes(app, new PosterStore(config));
+      registerPosterRoutes(app, new PosterStore(config), { secret: config.secret, publicUrl: config.publicUrl });
 
       const mermaid = options.mermaid ?? createMermaidRenderer(options.mermaidWorker ? { workerUrl: options.mermaidWorker } : {});
       if (options.mermaid === undefined) app.addHook("onClose", () => mermaid.close());

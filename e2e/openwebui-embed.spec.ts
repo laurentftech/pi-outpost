@@ -54,6 +54,17 @@ async function host(page: Page): Promise<Frame> {
   return page.frames().find((candidate) => candidate !== page.mainFrame())!;
 }
 
+async function themedHost(page: Page, sandbox: string, dark: boolean, payload = PLANNING): Promise<Frame> {
+  await page.setContent(`<!doctype html><html class="${dark ? "dark" : ""}"><body style="margin:0">
+    <iframe id="embed" sandbox="${sandbox}" style="width:900px;border:0"></iframe></body></html>`);
+  await page.locator("#embed").evaluate((frame, html) => {
+    (frame as HTMLIFrameElement).srcdoc = html;
+  }, embedPage(payload));
+  const frame = page.frames().find((candidate) => candidate !== page.mainFrame())!;
+  await expect(frame.getByTestId(payload.mode === "download" ? "download-name" : "timeline")).toBeVisible();
+  return frame;
+}
+
 const received = (page: Page) => page.evaluate(() => (window as unknown as { received: Array<{ type?: string; text?: string; height?: number }> }).received);
 
 // openlore: scenario=TheEmbedRunsInTheDefaultSandbox spec=openwebui-planning-server
@@ -80,6 +91,42 @@ test("TheEmbedRunsInTheDefaultSandbox: draws, changes scale, opens details, repo
   const drawn = await frame.evaluate(() => Math.ceil(document.getElementById("root")!.getBoundingClientRect().height));
   await expect.poll(async () => (await received(page)).filter((m) => m.type === "iframe:height").map((m) => m.height!).at(-1)).toBe(drawn);
   expect(drawn).toBeGreaterThan(150);
+});
+
+// openlore: scenario=DarkOpenWebUIOnALightSystem spec=openwebui-embed-theme
+// openlore: scenario=LightOpenWebUIOnADarkSystem spec=openwebui-embed-theme
+// openlore: scenario=TheSystemSwitchesWhileOpen spec=openwebui-embed-theme
+test("Planning theme follows Open WebUI when readable, otherwise follows the system", async ({ page }) => {
+  await page.emulateMedia({ colorScheme: "light" });
+  let frame = await themedHost(page, "allow-scripts allow-same-origin allow-popups allow-downloads", true);
+  await expect(frame.locator("html")).toHaveAttribute("data-theme", "dark");
+  await page.locator("html").evaluate((element) => element.classList.remove("dark"));
+  await expect(frame.locator("html")).toHaveAttribute("data-theme", "light");
+
+  await page.emulateMedia({ colorScheme: "dark" });
+  frame = await themedHost(page, "allow-scripts allow-popups allow-downloads", false);
+  await expect(frame.locator("html")).toHaveAttribute("data-theme", "dark");
+  await page.emulateMedia({ colorScheme: "light" });
+  await expect(frame.locator("html")).toHaveAttribute("data-theme", "light");
+});
+
+// openlore: scenario=TheDefaultFrameFollowsTheSystem spec=openwebui-embed-theme
+test("Download card follows the system in Open WebUI's opaque default frame", async ({ page }) => {
+  await page.emulateMedia({ colorScheme: "dark" });
+  const frame = await themedHost(page, "allow-scripts allow-popups allow-downloads", false, {
+    mode: "download",
+    fileName: "Class rules.docx",
+    mediaType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    size: 4,
+    data: "UEsDBA==",
+    outline: [{ level: 1, text: "Class rules" }],
+    figures: [],
+    template: "Default",
+  });
+  expect(await frame.locator("html").evaluate((root) => root.dataset.theme)).toBe("dark");
+  const card = frame.getByRole("region", { name: "Class rules.docx" });
+  await expect(card).toHaveCSS("background-color", "oklch(0.208 0.042 265.755)");
+  await expect(frame.getByRole("button", { name: "Download" })).toBeVisible();
 });
 
 // openlore: scenario=ClickingAMilestoneFillsTheInput spec=openwebui-planning-server
@@ -131,6 +178,8 @@ async function writtenDocument(): Promise<{ html: string; bytes: Buffer; fileNam
     secret: "s",
     identity: "plain" as const,
     identityKey: undefined,
+    publicUrl: undefined,
+    webUiOrigin: undefined,
     dataDir,
     maxPlanningBytes: 1_000_000,
     maxRevisions: 10,

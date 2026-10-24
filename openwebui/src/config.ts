@@ -19,6 +19,10 @@ export interface PlanningServerConfig {
   identity: IdentityMode;
   /** `FORWARD_USER_INFO_HEADER_JWT_SECRET` in Open WebUI; required in signed mode. */
   identityKey: string | undefined;
+  /** Browser-reachable origin of this server, when poster embed saving is enabled. */
+  publicUrl: string | undefined;
+  /** Exact browser origin of the Open WebUI deployment allowed to save posters. */
+  webUiOrigin: string | undefined;
   dataDir: string;
   /** Largest planning document accepted, in bytes of its JSON. */
   maxPlanningBytes: number;
@@ -46,6 +50,8 @@ export const ENV = {
   secret: "OUTPOST_SECRET",
   identity: "OUTPOST_IDENTITY",
   identityKey: "OUTPOST_IDENTITY_KEY",
+  publicUrl: "OUTPOST_PUBLIC_URL",
+  webUiOrigin: "OUTPOST_WEBUI_ORIGIN",
   dataDir: "OUTPOST_DATA_DIR",
   maxPlanningBytes: "OUTPOST_MAX_PLANNING_BYTES",
   maxRevisions: "OUTPOST_MAX_REVISIONS",
@@ -81,6 +87,31 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env, cwd: string = p
     );
   }
 
+  const publicUrl = env[ENV.publicUrl]?.trim() || undefined;
+  const webUiOrigin = env[ENV.webUiOrigin]?.trim() || undefined;
+  if (Boolean(publicUrl) !== Boolean(webUiOrigin)) {
+    throw new ConfigError(`${ENV.publicUrl} and ${ENV.webUiOrigin} must be set together to enable poster embed saving`);
+  }
+  if (publicUrl && webUiOrigin) {
+    const parseOrigin = (raw: string, setting: string) => {
+      let parsed: URL;
+      try {
+        parsed = new URL(raw);
+      } catch {
+        throw new ConfigError(`${setting} must be an http:// or https:// origin`);
+      }
+      if (!/^https?:$/.test(parsed.protocol) || parsed.username || parsed.password || parsed.pathname !== "/" || parsed.search || parsed.hash) {
+        throw new ConfigError(`${setting} must be an http:// or https:// origin with no path, credentials, query, or fragment`);
+      }
+      return parsed.origin;
+    };
+    const publicOrigin = parseOrigin(publicUrl, ENV.publicUrl);
+    const allowedOrigin = parseOrigin(webUiOrigin, ENV.webUiOrigin);
+    if (new URL(allowedOrigin).protocol === "https:" && new URL(publicOrigin).protocol !== "https:") {
+      throw new ConfigError(`${ENV.publicUrl} must use https:// when ${ENV.webUiOrigin} does, to avoid browser mixed-content blocking`);
+    }
+  }
+
   const port = positiveInteger(env, ENV.port, 8790);
   if (port > 65535) throw new ConfigError(`${ENV.port} must be a port number, not ${port}`);
 
@@ -90,6 +121,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env, cwd: string = p
     secret,
     identity,
     identityKey,
+    publicUrl: publicUrl ? new URL(publicUrl).origin : undefined,
+    webUiOrigin: webUiOrigin ? new URL(webUiOrigin).origin : undefined,
     dataDir: path.resolve(cwd, env[ENV.dataDir]?.trim() || "planning-data"),
     maxPlanningBytes: positiveInteger(env, ENV.maxPlanningBytes, 1_000_000),
     maxRevisions: positiveInteger(env, ENV.maxRevisions, 500),

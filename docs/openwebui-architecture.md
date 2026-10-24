@@ -22,8 +22,9 @@ Checked against **Open WebUI v0.11.4**.
   file is kept for the user under its name, so `update_presentation` and `update_document` can change
   it later.
 - **What it never does:** it opens no outbound connection, calls no model, holds no user password,
-  and reads no other data from Open WebUI. Only Open WebUI's backend needs to reach it, so it
-  publishes no port.
+  and reads no other data from Open WebUI. The Docker example binds its port to host loopback by
+  default. When poster saving is configured, the browser can reach one capability-protected write
+  route through the explicitly published port.
 
 ## Components
 
@@ -32,7 +33,9 @@ flowchart LR
   subgraph user["User workstation"]
     B["Browser<br/>Open WebUI page"]
     F["Sandboxed iframe<br/>timeline viewer<br/>(allow-scripts, no same-origin)"]
+    P["Poster iframe<br/>editor when enabled<br/>(same-origin setting)"]
     B --- F
+    B --- P
   end
 
   subgraph host["Docker host · internal network"]
@@ -56,10 +59,12 @@ flowchart LR
   BE -- "tool calls<br/>Bearer key + signed user token" --> API
   API -- "JSON, or HTML embed" --> BE
   BE -- "embed stored in the chat" --> B
+  B -. "optional poster save<br/>scoped capability + exact Origin" .-> API
 ```
 
 - **Arrows that do not exist:**
-  - nothing goes from the browser to the server;
+  - the browser cannot read planning, poster, or document data from the server; the only optional
+    browser-to-server request is a narrowly scoped poster save when explicitly configured;
   - nothing goes from the server to Open WebUI, the model provider or the internet.
 - **The embed:** the browser shows the timeline because Open WebUI stored it in the chat and hands
   it to its own page, which puts it in a sandboxed frame.
@@ -167,6 +172,13 @@ an opaque origin:
 - **Downloads:** a reader downloads a diagram (SVG) or a table (Markdown, CSV, XLSX), or the Word or
   PowerPoint file a document card carries. The file is built in the frame, or carried in it, and
   saved through `allow-downloads`; nothing is fetched.
+- **Poster editor:** enabling Open WebUI's **iframe Sandbox Allow Same Origin** lets the editor reach
+  its GrapesJS canvas. Poster save is optional: the page carries an HMAC capability limited to one
+  owner, poster and base revision. It never receives the tool bearer secret or identity signing key;
+  CSP and CORS permit only the configured pi-outpost and Open WebUI origins. A stale revision
+  conflicts instead of overwriting newer content. The capability is a write-only bearer permission
+  carried in the chat embed: someone who can access a shared chat can use it for one save until that
+  poster revision advances; it does not let them read poster content.
 - **Planning content is data, never markup.** Labels and titles are rendered as text by React. A
   planning titled `</script><script>…` is stored as typed and shown as typed, and the page around
   it still holds a single script, the viewer's own. This is tested.
@@ -179,6 +191,8 @@ an opaque origin:
                                      /2.json …
 /data/documents/<sha256(user id)>/<sha256(file name)>.bin    a kept Word or PowerPoint file
                                   /<sha256(file name)>.json   its name, type, template, date
+/data/posters/<sha256(user id)>/<poster id>/meta.json        poster title and current revision
+                                     /1.json, 2.json, …      complete poster revisions
 ```
 
 - **Contents:** what users put in their plannings (titles, labels, dates, dependencies), and the
@@ -189,7 +203,9 @@ an opaque origin:
   - `meta.json` is replaced atomically (temporary file, then rename);
   - updates to one planning are serialised, and an update prepared against an old revision is
     refused, so two users or two chats cannot overwrite each other silently.
-- **Encryption at rest** is the volume's: the files are plain JSON.
+- **Encryption at rest** is the volume's: planning and poster files are plain JSON; documents are
+  plain binary files. The Docker volume and its backups are not encrypted by pi-outpost. Use
+  encrypted host/volume storage and protect backups when host administrators are in scope.
 - **Deleting a user's data:** remove `/data/<sha256(user id)>` (plannings) and
   `/data/documents/<sha256(user id)>` (kept documents). There is no deletion tool for
   users yet.
@@ -199,7 +215,8 @@ an opaque origin:
 **What Open WebUI stores:** each time a planning is shown, the embed (about 110 kB, compressed
 viewer and planning) is stored in the chat, in Open WebUI's database. A document card also carries
 its file, compressed: up to `OUTPOST_MAX_FILE_BYTES` (5 MB by default) before compression. Deleting
-the chat deletes it.
+the chat deletes it. A poster embed (about 425 kB) is stored there too; when poster saving is enabled,
+it contains the scoped write capability described above.
 
 ## Limits enforced by the server
 

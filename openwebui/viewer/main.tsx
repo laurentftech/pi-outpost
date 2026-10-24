@@ -21,6 +21,7 @@ import type { ValidatedStructuredExchange } from "@pi-outpost/shared/structured-
 import { StructuredExchangeDocument } from "../../ui/src/presentations/StructuredExchangeView";
 import { TimelineView } from "../../ui/src/presentations/TimelineView";
 import { DownloadCard, type EmbeddedDownload } from "./DownloadCard";
+import { followHostTheme } from "./hostTheme";
 import "@pi-outpost/apps-core/viewer.css";
 
 /** A document shown by show_structure: drawn as pi-outpost draws it, nothing to act on. */
@@ -70,16 +71,10 @@ function readPayload(): EmbeddedPlanning | EmbeddedStructure | EmbeddedDownload 
   return JSON.parse(element.textContent) as EmbeddedPlanning | EmbeddedStructure | EmbeddedDownload;
 }
 
-function prefersDark(): boolean {
-  try {
-    return window.matchMedia("(prefers-color-scheme: dark)").matches;
-  } catch {
-    return false;
-  }
-}
-
 const container = document.getElementById("root")!;
-if (prefersDark()) document.documentElement.dataset.theme = "dark";
+followHostTheme((theme) => {
+  document.documentElement.dataset.theme = theme === "dark" ? "dark" : "light";
+});
 
 function reportHeight() {
   const height = Math.ceil(container.getBoundingClientRect().height);

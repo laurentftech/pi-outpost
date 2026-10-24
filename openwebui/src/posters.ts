@@ -10,10 +10,10 @@
  * generated here and checked against a fixed pattern, revisions written once (`wx`), the
  * meta replaced by rename, changes to one poster serialised in-process.
  *
- * Touch-ups made in the embed are not sent back: the user's browser has no route to this
- * server. The model's next change starts from the last version it wrote, and the embed
- * says so (openwebui-posters: TouchUpsStayInTheBrowser). A browser-reachable route with
- * short-lived signed tickets is the later change that would lift this.
+ * When browser saving is configured, the embed receives a short-lived capability limited
+ * to one owner, poster and base revision. It saves through the same revision store; the
+ * ordinary tool bearer key never reaches the browser. Without that configuration, edits
+ * remain local to the embed.
  */
 import { createHash, randomBytes } from "node:crypto";
 import fs from "node:fs";
@@ -28,6 +28,7 @@ import { POSTER_GUIDE } from "@pi-outpost/posters/guide";
 import type {} from "./app.ts";
 import type { PlanningServerConfig } from "./config.ts";
 import { pack } from "./embed.ts";
+import { InvalidPosterTicket, issuePosterSaveTicket, issuePosterSaveTicketForOwnerHash, verifyPosterSaveTicket } from "./posterTickets.ts";
 
 export interface PosterMeta {
   id: string;
@@ -101,12 +102,22 @@ export class PosterStore {
   }
 
   private ownerDir(owner: string): string {
-    return path.join(this.config.dataDir, "posters", createHash("sha256").update(owner).digest("hex"));
+    return this.ownerDirForHash(createHash("sha256").update(owner).digest("hex"));
+  }
+
+  private ownerDirForHash(ownerHash: string): string {
+    if (!/^[a-f0-9]{64}$/.test(ownerHash)) throw new PosterRefusal(404, "no poster owner");
+    return path.join(this.config.dataDir, "posters", ownerHash);
   }
 
   private posterDir(owner: string, id: string): string {
     if (!POSTER_ID.test(id)) throw notFound(id);
     return path.join(this.ownerDir(owner), id);
+  }
+
+  private posterDirForHash(ownerHash: string, id: string): string {
+    if (!POSTER_ID.test(id)) throw notFound(id);
+    return path.join(this.ownerDirForHash(ownerHash), id);
   }
 
   private async readMeta(owner: string, id: string): Promise<PosterMeta> {
@@ -168,9 +179,25 @@ export class PosterStore {
 
   /** A new revision from `baseRevision`, refused when another was written since. */
   async revise(owner: string, id: string, baseRevision: number, content: PosterContent): Promise<PosterRevision> {
+    const ownerHash = createHash("sha256").update(owner).digest("hex");
+    return this.reviseFor(ownerHash, this.posterDirForHash(ownerHash, id), id, baseRevision, content);
+  }
+
+  /** Save through a signed browser capability whose owner claim is already hashed. */
+  async reviseForOwnerHash(ownerHash: string, id: string, baseRevision: number, content: PosterContent): Promise<PosterRevision> {
+    return this.reviseFor(ownerHash, this.posterDirForHash(ownerHash, id), id, baseRevision, content);
+  }
+
+  private async reviseFor(ownerHash: string, dir: string, id: string, baseRevision: number, content: PosterContent): Promise<PosterRevision> {
     checked(content);
-    return this.locked(`poster:${owner}:${id}`, async () => {
-      const meta = await this.readMeta(owner, id);
+    return this.locked(`poster:${ownerHash}:${id}`, async () => {
+      let meta: PosterMeta;
+      try {
+        meta = JSON.parse(await fsp.readFile(path.join(dir, "meta.json"), "utf8")) as PosterMeta;
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "ENOENT") throw notFound(id);
+        throw error;
+      }
       if (baseRevision !== meta.revision) {
         throw new PosterRefusal(409, `poster "${id}" is at revision ${meta.revision}, not ${baseRevision}: read it again with get_poster before changing it`, { current: meta.revision });
       }
@@ -179,9 +206,9 @@ export class PosterStore {
       }
       const revision = meta.revision + 1;
       const now = new Date().toISOString();
-      await fsp.writeFile(path.join(this.posterDir(owner, id), `${revision}.json`), JSON.stringify({ ...content, at: now }), { flag: "wx" });
+      await fsp.writeFile(path.join(dir, `${revision}.json`), JSON.stringify({ ...content, at: now }), { flag: "wx" });
       const updated: PosterMeta = { ...meta, revision, updated: now };
-      await writeAtomically(path.join(this.posterDir(owner, id), "meta.json"), JSON.stringify(updated));
+      await writeAtomically(path.join(dir, "meta.json"), JSON.stringify(updated));
       return { id, title: meta.title, revision, current: revision, ...content };
     });
   }
@@ -251,14 +278,15 @@ function hashOf(script: string): string {
  * this page carries may run — by their hashes, never 'unsafe-inline', which would let a
  * poster's event attributes run — and nothing is fetched. GrapesJS's canvas inherits it.
  */
-export function posterEmbedPolicy(assets: PosterViewerAssets): string {
+export function posterEmbedPolicy(assets: PosterViewerAssets, publicUrl?: string): string {
+  const connect = publicUrl ? new URL(publicUrl).origin : "'none'";
   return [
     "default-src 'none'",
     `script-src ${hashOf(POSTER_BOOTSTRAP)} ${hashOf(assets.script)}`,
     "style-src 'unsafe-inline'",
     "img-src data: blob:",
     "font-src data:",
-    "connect-src 'none'",
+    `connect-src ${connect}`,
     "frame-src 'none'",
     "object-src 'none'",
     "base-uri 'none'",
@@ -266,11 +294,19 @@ export function posterEmbedPolicy(assets: PosterViewerAssets): string {
   ].join("; ");
 }
 
-export function posterEmbedPage(poster: PosterRevision, assets: PosterViewerAssets = posterViewerAssets()): string {
-  const embedded = { id: poster.id, title: poster.title, revision: poster.revision, html: poster.html, css: poster.css, format: poster.format };
+export interface PosterEmbedSave {
+  endpoint: string;
+  ticket: string;
+}
+
+export function posterEmbedPage(poster: PosterRevision, assets: PosterViewerAssets = posterViewerAssets(), save?: PosterEmbedSave): string {
+  const embedded = {
+    id: poster.id, title: poster.title, revision: poster.revision, html: poster.html, css: poster.css, format: poster.format,
+    ...(save ? { saveEndpoint: save.endpoint, saveTicket: save.ticket } : {}),
+  };
   return [
     "<!doctype html>",
-    `<html lang="en"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="${posterEmbedPolicy(assets)}"></head><body>`,
+    `<html lang="en"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="${posterEmbedPolicy(assets, save?.endpoint)}"></head><body>`,
     '<div id="root"></div>',
     `<div id="payload" hidden data-style="${pack(assets.style)}" data-script="${pack(assets.script)}" data-poster="${pack(JSON.stringify(embedded))}"></div>`,
     `<script>${POSTER_BOOTSTRAP}</script>`,
@@ -281,10 +317,10 @@ export function posterEmbedPage(poster: PosterRevision, assets: PosterViewerAsse
 /* ── The tools ─────────────────────────────────────────────────────────────── */
 
 export const LIST_POSTERS_DESCRIPTION = "Lists the user's posters: id, title, revision, last change. Use an id from here with get_poster, update_poster or show_poster.";
-export const CREATE_POSTER_DESCRIPTION = `Creates a poster, a worksheet, a slide or any one-page visual for the user, kept on this server. Then call show_poster so the user sees it: they can retouch it there and download it for Word (to print) or PowerPoint (to show). Their touch-ups stay in their browser: you do not see them.\n\n${POSTER_GUIDE}`;
-export const GET_POSTER_DESCRIPTION = "Reads a poster's markup and stylesheet as you last wrote them, with its revision. Read it before changing it. The user's touch-ups in the embed are not here: they stay in their browser.";
-export const UPDATE_POSTER_DESCRIPTION = `Replaces a poster's markup and stylesheet with a new version made from the revision you read with get_poster, then call show_poster. If the user describes changes they made in the embed, make them here too.\n\n${POSTER_GUIDE}`;
-export const SHOW_POSTER_DESCRIPTION = "Shows a poster to the user in the conversation, in an editor where they can correct texts, move pictograms, change colours, and download it for Word or PowerPoint. You do not see it.";
+export const CREATE_POSTER_DESCRIPTION = `Creates a poster, a worksheet, a slide or any one-page visual for the user, kept on this server. Then call show_poster so the user sees it: they can retouch it there and download it for Word (to print) or PowerPoint (to show). When browser saving is configured, saved touch-ups become a new revision you can read; otherwise they stay in the browser.\n\n${POSTER_GUIDE}`;
+export const GET_POSTER_DESCRIPTION = "Reads a poster's latest saved markup and stylesheet, with its revision. Read it before changing it. Unsaved changes in an open embed are not available until the user saves them.";
+export const UPDATE_POSTER_DESCRIPTION = `Replaces a poster's markup and stylesheet with a new version made from the revision you read with get_poster, then call show_poster. If the user saved changes in the embed, start from that latest revision.\n\n${POSTER_GUIDE}`;
+export const SHOW_POSTER_DESCRIPTION = "Shows a poster to the user in the conversation, in an editor where they can correct texts, move pictograms, change colours, save when browser saving is configured, and download it for Word or PowerPoint.";
 
 const idProperty = { type: "string", description: "The poster's id, from create_poster or list_posters." };
 const contentProperties = {
@@ -338,7 +374,22 @@ function answer(poster: PosterRevision) {
   return { id: poster.id, title: poster.title, revision: poster.revision, current_revision: poster.current, format: poster.format };
 }
 
-export function registerPosterRoutes(app: FastifyInstance, store: PosterStore): void {
+export function registerPosterRoutes(app: FastifyInstance, store: PosterStore, options: { secret: string; publicUrl?: string }): void {
+  app.options("/poster-save", { config: { identity: false, publicCapability: true } }, async (_request, reply) => reply.code(204).send());
+  app.post<{ Body: string }>("/poster-save", { config: { identity: false, publicCapability: true } }, async (request, reply) => {
+    try {
+      const body = typeof request.body === "string" ? JSON.parse(request.body) as Record<string, unknown> : undefined;
+      if (!body || typeof body !== "object") throw new InvalidPosterTicket("invalid save request");
+      const claims = verifyPosterSaveTicket(options.secret, body.ticket as string);
+      if (body.id !== claims.posterId || body.base_revision !== claims.baseRevision) throw new InvalidPosterTicket("save capability does not match this poster revision");
+      const revised = await store.reviseForOwnerHash(claims.ownerHash, claims.posterId, claims.baseRevision, contentOf(body));
+      const ticket = issuePosterSaveTicketForOwnerHash(options.secret, claims.ownerHash, claims.posterId, revised.revision);
+      return { id: revised.id, revision: revised.revision, ticket };
+    } catch (error) {
+      if (error instanceof InvalidPosterTicket || error instanceof SyntaxError) return reply.code(403).send({ error: error.message });
+      return refuse(reply, error);
+    }
+  });
   app.post("/list_posters", async (request) => ({ posters: (await store.list(request.owner)).map(({ id, title, revision, updated }) => ({ id, title, revision, updated })) }));
 
   app.post<{ Body: Record<string, unknown> }>("/create_poster", async (request, reply) => {
@@ -379,11 +430,16 @@ export function registerPosterRoutes(app: FastifyInstance, store: PosterStore): 
       const id = request.body?.id;
       if (typeof id !== "string") throw new PosterRefusal(422, "id is required: the poster's identifier, from list_posters");
       const poster = await store.get(request.owner, id);
+      const save = options.publicUrl ? {
+        endpoint: new URL("/poster-save", options.publicUrl).toString(),
+        ticket: issuePosterSaveTicket(options.secret, request.owner, poster.id, poster.revision),
+      } : undefined;
       return reply
         .header("Content-Type", "text/html; charset=utf-8")
         .header("Content-Disposition", "inline")
+        .header("Cache-Control", "private, no-store")
         .header("Access-Control-Expose-Headers", "Content-Disposition")
-        .send(posterEmbedPage(poster));
+        .send(posterEmbedPage(poster, posterViewerAssets(), save));
     } catch (error) {
       return refuse(reply, error);
     }

@@ -225,9 +225,10 @@ one needs, the command that proves it works, and the caution that goes with it.
   you type rather than what was last saved
 - Posters: a `.poster.html` file — a poster, a worksheet or a slide the agent writes in HTML,
   guided by the bundled `posters` skill — opens in the poster editor. Double-click a text to
-  correct it (it rewraps), drag a pictogram, change colours, fonts and sizes in **Style**, undo,
+  correct it (it rewraps), drag a pictogram, change colours, fonts and sizes in **Format**, undo,
   zoom and fit; **💾** saves back to the file, refused if it changed on disk meanwhile, and the
-  viewer asks before dropping unsaved touch-ups. **↓ word** gives an A4 page to print,
+  viewer asks before dropping unsaved touch-ups. **💾 Save** is disabled until you make a change.
+  **↓ word** gives an A4 page to print,
   **↓ powerpoint** a 16:9 slide, **↓ html** the page itself — the poster as a picture at print
   resolution. The editor runs under its own Content-Security-Policy: a poster's scripts and
   remote images do not run or load. The same editor is the Claude Desktop extension's
@@ -1027,6 +1028,7 @@ the host page itself is installable.
 The planning timelines and structured documents also run in [Open WebUI](https://openwebui.com),
 without pi-outpost. A small server, shipped as a container image:
 - keeps each user's plannings and shows them in the chat as the same interactive timeline;
+- creates posters and saves a user's retouches as revisioned content the model can read;
 - draws the model's diagrams, sequences, tables and proposals with pi-outpost's rendering;
 - serves the model the same structured-exchange guide pi-outpost's agent reads;
 - writes Word documents and PowerPoint decks, with Mermaid and structured-exchange diagrams and

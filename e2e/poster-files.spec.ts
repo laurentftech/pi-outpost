@@ -30,6 +30,7 @@ test.afterEach(async () => {
 
 // openlore: scenario=APosterFileOpensInTheEditor spec=poster-files
 // openlore: scenario=TouchUpsReachTheAgent spec=poster-files
+// openlore: scenario=SaveIsAvailableOnlyForUnsavedChanges spec=openwebui-embed-theme
 test("APosterFileOpensInTheEditor and TouchUpsReachTheAgent: drawn in the editor, a correction saved reaches the file", async ({ page }) => {
   const file = path.join(process.env.PI_E2E_PRIMARY_PROJECT!, POSTER);
   const original = await fs.readFile(file, "utf8");
@@ -38,14 +39,19 @@ test("APosterFileOpensInTheEditor and TouchUpsReachTheAgent: drawn in the editor
     const canvas = editor.frameLocator("iframe.gjs-frame");
     const title = canvas.locator(".rule.c1 h2");
     await expect(title).toHaveText("I raise my hand", { timeout: 20_000 });
+    await expect(editor.locator('button[data-action="style"]')).toHaveText("Format");
+    const save = editor.locator('button[data-action="save"]');
+    await expect(save).toBeDisabled();
     await expect(page.getByRole("group", { name: "How to show this document" })).not.toContainText("split");
     await title.click();
     await title.dblclick();
     await page.keyboard.press("ControlOrMeta+A");
     await page.keyboard.type("I raise my hand and wait");
     await canvas.locator(".motto").click();
-    await editor.locator('button[data-action="save"]').click();
+    await expect(save).toBeEnabled();
+    await save.click();
     await expect(editor.locator(".poster-status")).toHaveText(/Saved/);
+    await expect(save).toBeDisabled();
     await expect.poll(async () => readPage(await fs.readFile(file, "utf8")).html).toContain("I raise my hand and wait");
   } finally {
     await fs.writeFile(file, original);

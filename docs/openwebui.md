@@ -29,6 +29,7 @@ For the architecture, the trust model, token and key management and what is stor
 - [Turning it on for a model](#turning-it-on-for-a-model)
 - [What users can ask](#what-users-can-ask)
 - [Word documents and PowerPoint decks](#word-documents-and-powerpoint-decks)
+- [Posters](#posters)
 - [Configuration](#configuration)
 - [Identity: signed or plain](#identity-signed-or-plain)
 - [Data, backups and upgrades](#data-backups-and-upgrades)
@@ -41,10 +42,12 @@ For the architecture, the trust model, token and key management and what is stor
 browser ──► Open WebUI ──(tool calls, bearer key + signed user)──► pi-outpost server ──► /data
                ▲                                                         │
                └──────────── the timeline, as HTML embedded in the chat ─┘
+browser ───────── optional poster save (scoped capability) ────────────► /poster-save
 ```
 
 - **Open WebUI declares the server as a global tool server.** Open WebUI's backend calls it, never
-  the browser, so the server publishes no port and needs no route from users' machines.
+  the browser for ordinary tools. The Docker example binds pi-outpost to loopback by default; poster
+  saving can optionally publish a capability-protected write route to the browser.
 - **Every call carries two proofs:**
   - the connection's bearer key, which shows the call comes from Open WebUI;
   - the user Open WebUI acts for, signed with a second key.
@@ -93,8 +96,10 @@ OUTPOST_IMAGE=pi-outpost-openwebui
 
 The compose file runs two containers:
 - Open WebUI on port 3000;
-- pi-outpost's server (`ghcr.io/laurentftech/pi-outpost-openwebui`), with no published port and its
-  plannings in the `pi-outpost-data` volume.
+- pi-outpost's server (`ghcr.io/laurentftech/pi-outpost-openwebui`), with its plannings and posters
+  in the `pi-outpost-data` volume. Its port is bound to `127.0.0.1` by default. To save poster edits
+  from another device, configure the browser URL and explicitly bind the port to the LAN as described
+  under [Saving retouches](#posters).
 
 Open WebUI finds the server through `TOOL_SERVER_CONNECTIONS`. It reads that only on its
 **first** start; afterwards the setting lives in *Admin Settings → Integrations → External Tool Servers*.
@@ -218,15 +223,23 @@ file viewer and the Claude Desktop extension.
 - **Downloads:** **↓ word** gives an A4 (or A3) page with narrow margins, to print; **↓ powerpoint**
   one 16:9 slide, to show; **↓ html** the page itself. The poster travels as a picture at print
   resolution, built in the browser: the server is not called.
+- **Theme and editing:** the embed follows Open WebUI's theme when **iframe Sandbox Allow Same Origin** is enabled, including live theme switches; otherwise it follows the system theme.
 - **Retouching needs a setting.** Open WebUI draws a tool's embed in a frame that cannot reach the
   editor's canvas unless the user turns on **iframe Sandbox Allow Same Origin** in their settings.
   Without it the poster is shown as it is, with its downloads, and the embed says so. With it, the
   user can correct texts, move pictograms and change colours before downloading. The embed carries
-  its own Content-Security-Policy — only its two scripts run, by their hashes, and nothing is
-  fetched — so a poster's own markup cannot act in Open WebUI's origin when the setting is on.
-- **Touch-ups stay in the browser.** The user's browser has no route to this server, so what they
-  change in the embed is in their downloads, and the model does not see it; the embed says so. To
-  have the model change the poster, the user asks it (`get_poster`, then `update_poster`).
+  its own Content-Security-Policy — only its two scripts run, by their hashes, and network access is
+  limited to the configured pi-outpost origin.
+- **Saving retouches:** set `OUTPOST_PUBLIC_URL` to the browser-reachable pi-outpost origin and
+  `OUTPOST_WEBUI_ORIGIN` to the exact Open WebUI browser origin. The compose file binds pi-outpost
+  to loopback by default; for other devices on the LAN, set `OUTPOST_PUBLISH=0.0.0.0:8790:8790`
+  and use the host's LAN IP in both URLs. For HTTPS Open WebUI, pi-outpost must also be served over
+  HTTPS (usually through a reverse proxy). A save capability is scoped to one user, poster and base
+  revision; the server bearer secret is never sent to the browser. Saving creates a new revision
+  that `get_poster` returns to the model. The capability is a write-only bearer permission carried
+  in that chat embed: anyone who can access a shared chat can use it to make one save to that poster
+  before the revision advances, but it does not let them read poster contents. Old chat embeds
+  conflict after a newer save; ask the model to show the poster again to get a fresh editor.
 - **Kept per user,** as plannings are, with every revision (`list_posters`, `get_poster`).
 
 ## Configuration
@@ -238,6 +251,8 @@ The server reads only its environment.
 | `OUTPOST_SECRET` | — (required) | The bearer key of the tool server connection in Open WebUI. Requests without it are refused before anything else is read. |
 | `OUTPOST_IDENTITY` | `signed` | `signed` or `plain`; see below. |
 | `OUTPOST_IDENTITY_KEY` | — (required when signed) | Open WebUI's `FORWARD_USER_INFO_HEADER_JWT_SECRET`. |
+| `OUTPOST_PUBLIC_URL` | — (saving disabled) | Browser-reachable pi-outpost origin, e.g. `http://192.168.1.4:8790`. Must be paired with `OUTPOST_WEBUI_ORIGIN`. |
+| `OUTPOST_WEBUI_ORIGIN` | — (saving disabled) | Exact browser origin allowed to save poster edits, e.g. `http://192.168.1.4:3000`. Must be paired with `OUTPOST_PUBLIC_URL`. |
 | `OUTPOST_DATA_DIR` | `/data` in the image, `./planning-data` otherwise | Where plannings are stored. |
 | `OUTPOST_HOST` | `0.0.0.0` in the image, `127.0.0.1` otherwise | Listening address. |
 | `OUTPOST_PORT` | `8790` | Listening port. |
@@ -280,6 +295,11 @@ Plain mode is only as safe as the bearer key and the network between the two con
   `meta.json`, under a directory per user named by a hash of the user's id. Kept Word and PowerPoint
   files are under `documents/`, and posters under `posters/`, a directory per user named the same
   way; each revision of a poster is one file.
+- **User isolation and encryption:** Open WebUI identity (signed by default) scopes planning and poster reads and
+  writes to one user; another authenticated user cannot access them through these tools. The files
+  and volume backups are **not encrypted at rest**: they are plain JSON/binary files. Anyone with
+  access to the Docker volume, host or its backups can read them. Use encrypted host/volume storage
+  and protect backups when those administrative access paths are in scope.
 - **Backups:** a backup is a copy of the volume.
 - **Opening a planning elsewhere:** any revision file opens in pi-outpost as a structured-exchange
   document.
@@ -314,8 +334,6 @@ at; elsewhere, Arial or any installed sans-serif face is used.
 - **Embed size.** Each time a planning is shown, Open WebUI stores the timeline in the chat, about
   110 kB.
   A poster's embed carries its editor: about 425 kB each time one is shown.
-- **Poster touch-ups do not reach the model.** See [Posters](#posters): a browser-reachable route
-  for them is not there yet.
 - **The model does not see the timeline.** Open WebUI hands the model only a note that an embed is
   on screen, so the model reads a planning with `get_planning`.
 - **Plannings are personal.** Sharing within a team is not there yet.
