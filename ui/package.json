@@ -69,11 +69,11 @@
     "@testing-library/jest-dom": "^7.0.1",
     "@testing-library/react": "^16.3.3",
     "@types/mdast": "^4.0.4",
-    "@vitest/coverage-v8": "^4.1.10",
+    "@vitest/coverage-v8": "^4.1.12",
     "jsdom": "~30.0.1",
     "jszip": "^3.10.2",
     "mathml2omml": "^0.5.0",
     "oxlint": "^1.88.0",
-    "vitest": "^4.1.10"
+    "vitest": "^4.1.12"
   }
 }
