@@ -107,20 +107,76 @@ test("EveryHostGivesTheSameGuide (Open WebUI): create_poster and update_poster c
   const { app } = await testApp(t);
   const document = (await app.inject({ method: "GET", url: "/openapi.json", headers: { authorization: `Bearer ${SECRET}` } })).json();
   for (const tool of ["create_poster", "update_poster"]) assert.ok(document.paths[`/${tool}`].post.description.includes(POSTER_GUIDE), tool);
-  assert.match(document.paths["/get_poster"].post.description, /touch-ups in the embed are not here/);
+  assert.match(document.paths["/get_poster"].post.description, /Unsaved changes in an open embed are not available until the user saves them/);
 });
 
 // openlore: scenario=TheModelStartsFromItsOwnVersion spec=openwebui-posters
-test("TheModelStartsFromItsOwnVersion: nothing the embed does reaches the server, so get_poster is what the model wrote", async (t) => {
+test("TheModelStartsFromItsOwnVersion: without browser-save configuration, edits stay in the embed", async (t) => {
   const { call } = await testApp(t);
   const { id } = (await call("create_poster", POSTER)).json();
   await call("show_poster", { id });
-  // The embed has no save and no route back (its policy refuses every connection): the
-  // only revisions are the model's.
+  // Without public save configuration, the embed has no save capability and its policy
+  // refuses every connection: the only revisions are the model's.
   const read = (await call("get_poster", { id })).json();
   assert.equal(read.revision, 1);
   assert.equal(read.html, POSTER.html);
   // GrapesJS carries fetch code (its telemetry, turned off); the page's policy refuses every
   // connection whatever it holds, which the policy test checks.
-  assert.doesNotMatch(posterViewerAssets().script, /save_poster/);
+  assert.doesNotMatch(posterViewerAssets().script, /poster-save/);
+});
+
+// openlore: scenario=AUserSavesTouchUps spec=openwebui-posters
+// openlore: scenario=TheEmbedDoesNotReceiveTheToolBearerSecret spec=openwebui-posters
+// openlore: scenario=AStaleEmbedCannotOverwriteANewerRevision spec=openwebui-posters
+test("EmbedSavesTouchUpsAsAnOwnerScopedRevision: capability saves, rotates, and conflicts on replay", async (t) => {
+  const { app, call } = await testApp(t, { publicUrl: "http://localhost:8790", webUiOrigin: "http://localhost:3000" });
+  const { id } = (await call("create_poster", POSTER, "alice")).json();
+  const shown = await call("show_poster", { id }, "alice");
+  const embedded = JSON.parse(payloadOf(shown.body, "poster"));
+  assert.equal(embedded.saveEndpoint, "http://localhost:8790/poster-save");
+  assert.equal(typeof embedded.saveTicket, "string");
+  assert.match(/<meta http-equiv="Content-Security-Policy" content="([^"]+)"/.exec(shown.body)?.[1] ?? "", /connect-src http:\/\/localhost:8790/);
+  assert.doesNotMatch(shown.body, /test-bearer-secret/);
+
+  const save = (ticket: string, body: Record<string, unknown>, baseRevision = 1, origin = "http://localhost:3000") => app.inject({
+    method: "POST", url: "/poster-save", headers: { origin, "content-type": "text/plain;charset=UTF-8" },
+    payload: JSON.stringify({ id, base_revision: baseRevision, ticket, ...body }),
+  });
+  const changed = await save(embedded.saveTicket, { html: POSTER.html.replace("I listen", "I listen closely"), css: POSTER.css, format: POSTER.format });
+  assert.equal(changed.statusCode, 200, changed.body);
+  assert.equal(changed.json().revision, 2);
+  const replay = await save(embedded.saveTicket, { html: "<p>late</p>", css: "", format: POSTER.format });
+  assert.equal(replay.statusCode, 409);
+  const bob = await call("get_poster", { id }, "bob");
+  assert.equal(bob.statusCode, 404);
+  const alice = await call("get_poster", { id }, "alice");
+  assert.equal(alice.json().revision, 2);
+  assert.match(alice.json().html, /I listen closely/);
+
+  const next = await save(changed.json().ticket, { html: POSTER.html.replace("I listen", "I listen well"), css: POSTER.css, format: POSTER.format }, 2);
+  assert.equal(next.statusCode, 200, next.body);
+  assert.equal(next.json().revision, 3);
+});
+
+// openlore: scenario=ADifferentOriginCannotSave spec=openwebui-posters
+// openlore: scenario=AMissingOrInvalidCapabilityCannotSave spec=openwebui-posters
+test("PosterSaveEndpointIsConstrainedToTheConfiguredWebUI: origin, poster and revision scope are checked", async (t) => {
+  const { app, call } = await testApp(t, { publicUrl: "http://localhost:8790", webUiOrigin: "http://localhost:3000" });
+  const { id } = (await call("create_poster", POSTER)).json();
+  const embedded = JSON.parse(payloadOf((await call("show_poster", { id })).body, "poster"));
+  const preflight = await app.inject({ method: "OPTIONS", url: "/poster-save", headers: { origin: "http://localhost:3000" } });
+  assert.equal(preflight.statusCode, 204);
+  assert.equal(preflight.headers["access-control-allow-origin"], "http://localhost:3000");
+  assert.equal(preflight.headers["access-control-allow-credentials"], undefined);
+  const request = (payload: Record<string, unknown>, origin = "http://localhost:3000") => app.inject({
+    method: "POST", url: "/poster-save", headers: { origin, "content-type": "text/plain;charset=UTF-8" }, payload: JSON.stringify(payload),
+  });
+  const base = { id, base_revision: 1, ticket: embedded.saveTicket, html: "<p>edited</p>", css: "", format: POSTER.format };
+  assert.equal((await request(base, "http://evil.test")).statusCode, 403);
+  assert.equal((await request({ ...base, ticket: "" })).statusCode, 403);
+  assert.equal((await request({ ...base, id: "po_fedcba0987654321" })).statusCode, 403);
+  assert.equal((await request({ ...base, base_revision: 2 })).statusCode, 403);
+  assert.equal((await request({ ...base, html: "<script>bad()</script>" })).statusCode, 422);
+  assert.equal((await app.inject({ method: "OPTIONS", url: "/poster-save", headers: { origin: "http://evil.test" } })).statusCode, 403);
+  assert.equal((await call("get_poster", { id })).json().revision, 1);
 });

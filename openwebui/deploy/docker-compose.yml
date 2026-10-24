@@ -3,7 +3,8 @@
 #   cp .env.example .env     # then fill it in
 #   docker compose up -d     # Open WebUI on http://<host>:3000
 #
-# pi-outpost's server is reachable from Open WebUI only: it publishes no port.
+# pi-outpost's server is published on loopback by default. Set OUTPOST_PUBLISH to a
+# LAN bind (for example 0.0.0.0:8790:8790) only when browser poster editing needs it.
 # See docs/openwebui.md.
 name: openwebui-pi-outpost
 
@@ -43,9 +44,13 @@ services:
     # OUTPOST_IMAGE=pi-outpost-openwebui in .env.
     image: ${OUTPOST_IMAGE:-ghcr.io/laurentftech/pi-outpost-openwebui:latest}
     restart: unless-stopped
+    ports:
+      - "${OUTPOST_PUBLISH:-127.0.0.1:8790:8790}"
     environment:
       OUTPOST_SECRET: ${OUTPOST_SECRET}
       OUTPOST_IDENTITY_KEY: ${OUTPOST_IDENTITY_KEY}
+      OUTPOST_PUBLIC_URL: ${OUTPOST_PUBLIC_URL:-}
+      OUTPOST_WEBUI_ORIGIN: ${OUTPOST_WEBUI_ORIGIN:-}
       # The organisation's Word and PowerPoint templates, offered by name to the model.
       OUTPOST_TEMPLATES_DIR: /templates
     volumes:

@@ -34,6 +34,8 @@ export async function testConfig(t: TestContext, overrides: Partial<PlanningServ
     secret: SECRET,
     identity: "signed",
     identityKey: KEY,
+    publicUrl: undefined,
+    webUiOrigin: undefined,
     dataDir: await tempDir(t),
     maxPlanningBytes: 1_000_000,
     maxRevisions: 500,

@@ -19,6 +19,8 @@ declare module "fastify" {
   interface FastifyContextConfig {
     /** False for routes that act for nobody, such as the OpenAPI description. */
     identity?: boolean;
+    /** Browser-facing route that authenticates a narrowly scoped capability instead. */
+    publicCapability?: boolean;
   }
 }
 
@@ -41,6 +43,20 @@ export function buildApp(config: PlanningServerConfig, routes: PlanningRoutes): 
   app.decorateRequest("owner", "");
 
   app.addHook("onRequest", async (request, reply) => {
+    if (request.routeOptions.config?.publicCapability) {
+      if (!config.webUiOrigin || request.headers.origin !== config.webUiOrigin) {
+        return reply.code(403).send({ error: "origin is not allowed to save posters" });
+      }
+      reply.header("access-control-allow-origin", config.webUiOrigin).header("vary", "Origin").header("cache-control", "no-store");
+      if (request.method === "OPTIONS") {
+        return reply
+          .header("access-control-allow-methods", "POST, OPTIONS")
+          .header("access-control-allow-headers", "content-type")
+          .code(204)
+          .send();
+      }
+      return;
+    }
     if (!bearerMatches(request.headers.authorization, config.secret)) {
       return reply.code(401).send({ error: "unauthorised" });
     }

@@ -43,6 +43,17 @@ test("SignedModeWillNotStartWithoutAKey: signed is the default mode, and it need
   assert.equal(loadConfig({ [ENV.secret]: SECRET, [ENV.identity]: "plain" }).identity, "plain");
 });
 
+test("Poster save origins must be paired, valid origins, and HTTPS when WebUI is HTTPS", () => {
+  const base = { [ENV.secret]: SECRET, [ENV.identityKey]: KEY };
+  assert.throws(() => loadConfig({ ...base, [ENV.publicUrl]: "http://localhost:8790" }), /OUTPOST_PUBLIC_URL and OUTPOST_WEBUI_ORIGIN must be set together/);
+  assert.throws(() => loadConfig({ ...base, [ENV.publicUrl]: "http://localhost:8790/path", [ENV.webUiOrigin]: "http://localhost:3000" }), /must be an http:\/\/ or https:\/\/ origin/);
+  assert.throws(() => loadConfig({ ...base, [ENV.publicUrl]: "http://localhost:8790", [ENV.webUiOrigin]: "https://example.test" }), /must use https:\/\//);
+  const config = loadConfig({ ...base, [ENV.publicUrl]: "http://localhost:8790/", [ENV.webUiOrigin]: "http://localhost:3000/" });
+  assert.equal(config.publicUrl, "http://localhost:8790");
+  assert.equal(config.webUiOrigin, "http://localhost:3000");
+  assert.equal(loadConfig(base).publicUrl, undefined, "saving stays disabled when absent");
+});
+
 test("bearer comparison takes exactly the configured key", () => {
   assert.equal(bearerMatches(`Bearer ${SECRET}`, SECRET), true);
   assert.equal(bearerMatches(`bearer   ${SECRET} `, SECRET), true);

@@ -34,6 +34,8 @@ export interface OpenedPoster {
   revision: number;
   /** No saving here: the file is outside the write zone, or the host cannot save. */
   readOnly?: boolean;
+  /** A notice specific to this opened poster, for hosts whose capabilities vary by embed. */
+  notice?: string;
 }
 
 export type SaveResult = { saved: true; revision: number; message?: string } | { saved: false; message: string };
@@ -183,6 +185,7 @@ export function mountEditor(root: HTMLElement, host: PosterHost): PosterEditor {
   let lastMode: string | undefined;
   let destroyed = false;
   let canvasReady = false;
+  let savedSnapshot: { html: string; css: string } | undefined;
 
   const setDirty = (value: boolean) => {
     if (dirty === value) return;
@@ -215,6 +218,14 @@ export function mountEditor(root: HTMLElement, host: PosterHost): PosterEditor {
     return { html: editor.getWrapper()!.getInnerHTML(), css: editor.getCss({ avoidProtected: true }) ?? "" };
   }
 
+  function syncDirty() {
+    const value = current();
+    if (!value || !savedSnapshot) return;
+    const changed = value.html !== savedSnapshot.html || value.css !== savedSnapshot.css;
+    setDirty(changed);
+    if (host.save && !shown?.readOnly && editable) status(changed ? "Unsaved changes." : "No unsaved changes.");
+  }
+
   async function doSave() {
     if (!host.save || !shown || shown.readOnly || saving || !dirty) return;
     const poster = current();
@@ -231,8 +242,14 @@ export function mountEditor(root: HTMLElement, host: PosterHost): PosterEditor {
         return;
       }
       shown = { ...opened, revision: result.revision };
-      setDirty(false);
-      status(result.message ?? `Saved.${host.savedNote ? ` ${host.savedNote}` : ""}`, "ok");
+      savedSnapshot = poster;
+      syncDirty();
+      status(
+        dirty
+          ? `${result.message ?? `Saved.${host.savedNote ? ` ${host.savedNote}` : ""}`} Newer changes are still unsaved.`
+          : result.message ?? `Saved.${host.savedNote ? ` ${host.savedNote}` : ""}`,
+        dirty ? undefined : "ok",
+      );
     } catch (error) {
       if (!destroyed && shown === opened) status(`Not saved: ${(error as Error).message}`, "error");
     } finally {
@@ -290,6 +307,7 @@ export function mountEditor(root: HTMLElement, host: PosterHost): PosterEditor {
     fullscreen.hidden = !host.toggleFullscreen;
     const notes = [
       host.notice,
+      poster.notice,
       editable ? undefined : (host.cannotEditNotice ?? "Editing is not available here: this frame may not reach the editor's canvas. The poster is shown as it is, and Word and PowerPoint export still work."),
     ];
     notice.textContent = notes.filter(Boolean).join(" ");
@@ -335,13 +353,17 @@ export function mountEditor(root: HTMLElement, host: PosterHost): PosterEditor {
     opened.on("load", () => {
       if (editor !== opened) return;
       canvasReady = true;
+      savedSnapshot = current();
       fitZoom();
       status(canSave ? "Double-click a text to correct it; drag a selected element to move it." : "Double-click a text to correct it, then export. Changes are not saved here.");
     });
     opened.on("update", () => {
-      if (editor !== opened || dirty) return;
-      setDirty(true);
-      if (canSave) status("Unsaved changes.");
+      if (editor === opened) syncDirty();
+    });
+    // GrapesJS's rich-text editor commits browser edits when it is disabled; this
+    // event is the reliable boundary for edits made inside the canvas iframe.
+    opened.on("rte:disable", () => {
+      if (editor === opened) setTimeout(syncDirty, 0);
     });
   }
 

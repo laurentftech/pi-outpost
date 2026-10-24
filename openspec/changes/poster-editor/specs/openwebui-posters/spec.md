@@ -38,15 +38,16 @@ The embed SHALL export the poster to Word and PowerPoint and download the file i
 - **WHEN** the person exports to Word in the embed
 - **THEN** the browser downloads the `.docx`, and no request goes to the tool server
 
-### Requirement: TouchUpsStayInTheBrowser
+### Requirement: TouchUpsStayInTheBrowserWhenSavingIsNotConfigured
 
-Touch-ups made in the embed SHALL NOT be sent to the tool server, and the embed SHALL say so: its exports carry them, but the model's next change starts from the last version the model wrote.
+When browser saving is not configured, touch-ups made in the embed SHALL remain in the browser, and the embed SHALL say so: its exports carry them, but the model's next change starts from the last version the model wrote.
 
 #### Scenario: TheLimitIsSaid
+- **GIVEN** browser saving is not configured
 - **WHEN** the person retouches a poster in the embed
 - **THEN** the embed says the changes are kept in its exports only, and the model does not see them
 
 #### Scenario: TheModelStartsFromItsOwnVersion
-- **GIVEN** a poster retouched in the embed
+- **GIVEN** browser saving is not configured and a poster is retouched in the embed
 - **WHEN** the model reads the poster
 - **THEN** it reads the version it last wrote

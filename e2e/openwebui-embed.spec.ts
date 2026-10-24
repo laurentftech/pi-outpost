@@ -178,6 +178,8 @@ async function writtenDocument(): Promise<{ html: string; bytes: Buffer; fileNam
     secret: "s",
     identity: "plain" as const,
     identityKey: undefined,
+    publicUrl: undefined,
+    webUiOrigin: undefined,
     dataDir,
     maxPlanningBytes: 1_000_000,
     maxRevisions: 10,

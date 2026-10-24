@@ -1028,6 +1028,7 @@ the host page itself is installable.
 The planning timelines and structured documents also run in [Open WebUI](https://openwebui.com),
 without pi-outpost. A small server, shipped as a container image:
 - keeps each user's plannings and shows them in the chat as the same interactive timeline;
+- creates posters and saves a user's retouches as revisioned content the model can read;
 - draws the model's diagrams, sequences, tables and proposals with pi-outpost's rendering;
 - serves the model the same structured-exchange guide pi-outpost's agent reads;
 - writes Word documents and PowerPoint decks, with Mermaid and structured-exchange diagrams and
