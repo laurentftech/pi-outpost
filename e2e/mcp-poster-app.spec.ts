@@ -188,8 +188,9 @@ test("AColourChangeTouchesOneElement: a background set in the style panel change
   const input = view.locator(".gjs-sm-property__background-color input").first();
   await input.fill("#ff0000");
   await input.press("Enter");
-  const backgrounds = await (await canvasFrame(page)).evaluate(() => [...document.querySelectorAll(".rule")].map((card) => getComputedStyle(card).backgroundColor));
-  expect(backgrounds).toEqual(["rgb(255, 255, 255)", "rgb(255, 0, 0)", "rgb(255, 255, 255)", "rgb(255, 255, 255)"]);
+  // The style manager applies the value asynchronously: read it once it has landed, not right after Enter.
+  const backgrounds = async () => (await canvasFrame(page)).evaluate(() => [...document.querySelectorAll(".rule")].map((card) => getComputedStyle(card).backgroundColor));
+  await expect.poll(backgrounds).toEqual(["rgb(255, 255, 255)", "rgb(255, 0, 0)", "rgb(255, 255, 255)", "rgb(255, 255, 255)"]);
 });
 
 // openlore: scenario=AnEditIsUndone spec=poster-editor
