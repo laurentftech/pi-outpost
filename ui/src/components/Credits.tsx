@@ -3,6 +3,7 @@ import { credits, projectLicense } from "../credits";
 
 const acknowledgements = [
   ["draw.io / diagrams.net", "Diagram viewer and editor"],
+  ["GrapesJS", "Poster editor"],
   ["React", "User interface"],
   ["CodeMirror · xterm.js · node-pty", "Code editor and terminal"],
   ["PDF.js · docx", "Document tools"],

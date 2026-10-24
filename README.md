@@ -223,6 +223,15 @@ one needs, the command that proves it works, and the caution that goes with it.
   says why and the plain export still works
 - Split view: a Markdown, HTML, draw.io or structured document renders beside the editor, following what
   you type rather than what was last saved
+- Posters: a `.poster.html` file — a poster, a worksheet or a slide the agent writes in HTML,
+  guided by the bundled `posters` skill — opens in the poster editor. Double-click a text to
+  correct it (it rewraps), drag a pictogram, change colours, fonts and sizes in **Style**, undo,
+  zoom and fit; **💾** saves back to the file, refused if it changed on disk meanwhile, and the
+  viewer asks before dropping unsaved touch-ups. **↓ word** gives an A4 page to print,
+  **↓ powerpoint** a 16:9 slide, **↓ html** the page itself — the poster as a picture at print
+  resolution. The editor runs under its own Content-Security-Policy: a poster's scripts and
+  remote images do not run or load. The same editor is the Claude Desktop extension's
+  ([docs/claude-desktop.md](docs/claude-desktop.md)).
 - draw.io diagrams: a `.drawio` file opens drawn, by draw.io's own viewer, with every page and zoom,
   offline — it runs in a sandboxed frame allowed no connection at all, so a diagram's remote images
   or fonts are simply not fetched. A reply that references one as a picture

@@ -1,0 +1,79 @@
+{
+  "manifest_version": "0.3",
+  "name": "pi-outpost-posters",
+  "display_name": "Posters (pi-outpost)",
+  "version": "0.0.0",
+  "description": "Claude composes posters, worksheets and slides; you retouch them in the conversation \u2014 correct a text, move a pictogram, change a colour \u2014 and export them to Word or PowerPoint.",
+  "long_description": "Ask Claude for a poster: it is written as a printable page in the folder you choose, and shown in an editor in the conversation. Double-click a text to correct it, drag an element to move it, change colours and sizes in the Style panel, then Save: Claude reads your version before its next change. Word gives an A4 page to print, PowerPoint a slide to show; both carry the poster as a picture, kept beside it in your folder. Every version is kept in a hidden folder beside the poster. No account, no network.",
+  "author": {
+    "name": "pi-outpost",
+    "url": "https://github.com/laurentftech/pi-outpost"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/laurentftech/pi-outpost"
+  },
+  "license": "MIT",
+  "server": {
+    "type": "node",
+    "entry_point": "server/index.mjs",
+    "mcp_config": {
+      "command": "node",
+      "args": [
+        "${__dirname}/server/index.mjs",
+        "--stdio"
+      ],
+      "env": {
+        "POSTERS_DIR": "${user_config.posters_dir}",
+        "POSTERS_DEBUG": "${user_config.debug_log}"
+      }
+    }
+  },
+  "user_config": {
+    "posters_dir": {
+      "type": "directory",
+      "title": "Posters folder",
+      "description": "Choose or create a folder for your posters",
+      "required": true
+    },
+    "debug_log": {
+      "type": "boolean",
+      "title": "Debug log",
+      "description": "Write what Claude Desktop asks of the extension to .posters/debug.log in the posters folder",
+      "required": false,
+      "default": false
+    }
+  },
+  "tools": [
+    {
+      "name": "list_posters",
+      "description": "Lists your posters."
+    },
+    {
+      "name": "create_poster",
+      "description": "Creates a poster in your folder."
+    },
+    {
+      "name": "get_poster",
+      "description": "Reads a poster, with your touch-ups."
+    },
+    {
+      "name": "update_poster",
+      "description": "Changes a poster; every version is kept."
+    },
+    {
+      "name": "show_poster",
+      "description": "Shows a poster in an editor you can retouch it in."
+    }
+  ],
+  "compatibility": {
+    "platforms": [
+      "darwin",
+      "win32"
+    ],
+    "runtimes": {
+      "node": ">=20.0.0"
+    }
+  },
+  "homepage": "https://github.com/laurentftech/pi-outpost/blob/main/docs/claude-desktop.md"
+}

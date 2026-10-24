@@ -242,6 +242,12 @@ jobs:
           name: pi-outpost-plannings.mcpb
           path: mcp/dist/pi-outpost-plannings.mcpb
           if-no-files-found: error
+      # The posters extension, packed by the same `pack` and checked by the same test:bundle.
+      - uses: actions/upload-artifact@v7
+        with:
+          name: pi-outpost-posters.mcpb
+          path: mcp/dist/pi-outpost-posters.mcpb
+          if-no-files-found: error
 
   # Attached after publish, from the artifacts the matrix already proved runnable.
   attach:

@@ -36,6 +36,7 @@ import {
   SLIDES_DESCRIPTION,
   TEMPLATE_DESCRIPTION,
 } from "./officeDescriptions.ts";
+import { posterOperations } from "./posters.ts";
 
 export { CREATION_EXAMPLE, STRUCTURE_EXAMPLES, UPDATE_EXAMPLE } from "@pi-outpost/apps-core/descriptions";
 export { DOCUMENT_EXAMPLE, PRESENTATION_EXAMPLE, UPDATE_DOCUMENT_EXAMPLE, UPDATE_PRESENTATION_EXAMPLE } from "./officeDescriptions.ts";
@@ -242,6 +243,7 @@ export function openApiDocument() {
       ),
       "/list_documents": operation("list_documents", "List the documents kept for the user", LIST_DOCUMENTS_DESCRIPTION, {}, []),
       "/list_templates": operation("list_templates", "List the document templates", LIST_TEMPLATES_DESCRIPTION, {}, []),
+      ...posterOperations(),
     },
   };
 }

@@ -5,6 +5,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { SEEDED_MESSAGES, SEEDED_PLAN_FIGURE, SEEDED_PLAN_FIGURE_PATH } from "./fixtures/seeded-transcript";
 import { DRAWIO_REPLY_MESSAGES, SERVICES_DIAGRAM, SERVICES_DIAGRAM_PATH } from "./fixtures/drawio-conversation";
+import { pageOf } from "@pi-outpost/posters/format";
+import { POSTER_EXAMPLE } from "@pi-outpost/posters/guide";
 // The same harness the server's own integration tests use: a real server, in its
 // own process group, against a throwaway workspace, with PI_OFFLINE set so the
 // SDK's model runtime never reaches the network.
@@ -231,6 +233,9 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
       "</root></mxGraphModel></diagram></mxfile>",
     ].join(""),
     "diagrams/broken.drawio": "<html><body>not a diagram</body></html>",
+    // Posters: the guide's example, opened in the poster editor, and a page that is not one.
+    "posters/Class rules.poster.html": pageOf("Our class rules", { html: POSTER_EXAMPLE.html, css: POSTER_EXAMPLE.css, format: POSTER_EXAMPLE.format }),
+    "posters/broken.poster.html": "<!doctype html><html><body><p>not a poster</p></body></html>",
     // A prompt template, so `/` has something to autocomplete. Discovered from
     // the workspace's own .pi/prompts, the same way a real project's are.
     ".pi/prompts/greet.md": "---\ndescription: say hello\n---\n\nSay hello.\n",

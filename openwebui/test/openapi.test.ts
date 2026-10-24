@@ -28,16 +28,21 @@ test("TheDescriptionNamesTheFiveTools: exactly the operations — planning, stru
   assert.deepEqual(operations.map((op) => op.operationId).sort(), [
     "create_document",
     "create_planning",
+    "create_poster",
     "create_presentation",
     "get_planning",
+    "get_poster",
     "list_documents",
     "list_plannings",
+    "list_posters",
     "list_templates",
     "read_structure_guide",
     "show_planning",
+    "show_poster",
     "show_structure",
     "update_document",
     "update_planning",
+    "update_poster",
     "update_presentation",
   ]);
   for (const op of operations) {

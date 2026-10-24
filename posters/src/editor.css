@@ -1,0 +1,72 @@
+/* The poster editor's own surfaces. They follow the host's theme (data-theme on the root);
+   the poster itself is paper and keeps its own colours whatever the theme. */
+@import "grapesjs/dist/css/grapes.min.css";
+
+:root {
+  color-scheme: light;
+  --fg: #1f2328;
+  --muted: #57606a;
+  --bg: #fff;
+  --line: #d0d7de;
+  --button: #f6f8fa;
+  --button-hover: #eaeef2;
+  --pressed: #ddf4ff;
+  --pressed-line: #54aeff;
+  --desk: #e9ecef;
+  --error: #cf222e;
+  --ok: #1a7f37;
+  --notice: #fff8c5;
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --fg: #e6edf3;
+  --muted: #9198a1;
+  --bg: #1f1f1e;
+  --line: #3d3d3a;
+  --button: #2b2b29;
+  --button-hover: #363633;
+  --pressed: #1f3a5f;
+  --pressed-line: #4493f8;
+  --desk: #141413;
+  --error: #ff7b72;
+  --ok: #3fb950;
+  --notice: #3a3320;
+}
+html, body { margin: 0; font: 13px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; color: var(--fg); background: var(--bg); }
+/* A fixed height inline: a host that sizes the frame from the page's own height (Claude)
+   left a page sized from the frame (100vh) at zero, never seen. Full screen and fill take
+   the window. */
+.poster-shell { display: flex; flex-direction: column; height: var(--poster-editor-height, 760px); }
+html[data-display="fill"] .poster-shell { height: 100vh; }
+/* Full screen in Claude: its reply bar floats over the bottom of the window, with no inset
+   given, so the editor stops above it. */
+html[data-display="fullscreen"] .poster-shell { height: 100vh; padding-bottom: 96px; box-sizing: border-box; }
+.poster-bar { display: flex; align-items: center; gap: 6px; padding: 6px 8px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+.poster-title { margin-right: auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.poster-bar button { font: inherit; color: inherit; padding: 4px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--button); cursor: pointer; }
+.poster-bar button:hover { background: var(--button-hover); }
+.poster-bar button.primary { background: #1f6feb; border-color: #1f6feb; color: #fff; }
+.poster-bar button:disabled { opacity: 0.6; cursor: default; }
+/* Hidden wins over any display a button sets for itself (the save icon's inline-flex). */
+.poster-shell [hidden] { display: none !important; }
+.poster-bar button[aria-pressed="true"] { background: var(--pressed); border-color: var(--pressed-line); }
+.poster-bar button.poster-icon { display: inline-flex; align-items: center; justify-content: center; padding: 4px 8px; }
+.poster-downloads { display: inline-flex; gap: 4px; }
+.poster-group { display: inline-flex; }
+.poster-group button { border-radius: 0; margin-left: -1px; }
+.poster-group button:first-child { border-radius: 6px 0 0 6px; }
+.poster-group button:last-child { border-radius: 0 6px 6px 0; }
+.poster-notice { margin: 0; padding: 5px 8px; background: var(--notice); border-bottom: 1px solid var(--line); }
+.poster-notice[hidden] { display: none; }
+.poster-work { flex: 1; display: flex; min-height: 0; }
+.poster-canvas { flex: 1; min-width: 0; position: relative; background: var(--desk); overflow: hidden; }
+.poster-gjs { position: absolute; inset: 0; }
+.poster-side { width: 240px; overflow-y: auto; border-left: 1px solid var(--line); }
+html:not([data-poster-panel="open"]) .poster-side { display: none; }
+.poster-side .gjs-clm-tags { display: none; }
+.poster-status { padding: 5px 8px; border-top: 1px solid var(--line); color: var(--muted); min-height: 1.4em; }
+.poster-status[data-kind="error"] { color: var(--error); }
+.poster-status[data-kind="ok"] { color: var(--ok); }
+/* GrapesJS's canvas, over the whole area: no panels beside it. */
+.gjs-cv-canvas { background: var(--desk); width: 100%; height: 100%; top: 0; }
+.poster-readonly { border: 0; background: #fff; position: absolute; top: 16px; left: 50%; transform-origin: top center; translate: -50% 0; box-shadow: 0 1px 4px rgb(0 0 0 / 0.2); }

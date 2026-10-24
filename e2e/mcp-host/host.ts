@@ -18,7 +18,7 @@ declare global {
   interface Window {
     hostLog: HostLogEntry[];
     relayToolCall: (params: unknown) => Promise<CallToolResult>;
-    startHost: (options: { html: string; toolInput: Record<string, unknown>; toolResult: CallToolResult; theme: "light" | "dark"; downloadFile?: boolean }) => Promise<void>;
+    startHost: (options: { html: string; toolInput: Record<string, unknown>; toolResult: CallToolResult; theme: "light" | "dark"; downloadFile?: boolean; sandbox?: string }) => Promise<void>;
     /** The reader switches the host's theme while the view is open. */
     setHostTheme: (theme: "light" | "dark") => void;
   }
@@ -27,10 +27,12 @@ declare global {
 window.hostLog = [];
 const record = (method: string, params: unknown) => window.hostLog.push({ method, params });
 
-window.startHost = async ({ html, toolInput, toolResult, theme, downloadFile }) => {
+window.startHost = async ({ html, toolInput, toolResult, theme, downloadFile, sandbox }) => {
   const iframe = document.createElement("iframe");
   iframe.id = "view";
-  iframe.setAttribute("sandbox", "allow-scripts");
+  // Scripts only by default, stricter than the spec's allow-scripts + allow-same-origin on a
+  // separate origin: a view that works here works in any host.
+  iframe.setAttribute("sandbox", sandbox ?? "allow-scripts");
   iframe.style.cssText = "width:900px;height:150px;border:0;display:block";
   document.body.append(iframe);
 

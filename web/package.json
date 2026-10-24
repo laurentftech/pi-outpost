@@ -15,6 +15,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@pi-outpost/posters": "*",
     "@pi-outpost/shared": "*",
     "@pi-outpost/ui": "*",
     "@tailwindcss/vite": "^4.3.3",

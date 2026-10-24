@@ -1,0 +1,33 @@
+{
+  "name": "@pi-outpost/posters",
+  "private": true,
+  "type": "module",
+  "description": "Posters every host shares: the page format and its guide, the editor, the page picture, and the Word and PowerPoint packaging.",
+  "exports": {
+    "./format": "./src/format.ts",
+    "./guide": "./src/guide.ts",
+    "./office": "./src/office.ts",
+    "./picture": "./src/picture.ts",
+    "./editor": "./src/editor.ts",
+    "./editor.css": "./src/editor.css",
+    "./frame": "./src/frame.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "node --import tsx/esm --test --test-timeout=120000 test/*.test.ts",
+    "lint": "oxlint"
+  },
+  "dependencies": {
+    "@pi-outpost/office": "*",
+    "grapesjs": "0.23.8",
+    "grapesjs-parser-postcss": "1.0.3"
+  },
+  "devDependencies": {
+    "@types/jsdom": "^21.1.7",
+    "@types/node": "^24.0.0",
+    "jsdom": "~30.0.1",
+    "oxlint": "^1.88.0",
+    "tsx": "^4.23.15",
+    "typescript": "^5.8.0"
+  }
+}

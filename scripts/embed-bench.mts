@@ -25,6 +25,8 @@ import {
   SEEDED_TIMELINE_PREVIOUS,
   VERIFICATION_REPORT,
 } from "../e2e/fixtures/seeded-transcript";
+import { pageOf } from "../posters/src/format.ts";
+import { POSTER_EXAMPLE } from "../posters/src/guide.ts";
 import { createTimelineComparisonToolDefinition } from "../server/src/timelineComparisonTool.ts";
 import { createStructuredExchangeFigureToolDefinition } from "../server/src/structuredExchangeFigureTool.ts";
 // @ts-expect-error -- .mjs harness, no types
@@ -122,6 +124,8 @@ const BENCH_APPEARANCE_REGISTRY = JSON.stringify(
 );
 
 const DOCUMENT_FILES = {
+  // A poster, opened in the poster editor: retouch it, save, export to Word or PowerPoint.
+  "posters/Class rules.poster.html": pageOf("Our class rules", { html: POSTER_EXAMPLE.html, css: POSTER_EXAMPLE.css, format: POSTER_EXAMPLE.format }),
   ".pi-outpost/structured-exchange.json": BENCH_APPEARANCE_REGISTRY,
   "diagrams/architecture.json": JSON.stringify(
     {

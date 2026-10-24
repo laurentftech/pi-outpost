@@ -8,7 +8,7 @@ import { defineConfig, type Plugin } from "vite";
  * A dozen lines instead of a plugin dependency: vite-plugin-singlefile pulled in a
  * micromatch whose braces has an unfixed advisory, for work this small.
  */
-function inlineIntoPage(): Plugin {
+export function inlineIntoPage(): Plugin {
   return {
     name: "pi-outpost-inline-into-page",
     enforce: "post",
