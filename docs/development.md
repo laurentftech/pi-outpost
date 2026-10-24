@@ -64,6 +64,13 @@ and the document exports. Remove them when the plugins depend on a fixed version
 At this update, npm has no patched `sprintf-js` release. Do not apply the unrelated
 package downgrades suggested by `npm audit fix --force` as a substitute for a fix.
 
+`npm audit` and Dependabot also report `undici` 8.10.2 nested under
+`@earendil-works/pi-coding-agent`, which pins that exact version (fixes start at
+8.12.2). Do not add a root `overrides` entry for it: `npm install -g pi-outpost`
+ignores this repository's overrides, so users would still get 8.10.2 while CI tested
+a different, deduplicated tree. The fix has to come from the SDK's pin
+([earendil-works/pi#11208](https://github.com/earendil-works/pi/issues/11208)).
+
 ## Tests
 
 ```bash
