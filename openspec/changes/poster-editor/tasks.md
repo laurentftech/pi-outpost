@@ -19,7 +19,7 @@
 
 - [x] 3.1 Rebuild `mcp/src/posters/` and `mcp/viewer/poster.*` on the package. Replace the server-side export with the app-only `save_export` (bytes from the view, never-overwrite naming). Put the debug log behind `POSTERS_DEBUG`. Tests in `mcp/test/posters.test.ts` drive every `mcp-poster-app` tool scenario over the SDK client, including the refusal of a stale update and the shared folder with plannings.
 - [x] 3.2 Turn `scripts/probes/poster-editor.mts` into `e2e/mcp-poster-app.spec.ts` on the e2e host harness (`sandbox` option). It covers editing in place, rewrapping, dragging, one-element styling, undo, the stale save, style panel and theme switching, inline height and download naming. Add the monkey pass: double clicks on Save, exporting mid-edit, switching theme and full screen during a save.
-- [ ] 3.3 Pack `pi-outpost-posters.mcpb` in the release scripts beside the plannings bundle, and write the Claude Desktop guide section in `docs/claude-desktop.md`. Install it in Claude Desktop and check a poster is shown, edited, saved and exported, through the user.
+- [x] 3.3 Pack `pi-outpost-posters.mcpb` in the release scripts beside the plannings bundle, and write the Claude Desktop guide section in `docs/claude-desktop.md`. Install it in Claude Desktop and check a poster is shown, edited, saved and exported, through the user.
 
 ## 4. pi-outpost
 
