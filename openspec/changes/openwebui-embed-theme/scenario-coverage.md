@@ -11,4 +11,4 @@
 
 The jsdom unit tests in `openwebui/test/hostTheme.test.ts` also cover readable light/dark parents, live class changes, opaque-parent fallback, system changes and cleanup.
 
-The live Open WebUI 0.12.3 check remains outstanding: the local instance is running but requires authentication, and enabling its same-origin iframe setting requires confirmation because it changes the frame's security boundary.
+The live Open WebUI 0.12.3 check is complete: with same-origin enabled, the planning and poster themes follow Open WebUI's theme changes.
