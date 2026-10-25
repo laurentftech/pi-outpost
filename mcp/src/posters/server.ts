@@ -21,7 +21,7 @@ import { McpServer, type CallToolResult, type ReadResourceResult } from "@modelc
 import { z } from "zod";
 import { FORMAT_NAMES, type PosterFormat } from "@pi-outpost/posters/format";
 import { POSTER_GUIDE } from "@pi-outpost/posters/guide";
-import { hidePictures, restorePictures } from "@pi-outpost/posters/markers";
+import { MAX_SEEN_PICTURES, hidePictures, pictureKind, restorePictures, seeablePicture } from "@pi-outpost/posters/markers";
 import { PosterRefusal, type LocalPosterStore, type PosterRevision } from "./store.ts";
 
 export const SERVER_NAME = "pi-outpost-posters";
@@ -54,10 +54,6 @@ export interface ShownPoster {
 /** Above this, a file the view hands over is not an export of one poster. */
 const MAX_EXPORT_BYTES = 40_000_000;
 
-/** How many pictures one get_poster shows the model: each costs it about a thousand tokens. */
-const MAX_SEEN_PICTURES = 8;
-const SEEABLE = /^data:(image\/(?:png|jpeg|gif|webp));base64,([A-Za-z0-9+/=\s]+)$/;
-
 /**
  * The poster's pictures as image blocks the model looks at, each announced by its marker
  * (poster-elements, TheModelCanLookAtThePictures). A picture in another form (an SVG pattern
@@ -66,12 +62,12 @@ const SEEABLE = /^data:(image\/(?:png|jpeg|gif|webp));base64,([A-Za-z0-9+/=\s]+)
 function seenPictures(pictures: readonly string[]): CallToolResult["content"] {
   const blocks: CallToolResult["content"] = [];
   pictures.slice(0, MAX_SEEN_PICTURES).forEach((picture, index) => {
-    const seeable = SEEABLE.exec(picture);
+    const seeable = seeablePicture(picture);
     if (!seeable) {
-      blocks.push({ type: "text", text: `poster-picture:${index + 1} is not a photo or drawing to look at (${picture.slice(5, picture.indexOf(";"))}).` });
+      blocks.push({ type: "text", text: `poster-picture:${index + 1} is not a photo or drawing to look at (${pictureKind(picture)}).` });
       return;
     }
-    blocks.push({ type: "text", text: `poster-picture:${index + 1}:` }, { type: "image", mimeType: seeable[1]!, data: seeable[2]!.replace(/\s/g, "") });
+    blocks.push({ type: "text", text: `poster-picture:${index + 1}:` }, { type: "image", ...seeable });
   });
   if (pictures.length > MAX_SEEN_PICTURES) blocks.push({ type: "text", text: `${pictures.length - MAX_SEEN_PICTURES} more pictures are not shown here.` });
   return blocks;

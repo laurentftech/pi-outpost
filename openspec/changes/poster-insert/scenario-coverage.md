@@ -1,6 +1,6 @@
 # Scenario coverage — poster-insert
 
-Every `#### Scenario:` of the change's five delta specs (`rg '^#### Scenario:' openspec/changes/poster-insert`, 47 in all), the test that would fail if its contract broke, and what that test asserts. Browser tests run on Chromium. The editor tests run in the MCP host frame Claude Desktop uses (`e2e/mcp-poster-host.ts`, `allow-scripts allow-same-origin`). The same editor is also driven in pi-outpost's file viewer (`e2e/poster-files.spec.ts`) and in the Open WebUI embed (`e2e/openwebui-posters.spec.ts`).
+Every `#### Scenario:` of the change's five delta specs (`rg '^#### Scenario:' openspec/changes/poster-insert`, 49 in all), the test that would fail if its contract broke, and what that test asserts. Browser tests run on Chromium. The editor tests run in the MCP host frame Claude Desktop uses (`e2e/mcp-poster-host.ts`, `allow-scripts allow-same-origin`). The same editor is also driven in pi-outpost's file viewer (`e2e/poster-files.spec.ts`) and in the Open WebUI embed (`e2e/openwebui-posters.spec.ts`).
 
 ## poster-documents
 
@@ -26,6 +26,8 @@ Every `#### Scenario:` of the change's five delta specs (`rg '^#### Scenario:' o
 
 | Scenario | Coverage | Evidence |
 | --- | --- | --- |
+| TheModelSeesWhatAFrameHoldsInOpenWebUI | covered | `openwebui/test/posters.test.ts` — "Open WebUI: get_poster with see_pictures…": the answer's `pictures` is exactly `[{ marker: "poster-picture:1", image: <the saved photo> }]`, the image matches Open WebUI 0.12.3's own `BASE64_IMAGE_DATA_URI_RE` (copied from `utils/middleware.py`) as a whole string, and the markup holds no `base64`. |
+| PicturesAreNotSentUnaskedInOpenWebUI | covered | Same test: without `see_pictures`, the answer has no `pictures` field. |
 | TheNewTitleIsListed | covered | `openwebui/test/posters.test.ts` — "TheNewTitleIsListed": the update answers the new title, `get_poster` and `list_posters` give "Menu du jour", and a blank title is refused with 422. |
 
 ## poster-editor

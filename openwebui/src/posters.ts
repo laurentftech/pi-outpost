@@ -23,7 +23,7 @@ import { fileURLToPath } from "node:url";
 import type { FastifyInstance, FastifyReply } from "fastify";
 import { FORMAT_NAMES, PosterRefusal as FormatRefusal, checkPoster, isPosterFormat, type PosterContent } from "@pi-outpost/posters/format";
 import { POSTER_GUIDE } from "@pi-outpost/posters/guide";
-import { hidePictures, restorePictures } from "@pi-outpost/posters/markers";
+import { MAX_SEEN_PICTURES, hidePictures, pictureKind, restorePictures, seeablePicture } from "@pi-outpost/posters/markers";
 // For request.owner, which app.ts declares on Fastify's requests: a program that reaches
 // this file without app.ts (the MCP tests, through openapi.ts) would not know it.
 import type {} from "./app.ts";
@@ -333,7 +333,7 @@ export function posterEmbedPage(poster: PosterRevision, assets: PosterViewerAsse
 
 export const LIST_POSTERS_DESCRIPTION = "Lists the user's posters: id, title, revision, last change. Use an id from here with get_poster, update_poster or show_poster.";
 export const CREATE_POSTER_DESCRIPTION = `Creates a poster, a worksheet, a slide or any one-page visual for the user, kept on this server. Then call show_poster so the user sees it: they can retouch it there and download it for Word (to print) or PowerPoint (to show). When browser saving is configured, saved touch-ups become a new revision you can read; otherwise they stay in the browser.\n\n${POSTER_GUIDE}`;
-export const GET_POSTER_DESCRIPTION = "Reads a poster's latest saved markup and stylesheet, with its revision. Read it before changing it. Unsaved changes in an open embed are not available until the user saves them. Each picture the user put in shows as a marker, poster-picture:N, listed at the top of the markup: keep each marker as it is to keep its picture.";
+export const GET_POSTER_DESCRIPTION = "Reads a poster's latest saved markup and stylesheet, with its revision. Read it before changing it. Unsaved changes in an open embed are not available until the user saves them. Each picture the user put in shows as a marker, poster-picture:N, listed at the top of the markup: keep each marker as it is to keep its picture. The marker and its frame's name do not tell you what a picture shows: set see_pictures to look at them before describing, captioning or moving a picture.";
 export const UPDATE_POSTER_DESCRIPTION = `Replaces a poster's markup and stylesheet with a new version made from the revision you read with get_poster, then call show_poster. If the user saved changes in the embed, start from that latest revision, and keep every poster-picture marker, which stands for a picture the user put in.\n\n${POSTER_GUIDE}`;
 export const SHOW_POSTER_DESCRIPTION = "Shows a poster to the user in the conversation, in an editor where they can correct texts, move pictograms, change colours, save when browser saving is configured, and download it for Word or PowerPoint.";
 
@@ -361,7 +361,17 @@ export function posterOperations() {
   return {
     "/list_posters": operation("list_posters", "List the user's posters", LIST_POSTERS_DESCRIPTION, {}, []),
     "/create_poster": operation("create_poster", "Create a poster", CREATE_POSTER_DESCRIPTION, { title: { type: "string", description: "The poster's title." }, ...contentProperties }, ["title", "html", "css", "format"]),
-    "/get_poster": operation("get_poster", "Read a poster", GET_POSTER_DESCRIPTION, { id: idProperty, revision: { type: "integer", description: "An earlier revision; the latest when omitted." } }, ["id"]),
+    "/get_poster": operation(
+      "get_poster",
+      "Read a poster",
+      GET_POSTER_DESCRIPTION,
+      {
+        id: idProperty,
+        revision: { type: "integer", description: "An earlier revision; the latest when omitted." },
+        see_pictures: { type: "boolean", description: `Also return the pictures the user put in, to look at, each with its marker (at most ${MAX_SEEN_PICTURES}).` },
+      },
+      ["id"],
+    ),
     "/update_poster": operation(
       "update_poster",
       "Change a poster",
@@ -417,15 +427,25 @@ export function registerPosterRoutes(app: FastifyInstance, store: PosterStore, o
     }
   });
 
-  app.post<{ Body: { id?: unknown; revision?: unknown } }>("/get_poster", async (request, reply) => {
+  app.post<{ Body: { id?: unknown; revision?: unknown; see_pictures?: unknown } }>("/get_poster", async (request, reply) => {
     try {
-      const { id, revision } = request.body ?? {};
+      const { id, revision, see_pictures: see } = request.body ?? {};
       if (typeof id !== "string") throw new PosterRefusal(422, "id is required: the poster's identifier, from list_posters");
       if (revision !== undefined && revision !== null && !Number.isInteger(revision)) throw new PosterRefusal(422, "revision, when given, is a revision number");
       const found = await store.get(request.owner, id, typeof revision === "number" ? revision : undefined);
       // Each picture the user put in is a marker here: its data never reaches the model.
       const hidden = hidePictures(found.html, found.css);
-      return { ...answer(found), html: hidden.html, css: hidden.css };
+      if (see !== true) return { ...answer(found), html: hidden.html, css: hidden.css };
+      // Open WebUI takes every string of this answer that is a whole base64 picture out of the
+      // text and hands it to the model as an image, in native function calling
+      // (utils/middleware.py, extract_base64_images): the pictures travel as such strings.
+      const pictures = hidden.pictures.slice(0, MAX_SEEN_PICTURES).map((picture, index) => {
+        const seeable = seeablePicture(picture);
+        const marker = `poster-picture:${index + 1}`;
+        return seeable ? { marker, image: `data:${seeable.mimeType};base64,${seeable.data}` } : { marker, not_shown: `not a photo or drawing to look at (${pictureKind(picture)})` };
+      });
+      const more = hidden.pictures.length - pictures.length;
+      return { ...answer(found), html: hidden.html, css: hidden.css, pictures, ...(more > 0 ? { pictures_not_shown: more } : {}) };
     } catch (error) {
       return refuse(reply, error);
     }

@@ -131,7 +131,7 @@ Where each host applies them:
 A marker hides what a picture shows, and the user found Claude calling a family picture "your bread picture" because its frame was named `bread`. `get_poster` therefore takes `see_pictures`: after the JSON text block, each picture comes back as an MCP image block, announced by a text block naming its marker. Only PNG, JPEG, GIF and WebP data URLs are shown, as the model takes those; anything else, such as an SVG pattern, is named. There are at most eight per call, at about a thousand tokens each for a 1200 px picture. The default stays off, so ordinary reads cost nothing more, and the description says when to ask.
 
 Hosts:
-- **Open WebUI:** an OpenAPI tool server answers the model in text only (see the proposal in the PR discussion for an MCP route).
+- **Open WebUI:** an OpenAPI tool server answers in JSON. Open WebUI 0.12.3 (`utils/middleware.py`, `extract_base64_images`) takes every string of that JSON that is a whole base64 picture data URL out of the text, replaces it with `[image]`, and hands it to the model as an image in native function calling. It is not shown to the user. `get_poster` with `see_pictures` therefore adds `pictures: [{ marker, image }]` with such strings. Two conditions: the model is set to native function calling, and it takes images.
 - **pi-outpost:** a tool of its own, `poster_pictures({ path, pictures? })`, read-only and confined like `drawio_check`. It returns the file's pictures as image blocks, announced by their markers. `read` was not used: it has no parameter to ask for pictures, so they would be sent on every read. A model whose `input` lacks `image` is told so instead of being sent data it cannot use.
 
 ### 7. Ceilings
