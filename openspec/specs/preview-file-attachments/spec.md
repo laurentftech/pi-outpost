@@ -6,54 +6,8 @@ Turns the file the user is looking at into the context of their next question, w
 them attach it by hand — and without spending the agent's context window on a file they may
 never ask about. A previewed text file travels as an `@path` reference the agent resolves with
 its own file tools; images, which the agent cannot hand to the model itself, travel as bytes.
+
 ## Requirements
-### Requirement: Automatically attach the active preview
-
-- **Implementation**: `textPreviewToAttachment::ui/src/attachments.ts`, `imagePreviewToAttachment::ui/src/attachments.ts`
-
-The system SHALL add a successfully displayed file preview to the composer as the attachment for the active preview. It SHALL create at most one automatic attachment for an active preview path, and SHALL preserve manually added attachments.
-
-Text files SHALL be attached as a path reference, not as content: the agent browses the same root as the file viewer and reads the file itself, so a large preview MUST NOT consume prompt context proportional to its size. PDFs SHALL likewise be attached as a path reference, because the agent has a tool that reads a PDF at a path — their bytes MUST NOT travel with the prompt. Images SHALL still be attached as image bytes, which the agent cannot supply to the model on its own.
-
-#### Scenario: Text preview becomes a path reference
-- **WHEN** a text file preview has loaded successfully
-- **THEN** the composer contains a removable attachment referencing the file's path, and the prompt carries an `@path` mention rather than the file's content
-
-#### Scenario: PDF preview becomes a path reference
-- **WHEN** a PDF is displayed in the viewer
-- **THEN** the composer contains a removable attachment referencing the file's path, and the PDF's bytes are not attached
-
-#### Scenario: Image preview becomes an attachment
-- **WHEN** an image file is displayed in the preview and its raw bytes can be read within the image attachment limit
-- **THEN** the composer contains a removable image attachment for that image
-
-#### Scenario: Same preview rerenders
-- **WHEN** the active preview rerenders without a path change
-- **THEN** the composer contains no duplicate automatic attachment
-
-### Requirement: Synchronize automatic attachment with preview selection
-
-- **Implementation**: `replacePreviewAttachment::ui/src/attachments.ts`
-
-The system SHALL replace the previous automatic attachment when a different file becomes the active preview. It SHALL not remove manually added attachments during that replacement.
-
-#### Scenario: User previews another file
-- **WHEN** the user changes the active preview from one file to another
-- **THEN** the previous preview attachment is replaced by an attachment for the newly previewed file
-
-### Requirement: Allow automatic attachment removal
-
-- **Implementation**: `removeAttachment::ui/src/attachments.ts`
-
-> The `handleRemoveAttachment` wrapper in `ui/src/App.tsx` is a component-local
-> function, not an export, so it cannot be anchored; the exported behaviour it
-> delegates to is `removeAttachment`.
-
-The system SHALL allow the user to remove an automatic preview attachment through the existing attachment control. It SHALL keep the attachment removed while that file remains the active preview.
-
-#### Scenario: User removes the preview attachment
-- **WHEN** the user removes the automatic attachment for the active preview
-- **THEN** it is absent from the composer and is not recreated until the active preview changes
 
 ### Requirement: Reference files from the file tree
 
@@ -77,28 +31,18 @@ The system SHALL let the user reference any file listed in the file tree as a pr
 - **WHEN** a file is referenced from the tree while the same path is already attached, or its path is already typed as an `@` mention
 - **THEN** the sent prompt mentions that path exactly once
 
-### Requirement: Degrade safely for unsendable previews
+### Requirement: PreviewWithoutImplicitAttachment
+Opening, rendering, switching, refreshing or closing a file preview SHALL NOT add, remove or replace composer attachments. This applies to text, images, PDFs, tool-readable documents and unsupported binaries. Attachment changes SHALL require an explicit reference or import action.
 
-- **Implementation**: `imagePreviewToAttachment::ui/src/attachments.ts`
+#### Scenario: OpenFilesWithoutAttaching
+- **WHEN** any supported or unsupported file is opened or rendered
+- **THEN** no attachment is added and the next prompt does not reference that file implicitly
 
-The system SHALL not attach a preview whose image content is unsupported, unreadable, or exceeds the established image attachment limit. It SHALL leave the preview available and report a non-blocking attachment error.
+#### Scenario: PreserveExplicitAttachmentsWhileBrowsing
+- **GIVEN** a file explicitly referenced in the composer
+- **WHEN** other files are previewed, refreshed or closed
+- **THEN** the explicit attachment is preserved unchanged
 
-#### Scenario: Oversized image preview
-- **WHEN** a successfully displayed image preview exceeds the image attachment size limit
-- **THEN** the preview remains displayed, no automatic attachment is added, and the composer reports why it was skipped
-
-#### Scenario: Large text preview
-- **WHEN** a successfully displayed text preview is larger than the composer's inline text limit
-- **THEN** it is still attached, because only its path travels with the prompt
-
-### Requirement: Automatically attach tool-readable binary selections
-
-When selection of a confined binary file reaches the normal unsupported-preview result, the system SHALL add it to the composer automatically if an available path-based extraction tool supports its file type. It SHALL represent the selection as a path reference rather than file bytes, preserve manually added attachments, and replace any previous automatic preview attachment. A binary file without a matching extraction tool SHALL remain unattached.
-
-#### Scenario: Tool-readable binary selection becomes a path reference
-- **WHEN** a selected `.docx` or `.xlsx` file reports that binary preview is unsupported
-- **THEN** the composer contains a removable attachment referencing the file's path, and the prompt carries an `@path` mention rather than the file's bytes
-
-#### Scenario: Unsupported binary selection is not attached automatically
-- **WHEN** a selected binary file has no available path-based extraction tool
-- **THEN** the composer receives no automatic attachment for that file
+#### Scenario: ExplicitReferencesStillWork
+- **WHEN** a user references a file from the tree, types an @ mention or imports a file
+- **THEN** it is included by the existing explicit attachment flow

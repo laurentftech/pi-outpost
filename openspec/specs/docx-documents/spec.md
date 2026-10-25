@@ -3,7 +3,9 @@
 ## Purpose
 Lets the agent read a Word document the workspace already contains — its text, its headings and its
 tables — without a shell, an external converter, or a guess about what the layout meant.
+
 ## Requirements
+
 ### Requirement: ExtractDocxContentTool
 
 The system SHALL expose a tool that returns the content of a workspace `.docx` file as markdown.
@@ -78,9 +80,19 @@ lost.
 
 ### Requirement: AcceptedTextOnly
 
-The system SHALL return the document as its author's latest revision reads it: text marked as a
-tracked insertion SHALL be included, and text marked as a tracked deletion SHALL NOT be. Deleted
-text MUST NOT reach the caller by any mode or option.
+By default the system SHALL return the document as its author's latest revision reads it: text
+marked as a tracked insertion SHALL be included, and text marked as a tracked deletion SHALL NOT be.
+Deleted text MUST NOT reach the caller by any mode or option other than the review reading, which
+the caller asks for explicitly.
+
+A tracked move SHALL be read as its result: the moved text SHALL appear once, at its destination,
+and not also at its origin. A table row deleted with tracking SHALL NOT be returned, rather than
+returned as a row of empty cells.
+
+A tracked formatting change keeps the formatting it replaced. That previous formatting SHALL NOT be
+read as the run's or the paragraph's current formatting: a paragraph whose style was changed with
+tracking SHALL be read with its current style, and a run whose strikethrough, bold or italic was
+changed with tracking SHALL be marked by its current formatting only.
 
 #### Scenario: TrackedInsertionIsKept
 - **GIVEN** a document with a tracked insertion
@@ -89,8 +101,28 @@ text MUST NOT reach the caller by any mode or option.
 
 #### Scenario: TrackedDeletionIsDropped
 - **GIVEN** a document with a tracked deletion
-- **WHEN** it is extracted in any mode
+- **WHEN** it is extracted in any mode, without the review reading
 - **THEN** the deleted text is absent from the result
+
+#### Scenario: MovedTextAppearsOnce
+- **GIVEN** a document in which a sentence was moved with tracking
+- **WHEN** it is extracted without the review reading
+- **THEN** the sentence appears exactly once, at its destination
+
+#### Scenario: DeletedTableRowIsDropped
+- **GIVEN** a table one of whose rows was deleted with tracking
+- **WHEN** the document is extracted without the review reading
+- **THEN** the table is returned without that row, and the other rows keep their cells
+
+#### Scenario: PreviousParagraphStyleIsNotRead
+- **GIVEN** a paragraph restyled with tracking from a heading style to a body style
+- **WHEN** the document is extracted
+- **THEN** the paragraph is returned as body text, not as a heading
+
+#### Scenario: PreviousRunFormattingIsNotRead
+- **GIVEN** a run whose strikethrough was removed with tracking
+- **WHEN** the document is extracted
+- **THEN** the run's text is returned unmarked
 
 ### Requirement: BoundedDocxExtraction
 
@@ -130,13 +162,16 @@ file, or one whose content lives entirely in parts this change does not read —
 read it. It MUST NOT return an empty or whitespace-only result as though the document were simply
 blank.
 
+Comments are read only in the review reading. The parts named as not read SHALL therefore include
+comments in the default reading, and SHALL NOT include them in the review reading.
+
 #### Scenario: DocumentWithNoBodyText
 - **WHEN** a readable document yields no text, headings or tables
 - **THEN** the tool says the document has no extractable body content, and names what it does not read
 
 #### Scenario: ContentOutsideTheBody
 - **GIVEN** a document whose text sits only in headers, footers, footnotes or comments
-- **WHEN** it is extracted
+- **WHEN** it is extracted without the review reading
 - **THEN** the result says those parts are not read, rather than reporting an empty document
 
 ### Requirement: WordWholeDocumentExtraction
@@ -258,8 +293,13 @@ document that crosses nothing out SHALL carry no such line.
 
 #### Scenario: StrikethroughIsNotATrackedDeletion
 - **GIVEN** a document containing both a manually struck run and a tracked deletion
-- **WHEN** it is extracted in any mode
+- **WHEN** it is extracted in any mode, without the review reading
 - **THEN** the struck run is returned as a marked span and the tracked deletion is absent
+
+#### Scenario: StrikethroughIsNotATrackedDeletionInReview
+- **GIVEN** a document containing both a manually struck run and a tracked deletion
+- **WHEN** it is extracted with the review reading
+- **THEN** the struck run is returned wrapped in `~~` and the tracked deletion in a deletion marker, so the two cannot be confused
 
 ### Requirement: PicturesAreMarkedWhereTheySit
 
@@ -333,3 +373,157 @@ among several could not be prepared.
 - **GIVEN** a document holding one picture that can be returned and one that cannot
 - **WHEN** its pictures are asked for
 - **THEN** the first is returned, the second's marker says why it is not, and the call succeeds
+
+### Requirement: ReviewReadingMarksRevisions
+
+The tool SHALL take an opt-in parameter asking for the review reading. In it, each tracked
+insertion, deletion and move SHALL be returned where it sits: insertions as `{++text++}`, deletions
+as `{--text--}`, each followed by a reference `[rN]`. A move SHALL be marked at both ends with one
+shared reference `[mN]`. Tracked formatting changes SHALL NOT be marked.
+
+#### Scenario: InsertionAndDeletionAreMarkedInPlace
+- **GIVEN** a paragraph in which "30" was deleted and "45" inserted with tracking
+- **WHEN** it is extracted with the review reading
+- **THEN** the paragraph reads `{--30--}[r1]{++45++}[r2]` at that position, with the rest of the paragraph unmarked
+
+#### Scenario: MoveIsMarkedAtBothEnds
+- **GIVEN** a sentence moved with tracking from one section to another
+- **WHEN** the document is extracted with the review reading
+- **THEN** the sentence appears in a deletion marker at its origin and in an insertion marker at its destination, both carrying the same `[mN]` reference
+
+#### Scenario: AdjacentRunsOfOneRevisionBecomeOneMarker
+- **GIVEN** an insertion split across several runs with the same author and date
+- **WHEN** it is extracted with the review reading
+- **THEN** it is returned as one insertion marker with one reference
+
+#### Scenario: FormattingChangeIsNotMarked
+- **GIVEN** a document whose only tracked change is a run made bold
+- **WHEN** it is extracted with the review reading
+- **THEN** no revision marker appears, and the run is marked bold as its current formatting says
+
+#### Scenario: RevisionInATableCell
+- **GIVEN** a table cell holding a tracked insertion
+- **WHEN** the table is returned with the review reading
+- **THEN** the cell shows the insertion marker, and every row still has the column count the document declares
+
+#### Scenario: DeletedTableRowIsKeptInReview
+- **GIVEN** a table one of whose rows was deleted with tracking
+- **WHEN** the document is extracted with the review reading
+- **THEN** the row is returned, with its text in deletion markers
+
+#### Scenario: DefaultReadingIsUnchanged
+- **GIVEN** a document with tracked insertions, deletions and moves
+- **WHEN** it is extracted without the review reading
+- **THEN** no revision marker appears and no deleted text is returned
+
+### Requirement: ReviewReadingAnchorsComments
+
+In the review reading, each comment SHALL be marked on the text it is anchored to, as `{==text==}`
+followed by a reference `[cN]`. A comment anchored to a point rather than a range SHALL be marked by
+its reference alone. Comments are read from the document's own parts; nothing is fetched.
+
+#### Scenario: CommentIsMarkedOnItsText
+- **GIVEN** a comment anchored to the words "45 jours"
+- **WHEN** the document is extracted with the review reading
+- **THEN** those words are returned as `{==45 jours==}` followed by the comment's reference
+
+#### Scenario: CommentOverARevision
+- **GIVEN** a comment anchored to text that is also a tracked insertion
+- **WHEN** the document is extracted with the review reading
+- **THEN** both markers are present and both references are given, so neither hides the other
+
+#### Scenario: CommentsAreNotReadByDefault
+- **GIVEN** a document holding comments
+- **WHEN** it is extracted without the review reading
+- **THEN** no comment text and no comment marker appears in the result
+
+### Requirement: ReviewReadingListsEveryReference
+
+The review reading SHALL end with a list holding one entry per reference marked in the returned
+content, in document order. Each entry SHALL give the reference, its kind, its author and date when
+the document records them, and the headings it falls under. A comment's entry SHALL also give its
+text, its replies in order, and whether it is resolved.
+
+#### Scenario: RevisionEntryNamesAuthorDateAndSection
+- **GIVEN** a tracked insertion under the heading "Performances", itself under "Exigences"
+- **WHEN** the document is extracted with the review reading
+- **THEN** the list entry for its reference gives the kind, the author, the date and both headings
+
+#### Scenario: CommentEntryCarriesItsThread
+- **GIVEN** a comment with two replies, marked resolved
+- **WHEN** the document is extracted with the review reading
+- **THEN** its entry gives the comment's text and author, both replies in order with their authors, and states it is resolved
+
+#### Scenario: MissingAuthorOrDateIsNotInvented
+- **GIVEN** a tracked change whose markup records no author and no date
+- **WHEN** the document is extracted with the review reading
+- **THEN** its entry says they are not recorded, rather than giving empty or made-up values
+
+#### Scenario: ReviewOfADocumentWithNoReviewLayer
+- **GIVEN** a document with no tracked change and no comment
+- **WHEN** it is extracted with the review reading
+- **THEN** the result is its accepted text and says the document holds no tracked change or comment
+
+### Requirement: ReviewReferencesAreStableAcrossCalls
+
+Reference numbers SHALL be assigned over the whole document, not over the blocks returned, so that
+a reference keeps its number whichever block range or cap produced it. A truncated review reading
+SHALL list only the references in the blocks it returned.
+
+#### Scenario: SameReferenceInARangedCall
+- **GIVEN** a document whose third tracked change sits in block 30
+- **WHEN** block "30" is extracted with the review reading
+- **THEN** that change carries the reference `[r3]`, as it does in a whole-document review reading
+
+#### Scenario: TruncatedReviewListsOnlyWhatItShows
+- **GIVEN** a review reading truncated by the per-call cap
+- **WHEN** the result is returned
+- **THEN** its list holds the references in the returned blocks and no others, and the truncation note names the blocks left
+
+### Requirement: ReviewMarkersCannotBeForged
+
+In the review reading, text that the document itself contains SHALL NOT be able to read as a review
+marker or a reference: character sequences that would open or close a marker, or form a reference,
+SHALL be escaped.
+
+#### Scenario: DocumentTextLookingLikeAMarker
+- **GIVEN** a paragraph whose own text is `{++approuvé++}[r1]`
+- **WHEN** the document is extracted with the review reading
+- **THEN** that text is returned escaped, and no revision or reference is reported for it
+
+### Requirement: ReviewReadingIsAnnouncedBeforeTheContent
+
+The review reading SHALL open, before the document's text, with a line stating how many tracked
+changes and comments the returned content marks and what each marker means.
+
+#### Scenario: ReviewLegendLeads
+- **GIVEN** a document with three tracked changes and one comment
+- **WHEN** it is extracted with the review reading
+- **THEN** the result opens with a line giving those counts and the meaning of `{++ ++}`, `{-- --}`, `{== ==}` and the references
+
+### Requirement: DefaultReadingAnnouncesTheReviewLayer
+
+When a document holds tracked insertions, deletions, moves or comments, the default reading SHALL
+say so in one line before the content, giving their counts over the whole document and naming the
+parameter that shows them. A document holding none, or only tracked formatting changes, SHALL carry
+no such line.
+
+#### Scenario: HintNamesTheParameter
+- **GIVEN** a document with tracked changes and comments
+- **WHEN** it is extracted without the review reading
+- **THEN** the result opens with a line giving their counts and naming the review parameter
+
+#### Scenario: NoReviewLayerNoHint
+- **GIVEN** a document whose only tracked changes are formatting changes
+- **WHEN** it is extracted without the review reading
+- **THEN** the result carries no such line
+
+### Requirement: ReviewReadingNeverWrites
+
+The review reading SHALL be read-only: it SHALL NOT accept, reject, resolve or alter any revision or
+comment, and the source document SHALL be byte-identical after any extraction.
+
+#### Scenario: SourceUnchangedAfterReview
+- **GIVEN** a document with tracked changes and comments
+- **WHEN** it is extracted with the review reading, to the answer and to an output file
+- **THEN** the source file's bytes are unchanged

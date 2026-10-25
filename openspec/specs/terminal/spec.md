@@ -96,6 +96,7 @@ A confined terminal SHALL receive only the variables a shell needs — search pa
 shell, a home inside the sandbox root, a private npm cache, and the user's git configuration as
 `GIT_CONFIG_GLOBAL` when they have one — and SHALL NOT receive the server's other variables, provider
 keys included. That git configuration file SHALL be readable inside, read-only, and nothing beside it.
+The shell's history SHALL be kept in the terminal's private temp, never in the sandbox root.
 
 #### Scenario: KeysDoNotReachTheShell
 - **GIVEN** the server started with `OPENAI_API_KEY` in its environment and a confined terminal
@@ -106,6 +107,11 @@ keys included. That git configuration file SHALL be readable inside, read-only, 
 - **GIVEN** a user whose `~/.gitconfig` names them, and a confined terminal
 - **WHEN** git reads its identity in the terminal
 - **THEN** it is the user's, the file cannot be written, and the folder it sits in stays unreadable
+
+#### Scenario: AClosedTerminalLeavesNoHistoryInTheProject
+- **GIVEN** a confined terminal on Linux or macOS in which the user typed a command
+- **WHEN** the terminal is closed and its shell has exited
+- **THEN** no shell history file is left in the sandbox root
 
 ### Requirement: AnUnusableRunnerMeansNoTerminal
 
@@ -220,3 +226,88 @@ marked as a failure, naming it; while the canary runs, it SHALL say so.
 - **GIVEN** `terminal.sandbox` set and a canary that could write beside the root
 - **WHEN** the terminal panel opens
 - **THEN** the badge is open, marked as a failure, and names the write beside the root
+
+### Requirement: ResizeTheTerminalHeight
+The terminal SHALL expose a draggable, focusable top border outside maximized mode. Height SHALL range from 160 to 640 pixels, capped at 65vh, defaulting to 288 pixels. Up/Down SHALL adjust by 16 pixels; Home SHALL reset. Completed changes SHALL persist locally; cancellation SHALL roll back. Maximize/restore and minimize/reopen SHALL preserve the preference and session. Actual terminal dimensions SHALL reach the shell.
+
+#### Scenario: ResizeTerminalHeight
+- **GIVEN** an open terminal
+- **WHEN** its top border is dragged vertically or adjusted with Up/Down
+- **THEN** the panel follows that movement and terminal rows are resized without reopening the shell
+
+#### Scenario: TerminalHeightBoundsAndCancel
+- **GIVEN** an active height drag
+- **WHEN** the pointer crosses the limits or the drag is cancelled
+- **THEN** the height is bounded or restored respectively, and cancellation does not persist a change
+
+#### Scenario: RestoreTerminalHeight
+- **GIVEN** a completed height adjustment
+- **WHEN** the terminal is maximized then restored, minimized then opened, or the page reloads
+- **THEN** the preferred height is restored
+
+### Requirement: ChooseAnInstalledShellPerTerminalTab
+The server SHALL advertise only installed compatible shells. Each new terminal tab MAY select an advertised shell identifier; existing tabs SHALL retain their shell. With no selection, Windows SHALL default to PowerShell, then cmd if PowerShell is absent. An explicit terminal.shell and terminal.shellArgs SHALL remain the default. Selected IDs SHALL be validated and confinement preserved; confined Windows SHALL exclude Git Bash.
+
+#### Scenario: InstalledShellsOnly
+- **GIVEN** a host with some known shells missing or duplicated on PATH
+- **WHEN** shell choices are discovered, including after removal of an executable
+- **THEN** only existing executable files appear, without duplicates
+
+#### Scenario: PowerShellByDefault
+- **GIVEN** Windows with PowerShell and Git Bash installed and no configured shell
+- **WHEN** the user opens a terminal without a shell selection
+- **THEN** PowerShell is started
+
+#### Scenario: ConfiguredShellWins
+- **GIVEN** terminal.shell and terminal.shellArgs explicitly configured
+- **WHEN** a terminal opens without a selection
+- **THEN** that shell and those arguments are used
+
+#### Scenario: ChooseShellPerTab
+- **GIVEN** an open terminal and advertised shells
+- **WHEN** the user chooses another shell and creates a tab
+- **THEN** the new tab executes that shell and the original shell remains running
+
+#### Scenario: ShellListChanges
+- **GIVEN** a selected shell disappears from the server snapshot
+- **WHEN** the user creates a new tab
+- **THEN** the selector and new tab use the default instead of a stale identifier
+
+#### Scenario: UnknownShellIsRefused
+- **GIVEN** a client sends an identifier not advertised by the server
+- **WHEN** terminal_open is received
+- **THEN** an error is returned and input cannot reach a spawned terminal
+
+#### Scenario: ConfinedChoicesStayConfined
+- **GIVEN** a confined Windows terminal and installed Git Bash
+- **WHEN** shells are advertised
+- **THEN** Git Bash is absent and native PowerShell arguments keep confined progress handling
+
+### Requirement: TerminalClipboardShortcuts
+Ctrl+C (or Cmd+C) SHALL copy selected terminal text. Without selection Ctrl+C SHALL keep shell interruption. Ctrl+V, Ctrl+Shift+V and Cmd+V SHALL paste through the browser and xterm without sending control-V. Clipboard refusal SHALL be reported without breaking the terminal. Other shell shortcuts SHALL remain available.
+
+#### Scenario: CopySelectionOrInterrupt
+- **GIVEN** a terminal with selected output
+- **WHEN** Ctrl+C is pressed
+- **THEN** the selection reaches the clipboard without interruption
+- **WHEN** Ctrl+C is pressed during a running command with no selection
+- **THEN** the command is interrupted and the shell remains usable
+
+#### Scenario: PasteIntoTheShell
+- **GIVEN** text in the clipboard and a focused terminal
+- **WHEN** Ctrl+V or Ctrl+Shift+V is pressed
+- **THEN** the text reaches the terminal and can be executed
+
+#### Scenario: ClipboardRefusalIsReported
+- **GIVEN** clipboard write is refused
+- **WHEN** selected output is copied
+- **THEN** the terminal reports the refusal without an uncaught error
+
+### Requirement: TerminalSessionsRecoverAfterReconnect
+A disconnected terminal SHALL start a new session after the next connection handshake, preserving its chosen shell, last known working directory and dimensions. The buffer SHALL state that this is a new session; closed or exited terminals SHALL NOT restart.
+
+#### Scenario: TerminalRecoversAfterReconnect
+- **GIVEN** a live Git Bash terminal and another terminal already closed or exited
+- **WHEN** the socket disconnects and reconnects
+- **THEN** the live tab starts one new Git Bash session and accepts commands
+- **AND** its buffer announces the restart and the closed or exited terminal does not reopen
