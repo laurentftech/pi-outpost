@@ -70,11 +70,19 @@ test("AScriptIsRefused: a script anywhere in the markup, SVG included, is refuse
 });
 
 // openlore: scenario=AnOversizedPosterIsRefused spec=poster-documents
-test("AnOversizedPosterIsRefused: above the ceiling, with the advice to use emoji or small SVG", () => {
-  refused(() => checkPoster({ html: "x".repeat(MAX_POSTER_BYTES), css: "y", format: "A4-portrait" }), /too large.*emoji/);
+test("AnOversizedPosterIsRefused: above the ceiling, saying how large it is and to shrink or remove pictures", () => {
+  refused(() => checkPoster({ html: "x".repeat(MAX_POSTER_BYTES), css: "y", format: "A4-portrait" }), /too large: 8\.0 MB, above the 8\.0 MB .*Shrink or remove pictures or drawings/);
   // Counted in bytes, not characters: an emoji is four.
   refused(() => checkPoster({ html: "🌱".repeat(MAX_POSTER_BYTES / 4 + 1), css: "", format: "A4-portrait" }), /too large/);
   assert.doesNotThrow(() => checkPoster({ html: "x".repeat(MAX_POSTER_BYTES - 1), css: "y", format: "A4-portrait" }));
+});
+
+// openlore: scenario=APosterWithSeveralPicturesFits spec=poster-documents
+test("APosterWithSeveralPicturesFits: six pictures as the editor embeds them are accepted", () => {
+  // The editor's pictures: 1200 px on the long side, around 250 kB of JPEG, a third more as base64.
+  const picture = `data:image/jpeg;base64,${"A".repeat(Math.ceil((250_000 * 4) / 3))}`;
+  const html = Array.from({ length: 6 }, (_, index) => `<img data-poster-picture="p${index}" src="${picture}">`).join("");
+  assert.equal(checkPoster({ html, css: "img { width: 200px; }", format: "A4-portrait" }).html, html);
 });
 
 test("readPage names what is missing from a file that is not a poster", () => {

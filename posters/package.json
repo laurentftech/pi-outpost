@@ -5,6 +5,7 @@
   "description": "Posters every host shares: the page format and its guide, the editor, the page picture, and the Word and PowerPoint packaging.",
   "exports": {
     "./format": "./src/format.ts",
+    "./markers": "./src/markers.ts",
     "./guide": "./src/guide.ts",
     "./office": "./src/office.ts",
     "./picture": "./src/picture.ts",

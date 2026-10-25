@@ -13,6 +13,7 @@ import { pathToFileURL } from "node:url";
 import { spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import type { DirEntry, FileBrowserErrorReason, FileSearchEntry } from "@pi-outpost/shared";
+import { MAX_POSTER_BYTES, POSTER_SUFFIX } from "@pi-outpost/posters/format";
 import { declaredStructuredExchangeSchema } from "@pi-outpost/shared/structured-exchange/document";
 import type { AppConfig } from "./config.ts";
 
@@ -224,9 +225,12 @@ export async function readFileForPreview(
   // narrower one is applied afterwards, to a file that turned out not to be one.
   // The cost is reading a file that is then refused; the alternative is deciding
   // by extension, which is the thing this feature exists not to do.
-  const outer = Math.max(MAX_PREVIEW_BYTES, structuredExchangeMaxBytes);
+  // A poster is known by its name, as the viewer knows it, and holds the pictures the person
+  // put in: it opens up to the poster ceiling (poster-elements, PicturesAreScaledAndEmbedded).
+  const isPoster = relPath.toLowerCase().endsWith(POSTER_SUFFIX);
+  const outer = Math.max(MAX_PREVIEW_BYTES, structuredExchangeMaxBytes, isPoster ? POSTER_FILE_MAX_BYTES : 0);
   if (stat.size > outer) {
-    throw new FileBrowserError("too-large", describeUnmeasured(stat.size, structuredExchangeMaxBytes));
+    throw new FileBrowserError("too-large", isPoster ? describePosterOversize(stat.size) : describeUnmeasured(stat.size, structuredExchangeMaxBytes));
   }
   const buffer = await readMeasuredFile(resolved, relPath);
   if (expectedDigest !== undefined) {
@@ -248,11 +252,21 @@ export async function readFileForPreview(
   // document limit must actually refuse a document above it, and a document below
   // the wider ceiling must not be refused for exceeding the preview one.
   const isDocument = declaredStructuredExchangeSchema(content) !== undefined;
-  const limit = isDocument ? structuredExchangeMaxBytes : MAX_PREVIEW_BYTES;
+  const limit = isDocument ? structuredExchangeMaxBytes : isPoster ? POSTER_FILE_MAX_BYTES : MAX_PREVIEW_BYTES;
   if (stat.size > limit) {
     throw new FileBrowserError("too-large", describeOversize(stat.size, limit, isDocument));
   }
   return { content, size: stat.size, mtimeMs: stat.mtimeMs };
+}
+
+/**
+ * A poster file's ceiling: the poster's own, for its markup and stylesheet, and room for the page
+ * around them (the format meta, the page rules, the title).
+ */
+export const POSTER_FILE_MAX_BYTES = MAX_POSTER_BYTES + 64 * 1024;
+
+function describePosterOversize(size: number): string {
+  return `File is ${asMb(size)} MB, larger than the ${asMb(POSTER_FILE_MAX_BYTES)} MB a poster may hold: shrink or remove some of its pictures`;
 }
 
 /** Megabytes, to one decimal, the way every other size refusal here says it. */
@@ -903,15 +917,19 @@ export async function writeFileFromBrowser(
   if (!isWithin(writableRoot, resolved)) {
     throw new FileBrowserError("denied", `"${relPath}" is outside the writable zone`);
   }
+  // A poster saved from its editor holds the pictures the person put in: it is written up to
+  // the poster ceiling, the size it opens at.
+  const isPoster = relPath.toLowerCase().endsWith(POSTER_SUFFIX);
+  const limit = isPoster ? POSTER_FILE_MAX_BYTES : MAX_PREVIEW_BYTES;
   // UTF-8 byteLength >= UTF-16 length, so this rejects grossly oversized payloads
   // before allocating a Buffer for them
-  if (content.length > MAX_PREVIEW_BYTES) {
-    throw new FileBrowserError("too-large", "Content is larger than the 1 MB limit");
+  if (content.length > limit) {
+    throw new FileBrowserError("too-large", isPoster ? describePosterOversize(content.length) : "Content is larger than the 1 MB limit");
   }
   const buffer = Buffer.from(content, "utf8");
-  if (buffer.byteLength > MAX_PREVIEW_BYTES) {
+  if (buffer.byteLength > limit) {
     const mb = (buffer.byteLength / (1024 * 1024)).toFixed(1);
-    throw new FileBrowserError("too-large", `Content is ${mb} MB, larger than the 1 MB limit`);
+    throw new FileBrowserError("too-large", isPoster ? describePosterOversize(buffer.byteLength) : `Content is ${mb} MB, larger than the 1 MB limit`);
   }
   // A NUL byte would make the saved file unreadable in the viewer (looksBinary refuses it on read)
   if (looksBinary(buffer)) {

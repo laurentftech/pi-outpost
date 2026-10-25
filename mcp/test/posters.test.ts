@@ -125,7 +125,7 @@ test("ThePosterIsShownInTheConversation: show_poster declares the editor and han
 test("TheModelIsNotOfferedSaving: saving and exporting are tools only the view can call, and name no view", async () => {
   const { client } = await connect();
   const { tools } = await client.listTools();
-  for (const name of ["save_poster", "save_export"]) {
+  for (const name of ["save_poster", "save_export", "poster_pictures"]) {
     const ui = (tools.find((tool) => tool.name === name)!._meta as { ui?: { visibility?: string[]; resourceUri?: string } }).ui;
     assert.deepEqual(ui?.visibility, ["app"], name);
     assert.equal(ui?.resourceUri, undefined, name);
@@ -174,4 +174,60 @@ test("PlanningsAndPostersShareAFolder: neither lists the other's files nor repor
 test("AReinstalledEditorIsANewView: a changed editor page is a new resource name", () => {
   assert.notEqual(viewUriFor("<p>editor 1</p>"), viewUriFor("<p>editor 2</p>"));
   assert.equal(viewUriFor("<p>same</p>"), viewUriFor("<p>same</p>"));
+});
+
+/** The example poster as the user leaves it after putting two pictures in through the editor. */
+const BREAD = `data:image/png;base64,${"iVBOR".repeat(20_000)}`;
+const PHOTO = `data:image/jpeg;base64,${"/9j/4".repeat(30_000)}`;
+const withPictures = (html: string) =>
+  html.replace('<img class="photo" data-poster-picture="class photo" alt="Our class">', `<img class="photo" data-poster-picture="class photo" alt="Our class" src="${PHOTO}">`).replace("</main>", `<img alt="bread" src="${BREAD}"></main>`);
+
+async function posterWithPictures() {
+  const host = await connect();
+  const id = (await host.call("create_poster", poster())).json.id as string;
+  const saved = await host.call("save_poster", { id, base_revision: 1, html: withPictures(POSTER_EXAMPLE.html), css: POSTER_EXAMPLE.css });
+  assert.equal(saved.isError, undefined, saved.text);
+  return { ...host, id };
+}
+
+// openlore: scenario=GetPosterReturnsMarkers spec=poster-elements
+test("GetPosterReturnsMarkers: the model reads markers and an inventory, no picture data, and the rest as saved", async () => {
+  const { call, id } = await posterWithPictures();
+  const read = await call("get_poster", { id });
+  const html = read.json.html as string;
+  assert.ok(!read.text.includes("base64"), "no picture data reaches the model");
+  assert.match(html, /^<!-- poster pictures: poster-picture:1 \(bread\) \d+ kB; poster-picture:2 \(class photo\) \d+ kB\./);
+  assert.ok(html.includes('<img alt="bread" src="poster-picture:1">') && html.includes('alt="Our class" src="poster-picture:2"'));
+  assert.ok(html.includes("I raise my hand") && html.includes("Together, we learn better!"));
+  // Shown, the structured content carries markers too: Claude Code hands it to the model.
+  const shown = await call("show_poster", { id });
+  assert.ok(!JSON.stringify(shown.structuredContent).includes("base64"));
+  assert.equal(shown.structuredContent?.pictures, 2);
+  // The view gets the pictures from its own tool, in marker order.
+  const pictures = await call("poster_pictures", { id, revision: 2 });
+  assert.deepEqual(pictures.structuredContent?.pictures, [BREAD, PHOTO]);
+});
+
+// openlore: scenario=TheModelRewritesAPosterAndKeepsItsPictures spec=poster-elements
+test("TheModelRewritesAPosterAndKeepsItsPictures: a title changed from the markers read, both pictures kept unchanged", async () => {
+  const { call, id, folder } = await posterWithPictures();
+  const read = await call("get_poster", { id });
+  const updated = await call("update_poster", { id, base_revision: 2, html: (read.json.html as string).replace("Our class rules", "Our rules"), css: read.json.css, format: "A4-portrait" });
+  assert.equal(updated.isError, undefined, updated.text);
+  const file = readPage(await fs.readFile(path.join(folder, "Class rules.poster.html"), "utf8"));
+  assert.equal(file.html, withPictures(POSTER_EXAMPLE.html).replace("Our class rules", "Our rules"));
+});
+
+// openlore: scenario=AnUnknownMarkerIsRefused spec=poster-elements
+test("AnUnknownMarkerIsRefused: a marker naming no picture of the revision read is refused, and nothing is written", async () => {
+  const { call, id } = await posterWithPictures();
+  const read = await call("get_poster", { id });
+  const refused = await call("update_poster", { id, base_revision: 2, html: `${read.json.html as string}<img src="poster-picture:5">`, css: read.json.css, format: "A4-portrait" });
+  assert.equal(refused.isError, true);
+  assert.match(refused.text, /poster-picture:5 names no picture of this poster \(it has poster-picture:1 to poster-picture:2\)/);
+  assert.equal((await call("get_poster", { id })).json.revision, 2);
+  // A new poster has no pictures to name.
+  const fresh = await call("create_poster", { ...poster("Fresh"), html: '<img src="poster-picture:1">' });
+  assert.equal(fresh.isError, true);
+  assert.match(fresh.text, /\(it has none\)/);
 });

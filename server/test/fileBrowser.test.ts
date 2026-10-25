@@ -21,6 +21,7 @@ import {
   listDirectory,
   MAX_PREVIEW_BYTES,
   rawFileLimit,
+  POSTER_FILE_MAX_BYTES,
   readFileForPreview,
   readFileRaw,
   createFileFromBrowser,
@@ -285,6 +286,32 @@ describe("file browser", () => {
       assert.match(error.message, /1 MB preview limit/);
       assert.match(error.message, /structured-exchange documents/);
       assert.doesNotMatch(error.message, /invalid|schema does not/i);
+    });
+
+    test("opens and saves a poster holding pictures beyond the 1 MB preview limit, up to the poster ceiling", async () => {
+      // poster-elements, PicturesAreScaledAndEmbedded: a poster is one file, its pictures inside it.
+      const picture = `data:image/jpeg;base64,${"A".repeat(6 * 1024 * 1024)}`;
+      const page = `<!doctype html><html><body><div class="poster-page"><img src="${picture}"></div></body></html>`;
+      writeFileSync(path.join(root, "menu.poster.html"), page);
+      const opened = await readFileForPreview(root, "menu.poster.html");
+      assert.equal(opened.content, page);
+      const saved = await writeFileFromBrowser(root, undefined, "menu.poster.html", page.replace("<img", '<img alt="bread"'), opened.mtimeMs);
+      assert.ok(saved.size > 6 * 1024 * 1024);
+      // The same size is still refused for a file that is not a poster.
+      writeFileSync(path.join(root, "menu.html"), page);
+      assert.equal(await reasonOf(() => readFileForPreview(root, "menu.html")), "too-large");
+    });
+
+    test("refuses a poster above its ceiling, saying to shrink or remove pictures", async () => {
+      const page = `<!doctype html><img src="data:image/png;base64,${"A".repeat(POSTER_FILE_MAX_BYTES)}">`;
+      writeFileSync(path.join(root, "huge.poster.html"), page);
+      const opened = await errorOf(() => readFileForPreview(root, "huge.poster.html"));
+      assert.equal(opened.reason, "too-large");
+      assert.match(opened.message, /a poster may hold: shrink or remove some of its pictures/);
+      const { mtimeMs } = statSync(path.join(root, "huge.poster.html"));
+      const saved = await errorOf(() => writeFileFromBrowser(root, undefined, "huge.poster.html", page, mtimeMs));
+      assert.equal(saved.reason, "too-large");
+      assert.match(saved.message, /a poster may hold/);
     });
 
     test("refuses a directory", async () => {

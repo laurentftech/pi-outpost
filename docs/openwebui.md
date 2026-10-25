@@ -240,6 +240,14 @@ file viewer and the Claude Desktop extension.
   in that chat embed: anyone who can access a shared chat can use it to make one save to that poster
   before the revision advances, but it does not let them read poster contents. Old chat embeds
   conflict after a newer save; ask the model to show the poster again to get a fresh editor.
+- **Pictures, text and shapes.** With the same-origin setting on, **Insert ▾** adds a picture
+  from the user's computer, a text box, or a shape (rectangle, ellipse, arrow, star, speech
+  bubble…). The model can lay out empty picture frames, which the user fills by double-clicking
+  or by dropping a file on them. Pictures are scaled to 1200 px on their longest side and kept
+  inside the poster. When the user saves, `get_poster` shows each picture to the model as a short
+  marker (`poster-picture:1`), never as data, and `update_poster` puts the pictures back from
+  those markers. A poster with pictures still downloads as one Word page or one slide. Without
+  saving configured, pictures added in the embed stay in the browser, like any other retouch.
 - **Kept per user,** as plannings are, with every revision (`list_posters`, `get_poster`).
 
 ## Configuration
@@ -333,7 +341,8 @@ at; elsewhere, Arial or any installed sans-serif face is used.
 
 - **Embed size.** Each time a planning is shown, Open WebUI stores the timeline in the chat, about
   110 kB.
-  A poster's embed carries its editor: about 425 kB each time one is shown.
+  A poster's embed carries its editor: about 425 kB each time one is shown, plus the pictures the
+  poster holds (a poster may hold up to 8 MB).
 - **The model does not see the timeline.** Open WebUI hands the model only a note that an embed is
   on screen, so the model reads a planning with `get_planning`.
 - **Plannings are personal.** Sharing within a team is not there yet.

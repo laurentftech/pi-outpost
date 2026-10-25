@@ -10,9 +10,9 @@ metadata:
 
 A poster is one page of HTML and CSS in a `.poster.html` file. You write it with your
 ordinary file tools; the user opens it in the file viewer, where it is drawn in the poster
-editor: they double-click a text to correct it, drag a pictogram, change colours, save, and
-export it to Word (an A4 page to print) or PowerPoint (a slide to show). You cannot see it
-rendered.
+editor: they double-click a text to correct it, drag a pictogram, change colours, add their
+own pictures, text boxes and shapes from **Insert**, save, and export it to Word (an A4 page
+to print) or PowerPoint (a slide to show). You cannot see it rendered.
 
 ## The loop
 
@@ -23,15 +23,26 @@ rendered.
    `<div class="poster-page">` holding the markup.
 3. Tell the user where it is, as a link they can click to open it:
    `[Our class rules](./posters/class-rules.poster.html)`.
-4. To change a poster, **read the file first**: the user may have retouched it in the editor,
-   and your change must keep their edits — their texts, colours and positions — unless they
-   asked otherwise. Write the whole file back.
+4. When the user has pictures of their own (photos, drawings, pictures made with another
+   tool), lay out an empty frame for each (see the rules below) and tell them to double-click
+   each frame in the editor to put their picture in. You cannot copy a picture you were
+   shown into the file.
+5. To change a poster, **read the file first** with `read`, never with `bash`: the user may
+   have retouched it in the editor, and your change must keep their edits — their texts,
+   colours, positions and pictures — unless they asked otherwise. Each picture shows as a
+   marker such as `src="poster-picture:2"`: keep markers exactly as you read them, and the
+   pictures stay in the file. Prefer `edit` for a change; when you write the whole file
+   back, keep every marker.
 
 How to write a poster:
 - The markup is the content of one page of the chosen format, in CSS pixels: A4-portrait 794 x 1123; A4-landscape 1123 x 794; A3-portrait 1123 x 1587; A3-landscape 1587 x 1123; slide-16:9 1280 x 720. Pick slide-16:9 for a poster meant to be projected or shown in PowerPoint, A4 or A3 to print. Lay it out to fill exactly that page: the outer element is width:100%; height:100%.
 - The stylesheet is separate from the markup: style through classes, not long inline style attributes. CSS variables, grid and flexbox are fine.
 - Keep every text as real text in ordinary elements (h1, h2, p, li, span, div) so the person can click and correct it. Never put text inside SVG, an image or a canvas.
-- Pictograms: emoji (🌱 📚 ✏️ 🎨) in their own element, sized with font-size, or small inline SVG shapes without text. No external images, fonts or links: nothing is fetched. No picture embedded as data.
+- Pictograms: emoji (🌱 📚 ✏️ 🎨) in their own element, sized with font-size.
+- Drawings: draw illustrations yourself in SVG when emoji are too poor. Put each drawing in its own <div class="drawing"> holding one <svg> with a viewBox, sized by the div (.drawing svg { width: 100%; height: 100%; display: block; }), with no text inside, and keep each under about 50 kB. The person moves and resizes the div as one picture.
+- The person's own pictures: when they have pictures of their own (photos, drawings they made or generated elsewhere), lay out an empty frame for each: <img data-poster-picture="bread" alt="bread"> with a width and height, and give it an empty look (a dashed border, a pale background); the editor removes that look from a frame once it is filled. The person fills each frame in the editor. You cannot put their pictures in yourself: you see them, you cannot copy them.
+- When you read a poster, each picture already in it shows as a marker such as src="poster-picture:2", listed at the top. Keep every marker exactly as it is to keep its picture; remove one only to remove its picture.
+- No external images, fonts or links: nothing is fetched.
 - Fonts: system fonts only, e.g. "Arial Rounded MT Bold", "Trebuchet MS", Verdana, Arial, sans-serif.
 - No script, and no event attributes (onclick…): they are removed.
 - The person exports the poster to Word (to print) or PowerPoint (to show) from the editor, as a picture of the page: texts are corrected in the editor, not in Word.
@@ -83,6 +94,10 @@ Start from this one: its stylesheet (`STYLESHEET` above) and its markup (`MARKUP
 .icon { width: 110px; height: 110px; flex: none; border-radius: 50%; background: var(--c); display: flex; align-items: center; justify-content: center; font-size: 62px; }
 .rule h2 { margin: 0 0 6px; font-size: 32px; color: #263238; font-family: "Arial Rounded MT Bold", Arial, sans-serif; }
 .rule p { margin: 0; font-size: 21px; color: #546e7a; }
+.together { display: flex; align-items: center; justify-content: center; gap: 40px; }
+.drawing { width: 120px; height: 108px; }
+.drawing svg { width: 100%; height: 100%; display: block; }
+.photo { width: 300px; height: 190px; object-fit: cover; border-radius: 18px; border: 4px dashed #90a4ae; background: #eceff1; }
 .motto { margin: 0; align-self: center; background: #ffe082; color: #5d4037; border-radius: 40px; padding: 14px 40px; font-size: 28px; font-family: "Arial Rounded MT Bold", Arial, sans-serif; }
 ```
 
@@ -95,6 +110,10 @@ Start from this one: its stylesheet (`STYLESHEET` above) and its markup (`MARKUP
     <div class="rule c3"><div class="icon">🤝</div><div><h2>I respect</h2><p>my classmates and our things</p></div></div>
     <div class="rule c4"><div class="icon">🧹</div><div><h2>I tidy up</h2><p>my desk before I leave</p></div></div>
   </main>
+  <section class="together">
+    <div class="drawing"><svg viewBox="0 0 100 90"><path d="M50 86 C20 64 4 46 4 26 C4 12 15 4 27 4 C37 4 45 10 50 18 C55 10 63 4 73 4 C85 4 96 12 96 26 C96 46 80 64 50 86 Z" fill="#f06292"/></svg></div>
+    <img class="photo" data-poster-picture="class photo" alt="Our class">
+  </section>
   <p class="motto">Together, we learn better!</p>
 </div>
 ```

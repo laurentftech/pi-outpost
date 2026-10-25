@@ -226,7 +226,10 @@ one needs, the command that proves it works, and the caution that goes with it.
 - Posters: a `.poster.html` file — a poster, a worksheet or a slide the agent writes in HTML,
   guided by the bundled `posters` skill — opens in the poster editor. Double-click a text to
   correct it (it rewraps), drag a pictogram, change colours, fonts and sizes in **Format**, undo,
-  zoom and fit; **💾** saves back to the file, refused if it changed on disk meanwhile, and the
+  zoom and fit. **Insert ▾** adds your own pictures (also by double-clicking an empty frame the
+  agent laid out, or by dropping a file on the page), text boxes and shapes; pictures are shrunk
+  to 1200 px and kept inside the file, and the agent reads each one as a short marker
+  (`poster-picture:1`) that it keeps when it edits the poster. **💾** saves back to the file, refused if it changed on disk meanwhile, and the
   viewer asks before dropping unsaved touch-ups. **💾 Save** is disabled until you make a change.
   **↓ word** gives an A4 page to print,
   **↓ powerpoint** a 16:9 slide, **↓ html** the page itself — the poster as a picture at print

@@ -25,6 +25,7 @@
  */
 import fs from "node:fs/promises";
 import type { ExtensionAPI, ToolDefinition } from "@earendil-works/pi-coding-agent";
+import { registerPosterPictureHooks } from "./posterPictureHooks.ts";
 import { createDocxExtractToolDefinition } from "./docxTool.ts";
 import { createDrawioCheckToolDefinition } from "./drawioTool.ts";
 import { createMailExtractToolDefinition } from "./mailTool.ts";
@@ -152,4 +153,6 @@ export async function createPiOutpostTools(settings: PiOutpostToolsSettings): Pr
 export default async function (pi: ExtensionAPI): Promise<void> {
   const tools = await createPiOutpostTools(parseToolsSettings(process.env[TOOLS_ENV_VAR]));
   for (const tool of tools) pi.registerTool(tool);
+  // As the embedded runtime does through its extension factories (index.ts).
+  registerPosterPictureHooks(pi);
 }

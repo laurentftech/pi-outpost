@@ -35,8 +35,11 @@ export const FORMATS = {
 export type PosterFormat = keyof typeof FORMATS;
 export const FORMAT_NAMES = Object.keys(FORMATS) as [PosterFormat, ...PosterFormat[]];
 
-/** A ceiling on one poster's markup and stylesheet together: a guard, not a quota. */
-export const MAX_POSTER_BYTES = 2_000_000;
+/**
+ * A ceiling on one poster's markup and stylesheet together: a guard, not a quota. Room for
+ * about thirty pictures as the editor embeds them (1200 px, around 250 kB each).
+ */
+export const MAX_POSTER_BYTES = 8_000_000;
 
 export const POSTER_SUFFIX = ".poster.html";
 
@@ -64,6 +67,11 @@ export function isPosterFormat(value: unknown): value is PosterFormat {
   return typeof value === "string" && Object.hasOwn(FORMATS, value);
 }
 
+/** Megabytes to one decimal, as the refusal says them. */
+function megabytes(bytes: number): string {
+  return (bytes / 1_000_000).toFixed(1);
+}
+
 function byteLength(text: string): number {
   return new TextEncoder().encode(text).length;
 }
@@ -71,8 +79,9 @@ function byteLength(text: string): number {
 /** Refuses a poster no host should store or show; returns it unchanged otherwise. */
 export function checkPoster(content: PosterContent): PosterContent {
   if (!isPosterFormat(content.format)) throw new PosterRefusal(`unknown format "${String(content.format)}"`, { formats: FORMAT_NAMES });
-  if (byteLength(content.html) + byteLength(content.css) > MAX_POSTER_BYTES) {
-    throw new PosterRefusal("this poster is too large: embed no pictures as data, use emoji or a few small inline SVG pictograms");
+  const bytes = byteLength(content.html) + byteLength(content.css);
+  if (bytes > MAX_POSTER_BYTES) {
+    throw new PosterRefusal(`this poster is too large: ${megabytes(bytes)} MB, above the ${megabytes(MAX_POSTER_BYTES)} MB a poster may hold. Shrink or remove pictures or drawings.`, { bytes, limit: MAX_POSTER_BYTES });
   }
   if (/<script\b/i.test(content.html)) throw new PosterRefusal("a poster holds no script: give markup and a stylesheet only");
   return content;

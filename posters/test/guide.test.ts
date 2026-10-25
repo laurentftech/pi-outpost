@@ -25,3 +25,23 @@ test("The skill's skeleton, filled with its example, is a poster the editor open
   const page = skeleton.replace("STYLESHEET", POSTER_EXAMPLE.css).replace("MARKUP", POSTER_EXAMPLE.html);
   assert.deepEqual(readPage(page), { html: POSTER_EXAMPLE.html, css: POSTER_EXAMPLE.css, format: "A4-portrait", title: "Our class rules" });
 });
+
+// openlore: scenario=TheGuideTeachesSlotsAndDrawings spec=poster-documents
+test("TheGuideTeachesSlotsAndDrawings: frames for the person's pictures, drawings in their own element, markers kept", () => {
+  assert.match(POSTER_GUIDE, /<img data-poster-picture="bread" alt="bread">/);
+  assert.match(POSTER_GUIDE, /the editor removes that look from a frame once it is filled/, "the empty look goes once filled");
+  assert.match(POSTER_GUIDE, /<div class="drawing"> holding one <svg> with a viewBox/);
+  assert.match(POSTER_GUIDE, /with no text inside/);
+  assert.match(POSTER_GUIDE, /poster-picture:2.*Keep every marker exactly as it is/s);
+  assert.doesNotMatch(POSTER_GUIDE, /No picture embedded as data|small inline SVG shapes/);
+  // The example shows both: a drawing in its holder, and an empty frame styled as empty.
+  assert.match(POSTER_EXAMPLE.html, /<div class="drawing"><svg viewBox="[^"]+">/);
+  assert.match(POSTER_EXAMPLE.html, /<img class="photo" data-poster-picture="class photo" alt="Our class">/);
+  assert.match(POSTER_EXAMPLE.css, /\.photo \{[^}]*border: 4px dashed/);
+});
+
+test("The skill tells the agent to read posters with read, keep markers, and leave picture frames for the user", () => {
+  assert.match(SKILL, /read the file first\*\* with `read`, never with `bash`/);
+  assert.match(SKILL, /keep markers exactly as you read them/);
+  assert.match(SKILL, /double-click\s+each frame in the editor/);
+});
