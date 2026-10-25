@@ -246,3 +246,19 @@ test("TheNewTitleIsListed: update_poster with a title retitles the poster", asyn
   assert.deepEqual((await call("list_posters")).json().posters.map((entry: { title: string }) => entry.title), ["Menu du jour"]);
   assert.equal((await call("update_poster", { id, base_revision: 2, title: "  ", html: POSTER.html, css: POSTER.css, format: POSTER.format })).statusCode, 422);
 });
+
+/** Open WebUI 0.12.3's own test for a picture it hands the model (utils/middleware.py, BASE64_IMAGE_DATA_URI_RE). */
+const OPEN_WEBUI_PICTURE = /^data:image\/[a-zA-Z0-9.+-]+;base64,[A-Za-z0-9+/]+={0,2}$/i;
+
+// openlore: scenario=TheModelSeesWhatAFrameHoldsInOpenWebUI spec=openwebui-posters
+// openlore: scenario=PicturesAreNotSentUnaskedInOpenWebUI spec=openwebui-posters
+test("Open WebUI: get_poster with see_pictures answers each picture as a string Open WebUI hands the model as an image", async (t) => {
+  const { call, id } = await savedWithPhoto(t);
+  const plain = (await call("get_poster", { id })).json();
+  assert.equal(plain.pictures, undefined);
+  const seen = (await call("get_poster", { id, see_pictures: true })).json();
+  assert.equal(seen.revision, 2);
+  assert.ok(!seen.html.includes("base64"), "the markup still holds markers only");
+  assert.deepEqual(seen.pictures, [{ marker: "poster-picture:1", image: PHOTO }]);
+  assert.match(seen.pictures[0].image, OPEN_WEBUI_PICTURE);
+});

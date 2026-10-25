@@ -17,14 +17,8 @@ import path from "node:path";
 import { Type } from "typebox";
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { MAX_POSTER_BYTES, POSTER_SUFFIX } from "@pi-outpost/posters/format";
-import { hidePictures } from "@pi-outpost/posters/markers";
+import { MAX_SEEN_PICTURES, hidePictures, pictureKind, seeablePicture } from "@pi-outpost/posters/markers";
 import { isWithinAny, realResolve } from "./sandbox.ts";
-
-/** How many pictures one call shows: each costs the model about a thousand tokens. */
-export const MAX_SEEN_PICTURES = 8;
-
-/** Pictures a model takes as images: the editor embeds PNG and JPEG; GIF and WebP from elsewhere. */
-const SEEABLE = /^data:(image\/(?:png|jpeg|gif|webp));base64,([A-Za-z0-9+/=\s]+)$/;
 
 export interface PosterPicturesToolOptions {
   /** Paths the model gives are resolved against this. */
@@ -81,12 +75,12 @@ export function createPosterPicturesToolDefinition(options: PosterPicturesToolOp
           content.push({ type: "text", text: `poster-picture:${n} names no picture of this poster (it has poster-picture:1 to poster-picture:${pictures.length}).` });
           continue;
         }
-        const seeable = SEEABLE.exec(picture);
+        const seeable = seeablePicture(picture);
         if (!seeable) {
-          content.push({ type: "text", text: `poster-picture:${n} is not a photo or drawing to look at (${picture.slice(5, picture.indexOf(";"))}).` });
+          content.push({ type: "text", text: `poster-picture:${n} is not a photo or drawing to look at (${pictureKind(picture)}).` });
           continue;
         }
-        content.push({ type: "text", text: `poster-picture:${n}:` }, { type: "image", mimeType: seeable[1]!, data: seeable[2]!.replace(/\s/g, "") });
+        content.push({ type: "text", text: `poster-picture:${n}:` }, { type: "image", ...seeable });
       }
       const unseen = (wanted?.length ? wanted.length : pictures.length) - numbers.length;
       if (unseen > 0) content.push({ type: "text", text: `${unseen} more picture(s) not shown: ask for them by number.` });
