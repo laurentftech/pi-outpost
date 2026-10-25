@@ -131,7 +131,8 @@ or without them, and also works on the free plan.
 - **Full screen** gives the editor the whole window, with the Format panel open.
 
 When Claude reads a poster you added pictures to, it sees each picture as a short marker, not the
-picture itself, and keeps it when it changes the poster. A poster may hold up to 8 MB, about thirty
+picture itself, and keeps it when it changes the poster. Ask it to look at the pictures ("look at
+the pictures in my poster") and it reads them as images too. A poster may hold up to 8 MB, about thirty
 pictures.
 
 ### Where your posters are

@@ -1,6 +1,6 @@
 # Scenario coverage — poster-insert
 
-Every `#### Scenario:` of the change's five delta specs (`rg '^#### Scenario:' openspec/changes/poster-insert`, 43 in all), the test that would fail if its contract broke, and what that test asserts. Browser tests run on Chromium. The editor tests run in the MCP host frame Claude Desktop uses (`e2e/mcp-poster-host.ts`, `allow-scripts allow-same-origin`). The same editor is also driven in pi-outpost's file viewer (`e2e/poster-files.spec.ts`) and in the Open WebUI embed (`e2e/openwebui-posters.spec.ts`).
+Every `#### Scenario:` of the change's five delta specs (`rg '^#### Scenario:' openspec/changes/poster-insert`, 45 in all), the test that would fail if its contract broke, and what that test asserts. Browser tests run on Chromium. The editor tests run in the MCP host frame Claude Desktop uses (`e2e/mcp-poster-host.ts`, `allow-scripts allow-same-origin`). The same editor is also driven in pi-outpost's file viewer (`e2e/poster-files.spec.ts`) and in the Open WebUI embed (`e2e/openwebui-posters.spec.ts`).
 
 ## poster-documents
 
@@ -18,6 +18,8 @@ Every `#### Scenario:` of the change's five delta specs (`rg '^#### Scenario:' o
 | Scenario | Coverage | Evidence |
 | --- | --- | --- |
 | ThePosterFileFollowsItsNewTitle | covered | `mcp/test/posters.test.ts` — "ThePosterFileFollowsItsNewTitle": after `update_poster` with title "Menu du jour", the folder holds only "Menu du jour.poster.html", whose page title is the new one; `get_poster` by the same id reads revision 2 under the new title and revision 1 still reads; the same title again renames nothing. |
+| TheModelSeesWhatAFrameHolds | covered | `mcp/test/posters.test.ts` — "TheModelSeesWhatAFrameHolds…": with `see_pictures`, the content is the JSON text, then "poster-picture:1:" and an `image/png` block whose data is the bread picture's, then "poster-picture:2:" and an `image/jpeg` block; the JSON text still holds no `base64`. |
+| PicturesAreNotSentUnasked | covered | Same test: without `see_pictures`, the content is one text block. |
 | ARenameNeverOverwrites | covered | `mcp/test/posters.test.ts` — "ARenameNeverOverwrites": a second poster retitled "Menu du jour" gets "Menu du jour (2).poster.html", the first file's bytes are unchanged, and the old "Draft.poster.html" is gone. |
 
 ## openwebui-posters

@@ -17,6 +17,7 @@ A teacher asked Claude for a poster and gave it four illustrations she had made 
 - **Moving and resizing.** Pictures, shapes and text boxes move with the mouse and resize from their corners. Pictures keep their proportions when resized. A press that does not travel stays a click or a double-click. The browser's own dragging of an image never starts: in Claude Desktop it carried the picture off its card.
 - **Vector drawings by the model.** The guide stops restricting the model to emoji and small shapes. The model may draw real SVG illustrations, each in its own element with a viewBox and no text, within a size budget. The editor selects, moves and resizes such a drawing as one block, never path by path.
 - **Pictures never reach the model as data.** When a host hands a poster to the model, each embedded picture is replaced by a short marker. When the model sends a poster back, the markers are put back as the pictures they stand for. The model can therefore rework a poster without seeing megabytes of base64 or erasing the pictures. This applies in the Claude extension, the Open WebUI tool server, and pi-outpost's agent reading and writing poster files.
+- **Claude can look at the pictures.** In Claude Desktop, `get_poster` with `see_pictures` also returns the pictures as images. The model then sees what a frame holds rather than guessing it from the frame's name.
 - **Renaming a poster.** `update_poster` takes an optional new title. In Claude Desktop the poster's file is renamed after it.
 - **The page stays in view.** Scrolling or zooming can no longer push the page out of the editor and leave an empty desk.
 - **Size ceiling raised** from 2 MB to 8 MB of markup and stylesheet. The refusal message no longer advises emoji.
@@ -37,7 +38,7 @@ Out of scope:
   - keeping embedded pictures out of what the model reads and restoring them in what it writes, in every host.
 
 ### Modified Capabilities
-- `mcp-poster-app`: `update_poster` renames a poster (`APosterIsRenamed`).
+- `mcp-poster-app`: `update_poster` renames a poster (`APosterIsRenamed`); `get_poster` shows the pictures on request (`TheModelCanLookAtThePictures`).
 - `openwebui-posters`: `update_poster` retitles a poster (`APosterIsRetitled`).
 - `poster-editor`: the page stays in view however it is scrolled or zoomed (`ThePageStaysInView`).
 - `poster-documents`:

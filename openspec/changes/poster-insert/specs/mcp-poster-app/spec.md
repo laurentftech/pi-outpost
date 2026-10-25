@@ -13,3 +13,16 @@
 - **GIVEN** a file "Menu du jour.poster.html" already in the folder
 - **WHEN** another poster is retitled "Menu du jour"
 - **THEN** its file becomes "Menu du jour (2).poster.html" and the first file is unchanged
+
+### Requirement: TheModelCanLookAtThePictures
+
+`get_poster` SHALL accept a request to see the pictures. Given it, the answer SHALL also hold each photo or drawing the user put in, up to eight, as an image the model can look at, announced by its marker; a picture of another form SHALL be named instead. Without the request, no picture SHALL be sent.
+
+#### Scenario: TheModelSeesWhatAFrameHolds
+- **GIVEN** a poster whose frame named "bread" holds a picture of a family
+- **WHEN** the model reads it asking to see the pictures
+- **THEN** the answer holds that picture as an image after "poster-picture:1", so the model can tell it is not bread
+
+#### Scenario: PicturesAreNotSentUnasked
+- **WHEN** the model reads a poster with pictures without asking to see them
+- **THEN** the answer holds markers and no image

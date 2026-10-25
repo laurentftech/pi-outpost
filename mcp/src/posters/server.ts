@@ -54,6 +54,29 @@ export interface ShownPoster {
 /** Above this, a file the view hands over is not an export of one poster. */
 const MAX_EXPORT_BYTES = 40_000_000;
 
+/** How many pictures one get_poster shows the model: each costs it about a thousand tokens. */
+const MAX_SEEN_PICTURES = 8;
+const SEEABLE = /^data:(image\/(?:png|jpeg|gif|webp));base64,([A-Za-z0-9+/=\s]+)$/;
+
+/**
+ * The poster's pictures as image blocks the model looks at, each announced by its marker
+ * (poster-elements, TheModelCanLookAtThePictures). A picture in another form (an SVG pattern
+ * in the stylesheet) is named, not shown.
+ */
+function seenPictures(pictures: readonly string[]): CallToolResult["content"] {
+  const blocks: CallToolResult["content"] = [];
+  pictures.slice(0, MAX_SEEN_PICTURES).forEach((picture, index) => {
+    const seeable = SEEABLE.exec(picture);
+    if (!seeable) {
+      blocks.push({ type: "text", text: `poster-picture:${index + 1} is not a photo or drawing to look at (${picture.slice(5, picture.indexOf(";"))}).` });
+      return;
+    }
+    blocks.push({ type: "text", text: `poster-picture:${index + 1}:` }, { type: "image", mimeType: seeable[1]!, data: seeable[2]!.replace(/\s/g, "") });
+  });
+  if (pictures.length > MAX_SEEN_PICTURES) blocks.push({ type: "text", text: `${pictures.length - MAX_SEEN_PICTURES} more pictures are not shown here.` });
+  return blocks;
+}
+
 function text(value: unknown): CallToolResult {
   return { content: [{ type: "text", text: typeof value === "string" ? value : JSON.stringify(value, null, 1) }] };
 }
@@ -135,16 +158,22 @@ export function createPosterServer(options: ServerOptions): McpServer {
     {
       title: "Read a poster",
       description:
-        "Reads a poster's markup and stylesheet as they are now, with the user's touch-ups made in the editor. Always read it before changing it: the user may have edited it since you wrote it, and your change must keep their edits. Each picture the user put in shows as a marker, poster-picture:N, listed at the top of the markup: keep each marker as it is to keep its picture.",
-      inputSchema: z.object({ id, revision: z.number().int().optional().describe("An earlier revision; the latest when omitted.") }),
+        "Reads a poster's markup and stylesheet as they are now, with the user's touch-ups made in the editor. Always read it before changing it: the user may have edited it since you wrote it, and your change must keep their edits. Each picture the user put in shows as a marker, poster-picture:N, listed at the top of the markup: keep each marker as it is to keep its picture. The marker and its frame's name do not tell you what a picture shows: set see_pictures to look at them before describing, captioning or moving a picture.",
+      inputSchema: z.object({
+        id,
+        revision: z.number().int().optional().describe("An earlier revision; the latest when omitted."),
+        see_pictures: z.boolean().optional().describe(`Also return the pictures the user put in, as images to look at, each after its marker (at most ${MAX_SEEN_PICTURES}).`),
+      }),
       annotations: { readOnlyHint: true },
     },
-    async ({ id: posterId, revision }) => {
+    async ({ id: posterId, revision, see_pictures: see }) => {
       called("get_poster");
       try {
         const found = await store.get(posterId, revision);
         const hidden = hidePictures(found.html, found.css);
-        return text({ ...answer(found), html: hidden.html, css: hidden.css });
+        const result = text({ ...answer(found), html: hidden.html, css: hidden.css });
+        if (see) result.content.push(...seenPictures(hidden.pictures));
+        return result;
       } catch (error) {
         return refusal(error);
       }

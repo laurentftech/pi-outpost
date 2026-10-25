@@ -261,3 +261,19 @@ test("ARenameNeverOverwrites: a poster retitled after another one's file is numb
   assert.equal(await fs.readFile(path.join(folder, "Menu du jour.poster.html"), "utf8"), first);
   assert.ok(!(await fs.readdir(folder)).includes("Draft.poster.html"));
 });
+
+// openlore: scenario=TheModelSeesWhatAFrameHolds spec=mcp-poster-app
+// openlore: scenario=PicturesAreNotSentUnasked spec=mcp-poster-app
+test("TheModelSeesWhatAFrameHolds and PicturesAreNotSentUnasked: asked, the pictures come back as images after their markers; unasked, none", async () => {
+  const { call, id } = await posterWithPictures();
+  const plain = await call("get_poster", { id });
+  assert.deepEqual(plain.content.map((block) => block.type), ["text"]);
+  const seen = (await call("get_poster", { id, see_pictures: true })) as unknown as { content: Array<{ type: string; text?: string; mimeType?: string; data?: string }> };
+  assert.deepEqual(seen.content.map((block) => block.type), ["text", "text", "image", "text", "image"]);
+  assert.equal(seen.content[1]!.text, "poster-picture:1:");
+  assert.deepEqual({ mimeType: seen.content[2]!.mimeType, data: seen.content[2]!.data }, { mimeType: "image/png", data: BREAD.slice("data:image/png;base64,".length) });
+  assert.equal(seen.content[3]!.text, "poster-picture:2:");
+  assert.equal(seen.content[4]!.mimeType, "image/jpeg");
+  // The JSON part is still markers only.
+  assert.ok(!seen.content[0]!.text!.includes("base64"));
+});

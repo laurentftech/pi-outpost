@@ -55,6 +55,8 @@
 
 - [x] 3.4 Rename a poster: `update_poster` takes an optional `title`; the store retitles the poster and renames its file after it, numbered rather than overwriting, keeping id, history and exports. Verify with `mcp/test/posters.test.ts` scenarios `ThePosterFileFollowsItsNewTitle` and `ARenameNeverOverwrites`.
 
+- [x] 3.5 `get_poster` takes `see_pictures`: the pictures, up to eight, come back as image blocks after their markers. Verify with `mcp/test/posters.test.ts` scenarios `TheModelSeesWhatAFrameHolds` and `PicturesAreNotSentUnasked`.
+
 ## 4. Open WebUI
 
 - [x] 4.3 `update_poster` takes an optional `title` that retitles the poster. Verify with `openwebui/test/posters.test.ts` scenario `TheNewTitleIsListed`.

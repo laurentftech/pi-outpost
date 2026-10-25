@@ -126,6 +126,14 @@ Where each host applies them:
 
 *Alternative for pi-outpost:* dedicated `read_poster` and `update_poster` tools. Not needed, since the probe showed the hooks work. Hooks keep the agent on the file tools the skill already teaches, and cover the `edit` tool, which a dedicated tool would not.
 
+### 6b. Letting the model look at the pictures, on request
+
+A marker hides what a picture shows, and the user found Claude calling a family picture "your bread picture" because its frame was named `bread`. `get_poster` therefore takes `see_pictures`: after the JSON text block, each picture comes back as an MCP image block, announced by a text block naming its marker. Only PNG, JPEG, GIF and WebP data URLs are shown, as the model takes those; anything else, such as an SVG pattern, is named. There are at most eight per call, at about a thousand tokens each for a 1200 px picture. The default stays off, so ordinary reads cost nothing more, and the description says when to ask.
+
+This is in the Claude extension only:
+- **Open WebUI:** a tool server answers the model in text only.
+- **pi-outpost:** the agent reads posters with `read`, whose result could carry images through the same `tool_result` hook. That is a later step, if a model needs it there.
+
 ### 7. Ceilings
 
 - `MAX_POSTER_BYTES` rises to 8 MB: about thirty pictures at 1200 px, while posters stay small next to the 25 MB upload ceiling.
