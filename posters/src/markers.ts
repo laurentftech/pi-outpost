@@ -100,3 +100,23 @@ export function restorePictures(html: string, css: string, pictures: readonly st
     });
   return { html: restore(withoutInventory(html)), css: restore(css) };
 }
+
+/** How many pictures one look shows a model: each costs it about a thousand tokens. */
+export const MAX_SEEN_PICTURES = 8;
+
+const SEEABLE = /^data:(image\/(?:png|jpeg|gif|webp));base64,([A-Za-z0-9+/=\s]+)$/;
+
+/**
+ * A picture as a model takes it, its type and its base64 data, or undefined for one it does not
+ * (an SVG pattern, a picture not in base64): the editor embeds PNG and JPEG, GIF and WebP may
+ * come from elsewhere (poster-elements, TheModelCanLookAtThePictures).
+ */
+export function seeablePicture(picture: string): { mimeType: string; data: string } | undefined {
+  const seeable = SEEABLE.exec(picture);
+  return seeable ? { mimeType: seeable[1]!, data: seeable[2]!.replace(/\s/g, "") } : undefined;
+}
+
+/** What a picture a model cannot take is, for saying so: its media type. */
+export function pictureKind(picture: string): string {
+  return picture.slice(5, Math.max(5, picture.search(/[;,]/)));
+}

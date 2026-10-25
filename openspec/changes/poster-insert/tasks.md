@@ -64,6 +64,8 @@
 - [x] 4.1 Apply `hidePictures` and `restorePictures` in the tool server's `get_poster` and `update_poster`, as in 3.1. Make the embed's save endpoint accept a poster at the 8 MB ceiling. Verify with `openwebui/test/posters.test.ts`: markers out, pictures restored, unknown marker refused, an 8 MB poster saved through the capability.
 - [x] 4.2 Add to `e2e/openwebui-posters.spec.ts`, with the same-origin setting on: fill a slot, insert a shape, save, then `get_poster` returns markers. Without same-origin, no Insert control is offered. Update `docs/openwebui.md`.
 
+- [ ] 4.4 `get_poster` takes `see_pictures`: the answer adds `pictures: [{ marker, image }]`, each image a whole base64 data URL that Open WebUI 0.12.3 hands the model as an image in native function calling. Verify with `openwebui/test/posters.test.ts` scenarios `TheModelSeesWhatAFrameHoldsInOpenWebUI` and `PicturesAreNotSentUnaskedInOpenWebUI`, and with one live check on the local Open WebUI with a model that takes images.
+
 ## 5. pi-outpost
 
 - [x] 5.1 Let the file preview open `.poster.html` files up to the poster ceiling, and the editor's save through `write_file` carry them. Verify with server tests: a 6 MB poster opens and saves, a 9 MB one is refused with the poster wording.

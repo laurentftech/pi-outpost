@@ -246,7 +246,10 @@ file viewer and the Claude Desktop extension.
   or by dropping a file on them. Pictures are scaled to 1200 px on their longest side and kept
   inside the poster. When the user saves, `get_poster` shows each picture to the model as a short
   marker (`poster-picture:1`), never as data, and `update_poster` puts the pictures back from
-  those markers. A poster with pictures still downloads as one Word page or one slide. Without
+  those markers. A poster with pictures still downloads as one Word page or one slide. Asked to
+  look at them (`get_poster` with `see_pictures`), the model receives the pictures as images:
+  this needs a model that takes images, set to **Function Calling: Native** in its advanced
+  parameters, since Open WebUI hands a tool's pictures to the model only in native calling. Without
   saving configured, pictures added in the embed stay in the browser, like any other retouch.
 - **Kept per user,** as plannings are, with every revision (`list_posters`, `get_poster`).
 

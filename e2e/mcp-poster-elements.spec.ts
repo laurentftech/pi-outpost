@@ -210,7 +210,7 @@ test("APictureIsInsertedOnThePage and InsertPictureFillsTheSelectedSlot: centred
   expect(placed!.width).toBeCloseTo(794 / 3, 0);
   expect(placed!.x + placed!.width / 2).toBeCloseTo(397, -1);
   expect(placed!.y + placed!.height / 2).toBeCloseTo(1123 / 2, -1);
-  expect(await (await canvasFrame(page)).evaluate(() => document.querySelector('img[src^="data:image/jpeg"]:not(.slot)')!.classList.contains("gjs-selected"))).toBe(true);
+  await expect.poll(async () => (await canvasFrame(page)).evaluate(() => document.querySelector('img[src^="data:image/jpeg"]:not(.slot)')!.classList.contains("gjs-selected"))).toBe(true);
   expect(await boxes(page, ".cell, .title")).toEqual(others);
   // With the soup frame selected, the picture goes into it.
   await canvas.locator('[data-poster-picture="soup"]').click();
@@ -259,7 +259,7 @@ test("AShapeIsAdded and AShapeIsStretched: an ellipse centred and selected with 
   const [ellipse] = await boxes(page, ".poster-shape.ellipse");
   expect(ellipse!.x + ellipse!.width / 2).toBeCloseTo(397, -1);
   expect(ellipse!.y + ellipse!.height / 2).toBeCloseTo(1123 / 2, -1);
-  expect(await (await canvasFrame(page)).evaluate(() => document.querySelector(".poster-shape.ellipse")!.classList.contains("gjs-selected"))).toBe(true);
+  await expect.poll(async () => (await canvasFrame(page)).evaluate(() => document.querySelector(".poster-shape.ellipse")!.classList.contains("gjs-selected"))).toBe(true);
   await expect(view.locator(".gjs-resizer-h-cr")).toBeVisible();
   // A second shape steps aside rather than hiding the first.
   await insert(view, "shape:rectangle");
@@ -435,7 +435,8 @@ test("AClickOnAShapeSelectsTheDrawing and DraggingADrawingLeavesItsCard: a panel
   const drawing = canvas.locator(".drawing");
   // The upper panel of the door, a shape inside the SVG.
   await drawing.click({ position: { x: 80, y: 60 } });
-  expect(await (await canvasFrame(page)).evaluate(() => document.querySelector(".gjs-selected")?.className)).toMatch(/^drawing\b/);
+  // GrapesJS marks the selection on its next frame: waited for, not read at once.
+  await expect.poll(async () => (await canvasFrame(page)).evaluate(() => document.querySelector(".gjs-selected")?.className ?? "")).toMatch(/^drawing\b/);
   await expect(view.locator(".gjs-resizer-h-br")).toBeVisible();
   const [card] = await boxes(page, ".cell.c3");
   const [before] = await boxes(page, ".drawing");
@@ -526,7 +527,7 @@ test("TextIsTypedInAShape and TheTextFollowsItsShape: a double-clicked rectangle
   expect(Math.abs(offset.dy)).toBeLessThanOrEqual(2);
   // The shape is still what a click selects and a drag moves; its text goes with it.
   await rectangle.click({ position: { x: 6, y: 6 } });
-  expect(await (await canvasFrame(page)).evaluate(() => document.querySelector(".gjs-selected")?.className)).toMatch(/poster-shape rectangle/);
+  await expect.poll(async () => (await canvasFrame(page)).evaluate(() => document.querySelector(".gjs-selected")?.className ?? "")).toMatch(/poster-shape rectangle/);
   await drag(page, rectangle, 40, 0, { x: 6, y: 6 });
   expect(await centred()).toEqual(offset);
   await view.locator('button[data-action="style"]').click();
