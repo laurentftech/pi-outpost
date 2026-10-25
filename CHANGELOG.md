@@ -7,6 +7,43 @@ version you had and the one you run now, without going online.
 Releases before 0.41.0 are described on
 [GitHub Releases](https://github.com/laurentftech/pi-outpost/releases).
 
+## [0.50.0] - 2026-10-25
+
+### Added
+
+- **Posters you can retouch.** Ask the agent for a poster, a worksheet or a slide and it
+  writes a printable `.poster.html` page (A4, A3 or 16:9). The file viewer opens it in an
+  editor: double-click a text to correct it, drag a pictogram, change colours, fonts and
+  sizes, then save it back to the file. Unsaved touch-ups are not dropped without asking.
+  ([#361](https://github.com/laurentftech/pi-outpost/pull/361))
+- **Posters to Word and PowerPoint.** From the editor, download the poster as a Word page,
+  a PowerPoint slide or HTML. In Word and PowerPoint the poster is a picture at print
+  resolution: correct texts in the editor, then export again.
+  ([#361](https://github.com/laurentftech/pi-outpost/pull/361))
+- **Posters in Claude Desktop.** A second extension, `pi-outpost-posters.mcpb`, attached to
+  each release, shows the same editor inside Claude.
+  ([#361](https://github.com/laurentftech/pi-outpost/pull/361))
+- **Posters in Open WebUI.** The tool server creates, shows and lists posters for each user.
+  When saving is configured, touch-ups made in the embed are kept as a new revision that
+  the model reads back; an older embed cannot overwrite a newer revision.
+  ([#361](https://github.com/laurentftech/pi-outpost/pull/361),
+  [#362](https://github.com/laurentftech/pi-outpost/pull/362))
+
+### Changed
+
+- **Open WebUI embeds follow the host theme.** Planning and poster views switch between
+  light and dark with Open WebUI. ([#362](https://github.com/laurentftech/pi-outpost/pull/362))
+
+### Fixed
+
+- **Extension statuses keep their semantic colours.** Statuses an extension styles as
+  success, warning or error (pi-blackhole's gauges, for instance) are shown in colour
+  instead of plain text, including in the standalone executables.
+  ([#360](https://github.com/laurentftech/pi-outpost/pull/360))
+- **Dependency security updates.** `fast-uri` 3.1.9 fixes four URI parsing advisories;
+  `undici` moves to 8.12.3. ([#363](https://github.com/laurentftech/pi-outpost/pull/363),
+  [#364](https://github.com/laurentftech/pi-outpost/pull/364))
+
 ## [0.49.0] - 2026-10-23
 
 ### Added
