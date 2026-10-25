@@ -21,6 +21,7 @@ import { McpServer, type CallToolResult, type ReadResourceResult } from "@modelc
 import { z } from "zod";
 import { FORMAT_NAMES, type PosterFormat } from "@pi-outpost/posters/format";
 import { POSTER_GUIDE } from "@pi-outpost/posters/guide";
+import { hidePictures, restorePictures } from "@pi-outpost/posters/markers";
 import { PosterRefusal, type LocalPosterStore, type PosterRevision } from "./store.ts";
 
 export const SERVER_NAME = "pi-outpost-posters";
@@ -42,10 +43,39 @@ export interface ShownPoster {
   folder: string;
   /** The text the model reads, repeated: Claude Code gives the model the structured content instead. */
   summary: string;
+  /**
+   * How many pictures `html` and `css` show as markers. Claude Code hands the model the
+   * structured content, so it carries no picture data; the view asks for the pictures with
+   * the app-only `poster_pictures` and puts them back before opening the editor.
+   */
+  pictures: number;
 }
 
 /** Above this, a file the view hands over is not an export of one poster. */
 const MAX_EXPORT_BYTES = 40_000_000;
+
+/** How many pictures one get_poster shows the model: each costs it about a thousand tokens. */
+const MAX_SEEN_PICTURES = 8;
+const SEEABLE = /^data:(image\/(?:png|jpeg|gif|webp));base64,([A-Za-z0-9+/=\s]+)$/;
+
+/**
+ * The poster's pictures as image blocks the model looks at, each announced by its marker
+ * (poster-elements, TheModelCanLookAtThePictures). A picture in another form (an SVG pattern
+ * in the stylesheet) is named, not shown.
+ */
+function seenPictures(pictures: readonly string[]): CallToolResult["content"] {
+  const blocks: CallToolResult["content"] = [];
+  pictures.slice(0, MAX_SEEN_PICTURES).forEach((picture, index) => {
+    const seeable = SEEABLE.exec(picture);
+    if (!seeable) {
+      blocks.push({ type: "text", text: `poster-picture:${index + 1} is not a photo or drawing to look at (${picture.slice(5, picture.indexOf(";"))}).` });
+      return;
+    }
+    blocks.push({ type: "text", text: `poster-picture:${index + 1}:` }, { type: "image", mimeType: seeable[1]!, data: seeable[2]!.replace(/\s/g, "") });
+  });
+  if (pictures.length > MAX_SEEN_PICTURES) blocks.push({ type: "text", text: `${pictures.length - MAX_SEEN_PICTURES} more pictures are not shown here.` });
+  return blocks;
+}
 
 function text(value: unknown): CallToolResult {
   return { content: [{ type: "text", text: typeof value === "string" ? value : JSON.stringify(value, null, 1) }] };
@@ -115,7 +145,8 @@ export function createPosterServer(options: ServerOptions): McpServer {
     async ({ title, html, css, format }) => {
       called("create_poster");
       try {
-        return text(answer(await store.create(title, { html, css, format })));
+        // A new poster has no pictures: a marker in it names none, and is refused.
+        return text(answer(await store.create(title, { ...restorePictures(html, css, []), format })));
       } catch (error) {
         return refusal(error);
       }
@@ -127,15 +158,22 @@ export function createPosterServer(options: ServerOptions): McpServer {
     {
       title: "Read a poster",
       description:
-        "Reads a poster's markup and stylesheet as they are now, with the user's touch-ups made in the editor. Always read it before changing it: the user may have edited it since you wrote it, and your change must keep their edits.",
-      inputSchema: z.object({ id, revision: z.number().int().optional().describe("An earlier revision; the latest when omitted.") }),
+        "Reads a poster's markup and stylesheet as they are now, with the user's touch-ups made in the editor. Always read it before changing it: the user may have edited it since you wrote it, and your change must keep their edits. Each picture the user put in shows as a marker, poster-picture:N, listed at the top of the markup: keep each marker as it is to keep its picture. The marker and its frame's name do not tell you what a picture shows: set see_pictures to look at them before describing, captioning or moving a picture.",
+      inputSchema: z.object({
+        id,
+        revision: z.number().int().optional().describe("An earlier revision; the latest when omitted."),
+        see_pictures: z.boolean().optional().describe(`Also return the pictures the user put in, as images to look at, each after its marker (at most ${MAX_SEEN_PICTURES}).`),
+      }),
       annotations: { readOnlyHint: true },
     },
-    async ({ id: posterId, revision }) => {
+    async ({ id: posterId, revision, see_pictures: see }) => {
       called("get_poster");
       try {
         const found = await store.get(posterId, revision);
-        return text({ ...answer(found), html: found.html, css: found.css });
+        const hidden = hidePictures(found.html, found.css);
+        const result = text({ ...answer(found), html: hidden.html, css: hidden.css });
+        if (see) result.content.push(...seenPictures(hidden.pictures));
+        return result;
       } catch (error) {
         return refusal(error);
       }
@@ -146,13 +184,21 @@ export function createPosterServer(options: ServerOptions): McpServer {
     "update_poster",
     {
       title: "Change a poster",
-      description: `Replaces a poster's markup and stylesheet with a new version made from the revision you read. Start from get_poster's html and css and keep everything the user changed there (texts, colours, positions) unless they asked otherwise. Then call show_poster.\n\n${POSTER_GUIDE}`,
-      inputSchema: z.object({ id, base_revision: z.number().int().describe("The revision you read with get_poster."), ...content }),
+      description: `Replaces a poster's markup and stylesheet with a new version made from the revision you read. Start from get_poster's html and css and keep everything the user changed there (texts, colours, positions, and every poster-picture marker, which stands for a picture the user put in) unless they asked otherwise. Then call show_poster.\n\n${POSTER_GUIDE}`,
+      inputSchema: z.object({
+        id,
+        base_revision: z.number().int().describe("The revision you read with get_poster."),
+        title: z.string().optional().describe("A new title for the poster, when the user wants it renamed: its file is renamed after it. Omit to keep the title."),
+        ...content,
+      }),
     },
-    async ({ id: posterId, base_revision: base, html, css, format }) => {
+    async ({ id: posterId, base_revision: base, title, html, css, format }) => {
       called("update_poster");
       try {
-        return text(answer(await store.revise(posterId, base, { html, css, format }, "model")));
+        // The markers the model read stand for the pictures of the revision it read.
+        const read = await store.get(posterId, base);
+        const restored = restorePictures(html, css, hidePictures(read.html, read.css).pictures);
+        return text(answer(await store.revise(posterId, base, { ...restored, format }, "model", title)));
       } catch (error) {
         return refusal(error);
       }
@@ -173,7 +219,8 @@ export function createPosterServer(options: ServerOptions): McpServer {
       try {
         const current = await store.get(posterId);
         const summary = `Shown to the user in the poster editor: "${current.title}" (${posterId}), revision ${current.revision}, ${current.format}. You do not see it. If the user retouches it and saves, get_poster returns their version.`;
-        const shown: ShownPoster = { id: posterId, title: current.title, revision: current.revision, html: current.html, css: current.css, format: current.format, file: current.file, folder: store.root, summary };
+        const hidden = hidePictures(current.html, current.css);
+        const shown: ShownPoster = { id: posterId, title: current.title, revision: current.revision, html: hidden.html, css: hidden.css, format: current.format, file: current.file, folder: store.root, summary, pictures: hidden.pictures.length };
         return { content: [{ type: "text", text: summary }], structuredContent: shown as unknown as Record<string, unknown> };
       } catch (error) {
         return refusal(error);
@@ -195,6 +242,26 @@ export function createPosterServer(options: ServerOptions): McpServer {
         const current = await store.get(posterId);
         const saved = await store.revise(posterId, base, { html, css, format: current.format }, "user");
         return { ...text(`Saved as revision ${saved.revision}.`), structuredContent: { revision: saved.revision, file: saved.file } };
+      } catch (error) {
+        return refusal(error);
+      }
+    },
+  );
+
+  server.registerTool(
+    "poster_pictures",
+    {
+      title: "Hand the editor a poster's pictures",
+      description: "Called by the poster editor to put back the pictures show_poster sent as markers. Not for the model.",
+      inputSchema: z.object({ id, revision: z.number().int() }),
+      _meta: { ui: { visibility: ["app"] } },
+    },
+    async ({ id: posterId, revision }): Promise<CallToolResult> => {
+      called("poster_pictures");
+      try {
+        const found = await store.get(posterId, revision);
+        const { pictures } = hidePictures(found.html, found.css);
+        return { ...text(`${pictures.length} pictures.`), structuredContent: { pictures } };
       } catch (error) {
         return refusal(error);
       }

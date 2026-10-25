@@ -23,6 +23,7 @@ import { fileURLToPath } from "node:url";
 import type { FastifyInstance, FastifyReply } from "fastify";
 import { FORMAT_NAMES, PosterRefusal as FormatRefusal, checkPoster, isPosterFormat, type PosterContent } from "@pi-outpost/posters/format";
 import { POSTER_GUIDE } from "@pi-outpost/posters/guide";
+import { hidePictures, restorePictures } from "@pi-outpost/posters/markers";
 // For request.owner, which app.ts declares on Fastify's requests: a program that reaches
 // this file without app.ts (the MCP tests, through openapi.ts) would not know it.
 import type {} from "./app.ts";
@@ -80,6 +81,19 @@ function checked(content: PosterContent): PosterContent {
     return checkPoster(content);
   } catch (error) {
     if (error instanceof FormatRefusal) throw new PosterRefusal(/too large/.test(error.message) ? 413 : 422, error.message, error.details);
+    throw error;
+  }
+}
+
+/**
+ * What the model sent with its markers turned back into the pictures they stand for, those of
+ * the revision it read (none for a new poster): poster-elements, MarkersAreRestoredOnWrite.
+ */
+function restored(content: PosterContent, read?: { html: string; css: string }): PosterContent {
+  try {
+    return { ...content, ...restorePictures(content.html, content.css, read ? hidePictures(read.html, read.css).pictures : []) };
+  } catch (error) {
+    if (error instanceof FormatRefusal) throw new PosterRefusal(422, error.message, error.details);
     throw error;
   }
 }
@@ -178,9 +192,10 @@ export class PosterStore {
   }
 
   /** A new revision from `baseRevision`, refused when another was written since. */
-  async revise(owner: string, id: string, baseRevision: number, content: PosterContent): Promise<PosterRevision> {
+  /** A new revision from `baseRevision`; with a `title`, the poster is retitled too. */
+  async revise(owner: string, id: string, baseRevision: number, content: PosterContent, title?: string): Promise<PosterRevision> {
     const ownerHash = createHash("sha256").update(owner).digest("hex");
-    return this.reviseFor(ownerHash, this.posterDirForHash(ownerHash, id), id, baseRevision, content);
+    return this.reviseFor(ownerHash, this.posterDirForHash(ownerHash, id), id, baseRevision, content, title);
   }
 
   /** Save through a signed browser capability whose owner claim is already hashed. */
@@ -188,7 +203,7 @@ export class PosterStore {
     return this.reviseFor(ownerHash, this.posterDirForHash(ownerHash, id), id, baseRevision, content);
   }
 
-  private async reviseFor(ownerHash: string, dir: string, id: string, baseRevision: number, content: PosterContent): Promise<PosterRevision> {
+  private async reviseFor(ownerHash: string, dir: string, id: string, baseRevision: number, content: PosterContent, title?: string): Promise<PosterRevision> {
     checked(content);
     return this.locked(`poster:${ownerHash}:${id}`, async () => {
       let meta: PosterMeta;
@@ -207,9 +222,9 @@ export class PosterStore {
       const revision = meta.revision + 1;
       const now = new Date().toISOString();
       await fsp.writeFile(path.join(dir, `${revision}.json`), JSON.stringify({ ...content, at: now }), { flag: "wx" });
-      const updated: PosterMeta = { ...meta, revision, updated: now };
+      const updated: PosterMeta = { ...meta, title: title?.trim() || meta.title, revision, updated: now };
       await writeAtomically(path.join(dir, "meta.json"), JSON.stringify(updated));
-      return { id, title: meta.title, revision, current: revision, ...content };
+      return { id, title: updated.title, revision, current: revision, ...content };
     });
   }
 }
@@ -318,8 +333,8 @@ export function posterEmbedPage(poster: PosterRevision, assets: PosterViewerAsse
 
 export const LIST_POSTERS_DESCRIPTION = "Lists the user's posters: id, title, revision, last change. Use an id from here with get_poster, update_poster or show_poster.";
 export const CREATE_POSTER_DESCRIPTION = `Creates a poster, a worksheet, a slide or any one-page visual for the user, kept on this server. Then call show_poster so the user sees it: they can retouch it there and download it for Word (to print) or PowerPoint (to show). When browser saving is configured, saved touch-ups become a new revision you can read; otherwise they stay in the browser.\n\n${POSTER_GUIDE}`;
-export const GET_POSTER_DESCRIPTION = "Reads a poster's latest saved markup and stylesheet, with its revision. Read it before changing it. Unsaved changes in an open embed are not available until the user saves them.";
-export const UPDATE_POSTER_DESCRIPTION = `Replaces a poster's markup and stylesheet with a new version made from the revision you read with get_poster, then call show_poster. If the user saved changes in the embed, start from that latest revision.\n\n${POSTER_GUIDE}`;
+export const GET_POSTER_DESCRIPTION = "Reads a poster's latest saved markup and stylesheet, with its revision. Read it before changing it. Unsaved changes in an open embed are not available until the user saves them. Each picture the user put in shows as a marker, poster-picture:N, listed at the top of the markup: keep each marker as it is to keep its picture.";
+export const UPDATE_POSTER_DESCRIPTION = `Replaces a poster's markup and stylesheet with a new version made from the revision you read with get_poster, then call show_poster. If the user saved changes in the embed, start from that latest revision, and keep every poster-picture marker, which stands for a picture the user put in.\n\n${POSTER_GUIDE}`;
 export const SHOW_POSTER_DESCRIPTION = "Shows a poster to the user in the conversation, in an editor where they can correct texts, move pictograms, change colours, save when browser saving is configured, and download it for Word or PowerPoint.";
 
 const idProperty = { type: "string", description: "The poster's id, from create_poster or list_posters." };
@@ -351,7 +366,7 @@ export function posterOperations() {
       "update_poster",
       "Change a poster",
       UPDATE_POSTER_DESCRIPTION,
-      { id: idProperty, base_revision: { type: "integer", description: "The revision you read with get_poster." }, ...contentProperties },
+      { id: idProperty, base_revision: { type: "integer", description: "The revision you read with get_poster." }, title: { type: "string", description: "A new title for the poster, when the user wants it renamed; downloads are named after it. Omit to keep the title." }, ...contentProperties },
       ["id", "base_revision", "html", "css", "format"],
     ),
     "/show_poster": operation("show_poster", "Show a poster to the user", SHOW_POSTER_DESCRIPTION, { id: idProperty }, ["id"]),
@@ -396,7 +411,7 @@ export function registerPosterRoutes(app: FastifyInstance, store: PosterStore, o
     try {
       const title = request.body?.title;
       if (typeof title !== "string" || title.trim() === "") throw new PosterRefusal(422, "title is required: the poster's title");
-      return answer(await store.create(request.owner, title, contentOf(request.body)));
+      return answer(await store.create(request.owner, title, restored(contentOf(request.body))));
     } catch (error) {
       return refuse(reply, error);
     }
@@ -408,7 +423,9 @@ export function registerPosterRoutes(app: FastifyInstance, store: PosterStore, o
       if (typeof id !== "string") throw new PosterRefusal(422, "id is required: the poster's identifier, from list_posters");
       if (revision !== undefined && revision !== null && !Number.isInteger(revision)) throw new PosterRefusal(422, "revision, when given, is a revision number");
       const found = await store.get(request.owner, id, typeof revision === "number" ? revision : undefined);
-      return { ...answer(found), html: found.html, css: found.css };
+      // Each picture the user put in is a marker here: its data never reaches the model.
+      const hidden = hidePictures(found.html, found.css);
+      return { ...answer(found), html: hidden.html, css: hidden.css };
     } catch (error) {
       return refuse(reply, error);
     }
@@ -419,7 +436,10 @@ export function registerPosterRoutes(app: FastifyInstance, store: PosterStore, o
       const { id, base_revision: base } = request.body ?? {};
       if (typeof id !== "string") throw new PosterRefusal(422, "id is required: the poster's identifier, from list_posters");
       if (!Number.isInteger(base)) throw new PosterRefusal(422, "base_revision is required: the revision you read with get_poster");
-      return answer(await store.revise(request.owner, id, base as number, contentOf(request.body)));
+      const read = await store.get(request.owner, id, base as number);
+      const title = request.body?.title;
+      if (title !== undefined && (typeof title !== "string" || title.trim() === "")) throw new PosterRefusal(422, "title, when given, is the poster's new title, as text");
+      return answer(await store.revise(request.owner, id, base as number, restored(contentOf(request.body), read), title as string | undefined));
     } catch (error) {
       return refuse(reply, error);
     }

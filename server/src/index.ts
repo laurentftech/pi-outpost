@@ -206,6 +206,7 @@ import { checkPiPackages, hintPiPackagesBehind, installNewerPiPackage, listPiPac
 import { createStructuredExchangeFigureToolDefinition } from "./structuredExchangeFigureTool.ts";
 import { createTimelineComparisonToolDefinition } from "./timelineComparisonTool.ts";
 import { createDrawioCheckToolDefinition } from "./drawioTool.ts";
+import { createPosterPicturesToolDefinition } from "./posterPicturesTool.ts";
 import { createWorkPlanExtendedToolDefinition, createWorkPlanToolDefinition, WORK_PLAN_EXTENDED_TOOL, WORK_PLAN_TOOL } from "./workPlanTool.ts";
 import { DOCUMENT_TOOLS, documentToolsFor, documentToolsForToolCall, documentToolsForWrittenPaths } from "./documentTools.ts";
 import {
@@ -243,6 +244,7 @@ import {
   searchSessions,
   toSummary,
 } from "./sessions.ts";
+import { registerPosterPictureHooks } from "./posterPictureHooks.ts";
 import { seaExtensionFactories } from "./sea-extensions.ts";
 // Generated at build time (cli/scripts/build.mjs, server/scripts/build-sea.mjs).
 // Empty map in dev — see the comment at the static-serving block below.
@@ -1376,7 +1378,8 @@ const makeCreateRuntime =
   // project is still being created when its first session is.
   const projectSandbox = config.sandbox;
 
-  const extraFactories = [...seaExtensionFactories];
+  // Pictures in a poster stay out of what the agent reads and survive what it writes.
+  const extraFactories = [...seaExtensionFactories, registerPosterPictureHooks];
   // extensionScripts are loaded via the SDK's jiti-based loader (same as
   // extensionPaths), which uses createRequire under the hood — this works
   // inside SEA blobs where native import() can only resolve built-in modules.
@@ -1485,6 +1488,7 @@ const makeCreateRuntime =
                 writableRoot: await fs.realpath(cwd),
               }),
               createDrawioCheckToolDefinition({ cwd, allowedRoots: [await fs.realpath(cwd)] }),
+              createPosterPicturesToolDefinition({ cwd, allowedRoots: [await fs.realpath(cwd)] }),
               createStructuredExchangeToolDefinition({ projectRoot: cwd }),
               workPlanTool,
               workPlanExtendedTool,

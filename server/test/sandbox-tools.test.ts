@@ -164,6 +164,8 @@ describe("createSandboxedTools", () => {
         // Drawing a page is reading it: it opens the file and returns pictures, writing
         // nothing, so it belongs in the read-only set beside the extractor.
         "pdf_render",
+        // Looking at a poster's pictures only reads it
+        "poster_pictures",
         "pptx_extract",
         "pptx_layouts",
         "pptx_render",
@@ -193,6 +195,7 @@ describe("createSandboxedTools", () => {
         "mail_extract",
         "pdf_extract",
         "pdf_render",
+        "poster_pictures",
         "pptx_create",
         "pptx_extract",
         "pptx_layouts",

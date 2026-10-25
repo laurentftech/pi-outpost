@@ -7,6 +7,7 @@
  * for. A refused request never reaches a handler, so no handler can forget to check.
  */
 import Fastify, { type FastifyInstance, type FastifyRequest } from "fastify";
+import { MAX_POSTER_BYTES } from "@pi-outpost/posters/format";
 import { STRUCTURED_EXCHANGE_BYTES_CEILING_ANY } from "@pi-outpost/shared/structured-exchange/bounds";
 import type { PlanningServerConfig } from "./config.ts";
 import { bearerMatches, resolveOwner } from "./trust.ts";
@@ -38,7 +39,9 @@ export function buildApp(config: PlanningServerConfig, routes: PlanningRoutes): 
   // names its ceiling, rather than by the HTTP layer, which names nothing.
   // A document's pictures travel in the call as base64, a third larger than the file
   // they end up in, which the file limit bounds.
-  const bodyLimit = Math.max(Math.max(config.maxPlanningBytes, STRUCTURED_EXCHANGE_BYTES_CEILING_ANY) * 2, config.maxFileBytes * 2) + 64 * 1024;
+  // A poster's pictures are embedded in it as base64: a poster at its ceiling, JSON-escaped
+  // (its markup's quotes, little else), must reach the format's refusal too.
+  const bodyLimit = Math.max(Math.max(config.maxPlanningBytes, STRUCTURED_EXCHANGE_BYTES_CEILING_ANY) * 2, config.maxFileBytes * 2, MAX_POSTER_BYTES * 2) + 64 * 1024;
   const app = Fastify({ logger: false, bodyLimit });
   app.decorateRequest("owner", "");
 

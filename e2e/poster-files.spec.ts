@@ -171,3 +171,33 @@ test("APosterOpensAndPrintsInABrowser: the poster file, opened as a page and pri
   expect(Math.round(Number(box![2]))).toBe(842);
   await tab.close();
 });
+
+// openlore: scenario=ThePersonFillsASlot spec=poster-elements
+// openlore: scenario=AShapeIsAdded spec=poster-elements
+test("Pictures and shapes in the file viewer: a frame filled and a shape inserted are saved into the poster file", async ({ page }) => {
+  const file = path.join(process.env.PI_E2E_PRIMARY_PROJECT!, POSTER);
+  const original = await fs.readFile(file, "utf8");
+  try {
+    const editor = await openPoster(page);
+    const canvas = editor.frameLocator("iframe.gjs-frame");
+    const photo = canvas.locator('[data-poster-picture="class photo"]');
+    await expect(photo).toBeVisible({ timeout: 20_000 });
+    const chooser = page.waitForEvent("filechooser");
+    await photo.dblclick();
+    // A 2 x 2 PNG is enough: what is checked is that the picture lands in the file, as data.
+    const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAEklEQVR4nGP8z8DAwMDAxMAAAA0rAQOuNQ4oAAAAAElFTkSuQmCC", "base64");
+    await (await chooser).setFiles({ name: "class.png", mimeType: "image/png", buffer: png });
+    await expect(canvas.locator('[data-poster-picture="class photo"][src^="data:image/png"]')).toHaveCount(1);
+    await editor.locator('button[data-action="insert"]').click();
+    await editor.locator('[data-insert="shape:speech-bubble"]').click();
+    await expect(canvas.locator(".poster-shape.speech-bubble")).toHaveCount(1);
+    await editor.locator('button[data-action="save"]').click();
+    await expect(editor.locator(".poster-status")).toHaveText(/Saved/);
+    const saved = readPage(await fs.readFile(file, "utf8"));
+    expect(saved.html).toMatch(/data-poster-picture="class photo"[^>]*src="data:image\/png;base64,|src="data:image\/png;base64,[^"]*"[^>]*data-poster-picture="class photo"/);
+    expect(saved.html).toContain('class="poster-shape speech-bubble"');
+    expect(saved.css).toContain(".poster-shape svg > *");
+  } finally {
+    await fs.writeFile(file, original);
+  }
+});

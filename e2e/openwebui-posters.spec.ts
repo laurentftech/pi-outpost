@@ -10,6 +10,7 @@ import { createServer, type Server } from "node:http";
 import net from "node:net";
 import os from "node:os";
 import path from "node:path";
+import { createCanvas } from "@napi-rs/canvas";
 import { expect, test, type Page } from "@playwright/test";
 import { POSTER_EXAMPLE } from "@pi-outpost/posters/guide";
 import { buildApp } from "../openwebui/src/app.ts";
@@ -74,14 +75,14 @@ test.afterAll(async () => {
   if (dataDir) await fs.rm(dataDir, { recursive: true, force: true });
 });
 
-async function embed(tab: Page, sandbox: string, hostOrigin = webUiOrigin) {
+async function embed(tab: Page, sandbox: string, hostOrigin = webUiOrigin, html = page) {
   const requests: string[] = [];
   await tab.goto(hostOrigin);
   await tab.setContent(`<!doctype html><body style="margin:0"><iframe id="embed" sandbox="${sandbox}" style="width:1000px;height:900px;border:0"></iframe></body>`);
   tab.on("request", (request) => {
     if (!/^(data|blob|about):/.test(request.url())) requests.push(request.url());
   });
-  await tab.evaluate((html) => ((document.getElementById("embed") as HTMLIFrameElement).srcdoc = html), page);
+  await tab.evaluate((embedded) => ((document.getElementById("embed") as HTMLIFrameElement).srcdoc = embedded), html);
   const frame = tab.frameLocator("#embed");
   await expect(frame.locator('button[data-action="word"]')).toBeVisible({ timeout: 30_000 });
   return { frame, requests };
@@ -105,6 +106,8 @@ test("TheDefaultSandboxStillShowsThePoster: read-only, the setting named, the li
   await expect(frame.locator(".poster-notice")).toContainText("iframe Sandbox Allow Same Origin");
   await expect(frame.locator(".poster-notice")).toContainText("iframe Sandbox Allow Same Origin");
   await expect(frame.locator('button[data-action="save"]')).toBeHidden();
+  // openlore: scenario=AReadOnlyPosterOffersNoInsert spec=poster-elements
+  await expect(frame.locator('button[data-action="insert"]')).toBeHidden();
 });
 
 // openlore: scenario=TheEditorAppearsInTheChat spec=openwebui-posters
@@ -225,3 +228,31 @@ for (const [name, sandbox] of [["the default sandbox", DEFAULT_SANDBOX], ["the s
     expect(requests).toEqual([]);
   });
 }
+
+// openlore: scenario=ThePersonFillsASlot spec=poster-elements
+// openlore: scenario=GetPosterReturnsMarkers spec=poster-elements
+test("Open WebUI embed: a frame filled and a shape inserted are saved, and the model reads the picture as a marker", async ({ page: tab }) => {
+  const id = (await call("create_poster", { title: "Pictures", html: POSTER_EXAMPLE.html, css: POSTER_EXAMPLE.css, format: POSTER_EXAMPLE.format })).json().id as string;
+  const { frame } = await embed(tab, SAME_ORIGIN_SANDBOX, webUiOrigin, (await call("show_poster", { id })).body);
+  const canvas = frame.frameLocator("iframe.gjs-frame");
+  const photo = canvas.locator('[data-poster-picture="class photo"]');
+  await expect(photo).toBeVisible({ timeout: 20_000 });
+  const picture = createCanvas(900, 600);
+  picture.getContext("2d").fillStyle = "#1e88e5";
+  picture.getContext("2d").fillRect(0, 0, 900, 600);
+  const chooser = tab.waitForEvent("filechooser");
+  await photo.dblclick();
+  await (await chooser).setFiles({ name: "class.png", mimeType: "image/png", buffer: await picture.encode("png") });
+  await expect(canvas.locator('[data-poster-picture="class photo"][src^="data:image/png"]')).toHaveCount(1);
+  await frame.locator('button[data-action="insert"]').click();
+  await frame.locator('[data-insert="shape:star"]').click();
+  await expect(canvas.locator(".poster-shape.star")).toHaveCount(1);
+  await frame.locator('button[data-action="save"]').click();
+  await expect(frame.locator(".poster-status")).toContainText("Saved as a new version", { timeout: 15_000 });
+  const read = (await call("get_poster", { id })).json();
+  expect(read.revision).toBe(2);
+  expect(JSON.stringify(read)).not.toContain("base64");
+  expect(read.html).toMatch(/^<!-- poster pictures: poster-picture:1 \(class photo\)/);
+  expect(read.html).toContain('src="poster-picture:1"');
+  expect(read.html).toContain("poster-shape star");
+});

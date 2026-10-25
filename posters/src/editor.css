@@ -53,6 +53,13 @@ html[data-display="fullscreen"] .poster-shell { height: 100vh; padding-bottom: 9
 .poster-bar button[aria-pressed="true"] { background: var(--pressed); border-color: var(--pressed-line); }
 .poster-bar button.poster-icon { display: inline-flex; align-items: center; justify-content: center; padding: 4px 8px; }
 .poster-downloads { display: inline-flex; gap: 4px; }
+.poster-insert { position: relative; display: inline-flex; }
+.poster-menu { position: absolute; top: calc(100% + 4px); left: 0; z-index: 20; min-width: 190px; padding: 4px; display: flex; flex-direction: column; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 6px 20px rgb(0 0 0 / 18%); }
+.poster-menu[hidden] { display: none; }
+.poster-menu button { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; border: 0; border-radius: 5px; background: transparent; padding: 5px 8px; }
+.poster-menu button:hover, .poster-menu button:focus-visible { background: var(--button-hover); }
+.poster-menu svg { flex: none; color: #4fc3f7; }
+.poster-menu hr { width: 100%; border: 0; border-top: 1px solid var(--line); margin: 4px 0; }
 .poster-group { display: inline-flex; }
 .poster-group button { border-radius: 0; margin-left: -1px; }
 .poster-group button:first-child { border-radius: 6px 0 0 6px; }

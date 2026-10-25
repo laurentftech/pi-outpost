@@ -6,6 +6,7 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import test from "node:test";
 import { gunzipSync } from "node:zlib";
+import { MAX_POSTER_BYTES } from "@pi-outpost/posters/format";
 import { POSTER_EXAMPLE, POSTER_GUIDE } from "@pi-outpost/posters/guide";
 import { SECRET, testApp } from "./helpers.ts";
 import { posterViewerAssets } from "../src/posters.ts";
@@ -54,7 +55,7 @@ test("PosterTools refuse what the format refuses: a script, an unknown format, a
   const format = await call("create_poster", { ...POSTER, format: "Letter" });
   assert.equal(format.statusCode, 422);
   assert.deepEqual(format.json().formats, ["A4-portrait", "A4-landscape", "A3-portrait", "A3-landscape", "slide-16:9"]);
-  const huge = await call("create_poster", { ...POSTER, html: "x".repeat(2_000_001) });
+  const huge = await call("create_poster", { ...POSTER, html: "x".repeat(MAX_POSTER_BYTES + 1) });
   assert.equal(huge.statusCode, 413);
   assert.deepEqual((await call("list_posters")).json().posters, []);
 });
@@ -179,4 +180,69 @@ test("PosterSaveEndpointIsConstrainedToTheConfiguredWebUI: origin, poster and re
   assert.equal((await request({ ...base, html: "<script>bad()</script>" })).statusCode, 422);
   assert.equal((await app.inject({ method: "OPTIONS", url: "/poster-save", headers: { origin: "http://evil.test" } })).statusCode, 403);
   assert.equal((await call("get_poster", { id })).json().revision, 1);
+});
+
+/** A picture as the editor embeds one, large enough that leaking it would show. */
+const PHOTO = `data:image/jpeg;base64,${"/9j/4".repeat(40_000)}`;
+const WITH_PHOTO = POSTER.html.replace('<img class="photo" data-poster-picture="class photo" alt="Our class">', `<img class="photo" data-poster-picture="class photo" alt="Our class" src="${PHOTO}">`);
+
+async function savedWithPhoto(t: Parameters<typeof testApp>[0]) {
+  const { app, call } = await testApp(t, { publicUrl: "http://localhost:8790", webUiOrigin: "http://localhost:3000" });
+  const { id } = (await call("create_poster", POSTER)).json();
+  const embedded = JSON.parse(payloadOf((await call("show_poster", { id })).body, "poster"));
+  const saveAs = (ticket: string, html: string, base: number) => app.inject({
+    method: "POST", url: "/poster-save", headers: { origin: "http://localhost:3000", "content-type": "text/plain;charset=UTF-8" },
+    payload: JSON.stringify({ id, base_revision: base, ticket, html, css: POSTER.css, format: POSTER.format }),
+  });
+  const saved = await saveAs(embedded.saveTicket, WITH_PHOTO, 1);
+  assert.equal(saved.statusCode, 200, saved.body);
+  return { call, id, saveAs, ticket: saved.json().ticket as string };
+}
+
+// openlore: scenario=GetPosterReturnsMarkers spec=poster-elements
+// openlore: scenario=TheModelRewritesAPosterAndKeepsItsPictures spec=poster-elements
+test("Open WebUI: get_poster shows the user's picture as a marker, and update_poster puts it back", async (t) => {
+  const { call, id } = await savedWithPhoto(t);
+  const read = await call("get_poster", { id });
+  assert.ok(!read.body.includes("base64"), "no picture data reaches the model");
+  assert.match(read.json().html, /^<!-- poster pictures: poster-picture:1 \(class photo\) \d+ kB\./);
+  assert.ok(read.json().html.includes('alt="Our class" src="poster-picture:1"'));
+  const updated = await call("update_poster", { id, base_revision: 2, html: read.json().html.replace("Our class rules", "Our rules"), css: read.json().css, format: POSTER.format });
+  assert.equal(updated.statusCode, 200, updated.body);
+  const reread = await call("get_poster", { id });
+  assert.equal(reread.json().revision, 3);
+  // Read back in full through the store's own view of the poster: the photo is there, unchanged.
+  const embed = JSON.parse(payloadOf((await call("show_poster", { id })).body, "poster"));
+  assert.equal(embed.html, WITH_PHOTO.replace("Our class rules", "Our rules"));
+});
+
+// openlore: scenario=AnUnknownMarkerIsRefused spec=poster-elements
+test("Open WebUI: a marker naming no picture is refused, and nothing is written", async (t) => {
+  const { call, id } = await savedWithPhoto(t);
+  const refused = await call("update_poster", { id, base_revision: 2, html: '<img src="poster-picture:3">', css: "", format: POSTER.format });
+  assert.equal(refused.statusCode, 422);
+  assert.match(refused.json().error, /poster-picture:3 names no picture of this poster \(it has poster-picture:1 to poster-picture:1\)/);
+  assert.equal((await call("get_poster", { id })).json().revision, 2);
+  const fresh = await call("create_poster", { ...POSTER, html: '<img src="poster-picture:1">' });
+  assert.equal(fresh.statusCode, 422);
+});
+
+test("Open WebUI: a poster near the 8 MB ceiling is saved through the embed's capability", async (t) => {
+  const { saveAs, ticket } = await savedWithPhoto(t);
+  const big = `data:image/jpeg;base64,${"A".repeat(MAX_POSTER_BYTES - 200_000)}`;
+  const saved = await saveAs(ticket, POSTER.html.replace("</main>", `<img src="${big}"></main>`), 2);
+  assert.equal(saved.statusCode, 200, saved.body.slice(0, 200));
+  assert.equal(saved.json().revision, 3);
+});
+
+// openlore: scenario=TheNewTitleIsListed spec=openwebui-posters
+test("TheNewTitleIsListed: update_poster with a title retitles the poster", async (t) => {
+  const { call } = await testApp(t);
+  const { id } = (await call("create_poster", POSTER)).json();
+  const updated = await call("update_poster", { id, base_revision: 1, title: "Menu du jour", html: POSTER.html, css: POSTER.css, format: POSTER.format });
+  assert.equal(updated.statusCode, 200, updated.body);
+  assert.equal(updated.json().title, "Menu du jour");
+  assert.equal((await call("get_poster", { id })).json().title, "Menu du jour");
+  assert.deepEqual((await call("list_posters")).json().posters.map((entry: { title: string }) => entry.title), ["Menu du jour"]);
+  assert.equal((await call("update_poster", { id, base_revision: 2, title: "  ", html: POSTER.html, css: POSTER.css, format: POSTER.format })).statusCode, 422);
 });

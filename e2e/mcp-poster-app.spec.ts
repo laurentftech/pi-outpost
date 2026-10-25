@@ -1,113 +1,17 @@
 /**
- * The posters extension's editor as an MCP Apps host draws it: the real server in this
- * process, its `ui://` view in a frame sandboxed as the MCP Apps specification says
- * (`allow-scripts allow-same-origin`; GrapesJS draws in a nested frame it must reach), and
- * the SDK's AppBridge relaying the view's tool calls and recording what it asks the host.
+ * The posters extension's editor as an MCP Apps host draws it (mcp-poster-host.ts): editing
+ * the text, styles and layout the model wrote. Pictures, shapes and text boxes the person adds
+ * are in mcp-poster-elements.spec.ts.
  *
  * Needs the view built (`npm run build:viewer-poster --workspace @pi-outpost/mcp`).
  */
 import fs from "node:fs/promises";
-import os from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
-import { expect, test, type FrameLocator, type Page } from "@playwright/test";
-import { build } from "esbuild";
-import { Client, InMemoryTransport } from "@modelcontextprotocol/client";
+import { expect, test } from "@playwright/test";
 import { readAllZipEntries } from "@pi-outpost/office/zip.ts";
-import { POSTER_EXAMPLE } from "@pi-outpost/posters/guide";
-import { createPosterServer, viewUriFor } from "../mcp/src/posters/server.ts";
-import { LocalPosterStore } from "../mcp/src/posters/store.ts";
+import { canvasFrame, hostLog, json, rewrite, usePosterHost } from "./mcp-poster-host.ts";
 
-const HERE = path.dirname(fileURLToPath(import.meta.url));
-const VIEW_FILE = path.join(HERE, "..", "mcp", "dist", "viewer-poster", "poster.html");
-const SAME_ORIGIN = "allow-scripts allow-same-origin";
-
-interface ToolResult {
-  isError?: boolean;
-  content: Array<{ type: string; text?: string }>;
-  structuredContent?: Record<string, unknown>;
-}
-
-let hostScript: string;
-let folder: string;
-let client: Client;
-let viewHtml: string;
-
-test.beforeAll(async () => {
-  const bundled = await build({ entryPoints: [path.join(HERE, "mcp-host", "host.ts")], bundle: true, format: "iife", platform: "browser", write: false, logLevel: "silent" });
-  hostScript = bundled.outputFiles[0]!.text;
-  folder = await fs.mkdtemp(path.join(os.tmpdir(), "outpost-posters-e2e-"));
-  viewHtml = await fs.readFile(VIEW_FILE, "utf8");
-  const server = createPosterServer({ store: await LocalPosterStore.open(folder), viewHtml });
-  const [clientSide, serverSide] = InMemoryTransport.createLinkedPair();
-  await server.connect(serverSide);
-  client = new Client({ name: "e2e", version: "1" });
-  await client.connect(clientSide);
-});
-
-test.afterAll(async () => {
-  await client?.close();
-  if (folder) await fs.rm(folder, { recursive: true, force: true });
-});
-
-async function callTool(name: string, args: Record<string, unknown>): Promise<ToolResult> {
-  return (await client.callTool({ name, arguments: args })) as ToolResult;
-}
-
-function json(result: ToolResult): Record<string, unknown> {
-  return JSON.parse(result.content.map((block) => block.text ?? "").join("")) as Record<string, unknown>;
-}
-
-async function createPoster(title: string): Promise<string> {
-  return json(await callTool("create_poster", { title, html: POSTER_EXAMPLE.html, css: POSTER_EXAMPLE.css, format: POSTER_EXAMPLE.format })).id as string;
-}
-
-interface Shown {
-  view: FrameLocator;
-  canvas: FrameLocator;
-}
-
-/** Shows `id` in a fresh host page, as Claude Desktop would after the model called show_poster. */
-async function show(page: Page, id: string, theme: "light" | "dark" = "light"): Promise<Shown> {
-  await page.setViewportSize({ width: 1100, height: 900 });
-  await page.exposeFunction("relayToolCall", (params: { name: string; arguments?: Record<string, unknown> }) => callTool(params.name, params.arguments ?? {}));
-  await page.setContent(`<!doctype html><body style="margin:0;background:${theme === "dark" ? "#1f1f1f" : "#fff"}"><script>${hostScript}</script></body>`);
-  const { contents } = await client.readResource({ uri: viewUriFor(viewHtml) });
-  const html = (contents[0] as { text: string }).text;
-  const toolResult = await callTool("show_poster", { id });
-  expect(toolResult.isError).toBeFalsy();
-  await page.evaluate(
-    ({ html: view, toolResult: result, theme: hostTheme, sandbox }) => window.startHost({ html: view, toolInput: {}, toolResult: result as never, theme: hostTheme, downloadFile: true, sandbox }),
-    { html, toolResult, theme, sandbox: SAME_ORIGIN },
-  );
-  // Claude's conversation column is about this wide.
-  await page.evaluate(() => ((document.getElementById("view") as HTMLIFrameElement).style.width = "1000px"));
-  const view = page.frameLocator("#view");
-  const canvas = view.frameLocator("iframe.gjs-frame");
-  await expect(canvas.locator(".rule h2").first()).toBeVisible({ timeout: 20_000 });
-  await expect(view.locator(".poster-status")).toContainText("Double-click a text");
-  return { view, canvas };
-}
-
-const hostLog = (page: Page) => page.evaluate(() => window.hostLog as Array<{ method: string; params: Record<string, unknown> }>);
-
-/** The canvas frame itself, to evaluate in: the one frame holding the poster's page. */
-async function canvasFrame(page: Page) {
-  for (const frame of page.frames()) {
-    if (await frame.evaluate(() => document.querySelector('[data-gjs-type="wrapper"] .poster') !== null).catch(() => false)) return frame;
-  }
-  throw new Error("no canvas frame holds the poster");
-}
-
-async function rewrite(page: Page, canvas: FrameLocator, selector: string, text: string) {
-  const target = canvas.locator(selector);
-  await target.click();
-  await target.dblclick();
-  await page.keyboard.press("ControlOrMeta+A");
-  await page.keyboard.type(text);
-  // Leaving the text ends the edit.
-  await canvas.locator(".motto").click();
-}
+const { callTool, createPoster, show, folder } = usePosterHost();
 
 // openlore: scenario=ThePageFitsWhenOpened spec=poster-editor
 test("ThePageFitsWhenOpened: the whole page is in view, its CSS-variable colours drawn", async ({ page }) => {
@@ -298,8 +202,8 @@ test("AWordExportIsDownloaded and TheExportMatchesTheEditor: kept in the folder,
   expect(resources[0]!.mimeType).toBe("application/vnd.openxmlformats-officedocument.wordprocessingml.document");
   const limits = { maxEntries: 50, maxInflatedBytes: 60_000_000, maxTotalBytes: 100_000_000 };
   const picture = (bytes: Buffer) => readAllZipEntries(bytes, limits).get("word/media/poster.png")!;
-  const first = picture(await fs.readFile(path.join(folder, "Prepositions of Place.docx")));
-  const second = picture(await fs.readFile(path.join(folder, "Prepositions of Place (2).docx")));
+  const first = picture(await fs.readFile(path.join(folder(), "Prepositions of Place.docx")));
+  const second = picture(await fs.readFile(path.join(folder(), "Prepositions of Place (2).docx")));
   expect(first.readUInt32BE(16)).toBe(2481);
   expect(first.readUInt32BE(20)).toBe(3509);
   // The unsaved edit is in the second picture: the two differ, and the poster was never saved.

@@ -25,8 +25,10 @@
  */
 import fs from "node:fs/promises";
 import type { ExtensionAPI, ToolDefinition } from "@earendil-works/pi-coding-agent";
+import { registerPosterPictureHooks } from "./posterPictureHooks.ts";
 import { createDocxExtractToolDefinition } from "./docxTool.ts";
 import { createDrawioCheckToolDefinition } from "./drawioTool.ts";
+import { createPosterPicturesToolDefinition } from "./posterPicturesTool.ts";
 import { createMailExtractToolDefinition } from "./mailTool.ts";
 import { createPdfExtractToolDefinition } from "./pdfTool.ts";
 import { createPptxExtractToolDefinition } from "./pptxTool.ts";
@@ -137,6 +139,7 @@ export async function createPiOutpostTools(settings: PiOutpostToolsSettings): Pr
     createTimelineComparisonToolDefinition({ ...common, maxBytes: settings.maxBytes.structuredExchange }),
     // Always published, unlike the extractors: a diagram is asked for before any .drawio exists
     createDrawioCheckToolDefinition({ cwd, allowedRoots: common.allowedRoots }),
+    createPosterPicturesToolDefinition({ cwd, allowedRoots: common.allowedRoots }),
     createStructuredExchangeToolDefinition({ projectRoot: root }),
     createStructuredExchangeProjectModelToolDefinition({ projectRoot: root }),
     createWorkPlanToolDefinition(),
@@ -152,4 +155,6 @@ export async function createPiOutpostTools(settings: PiOutpostToolsSettings): Pr
 export default async function (pi: ExtensionAPI): Promise<void> {
   const tools = await createPiOutpostTools(parseToolsSettings(process.env[TOOLS_ENV_VAR]));
   for (const tool of tools) pi.registerTool(tool);
+  // As the embedded runtime does through its extension factories (index.ts).
+  registerPosterPictureHooks(pi);
 }

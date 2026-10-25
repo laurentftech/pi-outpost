@@ -17,6 +17,7 @@ import { App } from "@modelcontextprotocol/ext-apps";
 import type { CallToolResult } from "@modelcontextprotocol/server";
 import { mountEditor, type DeliveredFile } from "@pi-outpost/posters/editor";
 import type { PosterFormat } from "@pi-outpost/posters/format";
+import { restorePictures } from "@pi-outpost/posters/markers";
 import "@pi-outpost/posters/editor.css";
 
 /** show_poster's structured content (`ShownPoster` in src/posters/server.ts). */
@@ -29,6 +30,8 @@ interface ShownPoster {
   format: PosterFormat;
   file: string;
   folder: string;
+  /** Pictures `html` and `css` show as markers, to fetch with poster_pictures. */
+  pictures?: number;
 }
 
 const app = new App({ name: "pi-outpost posters", version: "1" });
@@ -90,12 +93,24 @@ function followHost() {
   editor.setDisplayMode(context?.displayMode === "fullscreen" ? "fullscreen" : "inline");
 }
 
-app.ontoolresult = (result) => {
+app.ontoolresult = async (result) => {
   if (result.isError || !result.structuredContent) return;
   const content = result.structuredContent as unknown as ShownPoster;
   if (typeof content.id !== "string" || typeof content.html !== "string") return;
   shown = content;
-  editor.open({ title: content.title, html: content.html, css: content.css, format: content.format, revision: content.revision });
+  let { html, css } = content;
+  if (content.pictures) {
+    // The pictures came as markers, kept out of the model's sight: fetched and put back here.
+    const fetched = await app.callServerTool({ name: "poster_pictures", arguments: { id: content.id, revision: content.revision } });
+    if (shown !== content) return;
+    const pictures = (fetched.structuredContent as { pictures?: string[] } | undefined)?.pictures;
+    if (fetched.isError || !pictures) {
+      editor.open({ title: content.title, html, css, format: content.format, revision: content.revision, readOnly: true, notice: "This poster's pictures could not be loaded: it is shown without them, and not saved from here." });
+      return;
+    }
+    ({ html, css } = restorePictures(html, css, pictures));
+  }
+  editor.open({ title: content.title, html, css, format: content.format, revision: content.revision });
 };
 app.onhostcontextchanged = () => followHost();
 

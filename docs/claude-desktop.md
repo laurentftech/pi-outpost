@@ -98,13 +98,30 @@ or without them, and also works on the free plan.
 - *"A slide about the water cycle, to show in class."* (a 16:9 slide)
 - *"Show me my poster on prepositions."*
 - *"Make the title bigger and add a rule about tidying up."* (Claude reads your touch-ups first)
+- *"Rename this poster 'Menu du jour'."* (its file in your folder is renamed too)
+- *"A menu poster with four frames for my pictures, and draw a door in one corner."* Claude lays
+  out empty frames, which you fill in the editor: it can see a picture you attach to the
+  conversation, but it cannot put it in the poster itself. It can draw simple illustrations.
 
 ### In the editor
 
 - **Double-click a text** to correct it; it rewraps in its box. Click elsewhere when done.
 - **Click an element, then drag it** to move it. **Format** opens the colours, fonts and sizes of
   the selected element.
-- **↶ ↷** undo and redo. **− Fit +** zoom; scroll with two fingers to move around the page.
+- **Your pictures:** double-click an empty frame, or any picture, and choose a file from your
+  computer; or drag a picture file from the Finder or the Explorer onto the page. **Insert ▾ ›
+  Picture…** does the same, into the selected frame or in the middle of the page. Pictures are
+  shrunk to 1200 pixels on their longest side and kept inside the poster file; a frame loses its
+  dashed border once filled.
+- **Insert ▾** also adds a **text box** (type straight away) or a **shape**: rectangle, rounded
+  rectangle, ellipse, triangle, arrow, line, star, speech bubble. With a shape selected,
+  **Format › Shape** sets its fill, its line and the line's width. **Double-click a shape** to
+  write in it; Format's text fields style that text. A selected speech bubble shows a **yellow
+  handle** at the tip of its tail: drag it to point the tail anywhere.
+- Pictures, shapes and text boxes **move** with the mouse and **resize** from their handles;
+  pictures keep their proportions. A drawing Claude made is moved and resized as one piece.
+- **↶ ↷** undo and redo. **− Fit +** zoom; scroll with two fingers to move around the page, which
+  always stays in view.
 - **💾 Save** (the first button) is disabled until you make a change, then keeps your version: Claude starts from it. If Claude changed the poster in the meantime,
   the save is refused and says so, rather than overwriting either version.
 - **↓ word** makes an A4 (or A3) page with narrow margins, to print. **↓ powerpoint** makes a
@@ -112,6 +129,11 @@ or without them, and also works on the free plan.
   The file is downloaded, and also kept beside the poster in your folder. **↓ html** gives the
   page itself, to print from a browser.
 - **Full screen** gives the editor the whole window, with the Format panel open.
+
+When Claude reads a poster you added pictures to, it sees each picture as a short marker, not the
+picture itself, and keeps it when it changes the poster. Ask it to look at the pictures ("look at
+the pictures in my poster") and it reads them as images too. A poster may hold up to 8 MB, about thirty
+pictures.
 
 ### Where your posters are
 
