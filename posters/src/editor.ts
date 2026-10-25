@@ -859,6 +859,8 @@ export function mountEditor(root: HTMLElement, host: PosterHost): PosterEditor {
         });
       }, true);
       wireTailHandle(opened, canvasDocument);
+      // Scrolling with the pointer over the page reaches the canvas's own document, not the editor's.
+      canvasDocument.addEventListener("wheel", () => requestAnimationFrame(keepPageInView), { passive: true });
       // A press in the page closes the Insert menu, as a press anywhere else in the editor does.
       canvasDocument.addEventListener("mousedown", () => setMenu(false));
       canvasDocument.addEventListener("mouseup", () => {
@@ -884,9 +886,6 @@ export function mountEditor(root: HTMLElement, host: PosterHost): PosterEditor {
     opened.on("update", () => {
       if (editor === opened) syncDirty();
     });
-    opened.on("canvas:coords canvas:zoom", () => {
-      if (editor === opened) requestAnimationFrame(keepPageInView);
-    });
     // GrapesJS's rich-text editor commits browser edits when it is disabled; this
     // event is the reliable boundary for edits made inside the canvas iframe.
     opened.on("rte:disable", () => {
@@ -897,8 +896,14 @@ export function mountEditor(root: HTMLElement, host: PosterHost): PosterEditor {
   const actions: Record<string, () => void> = {
     undo: () => editor?.UndoManager.undo(),
     redo: () => editor?.UndoManager.redo(),
-    "zoom-out": () => editor?.Canvas.setZoom(Math.max(10, editor.Canvas.getZoom() / 1.25)),
-    "zoom-in": () => editor?.Canvas.setZoom(Math.min(400, editor.Canvas.getZoom() * 1.25)),
+    "zoom-out": () => {
+      editor?.Canvas.setZoom(Math.max(10, editor.Canvas.getZoom() / 1.25));
+      requestAnimationFrame(keepPageInView);
+    },
+    "zoom-in": () => {
+      editor?.Canvas.setZoom(Math.min(400, editor.Canvas.getZoom() * 1.25));
+      requestAnimationFrame(keepPageInView);
+    },
     "zoom-fit": () => fitZoom(),
     style: () => setPanel(page.dataset.posterPanel !== "open"),
     insert: () => setMenu(Boolean(insertMenu.hidden)),
@@ -922,6 +927,11 @@ export function mountEditor(root: HTMLElement, host: PosterHost): PosterEditor {
   const editorDocument = root.ownerDocument;
   editorDocument.addEventListener("dragover", refuseDrop);
   editorDocument.addEventListener("drop", refuseDrop);
+  // The person scrolls or pinches over the page: kept in view once GrapesJS has moved it. Only
+  // the person's own gestures: reacting to every canvas move, fitting included, made the clamp
+  // and the fit correct each other on a runner a pixel apart, the page never still under a click.
+  const afterGesture = () => requestAnimationFrame(keepPageInView);
+  canvasArea.addEventListener("wheel", afterGesture, { passive: true });
   const onResize = () => fitZoom();
   window.addEventListener("resize", onResize);
   // The canvas also changes size without the window doing so: the bar wrapping onto a

@@ -91,11 +91,11 @@ Insert → a shape appends `<div class="poster-shape"><svg viewBox="0 0 100 100"
 
 ### 4b. The page stays in view
 
-The infinite canvas lets two-finger scrolling move around a zoomed page, and nothing stopped it from moving the page out of the view. After every `canvas:coords` and `canvas:zoom` event, on the next frame, the editor compares the canvas frame's box with the visible area, then moves the canvas back by the difference through `setCoords`, which works in screen pixels:
+The infinite canvas lets two-finger scrolling move around a zoomed page, and nothing stopped it from moving the page out of the view. After the person's own gestures (a wheel or trackpad scroll or a pinch over the page, the zoom buttons), on the next frame, the editor compares the canvas frame's box with the visible area, then moves the canvas back by the difference through `setCoords`, which works in screen pixels:
 - a page smaller than the area is kept wholly inside it, 16 px from its edges;
 - a larger page can never bring an edge more than 16 px inside.
 
-A flag keeps the correction from reacting to itself.
+A flag keeps the correction from reacting to itself. It first listened to every `canvas:coords` and `canvas:zoom` event. On the CI runner, a pixel's disagreement between that clamp and GrapesJS's own fit set the two correcting each other, so the page was never still under a click; it now follows gestures only.
 
 ### 5. A drawing is an element holding one SVG, and the SVG lets the mouse through
 
