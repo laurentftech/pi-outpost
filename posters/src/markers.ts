@@ -16,7 +16,26 @@ import { PosterRefusal } from "./format.ts";
 const PICTURE = /data:image\/[^"'()\s]+/g;
 const MARKER = /poster-picture:(\d+)/g;
 /** The inventory written at the top of the markup, for the model to know which picture is which. */
-const INVENTORY = /<!-- poster pictures:[^>]*-->\n?/g;
+const INVENTORY_OPEN = "<!-- poster pictures:";
+
+/**
+ * The text without any inventory comment. Searched, not matched with a pattern: a pattern
+ * between the comment's opening and `-->` is polynomial on a text repeating the opening
+ * (CodeQL js/polynomial-redos), and this is text a model sends.
+ */
+function withoutInventory(text: string): string {
+  let out = "";
+  let from = 0;
+  for (;;) {
+    const start = text.indexOf(INVENTORY_OPEN, from);
+    if (start === -1) return out + text.slice(from);
+    const end = text.indexOf("-->", start + INVENTORY_OPEN.length);
+    if (end === -1) return out + text.slice(from);
+    out += text.slice(from, start);
+    from = end + 3;
+    if (text[from] === "\n") from += 1;
+  }
+}
 
 export interface HiddenPictures {
   html: string;
@@ -54,7 +73,7 @@ export function hidePictures(html: string, css: string): HiddenPictures {
       names.push(named ? nameAt(text, index) : "in the stylesheet");
       return `poster-picture:${pictures.length}`;
     });
-  const hiddenHtml = hide(html.replace(INVENTORY, ""), true);
+  const hiddenHtml = hide(withoutInventory(html), true);
   const hiddenCss = hide(css, false);
   if (pictures.length === 0) return { html, css, pictures };
   const entries = pictures.map((picture, index) => `poster-picture:${index + 1}${names[index] ? ` (${names[index]})` : ""} ${sizeOf(picture)}`);
@@ -79,5 +98,5 @@ export function restorePictures(html: string, css: string, pictures: readonly st
       }
       return picture;
     });
-  return { html: restore(html.replace(INVENTORY, "")), css: restore(css) };
+  return { html: restore(withoutInventory(html)), css: restore(css) };
 }

@@ -63,3 +63,11 @@ test("restorePictures: a marker naming no picture is refused, naming it", () => 
 test("restorePictures: a model that wrote no inventory and no marker gets its poster as sent", () => {
   assert.deepEqual(restorePictures("<p>plain</p>", ".p{}", [BREAD]), { html: "<p>plain</p>", css: ".p{}" });
 });
+
+test("An inventory repeated many times, or left unclosed, is handled in linear time", () => {
+  const hostile = `${"<!-- poster pictures:".repeat(50_000)}<p>x</p>`;
+  const started = performance.now();
+  assert.deepEqual(restorePictures(hostile, "", []), { html: hostile, css: "" });
+  assert.equal(restorePictures("<!-- poster pictures: a --><!-- poster pictures: b -->\n<p>y</p>", "", []).html, "<p>y</p>");
+  assert.ok(performance.now() - started < 1000);
+});
