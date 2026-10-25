@@ -44,4 +44,5 @@ test("The skill tells the agent to read posters with read, keep markers, and lea
   assert.match(SKILL, /read the file first\*\* with `read`, never with `bash`/);
   assert.match(SKILL, /keep markers exactly as you read them/);
   assert.match(SKILL, /double-click\s+each frame in the editor/);
+  assert.match(SKILL, /call `poster_pictures` with the file's path to look at them/);
 });

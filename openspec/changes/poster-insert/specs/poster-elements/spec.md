@@ -211,3 +211,16 @@ When the model sends back a poster holding markers, each marker SHALL be replace
 - **GIVEN** a `.poster.html` file holding pictures, read by the agent as markers
 - **WHEN** the agent edits a text in it, or writes the whole file back with the markers
 - **THEN** the file on disk holds the edit and the pictures, unchanged
+
+### Requirement: TheAgentCanLookAtAPostersPictures
+
+pi-outpost SHALL give the agent a tool that answers the pictures of a poster file as images it can look at, each announced by its marker, up to eight per call, or those it names. A model that does not take images SHALL be told so and sent no picture data. The tool SHALL read only inside the agent's read zone.
+
+#### Scenario: TheAgentSeesWhatAFrameHolds
+- **GIVEN** a poster file whose frame named "bread" holds a picture of a family
+- **WHEN** an agent whose model takes images asks to look at the poster's pictures
+- **THEN** it receives that picture as an image after its marker
+
+#### Scenario: AModelWithoutVisionIsToldSo
+- **WHEN** an agent whose model takes no images asks to look at the poster's pictures
+- **THEN** it is told the model cannot see them and not to guess, and no picture data is sent

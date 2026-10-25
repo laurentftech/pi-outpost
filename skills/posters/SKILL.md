@@ -32,7 +32,9 @@ to print) or PowerPoint (a slide to show). You cannot see it rendered.
    colours, positions and pictures — unless they asked otherwise. Each picture shows as a
    marker such as `src="poster-picture:2"`: keep markers exactly as you read them, and the
    pictures stay in the file. Prefer `edit` for a change; when you write the whole file
-   back, keep every marker.
+   back, keep every marker. A marker and its frame's name do not tell you what a picture
+   shows: call `poster_pictures` with the file's path to look at them before describing,
+   captioning or moving one.
 
 How to write a poster:
 - The markup is the content of one page of the chosen format, in CSS pixels: A4-portrait 794 x 1123; A4-landscape 1123 x 794; A3-portrait 1123 x 1587; A3-landscape 1587 x 1123; slide-16:9 1280 x 720. Pick slide-16:9 for a poster meant to be projected or shown in PowerPoint, A4 or A3 to print. Lay it out to fill exactly that page: the outer element is width:100%; height:100%.

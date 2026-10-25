@@ -85,6 +85,8 @@
   - *Codestral then repeated an identical no-op edit until stopped: a model loop, not the hooks, which pass edits through unchanged.*
   - *README posters section updated.*
 
+- [x] 5.6 Add `poster_pictures` to pi-outpost's tools (embedded, sandboxed and RPC lists): the pictures of a `.poster.html` as images after their markers, up to eight or those named; a model without image input is told so; confined like `drawio_check`. Teach it in the posters skill. Verify with `server/test/posterPicturesTool.test.ts` scenarios `TheAgentSeesWhatAFrameHolds` and `AModelWithoutVisionIsToldSo`, the tool-list tests, and one live run with a vision model. *Done 2026-10-25 with google/gemini-2.5-flash on the user's renamed poster: asked what the "pain" frame shows, it called `poster_pictures` itself, received the 196 kB JPEG, and answered a family under an "AMOUR EN FAMILLE" banner, where Claude had said "your bread picture" from the frame's name.*
+
 ## 6. Integration
 
 - [x] 6.1 Write `openspec/changes/poster-insert/scenario-coverage.md`, mapping every scenario (`rg '^#### Scenario:' openspec/changes/poster-insert`) to its test, reading the assertions. Verify with `node scripts/check-scenario-coverage.mjs --change poster-insert` and `openspec validate poster-insert --strict`.

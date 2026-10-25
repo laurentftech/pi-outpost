@@ -206,6 +206,7 @@ import { checkPiPackages, hintPiPackagesBehind, installNewerPiPackage, listPiPac
 import { createStructuredExchangeFigureToolDefinition } from "./structuredExchangeFigureTool.ts";
 import { createTimelineComparisonToolDefinition } from "./timelineComparisonTool.ts";
 import { createDrawioCheckToolDefinition } from "./drawioTool.ts";
+import { createPosterPicturesToolDefinition } from "./posterPicturesTool.ts";
 import { createWorkPlanExtendedToolDefinition, createWorkPlanToolDefinition, WORK_PLAN_EXTENDED_TOOL, WORK_PLAN_TOOL } from "./workPlanTool.ts";
 import { DOCUMENT_TOOLS, documentToolsFor, documentToolsForToolCall, documentToolsForWrittenPaths } from "./documentTools.ts";
 import {
@@ -1487,6 +1488,7 @@ const makeCreateRuntime =
                 writableRoot: await fs.realpath(cwd),
               }),
               createDrawioCheckToolDefinition({ cwd, allowedRoots: [await fs.realpath(cwd)] }),
+              createPosterPicturesToolDefinition({ cwd, allowedRoots: [await fs.realpath(cwd)] }),
               createStructuredExchangeToolDefinition({ projectRoot: cwd }),
               workPlanTool,
               workPlanExtendedTool,

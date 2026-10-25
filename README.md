@@ -229,7 +229,8 @@ one needs, the command that proves it works, and the caution that goes with it.
   zoom and fit. **Insert ▾** adds your own pictures (also by double-clicking an empty frame the
   agent laid out, or by dropping a file on the page), text boxes and shapes; pictures are shrunk
   to 1200 px and kept inside the file, and the agent reads each one as a short marker
-  (`poster-picture:1`) that it keeps when it edits the poster. **💾** saves back to the file, refused if it changed on disk meanwhile, and the
+  (`poster-picture:1`) that it keeps when it edits the poster; with a model that reads images,
+  `poster_pictures` lets it look at them. **💾** saves back to the file, refused if it changed on disk meanwhile, and the
   viewer asks before dropping unsaved touch-ups. **💾 Save** is disabled until you make a change.
   **↓ word** gives an A4 page to print,
   **↓ powerpoint** a 16:9 slide, **↓ html** the page itself — the poster as a picture at print

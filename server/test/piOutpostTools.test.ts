@@ -155,7 +155,7 @@ describe("createPiOutpostTools", () => {
 
   test("returns the tools the agent needs, in the documented order", async () => {
     const tools = await createPiOutpostTools({ cwd: root, maxBytes: VALID.maxBytes });
-    assert.equal(tools.length, 22 + WORD_COMPARE.length);
+    assert.equal(tools.length, 23 + WORD_COMPARE.length);
     const names = tools.map((t) => t.name);
     assert.deepEqual(names, [
       "pdf_extract",
@@ -179,6 +179,7 @@ describe("createPiOutpostTools", () => {
       "write_structure_table",
       "compare_timelines",
       "drawio_check",
+      "poster_pictures",
       "present_structure",
       "present_project_model",
       "work_plan",
@@ -241,7 +242,7 @@ describe("default export (extension entry)", () => {
 
       await piOutpostExtension(pi);
 
-      assert.equal(registered.length, 22 + WORD_COMPARE.length);
+      assert.equal(registered.length, 23 + WORD_COMPARE.length);
       // The RPC child hides a poster's pictures from the agent as the embedded runtime does.
       assert.deepEqual(events.sort(), ["tool_call", "tool_result"]);
       assert.deepEqual(
@@ -265,7 +266,8 @@ describe("default export (extension entry)", () => {
           "write_structure_figure",
           "write_structure_table",
           "compare_timelines",
-      "drawio_check",
+          "drawio_check",
+          "poster_pictures",
           "present_structure",
           "present_project_model",
           "work_plan",
