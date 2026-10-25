@@ -234,3 +234,15 @@ test("Open WebUI: a poster near the 8 MB ceiling is saved through the embed's ca
   assert.equal(saved.statusCode, 200, saved.body.slice(0, 200));
   assert.equal(saved.json().revision, 3);
 });
+
+// openlore: scenario=TheNewTitleIsListed spec=openwebui-posters
+test("TheNewTitleIsListed: update_poster with a title retitles the poster", async (t) => {
+  const { call } = await testApp(t);
+  const { id } = (await call("create_poster", POSTER)).json();
+  const updated = await call("update_poster", { id, base_revision: 1, title: "Menu du jour", html: POSTER.html, css: POSTER.css, format: POSTER.format });
+  assert.equal(updated.statusCode, 200, updated.body);
+  assert.equal(updated.json().title, "Menu du jour");
+  assert.equal((await call("get_poster", { id })).json().title, "Menu du jour");
+  assert.deepEqual((await call("list_posters")).json().posters.map((entry: { title: string }) => entry.title), ["Menu du jour"]);
+  assert.equal((await call("update_poster", { id, base_revision: 2, title: "  ", html: POSTER.html, css: POSTER.css, format: POSTER.format })).statusCode, 422);
+});

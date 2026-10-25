@@ -192,9 +192,10 @@ export class PosterStore {
   }
 
   /** A new revision from `baseRevision`, refused when another was written since. */
-  async revise(owner: string, id: string, baseRevision: number, content: PosterContent): Promise<PosterRevision> {
+  /** A new revision from `baseRevision`; with a `title`, the poster is retitled too. */
+  async revise(owner: string, id: string, baseRevision: number, content: PosterContent, title?: string): Promise<PosterRevision> {
     const ownerHash = createHash("sha256").update(owner).digest("hex");
-    return this.reviseFor(ownerHash, this.posterDirForHash(ownerHash, id), id, baseRevision, content);
+    return this.reviseFor(ownerHash, this.posterDirForHash(ownerHash, id), id, baseRevision, content, title);
   }
 
   /** Save through a signed browser capability whose owner claim is already hashed. */
@@ -202,7 +203,7 @@ export class PosterStore {
     return this.reviseFor(ownerHash, this.posterDirForHash(ownerHash, id), id, baseRevision, content);
   }
 
-  private async reviseFor(ownerHash: string, dir: string, id: string, baseRevision: number, content: PosterContent): Promise<PosterRevision> {
+  private async reviseFor(ownerHash: string, dir: string, id: string, baseRevision: number, content: PosterContent, title?: string): Promise<PosterRevision> {
     checked(content);
     return this.locked(`poster:${ownerHash}:${id}`, async () => {
       let meta: PosterMeta;
@@ -221,9 +222,9 @@ export class PosterStore {
       const revision = meta.revision + 1;
       const now = new Date().toISOString();
       await fsp.writeFile(path.join(dir, `${revision}.json`), JSON.stringify({ ...content, at: now }), { flag: "wx" });
-      const updated: PosterMeta = { ...meta, revision, updated: now };
+      const updated: PosterMeta = { ...meta, title: title?.trim() || meta.title, revision, updated: now };
       await writeAtomically(path.join(dir, "meta.json"), JSON.stringify(updated));
-      return { id, title: meta.title, revision, current: revision, ...content };
+      return { id, title: updated.title, revision, current: revision, ...content };
     });
   }
 }
@@ -365,7 +366,7 @@ export function posterOperations() {
       "update_poster",
       "Change a poster",
       UPDATE_POSTER_DESCRIPTION,
-      { id: idProperty, base_revision: { type: "integer", description: "The revision you read with get_poster." }, ...contentProperties },
+      { id: idProperty, base_revision: { type: "integer", description: "The revision you read with get_poster." }, title: { type: "string", description: "A new title for the poster, when the user wants it renamed; downloads are named after it. Omit to keep the title." }, ...contentProperties },
       ["id", "base_revision", "html", "css", "format"],
     ),
     "/show_poster": operation("show_poster", "Show a poster to the user", SHOW_POSTER_DESCRIPTION, { id: idProperty }, ["id"]),
@@ -436,7 +437,9 @@ export function registerPosterRoutes(app: FastifyInstance, store: PosterStore, o
       if (typeof id !== "string") throw new PosterRefusal(422, "id is required: the poster's identifier, from list_posters");
       if (!Number.isInteger(base)) throw new PosterRefusal(422, "base_revision is required: the revision you read with get_poster");
       const read = await store.get(request.owner, id, base as number);
-      return answer(await store.revise(request.owner, id, base as number, restored(contentOf(request.body), read)));
+      const title = request.body?.title;
+      if (title !== undefined && (typeof title !== "string" || title.trim() === "")) throw new PosterRefusal(422, "title, when given, is the poster's new title, as text");
+      return answer(await store.revise(request.owner, id, base as number, restored(contentOf(request.body), read), title as string | undefined));
     } catch (error) {
       return refuse(reply, error);
     }

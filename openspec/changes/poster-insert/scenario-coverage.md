@@ -1,6 +1,6 @@
 # Scenario coverage — poster-insert
 
-Every `#### Scenario:` of the change's three delta specs (`rg '^#### Scenario:' openspec/changes/poster-insert`, 40 in all), the test that would fail if its contract broke, and what that test asserts. Browser tests run on Chromium. The editor tests run in the MCP host frame Claude Desktop uses (`e2e/mcp-poster-host.ts`, `allow-scripts allow-same-origin`). The same editor is also driven in pi-outpost's file viewer (`e2e/poster-files.spec.ts`) and in the Open WebUI embed (`e2e/openwebui-posters.spec.ts`).
+Every `#### Scenario:` of the change's five delta specs (`rg '^#### Scenario:' openspec/changes/poster-insert`, 43 in all), the test that would fail if its contract broke, and what that test asserts. Browser tests run on Chromium. The editor tests run in the MCP host frame Claude Desktop uses (`e2e/mcp-poster-host.ts`, `allow-scripts allow-same-origin`). The same editor is also driven in pi-outpost's file viewer (`e2e/poster-files.spec.ts`) and in the Open WebUI embed (`e2e/openwebui-posters.spec.ts`).
 
 ## poster-documents
 
@@ -12,6 +12,19 @@ Every `#### Scenario:` of the change's three delta specs (`rg '^#### Scenario:' 
 | APosterWithSeveralPicturesFits | covered | `posters/test/format.test.ts` — "APosterWithSeveralPicturesFits": six 250 kB pictures as base64 pass `checkPoster` unchanged. `openwebui/test/posters.test.ts` — "a poster near the 8 MB ceiling is saved through the embed's capability": revision 3, status 200. `server/test/fileBrowser.test.ts` — "opens and saves a poster holding pictures beyond the 1 MB preview limit": a 6 MB poster opens and saves, the same file named `.html` is refused. |
 | EveryHostGivesTheSameGuide | covered | `posters/test/guide.test.ts` — "EveryHostGivesTheSameGuide (pi-outpost)": the skill holds `POSTER_GUIDE` and the example verbatim. `mcp/test/posters.test.ts` and `openwebui/test/posters.test.ts`: the tool descriptions embed `POSTER_GUIDE`. |
 | TheGuideTeachesSlotsAndDrawings | covered | `posters/test/guide.test.ts` — "TheGuideTeachesSlotsAndDrawings": the guide shows `<img data-poster-picture="bread" alt="bread">`, says the editor removes the empty look once filled, asks for `<div class="drawing">` holding one `<svg>` with a viewBox and no text, tells to keep markers exactly, and no longer says "No picture embedded as data" or "small inline SVG shapes". The example holds a drawing in its holder and a dashed empty frame. |
+
+## mcp-poster-app
+
+| Scenario | Coverage | Evidence |
+| --- | --- | --- |
+| ThePosterFileFollowsItsNewTitle | covered | `mcp/test/posters.test.ts` — "ThePosterFileFollowsItsNewTitle": after `update_poster` with title "Menu du jour", the folder holds only "Menu du jour.poster.html", whose page title is the new one; `get_poster` by the same id reads revision 2 under the new title and revision 1 still reads; the same title again renames nothing. |
+| ARenameNeverOverwrites | covered | `mcp/test/posters.test.ts` — "ARenameNeverOverwrites": a second poster retitled "Menu du jour" gets "Menu du jour (2).poster.html", the first file's bytes are unchanged, and the old "Draft.poster.html" is gone. |
+
+## openwebui-posters
+
+| Scenario | Coverage | Evidence |
+| --- | --- | --- |
+| TheNewTitleIsListed | covered | `openwebui/test/posters.test.ts` — "TheNewTitleIsListed": the update answers the new title, `get_poster` and `list_posters` give "Menu du jour", and a blank title is refused with 422. |
 
 ## poster-editor
 

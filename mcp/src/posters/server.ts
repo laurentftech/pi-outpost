@@ -156,15 +156,20 @@ export function createPosterServer(options: ServerOptions): McpServer {
     {
       title: "Change a poster",
       description: `Replaces a poster's markup and stylesheet with a new version made from the revision you read. Start from get_poster's html and css and keep everything the user changed there (texts, colours, positions, and every poster-picture marker, which stands for a picture the user put in) unless they asked otherwise. Then call show_poster.\n\n${POSTER_GUIDE}`,
-      inputSchema: z.object({ id, base_revision: z.number().int().describe("The revision you read with get_poster."), ...content }),
+      inputSchema: z.object({
+        id,
+        base_revision: z.number().int().describe("The revision you read with get_poster."),
+        title: z.string().optional().describe("A new title for the poster, when the user wants it renamed: its file is renamed after it. Omit to keep the title."),
+        ...content,
+      }),
     },
-    async ({ id: posterId, base_revision: base, html, css, format }) => {
+    async ({ id: posterId, base_revision: base, title, html, css, format }) => {
       called("update_poster");
       try {
         // The markers the model read stand for the pictures of the revision it read.
         const read = await store.get(posterId, base);
         const restored = restorePictures(html, css, hidePictures(read.html, read.css).pictures);
-        return text(answer(await store.revise(posterId, base, { ...restored, format }, "model")));
+        return text(answer(await store.revise(posterId, base, { ...restored, format }, "model", title)));
       } catch (error) {
         return refusal(error);
       }

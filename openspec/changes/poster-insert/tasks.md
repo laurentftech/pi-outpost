@@ -53,7 +53,11 @@
   Record what broke and fix it.
 - [x] 3.3 Pack `pi-outpost-posters.mcpb` and check in Claude Desktop, through the user: fill a slot, insert a picture, a text box and a shape, recolour the shape, move and resize each, save, ask Claude to change a title, then check the pictures are still there and the Word export shows everything. Update `docs/claude-desktop.md`. *Done 2026-10-25 by the user in Claude Desktop with the packed extension: the file picker, Finder drop, moving a picture in its frame, the frame's dashes cleared on fill, then shapes and texts added; asked to retitle the poster "Menu du jour", Claude rewrote it from the markers and the picture, the shapes and the texts were all kept. Renaming the file is not offered by any poster tool (follow-up).*
 
+- [x] 3.4 Rename a poster: `update_poster` takes an optional `title`; the store retitles the poster and renames its file after it, numbered rather than overwriting, keeping id, history and exports. Verify with `mcp/test/posters.test.ts` scenarios `ThePosterFileFollowsItsNewTitle` and `ARenameNeverOverwrites`.
+
 ## 4. Open WebUI
+
+- [x] 4.3 `update_poster` takes an optional `title` that retitles the poster. Verify with `openwebui/test/posters.test.ts` scenario `TheNewTitleIsListed`.
 
 - [x] 4.1 Apply `hidePictures` and `restorePictures` in the tool server's `get_poster` and `update_poster`, as in 3.1. Make the embed's save endpoint accept a poster at the 8 MB ceiling. Verify with `openwebui/test/posters.test.ts`: markers out, pictures restored, unknown marker refused, an 8 MB poster saved through the capability.
 - [x] 4.2 Add to `e2e/openwebui-posters.spec.ts`, with the same-origin setting on: fill a slot, insert a shape, save, then `get_poster` returns markers. Without same-origin, no Insert control is offered. Update `docs/openwebui.md`.
@@ -88,5 +92,4 @@
 
 - Archive the change from `main` after the PR merges, never from the feature branch.
 - `poster-illustrator` (pictures generated through an image API) is the next change in this line.
-- Renaming a poster's file: no tool does it today; the file keeps the name it was created with.
 - Switching files from the tree drops an editor's unsaved changes without asking (all editors), found on the bench.

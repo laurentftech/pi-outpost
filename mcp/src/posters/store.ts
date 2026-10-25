@@ -156,8 +156,12 @@ export class LocalPosterStore {
     return { id, title: meta.title, file: meta.file, revision: wanted, current: meta.revision, ...stored };
   }
 
-  /** A new revision from `base`, refused when someone else saved since: nothing is overwritten unseen. */
-  async revise(id: string, base: number, content: PosterContent, by: Author): Promise<PosterRevision> {
+  /**
+   * A new revision from `base`, refused when someone else saved since: nothing is overwritten unseen.
+   * With a `title`, the poster is retitled and its file renamed after it, never over another file:
+   * the id, the history and earlier exports keep their names.
+   */
+  async revise(id: string, base: number, content: PosterContent, by: Author, title?: string): Promise<PosterRevision> {
     checkPoster(content);
     return this.locked(id, async () => {
       const meta = await this.readMeta(id);
@@ -168,7 +172,15 @@ export class LocalPosterStore {
           { current_revision: meta.revision, by: latest.by },
         );
       }
-      return this.write({ ...meta, revision: meta.revision + 1, updated: new Date().toISOString() }, content, by);
+      const retitled = title?.trim();
+      if (!retitled || retitled === meta.title) return this.write({ ...meta, revision: meta.revision + 1, updated: new Date().toISOString() }, content, by);
+      const stem = fileStemOf(retitled);
+      let file = `${stem}${POSTER_SUFFIX}`;
+      for (let n = 2; file !== meta.file && (await exists(path.join(this.root, file))); n++) file = `${stem} (${n})${POSTER_SUFFIX}`;
+      const previous = this.posterFile(meta);
+      const written = await this.write({ ...meta, title: retitled, file, revision: meta.revision + 1, updated: new Date().toISOString() }, content, by);
+      if (file !== meta.file) await fs.rm(previous, { force: true });
+      return written;
     });
   }
 

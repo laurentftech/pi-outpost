@@ -231,3 +231,33 @@ test("AnUnknownMarkerIsRefused: a marker naming no picture of the revision read 
   assert.equal(fresh.isError, true);
   assert.match(fresh.text, /\(it has none\)/);
 });
+
+// openlore: scenario=ThePosterFileFollowsItsNewTitle spec=mcp-poster-app
+test("ThePosterFileFollowsItsNewTitle: retitled, the file is renamed, the id and history stay, the old file is gone", async () => {
+  const { call, folder } = await connect();
+  const id = (await call("create_poster", poster("How many - How much"))).json.id as string;
+  const updated = await call("update_poster", { id, base_revision: 1, title: "Menu du jour", html: POSTER_EXAMPLE.html, css: POSTER_EXAMPLE.css, format: "A4-portrait" });
+  assert.equal(updated.isError, undefined, updated.text);
+  const files = (await fs.readdir(folder)).filter((name) => name.endsWith(".poster.html"));
+  assert.deepEqual(files, ["Menu du jour.poster.html"]);
+  assert.equal(readPage(await fs.readFile(path.join(folder, "Menu du jour.poster.html"), "utf8")).title, "Menu du jour");
+  const read = await call("get_poster", { id });
+  assert.equal(read.json.title, "Menu du jour");
+  assert.equal(read.json.revision, 2);
+  assert.equal((await call("get_poster", { id, revision: 1 })).json.revision, 1);
+  // The same title again is no rename.
+  await call("update_poster", { id, base_revision: 2, title: "Menu du jour", html: POSTER_EXAMPLE.html, css: POSTER_EXAMPLE.css, format: "A4-portrait" });
+  assert.deepEqual((await fs.readdir(folder)).filter((name) => name.endsWith(".poster.html")), ["Menu du jour.poster.html"]);
+});
+
+// openlore: scenario=ARenameNeverOverwrites spec=mcp-poster-app
+test("ARenameNeverOverwrites: a poster retitled after another one's file is numbered, the other untouched", async () => {
+  const { call, folder } = await connect();
+  await call("create_poster", poster("Menu du jour"));
+  const first = await fs.readFile(path.join(folder, "Menu du jour.poster.html"), "utf8");
+  const id = (await call("create_poster", poster("Draft"))).json.id as string;
+  const updated = await call("update_poster", { id, base_revision: 1, title: "Menu du jour", html: POSTER_EXAMPLE.html.replace("Our class rules", "Second"), css: POSTER_EXAMPLE.css, format: "A4-portrait" });
+  assert.equal(updated.json.file, "Menu du jour (2).poster.html");
+  assert.equal(await fs.readFile(path.join(folder, "Menu du jour.poster.html"), "utf8"), first);
+  assert.ok(!(await fs.readdir(folder)).includes("Draft.poster.html"));
+});

@@ -98,6 +98,7 @@ or without them, and also works on the free plan.
 - *"A slide about the water cycle, to show in class."* (a 16:9 slide)
 - *"Show me my poster on prepositions."*
 - *"Make the title bigger and add a rule about tidying up."* (Claude reads your touch-ups first)
+- *"Rename this poster 'Menu du jour'."* (its file in your folder is renamed too)
 - *"A menu poster with four frames for my pictures, and draw a door in one corner."* Claude lays
   out empty frames, which you fill in the editor: it can see a picture you attach to the
   conversation, but it cannot put it in the poster itself. It can draw simple illustrations.
