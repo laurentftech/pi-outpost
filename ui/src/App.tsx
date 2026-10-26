@@ -150,6 +150,7 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
     fetchGitDiff,
     clearGitDiff,
     fetchGitLog,
+    closeGitLog,
     fetchGitShow,
     clearGitShow,
     fetchGitFileHistory,
@@ -1002,6 +1003,7 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
             onRefreshAgentResourceRepositories={refreshAgentResourceRepositories}
             onUpdateAgentResourceRepository={updateAgentResourceRepository}
             onFetchGitLog={fetchGitLog}
+            onCloseGitLog={closeGitLog}
             onShowCommit={fetchGitShow}
             terminalOpen={terminalOpen}
             onToggleTerminal={terminalEnabled ? () => setTerminalOpen((prev) => !prev) : undefined}

@@ -17,6 +17,8 @@ interface GitMenuProps {
   selected: string | null;
   log: GitLogState | null;
   onFetchLog: (repo: string) => void;
+  /** The menu closed: its map is no longer followed. */
+  onCloseLog: () => void;
   onShowCommit: (repo: string, sha: string) => void;
 }
 
@@ -47,9 +49,18 @@ function repoName(repo: string): string {
  * projects the loose files at the root are exactly where a README lives, and a chip
  * naming a project the user has left is worse than one admitting it has none.
  */
-export function GitMenu({ status, selected, log, onFetchLog, onShowCommit }: GitMenuProps) {
+export function GitMenu({ status, selected, log, onFetchLog, onCloseLog, onShowCommit }: GitMenuProps) {
   const [open, setOpen] = useState(false);
-  const ref = useClickOutside(() => setOpen(false));
+  // Told on every way the menu closes, and only then: a closed menu that went on
+  // following its repository asked for a map nobody looked at, and its failures had
+  // nowhere to go but the conversation.
+  const close = () => {
+    setOpen(false);
+    onCloseLog();
+  };
+  const ref = useClickOutside(() => {
+    if (open) close();
+  });
   const repos = status?.repos ?? [];
   const owner = selected === null ? null : repoForPath(repos, selected);
   // Nothing touched yet: a workspace with one repository has only one answer, and a
@@ -66,7 +77,9 @@ export function GitMenu({ status, selected, log, onFetchLog, onShowCommit }: Git
   // slower answer landing after a newer one, would otherwise put one project's
   // commits under another's name - and clicking one asks for a commit id the named
   // repository has never heard of.
-  const entries = current !== null && log?.repo === current.repo ? log.entries : null;
+  const own = current !== null && log?.repo === current.repo ? log : null;
+  const entries = own?.entries ?? null;
+  const failure = own?.error ?? null;
   const graph = useMemo(() => (entries === null ? null : layoutCommitGraph(entries)), [entries]);
 
   // The menu is a panel, not a dialog: it stays open while the user walks the tree,
@@ -86,8 +99,9 @@ export function GitMenu({ status, selected, log, onFetchLog, onShowCommit }: Git
         disabled={current === null}
         onClick={() => {
           if (current === null) return;
-          setOpen(!open);
-          if (!open) onFetchLog(current.repo);
+          if (open) return close();
+          setOpen(true);
+          onFetchLog(current.repo);
         }}
         title={current === null ? "no repository selected" : `git history — ${current.repo === "" ? "this project" : current.repo}`}
         className={`${HEADER_CONTROL_SHRINKS} max-w-full border-zinc-300 font-mono text-zinc-500 hover:border-zinc-400 hover:text-zinc-700 disabled:cursor-default disabled:hover:border-zinc-300 disabled:hover:text-zinc-500 dark:border-zinc-800 dark:text-zinc-400 dark:hover:border-zinc-600 dark:hover:text-zinc-200 dark:disabled:hover:border-zinc-800 dark:disabled:hover:text-zinc-400`}
@@ -99,7 +113,12 @@ export function GitMenu({ status, selected, log, onFetchLog, onShowCommit }: Git
       </button>
       {open && current !== null && (
         <div className="absolute left-0 top-full z-20 mt-1 max-h-96 w-[26rem] max-w-[80vw] overflow-y-auto rounded-lg border border-zinc-200 bg-white py-1 shadow-xl dark:border-zinc-700 dark:bg-zinc-900">
-          {entries === null && <div className="px-3 py-2 text-xs text-zinc-500">loading…</div>}
+          {failure !== null && (
+            <div role="alert" className="px-3 py-2 text-xs text-red-600 dark:text-red-400">
+              history unavailable: {failure}
+            </div>
+          )}
+          {entries === null && failure === null && <div className="px-3 py-2 text-xs text-zinc-500">loading…</div>}
           {entries?.length === 0 && <div className="px-3 py-2 text-xs text-zinc-500">no commits</div>}
           {graph?.rows.map((row) => {
             const { entry } = row;
@@ -109,7 +128,7 @@ export function GitMenu({ status, selected, log, onFetchLog, onShowCommit }: Git
                 type="button"
                 onClick={() => {
                   onShowCommit(current.repo, entry.sha);
-                  setOpen(false);
+                  close();
                 }}
                 style={{ height: ROW_H }}
                 className="flex w-full items-center gap-2 pl-2 pr-3 text-left text-sm hover:bg-zinc-100 dark:hover:bg-zinc-800"

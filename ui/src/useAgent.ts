@@ -133,7 +133,12 @@ export type SessionSearch = {
  */
 export interface GitLogState {
   repo: string;
-  entries: GitCommitLogEntry[];
+  /** null while the first answer for this repository is awaited, or after it failed. */
+  entries: GitCommitLogEntry[] | null;
+  /** Why the last request failed; shown in the menu, never in the conversation. */
+  error: string | null;
+  /** The request a failure is matched against. */
+  requestId: string;
 }
 
 /** Latest git working-tree status; null until the first git_status answer. */
@@ -559,6 +564,8 @@ type Action =
   | { type: "git_baseline_started"; path: string; requestId: string }
   | { type: "git_baseline_cleared" }
   | { type: "git_show_cleared" }
+  | { type: "git_log_started"; repo: string; requestId: string }
+  | { type: "git_log_closed" }
   | { type: "git_file_history_started"; path: string; requestId: string }
   | { type: "git_file_history_closed" }
   | { type: "git_file_diff_started"; base: GitRevision; target: GitRevision; requestId: string }
@@ -868,6 +875,12 @@ function reduce(state: AgentState, action: Action): AgentState {
   }
   if (action.type === "git_baseline_cleared") return { ...state, gitBaseline: null };
   if (action.type === "git_show_cleared") return { ...state, gitShow: null, gitLog: state.gitLog };
+  if (action.type === "git_log_started") {
+    // Asking again for the same repository keeps its map on screen until the answer lands.
+    const entries = state.gitLog?.repo === action.repo ? state.gitLog.entries : null;
+    return { ...state, gitLog: { repo: action.repo, entries, error: null, requestId: action.requestId } };
+  }
+  if (action.type === "git_log_closed") return state.gitLog === null ? state : { ...state, gitLog: null };
   if (action.type === "git_file_history_started") {
     return {
       ...state,
@@ -1562,7 +1575,9 @@ function reduce(state: AgentState, action: Action): AgentState {
       }
       return { ...state, gitDiff: { path: message.path, before: message.before, after: message.after } };
     case "git_log":
-      return { ...state, gitLog: { repo: message.repo, entries: message.entries } };
+      // The menu closed since we asked: nobody is waiting for this map.
+      if (state.gitLog === null) return state;
+      return { ...state, gitLog: { ...state.gitLog, repo: message.repo, entries: message.entries, error: null } };
     case "git_show":
       return { ...state, gitShow: { sha: message.sha, patch: message.patch, truncated: message.truncated } };
     case "git_file_log":
@@ -1592,6 +1607,12 @@ function reduce(state: AgentState, action: Action): AgentState {
       }
       if (message.requestId === state.gitFileDiff?.requestId) {
         return { ...state, gitFileDiff: { ...state.gitFileDiff, status: "error", error: message.message } };
+      }
+      // The commit map's failures belong in its menu. One for an older request, or for a
+      // menu closed since, is nobody's: the conversation never asked for it.
+      if (message.requestId.startsWith("gitlog:")) {
+        if (message.requestId !== state.gitLog?.requestId) return state;
+        return { ...state, gitLog: { ...state.gitLog, entries: null, error: message.message } };
       }
       return { ...state, errors: [...state.errors, `git: ${message.message}`] };
     case "extension_ui_request":
@@ -1850,8 +1871,21 @@ export function useAgent(serverUrl = "", explicitToken?: string, embedded = fals
   // scope: a workspace holding thirty repositories would otherwise let one project's
   // refresh swallow another's, and they are answers to different questions.
   const gitAvailableRef = useRef(false);
-  /** The last log asked for, so a commit made elsewhere redraws an open history. */
+  /**
+   * The log of the open history menu, so a commit made elsewhere redraws it; null once
+   * the menu closes. Kept past its closing, it had a closed menu asking again on every
+   * change to the repository's git directory, and a failure of that request nobody was
+   * waiting for reached the conversation as a red line.
+   */
   const gitLogAskedRef = useRef<{ repo: string; limit?: number } | null>(null);
+  const askGitLog = useCallback(
+    (repo: string, limit?: number) => {
+      const requestId = `gitlog:${randomId()}`;
+      dispatch({ type: "git_log_started", repo, requestId });
+      sendMessage({ type: "git_log", repo, ...(limit ? { limit } : {}), requestId });
+    },
+    [sendMessage],
+  );
   /** The repository list as of the last status, for attributing a changed path. */
   const gitReposRef = useRef<GitRepoStatus[]>([]);
   useEffect(() => {
@@ -2185,9 +2219,7 @@ export function useAgent(serverUrl = "", explicitToken?: string, embedded = fals
           refreshGitStatus(message.repo === "" ? undefined : message.repo);
           // The history menu stays open while the user works, so its map must move too
           const asked = gitLogAskedRef.current;
-          if (asked !== null && asked.repo === message.repo) {
-            sendMessage({ type: "git_log", repo: asked.repo, ...(asked.limit ? { limit: asked.limit } : {}), requestId: `gitlog:${randomId()}` });
-          }
+          if (asked !== null && asked.repo === message.repo) askGitLog(asked.repo, asked.limit);
         }
         if (message.type === "git_status" || (message.type === "git_error" && message.requestId.startsWith("git:"))) {
           gitStatusSettled(message.requestId);
@@ -2290,7 +2322,7 @@ export function useAgent(serverUrl = "", explicitToken?: string, embedded = fals
       socketRef.current = null;
       socket?.close();
     };
-  }, [sendMessage, serverUrl, refreshGitStatus, gitStatusSettled, relistDirectory, requestDirectory, invalidateOutcome, settleOutcome, authNonce, workspaceRoot]);
+  }, [sendMessage, serverUrl, refreshGitStatus, gitStatusSettled, relistDirectory, requestDirectory, invalidateOutcome, settleOutcome, authNonce, workspaceRoot, askGitLog]);
 
   /**
    * Ask the server for the items before the ones this client holds.
@@ -2618,7 +2650,12 @@ export function useAgent(serverUrl = "", explicitToken?: string, embedded = fals
     clearGitDiff: () => dispatch({ type: "git_diff_cleared" }),
     fetchGitLog: (repo: string, limit?: number) => {
       gitLogAskedRef.current = { repo, limit };
-      sendMessage({ type: "git_log", repo, ...(limit ? { limit } : {}), requestId: `gitlog:${randomId()}` });
+      askGitLog(repo, limit);
+    },
+    /** The history menu closed: stop following its repository, and forget its map. */
+    closeGitLog: () => {
+      gitLogAskedRef.current = null;
+      dispatch({ type: "git_log_closed" });
     },
     fetchGitShow: (repo: string, sha: string) => sendMessage({ type: "git_show", repo, sha, requestId: `gitshow:${randomId()}` }),
     clearGitShow: () => dispatch({ type: "git_show_cleared" }),

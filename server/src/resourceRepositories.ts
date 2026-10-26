@@ -27,7 +27,7 @@ import type {
   AgentSkillCatalogueEntry,
 } from "@pi-outpost/shared";
 import { parseFrontmatter } from "@earendil-works/pi-coding-agent";
-import { currentGitExecutable } from "./git.ts";
+import { currentGitExecutable, gitFailureMessage } from "./git.ts";
 import { type SkillCollection, userConfigDir } from "./config.ts";
 import { isWithin } from "./sandbox.ts";
 
@@ -1124,8 +1124,7 @@ async function runGit(cwd: string, args: string[]): Promise<string> {
     });
     return stdout;
   } catch (error) {
-    const stderr = (error as { stderr?: string }).stderr;
-    throw new ResourceRepositoryError(stderr?.trim().split("\n")[0] || `git ${args[0]} failed`);
+    throw new ResourceRepositoryError(gitFailureMessage(args[0], error, COMMAND_TIMEOUT_MS, MAX_BUFFER));
   } finally {
     resourceGitObserver?.({ phase: "end", cwd, args, env });
   }
