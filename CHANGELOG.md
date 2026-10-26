@@ -7,6 +7,30 @@ version you had and the one you run now, without going online.
 Releases before 0.41.0 are described on
 [GitHub Releases](https://github.com/laurentftech/pi-outpost/releases).
 
+## [0.51.0] - 2026-10-26
+
+### Added
+
+- **Pictures, text boxes and shapes in posters.** In the poster editor, **Insert ▾** adds a
+  picture from your computer, a text box or a shape (rectangle, ellipse, arrow, star, speech
+  bubble…). Double-click an empty frame the agent laid out, or drop a file on the page, to put
+  a picture in it. Pictures are shrunk to 1200 px and kept inside the poster file, and they
+  still go out with it to Word and PowerPoint.
+  ([#365](https://github.com/laurentftech/pi-outpost/pull/365))
+- **The agent keeps your pictures and can draw.** The agent reads each picture as a short
+  marker and puts the picture back when it edits the poster, so its edits never drop one. It
+  can also lay out empty frames for your pictures and draw simple illustrations, which move
+  and resize as one piece. ([#365](https://github.com/laurentftech/pi-outpost/pull/365))
+- **Open WebUI's model can look at a poster's pictures.** With a model that reads images,
+  `get_poster` can hand it the poster's pictures as images.
+  ([#366](https://github.com/laurentftech/pi-outpost/pull/366))
+
+### Fixed
+
+- **The poster page stays still under your clicks.** The page is kept in view after you
+  scroll, pinch or zoom, without ever fighting the editor's own fit, so a click on a text or
+  a drawing selects it at once. ([#367](https://github.com/laurentftech/pi-outpost/pull/367))
+
 ## [0.50.0] - 2026-10-25
 
 ### Added
