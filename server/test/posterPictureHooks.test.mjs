@@ -7,7 +7,7 @@
  * is what these check, and the file on disk after the agent's writes.
  */
 import assert from "node:assert/strict";
-import { readFile, realpath, rm, writeFile } from "node:fs/promises";
+import { readFile, realpath, writeFile } from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
@@ -28,8 +28,9 @@ const POSTER = [
 
 /** Runs the agent through `calls` on a project holding `files`; returns what the model read, and the project. */
 async function agentRuns(t, files, calls) {
+  // server.stop() removes the project once the server is gone: removing it first, while the
+  // server still holds files in it, fails on Windows and leaves the server running.
   const project = await realpath(await makeWorkspace());
-  t.after(() => rm(project, { recursive: true, force: true }));
   for (const [name, content] of Object.entries(files)) await writeFile(path.join(project, name), content);
   const log = path.join(project, ".calls.jsonl");
   const script = path.join(project, ".calls.json");
