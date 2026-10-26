@@ -359,6 +359,43 @@ test("APowerPointExportDownloads: the browser downloads a .pptx named after the 
   expect(bytes.readUInt32LE(0)).toBe(0x04034b50);
 });
 
+test("ATextPastedFromWordIsExported: Word's markup and control characters do not stop the Word and PowerPoint exports", async ({ page }) => {
+  // What a paste from Word leaves: its <o:p> elements, a namespaced attribute, a line break as a vertical tab.
+  const file = await writePoster(
+    "Pasted.poster.html",
+    '<div class="sheet"><h1 class="title">Pasted \u000Bfrom Word<o:p></o:p></h1><p class="MsoNormal" o:spid="1" @click="x">Bonjour\u000Cà tous<o:p></o:p></p><!-- a -- comment --></div>',
+    ".sheet { padding: 40px; } .title { color: #ff00aa; font-size: 80px; }",
+  );
+  try {
+    const editor = await openPoster(page, "Pasted.poster.html");
+    await expect(editor.frameLocator("iframe.gjs-frame").locator(".title")).toBeVisible({ timeout: 20_000 });
+    for (const [action, entry] of [["word", "word/media/poster.png"], ["powerpoint", "ppt/media/poster.png"]] as const) {
+      const download = page.waitForEvent("download", { timeout: 30_000 });
+      await editor.locator(`button[data-action="${action}"]`).click();
+      const bytes = await fs.readFile((await (await download).path())!);
+      await expect(editor.locator(".poster-status")).not.toHaveAttribute("data-kind", "error");
+      const png = readAllZipEntries(bytes, { maxEntries: 50, maxInflatedBytes: 60_000_000, maxTotalBytes: 100_000_000 }).get(entry)!;
+      // The title is drawn: magenta pixels, not a blank page.
+      const magenta = await page.evaluate(async (base64) => {
+        const image = new Image();
+        await new Promise((resolve, reject) => { image.onload = resolve; image.onerror = reject; image.src = `data:image/png;base64,${base64}`; });
+        const canvas = document.createElement("canvas");
+        canvas.width = image.naturalWidth;
+        canvas.height = image.naturalHeight;
+        const context = canvas.getContext("2d")!;
+        context.drawImage(image, 0, 0);
+        const data = context.getImageData(0, 0, canvas.width, canvas.height).data;
+        let count = 0;
+        for (let index = 0; index < data.length; index += 4) if (data[index]! > 200 && data[index + 1]! < 60 && data[index + 2]! > 120) count += 1;
+        return count;
+      }, png.toString("base64"));
+      expect(magenta).toBeGreaterThan(1000);
+    }
+  } finally {
+    await fs.rm(file, { force: true });
+  }
+});
+
 // openlore: scenario=APosterCannotReachTheApplication spec=poster-editor
 // openlore: scenario=ARemoteImageIsNotFetched spec=poster-documents
 test("APosterCannotReachTheApplication: a handler in the poster does not run, nothing is fetched, the policy holds", async ({ page }) => {
