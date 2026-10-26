@@ -155,8 +155,27 @@ function drawings(html: string): string[] {
   }
 }
 
+/**
+ * The declarations of the first `.poster-page { … }` rule, or undefined. Searched, not matched:
+ * a pattern from the selector to the closing brace is polynomial on a text repeating the
+ * selector with no brace closed (CodeQL js/polynomial-redos).
+ */
+function pageRule(text: string): string | undefined {
+  for (let from = 0; ; ) {
+    const at = text.indexOf(".poster-page", from);
+    if (at === -1) return undefined;
+    let open = at + ".poster-page".length;
+    while (open < text.length && /\s/.test(text[open]!)) open += 1;
+    if (text[open] === "{") {
+      const close = text.indexOf("}", open + 1);
+      return close === -1 ? undefined : text.slice(open + 1, close);
+    }
+    from = at + 1;
+  }
+}
+
 function checkPageSize(text: string, format: PosterFormat, issues: PosterIssue[]): void {
-  const rule = /\.poster-page\s*\{([^}]*)\}/.exec(text)?.[1];
+  const rule = pageRule(text);
   if (rule === undefined) return;
   const { width, height } = FORMATS[format];
   const size = (property: string) => new RegExp(`(?:^|[;\\s])${property}\\s*:\\s*([\\d.]+)px`).exec(rule)?.[1];
