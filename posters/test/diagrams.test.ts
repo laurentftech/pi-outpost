@@ -3,12 +3,12 @@
  */
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { MAX_DIAGRAM_SVG_BYTES, diagramPicture } from "../src/diagrams.ts";
+import { MAX_DIAGRAM_SVG_BYTES, pictureFileType, svgPicture } from "../src/diagrams.ts";
 
-describe("diagramPicture", () => {
+describe("svgPicture", () => {
   test("is the SVG as a base64 data URL, with the size draw.io gave it", () => {
     const svg = '<?xml version="1.0" encoding="UTF-8"?>\n<svg xmlns="http://www.w3.org/2000/svg" style="background: #fff" width="561px" height="111px" viewBox="-0.5 -0.5 561 111"><text>Client — é</text></svg>';
-    const picture = diagramPicture(svg);
+    const picture = svgPicture(svg);
     assert.equal(picture.width, 561);
     assert.equal(picture.height, 111);
     assert.match(picture.src, /^data:image\/svg\+xml;base64,[A-Za-z0-9+/=]+$/);
@@ -18,15 +18,26 @@ describe("diagramPicture", () => {
 
   test("reads the size from the viewBox when the SVG names none", () => {
     assert.deepEqual(
-      (({ width, height }) => ({ width, height }))(diagramPicture('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 150"></svg>')),
+      (({ width, height }) => ({ width, height }))(svgPicture('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 150"></svg>')),
       { width: 300, height: 150 },
     );
   });
 
   test("refuses what is no picture, or one too large for a poster, saying why", () => {
-    assert.throws(() => diagramPicture("<html></html>"), /drew no picture/);
-    assert.throws(() => diagramPicture('<svg xmlns="http://www.w3.org/2000/svg"></svg>'), /has no size/);
+    assert.throws(() => svgPicture("<html></html>"), /holds no SVG picture/);
+    assert.throws(() => svgPicture('<svg xmlns="http://www.w3.org/2000/svg"></svg>'), /has no size/);
     const large = `<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10">${"x".repeat(MAX_DIAGRAM_SVG_BYTES)}</svg>`;
-    assert.throws(() => diagramPicture(large), /more than a poster takes \(2 MB\)/);
+    assert.throws(() => svgPicture(large), /more than a poster takes \(2 MB\)/);
+  });
+});
+
+describe("pictureFileType", () => {
+  test("names the media type a frame's picture file is read as, by its extension", () => {
+    assert.equal(pictureFileType("figures/architecture.svg"), "image/svg+xml");
+    assert.equal(pictureFileType("photos/Class.JPG"), "image/jpeg");
+    assert.equal(pictureFileType("a.webp"), "image/webp");
+    assert.equal(pictureFileType("notes.md"), undefined);
+    assert.equal(pictureFileType("Makefile"), undefined);
+    assert.equal(pictureFileType("diagram.drawio"), undefined);
   });
 });

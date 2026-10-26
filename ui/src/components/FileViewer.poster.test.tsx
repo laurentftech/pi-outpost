@@ -406,4 +406,69 @@ describe("a poster in the viewer", () => {
       expect(fileIo.read).toHaveBeenCalledWith("etc/x.drawio");
     });
   });
+
+  describe("the project's picture files for the editor's frames", () => {
+    const SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="300" height="100"><text>Architecture — é</text></svg>';
+
+    function pictureFileIo() {
+      return fakeFileIo({
+        find: vi.fn(async (query: string) =>
+          query === ".svg"
+            ? [{ path: "figures", type: "directory" as const }, { path: "figures/architecture.svg", type: "file" as const }, { path: "notes.svg.md", type: "file" as const }]
+            : query === ".png"
+              ? [{ path: "posters/photo.png", type: "file" as const }]
+              : [],
+        ),
+      });
+    }
+
+    async function asked(data: Record<string, unknown>, fileIo: FileIo = pictureFileIo()) {
+      open(loaded(PAGE), fileIo);
+      const frame = screen.getByTestId("poster-frame") as HTMLIFrameElement;
+      const sent = vi.spyOn(frame.contentWindow!, "postMessage");
+      fromFrame(frame, data);
+      await waitFor(() => expect(sent).toHaveBeenCalledWith(expect.objectContaining({ type: POSTER_FRAME.ANSWER, id: data.id }), SERVER));
+      return (sent.mock.calls.find(([message]) => (message as { id?: unknown }).id === data.id)![0] as { value: unknown }).value;
+    }
+
+    // openlore: scenario=TheProjectsPicturesAreOffered spec=poster-files
+    it("TheProjectsPicturesAreOffered: each picture file of the project, as a path from the poster's directory", async () => {
+      expect(await asked({ type: POSTER_FRAME.PICTURE_LIST, id: 11 })).toEqual({ ok: true, value: ["../figures/architecture.svg", "photo.png"] });
+    });
+
+    it("an SVG is read through the viewer's own route, as its bytes and type", async () => {
+      const fetched = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(SVG, { status: 200, headers: { "content-type": "image/svg+xml" } }));
+      try {
+        const value = (await asked({ type: POSTER_FRAME.PICTURE_READ, id: 12, path: "../figures/architecture.svg" })) as { ok: true; value: { type: string; bytes: Uint8Array } };
+        expect(value.ok).toBe(true);
+        expect(value.value.type).toBe("image/svg+xml");
+        expect(new TextDecoder().decode(value.value.bytes)).toBe(SVG);
+        expect(String(fetched.mock.calls[0]![0])).toContain(`/files/raw?path=${encodeURIComponent("figures/architecture.svg")}`);
+      } finally {
+        fetched.mockRestore();
+      }
+    });
+
+    // openlore: scenario=AMissingPictureLeavesTheFrameEmpty spec=poster-files
+    it("AMissingPictureLeavesTheFrameEmpty: a file the server does not serve, or no picture at all, is refused with its reason", async () => {
+      const fetched = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("", { status: 404 }));
+      try {
+        expect(await asked({ type: POSTER_FRAME.PICTURE_READ, id: 13, path: "../figures/gone.svg" })).toEqual({ ok: false, message: '"../figures/gone.svg" could not be read: it is not there, or not in the project' });
+        cleanup();
+        expect(await asked({ type: POSTER_FRAME.PICTURE_READ, id: 14, path: "../notes.md" })).toEqual({ ok: false, message: '"../notes.md" is not a picture file (SVG, PNG, JPEG, GIF or WebP)' });
+        expect(fetched).toHaveBeenCalledTimes(1);
+      } finally {
+        fetched.mockRestore();
+      }
+    });
+
+    it("a file too large for a poster is refused before it is read into it", async () => {
+      const fetched = vi.spyOn(globalThis, "fetch").mockResolvedValue({ ok: true, blob: async () => ({ size: 21 * 1024 * 1024 }) } as unknown as Response);
+      try {
+        expect(await asked({ type: POSTER_FRAME.PICTURE_READ, id: 15, path: "photo.png" })).toEqual({ ok: false, message: '"photo.png" is 21 MB, more than a poster reads (20 MB)' });
+      } finally {
+        fetched.mockRestore();
+      }
+    });
+  });
 });

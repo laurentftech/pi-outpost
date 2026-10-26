@@ -1137,7 +1137,7 @@ export function FileViewer({
         )}
         {loaded && edit === null && !splitting && !showGitDiff && poster && !showRaw && (
           <div className="h-full" data-testid="file-poster">
-            <PosterFrame path={file.path} content={loaded.content} mtimeMs={loaded.mtimeMs} writable={writable} fallback={sourceView(false)} onTouchUpDirtyChange={setTouchUpDirty} />
+            <PosterFrame path={file.path} content={loaded.content} mtimeMs={loaded.mtimeMs} writable={writable} loadFile={loadPageResource} fallback={sourceView(false)} onTouchUpDirtyChange={setTouchUpDirty} />
           </div>
         )}
         {loaded && edit === null && !splitting && !showGitDiff && html && !showRaw && (

@@ -19,14 +19,17 @@
  * holds unsaved touch-ups, which are kept until they are saved or undone.
  *
  * It also draws the project's draw.io diagrams for the editor's diagram frames: the files are
- * read here, and each page drawn by the viewer this application serves (`DrawioPainter`).
+ * read here, and each page drawn by the viewer this application serves (`DrawioPainter`). And it
+ * reads the project's picture files for frames naming one, through `loadFile`, the viewer's own
+ * route to a file's bytes: the editor frame holds no token.
  */
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { pageOf, readPage, type PosterPage } from "@pi-outpost/posters/format";
-import type { DiagramChoice } from "@pi-outpost/posters/diagrams";
+import { MAX_PICTURE_FILE_BYTES, PICTURE_FILE_TYPES, pictureFileType, type DiagramChoice } from "@pi-outpost/posters/diagrams";
 import { POSTER_EDITOR_PAGE, POSTER_FRAME, type DrawioAnswer } from "@pi-outpost/posters/frame";
 import { FileIoError } from "../fileIo";
 import { drawioPage, drawioPages, relativeReference } from "../util/drawioPages";
+import type { LoadFile } from "../util/htmlPage";
 import { isDrawioFile, resolveRelativeHref } from "../util/workspacePath";
 import { DrawioPainter, type DrawioPainterHandle } from "./DrawioPainter";
 import { useThemeContext } from "../theme/ThemeContext";
@@ -56,6 +59,7 @@ export function PosterFrame({
   content,
   mtimeMs,
   writable,
+  loadFile,
   fallback,
   onTouchUpDirtyChange,
 }: {
@@ -64,6 +68,8 @@ export function PosterFrame({
   /** When `content` was read: what a save of this version is checked against. */
   mtimeMs: number;
   writable: boolean;
+  /** A project file's bytes, as the viewer fetches them; absent, frames naming a picture file stay empty. */
+  loadFile?: LoadFile;
   fallback: ReactNode;
   /** Unsaved touch-ups in the editor, so the viewer can ask before leaving them. */
   onTouchUpDirtyChange?: (dirty: boolean) => void;
@@ -97,8 +103,8 @@ export function PosterFrame({
   const ready = useRef(false);
   const onDirty = useRef(onTouchUpDirtyChange);
   onDirty.current = onTouchUpDirtyChange;
-  const latest = useRef({ path, content, mtimeMs, dark, readOnly, poster });
-  latest.current = { path, content, mtimeMs, dark, readOnly, poster };
+  const latest = useRef({ path, content, mtimeMs, dark, readOnly, poster, loadFile });
+  latest.current = { path, content, mtimeMs, dark, readOnly, poster, loadFile };
 
   useEffect(() => {
     // Gone with this component: an answer arriving after it is dropped, never posted to a
@@ -212,6 +218,30 @@ export function PosterFrame({
       return painter.current.draw(xml);
     }
 
+    /** The project's picture files, as a frame of this poster names them. */
+    async function listPictures(): Promise<string[]> {
+      if (fileIo?.find === undefined) throw new Error("this view cannot look through the project's files");
+      const found = new Set<string>();
+      for (const extension of Object.keys(PICTURE_FILE_TYPES)) {
+        for (const entry of await fileIo.find(extension)) if (entry.type === "file" && pictureFileType(entry.path) !== undefined) found.add(entry.path);
+      }
+      const poster = latest.current.path;
+      return [...found].map((file) => relativeReference(poster, file));
+    }
+
+    /** The picture file `reference` names, from this poster's directory, with its media type. */
+    async function readPicture(reference: string): Promise<{ type: string; bytes: Uint8Array }> {
+      const file = resolveRelativeHref(latest.current.path, reference);
+      const type = pictureFileType(file);
+      if (type === undefined) throw new Error(`"${reference}" is not a picture file (SVG, PNG, JPEG, GIF or WebP)`);
+      const load = latest.current.loadFile;
+      if (load === undefined) throw new Error("this view cannot read the project's files");
+      const blob = await load(file);
+      if (blob === undefined) throw new Error(`"${reference}" could not be read: it is not there, or not in the project`);
+      if (blob.size > MAX_PICTURE_FILE_BYTES) throw new Error(`"${reference}" is ${Math.round(blob.size / 1024 / 1024)} MB, more than a poster reads (${MAX_PICTURE_FILE_BYTES / 1024 / 1024} MB)`);
+      return { type, bytes: new Uint8Array(await blob.arrayBuffer()) };
+    }
+
     function onMessage(event: MessageEvent) {
       // Only this component's frame, from the server it was loaded from.
       if (frame.current === null || event.source !== frame.current.contentWindow || event.origin !== origin) return;
@@ -236,6 +266,11 @@ export function PosterFrame({
       else if (data.type === POSTER_FRAME.DRAWIO_DRAW) {
         const { path: reference, page } = data as { path?: unknown; page?: unknown };
         if (typeof reference === "string") void reply(data.id, () => drawDiagram(reference, typeof page === "string" ? page : undefined));
+      }
+      else if (data.type === POSTER_FRAME.PICTURE_LIST) void reply(data.id, listPictures);
+      else if (data.type === POSTER_FRAME.PICTURE_READ) {
+        const { path: reference } = data as { path?: unknown };
+        if (typeof reference === "string") void reply(data.id, () => readPicture(reference));
       }
     }
     window.addEventListener("message", onMessage);
