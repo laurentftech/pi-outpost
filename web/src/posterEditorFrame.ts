@@ -4,7 +4,8 @@
  * no credentials. Messages: @pi-outpost/posters/frame.
  */
 import { mountEditor, type OpenedPoster, type SaveResult } from "@pi-outpost/posters/editor";
-import { POSTER_FRAME } from "@pi-outpost/posters/frame";
+import { POSTER_FRAME, type DrawioAnswer } from "@pi-outpost/posters/frame";
+import type { DiagramChoice } from "@pi-outpost/posters/diagrams";
 import "@pi-outpost/posters/editor.css";
 
 const answers = new Map<number, (value: unknown) => void>();
@@ -18,10 +19,22 @@ function ask<T>(type: string, payload: Record<string, unknown>, transfer: Transf
   });
 }
 
+/** The parent's answer, or its reason as the error the editor says. */
+async function drawio<T>(type: string, payload: Record<string, unknown>): Promise<T> {
+  const answer = await ask<DrawioAnswer<T>>(type, payload);
+  if (!answer.ok) throw new Error(answer.message);
+  return answer.value;
+}
+
 const editor = mountEditor(document.getElementById("root")!, {
   save: ({ html, css }) => ask<SaveResult>(POSTER_FRAME.SAVE, { html, css }),
   deliver: (file) => ask<string>(POSTER_FRAME.DELIVER, { name: file.name, mediaType: file.mediaType, bytes: file.bytes }),
   onDirtyChange: (dirty) => parent.postMessage({ type: POSTER_FRAME.DIRTY, dirty }, "*"),
+  // The file viewer draws diagrams with the draw.io viewer it serves, and reads the project.
+  diagrams: {
+    list: () => drawio<DiagramChoice[]>(POSTER_FRAME.DRAWIO_LIST, {}),
+    draw: (path, page) => drawio<string>(POSTER_FRAME.DRAWIO_DRAW, { path, ...(page === undefined ? {} : { page }) }),
+  },
 });
 editor.setDisplayMode("fill");
 

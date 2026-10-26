@@ -1750,7 +1750,7 @@ export function useAgent(serverUrl = "", explicitToken?: string, embedded = fals
   // correlation every other file-browser request uses.
   const uploadWaitersRef = useRef(new Map<string, { resolve: (path: string) => void; reject: (error: UploadError) => void }>());
   /** `fileIo` reads and writes awaiting their answer — see `fileIo.ts` for why not the reducer. */
-  const fileIoWaitersRef = useRef(new Map<string, { resolve: (answer: { content?: string; mtimeMs: number }) => void; reject: (error: FileIoError) => void }>());
+  const fileIoWaitersRef = useRef(new Map<string, { resolve: (answer: { content?: string; mtimeMs?: number; results?: FileSearchEntry[] }) => void; reject: (error: FileIoError) => void }>());
   /** `fileIo.onChanged` listeners, by path. */
   const fileListenersRef = useRef(new Map<string, Set<() => void>>());
   /**
@@ -2128,6 +2128,12 @@ export function useAgent(serverUrl = "", explicitToken?: string, embedded = fals
           else waiter.resolve(message.type === "file_content" ? { content: message.content, mtimeMs: message.mtimeMs } : { mtimeMs: message.mtimeMs });
           return;
         }
+        if (message.type === "file_search_results" && fileIoWaitersRef.current.has(message.requestId)) {
+          const waiter = fileIoWaitersRef.current.get(message.requestId)!;
+          fileIoWaitersRef.current.delete(message.requestId);
+          waiter.resolve({ results: message.results });
+          return;
+        }
         if (message.type === "file_uploaded") {
           const waiter = uploadWaitersRef.current.get(message.requestId);
           if (waiter) {
@@ -2408,6 +2414,7 @@ export function useAgent(serverUrl = "", explicitToken?: string, embedded = fals
     return {
       read: (path) => ask("fileio-read", (requestId) => ({ type: "read_file", path, requestId })),
       write: (path, content, expectedMtimeMs) => ask("fileio-write", (requestId) => ({ type: "write_file", path, content, expectedMtimeMs, requestId })),
+      find: async (query) => (await ask<{ results: FileSearchEntry[] }>("fileio-find", (requestId) => ({ type: "search_files", query, requestId }))).results,
       onChanged: (path, listener) => {
         const listeners = fileListenersRef.current.get(path) ?? new Set<() => void>();
         listeners.add(listener);

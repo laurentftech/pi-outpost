@@ -17,11 +17,18 @@
  *
  * The editor follows the file: a version the agent wrote is sent to it again, unless it
  * holds unsaved touch-ups, which are kept until they are saved or undone.
+ *
+ * It also draws the project's draw.io diagrams for the editor's diagram frames: the files are
+ * read here, and each page drawn by the viewer this application serves (`DrawioPainter`).
  */
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { pageOf, readPage, type PosterPage } from "@pi-outpost/posters/format";
-import { POSTER_EDITOR_PAGE, POSTER_FRAME } from "@pi-outpost/posters/frame";
+import type { DiagramChoice } from "@pi-outpost/posters/diagrams";
+import { POSTER_EDITOR_PAGE, POSTER_FRAME, type DrawioAnswer } from "@pi-outpost/posters/frame";
 import { FileIoError } from "../fileIo";
+import { drawioPage, drawioPages, relativeReference } from "../util/drawioPages";
+import { isDrawioFile, resolveRelativeHref } from "../util/workspacePath";
+import { DrawioPainter, type DrawioPainterHandle } from "./DrawioPainter";
 import { useThemeContext } from "../theme/ThemeContext";
 import { useDrawioFiles } from "./drawioFiles";
 
@@ -64,6 +71,7 @@ export function PosterFrame({
   const { serverUrl, fileIo } = useDrawioFiles();
   const dark = useThemeContext() === "dark";
   const frame = useRef<HTMLIFrameElement>(null);
+  const painter = useRef<DrawioPainterHandle>(null);
   const editorUrl = useMemo(() => posterEditorUrl(serverUrl), [serverUrl]);
   const poster = useMemo((): { page: PosterPage } | { problem: string } => {
     try {
@@ -156,6 +164,54 @@ export function PosterFrame({
       }
     }
 
+    /** Answers a DRAWIO_LIST or DRAWIO_DRAW with its value, or with why there is none. */
+    async function reply<T>(id: unknown, work: () => Promise<T>) {
+      let outcome: DrawioAnswer<T>;
+      try {
+        outcome = { ok: true, value: await work() };
+      } catch (error) {
+        outcome = { ok: false, message: error instanceof Error ? error.message : String(error) };
+      }
+      answer(id, outcome);
+    }
+
+    /** The project's diagrams, as a frame of this poster names them, with their pages. */
+    async function listDiagrams(): Promise<DiagramChoice[]> {
+      if (fileIo?.find === undefined) throw new Error("this view cannot look through the project's files");
+      const found = new Set<string>();
+      for (const query of [".drawio", ".dio"]) {
+        for (const entry of await fileIo.find(query)) if (entry.type === "file" && isDrawioFile(entry.path)) found.add(entry.path);
+      }
+      const poster = latest.current.path;
+      return Promise.all(
+        [...found].map(async (file) => {
+          let pages: string[] = [];
+          try {
+            pages = drawioPages((await fileIo.read(file)).content);
+          } catch {
+            // Offered all the same: drawing it says what is wrong with it.
+          }
+          return { path: relativeReference(poster, file), pages };
+        }),
+      );
+    }
+
+    /** One page of the diagram `reference` names, from this poster's directory, as an SVG. */
+    async function drawDiagram(reference: string, page: string | undefined): Promise<string> {
+      const file = resolveRelativeHref(latest.current.path, reference);
+      if (!isDrawioFile(file)) throw new Error(`"${reference}" is not a .drawio file`);
+      if (fileIo === undefined) throw new Error("this view cannot read the project's files");
+      let text: string;
+      try {
+        text = (await fileIo.read(file)).content;
+      } catch (error) {
+        throw new Error(`"${reference}" could not be read: ${error instanceof Error ? error.message : String(error)}`);
+      }
+      const xml = drawioPage(text, page);
+      if (painter.current === null) throw new Error("the poster was closed");
+      return painter.current.draw(xml);
+    }
+
     function onMessage(event: MessageEvent) {
       // Only this component's frame, from the server it was loaded from.
       if (frame.current === null || event.source !== frame.current.contentWindow || event.origin !== origin) return;
@@ -175,6 +231,11 @@ export function PosterFrame({
       else if (data.type === POSTER_FRAME.DELIVER && typeof data.name === "string" && typeof data.mediaType === "string" && data.bytes instanceof Uint8Array) {
         download(data.name, data.bytes, data.mediaType);
         answer(data.id, `Downloaded "${data.name}".`);
+      }
+      else if (data.type === POSTER_FRAME.DRAWIO_LIST) void reply(data.id, listDiagrams);
+      else if (data.type === POSTER_FRAME.DRAWIO_DRAW) {
+        const { path: reference, page } = data as { path?: unknown; page?: unknown };
+        if (typeof reference === "string") void reply(data.id, () => drawDiagram(reference, typeof page === "string" ? page : undefined));
       }
     }
     window.addEventListener("message", onMessage);
@@ -207,14 +268,17 @@ export function PosterFrame({
     );
   }
   return (
-    <iframe
-      ref={frame}
-      title={path}
-      data-testid="poster-frame"
-      data-read-only={readOnly ? "true" : "false"}
-      sandbox={POSTER_SANDBOX}
-      src={editorUrl}
-      className="block h-full w-full border-0"
-    />
+    <>
+      <iframe
+        ref={frame}
+        title={path}
+        data-testid="poster-frame"
+        data-read-only={readOnly ? "true" : "false"}
+        sandbox={POSTER_SANDBOX}
+        src={editorUrl}
+        className="block h-full w-full border-0"
+      />
+      <DrawioPainter ref={painter} serverUrl={serverUrl} />
+    </>
   );
 }

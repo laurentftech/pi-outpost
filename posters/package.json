@@ -11,7 +11,8 @@
     "./picture": "./src/picture.ts",
     "./editor": "./src/editor.ts",
     "./editor.css": "./src/editor.css",
-    "./frame": "./src/frame.ts"
+    "./frame": "./src/frame.ts",
+    "./diagrams": "./src/diagrams.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

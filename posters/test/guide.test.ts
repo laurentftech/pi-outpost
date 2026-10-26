@@ -45,4 +45,8 @@ test("The skill tells the agent to read posters with read, keep markers, and lea
   assert.match(SKILL, /keep markers exactly as you read them/);
   assert.match(SKILL, /double-click\s+each frame in the editor/);
   assert.match(SKILL, /call `poster_pictures` with the file's path to look at them/);
+  // openlore: scenario=TheSkillNamesDiagramFrames spec=poster-files
+  assert.match(SKILL, /data-drawio="\.\.\/docs\/architecture\.drawio" data-drawio-page="Overview"/, "TheSkillNamesDiagramFrames: the frame's attributes");
+  assert.match(SKILL, /the editor draws it there when the user opens the poster/, "TheSkillNamesDiagramFrames: the editor fills it");
+  assert.match(SKILL, /Never copy a\s+diagram's SVG into the markup/, "TheSkillNamesDiagramFrames: never inline the SVG");
 });

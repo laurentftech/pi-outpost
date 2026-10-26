@@ -8,7 +8,8 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { expect, test, type FrameLocator, type Page } from "@playwright/test";
-import { readPage } from "@pi-outpost/posters/format";
+import { readAllZipEntries } from "@pi-outpost/office/zip.ts";
+import { pageOf, readPage } from "@pi-outpost/posters/format";
 
 const POSTER = path.join("posters", "Class rules.poster.html");
 
@@ -150,6 +151,189 @@ test("OwnSaveDoesNotReopen: after a save the editor keeps its page, never the ve
     await page.waitForTimeout(3000);
     await expect(editor.locator("iframe.gjs-frame")).toHaveAttribute("data-e2e-mark", "kept");
     await expect(title).toHaveText("Saved by me");
+  } finally {
+    await fs.writeFile(file, original);
+  }
+});
+
+/** Writes a poster beside the guide's example and returns its path in the project; removed by the caller. */
+async function writePoster(name: string, html: string, css: string): Promise<string> {
+  const file = path.join(process.env.PI_E2E_PRIMARY_PROJECT!, "posters", name);
+  await fs.writeFile(file, pageOf(name.replace(/\.poster\.html$/, ""), { html, css, format: "A4-portrait" }));
+  return file;
+}
+
+/** The SVG a picture in the canvas holds, decoded, or null for an empty frame. */
+async function svgOf(editor: FrameLocator, selector: string): Promise<string | null> {
+  return editor.frameLocator("iframe.gjs-frame").locator(selector).evaluate((image: HTMLImageElement) => {
+    const source = image.getAttribute("src") ?? "";
+    if (!source.startsWith("data:image/svg+xml;base64,")) return null;
+    return new TextDecoder().decode(Uint8Array.from(atob(source.split(",")[1]!), (c) => c.charCodeAt(0)));
+  });
+}
+
+const DIAGRAM_CSS = ".sheet { position: relative; width: 100%; height: 100%; background: #fff; } img { position: absolute; display: block; } .d1 { left: 40px; top: 200px; width: 500px; height: 150px; } .d2 { left: 40px; top: 420px; width: 500px; height: 150px; } .d3 { left: 40px; top: 640px; width: 200px; height: 100px; }";
+
+// openlore: scenario=AnAgentsFrameIsFilledOnOpen spec=poster-files
+// openlore: scenario=TheNamedPageIsDrawn spec=poster-files
+// openlore: scenario=ADiagramSurvivesTheExport spec=poster-files
+test("AnAgentsFrameIsFilledOnOpen, TheNamedPageIsDrawn and ADiagramSurvivesTheExport: the frames are drawn on open, saved, and printed", async ({ page }) => {
+  const file = await writePoster(
+    "Diagrams.poster.html",
+    '<div class="sheet"><h1>Diagrams</h1>' +
+      '<img class="d1" data-poster-picture="context" data-drawio="../diagrams/two-pages.drawio" data-drawio-page="Context" alt="">' +
+      '<img class="d2" data-poster-picture="remote" data-drawio="../diagrams/two-pages.drawio" data-drawio-page="2" alt=""></div>',
+    DIAGRAM_CSS,
+  );
+  try {
+    const editor = await openPoster(page, "Diagrams.poster.html");
+    await expect.poll(() => svgOf(editor, ".d1"), { timeout: 40_000 }).toContain("API gateway");
+    const context = (await svgOf(editor, ".d1"))!;
+    expect(context).toContain("Client");
+    expect(context).not.toContain("Remote image");
+    await expect.poll(() => svgOf(editor, ".d2"), { timeout: 40_000 }).toContain("Remote image");
+    expect(await svgOf(editor, ".d2")).not.toContain("API gateway");
+    // The picture decodes and draws in the canvas.
+    expect(await editor.frameLocator("iframe.gjs-frame").locator(".d1").evaluate((image: HTMLImageElement) => image.complete && image.naturalWidth > 0)).toBe(true);
+    await expect(editor.locator(".poster-status")).toContainText("draw.io diagrams are in their frames");
+    const save = editor.locator('button[data-action="save"]');
+    await expect(save).toBeEnabled();
+
+    // The page picture the Word export carries shows the diagram where its frame is.
+    const download = page.waitForEvent("download", { timeout: 30_000 });
+    await editor.locator('button[data-action="word"]').click();
+    const docx = await fs.readFile((await (await download).path())!);
+    const png = readAllZipEntries(docx, { maxEntries: 50, maxInflatedBytes: 60_000_000, maxTotalBytes: 100_000_000 }).get("word/media/poster.png")!;
+    const inked = await page.evaluate(async (base64) => {
+      const image = new Image();
+      await new Promise((resolve, reject) => { image.onload = resolve; image.onerror = reject; image.src = `data:image/png;base64,${base64}`; });
+      const canvas = document.createElement("canvas");
+      canvas.width = image.naturalWidth;
+      canvas.height = image.naturalHeight;
+      const context = canvas.getContext("2d")!;
+      context.drawImage(image, 0, 0);
+      const scale = image.naturalWidth / 794;
+      const dark = (left: number, top: number, width: number, height: number) => {
+        const data = context.getImageData(Math.round(left * scale), Math.round(top * scale), Math.round(width * scale), Math.round(height * scale)).data;
+        let count = 0;
+        for (let index = 0; index < data.length; index += 4) if (data[index]! < 100 && data[index + 1]! < 100 && data[index + 2]! < 100) count += 1;
+        return count;
+      };
+      // The first frame, and the same area below every frame, which is blank.
+      return { frame: dark(40, 200, 500, 150), blank: dark(40, 900, 500, 150) };
+    }, png.toString("base64"));
+    expect(inked.frame).toBeGreaterThan(500);
+    expect(inked.blank).toBe(0);
+
+    await save.click();
+    await expect(editor.locator(".poster-status")).toHaveText(/Saved/);
+    const saved = readPage(await fs.readFile(file, "utf8")).html;
+    expect(saved).toMatch(/data-drawio="\.\.\/diagrams\/two-pages\.drawio"/);
+    expect(saved.match(/src="data:image\/svg\+xml;base64,/g)).toHaveLength(2);
+  } finally {
+    await fs.rm(file, { force: true });
+  }
+});
+
+// openlore: scenario=AFilledFrameIsLeftAlone spec=poster-files
+test("AFilledFrameIsLeftAlone: a frame naming a diagram but holding a picture is not redrawn", async ({ page }) => {
+  const PIXEL = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+  const file = await writePoster("Filled.poster.html", `<div class="sheet"><img class="d1" data-poster-picture="mine" data-drawio="../diagrams/two-pages.drawio" src="${PIXEL}" alt=""></div>`, DIAGRAM_CSS);
+  try {
+    const editor = await openPoster(page, "Filled.poster.html");
+    const frame = editor.frameLocator("iframe.gjs-frame").locator(".d1");
+    await expect(frame).toBeVisible({ timeout: 20_000 });
+    await page.waitForTimeout(4000);
+    expect(await frame.getAttribute("src")).toBe(PIXEL);
+    await expect(editor.locator('button[data-action="save"]')).toBeDisabled();
+    await expect(page.getByTestId("drawio-painter")).toHaveCount(0);
+  } finally {
+    await fs.rm(file, { force: true });
+  }
+});
+
+// openlore: scenario=AMissingDiagramLeavesTheFrameEmpty spec=poster-files
+test("AMissingDiagramLeavesTheFrameEmpty: frames naming a missing or broken diagram stay empty and are named", async ({ page }) => {
+  const file = await writePoster(
+    "Missing.poster.html",
+    '<div class="sheet"><img class="d1" data-poster-picture="gone" data-drawio="../diagrams/missing.drawio" alt="">' +
+      '<img class="d2" data-poster-picture="broken" data-drawio="../diagrams/broken.drawio" alt="">' +
+      '<img class="d3" data-poster-picture="ok" data-drawio="/diagrams/two-pages.drawio" alt=""></div>',
+    DIAGRAM_CSS,
+  );
+  try {
+    const editor = await openPoster(page, "Missing.poster.html");
+    const status = editor.locator(".poster-status");
+    await expect(status).toContainText("1 diagram drawn", { timeout: 40_000 });
+    await expect(status).toContainText("../diagrams/missing.drawio: \"../diagrams/missing.drawio\" could not be read");
+    await expect(status).toContainText("../diagrams/broken.drawio: it is not a draw.io diagram");
+    // Empty: GrapesJS's placeholder (itself an SVG, the same in both), no diagram in it.
+    const [gone, broken] = [await svgOf(editor, ".d1"), await svgOf(editor, ".d2")];
+    expect(gone).toBe(broken);
+    expect(gone ?? "").not.toMatch(/foreignObject|<text/);
+    // A reference from the project root is drawn.
+    expect(await svgOf(editor, ".d3")).toContain("Client");
+    // Saved, the frames that failed are still empty in the file.
+    await editor.locator('button[data-action="save"]').click();
+    await expect(editor.locator(".poster-status")).toHaveText(/Saved/);
+    const saved = readPage(await fs.readFile(file, "utf8")).html;
+    const frame = (name: string) => new RegExp(`<img [^>]*data-poster-picture="${name}"[^>]*>`).exec(saved)?.[0] ?? "";
+    expect(frame("gone")).not.toContain("src=");
+    expect(frame("broken")).not.toContain("src=");
+    expect(frame("ok")).toContain('src="data:image/svg+xml;base64,');
+  } finally {
+    await fs.rm(file, { force: true });
+  }
+});
+
+// openlore: scenario=TheProjectsDiagramsAreOffered spec=poster-files
+// openlore: scenario=ADiagramGoesOntoThePage spec=poster-files
+// openlore: scenario=ADiagramGoesIntoTheSelectedFrame spec=poster-files
+// openlore: scenario=AnUnreadableDiagramSaysWhy spec=poster-files
+test("Insert → draw.io diagram: offered with their pages, onto the page, into the selected frame, and a broken one said", async ({ page }) => {
+  const file = path.join(process.env.PI_E2E_PRIMARY_PROJECT!, POSTER);
+  const original = await fs.readFile(file, "utf8");
+  try {
+    const editor = await openPoster(page);
+    const canvas = editor.frameLocator("iframe.gjs-frame");
+    await expect(canvas.locator(".rule.c1 h2")).toHaveText("I raise my hand", { timeout: 20_000 });
+    const diagrams = editor.locator(".poster-diagrams");
+    const choose = async () => {
+      await editor.locator('button[data-action="insert"]').click();
+      await editor.locator('[data-insert="diagram"]').click();
+      await expect(diagrams.locator("[data-diagram]").first()).toBeVisible({ timeout: 15_000 });
+    };
+
+    await choose();
+    const offered = await diagrams.locator("[data-diagram]").allInnerTexts();
+    expect(offered).toEqual(expect.arrayContaining(["../diagrams/flow.drawio", "../diagrams/two-pages.drawio — Context", "../diagrams/two-pages.drawio — Remote things", "../diagrams/broken.drawio"]));
+
+    // Nothing selected: onto the page, in the diagram's proportions.
+    await canvas.locator(".motto").click();
+    await page.keyboard.press("Escape");
+    await choose();
+    await diagrams.getByText("../diagrams/two-pages.drawio — Context", { exact: true }).click();
+    const placed = canvas.locator('img[data-drawio="../diagrams/two-pages.drawio"]');
+    await expect(placed).toHaveCount(1, { timeout: 40_000 });
+    await expect(placed).toHaveAttribute("data-drawio-page", "Context");
+    const ratio = await placed.evaluate((image: HTMLImageElement) => image.getBoundingClientRect().width / image.getBoundingClientRect().height);
+    const natural = await placed.evaluate((image: HTMLImageElement) => image.naturalWidth / image.naturalHeight);
+    expect(Math.abs(ratio - natural)).toBeLessThan(0.05);
+
+    // The example's empty photo frame, selected: the diagram goes into it.
+    await canvas.locator("img.photo").click();
+    await choose();
+    await diagrams.getByText("../diagrams/flow.drawio", { exact: true }).click();
+    await expect(canvas.locator("img.photo")).toHaveAttribute("data-drawio", "../diagrams/flow.drawio", { timeout: 40_000 });
+    expect(await svgOf(editor, "img.photo")).toMatch(/^<\?xml|^<svg/);
+    await expect(editor.locator(".poster-status")).toContainText("Diagram placed");
+
+    // A file that is no diagram: said, and nothing more on the page.
+    const before = await canvas.locator("img").count();
+    await choose();
+    await diagrams.getByText("../diagrams/broken.drawio", { exact: true }).click();
+    await expect(editor.locator(".poster-status")).toContainText("../diagrams/broken.drawio could not be drawn: it is not a draw.io diagram");
+    expect(await canvas.locator("img").count()).toBe(before);
   } finally {
     await fs.writeFile(file, original);
   }

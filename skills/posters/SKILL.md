@@ -27,7 +27,17 @@ to print) or PowerPoint (a slide to show). You cannot see it rendered.
    tool), lay out an empty frame for each (see the rules below) and tell them to double-click
    each frame in the editor to put their picture in. You cannot copy a picture you were
    shown into the file.
-5. To change a poster, **read the file first** with `read`, never with `bash`: the user may
+5. To put a draw.io diagram of the project in a poster, lay out an empty picture frame that
+   names it, and the editor draws it there when the user opens the poster:
+   `<img class="diagram" data-poster-picture="architecture" data-drawio="../docs/architecture.drawio" data-drawio-page="Overview" alt="Architecture">`,
+   with a width and height in the diagram's proportions. `data-drawio` is the diagram's
+   path from the poster's directory (or from the project root when it starts with `/`);
+   `data-drawio-page` is the page's name or its number from 1, and without it the first page
+   is drawn. Tell the user to open the poster and save it to keep the diagram. Never copy a
+   diagram's SVG into the markup: it is text inside a drawing, and you would read all of it
+   on every read of the poster. Once drawn, the diagram is a picture with a marker like any
+   other; the user can also insert one from **Insert → draw.io diagram…**.
+6. To change a poster, **read the file first** with `read`, never with `bash`: the user may
    have retouched it in the editor, and your change must keep their edits — their texts,
    colours, positions and pictures — unless they asked otherwise. Each picture shows as a
    marker such as `src="poster-picture:2"`: keep markers exactly as you read them, and the
