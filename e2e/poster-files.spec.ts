@@ -58,6 +58,103 @@ test("APosterFileOpensInTheEditor and TouchUpsReachTheAgent: drawn in the editor
   }
 });
 
+/** The poster file with its first card's title replaced, as the agent would write it. */
+function withTitle(page: string, title: string): string {
+  return page.replace("I raise my hand", title);
+}
+
+/** Marks the editor's canvas frame: reopening the poster replaces it, and the mark with it. */
+async function markCanvas(editor: FrameLocator) {
+  await editor.locator("iframe.gjs-frame").evaluate((frame) => frame.setAttribute("data-e2e-mark", "kept"));
+}
+
+// openlore: scenario=AnAgentRewriteIsShown spec=poster-files
+test("AnAgentRewriteIsShown: the agent's new version replaces the one on screen, and saving over it works", async ({ page }) => {
+  const file = path.join(process.env.PI_E2E_PRIMARY_PROJECT!, POSTER);
+  const original = await fs.readFile(file, "utf8");
+  try {
+    const editor = await openPoster(page);
+    const canvas = editor.frameLocator("iframe.gjs-frame");
+    await expect(canvas.locator(".rule.c1 h2")).toHaveText("I raise my hand", { timeout: 20_000 });
+    await fs.writeFile(file, withTitle(original, "I raise my hand, said the agent"));
+    await expect(canvas.locator(".rule.c1 h2")).toHaveText("I raise my hand, said the agent", { timeout: 15_000 });
+    // A save is checked against the version shown, the agent's: it is not refused.
+    const title = canvas.locator(".rule.c1 h2");
+    await title.click();
+    await title.dblclick();
+    await page.keyboard.press("ControlOrMeta+A");
+    await page.keyboard.type("I raise my hand, and so do you");
+    await canvas.locator(".motto").click();
+    await editor.locator('button[data-action="save"]').click();
+    await expect(editor.locator(".poster-status")).toHaveText(/Saved/);
+    await expect.poll(async () => readPage(await fs.readFile(file, "utf8")).html).toContain("I raise my hand, and so do you");
+  } finally {
+    await fs.writeFile(file, original);
+  }
+});
+
+// openlore: scenario=UnsavedTouchUpsAreKeptOverARewrite spec=poster-files
+test("UnsavedTouchUpsAreKeptOverARewrite: a rewrite leaves unsaved touch-ups alone, refuses their save, and shows once they are discarded", async ({ page }) => {
+  const file = path.join(process.env.PI_E2E_PRIMARY_PROJECT!, POSTER);
+  const original = await fs.readFile(file, "utf8");
+  try {
+    const editor = await openPoster(page);
+    const canvas = editor.frameLocator("iframe.gjs-frame");
+    const title = canvas.locator(".rule.c1 h2");
+    await expect(title).toHaveText("I raise my hand", { timeout: 20_000 });
+    await title.click();
+    await title.dblclick();
+    await page.keyboard.press("ControlOrMeta+A");
+    await page.keyboard.type("Mine, not saved");
+    await canvas.locator(".motto").click();
+    await expect(editor.locator('button[data-action="save"]')).toBeEnabled();
+    await markCanvas(editor);
+    await fs.writeFile(file, withTitle(original, "The agent's title"));
+    // Long enough for the viewer to read the new version; the touch-up is still there.
+    await page.waitForTimeout(3000);
+    await expect(title).toHaveText("Mine, not saved");
+    await expect(editor.locator("iframe.gjs-frame")).toHaveAttribute("data-e2e-mark", "kept");
+    // Saving them would overwrite the agent's version: refused, and the file is the agent's.
+    await editor.locator('button[data-action="save"]').click();
+    await expect(editor.locator(".poster-status")).toContainText("changed on disk");
+    expect(readPage(await fs.readFile(file, "utf8")).html).toContain("The agent's title");
+    // Discarded, the touch-ups are gone: the agent's version is shown.
+    page.once("dialog", (dialog) => void dialog.accept());
+    await page.getByRole("button", { name: /source/ }).click();
+    await page.getByRole("button", { name: /rendered/ }).click();
+    await expect(page.frameLocator('[data-testid="poster-frame"]').frameLocator("iframe.gjs-frame").locator(".rule.c1 h2")).toHaveText("The agent's title", { timeout: 20_000 });
+  } finally {
+    await fs.writeFile(file, original);
+  }
+});
+
+// openlore: scenario=OwnSaveDoesNotReopen spec=poster-files
+test("OwnSaveDoesNotReopen: after a save the editor keeps its page, never the version from before it", async ({ page }) => {
+  const file = path.join(process.env.PI_E2E_PRIMARY_PROJECT!, POSTER);
+  const original = await fs.readFile(file, "utf8");
+  try {
+    const editor = await openPoster(page);
+    const canvas = editor.frameLocator("iframe.gjs-frame");
+    const title = canvas.locator(".rule.c1 h2");
+    await expect(title).toHaveText("I raise my hand", { timeout: 20_000 });
+    await title.click();
+    await title.dblclick();
+    await page.keyboard.press("ControlOrMeta+A");
+    await page.keyboard.type("Saved by me");
+    await canvas.locator(".motto").click();
+    await markCanvas(editor);
+    await editor.locator('button[data-action="save"]').click();
+    await expect(editor.locator(".poster-status")).toHaveText(/Saved/);
+    await expect.poll(async () => readPage(await fs.readFile(file, "utf8")).html).toContain("Saved by me");
+    // The viewer reads the file back after the save; the editor is not reopened over it.
+    await page.waitForTimeout(3000);
+    await expect(editor.locator("iframe.gjs-frame")).toHaveAttribute("data-e2e-mark", "kept");
+    await expect(title).toHaveText("Saved by me");
+  } finally {
+    await fs.writeFile(file, original);
+  }
+});
+
 // openlore: scenario=ABrokenPosterSaysWhy spec=poster-files
 test("ABrokenPosterSaysWhy: the reason and the source, not an empty editor", async ({ page }) => {
   await openPoster(page, "broken.poster.html");

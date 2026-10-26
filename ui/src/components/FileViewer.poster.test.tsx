@@ -44,11 +44,22 @@ function open(file: OpenFile, fileIo: FileIo | undefined = fakeFileIo(), overrid
     onImageLoad: vi.fn(),
     ...overrides,
   };
-  return render(
+  const shown = (props: Props) => (
     <DrawioFilesContext.Provider value={{ serverUrl: SERVER, fileIo }}>
       <FileViewer {...props} />
-    </DrawioFilesContext.Provider>,
+    </DrawioFilesContext.Provider>
   );
+  const view = render(shown(props));
+  /** The viewer's re-read of the file, as after the agent wrote it. */
+  const reread = (next: OpenFile) => view.rerender(shown({ ...props, file: next }));
+  return { ...view, reread };
+}
+
+/** The OPEN messages the viewer sent the editor frame, oldest first. */
+function opens(sent: { mock: { calls: unknown[][] } }) {
+  return sent.mock.calls
+    .map(([message]) => message as { type: string; poster?: { html: string } })
+    .filter((message) => message.type === POSTER_FRAME.OPEN);
 }
 
 /** A message from the editor frame, from the server it was loaded from. */
@@ -201,5 +212,91 @@ describe("a poster in the viewer", () => {
     act(() => window.dispatchEvent(new MessageEvent("message", { data: { type: POSTER_FRAME.SAVE, id: 2, html: "<p>y</p>", css: "" }, source: window, origin: SERVER })));
     await new Promise((resolve) => setTimeout(resolve, 20));
     expect(fileIo.write).not.toHaveBeenCalled();
+  });
+
+  describe("AShownPosterFollowsItsFile", () => {
+    const REWRITTEN = pageOf("Class rules", { html: POSTER_EXAMPLE.html.replace("I listen", "I listen to the agent"), css: POSTER_EXAMPLE.css, format: POSTER_EXAMPLE.format });
+
+    async function ready(fileIo = fakeFileIo()) {
+      const view = open(loaded(PAGE), fileIo);
+      const frame = screen.getByTestId("poster-frame") as HTMLIFrameElement;
+      const sent = vi.spyOn(frame.contentWindow!, "postMessage");
+      fromFrame(frame, { type: POSTER_FRAME.READY });
+      await waitFor(() => expect(opens(sent)).toHaveLength(1));
+      return { ...view, frame, sent, fileIo };
+    }
+
+    // openlore: scenario=AnAgentRewriteIsShown spec=poster-files
+    it("AnAgentRewriteIsShown: a clean editor is sent the new version, and a save is checked against its time", async () => {
+      const { reread, frame, sent, fileIo } = await ready();
+      reread(loaded(REWRITTEN, undefined, 3000));
+      await waitFor(() => expect(opens(sent)).toHaveLength(2));
+      expect(opens(sent)[1]!.poster).toMatchObject({ html: readPage(REWRITTEN).html, readOnly: false });
+      fromFrame(frame, { type: POSTER_FRAME.SAVE, id: 5, html: readPage(REWRITTEN).html, css: POSTER_EXAMPLE.css });
+      await waitFor(() => expect(fileIo.write).toHaveBeenCalled());
+      expect(vi.mocked(fileIo.write).mock.calls[0]![2]).toBe(3000);
+    });
+
+    // openlore: scenario=UnsavedTouchUpsAreKeptOverARewrite spec=poster-files
+    it("UnsavedTouchUpsAreKeptOverARewrite: touch-ups are not replaced, and once undone the agent's version is shown", async () => {
+      // As the server does: a write against any time but the file's own (3000, the agent's) is refused.
+      const { reread, frame, sent, fileIo } = await ready(
+        fakeFileIo({ write: vi.fn(async (_path: string, _content: string, expected?: number) => (expected === 3000 ? { mtimeMs: 4000 } : Promise.reject(new FileIoError("changed", "conflict")))) }),
+      );
+      fromFrame(frame, { type: POSTER_FRAME.DIRTY, dirty: true });
+      reread(loaded(REWRITTEN, undefined, 3000));
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(opens(sent)).toHaveLength(1);
+      // A save meanwhile is still checked against the version the touch-ups were made on.
+      fromFrame(frame, { type: POSTER_FRAME.SAVE, id: 6, html: "<p>mine</p>", css: "" });
+      await waitFor(() => expect(sent).toHaveBeenCalledWith({ type: POSTER_FRAME.ANSWER, id: 6, value: expect.objectContaining({ saved: false }) }, SERVER));
+      expect(vi.mocked(fileIo.write).mock.calls[0]![2]).toBe(1000);
+      fromFrame(frame, { type: POSTER_FRAME.DIRTY, dirty: false });
+      await waitFor(() => expect(opens(sent)).toHaveLength(2));
+      expect(opens(sent)[1]!.poster).toMatchObject({ html: readPage(REWRITTEN).html });
+    });
+
+    // openlore: scenario=OwnSaveDoesNotReopen spec=poster-files
+    it("OwnSaveDoesNotReopen: the file read back as it was saved leaves the editor alone", async () => {
+      const { reread, frame, sent, fileIo } = await ready();
+      const html = POSTER_EXAMPLE.html.replace("I listen", "I listen carefully");
+      fromFrame(frame, { type: POSTER_FRAME.SAVE, id: 7, html, css: POSTER_EXAMPLE.css });
+      await waitFor(() => expect(fileIo.write).toHaveBeenCalled());
+      const written = vi.mocked(fileIo.write).mock.calls[0]![1];
+      // The server acknowledges the write before it says the file changed.
+      await waitFor(() => expect(sent).toHaveBeenCalledWith({ type: POSTER_FRAME.ANSWER, id: 7, value: expect.objectContaining({ saved: true }) }, SERVER));
+      fromFrame(frame, { type: POSTER_FRAME.DIRTY, dirty: false });
+      reread(loaded(written, undefined, 2000));
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(opens(sent)).toHaveLength(1);
+    });
+
+    // openlore: scenario=ASaveIsCheckedAgainstTheShownVersion spec=poster-files
+    it("ASaveIsCheckedAgainstTheShownVersion: a write landing before the editor opened refuses the save", async () => {
+      // The viewer read the page at 1000; by the time the frame is ready, the file is at 3000.
+      const fileIo = fakeFileIo({ read: vi.fn(async () => ({ content: REWRITTEN, mtimeMs: 3000 })) });
+      const { frame } = await ready(fileIo);
+      fromFrame(frame, { type: POSTER_FRAME.SAVE, id: 8, html: "<p>mine</p>", css: "" });
+      await waitFor(() => expect(fileIo.write).toHaveBeenCalled());
+      expect(vi.mocked(fileIo.write).mock.calls[0]![2]).toBe(1000);
+    });
+
+    it("the same page written again moves the guard to its time, so a save is not refused for nothing", async () => {
+      const { reread, frame, fileIo } = await ready();
+      reread(loaded(PAGE, undefined, 4000));
+      fromFrame(frame, { type: POSTER_FRAME.SAVE, id: 9, html: "<p>mine</p>", css: "" });
+      await waitFor(() => expect(fileIo.write).toHaveBeenCalled());
+      expect(vi.mocked(fileIo.write).mock.calls[0]![2]).toBe(4000);
+    });
+
+    it("a version that arrives before the frame is ready is the one it opens with", async () => {
+      const view = open(loaded(PAGE));
+      const frame = screen.getByTestId("poster-frame") as HTMLIFrameElement;
+      const sent = vi.spyOn(frame.contentWindow!, "postMessage");
+      view.reread(loaded(REWRITTEN, undefined, 3000));
+      fromFrame(frame, { type: POSTER_FRAME.READY });
+      await waitFor(() => expect(opens(sent)).toHaveLength(1));
+      expect(opens(sent)[0]!.poster).toMatchObject({ html: readPage(REWRITTEN).html });
+    });
   });
 });
