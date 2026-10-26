@@ -131,3 +131,10 @@ test("A repeated unclosed page rule is checked in linear time", () => {
   checkPosterText(poster("<p>x</p>").replace("</style>", `${".poster-page{{|".repeat(50_000)}</style>`));
   assert.ok(performance.now() - started < 2000);
 });
+
+test("A stylesheet repeating url( with none closed is checked in linear time", () => {
+  const started = performance.now();
+  checkPosterText(poster("<p>x</p>", "url(".repeat(50_000)));
+  checkPosterText(poster(`<div style="${"url(".repeat(50_000)}"></div>`));
+  assert.ok(performance.now() - started < 2000);
+});

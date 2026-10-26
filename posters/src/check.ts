@@ -51,7 +51,6 @@ const SOURCES = new Set(["src", "srcset", "poster", "data", "background"]);
 const DRAWING_HREF = new Set(["image", "use", "feimage", "pattern", "textpath"]);
 
 const ATTRIBUTE = /([^\s=/"'>]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+)))?/g;
-const CSS_URL = /url\(\s*(?:"([^"]*)"|'([^']*)'|([^)"'\s]*))\s*\)/gi;
 const SCHEME = /^[a-z][a-z0-9+.-]*:/i;
 const MARKER = /^poster-picture:\d+$/;
 
@@ -118,10 +117,25 @@ function notFetched(where: string, address: string): string {
   return `${where} is never drawn: a poster fetches nothing, from the web or the project. Use an emoji, an SVG drawing of your own, an empty frame the person fills, or a frame naming a draw.io diagram (${DRAWIO_ATTRIBUTE}) or a picture file (${PICTURE_FILE_ATTRIBUTE}) of the project.`;
 }
 
+/**
+ * The address of each `url(…)` in a stylesheet, quoted or not. Searched, not matched: a pattern
+ * for a `url(` and its value is quadratic on a stylesheet repeating `url(` with none closed.
+ */
+function* cssUrls(css: string): Generator<string> {
+  const lower = css.toLowerCase();
+  for (let at = lower.indexOf("url("); at !== -1; at = lower.indexOf("url(", at + 4)) {
+    let start = at + 4;
+    while (start < css.length && /\s/.test(css[start]!)) start += 1;
+    const quote = css[start] === '"' || css[start] === "'" ? css[start]! : "";
+    const end = quote ? css.indexOf(quote, start + 1) : css.indexOf(")", start);
+    if (end === -1) return;
+    yield (quote ? css.slice(start + 1, end) : css.slice(start, end)).trim();
+  }
+}
+
 function checkStylesheet(css: string, where: string, issues: PosterIssue[]): void {
   if (/@import\b/i.test(css)) issues.push({ severity: "error", message: `${where} holds an @import: a poster fetches nothing, so write the rules themselves.` });
-  for (const match of css.matchAll(CSS_URL)) {
-    const address = match[1] ?? match[2] ?? match[3] ?? "";
+  for (const address of cssUrls(css)) {
     if (!drawsInPlace(address)) issues.push({ severity: "error", message: notFetched(`url(${shown(address)}) in ${where}`, address) });
   }
 }
