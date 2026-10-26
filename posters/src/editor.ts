@@ -24,7 +24,7 @@ import parserModule from "grapesjs-parser-postcss";
 import { FORMATS, pageOf, type PosterFormat } from "./format.ts";
 import { DOCX_MEDIA_TYPE, PPTX_MEDIA_TYPE, exportFileName, posterDocx, posterPptx } from "./office.ts";
 import { pagePicture } from "./picture.ts";
-import { DRAWIO_ATTRIBUTE, DRAWIO_PAGE_ATTRIBUTE, diagramPicture, type DiagramChoice } from "./diagrams.ts";
+import { DRAWIO_ATTRIBUTE, DRAWIO_PAGE_ATTRIBUTE, PICTURE_FILE_ATTRIBUTE, svgPicture, type DiagramChoice } from "./diagrams.ts";
 
 export interface OpenedPoster {
   title: string;
@@ -72,6 +72,17 @@ export interface PosterHost {
     list(): Promise<DiagramChoice[]>;
     /** One page of `path`, as an SVG: the page's name or number from 1, or the first page. */
     draw(path: string, page?: string): Promise<string>;
+  };
+  /**
+   * Present when the host can read the project's picture files (pi-outpost): Insert offers them,
+   * and an empty frame naming one (`data-picture-file`) is filled when the poster opens. Both
+   * reject with the reason, in words for the person.
+   */
+  pictures?: {
+    /** The picture files a frame may name. */
+    list(): Promise<string[]>;
+    /** The file `path` names, with its media type. */
+    read(path: string): Promise<{ type: string; bytes: Uint8Array }>;
   };
 }
 
@@ -354,7 +365,8 @@ export function mountEditor(root: HTMLElement, host: PosterHost): PosterEditor {
   };
   insertMenu.append(
     menuItem("picture", "Picture…", "A picture of yours: into the selected picture, or onto the page"),
-    // Only where the host can draw them: elsewhere the menu holds no item it cannot honour.
+    // Only where the host can read the project: elsewhere the menu holds no item it cannot honour.
+    ...(host.pictures ? [menuItem("project-picture", "Picture from the project…", "A picture file of the project, SVG kept sharp: into the selected picture, or onto the page")] : []),
     ...(host.diagrams ? [menuItem("diagram", "draw.io diagram…", "A page of one of the project's draw.io diagrams: into the selected picture, or onto the page")] : []),
     menuItem("text", "Text", "A text box in the middle of the page"),
     element("hr"),
@@ -694,109 +706,167 @@ export function mountEditor(root: HTMLElement, host: PosterHost): PosterEditor {
     }, true);
   }
 
+  /** Where a frame's picture comes from: a draw.io page the host draws, or a picture file of the project. */
+  type PictureSource = { kind: "diagram"; path: string; page?: string } | { kind: "file"; path: string };
+  const sourceName = (source: PictureSource) => (source.kind === "diagram" && source.page !== undefined ? `${source.path} (${source.page})` : source.path);
+  const reasonOf = (error: unknown) => (error instanceof Error ? error.message : String(error));
+
+  /** A frame's source, from its attributes, where this host can honour it; a frame naming both is drawn from its diagram. */
+  function sourceOf(frame: Component): PictureSource | undefined {
+    const attributes = frame.getAttributes();
+    const named = (name: string) => {
+      const value = attributes[name];
+      return typeof value === "string" && value.trim() !== "" ? value.trim() : undefined;
+    };
+    const diagram = named(DRAWIO_ATTRIBUTE);
+    if (diagram !== undefined && host.diagrams) return { kind: "diagram", path: diagram, page: named(DRAWIO_PAGE_ATTRIBUTE) };
+    const file = named(PICTURE_FILE_ATTRIBUTE);
+    if (file !== undefined && host.pictures) return { kind: "file", path: file };
+    return undefined;
+  }
+
+  /** The attributes a picture keeps of where it came from. */
+  function sourceAttributes(source: PictureSource): Record<string, string> {
+    if (source.kind === "file") return { [PICTURE_FILE_ATTRIBUTE]: source.path };
+    return { [DRAWIO_ATTRIBUTE]: source.path, ...(source.page === undefined ? {} : { [DRAWIO_PAGE_ATTRIBUTE]: source.page }) };
+  }
+
+  /** A picture's size in CSS pixels, read by decoding it. */
+  function pictureSize(src: string): Promise<{ width: number; height: number }> {
+    return new Promise((resolve, reject) => {
+      const image = new Image();
+      image.onload = () => resolve({ width: image.naturalWidth, height: image.naturalHeight });
+      image.onerror = () => reject(new Error("it is no picture this browser can read"));
+      image.src = src;
+    });
+  }
+
+  /** The source as a picture (design 3): a diagram page drawn by the host, an SVG kept as it is, a raster scaled. */
+  async function pictureFrom(source: PictureSource): Promise<{ src: string; width: number; height: number }> {
+    if (source.kind === "diagram") return svgPicture(await host.diagrams!.draw(source.path, source.page));
+    const file = await host.pictures!.read(source.path);
+    if (file.type === "image/svg+xml") return svgPicture(new TextDecoder().decode(file.bytes));
+    let src: string;
+    try {
+      src = await embeddablePicture(new Blob([file.bytes as BlobPart], { type: file.type }));
+    } catch {
+      throw new Error("it is no picture this browser can read");
+    }
+    return { src, ...(await pictureSize(src)) };
+  }
+
   let diagramTarget: Component | undefined;
   let diagramListing = 0;
 
-  /** Lists the project's diagrams, a page per entry, for one to go into `target` or onto the page. */
-  async function chooseDiagram(target?: Component) {
-    const diagrams = host.diagrams;
-    if (!diagrams || !editor) return;
+  /**
+   * Lists what can go into `target` or onto the page: the project's diagrams, a page per entry,
+   * or its picture files. One list, where the Insert menu opens.
+   */
+  async function chooseSource(kind: PictureSource["kind"], target?: Component) {
+    if (!editor || (kind === "diagram" ? !host.diagrams : !host.pictures)) return;
     diagramTarget = target;
     const listing = ++diagramListing;
-    diagramMenu.replaceChildren(element("span", { class: "poster-menu-note" }, "Looking for draw.io diagrams…"));
+    const what = kind === "diagram" ? "draw.io diagrams" : "the project's pictures";
+    diagramMenu.setAttribute("aria-label", kind === "diagram" ? "draw.io diagrams" : "Pictures of the project");
+    diagramMenu.replaceChildren(element("span", { class: "poster-menu-note" }, `Looking for ${what}…`));
     diagramMenu.hidden = false;
-    let choices: DiagramChoice[];
+    let entries: { source: PictureSource; label: string }[];
     try {
-      choices = await diagrams.list();
+      entries =
+        kind === "diagram"
+          ? (await host.diagrams!.list()).flatMap((choice: DiagramChoice) =>
+              choice.pages.length > 1
+                ? choice.pages.map((page) => ({ source: { kind: "diagram" as const, path: choice.path, page }, label: `${choice.path} — ${page}` }))
+                : [{ source: { kind: "diagram" as const, path: choice.path }, label: choice.path }],
+            )
+          : (await host.pictures!.list()).map((path) => ({ source: { kind: "file" as const, path }, label: path }));
     } catch (error) {
       if (listing !== diagramListing) return;
       diagramMenu.hidden = true;
-      status(`The draw.io diagrams could not be listed: ${error instanceof Error ? error.message : String(error)}.`, "error");
+      status(`${kind === "diagram" ? "The draw.io diagrams" : "The project's pictures"} could not be listed: ${reasonOf(error)}.`, "error");
       return;
     }
     if (listing !== diagramListing || diagramMenu.hidden) return;
-    const entries = choices.flatMap((choice) =>
-      choice.pages.length > 1
-        ? choice.pages.map((page) => ({ path: choice.path, page, label: `${choice.path} — ${page}` }))
-        : [{ path: choice.path, page: undefined as string | undefined, label: choice.path }],
-    );
     if (entries.length === 0) {
-      diagramMenu.replaceChildren(element("span", { class: "poster-menu-note" }, "No draw.io diagram in this project."));
+      diagramMenu.replaceChildren(element("span", { class: "poster-menu-note" }, kind === "diagram" ? "No draw.io diagram in this project." : "No picture in this project."));
       return;
     }
     diagramMenu.replaceChildren(
-      ...entries.map(({ path, page, label }) => {
-        const item = element("button", { type: "button", role: "menuitem", "data-diagram": path, title: `Put ${label} in the poster` }, label);
-        if (page !== undefined) item.dataset.page = page;
+      ...entries.map(({ source, label }) => {
+        const item = element("button", { type: "button", role: "menuitem", title: `Put ${label} in the poster` }, label);
+        if (source.kind === "diagram") {
+          item.dataset.diagram = source.path;
+          if (source.page !== undefined) item.dataset.page = source.page;
+        } else {
+          item.dataset.pictureFile = source.path;
+        }
         return item;
       }),
     );
     (diagramMenu.querySelector("button") as HTMLButtonElement | null)?.focus();
   }
 
-  /** Draws `path`'s `page` and puts it into `target` when that is a picture, else onto the page. */
-  async function insertDiagram(path: string, page: string | undefined, target?: Component) {
+  /** Puts `source` into `target` when that is a picture, else onto the page. */
+  async function insertSource(source: PictureSource, target?: Component) {
     const opened = editor;
-    const diagrams = host.diagrams;
-    if (!opened || !shown || !diagrams) return;
-    const named = page === undefined ? path : `${path} (${page})`;
-    status(`Drawing ${named}…`);
-    let picture: ReturnType<typeof diagramPicture>;
+    if (!opened || !shown) return;
+    const diagram = source.kind === "diagram";
+    const name = sourceName(source);
+    status(`${diagram ? "Drawing" : "Placing"} ${name}…`);
+    let picture: { src: string; width: number; height: number };
     try {
-      picture = diagramPicture(await diagrams.draw(path, page));
+      picture = await pictureFrom(source);
     } catch (error) {
-      if (editor === opened) status(`${named} could not be drawn: ${error instanceof Error ? error.message : String(error)}.`, "error");
+      if (editor === opened) status(`${name} could not be ${diagram ? "drawn" : "placed"}: ${reasonOf(error)}.`, "error");
       return;
     }
     if (editor !== opened) return;
-    const source = { [DRAWIO_ATTRIBUTE]: path, ...(page === undefined ? {} : { [DRAWIO_PAGE_ATTRIBUTE]: page }) };
     if (target?.is("image") && target.getEl()?.isConnected) {
       target.set("src", picture.src);
-      target.addAttributes(source);
+      target.addAttributes(sourceAttributes(source));
       target.addStyle({ border: "none", background: "none" });
     } else {
       const width = Math.round(Math.min(size().width * 0.6, picture.width));
       const height = Math.round((width * picture.height) / picture.width);
-      place(opened, { type: "image", src: picture.src, attributes: { alt: named, ...source } }, width, height);
+      place(opened, { type: "image", src: picture.src, attributes: { alt: name, ...sourceAttributes(source) } }, width, height);
     }
     // Unsaved now, before saying what was placed: said after, it would cover this.
     syncDirty();
-    status("Diagram placed: drag it to move it, pull a corner to resize it, then save.", "ok");
+    status(`${diagram ? "Diagram" : "Picture"} placed: drag it to move it, pull a corner to resize it, then save.`, "ok");
   }
 
   /**
-   * Fills each empty frame naming a diagram, once the poster is open (design 5): a frame
+   * Fills each empty frame naming a diagram or a picture file, once the poster is open: a frame
    * already holding a picture is left as it is. What is filled is an unsaved touch-up.
    */
-  async function fillDiagramFrames(opened: Editor) {
-    const diagrams = host.diagrams;
-    if (!diagrams) return;
-    const frames = opened.getWrapper()!.find("img").filter((frame) => {
-      const named = frame.getAttributes()[DRAWIO_ATTRIBUTE];
-      return typeof named === "string" && named.trim() !== "" && (frame as Component & { isDefaultSrc(): boolean }).isDefaultSrc();
+  async function fillPictureFrames(opened: Editor) {
+    const frames = opened.getWrapper()!.find("img").flatMap((frame) => {
+      const source = sourceOf(frame);
+      return source && (frame as Component & { isDefaultSrc(): boolean }).isDefaultSrc() ? [{ frame, source }] : [];
     });
     if (frames.length === 0) return;
-    status(`Drawing ${frames.length === 1 ? "the draw.io diagram" : `${frames.length} draw.io diagrams`} named in the poster…`);
+    const diagrams = frames.every(({ source }) => source.kind === "diagram");
+    const one = diagrams ? "draw.io diagram" : "picture";
+    status(`${diagrams ? "Drawing" : "Placing"} ${frames.length === 1 ? `the ${one}` : `${frames.length} ${one}s`} named in the poster…`);
     let filled = 0;
     const failed: string[] = [];
-    for (const frame of frames) {
-      const attributes = frame.getAttributes();
-      const path = String(attributes[DRAWIO_ATTRIBUTE]).trim();
-      const page = typeof attributes[DRAWIO_PAGE_ATTRIBUTE] === "string" && attributes[DRAWIO_PAGE_ATTRIBUTE].trim() !== "" ? attributes[DRAWIO_PAGE_ATTRIBUTE].trim() : undefined;
+    for (const { frame, source } of frames) {
       try {
-        const picture = diagramPicture(await diagrams.draw(path, page));
+        const picture = await pictureFrom(source);
         if (editor !== opened) return;
         frame.set("src", picture.src);
         frame.addStyle({ border: "none", background: "none" });
         filled += 1;
       } catch (error) {
         if (editor !== opened) return;
-        failed.push(`${page === undefined ? path : `${path} (${page})`}: ${error instanceof Error ? error.message : String(error)}`);
+        failed.push(`${sourceName(source)}: ${reasonOf(error)}`);
       }
     }
     syncDirty();
-    if (failed.length > 0) status(`${filled > 0 ? `${filled} diagram${filled === 1 ? "" : "s"} drawn; ` : ""}not drawn, its frame left empty — ${failed.join("; ")}.`, "error");
-    else status(`${filled === 1 ? "The draw.io diagram is" : `${filled} draw.io diagrams are`} in ${filled === 1 ? "its frame" : "their frames"}: save to keep ${filled === 1 ? "it" : "them"}.`, "ok");
+    const short = diagrams ? "diagram" : "picture";
+    const done = diagrams ? "drawn" : "placed";
+    if (failed.length > 0) status(`${filled > 0 ? `${filled} ${short}${filled === 1 ? "" : "s"} ${done}; ` : ""}not ${done}, its frame left empty — ${failed.join("; ")}.`, "error");
+    else status(`${filled === 1 ? `The ${one} is` : `${filled} ${one}s are`} in ${filled === 1 ? "its frame" : "their frames"}: save to keep ${filled === 1 ? "it" : "them"}.`, "ok");
   }
 
   function setMenu(open: boolean) {
@@ -816,9 +886,9 @@ export function mountEditor(root: HTMLElement, host: PosterHost): PosterEditor {
     if (choice === "picture") {
       const selected = editor?.getSelected();
       pickPicture(selected?.is("image") ? selected : undefined);
-    } else if (choice === "diagram") {
+    } else if (choice === "diagram" || choice === "project-picture") {
       const selected = editor?.getSelected();
-      void chooseDiagram(selected?.is("image") ? selected : undefined);
+      void chooseSource(choice === "diagram" ? "diagram" : "file", selected?.is("image") ? selected : undefined);
     } else if (choice === "text") {
       insertText();
     } else if (choice.startsWith("shape:")) {
@@ -831,10 +901,11 @@ export function mountEditor(root: HTMLElement, host: PosterHost): PosterEditor {
     insertButton.focus();
   });
   diagramMenu.addEventListener("click", (event) => {
-    const item = (event.target as HTMLElement).closest<HTMLElement>("[data-diagram]");
+    const item = (event.target as HTMLElement).closest<HTMLElement>("[data-diagram], [data-picture-file]");
     if (!item) return;
     diagramMenu.hidden = true;
-    void insertDiagram(item.dataset.diagram!, item.dataset.page, diagramTarget);
+    const source: PictureSource = item.dataset.diagram !== undefined ? { kind: "diagram", path: item.dataset.diagram, page: item.dataset.page } : { kind: "file", path: item.dataset.pictureFile! };
+    void insertSource(source, diagramTarget);
   });
   // Escape closes the diagram list wherever the focus is: it may still be on Insert while the
   // project is looked through.
@@ -1029,7 +1100,7 @@ export function mountEditor(root: HTMLElement, host: PosterHost): PosterEditor {
       savedSnapshot = current();
       fitZoom();
       status(canSave ? "Double-click a text to correct it; drag a selected element to move it." : "Double-click a text to correct it, then export. Changes are not saved here.");
-      void fillDiagramFrames(opened);
+      void fillPictureFrames(opened);
     });
     opened.on("update", () => {
       if (editor === opened) syncDirty();

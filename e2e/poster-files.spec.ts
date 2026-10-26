@@ -334,8 +334,160 @@ test("Insert → draw.io diagram: offered with their pages, onto the page, into 
     await diagrams.getByText("../diagrams/broken.drawio", { exact: true }).click();
     await expect(editor.locator(".poster-status")).toContainText("../diagrams/broken.drawio could not be drawn: it is not a draw.io diagram");
     expect(await canvas.locator("img").count()).toBe(before);
+
+    // With two diagrams inserted, both exports still draw the page.
+    const limits = { maxEntries: 50, maxInflatedBytes: 60_000_000, maxTotalBytes: 100_000_000 };
+    for (const [action, extension, entry] of [["word", "docx", "word/media/poster.png"], ["powerpoint", "pptx", "ppt/media/poster.png"]] as const) {
+      const download = page.waitForEvent("download", { timeout: 30_000 });
+      await editor.locator(`button[data-action="${action}"]`).click();
+      const file = await download;
+      expect(file.suggestedFilename()).toBe(`Our class rules.${extension}`);
+      const entries = readAllZipEntries(await fs.readFile((await file.path())!), limits);
+      const picture = entries.get(entry) ?? [...entries].find(([name]) => name.endsWith(".png"))?.[1];
+      expect(picture, `${action}: a page picture`).toBeDefined();
+      expect(picture!.readUInt32BE(0)).toBe(0x89504e47);
+      await expect(editor.locator(".poster-status")).not.toContainText("could not draw");
+    }
   } finally {
     await fs.writeFile(file, original);
+  }
+});
+
+const FIGURE = '<svg xmlns="http://www.w3.org/2000/svg" width="600" height="200" viewBox="0 0 600 200"><rect x="10" y="10" width="200" height="80" fill="#ff00aa" stroke="#6c8ebf"/><text x="30" y="60" font-size="24">Client — é</text></svg>';
+
+/** Writes `content` at `relative` in the project, creating its directory; returns its path. */
+async function writeProjectFile(relative: string, content: string | Buffer): Promise<string> {
+  const file = path.join(process.env.PI_E2E_PRIMARY_PROJECT!, relative);
+  await fs.mkdir(path.dirname(file), { recursive: true });
+  await fs.writeFile(file, content);
+  return file;
+}
+
+// openlore: scenario=AFigureTheAgentWroteFillsItsFrame spec=poster-files
+test("AFigureTheAgentWroteFillsItsFrame: an SVG figure the frame names is put in it as its own SVG, and saved", async ({ page }) => {
+  const figure = await writeProjectFile("figures/architecture.svg", FIGURE);
+  const file = await writePoster("Figure.poster.html", '<div class="sheet"><img class="d1" data-poster-picture="architecture" data-picture-file="../figures/architecture.svg" alt=""></div>', DIAGRAM_CSS);
+  try {
+    const editor = await openPoster(page, "Figure.poster.html");
+    await expect.poll(() => svgOf(editor, ".d1"), { timeout: 30_000 }).toBe(FIGURE);
+    await expect(editor.locator(".poster-status")).toContainText("The picture is in its frame");
+    await expect(editor.locator('button[data-action="save"]')).toBeEnabled();
+    await editor.locator('button[data-action="save"]').click();
+    await expect(editor.locator(".poster-status")).toHaveText(/Saved/);
+    const saved = readPage(await fs.readFile(file, "utf8")).html;
+    expect(saved).toContain('data-picture-file="../figures/architecture.svg"');
+    expect(saved).toContain(`src="data:image/svg+xml;base64,${Buffer.from(FIGURE).toString("base64")}"`);
+  } finally {
+    await fs.rm(file, { force: true });
+    await fs.rm(path.dirname(figure), { recursive: true, force: true });
+  }
+});
+
+// openlore: scenario=AMissingPictureLeavesTheFrameEmpty spec=poster-files
+test("AMissingPictureLeavesTheFrameEmpty: frames naming a missing file or no picture stay empty and are named", async ({ page }) => {
+  const file = await writePoster(
+    "NoPicture.poster.html",
+    '<div class="sheet"><img class="d1" data-poster-picture="gone" data-picture-file="../figures/gone.svg" alt="">' +
+      '<img class="d2" data-poster-picture="notes" data-picture-file="../site/notes.md" alt=""></div>',
+    DIAGRAM_CSS,
+  );
+  try {
+    const editor = await openPoster(page, "NoPicture.poster.html");
+    const status = editor.locator(".poster-status");
+    await expect(status).toContainText("not placed, its frame left empty", { timeout: 30_000 });
+    await expect(status).toContainText('../figures/gone.svg: "../figures/gone.svg" could not be read');
+    await expect(status).toContainText('../site/notes.md: "../site/notes.md" is not a picture file');
+    const [gone, notes] = [await svgOf(editor, ".d1"), await svgOf(editor, ".d2")];
+    expect(gone).toBe(notes);
+    expect(gone ?? "").not.toContain("Client");
+    await expect(editor.locator('button[data-action="save"]')).toBeDisabled();
+  } finally {
+    await fs.rm(file, { force: true });
+  }
+});
+
+// openlore: scenario=TheProjectsPicturesAreOffered spec=poster-files
+// openlore: scenario=AnSvgStaysVector spec=poster-files
+// openlore: scenario=ARasterIsScaled spec=poster-files
+test("Insert → Picture from the project: offered, an SVG kept as it is, a large PNG scaled", async ({ page }) => {
+  const poster = path.join(process.env.PI_E2E_PRIMARY_PROJECT!, POSTER);
+  const original = await fs.readFile(poster, "utf8");
+  const figure = await writeProjectFile("figures/architecture.svg", FIGURE);
+  try {
+    const editor = await openPoster(page);
+    const canvas = editor.frameLocator("iframe.gjs-frame");
+    await expect(canvas.locator(".rule.c1 h2")).toHaveText("I raise my hand", { timeout: 20_000 });
+    // A PNG 2400 pixels wide, made here and put in the project.
+    const wide = await page.evaluate(() => {
+      const made = document.createElement("canvas");
+      made.width = 2400;
+      made.height = 800;
+      const context = made.getContext("2d")!;
+      context.fillStyle = "#13ff7a";
+      context.fillRect(0, 0, 2400, 800);
+      return made.toDataURL("image/png").split(",")[1]!;
+    });
+    await writeProjectFile("figures/wide.png", Buffer.from(wide, "base64"));
+    const list = editor.locator(".poster-diagrams");
+    const choose = async () => {
+      await editor.locator('button[data-action="insert"]').click();
+      await editor.locator('[data-insert="project-picture"]').click();
+      await expect(list.locator("[data-picture-file]").first()).toBeVisible({ timeout: 15_000 });
+    };
+
+    await choose();
+    expect(await list.locator("[data-picture-file]").allInnerTexts()).toEqual(expect.arrayContaining(["../figures/architecture.svg", "../figures/wide.png", "../site/img/logo.svg"]));
+
+    await list.getByText("../figures/architecture.svg", { exact: true }).click();
+    const svg = canvas.locator('img[data-picture-file="../figures/architecture.svg"]');
+    await expect(svg).toHaveCount(1, { timeout: 30_000 });
+    expect(await svgOf(editor, 'img[data-picture-file="../figures/architecture.svg"]')).toBe(FIGURE);
+    const ratio = await svg.evaluate((image: HTMLImageElement) => image.getBoundingClientRect().width / image.getBoundingClientRect().height);
+    expect(Math.abs(ratio - 3)).toBeLessThan(0.05);
+
+    await canvas.locator(".motto").click();
+    await page.keyboard.press("Escape");
+    await choose();
+    await list.getByText("../figures/wide.png", { exact: true }).click();
+    const png = canvas.locator('img[data-picture-file="../figures/wide.png"]');
+    await expect(png).toHaveCount(1, { timeout: 30_000 });
+    expect(await png.getAttribute("src")).toMatch(/^data:image\/png;base64,/);
+    expect(await png.evaluate((image: HTMLImageElement) => [image.naturalWidth, image.naturalHeight])).toEqual([1200, 400]);
+    await expect(editor.locator(".poster-status")).toContainText("Picture placed");
+
+    // Both exports carry the page with both pictures in it: the SVG's magenta, the PNG's green.
+    const limits = { maxEntries: 50, maxInflatedBytes: 60_000_000, maxTotalBytes: 100_000_000 };
+    for (const [action, entry] of [["word", "word/media/poster.png"], ["powerpoint", "ppt/media/poster.png"]] as const) {
+      const download = page.waitForEvent("download", { timeout: 30_000 });
+      await editor.locator(`button[data-action="${action}"]`).click();
+      const file = await download;
+      const entries = readAllZipEntries(await fs.readFile((await file.path())!), limits);
+      const picture = entries.get(entry) ?? [...entries].find(([name]) => name.endsWith(".png"))?.[1];
+      expect(picture, `${action}: a page picture in ${[...entries.keys()].join(", ")}`).toBeDefined();
+      const colours = await page.evaluate(async (base64) => {
+        const image = new Image();
+        await new Promise((resolve, reject) => { image.onload = resolve; image.onerror = reject; image.src = `data:image/png;base64,${base64}`; });
+        const canvas = document.createElement("canvas");
+        canvas.width = image.naturalWidth;
+        canvas.height = image.naturalHeight;
+        const context = canvas.getContext("2d")!;
+        context.drawImage(image, 0, 0);
+        const data = context.getImageData(0, 0, canvas.width, canvas.height).data;
+        let magenta = 0;
+        let green = 0;
+        for (let index = 0; index < data.length; index += 4) {
+          const [red, greenness, blue] = [data[index]!, data[index + 1]!, data[index + 2]!];
+          if (red > 230 && greenness < 30 && blue > 140 && blue < 200) magenta += 1;
+          if (red < 40 && greenness > 230 && blue > 100 && blue < 150) green += 1;
+        }
+        return { magenta, green };
+      }, picture!.toString("base64"));
+      expect(colours.magenta, `${action}: the SVG figure is in the page`).toBeGreaterThan(1000);
+      expect(colours.green, `${action}: the PNG is in the page`).toBeGreaterThan(1000);
+    }
+  } finally {
+    await fs.writeFile(poster, original);
+    await fs.rm(path.dirname(figure), { recursive: true, force: true });
   }
 });
 

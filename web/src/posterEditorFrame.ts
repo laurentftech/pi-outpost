@@ -35,6 +35,10 @@ const editor = mountEditor(document.getElementById("root")!, {
     list: () => drawio<DiagramChoice[]>(POSTER_FRAME.DRAWIO_LIST, {}),
     draw: (path, page) => drawio<string>(POSTER_FRAME.DRAWIO_DRAW, { path, ...(page === undefined ? {} : { page }) }),
   },
+  pictures: {
+    list: () => drawio<string[]>(POSTER_FRAME.PICTURE_LIST, {}),
+    read: (path) => drawio<{ type: string; bytes: Uint8Array }>(POSTER_FRAME.PICTURE_READ, { path }),
+  },
 });
 editor.setDisplayMode("fill");
 

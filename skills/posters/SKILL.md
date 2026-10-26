@@ -37,7 +37,16 @@ to print) or PowerPoint (a slide to show). You cannot see it rendered.
    diagram's SVG into the markup: it is text inside a drawing, and you would read all of it
    on every read of the poster. Once drawn, the diagram is a picture with a marker like any
    other; the user can also insert one from **Insert → draw.io diagram…**.
-6. To change a poster, **read the file first** with `read`, never with `bash`: the user may
+6. To put a picture file of the project in a poster — a figure you wrote with
+   `write_structure_figure`, an SVG or a PNG of the repository — lay out an empty picture
+   frame that names it, and the editor puts it there when the user opens the poster:
+   `<img class="figure" data-poster-picture="architecture" data-picture-file="../figures/architecture.svg" alt="Architecture">`,
+   with a width and height in the picture's proportions. `data-picture-file` is the file's
+   path from the poster's directory (or from the project root when it starts with `/`); SVG,
+   PNG, JPEG, GIF and WebP are taken, and an SVG stays sharp. Tell the user to open the poster
+   and save it. Never paste a picture file's SVG into the markup. The user can also insert one
+   from **Insert → Picture from the project…**.
+7. To change a poster, **read the file first** with `read`, never with `bash`: the user may
    have retouched it in the editor, and your change must keep their edits — their texts,
    colours, positions and pictures — unless they asked otherwise. Each picture shows as a
    marker such as `src="poster-picture:2"`: keep markers exactly as you read them, and the

@@ -13,8 +13,10 @@
  *   frame  → parent  DIRTY   { dirty }                  unsaved touch-ups appeared or were saved
  *   frame  → parent  DRAWIO_LIST { id }                 the project's draw.io diagrams, with their pages
  *   frame  → parent  DRAWIO_DRAW { id, path, page? }    one diagram page, drawn as an SVG
+ *   frame  → parent  PICTURE_LIST { id }                the project's picture files
+ *   frame  → parent  PICTURE_READ { id, path }          one picture file: { type, bytes }
  *
- * DRAWIO_LIST and DRAWIO_DRAW are answered `{ ok: true, value }` or `{ ok: false, message }`.
+ * DRAWIO_* and PICTURE_* are answered `{ ok: true, value }` or `{ ok: false, message }`.
  *
  * Isomorphic.
  */
@@ -28,9 +30,11 @@ export const POSTER_FRAME = {
   DIRTY: "pi-outpost:poster-dirty",
   DRAWIO_LIST: "pi-outpost:poster-drawio-list",
   DRAWIO_DRAW: "pi-outpost:poster-drawio-draw",
+  PICTURE_LIST: "pi-outpost:poster-picture-list",
+  PICTURE_READ: "pi-outpost:poster-picture-read",
 } as const;
 
-/** The answer to a DRAWIO_LIST or DRAWIO_DRAW: the value, or why there is none. */
+/** The answer to a DRAWIO_* or PICTURE_* message: the value, or why there is none. */
 export type DrawioAnswer<T> = { ok: true; value: T } | { ok: false; message: string };
 
 /** Where pi-outpost's server serves the editor frame page (web/dist). */

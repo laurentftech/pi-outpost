@@ -16,6 +16,27 @@ export interface DiagramChoice {
 /** The attributes naming a frame's diagram and page. */
 export const DRAWIO_ATTRIBUTE = "data-drawio";
 export const DRAWIO_PAGE_ATTRIBUTE = "data-drawio-page";
+/** The attribute naming a picture file of the project for a frame (poster-project-pictures). */
+export const PICTURE_FILE_ATTRIBUTE = "data-picture-file";
+
+/** The picture files a frame may name, by extension, with the media type each is read as. */
+export const PICTURE_FILE_TYPES: Readonly<Record<string, string>> = {
+  ".svg": "image/svg+xml",
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".gif": "image/gif",
+  ".webp": "image/webp",
+};
+
+/** The media type of a picture file a frame may name, by its extension, or undefined for any other file. */
+export function pictureFileType(path: string): string | undefined {
+  const dot = path.lastIndexOf(".");
+  return dot < 0 ? undefined : PICTURE_FILE_TYPES[path.slice(dot).toLowerCase()];
+}
+
+/** Largest picture file read into a poster: the editor scales a raster down, but reads it whole first. */
+export const MAX_PICTURE_FILE_BYTES = 20 * 1024 * 1024;
 
 /** Largest SVG put in a poster: a poster holds 8 MB, and a diagram this large embeds pictures of its own. */
 export const MAX_DIAGRAM_SVG_BYTES = 2 * 1024 * 1024;
@@ -28,14 +49,15 @@ function base64(text: string): string {
 }
 
 /**
- * The SVG as a picture's source, with its size in CSS pixels for placing it in proportion.
+ * An SVG — a drawn diagram page, or a picture file of the project — as a picture's source, kept
+ * as it is, with its size in CSS pixels for placing it in proportion.
  * Throws, saying why, for one too large or with no size to read.
  */
-export function diagramPicture(svg: string): { src: string; width: number; height: number } {
+export function svgPicture(svg: string): { src: string; width: number; height: number } {
   const bytes = new TextEncoder().encode(svg).length;
   if (bytes > MAX_DIAGRAM_SVG_BYTES) throw new Error(`its picture is ${Math.round(bytes / 1024)} kB, more than a poster takes (${MAX_DIAGRAM_SVG_BYTES / 1024 / 1024} MB)`);
   const root = /<svg\b[^>]*>/i.exec(svg)?.[0];
-  if (!root) throw new Error("the viewer drew no picture of it");
+  if (!root) throw new Error("it holds no SVG picture");
   const attribute = (name: string) => new RegExp(`\\s${name}="([^"]*)"`, "i").exec(root)?.[1];
   let width = Number.parseFloat(attribute("width") ?? "");
   let height = Number.parseFloat(attribute("height") ?? "");
