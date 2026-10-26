@@ -352,11 +352,10 @@ export function mountEditor(root: HTMLElement, host: PosterHost): PosterEditor {
     item.append(element("span", {}, label));
     return item;
   };
-  const diagramItem = menuItem("diagram", "draw.io diagram…", "A page of one of the project's draw.io diagrams: into the selected picture, or onto the page");
-  diagramItem.hidden = !host.diagrams;
   insertMenu.append(
     menuItem("picture", "Picture…", "A picture of yours: into the selected picture, or onto the page"),
-    diagramItem,
+    // Only where the host can draw them: elsewhere the menu holds no item it cannot honour.
+    ...(host.diagrams ? [menuItem("diagram", "draw.io diagram…", "A page of one of the project's draw.io diagrams: into the selected picture, or onto the page")] : []),
     menuItem("text", "Text", "A text box in the middle of the page"),
     element("hr"),
     ...(Object.keys(SHAPES) as ShapeName[]).map((name) => {
@@ -366,7 +365,7 @@ export function mountEditor(root: HTMLElement, host: PosterHost): PosterEditor {
     }),
   );
   // The project's diagrams, one entry per page, asked of the host each time it opens.
-  const diagramMenu = element("div", { class: "poster-menu poster-diagrams", role: "menu", "aria-label": "draw.io diagrams", hidden: "" });
+  const diagramMenu = element("div", { class: "poster-diagrams", role: "menu", "aria-label": "draw.io diagrams", hidden: "" });
   insert.append(insertButton, insertMenu, diagramMenu);
   const pictureInput = element("input", { type: "file", accept: "image/*", hidden: "", "aria-hidden": "true" });
   // Save is an icon, first of the controls: it keeps the poster, where the three
@@ -473,10 +472,12 @@ export function mountEditor(root: HTMLElement, host: PosterHost): PosterEditor {
     const value = current();
     if (!value || !savedSnapshot) return;
     const changed = value.html !== savedSnapshot.html || value.css !== savedSnapshot.css;
-    // Said when the poster turns unsaved or saved, not on every change: a message saying what
-    // was just done, or what failed, would be overwritten by the update that follows it.
-    if (changed === dirty) return;
+    const turned = changed !== dirty;
     setDirty(changed);
+    // Said when the poster turns unsaved or saved, or over a passing note ("Saving…"), but not
+    // over a result or an error: what was just placed, or what failed, would be gone with the
+    // update that follows it.
+    if (!turned && statusLine.dataset.kind !== "info") return;
     if (host.save && !shown?.readOnly && editable) status(changed ? "Unsaved changes." : "No unsaved changes.");
   }
 
