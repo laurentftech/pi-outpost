@@ -4,5 +4,5 @@
 - [x] Crossings and label checks in `checkPage`, with messages saying what to change; unit tests.
 - [x] Touch-up wire style: frame message, majority style on start, control in the touch-up bar; unit and e2e tests.
 - [x] Attribution of the port; skill, tool description and README.
-- [ ] Running app: a model draws a diagram, the check names the crossings, the model fixes them. (Codestral: crossings named, fix not achieved — looped on a non-unique edit; to retry with a stronger model.)
+- [x] Running app: a model draws a diagram, the check names the crossings, the model fixes them (GPT-5.6 Luna; Codestral named the crossings right but looped on its edit).
 - [x] Strict validation, scenario coverage.
