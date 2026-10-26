@@ -14,7 +14,7 @@
  * overwritten. Anything beyond a touch-up is draw.io desktop's.
  */
 import { useCallback, useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
-import { DrawioFrame, type DrawioFrameHandle, type DrawioTouchUpState } from "./DrawioFrame";
+import { DrawioFrame, type DrawioFrameHandle, type DrawioTouchUpState, type DrawioWireStyle } from "./DrawioFrame";
 import { DIAGRAM_ACTION, DIAGRAM_ACTIONS } from "./diagramControls";
 import { EnlargedView } from "./EnlargedView";
 import { useDrawioFiles } from "./drawioFiles";
@@ -276,6 +276,23 @@ export function DrawioBlock({
         <button type="button" className={DIAGRAM_ACTION} disabled={!state.canRedo} onClick={() => frameOf(where).current?.redo()} title="Redo (⇧⌘Z / Ctrl+Y)">
           ↷ redo
         </button>
+        <label className="inline-flex items-center gap-1 text-xs text-zinc-500 dark:text-zinc-400" title="How the selected wires are drawn — or every wire of the page when none is selected — and new wires too">
+          wires
+          <select
+            className={DIAGRAM_ACTION}
+            aria-label="Wire style"
+            value={state.wireStyle ?? "orthogonal"}
+            onChange={(event) => {
+              const style = event.target.value as DrawioWireStyle | "mixed";
+              if (style !== "mixed") frameOf(where).current?.setWireStyle(style);
+            }}
+          >
+            <option value="straight">straight</option>
+            <option value="orthogonal">orthogonal</option>
+            <option value="curved">curved</option>
+            {state.wireStyle === "mixed" && <option value="mixed" disabled>mixed</option>}
+          </select>
+        </label>
         <button type="button" className={DIAGRAM_ACTION} onClick={() => endTouchUp()} title="Leave touch-up (Escape); unsaved touch-ups are asked about first">
           done
         </button>

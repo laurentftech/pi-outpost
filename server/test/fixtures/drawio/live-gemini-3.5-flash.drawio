@@ -1,0 +1,106 @@
+<mxfile host="Electron" modified="2026-10-26T21:05:00.000Z" agent="Mozilla/5.0" version="21.6.8" type="device">
+  <diagram id="ev-architecture" name="Architecture Voiture Électrique">
+    <mxGraphModel dx="1000" dy="800" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1100" pageHeight="850" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <!-- Title -->
+        <mxCell id="title" value="ARCHITECTURE TECHNIQUE D'UNE VOITURES ÉLECTRIQUE (VE)" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=20;fontStyle=1;fontColor=#0F172A;" vertex="1" parent="1">
+          <mxGeometry x="200" y="20" width="700" height="40" as="geometry" />
+        </mxCell>
+
+        <!-- HIGH VOLTAGE NETWORK BOUNDARY CONTAINER -->
+        <mxCell id="hv_container" value="RÉSEAU HAUTE TENSION (HV - 400V / 800V)" style="swimlane;whiteSpace=wrap;html=1;strokeColor=#F97316;strokeWidth=2;fillColor=#FFF7ED;fontStyle=1;fontColor=#C2410C;fontSize=14;rounded=1;arcSize=4;" vertex="1" parent="1">
+          <mxGeometry x="60" y="80" width="980" height="420" as="geometry" />
+        </mxCell>
+
+        <!-- 1. Prise de Recharge (Charging Port) -->
+        <mxCell id="port" value="&lt;b&gt;Prise de Recharge&lt;/b&gt;&lt;br&gt;(Combo CCS2 / Type 2)&lt;br&gt;&lt;i&gt;Connecteur Externe&lt;/i&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#0EA5E9;fontColor=#FFFFFF;strokeColor=#0284C7;strokeWidth=2;fontSize=12;shadow=1;" vertex="1" parent="hv_container">
+          <mxGeometry x="40" y="240" width="150" height="80" as="geometry" />
+        </mxCell>
+
+        <!-- 2. Chargeur Embarqué (OBC) -->
+        <mxCell id="obc" value="&lt;b&gt;Chargeur Embarqué&lt;/b&gt;&lt;br&gt;(OBC - On-Board Charger)&lt;br&gt;&lt;i&gt;Conversion AC ➔ DC&lt;/i&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#38BDF8;fontColor=#0F172A;strokeColor=#0284C7;strokeWidth=2;fontSize=12;shadow=1;" vertex="1" parent="hv_container">
+          <mxGeometry x="250" y="240" width="160" height="80" as="geometry" />
+        </mxCell>
+
+        <!-- 3. Batterie HV (HV Battery) -->
+        <mxCell id="battery" value="&lt;b&gt;Batterie de Traction&lt;/b&gt;&lt;br&gt;(Pack Haute Tension - Lithium-Ion)&lt;br&gt;&lt;i&gt;Stockage d'énergie (400V / 800V)&lt;/i&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#10B981;fontColor=#FFFFFF;strokeColor=#059669;strokeWidth=2;fontSize=13;shadow=1;" vertex="1" parent="hv_container">
+          <mxGeometry x="480" y="220" width="220" height="120" as="geometry" />
+        </mxCell>
+
+        <!-- 4. BMS (Battery Management System) - Mounted near/in Battery -->
+        <mxCell id="bms" value="&lt;b&gt;BMS&lt;/b&gt;&lt;br&gt;(Battery Management System)&lt;br&gt;&lt;i&gt;Gestion, Température &amp; Sécurité&lt;/i&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F59E0B;fontColor=#FFFFFF;strokeColor=#D97706;strokeWidth=2;fontSize=12;shadow=1;" vertex="1" parent="hv_container">
+          <mxGeometry x="480" y="80" width="220" height="80" as="geometry" />
+        </mxCell>
+
+        <!-- 5. Onduleur (Inverter / Converter) -->
+        <mxCell id="inverter" value="&lt;b&gt;Onduleur / Variateur&lt;/b&gt;&lt;br&gt;(Inverter)&lt;br&gt;&lt;i&gt;Conversion DC ➔ AC Triphasé&lt;/i&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#8B5CF6;fontColor=#FFFFFF;strokeColor=#7C3AED;strokeWidth=2;fontSize=12;shadow=1;" vertex="1" parent="hv_container">
+          <mxGeometry x="770" y="240" width="170" height="80" as="geometry" />
+        </mxCell>
+
+        <!-- 6. Moteur Électrique (Electric Motor) -->
+        <mxCell id="motor" value="&lt;b&gt;Moteur Électrique&lt;/b&gt;&lt;br&gt;(Synchrone / Asynchrone)&lt;br&gt;&lt;i&gt;Traction &amp; Freinage Régénératif&lt;/i&gt;" style="ellipse;whiteSpace=wrap;html=1;fillColor=#EC4899;fontColor=#FFFFFF;strokeColor=#DB2777;strokeWidth=2;fontSize=12;shadow=1;" vertex="1" parent="hv_container">
+          <mxGeometry x="770" y="80" width="170" height="100" as="geometry" />
+        </mxCell>
+
+        <!-- Mechanical Transmission / Wheels -->
+        <mxCell id="wheels" value="&lt;b&gt;Transmission &amp; Roues Motrices&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#64748B;fontColor=#FFFFFF;strokeColor=#475569;strokeWidth=2;fontSize=11;" vertex="1" parent="hv_container">
+          <mxGeometry x="770" y="10" width="170" height="40" as="geometry" />
+        </mxCell>
+
+        <!-- CONNECTORS / RELATIONSHIPS -->
+
+        <!-- AC Charge Flow: Prise -> OBC -->
+        <mxCell id="rel_port_obc" value="Recharge AC&lt;br&gt;(230V/400V Tri)" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthoLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;strokeColor=#0284C7;strokeWidth=3;fontColor=#0369A1;fontSize=10;fontStyle=1;" edge="1" parent="hv_container" source="port" target="obc">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- DC Charge Flow direct: Prise -> Batterie (Fast DC charging) -->
+        <mxCell id="rel_port_bat_dc" value="Recharge Rapide DC (Combo)" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthoLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.25;entryY=1;entryDx=0;entryDy=0;strokeColor=#EA580C;strokeWidth=3;fontColor=#C2410C;fontSize=10;fontStyle=1;" edge="1" parent="hv_container" source="port" target="battery">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="115" y="380" />
+              <mxPoint x="535" y="380" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <!-- OBC -> Battery DC -->
+        <mxCell id="rel_obc_bat" value="Courant Continu (DC)" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthoLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;strokeColor=#10B981;strokeWidth=3;fontColor=#047857;fontSize=10;fontStyle=1;" edge="1" parent="hv_container" source="obc" target="battery">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Battery <-> Inverter Power Flow -->
+        <mxCell id="rel_bat_inv" value="Puissance DC (HV)" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthoLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;strokeColor=#10B981;strokeWidth=4;fontColor=#047857;fontSize=10;fontStyle=1;" edge="1" parent="hv_container" source="battery" target="inverter">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Inverter <-> Motor Power Flow -->
+        <mxCell id="rel_inv_mot" value="AC Triphasé&lt;br&gt;&amp; Régénération" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthoLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=0;exitDx=0;exitDy=0;entryX=0.5;entryY=1;entryDx=0;entryDy=0;strokeColor=#8B5CF6;strokeWidth=4;fontColor=#6D28D9;fontSize=10;fontStyle=1;" edge="1" parent="hv_container" source="inverter" target="motor">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Motor -> Wheels -->
+        <mxCell id="rel_mot_wheels" value="Couple / Arbre" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthoLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=0;exitDx=0;exitDy=0;entryX=0.5;entryY=1;entryDx=0;entryDy=0;strokeColor=#475569;strokeWidth=3;fontColor=#334155;fontSize=10;" edge="1" parent="hv_container" source="motor" target="wheels">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- BMS Monitoring / Control Lines -->
+        <mxCell id="rel_bms_bat" value="Contrôle Tension/Temp/SoC" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthoLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;strokeColor=#D97706;strokeWidth=2;strokeDashArray=3 3;fontColor=#B45309;fontSize=10;" edge="1" parent="hv_container" source="bms" target="battery">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="rel_bms_inv" value="Bus CAN / Sécurité" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthoLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;strokeColor=#D97706;strokeWidth=2;strokeDashArray=3 3;fontColor=#B45309;fontSize=10;" edge="1" parent="hv_container" source="bms" target="inverter">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="855" y="120" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

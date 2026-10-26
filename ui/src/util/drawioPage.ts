@@ -42,7 +42,9 @@ export const DRAWIO_MESSAGE = {
   REDO: "pi-outpost:drawio-redo",
   /** Parent → frame: answer with `SVG`. */
   EXPORT_SVG: "pi-outpost:drawio-export-svg",
-  /** Frame → parent: `{ type, dirty, canUndo, canRedo }` — after each touch-up, undo, redo or save. */
+  /** Parent → frame: `{ type, style }` — draw the selected wires, or all of the page's when none is selected, and new ones, `straight`, `orthogonal` or `curved`. */
+  WIRE_STYLE: "pi-outpost:drawio-wire-style",
+  /** Frame → parent: `{ type, dirty, canUndo, canRedo, wireStyle }` — after each touch-up, undo, redo, save or selection; `wireStyle` is the style of the wires a choice would change, or `mixed`. */
   CHANGED: "pi-outpost:drawio-changed",
   /** Frame → parent: `{ type, page, xml }` — the shown page's `<mxGraphModel>`, to splice into the file. */
   SAVED: "pi-outpost:drawio-saved",
@@ -216,7 +218,79 @@ div.mxRubberband { position: absolute; overflow: hidden; border: 1px solid #29b6
     var undo = touch.undo;
     // A label being typed is an edit too: leaving now would drop it
     var typing = viewer !== null && viewer.graph.isEditing();
-    tell({ type: M.CHANGED, dirty: typing || undo.indexOfNextAdd !== touch.clean, canUndo: undo.canUndo(), canRedo: undo.canRedo() });
+    tell({ type: M.CHANGED, dirty: typing || undo.indexOfNextAdd !== touch.clean, canUndo: undo.canUndo(), canRedo: undo.canRedo(), wireStyle: viewer === null ? null : targetWireStyle(viewer.graph) });
+  }
+
+  // Wire styles as draw.io's Waypoints menu sets them (Menus.js, edgeStyleChange): the keys
+  // each one writes, null removing a key
+  var WIRE_STYLES = {
+    straight: { edgeStyle: null, curved: null, noEdgeStyle: null, elbow: null },
+    orthogonal: { edgeStyle: "orthogonalEdgeStyle", curved: null, noEdgeStyle: null, elbow: null },
+    curved: { edgeStyle: "orthogonalEdgeStyle", curved: "1", noEdgeStyle: null, elbow: null }
+  };
+
+  function wireStyleOf(graph, cell) {
+    var style = graph.getCurrentCellStyle(cell);
+    if (style.noEdgeStyle == 1 || style.edgeStyle == null || style.edgeStyle === "none") return "straight";
+    return style.curved == 1 ? "curved" : "orthogonal";
+  }
+
+  function pageWires(graph) {
+    var model = graph.getModel();
+    return Object.keys(model.cells).map(function (id) { return model.cells[id]; }).filter(function (cell) { return model.isEdge(cell); });
+  }
+
+  // The wires a choice changes: the selected ones, else all of the page's
+  function targetWires(graph) {
+    var selected = graph.getSelectionCells().filter(function (cell) { return graph.getModel().isEdge(cell); });
+    return selected.length > 0 ? selected : pageWires(graph);
+  }
+
+  function targetWireStyle(graph) {
+    var wires = targetWires(graph);
+    if (wires.length === 0) return newWireStyle(graph);
+    var first = wireStyleOf(graph, wires[0]);
+    for (var i = 1; i < wires.length; i++) if (wireStyleOf(graph, wires[i]) !== first) return "mixed";
+    return first;
+  }
+
+  function newWireStyle(graph) {
+    var current = graph.currentEdgeStyle || {};
+    if (current.edgeStyle == null || current.edgeStyle === "none") return "straight";
+    return current.curved == "1" ? "curved" : "orthogonal";
+  }
+
+  // New wires take this style (Graph.createCurrentEdgeStyle reads currentEdgeStyle)
+  function setNewWireStyle(graph, name) {
+    var current = mxUtils.clone(graph.currentEdgeStyle || {});
+    var keys = WIRE_STYLES[name];
+    for (var key in keys) {
+      if (keys[key] === null) delete current[key];
+      else current[key] = keys[key];
+    }
+    graph.currentEdgeStyle = current;
+  }
+
+  // One model update: one undo takes it back. Waypoints go, as draw.io resets them: laid out
+  // for one style, they make no sense in another
+  function applyWireStyle(name) {
+    if (touch === null || viewer === null || !WIRE_STYLES[name]) return;
+    var graph = viewer.graph;
+    if (graph.isEditing()) graph.stopEditing(false);
+    var wires = targetWires(graph);
+    var model = graph.getModel();
+    model.beginUpdate();
+    try {
+      for (var i = 0; i < wires.length; i++) {
+        graph.resetEdge(wires[i]);
+        var keys = WIRE_STYLES[name];
+        for (var key in keys) graph.setCellStyles(key, keys[key], [wires[i]]);
+      }
+    } finally {
+      model.endUpdate();
+    }
+    setNewWireStyle(graph, name);
+    changed();
   }
 
   // The viewer holds back the editing core it bundles; this lets it go, for the page shown
@@ -255,6 +329,13 @@ div.mxRubberband { position: absolute; overflow: hidden; border: 1px solid #29b6
       if (height > container.offsetHeight) shown.updateContainerHeight(container, height);
     };
     graph.getModel().addListener(mxEvent.CHANGE, grow);
+    // New wires start in the style most of the page's wires have: an agent's diagonal wires
+    // get diagonal neighbours, not draw.io's orthogonal default
+    var counts = { straight: 0, orthogonal: 0, curved: 0 };
+    pageWires(graph).forEach(function (cell) { counts[wireStyleOf(graph, cell)] += 1; });
+    var most = counts.orthogonal >= counts.straight && counts.orthogonal >= counts.curved ? "orthogonal" : counts.straight >= counts.curved ? "straight" : "curved";
+    setNewWireStyle(graph, most);
+    graph.getSelectionModel().addListener(mxEvent.CHANGE, changed);
     graph.addListener(mxEvent.EDITING_STARTED, changed);
     graph.addListener(mxEvent.EDITING_STOPPED, changed);
     // The keys are the graph's own, not the document's: mxKeyHandler only takes an event
@@ -319,6 +400,7 @@ div.mxRubberband { position: absolute; overflow: hidden; border: 1px solid #29b6
       viewer.graph.getModel().removeListener(current.record);
       viewer.graph.getModel().removeListener(current.grow);
       viewer.graph.removeListener(changed);
+      viewer.graph.getSelectionModel().removeListener(changed);
       viewer.graph.getView().removeListener(current.record);
     }
   }
@@ -397,6 +479,7 @@ div.mxRubberband { position: absolute; overflow: hidden; border: 1px solid #29b6
     else if (data.type === M.UNDO) undoOrRedo(false);
     else if (data.type === M.REDO) undoOrRedo(true);
     else if (data.type === M.EXPORT_SVG) exportSvg();
+    else if (data.type === M.WIRE_STYLE && typeof data.style === "string") applyWireStyle(data.style);
   });
 
   if (typeof GraphViewer === "undefined") {

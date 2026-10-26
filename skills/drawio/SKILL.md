@@ -20,7 +20,9 @@ draw.io desktop for anything more ("open in draw.io" in the file viewer).
 2. Write the file, **uncompressed**, with the skeleton below.
 3. Run `drawio_check` on it. Fix every **error** — draw.io would refuse or mis-draw them —
    and every **warning** you did not intend (overlapping shapes, a shape outside its
-   container). Run it again until it reports no defect.
+   container, a connector running through a box or its own ends, a connector's label on a
+   box). Run it again until it reports no defect. Run it after the write has returned, not
+   in the same turn: started together, the check can run before the file exists.
 4. Show it in your reply, as a picture of the file — the conversation draws it there:
 
    ```markdown
@@ -118,6 +120,11 @@ to the container's top-left corner**. Keep it inside the container: below the ti
 - Leave at least 40 px between shapes, more where a connector carries a label.
 - One reading direction per page; align shapes on rows or columns.
 - Shapes must not partly overlap. One shape wholly on another (a badge on a box) is fine.
+- A connector must not run through a box. draw.io routes it itself: between neighbours with
+  free space it goes round, but a box in the way of a straight or orthogonal route is crossed.
+  Move the box, or give the connector waypoints around it. Fix `exitX/exitY` and
+  `entryX/entryY` only on the sides facing each other — leaving the top of a box to enter the
+  bottom of one below it runs through both — or leave them out and let draw.io choose.
 - More than about 25 shapes on a page is hard to read: split it into pages.
 
 ## Changing an existing diagram

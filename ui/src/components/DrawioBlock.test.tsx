@@ -224,6 +224,22 @@ describe("DrawioBlock touch-up", () => {
     expect(types()).not.toContain(DRAWIO_MESSAGE.CLEAN);
   });
 
+  it("The wire style control shows what the frame reports and sends the choice to it", async () => {
+    const { answer, sent } = await touchUp();
+    const control = screen.getByRole("combobox", { name: "Wire style" }) as HTMLSelectElement;
+    answer({ type: DRAWIO_MESSAGE.CHANGED, dirty: false, canUndo: false, canRedo: false, wireStyle: "straight" });
+    expect(control.value).toBe("straight");
+    fireEvent.change(control, { target: { value: "curved" } });
+    expect(sent).toHaveBeenCalledWith({ type: DRAWIO_MESSAGE.WIRE_STYLE, style: "curved" }, "*");
+    // Wires of several styles: said, and not a choice that can be sent
+    answer({ type: DRAWIO_MESSAGE.CHANGED, dirty: true, canUndo: true, canRedo: false, wireStyle: "mixed" });
+    expect(control.value).toBe("mixed");
+    expect(within(control).getByRole("option", { name: "mixed" })).toBeDisabled();
+    // A style the frame does not know is not taken
+    answer({ type: DRAWIO_MESSAGE.CHANGED, dirty: true, canUndo: true, canRedo: false, wireStyle: "zigzag" });
+    expect(control.value).toBe("orthogonal");
+  });
+
   // openlore: scenario=UndoRestoresTheDiagram spec=drawio-diagrams
   it("UndoRestoresTheDiagram: undo and redo go to the frame, enabled as it reports", async () => {
     const { answer, types } = await touchUp();

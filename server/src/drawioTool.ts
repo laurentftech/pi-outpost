@@ -34,7 +34,7 @@ const parameters = Type.Object({
 
 const DESCRIPTION = [
   "Check a draw.io diagram (.drawio) you have written, since you cannot see it rendered.",
-  "Reports errors draw.io would refuse or mis-draw — XML it cannot read, duplicate ids, cells whose parent or connector ends do not exist, connectors attached to nothing, shapes with no usable size — and warnings a reader would trip on: shapes partly overlapping, shapes outside their container.",
+  "Reports errors draw.io would refuse or mis-draw — XML it cannot read, duplicate ids, cells whose parent or connector ends do not exist, connectors attached to nothing, shapes with no usable size — and warnings a reader would trip on: shapes partly overlapping, shapes outside their container, connectors running through a box or through their own ends, connector labels sitting on a box — the connectors routed as draw.io draws them.",
   "Reads plain and compressed pages. Run it after every write or edit of a .drawio file, and fix what it reports before handing the diagram over.",
 ].join(" ");
 
