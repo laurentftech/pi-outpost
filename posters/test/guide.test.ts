@@ -55,3 +55,9 @@ test("The skill tells the agent to read posters with read, keep markers, and lea
   assert.match(SKILL, /the editor puts it there when the user opens the poster/, "TheSkillNamesPictureFrames: the editor fills it");
   assert.match(SKILL, /Never paste a picture file's SVG into the markup/, "TheSkillNamesPictureFrames: never inline the SVG");
 });
+
+// openlore: scenario=TheAgentChecksAPosterItWrote spec=poster-files
+test("The skill asks for poster_check after writing a poster, and after every write or edit of it", () => {
+  assert.match(SKILL, /Run `poster_check` with the file's path, and fix what it reports/);
+  assert.match(SKILL, /Run it again after every\s+write or edit of the poster/);
+});
