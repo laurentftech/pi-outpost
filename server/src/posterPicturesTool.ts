@@ -16,7 +16,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { Type } from "typebox";
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
-import { MAX_POSTER_BYTES, POSTER_SUFFIX } from "@pi-outpost/posters/format";
+import { MAX_POSTER_BYTES, POSTER_SUFFIX, PosterRefusal, readPage } from "@pi-outpost/posters/format";
 import { MAX_SEEN_PICTURES, hidePictures, pictureKind, seeablePicture } from "@pi-outpost/posters/markers";
 import { isWithinAny, realResolve } from "./sandbox.ts";
 
@@ -62,7 +62,15 @@ export function createPosterPicturesToolDefinition(options: PosterPicturesToolOp
       const stat = await fs.stat(resolved).catch(() => null);
       if (stat === null || !stat.isFile()) return answer([{ type: "text", text: `No such file: ${target}` }], true);
       if (stat.size > MAX_POSTER_BYTES + 64 * 1024) return answer([{ type: "text", text: `"${target}" is larger than a poster may be.` }], true);
-      const { pictures } = hidePictures(await fs.readFile(resolved, "utf8"), "");
+      const text = await fs.readFile(resolved, "utf8");
+      // A page that is no poster holds no frame either: saying so beats "its frames are empty".
+      try {
+        readPage(text);
+      } catch (error) {
+        if (error instanceof PosterRefusal) return answer([{ type: "text", text: `"${target}" cannot be looked at: ${error.message}. Run poster_check on it.` }], true);
+        throw error;
+      }
+      const { pictures } = hidePictures(text, "");
       if (pictures.length === 0) return answer([{ type: "text", text: `"${target}" holds no picture: its frames, if any, are empty.` }]);
       if (ctx?.model && !ctx.model.input.includes("image")) {
         return answer([{ type: "text", text: `"${target}" holds ${pictures.length} picture(s), but the model in use (${ctx.model.id}) does not take images, so they cannot be shown. Do not guess what they show from their frames' names; ask the user.` }], true);

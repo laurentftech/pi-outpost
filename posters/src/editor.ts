@@ -60,7 +60,11 @@ export interface PosterHost {
   cannotEditNotice?: string;
   /** What a successful save adds, e.g. "Claude will start from this version." */
   savedNote?: string;
-  /** Told when unsaved touch-ups appear and when they are saved, so the host can ask before dropping them. */
+  /**
+   * Told when the person's own unsaved touch-ups appear and when they are saved or undone, so the
+   * host can ask before dropping them. Frames the editor filled on opening are not among them:
+   * dropped, they are filled again the next time the poster opens.
+   */
   onDirtyChange?: (dirty: boolean) => void;
   /**
    * Present when the host can draw draw.io diagrams (pi-outpost, which serves the viewer):
@@ -414,13 +418,22 @@ export function mountEditor(root: HTMLElement, host: PosterHost): PosterEditor {
   let destroyed = false;
   let canvasReady = false;
   let savedSnapshot: { html: string; css: string } | undefined;
+  // The poster as opened, frames the editor filled included: what differs from it is the
+  // person's, and only that is worth asking about before it is dropped.
+  let openedSnapshot: { html: string; css: string } | undefined;
+  let touched = false;
 
   const setDirty = (value: boolean) => {
     if (dirty === value) return;
     dirty = value;
     save.disabled = !dirty || saving;
+  };
+  const setTouched = (value: boolean) => {
+    if (touched === value) return;
+    touched = value;
     host.onDirtyChange?.(value);
   };
+  const same = (a: { html: string; css: string } | undefined, b: { html: string; css: string } | undefined) => a !== undefined && b !== undefined && a.html === b.html && a.css === b.css;
   const status = (message: string, kind: "info" | "error" | "ok" = "info") => {
     statusLine.textContent = message;
     statusLine.dataset.kind = kind;
@@ -483,9 +496,10 @@ export function mountEditor(root: HTMLElement, host: PosterHost): PosterEditor {
   function syncDirty() {
     const value = current();
     if (!value || !savedSnapshot) return;
-    const changed = value.html !== savedSnapshot.html || value.css !== savedSnapshot.css;
+    const changed = !same(value, savedSnapshot);
     const turned = changed !== dirty;
     setDirty(changed);
+    setTouched(!same(value, openedSnapshot ?? savedSnapshot));
     // Said when the poster turns unsaved or saved, or over a passing note ("Saving…"), but not
     // over a result or an error: what was just placed, or what failed, would be gone with the
     // update that follows it.
@@ -510,6 +524,7 @@ export function mountEditor(root: HTMLElement, host: PosterHost): PosterEditor {
       }
       shown = { ...opened, revision: result.revision };
       savedSnapshot = poster;
+      openedSnapshot = poster;
       syncDirty();
       status(
         dirty
@@ -837,7 +852,9 @@ export function mountEditor(root: HTMLElement, host: PosterHost): PosterEditor {
 
   /**
    * Fills each empty frame naming a diagram or a picture file, once the poster is open: a frame
-   * already holding a picture is left as it is. What is filled is an unsaved touch-up.
+   * already holding a picture is left as it is. What is filled is unsaved, so Save is offered,
+   * but it is not the person's touch-up: leaving drops nothing the next opening would not fill
+   * again, so the host is not told unless the person changed something meanwhile.
    */
   async function fillPictureFrames(opened: Editor) {
     const frames = opened.getWrapper()!.find("img").flatMap((frame) => {
@@ -850,12 +867,17 @@ export function mountEditor(root: HTMLElement, host: PosterHost): PosterEditor {
     status(`${diagrams ? "Drawing" : "Placing"} ${frames.length === 1 ? `the ${one}` : `${frames.length} ${one}s`} named in the poster…`);
     let filled = 0;
     const failed: string[] = [];
+    const untouched = () => same(current(), openedSnapshot ?? savedSnapshot);
     for (const { frame, source } of frames) {
       try {
         const picture = await pictureFrom(source);
         if (editor !== opened) return;
+        // Taken as part of the poster as opened only while the person has changed nothing: a
+        // touch-up made while the pictures arrive is theirs, and still asked about.
+        const asOpened = untouched();
         frame.set("src", picture.src);
         frame.addStyle({ border: "none", background: "none" });
+        if (asOpened) openedSnapshot = current();
         filled += 1;
       } catch (error) {
         if (editor !== opened) return;
@@ -866,7 +888,7 @@ export function mountEditor(root: HTMLElement, host: PosterHost): PosterEditor {
     const short = diagrams ? "diagram" : "picture";
     const done = diagrams ? "drawn" : "placed";
     if (failed.length > 0) status(`${filled > 0 ? `${filled} ${short}${filled === 1 ? "" : "s"} ${done}; ` : ""}not ${done}, its frame left empty — ${failed.join("; ")}.`, "error");
-    else status(`${filled === 1 ? `The ${one} is` : `${filled} ${one}s are`} in ${filled === 1 ? "its frame" : "their frames"}: save to keep ${filled === 1 ? "it" : "them"}.`, "ok");
+    else status(`${filled === 1 ? `The ${one} is` : `${filled} ${one}s are`} in ${filled === 1 ? "its frame" : "their frames"}, drawn from the project: save to keep ${filled === 1 ? "it" : "them"} in the file.`, "ok");
   }
 
   function setMenu(open: boolean) {
@@ -946,6 +968,8 @@ export function mountEditor(root: HTMLElement, host: PosterHost): PosterEditor {
   function open(poster: OpenedPoster) {
     shown = { ...poster, html: sanitizePosterHtml(poster.html) };
     setDirty(false);
+    setTouched(false);
+    openedSnapshot = undefined;
     title.textContent = poster.title;
     editor?.destroy();
     editor = undefined;
@@ -1083,6 +1107,11 @@ export function mountEditor(root: HTMLElement, host: PosterHost): PosterEditor {
       canvasDocument.addEventListener("mousedown", () => setMenu(false));
       canvasDocument.addEventListener("mouseup", () => {
         pressedPicture = undefined;
+      }, true);
+      // Typing in a text being corrected changes no component until its editor closes: without
+      // this, a correction left open would go unseen by Save and by the host's question on leaving.
+      canvasDocument.addEventListener("input", () => {
+        if (editor === opened) setTimeout(syncDirty, 0);
       }, true);
       canvasDocument.addEventListener("dragover", (event) => {
         if (event.dataTransfer?.types.includes("Files")) event.preventDefault();

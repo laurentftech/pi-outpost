@@ -30,7 +30,7 @@ its reason, and the poster left unchanged.
 ### Requirement: AFrameNamingADiagramIsFilledOnOpen
 
 An empty picture frame carrying `data-drawio` SHALL be filled with that diagram's page when the
-poster opens in pi-outpost's editor, as an unsaved touch-up. The reference SHALL resolve against
+poster opens in pi-outpost's editor, unsaved until the person saves it. The reference SHALL resolve against
 the poster's directory, or the workspace root when it starts with `/`, and SHALL be read within
 the server's read zone. A frame already holding a picture SHALL be left as it is. A frame whose
 diagram cannot be read or drawn SHALL stay empty, and the editor SHALL say which.

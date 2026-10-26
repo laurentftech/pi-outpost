@@ -28,6 +28,7 @@ import type { ExtensionAPI, ToolDefinition } from "@earendil-works/pi-coding-age
 import { registerPosterPictureHooks } from "./posterPictureHooks.ts";
 import { createDocxExtractToolDefinition } from "./docxTool.ts";
 import { createDrawioCheckToolDefinition } from "./drawioTool.ts";
+import { createPosterCheckToolDefinition } from "./posterCheckTool.ts";
 import { createPosterPicturesToolDefinition } from "./posterPicturesTool.ts";
 import { createMailExtractToolDefinition } from "./mailTool.ts";
 import { createPdfExtractToolDefinition } from "./pdfTool.ts";
@@ -139,6 +140,7 @@ export async function createPiOutpostTools(settings: PiOutpostToolsSettings): Pr
     createTimelineComparisonToolDefinition({ ...common, maxBytes: settings.maxBytes.structuredExchange }),
     // Always published, unlike the extractors: a diagram is asked for before any .drawio exists
     createDrawioCheckToolDefinition({ cwd, allowedRoots: common.allowedRoots }),
+    createPosterCheckToolDefinition({ cwd, allowedRoots: common.allowedRoots }),
     createPosterPicturesToolDefinition({ cwd, allowedRoots: common.allowedRoots }),
     createStructuredExchangeToolDefinition({ projectRoot: root }),
     createStructuredExchangeProjectModelToolDefinition({ projectRoot: root }),

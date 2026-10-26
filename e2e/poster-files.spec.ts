@@ -671,3 +671,52 @@ test("Pictures and shapes in the file viewer: a frame filled and a shape inserte
     await fs.writeFile(file, original);
   }
 });
+
+// openlore: scenario=LeavingAFilledPosterAsksNothing spec=poster-files
+// openlore: scenario=AFilledPosterTouchedUpIsAskedAbout spec=poster-files
+test("LeavingAFilledPosterAsksNothing and AFilledPosterTouchedUpIsAskedAbout: filled frames offer Save without asking; a touch-up is asked about", async ({ page }) => {
+  const figure = await writeProjectFile("figures/architecture.svg", FIGURE);
+  const file = await writePoster(
+    "Filled.poster.html",
+    '<div class="sheet"><h1>Filled</h1>' +
+      '<img class="d1" data-poster-picture="context" data-drawio="../diagrams/two-pages.drawio" data-drawio-page="Context" alt="">' +
+      '<img class="d2" data-poster-picture="architecture" data-picture-file="../figures/architecture.svg" alt=""></div>',
+    DIAGRAM_CSS,
+  );
+  const written = await fs.readFile(file, "utf8");
+  const asked: string[] = [];
+  page.on("dialog", (dialog) => {
+    asked.push(dialog.message());
+    void dialog.dismiss();
+  });
+  try {
+    let editor = await openPoster(page, "Filled.poster.html");
+    await expect.poll(() => svgOf(editor, ".d1"), { timeout: 40_000 }).toContain("API gateway");
+    await expect.poll(() => svgOf(editor, ".d2"), { timeout: 30_000 }).toBe(FIGURE);
+    await expect(editor.locator(".poster-status")).toContainText("in their frames, drawn from the project: save to keep them in the file");
+    await expect(editor.locator('button[data-action="save"]')).toBeEnabled();
+    // Leaving untouched asks nothing, and the file is as the agent wrote it.
+    await page.getByRole("button", { name: /source/ }).click();
+    await expect(page.getByRole("button", { name: /rendered/ })).toBeVisible();
+    expect(asked).toEqual([]);
+    expect(await fs.readFile(file, "utf8")).toBe(written);
+
+    // Back, filled again, and a text corrected: leaving is asked about, and refusing stays.
+    await page.getByRole("button", { name: /rendered/ }).click();
+    editor = page.frameLocator('[data-testid="poster-frame"]');
+    await expect.poll(() => svgOf(editor, ".d2"), { timeout: 30_000 }).toBe(FIGURE);
+    const heading = editor.frameLocator("iframe.gjs-frame").locator("h1");
+    await heading.click();
+    await heading.dblclick();
+    await page.keyboard.press("ControlOrMeta+A");
+    await page.keyboard.type("Touched");
+    await expect(heading).toHaveText("Touched");
+    // Left while the text is still being corrected: the typing alone counts.
+    await page.getByRole("button", { name: /source/ }).click();
+    await expect.poll(() => asked).toEqual(["Discard unsaved changes?"]);
+    await expect(heading).toHaveText("Touched");
+  } finally {
+    await fs.rm(file, { force: true });
+    await fs.rm(path.dirname(figure), { recursive: true, force: true });
+  }
+});

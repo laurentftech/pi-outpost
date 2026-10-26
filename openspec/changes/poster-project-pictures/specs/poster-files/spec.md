@@ -24,7 +24,7 @@ read or is no picture SHALL be named with its reason, and the poster left unchan
 ### Requirement: AFrameNamingAProjectPictureIsFilledOnOpen
 
 An empty picture frame carrying `data-picture-file` SHALL be filled with that file when the poster
-opens in pi-outpost's editor, as an unsaved touch-up, under the same rules as a frame naming a
+opens in pi-outpost's editor, unsaved until the person saves it, under the same rules as a frame naming a
 diagram: resolved from the poster's directory or the root, read within the server's read zone, a
 filled frame left as it is, a file that cannot be read leaving its frame empty and named.
 
