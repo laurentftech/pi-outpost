@@ -9,11 +9,12 @@ import { JSDOM } from "jsdom";
 
 let pageSvg: (page: { width: number; height: number }, html: string, css: string, scale?: number) => string;
 let parse: (svg: string) => Document;
+let whyNotDrawn: (svg: string) => string;
 before(async () => {
   const { window } = new JSDOM("<!doctype html><body></body>");
-  Object.assign(globalThis, { document: window.document, window, XMLSerializer: window.XMLSerializer });
+  Object.assign(globalThis, { document: window.document, window, XMLSerializer: window.XMLSerializer, DOMParser: window.DOMParser });
   parse = (svg) => new window.DOMParser().parseFromString(svg, "image/svg+xml");
-  ({ pageSvg } = await import("../src/picture.ts"));
+  ({ pageSvg, whyNotDrawn } = await import("../src/picture.ts"));
 });
 
 function wellFormed(svg: string): Document {
@@ -55,4 +56,10 @@ test("A clean poster, SVG drawings with xlink:href and xml:lang included, comes 
   assert.match(svg, /\.p &gt; h1|\.p > h1/);
   assert.equal(parsed.getElementsByTagName("img").length, 1);
   assert.match(parsed.documentElement.textContent!, /Règles & vie/);
+});
+
+test("A page the browser does not draw is said with its likely cause: its XML error, else its size and pictures", () => {
+  assert.match(whyNotDrawn('<svg xmlns="http://www.w3.org/2000/svg"><p>a<o:p></o:p></p></svg>'), /^its markup is not well-formed XML: \S/);
+  const page = pageSvg(PAGE, '<img src="data:image/png;base64,AAAA"><img src="data:image/png;base64,AAAA">', "", 1);
+  assert.match(whyNotDrawn(page), /^a page of 0\.0 MB with 2 pictures$/);
 });

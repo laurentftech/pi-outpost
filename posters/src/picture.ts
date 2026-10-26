@@ -81,22 +81,34 @@ export function pageSvg(page: PageSize, html: string, css: string, scale = pictu
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}"><foreignObject x="0" y="0" width="${width}" height="${height}">${markup}</foreignObject></svg>`;
 }
 
+/**
+ * What may have kept the browser from drawing `svg`, for the message the person reads: the browser
+ * says only that the picture failed. Its XML error when it has one, else its size and pictures.
+ */
+export function whyNotDrawn(svg: string): string {
+  const error = new DOMParser().parseFromString(svg, "image/svg+xml").getElementsByTagName("parsererror")[0];
+  if (error) return `its markup is not well-formed XML: ${error.textContent!.trim().split(/\r?\n/)[0]!.slice(0, 200)}`;
+  const pictures = svg.match(/<img\b/g)?.length ?? 0;
+  return `a page of ${(svg.length / 1024 / 1024).toFixed(1)} MB with ${pictures} picture${pictures === 1 ? "" : "s"}`;
+}
+
 export async function pagePicture(page: PageSize, html: string, css: string): Promise<PagePicture> {
   const scale = pictureScale(page);
   const width = Math.round(page.width * scale);
   const height = Math.round(page.height * scale);
+  const svg = pageSvg(page, html, css, scale);
   const image = new Image();
   const loaded = new Promise<void>((resolve, reject) => {
     image.onload = () => resolve();
-    image.onerror = () => reject(new Error("this browser could not draw the page as a picture"));
+    image.onerror = () => reject(new Error(`this browser could not draw the page as a picture (${whyNotDrawn(svg)})`));
   });
-  image.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(pageSvg(page, html, css, scale))}`;
+  image.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
   await loaded;
   const canvas = document.createElement("canvas");
   canvas.width = width;
   canvas.height = height;
   const context = canvas.getContext("2d");
-  if (!context) throw new Error("this browser could not draw the page as a picture");
+  if (!context) throw new Error(`this browser could not make a canvas of ${width} x ${height} pixels to draw the page on`);
   context.fillStyle = "#fff";
   context.fillRect(0, 0, width, height);
   context.drawImage(image, 0, 0, width, height);
