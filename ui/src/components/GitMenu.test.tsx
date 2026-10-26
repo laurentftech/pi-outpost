@@ -43,7 +43,7 @@ const ENTRIES: GitCommitLogEntry[] = [
 
 /** A log answered BY `repo` — the menu shows it only under that repository's chip. */
 const logFor = (repo: string, entries: GitCommitLogEntry[] | null = ENTRIES) =>
-  entries === null ? null : { repo, entries };
+  entries === null ? null : { repo, entries, error: null, requestId: "gitlog:t" };
 
 /** The repository a browser-root-relative path belongs to, for the fixtures below. */
 const repoOf = (selected: string | null) => (selected === null ? "" : selected.split("/")[0]);
@@ -52,11 +52,12 @@ const LOG = logFor("");
 
 function setup(props: Partial<React.ComponentProps<typeof GitMenu>> = {}) {
   const onFetchLog = vi.fn();
+  const onCloseLog = vi.fn();
   const onShowCommit = vi.fn();
   const view = render(
-    <GitMenu status={status()} selected={null} log={LOG} onFetchLog={onFetchLog} onShowCommit={onShowCommit} {...props} />,
+    <GitMenu status={status()} selected={null} log={LOG} onFetchLog={onFetchLog} onCloseLog={onCloseLog} onShowCommit={onShowCommit} {...props} />,
   );
-  return { onFetchLog, onShowCommit, ...view };
+  return { onFetchLog, onCloseLog, onShowCommit, ...view };
 }
 
 /** The branch chip, which is also the menu's toggle. */
@@ -101,7 +102,7 @@ describe("GitMenu", () => {
     expect(onFetchLog).not.toHaveBeenCalled();
     fireEvent.click(chip());
     expect(onFetchLog).toHaveBeenCalledTimes(1);
-    rerender(<GitMenu status={status()} selected={null} log={LOG} onFetchLog={onFetchLog} onShowCommit={vi.fn()} />);
+    rerender(<GitMenu onCloseLog={vi.fn()} status={status()} selected={null} log={LOG} onFetchLog={onFetchLog} onShowCommit={vi.fn()} />);
     expect(onFetchLog).toHaveBeenCalledTimes(1);
   });
 
@@ -155,6 +156,47 @@ describe("GitMenu", () => {
     expect(screen.queryByText("most recent")).not.toBeInTheDocument();
   });
 
+  // openlore: scenario=AFailedMapSaysSoInTheMenu spec=git
+  it("AFailedMapSaysSoInTheMenu: shows the failure in place of the commits, and stops saying it is loading", () => {
+    setup({ log: { repo: "", entries: null, error: "git log took longer than 10 s and was stopped", requestId: "gitlog:t" } });
+    fireEvent.click(chip());
+    expect(screen.getByRole("alert")).toHaveTextContent("history unavailable: git log took longer than 10 s and was stopped");
+    expect(screen.queryByText("loading…")).not.toBeInTheDocument();
+    expect(screen.queryByText("no commits")).not.toBeInTheDocument();
+  });
+
+  it("shows another repository's failure under no chip but its own", () => {
+    setup({
+      status: status(TWO),
+      selected: "projB/README.md",
+      log: { repo: "projA", entries: null, error: "fatal: bad object", requestId: "gitlog:t" },
+    });
+    fireEvent.click(chip());
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("says it closed, on every way it closes, and never while it stays open", () => {
+    const { onCloseLog } = setup();
+    fireEvent.click(chip());
+    fireEvent.mouseDown(within(screen.getByText("most recent")).getByText("most recent"));
+    expect(onCloseLog).not.toHaveBeenCalled();
+
+    fireEvent.click(chip());
+    expect(onCloseLog).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(chip());
+    fireEvent.mouseDown(document.body);
+    expect(onCloseLog).toHaveBeenCalledTimes(2);
+
+    fireEvent.click(chip());
+    fireEvent.click(screen.getByText("three days back"));
+    expect(onCloseLog).toHaveBeenCalledTimes(3);
+
+    // Already closed: a press outside closes nothing
+    fireEvent.mouseDown(document.body);
+    expect(onCloseLog).toHaveBeenCalledTimes(3);
+  });
+
   it("stays open when the pointer goes down inside it", () => {
     setup();
     fireEvent.click(chip());
@@ -179,7 +221,7 @@ describe("GitMenu", () => {
       expect(chip()).not.toHaveTextContent("release");
 
       rerender(
-        <GitMenu status={status(TWO)} selected="projB/README.md" log={logFor("projB")} onFetchLog={onFetchLog} onShowCommit={onShowCommit} />,
+        <GitMenu onCloseLog={vi.fn()} status={status(TWO)} selected="projB/README.md" log={logFor("projB")} onFetchLog={onFetchLog} onShowCommit={onShowCommit} />,
       );
       expect(chip()).toHaveTextContent("release");
       expect(chip()).toHaveTextContent("↑1");
@@ -203,7 +245,7 @@ describe("GitMenu", () => {
     it("names no branch when the selection is under no repository", () => {
       const { rerender, onFetchLog, onShowCommit } = render2("projA/src/main.ts");
       expect(chip()).toHaveTextContent("main");
-      rerender(<GitMenu status={status(TWO)} selected="notes.md" log={logFor("")} onFetchLog={onFetchLog} onShowCommit={onShowCommit} />);
+      rerender(<GitMenu onCloseLog={vi.fn()} status={status(TWO)} selected="notes.md" log={logFor("")} onFetchLog={onFetchLog} onShowCommit={onShowCommit} />);
       expect(chip()).toBeInTheDocument();
       expect(chip()).toHaveTextContent("—");
       expect(chip()).not.toHaveTextContent("main");
@@ -213,7 +255,7 @@ describe("GitMenu", () => {
     it("follows a directory, not only a file", () => {
       const { rerender, onFetchLog, onShowCommit } = render2("projA/src/main.ts");
       expect(chip()).toHaveTextContent("main");
-      rerender(<GitMenu status={status(TWO)} selected="projB" log={logFor("projB")} onFetchLog={onFetchLog} onShowCommit={onShowCommit} />);
+      rerender(<GitMenu onCloseLog={vi.fn()} status={status(TWO)} selected="projB" log={logFor("projB")} onFetchLog={onFetchLog} onShowCommit={onShowCommit} />);
       expect(chip()).toHaveTextContent("release");
       expect(chip()).toHaveTextContent("projB");
     });
@@ -238,13 +280,13 @@ describe("GitMenu", () => {
       expect(onFetchLog).toHaveBeenLastCalledWith("projA");
 
       rerender(
-        <GitMenu status={status(TWO)} selected="projB" log={logFor("projA")} onFetchLog={onFetchLog} onShowCommit={onShowCommit} />,
+        <GitMenu onCloseLog={vi.fn()} status={status(TWO)} selected="projB" log={logFor("projA")} onFetchLog={onFetchLog} onShowCommit={onShowCommit} />,
       );
       expect(onFetchLog).toHaveBeenLastCalledWith("projB");
       expect(screen.getByText("loading…")).toBeInTheDocument();
 
       rerender(
-        <GitMenu status={status(TWO)} selected="projB" log={logFor("projB")} onFetchLog={onFetchLog} onShowCommit={onShowCommit} />,
+        <GitMenu onCloseLog={vi.fn()} status={status(TWO)} selected="projB" log={logFor("projB")} onFetchLog={onFetchLog} onShowCommit={onShowCommit} />,
       );
       expect(screen.getByText("most recent")).toBeInTheDocument();
     });

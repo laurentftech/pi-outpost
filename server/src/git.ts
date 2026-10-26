@@ -174,9 +174,27 @@ async function runGit(root: string, args: string[]): Promise<string> {
     });
     return stdout;
   } catch (error) {
-    const stderr = (error as { stderr?: string }).stderr;
-    throw new GitError(stderr?.trim().split("\n")[0] || `git ${args[0]} failed`);
+    throw new GitError(gitFailureMessage(args[0], error, GIT_TIMEOUT_MS, GIT_MAX_BUFFER));
   }
+}
+
+/**
+ * Why a git command failed, in one line: git's own first line when it wrote one, and
+ * otherwise what the server knows. A command git never got to explain — killed by the
+ * time limit, never started, cut off at the output cap — writes nothing, and a bare
+ * "git log failed" left a person looking at a red line with nothing to act on.
+ *
+ * The output cap is tested before the kill: Node kills a child that overruns
+ * `maxBuffer`, so that error carries `killed` too.
+ */
+export function gitFailureMessage(command: string, error: unknown, timeoutMs: number, maxBuffer: number): string {
+  const failure = error as { stderr?: string; code?: unknown; killed?: boolean };
+  const said = failure.stderr?.trim().split(/\r?\n/)[0];
+  if (said) return said;
+  if (failure.code === "ENOENT") return "git was not found";
+  if (failure.code === "ERR_CHILD_PROCESS_STDIO_MAXBUFFER") return `git ${command} wrote more than ${Math.round(maxBuffer / (1024 * 1024))} MB`;
+  if (failure.killed) return `git ${command} took longer than ${timeoutMs / 1000} s and was stopped`;
+  return `git ${command} failed`;
 }
 
 /**

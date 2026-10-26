@@ -147,6 +147,7 @@ interface HeaderProps {
   onNavigateTree: (entryId: string) => void;
   onForkSession: (entryId: string) => void;
   onFetchGitLog: (repo: string) => void;
+  onCloseGitLog: () => void;
   onShowCommit: (repo: string, sha: string) => void;
   /** What the viewer has open, so the branch chip can name that project's repository. */
   gitSelectedPath: string | null;
@@ -678,6 +679,7 @@ export function Header(props: HeaderProps) {
           selected={props.gitSelectedPath}
           log={props.gitLog}
           onFetchLog={props.onFetchGitLog}
+          onCloseLog={props.onCloseGitLog}
           onShowCommit={props.onShowCommit}
         />
       )}

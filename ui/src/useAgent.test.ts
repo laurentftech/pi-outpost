@@ -1615,6 +1615,65 @@ describe("git messages", () => {
     expect(logsAfter(before)).toEqual([expect.objectContaining({ type: "git_log", repo: "projB" })]);
   });
 
+  // openlore: scenario=AClosedMapIsNotAskedFor spec=git
+  it("AClosedMapIsNotAskedFor: a closed history follows nothing, and opening it again asks afresh", async () => {
+    const result = await connected([], { gitAvailable: true });
+    const logsAfter = (from: number) =>
+      mockWs!.sent.slice(from).map((raw) => JSON.parse(raw) as { type: string; repo?: string }).filter((frame) => frame.type === "git_log");
+    act(() => result.current.fetchGitLog("projB"));
+    act(() => result.current.closeGitLog());
+    expect(result.current.state.gitLog).toBeNull();
+
+    let before = mockWs!.sent.length;
+    act(() => mockWs!.receive({ type: "git_changed", repo: "projB" }));
+    expect(logsAfter(before)).toEqual([]);
+
+    before = mockWs!.sent.length;
+    act(() => result.current.fetchGitLog("projB"));
+    expect(logsAfter(before)).toEqual([expect.objectContaining({ type: "git_log", repo: "projB" })]);
+    expect(result.current.state.gitLog).toMatchObject({ repo: "projB", entries: null, error: null });
+  });
+
+  it("drops an answer that lands after the history closed", async () => {
+    const result = await connected([], { gitAvailable: true });
+    act(() => result.current.fetchGitLog("projB"));
+    const requestId = lastRequestId();
+    act(() => result.current.closeGitLog());
+    act(() => mockWs!.receive({ type: "git_log", requestId, repo: "projB", entries: [] }));
+    expect(result.current.state.gitLog).toBeNull();
+  });
+
+  // openlore: scenario=AFailedMapSaysSoInTheMenu spec=git
+  it("AFailedMapSaysSoInTheMenu: the map's failure is held for its menu, and the conversation's banner is unchanged", async () => {
+    const result = await connected([], { gitAvailable: true });
+    act(() => result.current.fetchGitLog("projB"));
+    const requestId = lastRequestId();
+    act(() => mockWs!.receive({ type: "git_error", requestId, message: "git log took longer than 10 s and was stopped" }));
+    expect(result.current.state.gitLog).toMatchObject({ repo: "projB", entries: null, error: "git log took longer than 10 s and was stopped" });
+    expect(result.current.state.errors).toEqual([]);
+  });
+
+  it("a background refresh that fails while the history is open lands in the menu, not the banner", async () => {
+    const result = await connected([], { gitAvailable: true });
+    act(() => result.current.fetchGitLog("projB"));
+    act(() => mockWs!.receive({ type: "git_log", requestId: lastRequestId(), repo: "projB", entries: [] }));
+    act(() => mockWs!.receive({ type: "git_changed", repo: "projB" }));
+    const refresh = mockWs!.sent.map((raw) => JSON.parse(raw) as { type: string; requestId?: string }).filter((frame) => frame.type === "git_log").at(-1)!;
+    act(() => mockWs!.receive({ type: "git_error", requestId: refresh.requestId, message: "git log failed" }));
+    expect(result.current.state.gitLog).toMatchObject({ repo: "projB", entries: null, error: "git log failed" });
+    expect(result.current.state.errors).toEqual([]);
+  });
+
+  it("a map failure nobody is waiting for reaches neither the menu nor the banner", async () => {
+    const result = await connected([], { gitAvailable: true });
+    act(() => result.current.fetchGitLog("projB"));
+    const stale = lastRequestId();
+    act(() => result.current.closeGitLog());
+    act(() => mockWs!.receive({ type: "git_error", requestId: stale, message: "git log failed" }));
+    expect(result.current.state.gitLog).toBeNull();
+    expect(result.current.state.errors).toEqual([]);
+  });
+
   it("starts asking about git when a workspace that had no repository gains one", async () => {
     // The gate that makes this message necessary: told at connect there was no
     // repository, the client suppresses every git request from then on
@@ -1716,6 +1775,7 @@ describe("git messages", () => {
 
   it("keeps one repository's commits from rendering as another's", async () => {
     const result = await connected([], { gitAvailable: true });
+    act(() => result.current.fetchGitLog("projA"));
     act(() =>
       mockWs!.receive({
         type: "git_log",
@@ -1788,7 +1848,7 @@ describe("git messages", () => {
   it("shows any other git failure in the error banner", async () => {
     const result = await connected();
 
-    act(() => mockWs!.receive({ type: "git_error", requestId: "gitlog:1", message: "bad revision" }));
+    act(() => mockWs!.receive({ type: "git_error", requestId: "gitshow:1", message: "bad revision" }));
 
     await waitFor(() => expect(result.current.state.errors).toEqual(["git: bad revision"]));
   });
@@ -2517,7 +2577,7 @@ describe("the file-history pane", () => {
 describe("git errors that belong nowhere in particular", () => {
   it("land in the error list", async () => {
     const result = await connected();
-    act(() => mockWs!.receive({ type: "git_error", requestId: "gitlog:1", message: "git is not available" }));
+    act(() => mockWs!.receive({ type: "git_error", requestId: "gitshow:1", message: "git is not available" }));
     await waitFor(() => expect(result.current.state.errors).toContain("git: git is not available"));
   });
 
