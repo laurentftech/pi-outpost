@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { pageOf, readPage } from "@pi-outpost/posters/format";
 import { POSTER_FRAME } from "@pi-outpost/posters/frame";
@@ -8,6 +8,24 @@ import type { OpenFile } from "../useAgent";
 import { FileIoError, type FileIo } from "../fileIo";
 import { DrawioFilesContext } from "./drawioFiles";
 import { POSTER_SANDBOX } from "./PosterFrame";
+
+// The viewer that draws a page needs a browser that lays text out: here, a stand-in that
+// keeps the page it was handed and answers with a fixed picture.
+const painted = vi.hoisted(() => ({ xml: [] as string[], svg: '<svg xmlns="http://www.w3.org/2000/svg" width="200" height="100"><text>drawn</text></svg>' }));
+vi.mock("./DrawioPainter", async () => {
+  const React = await import("react");
+  return {
+    DrawioPainter: React.forwardRef(function FakePainter(_props: unknown, ref: React.Ref<{ draw(xml: string): Promise<string> }>) {
+      React.useImperativeHandle(ref, () => ({
+        draw: async (xml: string) => {
+          painted.xml.push(xml);
+          return painted.svg;
+        },
+      }));
+      return null;
+    }),
+  };
+});
 
 type Props = React.ComponentProps<typeof FileViewer>;
 
@@ -297,6 +315,95 @@ describe("a poster in the viewer", () => {
       fromFrame(frame, { type: POSTER_FRAME.READY });
       await waitFor(() => expect(opens(sent)).toHaveLength(1));
       expect(opens(sent)[0]!.poster).toMatchObject({ html: readPage(REWRITTEN).html });
+    });
+  });
+
+  describe("draw.io diagrams for the editor's frames", () => {
+    const TWO = '<mxfile><diagram name="Context"><mxGraphModel><root><mxCell id="0"/><mxCell id="a" value="Client" vertex="1" parent="0"/></root></mxGraphModel></diagram><diagram><mxGraphModel><root><mxCell id="0"/><mxCell id="b" value="Second" vertex="1" parent="0"/></root></mxGraphModel></diagram></mxfile>';
+    const FILES: Record<string, string> = { "diagrams/two.drawio": TWO, "old.dio": '<mxGraphModel><root><mxCell id="0"/></root></mxGraphModel>', "diagrams/broken.drawio": "<html/>" };
+
+    function diagramFileIo(overrides: Partial<FileIo> = {}) {
+      return fakeFileIo({
+        read: vi.fn(async (path: string) => {
+          if (path in FILES) return { content: FILES[path]!, mtimeMs: 1000 };
+          if (path.endsWith(".poster.html")) return { content: PAGE, mtimeMs: 1000 };
+          throw new FileIoError("not found", "not-found");
+        }),
+        find: vi.fn(async (query: string) =>
+          query === ".drawio"
+            ? [
+                { path: "diagrams", type: "directory" as const },
+                { path: "diagrams/two.drawio", type: "file" as const },
+                { path: "diagrams/broken.drawio", type: "file" as const },
+                { path: "notes.drawio.md", type: "file" as const },
+              ]
+            : [{ path: "old.dio", type: "file" as const }],
+        ),
+        ...overrides,
+      });
+    }
+
+    async function asked(fileIo: FileIo, data: Record<string, unknown>) {
+      open(loaded(PAGE), fileIo);
+      const frame = screen.getByTestId("poster-frame") as HTMLIFrameElement;
+      const sent = vi.spyOn(frame.contentWindow!, "postMessage");
+      fromFrame(frame, data);
+      await waitFor(() => expect(sent).toHaveBeenCalledWith(expect.objectContaining({ type: POSTER_FRAME.ANSWER, id: data.id }), SERVER));
+      return (sent.mock.calls.find(([message]) => (message as { id?: unknown }).id === data.id)![0] as { value: unknown }).value;
+    }
+
+    // openlore: scenario=TheProjectsDiagramsAreOffered spec=poster-files
+    it("TheProjectsDiagramsAreOffered: each diagram file, as a path from the poster's directory, with its pages", async () => {
+      const value = await asked(diagramFileIo(), { type: POSTER_FRAME.DRAWIO_LIST, id: 1 });
+      expect(value).toEqual({
+        ok: true,
+        value: [
+          { path: "../diagrams/two.drawio", pages: ["Context", "Page 2"] },
+          // Offered all the same: drawing it says what is wrong with it.
+          { path: "../diagrams/broken.drawio", pages: [] },
+          { path: "../old.dio", pages: ["Page 1"] },
+        ],
+      });
+    });
+
+    it("a view that cannot look through the project says so", async () => {
+      const fileIo = diagramFileIo();
+      delete (fileIo as { find?: unknown }).find;
+      expect(await asked(fileIo, { type: POSTER_FRAME.DRAWIO_LIST, id: 2 })).toEqual({ ok: false, message: "this view cannot look through the project's files" });
+    });
+
+    // openlore: scenario=TheNamedPageIsDrawn spec=poster-files
+    it("TheNamedPageIsDrawn: the frame's path is read from the poster's directory, and only the named page is drawn", async () => {
+      painted.xml.length = 0;
+      const fileIo = diagramFileIo();
+      const value = await asked(fileIo, { type: POSTER_FRAME.DRAWIO_DRAW, id: 3, path: "../diagrams/two.drawio", page: "2" });
+      expect(value).toEqual({ ok: true, value: painted.svg });
+      expect(fileIo.read).toHaveBeenCalledWith("diagrams/two.drawio");
+      expect(painted.xml).toHaveLength(1);
+      expect(painted.xml[0]).toContain('value="Second"');
+      expect(painted.xml[0]).not.toContain('value="Client"');
+    });
+
+    // openlore: scenario=AMissingDiagramLeavesTheFrameEmpty spec=poster-files
+    it("AMissingDiagramLeavesTheFrameEmpty: a diagram that cannot be read is named with the reason", async () => {
+      expect(await asked(diagramFileIo(), { type: POSTER_FRAME.DRAWIO_DRAW, id: 4, path: "../diagrams/missing.drawio" })).toEqual({ ok: false, message: '"../diagrams/missing.drawio" could not be read: not found' });
+    });
+
+    // openlore: scenario=AnUnreadableDiagramSaysWhy spec=poster-files
+    it("AnUnreadableDiagramSaysWhy: a file that is no diagram, or no .drawio at all, says so and is never drawn", async () => {
+      painted.xml.length = 0;
+      const fileIo = diagramFileIo();
+      expect(await asked(fileIo, { type: POSTER_FRAME.DRAWIO_DRAW, id: 5, path: "../diagrams/broken.drawio" })).toEqual({ ok: false, message: "it is not a draw.io diagram (its root is <html>)" });
+      cleanup();
+      expect(await asked(fileIo, { type: POSTER_FRAME.DRAWIO_DRAW, id: 6, path: "../notes.txt" })).toEqual({ ok: false, message: '"../notes.txt" is not a .drawio file' });
+      expect(fileIo.read).not.toHaveBeenCalledWith("notes.txt");
+      expect(painted.xml).toEqual([]);
+    });
+
+    it("a path climbing above the project stays inside it, for the server to confine", async () => {
+      const fileIo = diagramFileIo();
+      await asked(fileIo, { type: POSTER_FRAME.DRAWIO_DRAW, id: 7, path: "../../../../etc/x.drawio" });
+      expect(fileIo.read).toHaveBeenCalledWith("etc/x.drawio");
     });
   });
 });

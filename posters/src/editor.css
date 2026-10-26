@@ -59,6 +59,9 @@ html[data-display="fullscreen"] .poster-shell { height: 100vh; padding-bottom: 9
 .poster-menu button { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; border: 0; border-radius: 5px; background: transparent; padding: 5px 8px; }
 .poster-menu button:hover, .poster-menu button:focus-visible { background: var(--button-hover); }
 .poster-menu svg { flex: none; color: #4fc3f7; }
+.poster-diagrams { max-height: 320px; max-width: min(460px, 90vw); overflow-y: auto; }
+.poster-diagrams button { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
+.poster-menu-note { padding: 5px 8px; opacity: 0.75; }
 .poster-menu hr { width: 100%; border: 0; border-top: 1px solid var(--line); margin: 4px 0; }
 .poster-group { display: inline-flex; }
 .poster-group button { border-radius: 0; margin-left: -1px; }

@@ -24,6 +24,7 @@ import parserModule from "grapesjs-parser-postcss";
 import { FORMATS, pageOf, type PosterFormat } from "./format.ts";
 import { DOCX_MEDIA_TYPE, PPTX_MEDIA_TYPE, exportFileName, posterDocx, posterPptx } from "./office.ts";
 import { pagePicture } from "./picture.ts";
+import { DRAWIO_ATTRIBUTE, DRAWIO_PAGE_ATTRIBUTE, diagramPicture, type DiagramChoice } from "./diagrams.ts";
 
 export interface OpenedPoster {
   title: string;
@@ -61,6 +62,17 @@ export interface PosterHost {
   savedNote?: string;
   /** Told when unsaved touch-ups appear and when they are saved, so the host can ask before dropping them. */
   onDirtyChange?: (dirty: boolean) => void;
+  /**
+   * Present when the host can draw draw.io diagrams (pi-outpost, which serves the viewer):
+   * Insert offers them, and an empty frame naming one is filled when the poster opens. Both
+   * reject with the reason, in words for the person.
+   */
+  diagrams?: {
+    /** The diagrams a frame may name, with their pages. */
+    list(): Promise<DiagramChoice[]>;
+    /** One page of `path`, as an SVG: the page's name or number from 1, or the first page. */
+    draw(path: string, page?: string): Promise<string>;
+  };
 }
 
 export interface PosterEditor {
@@ -340,8 +352,11 @@ export function mountEditor(root: HTMLElement, host: PosterHost): PosterEditor {
     item.append(element("span", {}, label));
     return item;
   };
+  const diagramItem = menuItem("diagram", "draw.io diagram…", "A page of one of the project's draw.io diagrams: into the selected picture, or onto the page");
+  diagramItem.hidden = !host.diagrams;
   insertMenu.append(
     menuItem("picture", "Picture…", "A picture of yours: into the selected picture, or onto the page"),
+    diagramItem,
     menuItem("text", "Text", "A text box in the middle of the page"),
     element("hr"),
     ...(Object.keys(SHAPES) as ShapeName[]).map((name) => {
@@ -350,7 +365,9 @@ export function mountEditor(root: HTMLElement, host: PosterHost): PosterEditor {
       return item;
     }),
   );
-  insert.append(insertButton, insertMenu);
+  // The project's diagrams, one entry per page, asked of the host each time it opens.
+  const diagramMenu = element("div", { class: "poster-menu poster-diagrams", role: "menu", "aria-label": "draw.io diagrams", hidden: "" });
+  insert.append(insertButton, insertMenu, diagramMenu);
   const pictureInput = element("input", { type: "file", accept: "image/*", hidden: "", "aria-hidden": "true" });
   // Save is an icon, first of the controls: it keeps the poster, where the three
   // downloads beside the exports make files of it; alike, they read as one kind of action.
@@ -456,6 +473,9 @@ export function mountEditor(root: HTMLElement, host: PosterHost): PosterEditor {
     const value = current();
     if (!value || !savedSnapshot) return;
     const changed = value.html !== savedSnapshot.html || value.css !== savedSnapshot.css;
+    // Said when the poster turns unsaved or saved, not on every change: a message saying what
+    // was just done, or what failed, would be overwritten by the update that follows it.
+    if (changed === dirty) return;
     setDirty(changed);
     if (host.save && !shown?.readOnly && editable) status(changed ? "Unsaved changes." : "No unsaved changes.");
   }
@@ -673,7 +693,116 @@ export function mountEditor(root: HTMLElement, host: PosterHost): PosterEditor {
     }, true);
   }
 
+  let diagramTarget: Component | undefined;
+  let diagramListing = 0;
+
+  /** Lists the project's diagrams, a page per entry, for one to go into `target` or onto the page. */
+  async function chooseDiagram(target?: Component) {
+    const diagrams = host.diagrams;
+    if (!diagrams || !editor) return;
+    diagramTarget = target;
+    const listing = ++diagramListing;
+    diagramMenu.replaceChildren(element("span", { class: "poster-menu-note" }, "Looking for draw.io diagrams…"));
+    diagramMenu.hidden = false;
+    let choices: DiagramChoice[];
+    try {
+      choices = await diagrams.list();
+    } catch (error) {
+      if (listing !== diagramListing) return;
+      diagramMenu.hidden = true;
+      status(`The draw.io diagrams could not be listed: ${error instanceof Error ? error.message : String(error)}.`, "error");
+      return;
+    }
+    if (listing !== diagramListing || diagramMenu.hidden) return;
+    const entries = choices.flatMap((choice) =>
+      choice.pages.length > 1
+        ? choice.pages.map((page) => ({ path: choice.path, page, label: `${choice.path} — ${page}` }))
+        : [{ path: choice.path, page: undefined as string | undefined, label: choice.path }],
+    );
+    if (entries.length === 0) {
+      diagramMenu.replaceChildren(element("span", { class: "poster-menu-note" }, "No draw.io diagram in this project."));
+      return;
+    }
+    diagramMenu.replaceChildren(
+      ...entries.map(({ path, page, label }) => {
+        const item = element("button", { type: "button", role: "menuitem", "data-diagram": path, title: `Put ${label} in the poster` }, label);
+        if (page !== undefined) item.dataset.page = page;
+        return item;
+      }),
+    );
+    (diagramMenu.querySelector("button") as HTMLButtonElement | null)?.focus();
+  }
+
+  /** Draws `path`'s `page` and puts it into `target` when that is a picture, else onto the page. */
+  async function insertDiagram(path: string, page: string | undefined, target?: Component) {
+    const opened = editor;
+    const diagrams = host.diagrams;
+    if (!opened || !shown || !diagrams) return;
+    const named = page === undefined ? path : `${path} (${page})`;
+    status(`Drawing ${named}…`);
+    let picture: ReturnType<typeof diagramPicture>;
+    try {
+      picture = diagramPicture(await diagrams.draw(path, page));
+    } catch (error) {
+      if (editor === opened) status(`${named} could not be drawn: ${error instanceof Error ? error.message : String(error)}.`, "error");
+      return;
+    }
+    if (editor !== opened) return;
+    const source = { [DRAWIO_ATTRIBUTE]: path, ...(page === undefined ? {} : { [DRAWIO_PAGE_ATTRIBUTE]: page }) };
+    if (target?.is("image") && target.getEl()?.isConnected) {
+      target.set("src", picture.src);
+      target.addAttributes(source);
+      target.addStyle({ border: "none", background: "none" });
+    } else {
+      const width = Math.round(Math.min(size().width * 0.6, picture.width));
+      const height = Math.round((width * picture.height) / picture.width);
+      place(opened, { type: "image", src: picture.src, attributes: { alt: named, ...source } }, width, height);
+    }
+    // Unsaved now, before saying what was placed: said after, it would cover this.
+    syncDirty();
+    status("Diagram placed: drag it to move it, pull a corner to resize it, then save.", "ok");
+  }
+
+  /**
+   * Fills each empty frame naming a diagram, once the poster is open (design 5): a frame
+   * already holding a picture is left as it is. What is filled is an unsaved touch-up.
+   */
+  async function fillDiagramFrames(opened: Editor) {
+    const diagrams = host.diagrams;
+    if (!diagrams) return;
+    const frames = opened.getWrapper()!.find("img").filter((frame) => {
+      const named = frame.getAttributes()[DRAWIO_ATTRIBUTE];
+      return typeof named === "string" && named.trim() !== "" && (frame as Component & { isDefaultSrc(): boolean }).isDefaultSrc();
+    });
+    if (frames.length === 0) return;
+    status(`Drawing ${frames.length === 1 ? "the draw.io diagram" : `${frames.length} draw.io diagrams`} named in the poster…`);
+    let filled = 0;
+    const failed: string[] = [];
+    for (const frame of frames) {
+      const attributes = frame.getAttributes();
+      const path = String(attributes[DRAWIO_ATTRIBUTE]).trim();
+      const page = typeof attributes[DRAWIO_PAGE_ATTRIBUTE] === "string" && attributes[DRAWIO_PAGE_ATTRIBUTE].trim() !== "" ? attributes[DRAWIO_PAGE_ATTRIBUTE].trim() : undefined;
+      try {
+        const picture = diagramPicture(await diagrams.draw(path, page));
+        if (editor !== opened) return;
+        frame.set("src", picture.src);
+        frame.addStyle({ border: "none", background: "none" });
+        filled += 1;
+      } catch (error) {
+        if (editor !== opened) return;
+        failed.push(`${page === undefined ? path : `${path} (${page})`}: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
+    syncDirty();
+    if (failed.length > 0) status(`${filled > 0 ? `${filled} diagram${filled === 1 ? "" : "s"} drawn; ` : ""}not drawn, its frame left empty — ${failed.join("; ")}.`, "error");
+    else status(`${filled === 1 ? "The draw.io diagram is" : `${filled} draw.io diagrams are`} in ${filled === 1 ? "its frame" : "their frames"}: save to keep ${filled === 1 ? "it" : "them"}.`, "ok");
+  }
+
   function setMenu(open: boolean) {
+    // The diagram list sits where the menu opens: any move of the menu closes it, and drops a
+    // listing still on its way.
+    diagramMenu.hidden = true;
+    diagramListing += 1;
     insertMenu.hidden = !open;
     insertButton.setAttribute("aria-expanded", String(open));
     if (open) (insertMenu.querySelector("button") as HTMLButtonElement | null)?.focus();
@@ -686,6 +815,9 @@ export function mountEditor(root: HTMLElement, host: PosterHost): PosterEditor {
     if (choice === "picture") {
       const selected = editor?.getSelected();
       pickPicture(selected?.is("image") ? selected : undefined);
+    } else if (choice === "diagram") {
+      const selected = editor?.getSelected();
+      void chooseDiagram(selected?.is("image") ? selected : undefined);
     } else if (choice === "text") {
       insertText();
     } else if (choice.startsWith("shape:")) {
@@ -697,8 +829,22 @@ export function mountEditor(root: HTMLElement, host: PosterHost): PosterEditor {
     setMenu(false);
     insertButton.focus();
   });
+  diagramMenu.addEventListener("click", (event) => {
+    const item = (event.target as HTMLElement).closest<HTMLElement>("[data-diagram]");
+    if (!item) return;
+    diagramMenu.hidden = true;
+    void insertDiagram(item.dataset.diagram!, item.dataset.page, diagramTarget);
+  });
+  // Escape closes the diagram list wherever the focus is: it may still be on Insert while the
+  // project is looked through.
+  const closeDiagramsOnEscape = (event: KeyboardEvent) => {
+    if (event.key !== "Escape" || diagramMenu.hidden) return;
+    setMenu(false);
+    insertButton.focus();
+  };
+  root.ownerDocument.addEventListener("keydown", closeDiagramsOnEscape);
   document.addEventListener("mousedown", (event) => {
-    if (!insertMenu.hidden && !insert.contains(event.target as Node)) setMenu(false);
+    if ((!insertMenu.hidden || !diagramMenu.hidden) && !insert.contains(event.target as Node)) setMenu(false);
   });
 
   pictureInput.addEventListener("change", () => {
@@ -882,6 +1028,7 @@ export function mountEditor(root: HTMLElement, host: PosterHost): PosterEditor {
       savedSnapshot = current();
       fitZoom();
       status(canSave ? "Double-click a text to correct it; drag a selected element to move it." : "Double-click a text to correct it, then export. Changes are not saved here.");
+      void fillDiagramFrames(opened);
     });
     opened.on("update", () => {
       if (editor === opened) syncDirty();
@@ -963,6 +1110,7 @@ export function mountEditor(root: HTMLElement, host: PosterHost): PosterEditor {
       window.removeEventListener("resize", onResize);
       editorDocument.removeEventListener("dragover", refuseDrop);
       editorDocument.removeEventListener("drop", refuseDrop);
+      editorDocument.removeEventListener("keydown", closeDiagramsOnEscape);
       canvasSize.disconnect();
       editor?.destroy();
       editor = undefined;

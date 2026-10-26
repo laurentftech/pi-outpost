@@ -11,6 +11,10 @@
  *   frame  → parent  DELIVER { id, name, mediaType, bytes }  hand this exported file to the person
  *   parent → frame   ANSWER  { id, value }              the answer to SAVE or DELIVER
  *   frame  → parent  DIRTY   { dirty }                  unsaved touch-ups appeared or were saved
+ *   frame  → parent  DRAWIO_LIST { id }                 the project's draw.io diagrams, with their pages
+ *   frame  → parent  DRAWIO_DRAW { id, path, page? }    one diagram page, drawn as an SVG
+ *
+ * DRAWIO_LIST and DRAWIO_DRAW are answered `{ ok: true, value }` or `{ ok: false, message }`.
  *
  * Isomorphic.
  */
@@ -22,7 +26,12 @@ export const POSTER_FRAME = {
   DELIVER: "pi-outpost:poster-deliver",
   ANSWER: "pi-outpost:poster-answer",
   DIRTY: "pi-outpost:poster-dirty",
+  DRAWIO_LIST: "pi-outpost:poster-drawio-list",
+  DRAWIO_DRAW: "pi-outpost:poster-drawio-draw",
 } as const;
+
+/** The answer to a DRAWIO_LIST or DRAWIO_DRAW: the value, or why there is none. */
+export type DrawioAnswer<T> = { ok: true; value: T } | { ok: false; message: string };
 
 /** Where pi-outpost's server serves the editor frame page (web/dist). */
 export const POSTER_EDITOR_PAGE = "poster-editor.html";
