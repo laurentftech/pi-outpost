@@ -9,8 +9,10 @@ dist/
 .env
 .code-review-graph/
 
-# Local agent tooling and its output — each checkout configures its own
-.claude/
+# Local agent tooling and its output — each checkout configures its own, except the
+# shared Claude Code permissions (cloud sessions start from a fresh clone)
+.claude/*
+!.claude/settings.json
 .agents/
 .mcp.json
 .playwright-mcp/
