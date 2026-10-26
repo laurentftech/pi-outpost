@@ -1,0 +1,49 @@
+<mxfile host="pi-outpost">
+  <diagram id="ev-architecture" name="Architecture">
+    <mxGraphModel grid="1" gridSize="10" guides="1" connect="1" arrows="1" page="1" pageWidth="1200" pageHeight="800">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="title" parent="1" style="text;html=1;align=center;verticalAlign=middle;fontSize=24;fontStyle=1;fontColor=#263238;" value="Architecture d&#39;une voiture électrique" vertex="1">
+          <mxGeometry height="50" width="480" x="360" y="30" as="geometry" />
+        </mxCell>
+        <mxCell id="charge-port" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=16;" value="Prise de recharge&lt;br&gt;&lt;font style=&#39;font-size:12px&#39;&gt;Courant secteur&lt;/font&gt;" vertex="1">
+          <mxGeometry height="80" width="180" x="110" y="320" as="geometry" />
+        </mxCell>
+        <mxCell id="obc" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=16;" value="Chargeur embarqué&lt;br&gt;&lt;font style=&#39;font-size:12px&#39;&gt;AC → DC&lt;/font&gt;" vertex="1">
+          <mxGeometry height="80" width="190" x="300" y="170" as="geometry" />
+        </mxCell>
+        <mxCell id="battery" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=16;" value="Batterie haute tension&lt;br&gt;&lt;font style=&#39;font-size:12px&#39;&gt;Stockage d&#39;énergie DC&lt;/font&gt;" vertex="1">
+          <mxGeometry height="100" width="220" x="570" y="160" as="geometry" />
+        </mxCell>
+        <mxCell id="bms" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=16;" value="BMS&lt;br&gt;&lt;font style=&#39;font-size:12px&#39;&gt;Surveillance, équilibrage&lt;/font&gt;" vertex="1">
+          <mxGeometry height="80" width="180" x="610" y="350" as="geometry" />
+        </mxCell>
+        <mxCell id="inverter" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=16;" value="Onduleur / onduleur de traction&lt;br&gt;&lt;font style=&#39;font-size:12px&#39;&gt;DC → AC triphasé&lt;/font&gt;" vertex="1">
+          <mxGeometry height="80" width="220" x="880" y="170" as="geometry" />
+        </mxCell>
+        <mxCell id="motor" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=16;" value="Moteur électrique&lt;br&gt;&lt;font style=&#39;font-size:12px&#39;&gt;Couple → roues&lt;/font&gt;" vertex="1">
+          <mxGeometry height="80" width="220" x="880" y="350" as="geometry" />
+        </mxCell>
+        <mxCell id="charge-flow-1" edge="1" parent="1" source="charge-port" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;fontSize=14;" target="obc" value="AC">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="charge-flow-2" edge="1" parent="1" source="obc" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;fontSize=14;" target="battery" value="DC">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="traction-flow-1" edge="1" parent="1" source="battery" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;fontSize=14;" target="inverter" value="DC haute tension">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="traction-flow-2" edge="1" parent="1" source="inverter" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;fontSize=14;" target="motor" value="AC triphasé">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="bms-link" edge="1" parent="1" source="bms" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;dashed=1;endArrow=block;endFill=1;fontSize=13;" target="battery" value="Mesures &amp; commande">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="bms-control" edge="1" parent="1" source="bms" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;dashed=1;endArrow=block;endFill=1;fontSize=13;" target="inverter" value="Commande sécurité">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

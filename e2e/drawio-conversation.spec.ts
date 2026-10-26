@@ -354,3 +354,93 @@ test("Escape while touching up is \"done\": it leaves the touch-up, asking first
   await page.keyboard.press("Escape");
   await expect(overlay).toHaveCount(0);
 });
+
+/** The services diagram with its wires drawn as `style` says: Alpha wired to Bravo and to Charlie. */
+function wiredDiagram(style: string): string {
+  const wire = (id: string, target: string) => `        <mxCell id="${id}" edge="1" parent="1" source="a" target="${target}" style="${style}html=1;endArrow=block;">\n          <mxGeometry relative="1" as="geometry"/>\n        </mxCell>`;
+  return SERVICES_DIAGRAM.replace(/ {8}<mxCell id="a-b"[\s\S]*?<\/mxCell>/, `${wire("a-b", "b")}\n${wire("a-c", "c")}`);
+}
+
+/** The visible wires' midpoints, in page coordinates. */
+async function wireMidpoints(frame: Locator): Promise<Array<{ x: number; y: number }>> {
+  const inner = await frameOf(frame);
+  const box = (await frame.boundingBox())!;
+  const points = await inner.evaluate(() => [...document.querySelectorAll<SVGPathElement>("svg path[fill='none']")]
+    .filter((p) => p.getAttribute("visibility") !== "hidden" && p.getTotalLength() > 50)
+    .map((wire) => {
+      const at = wire.getPointAtLength(wire.getTotalLength() / 2);
+      const m = wire.getScreenCTM()!;
+      return { x: at.x * m.a + m.e, y: at.y * m.d + m.f };
+    }));
+  return points.map((point) => ({ x: box.x + point.x, y: box.y + point.y }));
+}
+
+// openlore: scenario=EveryWireIsRestyled spec=drawio-diagrams
+test("EveryWireIsRestyled: with nothing selected, every wire of the page changes style, one undo takes it back, and the save writes it", async ({ page }) => {
+  await writeFile(FILE(), wiredDiagram("edgeStyle=none;"));
+  await (await openReply(page)).getByRole("button", { name: "↗ open" }).click();
+  const block = page.getByTestId("drawio-block-viewer");
+  const frame = block.getByTestId("drawio-frame");
+  await expect.poll(async () => labels(await frameOf(frame))).toContain("Charlie");
+  await touchUp(block, frame);
+  const control = block.getByRole("combobox", { name: "Wire style" });
+  await expect(control).toHaveValue("straight");
+  await control.selectOption("orthogonal");
+  await expect(control).toHaveValue("orthogonal");
+  await expect(block.getByTestId("drawio-touchup-status")).toHaveText("● unsaved");
+  await block.getByRole("button", { name: "↶ undo" }).click();
+  await expect(control).toHaveValue("straight");
+  await expect(block.getByTestId("drawio-touchup-status")).not.toHaveText("● unsaved");
+  await block.getByRole("button", { name: "↷ redo" }).click();
+  await expect(control).toHaveValue("orthogonal");
+  await block.getByRole("button", { name: "✓ save" }).click();
+  await expect.poll(() => savedCell("a-b")).toContain("edgeStyle=orthogonalEdgeStyle");
+  expect(await savedCell("a-c")).toContain("edgeStyle=orthogonalEdgeStyle");
+});
+
+// openlore: scenario=OnlyTheSelectedWiresAreRestyled spec=drawio-diagrams
+test("OnlyTheSelectedWiresAreRestyled: a wire clicked, then curved, is the only one curved", async ({ page }) => {
+  await writeFile(FILE(), wiredDiagram("edgeStyle=orthogonalEdgeStyle;"));
+  const block = await openReply(page);
+  await block.getByRole("button", { name: "Show diagram at full size" }).click();
+  const overlay = page.getByTestId("drawio-enlarged");
+  const frame = overlay.getByTitle(`${SERVICES_DIAGRAM_PATH}, full size`);
+  await expect.poll(async () => labels(await frameOf(frame))).toContain("Charlie");
+  await touchUp(overlay, frame);
+  const wires = await wireMidpoints(frame);
+  expect(wires).toHaveLength(2);
+  await page.mouse.click(wires[0]!.x, wires[0]!.y);
+  const control = overlay.getByRole("combobox", { name: "Wire style" });
+  await expect(control).toHaveValue("orthogonal");
+  await control.selectOption("curved");
+  await expect(control).toHaveValue("curved");
+  await overlay.getByRole("button", { name: "✓ save" }).click();
+  await expect.poll(async () => [await savedCell("a-b"), await savedCell("a-c")].filter((cell) => cell.includes("curved=1")).length).toBe(1);
+  expect([await savedCell("a-b"), await savedCell("a-c")].every((cell) => cell.includes("edgeStyle=orthogonalEdgeStyle"))).toBe(true);
+});
+
+// openlore: scenario=NewWiresFollowThePage spec=drawio-diagrams
+test("NewWiresFollowThePage: on a page of straight wires, a wire drawn from Charlie to Alpha is straight", async ({ page }) => {
+  await writeFile(FILE(), SERVICES_DIAGRAM.replace("edgeStyle=orthogonalEdgeStyle;", "edgeStyle=none;"));
+  const block = await openReply(page);
+  await block.getByRole("button", { name: "↗ open" }).click();
+  const viewer = page.getByTestId("drawio-block-viewer");
+  const frame = viewer.getByTestId("drawio-frame");
+  await expect.poll(async () => labels(await frameOf(frame))).toContain("Charlie");
+  const inner = await touchUp(viewer, frame);
+  await expect(viewer.getByRole("combobox", { name: "Wire style" })).toHaveValue("straight");
+  const box = (await frame.boundingBox())!;
+  const charlie = await centreOf(page, frame, "Charlie");
+  await page.mouse.move(charlie.x + 5, charlie.y + 5, { steps: 3 });
+  const marks = await inner.evaluate(() => [...document.querySelectorAll("svg image")].map((i) => i.getBoundingClientRect()).filter((r) => r.width > 0 && r.width < 12).map((r) => ({ x: r.left + r.width / 2, y: r.top + r.height / 2 })));
+  const right = marks.sort((p, q) => q.x - p.x || Math.abs(p.y - (charlie.y - box.y)) - Math.abs(q.y - (charlie.y - box.y)))[0]!;
+  const alpha = await centreOf(page, frame, "Alpha");
+  await page.mouse.move(box.x + right.x, box.y + right.y, { steps: 3 });
+  await drag(page, { x: box.x + right.x, y: box.y + right.y }, alpha);
+  await expect(page.getByTestId("drawio-touchup-status")).toHaveText("● unsaved");
+  await viewer.getByRole("button", { name: "✓ save" }).click();
+  await expect.poll(async () => /<mxCell [^>]*source="c"[^>]*target="a"/.test(await readFile(FILE(), "utf8"))).toBe(true);
+  const added = /<mxCell [^>]*source="c"[^>]*target="a"[^>]*>|<mxCell [^>]*style="[^"]*"[^>]*source="c"[^>]*>/.exec(await readFile(FILE(), "utf8"))![0];
+  expect(added).toContain("edgeStyle=none");
+  expect(added).not.toContain("orthogonalEdgeStyle");
+});

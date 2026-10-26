@@ -244,13 +244,17 @@ one needs, the command that proves it works, and the caution that goes with it.
   every diagram has — ⤢ enlarge, ⤓ download SVG (the page shown), ⤓ download .drawio, ↗ open.
   **✎ touch up**, in the file viewer and at full size, makes it editable in place: move and resize
   boxes, drag a wire's end to another box or draw a new one from a box's connection points,
-  retype a label, delete, undo (⌘/Ctrl+Z) — then save, which rewrites only the page shown and is
+  retype a label, delete, undo (⌘/Ctrl+Z), choose how wires are drawn (straight, orthogonal or
+  curved: the selected ones, or every wire of the page when none is selected, and new ones, which
+  start in the style most of the page's wires have) — then save, which rewrites only the page shown and is
   refused if the file changed on disk meanwhile; Escape leaves, asking first about unsaved
   touch-ups. **Open in draw.io** hands the file to the application associated with it (draw.io
   desktop) for anything more, and the view follows the saved file. The agent writes `.drawio`
   files with its file tools, guided by the bundled `drawio` skill, checks them with
   `drawio_check` — dangling connectors, duplicate ids, missing parents, unusable geometry,
-  overlapping labelled shapes — since it cannot see the drawing, and shows the result in its
+  overlapping labelled shapes, connectors running through boxes or their own ends, connector
+  labels on boxes, with the wires routed as draw.io's viewer routes them — since it cannot see
+  the drawing, and shows the result in its
   reply. In a conversation exported to HTML or Word, a diagram is a link to its file
 - Git: uncommitted-change badges in the tree, per-file diffs, a change gutter in the editor
   (what changed since HEAD beside each line, as you type; a click shows what was there and,

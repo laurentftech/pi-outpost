@@ -17,11 +17,16 @@ import { DRAWIO_MESSAGE, drawioFramePage, drawioViewerUrl } from "../util/drawio
 /** Scripts only: no same-origin, so the viewer cannot reach this document, its storage or its token. */
 export const DRAWIO_SANDBOX = "allow-scripts";
 
-/** What touch-up reports after each edit, undo, redo or save. */
+/** How wires are drawn, as the touch-up bar offers it. */
+export type DrawioWireStyle = "straight" | "orthogonal" | "curved";
+
+/** What touch-up reports after each edit, undo, redo, save or selection. */
 export interface DrawioTouchUpState {
   dirty: boolean;
   canUndo: boolean;
   canRedo: boolean;
+  /** The style of the wires a choice would change — the selected ones, else the page's — or `mixed`. */
+  wireStyle?: DrawioWireStyle | "mixed";
 }
 
 export interface DrawioFrameHandle {
@@ -31,6 +36,8 @@ export interface DrawioFrameHandle {
   markClean(): void;
   undo(): void;
   redo(): void;
+  /** Draws the selected wires, or every wire of the page when none is selected, and new ones, in `style`: one undoable change. */
+  setWireStyle(style: DrawioWireStyle): void;
   /** The shown page as a standalone SVG document, with the page's name when it has one. */
   exportSvg(): Promise<{ page: number; name: string | null; svg: string }>;
 }
@@ -98,6 +105,7 @@ export const DrawioFrame = forwardRef<DrawioFrameHandle, DrawioFrameProps>(funct
     markClean: () => post({ type: DRAWIO_MESSAGE.CLEAN }),
     undo: () => post({ type: DRAWIO_MESSAGE.UNDO }),
     redo: () => post({ type: DRAWIO_MESSAGE.REDO }),
+    setWireStyle: (style) => post({ type: DRAWIO_MESSAGE.WIRE_STYLE, style }),
     exportSvg: () => ask<{ page: number; name: string | null; svg: string }>(DRAWIO_MESSAGE.EXPORT_SVG, DRAWIO_MESSAGE.SVG),
   }));
 
@@ -121,7 +129,8 @@ export const DrawioFrame = forwardRef<DrawioFrameHandle, DrawioFrameProps>(funct
         setFailure(message);
         callbacks.current.onRendered?.(message);
       } else if (data.type === DRAWIO_MESSAGE.CHANGED) {
-        callbacks.current.onTouchUpChange?.({ dirty: data.dirty === true, canUndo: data.canUndo === true, canRedo: data.canRedo === true });
+        const wireStyle = ["straight", "orthogonal", "curved", "mixed"].includes(data.wireStyle as string) ? (data.wireStyle as DrawioWireStyle | "mixed") : undefined;
+        callbacks.current.onTouchUpChange?.({ dirty: data.dirty === true, canUndo: data.canUndo === true, canRedo: data.canRedo === true, ...(wireStyle ? { wireStyle } : {}) });
       } else if (data.type === DRAWIO_MESSAGE.FOCUS) {
         // Only while touching up: the frame asks on its own mousedown, so the reader is in it
         if (frame.current !== null && document.activeElement !== frame.current) frame.current.focus({ preventScroll: true });
