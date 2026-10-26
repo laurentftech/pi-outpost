@@ -105,9 +105,32 @@ export function usePosterHost(): PosterHost {
       }
       await expect(canvas.locator('[data-gjs-type="wrapper"] > *').first()).toBeVisible({ timeout: 20_000 });
       await expect(view.locator(".poster-status")).toContainText("Double-click a text");
+      await pageAtRest(view);
       return { view, canvas };
     },
   };
+}
+
+/**
+ * Waits until the page stops moving. Widening the view above refits the page a frame or
+ * more later, and a click aimed while it still moves lands beside its target: on the CI
+ * runner a card's colour change went to no card at all.
+ */
+export async function pageAtRest(view: FrameLocator) {
+  const frame = view.locator("iframe.gjs-frame");
+  let last = "";
+  await expect
+    .poll(
+      async () => {
+        const box = await frame.boundingBox();
+        const now = JSON.stringify(box && [box.x, box.y, box.width, box.height].map(Math.round));
+        const still = now === last;
+        last = now;
+        return still;
+      },
+      { intervals: [150], timeout: 10_000 },
+    )
+    .toBe(true);
 }
 
 export const hostLog = (page: Page) => page.evaluate(() => window.hostLog as Array<{ method: string; params: Record<string, unknown> }>);

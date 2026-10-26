@@ -88,6 +88,8 @@ test("AColourChangeTouchesOneElement: a background set in the style panel change
   const id = await createPoster("One colour");
   const { view, canvas } = await show(page, id);
   await canvas.locator(".rule.c2").click({ position: { x: 6, y: 6 } });
+  // The style panel styles what is selected: a click that missed the card must fail here, by name.
+  await expect.poll(async () => (await canvasFrame(page)).evaluate(() => document.querySelector(".gjs-selected")?.className ?? "")).toMatch(/\brule c2\b/);
   await view.locator('button[data-action="style"]').click();
   const input = view.locator(".gjs-sm-property__background-color input").first();
   await input.fill("#ff0000");
