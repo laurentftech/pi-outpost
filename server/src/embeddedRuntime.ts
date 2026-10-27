@@ -68,6 +68,12 @@ const SLOW_BUILD_MS = 2000;
 /** How many events are held for a subscriber that has not arrived yet. */
 const MAX_BUFFERED_EVENTS = 100;
 
+/** When a session was built by the factory: its services, extensions loaded, and the session made. */
+export interface SessionBuild {
+  startedAt: number;
+  endedAt: number;
+}
+
 /** One decimal is the resolution anyone acts on here. */
 function seconds(ms: number): string {
   return `${(ms / 1000).toFixed(1)}s`;
@@ -78,8 +84,18 @@ export async function createEmbeddedRuntime(options: EmbeddedRuntimeOptions): Pr
   // new/resume/fork. Keep that factory indirect so a Settings update can replace
   // the sandboxed toolset before starting the replacement session.
   let currentFactory = options.factory;
+  // When the last session was built: a replacement's log says how long it took, apart from
+  // leaving the previous session and binding the extensions (see reportReplacement)
+  let lastBuild: SessionBuild | undefined;
   const sessionStartedAt = Date.now();
-  const runtime = await createAgentSessionRuntime((factoryOptions) => currentFactory(factoryOptions), {
+  const runtime = await createAgentSessionRuntime(async (factoryOptions) => {
+    const startedAt = Date.now();
+    try {
+      return await currentFactory(factoryOptions);
+    } finally {
+      lastBuild = { startedAt, endedAt: Date.now() };
+    }
+  }, {
     cwd: options.cwd,
     agentDir: options.agentDir,
     sessionManager: options.sessionManager,
@@ -90,7 +106,7 @@ export async function createEmbeddedRuntime(options: EmbeddedRuntimeOptions): Pr
     const previous = currentFactory;
     currentFactory = factory;
     return previous;
-  });
+  }, () => lastBuild);
   const bindStartedAt = Date.now();
   await embedded.bind();
   const bindMs = Date.now() - bindStartedAt;
@@ -198,6 +214,7 @@ export class EmbeddedRuntime implements AgentRuntime {
     private readonly runtime: SdkRuntime,
     private readonly agentDir: string,
     private readonly replaceFactory?: (factory: CreateAgentSessionRuntimeFactory) => CreateAgentSessionRuntimeFactory,
+    private readonly lastBuild?: () => SessionBuild | undefined,
   ) {}
 
   private get session(): AgentSession {
@@ -431,6 +448,7 @@ export class EmbeddedRuntime implements AgentRuntime {
         // nothing to announce: its skills went with it, and the snapshot the
         // announcement refreshes describes the session that took its place.
         if (this.session !== bound) return;
+        console.warn(`[pi] extensions bound after ${seconds(Date.now() - startedAt)}`);
         this.emit({ type: "extensions_bound", elapsedMs: Date.now() - startedAt });
       },
       (error: unknown) => {
@@ -619,21 +637,46 @@ export class EmbeddedRuntime implements AgentRuntime {
   }
 
   async newSession(): Promise<{ cancelled: boolean }> {
-    const result = await this.runtime.newSession();
-    if (!result.cancelled) await this.rebind();
-    return result;
+    return this.replace("new session", () => this.runtime.newSession());
   }
 
   async switchSession(sessionPath: string): Promise<{ cancelled: boolean }> {
-    const result = await this.runtime.switchSession(sessionPath);
-    if (!result.cancelled) await this.rebind();
-    return result;
+    return this.replace("session switch", () => this.runtime.switchSession(sessionPath));
   }
 
   async fork(entryId: string): Promise<{ cancelled: boolean; selectedText?: string }> {
-    const result = await this.runtime.fork(entryId);
-    if (!result.cancelled) await this.rebind();
+    return this.replace("fork", () => this.runtime.fork(entryId));
+  }
+
+  /** Replaces the session through the SDK, binds the new one, and says where a slow one's time went. */
+  private async replace<T extends { cancelled: boolean }>(what: string, sdkReplace: () => Promise<T>): Promise<T> {
+    const startedAt = Date.now();
+    const result = await sdkReplace();
+    if (result.cancelled) return result;
+    const bindStartedAt = Date.now();
+    await this.rebind();
+    this.reportReplacement(what, startedAt, bindStartedAt);
     return result;
+  }
+
+  /**
+   * A replacement is not a new conversation alone: the SDK shuts the previous session's
+   * extensions down, builds the session again from its factory — services, every extension
+   * loaded and evaluated, skills read — and its extensions start again (an MCP adapter
+   * reconnecting its servers). A slow one, like a slow start, says which of the three it was.
+   */
+  private reportReplacement(what: string, startedAt: number, bindStartedAt: number): void {
+    const doneAt = Date.now();
+    if (doneAt - startedAt < SLOW_BUILD_MS) return;
+    const build = this.lastBuild?.();
+    const parts: string[] = [];
+    // Only a build made for this replacement: none means the factory never ran, or ran before it
+    if (build !== undefined && build.startedAt >= startedAt) {
+      parts.push(`previous session shutdown ${seconds(build.startedAt - startedAt)}`);
+      parts.push(`session and extension load ${seconds(build.endedAt - build.startedAt)}`);
+    }
+    parts.push(`extension bind ${seconds(doneAt - bindStartedAt)}${this.bindingDone ? "" : " and still binding"}`);
+    console.warn(`[pi] ${what} took ${seconds(doneAt - startedAt)} — ${parts.join(", ")}`);
   }
 
   async navigateTree(entryId: string): Promise<{ cancelled: boolean; editorText?: string }> {
