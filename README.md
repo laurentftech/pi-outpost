@@ -233,7 +233,9 @@ one needs, the command that proves it works, and the caution that goes with it.
   `poster_pictures` lets it look at them. The agent checks each poster it writes with `poster_check` —
   a page the editor would not open, pictures pointing at a file or the web (a poster fetches
   nothing: a diagram or picture of the project goes in a frame naming it), what the editor removes,
-  frames naming a file or page that does not exist — since it cannot see the poster. **💾** saves back to the file, refused if it changed on disk meanwhile, and the
+  frames naming a file or page that does not exist — since it cannot see the poster.
+  Double-click a draw.io diagram in the poster to touch it up over the poster, or to open it in
+  draw.io desktop: back on the poster, every picture of that page shows it as saved. **💾** saves back to the file, refused if it changed on disk meanwhile, and the
   viewer asks before dropping unsaved touch-ups. **💾 Save** is disabled until you make a change.
   **↓ word** gives an A4 page to print,
   **↓ powerpoint** a 16:9 slide, **↓ html** the page itself — the poster as a picture at print

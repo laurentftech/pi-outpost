@@ -18,9 +18,9 @@
 ## 4. Following the file, and the running app
 
 - [x] 4.1 The overlay follows the file: a change written to the `.drawio` from outside while it is open (standing in for draw.io desktop) is drawn, and closing puts it in the poster. Verify with e2e ASaveFromDrawioDesktopReachesThePoster in `poster-files.spec.ts`, writing the file through the server, and TheDiagramCanGoToDrawioDesktop asserting the open-natively request for the diagram's path.
-- [ ] 4.2 Drive it in the running app (bench): double-click a diagram in a poster, move a box, save, close, save the poster; then the monkey pass — double-click twice fast, close with unsaved touch-ups, switch file with the overlay open, delete the `.drawio` while open, rename its page in the touch-up. Record what broke and fix it in scope.
-- [ ] 4.3 `docs/claude-desktop.md` or the README's poster section: say that a diagram in a poster is touched up by double-clicking it in pi-outpost; verify the wording against the running app.
-- [ ] 4.4 `openspec/changes/poster-diagram-touch-up/scenario-coverage.md` with every scenario covered, `npm run check:scenarios` passing, `openspec validate poster-diagram-touch-up --strict` passing, and the poster and draw.io e2e suites green.
+- [x] 4.2 Drive it in the running app (bench): double-click a diagram in a poster, move a box, save, close, save the poster; then the monkey pass — double-click twice fast, close with unsaved touch-ups, switch file with the overlay open, delete the `.drawio` while open, rename its page in the touch-up. Record what broke and fix it in scope.
+- [x] 4.3 `docs/claude-desktop.md` or the README's poster section: say that a diagram in a poster is touched up by double-clicking it in pi-outpost; verify the wording against the running app.
+- [x] 4.4 `openspec/changes/poster-diagram-touch-up/scenario-coverage.md` with every scenario covered, `npm run check:scenarios` passing, `openspec validate poster-diagram-touch-up --strict` passing, and the poster and draw.io e2e suites green.
 
 ## Workflow follow-up
 

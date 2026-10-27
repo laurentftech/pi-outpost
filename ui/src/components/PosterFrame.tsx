@@ -346,9 +346,12 @@ export function PosterFrame({
     answerRef.current(open.id, outcome);
   }
 
-  // Escape closes it, once no touch-up holds the key (the touch-up takes it as "done")
+  // Escape goes back to the poster, from the touch-up too (DrawioBlock's onEscape). The keyboard
+  // was in the poster's frame, where the double-click was: the touch-up takes it on opening.
+  const dialog = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (touching === null) return;
+    dialog.current?.focus();
     function onKey(event: KeyboardEvent) {
       if (event.key !== "Escape" || event.defaultPrevented) return;
       event.preventDefault();
@@ -359,6 +362,7 @@ export function PosterFrame({
   }, [touching]);
   const closeTouchUpRef = useRef(closeTouchUp);
   closeTouchUpRef.current = closeTouchUp;
+  const onEscapeOfDiagram = useCallback(() => void closeTouchUpRef.current(), []);
 
   const onTouchUpDirtyOfDiagram = useCallback((dirty: boolean) => { touchUpDirty.current = dirty; }, []);
 
@@ -388,11 +392,13 @@ export function PosterFrame({
           viewer's pane, the application's header stacked over it and took its clicks */}
       {touching !== null && overlayHost(frame.current) !== undefined && createPortal(
         <div
+          ref={dialog}
+          tabIndex={-1}
           role="dialog"
           aria-modal="true"
           aria-label={`Touch up ${touching.file}`}
           data-testid="poster-diagram-touch-up"
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 outline-none"
         >
           <div className="flex h-full max-h-[56rem] w-full max-w-[90rem] flex-col overflow-hidden rounded-lg border border-zinc-300 bg-white shadow-xl dark:border-zinc-700 dark:bg-zinc-900">
             <header className="flex shrink-0 items-center gap-2 border-b border-zinc-200 px-3 py-2 text-sm dark:border-zinc-800">
@@ -415,6 +421,7 @@ export function PosterFrame({
                 page={touching.page}
                 startTouchUp
                 onTouchUpDirtyChange={onTouchUpDirtyOfDiagram}
+                onEscape={onEscapeOfDiagram}
               />
             </div>
           </div>

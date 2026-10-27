@@ -915,3 +915,91 @@ test("ASaveFromDrawioDesktopReachesThePoster and TheDiagramCanGoToDrawioDesktop:
     await fs.rm(diagram, { force: true });
   }
 });
+
+test("Monkey: a double double-click, leaving unsaved touch-ups, the diagram deleted or its page renamed meanwhile, the poster rewritten meanwhile", async ({ page }) => {
+  test.setTimeout(300_000);
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(String(error)));
+  const { poster, diagram } = await touchUpPoster("Monkey");
+  try {
+    const editor = await filledAndSaved(page, "Monkey");
+    const touchUp = touchUpOf(page);
+    const save = editor.locator('button[data-action="save"]');
+    const before = await svgOf(editor, ".d2");
+
+    // Two double-clicks in a row: one touch-up
+    await doubleClick(editor, ".d2");
+    await doubleClick(editor, ".d2");
+    await expect(touchUp.dialog).toHaveCount(1);
+    await expect.poll(touchUp.labels, { timeout: 40_000 }).toEqual(["Alpha", "Bravo"]);
+    await expect.poll(touchUp.editing).toBe(true);
+
+    // Unsaved touch-ups: refusing to drop them keeps the touch-up, agreeing leaves the poster as it was
+    const frameBox = (await touchUp.frame.boundingBox())!;
+    const alpha = await (await touchUp.inner()).evaluate(() => {
+      const label = [...document.querySelectorAll("svg foreignObject div")].find((d) => d.querySelector("div") === null && d.textContent?.trim() === "Alpha")!;
+      const r = label.getBoundingClientRect();
+      return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+    });
+    await page.mouse.move(frameBox.x + alpha.x, frameBox.y + alpha.y);
+    await page.mouse.down();
+    await page.mouse.move(frameBox.x + alpha.x + 60, frameBox.y + alpha.y + 80, { steps: 10 });
+    await page.mouse.up();
+    await expect(touchUp.dialog.getByTestId("drawio-touchup-status")).toHaveText("● unsaved");
+    page.once("dialog", (dialog) => void dialog.dismiss());
+    await touchUp.dialog.getByRole("button", { name: /back to the poster/ }).click();
+    await expect(touchUp.dialog).toBeVisible();
+    page.once("dialog", (dialog) => void dialog.accept());
+    await touchUp.dialog.getByRole("button", { name: /back to the poster/ }).click();
+    await expect(touchUp.dialog).toHaveCount(0);
+    await expect(editor.locator(".poster-status")).toContainText("is unchanged");
+    expect(await svgOf(editor, ".d2")).toBe(before);
+    await expect(save).toBeDisabled();
+
+    // The diagram deleted while it is open: closing says so, the pictures stay
+    await doubleClick(editor, ".d2");
+    await expect.poll(touchUp.labels, { timeout: 40_000 }).toEqual(["Alpha", "Bravo"]);
+    await fs.rm(diagram);
+    await touchUp.dialog.getByRole("button", { name: /back to the poster/ }).click();
+    await expect(editor.locator(".poster-status")).toContainText("could not be opened: the diagram could not be read again");
+    expect(await svgOf(editor, ".d2")).toBe(before);
+    await expect(save).toBeDisabled();
+
+    // Its page renamed meanwhile: drawing it again fails, naming the page, the pictures stay
+    await fs.writeFile(diagram, TOUCH_DIAGRAM);
+    await doubleClick(editor, ".d2");
+    await expect.poll(touchUp.labels, { timeout: 40_000 }).toEqual(["Alpha", "Bravo"]);
+    await fs.writeFile(diagram, TOUCH_DIAGRAM.replace('name="Overview"', 'name="Main"'));
+    await touchUp.dialog.getByRole("button", { name: /back to the poster/ }).click();
+    await expect(editor.locator(".poster-status")).toContainText("could not be drawn again, so its pictures are as they were");
+    await expect(editor.locator(".poster-status")).toContainText('no page "Overview"');
+    expect(await svgOf(editor, ".d2")).toBe(before);
+
+    // Escape goes back to the poster, the keyboard having been in the poster's frame
+    await fs.writeFile(diagram, TOUCH_DIAGRAM);
+    await doubleClick(editor, ".d2");
+    await expect(touchUp.dialog).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(touchUp.dialog).toHaveCount(0);
+    // The touch-up is modal: the files beneath cannot be reached while it is open
+    await doubleClick(editor, ".d2");
+    await expect(touchUp.dialog).toBeVisible();
+    await page.getByText("Class rules.poster.html", { exact: true }).click({ force: true });
+    await expect(touchUp.dialog).toBeVisible();
+
+    // The agent rewrites the poster meanwhile: shown when the touch-up closes, the diagram's answer
+    // not put into a poster that is no longer the one it came from
+    const rewritten = readPage(await fs.readFile(poster, "utf8"));
+    await fs.writeFile(poster, pageOf("Monkey", { html: rewritten.html.replace("<h1>Touch-up</h1>", "<h1>Rewritten</h1>"), css: rewritten.css, format: "A4-portrait" }));
+    await expect(editor.frameLocator("iframe.gjs-frame").locator("h1")).toHaveText("Rewritten", { timeout: 20_000 });
+    await fs.writeFile(diagram, TOUCH_DIAGRAM.replace('value="Bravo"', 'value="Echo"'));
+    await page.keyboard.press("Escape");
+    await expect(touchUp.dialog).toHaveCount(0);
+    await expect.poll(() => svgOf(editor, ".d2"), { timeout: 20_000 }).not.toBeNull();
+    expect(await svgOf(editor, ".d2")).not.toContain("Echo");
+    expect(errors).toEqual([]);
+  } finally {
+    await fs.rm(poster, { force: true });
+    await fs.rm(diagram, { force: true });
+  }
+});

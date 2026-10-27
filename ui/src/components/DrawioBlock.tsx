@@ -105,6 +105,7 @@ export function DrawioBlock({
   onTouchUpDirtyChange,
   page,
   startTouchUp = false,
+  onEscape: leaveOnEscape,
 }: {
   /** Workspace-relative. */
   path: string;
@@ -119,6 +120,8 @@ export function DrawioBlock({
   page?: string;
   /** Begins touch-up as soon as the file is read, as when a poster's diagram is opened to touch it up. */
   startTouchUp?: boolean;
+  /** Escape, wherever the keyboard is, means leaving the holder rather than ending the touch-up (a poster's diagram, opened over it). */
+  onEscape?: () => void;
 }) {
   const { serverUrl, fileIo, onOpenFile } = useDrawioFiles();
   const blockRef = useRef<HTMLDivElement>(null);
@@ -264,8 +267,11 @@ export function DrawioBlock({
   touchingRef.current = touching;
   const enlargedRef = useRef(enlarged);
   enlargedRef.current = enlarged;
+  const leaveRef = useRef(leaveOnEscape);
+  leaveRef.current = leaveOnEscape;
   const onEscape = useCallback(() => {
-    if (touchingRef.current !== null) endTouchUpRef.current();
+    if (leaveRef.current) leaveRef.current();
+    else if (touchingRef.current !== null) endTouchUpRef.current();
     else if (enlargedRef.current) closeEnlargedRef.current();
   }, []);
   useEffect(() => {
@@ -274,7 +280,8 @@ export function DrawioBlock({
       if (event.key !== "Escape") return;
       event.preventDefault();
       event.stopImmediatePropagation();
-      endTouchUpRef.current();
+      if (leaveRef.current) leaveRef.current();
+      else endTouchUpRef.current();
     }
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
