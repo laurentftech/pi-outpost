@@ -7,6 +7,39 @@ version you had and the one you run now, without going online.
 Releases before 0.41.0 are described on
 [GitHub Releases](https://github.com/laurentftech/pi-outpost/releases).
 
+## [0.52.0] - 2026-10-27
+
+### Added
+
+- **draw.io diagrams in posters.** In the poster editor, **Insert ▾ → draw.io diagram…** lists
+  the project's diagrams page by page and puts the one you choose into the selected frame or
+  onto the page. The agent can lay out a frame naming a diagram, and the editor draws it when
+  the poster opens. ([#370](https://github.com/laurentftech/pi-outpost/pull/370))
+- **The project's pictures in posters.** **Insert ▾ → Picture from the project…** lists the
+  project's SVG, PNG, JPEG, GIF and WebP files, including the figures the agent drew. An SVG
+  stays sharp at any size; the agent can name a picture file in a frame too.
+  ([#371](https://github.com/laurentftech/pi-outpost/pull/371))
+- **The agent checks its posters.** After writing a poster, the agent runs `poster_check`,
+  which says what the editor would refuse, drop or leave empty, so it fixes the poster before
+  you open it. ([#373](https://github.com/laurentftech/pi-outpost/pull/373))
+- **Wires that cross boxes are caught.** `drawio_check` now warns when a wire runs through a
+  box or its label sits on one, so the agent can tidy its diagram. In touch-up, a **wires**
+  control draws the selected wires, or all of them, straight, orthogonal or curved.
+  ([#374](https://github.com/laurentftech/pi-outpost/pull/374))
+
+### Fixed
+
+- **A poster open in the viewer shows the agent's new version** as soon as it rewrites the
+  file, unless you have unsaved touch-ups, which are kept. ([#369](https://github.com/laurentftech/pi-outpost/pull/369))
+- **Posters with text pasted from Word export to Word and PowerPoint** instead of failing with
+  "this browser could not draw the page as a picture"; an export that still fails says why.
+  ([#372](https://github.com/laurentftech/pi-outpost/pull/372))
+- **Opening a poster no longer asks to discard changes you never made**, when the editor filled
+  frames on opening. ([#373](https://github.com/laurentftech/pi-outpost/pull/373))
+- **No more stray "git log failed" at the bottom of the conversation.** The commit map only
+  follows the repository while its menu is open, and a failure shows in the menu, saying why
+  git failed (too slow, not found, too much output). ([#368](https://github.com/laurentftech/pi-outpost/pull/368))
+
 ## [0.51.0] - 2026-10-26
 
 ### Added
