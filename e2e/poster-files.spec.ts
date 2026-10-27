@@ -720,3 +720,192 @@ test("LeavingAFilledPosterAsksNothing and AFilledPosterTouchedUpIsAskedAbout: fi
     await fs.rm(path.dirname(figure), { recursive: true, force: true });
   }
 });
+
+// A diagram of the poster touched up from it (poster-diagram-touch-up). Each test writes its own
+// diagram: the shared ones are read by other tests.
+const TOUCH_DIAGRAM = [
+  '<mxfile host="e2e">',
+  '<diagram id="p1" name="Overview"><mxGraphModel><root><mxCell id="0"/><mxCell id="1" parent="0"/>',
+  '<mxCell id="a" value="Alpha" style="rounded=1;html=1;" vertex="1" parent="1"><mxGeometry x="40" y="40" width="140" height="60" as="geometry"/></mxCell>',
+  '<mxCell id="b" value="Bravo" style="rounded=1;html=1;" vertex="1" parent="1"><mxGeometry x="260" y="40" width="140" height="60" as="geometry"/></mxCell>',
+  "</root></mxGraphModel></diagram>",
+  '<diagram id="p2" name="Detail"><mxGraphModel><root><mxCell id="0"/><mxCell id="1" parent="0"/>',
+  '<mxCell id="c" value="Charlie" style="rounded=1;html=1;" vertex="1" parent="1"><mxGeometry x="40" y="40" width="140" height="60" as="geometry"/></mxCell>',
+  "</root></mxGraphModel></diagram></mxfile>",
+].join("");
+
+/** Writes the test's diagram and a poster of three frames: d1 its Detail page, d2 and d3 its Overview. */
+async function touchUpPoster(name: string): Promise<{ poster: string; diagram: string }> {
+  const diagram = path.join(process.env.PI_E2E_PRIMARY_PROJECT!, "diagrams", `${name}.drawio`);
+  await fs.writeFile(diagram, TOUCH_DIAGRAM);
+  const reference = `../diagrams/${name}.drawio`;
+  const poster = await writePoster(
+    `${name}.poster.html`,
+    '<div class="sheet"><h1>Touch-up</h1>' +
+      `<img class="d1" data-drawio="${reference}" data-drawio-page="Detail" alt="">` +
+      `<img class="d2" data-drawio="${reference}" data-drawio-page="Overview" alt="">` +
+      `<img class="d3" data-drawio="${reference}" data-drawio-page="1" alt=""></div>`,
+    DIAGRAM_CSS,
+  );
+  return { poster, diagram };
+}
+
+/** The touch-up over the poster, its diagram's frame, and the labels it draws. */
+function touchUpOf(page: Page) {
+  const dialog = page.getByTestId("poster-diagram-touch-up");
+  const frame = dialog.getByTestId("drawio-frame");
+  const inner = async () => (await (await frame.elementHandle())!.contentFrame())!;
+  const labels = async () => (await inner()).evaluate(() => [...new Set([...document.querySelectorAll("svg foreignObject div")].filter((d) => d.querySelector("div") === null).map((d) => d.textContent?.trim() ?? "").filter(Boolean))]);
+  /** Touch-up on: the graph's container takes tabindex -1 once the editor is on (drawioPage.ts). */
+  const editing = async () => (await inner()).evaluate(() => document.querySelector("[tabindex='-1']") !== null);
+  return { dialog, frame, inner, labels, editing };
+}
+
+/** Double-clicks a picture of the poster, as a person does. */
+async function doubleClick(editor: FrameLocator, selector: string) {
+  await editor.frameLocator("iframe.gjs-frame").locator(selector).dblclick();
+}
+
+/** A filled poster, saved, so that what follows is the only unsaved change. */
+async function filledAndSaved(page: Page, name: string): Promise<FrameLocator> {
+  const editor = await openPoster(page, `${name}.poster.html`);
+  for (const frame of [".d1", ".d2", ".d3"]) await expect.poll(() => svgOf(editor, frame), { timeout: 40_000 }).not.toBeNull();
+  await editor.locator('button[data-action="save"]').click();
+  await expect(editor.locator(".poster-status")).toHaveText(/Saved/);
+  return editor;
+}
+
+// openlore: scenario=DoubleClickOpensTheDiagramsPage spec=poster-files
+// openlore: scenario=NothingSavedNothingChanged spec=poster-files
+// openlore: scenario=TheSavedPageReplacesThePicture spec=poster-files
+// openlore: scenario=EveryPictureOfThePageIsReplaced spec=poster-files
+// openlore: scenario=ATallerPageKeepsTheWidth spec=poster-files
+test("DoubleClickOpensTheDiagramsPage, TheSavedPageReplacesThePicture and EveryPictureOfThePageIsReplaced: the page opens over the poster, and comes back touched up", async ({ page }) => {
+  const { poster, diagram } = await touchUpPoster("Touch");
+  const chooser: string[] = [];
+  page.on("filechooser", () => chooser.push("asked for a file"));
+  try {
+    const editor = await filledAndSaved(page, "Touch");
+    const touchUp = touchUpOf(page);
+    const save = editor.locator('button[data-action="save"]');
+
+    // The second page, named by its frame: not the first, not a file chooser
+    await doubleClick(editor, ".d1");
+    await expect(touchUp.dialog).toBeVisible();
+    await expect.poll(touchUp.labels, { timeout: 40_000 }).toEqual(["Charlie"]);
+    await expect.poll(touchUp.editing).toBe(true);
+    // Left without a save: the poster as it was
+    await touchUp.dialog.getByRole("button", { name: /back to the poster/ }).click();
+    await expect(touchUp.dialog).toHaveCount(0);
+    await expect(editor.locator(".poster-status")).toContainText("is unchanged");
+    await expect(save).toBeDisabled();
+
+    // The first page, from d2: Bravo moved down, so the page grows taller
+    const before = { d1: await svgOf(editor, ".d1"), d2: await svgOf(editor, ".d2") };
+    const box = async () => editor.frameLocator("iframe.gjs-frame").locator(".d2").evaluate((image: HTMLElement) => ({ width: image.offsetWidth, height: image.offsetHeight }));
+    const sized = await box();
+    await doubleClick(editor, ".d2");
+    await expect.poll(touchUp.labels, { timeout: 40_000 }).toEqual(["Alpha", "Bravo"]);
+    await expect.poll(touchUp.editing).toBe(true);
+    const inner = await touchUp.inner();
+    const frameBox = (await touchUp.frame.boundingBox())!;
+    const bravo = await inner.evaluate(() => {
+      const label = [...document.querySelectorAll("svg foreignObject div")].find((d) => d.querySelector("div") === null && d.textContent?.trim() === "Bravo")!;
+      const r = label.getBoundingClientRect();
+      return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+    });
+    const from = { x: frameBox.x + bravo.x, y: frameBox.y + bravo.y };
+    await page.mouse.move(from.x, from.y);
+    await page.mouse.down();
+    await page.mouse.move(from.x, from.y + 220, { steps: 12 });
+    await page.mouse.up();
+    await touchUp.dialog.getByRole("button", { name: "✓ save" }).click();
+    await expect.poll(async () => (await fs.readFile(diagram, "utf8")) !== TOUCH_DIAGRAM).toBe(true);
+    await touchUp.dialog.getByRole("button", { name: /back to the poster/ }).click();
+    await expect(touchUp.dialog).toHaveCount(0);
+
+    // Both pictures of the page drawn again, the other page's untouched
+    await expect.poll(() => svgOf(editor, ".d2"), { timeout: 40_000 }).not.toBe(before.d2);
+    expect(await svgOf(editor, ".d3")).toBe(await svgOf(editor, ".d2"));
+    expect(await svgOf(editor, ".d1")).toBe(before.d1);
+    await expect(editor.locator(".poster-status")).toContainText("drawn again in the poster, in its 2 pictures");
+    // Same place and width; the height follows the taller page
+    const resized = await box();
+    expect(resized.width).toBe(sized.width);
+    const ratio = await editor.frameLocator("iframe.gjs-frame").locator(".d2").evaluate((image: HTMLImageElement) => image.naturalHeight / image.naturalWidth);
+    expect(Math.abs(resized.height - Math.round(resized.width * ratio))).toBeLessThanOrEqual(1);
+    expect(resized.height).toBeGreaterThan(sized.height);
+    await expect(save).toBeEnabled();
+    expect(chooser).toEqual([]);
+
+    // One undo puts both pictures back
+    await editor.locator('button[data-action="undo"]').click();
+    await expect.poll(() => svgOf(editor, ".d2")).toBe(before.d2);
+    expect(await svgOf(editor, ".d3")).toBe(before.d2);
+
+    await editor.locator('button[data-action="redo"]').click();
+    await expect.poll(() => svgOf(editor, ".d2")).not.toBe(before.d2);
+    await save.click();
+    await expect(editor.locator(".poster-status")).toHaveText(/Saved/);
+    const saved = readPage(await fs.readFile(poster, "utf8")).html;
+    expect(saved.match(/src="data:image\/svg\+xml;base64,/g)).toHaveLength(3);
+  } finally {
+    await fs.rm(poster, { force: true });
+    await fs.rm(diagram, { force: true });
+  }
+});
+
+// openlore: scenario=AMissingDiagramSaysWhy spec=poster-files
+test("AMissingDiagramSaysWhy: a picture naming a diagram that is gone says so, opens nothing and asks for no file", async ({ page }) => {
+  const { poster, diagram } = await touchUpPoster("Gone");
+  const chooser: string[] = [];
+  page.on("filechooser", () => chooser.push("asked for a file"));
+  try {
+    const editor = await filledAndSaved(page, "Gone");
+    await fs.rm(diagram);
+    await doubleClick(editor, ".d2");
+    await expect(editor.locator(".poster-status")).toContainText("../diagrams/Gone.drawio (Overview) could not be opened");
+    await expect(page.getByTestId("poster-diagram-touch-up")).toHaveCount(0);
+    await expect(editor.locator('button[data-action="save"]')).toBeDisabled();
+    expect(chooser).toEqual([]);
+  } finally {
+    await fs.rm(poster, { force: true });
+    await fs.rm(diagram, { force: true });
+  }
+});
+
+// openlore: scenario=ASaveFromDrawioDesktopReachesThePoster spec=poster-files
+// openlore: scenario=TheDiagramCanGoToDrawioDesktop spec=poster-files
+test("ASaveFromDrawioDesktopReachesThePoster and TheDiagramCanGoToDrawioDesktop: the diagram goes to draw.io desktop, and its save comes back", async ({ page }) => {
+  // draw.io desktop is not launched here: its request is caught on its way to the server
+  const native: string[] = [];
+  await page.routeWebSocket(/.*/, (socket) => {
+    const server = socket.connectToServer();
+    socket.onMessage((message) => {
+      const parsed = typeof message === "string" ? (JSON.parse(message) as { type?: string; path?: string }) : {};
+      if (parsed.type === "open_native") native.push(parsed.path ?? "");
+      else server.send(message);
+    });
+    server.onMessage((message) => socket.send(message));
+  });
+  const { poster, diagram } = await touchUpPoster("Desktop");
+  try {
+    const editor = await filledAndSaved(page, "Desktop");
+    const touchUp = touchUpOf(page);
+    await doubleClick(editor, ".d2");
+    await expect.poll(touchUp.labels, { timeout: 40_000 }).toEqual(["Alpha", "Bravo"]);
+    await touchUp.dialog.getByRole("button", { name: /draw\.io desktop/ }).click();
+    await expect.poll(() => native).toEqual(["diagrams/Desktop.drawio"]);
+
+    // What draw.io desktop saves, written beside the touch-up: shown in it, then in the poster
+    await fs.writeFile(diagram, TOUCH_DIAGRAM.replace('value="Bravo"', 'value="Delta"'));
+    await expect.poll(touchUp.labels, { timeout: 40_000 }).toEqual(["Alpha", "Delta"]);
+    await touchUp.dialog.getByRole("button", { name: /back to the poster/ }).click();
+    await expect.poll(() => svgOf(editor, ".d2"), { timeout: 40_000 }).toContain("Delta");
+    expect(await svgOf(editor, ".d3")).toContain("Delta");
+    expect(await svgOf(editor, ".d1")).toContain("Charlie");
+  } finally {
+    await fs.rm(poster, { force: true });
+    await fs.rm(diagram, { force: true });
+  }
+});

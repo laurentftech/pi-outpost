@@ -76,6 +76,11 @@ export interface PosterHost {
     list(): Promise<DiagramChoice[]>;
     /** One page of `path`, as an SVG: the page's name or number from 1, or the first page. */
     draw(path: string, page?: string): Promise<string>;
+    /**
+     * Opens that page for touch-up over the poster; resolves when it is closed, true when the
+     * diagram's file changed meanwhile. Absent where the host cannot touch diagrams up.
+     */
+    edit?(path: string, page?: string): Promise<boolean>;
   };
   /**
    * Present when the host can read the project's picture files (pi-outpost): Insert offers them,
@@ -988,6 +993,60 @@ export function mountEditor(root: HTMLElement, host: PosterHost): PosterEditor {
     status(`${diagram ? "Diagram" : "Picture"} placed: drag it to move it, pull a corner to resize it, then save.`, "ok");
   }
 
+  let touchingUp = false;
+
+  /**
+   * Opens `source`'s page for touch-up in the host (poster-diagram-touch-up); once it is closed
+   * with the diagram changed, draws the page again into every picture showing it. Each keeps its
+   * place and width, its height following the page's new proportions.
+   */
+  async function touchUpDiagram(source: PictureSource & { kind: "diagram" }) {
+    const opened = editor;
+    if (!opened || !host.diagrams?.edit || touchingUp) return;
+    touchingUp = true;
+    const name = sourceName(source);
+    status(`Touching up ${name}: back to the poster when it is saved.`);
+    let changed: boolean;
+    try {
+      changed = await host.diagrams.edit(source.path, source.page);
+    } catch (error) {
+      if (editor === opened) status(`${name} could not be opened: ${reasonOf(error)}.`, "error");
+      return;
+    } finally {
+      touchingUp = false;
+    }
+    if (editor !== opened) return;
+    if (!changed) {
+      status(`${name} is unchanged.`);
+      return;
+    }
+    status(`Drawing ${name} again…`);
+    let picture: { src: string; width: number; height: number };
+    try {
+      picture = await pictureFrom(source);
+    } catch (error) {
+      if (editor === opened) status(`${name} could not be drawn again, so its pictures are as they were: ${reasonOf(error)}.`, "error");
+      return;
+    }
+    if (editor !== opened) return;
+    const pageOf = (page?: string) => (page === undefined || page === "" ? "1" : page);
+    const showing = opened.getWrapper()!.find("img").filter((frame) => {
+      const other = sourceOf(frame);
+      return other?.kind === "diagram" && other.path === source.path && pageOf(other.page) === pageOf(source.page);
+    });
+    // In one go, so that one undo puts every picture back
+    for (const frame of showing) {
+      const element = frame.getEl() as HTMLElement | undefined;
+      frame.set("src", picture.src);
+      // Its height, wherever it is set (its own style, a rule on its class), follows the page;
+      // an automatic height already does
+      const height = element && element.offsetWidth > 0 ? Math.round((element.offsetWidth * picture.height) / picture.width) : undefined;
+      if (height !== undefined && Math.abs(element!.offsetHeight - height) > 1) frame.addStyle({ height: `${height}px` });
+    }
+    syncDirty();
+    status(`${name} is drawn again in the poster${showing.length > 1 ? `, in its ${showing.length} pictures` : ""}: save to keep it.`, "ok");
+  }
+
   /**
    * Fills each empty frame naming a diagram or a picture file, once the poster is open: a frame
    * already holding a picture is left as it is. What is filled is unsaved, so Save is offered,
@@ -1172,7 +1231,12 @@ export function mountEditor(root: HTMLElement, host: PosterHost): PosterEditor {
       upProps(opts);
       showDrawnStyle(opened);
     };
-    opened.on("poster:pick-picture", (target: Component) => pickPicture(target));
+    // A picture drawn from a diagram opens the diagram, where the host can touch it up; any other asks for a file
+    opened.on("poster:pick-picture", (target: Component) => {
+      const source = sourceOf(target);
+      if (source?.kind === "diagram" && host.diagrams?.edit) void touchUpDiagram(source);
+      else pickPicture(target);
+    });
     opened.on("load", () => {
       if (editor !== opened) return;
       canvasReady = true;

@@ -22,7 +22,7 @@
  */
 
 export const DRAWIO_MESSAGE = {
-  /** Parent → frame: `{ type, xml, dark }`. */
+  /** Parent → frame: `{ type, xml, dark, page? }` — `page`, from 0, is shown first when nothing is drawn yet. */
   RENDER: "pi-outpost:drawio-render",
   /** Frame → parent: the viewer is loaded and listening. */
   READY: "pi-outpost:drawio-ready",
@@ -149,7 +149,8 @@ div.mxRubberband { position: absolute; overflow: hidden; border: 1px solid #29b6
     return root.getElementsByTagName("diagram").length;
   }
 
-  function render(xml, dark) {
+  // \`start\`: the page to show first, when nothing is drawn yet; later texts keep the page shown
+  function render(xml, dark, start) {
     last = { xml: xml, dark: dark };
     stopTouchUp();
     document.body.className = dark ? "dark" : "";
@@ -170,7 +171,7 @@ div.mxRubberband { position: absolute; overflow: hidden; border: 1px solid #29b6
       tell({ type: M.FAILED, message: "This is not a draw.io diagram: its root is <" + doc.documentElement.nodeName + ">, not <mxfile> or <mxGraphModel>." });
       return;
     }
-    var page = viewer !== null ? Math.min(viewer.currentPage || 0, pages - 1) : 0;
+    var page = Math.min(viewer !== null ? viewer.currentPage || 0 : typeof start === "number" && start > 0 ? start : 0, pages - 1);
     var container = document.createElement("div");
     container.id = "diagram";
     document.body.appendChild(container);
@@ -465,7 +466,7 @@ div.mxRubberband { position: absolute; overflow: hidden; border: 1px solid #29b6
     if (event.source !== parent) return;
     var data = event.data;
     if (!data) return;
-    if (data.type === M.RENDER && typeof data.xml === "string") render(data.xml, data.dark === true);
+    if (data.type === M.RENDER && typeof data.xml === "string") render(data.xml, data.dark === true, data.page);
     else if (data.type === M.EDIT) {
       editing = data.on === true;
       if (editing) startTouchUp();

@@ -312,3 +312,74 @@ describe("DrawioBlock touch-up", () => {
     expect(screen.getByRole("status")).toHaveTextContent("Save or undo the touch-ups on this page before turning to another.");
   });
 });
+
+const TWO_PAGES = [
+  '<mxfile host="test">',
+  '  <diagram id="p1" name="Overview"><mxGraphModel><root><mxCell id="0"/></root></mxGraphModel></diagram>',
+  '  <diagram id="p2" name="Context"><mxGraphModel><root><mxCell id="0"/></root></mxGraphModel></diagram>',
+  "</mxfile>",
+].join("\n");
+
+describe("DrawioBlock opened from a poster", () => {
+  // openlore: scenario=DoubleClickOpensTheDiagramsPage spec=poster-files
+  it("draws the page named, by name or by number, and begins touch-up without a click", async () => {
+    for (const page of ["Context", "2"]) {
+      const io = fakeFileIo(TWO_PAGES);
+      const view = mount(<DrawioBlock path={PATH} variant="viewer" page={page} startTouchUp />, { fileIo: io });
+      await screen.findByTitle(PATH);
+      const { sent } = await frame();
+      expect(sent).toHaveBeenCalledWith({ type: DRAWIO_MESSAGE.RENDER, xml: TWO_PAGES, dark: false, page: 1 }, "*");
+      // Touch-up began on the file as read, with its controls, and the frame was told
+      await waitFor(() => expect(sent).toHaveBeenCalledWith({ type: DRAWIO_MESSAGE.EDIT, on: true }, "*"));
+      expect(screen.getByRole("button", { name: "✓ save" })).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /touch up/ })).toBeNull();
+      view.unmount();
+    }
+  });
+
+  it("says which pages there are for a page the file does not have, and shows the first", async () => {
+    const io = fakeFileIo(TWO_PAGES);
+    mount(<DrawioBlock path={PATH} variant="viewer" page="Deployment" startTouchUp />, { fileIo: io });
+    expect(await screen.findByTestId("drawio-block-page-problem")).toHaveTextContent('has no page "Deployment"; its pages are "Overview", "Context"');
+    const { sent } = await frame();
+    expect(sent).toHaveBeenCalledWith({ type: DRAWIO_MESSAGE.RENDER, xml: TWO_PAGES, dark: false, page: 0 }, "*");
+    // Not touched up: the page asked for is not there
+    expect(screen.queryByRole("button", { name: "✓ save" })).toBeNull();
+  });
+});
+
+describe("DrawioBlock touch-up and a file saved from elsewhere", () => {
+  const ELSEWHERE = TWO_PAGES.replace('name="Context"', 'name="Context, from draw.io desktop"');
+
+  // openlore: scenario=ASaveFromDrawioDesktopReachesThePoster spec=poster-files
+  it("a touch-up holding nothing unsaved starts again on the file as now saved, and draws it", async () => {
+    const io = fakeFileIo(TWO_PAGES);
+    mount(<DrawioBlock path={PATH} variant="viewer" startTouchUp />, { fileIo: io });
+    await screen.findByTitle(PATH);
+    const { sent } = await frame();
+    await waitFor(() => expect(sent).toHaveBeenCalledWith({ type: DRAWIO_MESSAGE.EDIT, on: true }, "*"));
+    sent.mockClear();
+    io.read.mockResolvedValue({ content: ELSEWHERE, mtimeMs: 5000 });
+    io.changed(PATH);
+    // Left, drawing the new file, then begun again on it
+    await waitFor(() => expect(sent).toHaveBeenCalledWith({ type: DRAWIO_MESSAGE.EDIT, on: false, xml: ELSEWHERE, dark: false }, "*"));
+    await waitFor(() => expect(sent).toHaveBeenCalledWith({ type: DRAWIO_MESSAGE.EDIT, on: true }, "*"));
+    expect(screen.getByRole("button", { name: "✓ save" })).toBeInTheDocument();
+  });
+
+  it("a touch-up holding unsaved changes is not started again: they are kept", async () => {
+    const io = fakeFileIo(TWO_PAGES);
+    mount(<DrawioBlock path={PATH} variant="viewer" startTouchUp />, { fileIo: io });
+    await screen.findByTitle(PATH);
+    const { sent, answer } = await frame();
+    await waitFor(() => expect(sent).toHaveBeenCalledWith({ type: DRAWIO_MESSAGE.EDIT, on: true }, "*"));
+    answer({ type: DRAWIO_MESSAGE.CHANGED, dirty: true, canUndo: true, canRedo: false });
+    await screen.findByText("● unsaved");
+    sent.mockClear();
+    io.read.mockResolvedValue({ content: ELSEWHERE, mtimeMs: 5000 });
+    io.changed(PATH);
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 20)); });
+    expect(sent).not.toHaveBeenCalledWith(expect.objectContaining({ type: DRAWIO_MESSAGE.EDIT }), "*");
+    expect(screen.getByText("● unsaved")).toBeInTheDocument();
+  });
+});

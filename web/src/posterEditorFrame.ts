@@ -34,6 +34,8 @@ const editor = mountEditor(document.getElementById("root")!, {
   diagrams: {
     list: () => drawio<DiagramChoice[]>(POSTER_FRAME.DRAWIO_LIST, {}),
     draw: (path, page) => drawio<string>(POSTER_FRAME.DRAWIO_DRAW, { path, ...(page === undefined ? {} : { page }) }),
+    // Answered when the touch-up closes, however long the person takes
+    edit: (path, page) => drawio<boolean>(POSTER_FRAME.DRAWIO_EDIT, { path, ...(page === undefined ? {} : { page }) }),
   },
   pictures: {
     list: () => drawio<string[]>(POSTER_FRAME.PICTURE_LIST, {}),

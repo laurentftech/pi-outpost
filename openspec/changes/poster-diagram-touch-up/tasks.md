@@ -2,13 +2,13 @@
 
 ## 1. The diagram touch-up, opened on a page
 
-- [ ] 1.1 `DrawioFrame`/`drawioPage.ts`: a starting page in the RENDER message, used by the viewer when it has nothing drawn yet; verify with a `DrawioFrame.test.tsx` case that RENDER carries the page and an e2e check in `drawio-viewer.spec.ts` that page 2 is shown first.
-- [ ] 1.2 `DrawioBlock`: optional `page` (name or number, resolved with `drawioPages`) and `startTouchUp`; verify in `DrawioBlock.test.tsx` that it renders the named page and begins touch-up without a click, and that an unknown page says which pages exist.
+- [x] 1.1 `DrawioFrame`/`drawioPage.ts`: a starting page in the RENDER message, used by the viewer when it has nothing drawn yet; verify with a `DrawioFrame.test.tsx` case that RENDER carries the page; the real viewer showing page 2 first is checked by 3.1's e2e (DoubleClickOpensTheDiagramsPage), the viewer e2e harness having no way to ask for a page.
+- [x] 1.2 `DrawioBlock`: optional `page` (name or number, resolved with `drawioPages`) and `startTouchUp`; verify in `DrawioBlock.test.tsx` that it renders the named page and begins touch-up without a click, and that an unknown page says which pages exist.
 
 ## 2. The request between editor and host
 
-- [ ] 2.1 `posters/src/frame.ts`: `DRAWIO_EDIT { id, path, page? }`, answered `{ ok, value: changed }` or `{ ok: false, message }`; `PosterHost.diagrams.edit` in `editor.ts`; `web/src/posterEditorFrame.ts` wires it with no timeout. Verify with `posters` and `web` typecheck and the frame message documentation updated in `frame.ts`.
-- [ ] 2.2 `PosterFrame`: answer DRAWIO_EDIT by opening a modal overlay holding `DrawioBlock` (page, touch-up started, draw.io desktop action), read the file on open and again on close, answer whether it changed; reject when unreadable or when the poster closes. Verify in `FileViewer.poster.test.tsx`: the overlay opens on the named page, closing after a file change answers `true`, closing without answers `false`, a missing diagram answers its reason, unmounting rejects.
+- [x] 2.1 `posters/src/frame.ts`: `DRAWIO_EDIT { id, path, page? }`, answered `{ ok, value: changed }` or `{ ok: false, message }`; `PosterHost.diagrams.edit` in `editor.ts`; `web/src/posterEditorFrame.ts` wires it with no timeout. Verify with `posters` and `web` typecheck and the frame message documentation updated in `frame.ts`.
+- [x] 2.2 `PosterFrame`: answer DRAWIO_EDIT by opening a modal overlay holding `DrawioBlock` (page, touch-up started, draw.io desktop action), read the file on open and again on close, answer whether it changed; reject when unreadable or when the poster closes. Verify in `FileViewer.poster.test.tsx`: the overlay opens on the named page, closing after a file change answers `true`, closing without answers `false`, a missing diagram answers its reason, unmounting rejects.
 
 ## 3. The editor
 

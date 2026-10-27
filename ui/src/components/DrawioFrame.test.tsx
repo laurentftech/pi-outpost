@@ -119,6 +119,24 @@ describe("DrawioFrame", () => {
     expect(sent).toHaveBeenCalledWith({ type: DRAWIO_MESSAGE.RENDER, xml: XML, dark: true }, "*");
   });
 
+  // openlore: scenario=DoubleClickOpensTheDiagramsPage spec=poster-files
+  it("asks for the page to show first with the text, and the viewer draws that page when nothing is drawn yet", () => {
+    const view = render(
+      <ThemeContext.Provider value="light">
+        <DrawioFrame xml={XML} serverUrl="http://127.0.0.1:9" title="diagrams/flow.drawio" page={1} />
+      </ThemeContext.Provider>,
+    );
+    const own = (screen.getByTestId("drawio-frame") as HTMLIFrameElement).contentWindow!;
+    const sent = vi.spyOn(own, "postMessage");
+    post({ type: DRAWIO_MESSAGE.READY }, own);
+    expect(sent).toHaveBeenCalledWith({ type: DRAWIO_MESSAGE.RENDER, xml: XML, dark: false, page: 1 }, "*");
+    // The page's script: a start page counts only before anything is drawn, and is bounded by the pages
+    const page = drawioFramePage(VIEWER);
+    expect(page).toContain("render(data.xml, data.dark === true, data.page)");
+    expect(page).toContain('viewer !== null ? viewer.currentPage || 0 : typeof start === "number" && start > 0 ? start : 0, pages - 1');
+    view.unmount();
+  });
+
   // openlore: scenario=TheDraftIsDrawnBesideIt spec=drawio-diagrams
   it("TheDraftIsDrawnBesideIt: a new text is posted to the same frame, which is not reloaded", () => {
     const { own, sent, frame, rerender } = mount();

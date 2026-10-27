@@ -13,6 +13,8 @@
  *   frame  → parent  DIRTY   { dirty }                  unsaved touch-ups appeared or were saved
  *   frame  → parent  DRAWIO_LIST { id }                 the project's draw.io diagrams, with their pages
  *   frame  → parent  DRAWIO_DRAW { id, path, page? }    one diagram page, drawn as an SVG
+ *   frame  → parent  DRAWIO_EDIT { id, path, page? }    open the diagram's page for touch-up; answered
+ *                                                       when it closes: whether its file changed
  *   frame  → parent  PICTURE_LIST { id }                the project's picture files
  *   frame  → parent  PICTURE_READ { id, path }          one picture file: { type, bytes }
  *
@@ -30,6 +32,7 @@ export const POSTER_FRAME = {
   DIRTY: "pi-outpost:poster-dirty",
   DRAWIO_LIST: "pi-outpost:poster-drawio-list",
   DRAWIO_DRAW: "pi-outpost:poster-drawio-draw",
+  DRAWIO_EDIT: "pi-outpost:poster-drawio-edit",
   PICTURE_LIST: "pi-outpost:poster-picture-list",
   PICTURE_READ: "pi-outpost:poster-picture-read",
 } as const;
