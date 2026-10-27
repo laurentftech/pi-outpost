@@ -770,6 +770,8 @@ async function doubleClick(editor: FrameLocator, selector: string) {
 async function filledAndSaved(page: Page, name: string): Promise<FrameLocator> {
   const editor = await openPoster(page, `${name}.poster.html`);
   for (const frame of [".d1", ".d2", ".d3"]) await expect.poll(() => svgOf(editor, frame), { timeout: 40_000 }).not.toBeNull();
+  // The fill says so once it is done; saved before that, its last word covers "Saved"
+  await expect(editor.locator(".poster-status")).toContainText("draw.io diagrams are in their frames");
   await editor.locator('button[data-action="save"]').click();
   await expect(editor.locator(".poster-status")).toHaveText(/Saved/);
   return editor;
@@ -781,6 +783,8 @@ async function filledAndSaved(page: Page, name: string): Promise<FrameLocator> {
 // openlore: scenario=EveryPictureOfThePageIsReplaced spec=poster-files
 // openlore: scenario=ATallerPageKeepsTheWidth spec=poster-files
 test("DoubleClickOpensTheDiagramsPage, TheSavedPageReplacesThePicture and EveryPictureOfThePageIsReplaced: the page opens over the poster, and comes back touched up", async ({ page }) => {
+  // Two draw.io viewers to load, the poster's painter and the touch-up's
+  test.setTimeout(180_000);
   const { poster, diagram } = await touchUpPoster("Touch");
   const chooser: string[] = [];
   page.on("filechooser", () => chooser.push("asked for a file"));
@@ -801,7 +805,7 @@ test("DoubleClickOpensTheDiagramsPage, TheSavedPageReplacesThePicture and EveryP
     await expect(save).toBeDisabled();
 
     // The first page, from d2: Bravo moved down, so the page grows taller
-    const before = { d1: await svgOf(editor, ".d1"), d2: await svgOf(editor, ".d2") };
+    const before = { d1: await svgOf(editor, ".d1"), d2: await svgOf(editor, ".d2"), d3: await svgOf(editor, ".d3") };
     const box = async () => editor.frameLocator("iframe.gjs-frame").locator(".d2").evaluate((image: HTMLElement) => ({ width: image.offsetWidth, height: image.offsetHeight }));
     const sized = await box();
     await doubleClick(editor, ".d2");
@@ -841,7 +845,7 @@ test("DoubleClickOpensTheDiagramsPage, TheSavedPageReplacesThePicture and EveryP
     // One undo puts both pictures back
     await editor.locator('button[data-action="undo"]').click();
     await expect.poll(() => svgOf(editor, ".d2")).toBe(before.d2);
-    expect(await svgOf(editor, ".d3")).toBe(before.d2);
+    expect(await svgOf(editor, ".d3")).toBe(before.d3);
 
     await editor.locator('button[data-action="redo"]').click();
     await expect.poll(() => svgOf(editor, ".d2")).not.toBe(before.d2);
@@ -877,6 +881,8 @@ test("AMissingDiagramSaysWhy: a picture naming a diagram that is gone says so, o
 // openlore: scenario=ASaveFromDrawioDesktopReachesThePoster spec=poster-files
 // openlore: scenario=TheDiagramCanGoToDrawioDesktop spec=poster-files
 test("ASaveFromDrawioDesktopReachesThePoster and TheDiagramCanGoToDrawioDesktop: the diagram goes to draw.io desktop, and its save comes back", async ({ page }) => {
+  // Two draw.io viewers to load, the poster's painter and the touch-up's
+  test.setTimeout(180_000);
   // draw.io desktop is not launched here: its request is caught on its way to the server
   const native: string[] = [];
   await page.routeWebSocket(/.*/, (socket) => {

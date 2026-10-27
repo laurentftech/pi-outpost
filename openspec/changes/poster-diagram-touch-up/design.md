@@ -56,9 +56,9 @@ drawing again through it keeps one path from file to picture, with its size boun
 
 When `edit` resolves `true`, the editor calls `draw(path, page)` and puts the result into every
 image whose `data-drawio` and `data-drawio-page` name the same page as the double-clicked one:
-same path string; same page string, an absent page and "1" being the same page. Two references
-spelt differently (`./a.drawio` and `a.drawio`, a page by name and by number) are not matched —
-said in Risks.
+same path string; the same page by name or by number, resolved against the diagram's pages as
+`list()` gives them (an absent page being the first). Two paths spelt differently
+(`./a.drawio` and `a.drawio`) are not matched — said in Risks.
 
 Each picture keeps its left/top and width; its height is set from the new SVG's proportions when
 the element has a set height, left alone when its height is automatic. One undoable change; the
@@ -83,10 +83,10 @@ Closing the overlay goes through DrawioBlock's discard confirmation when touch-u
 
 ## Risks / Trade-offs
 
-- [The same page named two ways is not matched] → pictures the editor itself puts in use the
-  spelling the diagram list gives; only hand-written markup differs. Matching by resolved path
-  and page index would need the parent to resolve both; left for the stale-frame follow-up,
-  which needs the same resolution.
+- [The same diagram reached by two paths is not matched] → pictures the editor itself puts in use
+  the path the diagram list gives; only hand-written markup differs. Matching by resolved path
+  would need the parent to resolve both; left for the stale-frame follow-up, which needs it too.
+  A page named by its name in one frame and its number in another is matched.
 - [Content compared at close reads the file again] → one read of a file already open; a read
   failure at close answers `false` and says why in the status line, leaving the poster as it was.
 - [Poster closed or switched while the overlay is open] → the pending request is rejected

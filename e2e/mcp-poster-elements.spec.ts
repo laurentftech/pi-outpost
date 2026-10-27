@@ -758,4 +758,14 @@ test("the colour picker of a swatch low in the panel opens against it, inside th
     return { inside: box.top >= 0 && box.bottom <= innerHeight && box.left >= 0 && box.right <= innerWidth, against: Math.abs(box.top - at.bottom) < 12 || Math.abs(box.bottom - at.top) < 12 };
   });
   expect(fits).toEqual({ inside: true, against: true });
+// openlore: scenario=ADiagramPictureElsewhereStillAsksForAFile spec=poster-elements
+test("ADiagramPictureElsewhereStillAsksForAFile: in a host that draws no diagrams, a diagram's picture is filled like any other", async ({ page }) => {
+  const DIAGRAM = {
+    html: MENU.html.replace('<img class="slot" data-poster-picture="bread" alt="bread">', '<img class="slot" data-poster-picture="bread" data-drawio="../diagrams/flow.drawio" alt="bread">'),
+    css: MENU.css,
+  };
+  const id = await createPoster("Diagram elsewhere", DIAGRAM);
+  const { canvas } = await show(page, id);
+  await choose(page, () => canvas.locator('[data-poster-picture="bread"]').dblclick(), await pictureFile("bread.png", 400, 300, "png"));
+  await expect(canvas.locator('[data-poster-picture="bread"][src^="data:image/png;base64,"]')).toHaveCount(1);
 });

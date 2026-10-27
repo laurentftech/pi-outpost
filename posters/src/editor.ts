@@ -1029,7 +1029,21 @@ export function mountEditor(root: HTMLElement, host: PosterHost): PosterEditor {
       return;
     }
     if (editor !== opened) return;
-    const pageOf = (page?: string) => (page === undefined || page === "" ? "1" : page);
+    // A page is named by its name or its number from 1: both are the same page, by the diagram's pages
+    let pages: string[] = [];
+    try {
+      pages = (await host.diagrams.list()).find((choice) => choice.path === source.path)?.pages ?? [];
+    } catch {
+      // Unlisted: a page matches only as it is spelt
+    }
+    if (editor !== opened) return;
+    const pageOf = (page?: string) => {
+      const wanted = page?.trim() ?? "";
+      if (wanted === "") return 0;
+      const byName = pages.indexOf(wanted);
+      if (byName >= 0) return byName;
+      return /^\d+$/.test(wanted) ? Number(wanted) - 1 : wanted;
+    };
     const showing = opened.getWrapper()!.find("img").filter((frame) => {
       const other = sourceOf(frame);
       return other?.kind === "diagram" && other.path === source.path && pageOf(other.page) === pageOf(source.page);

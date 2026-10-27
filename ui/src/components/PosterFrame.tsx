@@ -24,6 +24,7 @@
  * route to a file's bytes: the editor frame holds no token.
  */
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { pageOf, readPage, type PosterPage } from "@pi-outpost/posters/format";
 import { MAX_PICTURE_FILE_BYTES, PICTURE_FILE_TYPES, pictureFileType, type DiagramChoice } from "@pi-outpost/posters/diagrams";
 import { POSTER_EDITOR_PAGE, POSTER_FRAME, type DrawioAnswer } from "@pi-outpost/posters/frame";
@@ -34,6 +35,7 @@ import { isDrawioFile, resolveRelativeHref } from "../util/workspacePath";
 import { DrawioPainter, type DrawioPainterHandle } from "./DrawioPainter";
 import { DrawioBlock } from "./DrawioBlock";
 import { DIAGRAM_ACTION } from "./diagramControls";
+import { overlayHost } from "./EnlargedView";
 import { useThemeContext } from "../theme/ThemeContext";
 import { useDrawioFiles } from "./drawioFiles";
 
@@ -382,7 +384,9 @@ export function PosterFrame({
         className="block h-full w-full border-0"
       />
       <DrawioPainter ref={painter} serverUrl={serverUrl} />
-      {touching !== null && (
+      {/* Portalled to the top of the app, as every overlay here (EnlargedView): fixed inside the
+          viewer's pane, the application's header stacked over it and took its clicks */}
+      {touching !== null && overlayHost(frame.current) !== undefined && createPortal(
         <div
           role="dialog"
           aria-modal="true"
@@ -414,7 +418,8 @@ export function PosterFrame({
               />
             </div>
           </div>
-        </div>
+        </div>,
+        overlayHost(frame.current)!,
       )}
     </>
   );
