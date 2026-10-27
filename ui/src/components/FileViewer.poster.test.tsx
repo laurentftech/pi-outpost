@@ -407,6 +407,105 @@ describe("a poster in the viewer", () => {
     });
   });
 
+  describe("a diagram of the poster opened for touch-up (poster-diagram-touch-up)", () => {
+    const TWO = '<mxfile><diagram name="Context"><mxGraphModel><root><mxCell id="0"/></root></mxGraphModel></diagram><diagram name="Deployment"><mxGraphModel><root><mxCell id="0"/></root></mxGraphModel></diagram></mxfile>';
+
+    /** A fileIo whose diagram reads as `contents`, one per read, the last one kept. */
+    function editFileIo(contents: string[], overrides: Partial<FileIo> = {}) {
+      let reads = 0;
+      return fakeFileIo({
+        read: vi.fn(async (path: string) => {
+          if (path.endsWith(".poster.html")) return { content: PAGE, mtimeMs: 1000 };
+          if (path !== "diagrams/two.drawio") throw new FileIoError("not found", "not-found");
+          const content = contents[Math.min(reads, contents.length - 1)]!;
+          reads += 1;
+          return { content, mtimeMs: 1000 + reads };
+        }),
+        ...overrides,
+      });
+    }
+
+    async function openTouchUp(fileIo: FileIo, id: number, page?: string, onOpenNative = vi.fn(), onClose = vi.fn()) {
+      render(
+        <DrawioFilesContext.Provider value={{ serverUrl: SERVER, fileIo, onOpenNative }}>
+          <FileViewer file={loaded(PAGE)} isStreaming={false} gitDiff={null} inRepository={false} serverUrl={SERVER} onDirtyChange={vi.fn()} onFetchGitDiff={vi.fn()} onClearGitDiff={vi.fn()} onOpenGitHistory={vi.fn()} onClose={onClose} onReload={vi.fn()} onSave={vi.fn()} onImageLoad={vi.fn()} />
+        </DrawioFilesContext.Provider>,
+      );
+      const frame = screen.getByTestId("poster-frame") as HTMLIFrameElement;
+      const sent = vi.spyOn(frame.contentWindow!, "postMessage");
+      fromFrame(frame, { type: POSTER_FRAME.DRAWIO_EDIT, id, path: "../diagrams/two.drawio", ...(page === undefined ? {} : { page }) });
+      const answer = async () => {
+        await waitFor(() => expect(sent).toHaveBeenCalledWith(expect.objectContaining({ type: POSTER_FRAME.ANSWER, id }), SERVER));
+        return (sent.mock.calls.find(([message]) => (message as { id?: unknown }).id === id)![0] as { value: unknown }).value;
+      };
+      return { frame, sent, answer, onOpenNative, onClose };
+    }
+
+    // openlore: scenario=DoubleClickOpensTheDiagramsPage spec=poster-files
+    it("DoubleClickOpensTheDiagramsPage: the named page opens over the poster, its file resolved from the poster's directory, and nothing is answered yet", async () => {
+      const { sent } = await openTouchUp(editFileIo([TWO]), 21, "Deployment");
+      const dialog = await screen.findByTestId("poster-diagram-touch-up");
+      expect(dialog).toHaveAttribute("aria-label", "Touch up diagrams/two.drawio");
+      expect(dialog).toHaveTextContent("diagrams/two.drawio — Deployment");
+      // The diagram's own frame, beside the poster's, still there beneath
+      await waitFor(() => expect(screen.getAllByTitle("diagrams/two.drawio").find((element) => element.tagName === "IFRAME")).toHaveAttribute("sandbox", "allow-scripts"));
+      expect(screen.getByTestId("poster-frame")).toBeInTheDocument();
+      expect(sent).not.toHaveBeenCalledWith(expect.objectContaining({ type: POSTER_FRAME.ANSWER, id: 21 }), SERVER);
+    });
+
+    // openlore: scenario=TheDiagramCanGoToDrawioDesktop spec=poster-files
+    it("TheDiagramCanGoToDrawioDesktop: its file is handed to draw.io desktop", async () => {
+      const { onOpenNative } = await openTouchUp(editFileIo([TWO]), 22);
+      fireEvent.click(await screen.findByRole("button", { name: /draw\.io desktop/ }));
+      expect(onOpenNative).toHaveBeenCalledWith("diagrams/two.drawio");
+    });
+
+    // openlore: scenario=TheSavedPageReplacesThePicture spec=poster-files
+    it("closing after the file changed answers true; the touch-up is gone", async () => {
+      const { answer } = await openTouchUp(editFileIo([TWO, TWO.replace("Deployment", "Moved")]), 23);
+      fireEvent.click(await screen.findByRole("button", { name: /back to the poster/ }));
+      expect(await answer()).toEqual({ ok: true, value: true });
+      expect(screen.queryByTestId("poster-diagram-touch-up")).toBeNull();
+    });
+
+    // openlore: scenario=NothingSavedNothingChanged spec=poster-files
+    it("closing with the file as it was answers false; Escape, from the touch-up, closes it and not the viewer", async () => {
+      const { answer, onClose } = await openTouchUp(editFileIo([TWO]), 24);
+      const dialog = await screen.findByTestId("poster-diagram-touch-up");
+      // From where the keyboard is, the dialog: the viewer listens on the document, reached before the window
+      fireEvent.keyDown(dialog, { key: "Escape" });
+      expect(await answer()).toEqual({ ok: true, value: false });
+      expect(onClose).not.toHaveBeenCalled();
+      expect(screen.getByTestId("poster-frame")).toBeInTheDocument();
+    });
+
+    // openlore: scenario=AMissingDiagramSaysWhy spec=poster-files
+    it("AMissingDiagramSaysWhy: a diagram that is not there answers its reason, and nothing opens", async () => {
+      const fileIo = editFileIo([TWO], { read: vi.fn(async (path: string) => {
+        if (path.endsWith(".poster.html")) return { content: PAGE, mtimeMs: 1000 };
+        throw new FileIoError("not found", "not-found");
+      }) });
+      const { answer } = await openTouchUp(fileIo, 25);
+      expect(await answer()).toEqual({ ok: false, message: '"../diagrams/two.drawio" could not be opened: not found' });
+      expect(screen.queryByTestId("poster-diagram-touch-up")).toBeNull();
+    });
+
+    it("a second request while one is open is refused, and the first stays open", async () => {
+      const { frame, sent } = await openTouchUp(editFileIo([TWO]), 26);
+      await screen.findByTestId("poster-diagram-touch-up");
+      fromFrame(frame, { type: POSTER_FRAME.DRAWIO_EDIT, id: 27, path: "../diagrams/two.drawio" });
+      await waitFor(() => expect(sent).toHaveBeenCalledWith({ type: POSTER_FRAME.ANSWER, id: 27, value: { ok: false, message: "another diagram is open for touch-up" } }, SERVER));
+      expect(screen.getByTestId("poster-diagram-touch-up")).toBeInTheDocument();
+    });
+
+    it("the poster closed with the touch-up open takes the touch-up with it", async () => {
+      await openTouchUp(editFileIo([TWO]), 28);
+      await screen.findByTestId("poster-diagram-touch-up");
+      cleanup();
+      expect(screen.queryByTestId("poster-diagram-touch-up")).toBeNull();
+    });
+  });
+
   describe("the project's picture files for the editor's frames", () => {
     const SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="300" height="100"><text>Architecture — é</text></svg>';
 

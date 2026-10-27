@@ -13,13 +13,14 @@
  * server's modification-time guard: a file that moved meanwhile is refused, not
  * overwritten. Anything beyond a touch-up is draw.io desktop's.
  */
-import { useCallback, useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
 import { DrawioFrame, type DrawioFrameHandle, type DrawioTouchUpState, type DrawioWireStyle } from "./DrawioFrame";
 import { DIAGRAM_ACTION, DIAGRAM_ACTIONS } from "./diagramControls";
 import { EnlargedView } from "./EnlargedView";
 import { useDrawioFiles } from "./drawioFiles";
 import { FileIoError } from "../fileIo";
 import { spliceDrawioPage } from "../util/drawioSplice";
+import { drawioPageIndex } from "../util/drawioPages";
 
 type Where = "inline" | "enlarged";
 
@@ -102,6 +103,9 @@ export function DrawioBlock({
   variant,
   fallback,
   onTouchUpDirtyChange,
+  page,
+  startTouchUp = false,
+  onEscape: leaveOnEscape,
 }: {
   /** Workspace-relative. */
   path: string;
@@ -112,6 +116,12 @@ export function DrawioBlock({
   fallback?: ReactNode;
   /** Unsaved touch-ups exist, so the holder can ask before leaving them. */
   onTouchUpDirtyChange?: (dirty: boolean) => void;
+  /** The page shown first: its name, or its number from 1 (a poster's diagram frame names one). */
+  page?: string;
+  /** Begins touch-up as soon as the file is read, as when a poster's diagram is opened to touch it up. */
+  startTouchUp?: boolean;
+  /** Escape, wherever the keyboard is, means leaving the holder rather than ending the touch-up (a poster's diagram, opened over it). */
+  onEscape?: () => void;
 }) {
   const { serverUrl, fileIo, onOpenFile } = useDrawioFiles();
   const blockRef = useRef<HTMLDivElement>(null);
@@ -138,6 +148,38 @@ export function DrawioBlock({
   const textFor = (where: Where) => (touching === where && baseline.current !== null ? baseline.current.content : text);
   const canTouchUp = fileIo !== undefined;
   const dirty = touching !== null && state.dirty;
+  // The page asked for, as the viewer counts it; or why the file has no such page
+  const start = useMemo(() => {
+    if (page === undefined || text === null) return { index: 0, problem: null };
+    try {
+      return { index: drawioPageIndex(text, page), problem: null };
+    } catch (error) {
+      return { index: 0, problem: error instanceof Error ? error.message : String(error) };
+    }
+  }, [page, text]);
+  const started = useRef(false);
+  useEffect(() => {
+    if (!startTouchUp || started.current || text === null || start.problem !== null) return;
+    started.current = true;
+    void beginTouchUp("inline");
+  });
+  // The file saved from elsewhere (draw.io desktop, the agent) during a touch-up holding nothing
+  // unsaved: the touch-up starts again on it, drawn, rather than on a version that is gone. With
+  // touch-ups unsaved it waits, and their save is refused (DrawioTouchUpSaving).
+  const restartOn = useRef<Where | null>(null);
+  useEffect(() => {
+    if (touching === null || state.dirty || baseline.current === null || text === null || text === baseline.current.content) return;
+    restartOn.current = touching;
+    baseline.current = null;
+    setState(CLEAN);
+    setTouching(null);
+  }, [text, touching, state.dirty]);
+  useEffect(() => {
+    if (touching !== null || restartOn.current === null) return;
+    const where = restartOn.current;
+    restartOn.current = null;
+    void beginTouchUp(where);
+  });
 
   useEffect(() => {
     onTouchUpDirtyChange?.(dirty);
@@ -225,8 +267,11 @@ export function DrawioBlock({
   touchingRef.current = touching;
   const enlargedRef = useRef(enlarged);
   enlargedRef.current = enlarged;
+  const leaveRef = useRef(leaveOnEscape);
+  leaveRef.current = leaveOnEscape;
   const onEscape = useCallback(() => {
-    if (touchingRef.current !== null) endTouchUpRef.current();
+    if (leaveRef.current) leaveRef.current();
+    else if (touchingRef.current !== null) endTouchUpRef.current();
     else if (enlargedRef.current) closeEnlargedRef.current();
   }, []);
   useEffect(() => {
@@ -235,7 +280,8 @@ export function DrawioBlock({
       if (event.key !== "Escape") return;
       event.preventDefault();
       event.stopImmediatePropagation();
-      endTouchUpRef.current();
+      if (leaveRef.current) leaveRef.current();
+      else endTouchUpRef.current();
     }
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
@@ -352,6 +398,11 @@ export function DrawioBlock({
         : "flex h-full flex-col"}
     >
       {variant === "viewer" && controls}
+      {start.problem !== null && (
+        <p role="alert" data-testid="drawio-block-page-problem" className="px-3 py-1.5 text-xs text-amber-800 dark:text-amber-200">
+          The diagram <code>{path}</code> {start.problem}; its first page is shown.
+        </p>
+      )}
       {text === null || !near ? (
         <div className="h-80 animate-pulse rounded bg-zinc-100 dark:bg-zinc-800/60" data-testid="drawio-block-loading" aria-label={`Loading ${path}`} />
       ) : (
@@ -367,6 +418,7 @@ export function DrawioBlock({
           onEscape={onEscape}
           onRendered={setFailure}
           className={variant === "reply" ? "flex h-80 flex-col" : "flex min-h-[24rem] flex-1 flex-col"}
+          page={page === undefined ? undefined : start.index}
         />
       )}
       {variant === "reply" && controls}

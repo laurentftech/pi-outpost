@@ -58,13 +58,15 @@ interface DrawioFrameProps {
   onRendered?: (failure: string | null) => void;
   /** Height rule for the frame's box; a reply's block is shorter than the file viewer. */
   className?: string;
+  /** The page shown first, from 0; later texts keep the page the reader turned to. */
+  page?: number;
 }
 
 /** How long the frame has to answer a save or an export before it is called gone. */
 const ANSWER_TIMEOUT_MS = 10_000;
 
 export const DrawioFrame = forwardRef<DrawioFrameHandle, DrawioFrameProps>(function DrawioFrame(
-  { xml, serverUrl, title, fallback, editing = false, onTouchUpChange, onPageLocked, onEscape, onRendered, className = "flex h-full min-h-[24rem] flex-col" },
+  { xml, serverUrl, title, fallback, editing = false, onTouchUpChange, onPageLocked, onEscape, onRendered, className = "flex h-full min-h-[24rem] flex-col", page: startPage },
   ref,
 ) {
   const frame = useRef<HTMLIFrameElement>(null);
@@ -162,7 +164,7 @@ export const DrawioFrame = forwardRef<DrawioFrameHandle, DrawioFrameProps>(funct
       // and the file may have moved since what is drawn was read
       if (!wasEditing.current && (drawn.current === null || drawn.current.xml !== xml || drawn.current.dark !== dark)) {
         drawn.current = { xml, dark };
-        post({ type: DRAWIO_MESSAGE.RENDER, xml, dark });
+        post({ type: DRAWIO_MESSAGE.RENDER, xml, dark, ...(startPage === undefined ? {} : { page: startPage }) });
       }
       if (!wasEditing.current) post({ type: DRAWIO_MESSAGE.EDIT, on: true });
       wasEditing.current = true;
@@ -177,7 +179,7 @@ export const DrawioFrame = forwardRef<DrawioFrameHandle, DrawioFrameProps>(funct
     }
     if (drawn.current !== null && drawn.current.xml === xml && drawn.current.dark === dark) return;
     drawn.current = { xml, dark };
-    post({ type: DRAWIO_MESSAGE.RENDER, xml, dark });
+    post({ type: DRAWIO_MESSAGE.RENDER, xml, dark, ...(startPage === undefined ? {} : { page: startPage }) });
   }, [ready, xml, dark, editing]);
 
   return (

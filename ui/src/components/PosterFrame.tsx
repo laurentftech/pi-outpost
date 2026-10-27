@@ -23,7 +23,8 @@
  * reads the project's picture files for frames naming one, through `loadFile`, the viewer's own
  * route to a file's bytes: the editor frame holds no token.
  */
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { pageOf, readPage, type PosterPage } from "@pi-outpost/posters/format";
 import { MAX_PICTURE_FILE_BYTES, PICTURE_FILE_TYPES, pictureFileType, type DiagramChoice } from "@pi-outpost/posters/diagrams";
 import { POSTER_EDITOR_PAGE, POSTER_FRAME, type DrawioAnswer } from "@pi-outpost/posters/frame";
@@ -32,6 +33,9 @@ import { drawioPage, drawioPages, relativeReference } from "../util/drawioPages"
 import type { LoadFile } from "../util/htmlPage";
 import { isDrawioFile, resolveRelativeHref } from "../util/workspacePath";
 import { DrawioPainter, type DrawioPainterHandle } from "./DrawioPainter";
+import { DrawioBlock } from "./DrawioBlock";
+import { DIAGRAM_ACTION } from "./diagramControls";
+import { overlayHost } from "./EnlargedView";
 import { useThemeContext } from "../theme/ThemeContext";
 import { useDrawioFiles } from "./drawioFiles";
 
@@ -41,6 +45,8 @@ export function posterEditorUrl(serverUrl: string, base: string = window.locatio
 }
 
 export const POSTER_SANDBOX = "allow-scripts allow-same-origin";
+
+const DISCARD_TOUCH_UPS = "Discard the unsaved touch-ups to this diagram?";
 
 function download(name: string, bytes: Uint8Array, type: string) {
   const url = URL.createObjectURL(new Blob([bytes as BlobPart], { type }));
@@ -74,7 +80,7 @@ export function PosterFrame({
   /** Unsaved touch-ups in the editor, so the viewer can ask before leaving them. */
   onTouchUpDirtyChange?: (dirty: boolean) => void;
 }) {
-  const { serverUrl, fileIo } = useDrawioFiles();
+  const { serverUrl, fileIo, onOpenNative } = useDrawioFiles();
   const dark = useThemeContext() === "dark";
   const frame = useRef<HTMLIFrameElement>(null);
   const painter = useRef<DrawioPainterHandle>(null);
@@ -105,6 +111,13 @@ export function PosterFrame({
   onDirty.current = onTouchUpDirtyChange;
   const latest = useRef({ path, content, mtimeMs, dark, readOnly, poster, loadFile });
   latest.current = { path, content, mtimeMs, dark, readOnly, poster, loadFile };
+  // A diagram of the poster open for touch-up over it (poster-diagram-touch-up): the file, the
+  // page, the request to answer when it closes, and the file as it was when it opened.
+  const [touching, setTouching] = useState<{ file: string; page?: string; id: unknown; before: string } | null>(null);
+  const touchingRef = useRef(touching);
+  touchingRef.current = touching;
+  const touchUpDirty = useRef(false);
+  const answerRef = useRef<(id: unknown, value: unknown) => void>(() => {});
 
   useEffect(() => {
     // Gone with this component: an answer arriving after it is dropped, never posted to a
@@ -115,6 +128,7 @@ export function PosterFrame({
     const answer = (id: unknown, value: unknown) => {
       if (alive) post({ type: POSTER_FRAME.ANSWER, id, value });
     };
+    answerRef.current = answer;
 
     // Opens overlap when the file changes while one is checking it: only the last one sends.
     let opening = 0;
@@ -218,6 +232,25 @@ export function PosterFrame({
       return painter.current.draw(xml);
     }
 
+    /** Opens the diagram `reference` names for touch-up; answered when it closes (closeTouchUp). */
+    async function editDiagram(id: unknown, reference: string, page: string | undefined) {
+      const refuse = (message: string) => answer(id, { ok: false, message } satisfies DrawioAnswer<boolean>);
+      if (touchingRef.current !== null) return refuse("another diagram is open for touch-up");
+      const file = resolveRelativeHref(latest.current.path, reference);
+      if (!isDrawioFile(file)) return refuse(`"${reference}" is not a .drawio file`);
+      if (fileIo === undefined) return refuse("this view cannot read the project's files");
+      let before: string;
+      try {
+        before = (await fileIo.read(file)).content;
+        drawioPages(before);
+      } catch (error) {
+        return refuse(`"${reference}" could not be opened: ${error instanceof Error ? error.message : String(error)}`);
+      }
+      if (!alive) return;
+      touchUpDirty.current = false;
+      setTouching({ file, page, id, before });
+    }
+
     /** The project's picture files, as a frame of this poster names them. */
     async function listPictures(): Promise<string[]> {
       if (fileIo?.find === undefined) throw new Error("this view cannot look through the project's files");
@@ -267,6 +300,10 @@ export function PosterFrame({
         const { path: reference, page } = data as { path?: unknown; page?: unknown };
         if (typeof reference === "string") void reply(data.id, () => drawDiagram(reference, typeof page === "string" ? page : undefined));
       }
+      else if (data.type === POSTER_FRAME.DRAWIO_EDIT) {
+        const { path: reference, page } = data as { path?: unknown; page?: unknown };
+        if (typeof reference === "string") void editDiagram(data.id, reference, typeof page === "string" ? page : undefined);
+      }
       else if (data.type === POSTER_FRAME.PICTURE_LIST) void reply(data.id, listPictures);
       else if (data.type === POSTER_FRAME.PICTURE_READ) {
         const { path: reference } = data as { path?: unknown };
@@ -277,6 +314,8 @@ export function PosterFrame({
     return () => {
       alive = false;
       ready.current = false;
+      // The touch-up goes with the poster; its request goes unanswered with the frame that made it
+      setTouching(null);
       reopen.current = () => {};
       // Gone with the editor: nothing unsaved is left to ask about.
       onDirty.current?.(false);
@@ -291,6 +330,44 @@ export function PosterFrame({
   useEffect(() => {
     if (ready.current) frame.current?.contentWindow?.postMessage({ type: POSTER_FRAME.THEME, theme: dark ? "dark" : "light" }, new URL(editorUrl).origin);
   }, [dark, editorUrl]);
+
+  /** Closes the touch-up, unsaved touch-ups asked about first, and tells the editor whether the file changed. */
+  async function closeTouchUp() {
+    const open = touchingRef.current;
+    if (open === null) return;
+    if (touchUpDirty.current && !window.confirm(DISCARD_TOUCH_UPS)) return;
+    setTouching(null);
+    let outcome: DrawioAnswer<boolean>;
+    try {
+      outcome = { ok: true, value: (await fileIo!.read(open.file)).content !== open.before };
+    } catch (error) {
+      outcome = { ok: false, message: `the diagram could not be read again: ${error instanceof Error ? error.message : String(error)}` };
+    }
+    answerRef.current(open.id, outcome);
+  }
+
+  // Escape goes back to the poster, from the touch-up too (DrawioBlock's onEscape). The keyboard
+  // was in the poster's frame, where the double-click was: the touch-up takes it on opening.
+  const dialog = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (touching === null) return;
+    dialog.current?.focus();
+    // Capturing, and kept from going further: the file viewer closes on Escape too, from the
+    // document, which a keydown reaches before the window — it closed the poster with it
+    function onKey(event: KeyboardEvent) {
+      if (event.key !== "Escape" || event.defaultPrevented) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      void closeTouchUpRef.current();
+    }
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [touching]);
+  const closeTouchUpRef = useRef(closeTouchUp);
+  closeTouchUpRef.current = closeTouchUp;
+  const onEscapeOfDiagram = useCallback(() => void closeTouchUpRef.current(), []);
+
+  const onTouchUpDirtyOfDiagram = useCallback((dirty: boolean) => { touchUpDirty.current = dirty; }, []);
 
   if ("problem" in poster) {
     return (
@@ -314,6 +391,46 @@ export function PosterFrame({
         className="block h-full w-full border-0"
       />
       <DrawioPainter ref={painter} serverUrl={serverUrl} />
+      {/* Portalled to the top of the app, as every overlay here (EnlargedView): fixed inside the
+          viewer's pane, the application's header stacked over it and took its clicks */}
+      {touching !== null && overlayHost(frame.current) !== undefined && createPortal(
+        <div
+          ref={dialog}
+          tabIndex={-1}
+          role="dialog"
+          aria-modal="true"
+          aria-label={`Touch up ${touching.file}`}
+          data-testid="poster-diagram-touch-up"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 outline-none"
+        >
+          <div className="flex h-full max-h-[56rem] w-full max-w-[90rem] flex-col overflow-hidden rounded-lg border border-zinc-300 bg-white shadow-xl dark:border-zinc-700 dark:bg-zinc-900">
+            <header className="flex shrink-0 items-center gap-2 border-b border-zinc-200 px-3 py-2 text-sm dark:border-zinc-800">
+              <span className="min-w-0 flex-1 truncate font-medium" title={touching.file}>
+                {touching.file}{touching.page !== undefined ? ` — ${touching.page}` : ""}
+              </span>
+              {onOpenNative && (
+                <button type="button" className={DIAGRAM_ACTION} onClick={() => onOpenNative(touching.file)} title="Open the diagram in draw.io desktop, for anything more than a touch-up; its saves come back here">
+                  ↗ draw.io desktop
+                </button>
+              )}
+              <button type="button" className={DIAGRAM_ACTION} onClick={() => void closeTouchUp()} title="Back to the poster, which takes the diagram as saved (Escape)">
+                back to the poster
+              </button>
+            </header>
+            <div className="min-h-0 flex-1">
+              <DrawioBlock
+                path={touching.file}
+                variant="viewer"
+                page={touching.page}
+                startTouchUp
+                onTouchUpDirtyChange={onTouchUpDirtyOfDiagram}
+                onEscape={onEscapeOfDiagram}
+              />
+            </div>
+          </div>
+        </div>,
+        overlayHost(frame.current)!,
+      )}
     </>
   );
 }

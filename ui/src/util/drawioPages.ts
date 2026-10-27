@@ -27,19 +27,26 @@ export function drawioPages(text: string): string[] {
 }
 
 /**
+ * The index, from 0, of the page `page` names — its name, or its number from 1 — or 0 for none.
+ * Throws, naming the pages there are, for a page the file does not have.
+ */
+export function drawioPageIndex(text: string, page?: string): number {
+  if (page === undefined || page.trim() === "") return 0;
+  const names = drawioPages(text);
+  const wanted = page.trim();
+  const byName = names.indexOf(wanted);
+  const index = byName >= 0 ? byName : /^\d+$/.test(wanted) ? Number(wanted) - 1 : -1;
+  if (index < 0 || index >= names.length) throw new Error(`it has no page "${wanted}"; its pages are ${names.map((name) => `"${name}"`).join(", ")}`);
+  return index;
+}
+
+/**
  * The file reduced to the page `page` names — its name, or its number from 1 — or to its first
  * page. Throws, naming the pages there are, for a page it does not have.
  */
 export function drawioPage(text: string, page?: string): string {
   const root = parsed(text);
-  const names = drawioPages(text);
-  let index = 0;
-  if (page !== undefined && page.trim() !== "") {
-    const wanted = page.trim();
-    const byName = names.indexOf(wanted);
-    index = byName >= 0 ? byName : /^\d+$/.test(wanted) ? Number(wanted) - 1 : -1;
-    if (index < 0 || index >= names.length) throw new Error(`it has no page "${wanted}"; its pages are ${names.map((name) => `"${name}"`).join(", ")}`);
-  }
+  const index = drawioPageIndex(text, page);
   if (root.nodeName === "mxGraphModel") return text;
   const file = root.cloneNode(false) as Element;
   file.appendChild(diagramsOf(root)[index]!.cloneNode(true));
