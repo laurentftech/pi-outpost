@@ -425,10 +425,10 @@ describe("a poster in the viewer", () => {
       });
     }
 
-    async function openTouchUp(fileIo: FileIo, id: number, page?: string, onOpenNative = vi.fn()) {
+    async function openTouchUp(fileIo: FileIo, id: number, page?: string, onOpenNative = vi.fn(), onClose = vi.fn()) {
       render(
         <DrawioFilesContext.Provider value={{ serverUrl: SERVER, fileIo, onOpenNative }}>
-          <FileViewer file={loaded(PAGE)} isStreaming={false} gitDiff={null} inRepository={false} serverUrl={SERVER} onDirtyChange={vi.fn()} onFetchGitDiff={vi.fn()} onClearGitDiff={vi.fn()} onOpenGitHistory={vi.fn()} onClose={vi.fn()} onReload={vi.fn()} onSave={vi.fn()} onImageLoad={vi.fn()} />
+          <FileViewer file={loaded(PAGE)} isStreaming={false} gitDiff={null} inRepository={false} serverUrl={SERVER} onDirtyChange={vi.fn()} onFetchGitDiff={vi.fn()} onClearGitDiff={vi.fn()} onOpenGitHistory={vi.fn()} onClose={onClose} onReload={vi.fn()} onSave={vi.fn()} onImageLoad={vi.fn()} />
         </DrawioFilesContext.Provider>,
       );
       const frame = screen.getByTestId("poster-frame") as HTMLIFrameElement;
@@ -438,7 +438,7 @@ describe("a poster in the viewer", () => {
         await waitFor(() => expect(sent).toHaveBeenCalledWith(expect.objectContaining({ type: POSTER_FRAME.ANSWER, id }), SERVER));
         return (sent.mock.calls.find(([message]) => (message as { id?: unknown }).id === id)![0] as { value: unknown }).value;
       };
-      return { frame, sent, answer, onOpenNative };
+      return { frame, sent, answer, onOpenNative, onClose };
     }
 
     // openlore: scenario=DoubleClickOpensTheDiagramsPage spec=poster-files
@@ -469,11 +469,14 @@ describe("a poster in the viewer", () => {
     });
 
     // openlore: scenario=NothingSavedNothingChanged spec=poster-files
-    it("closing with the file as it was answers false", async () => {
-      const { answer } = await openTouchUp(editFileIo([TWO]), 24);
-      await screen.findByTestId("poster-diagram-touch-up");
-      fireEvent.keyDown(window, { key: "Escape" });
+    it("closing with the file as it was answers false; Escape, from the touch-up, closes it and not the viewer", async () => {
+      const { answer, onClose } = await openTouchUp(editFileIo([TWO]), 24);
+      const dialog = await screen.findByTestId("poster-diagram-touch-up");
+      // From where the keyboard is, the dialog: the viewer listens on the document, reached before the window
+      fireEvent.keyDown(dialog, { key: "Escape" });
       expect(await answer()).toEqual({ ok: true, value: false });
+      expect(onClose).not.toHaveBeenCalled();
+      expect(screen.getByTestId("poster-frame")).toBeInTheDocument();
     });
 
     // openlore: scenario=AMissingDiagramSaysWhy spec=poster-files

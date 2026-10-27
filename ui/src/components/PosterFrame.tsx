@@ -352,13 +352,16 @@ export function PosterFrame({
   useEffect(() => {
     if (touching === null) return;
     dialog.current?.focus();
+    // Capturing, and kept from going further: the file viewer closes on Escape too, from the
+    // document, which a keydown reaches before the window — it closed the poster with it
     function onKey(event: KeyboardEvent) {
       if (event.key !== "Escape" || event.defaultPrevented) return;
       event.preventDefault();
+      event.stopImmediatePropagation();
       void closeTouchUpRef.current();
     }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
   }, [touching]);
   const closeTouchUpRef = useRef(closeTouchUp);
   closeTouchUpRef.current = closeTouchUp;
