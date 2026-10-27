@@ -326,9 +326,17 @@ const TEXT_SECTOR = {
     "font-weight",
     "color",
     "text-align",
-    { extend: "line-height", units: ["px"], min: 1 },
+    // Line spacing as a multiple of the text's size, as a word processor offers it: 1.5 typed
+    // meant one and a half lines, and drew lines 1.5px apart, on top of one another.
+    { extend: "line-height", units: [], step: 0.1, min: 0.5, max: 5 },
   ] as (string | PropertyTypes)[],
 };
+
+/** An opaque `rgb()` as the browser computes it, written as the #rrggbb a person would type. */
+function hexColour(colour: string): string {
+  const channels = /^rgb\((\d+),\s*(\d+),\s*(\d+)\)$/.exec(colour);
+  return channels ? `#${channels.slice(1).map((channel) => Number(channel).toString(16).padStart(2, "0")).join("")}` : colour;
+}
 
 /** The first font a font-family names, unquoted: what a font list shows. */
 function firstFont(fonts: string): string {
@@ -365,6 +373,16 @@ function showDrawnStyle(editor: Editor) {
       return;
     }
     const name = property.getName();
+    if (name === "line-height") {
+      // Shown as the multiple it draws, whether set in px, unitless or left to normal
+      const lines = drawn.lineHeight === "normal" ? 1.2 : parseFloat(drawn.lineHeight) / parseFloat(drawn.fontSize);
+      const shown = String(Math.round(lines * 100) / 100);
+      if (String(property.getValue()) !== shown || property.get("unit")) {
+        if (!property.hasValue()) property.__setParentTarget(component);
+        property.upValue(shown, { __up: true });
+      }
+      return;
+    }
     if (property.hasValue()) {
       // A font a rule on the element's classes names, absent from the list, showed an empty choice
       if (name === "font-family") {
@@ -378,7 +396,7 @@ function showDrawnStyle(editor: Editor) {
     // A border's style stays the panel's own until set: filled with "none", a width typed would draw nothing.
     if (value === "" || value === "none" || /^rgba\(.*,\s*0\)$/.test(value) || value === "transparent") return;
     if (name === "text-align") value = { start: "left", end: "right" }[value] ?? value;
-    if (name === "line-height" && value === "normal") value = `${Math.round(parseFloat(drawn.fontSize) * 1.2)}px`;
+    if (property.getType() === "color") value = hexColour(value);
     if (name === "font-family") value = offeredFont(property as PropertySelect, value);
     property.__setParentTarget(component);
     property.upValue(value, { __up: true });
@@ -519,6 +537,45 @@ export function mountEditor(root: HTMLElement, host: PosterHost): PosterEditor {
     statusLine.textContent = message;
     statusLine.dataset.kind = kind;
   };
+  // A colour typed that is no colour was written as black. It is refused instead: the field goes
+  // back to what it showed, and the status line says why.
+  const colourBefore = new WeakMap<HTMLInputElement, string>();
+  styles.addEventListener("focusin", (event) => {
+    const input = event.target as HTMLInputElement;
+    if (input.closest?.(".gjs-field-color")) colourBefore.set(input, input.value);
+  });
+  styles.addEventListener("change", (event) => {
+    const input = event.target as HTMLInputElement;
+    if (!input.closest?.(".gjs-field-color")) return;
+    const typed = input.value.trim();
+    if (typed === "" || typed === "none" || CSS.supports("color", typed)) {
+      colourBefore.set(input, input.value);
+      return;
+    }
+    event.stopPropagation();
+    input.value = colourBefore.get(input) ?? "";
+    status(`“${typed}” is not a colour: type a name such as red, or a code such as #ff8800.`, "error");
+  }, true);
+  // The colour picker opens under its swatch, where the swatch was before the panel scrolled to
+  // it: for one low in the panel (the border's) it opened far from it, below the window. Once
+  // shown, it is put against its swatch, below it or above it, inside the window. (Capture: the
+  // swatch's own handler stops the click.)
+  styles.addEventListener("click", (event) => {
+    const swatch = (event.target as Element | null)?.closest?.(".gjs-field-colorp");
+    if (!swatch) return;
+    requestAnimationFrame(() => {
+      const picker = document.querySelector<HTMLElement>(".sp-container:not(.sp-hidden)");
+      if (!picker) return;
+      const at = swatch.getBoundingClientRect();
+      const { width, height } = picker.getBoundingClientRect();
+      const margin = 4;
+      const below = at.bottom + margin;
+      const top = below + height <= innerHeight - margin ? below : Math.max(margin, at.top - margin - height);
+      const left = Math.min(Math.max(margin, at.right - width), innerWidth - margin - width);
+      picker.style.top = `${top + scrollY}px`;
+      picker.style.left = `${left + scrollX}px`;
+    });
+  }, true);
   const size = () => FORMATS[shown!.format];
 
   function fitZoom() {

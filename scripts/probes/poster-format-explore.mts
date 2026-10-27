@@ -88,6 +88,17 @@ const savedCss = () => page.evaluate(() => (window as unknown as { posterEditor:
 for (const selector of [".banner h1", ".rule.c1 h2", ".rule.c1 p", ".rule.c1", ".motto", ".photo", ".poster"]) await dump(selector);
 await page.screenshot({ path: path.join(out, "1-motto.png") });
 
+// 1a. How a composite's fields are painted (they looked washed out in the light theme)
+await select(".motto");
+console.log("\n=== composite paint", JSON.stringify(await prop("border-radius").locator("input").first().evaluate((input) => {
+  const chain: string[] = [];
+  for (let node: Element | null = input; node && !node.classList.contains("poster-side"); node = node.parentElement) {
+    const style = getComputedStyle(node);
+    chain.push(`${node.className.split(" ")[0]}:op=${style.opacity},color=${style.color}`);
+  }
+  const sheetRules = [...document.styleSheets].flatMap((sheet) => [...sheet.cssRules]).filter((rule) => rule instanceof CSSStyleRule && input.matches(rule.selectorText) && rule.style.color).map((rule) => `${(rule as CSSStyleRule).selectorText} → ${(rule as CSSStyleRule).style.color}`);
+  return { disabled: (input as HTMLInputElement).disabled, chain: chain.slice(0, 2), sheetRules };
+})));
 // 1b. The + of a field showing a default, not the drawn value
 await select(".banner h1");
 await prop("font-size").locator(".gjs-field-arrow-u").click();
@@ -112,7 +123,7 @@ await step("text-align → right", () => prop("text-align").locator("label").fil
 const colourInput = prop("color").locator("input").first();
 await step("color typed red + Enter", async () => { await colourInput.fill("red"); await colourInput.press("Enter"); }, ["color"]);
 await step("color typed #12 (invalid) + Enter", async () => { await colourInput.fill("#12"); await colourInput.press("Enter"); }, ["color"]);
-console.log("  color field now:", await shown("color"));
+console.log("  color field now:", await shown("color"), "| status:", await page.locator(".poster-status").textContent());
 // The swatch: does a picker open, and where?
 await prop("color").locator(".gjs-field-colorp, .gjs-field-color-picker").first().click();
 await page.waitForTimeout(300);
@@ -132,6 +143,7 @@ await step("font-size typed 'abc' + Enter", async () => { const input = prop("fo
 await step("font-size typed 40 then Tab (no Enter)", async () => { const input = prop("font-size").locator("input").first(); await input.fill("40"); await input.press("Tab"); }, ["font-size"]);
 // Line height: "normal" with a "-" unit
 console.log("  line-height units:", (await prop("line-height").locator("select").first().locator("option").allTextContents()).join(" | "));
+console.log("  line-height field (normal):", await shown("line-height"));
 await step("line-height arrow up from normal", () => prop("line-height").locator(".gjs-field-arrow-u").click(), ["line-height", "font-size"]);
 console.log("  line-height field now:", await shown("line-height"));
 await step("line-height typed 1.5 + Enter", async () => { const input = prop("line-height").locator("input").first(); await input.fill("1.5"); await input.press("Enter"); }, ["line-height"]);
@@ -203,5 +215,28 @@ await prop("font-size").locator("input").first().focus();
 await page.locator('button[data-action="style"]').click();
 await page.locator('button[data-action="style"]').click();
 console.log("  panel toggled with a focused field: visible", await prop("font-size").isVisible());
+// 6. The colour picker in a narrow window: is it cut off?
+for (const width of [900, 700]) {
+  await page.setViewportSize({ width, height: 700 });
+  await page.waitForTimeout(300);
+  await select(".motto");
+  await prop("color").locator(".gjs-field-colorp").first().click();
+  await page.waitForTimeout(300);
+  const box = await page.locator(".sp-container:not(.sp-hidden)").first().boundingBox();
+  const low = border.locator(".gjs-field-colorp").first();
+  await page.mouse.click(10, 300);
+  await select(".motto");
+  await low.scrollIntoViewIfNeeded();
+  await low.click();
+  await page.waitForTimeout(300);
+  const lowBox = await page.locator(".sp-container:not(.sp-hidden)").first().boundingBox();
+  console.log("  picker element:", await page.locator(".sp-container:not(.sp-hidden)").first().evaluate((picker) => ({ parent: picker.parentElement?.className, offsetParent: (picker.offsetParent as HTMLElement | null)?.className, top: picker.style.top, position: getComputedStyle(picker).position, inner: innerHeight })));
+  const swatchBox = (await low.boundingBox())!;
+  console.log(`  border-colour picker at ${width}px:`, JSON.stringify(lowBox), lowBox ? (lowBox.y + lowBox.height <= 700 ? "inside" : "CUT OFF") : "not open", "swatch", JSON.stringify(swatchBox), lowBox && (Math.abs(lowBox.y - (swatchBox.y + swatchBox.height)) < 12 || Math.abs(lowBox.y + lowBox.height - swatchBox.y) < 12) ? "against it" : "AWAY FROM IT");
+  await page.screenshot({ path: path.join(out, `6-border-picker-${width}.png`) });
+  console.log(`  picker at ${width}px wide:`, JSON.stringify(box), box ? (box.x >= 0 && box.x + box.width <= width && box.y + box.height <= 700 ? "inside" : "CUT OFF") : "not open");
+  await page.screenshot({ path: path.join(out, `6-picker-${width}.png`) });
+  await page.mouse.click(10, 300);
+}
 console.log("\nscreenshots in", out);
 await browser.close();
