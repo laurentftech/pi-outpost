@@ -630,3 +630,132 @@ test("AFittedPageCannotBeScrolledAway and AZoomedPageKeepsTheViewFilled: scrolli
     }
   }
 });
+
+test("the Format panel's number arrows step by one per click, whatever the pointer does between press and release", async ({ page }) => {
+  const id = await createPoster("Font size", MENU);
+  const { view, canvas } = await show(page, id);
+  await canvas.locator("h1.title").click();
+  await view.locator('button[data-action="style"]').click();
+  const field = view.locator(".gjs-sm-property__font-size");
+  const size = field.locator("input").first();
+  await expect(size).toHaveValue("48");
+  const drawn = async () => (await canvasFrame(page)).evaluate(() => getComputedStyle(document.querySelector("h1.title")!).fontSize);
+  // A click whose pointer wanders down two pixels, as on a trackpad: up still means one more.
+  const press = async (arrow: "u" | "d", dy: number, dx = 0) => {
+    const box = (await field.locator(".gjs-field-arrows").boundingBox())!;
+    const x = box.x + box.width / 2 + dx;
+    const y = box.y + (arrow === "u" ? 3 : box.height - 3);
+    await page.mouse.move(x, y);
+    await page.mouse.down();
+    await page.mouse.move(x, y + dy);
+    await page.mouse.up();
+  };
+  await press("u", 2);
+  await expect(size).toHaveValue("49");
+  await press("u", -2);
+  await expect(size).toHaveValue("50");
+  await press("d", -2);
+  await expect(size).toHaveValue("49");
+  // Each arrow takes its half of the field's height, its width beyond the 7-pixel triangle.
+  await press("u", 0, 6);
+  await expect(size).toHaveValue("50");
+  await press("d", 0, -6);
+  await expect(size).toHaveValue("49");
+  expect(await drawn()).toBe("49px");
+});
+
+test("the Format panel shows what a rule on a parent draws, and its arrows step from there", async ({ page }) => {
+  const id = await createPoster("Drawn style", MENU);
+  const { view, canvas } = await show(page, id);
+  // `.cell h2` names no class of the heading: GrapesJS alone showed medium, Arial, black.
+  await canvas.locator(".cell.c1 h2").click();
+  await view.locator('button[data-action="style"]').click();
+  const field = (name: string) => view.locator(`.gjs-sm-property__${name}`);
+  await expect(field("font-size").locator("input").first()).toHaveValue("28");
+  await expect(field("font-family").locator("select")).toHaveValue("Verdana, Geneva, sans-serif");
+  // Shown, not written: nothing changed until the person changes it.
+  await expect(view.locator('button[data-action="save"]')).toBeDisabled();
+  const drawn = async () => (await canvasFrame(page)).evaluate(() => getComputedStyle(document.querySelector(".cell.c1 h2")!).fontSize);
+  await field("font-size").locator(".gjs-field-arrow-u").click();
+  await expect.poll(drawn).toBe("29px");
+  // Typed below nothing, a text keeps a size.
+  const size = field("font-size").locator("input").first();
+  await size.fill("-5");
+  await size.press("Enter");
+  await expect.poll(drawn).toBe("1px");
+  await save(view);
+  const css = json(await callTool("get_poster", { id })).css as string;
+  expect(css).toMatch(/font-size:\s*1px/);
+  expect(css).not.toMatch(/font-family:\s*Verdana, Geneva/);
+});
+
+test("the Format panel follows the editor's theme, its fields readable in both", async ({ page }) => {
+  const id = await createPoster("Panel theme", MENU);
+  const { view, canvas } = await show(page, id, "light");
+  await canvas.locator(".cell.c1 h2").click();
+  await view.locator('button[data-action="style"]').click();
+  const paint = async () => view.locator(".gjs-sm-property__border-radius input").first().evaluate((input) => {
+    // The panel's ground, under sectors that paint none of their own
+    let ground: Element | null = input;
+    while (ground && getComputedStyle(ground).backgroundColor === "rgba(0, 0, 0, 0)") ground = ground.parentElement;
+    return { text: getComputedStyle(input).color, panel: ground ? getComputedStyle(ground).backgroundColor : "none" };
+  });
+  // GrapesJS's own: light grey text on #444, whatever the editor's theme
+  expect(await paint()).toEqual({ text: "rgb(31, 35, 40)", panel: "rgb(246, 248, 250)" });
+  await page.evaluate(() => window.setHostTheme("dark"));
+  await expect.poll(paint).toEqual({ text: "rgb(230, 237, 243)", panel: "rgb(43, 43, 41)" });
+});
+
+test("a colour typed that is no colour is refused with the reason, the last one kept", async ({ page }) => {
+  const id = await createPoster("Bad colour", MENU);
+  const { view, canvas } = await show(page, id);
+  await canvas.locator(".cell.c1 h2").click();
+  await view.locator('button[data-action="style"]').click();
+  const colour = view.locator(".gjs-sm-property__color input").first();
+  const drawn = async () => (await canvasFrame(page)).evaluate(() => getComputedStyle(document.querySelector(".cell.c1 h2")!).color);
+  await colour.fill("red");
+  await colour.press("Enter");
+  await expect.poll(drawn).toBe("rgb(255, 0, 0)");
+  await colour.fill("#12");
+  await colour.press("Enter");
+  await expect(view.locator(".poster-status")).toHaveText(/“#12” is not a colour/);
+  await expect(colour).toHaveValue("red");
+  expect(await drawn()).toBe("rgb(255, 0, 0)");
+});
+
+test("line spacing reads and steps as a multiple of the text's size", async ({ page }) => {
+  const id = await createPoster("Line spacing", MENU);
+  const { view, canvas } = await show(page, id);
+  await canvas.locator(".cell.c1 h2").click();
+  await view.locator('button[data-action="style"]').click();
+  const spacing = view.locator(".gjs-sm-property__line-height input").first();
+  // normal, shown as the 1.2 it is close to
+  await expect(spacing).toHaveValue("1.2");
+  const drawn = async () => (await canvasFrame(page)).evaluate(() => getComputedStyle(document.querySelector(".cell.c1 h2")!).lineHeight);
+  await spacing.fill("1.5");
+  await spacing.press("Enter");
+  await expect.poll(drawn).toBe("42px");
+  await view.locator(".gjs-sm-property__line-height .gjs-field-arrow-u").click();
+  await expect(spacing).toHaveValue("1.6");
+  await expect.poll(drawn).toBe("44.8px");
+});
+
+test("the colour picker of a swatch low in the panel opens against it, inside the window", async ({ page }) => {
+  await page.setViewportSize({ width: 900, height: 640 });
+  const id = await createPoster("Picker", MENU);
+  const { view, canvas } = await show(page, id);
+  await canvas.locator(".cell.c1 h2").click();
+  await view.locator('button[data-action="style"]').click();
+  const swatch = view.locator(".gjs-sm-property__border .gjs-field-colorp").first();
+  await swatch.scrollIntoViewIfNeeded();
+  await swatch.click();
+  const picker = view.locator(".sp-container:not(.sp-hidden)");
+  await expect(picker).toBeVisible();
+  // In the view's own frame: its window is what the picker must stay inside
+  const fits = await picker.evaluate((element) => {
+    const box = element.getBoundingClientRect();
+    const at = document.querySelector(".gjs-sm-property__border .gjs-field-colorp")!.getBoundingClientRect();
+    return { inside: box.top >= 0 && box.bottom <= innerHeight && box.left >= 0 && box.right <= innerWidth, against: Math.abs(box.top - at.bottom) < 12 || Math.abs(box.bottom - at.top) < 12 };
+  });
+  expect(fits).toEqual({ inside: true, against: true });
+});

@@ -107,7 +107,8 @@ or without them, and also works on the free plan.
 
 - **Double-click a text** to correct it; it rewraps in its box. Click elsewhere when done.
 - **Click an element, then drag it** to move it. **Format** opens the colours, fonts and sizes of
-  the selected element.
+  the selected element, starting from what it is drawn with. Sizes are in pixels; line spacing is
+  a multiple of the text's size, as in a word processor (1.5 for one and a half lines).
 - **Your pictures:** double-click an empty frame, or any picture, and choose a file from your
   computer; or drag a picture file from the Finder or the Explorer onto the page. **Insert ▾ ›
   Picture…** does the same, into the selected frame or in the middle of the page. Pictures are

@@ -19,7 +19,7 @@
  *
  * Browser only.
  */
-import { grapesjs, type Component, type Editor, type IsVisibleFn, type Plugin, type PropertyTypes } from "grapesjs";
+import { grapesjs, type Component, type Editor, type IsVisibleFn, type Plugin, type Property, type PropertyComposite, type PropertySelect, type PropertyTypes } from "grapesjs";
 import parserModule from "grapesjs-parser-postcss";
 import { FORMATS, pageOf, type PosterFormat } from "./format.ts";
 import { DOCX_MEDIA_TYPE, PPTX_MEDIA_TYPE, exportFileName, posterDocx, posterPptx } from "./office.ts";
@@ -313,6 +313,97 @@ const SHAPE_SECTOR = {
   ] as PropertyTypes[],
 };
 
+/**
+ * The Format panel's text fields. A size is in pixels, as the guide writes posters: a unit list
+ * let px become em with the number kept, 28px jumping to 448. A text is never sized to nothing.
+ */
+const TEXT_SECTOR = {
+  name: "Text",
+  open: true,
+  properties: [
+    "font-family",
+    { extend: "font-size", units: ["px"], min: 1 },
+    "font-weight",
+    "color",
+    "text-align",
+    // Line spacing as a multiple of the text's size, as a word processor offers it: 1.5 typed
+    // meant one and a half lines, and drew lines 1.5px apart, on top of one another.
+    { extend: "line-height", units: [], step: 0.1, min: 0.5, max: 5 },
+  ] as (string | PropertyTypes)[],
+};
+
+/** An opaque `rgb()` as the browser computes it, written as the #rrggbb a person would type. */
+function hexColour(colour: string): string {
+  const channels = /^rgb\((\d+),\s*(\d+),\s*(\d+)\)$/.exec(colour);
+  return channels ? `#${channels.slice(1).map((channel) => Number(channel).toString(16).padStart(2, "0")).join("")}` : colour;
+}
+
+/** The first font a font-family names, unquoted: what a font list shows. */
+function firstFont(fonts: string): string {
+  return fonts.split(",")[0]!.replace(/["']/g, "").trim();
+}
+
+/** The font list's choice for `fonts`: the offered font of the same first name, else `fonts`, added to the list. */
+function offeredFont(select: PropertySelect, fonts: string): string {
+  const options = select.getOptions().map((option) => select.getOptionId(option));
+  const offered = options.find((id) => id === fonts) ?? options.find((id) => firstFont(id).toLowerCase() === firstFont(fonts).toLowerCase());
+  if (offered !== undefined) return offered;
+  select.addOption({ id: fonts, label: firstFont(fonts) });
+  return fonts;
+}
+
+/**
+ * Fills the Format panel's fields left empty from what the selected element is drawn with.
+ *
+ * GrapesJS reads the element's own style and the rules on its classes, and only those: a rule
+ * such as `.banner h1`, which models write all the time, is not read. Its fields showed defaults
+ * — Arial, medium, black — and the arrows stepped from nothing, a 56px title going to 0px. What
+ * is drawn is shown as inherited, and written only when the person changes it.
+ */
+function showDrawnStyle(editor: Editor) {
+  const component = editor.getSelected();
+  const element = component?.getEl();
+  const view = element?.ownerDocument.defaultView;
+  if (!component || !element || !view) return;
+  const drawn = view.getComputedStyle(element);
+  const fill = (property: Property) => {
+    if (property.getType() === "stack") return;
+    if (property.getType() === "composite") {
+      for (const part of (property as PropertyComposite).getProperties()) fill(part);
+      return;
+    }
+    const name = property.getName();
+    if (name === "line-height") {
+      // Shown as the multiple it draws, whether set in px, unitless or left to normal
+      const lines = drawn.lineHeight === "normal" ? 1.2 : parseFloat(drawn.lineHeight) / parseFloat(drawn.fontSize);
+      const shown = String(Math.round(lines * 100) / 100);
+      if (String(property.getValue()) !== shown || property.get("unit")) {
+        if (!property.hasValue()) property.__setParentTarget(component);
+        property.upValue(shown, { __up: true });
+      }
+      return;
+    }
+    if (property.hasValue()) {
+      // A font a rule on the element's classes names, absent from the list, showed an empty choice
+      if (name === "font-family") {
+        const font = String(property.getValue());
+        const shown = offeredFont(property as PropertySelect, font);
+        if (shown !== font) property.upValue(shown, { __up: true });
+      }
+      return;
+    }
+    let value = drawn.getPropertyValue(name).trim();
+    // A border's style stays the panel's own until set: filled with "none", a width typed would draw nothing.
+    if (value === "" || value === "none" || /^rgba\(.*,\s*0\)$/.test(value) || value === "transparent") return;
+    if (name === "text-align") value = { start: "left", end: "right" }[value] ?? value;
+    if (property.getType() === "color") value = hexColour(value);
+    if (name === "font-family") value = offeredFont(property as PropertySelect, value);
+    property.__setParentTarget(component);
+    property.upValue(value, { __up: true });
+  };
+  for (const sector of editor.StyleManager.getSectors()) for (const property of sector.getProperties()) fill(property);
+}
+
 /** A small picture of each shape for the menu, drawn as the shape is. */
 function shapeIcon(name: ShapeName): SVGSVGElement {
   const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
@@ -402,6 +493,14 @@ export function mountEditor(root: HTMLElement, host: PosterHost): PosterEditor {
   canvasArea.append(gjs);
   const side = element("aside", { class: "poster-side" });
   const styles = element("div");
+  // A number field's arrows step by one per click. GrapesJS also changes the value by dragging
+  // from them, pixel by pixel from the press: a click whose pointer wanders a pixel or two, as on
+  // a trackpad, went the wrong way or twice as far. The press is kept from it; the click remains.
+  styles.addEventListener("mousedown", (event) => {
+    if (!(event.target as Element | null)?.closest?.("[data-arrows]")) return;
+    event.preventDefault();
+    event.stopPropagation();
+  }, true);
   side.append(styles);
   work.append(canvasArea, side);
   const notice = element("p", { class: "poster-notice" });
@@ -438,6 +537,45 @@ export function mountEditor(root: HTMLElement, host: PosterHost): PosterEditor {
     statusLine.textContent = message;
     statusLine.dataset.kind = kind;
   };
+  // A colour typed that is no colour was written as black. It is refused instead: the field goes
+  // back to what it showed, and the status line says why.
+  const colourBefore = new WeakMap<HTMLInputElement, string>();
+  styles.addEventListener("focusin", (event) => {
+    const input = event.target as HTMLInputElement;
+    if (input.closest?.(".gjs-field-color")) colourBefore.set(input, input.value);
+  });
+  styles.addEventListener("change", (event) => {
+    const input = event.target as HTMLInputElement;
+    if (!input.closest?.(".gjs-field-color")) return;
+    const typed = input.value.trim();
+    if (typed === "" || typed === "none" || CSS.supports("color", typed)) {
+      colourBefore.set(input, input.value);
+      return;
+    }
+    event.stopPropagation();
+    input.value = colourBefore.get(input) ?? "";
+    status(`“${typed}” is not a colour: type a name such as red, or a code such as #ff8800.`, "error");
+  }, true);
+  // The colour picker opens under its swatch, where the swatch was before the panel scrolled to
+  // it: for one low in the panel (the border's) it opened far from it, below the window. Once
+  // shown, it is put against its swatch, below it or above it, inside the window. (Capture: the
+  // swatch's own handler stops the click.)
+  styles.addEventListener("click", (event) => {
+    const swatch = (event.target as Element | null)?.closest?.(".gjs-field-colorp");
+    if (!swatch) return;
+    requestAnimationFrame(() => {
+      const picker = document.querySelector<HTMLElement>(".sp-container:not(.sp-hidden)");
+      if (!picker) return;
+      const at = swatch.getBoundingClientRect();
+      const { width, height } = picker.getBoundingClientRect();
+      const margin = 4;
+      const below = at.bottom + margin;
+      const top = below + height <= innerHeight - margin ? below : Math.max(margin, at.top - margin - height);
+      const left = Math.min(Math.max(margin, at.right - width), innerWidth - margin - width);
+      picker.style.top = `${top + scrollY}px`;
+      picker.style.left = `${left + scrollX}px`;
+    });
+  }, true);
   const size = () => FORMATS[shown!.format];
 
   function fitZoom() {
@@ -1018,7 +1156,7 @@ export function mountEditor(root: HTMLElement, host: PosterHost): PosterEditor {
         appendTo: styles,
         sectors: [
           SHAPE_SECTOR,
-          { name: "Text", open: true, properties: ["font-family", "font-size", "font-weight", "color", "text-align", "line-height"] },
+          TEXT_SECTOR,
           { name: "Background and border", open: true, properties: ["background-color", "border-radius", "border"] },
           { name: "Size", open: false, properties: ["width", "height", "padding", "margin"] },
         ],
@@ -1027,6 +1165,13 @@ export function mountEditor(root: HTMLElement, host: PosterHost): PosterEditor {
       style: shown.css,
     });
     editor = opened;
+    // Every refresh of the fields, on selection, undo or a change, then fills what GrapesJS left empty.
+    const styleManager = opened.StyleManager;
+    const upProps = styleManager.__upProps.bind(styleManager);
+    styleManager.__upProps = (opts) => {
+      upProps(opts);
+      showDrawnStyle(opened);
+    };
     opened.on("poster:pick-picture", (target: Component) => pickPicture(target));
     opened.on("load", () => {
       if (editor !== opened) return;

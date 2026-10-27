@@ -16,6 +16,8 @@
   --error: #cf222e;
   --ok: #1a7f37;
   --notice: #fff8c5;
+  --set: #0969da;
+  --inherited: #9a6700;
 }
 :root[data-theme="dark"] {
   color-scheme: dark;
@@ -31,6 +33,8 @@
   --error: #ff7b72;
   --ok: #3fb950;
   --notice: #3a3320;
+  --set: #4493f8;
+  --inherited: #d29922;
 }
 html, body { margin: 0; font: 13px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; color: var(--fg); background: var(--bg); }
 /* A fixed height inline: a host that sizes the frame from the page's own height (Claude)
@@ -77,6 +81,42 @@ html[data-display="fullscreen"] .poster-shell { height: 100vh; padding-bottom: 9
 .poster-side { width: 240px; overflow-y: auto; border-left: 1px solid var(--line); }
 html:not([data-poster-panel="open"]) .poster-side { display: none; }
 .poster-side .gjs-clm-tags { display: none; }
+/* The Format panel and its colour picker in the editor's theme, not GrapesJS's own dark grey. A
+   label in --set is the element's own value, in --inherited one it is drawn with (editor.ts). */
+.poster-side, .sp-container {
+  --gjs-main-color: var(--bg);
+  --gjs-primary-color: var(--bg);
+  --gjs-secondary-color: var(--fg);
+  --gjs-font-color: var(--fg);
+  --gjs-font-color-active: var(--fg);
+  --gjs-main-dark-color: var(--button);
+  --gjs-secondary-dark-color: var(--button-hover);
+  --gjs-main-light-color: var(--button-hover);
+  --gjs-secondary-light-color: var(--muted);
+  --gjs-soft-light-color: transparent;
+  --gjs-light-border: var(--line);
+  --gjs-arrow-color: var(--muted);
+  --gjs-dark-text-shadow: transparent;
+  --gjs-quaternary-color: var(--set);
+  --gjs-color-warn: var(--inherited);
+  --gjs-main-font: inherit;
+}
+.poster-side { background: var(--bg); }
+/* What GrapesJS paints in literal light-on-dark colours rather than its variables */
+.poster-side .gjs-sm-field input, .poster-side .gjs-sm-field select { color: var(--fg); }
+.poster-side .gjs-radio-item input:checked + .gjs-radio-item-label { background-color: var(--pressed); }
+.poster-side .gjs-sm-sector.gjs-sm-open, .poster-side .gjs-sm-field.gjs-sm-composite { border-color: var(--line); }
+.poster-side .gjs-sm-sector-title { border-color: var(--line); }
+/* A swatch the colour of the panel, white on white, still shows where it is */
+.poster-side .gjs-field-colorp { border-left-color: var(--line); }
+.poster-side .gjs-field-color-picker { box-shadow: inset 0 0 0 1px var(--line); }
+/* A number field's arrows are 7×4 triangles: each takes its half of the field's height to click,
+   and they step by click only (editor.ts), so they say so rather than offering to drag. */
+.poster-side .gjs-field-arrows { cursor: pointer; width: 16px; right: 0; }
+.poster-side .gjs-field-arrow-u, .poster-side .gjs-field-arrow-d { left: 4px; }
+.poster-side .gjs-field-arrow-u::before, .poster-side .gjs-field-arrow-d::before { content: ""; position: absolute; left: -7px; width: 16px; height: 10px; }
+.poster-side .gjs-field-arrow-u::before { top: -4px; }
+.poster-side .gjs-field-arrow-d::before { top: -6px; }
 .poster-status { padding: 5px 8px; border-top: 1px solid var(--line); color: var(--muted); min-height: 1.4em; }
 .poster-status[data-kind="error"] { color: var(--error); }
 .poster-status[data-kind="ok"] { color: var(--ok); }
