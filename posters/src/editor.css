@@ -77,6 +77,13 @@ html[data-display="fullscreen"] .poster-shell { height: 100vh; padding-bottom: 9
 .poster-side { width: 240px; overflow-y: auto; border-left: 1px solid var(--line); }
 html:not([data-poster-panel="open"]) .poster-side { display: none; }
 .poster-side .gjs-clm-tags { display: none; }
+/* A number field's arrows are 7×4 triangles: each takes its half of the field's height to click,
+   and they step by click only (editor.ts), so they say so rather than offering to drag. */
+.poster-side .gjs-field-arrows { cursor: pointer; width: 16px; right: 0; }
+.poster-side .gjs-field-arrow-u, .poster-side .gjs-field-arrow-d { left: 4px; }
+.poster-side .gjs-field-arrow-u::before, .poster-side .gjs-field-arrow-d::before { content: ""; position: absolute; left: -7px; width: 16px; height: 10px; }
+.poster-side .gjs-field-arrow-u::before { top: -4px; }
+.poster-side .gjs-field-arrow-d::before { top: -6px; }
 .poster-status { padding: 5px 8px; border-top: 1px solid var(--line); color: var(--muted); min-height: 1.4em; }
 .poster-status[data-kind="error"] { color: var(--error); }
 .poster-status[data-kind="ok"] { color: var(--ok); }
