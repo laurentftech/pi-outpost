@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
-import { describe, it } from "node:test";
+import { describe, it, mock } from "node:test";
 import type { CreateAgentSessionRuntimeFactory } from "@earendil-works/pi-coding-agent";
 import type { RuntimeEvent } from "../src/agentRuntime.ts";
-import { EmbeddedRuntime } from "../src/embeddedRuntime.ts";
+import { EmbeddedRuntime, type SessionBuild } from "../src/embeddedRuntime.ts";
 import { ExtensionRenderer } from "../src/extensionRender.ts";
 
 describe("EmbeddedRuntime tool rebuilding", () => {
@@ -217,5 +217,54 @@ describe("EmbeddedRuntime startup binding", () => {
     await waitFor(() => events.some((event) => event.type === "error"), "the late failure to be reported");
     const reported = events.find((event) => event.type === "error");
     assert.match(reported && reported.type === "error" ? reported.message : "", /openlore never answered/);
+  });
+});
+
+describe("EmbeddedRuntime session replacement timing", () => {
+  /**
+   * A replacement runs on a clock the test moves: leaving the previous session takes
+   * `shutdownMs`, the factory `loadMs`. What it logs is read from console.warn.
+   */
+  async function replaceOn({ shutdownMs, loadMs, factoryRuns = true }: { shutdownMs: number; loadMs: number; factoryRuns?: boolean }) {
+    let now = 1_000_000;
+    let build: SessionBuild | undefined;
+    const clock = mock.method(Date, "now", () => now);
+    const warned: string[] = [];
+    const warn = mock.method(console, "warn", (message: string) => warned.push(message));
+    const session = { subscribe: () => () => {}, bindExtensions: async () => {} };
+    const sdkRuntime = {
+      session,
+      async newSession() {
+        now += shutdownMs;
+        if (factoryRuns) {
+          const startedAt = now;
+          now += loadMs;
+          build = { startedAt, endedAt: now };
+        }
+        return { cancelled: false };
+      },
+    };
+    const runtime = new EmbeddedRuntime(sdkRuntime as never, "/nowhere", (factory) => factory, () => build);
+    try {
+      await runtime.newSession();
+    } finally {
+      clock.mock.restore();
+      warn.mock.restore();
+    }
+    return warned;
+  }
+
+  it("says where a slow new session's time went: leaving the previous one, loading, binding", async () => {
+    const warned = await replaceOn({ shutdownMs: 2_100, loadMs: 6_200 });
+    assert.deepEqual(warned, ["[pi] new session took 8.3s — previous session shutdown 2.1s, session and extension load 6.2s, extension bind 0.0s"]);
+  });
+
+  it("says nothing of a quick one", async () => {
+    assert.deepEqual(await replaceOn({ shutdownMs: 300, loadMs: 900 }), []);
+  });
+
+  it("does not credit a replacement with a build it did not make", async () => {
+    const warned = await replaceOn({ shutdownMs: 3_000, loadMs: 0, factoryRuns: false });
+    assert.deepEqual(warned, ["[pi] new session took 3.0s — extension bind 0.0s"]);
   });
 });

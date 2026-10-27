@@ -791,6 +791,7 @@ conversation tree as a single branch. See the README's [Agent runtimes](../READM
 | A bare `fetch failed` | A TLS-inspecting proxy. `export NODE_EXTRA_CA_CERTS=/path/to/corp-ca.pem` |
 | Every turn fails on your own endpoint | The compatibility flags. Untick both, or set `compat` in `models.json` |
 | Each credential change hangs ~20 s | Remote model catalogs are unreachable. `"offline": true` |
+| Starting, or **+ new**, takes a long time | A new session builds the agent again: extensions loaded, MCP servers restarted. Past 2 s the server log says where the time went — `new session took 8.3s — previous session shutdown 2.1s, session and extension load 6.2s, extension bind 1.0s` (`agent runtime built in …` at startup). A late `extensions bound after …` names the extensions' own start |
 | A remote browser cannot connect | The origin is not allowed. Add the exact origin you type to `server.allowedOrigins`; the log line names it |
 | The file tree does not follow changes | Watching may be off (`files.watch`) or the filesystem emits no events. The tree's ↻ control re-lists by hand |
 | Settings will not change the sandbox | Either a `sandboxLocks` entry, or the RPC runtime, which has no sandbox to change |
