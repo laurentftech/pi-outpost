@@ -758,6 +758,8 @@ test("the colour picker of a swatch low in the panel opens against it, inside th
     return { inside: box.top >= 0 && box.bottom <= innerHeight && box.left >= 0 && box.right <= innerWidth, against: Math.abs(box.top - at.bottom) < 12 || Math.abs(box.bottom - at.top) < 12 };
   });
   expect(fits).toEqual({ inside: true, against: true });
+});
+
 // openlore: scenario=ADiagramPictureElsewhereStillAsksForAFile spec=poster-elements
 test("ADiagramPictureElsewhereStillAsksForAFile: in a host that draws no diagrams, a diagram's picture is filled like any other", async ({ page }) => {
   const DIAGRAM = {
