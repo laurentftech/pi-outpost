@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { DirEntry, GitFileState } from "@pi-outpost/shared";
 import type { DirState, FileOperationState } from "../useAgent";
+import { readUploadFile, UploadContextChangedError } from "../uploads";
 
 const FILE_DRAG_TYPE = "application/x-pi-outpost-file";
 const FILE_COPY_DRAG_TYPE = "application/x-pi-outpost-read-only-file";
@@ -31,6 +32,11 @@ interface RenameState {
   start: (path: string) => void;
   cancel: () => void;
   submit: (path: string, raw: string) => void;
+}
+
+interface ImportState {
+  pending: boolean;
+  start: (directory: string, transfer: DataTransfer) => void;
 }
 
 interface TreeProps {
@@ -77,6 +83,10 @@ interface TreeProps {
   onDeleteFile?: (path: string) => void;
   onMoveFile?: (path: string, destinationDirectory: string) => void;
   onCopyFile?: (path: string, destinationDirectory: string) => void;
+  /** Import external bytes into an existing directory, returning the actual saved path. */
+  onUploadFile?: (name: string, contentBase64: string, destinationDirectory: string) => Promise<string>;
+  /** Internal: the batch shared by every target in this tree. */
+  imports?: ImportState;
   fileOperation?: FileOperationState | null;
   /** The server's refusal of the last creation request, if it refused one. */
   createError?: { path: string; message: string } | null;
@@ -258,7 +268,7 @@ function TreeNode({
   const lifecyclePending = props.fileOperation?.status === "pending";
 
   if (isDir(entry.type)) {
-    const acceptsDrop = !readOnly && !lifecyclePending;
+    const acceptsDrop = !readOnly && !lifecyclePending && !props.imports?.pending;
     const transferFor = (types: readonly string[]) =>
       types.includes(FILE_COPY_DRAG_TYPE)
         ? props.onCopyFile === undefined
@@ -277,8 +287,17 @@ function TreeNode({
     return (
       <div>
         <div
-          className={`group flex w-full items-center rounded hover:bg-zinc-100 dark:hover:bg-zinc-800 ${dropActive ? "bg-blue-50 ring-1 ring-blue-400 dark:bg-blue-950/40" : ""}`}
+          className={`group flex w-full items-center rounded hover:bg-zinc-100 dark:hover:bg-zinc-800 ${dropActive && acceptsDrop ? "bg-blue-50 ring-1 ring-blue-400 dark:bg-blue-950/40" : ""}`}
+          data-drop-directory={fullPath}
           onDragOver={(event) => {
+            const types = Array.from(event.dataTransfer.types);
+            if (types.includes("Files") && !types.includes(FILE_DRAG_TYPE) && props.imports) {
+              event.preventDefault();
+              event.stopPropagation();
+              event.dataTransfer.dropEffect = acceptsDrop ? "copy" : "none";
+              setDropActive(acceptsDrop);
+              return;
+            }
             if (!acceptsDrop || !Array.from(event.dataTransfer.types).includes(FILE_DRAG_TYPE)) return;
             const transfer = transferFor(Array.from(event.dataTransfer.types));
             if (transfer === null) return;
@@ -287,8 +306,22 @@ function TreeNode({
             event.dataTransfer.dropEffect = transfer;
             setDropActive(true);
           }}
-          onDragLeave={() => setDropActive(false)}
+          onDragLeave={(event) => {
+            if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDropActive(false);
+          }}
           onDrop={(event) => {
+            const types = Array.from(event.dataTransfer.types);
+            if (types.includes("Files") && !types.includes(FILE_DRAG_TYPE) && props.imports) {
+              event.preventDefault();
+              event.stopPropagation();
+              setDropActive(false);
+              if (acceptsDrop) {
+                setOpen(true);
+                if (props.tree[fullPath] === undefined) props.onExpand(fullPath);
+                props.imports.start(fullPath, event.dataTransfer);
+              }
+              return;
+            }
             if (!acceptsDrop) return;
             const source = event.dataTransfer.getData(FILE_DRAG_TYPE);
             const transfer = source ? transferFor(Array.from(event.dataTransfer.types)) : null;
@@ -501,6 +534,51 @@ export function renameRequest(raw: string): { name: string } | { error: string }
 
 /** Lazily-loaded file/directory tree for the sidebar. */
 export function FileTree(props: TreeProps) {
+  const importingRef = useRef(false);
+  const [importing, setImporting] = useState(false);
+  const [importPaths, setImportPaths] = useState<string[]>([]);
+  const [importErrors, setImportErrors] = useState<string[]>([]);
+  const [rootDropActive, setRootDropActive] = useState(false);
+  const imports: ImportState | undefined = props.onUploadFile ? {
+    pending: importing,
+    start: (directory, transfer) => {
+      if (importingRef.current) return;
+      const items = Array.from(transfer.items ?? []).filter((item) => item.kind === "file");
+      let hasDirectories = false;
+      const files = items.length > 0 ? items.flatMap((item) => {
+        if (item.webkitGetAsEntry?.()?.isDirectory) {
+          hasDirectories = true;
+          return [];
+        }
+        const file = item.getAsFile();
+        return file ? [file] : [];
+      }) : Array.from(transfer.files);
+      setImportPaths([]);
+      setImportErrors(hasDirectories ? ["Folders cannot be imported here; drop files instead."] : []);
+      if (files.length === 0) return;
+      importingRef.current = true;
+      setImporting(true);
+      const upload = props.onUploadFile!;
+      void (async () => {
+        try {
+          for (const file of files) {
+            try {
+              const content = await readUploadFile(file);
+              const saved = await upload(file.name, content, directory);
+              setImportPaths((paths) => [...paths, saved]);
+            } catch (error) {
+              setImportErrors((errors) => [...errors, `${file.name}: ${error instanceof Error ? error.message : String(error)}`]);
+              if (error instanceof UploadContextChangedError) break;
+            }
+          }
+        } finally {
+          importingRef.current = false;
+          setImporting(false);
+        }
+      })();
+    },
+  } : undefined;
+
   const [openIn, setOpenIn] = useState<string | null>(null);
   const [localError, setLocalError] = useState<string | null>(null);
   /** What was asked for, so the input can close once the tree shows it. */
@@ -619,6 +697,33 @@ export function FileTree(props: TreeProps) {
 
   return (
     <div className="text-sm">
+      {imports && (
+        <div
+          data-drop-directory=""
+          title={rootWritable ? "Drop files here to import into the workspace root" : "The workspace root is read-only"}
+          className={`mb-1 rounded border border-dashed px-2 py-1 text-xs ${rootWritable ? "text-zinc-500 dark:text-zinc-400" : "text-zinc-400 dark:text-zinc-600"} ${rootDropActive && rootWritable && !importing ? "bg-blue-50 ring-1 ring-blue-400 dark:bg-blue-950/40" : "border-zinc-200 dark:border-zinc-800"}`}
+          onDragOver={(event) => {
+            if (!Array.from(event.dataTransfer.types).includes("Files")) return;
+            event.preventDefault();
+            event.stopPropagation();
+            event.dataTransfer.dropEffect = rootWritable && !importing ? "copy" : "none";
+            setRootDropActive(rootWritable && !importing);
+          }}
+          onDragLeave={(event) => {
+            if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setRootDropActive(false);
+          }}
+          onDrop={(event) => {
+            if (!Array.from(event.dataTransfer.types).includes("Files")) return;
+            event.preventDefault();
+            event.stopPropagation();
+            setRootDropActive(false);
+            if (rootWritable && !importingRef.current) imports.start("", event.dataTransfer);
+          }}
+        >Workspace root</div>
+      )}
+      {importing && <p role="status" className="mb-1 px-2 text-xs text-zinc-500">Importing files…</p>}
+      {importPaths.length > 0 && <p role="status" className="mb-1 break-words px-2 text-xs text-emerald-700 dark:text-emerald-400">Imported: {importPaths.join(", ")}</p>}
+      {importErrors.map((error, index) => <p key={index} role="alert" className="mb-1 break-words px-2 text-xs text-red-600 dark:text-red-400">{error}</p>)}
       {props.fileOperation?.status === "error" && props.fileOperation.operation !== "rename_file" && (
         <p role="alert" className="mb-1 rounded bg-red-50 px-2 py-1 text-xs text-red-700 dark:bg-red-950/40 dark:text-red-300">
           {props.fileOperation.message}
@@ -653,7 +758,7 @@ export function FileTree(props: TreeProps) {
           )}
         </div>
       )}
-      <DirChildren path="" depth={0} {...props} {...(creation ? { creation } : {})} {...(rename ? { rename } : {})} />
+      <DirChildren path="" depth={0} {...props} imports={imports} {...(creation ? { creation } : {})} {...(rename ? { rename } : {})} />
     </div>
   );
 }

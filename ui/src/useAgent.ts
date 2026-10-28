@@ -41,7 +41,7 @@ import type {
 } from "@pi-outpost/shared";
 import { HISTORY_CHUNK } from "@pi-outpost/shared";
 import { HistoryError, type HistoryWindow } from "./conversationHistory";
-import { UPLOADS_DIRECTORY, UploadError } from "./uploads";
+import { UPLOADS_DIRECTORY, UploadError, UploadContextChangedError } from "./uploads";
 import { FileIoError, type FileIo } from "./fileIo";
 import { isImageFile, isPdfFile } from "./util/workspacePath";
 
@@ -1793,12 +1793,24 @@ export function useAgent(serverUrl = "", explicitToken?: string, embedded = fals
     socket: WebSocket | null;
   }>());
   const boundKey = state.workspace ? workspaceKey(state.workspace) : null;
+  // A file read can finish after a workspace switch was requested or acknowledged.
+  // Old tree callbacks must not send their bytes on the newly bound socket.
+  const uploadScopeRef = useRef({
+    key: boundKey,
+    root: state.sandbox?.projectRoot ?? state.sandbox?.root,
+    writableRoot: state.writableRoot,
+  });
+  const uploadGenerationRef = useRef(0);
+  const uploadGeneration = uploadGenerationRef.current;
+
   const outcomeIdentityRef = useRef({ workspaceRoot: boundKey, sessionId: state.sessionId });
   useEffect(() => {
     outcomeIdentityRef.current = { workspaceRoot: boundKey, sessionId: state.sessionId };
   }, [boundKey, state.sessionId]);
 
   const sendMessage = useCallback((message: ClientMessage) => {
+    if (["switch_workspace", "open_project", "close_project", "open_side_session"].includes(message.type)) uploadGenerationRef.current++;
+
     const socket = socketRef.current;
     if (socket && socket.readyState === WebSocket.OPEN) {
       socket.send(JSON.stringify(message));
@@ -2134,6 +2146,17 @@ export function useAgent(serverUrl = "", explicitToken?: string, embedded = fals
           waiter.resolve({ results: message.results });
           return;
         }
+        if (message.type === "hello" || message.type === "workspace_switched" || message.type === "workspace_starting" || message.type === "session_replaced" || message.type === "update_config_ack") {
+          const nextScope = {
+            key: message.workspace ? workspaceKey(message.workspace) : null,
+            root: message.sandbox?.projectRoot ?? message.sandbox?.root,
+            writableRoot: message.writableRoot,
+          };
+          const previous = uploadScopeRef.current;
+          if (message.type === "hello" || previous.key !== nextScope.key || previous.root !== nextScope.root || previous.writableRoot !== nextScope.writableRoot) uploadGenerationRef.current++;
+          uploadScopeRef.current = nextScope;
+          writableRootRef.current = message.writableRoot;
+        }
         if (message.type === "file_uploaded") {
           const waiter = uploadWaitersRef.current.get(message.requestId);
           if (waiter) {
@@ -2288,6 +2311,7 @@ export function useAgent(serverUrl = "", explicitToken?: string, embedded = fals
       socket.onclose = (event) => {
         // Superseded sockets must not flip the indicator (StrictMode remount, reconnect races)
         if (socketRef.current !== socket) return;
+        uploadGenerationRef.current++;
         // An in-flight git_status will never be answered on this socket — clear the
         // coalescing flags or the branch chip/badges freeze until a page reload
         gitStatusInFlight.current.clear();
@@ -2567,11 +2591,15 @@ export function useAgent(serverUrl = "", explicitToken?: string, embedded = fals
     },
     /**
      * Copy a file supplied from outside the workspace into the uploads directory,
-     * resolving with the path the server wrote. A read-only sandbox is refused
+     * or an explicitly selected existing tree directory, resolving with its saved path.
+     * A read-only sandbox is refused
      * here rather than over the wire: the client already knows there is no
      * writable zone, and a round trip would only delay the same answer.
      */
-    uploadFile: (name: string, contentBase64: string): Promise<string> => {
+    uploadFile: (name: string, contentBase64: string, directory?: string): Promise<string> => {
+      if (directory !== undefined && (state.switching || uploadGeneration !== uploadGenerationRef.current)) {
+        return Promise.reject(new UploadContextChangedError());
+      }
       const writableRoot = writableRootRef.current;
       if (writableRoot === null) {
         return Promise.reject(new UploadError("the workspace is read-only", "denied"));
@@ -2580,7 +2608,7 @@ export function useAgent(serverUrl = "", explicitToken?: string, embedded = fals
       if (!socket || socket.readyState !== WebSocket.OPEN) {
         return Promise.reject(new UploadError("not connected to the server"));
       }
-      const destinationDirectory = writableRoot ? `${writableRoot}/${UPLOADS_DIRECTORY}` : UPLOADS_DIRECTORY;
+      const destinationDirectory = directory ?? (writableRoot ? `${writableRoot}/${UPLOADS_DIRECTORY}` : UPLOADS_DIRECTORY);
       const requestId = `upload:${randomId()}`;
       return new Promise<string>((resolve, reject) => {
         // A dropped socket already rejects every waiter. This covers the other
@@ -2596,8 +2624,21 @@ export function useAgent(serverUrl = "", explicitToken?: string, embedded = fals
           clearTimeout(timer);
           run(value);
         };
-        uploadWaitersRef.current.set(requestId, { resolve: settle(resolve), reject: settle(reject) });
-        sendMessage({ type: "upload_file", destinationDirectory, name, contentBase64, requestId });
+        uploadWaitersRef.current.set(requestId, {
+          resolve: settle((saved: string) => {
+            if (directory !== undefined) {
+              if (uploadGeneration !== uploadGenerationRef.current) {
+                reject(new UploadContextChangedError());
+                return;
+              }
+              // The returned path may be canonical while the tree shows a symlink alias.
+              requestDirectory(directory, true);
+            }
+            resolve(saved);
+          }),
+          reject: settle(reject),
+        });
+        sendMessage({ type: "upload_file", destinationDirectory, name, contentBase64, requestId, ...(directory === undefined ? {} : { existingDirectory: true, workspaceId: boundKey ?? undefined }) });
       });
     },
     /** Create one directory; answered with its (empty) listing. */

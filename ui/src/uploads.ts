@@ -8,9 +8,10 @@
 import type { FileBrowserErrorReason } from "@pi-outpost/shared";
 
 /**
- * Where copies land, relative to the writable root. A dropped file is not a
+ * Where attachment copies land, relative to the writable root. A file attached to the conversation is not a
  * statement about where in the project it belongs, so it goes somewhere
  * predictable rather than into whichever directory the tree happens to show.
+ * Tree imports explicitly choose an existing folder instead.
  *
  * Not dot-prefixed on purpose: file search skips `.`-prefixed entries, and a file
  * the agent is meant to find should be findable.
@@ -39,6 +40,14 @@ export class UploadError extends Error {
   }
 }
 
+/** Ends a batch whose destination no longer belongs to the active workspace. */
+export class UploadContextChangedError extends UploadError {
+  constructor() {
+    super("The workspace changed before the import finished");
+    this.name = "UploadContextChangedError";
+  }
+}
+
 /**
  * Copies one file into the workspace and resolves with the path actually
  * written — which is not always the name asked for, since the server
@@ -46,3 +55,15 @@ export class UploadError extends Error {
  * builder, so its unit tests keep running without a socket.
  */
 export type UploadFile = (name: string, contentBase64: string) => Promise<string>;
+
+/** Read a tree import without the composer's MIME classification or text inlining. */
+export function readUploadFile(file: File): Promise<string> {
+  if (file.size > MAX_UPLOAD_BYTES) return Promise.reject(new UploadError("Files are limited to 25 MB", "too-large"));
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result).split(",", 2)[1] ?? "");
+    reader.onerror = () => reject(new UploadError("The file could not be read"));
+    reader.onabort = () => reject(new UploadError("Reading the file was cancelled"));
+    reader.readAsDataURL(file);
+  });
+}

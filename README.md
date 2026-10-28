@@ -191,6 +191,10 @@ one needs, the command that proves it works, and the caution that goes with it.
 - [Several projects open at once](#projects), each with its own agent, sandbox, sessions and
   history — switch between them while work continues in the ones you are not watching, and
   get a browser notification when a background project needs an answer or is ready for review
+- Import files by dropping them on a writable folder in the file tree, or on its **Workspace root**
+  target. Files are copied there without being attached to the conversation. The tree shows progress,
+  saved paths and individual errors; existing files are kept and duplicate names get a numeric suffix.
+  Each file is limited to 25 MB. Drop files rather than folders; read-only destinations refuse imports.
 - File browser: lazy-loaded tree, syntax-highlighted viewer, Markdown rendering, and a code
   editor (CodeMirror) that saves inside the writable zone — line numbers, syntax colours,
   brackets closed and matched, Tab / Shift+Tab, several cursors (Ctrl+D, Alt-click), Alt+arrows

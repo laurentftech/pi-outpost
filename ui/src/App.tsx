@@ -826,6 +826,9 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
         )}
         {sidebarOpen && (
           <Sidebar
+            key={JSON.stringify([boundKey, state.sandbox?.projectRoot ?? state.sandbox?.root])}
+            onUploadFile={uploadFile}
+            onExternalDragEnter={() => setDragDepth(0)}
             tree={state.fileTree}
             openFile={state.openFile}
             writableRoot={state.writableRoot}

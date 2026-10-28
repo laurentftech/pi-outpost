@@ -40,16 +40,12 @@ export const MAX_UPLOAD_BYTES = 26_214_400; // 25 MiB
 export const MAX_UPLOAD_BASE64_LENGTH = Math.ceil(MAX_UPLOAD_BYTES / 3) * 4;
 
 /**
- * The one directory uploads may land in, relative to the writable root. Must match
+ * The default directory for attachment uploads, relative to the writable root. Must match
  * `UPLOADS_DIRECTORY` in `ui/src/uploads.ts`.
  *
- * The client names its destination in the request, but the server does not take
- * its word for it. Without this, `upload_file` would be the most powerful message
- * in the protocol: arbitrary binary content, up to 25 MB, at any path in the
- * writable zone, creating a chain of parent directories on the way — while
- * `create_directory` right below deliberately refuses to create a chain at all,
- * and `write_file` refuses NUL bytes and demands the file already exist. Pinning
- * the destination keeps the new power to the one thing the feature needs.
+ * Attachment uploads remain pinned here and can create missing parents. Tree imports
+ * explicitly choose an existing directory instead; they use the same confinement and
+ * atomic no-overwrite writer but never create a missing destination.
  */
 export const UPLOADS_DIRECTORY = "uploads";
 
@@ -516,7 +512,8 @@ const MAX_UPLOAD_NAME_ATTEMPTS = 1000;
  *
  * `destinationDirectory` is browser-root-relative and need not exist yet; missing
  * directories are created inside the writable zone. The returned path is the one
- * actually written, which is not always the one asked for — see below.
+ * actually written, which is not always the one asked for — see below. An explicit
+ * existingDirectory import requires an existing directory and never creates parents.
  */
 export async function uploadFileFromBrowser(
   root: string,
@@ -524,22 +521,23 @@ export async function uploadFileFromBrowser(
   destinationDirectory: string,
   name: string,
   contentBase64: string,
+  existingDirectory = false,
 ): Promise<string> {
   if (writableRel === null) {
     throw new FileBrowserError("denied", "The sandbox is read-only");
   }
   assertUploadName(name);
   const writableRoot = writableRel === undefined ? root : path.resolve(root, writableRel);
-  const destination = await resolveConfined(root, destinationDirectory);
+  const destination = existingDirectory
+    ? await resolveWritableDirectory(root, writableRel, destinationDirectory)
+    : await resolveConfined(root, destinationDirectory);
   if (!isWithin(writableRoot, destination)) {
     throw new FileBrowserError("denied", `"${destinationDirectory}" is outside the writable zone`);
   }
-  // The destination is pinned, not merely confined: see UPLOADS_DIRECTORY. Checked
-  // after confinement so an escaping path still reports *why* it was refused —
-  // "outside the root" is the more useful answer, and the one the protocol
-  // promises. The request carries a destination at all so that a client and server
-  // that disagree say so, rather than the client writing somewhere it did not mean.
-  if (path.resolve(root, destinationDirectory) !== path.resolve(writableRoot, UPLOADS_DIRECTORY)) {
+  // Composer attachments remain pinned to uploads. Explicit tree imports instead
+  // passed the existing-directory and writable-zone checks above; neither mode
+  // can create arbitrary parents outside the composer's uploads directory.
+  if (!existingDirectory && path.resolve(root, destinationDirectory) !== path.resolve(writableRoot, UPLOADS_DIRECTORY)) {
     throw new FileBrowserError("denied", `Uploads may only be written to "${UPLOADS_DIRECTORY}"`);
   }
 
@@ -555,7 +553,7 @@ export async function uploadFileFromBrowser(
   }
 
   try {
-    await fs.mkdir(destination, { recursive: true });
+    if (!existingDirectory) await fs.mkdir(destination, { recursive: true });
   } catch (error) {
     throw creationError(error, destinationDirectory);
   }

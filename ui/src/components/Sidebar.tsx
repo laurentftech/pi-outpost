@@ -30,6 +30,8 @@ interface SidebarProps {
   onDeleteFile?: (path: string) => void;
   onMoveFile?: (path: string, destinationDirectory: string) => void;
   onCopyFile?: (path: string, destinationDirectory: string) => void;
+  onUploadFile?: (name: string, contentBase64: string, destinationDirectory: string) => Promise<string>;
+  onExternalDragEnter?: () => void;
   fileOperation?: FileOperationState | null;
   /** The server's refusal of the last creation request. */
   createError?: { path: string; message: string } | null;
@@ -58,6 +60,8 @@ export function Sidebar({
   onDeleteFile,
   onMoveFile,
   onCopyFile,
+  onUploadFile,
+  onExternalDragEnter,
   fileOperation,
   createError,
   created,
@@ -76,6 +80,29 @@ export function Sidebar({
   return (
     <aside
       aria-label="Files"
+      onDragEnterCapture={(event) => {
+        if (Array.from(event.dataTransfer.types).includes("Files")) onExternalDragEnter?.();
+      }}
+      onDragEnter={(event) => {
+        if (Array.from(event.dataTransfer.types).includes("Files")) event.stopPropagation();
+      }}
+      onDragLeave={(event) => {
+        if (Array.from(event.dataTransfer.types).includes("Files")) event.stopPropagation();
+      }}
+      onDragOver={(event) => {
+        if (!Array.from(event.dataTransfer.types).includes("Files")) return;
+        event.preventDefault();
+        event.stopPropagation();
+        event.dataTransfer.dropEffect = "none";
+      }}
+      onDropCapture={(event) => {
+        if (Array.from(event.dataTransfer.types).includes("Files")) onExternalDragEnter?.();
+      }}
+      onDrop={(event) => {
+        if (!Array.from(event.dataTransfer.types).includes("Files")) return;
+        event.preventDefault();
+        event.stopPropagation();
+      }}
       style={{ width: resize.width }}
       className="relative flex shrink-0 flex-col border-r border-zinc-200 dark:border-zinc-800"
     >
@@ -103,6 +130,7 @@ export function Sidebar({
           onDeleteFile={onDeleteFile}
           onMoveFile={onMoveFile}
           onCopyFile={onCopyFile}
+          onUploadFile={onUploadFile}
           fileOperation={fileOperation}
           createError={createError}
           created={created}

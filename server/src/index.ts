@@ -4955,10 +4955,11 @@ async function handleUploadFile(workspace: Workspace,
   name: string,
   contentBase64: string,
   requestId: string,
+  existingDirectory = false,
 ): Promise<void> {
   const requestedPath = destinationDirectory ? `${destinationDirectory}/${name}` : name;
   try {
-    const writtenPath = await uploadFileFromBrowser(workspace.browserRoot, workspace.writableRoot, destinationDirectory, name, contentBase64);
+    const writtenPath = await uploadFileFromBrowser(workspace.browserRoot, workspace.writableRoot, destinationDirectory, name, contentBase64, existingDirectory);
     send(socket, { type: "file_uploaded", requestId, path: writtenPath });
     broadcast(workspace, { type: "file_changed", path: writtenPath });
   } catch (error) {
@@ -6048,11 +6049,16 @@ function handleClientMessage(socket: WebSocket, raw: string): void {
         typeof message.destinationDirectory !== "string" ||
         typeof message.name !== "string" ||
         typeof message.contentBase64 !== "string" ||
+        (message.existingDirectory !== undefined && typeof message.existingDirectory !== "boolean") ||
         typeof message.requestId !== "string"
       ) {
         return;
       }
-      handleUploadFile(workspace, socket, message.destinationDirectory, message.name, message.contentBase64, message.requestId).catch(reportError);
+      if (message.existingDirectory === true && message.workspaceId !== workspace.id) {
+        sendFileBrowserError(socket, message.requestId, message.destinationDirectory, new FileBrowserError("denied", "The active workspace changed; drop the files again"));
+        break;
+      }
+      handleUploadFile(workspace, socket, message.destinationDirectory, message.name, message.contentBase64, message.requestId, message.existingDirectory === true).catch(reportError);
       break;
     case "open_native":
       if (typeof message.path !== "string" || typeof message.requestId !== "string") return;
