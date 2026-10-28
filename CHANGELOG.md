@@ -7,6 +7,18 @@ version you had and the one you run now, without going online.
 Releases before 0.41.0 are described on
 [GitHub Releases](https://github.com/laurentftech/pi-outpost/releases).
 
+## [0.54.0] - 2026-10-28
+
+### Added
+
+- **Drop desktop files straight into a workspace folder.** Drag files onto a folder
+  in the Files tree, or onto Workspace root, to import them there without attaching
+  them to the conversation. Progress, saved paths and individual errors stay visible
+  when you close and reopen Files. Existing names receive a numeric suffix instead
+  of being overwritten. Imports accept files up to 25 MB; folder drops and read-only
+  destinations are refused, and changing workspace stops the remaining batch.
+  ([#379](https://github.com/laurentftech/pi-outpost/pull/379))
+
 ## [0.53.0] - 2026-10-28
 
 ### Added
