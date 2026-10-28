@@ -6,6 +6,7 @@ import { FileTree } from "./FileTree";
 import { PanelResizeHandle, useResizablePanelWidth } from "./PanelResizeHandle";
 
 interface SidebarProps {
+  hidden?: boolean;
   tree: Record<string, DirState>;
   openFile: OpenFile | null;
   /** Writable zone in the tree; see SessionSnapshot.writableRoot. */
@@ -41,6 +42,7 @@ interface SidebarProps {
 
 /** Collapsible file-browser sidebar: lazy tree; selecting a file opens the FileViewer overlay. */
 export function Sidebar({
+  hidden,
   tree,
   openFile,
   writableRoot,
@@ -104,7 +106,7 @@ export function Sidebar({
         event.preventDefault();
         event.stopPropagation();
       }}
-      style={{ width: resize.width }}
+      style={{ width: resize.width, display: hidden ? "none" : undefined }}
       className="relative flex shrink-0 flex-col border-r border-zinc-200 dark:border-zinc-800"
     >
       <div className="border-b border-zinc-200 px-3 py-2 text-xs font-semibold uppercase text-zinc-400 dark:border-zinc-800 dark:text-zinc-600">

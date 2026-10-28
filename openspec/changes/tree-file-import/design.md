@@ -24,3 +24,5 @@ so old feedback never appears under a different tree.
 
 No LLM turn or attachment is created. Requests already accepted by the server may finish in their
 original workspace; they never change destination after a client switch.
+
+After its first opening, Files stays mounted while hidden so pending imports, batch exclusion and results survive closing and reopening the panel. Workspace changes still reset the keyed tree.

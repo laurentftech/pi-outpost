@@ -7,6 +7,10 @@ The target SHALL be highlighted while accepted, and pending uploads, the actual 
 per-file errors SHALL be visible in the tree. A second drop during a pending batch SHALL NOT start
 a duplicate import. Internal file moves and copies SHALL retain their existing behaviour.
 
+#### Scenario: ReopeningFilesKeepsAnImport
+- **WHEN** the user closes and reopens Files during an import
+- **THEN** the pending progress remains visible and repeated drops do not start another batch
+
 #### Scenario: ImportIntoAFolder
 - **WHEN** the user drops external files onto a writable folder
 - **THEN** their exact bytes are stored there, the saved paths are shown, the folder's tree updates,

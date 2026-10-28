@@ -150,6 +150,10 @@ test("Monkey: duplicate drops and collapsing a pending destination do not duplic
   const file = { name: "slow.txt", bytes: [111, 107] };
   await drop(page, row, [file]);
   await expect(page.getByText("Importing files…")).toBeVisible();
+  await page.getByTitle("Hide files").click();
+  await expect(page.getByRole("complementary", { name: "Files" })).toHaveCount(0);
+  await page.getByTitle("Show files").click();
+  await expect(page.getByText("Importing files…")).toBeVisible();
   await drop(page, row, [file]);
   await row.getByRole("button").first().click();
   await releaseReading(page);
