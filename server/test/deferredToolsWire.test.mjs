@@ -35,6 +35,27 @@ async function nthRequest(log, index, timeoutMs = 30_000) {
 
 const declaredOnDemand = (request) => request.tools.filter((tool) => DEFERRED_TOOLS.includes(tool));
 const steps = (...list) => `STEPS:${JSON.stringify(list)}`;
+const DIAGRAM_POSTER_STRUCTURE_SEARCHES = [
+  ["check a draw.io diagram for errors", "drawio_check"],
+  ["check a poster for errors", "poster_check"],
+  ["look at the pictures inside a poster", "poster_pictures"],
+  ["compare two planning timelines", "compare_timelines"],
+  ["draw a structured exchange graph as an SVG figure", "write_structure_figure"],
+  ["write a structured exchange table as Markdown", "write_structure_table"],
+];
+
+function searchSteps() {
+  return DIAGRAM_POSTER_STRUCTURE_SEARCHES.map(([query]) => ({ tool: "tool_search", args: { query } }));
+}
+
+async function assertSearchesLoadedInOrder(log) {
+  const first = await nthRequest(log, 0);
+  assert.deepEqual(declaredOnDemand(first), [], "none of the six is declared before a search");
+  for (const [index, [, expected]] of DIAGRAM_POSTER_STRUCTURE_SEARCHES.entries()) {
+    const loaded = await nthRequest(log, index + 1);
+    assert.ok(loaded.tools.includes(expected), `${expected} is declared after its search; got ${loaded.tools.join(", ")}`);
+  }
+}
 
 async function scriptedServer(config = {}, extensionPaths = [PROVIDER]) {
   const root = await makeWorkspace({});
@@ -77,6 +98,17 @@ test("Searching loads the tool for the next call", async () => {
     client.send({ type: "prompt", text: steps({ tool: "tool_search", args: { query: "read an Excel spreadsheet" } }) });
     assert.ok(!(await nthRequest(log, 0)).tools.includes("xlsx_extract"), "not declared before the search");
     assert.ok((await nthRequest(log, 1)).tools.includes("xlsx_extract"), "declared on the next request of the same turn");
+  } finally {
+    client.close();
+    await server.stop();
+  }
+});
+
+test("The embedded runtime loads each diagram, poster and structure tool on demand", async () => {
+  const { server, client, log } = await scriptedServer();
+  try {
+    client.send({ type: "prompt", text: steps(...searchSteps()) });
+    await assertSearchesLoadedInOrder(log);
   } finally {
     client.close();
     await server.stop();
@@ -164,6 +196,33 @@ test("The RPC child loads and keeps a searched tool, and declares none before", 
     await client.waitFor("agent_end", 30_000);
     client.send({ type: "prompt", text: "Next." });
     assert.ok((await nthRequest(log, 2)).tools.includes("xlsx_extract"), "the child keeps it declared on that branch");
+  } finally {
+    client.close();
+    await server.stop();
+  }
+});
+
+test("The RPC child loads each diagram, poster and structure tool on demand", async () => {
+  const root = await makeWorkspace({});
+  const log = path.join(root, "requests.jsonl");
+  const server = await startServer(
+    root,
+    {
+      sandbox: undefined,
+      agentRuntime: {
+        mode: "rpc",
+        executable: process.execPath,
+        args: [REAL_PI, "--provider", "scripted-tools-test", "--model", "scripted-tools-test", "--api-key", "test", "--extension", PROVIDER, "--no-approve"],
+        startupTimeoutMs: 15_000,
+      },
+    },
+    { env: { SCRIPTED_TOOLS_LOG: log } },
+  );
+  const client = connect(server.wsUrl());
+  try {
+    await client.waitFor("hello", 30_000);
+    client.send({ type: "prompt", text: steps(...searchSteps()) });
+    await assertSearchesLoadedInOrder(log);
   } finally {
     client.close();
     await server.stop();

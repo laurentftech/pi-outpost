@@ -22,7 +22,7 @@ export const WORK_PLAN_SYSTEM_GUIDANCE = [
  * so without this a model never learns that reading a spreadsheet is one search away.
  */
 export const DEFERRED_TOOLS_GUIDANCE =
-  "Tools for Word, Excel, PowerPoint, PDF and email files (.msg, .eml), and for the project model, are not listed until needed. When you need one, load it with tool_search, e.g. tool_search \"read an Excel spreadsheet\".";
+  "Tools for Word, Excel, PowerPoint, PDF and email files (.msg, .eml), the project model, draw.io diagrams, posters and structured-exchange documents are not listed until needed. When you need one, load it with tool_search, e.g. tool_search \"read an Excel spreadsheet\".";
 
 export interface SystemPromptConfig {
   webContext: boolean;

@@ -54,6 +54,17 @@ describe("deferOnDemandTools", () => {
     }
     assert.ok(DEFERRED_TOOLS.includes(PROJECT_MODEL_TOOL));
     for (const tool of DOCUMENT_TOOLS) assert.ok(DEFERRED_TOOLS.includes(tool));
+    for (const name of [
+      "drawio_check",
+      "poster_check",
+      "poster_pictures",
+      "compare_timelines",
+      "write_structure_figure",
+      "write_structure_table",
+    ]) {
+      assert.ok(DEFERRED_TOOLS.includes(name), `${name} is in the deferred inventory`);
+      assert.equal(deferred.find((tool) => tool.name === name)?.exposure, "deferred", `${name} is registered deferred`);
+    }
     assert.equal(TOOL_SEARCH_TOOL, "tool_search");
   });
 });
@@ -67,6 +78,12 @@ describe("A user's words find each kind", () => {
     ["Outlook email", "mail_extract"],
     ["read an Excel spreadsheet", "xlsx_extract"],
     ["project model", "present_project_model"],
+    ["check a draw.io diagram for errors", "drawio_check"],
+    ["check a poster for errors", "poster_check"],
+    ["look at the pictures inside a poster", "poster_pictures"],
+    ["compare two planning timelines", "compare_timelines"],
+    ["draw a structured exchange graph as an SVG figure", "write_structure_figure"],
+    ["write a structured exchange table as Markdown", "write_structure_table"],
   ] as const) {
     test(`"${query}" loads ${expected}`, async () => {
       const loaded = await (await search())(query);
