@@ -6,6 +6,7 @@ import { FileTree } from "./FileTree";
 import { PanelResizeHandle, useResizablePanelWidth } from "./PanelResizeHandle";
 
 interface SidebarProps {
+  hidden?: boolean;
   tree: Record<string, DirState>;
   openFile: OpenFile | null;
   /** Writable zone in the tree; see SessionSnapshot.writableRoot. */
@@ -30,6 +31,8 @@ interface SidebarProps {
   onDeleteFile?: (path: string) => void;
   onMoveFile?: (path: string, destinationDirectory: string) => void;
   onCopyFile?: (path: string, destinationDirectory: string) => void;
+  onUploadFile?: (name: string, contentBase64: string, destinationDirectory: string) => Promise<string>;
+  onExternalDragEnter?: () => void;
   fileOperation?: FileOperationState | null;
   /** The server's refusal of the last creation request. */
   createError?: { path: string; message: string } | null;
@@ -39,6 +42,7 @@ interface SidebarProps {
 
 /** Collapsible file-browser sidebar: lazy tree; selecting a file opens the FileViewer overlay. */
 export function Sidebar({
+  hidden,
   tree,
   openFile,
   writableRoot,
@@ -58,11 +62,14 @@ export function Sidebar({
   onDeleteFile,
   onMoveFile,
   onCopyFile,
+  onUploadFile,
+  onExternalDragEnter,
   fileOperation,
   createError,
   created,
 }: SidebarProps) {
   const resize = useResizablePanelWidth(FILES_SIDEBAR_WIDTH);
+  const handlesExternalFiles = (transfer: DataTransfer) => onUploadFile !== undefined && Array.from(transfer.types).includes("Files");
 
   // First open arms the browser root. Keeping it listed afterwards — across
   // reconnects and session snapshots, which clear the tree — is useAgent's job
@@ -76,7 +83,30 @@ export function Sidebar({
   return (
     <aside
       aria-label="Files"
-      style={{ width: resize.width }}
+      onDragEnterCapture={(event) => {
+        if (handlesExternalFiles(event.dataTransfer)) onExternalDragEnter?.();
+      }}
+      onDragEnter={(event) => {
+        if (handlesExternalFiles(event.dataTransfer)) event.stopPropagation();
+      }}
+      onDragLeave={(event) => {
+        if (handlesExternalFiles(event.dataTransfer)) event.stopPropagation();
+      }}
+      onDragOver={(event) => {
+        if (!handlesExternalFiles(event.dataTransfer)) return;
+        event.preventDefault();
+        event.stopPropagation();
+        event.dataTransfer.dropEffect = "none";
+      }}
+      onDropCapture={(event) => {
+        if (handlesExternalFiles(event.dataTransfer)) onExternalDragEnter?.();
+      }}
+      onDrop={(event) => {
+        if (!handlesExternalFiles(event.dataTransfer)) return;
+        event.preventDefault();
+        event.stopPropagation();
+      }}
+      style={{ width: resize.width, display: hidden ? "none" : undefined }}
       className="relative flex shrink-0 flex-col border-r border-zinc-200 dark:border-zinc-800"
     >
       <div className="border-b border-zinc-200 px-3 py-2 text-xs font-semibold uppercase text-zinc-400 dark:border-zinc-800 dark:text-zinc-600">
@@ -103,6 +133,7 @@ export function Sidebar({
           onDeleteFile={onDeleteFile}
           onMoveFile={onMoveFile}
           onCopyFile={onCopyFile}
+          onUploadFile={onUploadFile}
           fileOperation={fileOperation}
           createError={createError}
           created={created}

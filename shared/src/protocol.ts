@@ -1504,9 +1504,12 @@ export type ClientMessage =
    * Distinct from `write_file` (no mtime precondition, creates rather than
    * replaces) and from `create_file` (carries content, and may create the
    * destination directory). `name` is one path segment; `destinationDirectory` is
-   * browser-root-relative. Answered by `file_uploaded` with the written path.
+   * browser-root-relative. `existingDirectory: true` imports into an existing writable
+   * directory instead of the default uploads directory, without creating parents;
+   * that mode also requires the expected workspaceId so a rebind cannot redirect bytes.
+   * Answered by `file_uploaded` with the written path.
    */
-  | { type: "upload_file"; destinationDirectory: string; name: string; contentBase64: string; requestId: string }
+  | { type: "upload_file"; destinationDirectory: string; name: string; contentBase64: string; requestId: string; existingDirectory?: boolean; workspaceId?: string }
   /** Ask the host OS to open an existing confined file in its associated application. */
   | { type: "open_native"; path: string; requestId: string }
   /** Show a file or folder, selected, in the file manager of the machine the server runs on. */

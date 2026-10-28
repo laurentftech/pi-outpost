@@ -412,7 +412,9 @@ describe("App — panes and handovers", () => {
     fireEvent.click(sidebarToggle());
     expect(screen.getByText("Files")).toBeInTheDocument();
     fireEvent.click(sidebarToggle());
-    expect(screen.queryByText("Files")).not.toBeInTheDocument();
+    expect(screen.getByText("Files")).not.toBeVisible();
+    fireEvent.click(sidebarToggle());
+    expect(screen.getByText("Files")).toBeVisible();
   });
 
   it("keeps the main column flexible while the Files sidebar is resized", () => {

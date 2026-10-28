@@ -3617,3 +3617,71 @@ describe("fileIo: reading and writing a file that is not the open one", () => {
     expect(result.current.fileIo).toBe(first);
   });
 });
+
+describe("directory import requests", () => {
+  it("sends an explicit existing destination, including the root, and resolves the saved name", async () => {
+    const result = await connected([], { workspace: { id: "work", root: "/work", name: "work", activity: "idle", needsAttention: false } });
+    let promise!: Promise<string>;
+    act(() => { promise = result.current.uploadFile("file.txt", "YQ==", ""); });
+    const request = JSON.parse(mockWs!.sent.at(-1)!);
+    expect(request).toMatchObject({ type: "upload_file", destinationDirectory: "", existingDirectory: true, name: "file.txt", workspaceId: "work" });
+    act(() => mockWs!.receive({ type: "file_uploaded", requestId: request.requestId, path: "file-1.txt" }));
+    await expect(promise).resolves.toBe("file-1.txt");
+  });
+  it("does not redirect an old callback after a switch is requested", async () => {
+    const result = await connected();
+    const oldUpload = result.current.uploadFile;
+    act(() => result.current.switchWorkspace("/other"));
+    const before = mockWs!.sent.length;
+    await expect(oldUpload("file.txt", "YQ==", "src")).rejects.toThrow(/workspace changed/);
+    expect(mockWs!.sent).toHaveLength(before);
+  });
+  it("refuses imports in a read-only workspace", async () => {
+    const result = await connected([], { writableRoot: null });
+    await expect(result.current.uploadFile("file.txt", "YQ==", "src")).rejects.toThrow(/read-only/);
+  });
+});
+
+it("rejects an old import completion without listing its directory in the new project", async () => {
+  const result = await connected();
+  let pending!: Promise<string>;
+  act(() => { pending = result.current.uploadFile("one.txt", "YQ==", "src"); });
+  const request = JSON.parse(mockWs!.sent.at(-1)!);
+  act(() => result.current.switchWorkspace("/other"));
+  const before = mockWs!.sent.length;
+  const outcome = pending.then(() => null, (error: Error) => error);
+  act(() => mockWs!.receive({ type: "file_uploaded", requestId: request.requestId, path: "src/one.txt" }));
+  expect(await outcome).toMatchObject({ message: expect.stringMatching(/workspace changed/) });
+  expect(mockWs!.sent).toHaveLength(before);
+});
+
+it("refuses a new directory import while a workspace switch is still pending", async () => {
+  const result = await connected();
+  act(() => result.current.switchWorkspace("/other"));
+  await waitFor(() => expect(result.current.state.switching).toBe(true));
+  const before = mockWs!.sent.length;
+  await expect(result.current.uploadFile("file.txt", "YQ==", "src")).rejects.toThrow(/workspace changed/);
+  expect(mockWs!.sent).toHaveLength(before);
+});
+
+it("refreshes an imported symlink alias rather than just its canonical returned parent", async () => {
+  const result = await connected();
+  let promise!: Promise<string>;
+  act(() => { promise = result.current.uploadFile("one.txt", "YQ==", "alias"); });
+  const request = JSON.parse(mockWs!.sent.at(-1)!);
+  act(() => mockWs!.receive({ type: "file_uploaded", requestId: request.requestId, path: "real/one.txt" }));
+  await expect(promise).resolves.toBe("real/one.txt");
+  expect(JSON.parse(mockWs!.sent.at(-1)!)).toMatchObject({ type: "list_directory", path: "alias" });
+});
+
+it("keeps an import callback usable across a new session with the same filesystem scope", async () => {
+  const result = await connected();
+  const upload = result.current.uploadFile;
+  act(() => mockWs!.receive({ type: "session_replaced", sessionId: "new", items: [], model: "", thinkingLevel: "off", commands: [], models: [], isStreaming: false }));
+  let promise!: Promise<string>;
+  act(() => { promise = upload("one.txt", "YQ==", "src"); });
+  const request = JSON.parse(mockWs!.sent.at(-1)!);
+  expect(request).toMatchObject({ type: "upload_file", existingDirectory: true });
+  act(() => mockWs!.receive({ type: "file_uploaded", requestId: request.requestId, path: "src/one.txt" }));
+  await expect(promise).resolves.toBe("src/one.txt");
+});

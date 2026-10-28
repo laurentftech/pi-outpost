@@ -210,3 +210,62 @@ describe("upload_file against a read-only sandbox", () => {
     await assert.rejects(stat(path.join(root, "uploads")), { code: "ENOENT" });
   });
 });
+
+describe("explicit existing-directory imports", () => {
+  let root;
+  let server;
+  let client;
+  let observer;
+  let counter = 0;
+  let workspaceId;
+  before(async () => {
+    root = await makeWorkspace({ "writable/nested/keep.txt": "keep", "readonly/keep.txt": "read only" });
+    server = await startServer(root, { sandbox: { root, allowWrite: true, writableRoot: path.join(root, "writable"), allowBash: false } });
+    client = connect(server.wsUrl());
+    observer = connect(server.wsUrl());
+    const [hello] = await Promise.all([client.waitFor("hello"), observer.waitFor("hello")]);
+    workspaceId = hello.workspace.id ?? hello.workspace.root;
+  });
+  after(async () => { client?.close(); observer?.close(); await server?.stop(); });
+  async function upload(destinationDirectory, name, content = BINARY) {
+    const requestId = `tree-import-${++counter}`;
+    client.send({ type: "upload_file", destinationDirectory, name, contentBase64: content.toString("base64"), existingDirectory: true, workspaceId, requestId });
+    return client.waitFor((message) => message.requestId === requestId);
+  }
+  test("refuses an import meant for a different workspace before writing bytes", async () => {
+    for (const expected of ["a-different-workspace", undefined]) {
+      const requestId = `tree-import-${++counter}`;
+      client.send({ type: "upload_file", destinationDirectory: "writable/nested", name: "wrong-project.txt", contentBase64: "YQ==", existingDirectory: true, workspaceId: expected, requestId });
+      const reply = await client.waitFor((message) => message.requestId === requestId);
+      assert.equal(reply.type, "file_browser_error");
+      assert.equal(reply.reason, "denied");
+      assert.match(reply.message, /workspace changed/);
+      await assert.rejects(stat(path.join(root, "writable", "nested", "wrong-project.txt")), { code: "ENOENT" });
+    }
+  });
+  test("UploadToAnExistingDirectory: stores bytes, notifies trees and preserves collisions", async () => {
+    const first = await upload("writable/nested", "scan.pdf");
+    assert.equal(first.type, "file_uploaded");
+    assert.equal(first.path, "writable/nested/scan.pdf");
+    assert.deepEqual(await readFile(path.join(root, first.path)), BINARY);
+    await observer.waitFor((message) => message.type === "file_changed" && message.path === first.path);
+    const second = await upload("writable/nested", "scan.pdf", Buffer.from("second"));
+    assert.equal(second.path, "writable/nested/scan-1.pdf");
+    assert.deepEqual(await readFile(path.join(root, first.path)), BINARY);
+    assert.equal(await readFile(path.join(root, second.path), "utf8"), "second");
+  });
+  test("ImportDoesNotResurrectAMissingDirectory: refuses without creating parents", async () => {
+    const reply = await upload("writable/missing/child", "file.txt");
+    assert.equal(reply.type, "file_browser_error");
+    assert.equal(reply.reason, "not-found");
+    await assert.rejects(stat(path.join(root, "writable/missing")), { code: "ENOENT" });
+  });
+  test("ImportCannotEscapePermissions: refuses outside the writable zone and browser root", async () => {
+    for (const [directory, reason] of [["readonly", "denied"], ["../outside", "outside-root"]]) {
+      const reply = await upload(directory, "blocked.txt");
+      assert.equal(reply.type, "file_browser_error");
+      assert.equal(reply.reason, reason);
+    }
+    await assert.rejects(stat(path.join(root, "readonly/blocked.txt")), { code: "ENOENT" });
+  });
+});

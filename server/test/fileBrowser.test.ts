@@ -1093,3 +1093,53 @@ describe("file browser uploads", () => {
     assert.equal(statSync(path.join(root, written)).size, MAX_UPLOAD_BYTES);
   });
 });
+
+describe("existing-directory uploads", () => {
+  let root: string;
+  let base: string;
+  before(async () => {
+    base = mkdtempSync(path.join(tmpdir(), "pi-tree-import-"));
+    root = path.join(base, "root");
+    mkdirSync(path.join(root, "writable", "nested"), { recursive: true });
+    mkdirSync(path.join(base, "outside"));
+    mkdirSync(path.join(root, "readonly"));
+    writeFileSync(path.join(root, "keep.txt"), "keep");
+    root = await realResolve(root);
+  });
+  after(() => rmSync(base, { recursive: true, force: true }));
+  test("imports binary at the root and never overwrites a collision", async () => {
+    const bytes = Buffer.from([0, 255, 17]);
+    const first = await uploadFileFromBrowser(root, undefined, "", "scan.pdf", bytes.toString("base64"), true);
+    const second = await uploadFileFromBrowser(root, undefined, "", "scan.pdf", "YQ==", true);
+    assert.equal(first, "scan.pdf");
+    assert.equal(second, "scan-1.pdf");
+    assert.deepEqual(readFileSync(path.join(root, first)), bytes);
+    assert.equal(readFileSync(path.join(root, second), "utf8"), "a");
+  });
+  test("never creates missing parents or accepts a file as a directory", async () => {
+    for (const target of ["missing/child", "keep.txt"]) assert.equal(await reasonOf(() => uploadFileFromBrowser(root, undefined, target, "new.txt", "YQ==", true)), "not-found");
+    assert.equal(existsSync(path.join(root, "missing")), false);
+    assert.equal(readFileSync(path.join(root, "keep.txt"), "utf8"), "keep");
+  });
+  test("refuses read-only, non-writable and escaping targets", async () => {
+    assert.equal(await reasonOf(() => uploadFileFromBrowser(root, null, "", "new.txt", "YQ==", true)), "denied");
+    assert.equal(await reasonOf(() => uploadFileFromBrowser(root, "writable", "", "new.txt", "YQ==", true)), "denied");
+    assert.equal(await reasonOf(() => uploadFileFromBrowser(root, undefined, "../outside", "new.txt", "YQ==", true)), "outside-root");
+    assert.equal(existsSync(path.join(root, "new.txt")), false);
+    assert.equal(existsSync(path.join(base, "outside", "new.txt")), false);
+  });
+  test("refuses a symlink escaping the root", async (t) => {
+    try { symlinkSync(path.join(base, "outside"), path.join(root, "writable", "escape"), process.platform === "win32" ? "junction" : "dir"); }
+    catch { t.skip("symlink creation is unavailable"); return; }
+    assert.equal(await reasonOf(() => uploadFileFromBrowser(root, "writable", "writable/escape", "new.txt", "YQ==", true)), "outside-root");
+    assert.equal(existsSync(path.join(base, "outside", "new.txt")), false);
+    symlinkSync(path.join(root, "readonly"), path.join(root, "writable", "readonly-link"), process.platform === "win32" ? "junction" : "dir");
+    assert.equal(await reasonOf(() => uploadFileFromBrowser(root, "writable", "writable/readonly-link", "new.txt", "YQ==", true)), "denied");
+    assert.equal(existsSync(path.join(root, "readonly", "new.txt")), false);
+  });
+  test("retains size and portable-name checks for explicit imports", async () => {
+    assert.equal(await reasonOf(() => uploadFileFromBrowser(root, undefined, "", "../escape.txt", "YQ==", true)), "invalid");
+    assert.equal(await reasonOf(() => uploadFileFromBrowser(root, undefined, "", "large.bin", "A".repeat(MAX_UPLOAD_BASE64_LENGTH + 4), true)), "too-large");
+    assert.equal(existsSync(path.join(root, "large.bin")), false);
+  });
+});

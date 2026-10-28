@@ -215,6 +215,7 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
     if (mainRef.current) mainRef.current.scrollTop = 0;
   }, [boundKey]);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarMounted, setSidebarMounted] = useState(false);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   // Paths the composer's draft names with `@`: they reference a file as surely as a chip does
   const [draftMentions, setDraftMentions] = useState<string[]>([]);
@@ -824,8 +825,12 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
             </p>
           </div>
         )}
-        {sidebarOpen && (
+        {(sidebarOpen || sidebarMounted) && (
           <Sidebar
+            hidden={!sidebarOpen}
+            key={JSON.stringify([boundKey, state.sandbox?.projectRoot ?? state.sandbox?.root])}
+            onUploadFile={uploadFile}
+            onExternalDragEnter={() => setDragDepth(0)}
             tree={state.fileTree}
             openFile={state.openFile}
             writableRoot={state.writableRoot}
@@ -953,7 +958,10 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
             sidebarOpen={sidebarOpen}
             outcomeOpen={outcomeOpen}
             filters={filters}
-            onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
+            onToggleSidebar={() => {
+              setSidebarMounted(true);
+              setSidebarOpen((open) => !open);
+            }}
             onToggleOutcome={toggleOutcome}
             onFilterChange={setFilter}
             {...(state.items.length > 0 ? { onExportConversation: () => void exportConversationToFile() } : {})}
