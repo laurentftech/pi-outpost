@@ -1097,13 +1097,14 @@ describe("file browser uploads", () => {
 describe("existing-directory uploads", () => {
   let root: string;
   let base: string;
-  before(() => {
+  before(async () => {
     base = mkdtempSync(path.join(tmpdir(), "pi-tree-import-"));
     root = path.join(base, "root");
     mkdirSync(path.join(root, "writable", "nested"), { recursive: true });
     mkdirSync(path.join(base, "outside"));
     mkdirSync(path.join(root, "readonly"));
     writeFileSync(path.join(root, "keep.txt"), "keep");
+    root = await realResolve(root);
   });
   after(() => rmSync(base, { recursive: true, force: true }));
   test("imports binary at the root and never overwrites a collision", async () => {
