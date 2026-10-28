@@ -472,6 +472,8 @@ describe("a poster in the viewer", () => {
     it("closing with the file as it was answers false; Escape, from the touch-up, closes it and not the viewer", async () => {
       const { answer, onClose } = await openTouchUp(editFileIo([TWO]), 24);
       const dialog = await screen.findByTestId("poster-diagram-touch-up");
+      // Focus is taken by the effect that installs the capturing Escape handler.
+      await waitFor(() => expect(dialog).toHaveFocus());
       // From where the keyboard is, the dialog: the viewer listens on the document, reached before the window
       fireEvent.keyDown(dialog, { key: "Escape" });
       expect(await answer()).toEqual({ ok: true, value: false });
