@@ -14,6 +14,8 @@
  * which is exactly where every session starts today.
  */
 
+import { PROJECT_MODEL_TOOL } from "./projectModelTool.ts";
+
 /**
  * The tools that make, update and check a PowerPoint deck. Published together: each is
  * useless without the others — layouts to choose from, a builder and an editor, and
@@ -65,6 +67,31 @@ const EXTRACTORS: Record<string, string[]> = {
 
 /** Every tool published on demand, on whatever platform: the order they are registered in. */
 export const DOCUMENT_TOOLS = [...new Set(Object.values(EXTRACTORS).flat()), WORD_COMPARE_TOOL];
+
+/**
+ * Pi's tool search: how the agent loads a deferred tool by itself. The SDK registers it
+ * inactive and exports no constant for its name.
+ */
+export const TOOL_SEARCH_TOOL = "tool_search";
+
+/** The tools registered `deferred`: every document tool, and the project model's. */
+export const DEFERRED_TOOLS = [...DOCUMENT_TOOLS, PROJECT_MODEL_TOOL];
+
+/**
+ * Register the on-demand tools `deferred` rather than withholding them out of reach.
+ *
+ * A deferred tool is not declared until it is activated, so it costs a request nothing,
+ * exactly like a withheld one. Unlike a withheld one it stays registered as reachable:
+ * callable from other tools and codemode scripts through `ctx.executeTool()`, and
+ * loadable by the agent with `tool_search`. Activating it — the server publishing it
+ * on demand, or the search loading it — declares it as before.
+ *
+ * Applied where the definitions are handed to a session, in both runtimes, so that the
+ * definitions themselves stay what their own modules say.
+ */
+export function deferOnDemandTools<T extends { name: string }>(tools: T[]): T[] {
+  return tools.map((tool) => (DEFERRED_TOOLS.includes(tool.name) ? { ...tool, exposure: "deferred" as const } : tool));
+}
 
 /** The tools a document of this extension calls for on this platform. */
 function extractorsFor(extension: string, platform: NodeJS.Platform): string[] {

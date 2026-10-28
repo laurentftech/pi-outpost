@@ -209,7 +209,7 @@ import { createDrawioCheckToolDefinition } from "./drawioTool.ts";
 import { createPosterCheckToolDefinition } from "./posterCheckTool.ts";
 import { createPosterPicturesToolDefinition } from "./posterPicturesTool.ts";
 import { createWorkPlanExtendedToolDefinition, createWorkPlanToolDefinition, WORK_PLAN_EXTENDED_TOOL, WORK_PLAN_TOOL } from "./workPlanTool.ts";
-import { DOCUMENT_TOOLS, documentToolsFor, documentToolsForToolCall, documentToolsForWrittenPaths } from "./documentTools.ts";
+import { DEFERRED_TOOLS, deferOnDemandTools, documentToolsFor, documentToolsForToolCall, documentToolsForWrittenPaths, TOOL_SEARCH_TOOL } from "./documentTools.ts";
 import {
   PROJECT_MODEL_TOOL,
   projectModelFiles,
@@ -1454,7 +1454,7 @@ const makeCreateRuntime =
       ...(sandboxedTools
         ? {
             noTools: "builtin" as const,
-            customTools: sandboxedTools,
+            customTools: deferOnDemandTools(sandboxedTools),
             excludeTools: unsuppliedBuiltIns(sandboxedTools, delegatedBuiltIns(projectSandbox)),
           }
         : {}),
@@ -1465,7 +1465,7 @@ const makeCreateRuntime =
       ...(sandboxedTools
         ? {}
         : {
-            customTools: [
+            customTools: deferOnDemandTools([
               createStructuredExchangeFigureToolDefinition({
                 cwd,
                 allowedRoots: [await fs.realpath(cwd)],
@@ -1622,7 +1622,7 @@ const makeCreateRuntime =
                 : []),
               // Published on demand too, when the conversation touches the project's model.
               createStructuredExchangeProjectModelToolDefinition({ projectRoot: cwd }),
-            ],
+            ]),
           }),
     });
   if (sandboxedTools) {
@@ -1973,9 +1973,13 @@ publishWorkPlanTools(workspace, workspace.workPlan);
  */
 function withholdDocumentTools(workspace: Workspace): void {
   // And the project model tool, withheld for the same reason: see projectModelTool.ts.
-  for (const tool of [...DOCUMENT_TOOLS, PROJECT_MODEL_TOOL]) workspace.agent.setToolPublished(tool, false);
+  for (const tool of DEFERRED_TOOLS) workspace.agent.setToolPublished(tool, false);
   workspace.documentToolIdleTurns.clear();
   workspace.documentToolsEverUsed.clear();
+  // Withheld, not out of reach: they are registered deferred, and this is how the agent
+  // loads one by itself. Pi registers it inactive and only switches it on for MCP servers.
+  // Not registered under noExtensions, and then this does nothing.
+  workspace.agent.setToolPublished(TOOL_SEARCH_TOOL, true);
 }
 
 /**
@@ -1990,7 +1994,7 @@ function withholdDocumentTools(workspace: Workspace): void {
  * and at the end of every turn, to catch the next path nobody has thought of yet.
  */
 function reassertOnDemandTools(workspace: Workspace): void {
-  for (const tool of [...DOCUMENT_TOOLS, PROJECT_MODEL_TOOL, WORK_PLAN_EXTENDED_TOOL]) {
+  for (const tool of [...DEFERRED_TOOLS, WORK_PLAN_EXTENDED_TOOL]) {
     workspace.agent.setToolPublished(tool, workspace.documentToolIdleTurns.has(tool));
   }
 }
@@ -2025,6 +2029,12 @@ function publishDocumentTools(workspace: Workspace, text: string): string[] {
 function publishToolDuringTurn(workspace: Workspace, tool: string): void {
   if (workspace.documentToolIdleTurns.has(tool)) return;
   if (workspace.agent.setToolPublished(tool, true)) workspace.documentToolIdleTurns.set(tool, 0);
+}
+
+/** The tool names a `tool_search` result says it loaded: `details.loaded`, or none. */
+function toolSearchLoaded(details: unknown): string[] {
+  const loaded = (details as { loaded?: unknown } | null)?.loaded;
+  return Array.isArray(loaded) ? loaded.filter((name): name is string => typeof name === "string") : [];
 }
 
 /**
@@ -3029,6 +3039,13 @@ function onRuntimeEvent(workspace: Workspace, event: RuntimeEvent): void {
       });
       void announceStructuredConformance(workspace, [{ toolCallId: event.toolCallId, ...structured }]);
       void announceStructuredAppearance(workspace);
+      // A search that loaded on-demand tools published them: enrolled now, they are aged like
+      // any tool published on demand, and the reassertion does not take them back.
+      if (event.toolName === TOOL_SEARCH_TOOL && !event.isError) {
+        for (const tool of toolSearchLoaded(event.details)) {
+          if (DEFERRED_TOOLS.includes(tool)) publishToolDuringTurn(workspace, tool);
+        }
+      }
       // The agent was refused for the project's files, and needs the check that names them.
       if (resultReportsUnusableRegistry(event.toolName, contentText(event.content as never))) {
         publishToolDuringTurn(workspace, PROJECT_MODEL_TOOL);
