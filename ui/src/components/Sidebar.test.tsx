@@ -169,3 +169,21 @@ describe("Sidebar", () => {
     });
   });
 });
+
+
+describe("sidebar external-drop containment", () => {
+  it("keeps drops inside the tree when imports are available, including read-only trees", () => {
+    const onDrop = vi.fn();
+    const onUploadFile = vi.fn(async () => "unused");
+    render(<div onDrop={onDrop}><Sidebar tree={{ "": [] }} openFile={null} writableRoot={null} onExpand={vi.fn()} onSelectFile={vi.fn()} onUploadFile={onUploadFile} /></div>);
+    fireEvent.drop(screen.getByRole("complementary", { name: "Files" }), { dataTransfer: { types: ["Files"], files: [] } });
+    expect(onDrop).not.toHaveBeenCalled();
+    expect(onUploadFile).not.toHaveBeenCalled();
+  });
+  it("preserves the host's drop handler when no import callback was supplied", () => {
+    const onDrop = vi.fn();
+    render(<div onDrop={onDrop}><Sidebar tree={{ "": [] }} openFile={null} onExpand={vi.fn()} onSelectFile={vi.fn()} /></div>);
+    fireEvent.drop(screen.getByRole("complementary", { name: "Files" }), { dataTransfer: { types: ["Files"], files: [] } });
+    expect(onDrop).toHaveBeenCalledTimes(1);
+  });
+});

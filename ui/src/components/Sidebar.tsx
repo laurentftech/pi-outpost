@@ -67,6 +67,7 @@ export function Sidebar({
   created,
 }: SidebarProps) {
   const resize = useResizablePanelWidth(FILES_SIDEBAR_WIDTH);
+  const handlesExternalFiles = (transfer: DataTransfer) => onUploadFile !== undefined && Array.from(transfer.types).includes("Files");
 
   // First open arms the browser root. Keeping it listed afterwards — across
   // reconnects and session snapshots, which clear the tree — is useAgent's job
@@ -81,25 +82,25 @@ export function Sidebar({
     <aside
       aria-label="Files"
       onDragEnterCapture={(event) => {
-        if (Array.from(event.dataTransfer.types).includes("Files")) onExternalDragEnter?.();
+        if (handlesExternalFiles(event.dataTransfer)) onExternalDragEnter?.();
       }}
       onDragEnter={(event) => {
-        if (Array.from(event.dataTransfer.types).includes("Files")) event.stopPropagation();
+        if (handlesExternalFiles(event.dataTransfer)) event.stopPropagation();
       }}
       onDragLeave={(event) => {
-        if (Array.from(event.dataTransfer.types).includes("Files")) event.stopPropagation();
+        if (handlesExternalFiles(event.dataTransfer)) event.stopPropagation();
       }}
       onDragOver={(event) => {
-        if (!Array.from(event.dataTransfer.types).includes("Files")) return;
+        if (!handlesExternalFiles(event.dataTransfer)) return;
         event.preventDefault();
         event.stopPropagation();
         event.dataTransfer.dropEffect = "none";
       }}
       onDropCapture={(event) => {
-        if (Array.from(event.dataTransfer.types).includes("Files")) onExternalDragEnter?.();
+        if (handlesExternalFiles(event.dataTransfer)) onExternalDragEnter?.();
       }}
       onDrop={(event) => {
-        if (!Array.from(event.dataTransfer.types).includes("Files")) return;
+        if (!handlesExternalFiles(event.dataTransfer)) return;
         event.preventDefault();
         event.stopPropagation();
       }}
