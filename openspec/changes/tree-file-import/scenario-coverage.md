@@ -32,3 +32,5 @@ Additional transition coverage: `e2e/tree-file-import.spec.ts`'s `Monkey` test d
 FileReader is held, collapses the folder, then verifies one upload and one file. Existing
 `ui/src/components/FileTree.test.tsx` move/copy tests retain internal drag behaviour. The hook tests
 also verify symlink-alias refresh and continuing across a session replacement with unchanged scope.
+
+Additional unit coverage checks server refusal followed by success, a later retry, stopping the remaining batch after a workspace change, hover cleanup and sidebar containment across the whole external drag lifecycle.

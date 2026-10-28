@@ -186,4 +186,19 @@ describe("sidebar external-drop containment", () => {
     fireEvent.drop(screen.getByRole("complementary", { name: "Files" }), { dataTransfer: { types: ["Files"], files: [] } });
     expect(onDrop).toHaveBeenCalledTimes(1);
   });
+  it("contains the complete external drag lifecycle and clears the host overlay", () => {
+    const host = vi.fn();
+    const clearOverlay = vi.fn();
+    render(<div onDragEnter={host} onDragLeave={host} onDragOver={host} onDrop={host}><Sidebar tree={{ "": [] }} openFile={null} onExpand={vi.fn()} onSelectFile={vi.fn()} onUploadFile={vi.fn()} onExternalDragEnter={clearOverlay} /></div>);
+    const target = screen.getByRole("complementary", { name: "Files" });
+    const dataTransfer = { types: ["Files"], files: [], dropEffect: "copy" };
+    fireEvent.dragEnter(target, { dataTransfer });
+    fireEvent.dragOver(target, { dataTransfer });
+    expect(dataTransfer.dropEffect).toBe("none");
+    fireEvent.dragLeave(target, { dataTransfer });
+    fireEvent.drop(target, { dataTransfer });
+    expect(host).not.toHaveBeenCalled();
+    expect(clearOverlay).toHaveBeenCalledTimes(2);
+  });
+
 });

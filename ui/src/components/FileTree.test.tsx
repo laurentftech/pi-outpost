@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent, within, waitFor, act } from "@testing-library/react";
 import type { DirEntry, GitFileState } from "@pi-outpost/shared";
 import { FileTree } from "./FileTree";
+import { UploadContextChangedError } from "../uploads";
 import type { DirState } from "../useAgent";
 
 const file = (name: string): DirEntry => ({ name, type: "file" });
@@ -814,4 +815,35 @@ describe("external file imports", () => {
     await act(async () => finish("src/note.txt"));
     await waitFor(() => expect(screen.queryByText("Importing files…")).toBeNull());
   });
+  it("continues after a server refusal and releases the batch for a later drop", async () => {
+    const onUploadFile = vi.fn().mockRejectedValueOnce(new Error("disk full")).mockResolvedValueOnce("src/ok.txt").mockResolvedValueOnce("src/later.txt");
+    setup({ onUploadFile });
+    const target = dirToggle("src").parentElement!;
+    fireEvent.drop(target, { dataTransfer: transfer([new File(["a"], "bad.txt"), new File(["b"], "ok.txt")]) });
+    await waitFor(() => expect(screen.getByText("Imported: src/ok.txt")).toBeInTheDocument());
+    expect(screen.getByRole("alert")).toHaveTextContent("bad.txt: disk full");
+    expect(onUploadFile).toHaveBeenCalledTimes(2);
+    fireEvent.drop(target, { dataTransfer: transfer([new File(["c"], "later.txt")]) });
+    await waitFor(() => expect(screen.getByText("Imported: src/later.txt")).toBeInTheDocument());
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+  it("stops the remaining batch when its workspace is no longer active", async () => {
+    const onUploadFile = vi.fn().mockRejectedValue(new UploadContextChangedError());
+    setup({ onUploadFile });
+    fireEvent.drop(dirToggle("src").parentElement!, { dataTransfer: transfer([new File(["a"], "first.txt"), new File(["b"], "second.txt")]) });
+    await waitFor(() => expect(screen.queryByText("Importing files…")).toBeNull());
+    expect(onUploadFile).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("alert")).toHaveTextContent("first.txt: The workspace changed");
+  });
+  it("clears root and folder hover feedback when a drag leaves their boundaries", () => {
+    setup({ onUploadFile: vi.fn() });
+    const dataTransfer = transfer([new File(["a"], "note.txt")]);
+    for (const target of [screen.getByText("Workspace root"), dirToggle("src").parentElement!]) {
+      fireEvent.dragOver(target, { dataTransfer });
+      expect(target).toHaveClass("ring-1");
+      fireEvent.dragLeave(target, { dataTransfer, relatedTarget: document.body });
+      expect(target).not.toHaveClass("ring-1");
+    }
+  });
+
 });
