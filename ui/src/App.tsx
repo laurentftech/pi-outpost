@@ -402,6 +402,21 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
     setAttachments((current) => removeAttachment(current, index));
   }
 
+  // pi-outpost's side answer (`/btw`): its title stays put, each new answer is shown from its question
+  // with the earlier ones one scroll up, and it closes through its own command — every client, and
+  // the side thread with it.
+  const widgetControls = useMemo(
+    () => ({
+      btw: {
+        region: "Side answer",
+        pinnedLines: 1,
+        anchor: (lines: readonly string[]) => lines.findLastIndex((line) => line.startsWith("› ")),
+        close: { label: "Close side answer", run: () => prompt("/btw") },
+      },
+    }),
+    [prompt],
+  );
+
   function sendPrompt(text: string, images?: WireImage[]) {
     prompt(text, images);
     setAttachments([]);
@@ -1352,7 +1367,7 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
 
           <footer className="border-t border-zinc-200 px-4 py-3 dark:border-zinc-800">
             <div className="mx-auto max-w-3xl">
-              <ExtensionWidgets widgets={state.widgets} placement="aboveEditor" />
+              <ExtensionWidgets widgets={state.widgets} placement="aboveEditor" controls={widgetControls} />
               <Composer
                 // Remount on a project change so the restored draft becomes the
                 // field's initial value; without the key React keeps the old text.

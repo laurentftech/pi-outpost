@@ -17,6 +17,7 @@ every flag.
 - [Restrict which models can be picked](#restrict-which-models-can-be-picked)
 - [Let the agent read a big PDF, Word or Excel file](#let-the-agent-read-a-big-pdf-word-or-excel-file)
 - [Make a PowerPoint deck from a template](#make-a-powerpoint-deck-from-a-template)
+- [Ask a side question while the agent works](#ask-a-side-question-while-the-agent-works)
 - [Lock down a shared deployment](#lock-down-a-shared-deployment)
 - [Put it inside your own web app](#put-it-inside-your-own-web-app)
 - [Use an existing pi installation](#use-an-existing-pi-installation)
@@ -653,6 +654,47 @@ the browser as before, diagrams included, and the server carries it into the tem
 export stays beside it: a template that is missing or cannot be used is reported on its own
 button, and never blocks the other. Each browser may export into the template 30 times a minute; past that,
 the button says when to try again.
+
+## Ask a side question while the agent works
+
+A long turn leaves you waiting. Typing "where are you at?" in the composer steers the agent: the
+question lands in its next request, can turn it from what it was doing, and stays in the
+conversation for good. Ask it with `/btw` instead:
+
+```
+/btw where are you at?
+/btw which files have you changed so far?
+/btw what did we decide about the date format?
+```
+
+- It is answered from what the conversation holds when you ask: your messages, the agent's
+  replies, the tools it called and what they returned. The reply still being written is not
+  included yet.
+- It is answered by the model the session is on, with no tools. It cannot read a file or run a
+  command, so it says when the conversation does not show the answer.
+- The running turn is not interrupted, steered or slowed down. The agent never sees the question
+  or the answer, and neither is saved in the session. Reloading the conversation does not bring
+  them back.
+- The question and its answer appear in a side note above the composer, marked as not part of
+  the conversation. A new `/btw` replaces the question shown, and cancels it if it is still
+  waiting. A failure, such as a model with no credentials or a provider error, is written in the
+  note.
+- While the note is open, the next `/btw` can follow up: "/btw and the second one?" is asked with
+  the earlier side questions and their answers. They stay in the note above the latest one. A
+  question that failed or was replaced before its answer is not kept.
+- Only messages that start with `/btw` are side questions. Anything else you type goes to the
+  agent as usual, even while the note is open.
+- The note keeps a small height and scrolls inside. Each new answer is shown from its question;
+  scroll up, or click the note and press ↑, to go back to the earlier ones.
+- **×** on the note, or `/btw` with nothing after it, closes the note in every open tab, cancels a
+  question still waiting, and forgets the side questions. Starting or opening another
+  conversation does the same.
+- Each question costs one model request. Only the most recent part of a long conversation is sent
+  (about 60,000 characters), and the request says that earlier messages were left out.
+
+`/btw` works under both agent runtimes, and also with `noExtensions`, because it ships with
+pi-outpost. Like any slash command, `blockedCommands: ["btw"]` withholds it. An extension of your
+own that registers `btw` replaces it in the embedded runtime.
 
 ## Read a long conversation back, and send it to someone
 

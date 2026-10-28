@@ -240,13 +240,15 @@ describe("default export (extension entry)", () => {
     await withEnv(JSON.stringify({ cwd: root, maxBytes: VALID.maxBytes }), async () => {
       const registered: ToolDefinition[] = [];
       const events: string[] = [];
-      const handlers = new Map<string, () => void>();
+      const commands: string[] = [];
+      const handlers = new Map<string, ((event: unknown, ctx: unknown) => void)[]>();
       let active = ["read"];
       const pi = {
         registerTool: (t: ToolDefinition) => void registered.push(t),
-        on: (event: string, handler: () => void) => {
+        registerCommand: (name: string) => void commands.push(name),
+        on: (event: string, handler: (event: unknown, ctx: unknown) => void) => {
           events.push(event);
-          handlers.set(event, handler);
+          handlers.set(event, [...(handlers.get(event) ?? []), handler]);
         },
         getActiveTools: () => active,
         getAllTools: () => [{ name: "read" }, { name: "tool_search" }],
@@ -259,16 +261,19 @@ describe("default export (extension entry)", () => {
 
       assert.equal(registered.length, 24 + WORD_COMPARE.length);
       // The RPC child hides a poster's pictures from the agent as the embedded runtime does,
-      // and switches tool_search on as a session starts.
-      assert.deepEqual(events.sort(), ["session_start", "tool_call", "tool_result"]);
+      // switches tool_search on as a session starts, and offers /btw, which closes its panel
+      // when the session changes.
+      assert.deepEqual(events.sort(), ["session_shutdown", "session_start", "session_start", "tool_call", "tool_result"]);
+      assert.deepEqual(commands, ["btw"]);
       // The on-demand tools are registered deferred: the child cannot withdraw them, so
       // they stay undeclared until the agent loads one with tool_search.
       for (const tool of registered) {
         assert.equal((tool as { exposure?: string }).exposure, DEFERRED_TOOLS.includes(tool.name) ? "deferred" : undefined, tool.name);
       }
-      handlers.get("session_start")!();
+      const ctx = { ui: { setWidget: () => {} } };
+      for (const handler of handlers.get("session_start")!) handler({ type: "session_start" }, ctx);
       assert.deepEqual(active, ["read", "tool_search"], "tool_search is switched on");
-      handlers.get("session_start")!();
+      for (const handler of handlers.get("session_start")!) handler({ type: "session_start" }, ctx);
       assert.deepEqual(active, ["read", "tool_search"], "and only once");
       assert.deepEqual(
         registered.map((t) => t.name),
