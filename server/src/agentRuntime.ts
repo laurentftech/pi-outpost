@@ -171,14 +171,22 @@ export function toolUpdateEvent(
   };
 }
 
+/**
+ * What became of an accepted prompt, as Pi reports it: run now, queued behind the
+ * running turn, or handled by an extension command (or input handler) that ran
+ * instead, so that nothing was saved and no turn will run for it.
+ */
+export type PromptDisposition = "started" | "queued" | "handled";
+
 export interface PromptOptions {
   images?: WireImage[];
   /**
    * Called once, as soon as the runtime has accepted or rejected the prompt and
    * before the turn streams. Lets the server echo the user bubble only for a
-   * prompt that was actually taken.
+   * prompt that was actually taken — and taken into the conversation: an accepted
+   * prompt carries its disposition, absent only from a Pi that does not report one.
    */
-  onAccepted?: (accepted: boolean) => void;
+  onAccepted?: (accepted: boolean, disposition?: PromptDisposition) => void;
 }
 
 /**

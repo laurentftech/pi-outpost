@@ -754,6 +754,23 @@ describe("the prompt bubble, before the server has echoed it", () => {
     expect(result.current.state.items).toEqual([{ kind: "user", text: "hello" }]);
   });
 
+  it("is not shown for an extension command, which the server handles and never echoes", async () => {
+    // btw-side-question: AHandledCommandIsNotEchoed. With no echo to replace it, a
+    // placeholder would stand there as a message the agent was never sent.
+    const result = await connected([], {
+      commands: [
+        { name: "btw", description: "side question", source: "extension" },
+        { name: "review", description: "a template", source: "prompt" },
+      ],
+    });
+    act(() => result.current.prompt("/btw where are you at?"));
+    expect(result.current.state.pendingPrompt).toBeNull();
+    expect(JSON.parse(mockWs!.sent[mockWs!.sent.length - 1])).toEqual({ type: "prompt", text: "/btw where are you at?" });
+    // A prompt template is expanded into a real message: it keeps its placeholder.
+    act(() => result.current.prompt("/review the diff"));
+    expect(result.current.state.pendingPrompt).toEqual({ text: "/review the diff" });
+  });
+
   it("carries its attachments while it waits", async () => {
     const result = await connected();
     const images = [{ dataUrl: "data:image/png;base64,AAA", name: "shot.png" }];

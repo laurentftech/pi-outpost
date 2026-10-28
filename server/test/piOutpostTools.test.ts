@@ -239,13 +239,20 @@ describe("default export (extension entry)", () => {
     await withEnv(JSON.stringify({ cwd: root, maxBytes: VALID.maxBytes }), async () => {
       const registered: ToolDefinition[] = [];
       const events: string[] = [];
-      const pi = { registerTool: (t: ToolDefinition) => void registered.push(t), on: (event: string) => void events.push(event) } as unknown as ExtensionAPI;
+      const commands: string[] = [];
+      const pi = {
+        registerTool: (t: ToolDefinition) => void registered.push(t),
+        registerCommand: (name: string) => void commands.push(name),
+        on: (event: string) => void events.push(event),
+      } as unknown as ExtensionAPI;
 
       await piOutpostExtension(pi);
 
       assert.equal(registered.length, 24 + WORD_COMPARE.length);
-      // The RPC child hides a poster's pictures from the agent as the embedded runtime does.
-      assert.deepEqual(events.sort(), ["tool_call", "tool_result"]);
+      // The RPC child hides a poster's pictures from the agent as the embedded runtime does,
+      // and offers /btw, which closes its panel when the session changes.
+      assert.deepEqual(events.sort(), ["session_shutdown", "session_start", "tool_call", "tool_result"]);
+      assert.deepEqual(commands, ["btw"]);
       assert.deepEqual(
         registered.map((t) => t.name),
         [

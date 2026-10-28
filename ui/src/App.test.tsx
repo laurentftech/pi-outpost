@@ -1047,6 +1047,14 @@ describe("App — model bar and tree", () => {
   it("shows an extension's widget above the editor", () => {
     mount({ widgets: { w1: { lines: ["build: passing"], placement: "aboveEditor" } } });
     expect(screen.getByText("build: passing")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Close side answer" })).not.toBeInTheDocument();
+  });
+
+  // openlore: scenario=TheCloseControlClosesThePanel spec=btw-side-question
+  it("closes the side answer through /btw, which the server handles for every client", () => {
+    const api = mount({ widgets: { btw: { lines: ["Side answer · not part of the conversation", "› where?", "Reading."], placement: "aboveEditor" } } });
+    fireEvent.click(screen.getByRole("button", { name: "Close side answer" }));
+    expect(api.prompt).toHaveBeenCalledWith("/btw");
   });
 });
 

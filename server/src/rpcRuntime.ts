@@ -26,6 +26,7 @@ import type {
 import { normalizeThinkingLevels } from "@pi-outpost/shared";
 import type {
   AgentRuntime,
+  PromptDisposition,
   PromptOptions,
   RuntimeEntry,
   RuntimeEvent,
@@ -694,9 +695,10 @@ class RpcRuntime implements AgentRuntime {
       // do with it. Steering matches the embedded runtime's behaviour exactly.
       ...(this.streaming ? { streamingBehavior: "steer" } : {}),
     };
+    let answered: unknown;
     try {
       try {
-        await this.command("prompt", payload);
+        answered = await this.command("prompt", payload);
       } catch (error) {
         // Workaround for a Prime Agent bug (0.9.7), not protocol: after an abort
         // during a tool call it suspends queued input, and an RPC `prompt` only
@@ -707,7 +709,7 @@ class RpcRuntime implements AgentRuntime {
         // the user sees the same error as before and nothing worse.
         // https://github.com/PrimeIntellect-ai/prime-agent/discussions/3163
         if (payload.streamingBehavior !== undefined || !isSuspendedQueueRefusal(error)) throw error;
-        await this.command("prompt", { ...payload, streamingBehavior: "followUp" });
+        answered = await this.command("prompt", { ...payload, streamingBehavior: "followUp" });
       }
     } catch (error) {
       // Rejected *before* acceptance — the initiating client is told, and no user
@@ -722,8 +724,12 @@ class RpcRuntime implements AgentRuntime {
     // milliseconds the next prompt would go out with no `streamingBehavior` and be
     // rejected outright. The embedded runtime reads `isStreaming` synchronously and
     // never has that window.
-    this.streaming = true;
-    options?.onAccepted?.(true);
+    //
+    // Not for a prompt an extension command handled: no turn runs for it, and a
+    // `streaming` left true would send the next prompt as a steer to nothing.
+    const disposition = promptDisposition(answered);
+    if (disposition !== "handled") this.streaming = true;
+    options?.onAccepted?.(true, disposition);
   }
 
   async abort(): Promise<void> {
@@ -904,6 +910,12 @@ function isUnknownCommand(error: unknown, command: string): boolean {
   if (!(error instanceof Error)) return false;
   const message = error.message.toLowerCase();
   return message.includes(command.toLowerCase()) && ABSENT_COMMAND_WORDS.test(message);
+}
+
+/** The disposition Pi reports for an accepted prompt (`data.disposition`); none from a dialect that sends nothing. */
+function promptDisposition(data: unknown): PromptDisposition | undefined {
+  const value = (data as { disposition?: unknown } | null | undefined)?.disposition;
+  return value === "handled" || value === "queued" || value === "started" ? value : undefined;
 }
 
 /** Prime Agent's refusal of a prompt while an abort has suspended its queued input. */

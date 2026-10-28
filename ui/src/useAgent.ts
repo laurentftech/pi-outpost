@@ -586,6 +586,14 @@ type Action =
   | { type: "branding_loaded"; branding: Branding };
 
 /** Update the in-flight assistant item; append a new one when none exists (upsert). */
+/** Whether a prompt invokes an extension command — `/name args` — as Pi dispatches it: the name runs to the first space. */
+function namesExtensionCommand(text: string, commands: readonly CommandInfo[]): boolean {
+  if (!text.startsWith("/")) return false;
+  const space = text.indexOf(" ");
+  const name = space === -1 ? text.slice(1) : text.slice(1, space);
+  return commands.some((command) => command.source === "extension" && command.name === name);
+}
+
 function upsertLastAssistant(items: ChatItem[], update: (item: AssistantItem) => ChatItem): ChatItem[] {
   // Scan the whole array for the streaming item: steering echoes and tool
   // cards can land after it without splitting the stream into two bubbles
@@ -776,6 +784,9 @@ function reduce(state: AgentState, action: Action): AgentState {
   if (action.type === "branding_settled") return { ...state, brandingReady: true };
   if (action.type === "branding_loaded") return { ...state, brandingReady: true, branding: action.branding };
   if (action.type === "prompt_sent") {
+    // An extension command is handled, not added to the conversation, and the server echoes
+    // nothing for it: a placeholder would stand there until some unrelated event cleared it.
+    if (namesExtensionCommand(action.text, state.commands)) return state;
     return { ...state, pendingPrompt: { text: action.text, ...(action.images?.length ? { images: action.images } : {}) } };
   }
   // The server answers the abort with an error that clears the placeholder; its text goes

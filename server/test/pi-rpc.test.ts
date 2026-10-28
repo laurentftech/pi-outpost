@@ -552,6 +552,20 @@ describe("RpcRuntimeStarts", () => {
     assert.equal((await commands(commandLog)).filter((command) => command.type === "prompt").length, 1);
   });
 
+  // openlore: scenario=AHandledCommandStartsNoTurn spec=btw-side-question
+  test("AHandledCommandStartsNoTurn: a prompt Pi reports as handled leaves the session idle, so the next one is no steer", async () => {
+    const { runtime, commandLog } = await startFake({ commands_: { prompt: { data: { disposition: "handled" } } } });
+    const accepted: [boolean, string | undefined][] = [];
+    await runtime.prompt("/btw what is left?", { onAccepted: (value, disposition) => accepted.push([value, disposition]) });
+    assert.deepEqual(accepted, [[true, "handled"]], "accepted, and said to be handled");
+    assert.equal(runtime.snapshot().isStreaming, false, "no turn is running");
+
+    await runtime.prompt("a plain message");
+    const prompts = (await commands(commandLog)).filter((command) => command.type === "prompt");
+    assert.equal(prompts.at(-1)?.message, "a plain message");
+    assert.equal(prompts.at(-1)?.streamingBehavior, undefined, "sent as a prompt, not a steer");
+  });
+
   test("NoActiveBranchSourceFailsClosed: a fork with no tree, branch or fork messages does not start", async () => {
     await assert.rejects(
       startFake({

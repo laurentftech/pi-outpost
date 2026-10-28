@@ -26,6 +26,7 @@
 import fs from "node:fs/promises";
 import type { ExtensionAPI, ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { registerPosterPictureHooks } from "./posterPictureHooks.ts";
+import { createBtwExtension } from "./btwExtension.ts";
 import { createDocxExtractToolDefinition } from "./docxTool.ts";
 import { createDrawioCheckToolDefinition } from "./drawioTool.ts";
 import { createPosterCheckToolDefinition } from "./posterCheckTool.ts";
@@ -159,4 +160,5 @@ export default async function (pi: ExtensionAPI): Promise<void> {
   for (const tool of tools) pi.registerTool(tool);
   // As the embedded runtime does through its extension factories (index.ts).
   registerPosterPictureHooks(pi);
+  createBtwExtension()(pi);
 }

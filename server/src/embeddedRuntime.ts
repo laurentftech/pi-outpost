@@ -21,6 +21,7 @@ import { normalizeThinkingLevels } from "@pi-outpost/shared";
 import type {
   AgentRuntime,
   CredentialCapability,
+  PromptDisposition,
   PromptOptions,
   ProviderStatus,
   LoginInteraction,
@@ -588,7 +589,7 @@ export class EmbeddedRuntime implements AgentRuntime {
     const session = this.session;
     const images = options?.images;
     await session.prompt(text, {
-      preflightResult: (accepted: boolean) => options?.onAccepted?.(accepted),
+      preflightResult: (disposition: PromptDisposition) => options?.onAccepted?.(true, disposition),
       ...(images?.length ? { images: images.map((image) => ({ type: "image" as const, ...image })) } : {}),
       ...(session.isStreaming ? { streamingBehavior: "steer" as const } : {}),
     } as never);

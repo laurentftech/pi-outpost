@@ -19,8 +19,11 @@ a turn.
   conversation holds so far, with the session's model and no tools, while any turn goes on
   undisturbed.
 - The question and its answer are kept out of the conversation. They are not saved in the
-  session, not seen by the agent, and not shown as a message. They appear in a panel above the
-  composer, which `/btw` with no question closes.
+  session, not seen by the agent, and not shown as a message. They appear in a side note above the
+  composer, marked as not part of the conversation, which × (or `/btw` alone) closes.
+- While the note is open, another `/btw` can follow up: it is asked with the earlier side
+  questions and their answers. Closing the note forgets them. A message without `/btw` always goes
+  to the agent.
 - A command that an extension handled is no longer echoed as the person's message, in either
   runtime. Today it is shown, then lost on reload because Pi never saved it. In the RPC runtime it
   also marks the session busy when no turn started.
@@ -33,5 +36,5 @@ a turn.
   accepted one (`preflightResult("handled")`, RPC `data.disposition`).
 - `server/src/index.ts`: no user bubble for a handled prompt.
 - No protocol change. The panel is an extension widget (`setWidget`), which the client already
-  renders.
+  renders; the client adds a close control to the `btw` widget that sends `/btw` alone.
 - Documentation: `README.md` and `docs/how-to.md` gain `/btw`.

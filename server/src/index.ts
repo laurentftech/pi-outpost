@@ -79,6 +79,7 @@ import { createInterface } from "node:readline/promises";
 import { runCliProviderLogin, runCliProviderLogout, type CliAccountRuntime } from "./cliAccounts.ts";
 import { pathToFileURL } from "node:url";
 import { CliError, helpText, parseCli, readSecret, runInit } from "./cli.ts";
+import { createBtwExtension } from "./btwExtension.ts";
 import { COMMAND_NOT_AVAILABLE, offeredCommands, refusesPrompt, type CommandPolicy } from "./commandPolicy.ts";
 import { bindFailureMessage, holdConsoleIfOwned } from "./startupFailure.ts";
 import { BuildExeError, buildExecutable } from "./buildExe.ts";
@@ -1422,6 +1423,9 @@ const makeCreateRuntime =
       ...(appendSystemPrompt.length > 0 ? { appendSystemPrompt } : {}),
       extensionFactories: [
         ...extraFactories,
+        // pi-outpost's own, like its tools, so not dropped under noExtensions (which keeps
+        // out extension code found on disk). Replaceable: a `btw` the user installs wins.
+        { name: "btw", factory: createBtwExtension(), replaceable: true },
         // The Pi CLI loads these built-ins itself; SDK sessions do not. Keep the
         // embedded runtime's extension set in step with the CLI, including MCP's
         // codemode/tool_search activation when configured servers need them.
@@ -4230,9 +4234,12 @@ async function handlePrompt(workspace: Workspace, text: string, images?: WireIma
     // The *original* text, not promptText: the absolute path is for the model,
     // never for what the user sees — see historyToItems for the reload side of
     // the same rule.
-    onAccepted: (accepted) => {
-      if (accepted) broadcast(workspace, { type: "user", text, ...(images?.length ? { images } : {}) });
-      // A refused prompt runs no turn, so nothing would ever age these out.
+    // A prompt an extension command handled is neither saved nor run: echoing it would
+    // show a bubble that is gone on reload, and for `/btw` the question as if the agent
+    // had been asked it.
+    onAccepted: (accepted, disposition) => {
+      if (accepted && disposition !== "handled") broadcast(workspace, { type: "user", text, ...(images?.length ? { images } : {}) });
+      // A refused or handled prompt runs no turn, so nothing would ever age these out.
       else unpublishDocumentTools(workspace, publishedNow);
     },
   });

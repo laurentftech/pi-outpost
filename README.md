@@ -141,7 +141,7 @@ one needs, the command that proves it works, and the caution that goes with it.
 | [Put it inside your own web app](docs/how-to.md#put-it-inside-your-own-web-app) | [Use an existing pi installation](docs/how-to.md#use-an-existing-pi-installation) |
 | [Make a PowerPoint deck from a template](docs/how-to.md#make-a-powerpoint-deck-from-a-template) | [Write a Word document from a template](docs/how-to.md#write-a-word-document-from-a-template) |
 | [Confine the agent's shell](docs/sandboxing.md#recommended-setup) | [Confine it on Windows 11 with PowerShell](docs/sandboxing.md#windows-11-mxc-and-powershell) |
-| [When something does not work](docs/how-to.md#when-something-does-not-work) | |
+| [When something does not work](docs/how-to.md#when-something-does-not-work) | [Ask a side question while the agent works](docs/how-to.md#ask-a-side-question-while-the-agent-works) |
 
 ## What you get
 
@@ -163,6 +163,10 @@ one needs, the command that proves it works, and the caution that goes with it.
   per-file diffs with `open` and `history` beside each path, a search becomes hits grouped
   by file, an edit becomes the diff it applied — the raw output always one keystroke away
 - Steer or follow up while the agent is streaming, and abort
+- Ask a side question while the agent works: `/btw where are you at?` is answered from the
+  conversation so far, in a side note above the composer, without interrupting the turn, reaching
+  the agent or entering the conversation. Another `/btw` can follow up on it; × closes the note
+  and forgets the side questions
 - Model and thinking-level selectors; tokens and price per turn, plus a session-analysis
   panel — cost across turns, tool calls ranked by output size or failure, every row jumping
   back to the message that produced it
