@@ -54,8 +54,8 @@ every conversation, and the first thing to look at when a context window feels s
 | | system prompt | tools | baseline |
 |---|---|---|---|
 | pi, default toolset | ~0.7k tokens | 8 tools, ~1.7k | **~2.4k tokens** |
-| **Pi Outpost, at rest** | ~1.5k tokens | 11 tools, ~3.8k | **~5.2k tokens** |
-| **Pi Outpost, a Work Plan open** | ~1.7k tokens | 12 tools, ~4.9k | **~6.6k tokens** |
+| **Pi Outpost, at rest** | ~1.7k tokens | 13 tools, ~5.4k | **~7.1k tokens** |
+| **Pi Outpost, a Work Plan open** | ~2.0k tokens | 14 tools, ~6.5k | **~8.5k tokens** |
 | OpenCode 1.18.27, default agent | ~2.4k tokens | 10 tools, ~5.2k | **~7.6k tokens** |
 | Kilo Code 7.5.9, default agent | ~7.0k tokens | 12 tools, ~7.2k | **~14.3k tokens** |
 
@@ -68,7 +68,9 @@ every default tool on every request.
 
 A document extractor adds ~0.5k on top while it lasts, and it does not last: five turns
 after its last call it is forgotten. There is deliberately no "everything published" row —
-holding all four at once is a moment, not a state.
+holding all four at once is a moment, not a state. Not declared is not out of reach: the
+extractors are registered `deferred`, so the agent can load one with `tool_search` — the
+~0.2k tool, and one line of the prompt, that the resting figure pays for that.
 
 It was **~10.7k** before that work — the row this page carried when it was first written,
 and the reason the work happened.
@@ -84,7 +86,7 @@ Kilo Code's twelve tools are broader and larger again: `bash` 6 127 chars (~1.5k
 `kilo_local_recall` 2 106 (~0.5k), `grep` 1 990, `edit` 1 958, `read` 1 734,
 `webfetch` 1 293, `glob` 1 114, `write` 1 026 and `skill` 676. The larger difference is
 the default system prompt: 28 071 characters, before project instructions or discovered
-skills, versus 9 613 for OpenCode and 5 973 for Pi Outpost at rest.
+skills, versus 9 613 for OpenCode and 6 968 for Pi Outpost at rest.
 
 The comparison worth drawing is the two `todowrite` definitions against `work_plan`: the
 same job — an agent-owned list of what it is doing — at **2 686 characters in OpenCode,
@@ -103,16 +105,17 @@ Per tool, largest first, in the state each is actually sent in:
 | `bash` (OpenCode) | 5 319 | ~1.3k | always |
 | `work_plan_extended` | 4 602 | ~1.2k | while a plan is being worked |
 | `work_plan` | 4 331 | ~1.1k | always |
-| `docx_extract` | 3 256 | ~0.8k | while a Word file is in play |
-| `xlsx_extract` | 2 345 | ~0.6k | while a spreadsheet is in play |
-| `pdf_extract` | 2 322 | ~0.6k | while a PDF is in play |
+| `docx_extract` | 3 256 | ~0.8k | while a Word file is in play, or once the agent loads it |
+| `xlsx_extract` | 2 345 | ~0.6k | while a spreadsheet is in play, or once the agent loads it |
+| `pdf_extract` | 2 322 | ~0.6k | while a PDF is in play, or once the agent loads it |
 | `write_structure_figure` | 2 195 | ~0.5k | always |
-| `pptx_extract` | 1 933 | ~0.5k | while a deck is in play |
+| `pptx_extract` | 1 933 | ~0.5k | while a deck is in play, or once the agent loads it |
 | `edit` | 1 773 | ~0.4k | always |
 | `present_structure` | 1 535 | ~0.4k | always |
 | `grep` | 1 107 | ~0.3k | always |
 | `read` | 824 | ~0.2k | always |
 | `powershell` | 734 | ~0.2k | always |
+| `tool_search` | 743 | ~0.2k | always: how the agent loads a deferred tool |
 | `bash` | 716 | ~0.2k | always |
 | `find` | 684 | ~0.2k | always |
 | `write` | 573 | ~0.1k | always |
@@ -132,8 +135,9 @@ npx tsx server/scripts/probe-context-baseline.mts
 It builds three real `AgentSession`s — pi's defaults, what pi-outpost publishes at rest,
 and what it publishes with a Work Plan open — then reads `session.systemPrompt` and
 `session.getAllTools()`, counting the JSON of each tool's name, description, prompt
-guidelines and parameter schema. The resting figure withholds the on-demand tools through
-`setActiveToolsByName`, the way the server does, rather than subtracting them afterwards:
+guidelines and parameter schema. The resting figure registers the on-demand tools `deferred` and switches `tool_search` on,
+the way the server does, and withholds `work_plan_extended` through
+`setActiveToolsByName` rather than subtracting it afterwards:
 pi rebuilds the system prompt around the active set, so a withheld tool takes its
 guidelines with it — 2 074 characters that a subtraction would have counted anyway. Reading the sources
 instead would miss where a tool's guidelines actually land, which is in the prompt.

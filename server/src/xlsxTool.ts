@@ -52,7 +52,7 @@ const parameters = Type.Object({
 });
 
 const DESCRIPTION = [
-  "Extract a spreadsheet (.xlsx) as markdown tables: one table per sheet, with the workbook's own column letters and row numbers so cells stay addressable.",
+  "Extract an Excel spreadsheet (.xlsx) as markdown tables: one table per sheet, with the workbook's own column letters and row numbers so cells stay addressable.",
   "If the user wants the workbook saved, converted, or written anywhere, pass output_path: it writes every visible sheet there in one call and returns a short summary.",
   "Do not return the content and then write it yourself — that spends the context twice.",
   "Without sheet, every visible sheet is read in workbook order; hidden sheets and hidden columns are not read and are reported.",

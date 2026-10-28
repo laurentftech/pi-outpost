@@ -45,11 +45,13 @@ test("defaultTools activates codemode and tool_search under a sandbox", async ()
   for (const name of ["read", "write", "edit"]) assert.ok(active.includes(name), `${name} still active`);
 });
 
-test("without defaultTools, codemode and tool_search stay registered but inactive", async () => {
+test("without defaultTools, codemode stays inactive and tool_search is on for the deferred tools", async () => {
   const { active, all } = await activeToolsWith(undefined);
   assert.ok(all.includes("codemode") && all.includes("tool_search"), "both are registered");
   assert.ok(!active.includes("codemode"), "codemode is not switched on uninvited");
-  assert.ok(!active.includes("tool_search"), "tool_search is not switched on uninvited");
+  // pi-outpost's on-demand tools are registered deferred, and tool_search is how the agent
+  // loads one by itself: the server switches it on.
+  assert.ok(active.includes("tool_search"), "tool_search is switched on for the deferred tools");
 });
 
 test("defaultTools cannot bring back a built-in the sandbox withholds", async () => {

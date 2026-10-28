@@ -31,8 +31,10 @@ import path from "node:path";
 import {
   createAgentSessionFromServices,
   createAgentSessionServices,
+  createToolSearchExtension,
   SessionManager,
 } from "@earendil-works/pi-coding-agent";
+import { DEFERRED_TOOLS, deferOnDemandTools, TOOL_SEARCH_TOOL } from "../src/documentTools.ts";
 import { createPdfExtractToolDefinition } from "../src/pdfTool.ts";
 import { createDocxExtractToolDefinition } from "../src/docxTool.ts";
 import { createXlsxExtractToolDefinition } from "../src/xlsxTool.ts";
@@ -66,6 +68,8 @@ async function measure(label: string, options: { outpost: boolean; withheld?: st
       noSkills: true,
       noPromptTemplates: true,
       ...(appendSystemPrompt.length > 0 ? { appendSystemPrompt } : {}),
+      // The way the agent loads a deferred tool, as the server registers it.
+      ...(options.outpost ? { extensionFactories: [{ name: "tool-search", factory: createToolSearchExtension(), replaceable: true }] } : {}),
     },
   });
   const extras = options.outpost
@@ -85,10 +89,16 @@ async function measure(label: string, options: { outpost: boolean; withheld?: st
   const session = await createAgentSessionFromServices({
     services,
     sessionManager: SessionManager.create(cwd, path.join(cwd, "sessions")),
-    ...(extras.length > 0 ? { customTools: extras } : {}),
+    // Deferred as the server registers them: not declared until published or searched for.
+    ...(extras.length > 0 ? { customTools: deferOnDemandTools(extras) } : {}),
   });
   const s = (session as { session?: unknown }).session ?? session;
   const withheld = new Set(options.withheld ?? []);
+  if (options.outpost) {
+    // The server switches tool_search on for the deferred tools.
+    const active = (s as { getActiveToolNames: () => string[] }).getActiveToolNames();
+    (s as { setActiveToolsByName: (names: string[]) => void }).setActiveToolsByName([...active, TOOL_SEARCH_TOOL]);
+  }
   if (withheld.size > 0) {
     // Withhold them the way the server does. Filtering the list afterwards would count
     // the prompt of a session that still had them: pi rebuilds the system prompt around
@@ -98,8 +108,10 @@ async function measure(label: string, options: { outpost: boolean; withheld?: st
       .setActiveToolsByName(active.filter((name) => !withheld.has(name)));
   }
   const prompt = (s as { systemPrompt: string }).systemPrompt;
+  // A deferred tool is registered and costs nothing until it is declared.
+  const declared = new Set((s as { getActiveToolNames: () => string[] }).getActiveToolNames());
   const sized = (s as { getAllTools: () => { name?: string }[] }).getAllTools()
-    .filter((tool) => !withheld.has(tool.name ?? ""))
+    .filter((tool) => !withheld.has(tool.name ?? "") && (!DEFERRED_TOOLS.includes(tool.name ?? "") || declared.has(tool.name ?? "")))
     .map((tool) => ({ name: tool.name ?? "?", chars: chars(JSON.stringify(tool)) }))
     .sort((a, b) => b.chars - a.chars);
   const toolChars = sized.reduce((n, tool) => n + tool.chars, 0);

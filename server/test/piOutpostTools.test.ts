@@ -16,6 +16,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { after, before, describe, test } from "node:test";
 import type { ExtensionAPI, ToolDefinition } from "@earendil-works/pi-coding-agent";
+import { DEFERRED_TOOLS } from "../src/documentTools.ts";
 import piOutpostExtension, {
   createPiOutpostTools,
   parseToolsSettings,
@@ -239,13 +240,36 @@ describe("default export (extension entry)", () => {
     await withEnv(JSON.stringify({ cwd: root, maxBytes: VALID.maxBytes }), async () => {
       const registered: ToolDefinition[] = [];
       const events: string[] = [];
-      const pi = { registerTool: (t: ToolDefinition) => void registered.push(t), on: (event: string) => void events.push(event) } as unknown as ExtensionAPI;
+      const handlers = new Map<string, () => void>();
+      let active = ["read"];
+      const pi = {
+        registerTool: (t: ToolDefinition) => void registered.push(t),
+        on: (event: string, handler: () => void) => {
+          events.push(event);
+          handlers.set(event, handler);
+        },
+        getActiveTools: () => active,
+        getAllTools: () => [{ name: "read" }, { name: "tool_search" }],
+        setActiveTools: (names: string[]) => {
+          active = names;
+        },
+      } as unknown as ExtensionAPI;
 
       await piOutpostExtension(pi);
 
       assert.equal(registered.length, 24 + WORD_COMPARE.length);
-      // The RPC child hides a poster's pictures from the agent as the embedded runtime does.
-      assert.deepEqual(events.sort(), ["tool_call", "tool_result"]);
+      // The RPC child hides a poster's pictures from the agent as the embedded runtime does,
+      // and switches tool_search on as a session starts.
+      assert.deepEqual(events.sort(), ["session_start", "tool_call", "tool_result"]);
+      // The on-demand tools are registered deferred: the child cannot withdraw them, so
+      // they stay undeclared until the agent loads one with tool_search.
+      for (const tool of registered) {
+        assert.equal((tool as { exposure?: string }).exposure, DEFERRED_TOOLS.includes(tool.name) ? "deferred" : undefined, tool.name);
+      }
+      handlers.get("session_start")!();
+      assert.deepEqual(active, ["read", "tool_search"], "tool_search is switched on");
+      handlers.get("session_start")!();
+      assert.deepEqual(active, ["read", "tool_search"], "and only once");
       assert.deepEqual(
         registered.map((t) => t.name),
         [
