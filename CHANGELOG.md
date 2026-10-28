@@ -7,6 +7,30 @@ version you had and the one you run now, without going online.
 Releases before 0.41.0 are described on
 [GitHub Releases](https://github.com/laurentftech/pi-outpost/releases).
 
+## [0.53.0] - 2026-10-28
+
+### Added
+
+- **Touch up a poster's draw.io diagram in place.** In pi-outpost, double-click a
+  diagram picture to edit its page, or open it in draw.io desktop. Returning to the
+  poster refreshes every picture of that page, keeping its position and width;
+  one undo restores them all. Unsaved touch-ups are kept unless you discard them.
+  ([#376](https://github.com/laurentftech/pi-outpost/pull/376))
+- **See why a session is slow to open.** A new session, session switch or fork taking
+  at least two seconds logs the time spent shutting down the previous session,
+  loading the new one and binding extensions. An extension binding that finishes
+  later reports its completion too, helping diagnose slow MCP connections.
+  ([#377](https://github.com/laurentftech/pi-outpost/pull/377))
+
+### Fixed
+
+- **The poster's Format panel starts from what you see.** Inherited fonts, sizes,
+  colours and alignment are shown correctly, and the size arrows step from those
+  values without accidental dragging. Font sizes stay positive and in pixels,
+  line spacing is a multiple of the text size, and invalid colours are refused.
+  The panel follows the light or dark theme and its colour picker stays in view.
+  ([#375](https://github.com/laurentftech/pi-outpost/pull/375))
+
 ## [0.52.0] - 2026-10-27
 
 ### Added
