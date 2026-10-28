@@ -1979,6 +1979,23 @@ function withholdDocumentTools(workspace: Workspace): void {
 }
 
 /**
+ * Put the on-demand tools back as the idle counts say: a tool they track stays, the rest go.
+ *
+ * Every path in this file that publishes one enrols it in the counts, so a published tool
+ * they do not track was published behind the server's back. The SDK does exactly that:
+ * `navigateTree` restores the loadout the transcript recorded and activates every tool the
+ * transcript never mentioned, as if it had just been registered — and withheld tools are
+ * the ones it never mentioned. Untracked, they were never aged out, and stayed published
+ * for the rest of the session. So this runs after a rewind, and also before every prompt
+ * and at the end of every turn, to catch the next path nobody has thought of yet.
+ */
+function reassertOnDemandTools(workspace: Workspace): void {
+  for (const tool of [...DOCUMENT_TOOLS, PROJECT_MODEL_TOOL, WORK_PLAN_EXTENDED_TOOL]) {
+    workspace.agent.setToolPublished(tool, workspace.documentToolIdleTurns.has(tool));
+  }
+}
+
+/**
  * Publish the extractors a prompt calls for, before the turn carrying it goes out.
  *
  * Sticky: nothing is withdrawn here. A conversation that has handled one PDF usually
@@ -2080,6 +2097,7 @@ function ageDocumentTools(workspace: Workspace): void {
     workspace.documentToolIdleTurns.delete(tool);
   }
   used.clear();
+  reassertOnDemandTools(workspace);
 }
 
 /**
@@ -4220,6 +4238,7 @@ async function handlePrompt(workspace: Workspace, text: string, images?: WireIma
   const promptText = await absolutizeMentions(workspace, text);
   // Read now: a registry edited by hand since the last turn lists different files.
   workspace.projectModelFiles = await projectModelFiles(workspace.root);
+  reassertOnDemandTools(workspace);
   // Before the turn, not after: a tool published once the request is on its way is a
   // tool the model could not call. The composer references an attached document by
   // path, so the text naming a document is the same event as one arriving.
@@ -4275,6 +4294,7 @@ async function editPrompt(workspace: Workspace, socket: WebSocket, entryId: stri
       send(socket, { type: "error", message: "Edit cancelled — the conversation was not rewound" });
       return;
     }
+    reassertOnDemandTools(workspace);
     broadcast(workspace, { type: "session_replaced", ...snapshot(workspace) });
   } finally {
     workspace.replacingSession = false;
@@ -4715,6 +4735,7 @@ async function navigateTree(workspace: Workspace, socket: WebSocket, entryId: st
   try {
     const { cancelled, editorText } = await navigate.call(workspace.agent, entryId);
     if (cancelled) return;
+    reassertOnDemandTools(workspace);
     broadcast(workspace, { type: "session_replaced", ...snapshot(workspace) });
     if (editorText) send(socket, { type: "editor_prefill", text: editorText });
     broadcast(workspace, { type: "tree", roots: buildTree(workspace) });
