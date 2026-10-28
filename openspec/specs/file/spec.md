@@ -518,7 +518,7 @@ be created exclusively, under an unpredictable name, so that a pre-existing entr
 including a symlink pointing out of the sandbox — fails the write instead of redirecting it.
 
 An existing path SHALL NOT be overwritten. The system SHALL pick a distinct name and SHALL report
-the path it wrote. Missing directories in the destination SHALL be created.
+the path it wrote. Missing directories in the default uploads destination SHALL be created. An explicit existing-directory import SHALL instead refuse a missing destination without creating it.
 
 The write SHALL be atomic: an interruption MUST NOT leave a truncated file where the reported path
 points. On success the system SHALL report the written path and SHALL notify connected clients that
@@ -872,6 +872,69 @@ the editor SHALL bring the rendering back, unless the reader chose another mode 
 - **GIVEN** a file shown rendered, without room for two panes
 - **WHEN** the reader clicks edit, then done
 - **THEN** the source mode is shown with the editor, and after done the rendering again
+
+### Requirement: ImportExternalFilesIntoTreeFolders
+The file tree SHALL accept external files on writable folder rows and an explicit workspace-root
+target. It SHALL import their bytes into that directory, without attaching them to the composer.
+The target SHALL be highlighted while accepted, and pending uploads, the actual saved paths and
+per-file errors SHALL be visible in the tree. A second drop during a pending batch SHALL NOT start
+a duplicate import. Internal file moves and copies SHALL retain their existing behaviour.
+
+#### Scenario: ReopeningFilesKeepsAnImport
+- **WHEN** the user closes and reopens Files during an import
+- **THEN** the pending progress remains visible and repeated drops do not start another batch
+
+#### Scenario: ImportIntoAFolder
+- **WHEN** the user drops external files onto a writable folder
+- **THEN** their exact bytes are stored there, the saved paths are shown, the folder's tree updates,
+  and no chat attachment or global attachment overlay is created
+
+#### Scenario: ImportIntoTheRoot
+- **WHEN** the user drops a file on the writable workspace-root target
+- **THEN** the file is stored at the browser root
+
+#### Scenario: ReadOnlyDropIsNotAnAttachment
+- **WHEN** external files are dropped onto a read-only folder or tree
+- **THEN** nothing is imported and the drop does not fall through to chat attachments
+
+#### Scenario: ImportReportsCollisions
+- **GIVEN** a file already exists under the requested name
+- **WHEN** that name is imported
+- **THEN** the existing file is untouched and the distinct saved path is shown
+
+#### Scenario: ImportReportsIndividualFailures
+- **WHEN** a batch contains a file over 25 MiB and a valid file
+- **THEN** the oversized file is refused before reading it, the valid file is imported,
+  and the refusal and saved path are both shown
+
+#### Scenario: FolderDropsAreRefused
+- **WHEN** a directory is dropped onto a folder target
+- **THEN** the tree explains that only files can be imported and never uploads a directory placeholder
+
+#### Scenario: AWorkspaceSwitchDoesNotRedirectImports
+- **WHEN** the workspace changes while dropped files are being read or uploaded
+- **THEN** no subsequent request from that batch writes into the new workspace,
+  and feedback from the previous workspace is not shown in the new tree
+
+### Requirement: ExistingDirectoryUploads
+An upload_file request with existingDirectory=true SHALL require workspaceId to match the socket's
+workspace. It SHALL target an existing writable directory inside the browser root, including the
+root, without creating parents. Existing size, name, symlink, binary, atomic-write and no-overwrite
+rules SHALL apply. Default uploads SHALL remain pinned to uploads below the writable root and MAY
+create that directory.
+
+#### Scenario: UploadToAnExistingDirectory
+- **WHEN** an upload explicitly targets an existing writable folder
+- **THEN** the file is stored there, the actual path is returned and connected clients are notified
+
+#### Scenario: ImportDoesNotResurrectAMissingDirectory
+- **WHEN** the target directory no longer exists
+- **THEN** the upload is refused and no directory or file is created
+
+#### Scenario: ImportCannotEscapePermissions
+- **WHEN** the import target is read-only, outside the writable zone, or escapes the browser root
+  directly or through a symlink
+- **THEN** the upload is refused without writing a file
 
 ## Technical Notes
 
