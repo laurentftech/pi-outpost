@@ -17,10 +17,19 @@ export const WORK_PLAN_SYSTEM_GUIDANCE = [
   "Skip a Work Plan for trivial interactions.",
 ].join(" ");
 
+/**
+ * Where the deferred tools are. `tool_search`'s own description lists nothing it can load,
+ * so without this a model never learns that reading a spreadsheet is one search away.
+ */
+export const DEFERRED_TOOLS_GUIDANCE =
+  "Tools for Word, Excel, PowerPoint, PDF and email files (.msg, .eml), and for the project model, are not listed until needed. When you need one, load it with tool_search, e.g. tool_search \"read an Excel spreadsheet\".";
+
 export interface SystemPromptConfig {
   webContext: boolean;
   appendSystemPrompt: readonly string[];
   tools?: readonly string[];
+  /** No extensions: Pi's tool search is not loaded, so the deferred tools cannot be searched for. */
+  noExtensions?: boolean;
   /** Sandboxed sessions use Pi Outpost's replacement toolset, which includes work_plan. */
   sandbox?: unknown;
 }
@@ -29,11 +38,21 @@ export function workPlanIsAvailable(config: Pick<SystemPromptConfig, "tools" | "
   return config.sandbox !== undefined || config.tools === undefined || config.tools.includes("work_plan");
 }
 
+/**
+ * Whether the agent can load a deferred tool with `tool_search`: the extension is loaded,
+ * and no tool allowlist leaves it out. A sandboxed session ignores the allowlist.
+ */
+export function toolSearchIsAvailable(config: Pick<SystemPromptConfig, "tools" | "sandbox" | "noExtensions">): boolean {
+  if (config.noExtensions) return false;
+  return config.sandbox !== undefined || config.tools === undefined || config.tools.includes("tool_search");
+}
+
 /** One composition path for both in-process resource loading and RPC argv. */
 export function composeAppendSystemPrompt(config: SystemPromptConfig): string[] {
   return [
     ...(config.webContext ? [WEB_UI_CONTEXT] : []),
     ...(workPlanIsAvailable(config) ? [WORK_PLAN_SYSTEM_GUIDANCE] : []),
+    ...(toolSearchIsAvailable(config) ? [DEFERRED_TOOLS_GUIDANCE] : []),
     ...config.appendSystemPrompt,
   ];
 }

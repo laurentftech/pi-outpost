@@ -305,7 +305,8 @@ one needs, the command that proves it works, and the caution that goes with it.
   are a quarter of a session's prompt floor, and most sessions never open one. Named and never
   called, an extractor goes again when the turn ends; named and used, it stays through the
   work around that document and is forgotten after five quiet turns. Naming the document
-  again brings it back
+  again brings it back, and the agent can load one by itself with `tool_search` — for a
+  file it found on its own, say
 - Email dropped on the composer: an Outlook `.msg`, or a `.eml`/`.emlx` from macOS Mail, Gmail or
   any webmail, is copied into the workspace and read by `mail_extract` — subject, sender,
   recipients, date, the body as markdown, and an inventory of its attachments. Ask for the

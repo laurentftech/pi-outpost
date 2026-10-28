@@ -25,6 +25,7 @@
  */
 import fs from "node:fs/promises";
 import type { ExtensionAPI, ToolDefinition } from "@earendil-works/pi-coding-agent";
+import { deferOnDemandTools, TOOL_SEARCH_TOOL } from "./documentTools.ts";
 import { registerPosterPictureHooks } from "./posterPictureHooks.ts";
 import { createBtwExtension } from "./btwExtension.ts";
 import { createDocxExtractToolDefinition } from "./docxTool.ts";
@@ -157,7 +158,17 @@ export async function createPiOutpostTools(settings: PiOutpostToolsSettings): Pr
 
 export default async function (pi: ExtensionAPI): Promise<void> {
   const tools = await createPiOutpostTools(parseToolsSettings(process.env[TOOLS_ENV_VAR]));
-  for (const tool of tools) pi.registerTool(tool);
+  // Deferred, as the embedded runtime registers them. The parent cannot publish or
+  // withdraw anything here, so they stay undeclared until the agent loads one with
+  // tool_search — rather than every one of them declared on every request.
+  for (const tool of deferOnDemandTools(tools)) pi.registerTool(tool);
+  // Pi registers its tool search inactive and only switches it on for MCP servers. Absent
+  // under --no-extensions or an allowlist leaving it out, and then there is nothing to do.
+  pi.on("session_start", () => {
+    const active = pi.getActiveTools();
+    if (active.includes(TOOL_SEARCH_TOOL) || !pi.getAllTools().some((tool) => tool.name === TOOL_SEARCH_TOOL)) return;
+    pi.setActiveTools([...active, TOOL_SEARCH_TOOL]);
+  });
   // As the embedded runtime does through its extension factories (index.ts).
   registerPosterPictureHooks(pi);
   createBtwExtension()(pi);

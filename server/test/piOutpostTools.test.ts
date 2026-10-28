@@ -16,6 +16,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { after, before, describe, test } from "node:test";
 import type { ExtensionAPI, ToolDefinition } from "@earendil-works/pi-coding-agent";
+import { DEFERRED_TOOLS } from "../src/documentTools.ts";
 import piOutpostExtension, {
   createPiOutpostTools,
   parseToolsSettings,
@@ -240,19 +241,40 @@ describe("default export (extension entry)", () => {
       const registered: ToolDefinition[] = [];
       const events: string[] = [];
       const commands: string[] = [];
+      const handlers = new Map<string, ((event: unknown, ctx: unknown) => void)[]>();
+      let active = ["read"];
       const pi = {
         registerTool: (t: ToolDefinition) => void registered.push(t),
         registerCommand: (name: string) => void commands.push(name),
-        on: (event: string) => void events.push(event),
+        on: (event: string, handler: (event: unknown, ctx: unknown) => void) => {
+          events.push(event);
+          handlers.set(event, [...(handlers.get(event) ?? []), handler]);
+        },
+        getActiveTools: () => active,
+        getAllTools: () => [{ name: "read" }, { name: "tool_search" }],
+        setActiveTools: (names: string[]) => {
+          active = names;
+        },
       } as unknown as ExtensionAPI;
 
       await piOutpostExtension(pi);
 
       assert.equal(registered.length, 24 + WORD_COMPARE.length);
       // The RPC child hides a poster's pictures from the agent as the embedded runtime does,
-      // and offers /btw, which closes its panel when the session changes.
-      assert.deepEqual(events.sort(), ["session_shutdown", "session_start", "tool_call", "tool_result"]);
+      // switches tool_search on as a session starts, and offers /btw, which closes its panel
+      // when the session changes.
+      assert.deepEqual(events.sort(), ["session_shutdown", "session_start", "session_start", "tool_call", "tool_result"]);
       assert.deepEqual(commands, ["btw"]);
+      // The on-demand tools are registered deferred: the child cannot withdraw them, so
+      // they stay undeclared until the agent loads one with tool_search.
+      for (const tool of registered) {
+        assert.equal((tool as { exposure?: string }).exposure, DEFERRED_TOOLS.includes(tool.name) ? "deferred" : undefined, tool.name);
+      }
+      const ctx = { ui: { setWidget: () => {} } };
+      for (const handler of handlers.get("session_start")!) handler({ type: "session_start" }, ctx);
+      assert.deepEqual(active, ["read", "tool_search"], "tool_search is switched on");
+      for (const handler of handlers.get("session_start")!) handler({ type: "session_start" }, ctx);
+      assert.deepEqual(active, ["read", "tool_search"], "and only once");
       assert.deepEqual(
         registered.map((t) => t.name),
         [
