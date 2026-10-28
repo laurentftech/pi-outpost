@@ -45,7 +45,6 @@ const conversationText = (request) => request.messages.map((item) => item.text).
 
 async function boot(t, config = {}, files = {}) {
   const root = await realpath(await makeWorkspace({ "notes.md": "We decided to ship on Friday.\n", ...files }));
-  t.after(() => rm(root, { recursive: true, force: true }));
   const log = path.join(root, "requests.jsonl");
   const gate = path.join(root, "gate");
   const server = await startServer(
@@ -53,9 +52,14 @@ async function boot(t, config = {}, files = {}) {
     { ...(config.agentRuntime ? {} : { extensionPaths: [PROVIDER], allowedModels: [MODEL] }), ...config },
     { env: { BTW_LOG: log, BTW_GATE: gate } },
   );
-  t.after(() => server.stop());
   const client = connect(server.wsUrl());
-  t.after(() => client.close());
+  // One hook, in this order: on Windows the workspace cannot be removed while the server, or its
+  // Pi child, still runs in it.
+  t.after(async () => {
+    client.close();
+    await server.stop();
+    await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+  });
   const hello = await client.waitFor("hello", 30_000);
   if (!config.agentRuntime) {
     client.send({ type: "set_model", ...MODEL });

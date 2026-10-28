@@ -244,7 +244,7 @@ test("a tool published behind the server's back is withdrawn before the next tur
 
     // The command runs no turn: it only switches every tool on.
     client.send({ type: "prompt", text: "/activate-all-tools" });
-    await client.waitFor((message) => message.type === "user" && message.text === "/activate-all-tools");
+    await client.waitFor((message) => message.type === "extension_ui_request" && message.method === "notify" && message.message === "every tool is active");
     client.send({ type: "prompt", text: "Second." });
     const after = await nthRequest(log, 1);
     // Only the server's own on-demand tools are its to withdraw: whatever else the
