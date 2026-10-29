@@ -63,7 +63,7 @@ const parameters = Type.Object({
 });
 
 const DESCRIPTION = [
-  "Extract a Word (.docx) document as markdown: paragraphs, headings, and tables with the rows and columns the document declares.",
+  "Read a Word document (.docx): extract its text, headings and tables as Markdown, preserving the rows and columns the Word document declares.",
   "If the user wants the document saved, converted, or written anywhere, pass output_path: it writes the whole document there in one call and returns a short summary.",
   "Do not return the content and then write it yourself — that spends the context twice.",
   "Otherwise output is capped per call — when it is truncated it says so and names the block range to ask for next, or pass full:true to get everything at once.",
