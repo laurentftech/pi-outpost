@@ -7,6 +7,38 @@ version you had and the one you run now, without going online.
 Releases before 0.41.0 are described on
 [GitHub Releases](https://github.com/laurentftech/pi-outpost/releases).
 
+## [0.55.0] - 2026-10-29
+
+### Added
+
+- **Ask a side question while the agent works.** Use `/btw` to ask about the
+  conversation without interrupting the running turn. The answer appears above
+  the composer, supports follow-up questions, and stays out of the agent's
+  conversation and saved session. Side answers use the session's model with no
+  tools, in both embedded and RPC runtimes.
+  ([#383](https://github.com/laurentftech/pi-outpost/pull/383))
+
+### Changed
+
+- **Load specialist tools when they are needed.** Document and project-model tools
+  stay available through `tool_search` and extension calls without adding all their
+  schemas to every request. Tools loaded by search follow the same inactivity
+  rules as tools published when a document is named.
+  ([#382](https://github.com/laurentftech/pi-outpost/pull/382))
+- **Keep diagram, poster and structure tools out of idle conversations.** These
+  tools now load through `tool_search` too, with guidance explaining which tool
+  families the agent can find.
+  ([#384](https://github.com/laurentftech/pi-outpost/pull/384))
+
+### Fixed
+
+- **Keep on-demand tools hidden across conversation rewinds.** Restoring or
+  rewinding a conversation no longer republishes tools that should stay inactive.
+  ([#381](https://github.com/laurentftech/pi-outpost/pull/381))
+- **Find the Word extractor on Windows.** Searching for “Word document” includes
+  `docx_extract` even when the Windows-only comparison tool is available.
+  ([#384](https://github.com/laurentftech/pi-outpost/pull/384))
+
 ## [0.54.0] - 2026-10-28
 
 ### Added
