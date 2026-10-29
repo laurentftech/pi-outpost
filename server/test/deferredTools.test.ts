@@ -11,6 +11,7 @@ import path from "node:path";
 import { describe, test } from "node:test";
 import { createToolSearchExtension } from "@earendil-works/pi-coding-agent";
 import { DEFERRED_TOOLS, deferOnDemandTools, DOCUMENT_TOOLS, TOOL_SEARCH_TOOL } from "../src/documentTools.ts";
+import { createDocxCompareToolDefinition } from "../src/docxCompare.ts";
 import { createPiOutpostTools } from "../src/piOutpostTools.ts";
 import { PROJECT_MODEL_TOOL } from "../src/projectModelTool.ts";
 
@@ -18,10 +19,16 @@ type Registered = { name: string; description: string; parameters: unknown; expo
 type SearchTool = { execute: (id: string, input: { query: string; limit?: number }) => Promise<{ details: { loaded: string[] } }> };
 
 /** Every tool the RPC child registers, deferred as it registers them, behind a real `tool_search`. */
-async function search(): Promise<(query: string) => Promise<string[]>> {
+async function search(platform: "linux" | "win32"): Promise<(query: string) => Promise<string[]>> {
   const cwd = await mkdtemp(path.join(os.tmpdir(), "deferred-tools-"));
   const maxBytes = { pdf: 1e6, docx: 1e6, xlsx: 1e6, pptx: 1e6, mail: 1e6, structuredExchange: 1e6 };
-  const tools = deferOnDemandTools(await createPiOutpostTools({ cwd, maxBytes } as never)) as unknown as Registered[];
+  // Search both real inventories on every runner: the Windows-only comparison tool
+  // changes BM25 scores even when the query asks for an extractor.
+  const definitions = (await createPiOutpostTools({ cwd, maxBytes } as never)).filter((tool) => tool.name !== "docx_compare");
+  if (platform === "win32") definitions.push(createDocxCompareToolDefinition({
+    cwd, allowedRoots: [cwd], writableRoot: cwd, maxBytes: maxBytes.docx, render: { timeoutMs: 30_000 },
+  }));
+  const tools = deferOnDemandTools(definitions) as unknown as Registered[];
   return async (query) => {
     let active: string[] = [];
     let searchTool: SearchTool | undefined;
@@ -54,6 +61,17 @@ describe("deferOnDemandTools", () => {
     }
     assert.ok(DEFERRED_TOOLS.includes(PROJECT_MODEL_TOOL));
     for (const tool of DOCUMENT_TOOLS) assert.ok(DEFERRED_TOOLS.includes(tool));
+    for (const name of [
+      "drawio_check",
+      "poster_check",
+      "poster_pictures",
+      "compare_timelines",
+      "write_structure_figure",
+      "write_structure_table",
+    ]) {
+      assert.ok(DEFERRED_TOOLS.includes(name), `${name} is in the deferred inventory`);
+      assert.equal(deferred.find((tool) => tool.name === name)?.exposure, "deferred", `${name} is registered deferred`);
+    }
     assert.equal(TOOL_SEARCH_TOOL, "tool_search");
   });
 });
@@ -67,10 +85,18 @@ describe("A user's words find each kind", () => {
     ["Outlook email", "mail_extract"],
     ["read an Excel spreadsheet", "xlsx_extract"],
     ["project model", "present_project_model"],
+    ["check a draw.io diagram for errors", "drawio_check"],
+    ["check a poster for errors", "poster_check"],
+    ["look at the pictures inside a poster", "poster_pictures"],
+    ["compare two planning timelines", "compare_timelines"],
+    ["draw a structured exchange graph as an SVG figure", "write_structure_figure"],
+    ["write a structured exchange table as Markdown", "write_structure_table"],
   ] as const) {
-    test(`"${query}" loads ${expected}`, async () => {
-      const loaded = await (await search())(query);
-      assert.ok(loaded.includes(expected), `"${query}" loaded ${JSON.stringify(loaded)}`);
-    });
+    for (const platform of ["linux", "win32"] as const) {
+      test(`"${query}" loads ${expected} (${platform} inventory)`, async () => {
+        const loaded = await (await search(platform))(query);
+        assert.ok(loaded.includes(expected), `"${query}" loaded ${JSON.stringify(loaded)}`);
+      });
+    }
   }
 });

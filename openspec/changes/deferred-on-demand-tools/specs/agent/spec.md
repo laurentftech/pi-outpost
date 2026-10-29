@@ -27,6 +27,7 @@ only by the rules that publish them on demand.
 - **THEN** the next request of that turn declares `xlsx_extract`
 
 #### Scenario: A user's words find each kind
+- **GIVEN** either the Linux tool inventory or the Windows inventory including `docx_compare`
 - **WHEN** `tool_search` is asked for "Excel", "Word document", "PowerPoint", "PDF" and "Outlook email" in turn
 - **THEN** each search loads, in that order, `xlsx_extract`, `docx_extract`, `pptx_extract`, `pdf_extract` and `mail_extract`
 

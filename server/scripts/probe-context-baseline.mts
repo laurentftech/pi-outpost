@@ -44,10 +44,22 @@ import { createStructuredExchangeToolDefinition } from "../src/structuredExchang
 import { createStructuredExchangeTableToolDefinition } from "../src/structuredExchangeTableTool.ts";
 import { createStructuredExchangeFigureToolDefinition } from "../src/structuredExchangeFigureTool.ts";
 import { createStructuredExchangeProjectModelToolDefinition } from "../src/structuredExchangeProjectModelTool.ts";
+import { createTimelineComparisonToolDefinition } from "../src/timelineComparisonTool.ts";
+import { createDrawioCheckToolDefinition } from "../src/drawioTool.ts";
+import { createPosterCheckToolDefinition } from "../src/posterCheckTool.ts";
+import { createPosterPicturesToolDefinition } from "../src/posterPicturesTool.ts";
 import { composeAppendSystemPrompt } from "../src/systemPrompt.ts";
 
 const chars = (s: string) => s.length;
 const tok = (n: number) => `${(n / 4 / 1000).toFixed(1)}k`;
+const DEFERRED_DIAGRAM_POSTER_STRUCTURE = [
+  "drawio_check",
+  "poster_check",
+  "poster_pictures",
+  "compare_timelines",
+  "write_structure_figure",
+  "write_structure_table",
+];
 
 /** What a session withholds until something asks for it. */
 const ON_DEMAND = ["work_plan_extended", "pdf_extract", "docx_extract", "xlsx_extract", "pptx_extract", "present_project_model"];
@@ -84,6 +96,10 @@ async function measure(label: string, options: { outpost: boolean; withheld?: st
         createStructuredExchangeProjectModelToolDefinition({ projectRoot: cwd }),
         createStructuredExchangeFigureToolDefinition({ cwd, allowedRoots: [cwd], writableRoot: cwd, projectRoot: cwd }),
         createStructuredExchangeTableToolDefinition({ cwd, allowedRoots: [cwd], maxBytes: 26214400, writableRoot: cwd, projectRoot: cwd }),
+        createTimelineComparisonToolDefinition({ cwd, allowedRoots: [cwd], maxBytes: 26214400, writableRoot: cwd }),
+        createDrawioCheckToolDefinition({ cwd, allowedRoots: [cwd] }),
+        createPosterCheckToolDefinition({ cwd, allowedRoots: [cwd] }),
+        createPosterPicturesToolDefinition({ cwd, allowedRoots: [cwd] }),
       ]
     : [];
   const session = await createAgentSessionFromServices({
@@ -110,8 +126,13 @@ async function measure(label: string, options: { outpost: boolean; withheld?: st
   const prompt = (s as { systemPrompt: string }).systemPrompt;
   // A deferred tool is registered and costs nothing until it is declared.
   const declared = new Set((s as { getActiveToolNames: () => string[] }).getActiveToolNames());
-  const sized = (s as { getAllTools: () => { name?: string }[] }).getAllTools()
+  const definitions = (s as { getAllTools: () => { name?: string }[] }).getAllTools();
+  const sized = definitions
     .filter((tool) => !withheld.has(tool.name ?? "") && (!DEFERRED_TOOLS.includes(tool.name ?? "") || declared.has(tool.name ?? "")))
+    .map((tool) => ({ name: tool.name ?? "?", chars: chars(JSON.stringify(tool)) }))
+    .sort((a, b) => b.chars - a.chars);
+  const deferredFamily = definitions
+    .filter((tool) => DEFERRED_DIAGRAM_POSTER_STRUCTURE.includes(tool.name ?? ""))
     .map((tool) => ({ name: tool.name ?? "?", chars: chars(JSON.stringify(tool)) }))
     .sort((a, b) => b.chars - a.chars);
   const toolChars = sized.reduce((n, tool) => n + tool.chars, 0);
@@ -122,6 +143,12 @@ async function measure(label: string, options: { outpost: boolean; withheld?: st
   // Per tool, largest first: which definitions are worth trimming is the whole point.
   for (const tool of sized) {
     console.log(`  ${tool.name.padEnd(28)} ${String(tool.chars).padStart(6)} chars  ~${tok(tool.chars)}`);
+  }
+  if (deferredFamily.length > 0) {
+    console.log("  deferred diagram, poster and structured-exchange tools (loaded on demand):");
+    for (const tool of deferredFamily) {
+      console.log(`  ${tool.name.padEnd(28)} ${String(tool.chars).padStart(6)} chars  ~${tok(tool.chars)}`);
+    }
   }
   return { prompt: chars(prompt), tools: toolChars, count: sized.length };
 }

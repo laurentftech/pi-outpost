@@ -7,9 +7,11 @@
 
 
 Measured on **2026-09-04**, against **pi-outpost 0.21.0** and the **pi SDK 0.84.4** it
-bundles. All four columns are measured — OpenCode **1.18.27** and Kilo Code **7.5.9**
-were installed and run for this page. The features are read from documentation and
-behaviour; the context figures come from the probes described below and can be re-run.
+bundles. The Pi Outpost context figures were refreshed on **2026-10-28** against package
+**0.54.0** and the bundled **pi SDK 1.4.0**; the other columns retain their earlier
+measurements. OpenCode **1.18.27** and Kilo Code **7.5.9** were installed and run for this
+page. The features are read from documentation and behaviour; the context figures come
+from the probes described below and can be re-run.
 
 The point of this page is not a scoreboard. pi and OpenCode start in the terminal, Pi
 Outpost starts in the browser, and Kilo Code spans a terminal agent and IDE extensions;
@@ -54,8 +56,8 @@ every conversation, and the first thing to look at when a context window feels s
 | | system prompt | tools | baseline |
 |---|---|---|---|
 | pi, default toolset | ~0.7k tokens | 8 tools, ~1.7k | **~2.4k tokens** |
-| **Pi Outpost, at rest** | ~1.7k tokens | 13 tools, ~5.4k | **~7.1k tokens** |
-| **Pi Outpost, a Work Plan open** | ~2.0k tokens | 14 tools, ~6.5k | **~8.5k tokens** |
+| **Pi Outpost, at rest** | ~1.6k tokens | 11 tools, ~3.9k | **~5.5k tokens** |
+| **Pi Outpost, a Work Plan open** | ~1.8k tokens | 12 tools, ~5.1k | **~6.9k tokens** |
 | OpenCode 1.18.27, default agent | ~2.4k tokens | 10 tools, ~5.2k | **~7.6k tokens** |
 | Kilo Code 7.5.9, default agent | ~7.0k tokens | 12 tools, ~7.2k | **~14.3k tokens** |
 
@@ -69,8 +71,9 @@ every default tool on every request.
 A document extractor adds ~0.5k on top while it lasts, and it does not last: five turns
 after its last call it is forgotten. There is deliberately no "everything published" row —
 holding all four at once is a moment, not a state. Not declared is not out of reach: the
-extractors are registered `deferred`, so the agent can load one with `tool_search` — the
-~0.2k tool, and one line of the prompt, that the resting figure pays for that.
+document extractors, project model, diagram checks, poster tools and structured-exchange
+tools are registered `deferred`, so the agent can load one with `tool_search`. The resting
+figure pays for the ~0.2k search tool and one line of guidance, not for those schemas.
 
 It was **~10.7k** before that work — the row this page carried when it was first written,
 and the reason the work happened.
@@ -99,27 +102,34 @@ states — and is now within 1.6× of its size.
 
 Per tool, largest first, in the state each is actually sent in:
 
+The two `bash` rows are from Kilo Code and OpenCode. Every other row is a Pi Outpost tool.
+
 | Tool | chars | ~tokens | Sent |
 |---|---|---|---|
-| `bash` (Kilo Code) | 6 127 | ~1.5k | always |
-| `bash` (OpenCode) | 5 319 | ~1.3k | always |
-| `work_plan_extended` | 4 602 | ~1.2k | while a plan is being worked |
-| `work_plan` | 4 331 | ~1.1k | always |
+| Kilo Code `bash` | 6 127 | ~1.5k | always |
+| OpenCode `bash` | 5 319 | ~1.3k | always |
+| `work_plan_extended` | 4 622 | ~1.2k | while a plan is being worked |
+| `write_structure_figure` | 4 604 | ~1.2k | after `tool_search` |
+| `work_plan` | 4 351 | ~1.1k | always |
+| `present_structure` | 3 528 | ~0.9k | always |
 | `docx_extract` | 3 256 | ~0.8k | while a Word file is in play, or once the agent loads it |
 | `xlsx_extract` | 2 345 | ~0.6k | while a spreadsheet is in play, or once the agent loads it |
 | `pdf_extract` | 2 322 | ~0.6k | while a PDF is in play, or once the agent loads it |
-| `write_structure_figure` | 2 195 | ~0.5k | always |
 | `pptx_extract` | 1 933 | ~0.5k | while a deck is in play, or once the agent loads it |
-| `edit` | 1 773 | ~0.4k | always |
-| `present_structure` | 1 535 | ~0.4k | always |
-| `grep` | 1 107 | ~0.3k | always |
-| `read` | 824 | ~0.2k | always |
-| `powershell` | 734 | ~0.2k | always |
+| `edit` | 1 791 | ~0.4k | always |
+| `compare_timelines` | 1 590 | ~0.4k | after `tool_search` |
+| `drawio_check` | 1 474 | ~0.4k | after `tool_search` |
+| `write_structure_table` | 1 134 | ~0.3k | after `tool_search` |
+| `grep` | 1 125 | ~0.3k | always |
+| `poster_check` | 1 109 | ~0.3k | after `tool_search` |
+| `poster_pictures` | 1 077 | ~0.3k | after `tool_search` |
+| `read` | 842 | ~0.2k | always |
+| `powershell` | 752 | ~0.2k | always |
 | `tool_search` | 743 | ~0.2k | always: how the agent loads a deferred tool |
-| `bash` | 716 | ~0.2k | always |
-| `find` | 684 | ~0.2k | always |
-| `write` | 573 | ~0.1k | always |
-| `ls` | 538 | ~0.1k | always |
+| `bash` | 734 | ~0.2k | always |
+| `find` | 702 | ~0.2k | always |
+| `write` | 591 | ~0.1k | always |
+| `ls` | 556 | ~0.1k | always |
 
 `work_plan` is still the largest thing sent to every conversation, and the four extractors
 together are still about the size of pi's entire toolset — but none of the five is sent to a
@@ -141,6 +151,8 @@ the way the server does, and withholds `work_plan_extended` through
 pi rebuilds the system prompt around the active set, so a withheld tool takes its
 guidelines with it — 2 074 characters that a subtraction would have counted anyway. Reading the sources
 instead would miss where a tool's guidelines actually land, which is in the prompt.
+The probe also reports the six diagram, poster and structured-exchange definitions separately;
+they are registered in the session but excluded from the resting request until loaded.
 
 Tokens are **characters ÷ 4**. That is an order of magnitude, not a bill: the real count
 depends on the tokenizer, and a JSON schema tokenizes worse than prose. It is accurate

@@ -74,8 +74,17 @@ export const DOCUMENT_TOOLS = [...new Set(Object.values(EXTRACTORS).flat()), WOR
  */
 export const TOOL_SEARCH_TOOL = "tool_search";
 
-/** The tools registered `deferred`: every document tool, and the project model's. */
-export const DEFERRED_TOOLS = [...DOCUMENT_TOOLS, PROJECT_MODEL_TOOL];
+/** The tools registered `deferred`: on-demand document, diagram, poster and structure tools. */
+export const DEFERRED_TOOLS = [
+  ...DOCUMENT_TOOLS,
+  PROJECT_MODEL_TOOL,
+  "drawio_check",
+  "poster_check",
+  "poster_pictures",
+  "compare_timelines",
+  "write_structure_figure",
+  "write_structure_table",
+];
 
 /**
  * Register the on-demand tools `deferred` rather than withholding them out of reach.

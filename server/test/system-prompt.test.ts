@@ -59,9 +59,12 @@ describe("product system-prompt composition", () => {
   it("says where the deferred tools are only where tool_search can load them", () => {
     // Under noExtensions the tool-search extension is not loaded at all.
     assert.ok(!composeAppendSystemPrompt({ webContext: false, appendSystemPrompt: [], noExtensions: true }).includes(DEFERRED_TOOLS_GUIDANCE));
-    // An allowlist that names it keeps it; one that does not was covered above.
+    assert.ok(!composeAppendSystemPrompt({ webContext: false, appendSystemPrompt: [], tools: ["read"] }).includes(DEFERRED_TOOLS_GUIDANCE));
+    // An allowlist that names tool_search keeps the guidance.
     assert.ok(composeAppendSystemPrompt({ webContext: false, appendSystemPrompt: [], tools: ["read", "tool_search"] }).includes(DEFERRED_TOOLS_GUIDANCE));
     assert.match(DEFERRED_TOOLS_GUIDANCE, /tool_search/);
-    for (const kind of ["Word", "Excel", "PowerPoint", "PDF", "email", "project model"]) assert.ok(DEFERRED_TOOLS_GUIDANCE.includes(kind), kind);
+    for (const kind of ["Word", "Excel", "PowerPoint", "PDF", "email", "project model", "draw.io diagrams", "posters", "structured-exchange documents"]) {
+      assert.ok(DEFERRED_TOOLS_GUIDANCE.includes(kind), kind);
+    }
   });
 });
