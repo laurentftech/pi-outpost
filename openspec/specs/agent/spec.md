@@ -192,10 +192,10 @@ SHALL depend on whether it was ever used:
   tool away mid-task would strand an agent that cannot ask for it back. Five turns of silence
   is the conversation having moved on.
 
-Naming a document of that kind again SHALL republish its extractor and reset the count. Together
-with a document this system writes on the agent's behalf, that is the only way back, and neither
-belongs to the agent's own choosing: an agent cannot request a tool it can no longer see, and
-nothing announces the withdrawal to it.
+Naming a document of that kind again SHALL republish its extractor and reset the count. The agent
+SHALL also be able to bring one back on its own, by loading it with `tool_search` (see *On-demand
+tools are deferred, not withheld*): a withdrawn extractor is no longer declared, but it is still
+registered and can be found.
 
 The tools SHALL NOT be published on the strength of the workspace merely containing such a
 file. A repository with a documents folder would otherwise pay for every extractor in every
@@ -207,7 +207,8 @@ prefixes, publishing a tool invalidates the prefix from that tool's position onw
 ones that appear late in a session belong late in the list.
 
 Where a runtime cannot change its published toolset — the RPC dialect has no command for it —
-that runtime SHALL publish all of them at all times rather than emulate the gating.
+that runtime SHALL register them deferred and declare none of them until the agent loads one with
+`tool_search`, rather than emulate the gating.
 
 #### Scenario: A code session publishes no extractor
 - **GIVEN** a session whose conversation has named no document
@@ -277,8 +278,8 @@ that runtime SHALL publish all of them at all times rather than emulate the gati
 
 #### Scenario: A runtime that cannot gate publishes them all
 - **GIVEN** a workspace served by the RPC runtime
-- **WHEN** the agent's toolset is composed
-- **THEN** every document extraction tool is published, as that dialect cannot change its active toolset
+- **WHEN** a turn is sent that names no document and loads no tool
+- **THEN** no document extraction tool is declared to the model, and `tool_search` is
 
 ### Requirement: Presentation tools are published with a template or their skill
 
@@ -293,12 +294,13 @@ They SHALL be published before the turn is dispatched when the prompt names a `.
 They SHALL also be published inside the turn when the agent reads the skill's `SKILL.md` — which is
 how a model loads a skill on its own — or when a tool call's `path` names a `.pptx` or `.potx`.
 Those agent-side triggers SHALL publish only the presentation tools: they SHALL NOT republish an
-extractor, which remains the user's to bring back by naming a document.
+extractor. An extractor comes back when the user names a document, or when the agent loads it with
+`tool_search`.
 
 Talking about presentations without naming a file or the skill SHALL publish nothing.
 
 In the RPC runtime, which cannot change its published toolset, the child SHALL register the three
-tools with the others.
+tools with the others, deferred like them.
 
 #### Scenario: ACodeSessionPublishesNoPresentationTool
 - **GIVEN** a session whose prompts name no template and do not invoke the skill
@@ -369,6 +371,121 @@ where writing is disabled.
 - **GIVEN** a sandbox where writing is disabled
 - **WHEN** the tools are registered
 - **THEN** `docx_restyle` is absent
+
+### Requirement: Withheld tools stay withheld
+
+A tool the server publishes on demand (a document tool, the project model tool, the extended Work
+Plan tool) SHALL be published only while the rules that publish and withdraw it say so. Going back
+in the conversation SHALL neither publish one nor withdraw one in use, and a tool switched on by any
+other means SHALL be withdrawn before the next turn. A runtime that cannot change its toolset is
+exempt.
+
+#### Scenario: Going back in the conversation publishes nothing
+- **GIVEN** a conversation of two turns that named no document
+- **WHEN** the user edits the first message, and later navigates the tree back to it and sends a prompt
+- **THEN** each of the two turns that follow is sent the same tools as the first turn
+
+#### Scenario: A rewind keeps the tools in use
+- **GIVEN** a conversation whose agent called the Word extractor, followed by a quiet turn
+- **WHEN** the user edits the quiet turn's message
+- **THEN** the turn that follows is still sent the Word extractor
+- **AND** it is sent none of the extractors for the kinds no prompt named
+
+#### Scenario: A tool switched on behind the server's back is withdrawn
+- **GIVEN** a session publishing no on-demand tool
+- **WHEN** an extension command switches every registered tool on, and the user then sends a prompt
+- **THEN** the turn that follows is sent no on-demand tool
+
+### Requirement: On-demand tools are deferred, not withheld
+
+The tools the server publishes on demand (the document tools and the project model tool) SHALL be
+registered with `deferred` exposure. Not declared, a tool SHALL cost the model nothing, and SHALL
+remain callable from other tools and from codemode scripts, and loadable with `tool_search`.
+Publishing one SHALL declare it, and withdrawing it SHALL stop declaring it without making it
+unreachable.
+
+#### Scenario: A code session declares none, and can still reach them
+- **GIVEN** a session whose conversation has named no document
+- **WHEN** a turn is sent
+- **THEN** no document tool is declared to the model
+- **AND** an extension tool calling `xlsx_extract` through `ctx.executeTool()` gets its result, not an unknown-tool error
+
+### Requirement: The agent can load an on-demand tool by searching
+
+Where on-demand tools are deferred, `tool_search` SHALL be declared, the system prompt SHALL say
+in one line which kinds of tools it loads, and each tool SHALL be found by a search naming its kind
+in a user's words. Without extensions, neither SHALL be added, and the tools SHALL be published
+only by the rules that publish them on demand.
+
+#### Scenario: Searching loads the tool for the next call
+- **GIVEN** a session that has declared no document tool
+- **WHEN** the agent calls `tool_search` with "read an Excel spreadsheet"
+- **THEN** the next request of that turn declares `xlsx_extract`
+
+#### Scenario: A user's words find each kind
+- **GIVEN** either the Linux tool inventory or the Windows inventory including `docx_compare`
+- **WHEN** `tool_search` is asked for "Excel", "Word document", "PowerPoint", "PDF" and "Outlook email" in turn
+- **THEN** each search loads, in that order, `xlsx_extract`, `docx_extract`, `pptx_extract`, `pdf_extract` and `mail_extract`
+
+#### Scenario: The system prompt says where the tools are
+- **GIVEN** a session with extensions enabled
+- **WHEN** its system prompt is composed
+- **THEN** it holds one line naming the kinds of tools loaded with `tool_search`, and `tool_search` is declared
+
+#### Scenario: Without extensions nothing is added
+- **GIVEN** a session with extensions turned off
+- **WHEN** a turn is sent
+- **THEN** `tool_search` is not declared and the system prompt holds no such line
+
+### Requirement: A tool loaded by search is aged like the others
+
+A document or project model tool that `tool_search` loads SHALL count as published by the server:
+it SHALL be enrolled in the idle counts as it is loaded, kept while the conversation uses it, and
+withdrawn by the same idle rule as a tool published on demand. A rewind SHALL keep it only if its
+count is kept.
+
+#### Scenario: A loaded tool survives the turn that loaded it
+- **GIVEN** a turn in which the agent loads `xlsx_extract` with `tool_search` and then calls it
+- **WHEN** the turn ends and the next prompt is sent
+- **THEN** `xlsx_extract` is still declared
+
+#### Scenario: A loaded tool nobody calls is withdrawn
+- **GIVEN** a turn in which the agent loads `pdf_extract` with `tool_search` and never calls it
+- **WHEN** the next turn is sent
+- **THEN** `pdf_extract` is no longer declared
+
+#### Scenario: The RPC child loads and keeps a searched tool
+- **GIVEN** a workspace served by the RPC runtime
+- **WHEN** the agent loads `xlsx_extract` with `tool_search`
+- **THEN** the next request declares it, and it stays declared on that branch, as that dialect cannot withdraw it
+
+### Requirement: Diagram, poster and structured-exchange tools are deferred
+The agent tools `drawio_check`, `poster_check`, `poster_pictures`, `compare_timelines`, `write_structure_figure` and `write_structure_table` SHALL be registered with deferred exposure in both runtimes. They SHALL remain loadable through `tool_search` and SHALL not be declared before they are loaded.
+
+#### Scenario: The tools are absent until searched
+- **GIVEN** an embedded session that has not loaded any of the six tools
+- **WHEN** the model receives its tool declarations
+- **THEN** none of the six tools is declared
+- **AND** `tool_search` can load each tool by a query for its purpose
+
+#### Scenario: The RPC runtime also defers the tools
+- **GIVEN** an RPC session before any of the six tools has been loaded
+- **WHEN** the model receives its tool declarations
+- **THEN** none of the six tools is declared
+- **AND** `tool_search` can load each tool by a query for its purpose
+
+### Requirement: The agent is told which deferred tool families it can search for
+When `tool_search` is available, the product-owned system guidance SHALL tell the agent that diagram, poster and structured-exchange tools can be loaded with it.
+
+#### Scenario: Guidance names the deferred tool families
+- **GIVEN** a session where `tool_search` is available
+- **WHEN** the product-owned system guidance is composed
+- **THEN** it names diagram, poster and structured-exchange tools and says to load needed tools with `tool_search`
+
+#### Scenario: Guidance is absent when tool search is unavailable
+- **GIVEN** a session where `tool_search` is unavailable
+- **WHEN** the product-owned system guidance is composed
+- **THEN** it does not advertise these tool families as searchable
 
 ## Technical Notes
 
