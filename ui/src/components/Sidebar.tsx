@@ -1,6 +1,7 @@
-import { useEffect } from "react";
-import type { GitFileState } from "@pi-outpost/shared";
-import type { DirState, FileOperationState, OpenFile } from "../useAgent";
+import { useEffect, useState } from "react";
+import type { ContentSearchHit, GitFileState } from "@pi-outpost/shared";
+import type { ContentSearch, DirState, FileOperationState, OpenFile } from "../useAgent";
+import { ContentSearchPanel } from "./ContentSearchPanel";
 import { FILES_SIDEBAR_WIDTH } from "../util/panelWidth";
 import { FileTree } from "./FileTree";
 import { PanelResizeHandle, useResizablePanelWidth } from "./PanelResizeHandle";
@@ -38,6 +39,12 @@ interface SidebarProps {
   createError?: { path: string; message: string } | null;
   /** Path the last creation produced. */
   created?: string | null;
+  /** The last content search and its answer; see useAgent's ContentSearch. */
+  contentSearch?: ContentSearch | null;
+  /** Search file contents; offered only when given. */
+  onSearchContent?: (query: string) => void;
+  /** Open a content-search hit's file at its line or page. */
+  onOpenSearchHit?: (hit: ContentSearchHit, query: string) => void;
 }
 
 /** Collapsible file-browser sidebar: lazy tree; selecting a file opens the FileViewer overlay. */
@@ -67,8 +74,13 @@ export function Sidebar({
   fileOperation,
   createError,
   created,
+  contentSearch = null,
+  onSearchContent,
+  onOpenSearchHit,
 }: SidebarProps) {
   const resize = useResizablePanelWidth(FILES_SIDEBAR_WIDTH);
+  const [searching, setSearching] = useState(false);
+  const [searchQuery, setSearchQuery] = useState(contentSearch?.query ?? "");
   const handlesExternalFiles = (transfer: DataTransfer) => onUploadFile !== undefined && Array.from(transfer.types).includes("Files");
 
   // First open arms the browser root. Keeping it listed afterwards — across
@@ -109,10 +121,39 @@ export function Sidebar({
       style={{ width: resize.width, display: hidden ? "none" : undefined }}
       className="relative flex shrink-0 flex-col border-r border-zinc-200 dark:border-zinc-800"
     >
-      <div className="border-b border-zinc-200 px-3 py-2 text-xs font-semibold uppercase text-zinc-400 dark:border-zinc-800 dark:text-zinc-600">
+      <div className="flex items-center border-b border-zinc-200 px-3 py-2 text-xs font-semibold uppercase text-zinc-400 dark:border-zinc-800 dark:text-zinc-600">
         Files
+        {onSearchContent && (
+          <button
+            type="button"
+            onClick={() => setSearching((open) => !open)}
+            aria-pressed={searching}
+            title="Search in files"
+            aria-label="Search in files"
+            className={`ml-auto rounded p-0.5 normal-case hover:bg-zinc-100 hover:text-zinc-600 dark:hover:bg-zinc-800 dark:hover:text-zinc-400 ${
+              searching ? "text-zinc-700 dark:text-zinc-300" : ""
+            }`}
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" aria-hidden className="h-3.5 w-3.5">
+              <circle cx="11" cy="11" r="7" />
+              <path d="m20 20-3.5-3.5" />
+            </svg>
+          </button>
+        )}
       </div>
-      <div className="flex-1 overflow-auto p-2">
+      {searching && onSearchContent && (
+        <div className="flex-1 overflow-auto p-2">
+          <ContentSearchPanel
+            query={searchQuery}
+            onQueryChange={setSearchQuery}
+            search={contentSearch}
+            onSearch={onSearchContent}
+            onOpenHit={(hit, query) => onOpenSearchHit?.(hit, query)}
+            onClose={() => setSearching(false)}
+          />
+        </div>
+      )}
+      <div className="flex-1 overflow-auto p-2" style={searching && onSearchContent ? { display: "none" } : undefined}>
         <FileTree
           tree={tree}
           openFilePath={openFile?.path}

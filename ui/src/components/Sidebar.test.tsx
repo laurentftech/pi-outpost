@@ -1,8 +1,8 @@
 import { beforeEach, describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
-import type { DirEntry } from "@pi-outpost/shared";
+import type { ContentSearchHit, DirEntry } from "@pi-outpost/shared";
 import { Sidebar } from "./Sidebar";
-import type { DirState, OpenFile } from "../useAgent";
+import type { ContentSearch, DirState, OpenFile } from "../useAgent";
 import {
   FILES_SIDEBAR_WIDTH,
 } from "../util/panelWidth";
@@ -201,4 +201,93 @@ describe("sidebar external-drop containment", () => {
     expect(clearOverlay).toHaveBeenCalledTimes(2);
   });
 
+});
+
+describe("Sidebar content search", () => {
+  beforeEach(() => localStorage.clear());
+
+  const lineHit: ContentSearchHit = { path: "src/app.ts", kind: "line", line: 12, column: 6, excerpt: "const Needle = 1;" };
+  const secondLine: ContentSearchHit = { path: "src/app.ts", kind: "line", line: 30, column: 0, excerpt: "needle again" };
+  const pageHit: ContentSearchHit = { path: "docs/report.pdf", kind: "pdf-page", page: 3, excerpt: "the needle on page three" };
+  const loaded = (hits: ContentSearchHit[], extra: Partial<ContentSearch> = {}): ContentSearch => ({
+    status: "loaded", query: "needle", requestId: "r1", hits, truncated: false, skipped: 0, ...extra,
+  });
+
+  function open(overrides: Partial<Props> = {}) {
+    const onSearchContent = vi.fn();
+    const onOpenSearchHit = vi.fn();
+    const view = setup({ onSearchContent, onOpenSearchHit, ...overrides });
+    fireEvent.click(screen.getByRole("button", { name: "Search in files" }));
+    return { onSearchContent, onOpenSearchHit, ...view };
+  }
+
+  it("is not offered without a search handler", () => {
+    setup();
+    expect(screen.queryByRole("button", { name: "Search in files" })).toBeNull();
+  });
+
+  it("runs the search on Enter, with the query as typed", () => {
+    const { onSearchContent } = open();
+    const input = screen.getByRole("searchbox", { name: "Text to search for in files" });
+    expect(input).toHaveFocus();
+    fireEvent.change(input, { target: { value: "needle" } });
+    expect(onSearchContent).not.toHaveBeenCalled();
+    fireEvent.submit(input.closest("form")!);
+    expect(onSearchContent).toHaveBeenCalledWith("needle");
+  });
+
+  it("EmptyContentSearch: with an empty query no matches are shown", () => {
+    open({ contentSearch: null });
+    expect(screen.queryByRole("list", { name: "Search results" })).toBeNull();
+    expect(screen.queryByText("No matches")).toBeNull();
+  });
+
+  it("SearchAcrossWorkspaceFiles: hits grouped by file, with line or page and the match marked", () => {
+    open({ contentSearch: loaded([lineHit, secondLine, pageHit]) });
+
+    expect(screen.getByRole("status")).toHaveTextContent("3 matches in 2 files");
+    const results = screen.getByRole("list", { name: "Search results" });
+    expect(results).toHaveTextContent("src/app.ts");
+    expect(results).toHaveTextContent("docs/report.pdf");
+    const line = screen.getByRole("button", { name: "src/app.ts, line 12" });
+    expect(line).toHaveTextContent("12");
+    expect(line.querySelector("mark")).toHaveTextContent("Needle");
+    expect(screen.getByRole("button", { name: "docs/report.pdf, page 3" })).toHaveTextContent("p. 3");
+  });
+
+  it("NoContentMatches: a finished search with no hits says so", () => {
+    open({ contentSearch: loaded([]) });
+    expect(screen.getByRole("status")).toHaveTextContent("No matches");
+  });
+
+  it("says when results are partial, and how many PDFs could not be read", () => {
+    open({ contentSearch: loaded([lineHit], { truncated: true, skipped: 2 }) });
+    expect(screen.getByRole("status")).toHaveTextContent("partial results");
+    expect(screen.getByRole("status")).toHaveTextContent("2 PDFs could not be read.");
+  });
+
+  it("shows a search in progress", () => {
+    open({ contentSearch: { ...loaded([]), status: "loading" } });
+    expect(screen.getByRole("status")).toHaveTextContent("Searching…");
+  });
+
+  it("selecting a hit opens it with the query it answered", () => {
+    const { onOpenSearchHit } = open({ contentSearch: loaded([lineHit, pageHit]) });
+    fireEvent.click(screen.getByRole("button", { name: "src/app.ts, line 12" }));
+    expect(onOpenSearchHit).toHaveBeenCalledWith(lineHit, "needle");
+    fireEvent.click(screen.getByRole("button", { name: "docs/report.pdf, page 3" }));
+    expect(onOpenSearchHit).toHaveBeenCalledWith(pageHit, "needle");
+  });
+
+  it("Escape goes back to the tree and keeps the query for the next open", () => {
+    open();
+    const input = screen.getByRole("searchbox", { name: "Text to search for in files" });
+    fireEvent.change(input, { target: { value: "needle" } });
+    fireEvent.keyDown(input, { key: "Escape" });
+    expect(screen.queryByRole("searchbox")).toBeNull();
+    expect(screen.getByText("readme.md")).toBeVisible();
+
+    fireEvent.click(screen.getByRole("button", { name: "Search in files" }));
+    expect(screen.getByRole("searchbox", { name: "Text to search for in files" })).toHaveValue("needle");
+  });
 });

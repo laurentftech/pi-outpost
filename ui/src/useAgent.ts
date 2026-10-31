@@ -14,6 +14,7 @@ import type {
   ChatItem,
   ClientMessage,
   CommandInfo,
+  ContentSearchHit,
   ContextUsage,
   CredentialStatus,
   DirEntry,
@@ -74,13 +75,26 @@ interface TerminalListeners {
 
 /** File-browser sidebar: one entry per directory path ("" = root), keyed flat (not nested). */
 export type DirState = DirEntry[] | "loading" | { error: string };
+/**
+ * Where a file opened from a content-search hit should land: the query to find, and the
+ * line or PDF page it was found on. Carried from the read to the loaded file, then
+ * dropped by the next read of it — a reload or a change on disk does not jump again.
+ */
+export interface FileReveal {
+  query: string;
+  line?: number;
+  page?: number;
+}
+
 export type OpenFile =
-  | { status: "loading"; path: string; requestId: string }
+  | { status: "loading"; path: string; requestId: string; reveal?: FileReveal }
   | {
       status: "loaded";
       path: string;
       content: string;
       size: number;
+      /** Opened from a content-search hit: bring this match into view, once. */
+      reveal?: FileReveal;
       /** Disk mtime of `content`; echoed back on save so the server can refuse to clobber concurrent changes. */
       mtimeMs: number;
       /** In-flight write_file request — its content becomes `content` on file_written. */
@@ -110,6 +124,19 @@ export type OpenFile =
 
 /** Composer `@` mention autocomplete: results for the most recently issued search. */
 export type FileSearch = { status: "loading" | "loaded"; query: string; requestId: string; results: FileSearchEntry[] };
+
+/**
+ * Files → Search in files: the most recently issued content search and its answer.
+ * Belongs to the project that asked; a switch of project drops it.
+ */
+export type ContentSearch = {
+  status: "loading" | "loaded";
+  query: string;
+  requestId: string;
+  hits: ContentSearchHit[];
+  truncated: boolean;
+  skipped: number;
+};
 
 export type FileOperationState =
   | { status: "pending"; operation: FileOperation; path: string; requestId: string }
@@ -383,6 +410,7 @@ export interface AgentState {
   /** The provider sign-in this browser is running, if any: what it showed, what it asks, how it ended. */
   login: LoginFlowState | null;
   fileSearch: FileSearch | null;
+  contentSearch: ContentSearch | null;
   /** Refusal of the last creation request, for the tree row that asked for it. */
   createError: { path: string; message: string } | null;
   /**
@@ -502,6 +530,7 @@ const initialState: AgentState = {
   openFile: null,
   previewRevision: 0,
   fileSearch: null,
+  contentSearch: null,
   createError: null,
   created: null,
   fileOperation: null,
@@ -547,13 +576,15 @@ type Action =
   | { type: "dialog_answered" }
   | { type: "dir_list_started"; path: string; requestId: string; preserveEntries?: boolean }
   | { type: "raw_preview_changed"; path: string }
-  | { type: "file_read_started"; path: string; requestId: string; preserveContent?: boolean }
+  | { type: "file_read_started"; path: string; requestId: string; preserveContent?: boolean; reveal?: FileReveal }
   | { type: "file_save_started"; path: string; requestId: string; content: string }
   | { type: "close_file_preview" }
   | { type: "file_create_started" }
   | { type: "file_operation_started"; operation: FileOperation; path: string; requestId: string }
   | { type: "file_search_started"; query: string; requestId: string }
   | { type: "file_search_cleared" }
+  | { type: "content_search_started"; query: string; requestId: string }
+  | { type: "content_search_cleared" }
   | { type: "session_search_started"; query: string; requestId: string }
   | { type: "history_load_started" }
   | { type: "history_loaded"; items: ChatItem[]; remaining: number }
@@ -821,7 +852,10 @@ function reduce(state: AgentState, action: Action): AgentState {
     if (action.preserveContent && current?.status === "loaded" && current.path === action.path) {
       return { ...state, openFile: { ...current, refreshRequestId: action.requestId } };
     }
-    return { ...state, openFile: { status: "loading", path: action.path, requestId: action.requestId } };
+    return {
+      ...state,
+      openFile: { status: "loading", path: action.path, requestId: action.requestId, ...(action.reveal ? { reveal: action.reveal } : {}) },
+    };
   }
   if (action.type === "file_save_started") {
     const file = state.openFile;
@@ -837,6 +871,13 @@ function reduce(state: AgentState, action: Action): AgentState {
     return { ...state, fileSearch: { status: "loading", query: action.query, requestId: action.requestId, results: [] } };
   }
   if (action.type === "file_search_cleared") return { ...state, fileSearch: null };
+  if (action.type === "content_search_started") {
+    return {
+      ...state,
+      contentSearch: { status: "loading", query: action.query, requestId: action.requestId, hits: [], truncated: false, skipped: 0 },
+    };
+  }
+  if (action.type === "content_search_cleared") return { ...state, contentSearch: null };
   if (action.type === "file_create_started") return { ...state, createError: null, created: null };
   if (action.type === "file_operation_started") {
     return { ...state, fileOperation: { status: "pending", operation: action.operation, path: action.path, requestId: action.requestId } };
@@ -1006,6 +1047,7 @@ function reduce(state: AgentState, action: Action): AgentState {
       gitBaseline: state.gitBaseline,
       fileTree: state.fileTree,
       directoryRequests: state.directoryRequests,
+      contentSearch: state.contentSearch,
     };
   }
   switch (message.type) {
@@ -1026,6 +1068,10 @@ function reduce(state: AgentState, action: Action): AgentState {
         // there. Dropped rather than reused, the way a session replace already does.
         fileTree: {},
         directoryRequests: {},
+        // Found under another project, or under a root a config change may have moved:
+        // its paths would open files that are not the ones it found. A new session of
+        // the same project leaves the files where they were.
+        contentSearch: message.type === "session_replaced" ? state.contentSearch : null,
       };
     case "workspace_activity":
       // Activity only — no conversation content, and deliberately accepted while
@@ -1446,6 +1492,8 @@ function reduce(state: AgentState, action: Action): AgentState {
           size: message.size,
           mtimeMs: message.mtimeMs,
           ...(message.documentIssues === undefined ? {} : { documentIssues: message.documentIssues }),
+          // The first read of a file opened from a search hit lands on the hit; a refresh does not.
+          ...(answersLoad && file.reveal ? { reveal: file.reveal } : {}),
         },
       };
     }
@@ -1553,6 +1601,19 @@ function reduce(state: AgentState, action: Action): AgentState {
       // Ignore stale responses from a since-superseded (or since-cleared) search
       if (state.fileSearch?.requestId !== message.requestId) return state;
       return { ...state, fileSearch: { ...state.fileSearch, status: "loaded", results: message.results } };
+    case "content_search_results":
+      // Only the search still on screen: a superseded one, or one the project switch dropped, is not shown.
+      if (state.contentSearch?.requestId !== message.requestId) return state;
+      return {
+        ...state,
+        contentSearch: {
+          ...state.contentSearch,
+          status: "loaded",
+          hits: message.hits,
+          truncated: message.truncated,
+          skipped: message.skipped,
+        },
+      };
     case "git_status": {
       const files: Record<string, GitFileState> = {};
       for (const file of message.files) files[file.path] = file.status;
@@ -2579,9 +2640,9 @@ export function useAgent(serverUrl = "", explicitToken?: string, embedded = fals
      * the bytes where it reads them and refuses content that is not what the
      * document was approved against, rather than showing it.
      */
-    readFile: (path: string, sha256?: string) => {
+    readFile: (path: string, sha256?: string, reveal?: FileReveal) => {
       const requestId = `file:${randomId()}`;
-      dispatch({ type: "file_read_started", path, requestId });
+      dispatch({ type: "file_read_started", path, requestId, ...(reveal ? { reveal } : {}) });
       sendMessage({ type: "read_file", path, requestId, ...(sha256 === undefined ? {} : { sha256 }) });
     },
     closeFilePreview: () => dispatch({ type: "close_file_preview" }),
@@ -2698,6 +2759,17 @@ export function useAgent(serverUrl = "", explicitToken?: string, embedded = fals
       sendMessage({ type: "search_files", query, requestId });
     },
     clearFileSearch: () => dispatch({ type: "file_search_cleared" }),
+    /** Files → Search in files. An empty or whitespace query runs nothing and shows nothing. */
+    searchContent: (query: string) => {
+      if (query.trim() === "") {
+        dispatch({ type: "content_search_cleared" });
+        return;
+      }
+      const requestId = `content:${randomId()}`;
+      dispatch({ type: "content_search_started", query, requestId });
+      sendMessage({ type: "search_content", query, requestId });
+    },
+    clearContentSearch: () => dispatch({ type: "content_search_cleared" }),
     /** Manual git status refresh (event-driven refreshes are automatic). */
     fetchGitStatus: () => refreshGitStatus(),
     /** Worktree-vs-HEAD contents for one file (answers land in state.gitDiff). */

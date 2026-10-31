@@ -648,6 +648,23 @@ export interface FileSearchEntry {
 }
 
 /**
+ * One match from a search of file contents (Files → Search in files): a line of a text
+ * file, or a page of a PDF's text layer. `excerpt` is the surrounding text, cut short.
+ */
+export type ContentSearchHit =
+  | {
+      /** Path relative to the browser root (posix separators). */
+      path: string;
+      kind: "line";
+      /** 1-based. */
+      line: number;
+      /** 0-based offset of the first match within the line. */
+      column: number;
+      excerpt: string;
+    }
+  | { path: string; kind: "pdf-page"; /** 1-based. */ page: number; excerpt: string };
+
+/**
  * One node of the conversation tree (fork/branch navigation). Only user
  * messages are nodes — assistant/tool entries are collapsed into their
  * preceding user turn — so the tree reads as "the points you can return to".
@@ -1311,6 +1328,18 @@ export type ServerMessage =
    */
   | { type: "directory_changed"; path: string }
   | { type: "file_search_results"; requestId: string; query: string; results: FileSearchEntry[] }
+  /**
+   * Answer to `search_content`. `truncated` when a cap or the deadline stopped the search
+   * early; `skipped` counts PDFs that could not be read (encrypted, corrupt, too slow).
+   */
+  | {
+      type: "content_search_results";
+      requestId: string;
+      query: string;
+      hits: ContentSearchHit[];
+      truncated: boolean;
+      skipped: number;
+    }
   | { type: "tree"; roots: TreeNode[] }
   | { type: "editor_prefill"; text: string }
   /**
@@ -1523,6 +1552,8 @@ export type ClientMessage =
   /** Copy one confined regular file into an existing writable directory, preserving its basename. */
   | { type: "copy_file"; path: string; destinationDirectory: string; requestId: string }
   | { type: "search_files"; query: string; requestId: string }
+  /** Case-insensitive literal search of file contents under the browser root; a newer one supersedes it. */
+  | { type: "search_content"; query: string; requestId: string }
   | { type: "list_tree" }
   | { type: "navigate_tree"; entryId: string }
   | { type: "fork_session"; entryId: string }

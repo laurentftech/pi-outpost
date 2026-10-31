@@ -1143,6 +1143,39 @@ export async function extractPdf(bytes: Uint8Array, options: PdfExtractOptions =
   }
 }
 
+/**
+ * The text of every page, one string per page, lines joined with "\n".
+ *
+ * For searching, not reading: no tables, comments or pictures, only the text layer.
+ * A page without one gives "" — a scanned page simply holds nothing to find. The
+ * budget bounds the whole document; an aborted signal stops between pages.
+ */
+export async function pdfPageTexts(
+  bytes: Uint8Array,
+  options: { timeoutMs?: number; signal?: AbortSignal } = {},
+): Promise<string[]> {
+  const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  await loadPdfjs();
+  const started = Date.now();
+  const { doc, destroy } = await openDocument(bytes, timeoutMs);
+  try {
+    const texts: string[] = [];
+    for (let pageNumber = 1; pageNumber <= doc.numPages; pageNumber++) {
+      if (options.signal?.aborted) throw new PdfError("budget", "search aborted");
+      const remaining = timeoutMs - (Date.now() - started);
+      if (remaining <= 0) throw new PdfError("budget", `reading text exceeded the ${timeoutMs} ms budget`);
+      const page = await withDeadline(doc.getPage(pageNumber), remaining, `reading page ${pageNumber}`);
+      const content = await withDeadline(page.getTextContent(), timeoutMs - (Date.now() - started), `reading page ${pageNumber}`);
+      texts.push(buildLines(toPieces(content.items)).map(lineText).join("\n"));
+    }
+    return texts;
+  } catch (error) {
+    throw asPdfError(error);
+  } finally {
+    await destroy().catch(() => {});
+  }
+}
+
 function rangeTo(count: number): number[] {
   return Array.from({ length: count }, (_, i) => i + 1);
 }

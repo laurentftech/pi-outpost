@@ -1132,6 +1132,82 @@ describe("stale responses", () => {
     expect(result.current.state.fileSearch?.results).toEqual([]);
   });
 
+  describe("content search", () => {
+    const hit = { path: "src/a.ts", kind: "line", line: 2, column: 3, excerpt: "// needle" } as const;
+    const switched = (root: string) => ({
+      type: "workspace_switched",
+      sessionId: "sess_2",
+      workspace: { root, name: root, activity: "idle" },
+      workspaces: [], branding: {}, model: "", thinkingLevel: "off", models: [], commands: [], isStreaming: false, items: [],
+    });
+
+    it("EmptyContentSearch: an empty or whitespace query sends nothing and shows nothing", async () => {
+      const result = await connected();
+      const before = mockWs!.sent.length;
+
+      act(() => result.current.searchContent("   "));
+      act(() => result.current.searchContent(""));
+
+      expect(mockWs!.sent.length).toBe(before);
+      expect(result.current.state.contentSearch).toBeNull();
+    });
+
+    it("shows the answer to the search still on screen", async () => {
+      const result = await connected();
+
+      act(() => result.current.searchContent("needle"));
+      const sent = JSON.parse(mockWs!.sent.at(-1)!);
+      expect(sent).toMatchObject({ type: "search_content", query: "needle" });
+      expect(result.current.state.contentSearch?.status).toBe("loading");
+
+      act(() =>
+        mockWs!.receive({ type: "content_search_results", requestId: sent.requestId, query: "needle", hits: [hit], truncated: true, skipped: 1 }),
+      );
+      expect(result.current.state.contentSearch).toMatchObject({ status: "loaded", hits: [hit], truncated: true, skipped: 1 });
+    });
+
+    it("ignores the answer to a superseded search", async () => {
+      const result = await connected();
+
+      act(() => result.current.searchContent("nee"));
+      const first = lastRequestId();
+      act(() => result.current.searchContent("needle"));
+      act(() => mockWs!.receive({ type: "content_search_results", requestId: first, query: "nee", hits: [hit], truncated: false, skipped: 0 }));
+
+      expect(result.current.state.contentSearch?.status).toBe("loading");
+      expect(result.current.state.contentSearch?.hits).toEqual([]);
+    });
+
+    it("WorkspaceChangesDuringSearch: an answer arriving after a switch is not shown", async () => {
+      const result = await connected([], { workspace: { root: "/a", name: "a", activity: "idle" } });
+
+      act(() => result.current.searchContent("needle"));
+      const requestId = lastRequestId();
+      act(() => mockWs!.receive(switched("/b")));
+      expect(result.current.state.contentSearch).toBeNull();
+
+      act(() => mockWs!.receive({ type: "content_search_results", requestId, query: "needle", hits: [hit], truncated: false, skipped: 0 }));
+      expect(result.current.state.contentSearch).toBeNull();
+    });
+
+    it("a file opened at a hit carries the target once loaded, and a refresh drops it", async () => {
+      const result = await connected();
+
+      act(() => result.current.readFile("src/a.ts", undefined, { query: "needle", line: 2 }));
+      const requestId = lastRequestId();
+      expect(result.current.state.openFile).toMatchObject({ status: "loading", reveal: { query: "needle", line: 2 } });
+
+      act(() => mockWs!.receive({ type: "file_content", requestId, path: "src/a.ts", content: "a\n// needle\n", size: 12, mtimeMs: 1 }));
+      expect(result.current.state.openFile).toMatchObject({ status: "loaded", reveal: { query: "needle", line: 2 } });
+
+      act(() => mockWs!.receive({ type: "file_changed", path: "src/a.ts" }));
+      const refresh = lastRequestId();
+      act(() => mockWs!.receive({ type: "file_content", requestId: refresh, path: "src/a.ts", content: "a\n// needle!\n", size: 13, mtimeMs: 2 }));
+      expect(result.current.state.openFile?.status).toBe("loaded");
+      expect(result.current.state.openFile && "reveal" in result.current.state.openFile).toBe(false);
+    });
+  });
+
   it("ignores session search results from a superseded query", async () => {
     const result = await connected();
 
