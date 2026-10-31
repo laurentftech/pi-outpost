@@ -12,6 +12,8 @@ import { checkStructuredExchangeSchemaInBrowser } from "@pi-outpost/shared/struc
 import { DrawioFilesContext } from "../components/drawioFiles";
 import { FileIoError, type FileIo } from "../fileIo";
 import { StructuredExchangeDocument } from "./StructuredExchangeView";
+import type { DocumentExport } from "./documentExport";
+import { figureForEnvelope } from "@pi-outpost/shared/structured-exchange/export";
 
 const DOCUMENT = {
   schema: "urn:structured-exchange:1",
@@ -134,5 +136,50 @@ describe("a graph's arrangement beside its file", () => {
     const check = await screen.findByTestId("structured-arrangement-check");
     expect(check.textContent).toContain("1 thing to look at in this arrangement");
     expect(check.textContent).toContain('the arrangement places "id:gone", which the document no longer holds');
+  });
+});
+
+describe("the figure that leaves", () => {
+  // openlore: scenario=TheSameArrangedPictureWithoutADisplay spec=structured-exchange
+  it("TheSameArrangedPictureWithoutADisplay: the SVG downloaded and the one written without a browser draw the same places and routes", async () => {
+    const arrangement: Arrangement = {
+      format: "pi-outpost/structured-exchange-arrangement-1",
+      views: { "": { elements: { "id:battery": { x: 40, y: 300 }, "id:inverter": { x: 260, y: 300 }, "id:motor": { x: 260, y: 460 } }, relationships: {} } },
+    };
+    const { io } = fakeFileIo(writeArrangement(arrangement));
+    const exportRef: { current: DocumentExport | null } = { current: null };
+    render(
+      <DrawioFilesContext.Provider value={{ serverUrl: "", fileIo: io }}>
+        <StructuredExchangeDocument envelope={envelope} source={SOURCE} file={{ path: "models/car.json", writable: true }} exportRef={exportRef} />
+      </DrawioFilesContext.Provider>,
+    );
+    await waitFor(() => expect(firstBox()).toEqual({ x: 40, y: 300 }));
+
+    const created: Blob[] = [];
+    const realCreate = URL.createObjectURL;
+    const realRevoke = URL.revokeObjectURL;
+    URL.createObjectURL = (blob: Blob) => {
+      created.push(blob);
+      return "blob:figure";
+    };
+    URL.revokeObjectURL = () => {};
+    try {
+      exportRef.current!.svg!();
+    } finally {
+      URL.createObjectURL = realCreate;
+      URL.revokeObjectURL = realRevoke;
+    }
+    expect(created).toHaveLength(1);
+    const downloaded = await created[0]!.text();
+    const written = figureForEnvelope(envelope, { arrangement });
+    expect(written.ok).toBe(true);
+    const drawing = (svg: string) => ({
+      boxes: [...svg.matchAll(/data-element-id="([^"]+)"[^>]*>\s*(?:<title>[^<]*<\/title>\s*)?<rect[^>]*?\bx="(-?[\d.]+)"[^>]*?\by="(-?[\d.]+)"/g)].map((match) => `${match[1]} ${match[2]} ${match[3]}`).sort(),
+      routes: [...svg.matchAll(/<path[^>]*data-edge="line"[^>]*\bd="([^"]+)"|<path[^>]*\bd="([^"]+)"[^>]*data-edge="line"/g)].map((match) => match[1] ?? match[2]).sort(),
+    });
+    const fromBrowser = drawing(downloaded);
+    expect(fromBrowser.boxes).toHaveLength(3);
+    expect(fromBrowser.routes).toHaveLength(2);
+    expect(fromBrowser).toEqual(drawing((written as { svg: string }).svg));
   });
 });

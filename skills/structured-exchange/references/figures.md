@@ -36,6 +36,14 @@ drawn cannot be drawn. The result tells you how much of the document the figure 
 so a narrowing that took more than you meant is visible in the answer rather than in
 the file.
 
+**A graph keeps its layout in an arrangement file.** The figure is drawn with
+`<document>.arrangement.json` when it sits beside the document (`models/vehicle.json` →
+`models/vehicle.arrangement.json`), and the places this figure computes are recorded there. So
+when the document is revised — an element added, a label changed — the next figure keeps every
+box where it was and places only what is new. Leave that file beside the document and keep it
+with it. Do not write it by hand: the reader arranges a figure in the interface, and the tool
+records the rest. When the result lists things "to look at", do what each says, or tell the user.
+
 A table has no figure — it is data. To put one in a document you are writing,
 `write_structure_table` writes it as Markdown:
 

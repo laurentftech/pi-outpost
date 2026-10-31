@@ -272,6 +272,11 @@ place it points. Act on it:
   can be presented until the project's files are fixed: tell the user which file and rule,
   rather than reshaping the document around it.
 
+A graph's figure keeps its layout in `<document>.arrangement.json` beside the document:
+`write_structure_figure` draws with it and records there what it places, so a revised document
+keeps its boxes where they were. Leave that file where it is, and act on what the result lists
+"to look at".
+
 A profile may declare **viewpoints** too. `write_structure_figure` accepts one by its `id`
 even when the document does not declare it, and its result says whether the viewpoint came
 from the document or from the profile.

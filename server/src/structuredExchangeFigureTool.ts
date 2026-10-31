@@ -32,6 +32,14 @@ import { holdToProfile } from "@pi-outpost/shared/structured-exchange/profile-ch
 import type { StructuredExchangeLimits } from "@pi-outpost/shared/structured-exchange/bounds";
 import type { StructuredViewpoint } from "@pi-outpost/shared/structured-exchange";
 import { assertWritableDestination } from "./extractionOutput.ts";
+import {
+  arrangementPathFor,
+  emptyArrangement,
+  readArrangement,
+  writeArrangement,
+  type Arrangement,
+  type ArrangementView,
+} from "@pi-outpost/shared/structured-exchange/arrangement";
 import { isWithinAny, realResolve } from "./sandbox.ts";
 import { describeUnusableProfiles, readProjectProfiles } from "./structuredExchangeProfiles.ts";
 import { localToday } from "@pi-outpost/shared/structured-exchange/timeline";
@@ -123,9 +131,48 @@ const DESCRIPTION = [
   "Write one figure per view worth having rather than one figure of everything: a narrowed figure is the reason this takes narrowing at all.",
   "When the document declares viewpoints — or the project holds it to a profile that does — name one with `viewpoint` instead of rebuilding its selection from hide lists: the figure then states which viewpoint it shows and the concern it frames, so a report can carry one figure per viewpoint.",
   "A relationship whose endpoint is hidden goes with it — an arrow to a box that is not drawn cannot be drawn.",
+  "A graph is drawn with its arrangement, `<document>.arrangement.json` beside the document, and the places this figure computes are recorded there, so a revised document keeps its layout; the result lists what the arrangement leaves to look at.",
   "A timeline is drawn too: give it `width` (e.g. 900) when it goes into a page, `scale` to draw it by week, month or quarter at its natural size, `compact` for one row per section, `hide_dependencies` to leave the arrows out; its date line is labelled with the day it is written, since the file outlives that day.",
   "A table has no figure; export it as a spreadsheet instead.",
 ].join(" ");
+
+/** At most this many of the arrangement check's findings are listed; the rest are counted. */
+const LISTED_FINDINGS = 12;
+
+/**
+ * Records what the figure placed beyond the arrangement, when the arrangement's path is writable,
+ * and says what was used, what was recorded and what the arrangement check lists.
+ */
+async function keepArrangement(
+  outcome: { used: boolean; record?: ArrangementView; findings: string[] } | undefined,
+  arrangement: Arrangement | undefined,
+  file: string,
+  unusable: string | undefined,
+  viewpoint: string | undefined,
+  options: StructuredExchangeFigureToolOptions,
+): Promise<string[]> {
+  if (outcome === undefined) return [];
+  const name = path.basename(file);
+  const lines: string[] = [];
+  if (unusable !== undefined) lines.push(`The arrangement \`${name}\` beside the document is not used (${unusable}); the graph was laid out without it.`);
+  else if (outcome.used) lines.push(`Drawn with the arrangement \`${name}\`${viewpoint === undefined ? "" : ` for viewpoint \`${viewpoint}\``}.`);
+  if (outcome.record !== undefined && unusable === undefined) {
+    const next: Arrangement = { ...(arrangement ?? emptyArrangement()), views: { ...arrangement?.views, [viewpoint ?? ""]: outcome.record } };
+    try {
+      const writeTo = await assertWritableDestination(file, { cwd: options.cwd, writableRoot: options.writableRoot });
+      await fs.writeFile(writeTo, writeArrangement(next));
+      lines.push(`Recorded the places it computed in \`${name}\`, so the next version of the document keeps them: keep that file beside the document.`);
+    } catch (error) {
+      lines.push(`The places it computed were not recorded: ${(error as Error).message.replace(/ Ask for the extraction itself[^.]*\./, "")}`);
+    }
+  }
+  if (outcome.findings.length > 0) {
+    lines.push(`The arrangement leaves ${outcome.findings.length} thing${outcome.findings.length === 1 ? "" : "s"} to look at:`);
+    for (const finding of outcome.findings.slice(0, LISTED_FINDINGS)) lines.push(`- ${finding}`);
+    if (outcome.findings.length > LISTED_FINDINGS) lines.push(`- … and ${outcome.findings.length - LISTED_FINDINGS} more`);
+  }
+  return lines;
+}
 
 /** A limit is only actionable if it reads like one: "4 MB", not "0 MB". */
 function describeSize(bytes: number): string {
@@ -250,6 +297,20 @@ export function createStructuredExchangeFigureToolDefinition(
         }
       }
 
+      // A graph's arrangement, beside the document (structured-exchange-arrangement): drawn with,
+      // and added to when the figure places something it does not name yet
+      const arrangementFile = arrangementPathFor(resolved);
+      let arrangement: Arrangement | undefined;
+      let arrangementUnusable: string | undefined;
+      if (parsed.valid && parsed.envelope.kind === "graph") {
+        const stored = await fs.readFile(arrangementFile, "utf8").catch(() => undefined);
+        if (stored !== undefined) {
+          const reading = readArrangement(stored);
+          if (reading.ok) arrangement = reading.arrangement;
+          else arrangementUnusable = reading.reason;
+        }
+      }
+
       const result = figureForDocument(
         text,
         checkStructuredExchangeSchema,
@@ -259,6 +320,7 @@ export function createStructuredExchangeFigureToolDefinition(
           ...(viewpoint === undefined ? {} : { viewpoint }),
           ...(heldTo === undefined ? {} : { profile: heldTo }),
           ...(appearance === undefined ? {} : { appearance }),
+          ...(arrangement === undefined ? {} : { arrangement }),
           timeline: {
             today: localToday(),
             ...(compact === undefined ? {} : { compact }),
@@ -306,12 +368,15 @@ export function createStructuredExchangeFigureToolDefinition(
         throw new Error(`Cannot write "${destination}": ${(error as Error).message}`);
       }
 
+      const arrangementLines = await keepArrangement(result.arrangement, arrangement, arrangementFile, arrangementUnusable, viewpoint, options);
+
       return {
         content: [
           {
             type: "text",
             text: [
               `Wrote \`${destination}\` (${Buffer.byteLength(result.svg, "utf8")} bytes), showing ${describeCoverage(result.coverage, parsed.valid ? parsed.envelope.kind : undefined)}.`,
+              ...arrangementLines,
               // Named before the statement, so an agent writing several figures from one
               // document can tell which chapter each belongs to without opening them.
               result.viewpoint === undefined

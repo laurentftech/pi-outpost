@@ -275,6 +275,12 @@ It holds one arrangement per viewpoint, plus `""` for the whole document. Its fo
   a new version of the document finds their places even if their envelope ids change.
 - **It is partial.** Anything it does not name is laid out automatically, then tidied by the
   same wire rules `drawio_check` applies.
+- **The reader and the agent both keep it.** A box dragged in the viewer is kept there. The
+  agent's `write_structure_figure` draws with it, and records what it placed itself. So when the
+  document is revised, the next figure keeps every box where it was and places only what is new.
+- **It is checked.** Under the figure, the viewer lists what the arrangement leaves to look at,
+  and the agent's result lists it too. That covers a relationship drawn through a box, an entry
+  for something the document no longer holds, and a box moved to make room.
 
 ## A table that reports a change
 
