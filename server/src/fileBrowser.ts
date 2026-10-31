@@ -186,7 +186,7 @@ async function readMeasuredFile(resolved: string, relPath: string): Promise<Buff
 }
 
 /** Cheap binary heuristic: presence of a NUL byte (same check git/grep -I use). */
-function looksBinary(buffer: Buffer): boolean {
+export function looksBinary(buffer: Buffer): boolean {
   return buffer.includes(0);
 }
 
@@ -968,7 +968,16 @@ export async function writeFileFromBrowser(
 
 const SEARCH_IGNORED_NAMES = new Set(["node_modules", "dist", "build", ".git", ".next", ".turbo", "__pycache__"]);
 /** Guard against pathologically large trees — this is a UI convenience, not a full index. */
-const SEARCH_MAX_VISITED = 20_000;
+export const SEARCH_MAX_VISITED = 20_000;
+
+/**
+ * Whether a search walk passes over this entry: symlinks (cycles, and a way out of the
+ * root), dot entries, and dependency/build directories. Shared by the name search and
+ * the content search so both agree on what the workspace holds.
+ */
+export function skippedBySearch(dirent: Dirent): boolean {
+  return dirent.isSymbolicLink() || dirent.name.startsWith(".") || SEARCH_IGNORED_NAMES.has(dirent.name);
+}
 
 /**
  * Recursively search file/directory names under `root` for `query` (case-insensitive
@@ -993,7 +1002,7 @@ export async function searchFiles(root: string, query: string, limit = 20): Prom
     for (const dirent of dirents) {
       if (results.length >= limit || visited >= SEARCH_MAX_VISITED) return;
       visited++;
-      if (dirent.isSymbolicLink() || dirent.name.startsWith(".") || SEARCH_IGNORED_NAMES.has(dirent.name)) continue;
+      if (skippedBySearch(dirent)) continue;
       const relPath = relDir ? `${relDir}/${dirent.name}` : dirent.name;
       const isDirectory = dirent.isDirectory();
       if (relPath.toLowerCase().includes(q)) {

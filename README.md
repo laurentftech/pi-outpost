@@ -208,6 +208,10 @@ one needs, the command that proves it works, and the caution that goes with it.
   file with the system's own application, or show a file or folder in Finder, Explorer or
   the Linux file manager; anything outside the writable zone is dimmed.
   Ctrl+F (Cmd+F) finds text in the open file — source, rendered Markdown, or a live edit
+- **Search in files** (the magnifying glass in the Files header) finds text across the project:
+  case-insensitive, literal, in text files and in the text layer of PDFs. Each hit shows its line
+  or PDF page with an excerpt; clicking it opens the file there with the match highlighted. See
+  [Search the project's files](docs/how-to.md#search-the-projects-files).
 - Opening a file only previews it; it does not attach it to your next message. Use the
   file tree’s reference button, an `@` mention, or **Attach files** to add context explicitly.
 - HTML files open rendered, as Markdown does: the page's scripts run, and its stylesheets,

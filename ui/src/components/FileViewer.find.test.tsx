@@ -9,11 +9,16 @@ import { editorSelection, editorText, sourceElement, sourceSelection, typeInEdit
 const pdfFindNext = vi.fn();
 const pdfFindPrevious = vi.fn();
 let lastOnFindStateChange: ((state: PdfFindState) => void) | undefined;
+let lastPdfProps: { findQuery?: string; startAt?: { page: number } } = {};
 
 vi.mock("./PdfViewer", () => ({
-  default: forwardRef<PdfViewerHandle, { path: string; onFindStateChange?: (state: PdfFindState) => void }>(
-    function FakePdfViewer({ path, onFindStateChange }, ref) {
+  default: forwardRef<
+    PdfViewerHandle,
+    { path: string; onFindStateChange?: (state: PdfFindState) => void; findQuery?: string; startAt?: { page: number } }
+  >(
+    function FakePdfViewer({ path, onFindStateChange, findQuery, startAt }, ref) {
       lastOnFindStateChange = onFindStateChange;
+      lastPdfProps = { findQuery, startAt };
       useImperativeHandle(ref, () => ({ findNext: pdfFindNext, findPrevious: pdfFindPrevious }), []);
       return <div data-testid="pdf-viewer" data-path={path} />;
     },
@@ -352,4 +357,46 @@ describe("FileViewer find-in-page", () => {
       expect(screen.queryByText("1/2")).toBeNull();
     });
   });
+
+  describe("opened from a content-search hit", () => {
+    it("OpenMatchingLine: a rendered file opens in its source, on the hit's line, not the first match", async () => {
+      // Line 3 starts at offset 19.
+      setup({ file: loadedFile({ path: "notes.md", content: "needle first\nother\nneedle on three\n", reveal: { query: "needle", line: 3 } }) });
+
+      await waitFor(() => expect(screen.getByText("2/2")).toBeInTheDocument());
+      expect(findInput().value).toBe("needle");
+      expect(screen.getByTestId("file-source")).toBeInTheDocument();
+      expect(sourceSelection()).toEqual({ from: 19, to: 25, text: "needle" });
+      expect(screen.getByTestId("file-source").querySelector(".find-match-current")?.textContent).toBe("needle");
+    });
+
+    it("lands on the hit's line in a CRLF file too", async () => {
+      setup({ file: loadedFile({ content: "a\r\nneedle\r\nneedle", reveal: { query: "needle", line: 3 } }) });
+
+      await waitFor(() => expect(screen.getByText("2/2")).toBeInTheDocument());
+      // The editor counts a line break as one position: line 3 starts at 9.
+      expect(sourceSelection()).toEqual({ from: 9, to: 15, text: "needle" });
+    });
+
+    it("a refresh of the file does not jump back to the hit", async () => {
+      const opened = loadedFile({ content: "needle\nneedle\n", reveal: { query: "needle", line: 2 } });
+      const { rerenderWith } = setup({ file: opened });
+      await waitFor(() => expect(screen.getByText("2/2")).toBeInTheDocument());
+      fireEvent.click(screen.getByLabelText("Previous match"));
+      await waitFor(() => expect(screen.getByText("1/2")).toBeInTheDocument());
+
+      rerenderWith({ file: loadedFile({ content: "needle\nneedle\n", mtimeMs: 2000 }) });
+
+      await waitFor(() => expect(screen.getByText("1/2")).toBeInTheDocument());
+    });
+
+    it("OpenMatchingPdfPage: a PDF opens with find on the query, starting at the hit's page", async () => {
+      setup({ file: loadedFile({ path: "docs/report.pdf", content: "", reveal: { query: "needle", page: 3 } }) });
+
+      await screen.findByTestId("pdf-viewer");
+      await waitFor(() => expect(lastPdfProps).toEqual({ findQuery: "needle", startAt: { page: 3 } }));
+      expect(findInput().value).toBe("needle");
+    });
+  });
 });
+

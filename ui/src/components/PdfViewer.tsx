@@ -329,8 +329,13 @@ export const PdfViewer = forwardRef<
     findQuery?: string;
     /** Reported whenever the match count, current match, or indexing progress changes. */
     onFindStateChange?: (state: PdfFindState) => void;
+    /**
+     * Make the first match on this page the current one, rather than the document's
+     * first — a content-search hit opened here. A new object asks again.
+     */
+    startAt?: { page: number };
   }
->(function PdfViewer({ path, serverUrl = "", token = null, workspace, revision = 0, onLoaded, findQuery = "", onFindStateChange }, ref) {
+>(function PdfViewer({ path, serverUrl = "", token = null, workspace, revision = 0, onLoaded, findQuery = "", onFindStateChange, startAt }, ref) {
   const [doc, setDoc] = useState<PdfDocumentProxy | null>(null);
   const [failure, setFailure] = useState<PdfFailure | null>(null);
   const [pageNumber, setPageNumber] = useState(1);
@@ -350,7 +355,22 @@ export const PdfViewer = forwardRef<
   const [currentMatch, setCurrentMatch] = useState(-1);
   const indexerRef = useRef<{ cancel: () => void } | null>(null);
   const indexStartedRef = useRef(false);
+  /** The whole document has been read for search (state lags a render behind). */
+  const [indexDone, setIndexDone] = useState(false);
   const prevQueryRef = useRef(findQuery);
+  /**
+   * The page the current match should start on, held until the whole document is
+   * read. The index fills in from wherever reading started, in no promised order: a
+   * match found later on an earlier page shifts every index after it, so the current
+   * match is re-pinned to the page each time rather than kept by position.
+   * Stepping through matches lets go of it.
+   */
+  const pendingStartRef = useRef<number | null>(startAt?.page ?? null);
+  const startAtRef = useRef(startAt);
+  if (startAtRef.current !== startAt) {
+    startAtRef.current = startAt;
+    pendingStartRef.current = startAt?.page ?? null;
+  }
   // Ready text-layer containers, by page — populated by PdfPageSlot as pages
   // render, independently of the render-window state above (that drives what's
   // drawn; this drives what can currently be highlighted).
@@ -419,6 +439,7 @@ export const PdfViewer = forwardRef<
     indexerRef.current?.cancel();
     indexerRef.current = null;
     indexStartedRef.current = false;
+    setIndexDone(false);
     setPageTexts(new Map());
     setIndexSearching(false);
     setMatches([]);
@@ -494,14 +515,18 @@ export const PdfViewer = forwardRef<
     };
     indexerRef.current = indexPdfText(
       source,
-      pageNumber,
+      // A page asked for is read first: its match is the one to show.
+      pendingStartRef.current ?? pageNumber,
       (page, text) =>
         setPageTexts((prev) => {
           const next = new Map(prev);
           next.set(page, text);
           return next;
         }),
-      () => setIndexSearching(false),
+      () => {
+        setIndexSearching(false);
+        setIndexDone(true);
+      },
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps -- pageNumber seeds
     // where reading starts and is intentionally not tracked afterward;
@@ -530,12 +555,30 @@ export const PdfViewer = forwardRef<
     const queryChanged = findQuery !== prevQueryRef.current;
     prevQueryRef.current = findQuery;
     setMatches(found);
+    const pending = pendingStartRef.current;
+    if (pending !== null && findQuery !== "") {
+      if (indexDone) pendingStartRef.current = null;
+      const onPage = found.findIndex((match) => match.page === pending);
+      if (onPage !== -1) {
+        setCurrentMatch(onPage);
+        return;
+      }
+      // Not on that page after all — the file changed since it was searched. Once the
+      // whole document is read, the nearest match after it will do.
+      if (indexDone) {
+        const after = found.findIndex((match) => match.page > pending);
+        setCurrentMatch(found.length === 0 ? -1 : after === -1 ? 0 : after);
+        return;
+      }
+      setCurrentMatch(-1);
+      return;
+    }
     setCurrentMatch((prev) => {
       if (found.length === 0) return -1;
       if (queryChanged || prev === -1) return 0;
       return Math.min(prev, found.length - 1);
     });
-  }, [pageTexts, findQuery, doc]);
+  }, [pageTexts, findQuery, doc, indexDone, startAt]);
 
   /**
    * Moves to (and, once rendered, highlights) the current match. A match on a
@@ -564,10 +607,12 @@ export const PdfViewer = forwardRef<
     ref,
     () => ({
       findNext() {
+        pendingStartRef.current = null;
         if (matchesRef.current.length === 0) return;
         setCurrentMatch((prev) => (prev + 1) % matchesRef.current.length);
       },
       findPrevious() {
+        pendingStartRef.current = null;
         if (matchesRef.current.length === 0) return;
         setCurrentMatch((prev) => (prev - 1 + matchesRef.current.length) % matchesRef.current.length);
       },

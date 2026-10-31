@@ -141,6 +141,7 @@ export function CodeEditor({
   onChange,
   onSave,
   handle,
+  onReady,
   readOnly = false,
   baseline = null,
   label = readOnly ? "File source" : "File editor",
@@ -150,6 +151,12 @@ export function CodeEditor({
   onChange?: (value: string) => void;
   onSave?: () => void;
   handle?: Ref<CodeEditorHandle>;
+  /**
+   * Called once the editor exists and `handle` can act on it. Loaded lazily, the editor
+   * can arrive a render after whoever holds the handle tried to use it — a selection
+   * asked for then landed nowhere.
+   */
+  onReady?: () => void;
   readOnly?: boolean;
   /** HEAD's text, for the git gutter to compare with; null draws none. */
   baseline?: string | null;
@@ -209,6 +216,7 @@ export function CodeEditor({
       }),
     });
     view.current = editor;
+    onReady?.();
     if (baseline !== null) editor.dispatch({ effects: setGitBaseline.of(baseline) });
     // Entering the editor is asking to type; opening a file to read it is not.
     if (!readOnly) editor.focus();

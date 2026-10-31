@@ -555,6 +555,47 @@ describe("PdfViewer find-in-page", () => {
     });
   });
 
+  it("OpenMatchingPdfPage: starts on the first match of the page asked for, and highlights it there", async () => {
+    serverReturnsPdf(5);
+    pagesByNumber({
+      1: pageWithText("a fox on the cover"),
+      2: pageWithText("nothing"),
+      3: pageWithText("nothing"),
+      4: pageWithText("nothing"),
+      5: pageWithText("the fox you searched for"),
+    });
+    populateTextLayers();
+    const onFindStateChange = vi.fn();
+
+    const { container } = render(
+      <PdfViewer path="report.pdf" findQuery="fox" startAt={{ page: 5 }} onFindStateChange={onFindStateChange} />,
+    );
+
+    // Far outside the render window from page 1: the viewer goes there itself.
+    expect(await screen.findByText("Page 5 / 5")).toBeInTheDocument();
+    await waitFor(() =>
+      expect(onFindStateChange).toHaveBeenLastCalledWith({ matchCount: 2, currentIndex: 1, searching: false }),
+    );
+    await waitFor(() => {
+      const mark = container.querySelector('[data-page="5"] .pdf-text-layer mark.find-match-current');
+      expect(mark?.textContent).toBe("fox");
+    });
+    // Never settled on the cover's match on the way.
+    expect(onFindStateChange).not.toHaveBeenCalledWith(expect.objectContaining({ currentIndex: 0, matchCount: 2 }));
+  });
+
+  it("falls back to the next match when the page asked for no longer holds one", async () => {
+    serverReturnsPdf(3);
+    pagesByNumber({ 1: pageWithText("fox"), 2: pageWithText("nothing"), 3: pageWithText("fox again") });
+    const onFindStateChange = vi.fn();
+
+    render(<PdfViewer path="report.pdf" findQuery="fox" startAt={{ page: 2 }} onFindStateChange={onFindStateChange} />);
+
+    await waitFor(() =>
+      expect(onFindStateChange).toHaveBeenLastCalledWith({ matchCount: 2, currentIndex: 1, searching: false }),
+    );
+  });
+
   it("moves the highlight between matches on the same page without changing page", async () => {
     serverReturnsPdf(1);
     pagesByNumber({ 1: pageWithText("fox fox") });

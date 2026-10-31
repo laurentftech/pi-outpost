@@ -29,6 +29,7 @@ import {
   parsePageRange,
   pdfjsAssetDirs,
   PdfError,
+  pdfPageTexts,
   type TextPiece,
   wordBoundaryNear,
 } from "../src/pdf.ts";
@@ -758,5 +759,35 @@ describe("extractPdf and the images a page draws", () => {
 
     assert.deepEqual(result.pictures, []);
     assert.doesNotMatch(result.markdown, /\[picture /);
+  });
+});
+
+describe("pdfPageTexts", () => {
+  test("gives each page's text, in page order", async () => {
+    const texts = await pdfPageTexts(await fixture("pdf-text"));
+
+    assert.equal(texts.length, 2);
+    assert.match(texts[0], /Revenue grew in every region this quarter\./);
+    assert.doesNotMatch(texts[0], /supply chain/);
+    assert.match(texts[1], /The second half depends on the supply chain\./);
+  });
+
+  test("a page with no text layer gives an empty string, not an error", async () => {
+    const texts = await pdfPageTexts(await fixture("pdf-mixed-scan"));
+
+    assert.equal(texts.length, 2);
+    assert.match(texts[0], /Cover page with real text/);
+    assert.equal(texts[1], "");
+  });
+
+  test("an unreadable document is refused as a PdfError", async () => {
+    await assert.rejects(pdfPageTexts(await fixture("pdf-corrupt")), PdfError);
+    await assert.rejects(pdfPageTexts(await fixture("pdf-encrypted")), PdfError);
+  });
+
+  test("an aborted signal stops the read", async () => {
+    const controller = new AbortController();
+    controller.abort();
+    await assert.rejects(pdfPageTexts(await fixture("pdf-text"), { signal: controller.signal }), PdfError);
   });
 });

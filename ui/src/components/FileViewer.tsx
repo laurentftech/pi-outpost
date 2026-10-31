@@ -221,6 +221,13 @@ export function FileViewer({
   // "done" = a reply finished while this viewer was covering the chat
   const [agentActivity, setAgentActivity] = useState<"idle" | "streaming" | "done">("idle");
   const editorRef = useRef<CodeEditorHandle>(null);
+  /**
+   * Counts editors that have come up. The editor is fetched lazily, so the first file
+   * shown can draw its fallback while find selects and marks against no editor at all;
+   * the find effects rerun on this to reapply what they asked for once one exists.
+   */
+  const [editorsReady, setEditorsReady] = useState(0);
+  const editorReady = useCallback(() => setEditorsReady((count) => count + 1), []);
   // Content of the last submitted save — the rebase effect below matches on it, not on
   // the live draft, so typing during the save round-trip can't wedge a false conflict
   const lastSubmitted = useRef<string | null>(null);
@@ -551,15 +558,42 @@ export function FileViewer({
     setFindCurrent(current);
     if (matches.length > 0) selectTextMatch(matches, current);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- reruns on the
-    // query or the view (entering edit mode included), not on the buffer.
-  }, [effectiveFindQuery, findMode, findOpen, editing]);
+    // query or the view (entering edit mode included, or the editor arriving), not on the buffer.
+  }, [effectiveFindQuery, findMode, findOpen, editing, editorsReady]);
 
   // Every match marked in the editor, the current one apart — as typing or
   // stepping changes them; cleared with the find bar.
   useEffect(() => {
     editorRef.current?.markMatches(findMode === "text" ? textMatches : [], findCurrent);
     // `editing`: reading and editing are two editors; the one just mounted has no marks yet.
-  }, [findMode, textMatches, findCurrent, editing]);
+  }, [findMode, textMatches, findCurrent, editing, editorsReady]);
+
+  // --- opened from a content-search hit ------------------------------------
+  /**
+   * Lands on the hit through find-in-page, so it is highlighted the way Ctrl+F
+   * highlights. A line is shown in the source, where line numbers mean something —
+   * a rendered Markdown file has none. Applied once per hit: a refresh of the file
+   * drops `reveal`, and leaves the reader where they are.
+   */
+  const reveal = loaded?.reveal;
+  const [pdfStartAt, setPdfStartAt] = useState<{ page: number } | undefined>(undefined);
+  useEffect(() => {
+    if (reveal === undefined || loaded === null) return;
+    if (reveal.page !== undefined) {
+      setPdfStartAt({ page: reveal.page });
+    } else if (reveal.line !== undefined) {
+      if (edit === null) setMode("source");
+      const matches = findMatchesInText(editedText, reveal.query);
+      const start = lineStartOffset(editedText, reveal.line);
+      const onLine = matches.findIndex((match) => match.start >= start);
+      // The find effect keeps the current match when the query is not new to it.
+      domQueryRef.current = reveal.query;
+      setFindCurrent(onLine === -1 ? 0 : onLine);
+    }
+    setFindQuery(reveal.query);
+    setFindOpen(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once per hit, not per edit.
+  }, [reveal]);
 
   function openFind() {
     setFindOpen(true);
@@ -637,6 +671,7 @@ export function FileViewer({
       <Suspense key="editor" fallback={<div className="p-4 text-sm text-zinc-400 dark:text-zinc-600">loading editor…</div>}>
         <LazyCodeEditor
           handle={editorRef}
+          onReady={editorReady}
           path={file.path}
           value={edit.draft}
           baseline={gitBaseline}
@@ -664,7 +699,7 @@ export function FileViewer({
           </div>
         }
       >
-        <LazyCodeEditor readOnly handle={findable ? editorRef : undefined} path={file.path} value={loaded.content} baseline={gitBaseline} />
+        <LazyCodeEditor readOnly handle={findable ? editorRef : undefined} onReady={findable ? editorReady : undefined} path={file.path} value={loaded.content} baseline={gitBaseline} />
       </Suspense>
     );
   }
@@ -1103,6 +1138,7 @@ export function FileViewer({
                 revision={rawRevision}
                 findQuery={findMode === "pdf" ? effectiveFindQuery : ""}
                 onFindStateChange={setPdfFindState}
+                {...(pdfStartAt ? { startAt: pdfStartAt } : {})}
                 {...(onPdfLoad ? { onLoaded: onPdfLoad } : {})}
               />
             </Suspense>
@@ -1282,4 +1318,15 @@ export function FileViewer({
       )}
     </div>
   );
+}
+
+/** Offset of the first character of 1-based `line` in `text`; past the end, its length. */
+function lineStartOffset(text: string, line: number): number {
+  let offset = 0;
+  for (let current = 1; current < line; current++) {
+    const next = text.indexOf("\n", offset);
+    if (next === -1) return text.length;
+    offset = next + 1;
+  }
+  return offset;
 }

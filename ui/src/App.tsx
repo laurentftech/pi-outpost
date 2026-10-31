@@ -134,6 +134,7 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
     listDirectory,
     refreshFileTree,
     readFile,
+    searchContent,
     writeFile,
     createFile,
     createDirectory,
@@ -879,6 +880,13 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
             fileOperation={state.fileOperation}
             createError={state.createError}
             created={state.created}
+            contentSearch={state.contentSearch}
+            onSearchContent={searchContent}
+            onOpenSearchHit={(hit, query) => {
+              setDiffOnOpen(false);
+              setTreeSelection(hit.path);
+              readFile(hit.path, undefined, hit.kind === "line" ? { query, line: hit.line } : { query, page: hit.page });
+            }}
           />
         )}
         <div className="flex h-full min-w-0 flex-1 flex-col">

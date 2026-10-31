@@ -163,6 +163,7 @@ import {
   uploadFileFromBrowser,
   writeFileFromBrowser,
 } from "./fileBrowser.ts";
+import { searchContent } from "./contentSearch.ts";
 import {
   GitError,
   gitFileLog,
@@ -2439,6 +2440,8 @@ function bindClient(socket: WebSocket, target: Workspace, kind: "hello" | "works
     clients.delete(socket);
     return;
   }
+  // A content search started under the project being left has no one to answer any more.
+  if (clients.get(socket) !== target) abortContentSearch(socket);
   clients.set(socket, target);
   send(socket, { type: kind, ...snapshot(target) });
   // While its agent starts there are no dialogs and no warnings yet: they come with workspace_switched.
@@ -5753,6 +5756,34 @@ async function handleSearchFiles(workspace: Workspace, socket: WebSocket, query:
 }
 
 /**
+ * The content search each socket has running. One at a time: a newer query, a switch of
+ * project and a closed socket all abort it, and an aborted search sends no answer.
+ */
+const contentSearches = new WeakMap<WebSocket, AbortController>();
+
+function abortContentSearch(socket: WebSocket): void {
+  contentSearches.get(socket)?.abort();
+  contentSearches.delete(socket);
+}
+
+/** Files → Search in files: literal search of file contents, confined to workspace.browserRoot. */
+async function handleSearchContent(workspace: Workspace, socket: WebSocket, query: string, requestId: string): Promise<void> {
+  abortContentSearch(socket);
+  const controller = new AbortController();
+  contentSearches.set(socket, controller);
+  try {
+    const { hits, truncated, skipped } = await searchContent(workspace.browserRoot, query, { signal: controller.signal });
+    if (controller.signal.aborted) return;
+    send(socket, { type: "content_search_results", requestId, query, hits, truncated, skipped });
+  } catch (error) {
+    if (controller.signal.aborted) return;
+    throw error;
+  } finally {
+    if (contentSearches.get(socket) === controller) contentSearches.delete(socket);
+  }
+}
+
+/**
  * Browser messages served for a project whose agent is still starting: none of them goes
  * through the agent, and they are what makes a switched-to project usable at once — its
  * file tree, its files, git, the terminal — and the way out of it. Everything else waits.
@@ -5769,6 +5800,7 @@ const SERVED_WHILE_STARTING = new Set<ClientMessage["type"]>([
   "copy_file",
   "upload_file",
   "search_files",
+  "search_content",
   "open_native",
   "reveal_native",
   "git_status",
@@ -6145,6 +6177,10 @@ function handleClientMessage(socket: WebSocket, raw: string): void {
       if (typeof message.query !== "string" || typeof message.requestId !== "string") return;
       handleSearchFiles(workspace, socket, message.query, message.requestId).catch(reportError);
       break;
+    case "search_content":
+      if (typeof message.query !== "string" || typeof message.requestId !== "string") return;
+      handleSearchContent(workspace, socket, message.query, message.requestId).catch(reportError);
+      break;
     case "list_tree":
       try {
         sendTree(workspace, socket);
@@ -6482,6 +6518,7 @@ handleWsConnection = (socket, workspaceRoot) => {
   socket.on("message", (data: Buffer) => handleClientMessage(socket, data.toString()));
   socket.on("close", () => {
     terminalManager.closeAllForSocket(socket);
+    abortContentSearch(socket);
     // A sign-in nobody can answer any more would hold the provider's credential lock.
     loginRelay.cancel(socket);
     const bound = clients.get(socket);

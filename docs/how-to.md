@@ -17,6 +17,7 @@ every flag.
 - [Restrict which models can be picked](#restrict-which-models-can-be-picked)
 - [Let the agent read a big PDF, Word or Excel file](#let-the-agent-read-a-big-pdf-word-or-excel-file)
 - [Make a PowerPoint deck from a template](#make-a-powerpoint-deck-from-a-template)
+- [Search the project's files](#search-the-projects-files)
 - [Ask a side question while the agent works](#ask-a-side-question-while-the-agent-works)
 - [Lock down a shared deployment](#lock-down-a-shared-deployment)
 - [Put it inside your own web app](#put-it-inside-your-own-web-app)
@@ -654,6 +655,29 @@ the browser as before, diagrams included, and the server carries it into the tem
 export stays beside it: a template that is missing or cannot be used is reported on its own
 button, and never blocks the other. Each browser may export into the template 30 times a minute; past that,
 the button says when to try again.
+
+## Search the project's files
+
+Click the magnifying glass in the **Files** header (**Search in files**), type the text and press
+Enter. The search runs on the server, over the project the file tree shows.
+
+- It is case-insensitive and literal: `user.name` finds `User.Name`, and characters such as `.`
+  or `*` have no special meaning.
+- Text files are searched up to 1 MB each. PDFs are searched page by page, through their text
+  layer, up to 50 MB each. A scanned page holds no text and gives no match. A PDF that cannot be
+  read (encrypted, damaged, or slower than 5 seconds) is skipped, and the results say how many
+  were.
+- It skips what the file-name search skips: symbolic links, files and folders whose name starts
+  with a dot, and `node_modules`, `dist`, `build`, `.next`, `.turbo` and `__pycache__`. Other
+  binary files are skipped too. Nothing outside the project's root is read.
+- Hits are grouped by file. A text hit shows its line number, a PDF hit its page. Clicking one
+  opens the file in the viewer with find already on the query: a text file opens in its source,
+  on that line, and a PDF opens on that page, with the match highlighted. Enter in the find bar
+  steps to the next match, as Ctrl+F does.
+- The search stops at 500 hits, at 20 hits per file, and after 15 seconds. When it stops early,
+  the results say they are partial. Narrow the query to see everything.
+- Escape or **×** goes back to the tree. The query and the results are kept until you switch to
+  another project, which drops them.
 
 ## Ask a side question while the agent works
 
