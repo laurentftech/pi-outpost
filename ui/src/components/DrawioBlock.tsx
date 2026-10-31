@@ -339,6 +339,15 @@ export function DrawioBlock({
             {state.wireStyle === "mixed" && <option value="mixed" disabled>mixed</option>}
           </select>
         </label>
+        <button
+          type="button"
+          className={DIAGRAM_ACTION}
+          disabled={!state.bends}
+          onClick={() => frameOf(where).current?.removeBends()}
+          title="Remove the bends of the selected wires — or of every wire of the page when none is selected — and let draw.io route them. Double-click a bend to remove just that one."
+        >
+          remove bends
+        </button>
         <button type="button" className={DIAGRAM_ACTION} onClick={() => endTouchUp()} title="Leave touch-up (Escape); unsaved touch-ups are asked about first">
           done
         </button>

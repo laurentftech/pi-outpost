@@ -208,6 +208,7 @@ import { checkPiPackages, hintPiPackagesBehind, installNewerPiPackage, listPiPac
 import { createStructuredExchangeFigureToolDefinition } from "./structuredExchangeFigureTool.ts";
 import { createTimelineComparisonToolDefinition } from "./timelineComparisonTool.ts";
 import { createDrawioCheckToolDefinition } from "./drawioTool.ts";
+import { registerPendingWriteHooks } from "./pendingWrites.ts";
 import { createPosterCheckToolDefinition } from "./posterCheckTool.ts";
 import { createPosterPicturesToolDefinition } from "./posterPicturesTool.ts";
 import { createWorkPlanExtendedToolDefinition, createWorkPlanToolDefinition, WORK_PLAN_EXTENDED_TOOL, WORK_PLAN_TOOL } from "./workPlanTool.ts";
@@ -1382,7 +1383,8 @@ const makeCreateRuntime =
   const projectSandbox = config.sandbox;
 
   // Pictures in a poster stay out of what the agent reads and survive what it writes.
-  const extraFactories = [...seaExtensionFactories, registerPosterPictureHooks];
+  // Both also load in an RPC child, through piOutpostTools.ts
+  const extraFactories = [...seaExtensionFactories, registerPosterPictureHooks, registerPendingWriteHooks];
   // extensionScripts are loaded via the SDK's jiti-based loader (same as
   // extensionPaths), which uses createRequire under the hood — this works
   // inside SEA blobs where native import() can only resolve built-in modules.

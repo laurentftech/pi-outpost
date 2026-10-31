@@ -26,6 +26,7 @@
 import fs from "node:fs/promises";
 import type { ExtensionAPI, ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { deferOnDemandTools, TOOL_SEARCH_TOOL } from "./documentTools.ts";
+import { registerPendingWriteHooks } from "./pendingWrites.ts";
 import { registerPosterPictureHooks } from "./posterPictureHooks.ts";
 import { createBtwExtension } from "./btwExtension.ts";
 import { createDocxExtractToolDefinition } from "./docxTool.ts";
@@ -171,5 +172,6 @@ export default async function (pi: ExtensionAPI): Promise<void> {
   });
   // As the embedded runtime does through its extension factories (index.ts).
   registerPosterPictureHooks(pi);
+  registerPendingWriteHooks(pi);
   createBtwExtension()(pi);
 }

@@ -14,6 +14,7 @@ import path from "node:path";
 import { Type } from "typebox";
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { checkDrawio, describeDrawioReport, DrawioReadError } from "./drawio.ts";
+import { writesSettled } from "./pendingWrites.ts";
 import { isWithinAny, realResolve } from "./sandbox.ts";
 
 /** Largest diagram this tool opens. draw.io files are text; a bigger one is not a diagram anyone reads. */
@@ -34,7 +35,7 @@ const parameters = Type.Object({
 
 const DESCRIPTION = [
   "Check a draw.io diagram (.drawio) you have written, since you cannot see it rendered.",
-  "Reports errors draw.io would refuse or mis-draw — XML it cannot read, duplicate ids, cells whose parent or connector ends do not exist, connectors attached to nothing, shapes with no usable size — and warnings a reader would trip on: shapes partly overlapping, shapes outside their container, connectors running through a box or through their own ends, connector labels sitting on a box — the connectors routed as draw.io draws them.",
+  "Reports errors draw.io would refuse or mis-draw — XML it cannot read, duplicate ids, cells whose parent or connector ends do not exist, connectors attached to nothing, shapes with no usable size — and warnings a reader would trip on: shapes partly overlapping, shapes outside their container, connectors running through a box or through their own ends, connector labels sitting on a box, connectors carrying different labels meeting a shape at one point, a fixed exit or entry facing away from the other end, connectors running a long detour, needless bends left by waypoints — the connectors routed as draw.io draws them.",
   "Reads plain and compressed pages. Run it after every write or edit of a .drawio file, and fix what it reports before handing the diagram over.",
 ].join(" ");
 
@@ -55,6 +56,8 @@ export function createDrawioCheckToolDefinition(options: DrawioToolOptions): Too
     parameters,
     async execute(_toolCallId, params) {
       const { path: target } = params as { path: string };
+      // An edit sent in the same message as this check lands first: the report is about the file as it ends up
+      await writesSettled(path.resolve(options.cwd, target));
       const resolved = await realResolve(path.resolve(options.cwd, target));
       if (!isWithinAny(options.allowedRoots, resolved)) {
         throw new Error(`Access denied: "${target}" is outside the sandbox (${options.allowedRoots[0]})`);

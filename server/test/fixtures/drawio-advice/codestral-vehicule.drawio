@@ -1,0 +1,61 @@
+<mxfile host="app.diagrams.net" modified="2024-02-02T12:00:00" agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" etag="W\"12345-abcde\"" version="23.1.1" type="device">
+  <diagram name="vehicule" id="vehicule">
+    <mxGraphModel dx="1200" dy="800" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="batterie" value="Batterie" style="ellipse;whiteSpace=wrap;html=1;aspect=fixed;" vertex="1" parent="1">
+          <mxGeometry x="300" y="100" width="120" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="bms" value="BMS" style="ellipse;whiteSpace=wrap;html=1;aspect=fixed;" vertex="1" parent="1">
+          <mxGeometry x="300" y="200" width="120" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="onduleur" value="Onduleur" style="ellipse;whiteSpace=wrap;html=1;aspect=fixed;" vertex="1" parent="1">
+          <mxGeometry x="300" y="300" width="120" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="moteur" value="Moteur" style="ellipse;whiteSpace=wrap;html=1;aspect=fixed;" vertex="1" parent="1">
+          <mxGeometry x="300" y="400" width="120" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="chargeur" value="Chargeur embarqué" style="ellipse;whiteSpace=wrap;html=1;aspect=fixed;" vertex="1" parent="1">
+          <mxGeometry x="300" y="500" width="120" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="prise" value="Prise de recharge" style="ellipse;whiteSpace=wrap;html=1;aspect=fixed;" vertex="1" parent="1">
+          <mxGeometry x="300" y="600" width="120" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="convertisseur" value="Convertisseur DC/DC" style="ellipse;whiteSpace=wrap;html=1;aspect=fixed;" vertex="1" parent="1">
+          <mxGeometry x="300" y="700" width="120" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="reseau" value="Réseau 12 V" style="ellipse;whiteSpace=wrap;html=1;aspect=fixed;" vertex="1" parent="1">
+          <mxGeometry x="300" y="800" width="120" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="flux1" value="puissance HT" style="edgeStyle=none;curved=1;rounded=0;html=1;exitX=0.25;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="batterie" target="onduleur">
+          <mxGeometry relative="1" as="geometry" x="-0.5" y="0" />
+        </mxCell>
+        <mxCell id="flux2" value="puissance HT" style="edgeStyle=none;curved=1;rounded=0;html=1;exitX=0.75;exitY=1;entryX=0;entryY=0.5;" edge="1" parent="1" source="batterie" target="convertisseur">
+          <mxGeometry relative="1" as="geometry" x="0.5" y="0" />
+        </mxCell>
+        <mxCell id="flux3" value="mesures cellules" style="edgeStyle=none;curved=1;rounded=0;html=1;exitX=0.25;exitY=0;entryX=0.5;entryY=1;" edge="1" parent="1" source="bms" target="batterie">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="flux4" value="ordre de coupure" style="edgeStyle=none;curved=1;rounded=0;html=1;exitX=0.75;exitY=0;entryX=0.75;entryY=1;" edge="1" parent="1" source="bms" target="batterie">
+          <mxGeometry relative="1" as="geometry" x="0.5" y="-0.5" />
+        </mxCell>
+        <mxCell id="flux5" value="courant triphasé" style="edgeStyle=none;curved=1;rounded=0;html=1;exitX=0.25;exitY=1;entryX=0.25;entryY=0;" edge="1" parent="1" source="onduleur" target="moteur">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="flux6" value="régénération" style="edgeStyle=none;curved=1;rounded=0;html=1;exitX=0.75;exitY=0;entryX=0.75;entryY=1;" edge="1" parent="1" source="moteur" target="onduleur">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="flux7" value="courant AC" style="edgeStyle=none;curved=1;rounded=0;html=1;exitX=0.5;exitY=0;entryX=0.5;entryY=1;" edge="1" parent="1" source="prise" target="chargeur">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="flux8" value="charge" style="edgeStyle=none;curved=1;rounded=0;html=1;exitX=0.5;exitY=0;entryX=0.5;entryY=1;" edge="1" parent="1" source="chargeur" target="batterie">
+          <mxGeometry relative="1" as="geometry" x="-0.5" y="-0.5" />
+        </mxCell>
+        <mxCell id="flux9" value="" style="edgeStyle=none;curved=1;rounded=0;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="convertisseur" target="reseau">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

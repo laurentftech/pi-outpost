@@ -263,14 +263,16 @@ one needs, the command that proves it works, and the caution that goes with it.
   boxes, drag a wire's end to another box or draw a new one from a box's connection points,
   retype a label, delete, undo (⌘/Ctrl+Z), choose how wires are drawn (straight, orthogonal or
   curved: the selected ones, or every wire of the page when none is selected, and new ones, which
-  start in the style most of the page's wires have) — then save, which rewrites only the page shown and is
+  start in the style most of the page's wires have), remove the bends of those wires, or one bend
+  with a click on its handle then Delete — then save, which rewrites only the page shown and is
   refused if the file changed on disk meanwhile; Escape leaves, asking first about unsaved
   touch-ups. **Open in draw.io** hands the file to the application associated with it (draw.io
   desktop) for anything more, and the view follows the saved file. The agent writes `.drawio`
   files with its file tools, guided by the bundled `drawio` skill, checks them with
   `drawio_check` — dangling connectors, duplicate ids, missing parents, unusable geometry,
   overlapping labelled shapes, connectors running through boxes or their own ends, connector
-  labels on boxes, with the wires routed as draw.io's viewer routes them — since it cannot see
+  labels on boxes, connectors carrying different data on one point of a shape, ends facing away
+  from each other, detours, needless bends left by waypoints, with the wires routed as draw.io's viewer routes them — since it cannot see
   the drawing, and shows the result in its
   reply. In a conversation exported to HTML or Word, a diagram is a link to its file
 - Git: uncommitted-change badges in the tree, per-file diffs, a change gutter in the editor

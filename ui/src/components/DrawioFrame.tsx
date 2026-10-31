@@ -27,6 +27,8 @@ export interface DrawioTouchUpState {
   canRedo: boolean;
   /** The style of the wires a choice would change — the selected ones, else the page's — or `mixed`. */
   wireStyle?: DrawioWireStyle | "mixed";
+  /** How many waypoints those wires hold: what removing their bends would take away. */
+  bends?: number;
 }
 
 export interface DrawioFrameHandle {
@@ -38,6 +40,8 @@ export interface DrawioFrameHandle {
   redo(): void;
   /** Draws the selected wires, or every wire of the page when none is selected, and new ones, in `style`: one undoable change. */
   setWireStyle(style: DrawioWireStyle): void;
+  /** Removes the waypoints of the selected wires, or of every wire of the page when none is selected: one undoable change. */
+  removeBends(): void;
   /** The shown page as a standalone SVG document, with the page's name when it has one. */
   exportSvg(): Promise<{ page: number; name: string | null; svg: string }>;
 }
@@ -108,6 +112,7 @@ export const DrawioFrame = forwardRef<DrawioFrameHandle, DrawioFrameProps>(funct
     undo: () => post({ type: DRAWIO_MESSAGE.UNDO }),
     redo: () => post({ type: DRAWIO_MESSAGE.REDO }),
     setWireStyle: (style) => post({ type: DRAWIO_MESSAGE.WIRE_STYLE, style }),
+    removeBends: () => post({ type: DRAWIO_MESSAGE.REMOVE_BENDS }),
     exportSvg: () => ask<{ page: number; name: string | null; svg: string }>(DRAWIO_MESSAGE.EXPORT_SVG, DRAWIO_MESSAGE.SVG),
   }));
 
@@ -132,7 +137,8 @@ export const DrawioFrame = forwardRef<DrawioFrameHandle, DrawioFrameProps>(funct
         callbacks.current.onRendered?.(message);
       } else if (data.type === DRAWIO_MESSAGE.CHANGED) {
         const wireStyle = ["straight", "orthogonal", "curved", "mixed"].includes(data.wireStyle as string) ? (data.wireStyle as DrawioWireStyle | "mixed") : undefined;
-        callbacks.current.onTouchUpChange?.({ dirty: data.dirty === true, canUndo: data.canUndo === true, canRedo: data.canRedo === true, ...(wireStyle ? { wireStyle } : {}) });
+        const bends = typeof data.bends === "number" && Number.isFinite(data.bends) ? data.bends : undefined;
+        callbacks.current.onTouchUpChange?.({ dirty: data.dirty === true, canUndo: data.canUndo === true, canRedo: data.canRedo === true, ...(wireStyle ? { wireStyle } : {}), ...(bends === undefined ? {} : { bends }) });
       } else if (data.type === DRAWIO_MESSAGE.FOCUS) {
         // Only while touching up: the frame asks on its own mousedown, so the reader is in it
         if (frame.current !== null && document.activeElement !== frame.current) frame.current.focus({ preventScroll: true });

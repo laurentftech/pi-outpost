@@ -14,6 +14,7 @@
  * compressed page is inflated under a cap, so a small file cannot become a large one.
  */
 import { inflateRawSync } from "node:zlib";
+import { anchorWire, movingEndValues, wireAnchorIssues, type AnchorWire } from "./drawioAnchors.ts";
 import { labelBox, labelPoint, lengthInside, outlineOf, pageGeometry, routeWire, sharedArea, type Box, type Point } from "./drawioRoutes.ts";
 import { scanXml, XmlError } from "@pi-outpost/office/xml.ts";
 
@@ -298,8 +299,25 @@ function isLabelledBox(cell: DrawioCell): boolean {
   return !/(^|;)(shape=(line|image)|image=)/.test(cell.style);
 }
 
+/**
+ * The order a page's warnings are fixed in: each step can change what the next ones are about.
+ * Shapes first (a moved box reroutes its wires), then where wires meet their shapes, then the
+ * routes, and labels last — a label moves with its wire. Listed in that order, so a model that
+ * works down the list fixes the causes before the effects (one fixated on a label it kept
+ * moving while the wire under it stayed wrong).
+ */
+export const FIX_ORDER = { shapes: 0, ends: 1, sharedPoints: 2, detours: 3, crossings: 4, labels: 5 } as const;
+type FixStep = (typeof FIX_ORDER)[keyof typeof FIX_ORDER];
+type Report = (severity: DrawioIssue["severity"], cells: string[], message: string, step?: FixStep) => void;
+
 function checkPage(page: DrawioPage, issues: DrawioIssue[]): void {
-  const report = (severity: DrawioIssue["severity"], cells: string[], message: string) => issues.push({ severity, page: page.name, cells, message });
+  const first = issues.length;
+  const steps = new Map<DrawioIssue, number>();
+  const report: Report = (severity, cells, message, step) => {
+    const issue = { severity, page: page.name, cells, message };
+    issues.push(issue);
+    if (step !== undefined) steps.set(issue, step);
+  };
   const byId = new Map<string, DrawioCell>();
 
   for (const cell of page.cells) {
@@ -343,7 +361,7 @@ function checkPage(page: DrawioPage, issues: DrawioIssue[]): void {
         report("error", [cell.id], `shape ${describe(cell)} is ${geometry.width} × ${geometry.height}: a negative size cannot be drawn`);
       } else if (!isEdgeLabel(cell) && geometry.width === 0 && geometry.height === 0) {
         // One zero side is a line, and draws; both is nothing at all
-        report("warning", [cell.id], `shape ${describe(cell)} is 0 × 0, so nothing of it shows`);
+        report("warning", [cell.id], `shape ${describe(cell)} is 0 × 0, so nothing of it shows`, FIX_ORDER.shapes);
       }
     }
   }
@@ -368,7 +386,7 @@ function checkPage(page: DrawioPage, issues: DrawioIssue[]): void {
         // a partial overlap, by more than a sliver, is what a layout that went wrong produces
         const smaller = Math.min(a.geometry.width * a.geometry.height, b.geometry.width * b.geometry.height);
         if (overlapArea(a.geometry, b.geometry) > OVERLAP_SHARE * smaller && !contains(a.geometry, b.geometry) && !contains(b.geometry, a.geometry)) {
-          report("warning", [a.id, b.id], `shapes ${describe(a)} and ${describe(b)} overlap`);
+          report("warning", [a.id, b.id], `shapes ${describe(a)} and ${describe(b)} overlap`, FIX_ORDER.shapes);
         }
       }
     }
@@ -381,9 +399,13 @@ function checkPage(page: DrawioPage, issues: DrawioIssue[]): void {
     if (parent.style.split(";")[0] === "group" || /(^|;)rotation=(?!0(;|$))/.test(parent.style)) continue;
     // A child's geometry is relative to its container's top-left corner
     const box = { ...parent.geometry, x: 0, y: 0 };
-    if (!contains(box, shape.geometry)) report("warning", [shape.id, parent.id ?? ""], `shape ${describe(shape)} lies partly outside its container ${describe(parent)}`);
+    if (!contains(box, shape.geometry)) report("warning", [shape.id, parent.id ?? ""], `shape ${describe(shape)} lies partly outside its container ${describe(parent)}`, FIX_ORDER.shapes);
   }
   checkWires(page, byId, containers, report);
+  // The page's issues in fixing order; errors and unranked issues keep their place ahead
+  const pageIssues = issues.splice(first);
+  const rank = (issue: DrawioIssue) => (issue.severity === "error" ? -1 : (steps.get(issue) ?? -1));
+  issues.push(...pageIssues.map((issue, index) => ({ issue, index })).sort((a, b) => rank(a.issue) - rank(b.issue) || a.index - b.index).map(({ issue }) => issue));
 }
 
 /** How far inside a shape a wire must run to cross it: grazing an edge or ending on the outline is not crossing. */
@@ -391,20 +413,12 @@ const CROSSING_INSET = 2;
 /** How much of a label must lie on a shape to hide its words. */
 const LABEL_SHARE = 0.3;
 
-/** The side of `from` that faces `to`, as exit or entry coordinates. */
-function facingSide(from: Box, to: Box): string {
-  const dx = to.x + to.width / 2 - (from.x + from.width / 2);
-  const dy = to.y + to.height / 2 - (from.y + from.height / 2);
-  if (Math.abs(dx) >= Math.abs(dy)) return dx >= 0 ? "X=1;Y=0.5" : "X=0;Y=0.5";
-  return dy >= 0 ? "X=0.5;Y=1" : "X=0.5;Y=0";
-}
-
 /**
  * Wires through boxes and labels on them (drawio-wire-overlaps): each wire routed as the viewer
  * routes it (drawioRoutes.ts), then its segments and label tested against the labelled boxes.
  * A wire the routing does not follow is left alone.
  */
-function checkWires(page: DrawioPage, byId: Map<string, DrawioCell>, containers: Set<string>, report: (severity: DrawioIssue["severity"], cells: string[], message: string) => void): void {
+function checkWires(page: DrawioPage, byId: Map<string, DrawioCell>, containers: Set<string>, report: Report): void {
   const geometry = pageGeometry(page);
   // Boxes a reader cannot see a wire through: labelled, not containers (a wire inside a
   // lane or frame is meant to run across it)
@@ -419,16 +433,24 @@ function checkWires(page: DrawioPage, byId: Map<string, DrawioCell>, containers:
   };
   const crosses = (points: Point[], box: Box, outline: ReturnType<typeof outlineOf>) => points.some((point, index) => index > 0 && lengthInside(points[index - 1]!, point, box, outline, CROSSING_INSET) > 0);
 
+  // For the anchor rules, after every wire's own checks: the routed wires, and those already
+  // warned for running through their own ends (one message about a wire's ends, not two)
+  const routed: AnchorWire[] = [];
+  const ownEnds = new Map<string, Array<"exit" | "entry">>();
+  // Reported once every wire is known: the facing points are handed out across the page, so
+  // two wires sent to the same side are not both told to use its middle
+  const throughOwn: Array<{ edge: DrawioCell & { id: string }; own: Array<{ role: string; id: string; prefix: "exit" | "entry" }>; waypoints: boolean }> = [];
   for (const edge of page.cells) {
     if (!edge.edge || edge.id === undefined) continue;
     const route = routeWire(edge, geometry);
     if (route === undefined) continue;
+    routed.push(anchorWire({ ...edge, id: edge.id }, page.cells, route.points, geometry.origins.get(edge.id) ?? undefined));
     const ends = new Set([edge.source, edge.target].filter((id): id is string => id !== undefined));
     const around = new Set([...ancestors(edge.source), ...ancestors(edge.target), ...ancestors(edge.id)]);
     for (const obstacle of obstacles) {
       if (ends.has(obstacle.id) || around.has(obstacle.id)) continue;
       if (crosses(route.points, obstacle.box, obstacle.outline)) {
-        report("warning", [edge.id, obstacle.id], `connector ${describe(edge)} runs through shape ${describe(obstacle.cell)}: move the shape off its path, give the connector a waypoint that goes around it (<Array as="points"><mxPoint x="…" y="…"/></Array> in its geometry), or fix its exit and entry on other sides (exitX/exitY, entryX/entryY)`);
+        report("warning", [edge.id, obstacle.id], `connector ${describe(edge)} runs through shape ${describe(obstacle.cell)}: move the shape off its path, give the connector a waypoint that goes around it (<Array as="points"><mxPoint x="…" y="…"/></Array> in its geometry), or fix its exit and entry on other sides (exitX/exitY, entryX/entryY)`, FIX_ORDER.crossings);
       }
     }
     // Through its own ends: a fixed exit or entry facing away from the other end. Not when the
@@ -445,9 +467,12 @@ function checkWires(page: DrawioPage, byId: Map<string, DrawioCell>, containers:
         return cell !== undefined && crosses(route.points, end.box, outlineOf(end.style));
       });
       if (own.length > 0) {
-        const names = own.map(([role, id]) => `its ${role} ${describe(byId.get(id)!)}`).join(" and ");
-        const fixes = own.map(([, , end, other, prefix]) => facingSide(end.box, other.box).split(";").map((part) => `${prefix}${part}`).join(";")).join(";");
-        report("warning", [edge.id, ...own.map(([, id]) => id)], `connector ${describe(edge)} runs through ${names}: its exit or entry is on a side facing away from the other end. Put them on the sides facing each other (${fixes}), or drop exitX/exitY and entryX/entryY to let draw.io choose`);
+        // Waypoints take a wire wherever they lie: with them and no fixed end, moving the ends
+        // changes nothing, so those ends are not sent anywhere — the waypoints are the fix
+        const waypoints = (edge.geometry?.points.length ?? 0) > 0;
+        const fixed = (prefix: "exit" | "entry") => new RegExp(`(?:^|;)${prefix}X=`).test(edge.style) && new RegExp(`(?:^|;)${prefix}Y=`).test(edge.style);
+        ownEnds.set(edge.id, own.map(([, , , , prefix]) => prefix).filter((prefix) => !waypoints || fixed(prefix)));
+        throughOwn.push({ edge: { ...edge, id: edge.id }, own: own.map(([role, id, , , prefix]) => ({ role, id, prefix })), waypoints });
       }
     }
     // Its label, and the labels attached to it as child cells
@@ -465,11 +490,46 @@ function checkWires(page: DrawioPage, byId: Map<string, DrawioCell>, containers:
       for (const obstacle of obstacles) {
         if (around.has(obstacle.id)) continue;
         if (sharedArea(box, obstacle.box) > LABEL_SHARE * box.width * box.height) {
-          report("warning", [edge.id, obstacle.id], `the label "${label.text.length > 40 ? `${label.text.slice(0, 39)}…` : label.text}" of connector ${describe(edge)} sits on shape ${describe(obstacle.cell)}: move the label along the connector (its mxGeometry x, from -1 at the source to 1 at the target) or beside it (y), or move the shape`);
+          report("warning", [edge.id, obstacle.id], `the label "${label.text.length > 40 ? `${label.text.slice(0, 39)}…` : label.text}" of connector ${describe(edge)} sits on shape ${describe(obstacle.cell)}: move the label along the connector (its mxGeometry x, from -1 at the source to 1 at the target) or beside it (y), or move the shape`, FIX_ORDER.labels);
         }
       }
     }
   }
+  const named = (id: string) => {
+    const cell = byId.get(id);
+    return cell === undefined ? `"${id}"` : describe(cell);
+  };
+  const boxes = new Map([...geometry.terminals].map(([id, terminal]) => [id, terminal.box]));
+  const placed = movingEndValues(routed, boxes, ownEnds);
+  for (const { edge, own, waypoints } of throughOwn) {
+    const names = own.map(({ role, id }) => `its ${role} ${describe(byId.get(id)!)}`).join(" and ");
+    const fixes = own.flatMap(({ prefix }) => placed.get(`${edge.id}:${prefix}`) ?? []).join(";");
+    const removeWaypoints = `remove its waypoints (the <Array as="points"> in its geometry) to let draw.io route it, or move the first and last of them off those shapes`;
+    const message =
+      waypoints && fixes === ""
+        ? `connector ${describe(edge)} runs through ${names}: its waypoints take it back across them. Fix it: ${removeWaypoints}`
+        : waypoints
+          ? `connector ${describe(edge)} runs through ${names}: its exit or entry is on a side facing away from the other end, and it has waypoints. Put them on the sides facing each other (${fixes}), and ${removeWaypoints}`
+          : `connector ${describe(edge)} runs through ${names}: its exit or entry is on a side facing away from the other end. Put them on the sides facing each other (${fixes}), or drop exitX/exitY and entryX/entryY to let draw.io choose`;
+    report("warning", [edge.id, ...own.map(({ id }) => id)], message, FIX_ORDER.ends);
+  }
+  const step = { "shared-point": FIX_ORDER.sharedPoints, "facing-away": FIX_ORDER.ends, detour: FIX_ORDER.detours, "needless-bend": FIX_ORDER.detours } as const;
+  // A fix for a needless bend is tried on the routing before it is given
+  const reroute = (wire: AnchorWire, waypoints: Point[], values: Record<string, number> = {}) => {
+    const cell = byId.get(wire.id);
+    const origin = geometry.origins.get(wire.id);
+    if (cell?.geometry === undefined || origin === null || origin === undefined) return undefined;
+    // A value of NaN drops the fixed end it names, both of its coordinates
+    let style = cell.style;
+    for (const [key, value] of Object.entries(values)) {
+      const keys = Number.isNaN(value) ? [key, key.replace(/X$/, "Y")] : [key];
+      for (const name of keys) style = style.replace(new RegExp(`(^|;)${name}=[^;]*`), "$1");
+      if (!Number.isNaN(value)) style = `${style}${style.endsWith(";") ? "" : ";"}${key}=${value};`;
+    }
+    const moved = { ...cell, style, geometry: { ...cell.geometry, points: waypoints.map((point) => ({ x: point.x - origin.x, y: point.y - origin.y })) } };
+    return routeWire(moved, geometry)?.points;
+  };
+  for (const issue of wireAnchorIssues(routed, boxes, named, ownEnds, reroute)) report("warning", [...issue.wires, ...issue.shapes], issue.message, step[issue.rule]);
 }
 
 /** Read and check a draw.io file. Throws `DrawioReadError` when it cannot be read at all. */
@@ -503,6 +563,17 @@ export function describeDrawioReport(path: string, report: DrawioReport): string
   const listed = [...errors, ...warnings].slice(0, MAX_LISTED_ISSUES);
   for (const issue of listed) lines.push(`- ${issue.severity} [${issue.page}]: ${issue.message}`);
   if (report.issues.length > listed.length) lines.push(`- … and ${report.issues.length - listed.length} more`);
-  lines.push(errors.length > 0 ? "Fix the errors, then run drawio_check again." : "Do what each warning says, then run drawio_check again.");
+  lines.push(
+    errors.length > 0
+      ? "Fix the errors, then run drawio_check again."
+      : warnings.length > 1
+        ? "Fix the warnings in the order listed, starting with the first: shapes, then where connectors meet them, then their routes, and labels last, since a label moves with its connector. Then run drawio_check again."
+        : "Do what the warning says, then run drawio_check again.",
+  );
+  // Connectors often share a style string word for word, and an edit whose text appears more
+  // than once is refused: a model that keeps sending it loops on the same report
+  if (report.issues.some((issue) => /^(the label "[^"]*" of )?connectors? /.test(issue.message))) {
+    lines.push('To change a connector with edit, include its id="…" in the text you replace: several connectors often have the same style, and the text must appear only once.');
+  }
   return lines.join("\n");
 }

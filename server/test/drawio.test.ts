@@ -6,6 +6,7 @@ import { deflateRawSync } from "node:zlib";
 import { after, describe, test } from "node:test";
 import { checkDrawio, describeDrawioReport, DrawioReadError, inflatePage, MAX_INFLATED_PAGE_BYTES, readDrawio } from "../src/drawio.ts";
 import { createDrawioCheckToolDefinition } from "../src/drawioTool.ts";
+import { writeEnded, writesSettled, writeStarted } from "../src/pendingWrites.ts";
 
 const FIXTURES = path.join(import.meta.dirname, "fixtures", "drawio");
 
@@ -247,6 +248,38 @@ describe("drawio_check", () => {
     const missing = await run("nope.drawio");
     assert.equal(missing.isError, true);
     assert.match(missing.content[0].text, /No such file/);
+  });
+
+  // openlore: scenario=ACheckWaitsForAWriteInFlight spec=drawio-diagrams
+  test("ACheckWaitsForAWriteInFlight: a write sent with the check lands before the report", async () => {
+    const file = path.join(root, "racing.drawio");
+    writeFileSync(file, "<html>not yet a diagram</html>");
+    writeStarted("edit-1", file);
+    let settled = false;
+    const report = run("racing.drawio").then((result) => {
+      settled = true;
+      return result;
+    });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    // Still waiting on the edit: no report about a file being rewritten
+    assert.equal(settled, false);
+    writeFileSync(file, CLEAN);
+    writeEnded("edit-1");
+    const result = await report;
+    assert.equal(result.isError, undefined);
+    assert.match(result.content[0].text, /valid draw\.io diagram with no defect/);
+  });
+
+  test("a write to another file does not hold the check, and a lost end does not hold it forever", async () => {
+    writeFileSync(path.join(root, "free.drawio"), CLEAN);
+    writeStarted("edit-elsewhere", path.join(root, "other.drawio"));
+    assert.match((await run("free.drawio")).content[0].text, /no defect/);
+    writeEnded("edit-elsewhere");
+    writeStarted("edit-lost", path.join(root, "free.drawio"));
+    const started = Date.now();
+    await writesSettled(path.join(root, "free.drawio"), 100);
+    assert.ok(Date.now() - started < 1000);
+    writeEnded("edit-lost");
   });
 
   test("a file over the size limit is refused before it is read", async () => {

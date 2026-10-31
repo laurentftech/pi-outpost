@@ -261,9 +261,9 @@ describe("default export (extension entry)", () => {
 
       assert.equal(registered.length, 24 + WORD_COMPARE.length);
       // The RPC child hides a poster's pictures from the agent as the embedded runtime does,
-      // switches tool_search on as a session starts, and offers /btw, which closes its panel
-      // when the session changes.
-      assert.deepEqual(events.sort(), ["session_shutdown", "session_start", "session_start", "tool_call", "tool_result"]);
+      // switches tool_search on as a session starts, offers /btw, which closes its panel
+      // when the session changes, and tracks the writes in flight so drawio_check waits for them.
+      assert.deepEqual(events.sort(), ["session_shutdown", "session_start", "session_start", "tool_call", "tool_execution_end", "tool_execution_start", "tool_result"]);
       assert.deepEqual(commands, ["btw"]);
       // The on-demand tools are registered deferred: the child cannot withdraw them, so
       // they stay undeclared until the agent loads one with tool_search.
