@@ -6,8 +6,8 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import { checkDrawio, describeDrawioReport } from "../src/drawio.ts";
-import { anchorWire, placeMovingEnds, wireAnchorIssues, type AnchorWire } from "../src/drawioAnchors.ts";
-import { pageGeometry, routeWire } from "../src/drawioRoutes.ts";
+import { anchorWire, placeMovingEnds, wireAnchorIssues, type AnchorWire } from "@pi-outpost/shared/drawio/anchors";
+import { pageGeometry, routeWire } from "@pi-outpost/shared/drawio/routes";
 import { readDrawio } from "../src/drawio.ts";
 
 const model = (cells: string) => `<mxfile><diagram name="P"><mxGraphModel><root><mxCell id="0"/><mxCell id="1" parent="0"/>${cells}</root></mxGraphModel></diagram></mxfile>`;

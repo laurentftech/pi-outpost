@@ -12,7 +12,7 @@ It renders `.drawio` files in the file viewer, inside a sandboxed frame that all
 network access (`ui/src/components/DrawioFrame.tsx`). Move it to another release with
 `node scripts/update-drawio-viewer.mjs <version>`, which rewrites this file.
 
-`server/src/drawioRoutes.ts` ports the part of this release's routing that `drawio_check` needs
+`shared/src/drawio/routes.ts` ports the part of this release's routing that `drawio_check` needs
 to see where wires run (mxGraph's mxGraphView, mxEdgeStyle and mxPerimeter, and draw.io's
 overrides in `js/grapheditor/Graph.js`), under the same licence. After moving the viewer to
 another release, run `e2e/drawio-routes.spec.ts`: it holds the port's routes to this viewer's.

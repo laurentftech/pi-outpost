@@ -351,7 +351,12 @@ one needs, the command that proves it works, and the caution that goes with it.
   interface draws it, with an approval gate when the document names a `target`. Files that
   declare the schema open as the diagram they describe, and any graph, sequence or timeline
   exports as a self-contained SVG. A graph with too many boxes to read across is laid out down the page,
-  and the reader can turn it either way. A graph may name the readings it is made for as
+  and the reader can turn it either way. A graph's relationships run in straight horizontal and
+  vertical segments, routed the way draw.io routes them and tidied by the same wire rules
+  `drawio_check` applies. Its layout is kept in a versionable `<document>.arrangement.json` beside the
+  document: a box dragged by the reader, a touch-up in draw.io ("arrange in draw.io") and the places
+  the agent's figure computes are all kept there. A revised document therefore keeps its layout,
+  and only what is new is placed. A graph may name the readings it is made for as
   viewpoints — power, control, safety — which a reader selects and the agent writes one figure
   for. A project can hold the agent's documents to its own data model — kinds, attributes,
   enumeration values, the kinds each relationship joins — declared in local profile files, and

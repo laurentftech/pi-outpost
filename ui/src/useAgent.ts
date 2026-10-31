@@ -1822,7 +1822,7 @@ export function useAgent(serverUrl = "", explicitToken?: string, embedded = fals
   // correlation every other file-browser request uses.
   const uploadWaitersRef = useRef(new Map<string, { resolve: (path: string) => void; reject: (error: UploadError) => void }>());
   /** `fileIo` reads and writes awaiting their answer — see `fileIo.ts` for why not the reducer. */
-  const fileIoWaitersRef = useRef(new Map<string, { resolve: (answer: { content?: string; mtimeMs?: number; results?: FileSearchEntry[] }) => void; reject: (error: FileIoError) => void }>());
+  const fileIoWaitersRef = useRef(new Map<string, { resolve: (answer: { content?: string; mtimeMs?: number; path?: string; results?: FileSearchEntry[] }) => void; reject: (error: FileIoError) => void }>());
   /** `fileIo.onChanged` listeners, by path. */
   const fileListenersRef = useRef(new Map<string, Set<() => void>>());
   /**
@@ -2205,11 +2205,13 @@ export function useAgent(serverUrl = "", explicitToken?: string, embedded = fals
           return;
         }
         // A fileIo request is answered to its caller and nowhere else: it is not the open file
-        if ((message.type === "file_content" || message.type === "file_written" || message.type === "file_browser_error") && fileIoWaitersRef.current.has(message.requestId)) {
+        if ((message.type === "file_content" || message.type === "file_written" || message.type === "arrangement_saved" || message.type === "file_browser_error") && fileIoWaitersRef.current.has(message.requestId)) {
           const waiter = fileIoWaitersRef.current.get(message.requestId)!;
           fileIoWaitersRef.current.delete(message.requestId);
           if (message.type === "file_browser_error") waiter.reject(new FileIoError(message.message, message.reason));
-          else waiter.resolve(message.type === "file_content" ? { content: message.content, mtimeMs: message.mtimeMs } : { mtimeMs: message.mtimeMs });
+          else if (message.type === "file_content") waiter.resolve({ content: message.content, mtimeMs: message.mtimeMs });
+          else if (message.type === "arrangement_saved") waiter.resolve({ path: message.path });
+          else waiter.resolve({ mtimeMs: message.mtimeMs });
           return;
         }
         if (message.type === "file_search_results" && fileIoWaitersRef.current.has(message.requestId)) {
@@ -2511,6 +2513,8 @@ export function useAgent(serverUrl = "", explicitToken?: string, embedded = fals
       read: (path) => ask("fileio-read", (requestId) => ({ type: "read_file", path, requestId })),
       write: (path, content, expectedMtimeMs) => ask("fileio-write", (requestId) => ({ type: "write_file", path, content, expectedMtimeMs, requestId })),
       find: async (query) => (await ask<{ results: FileSearchEntry[] }>("fileio-find", (requestId) => ({ type: "search_files", query, requestId }))).results,
+      keepArrangement: async (documentPath, content) =>
+        (await ask<{ path: string }>("fileio-arrangement", (requestId) => ({ type: "save_arrangement", documentPath, content, requestId }))).path,
       onChanged: (path, listener) => {
         const listeners = fileListenersRef.current.get(path) ?? new Set<() => void>();
         listeners.add(listener);

@@ -108,8 +108,8 @@ The two `bash` rows are from Kilo Code and OpenCode. Every other row is a Pi Out
 |---|---|---|---|
 | Kilo Code `bash` | 6 127 | ~1.5k | always |
 | OpenCode `bash` | 5 319 | ~1.3k | always |
+| `write_structure_figure` | 4 847 | ~1.2k | after `tool_search` |
 | `work_plan_extended` | 4 622 | ~1.2k | while a plan is being worked |
-| `write_structure_figure` | 4 604 | ~1.2k | after `tool_search` |
 | `work_plan` | 4 351 | ~1.1k | always |
 | `present_structure` | 3 528 | ~0.9k | always |
 | `docx_extract` | 3 256 | ~0.8k | while a Word file is in play, or once the agent loads it |

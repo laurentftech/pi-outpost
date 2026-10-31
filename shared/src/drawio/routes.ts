@@ -15,7 +15,7 @@
  * rotated, flipped or directed shapes, stencils, ports, loops, other edge styles, other
  * perimeters — comes back unrouted, and the check leaves it alone rather than guess.
  */
-import type { DrawioCell, DrawioPage } from "./drawio.ts";
+import type { DrawioCell, DrawioPage } from "./read.ts";
 
 export interface Point {
   x: number;

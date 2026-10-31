@@ -1280,6 +1280,8 @@ export type ServerMessage =
       documentIssues?: { rule: string; path: string; message: string }[];
     }
   | { type: "file_written"; requestId: string; path: string; size: number; mtimeMs: number }
+  /** A graph's arrangement was kept, at `path`. */
+  | { type: "arrangement_saved"; requestId: string; path: string }
   /**
    * An upload landed. `path` is what the server actually wrote, which is not
    * always what was asked for — a taken name is disambiguated server-side, and
@@ -1523,6 +1525,14 @@ export type ClientMessage =
    * caught — a boolean suspending it would be a guard with an off switch.
    */
   | { type: "create_file"; path: string; requestId: string }
+  /**
+   * Keep a structured-exchange graph's arrangement beside its document
+   * (structured-exchange-arrangement): `content` is the whole arrangement file, written to
+   * `<document>.arrangement.json`, created when missing. Presentation only — never the
+   * document itself, and refused unless the content is an arrangement. Answered by
+   * `arrangement_saved` or a `file_browser_error`.
+   */
+  | { type: "save_arrangement"; documentPath: string; content: string; requestId: string }
   /** Create one directory (not a chain of missing parents). */
   | { type: "create_directory"; path: string; requestId: string }
   /**

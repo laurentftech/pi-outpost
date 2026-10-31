@@ -15,7 +15,7 @@ import path from "node:path";
 import { readdir } from "node:fs/promises";
 import { connect, makeWorkspace, startServer } from "../../server/test/harness.mjs";
 import { checkDrawio, readDrawio } from "../../server/src/drawio.ts";
-import { pageGeometry, routeWire } from "../../server/src/drawioRoutes.ts";
+import { pageGeometry, routeWire } from "@pi-outpost/shared/drawio/routes";
 
 const [provider, id] = (process.argv[2] ?? "openai/gpt-5.6-luna").split("/");
 const root = await makeWorkspace({ "notes.md": "# Notes\n" });

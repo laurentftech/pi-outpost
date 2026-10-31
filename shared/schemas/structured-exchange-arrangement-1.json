@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:pi-outpost:structured-exchange-arrangement-1",
+  "title": "Structured-exchange graph arrangement",
+  "description": "Where a graph's elements, relationship ends, bends and labels are placed, per viewpoint (\"\" for the whole document). Presentation only: never part of the document. Kept beside it as <document>.arrangement.json.",
+  "type": "object",
+  "required": ["format", "views"],
+  "additionalProperties": false,
+  "properties": {
+    "format": { "const": "pi-outpost/structured-exchange-arrangement-1" },
+    "views": {
+      "type": "object",
+      "additionalProperties": { "$ref": "#/$defs/view" }
+    }
+  },
+  "$defs": {
+    "point": {
+      "type": "object",
+      "required": ["x", "y"],
+      "additionalProperties": false,
+      "properties": { "x": { "type": "number" }, "y": { "type": "number" } }
+    },
+    "view": {
+      "type": "object",
+      "required": ["elements", "relationships"],
+      "additionalProperties": false,
+      "properties": {
+        "orientation": { "enum": ["landscape", "portrait"] },
+        "elements": {
+          "description": "Top-left corners, keyed ref:<reference> or id:<envelope id>.",
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/point" }
+        },
+        "relationships": {
+          "description": "Keyed ref:<reference>, or <from key>><to key>[<kind>]#<rank>.",
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "exit": { "$ref": "#/$defs/point", "description": "Fractions of the source's box." },
+              "entry": { "$ref": "#/$defs/point", "description": "Fractions of the target's box." },
+              "waypoints": { "type": "array", "items": { "$ref": "#/$defs/point" } },
+              "label": {
+                "type": "object",
+                "required": ["along", "offset"],
+                "additionalProperties": false,
+                "properties": { "along": { "type": "number", "minimum": -1, "maximum": 1 }, "across": { "type": "number", "description": "Distance across the route, as draw.io's label geometry y." }, "offset": { "$ref": "#/$defs/point" } }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

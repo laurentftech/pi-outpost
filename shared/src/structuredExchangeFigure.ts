@@ -14,6 +14,10 @@
  *
  * Nothing here imports React, touches a DOM, or measures anything.
  */
+import type { DrawioPage } from "./drawio/read.ts";
+import { relationshipKeys, snap, type ArrangementView } from "./structuredExchangeArrangement.ts";
+import { arrangesAnything, placeArranged, type Placement } from "./structuredExchangePlacement.ts";
+import { cleanUpWires, detourWaypoints, graphPage, labelsOnLongestRuns, rankEnds, routeGraph, spreadParallelEnds, wirePath, type Wire, type WireEnds, type WiredBox, type WiredRelationship } from "./structuredExchangeWiring.ts";
 import {
   changeLines,
   LINE_HEIGHT,
@@ -59,6 +63,7 @@ import {
   type FieldChange,
   type Narrowing,
   type Nudge,
+  type PlacedContainer,
 } from "./structuredExchangeModel.ts";
 import type {
   StructuredElement,
@@ -799,6 +804,11 @@ export type GraphFigureOptions = {
   viewpoint?: StructuredViewpoint;
   /** The project's kind colours, when it declares any. Presentation only. */
   appearance?: ProjectAppearance;
+  /**
+   * The arrangement of the view drawn (structured-exchange-arrangement): what it places stays
+   * there, and its relationships' ends, bends and labels are used as given.
+   */
+  arrangement?: ArrangementView;
 };
 
 /**
@@ -851,6 +861,125 @@ export function graphOrientationFor(data: StructuredGraphData, hidden: Narrowing
 }
 
 /**
+ * The graph's relationships as draw.io connectors between the boxes as drawn, and their routes
+ * (structured-exchange-arrangement). Computed from where the boxes are, not carried along with
+ * them: a moved box gets a route of its own, never a stretched one.
+ */
+function wireGraph(
+  shown: StructuredGraphData,
+  layout: ReturnType<typeof layoutGraph>,
+  boxFor: (id: string) => Box | undefined,
+  arrangement: ArrangementView | undefined,
+  orientation: Orientation,
+): { page: DrawioPage; wires: Map<number, Wire> } {
+  const wiredBoxes = new Map<string, WiredBox>();
+  const labels = new Map<string, string>();
+  for (const node of layout.nodes) {
+    const box = boxFor(node.id);
+    if (box !== undefined) wiredBoxes.set(node.id, { x: box.x, y: box.y, width: box.w, height: box.h });
+  }
+  for (const node of shown.nodes) labels.set(node.id, displayLabel(node));
+  // The text the figure writes on it — the label, or the kind when there is none — so the rules
+  // see the labels a reader sees, and two of the same kind count as the same data
+  const wired: WiredRelationship[] = shown.edges.map((edge, index) => ({ index, from: edge.from, to: edge.to, label: edge.label ?? edge.kind ?? "" }));
+  const parallel = spreadParallelEnds(wiredBoxes, wired);
+  // What the arrangement says of a relationship is used as given, nothing computed over it
+  const keys = relationshipKeys(shown);
+  const given = new Map<number, WireEnds>();
+  keys.forEach((key, index) => {
+    const entry = arrangement?.relationships[key];
+    if (entry !== undefined) given.set(index, entry);
+  });
+  const spread = wired.map((relationship) => ({ ...relationship, ends: given.get(relationship.index) ?? parallel.get(relationship.index) }));
+  const ranked = rankEnds(wiredBoxes, spread, orientation === "portrait");
+  const withEnds = spread.map((relationship) => ({ ...relationship, ends: relationship.ends ?? ranked.get(relationship.index) }));
+  // The layout engine's route for whatever draw.io would draw through a box between its ends
+  const layoutRoutes = new Map(layout.edges.map((placed) => [placed.index, placed.points]));
+  const detours = detourWaypoints(wiredBoxes, withEnds.filter((relationship) => !given.has(relationship.index)), layoutRoutes);
+  const page = graphPage(
+    wiredBoxes,
+    withEnds.map((relationship) => {
+      const waypoints = detours.get(relationship.index);
+      return waypoints === undefined ? relationship : { ...relationship, ends: { ...relationship.ends, waypoints } };
+    }),
+    labels,
+  );
+  // drawio_check's wire rules, followed for every relationship the arrangement does not settle
+  // Parallel relationships sent round the outside are placed on purpose: the rules would read the
+  // way round as a detour and send them back onto a side with no room left
+  const unsettled = new Set(wired.filter((relationship) => !given.has(relationship.index) && parallel.get(relationship.index)?.waypoints === undefined).map((relationship) => relationship.index));
+  const cleaned = cleanUpWires(labelsOnLongestRuns(page, unsettled), unsettled);
+  return { page: cleaned, wires: routeGraph(cleaned) };
+}
+
+/**
+ * The draw.io page a graph's figure routes its relationships on, as a reader first sees it:
+ * what touch-up opens, and what the e2e holds against the vendored viewer.
+ */
+export function graphFigurePage(data: StructuredGraphData, options: Pick<GraphFigureOptions, "hidden" | "orientation" | "arrangement"> = {}): DrawioPage {
+  return arrangedGraph(data, options).page;
+}
+
+/**
+ * The graph as drawn with its arrangement: the shown graph, its page, which way it runs, and what
+ * the placement did beyond the arrangement — what the arrangement check and the figure tool's
+ * record start from.
+ */
+export function arrangedGraph(
+  data: StructuredGraphData,
+  options: Pick<GraphFigureOptions, "hidden" | "orientation" | "arrangement"> = {},
+): { shown: StructuredGraphData; page: DrawioPage; orientation: Orientation; placement?: Placement } {
+  const shown = shownGraph(data, options.hidden ?? NOTHING_HIDDEN);
+  const { layout, orientation, placement } = placedGraph(shown, options.orientation, options.arrangement);
+  const at = new Map(layout.nodes.map((node) => [node.id, node]));
+  const boxFor = (id: string): Box | undefined => {
+    const placed = at.get(id);
+    return placed === undefined ? undefined : { x: placed.x, y: placed.y, cx: placed.x + placed.width / 2, cy: placed.y + placed.height / 2, w: placed.width, h: placed.height };
+  };
+  return { shown, page: wireGraph(shown, layout, boxFor, options.arrangement, orientation).page, orientation, ...(placement === undefined ? {} : { placement }) };
+}
+
+/**
+ * The layout to draw: the automatic one when the arrangement places nothing of this graph,
+ * otherwise the arranged places with the rest put beside what they relate to.
+ */
+function placedGraph(
+  shown: StructuredGraphData,
+  asked: Orientation | undefined,
+  arrangement: ArrangementView | undefined,
+): { layout: ReturnType<typeof layoutGraph>; orientation: Orientation; placement?: Placement } {
+  const turned = asked ?? arrangement?.orientation;
+  if (arrangement === undefined || !arrangesAnything(shown, arrangement)) {
+    // On the arrangement's grid, so a figure recorded is exactly the figure drawn: ends fixed as
+    // fractions of a box would land a few units off once the box was snapped, and draw a jog
+    const automatic = laidOutGraph(shown, turned);
+    const nodes = automatic.layout.nodes.map((node) => ({ ...node, ...snap({ x: node.x, y: node.y }) }));
+    return { ...automatic, layout: { ...automatic.layout, nodes } };
+  }
+  const orientation = turned ?? "landscape";
+  const placement = placeArranged(shown, arrangement, graphNodeSize, orientation);
+  const nodes = placement.boxes.map((box) => ({ ...box }));
+  const byId = new Map(nodes.map((node) => [node.id, node]));
+  const containers: PlacedContainer[] = [];
+  let emptyAt = Math.max(0, ...nodes.map((node) => node.y + node.height)) + 16;
+  for (const container of shown.containers ?? []) {
+    const members = shown.nodes.filter((node) => node.container === container.id).flatMap((node) => {
+      const box = byId.get(node.id);
+      return box === undefined ? [] : [box];
+    });
+    const box = encloseMembers(members);
+    if (box !== undefined) containers.push({ id: container.id, label: container.label, ...box });
+    else {
+      containers.push({ id: container.id, label: container.label, x: 12, y: emptyAt, width: 160, height: 52 });
+      emptyAt += 68;
+    }
+  }
+  const right = Math.max(0, ...nodes.map((node) => node.x + node.width), ...containers.map((box) => box.x + box.width));
+  const bottom = Math.max(0, ...nodes.map((node) => node.y + node.height), ...containers.map((box) => box.y + box.height));
+  return { layout: { nodes, edges: [], containers, width: right + 12, height: bottom + 12 }, orientation, placement };
+}
+
+/**
  * The graph as a figure.
  *
  * Everything below was computed inside the component that drew it. None of it needed
@@ -863,7 +992,7 @@ export function graphFigure(data: StructuredGraphData, options: GraphFigureOptio
   const isProposal = options.isProposal;
 
   const shown = shownGraph(data, hidden);
-  const { layout, orientation } = laidOutGraph(shown, options.orientation);
+  const { layout, orientation, placement } = placedGraph(shown, options.orientation, options.arrangement);
   const at = new Map(layout.nodes.map((node) => [node.id, node]));
 
   const boxFor = (id: string): Box | undefined => {
@@ -954,27 +1083,16 @@ export function graphFigure(data: StructuredGraphData, options: GraphFigureOptio
     seenPairs.set(pair, next + 1);
   }
 
-  /** Layout routes, matched back to the relationships they were computed for. */
-  const byIndex = new Map(layout.edges.map((placed) => [placed.index, placed.points]));
-  const routeOf = new Map<StructuredGraphData["edges"][number], { x: number; y: number }[]>();
-  shown.edges.forEach((edge, index) => {
-    const points = byIndex.get(index);
-    if (points !== undefined) routeOf.set(edge, points);
-  });
+  const { wires } = wireGraph(shown, layout, boxFor, options.arrangement, orientation);
 
-  const still: Nudge = { dx: 0, dy: 0 };
-  const shapes = shown.edges.map((edge) => {
+  const shapes = shown.edges.map((edge, index) => {
     const from = boxFor(edge.from);
     const to = boxFor(edge.to);
     if (from === undefined || to === undefined) return undefined;
-    const moved = nudges.has(edge.from) || nudges.has(edge.to);
-    return edgePath(
-      from,
-      edge.from === edge.to ? from : to,
-      routeOf.get(edge),
-      rankOf.get(edge) ?? 0,
-      moved ? { from: nudges.get(edge.from) ?? still, to: nudges.get(edge.to) ?? still } : undefined,
-    );
+    const wire = wires.get(index);
+    if (wire !== undefined) return { d: wirePath(wire.points), labelAt: wire.labelAt, span: wire.span };
+    // A loop, or a relationship the routing does not follow: drawn as before
+    return edgePath(from, edge.from === edge.to ? from : to, undefined, rankOf.get(edge) ?? 0);
   });
 
   /**
@@ -992,7 +1110,7 @@ export function graphFigure(data: StructuredGraphData, options: GraphFigureOptio
   // the canvas fits what is drawn — boxes, containers, relationships — in every
   // direction: it used to only grow, so boxes pulled closer to tighten a sprawling
   // figure left their old space empty, on screen and in the exported SVG.
-  const fitted = nudges.size > 0 && drawn.length > 0;
+  const fitted = (nudges.size > 0 || placement !== undefined) && drawn.length > 0;
   const framed = enclosures.map((container) => ({ x: container.x, y: container.y, w: container.width, h: container.height }));
   const floor = (value: number) => (fitted ? [] : [value]);
   const left = Math.min(...floor(0), ...drawn.map((box) => box.x - 12), ...framed.map((box) => box.x - 12), ...routes.map((route) => route.minX - 12));

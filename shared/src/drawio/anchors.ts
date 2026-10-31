@@ -4,8 +4,8 @@
  * routes alone, so the same rules run on the check's routes (drawio.ts) and on the vendored
  * viewer's (e2e/drawio-routes.spec.ts), and the two can be compared.
  */
-import type { DrawioCell } from "./drawio.ts";
-import type { Box, Point } from "./drawioRoutes.ts";
+import type { DrawioCell } from "./read.ts";
+import type { Box, Point } from "./routes.ts";
 
 /** A routed wire, as the rules need it. */
 export interface AnchorWire {

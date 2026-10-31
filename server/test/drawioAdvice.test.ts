@@ -9,7 +9,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, test } from "node:test";
 import { checkDrawio } from "../src/drawio.ts";
-import { applyLabelMoves, followAdvice, labelMoves } from "./drawioFollowAdvice.ts";
+import { applyLabelMoves, applyWaypointFixes, applyWaypointSets, followAdvice, labelMoves, stripWaypoints } from "@pi-outpost/shared/drawio/follow-advice";
 
 const FIXTURES = path.join(import.meta.dirname, "fixtures");
 const files = [
@@ -74,5 +74,22 @@ describe("between wires, on Luna's diagrams", () => {
   test("TheSameDataMayShareALine: a label already clear, and wires of the same data along one line, are not warned", () => {
     // services' two "lecture" wires share a few units: the same data may share a line
     assert.equal(messages(read("luna2-services.drawio")).some((message) => /"lecture".*run along the same line/.test(message)), false);
+  });
+});
+
+describe("applying advice to one wire leaves the next one alone", () => {
+  test("waypoints set on a wire with none, and a waypoint moved on the next, both land where they were meant", () => {
+    const xml = [
+      '<mxCell id="a" style="edgeStyle=orthogonalEdgeStyle;" edge="1" parent="1" source="x" target="y"><mxGeometry x="0.3" y="-14" relative="1" as="geometry"/></mxCell>',
+      '<mxCell id="b" style="edgeStyle=orthogonalEdgeStyle;" edge="1" parent="1" source="x" target="y"><mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="230" y="147"/></Array></mxGeometry></mxCell>',
+    ].join("\n");
+    const moved = applyWaypointFixes(xml, [{ wire: "b", from: { x: 230, y: 147 }, to: { x: 230, y: 135 } }]);
+    const set = applyWaypointSets(moved, [{ wire: "a", points: [{ x: 100, y: 50 }] }]);
+    const [first, second] = set.split("\n");
+    assert.match(first!, /<Array as="points"><mxPoint x="100" y="50"\/><\/Array>/);
+    assert.match(second!, /<mxPoint x="230" y="135"\/>/);
+    // A wire with no waypoints has none to move or strip: the next wire's are not taken for its own
+    assert.equal(applyWaypointFixes(xml, [{ wire: "a", from: { x: 230, y: 147 }, to: null }]), xml);
+    assert.equal(stripWaypoints(xml, new Set(["a"])), xml);
   });
 });

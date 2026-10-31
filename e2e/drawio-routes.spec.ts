@@ -9,8 +9,14 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, test } from "@playwright/test";
 import { readDrawio } from "../server/src/drawio.ts";
-import { anchorWire, wireAnchorIssues, type AnchorWire } from "../server/src/drawioAnchors.ts";
-import { labelPoint, pageGeometry, routeWire } from "../server/src/drawioRoutes.ts";
+import { anchorWire, wireAnchorIssues, type AnchorWire } from "@pi-outpost/shared/drawio/anchors";
+import { labelPoint, pageGeometry, routeWire } from "@pi-outpost/shared/drawio/routes";
+import { readdirSync, readFileSync } from "node:fs";
+import { writeDrawio } from "@pi-outpost/shared/drawio/write";
+import { graphFigurePage } from "@pi-outpost/shared/structured-exchange/figure";
+import { parseStructuredExchange } from "@pi-outpost/shared/structured-exchange/parse";
+import { checkStructuredExchangeSchema } from "@pi-outpost/shared/structured-exchange/schema-node";
+import type { StructuredGraphData } from "@pi-outpost/shared/structured-exchange";
 import { corpus } from "./fixtures/drawio-routes-corpus.ts";
 import { loadViewer, sameRoute, viewerRoutes } from "./fixtures/drawio-viewer-routes.ts";
 
@@ -106,4 +112,45 @@ test("AnchorWarningsMatchTheViewer: shared points, ends facing away and detours 
   expect(counts["shared-point"]).toBeGreaterThan(50);
   expect(counts["facing-away"]).toBeGreaterThan(50);
   expect(counts.detour).toBeGreaterThan(50);
+});
+
+/** Every graph document in the repository, and two that exercise parallel relationships and detours. */
+function structuredGraphs(): Array<[string, StructuredGraphData]> {
+  const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
+  const valid = path.join(root, "shared", "conformance", "valid");
+  const files = [...readdirSync(valid).map((name) => path.join(valid, name)), path.join(root, "models", "vehicle-architecture.json")].filter((file) => file.endsWith(".json"));
+  const graphs = files.flatMap((file): Array<[string, StructuredGraphData]> => {
+    const outcome = parseStructuredExchange(JSON.parse(readFileSync(file, "utf8")), checkStructuredExchangeSchema);
+    return outcome.valid && outcome.envelope.kind === "graph" ? [[path.basename(file), outcome.envelope.data as StructuredGraphData]] : [];
+  });
+  const node = (id: string) => ({ id, label: id.toUpperCase() });
+  graphs.push(["parallel", { nodes: ["a", "b"].map(node), edges: ["one", "two", "three", "four", "five"].map((kind, index) => (index < 3 ? { from: "a", to: "b", kind } : { from: "b", to: "a", kind })) }]);
+  graphs.push(["spanning", { nodes: ["a", "b", "c", "d"].map(node), edges: [["a", "b"], ["b", "c"], ["c", "d"], ["a", "d"], ["a", "c"]].map(([from, to]) => ({ from: from!, to: to!, kind: "k" })) }]);
+  return graphs;
+}
+
+// openlore: scenario=TheRoutesAreDrawioRoutes spec=structured-exchange-arrangement
+test("TheRoutesAreDrawioRoutes: a structured-exchange figure's page, drawn by the viewer, follows the routes the figure draws", async ({ page }) => {
+  test.setTimeout(240_000);
+  await loadViewer(page);
+  let compared = 0;
+  let detoured = 0;
+  const mismatches: string[] = [];
+  for (const [name, data] of structuredGraphs()) {
+    const figurePage = graphFigurePage(data);
+    const viewer = Object.values(await viewerRoutes(page, writeDrawio(figurePage)))[0] ?? [];
+    const geometry = pageGeometry(figurePage);
+    for (const cell of figurePage.cells) {
+      if (!cell.edge || cell.id === undefined || cell.source === cell.target) continue;
+      const route = routeWire(cell, geometry);
+      const seen = viewer.find((edge) => edge.id === cell.id);
+      compared += 1;
+      if ((cell.geometry?.points.length ?? 0) > 0) detoured += 1;
+      if (route === undefined || seen === undefined || !sameRoute(route.points, seen.points)) mismatches.push(`${name} ${cell.id}: ours ${JSON.stringify(route?.points)} viewer ${JSON.stringify(seen?.points)}`);
+    }
+  }
+  expect(mismatches).toEqual([]);
+  expect(compared).toBeGreaterThan(40);
+  // The corpus reaches the detour waypoints, not only straight runs
+  expect(detoured).toBeGreaterThan(0);
 });

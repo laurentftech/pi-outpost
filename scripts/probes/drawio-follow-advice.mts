@@ -1,13 +1,13 @@
 /**
  * drawio-wire-anchors: does following drawio_check's anchor advice to the letter converge? See
- * server/test/drawioFollowAdvice.ts. A loop here is pi-outpost's advice contradicting itself,
+ * shared/src/drawio/followAdvice.ts. A loop here is pi-outpost's advice contradicting itself,
  * not a model failing to apply it.
  *
  *   npx tsx scripts/probes/drawio-follow-advice.mts <file.drawio>...    (VERBOSE=1 for each round)
  */
 import { readFile } from "node:fs/promises";
 import { checkDrawio } from "../../server/src/drawio.ts";
-import { ANCHOR, followAdvice } from "../../server/test/drawioFollowAdvice.ts";
+import { ANCHOR, followAdvice } from "@pi-outpost/shared/drawio/follow-advice";
 
 for (const file of process.argv.slice(2)) {
   const result = followAdvice(await readFile(file, "utf8"), 12, (round, anchors) => {

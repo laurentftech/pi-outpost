@@ -1239,7 +1239,7 @@ export function FileViewer({
               ) : (
                 <ViewerErrorBoundary label="This diagram">
                   <div className="p-4" data-testid="file-structured-exchange">
-                    <StructuredExchangeDocument envelope={lastGood} source={editedText} exportRef={documentExport} />
+                    <StructuredExchangeDocument envelope={lastGood} source={editedText} exportRef={documentExport} file={{ path: file.path, writable }} />
                   </div>
                 </ViewerErrorBoundary>
               )}
@@ -1251,7 +1251,7 @@ export function FileViewer({
         {loaded && edit === null && !splitting && !showGitDiff && diagram && !showRaw && exchange?.status === "valid" && (
           <ViewerErrorBoundary label="This diagram">
             <div className="mx-auto max-w-5xl p-4" data-testid="file-structured-exchange">
-              <StructuredExchangeDocument envelope={exchange.envelope} source={loaded.content} exportRef={documentExport} />
+              <StructuredExchangeDocument envelope={exchange.envelope} source={loaded.content} exportRef={documentExport} file={{ path: file.path, writable }} />
             </div>
           </ViewerErrorBoundary>
         )}

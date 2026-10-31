@@ -9,8 +9,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { corpus } from "../../e2e/fixtures/drawio-routes-corpus.ts";
 import { readDrawio } from "../../server/src/drawio.ts";
-import { anchorWire, wireAnchorIssues } from "../../server/src/drawioAnchors.ts";
-import { pageGeometry, routeWire } from "../../server/src/drawioRoutes.ts";
+import { anchorWire, wireAnchorIssues } from "@pi-outpost/shared/drawio/anchors";
+import { pageGeometry, routeWire } from "@pi-outpost/shared/drawio/routes";
 
 const FIXTURES = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "server", "test", "fixtures", "drawio");
 

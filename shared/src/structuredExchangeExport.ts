@@ -31,7 +31,10 @@ import type {
   StructuredTimelineScale,
   ValidatedStructuredExchange,
 } from "./structuredExchange.ts";
-import { graphFigure, sequenceFigure, serializeFigure, shownGraph } from "./structuredExchangeFigure.ts";
+import { arrangedGraph, graphFigure, sequenceFigure, serializeFigure, shownGraph } from "./structuredExchangeFigure.ts";
+import type { Arrangement, ArrangementView } from "./structuredExchangeArrangement.ts";
+import { checkArrangement } from "./structuredExchangeArrangementCheck.ts";
+import { viewFromPage } from "./structuredExchangePlacement.ts";
 import { localToday } from "./structuredExchangeTimeline.ts";
 import { timelineFigure } from "./structuredExchangeTimelineFigure.ts";
 import { narrowingOf, NOTHING_HIDDEN, resolveViewpoint, viewpointsOf, type Narrowing } from "./structuredExchangeModel.ts";
@@ -63,6 +66,12 @@ export interface FigureExport {
   viewpoint?: { id: string; label: string; source: "document" | "profile"; profile?: string };
   /** A timeline too long for the width asked: drawn at the narrowest legible scale, wider than asked. */
   overWidth?: boolean;
+  /**
+   * For a graph: whether an arrangement was used, the view to record when the figure placed
+   * something the arrangement did not name, and what the arrangement check lists
+   * (structured-exchange-arrangement).
+   */
+  arrangement?: { used: boolean; record?: ArrangementView; findings: string[] };
 }
 
 export type FigureRefusal = { ok: false } & (
@@ -107,6 +116,8 @@ export interface FigureNarrowing {
   profile?: { id: string; viewpoints: readonly StructuredViewpoint[] };
   /** The project's kind colours, so a written figure looks like the one the reader sees. */
   appearance?: ProjectAppearance;
+  /** The graph's arrangement, from beside the document; the view for the viewpoint named (or "") is drawn. */
+  arrangement?: Arrangement;
   /** How a timeline is drawn: the reader's display options, a page width, the date line. */
   timeline?: {
     compact?: boolean;
@@ -265,16 +276,33 @@ export function figureForEnvelope(
   // caller only discovers is worthless when somebody opens the file.
   if (shown.nodes.length === 0) return { ok: false, reason: "nothing-to-draw", coverage };
 
+  const view = narrowing.arrangement?.views[viewpoint?.id ?? ""];
   const figure = graphFigure(data, {
     isProposal,
     hidden,
+    ...(view === undefined ? {} : { arrangement: view }),
     ...(viewpoint === undefined ? {} : { viewpoint }),
     ...(narrowing.appearance === undefined ? {} : { appearance: narrowing.appearance }),
   });
+  // What was placed beyond the arrangement, recorded so the next version of the document finds it
+  const drawn = arrangedGraph(data, { hidden, ...(view === undefined ? {} : { arrangement: view }) });
+  const recorded = viewFromPage(drawn.shown, drawn.page, drawn.orientation);
+  const unnamed =
+    Object.keys(recorded.elements).some((key) => view?.elements[key] === undefined) ||
+    Object.keys(recorded.relationships).some((key) => view?.relationships[key] === undefined);
+  const record: ArrangementView | undefined = unnamed
+    ? {
+        orientation: drawn.orientation,
+        elements: { ...view?.elements, ...recorded.elements },
+        relationships: { ...view?.relationships, ...recorded.relationships },
+      }
+    : undefined;
+  const findings = checkArrangement(data, { hidden, ...(view === undefined ? {} : { arrangement: view }) }).map((finding) => finding.message);
   return {
     ok: true,
     svg: serializeFigure(figure),
     coverage,
+    arrangement: { used: view !== undefined, ...(record === undefined ? {} : { record }), findings },
     ...(figure.narrowing === undefined ? {} : { narrowing: figure.narrowing }),
     ...(viewpoint === undefined
       ? {}

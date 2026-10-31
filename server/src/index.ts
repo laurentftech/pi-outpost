@@ -203,6 +203,7 @@ import { createStructuredExchangeTableToolDefinition } from "./structuredExchang
 import { structuredConformanceFor } from "./structuredExchangeProfiles.ts";
 import { readProjectAppearance } from "@pi-outpost/shared/structured-exchange/project-registry";
 import { STRUCTURED_EXCHANGE_PROFILE_REGISTRY_PATH } from "@pi-outpost/shared/structured-exchange/profile";
+import { arrangementPathFor, readArrangement } from "@pi-outpost/shared/structured-exchange/arrangement";
 import { replyBlockKey, structuredExchangeBlocks } from "@pi-outpost/shared/structured-exchange/reply-blocks";
 import { checkPiPackages, hintPiPackagesBehind, installNewerPiPackage, listPiPackages, runPiPackagesUpdate, unlistedPiPackageSources } from "./piPackages.ts";
 import { createStructuredExchangeFigureToolDefinition } from "./structuredExchangeFigureTool.ts";
@@ -4916,6 +4917,31 @@ async function handleWriteFile(workspace: Workspace,
 }
 
 /**
+ * Keep a graph's arrangement beside its document (structured-exchange-arrangement). Only an
+ * arrangement is written, only at the arrangement's own path, and through the same confinement
+ * as every write from the browser; the document is never touched. The last arrangement kept
+ * wins: it is presentation, and a reader moving a box is the newest word on where it goes.
+ */
+async function handleSaveArrangement(workspace: Workspace, socket: WebSocket, documentPath: string, content: string, requestId: string): Promise<void> {
+  const target = arrangementPathFor(documentPath);
+  try {
+    const reading = readArrangement(content);
+    if (!reading.ok) throw new FileBrowserError("invalid", `Not an arrangement: ${reading.reason}`);
+    try {
+      await createFileFromBrowser(workspace.browserRoot, workspace.writableRoot, target);
+    } catch (error) {
+      // Already there is the usual case; anything else is the write's to report
+      if (!(error instanceof FileBrowserError && error.reason === "conflict")) throw error;
+    }
+    await writeFileFromBrowser(workspace.browserRoot, workspace.writableRoot, target, content, 0, true);
+    send(socket, { type: "arrangement_saved", requestId, path: target });
+    broadcast(workspace, { type: "file_changed", path: target });
+  } catch (error) {
+    sendFileBrowserError(socket, requestId, target, error);
+  }
+}
+
+/**
  * Create an empty file. Answered like a write, so the client can open the new
  * file straight into its editor without a second round trip.
  */
@@ -6114,6 +6140,10 @@ function handleClientMessage(socket: WebSocket, raw: string): void {
       handleWriteFile(workspace, socket, message.path, message.content, message.expectedMtimeMs, message.force === true, message.requestId).catch(
         reportError,
       );
+      break;
+    case "save_arrangement":
+      if (typeof message.documentPath !== "string" || typeof message.content !== "string" || typeof message.requestId !== "string") return;
+      handleSaveArrangement(workspace, socket, message.documentPath, message.content, message.requestId).catch(reportError);
       break;
     case "create_file":
       if (typeof message.path !== "string" || typeof message.requestId !== "string") return;
