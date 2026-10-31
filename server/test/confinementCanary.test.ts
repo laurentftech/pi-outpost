@@ -137,8 +137,10 @@ describe("a runner that confines nothing", { skip: process.platform === "win32" 
   test("the PowerShell canary reports the same attempts", () => {
     const script = canaryScript({ id: "x", agentMarker: "/a/m", besideDir: "/b", envName: "PI_OUTPOST_CANARY_X", envValue: "v", notChecked: [], cleanup: async () => {} }, { powerShell: true, proxied: true, serverPid: 1 });
     for (const attempt of ["agent-directory", "beside-root", "write-beside-root", "server-environment", "unlisted-host", "direct-connection"]) {
-      assert.match(script, new RegExp(`^R ${attempt} `, "m"), attempt);
+      assert.match(script, new RegExp(`^Report-Canary ${attempt} `, "m"), attempt);
     }
+    assert.match(script, /^function Report-Canary\(/m);
+    assert.doesNotMatch(script, /\bR\b/);
   });
 });
 
