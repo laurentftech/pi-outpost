@@ -19,6 +19,12 @@ export interface FileIo {
    * and capped (the server's `search_files`). Absent where nothing can search the project.
    */
   find?(query: string): Promise<FileSearchEntry[]>;
+  /**
+   * Keep a structured-exchange graph's arrangement beside its document
+   * (`<document>.arrangement.json`, created when missing). Resolves with the arrangement's path.
+   * Absent where nothing can write to the project.
+   */
+  keepArrangement?(documentPath: string, content: string): Promise<string>;
 }
 
 /** A refused or failed read or write, carrying the server's machine-readable reason. */

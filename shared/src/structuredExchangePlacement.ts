@@ -188,3 +188,34 @@ export function viewFromPage(data: StructuredGraphData, page: DrawioPage, orient
   });
   return view;
 }
+
+/**
+ * The arrangement after a box is moved (structured-exchange-arrangement, AMovedBoxIsKeptInTheArrangement):
+ * everything as drawn is recorded, so nothing else moves when the figure is drawn again; the box
+ * goes where it was dropped; and the relationships touching it are released, so they are routed
+ * and cleaned up again from its new place rather than kept on ends and bends measured for the old
+ * one. Entries the drawing does not cover — a hidden kind's — are kept as they were.
+ */
+export function moveInView(
+  data: StructuredGraphData,
+  page: DrawioPage,
+  current: ArrangementView | undefined,
+  moved: string,
+  to: ArrangedPoint,
+  orientation: Orientation,
+): ArrangementView {
+  const recorded = viewFromPage(data, page, orientation);
+  const next: ArrangementView = {
+    orientation,
+    elements: { ...current?.elements, ...recorded.elements },
+    relationships: { ...current?.relationships, ...recorded.relationships },
+  };
+  const node = data.nodes.find((candidate) => candidate.id === moved);
+  if (node === undefined) return next;
+  next.elements[elementKey(node)] = snap(to);
+  relationshipKeys(data).forEach((key, index) => {
+    const edge = data.edges[index]!;
+    if (edge.from === moved || edge.to === moved) delete next.relationships[key];
+  });
+  return next;
+}

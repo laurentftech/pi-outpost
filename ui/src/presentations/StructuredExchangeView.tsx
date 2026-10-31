@@ -20,7 +20,6 @@ import {
   type DescribedTrace,
   filterKey,
   displayLabel,
-  type Nudge,
   ROLE_LABEL,
   TABLE_ROLE_LABEL,
   TABLE_ROLES,
@@ -33,12 +32,25 @@ import {
 } from "./structuredExchange";
 export { filterKey, type FilterScope } from "./structuredExchange";
 import {
+  arrangedGraph,
   entryWidth,
   graphFigure,
   graphOrientationFor,
   sequenceFigure,
   type FigureGroup,
 } from "@pi-outpost/shared/structured-exchange/figure";
+import {
+  arrangementPathFor,
+  emptyArrangement,
+  readArrangement,
+  writeArrangement,
+  type Arrangement,
+  type ArrangementView,
+} from "@pi-outpost/shared/structured-exchange/arrangement";
+import { checkArrangement } from "@pi-outpost/shared/structured-exchange/arrangement-check";
+import { moveInView } from "@pi-outpost/shared/structured-exchange/placement";
+import { elementCellId } from "@pi-outpost/shared/structured-exchange/wiring";
+import { useDrawioFiles } from "../components/drawioFiles";
 import { otherOrientation, type Orientation } from "@pi-outpost/shared/diagram-orientation";
 import { resolveViewpoint, sameNarrowing, viewpointsOf } from "@pi-outpost/shared/structured-exchange/model";
 import type { StructuredViewpoint } from "@pi-outpost/shared/structured-exchange";
@@ -123,8 +135,8 @@ function useDiagramTooltip() {
 function GraphView({
   data,
   isProposal,
-  nudges,
-  setNudges,
+  arrangement,
+  onArrange,
   hidden,
   setHidden,
   orientation,
@@ -133,15 +145,14 @@ function GraphView({
   data: StructuredGraphData;
   isProposal: boolean;
   /**
-   * Positions the reader has adjusted, as offsets from the computed layout. Held as
-   * offsets rather than absolute points so a nudged box still follows if the document
-   * changes underneath it, and held by the parent rather than here because the small
-   * view and the enlarged one are two instances of this component: adjusting a
-   * diagram at full size and finding the change gone on closing the modal is the kind
-   * of loss that makes the feature not worth using.
+   * Where the reader has arranged things, for the view drawn (structured-exchange-arrangement).
+   * Held by the parent rather than here because the small view and the enlarged one are two
+   * instances of this component: adjusting a diagram at full size and finding the change gone
+   * on closing the modal is the kind of loss that makes the feature not worth using.
    */
-  nudges: ReadonlyMap<string, Nudge>;
-  setNudges: (nudges: ReadonlyMap<string, Nudge>) => void;
+  arrangement: ArrangementView | undefined;
+  /** A move kept, or the arrangement reset (undefined). */
+  onArrange: (next: ArrangementView | undefined) => void;
   /**
    * Types the reader has switched off, qualified by what they are a type *of*.
    *
@@ -185,17 +196,20 @@ function GraphView({
    * file cannot carry: pointing, dragging and panning.
    */
   const appearance = useContext(StructuredAppearanceContext);
+  /** The arrangement as it would be with the box being dragged dropped where it is now. */
+  const [preview, setPreview] = useState<ArrangementView | undefined>(undefined);
+  const drawn = preview ?? arrangement;
   const figure = useMemo(
     () =>
       graphFigure(data, {
         isProposal,
         hidden,
-        nudges,
         orientation,
+        ...(drawn === undefined ? {} : { arrangement: drawn }),
         ...(viewpoint === undefined ? {} : { viewpoint }),
         ...(appearance === null ? {} : { appearance }),
       }),
-    [data, isProposal, hidden, nudges, orientation, viewpoint, appearance],
+    [data, isProposal, hidden, drawn, orientation, viewpoint, appearance],
   );
 
   /**
@@ -274,27 +288,38 @@ function GraphView({
     const scale = svg === null ? 1 : (svg.getBoundingClientRect().width || figure.width) / figure.width;
     const originX = event.clientX;
     const originY = event.clientY;
-    const from = nudges.get(id) ?? { dx: 0, dy: 0 };
+    // The drawing as it stands, which a move is recorded against: everything else stays put
+    const { shown, page } = arrangedGraph(data, { hidden, orientation, ...(arrangement === undefined ? {} : { arrangement }) });
+    const box = page.cells.find((cell) => cell.id === elementCellId(id))?.geometry;
+    if (box === undefined) return;
     const target = event.currentTarget;
     // Guarded: jsdom has no pointer capture at all, and a real browser can refuse it
     target.setPointerCapture?.(event.pointerId);
     setDragging(id);
 
+    let latest: ArrangementView | undefined;
+    let frame: number | undefined;
     const move = (moved: PointerEvent) => {
-      const next = new Map(nudges);
-      next.set(id, {
-        dx: from.dx + (moved.clientX - originX) / scale,
-        dy: from.dy + (moved.clientY - originY) / scale,
-      });
-      setNudges(next);
+      const to = { x: box.x + (moved.clientX - originX) / scale, y: box.y + (moved.clientY - originY) / scale };
+      latest = moveInView(shown, page, arrangement, id, to, orientation);
+      // One drawing per frame: a large graph takes longer to draw than a pointer takes to move
+      if (frame === undefined) {
+        frame = requestAnimationFrame(() => {
+          frame = undefined;
+          setPreview(latest);
+        });
+      }
     };
     const done = () => {
       endGesture.current = undefined;
+      if (frame !== undefined) cancelAnimationFrame(frame);
       target.releasePointerCapture?.(event.pointerId);
       target.removeEventListener("pointermove", move);
       target.removeEventListener("pointerup", done);
       target.removeEventListener("pointercancel", done);
       setDragging(undefined);
+      setPreview(undefined);
+      if (latest !== undefined) onArrange(latest);
     };
     endGesture.current?.();
     endGesture.current = done;
@@ -369,11 +394,11 @@ function GraphView({
 
   return (
     <>
-      {nudges.size > 0 && (
+      {arrangement !== undefined && Object.keys(arrangement.elements).length > 0 && (
         <button
           type="button"
           className="mb-1 text-xs underline text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200"
-          onClick={() => setNudges(new Map())}
+          onClick={() => onArrange(undefined)}
         >
           reset layout
         </button>
@@ -1228,6 +1253,12 @@ export interface StructuredExchangeDocumentProps {
    * figure for a graph, a sequence or a timeline; the rows for a table.
    */
   exportRef?: Ref<DocumentExport | null>;
+  /**
+   * The document's own file, when it was opened as one: a graph's arrangement is then read from
+   * and kept beside it (structured-exchange-arrangement). Absent for a document in a reply, whose
+   * arrangement lasts as long as the view.
+   */
+  file?: { path: string; writable: boolean };
 }
 
 /**
@@ -1264,7 +1295,7 @@ function targetRef(envelope: ValidatedStructuredExchange): string | undefined {
   return undefined;
 }
 
-export function StructuredExchangeDocument({ envelope, source, rawOutput, dispatch, conformance, exportRef }: StructuredExchangeDocumentProps) {
+export function StructuredExchangeDocument({ envelope, source, rawOutput, dispatch, conformance, exportRef, file }: StructuredExchangeDocumentProps) {
   const appearance = useContext(StructuredAppearanceContext);
   const [enlarged, setEnlarged] = useState(false);
   const [showText, setShowText] = useState(false);
@@ -1274,7 +1305,34 @@ export function StructuredExchangeDocument({ envelope, source, rawOutput, dispat
   const [copied, setCopied] = useState<string | null>(null);
   const diagramRef = useRef<HTMLDivElement>(null);
   const enlargedRef = useRef<HTMLDivElement>(null);
-  const [nudges, setNudges] = useState<ReadonlyMap<string, Nudge>>(new Map());
+  const { fileIo } = useDrawioFiles();
+  const [arrangement, setArrangement] = useState<Arrangement>(emptyArrangement);
+  /** Whether the last move was kept, when that is worth saying. */
+  const [arrangementNote, setArrangementNote] = useState<string | undefined>(undefined);
+  const arrangementPath = file === undefined || envelope.kind !== "graph" ? undefined : arrangementPathFor(file.path);
+  // The arrangement beside the document, read when it opens and again when it changes on disk —
+  // the agent's figure tool records places in it too
+  useEffect(() => {
+    if (arrangementPath === undefined || fileIo === undefined) return;
+    let live = true;
+    const load = () =>
+      fileIo.read(arrangementPath).then(
+        (answer) => {
+          if (!live) return;
+          const reading = readArrangement(answer.content);
+          if (reading.ok) setArrangement(reading.arrangement);
+          setArrangementNote(reading.ok ? undefined : `The arrangement beside this document is not used: ${reading.reason}.`);
+        },
+        // No arrangement yet is the usual case, not an error to show
+        () => undefined,
+      );
+    void load();
+    const unsubscribe = fileIo.onChanged(arrangementPath, () => void load());
+    return () => {
+      live = false;
+      unsubscribe();
+    };
+  }, [arrangementPath, fileIo]);
   const [hidden, setHidden] = useState<Narrowing>(NOTHING_HIDDEN);
   /** What the reader chose, when they chose. Undefined means "however it comes out". */
   const [chosenOrientation, setChosenOrientation] = useState<Orientation | undefined>(undefined);
@@ -1305,7 +1363,35 @@ export function StructuredExchangeDocument({ envelope, source, rawOutput, dispat
         : ("landscape" as Orientation),
     [envelope, hidden],
   );
-  const orientation = chosenOrientation ?? chooses;
+  const viewKey = selectedViewpoint ?? "";
+  const storedView = arrangement.views[viewKey];
+  const orientation = chosenOrientation ?? storedView?.orientation ?? chooses;
+  // An arrangement is made for one orientation: turned the other way, the graph is laid out afresh
+  const appliedView = storedView !== undefined && (storedView.orientation === undefined || storedView.orientation === orientation) ? storedView : undefined;
+  const arrange = (next: ArrangementView | undefined) => {
+    const views = { ...arrangement.views };
+    if (next === undefined) delete views[viewKey];
+    else views[viewKey] = next;
+    const updated: Arrangement = { ...arrangement, views };
+    setArrangement(updated);
+    if (file === undefined) return;
+    if (!file.writable || fileIo?.keepArrangement === undefined) {
+      setArrangementNote("This arrangement is not kept: the document is outside the writable zone.");
+      return;
+    }
+    setArrangementNote(undefined);
+    fileIo.keepArrangement(file.path, writeArrangement(updated)).then(
+      () => undefined,
+      (error: Error) => setArrangementNote(`This arrangement was not kept: ${error.message}.`),
+    );
+  };
+  const arrangementFindings = useMemo(
+    () =>
+      envelope.kind === "graph" && file !== undefined && appliedView !== undefined
+        ? checkArrangement(envelope.data as StructuredGraphData, { hidden, orientation, arrangement: appliedView })
+        : [],
+    [envelope, file, appliedView, hidden, orientation],
+  );
   /**
    * The readings the document declares, and the one selected.
    *
@@ -1335,16 +1421,15 @@ export function StructuredExchangeDocument({ envelope, source, rawOutput, dispat
     // Updated from the previous value rather than from this render's, so two clicks
     // landing in one batch turn twice rather than computing the same answer twice and
     // leaving the second one inert.
-    setChosenOrientation((current) => otherOrientation(current ?? chooses));
-    setNudges(new Map());
+    setChosenOrientation((current) => otherOrientation(current ?? orientation));
   };
   const view =
     envelope.kind === "graph" ? (
       <GraphView
         data={envelope.data as StructuredGraphData}
         isProposal={isProposal}
-        nudges={nudges}
-        setNudges={setNudges}
+        arrangement={appliedView}
+        onArrange={arrange}
         hidden={hidden}
         setHidden={setHidden}
         orientation={orientation}
@@ -1577,6 +1662,24 @@ export function StructuredExchangeDocument({ envelope, source, rawOutput, dispat
       <div ref={diagramRef} className="overflow-x-auto">
         {view}
       </div>
+      {arrangementNote !== undefined && (
+        <p className="text-xs text-amber-700 dark:text-amber-300" data-testid="structured-arrangement-note">
+          {arrangementNote}
+        </p>
+      )}
+      {arrangementFindings.length > 0 && (
+        // What the arrangement leaves to look at, the way drawio_check reports a diagram
+        <details className="text-xs text-zinc-600 dark:text-zinc-400" data-testid="structured-arrangement-check">
+          <summary className="cursor-pointer">
+            {arrangementFindings.length} {arrangementFindings.length === 1 ? "thing" : "things"} to look at in this arrangement
+          </summary>
+          <ul className="mt-1 list-disc space-y-0.5 pl-5">
+            {arrangementFindings.map((finding, index) => (
+              <li key={index}>{finding.message}</li>
+            ))}
+          </ul>
+        </details>
+      )}
       <EnlargedView
         label={`${envelope.kind} view`}
         open={enlarged}

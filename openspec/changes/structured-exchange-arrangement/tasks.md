@@ -25,7 +25,7 @@
 
 ## 6. In the view
 
-- [ ] 6.1 Draw graphs in `StructuredExchangeView.tsx` from the arrangement of the selected viewpoint, replacing the nudges. A kept move writes the arrangement through the workspace file API, and a read-only workspace says it cannot keep it. Show the check beside the figure. Verify AMovedBoxIsKeptInTheArrangement and AKeptRepositioningIsNotADocumentChange in UI tests, and in the running app with Playwright (move a box, reload, read the arrangement file and the document bytes back)
+- [x] 6.1 Draw graphs in `StructuredExchangeView.tsx` from the arrangement of the selected viewpoint, replacing the nudges. A kept move writes the arrangement through the workspace file API, and a read-only workspace says it cannot keep it. Show the check beside the figure. Verify AMovedBoxIsKeptInTheArrangement and AKeptRepositioningIsNotADocumentChange in UI tests, and in the running app with Playwright (move a box, reload, read the arrangement file and the document bytes back)
 - [ ] 6.2 Keep `ARearrangedFigureFitsWhatIsDrawn` and the downloads working from the arrangement. Verify its scenarios and `TheSameArrangedPictureWithoutADisplay` (the downloaded SVG and the figure tool's SVG for the same arrangement draw the same places and routes)
 
 ## 7. Touch-up round-trip
