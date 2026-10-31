@@ -21,7 +21,7 @@
 
 ## 5. The check
 
-- [ ] 5.1 The arrangement check (design 5): the rules' remaining warnings in element labels, entries naming nothing, boxes shifted. Verify AWireThroughABoxIsListed, ACleanArrangementReportsNothing and AnEntryForSomethingGoneIsNamed in shared tests, with the values in each message asserted
+- [x] 5.1 The arrangement check (design 5): the rules' remaining warnings in element labels, entries naming nothing, boxes shifted. Verify AWireThroughABoxIsListed, ACleanArrangementReportsNothing and AnEntryForSomethingGoneIsNamed in shared tests, with the values in each message asserted
 
 ## 6. In the view
 

@@ -917,14 +917,26 @@ function wireGraph(
  * what touch-up opens, and what the e2e holds against the vendored viewer.
  */
 export function graphFigurePage(data: StructuredGraphData, options: Pick<GraphFigureOptions, "hidden" | "orientation" | "arrangement"> = {}): DrawioPage {
+  return arrangedGraph(data, options).page;
+}
+
+/**
+ * The graph as drawn with its arrangement: the shown graph, its page, which way it runs, and what
+ * the placement did beyond the arrangement — what the arrangement check and the figure tool's
+ * record start from.
+ */
+export function arrangedGraph(
+  data: StructuredGraphData,
+  options: Pick<GraphFigureOptions, "hidden" | "orientation" | "arrangement"> = {},
+): { shown: StructuredGraphData; page: DrawioPage; orientation: Orientation; placement?: Placement } {
   const shown = shownGraph(data, options.hidden ?? NOTHING_HIDDEN);
-  const { layout, orientation } = placedGraph(shown, options.orientation, options.arrangement);
+  const { layout, orientation, placement } = placedGraph(shown, options.orientation, options.arrangement);
   const at = new Map(layout.nodes.map((node) => [node.id, node]));
   const boxFor = (id: string): Box | undefined => {
     const placed = at.get(id);
     return placed === undefined ? undefined : { x: placed.x, y: placed.y, cx: placed.x + placed.width / 2, cy: placed.y + placed.height / 2, w: placed.width, h: placed.height };
   };
-  return wireGraph(shown, layout, boxFor, options.arrangement, orientation).page;
+  return { shown, page: wireGraph(shown, layout, boxFor, options.arrangement, orientation).page, orientation, ...(placement === undefined ? {} : { placement }) };
 }
 
 /**
