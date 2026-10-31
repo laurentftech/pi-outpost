@@ -16,8 +16,8 @@
 
 ## 4. Placement and cleanup
 
-- [ ] 4.1 Incremental placement (design 4, steps 1–4, 6): dagre when nothing is arranged, otherwise fixed arranged boxes and slots for new ones, shifts reported, containers sized around their members. Verify AnAddedElementLeavesTheRestInPlace, ARemovedElementLeavesItsPlaceEmpty and AChangedLabelKeepsTheRoute on a corpus document edited in the test, and determinism (two runs, same cells)
-- [ ] 4.2 Cleanup (design 4, step 5): run the rules on the cells and follow their advice, bounded, on unarranged wires only. Verify TwoFlowsToOneBoxLeaveFromTheirOwnPoints and AFreshFigureHasNoWireDefectLeftUnreported over the corpus graphs (`notes/figures`, the e2e seeded transcript and the shared fixtures), and that an arranged wire is never changed. Measure the largest corpus graph and record the time in design.md
+- [x] 4.1 Incremental placement (design 4, steps 1–4, 6): dagre when nothing is arranged, otherwise fixed arranged boxes and slots for new ones, shifts reported, containers sized around their members. Verify AnAddedElementLeavesTheRestInPlace, ARemovedElementLeavesItsPlaceEmpty and AChangedLabelKeepsTheRoute on a corpus document edited in the test, and determinism (two runs, same cells)
+- [x] 4.2 Cleanup (design 4, step 5): run the rules on the cells and follow their advice, bounded, on unarranged wires only. Verify TwoFlowsToOneBoxLeaveFromTheirOwnPoints and AFreshFigureHasNoWireDefectLeftUnreported over the corpus graphs (`notes/figures`, the e2e seeded transcript and the shared fixtures), and that an arranged wire is never changed. Measure the largest corpus graph and record the time in design.md
 
 ## 5. The check
 

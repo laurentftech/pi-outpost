@@ -9,7 +9,10 @@ import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, test } from "node:test";
 import { fileURLToPath } from "node:url";
+import { checkPages } from "@pi-outpost/shared/drawio/check";
+import { ANCHOR } from "@pi-outpost/shared/drawio/follow-advice";
 import { readDrawio } from "@pi-outpost/shared/drawio/read";
+import { viewFromPage } from "@pi-outpost/shared/structured-exchange/placement";
 import { writeDrawio } from "@pi-outpost/shared/drawio/write";
 import { graphFigure, graphFigurePage, type Figure, type FigureGroup } from "@pi-outpost/shared/structured-exchange/figure";
 import { routeGraph } from "@pi-outpost/shared/structured-exchange/wiring";
@@ -116,5 +119,66 @@ describe("the figure's page written as a draw.io file", () => {
       const theirs = routeGraph(back);
       assert.deepEqual([...theirs], [...ours], name);
     }
+  });
+});
+
+describe("the automatic placement cleaned up by drawio_check's wire rules", () => {
+  /** The rules' wire warnings on a page: what the arrangement check lists. */
+  const wireWarnings = (page: ReturnType<typeof graphFigurePage>) =>
+    checkPages([page]).issues.filter((issue) => ANCHOR.test(issue.message) || /runs through/.test(issue.message)).map((issue) => issue.message);
+
+  // openlore: scenario=TwoFlowsToOneBoxLeaveFromTheirOwnPoints spec=structured-exchange-arrangement
+  test("TwoFlowsToOneBoxLeaveFromTheirOwnPoints: two flows of different data out of one element leave at points of their own", () => {
+    const data: StructuredGraphData = {
+      nodes: [
+        { id: "ecu", label: "ECU" },
+        { id: "left", label: "Left motor" },
+        { id: "right", label: "Right motor" },
+      ],
+      edges: [
+        { from: "ecu", to: "left", kind: "signal", label: "torque" },
+        { from: "ecu", to: "right", kind: "signal", label: "speed" },
+      ],
+    };
+    const page = graphFigurePage(data);
+    const starts = [...routeGraph(page).values()].map((wire) => wire.points[0]!);
+    assert.equal(starts.length, 2);
+    assert.ok(Math.hypot(starts[0]!.x - starts[1]!.x, starts[0]!.y - starts[1]!.y) > 8, JSON.stringify(starts));
+    assert.deepEqual(wireWarnings(page), []);
+  });
+
+  // openlore: scenario=AFreshFigureHasNoWireDefectLeftUnreported spec=structured-exchange-arrangement
+  test("AFreshFigureHasNoWireDefectLeftUnreported: every corpus graph, drawn with no arrangement, is clean or says what is left", () => {
+    let clean = 0;
+    for (const { name, envelope } of corpus) {
+      const left = wireWarnings(graphFigurePage(envelope.data as StructuredGraphData));
+      if (left.length === 0) clean += 1;
+      // Whatever is left carries what to do about it, for the check to pass on
+      for (const message of left) assert.match(message, /Fix|fix|move|give|set|drop|remove/, `${name}: ${message}`);
+    }
+    // The cleanup does its job on most of them, not merely reports
+    assert.ok(clean >= corpus.length - 2, `${clean} of ${corpus.length} corpus graphs are clean`);
+  });
+
+  test("an arranged wire is never changed by the cleanup, even when a rule has something to say about it", () => {
+    const data: StructuredGraphData = {
+      nodes: [
+        { id: "a", label: "A" },
+        { id: "b", label: "B" },
+        { id: "c", label: "C" },
+      ],
+      edges: [
+        { from: "a", to: "b", kind: "x", label: "one" },
+        { from: "a", to: "c", kind: "x", label: "two" },
+      ],
+    };
+    const free = graphFigurePage(data);
+    const view = viewFromPage(data, free);
+    // Both wires pinned to one point of a's side: a shared point the rules warn about
+    for (const entry of Object.values(view.relationships)) entry.exit = { x: 1, y: 0.5 };
+    const page = graphFigurePage(data, { arrangement: view });
+    const styles = page.cells.filter((cell) => cell.edge).map((cell) => cell.style);
+    for (const style of styles) assert.match(style, /exitX=1;exitY=0\.5;/);
+    assert.ok(wireWarnings(page).some((message) => /at the same point/.test(message)), "the shared point is still reported");
   });
 });

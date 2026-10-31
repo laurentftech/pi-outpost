@@ -47,7 +47,8 @@
     "./drawio/follow-advice": "./src/drawio/followAdvice.ts",
     "./drawio/write": "./src/drawio/write.ts",
     "./structured-exchange/wiring": "./src/structuredExchangeWiring.ts",
-    "./structured-exchange/arrangement": "./src/structuredExchangeArrangement.ts"
+    "./structured-exchange/arrangement": "./src/structuredExchangeArrangement.ts",
+    "./structured-exchange/placement": "./src/structuredExchangePlacement.ts"
   },
   "dependencies": {
     "@dagrejs/dagre": "^3.1.1",

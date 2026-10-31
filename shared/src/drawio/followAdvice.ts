@@ -6,6 +6,13 @@
  */
 import { checkDrawio } from "./check.ts";
 
+/**
+ * Any text up to the end of the cell it starts in, and never past it: a lazy `[\s\S]*?` before
+ * `<Array as="points">` ran on into the next cell when this one had no waypoints, and changed that
+ * cell's instead — two fixes for two wires cancelled each other that way.
+ */
+const WITHIN_CELL = "(?:(?!</mxCell>)[\\s\\S])*?";
+
 /** Sets `key=value` in a style string, replacing the key when present. */
 export function setStyle(style: string, key: string, value: string): string {
   const pattern = new RegExp(`(^|;)${key}=[^;]*`);
@@ -16,11 +23,15 @@ export function setStyle(style: string, key: string, value: string): string {
 /** The value assignments a report makes, by wire id: from "… for \"id\"" lists and single-wire messages. */
 export function advice(messages: string[]): Map<string, Record<string, string>> {
   const out = new Map<string, Record<string, string>>();
+  // The report lists fixes in the order to make them, so a value the first message gives a wire is
+  // the one kept: a later message proposing another for the same key (a detour's middle point after
+  // a shared point's own one) would put the wire back where the first moved it from, every round
   const put = (id: string, values: string) => {
     const entry = out.get(id) ?? {};
+    const given = new Set(Object.keys(entry));
     for (const part of values.split(";")) {
       const [key, value] = part.split("=");
-      if (key && value) entry[key] = value;
+      if (key && value && !given.has(key)) entry[key] = value;
     }
     out.set(id, entry);
   };
@@ -67,7 +78,7 @@ export function applyWaypointSets(xml: string, sets: Array<{ wire: string; point
   for (const set of sets) {
     const escaped = set.wire.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     const list = set.points.map((p) => `<mxPoint x="${p.x}" y="${p.y}"/>`).join("");
-    const withArray = new RegExp(`(<mxCell\\b[^>]*\\bid="${escaped}"[^>]*>\\s*<mxGeometry\\b[^>]*>[\\s\\S]*?<Array as="points">)[\\s\\S]*?(</Array>)`);
+    const withArray = new RegExp(`(<mxCell\\b[^>]*\\bid="${escaped}"[^>]*>\\s*<mxGeometry\\b[^>]*[^/]>${WITHIN_CELL}<Array as="points">)[\\s\\S]*?(</Array>)`);
     out = withArray.test(out)
       ? out.replace(withArray, (_all, open: string, close: string) => `${open}${list}${close}`)
       : applyAddedArray(out, set.wire, list);
@@ -76,7 +87,7 @@ export function applyWaypointSets(xml: string, sets: Array<{ wire: string; point
 }
 
 export function waypointFixes(messages: string[]): WaypointFix[] {
-  return messages.flatMap((message) => {
+  return messages.flatMap((message): WaypointFix[] => {
     const runWire = /Fix "([^"]+)"(?: \([^)]*\))?: move its waypoint at/.exec(message)?.[1];
     const wire = runWire ?? /^connector "([^"]+)"/.exec(message)?.[1];
     if (wire === undefined) return [];
@@ -93,7 +104,7 @@ export function applyWaypointFixes(xml: string, fixes: WaypointFix[]): string {
   let out = xml;
   for (const fix of fixes) {
     const escaped = fix.wire.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    out = out.replace(new RegExp(`(<mxCell\\b[^>]*\\bid="${escaped}"[\\s\\S]*?<Array as="points">)([\\s\\S]*?)(</Array>)`), (_all, open: string, body: string, close: string) => {
+    out = out.replace(new RegExp(`(<mxCell\\b[^>]*\\bid="${escaped}"${WITHIN_CELL}<Array as="points">)([\\s\\S]*?)(</Array>)`), (_all, open: string, body: string, close: string) => {
       const point = body.match(/<mxPoint\b[^>]*\/>/g)?.find((tag) => {
         const x = Number(/\bx="([^"]*)"/.exec(tag)?.[1] ?? 0);
         const y = Number(/\by="([^"]*)"/.exec(tag)?.[1] ?? 0);
@@ -181,7 +192,7 @@ export function stripWaypoints(xml: string, ids: Set<string>): string {
   let out = xml;
   for (const id of ids) {
     const escaped = id.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    out = out.replace(new RegExp(`(<mxCell\\b[^>]*\\bid="${escaped}"[\\s\\S]*?)<Array as="points">[\\s\\S]*?</Array>`), "$1");
+    out = out.replace(new RegExp(`(<mxCell\\b[^>]*\\bid="${escaped}"${WITHIN_CELL})<Array as="points">[\\s\\S]*?</Array>`), "$1");
   }
   return out;
 }
@@ -211,20 +222,28 @@ export interface FollowResult {
   xml: string;
 }
 
-export function followAdvice(start: string, maxRounds = 12, onRound?: (round: number, anchors: string[]) => void): FollowResult {
+export interface FollowOptions {
+  /** Only the cells this accepts are changed; the advice for any other is left unapplied. */
+  only?: (cell: string) => boolean;
+  /** Whether advice that moves shapes is followed (default true). */
+  moveShapes?: boolean;
+}
+
+export function followAdvice(start: string, maxRounds = 12, onRound?: (round: number, anchors: string[]) => void, options: FollowOptions = {}): FollowResult {
   let xml = start;
   const seen = new Set<string>();
+  const only = options.only ?? (() => true);
   for (let rounds = 0; ; rounds++) {
     const messages = checkDrawio(xml).issues.map((issue) => issue.message);
     const anchors = messages.filter((message) => ANCHOR.test(message));
     onRound?.(rounds, anchors);
-    const changes = advice(messages);
-    const fixes = waypointFixes(messages);
-    const drop = dropWaypoints(messages);
-    const moves = shapeMoves(messages);
-    const labelled = labelMoves(messages);
-    const adds = addedWaypoints(messages);
-    const sets = waypointSets(messages);
+    const changes = new Map([...advice(messages)].filter(([wire]) => only(wire)));
+    const fixes = waypointFixes(messages).filter((fix) => only(fix.wire));
+    const drop = new Set([...dropWaypoints(messages)].filter(only));
+    const moves = options.moveShapes === false ? [] : shapeMoves(messages).filter((move) => only(move.shape));
+    const labelled = labelMoves(messages).filter((move) => only(move.cell));
+    const adds = addedWaypoints(messages).filter((add) => only(add.wire));
+    const sets = waypointSets(messages).filter((set) => only(set.wire));
     if (changes.size === 0 && drop.size === 0 && fixes.length === 0 && moves.length === 0 && labelled.length === 0 && adds.length === 0 && sets.length === 0) return { rounds, converged: anchors.length === 0, looped: false, left: anchors, xml };
     const next = applyWaypointSets(applyAddedWaypoints(applyLabelMoves(applyShapeMoves(applyWaypointFixes(stripWaypoints(apply(xml, changes), drop), fixes), moves), labelled), adds), sets);
     if (next === xml || seen.has(next) || rounds >= maxRounds) return { rounds, converged: false, looped: true, left: anchors, xml };

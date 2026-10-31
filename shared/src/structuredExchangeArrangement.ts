@@ -30,8 +30,8 @@ export interface ArrangedRelationship {
   entry?: ArrangedPoint;
   /** Waypoints, in figure units. */
   waypoints?: ArrangedPoint[];
-  /** The label along the route (-1 at the source, 1 at the target) and its offset across. */
-  label?: { along: number; offset: ArrangedPoint };
+  /** The label along the route (-1 at the source, 1 at the target), its distance across it, and a free offset. */
+  label?: { along: number; across?: number; offset: ArrangedPoint };
 }
 
 export interface ArrangementView {
@@ -130,7 +130,8 @@ export function readArrangement(text: string): ArrangementReading {
       if (entry.label !== undefined) {
         const label = entry.label;
         if (!isRecord(label) || !Number.isFinite(label.along) || !isPoint(label.offset)) return { ok: false, reason: `relationship "${key}" of view "${name}" has an unreadable label` };
-        read.label = { along: label.along as number, offset: { x: label.offset.x, y: label.offset.y } };
+        if (label.across !== undefined && !Number.isFinite(label.across)) return { ok: false, reason: `relationship "${key}" of view "${name}" has an unreadable label` };
+        read.label = { along: label.along as number, ...(label.across === undefined ? {} : { across: label.across as number }), offset: { x: label.offset.x, y: label.offset.y } };
       }
       view.relationships[key] = read;
     }
@@ -149,7 +150,13 @@ function canonicalRelationship(entry: ArrangedRelationship): Record<string, unkn
   const out: Record<string, unknown> = {};
   if (entry.entry !== undefined) out.entry = { x: fraction(entry.entry.x), y: fraction(entry.entry.y) };
   if (entry.exit !== undefined) out.exit = { x: fraction(entry.exit.x), y: fraction(entry.exit.y) };
-  if (entry.label !== undefined) out.label = { along: fraction(entry.label.along), offset: { x: Math.round(entry.label.offset.x), y: Math.round(entry.label.offset.y) } };
+  if (entry.label !== undefined) {
+    out.label = {
+      ...(entry.label.across === undefined || entry.label.across === 0 ? {} : { across: Math.round(entry.label.across) }),
+      along: fraction(entry.label.along),
+      offset: { x: Math.round(entry.label.offset.x), y: Math.round(entry.label.offset.y) },
+    };
+  }
   if (entry.waypoints !== undefined && entry.waypoints.length > 0) out.waypoints = entry.waypoints.map((point) => ({ x: Math.round(point.x), y: Math.round(point.y) }));
   return out;
 }

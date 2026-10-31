@@ -45,7 +45,7 @@
                 "type": "object",
                 "required": ["along", "offset"],
                 "additionalProperties": false,
-                "properties": { "along": { "type": "number", "minimum": -1, "maximum": 1 }, "offset": { "$ref": "#/$defs/point" } }
+                "properties": { "along": { "type": "number", "minimum": -1, "maximum": 1 }, "across": { "type": "number", "description": "Distance across the route, as draw.io's label geometry y." }, "offset": { "$ref": "#/$defs/point" } }
               }
             }
           }

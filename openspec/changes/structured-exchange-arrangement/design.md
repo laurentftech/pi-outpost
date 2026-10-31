@@ -120,6 +120,30 @@ Starting from the view's arrangement:
 
 Determinism: document order everywhere, no randomness, and the follower is already deterministic.
 
+The cleanup needed four additions, all found on the vehicle architecture:
+- **Ends on the rank-facing sides.** Wires leave and enter by the sides facing along the ranks
+  (bottom to top when the layout runs top to bottom). Each side's ends are spread in the order of
+  the other ends' positions. A wire alone on both its sides, between sides that overlap, runs
+  straight down the middle of the overlap.
+- **The automatic layout snapped to the grid.** A recorded arrangement then draws exactly what
+  was shown. Fixed ends are fractions of a box, and a box snapped after the fact moves them by a
+  few units.
+- **Labels on the longest run, and the kind as the label when there is none.** The rules see
+  what the figure writes. A label across a vertical run needs only the run to be two text lines
+  tall.
+- **The follower kept to one cell, and the first message for a key wins.** It had been applying
+  one wire's fix to the next wire's waypoints, and letting a detour's advice undo a shared
+  point's.
+
+Measured with cleanup:
+
+| Graph | Elements | Relationships | Time |
+|---|---|---|---|
+| Largest corpus graph | 64 | 64 | 140 ms |
+| Generated | 100 | 196 | 257 ms |
+
+The view must therefore not recompute on every pointer move while dragging.
+
 ### 5. The check
 
 The check reuses the rules' messages, with the arrangement's keys translated to element labels.
