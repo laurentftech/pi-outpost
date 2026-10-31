@@ -240,6 +240,21 @@ describe("DrawioBlock touch-up", () => {
     expect(control.value).toBe("orthogonal");
   });
 
+  // openlore: scenario=TheBendsOfWiresAreRemoved spec=drawio-diagrams
+  it("TheBendsOfWiresAreRemoved: enabled when the wires have bends, sent to the frame", async () => {
+    const { answer, sent } = await touchUp();
+    const button = screen.getByRole("button", { name: "remove bends" });
+    // Nothing reported yet, or no bend: nothing to remove
+    expect(button).toBeDisabled();
+    answer({ type: DRAWIO_MESSAGE.CHANGED, dirty: false, canUndo: false, canRedo: false, wireStyle: "orthogonal", bends: 0 });
+    expect(button).toBeDisabled();
+    answer({ type: DRAWIO_MESSAGE.CHANGED, dirty: false, canUndo: false, canRedo: false, wireStyle: "orthogonal", bends: 3 });
+    expect(button).toBeEnabled();
+    expect(button).toHaveAttribute("title", expect.stringMatching(/Double-click a bend to remove just that one/));
+    fireEvent.click(button);
+    expect(sent).toHaveBeenCalledWith({ type: DRAWIO_MESSAGE.REMOVE_BENDS }, "*");
+  });
+
   // openlore: scenario=UndoRestoresTheDiagram spec=drawio-diagrams
   it("UndoRestoresTheDiagram: undo and redo go to the frame, enabled as it reports", async () => {
     const { answer, types } = await touchUp();

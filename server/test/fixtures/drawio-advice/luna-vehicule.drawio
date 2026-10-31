@@ -1,0 +1,63 @@
+<mxfile host="pi-outpost">
+  <diagram id="vehicule-electrique" name="Architecture électrique">
+    <mxGraphModel grid="1" gridSize="10" guides="1" connect="1" arrows="1" page="1" pageWidth="1400" pageHeight="900">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+
+        <mxCell id="prise" value="Prise de recharge" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="40" y="80" width="170" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="chargeur" value="Chargeur embarqué" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="300" y="80" width="180" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="batterie" value="Batterie" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="560" y="300" width="180" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="bms" value="BMS" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="300" y="300" width="160" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="onduleur" value="Onduleur" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="850" y="170" width="170" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="moteur" value="Moteur" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="1120" y="170" width="170" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="dcdc" value="Convertisseur DC/DC" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="850" y="430" width="190" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="reseau12" value="Réseau 12 V" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="1120" y="430" width="170" height="70" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="flux-ac" value="courant AC" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeColor=#d79b00;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" edge="1" parent="1" source="prise" target="chargeur">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="flux-charge" value="charge" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeColor=#d79b00;exitX=1;exitY=0.5;entryX=0.5;entryY=0;" edge="1" parent="1" source="chargeur" target="batterie">
+          <mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="520" y="180"/><mxPoint x="650" y="180"/></Array></mxGeometry>
+        </mxCell>
+        <mxCell id="flux-ht-onduleur" value="puissance HT" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeColor=#6c8ebf;exitX=1;exitY=0.25;entryX=0;entryY=0.5;" edge="1" parent="1" source="batterie" target="onduleur">
+          <mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="790" y="318"/><mxPoint x="790" y="205"/></Array></mxGeometry>
+        </mxCell>
+        <mxCell id="flux-ht-dcdc" value="puissance HT" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeColor=#6c8ebf;exitX=1;exitY=0.75;entryX=0;entryY=0.5;" edge="1" parent="1" source="batterie" target="dcdc">
+          <mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="790" y="352"/><mxPoint x="790" y="465"/></Array></mxGeometry>
+        </mxCell>
+        <mxCell id="flux-mesures" value="mesures cellules" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeColor=#82b366;exitX=1;exitY=0.35;entryX=0;entryY=0.35;" edge="1" parent="1" source="bms" target="batterie">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="flux-coupure" value="ordre de coupure" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeColor=#82b366;exitX=1;exitY=0.7;entryX=0;entryY=0.7;" edge="1" parent="1" source="bms" target="batterie">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="flux-triphasé" value="courant triphasé" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeColor=#b85450;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" edge="1" parent="1" source="onduleur" target="moteur">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="flux-regen" value="régénération" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeColor=#b85450;dashed=1;exitX=0;exitY=0.25;entryX=1;entryY=0.25;" edge="1" parent="1" source="moteur" target="onduleur">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="flux-12v" value="alimentation 12 V" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeColor=#82b366;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" edge="1" parent="1" source="dcdc" target="reseau12">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

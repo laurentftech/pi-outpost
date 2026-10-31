@@ -1,0 +1,63 @@
+<mxfile host="pi-outpost">
+  <diagram id="microservices" name="Architecture microservices">
+    <mxGraphModel grid="1" gridSize="10" guides="1" connect="1" arrows="1" page="1" pageWidth="1400" pageHeight="900">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+
+        <mxCell id="gateway" value="Passerelle API" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="60" y="350" width="180" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="auth" value="Authentification" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="350" y="100" width="180" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="commandes" value="Commandes" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="350" y="350" width="180" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="paiements" value="Paiements" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="350" y="600" width="180" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="file" value="File de messages" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="700" y="350" width="190" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="notifications" value="Notifications" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="1040" y="350" width="180" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="db" value="Base de données" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;fillColor=#fff2cc;strokeColor=#d6b656;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="700" y="650" width="190" height="100" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="gateway-auth" value="jeton" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeColor=#6c8ebf;exitX=0.6;exitY=0;entryX=0.5;entryY=1;" edge="1" parent="1" source="gateway" target="auth">
+          <mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="170" y="220"/><mxPoint x="440" y="220"/></Array></mxGeometry>
+        </mxCell>
+        <mxCell id="gateway-commandes" value="requête commande" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeColor=#6c8ebf;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" edge="1" parent="1" source="gateway" target="commandes">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="gateway-paiements" value="requête paiement" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeColor=#6c8ebf;exitX=0.6;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="gateway" target="paiements">
+          <mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="170" y="570"/><mxPoint x="440" y="570"/></Array></mxGeometry>
+        </mxCell>
+        <mxCell id="commandes-file" value="commande créée" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeColor=#d79b00;exitX=1;exitY=0.5;entryX=0;entryY=0.35;" edge="1" parent="1" source="commandes" target="file">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="paiements-file" value="paiement reçu" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeColor=#d79b00;exitX=1;exitY=0.5;entryX=0;entryY=0.65;" edge="1" parent="1" source="paiements" target="file">
+          <mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="620" y="635"/><mxPoint x="650" y="635"/><mxPoint x="650" y="395"/></Array></mxGeometry>
+        </mxCell>
+        <mxCell id="file-notifications" value="commande créée, paiement reçu" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeColor=#9673a6;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" edge="1" parent="1" source="file" target="notifications">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="commandes-lecture" value="lecture" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeColor=#d6b656;exitX=0.5;exitY=1;entryX=0.25;entryY=0;" edge="1" parent="1" source="commandes" target="db">
+          <mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="400" y="520"/><mxPoint x="750" y="520"/></Array></mxGeometry>
+        </mxCell>
+        <mxCell id="commandes-ecriture" value="écriture" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeColor=#d6b656;dashed=1;exitX=0.7;exitY=1;entryX=0.4;entryY=0;" edge="1" parent="1" source="commandes" target="db">
+          <mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="470" y="540"/><mxPoint x="780" y="540"/></Array></mxGeometry>
+        </mxCell>
+        <mxCell id="paiements-lecture" value="lecture" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeColor=#d6b656;exitX=0.5;exitY=1;entryX=0;entryY=0.25;" edge="1" parent="1" source="paiements" target="db">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="paiements-ecriture" value="écriture" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeColor=#d6b656;dashed=1;exitX=0.7;exitY=1;entryX=0;entryY=0.75;" edge="1" parent="1" source="paiements" target="db">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

@@ -44,6 +44,8 @@ export const DRAWIO_MESSAGE = {
   EXPORT_SVG: "pi-outpost:drawio-export-svg",
   /** Parent → frame: `{ type, style }` — draw the selected wires, or all of the page's when none is selected, and new ones, `straight`, `orthogonal` or `curved`. */
   WIRE_STYLE: "pi-outpost:drawio-wire-style",
+  /** Parent → frame: remove the waypoints of the selected wires, else of every wire of the page. */
+  REMOVE_BENDS: "pi-outpost:drawio-remove-bends",
   /** Frame → parent: `{ type, dirty, canUndo, canRedo, wireStyle }` — after each touch-up, undo, redo, save or selection; `wireStyle` is the style of the wires a choice would change, or `mixed`. */
   CHANGED: "pi-outpost:drawio-changed",
   /** Frame → parent: `{ type, page, xml }` — the shown page's `<mxGraphModel>`, to splice into the file. */
@@ -219,7 +221,7 @@ div.mxRubberband { position: absolute; overflow: hidden; border: 1px solid #29b6
     var undo = touch.undo;
     // A label being typed is an edit too: leaving now would drop it
     var typing = viewer !== null && viewer.graph.isEditing();
-    tell({ type: M.CHANGED, dirty: typing || undo.indexOfNextAdd !== touch.clean, canUndo: undo.canUndo(), canRedo: undo.canRedo(), wireStyle: viewer === null ? null : targetWireStyle(viewer.graph) });
+    tell({ type: M.CHANGED, dirty: typing || undo.indexOfNextAdd !== touch.clean, canUndo: undo.canUndo(), canRedo: undo.canRedo(), wireStyle: viewer === null ? null : targetWireStyle(viewer.graph), bends: viewer === null ? 0 : targetBends(viewer.graph) });
   }
 
   // Wire styles as draw.io's Waypoints menu sets them (Menus.js, edgeStyleChange): the keys
@@ -245,6 +247,61 @@ div.mxRubberband { position: absolute; overflow: hidden; border: 1px solid #29b6
   function targetWires(graph) {
     var selected = graph.getSelectionCells().filter(function (cell) { return graph.getModel().isEdge(cell); });
     return selected.length > 0 ? selected : pageWires(graph);
+  }
+
+  // How many waypoints the wires a choice changes hold: what "remove bends" would take away
+  function targetBends(graph) {
+    return targetWires(graph).reduce(function (count, cell) {
+      var geometry = graph.getModel().getGeometry(cell);
+      return count + (geometry !== null && geometry.points ? geometry.points.length : 0);
+    }, 0);
+  }
+
+  // The waypoints of the wires a choice changes, gone in one undoable change. Choosing the
+  // style a wire already has changes nothing, so this is the way to straighten one out —
+  // a single bend goes with a double click on it (draw.io's dblClickRemoveEnabled)
+  function removeBends() {
+    if (touch === null || viewer === null) return;
+    var graph = viewer.graph;
+    if (graph.isEditing()) graph.stopEditing(false);
+    var wires = targetWires(graph);
+    var model = graph.getModel();
+    model.beginUpdate();
+    try {
+      for (var i = 0; i < wires.length; i++) graph.resetEdge(wires[i]);
+    } finally {
+      model.endUpdate();
+    }
+    changed();
+  }
+
+  // The waypoints a handle stands for, in the view's coordinates: the one under it, or the
+  // corners of the segment it sits in the middle of. Gone in one undoable change.
+  function removeHandle(graph, cell, index) {
+    var handler = graph.selectionCellsHandler.getHandler(cell);
+    var geometry = graph.getModel().getGeometry(cell);
+    if (!handler || !handler.bends || geometry === null || !geometry.points || geometry.points.length === 0) return;
+    var view = graph.view;
+    var scale = view.scale;
+    // A wire inside a group or a lane has its waypoints relative to that parent
+    var parentState = view.getState(graph.getModel().getParent(cell));
+    var origin = parentState && parentState.origin ? parentState.origin : { x: 0, y: 0 };
+    var shown = function (point) { return { x: (point.x + origin.x + view.translate.x) * scale, y: (point.y + origin.y + view.translate.y) * scale }; };
+    var near = function (a, b) { return Math.abs(a.x - b.x) <= 2 && Math.abs(a.y - b.y) <= 2; };
+    var bounds = handler.bends[index].bounds;
+    var handle = { x: bounds.getCenterX(), y: bounds.getCenterY() };
+    var points = geometry.points;
+    var gone = points.filter(function (point) { return near(shown(point), handle); });
+    var corners = handler.state.absolutePoints || [];
+    if (gone.length === 0 && index > 0 && index < corners.length) {
+      var from = corners[index - 1];
+      var to = corners[index];
+      gone = points.filter(function (point) { var at = shown(point); return (from && near(at, from)) || (to && near(at, to)); });
+    }
+    if (gone.length === 0) return;
+    var next = geometry.clone();
+    next.points = points.filter(function (point) { return gone.indexOf(point) === -1; });
+    graph.getModel().setGeometry(cell, next);
   }
 
   function targetWireStyle(graph) {
@@ -345,7 +402,62 @@ div.mxRubberband { position: absolute; overflow: hidden; border: 1px solid #29b6
     container.setAttribute("tabindex", "-1");
     container.style.outline = "none";
     var keys = new mxKeyHandler(graph, container);
-    var remove = function () { if (graph.isEnabled() && !graph.isSelectionEmpty()) graph.deleteCells(graph.getDeletableCells(graph.getSelectionCells())); };
+    // A bend is taken out by a click on its handle, then Delete — as a shape is. draw.io's own
+    // gestures stay as they are beside it. The handle clicked is remembered, drawn apart, until
+    // the next click or selection. A straight wire has a handle on each waypoint; an orthogonal
+    // one has a handle in the middle of each segment instead, whose corners are the waypoints:
+    // Delete takes out the waypoint under the handle, or the waypoints at the segment's corners.
+    var chosen = null;
+    // After a bend goes, Delete waits for the next click: a second press, or a held key, would
+    // otherwise delete the wire still selected under it
+    var bendJustRemoved = false;
+    var showChosen = function (on) {
+      if (chosen === null) return;
+      var handler = graph.selectionCellsHandler.getHandler(chosen.cell);
+      var shape = handler && handler.bends ? handler.bends[chosen.index] : null;
+      if (!shape) return;
+      shape.fill = on ? "#f97316" : mxConstants.HANDLE_FILLCOLOR;
+      shape.redraw();
+    };
+    var forget = function () { showChosen(false); chosen = null; };
+    var pickBend = {
+      mouseDown: function (sender, me) {
+        forget();
+        bendJustRemoved = false;
+        var cells = graph.getSelectionCells();
+        for (var i = 0; i < cells.length; i++) {
+          if (!graph.getModel().isEdge(cells[i])) continue;
+          var handler = graph.selectionCellsHandler.getHandler(cells[i]);
+          if (!handler || !handler.bends) continue;
+          var index = handler.getHandleForEvent(me);
+          // 0 and the last handle are the wire's ends; virtual bends are negative
+          if (index !== null && index > 0 && index < handler.bends.length - 1) {
+            chosen = { cell: cells[i], index: index };
+            return;
+          }
+        }
+      },
+      mouseMove: function () {},
+      mouseUp: function () { showChosen(true); },
+    };
+    // First in line: the edge handler, once it has the press, has started dragging that bend
+    graph.addMouseListener(pickBend);
+    graph.mouseListeners.unshift(graph.mouseListeners.pop());
+    graph.getSelectionModel().addListener(mxEvent.CHANGE, function () {
+      if (chosen !== null && !graph.isCellSelected(chosen.cell)) forget();
+    });
+    var remove = function () {
+      if (!graph.isEnabled()) return;
+      if (chosen !== null && graph.isCellSelected(chosen.cell)) {
+        var bend = chosen;
+        chosen = null;
+        removeHandle(graph, bend.cell, bend.index);
+        bendJustRemoved = true;
+        return;
+      }
+      if (bendJustRemoved) return;
+      if (!graph.isSelectionEmpty()) graph.deleteCells(graph.getDeletableCells(graph.getSelectionCells()));
+    };
     keys.bindKey(46, remove);
     keys.bindKey(8, remove);
     // Undo and redo by hand: mxKeyHandler's control bindings never see ⌘ on a Mac
@@ -385,7 +497,7 @@ div.mxRubberband { position: absolute; overflow: hidden; border: 1px solid #29b6
       }
       return result;
     };
-    touch = { undo: undo, keys: keys, clean: 0, record: record, showPage: showPage, focus: focus, history: history, container: container, grow: grow };
+    touch = { undo: undo, keys: keys, clean: 0, record: record, showPage: showPage, focus: focus, history: history, container: container, grow: grow, pickBend: pickBend };
     changed();
   }
 
@@ -394,6 +506,7 @@ div.mxRubberband { position: absolute; overflow: hidden; border: 1px solid #29b6
     var current = touch;
     touch = null;
     current.keys.destroy();
+    if (viewer !== null) viewer.graph.removeMouseListener(current.pickBend);
     document.removeEventListener("pointerdown", current.focus, true);
     current.container.removeEventListener("keydown", current.history);
     if (viewer !== null) {
@@ -481,6 +594,7 @@ div.mxRubberband { position: absolute; overflow: hidden; border: 1px solid #29b6
     else if (data.type === M.REDO) undoOrRedo(true);
     else if (data.type === M.EXPORT_SVG) exportSvg();
     else if (data.type === M.WIRE_STYLE && typeof data.style === "string") applyWireStyle(data.style);
+    else if (data.type === M.REMOVE_BENDS) removeBends();
   });
 
   if (typeof GraphViewer === "undefined") {

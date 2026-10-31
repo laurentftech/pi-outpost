@@ -1,8 +1,9 @@
 /**
  * Makes the tool calls listed in SCRIPTED_CALLS (a JSON array of `{ name, arguments }`), one per
  * turn, and appends each tool result the model receives to SCRIPTED_LOG, one JSON line per call:
- * `{ name, isError, text }`. Ends the run with "done" once the list is spent. The prompt is
- * ignored: the script is the test.
+ * `{ name, isError, text }`. An entry `{ calls: [...] }` makes several calls in one message,
+ * which the runtime runs together. Ends the run with "done" once the list is spent. The prompt
+ * is ignored: the script is the test.
  */
 import { appendFileSync, readFileSync } from "node:fs";
 import { createAssistantMessageEventStream } from "@earendil-works/pi-ai/compat";
@@ -28,21 +29,28 @@ function calls() {
 function stream(model, context) {
   const messages = context.messages ?? [];
   const lastUserIndex = messages.findLastIndex((item) => item.role === "user");
-  const results = messages.filter((item, index) => item.role === "toolResult" && index > lastUserIndex);
-  const last = results.at(-1);
-  if (last && process.env.SCRIPTED_LOG) {
-    const text = (last.content ?? []).map((part) => part.text ?? "").join("");
-    appendFileSync(process.env.SCRIPTED_LOG, `${JSON.stringify({ name: last.toolName, isError: Boolean(last.isError), text })}\n`);
+  // The step is the number of tool-calling turns so far; the results to log are the last turn's
+  const step = messages.filter((item, index) => item.role === "assistant" && index > lastUserIndex).length;
+  const lastAssistantIndex = messages.findLastIndex((item) => item.role === "assistant");
+  const latest = lastAssistantIndex > lastUserIndex ? messages.filter((item, index) => item.role === "toolResult" && index > lastAssistantIndex) : [];
+  if (process.env.SCRIPTED_LOG) {
+    for (const result of latest) {
+      const text = (result.content ?? []).map((part) => part.text ?? "").join("");
+      appendFileSync(process.env.SCRIPTED_LOG, `${JSON.stringify({ name: result.toolName, isError: Boolean(result.isError), text })}\n`);
+    }
   }
-  const next = calls()[results.length];
+  const next = calls()[step];
   const out = createAssistantMessageEventStream();
   if (next) {
-    const call = { type: "toolCall", id: `call-${results.length}-${Date.now()}`, name: next.name, arguments: next.arguments };
-    const partial = message(model, [call], "toolUse");
+    const group = next.calls ?? [next];
+    const toolCalls = group.map((entry, index) => ({ type: "toolCall", id: `call-${step}-${index}-${Date.now()}`, name: entry.name, arguments: entry.arguments }));
+    const partial = message(model, toolCalls, "toolUse");
     queueMicrotask(() => {
       out.push({ type: "start", partial });
-      out.push({ type: "toolcall_start", contentIndex: 0, partial });
-      out.push({ type: "toolcall_end", contentIndex: 0, toolCall: call, partial });
+      toolCalls.forEach((toolCall, contentIndex) => {
+        out.push({ type: "toolcall_start", contentIndex, partial });
+        out.push({ type: "toolcall_end", contentIndex, toolCall, partial });
+      });
       out.push({ type: "done", reason: "toolUse", message: partial });
     });
     return out;

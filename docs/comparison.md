@@ -117,8 +117,8 @@ The two `bash` rows are from Kilo Code and OpenCode. Every other row is a Pi Out
 | `pdf_extract` | 2 322 | ~0.6k | while a PDF is in play, or once the agent loads it |
 | `pptx_extract` | 1 933 | ~0.5k | while a deck is in play, or once the agent loads it |
 | `edit` | 1 791 | ~0.4k | always |
+| `drawio_check` | 1 740 | ~0.4k | after `tool_search` |
 | `compare_timelines` | 1 590 | ~0.4k | after `tool_search` |
-| `drawio_check` | 1 474 | ~0.4k | after `tool_search` |
 | `write_structure_table` | 1 134 | ~0.3k | after `tool_search` |
 | `grep` | 1 125 | ~0.3k | always |
 | `poster_check` | 1 109 | ~0.3k | after `tool_search` |

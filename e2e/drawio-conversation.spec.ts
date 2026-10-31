@@ -375,6 +375,109 @@ async function wireMidpoints(frame: Locator): Promise<Array<{ x: number; y: numb
   return points.map((point) => ({ x: box.x + point.x, y: box.y + point.y }));
 }
 
+/** The services diagram with two orthogonal wires from Alpha, each bent through two waypoints. */
+function bentDiagram(): string {
+  const wire = (id: string, target: string, bends: string) =>
+    `        <mxCell id="${id}" edge="1" parent="1" source="a" target="${target}" style="edgeStyle=orthogonalEdgeStyle;html=1;endArrow=block;">\n          <mxGeometry relative="1" as="geometry"><Array as="points">${bends}</Array></mxGeometry>\n        </mxCell>`;
+  return SERVICES_DIAGRAM.replace(
+    / {8}<mxCell id="a-b"[\s\S]*?<\/mxCell>/,
+    `${wire("a-b", "b", '<mxPoint x="300" y="40"/><mxPoint x="300" y="120"/>')}\n${wire("a-c", "c", '<mxPoint x="100" y="260"/><mxPoint x="200" y="260"/>')}`,
+  );
+}
+
+/**
+ * The handle of a wire's first segment, on screen: an orthogonal wire's handles sit in the middle
+ * of its segments, between the first two vertices of its path.
+ */
+async function firstSegmentHandleOnScreen(frame: Locator, wireIndex: number): Promise<{ x: number; y: number }> {
+  const inner = await frameOf(frame);
+  const box = (await frame.boundingBox())!;
+  const at = await inner.evaluate((index) => {
+    const wires = [...document.querySelectorAll<SVGPathElement>("svg path[fill='none']")].filter((p) => p.getAttribute("visibility") !== "hidden" && p.getTotalLength() > 50);
+    const wire = wires[index]!;
+    const numbers = (wire.getAttribute("d") ?? "").match(/-?\d+(\.\d+)?/g)!.map(Number);
+    const m = wire.getScreenCTM()!;
+    const x = (numbers[0]! + numbers[2]!) / 2;
+    const y = (numbers[1]! + numbers[3]!) / 2;
+    return { x: x * m.a + m.e, y: y * m.d + m.f };
+  }, wireIndex);
+  return { x: box.x + at.x, y: box.y + at.y };
+}
+
+// openlore: scenario=TheBendsOfWiresAreRemoved spec=drawio-diagrams
+test("TheBendsOfWiresAreRemoved: remove bends clears every wire's waypoints, one undo puts them back, and the save writes them gone", async ({ page }) => {
+  await writeFile(FILE(), bentDiagram());
+  await (await openReply(page)).getByRole("button", { name: "↗ open" }).click();
+  const block = page.getByTestId("drawio-block-viewer");
+  const frame = block.getByTestId("drawio-frame");
+  await expect.poll(async () => labels(await frameOf(frame))).toContain("Charlie");
+  await touchUp(block, frame);
+  const remove = block.getByRole("button", { name: "remove bends" });
+  await expect(remove).toBeEnabled();
+  await remove.click();
+  await expect(block.getByTestId("drawio-touchup-status")).toHaveText("● unsaved");
+  // Nothing left to remove
+  await expect(remove).toBeDisabled();
+  await block.getByRole("button", { name: "↶ undo" }).click();
+  await expect(remove).toBeEnabled();
+  await block.getByRole("button", { name: "↷ redo" }).click();
+  await expect(remove).toBeDisabled();
+  await block.getByRole("button", { name: "✓ save" }).click();
+  await expect.poll(() => savedCell("a-b")).not.toContain("mxPoint");
+  expect(await savedCell("a-c")).not.toContain("mxPoint");
+  // The style stays: only the bends went
+  expect(await savedCell("a-b")).toContain("edgeStyle=orthogonalEdgeStyle");
+});
+
+// openlore: scenario=ABendIsRemovedByClickAndDelete spec=drawio-diagrams
+test("ABendIsRemovedByClickAndDelete: in touch-up, a bend clicked then Delete removes that bend only, and the wire stays", async ({ page }) => {
+  await writeFile(FILE(), bentDiagram());
+  const block = await openReply(page);
+  await block.getByRole("button", { name: "Show diagram at full size" }).click();
+  const overlay = page.getByTestId("drawio-enlarged");
+  const frame = overlay.getByTitle(`${SERVICES_DIAGRAM_PATH}, full size`);
+  await expect.poll(async () => labels(await frameOf(frame))).toContain("Charlie");
+  await touchUp(overlay, frame);
+  const wires = await wireMidpoints(frame);
+  await page.mouse.click(wires[0]!.x, wires[0]!.y);
+  // The first segment runs from Alpha to the first waypoint: Delete takes that waypoint out
+  const handle = await firstSegmentHandleOnScreen(frame, 0);
+  await page.mouse.click(handle.x, handle.y);
+  await page.keyboard.press("Delete");
+  // A second press does not go on to delete the wire still selected
+  await page.keyboard.press("Delete");
+  await expect(overlay.getByTestId("drawio-touchup-status")).toHaveText("● unsaved");
+  await overlay.getByRole("button", { name: "✓ save" }).click();
+  // One wire lost one of its two bends; the other kept both; both wires are still there
+  await expect.poll(async () => [await savedCell("a-b"), await savedCell("a-c")].map((cell) => (cell.match(/<mxPoint /g) ?? []).length).sort()).toEqual([1, 2]);
+  expect(await savedCell("a-b")).toContain('edge="1"');
+  expect(await savedCell("a-c")).toContain('edge="1"');
+});
+
+test("a bend of a wire inside a container is removed by click and Delete too: its waypoints are relative to the container", async ({ page }) => {
+  // The first page's cells moved into a lane away from the page's origin
+  const bent = bentDiagram();
+  const end = bent.indexOf("</diagram>");
+  const lane = '        <mxCell id="lane" value="" style="rounded=0;container=1;fillColor=none;strokeColor=#cccccc;html=1;" vertex="1" parent="1"><mxGeometry x="200" y="120" width="520" height="400" as="geometry"/></mxCell>\n';
+  const first = bent.slice(0, end).replace(/parent="1"/g, 'parent="lane"').replace('        <mxCell id="a"', `${lane}        <mxCell id="a"`);
+  await writeFile(FILE(), first + bent.slice(end));
+  const block = await openReply(page);
+  await block.getByRole("button", { name: "Show diagram at full size" }).click();
+  const overlay = page.getByTestId("drawio-enlarged");
+  const frame = overlay.getByTitle(`${SERVICES_DIAGRAM_PATH}, full size`);
+  await expect.poll(async () => labels(await frameOf(frame))).toContain("Charlie");
+  await touchUp(overlay, frame);
+  const wires = await wireMidpoints(frame);
+  await page.mouse.click(wires[0]!.x, wires[0]!.y);
+  const handle = await firstSegmentHandleOnScreen(frame, 0);
+  await page.mouse.click(handle.x, handle.y);
+  await page.keyboard.press("Delete");
+  await expect(overlay.getByTestId("drawio-touchup-status")).toHaveText("● unsaved");
+  await overlay.getByRole("button", { name: "✓ save" }).click();
+  await expect.poll(async () => [await savedCell("a-b"), await savedCell("a-c")].map((cell) => (cell.match(/<mxPoint /g) ?? []).length).sort()).toEqual([1, 2]);
+  expect(await savedCell("a-b")).toContain('parent="lane"');
+});
+
 // openlore: scenario=EveryWireIsRestyled spec=drawio-diagrams
 test("EveryWireIsRestyled: with nothing selected, every wire of the page changes style, one undo takes it back, and the save writes it", async ({ page }) => {
   await writeFile(FILE(), wiredDiagram("edgeStyle=none;"));

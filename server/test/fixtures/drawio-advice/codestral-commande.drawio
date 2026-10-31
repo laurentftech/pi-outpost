@@ -1,0 +1,110 @@
+<mxfile host="pi-outpost">
+  <diagram id="page-1" name="Traitement d'une commande">
+    <mxGraphModel grid="1" gridSize="10" guides="1" connect="1" arrows="1" page="1" pageWidth="1169" pageHeight="827">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+        <mxCell id="reception" value="Réception" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="1">
+          <mxGeometry x="40" y="40" width="140" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="decision_stock" value="Stock disponible ?" style="rhombus;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="200" y="40" width="140" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="paiement" value="Paiement" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="1">
+          <mxGeometry x="360" y="40" width="140" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="reapprovisionnement" value="Réapprovisionnement" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="1">
+          <mxGeometry x="360" y="140" width="140" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="decision_paiement" value="Paiement accepté ?" style="rhombus;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="520" y="40" width="140" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="preparation" value="Préparation" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="1">
+          <mxGeometry x="680" y="40" width="140" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="expédition" value="Expédition" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="1">
+          <mxGeometry x="840" y="40" width="140" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="annulation" value="Annulation" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="1">
+          <mxGeometry x="680" y="140" width="140" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="notification" value="Notification client" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="1">
+          <mxGeometry x="1000" y="40" width="140" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="reception-to-decision_stock" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;" edge="1" parent="1" source="reception" target="decision_stock">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="decision_stock-to-paiement" value="Oui" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;" edge="1" parent="1" source="decision_stock" target="paiement">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1" y="0.25" as="sourcePoint"/>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="decision_stock-to-reapprovisionnement" value="Non" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;" edge="1" parent="1" source="decision_stock" target="reapprovisionnement">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1" y="0.75" as="sourcePoint"/>
+            <mxPoint x="0.25" y="1" as="targetPoint"/>
+            <Array as="points">
+              <mxPoint x="500" y="190"/>
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="reapprovisionnement-to-decision_stock" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;" edge="1" parent="1" source="reapprovisionnement" target="decision_stock">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1" y="0.25" as="targetPoint"/>
+            <mxPoint x="0" y="0.5" as="sourcePoint"/>
+            <Array as="points">
+              <mxPoint x="500" y="190"/>
+              <mxPoint x="500" y="90"/>
+              <mxPoint x="460" y="90"/>
+              <mxPoint x="460" y="130"/>
+              <mxPoint x="420" y="130"/>
+              <mxPoint x="420" y="170"/>
+              <mxPoint x="380" y="170"/>
+              <mxPoint x="380" y="130"/>
+              <mxPoint x="380" y="90"/>
+              <mxPoint x="340" y="90"/>
+              <mxPoint x="340" y="130"/>
+              <mxPoint x="340" y="170"/>
+              <mxPoint x="340" y="210"/>
+              <mxPoint x="300" y="210"/>
+              <mxPoint x="300" y="170"/>
+              <mxPoint x="300" y="130"/>
+              <mxPoint x="300" y="90"/>
+              <mxPoint x="260" y="90"/>
+              <mxPoint x="260" y="130"/>
+              <mxPoint x="260" y="170"/>
+              <mxPoint x="260" y="210"/>
+              <mxPoint x="220" y="210"/>
+              <mxPoint x="220" y="170"/>
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="paiement-to-decision_paiement" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;" edge="1" parent="1" source="paiement" target="decision_paiement">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="decision_paiement-to-preparation" value="Oui" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;" edge="1" parent="1" source="decision_paiement" target="preparation">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1" y="0.25" as="sourcePoint"/>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="decision_paiement-to-annulation" value="Non" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;" edge="1" parent="1" source="decision_paiement" target="annulation">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1" y="0.75" as="sourcePoint"/>
+            <Array as="points">
+              <mxPoint x="820" y="190"/>
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="preparation-to-expédition" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;" edge="1" parent="1" source="preparation" target="expédition">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="expédition-to-notification" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;" edge="1" parent="1" source="expédition" target="notification">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="annulation-to-notification" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;" edge="1" parent="1" source="annulation" target="notification">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

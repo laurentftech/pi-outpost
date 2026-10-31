@@ -21,7 +21,8 @@ draw.io desktop for anything more ("open in draw.io" in the file viewer).
 3. Run `drawio_check` on it. Fix every **error** — draw.io would refuse or mis-draw them —
    and every **warning** you did not intend (overlapping shapes, a shape outside its
    container, a connector running through a box or its own ends, a connector's label on a
-   box). Run it again until it reports no defect. Run it after the write has returned, not
+   box, connectors sharing a point, an end facing away, a detour). Fix the warnings in the
+   order the report lists them, starting with the first. Run it again until it reports no defect. Run it after the write has returned, not
    in the same turn: started together, the check can run before the file exists.
 4. Show it in your reply, as a picture of the file — the conversation draws it there:
 
@@ -125,6 +126,18 @@ to the container's top-left corner**. Keep it inside the container: below the ti
   Move the box, or give the connector waypoints around it. Fix `exitX/exitY` and
   `entryX/entryY` only on the sides facing each other — leaving the top of a box to enter the
   bottom of one below it runs through both — or leave them out and let draw.io choose.
+- One point per data flow. Connectors that carry different data (different labels, or no label)
+  must not leave or enter a box at the same point: spread them along the side
+  (`exitY=0.25`, `0.5`, `0.75` on a right side). Only connectors with the same label may share a
+  point.
+- Add a waypoint only to take a connector around a box, and line it up with the points beside it:
+  a waypoint a few units off leaves a hook or a jog in the line. draw.io routes orthogonal
+  connectors by itself.
+- Leave a box on the side facing where the connector goes, and enter on the side facing where it
+  comes from. A connector that leaves on the far side makes a detour, even when it crosses
+  nothing.
+- Keep connectors that carry different data off each other's lines, and each label off the other
+  labels and connectors: a reader cannot tell which line or label is which.
 - More than about 25 shapes on a page is hard to read: split it into pages.
 
 ## Changing an existing diagram
