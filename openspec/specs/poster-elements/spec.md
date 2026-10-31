@@ -230,3 +230,13 @@ pi-outpost SHALL give the agent a tool that answers the pictures of a poster fil
 #### Scenario: AModelWithoutVisionIsToldSo
 - **WHEN** an agent whose model takes no images asks to look at the poster's pictures
 - **THEN** it is told the model cannot see them and not to guess, and no picture data is sent
+
+### Requirement: LookingAtANonPosterSaysSo
+
+`poster_pictures` SHALL answer a `.poster.html` that is not a poster with that refusal, as an
+error, rather than saying it holds no picture.
+
+#### Scenario: PosterPicturesNamesANonPoster
+- **GIVEN** a `.poster.html` without the poster markers
+- **WHEN** the agent asks `poster_pictures` for its pictures
+- **THEN** the answer is an error saying it is not a poster and naming the missing marker, and does not say its frames are empty

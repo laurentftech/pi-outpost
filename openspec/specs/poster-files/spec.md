@@ -178,3 +178,144 @@ While a diagram is open for touch-up from a poster, a change saved to its file f
 - **GIVEN** a diagram opened from the poster and, from it, in draw.io desktop
 - **WHEN** a box is moved in draw.io desktop and saved, then the touch-up is closed
 - **THEN** the touch-up showed the moved box, and the poster's picture shows it too
+
+### Requirement: AProjectPictureIsInserted
+
+In pi-outpost, the poster editor's Insert menu SHALL offer the project's pictures (SVG, PNG, JPEG,
+GIF and WebP files). The chosen one SHALL be put in the poster as a picture, into the selected
+picture frame or onto the page, carrying `data-picture-file`. An SVG SHALL be kept as its own SVG;
+a raster SHALL be scaled as a picture chosen from the person's computer is. A file that cannot be
+read or is no picture SHALL be named with its reason, and the poster left unchanged.
+
+#### Scenario: TheProjectsPicturesAreOffered
+- **GIVEN** a project holding an SVG figure and a PNG
+- **WHEN** the person opens Insert, then Picture from the project
+- **THEN** both are offered, as paths from the poster's directory
+
+#### Scenario: AnSvgStaysVector
+- **WHEN** the person chooses an SVG of the project
+- **THEN** the picture holds that SVG itself, not a raster of it, in the SVG's proportions
+
+#### Scenario: ARasterIsScaled
+- **WHEN** the person chooses a PNG wider than 1200 pixels
+- **THEN** the picture is a PNG at most 1200 pixels wide
+
+### Requirement: AFrameNamingAProjectPictureIsFilledOnOpen
+
+An empty picture frame carrying `data-picture-file` SHALL be filled with that file when the poster
+opens in pi-outpost's editor, unsaved until the person saves it, under the same rules as a frame naming a
+diagram: resolved from the poster's directory or the root, read within the server's read zone, a
+filled frame left as it is, a file that cannot be read leaving its frame empty and named.
+
+#### Scenario: AFigureTheAgentWroteFillsItsFrame
+- **GIVEN** a poster with an empty frame naming an SVG figure of the project
+- **WHEN** the poster opens in the editor
+- **THEN** the frame shows the figure as its SVG, the poster has unsaved changes, and once saved the file holds it
+
+#### Scenario: AMissingPictureLeavesTheFrameEmpty
+- **GIVEN** a frame naming a file that does not exist, and one naming a file that is no picture
+- **WHEN** the poster opens
+- **THEN** both frames stay empty and the editor names each with its reason
+
+### Requirement: TheAgentIsTaughtPictureFrames
+
+pi-outpost's posters skill SHALL tell the agent to put a picture file of the project in a poster
+through an empty frame naming it, the figures it writes with `write_structure_figure` among them,
+and never to paste an SVG into the markup.
+
+#### Scenario: TheSkillNamesPictureFrames
+- **WHEN** the agent reads the posters skill
+- **THEN** it learns `data-picture-file`, that the editor fills the frame, and that its own figures go in this way
+
+### Requirement: TheAgentChecksThePostersItWrites
+
+pi-outpost SHALL give the agent a `poster_check` tool that reads a `.poster.html` within the read
+zone, writes nothing, and reports errors (what the editor refuses or does not draw) and warnings
+(what reads badly), each saying what to write instead, or that the poster has no defect. The tool's
+prompt guideline SHALL ask for a check after every write or edit of a poster, whether or not the
+posters skill was read. The tool SHALL be published by the SDK, sandbox and RPC runtimes alike.
+
+#### Scenario: APageThatIsNotAPosterIsNamed
+- **GIVEN** a `.poster.html` without the `poster-format` meta, the `<style data-poster>` stylesheet or the `<div class="poster-page">`
+- **WHEN** the agent checks it
+- **THEN** the report is an error naming the missing marker and pointing to the skeleton
+
+#### Scenario: AFileTheEditorWouldNotDrawIsNamed
+- **GIVEN** a poster whose markup holds `<img src="../docs/architecture.drawio">`, `<img src="../figures/car.svg">` and `<img src="https://example.org/a.png">`, and whose stylesheet holds `url(../figures/car.svg)`
+- **WHEN** the agent checks it
+- **THEN** each is an error: the diagram's says the empty frame to write with `data-drawio` and that path, the SVG's the frame with `data-picture-file`, the web picture's that a poster fetches nothing, and the stylesheet's names the `url()`
+
+#### Scenario: WhatTheEditorRemovesIsNamed
+- **GIVEN** a poster holding an `onclick` attribute, an `<iframe>` and a `<link>`
+- **WHEN** the agent checks it
+- **THEN** each is an error saying the editor removes it
+
+#### Scenario: AFrameNamingSomethingMissingIsNamed
+- **GIVEN** frames naming a diagram that does not exist, a page the diagram does not have, a picture file that does not exist, a file that is not a picture, and a path leaving the read zone
+- **WHEN** the agent checks the poster
+- **THEN** each frame is an error naming its path and why it cannot be filled, and no file outside the read zone is opened
+
+#### Scenario: AWellFormedPosterPasses
+- **GIVEN** a poster written from the skeleton, with an empty frame naming an existing diagram page and one naming an existing SVG figure
+- **WHEN** the agent checks it
+- **THEN** the report says the poster has no defect, gives its format, and lists both frames as filled when the poster is opened
+
+#### Scenario: WarningsDoNotFailThePoster
+- **GIVEN** a poster with text inside an SVG drawing, a drawing over 50 kB, and a `.poster-page` size that is not its format's
+- **WHEN** the agent checks it
+- **THEN** each is a warning saying what to change, and the report says the poster opens
+
+#### Scenario: TheAgentChecksAPosterItWrote
+- **WHEN** the person asks a live model for a poster holding a draw.io diagram and an SVG figure of the project
+- **THEN** the model runs `poster_check` on the poster it wrote, and the poster it hands over opens in the editor with both pictures drawn
+
+### Requirement: FramesFilledOnOpenAreNotThePersonsTouchUps
+
+Frames the editor fills when a poster opens SHALL make Save available, and SHALL NOT by
+themselves make the viewer ask before dropping the poster: dropped, they are filled again on the
+next opening. A touch-up the person makes, before or after the frames are filled, SHALL still be
+asked about. The editor SHALL say the filled pictures are drawn from the project and that saving
+keeps them in the file.
+
+#### Scenario: LeavingAFilledPosterAsksNothing
+- **GIVEN** a poster whose frames name a draw.io diagram and a picture file of the project
+- **WHEN** the person opens it, the frames are filled, and the person leaves the rendered view without touching anything
+- **THEN** Save was available, nothing is asked, and the file on disk is unchanged
+
+#### Scenario: AFilledPosterTouchedUpIsAskedAbout
+- **GIVEN** the same poster, opened and its frames filled
+- **WHEN** the person corrects a text and leaves the rendered view
+- **THEN** the viewer asks before dropping the touch-up
+
+### Requirement: AShownPosterFollowsItsFile
+
+A poster open in the editor SHALL show its file's new version when the file changes on disk,
+unless the editor holds unsaved touch-ups: those SHALL be kept, and once the editor holds none
+(it says it is clean, or they are discarded) it SHALL show the file as it is then. The person's
+own save SHALL NOT reopen the editor.
+
+#### Scenario: AnAgentRewriteIsShown
+- **GIVEN** a poster open in the editor with no unsaved touch-ups
+- **WHEN** the agent rewrites the file
+- **THEN** the editor shows the new version, and a save is checked against its time
+
+#### Scenario: UnsavedTouchUpsAreKeptOverARewrite
+- **GIVEN** a poster open in the editor with unsaved touch-ups
+- **WHEN** the agent rewrites the file
+- **THEN** the editor keeps the touch-ups and is not reopened, and saving them is refused
+- **AND** once the editor holds no touch-ups any more, it shows the agent's version
+
+#### Scenario: OwnSaveDoesNotReopen
+- **WHEN** the person saves and the file is read back as written
+- **THEN** the editor is not reopened
+
+### Requirement: ASaveIsCheckedAgainstTheVersionShown
+
+A save SHALL be checked against the modification time of the version the editor shows, never a
+later one, so that a write landing after that version was read refuses the save instead of being
+overwritten by it.
+
+#### Scenario: ASaveIsCheckedAgainstTheShownVersion
+- **GIVEN** the file was rewritten after the version shown was read, and before the editor opened
+- **WHEN** the person saves
+- **THEN** the save is checked against the shown version's time, and so refused
