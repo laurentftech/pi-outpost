@@ -1,6 +1,6 @@
 # Scenario coverage
 
-Inventory: `rg '^#### Scenario:' openspec/changes/drawio-wire-anchors/` lists eight scenarios, all of them below. The rules run on routes computed by the real routing port (`routeWire`), never on hand-written points. The agreement with the vendored viewer is checked in the running viewer.
+Inventory: `rg '^#### Scenario:' openspec/changes/drawio-wire-anchors/` lists every scenario of the change, all of them below. The rules run on routes computed by the real routing port (`routeWire`), never on hand-written points. The agreement with the vendored viewer is checked in the running viewer.
 
 | Applicable scenario | Status | Tests and assertions |
 |---|---|---|
@@ -20,6 +20,10 @@ Inventory: `rg '^#### Scenario:' openspec/changes/drawio-wire-anchors/` lists ei
 | TheBendsOfWiresAreRemoved | covered | `ui/src/components/DrawioBlock.test.tsx` "TheBendsOfWiresAreRemoved: …" asserts the button is disabled at 0 bends, enabled at 3, carries the double-click hint, and sends `REMOVE_BENDS`. `e2e/drawio-conversation.spec.ts` "TheBendsOfWiresAreRemoved: …" in the running app: the button empties both wires' waypoints, undo puts them back, redo, and the saved file has no `mxPoint` for either wire while keeping the orthogonal style. |
 | ABendIsRemovedByClickAndDelete | covered | `e2e/drawio-conversation.spec.ts` "ABendIsRemovedByClickAndDelete: …" in the running app: it selects a wire, clicks the handle of its first segment, presses Delete twice, saves, and asserts one wire went from two waypoints to one, the other kept two, and both wires remain. The first version deleted the whole wire, because an orthogonal wire's handles sit mid-segment, not on waypoints. A second Delete deleting the wire was found the same way. |
 | AnchorWarningsMatchTheViewer | covered | `e2e/drawio-routes.spec.ts` "AnchorWarningsMatchTheViewer: …" evaluates the rules on the port's routes and on the routes the vendored viewer computes in the page, over the live-run fixtures, the jgraph examples and the 80-file generated corpus, and asserts that the two sets of warnings are identical. Floors of more than 50 of each rule keep the corpus from passing by never triggering them. |
+| LabelsOnLabelsAreWarned | covered | `server/test/drawioAdvice.test.ts` "LabelsOnLabelsAreWarned: …" on Luna's `luna2-services.drawio`: asserts the message names "écriture" of "orders-db-write" on "paiement reçu" of "payments-queue" and gives `set x="…"` for "orders-db-write"; applies the values (`applyLabelMoves`) and asserts that label lies on no other label. |
+| ALabelAcrossAWireIsWarned | covered | `server/test/drawioAdvice.test.ts` "ALabelAcrossAWireIsWarned: …" on `luna2-services.drawio`: asserts "paiement reçu" is reported across "orders-db-read" with an x for "payments-queue", applies it and asserts that label lies across no connector. |
+| AWireAlongAnotherIsWarned | covered | `server/test/drawioAdvice.test.ts` "AWireAlongAnotherIsWarned: …" on `luna2-reseau.drawio`: asserts "switch-mail" and "switch-workstations" are reported "for 71 units", "not labelled as the same data", with waypoints or end values for "switch-workstations"; follows the whole advice (`followAdvice`) and asserts no same-line warning is left. FollowingTheAdviceConverges is strict on the Luna diagrams, so a fix that lands on another wire fails it. |
+| TheSameDataMayShareALine | covered | `server/test/drawioAdvice.test.ts` "TheSameDataMayShareALine: …" asserts no same-line warning for the two "lecture" wires of `luna2-services.drawio`. |
 
 Calibration (task 1.2, `scripts/probes/drawio-anchor-calibration.mts`):
 - The two jgraph examples, drawn by people, report nothing.

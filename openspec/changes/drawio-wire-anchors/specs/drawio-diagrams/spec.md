@@ -141,3 +141,30 @@ wires SHALL keep working.
 - **GIVEN** a selected wire with two waypoints, in touch-up
 - **WHEN** the person clicks the handle of a segment that ends at one of them and presses Delete twice
 - **THEN** that waypoint is gone, the other stays, and the wire is still there
+
+### Requirement: DrawioCheckSeesWiresAndLabelsTogether
+
+`drawio_check` SHALL warn about a label on another label or across another wire, and about two
+wires along one line for over twelve units unless they share a non-empty label. Each warning SHALL
+name a fix tried on the routes that crosses no shape, adds no needless bend and stays clear of
+the other wires. Wires warned about their ends or points are left until those are fixed.
+
+#### Scenario: LabelsOnLabelsAreWarned
+- **GIVEN** two connectors whose labels are drawn on each other
+- **WHEN** the agent checks the diagram
+- **THEN** a warning names both labels and gives the x (and y) to set on one of them; with those values, its label lies on no other label
+
+#### Scenario: ALabelAcrossAWireIsWarned
+- **GIVEN** a connector's label drawn across another connector
+- **WHEN** the agent checks the diagram
+- **THEN** a warning names the label and the connector it crosses, and gives the x (and y) that move it clear along its own connector
+
+#### Scenario: AWireAlongAnotherIsWarned
+- **GIVEN** two connectors with different labels that run down the same line for 71 units
+- **WHEN** the agent checks the diagram
+- **THEN** a warning names both, the length and where the run starts, and gives the waypoints or end values for one of them; following the advice leaves no two wires on one line
+
+#### Scenario: TheSameDataMayShareALine
+- **GIVEN** two connectors with the same label along one line, and a label clear of every wire
+- **WHEN** the agent checks the diagram
+- **THEN** neither is warned

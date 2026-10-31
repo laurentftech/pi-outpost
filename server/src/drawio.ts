@@ -14,8 +14,8 @@
  * compressed page is inflated under a cap, so a small file cannot become a large one.
  */
 import { inflateRawSync } from "node:zlib";
-import { anchorWire, movingEndValues, wireAnchorIssues, type AnchorWire } from "./drawioAnchors.ts";
-import { labelBox, labelPoint, lengthInside, outlineOf, pageGeometry, routeWire, sharedArea, type Box, type Point } from "./drawioRoutes.ts";
+import { anchorWire, movingEndValues, needlessBend, wireAnchorIssues, type AnchorWire } from "./drawioAnchors.ts";
+import { labelBox, labelPoint, lengthInside, outlineOf, pageGeometry, routeWire, sharedArea, type Box, type Point, type WireRoute } from "./drawioRoutes.ts";
 import { scanXml, XmlError } from "@pi-outpost/office/xml.ts";
 
 /** Largest model one compressed page may inflate to. */
@@ -436,6 +436,9 @@ function checkWires(page: DrawioPage, byId: Map<string, DrawioCell>, containers:
   // For the anchor rules, after every wire's own checks: the routed wires, and those already
   // warned for running through their own ends (one message about a wire's ends, not two)
   const routed: AnchorWire[] = [];
+  // Every wire's labels and route, for the checks between wires once all are known
+  const placedLabels: PlacedLabel[] = [];
+  const routes = new Map<string, WireRoute>();
   const ownEnds = new Map<string, Array<"exit" | "entry">>();
   // Reported once every wire is known: the facing points are handed out across the page, so
   // two wires sent to the same side are not both told to use its middle
@@ -445,6 +448,7 @@ function checkWires(page: DrawioPage, byId: Map<string, DrawioCell>, containers:
     const route = routeWire(edge, geometry);
     if (route === undefined) continue;
     routed.push(anchorWire({ ...edge, id: edge.id }, page.cells, route.points, geometry.origins.get(edge.id) ?? undefined));
+    routes.set(edge.id, route);
     const ends = new Set([edge.source, edge.target].filter((id): id is string => id !== undefined));
     const around = new Set([...ancestors(edge.source), ...ancestors(edge.target), ...ancestors(edge.id)]);
     for (const obstacle of obstacles) {
@@ -476,17 +480,20 @@ function checkWires(page: DrawioPage, byId: Map<string, DrawioCell>, containers:
       }
     }
     // Its label, and the labels attached to it as child cells
-    const labels: Array<{ text: string; centre: Point; style: string }> = [];
+    const labels: Array<{ text: string; centre: Point; style: string; holder: string; along: { x: number; y: number }; offset?: Point }> = [];
     if (edge.label !== "" && edge.geometry !== undefined) {
-      labels.push({ text: edge.label, centre: labelPoint(route, edge.geometry.relative ? { x: edge.geometry.x, y: edge.geometry.y } : { x: 0, y: 0 }, edge.geometry.offset), style: edge.style });
+      const along = edge.geometry.relative ? { x: edge.geometry.x, y: edge.geometry.y } : { x: 0, y: 0 };
+      labels.push({ text: edge.label, centre: labelPoint(route, along, edge.geometry.offset), style: edge.style, holder: edge.id, along, ...(edge.geometry.offset ? { offset: edge.geometry.offset } : {}) });
     }
     for (const child of page.cells) {
-      if (child.parent !== edge.id || child.label === "" || child.geometry === undefined || !child.geometry.relative) continue;
-      labels.push({ text: child.label, centre: labelPoint(route, { x: child.geometry.x, y: child.geometry.y }, child.geometry.offset), style: child.style });
+      if (child.parent !== edge.id || child.label === "" || child.geometry === undefined || !child.geometry.relative || child.id === undefined) continue;
+      const along = { x: child.geometry.x, y: child.geometry.y };
+      labels.push({ text: child.label, centre: labelPoint(route, along, child.geometry.offset), style: child.style, holder: child.id, along, ...(child.geometry.offset ? { offset: child.geometry.offset } : {}) });
     }
     for (const label of labels) {
       const fontSize = Number(/(?:^|;)fontSize=([\d.]+)/.exec(label.style)?.[1] ?? 11) || 11;
       const box = labelBox(label.centre, label.text, fontSize);
+      placedLabels.push({ wire: edge.id, holder: label.holder, text: label.text, fontSize, along: label.along, ...(label.offset ? { offset: label.offset } : {}), box, around });
       for (const obstacle of obstacles) {
         if (around.has(obstacle.id)) continue;
         if (sharedArea(box, obstacle.box) > LABEL_SHARE * box.width * box.height) {
@@ -529,7 +536,224 @@ function checkWires(page: DrawioPage, byId: Map<string, DrawioCell>, containers:
     const moved = { ...cell, style, geometry: { ...cell.geometry, points: waypoints.map((point) => ({ x: point.x - origin.x, y: point.y - origin.y })) } };
     return routeWire(moved, geometry)?.points;
   };
-  for (const issue of wireAnchorIssues(routed, boxes, named, ownEnds, reroute)) report("warning", [...issue.wires, ...issue.shapes], issue.message, step[issue.rule]);
+  // Wires already told to move where they meet their shapes: what they share with others now
+  // — a run, a label's place — moves with them, and is checked once they have moved
+  const pending = new Set<string>(ownEnds.keys());
+  for (const issue of wireAnchorIssues(routed, boxes, named, ownEnds, reroute)) {
+    report("warning", [...issue.wires, ...issue.shapes], issue.message, step[issue.rule]);
+    for (const wire of issue.wires) pending.add(wire);
+  }
+  checkLabelsAndRuns(placedLabels, routes, routed, obstacles, named, report, reroute, crosses, pending);
+}
+
+/** A wire's label as drawn: what it says, where along the wire, and the box it takes. */
+interface PlacedLabel {
+  wire: string;
+  /** The cell whose mxGeometry places it: the wire itself, or its label cell. */
+  holder: string;
+  text: string;
+  fontSize: number;
+  along: { x: number; y: number };
+  offset?: Point;
+  box: Box;
+  /** The shapes the wire belongs to or ends on, which its label may touch. */
+  around: Set<string>;
+}
+
+/** Wires of different data running along one line for at least this long are one line to a reader. */
+export const SHARED_RUN = 12;
+/**
+ * Parallel lines closer than this read as one: Luna's wires out of one box ran 3 to 5 units
+ * apart and looked like a single thicker line.
+ */
+export const SAME_LINE = 8;
+/** Positions offered along a wire for a label that must move: from the middle out. */
+const LABEL_POSITIONS = [0, -0.3, 0.3, -0.6, 0.6, -0.8, 0.8];
+/** Then beside the wire: draw.io's y for an edge label is its distance across the wire. */
+const LABEL_BESIDE = [-14, 14, -28, 28];
+/** How far a waypoint is moved off a shared line, tried in turn. */
+const RUN_SHIFTS = [10, -10, 20, -20, 30, -30, 40, -40];
+
+const shortText = (text: string) => (text.length > 40 ? `${text.slice(0, 39)}…` : text);
+
+/**
+ * Between wires (drawio-wire-anchors): labels on one another, a label on another wire, and wires
+ * of different data drawn along the same line. Each fix is tried before it is given: a label is
+ * placed where it covers no label, shape or other wire; a wire is moved off the line only where
+ * the moved route shares it no more, crosses no shape and leaves no needless bend.
+ */
+function checkLabelsAndRuns(
+  labels: PlacedLabel[],
+  routes: Map<string, WireRoute>,
+  wires: AnchorWire[],
+  obstacles: Array<{ id: string; box: Box; outline: ReturnType<typeof outlineOf> }>,
+  named: (id: string) => string,
+  report: Report,
+  reroute: (wire: AnchorWire, waypoints: Point[], values?: Record<string, number>) => Point[] | undefined,
+  crosses: (points: Point[], box: Box, outline: ReturnType<typeof outlineOf>) => boolean,
+  pending: ReadonlySet<string>,
+): void {
+  const overlaps = (a: Box, b: Box) => sharedArea(a, b) > LABEL_SHARE * Math.min(a.width * a.height, b.width * b.height);
+  const onWire = (box: Box, route: WireRoute) => route.points.reduce((total, point, index) => (index === 0 ? 0 : total + lengthInside(route.points[index - 1]!, point, box, "box", 0)), 0);
+  const clearAt = (label: PlacedLabel, box: Box) =>
+    labels.every((other) => other === label || !overlaps(box, other.box)) &&
+    obstacles.every((obstacle) => label.around.has(obstacle.id) || sharedArea(box, obstacle.box) <= LABEL_SHARE * box.width * box.height) &&
+    [...routes].every(([id, route]) => id === label.wire || onWire(box, route) < 4);
+  /**
+   * A place for the label where it is clear of everything: along its wire first, the nearest to
+   * where it is, then beside it (y, across the wire).
+   */
+  const freePosition = (label: PlacedLabel) => {
+    const route = routes.get(label.wire);
+    if (route === undefined) return undefined;
+    const xs = [label.along.x, ...LABEL_POSITIONS.filter((x) => Math.abs(x - label.along.x) > 0.05).sort((a, b) => Math.abs(a - label.along.x) - Math.abs(b - label.along.x))];
+    for (const y of [label.along.y, ...LABEL_BESIDE.map((beside) => label.along.y + beside)]) {
+      for (const x of xs) {
+        if (x === label.along.x && y === label.along.y) continue;
+        if (clearAt(label, labelBox(labelPoint(route, { x, y }, label.offset), label.text, label.fontSize))) return { x, y };
+      }
+    }
+    return undefined;
+  };
+  const moveLabel = (label: PlacedLabel) => {
+    const at = freePosition(label);
+    if (at === undefined) return "move the shapes so the connectors part, or shorten the label";
+    const y = at.y === label.along.y ? "" : ` y="${at.y}"`;
+    return `move it ${y === "" ? "along" : "beside"} its connector: set x="${at.x}"${y} in the mxGeometry of ${named(label.holder)}`;
+  };
+
+  // Labels on labels: the second one moves
+  const moved = new Set<PlacedLabel>();
+  for (let i = 0; i < labels.length; i++) {
+    for (let j = i + 1; j < labels.length; j++) {
+      const a = labels[i]!;
+      const b = labels[j]!;
+      if (a.wire === b.wire || moved.has(a) || moved.has(b) || pending.has(a.wire) || pending.has(b.wire) || !overlaps(a.box, b.box)) continue;
+      moved.add(b);
+      report("warning", [b.wire, a.wire], `the label "${shortText(b.text)}" of connector ${named(b.wire)} lies on the label "${shortText(a.text)}" of connector ${named(a.wire)}: ${moveLabel(b)}`, FIX_ORDER.labels);
+    }
+  }
+  // A label across another wire
+  for (const label of labels) {
+    if (moved.has(label) || pending.has(label.wire)) continue;
+    for (const [id, route] of routes) {
+      if (id === label.wire || pending.has(id) || onWire(label.box, route) < 4) continue;
+      moved.add(label);
+      report("warning", [label.wire, id], `the label "${shortText(label.text)}" of connector ${named(label.wire)} lies across connector ${named(id)}: ${moveLabel(label)}`, FIX_ORDER.labels);
+      break;
+    }
+  }
+
+  // Wires of different data along one line
+  const normalised = (text: string) => text.replace(/\s+/g, " ").trim().toLowerCase();
+  const runOf = (a: Point[], b: Point[]) => {
+    let total = 0;
+    let from: Point | undefined;
+    let to: Point | undefined;
+    for (let i = 1; i < a.length; i++) {
+      for (let j = 1; j < b.length; j++) {
+        const [p, q, r, t] = [a[i - 1]!, a[i]!, b[j - 1]!, b[j]!];
+        const vertical = Math.abs(p.x - q.x) < 0.5 && Math.abs(r.x - t.x) < 0.5 && Math.abs(p.x - r.x) < SAME_LINE;
+        const horizontal = Math.abs(p.y - q.y) < 0.5 && Math.abs(r.y - t.y) < 0.5 && Math.abs(p.y - r.y) < SAME_LINE;
+        if (!vertical && !horizontal) continue;
+        const [lo, hi] = vertical
+          ? [Math.max(Math.min(p.y, q.y), Math.min(r.y, t.y)), Math.min(Math.max(p.y, q.y), Math.max(r.y, t.y))]
+          : [Math.max(Math.min(p.x, q.x), Math.min(r.x, t.x)), Math.min(Math.max(p.x, q.x), Math.max(r.x, t.x))];
+        if (hi - lo <= 0) continue;
+        total += hi - lo;
+        if (from === undefined) {
+          from = vertical ? { x: p.x, y: lo } : { x: lo, y: p.y };
+          to = vertical ? { x: p.x, y: hi } : { x: hi, y: p.y };
+        }
+      }
+    }
+    return { total, from, to };
+  };
+  const reported = new Set<string>();
+  // Routes the fixes given in this pass will make: a later fix must part from them too, or two
+  // wires moved off one line land together on the next (both sent to x 900, round after round)
+  const proposed = new Map<string, Point[]>();
+  const routeOf = (wire: AnchorWire) => proposed.get(wire.id) ?? wire.points;
+  for (let i = 0; i < wires.length; i++) {
+    for (let j = i + 1; j < wires.length; j++) {
+      const a = wires[i]!;
+      const b = wires[j]!;
+      const same = normalised(a.label) !== "" && normalised(a.label) === normalised(b.label);
+      if (same || reported.has(b.id) || pending.has(a.id) || pending.has(b.id)) continue;
+      const run = runOf(a.points, b.points);
+      if (run.total < SHARED_RUN || run.from === undefined || run.to === undefined) continue;
+      reported.add(b.id);
+      const vertical = Math.abs(run.from.x - run.to.x) < 0.5;
+      const middle = { x: (run.from.x + run.to.x) / 2, y: (run.from.y + run.to.y) / 2 };
+      const across = (point: Point, by: number) => (vertical ? { x: point.x + by, y: point.y } : { x: point.x, y: point.y + by });
+      const at = (point: Point) => `(${Math.round(point.x)}, ${Math.round(point.y)})`;
+      // Either wire may move, the second first. A moved route must part from the other, leave
+      // no needless bend and cross no shape — its own ends included: a waypoint that takes a
+      // wire back through its source is no fix
+      // A fix for one wire, tried before it is given: the moved route must leave no needless
+      // bend, cross no shape — its own ends included — and run clear of every wire of other
+      // data, as they are or as the fixes already given in this pass move them
+      const fixFor = (wire: AnchorWire): { wire: AnchorWire; fix: string } | undefined => {
+        let accepted: Point[] | undefined;
+        const works = (waypoints: Point[], values?: Record<string, number>) => {
+          const points = reroute(wire, waypoints, values);
+          if (points === undefined || needlessBend(points, waypoints) !== undefined || obstacles.some((obstacle) => crosses(points, obstacle.box, obstacle.outline))) return false;
+          const sameData = (w: AnchorWire) => normalised(w.label) !== "" && normalised(w.label) === normalised(wire.label);
+          if (!wires.every((w) => w === wire || sameData(w) || runOf(routeOf(w), points).total < SHARED_RUN)) return false;
+          accepted = points;
+          return true;
+        };
+        const fix = runFix(wire, works);
+        if (fix === undefined || accepted === undefined) return undefined;
+        proposed.set(wire.id, accepted);
+        return { wire, fix };
+      };
+      const runFix = (wire: AnchorWire, works: (waypoints: Point[], values?: Record<string, number>) => boolean): string | undefined => {
+        for (const shift of RUN_SHIFTS) {
+          // One waypoint off the line, then all of them together
+          for (const waypoint of wire.waypoints) {
+            const to = across(waypoint, shift);
+            if (works(wire.waypoints.map((w) => (w === waypoint ? to : w)))) return `move its waypoint at ${at(waypoint)} to ${at(to)}`;
+          }
+          if (wire.waypoints.length > 1) {
+            const moved = wire.waypoints.map((w) => across(w, shift));
+            if (works(moved)) return `move its waypoints to ${moved.map(at).join(", ")}`;
+          }
+          if (wire.waypoints.length === 0) {
+            // The corners of its own route, moved off the line together: the turn it already
+            // makes, a few units over (two VLANs climbing the same vertical)
+            const corners = wire.points.slice(1, -1).map((point) => across(point, shift));
+            if (corners.length > 0 && works(corners)) {
+              return `add waypoints at ${corners.map(at).join(", ")}: <Array as="points">${corners.map((c) => `<mxPoint x="${Math.round(c.x)}" y="${Math.round(c.y)}"/>`).join("")}</Array> in its geometry`;
+            }
+            const added = across(middle, shift);
+            if (works([added])) return `add a waypoint at ${at(added)}: <Array as="points"><mxPoint x="${Math.round(added.x)}" y="${Math.round(added.y)}"/></Array> in its geometry`;
+          }
+        }
+        // Then another point on the sides of its ends it already uses
+        for (const prefix of ["exit", "entry"] as const) {
+          const fixed = prefix === "exit" ? wire.exit : wire.entry;
+          if (fixed === undefined) continue;
+          const side = fixed.x === 0 || fixed.x === 1 ? { axis: "Y", along: fixed.y, keep: `${prefix}X=${fixed.x}` } : { axis: "X", along: fixed.x, keep: `${prefix}Y=${fixed.y}` };
+          for (const along of [0.25, 0.75, 0.125, 0.375, 0.625, 0.875, 0.5]) {
+            if (Math.abs(along - side.along) < 0.06) continue;
+            if (works(wire.waypoints, { [`${prefix}${side.axis}`]: along })) return `move its ${prefix} to ${prefix}${side.axis}=${along} (keeping ${side.keep})`;
+          }
+        }
+        return undefined;
+      };
+      const found = fixFor(b) ?? fixFor(a);
+      const fix = found?.fix;
+      const mover = found?.wire ?? b;
+      const data = normalised(a.label) === "" || normalised(b.label) === "" ? "they are not labelled as the same data" : "they carry different data";
+      report(
+        "warning",
+        [b.id, a.id],
+        `connectors ${named(a.id)} and ${named(b.id)} run along the same line for ${Math.round(run.total)} units from (${Math.round(run.from.x)}, ${Math.round(run.from.y)}), and ${data}: a reader cannot tell them apart. Fix ${named(mover.id)}: ${fix ?? "give it another exit or entry point (exitX/exitY, entryX/entryY), or move a shape so their routes part"}`,
+        FIX_ORDER.crossings,
+      );
+    }
+  }
 }
 
 /** Read and check a draw.io file. Throws `DrawioReadError` when it cannot be read at all. */

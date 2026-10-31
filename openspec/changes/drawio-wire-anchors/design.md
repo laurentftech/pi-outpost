@@ -128,6 +128,20 @@ at the segment's corners. After a bend goes, Delete waits for the next click; ot
 press would delete the wire still selected. draw.io's own gestures, such as a double click on a
 bend, stay as they are.
 
+### Labels and wires against each other
+Luna's "services" diagram passed every rule above and was still hard to read: a label on
+another label, a label across another wire, and wires of different data sharing a line. A label
+is boxed from its text at the position draw.io gives it; it is warned when it meets another
+label or crosses another wire, with a place along or beside its own wire (`x`, then `y`) that
+clears both. Two wires of different data along one line for over 12 units (8 units apart at most)
+are warned; the same non-empty label may share a line, as it may share a point. The fix for a
+wire is tried on the route in order — shift one waypoint, shift all, add waypoints at the corners
+shifted, add one waypoint, move an end — and kept only if it crosses no shape, makes no needless
+bend and stays clear of every other-data wire, including the routes other fixes of the same pass
+propose. A wire still warned about its ends or points is skipped until those are fixed.
+- *Why:* without the pass-wide routes, two fixes landed on the same new line and the advice
+  looped; without the order, a label was placed on a wire about to move.
+
 ### The report lists fixes in order
 Each warning gets a fixing step: shapes, ends, shared points, detours, crossings, labels.
 `checkPage` sorts its page's issues by step, errors first, and keeps their order within a step.

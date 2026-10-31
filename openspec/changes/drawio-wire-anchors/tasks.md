@@ -29,6 +29,7 @@
 - [x] 5.5 Compare paths with links resolved in the write registry; verify that `server/test/drawioCheckWaitsWire.test.mjs`, now on the unresolved temporary path, fails without it and passes with it
 - [x] 5.6 Warn about needless bends left by waypoints, with a fix tried on the route before it is given; verify with the "needless bends" tests in `server/test/drawioWires.test.ts` and with FollowingTheAdviceConverges on the four Luna diagrams (`server/test/fixtures/drawio-advice/luna-*.drawio`)
 - [x] 5.7 In touch-up, "remove bends" for the selected wires or the page, and click on a bend's handle then Delete for one; verify with "TheBendsOfWiresAreRemoved" in `ui/src/components/DrawioBlock.test.tsx`, and in the running app with "TheBendsOfWiresAreRemoved" and "ABendIsRemovedByClickAndDelete" in `e2e/drawio-conversation.spec.ts` (the whole file green)
+- [x] 5.8 Warn about labels on labels, labels across wires and different-data wires along the same line (Luna's "services" diagram), with fixes tried on the routes and kept clear of each other within a pass; verify with LabelsOnLabelsAreWarned, ALabelAcrossAWireIsWarned, AWireAlongAnotherIsWarned and TheSameDataMayShareALine in `server/test/drawioAdvice.test.ts`, and FollowingTheAdviceConverges, now strict on the Luna diagrams
 
 ## Workflow follow-up
 

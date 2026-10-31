@@ -271,9 +271,10 @@ one needs, the command that proves it works, and the caution that goes with it.
   files with its file tools, guided by the bundled `drawio` skill, checks them with
   `drawio_check` — dangling connectors, duplicate ids, missing parents, unusable geometry,
   overlapping labelled shapes, connectors running through boxes or their own ends, connector
-  labels on boxes, connectors carrying different data on one point of a shape, ends facing away
-  from each other, detours, needless bends left by waypoints, with the wires routed as draw.io's viewer routes them — since it cannot see
-  the drawing, and shows the result in its
+  labels on boxes, on other labels or across connectors, connectors carrying different data on
+  one point of a shape or along the same line, ends facing away from each other, detours,
+  needless bends left by waypoints, with the wires routed as draw.io's viewer routes them —
+  since it cannot see the drawing, and shows the result in its
   reply. In a conversation exported to HTML or Word, a diagram is a link to its file
 - Git: uncommitted-change badges in the tree, per-file diffs, a change gutter in the editor
   (what changed since HEAD beside each line, as you type; a click shows what was there and,

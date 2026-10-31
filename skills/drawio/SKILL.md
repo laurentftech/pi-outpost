@@ -136,6 +136,8 @@ to the container's top-left corner**. Keep it inside the container: below the ti
 - Leave a box on the side facing where the connector goes, and enter on the side facing where it
   comes from. A connector that leaves on the far side makes a detour, even when it crosses
   nothing.
+- Keep connectors that carry different data off each other's lines, and each label off the other
+  labels and connectors: a reader cannot tell which line or label is which.
 - More than about 25 shapes on a page is hard to read: split it into pages.
 
 ## Changing an existing diagram
