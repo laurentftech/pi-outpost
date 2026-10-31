@@ -454,6 +454,30 @@ test("ABendIsRemovedByClickAndDelete: in touch-up, a bend clicked then Delete re
   expect(await savedCell("a-c")).toContain('edge="1"');
 });
 
+test("a bend of a wire inside a container is removed by click and Delete too: its waypoints are relative to the container", async ({ page }) => {
+  // The first page's cells moved into a lane away from the page's origin
+  const bent = bentDiagram();
+  const end = bent.indexOf("</diagram>");
+  const lane = '        <mxCell id="lane" value="" style="rounded=0;container=1;fillColor=none;strokeColor=#cccccc;html=1;" vertex="1" parent="1"><mxGeometry x="200" y="120" width="520" height="400" as="geometry"/></mxCell>\n';
+  const first = bent.slice(0, end).replace(/parent="1"/g, 'parent="lane"').replace('        <mxCell id="a"', `${lane}        <mxCell id="a"`);
+  await writeFile(FILE(), first + bent.slice(end));
+  const block = await openReply(page);
+  await block.getByRole("button", { name: "Show diagram at full size" }).click();
+  const overlay = page.getByTestId("drawio-enlarged");
+  const frame = overlay.getByTitle(`${SERVICES_DIAGRAM_PATH}, full size`);
+  await expect.poll(async () => labels(await frameOf(frame))).toContain("Charlie");
+  await touchUp(overlay, frame);
+  const wires = await wireMidpoints(frame);
+  await page.mouse.click(wires[0]!.x, wires[0]!.y);
+  const handle = await firstSegmentHandleOnScreen(frame, 0);
+  await page.mouse.click(handle.x, handle.y);
+  await page.keyboard.press("Delete");
+  await expect(overlay.getByTestId("drawio-touchup-status")).toHaveText("● unsaved");
+  await overlay.getByRole("button", { name: "✓ save" }).click();
+  await expect.poll(async () => [await savedCell("a-b"), await savedCell("a-c")].map((cell) => (cell.match(/<mxPoint /g) ?? []).length).sort()).toEqual([1, 2]);
+  expect(await savedCell("a-b")).toContain('parent="lane"');
+});
+
 // openlore: scenario=EveryWireIsRestyled spec=drawio-diagrams
 test("EveryWireIsRestyled: with nothing selected, every wire of the page changes style, one undo takes it back, and the save writes it", async ({ page }) => {
   await writeFile(FILE(), wiredDiagram("edgeStyle=none;"));

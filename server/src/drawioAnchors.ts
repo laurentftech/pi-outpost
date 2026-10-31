@@ -213,10 +213,43 @@ export function placeMovingEnds(wires: AnchorWire[], boxes: ReadonlyMap<string, 
         .map((at) => at.along);
       const order = movers.length === 1 ? [0.5, ...SPREAD.filter((at) => at !== 0.5)] : movers.length === 2 ? [0.25, 0.75, ...SPREAD.filter((at) => at !== 0.25 && at !== 0.75)] : SPREAD;
       const free = order.filter((position) => taken.every((at) => Math.abs(at - position) > SAME_POSITION));
-      movers.forEach((end, index) => placements.set(endKey(end.wire.id, end.role), sideValues(side, free[index] ?? order[index % order.length]!)));
+      movers.forEach((end, index) => {
+        const position = free[index];
+        if (position !== undefined) placements.set(endKey(end.wire.id, end.role), sideValues(side, position));
+        else placements.set(endKey(end.wire.id, end.role), elsewhereOn(box, list, placements, side) ?? sideValues(side, order[index % order.length]!));
+      });
     }
   }
   return placements;
+}
+
+/** Positions along `side` the ends of one shape hold or are sent to. */
+function usedPositions(box: Box, list: End[], placements: ReadonlyMap<string, string>, side: Side, moving?: ReadonlySet<string>): number[] {
+  return list.flatMap((end) => {
+    const key = endKey(end.wire.id, end.role);
+    const placed = placements.get(key);
+    if (placed !== undefined) {
+      const [x, y] = placed.split(";").map((part) => Number(part.slice(2)));
+      const at = sideOf(box, { x: box.x + box.width * x!, y: box.y + box.height * y! });
+      return at.side === side ? [at.along] : [];
+    }
+    if (moving?.has(key)) return [];
+    const at = sideOf(box, end.point);
+    return at.side === side ? [at.along] : [];
+  });
+}
+
+/**
+ * A free point on another side of a shape whose side `full` has none left: wrapping round to
+ * a position already used there would give the advice a shared point to fix all over again.
+ */
+function elsewhereOn(box: Box, list: End[], placements: ReadonlyMap<string, string>, full: Side): string | undefined {
+  for (const side of (["right", "bottom", "left", "top"] as Side[]).filter((candidate) => candidate !== full)) {
+    const used = usedPositions(box, list, placements, side);
+    const position = SPREAD.find((at) => used.every((other) => Math.abs(other - at) > SAME_POSITION));
+    if (position !== undefined) return sideValues(side, position);
+  }
+  return undefined;
 }
 
 /** The ends that must move — through their own shape, or facing away — and where each goes. */
@@ -341,10 +374,8 @@ export function wireAnchorIssues(
       // to apply, and it was seen going round on exactly that.
       const usedOn = (other: Side) => [
         ...list.map((end) => sideOf(box, end.point)).filter((at) => at.side === other).map((at) => at.along),
-        ...[...placements.values()].map((placedValue) => {
-          const [x, y] = placedValue.split(";").map((part) => Number(part.slice(2)));
-          return sideOf(box, { x: box.x + box.width * x!, y: box.y + box.height * y! });
-        }).filter((at) => at.side === other).map((at) => at.along),
+        // Only this shape's ends: a placement is a fraction of its own shape's box
+        ...list.flatMap((end) => (placements.has(endKey(end.wire.id, end.role)) ? usedPositions(box, [end], placements, other) : [])),
         ...(handedOut.get(`${shape}:${other}`) ?? []),
       ];
       const elsewhere = movers.slice(free.length).map((end) => {

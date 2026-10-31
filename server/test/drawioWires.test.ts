@@ -6,7 +6,7 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import { checkDrawio, describeDrawioReport } from "../src/drawio.ts";
-import { anchorWire, wireAnchorIssues } from "../src/drawioAnchors.ts";
+import { anchorWire, placeMovingEnds, wireAnchorIssues, type AnchorWire } from "../src/drawioAnchors.ts";
 import { pageGeometry, routeWire } from "../src/drawioRoutes.ts";
 import { readDrawio } from "../src/drawio.ts";
 
@@ -332,5 +332,46 @@ describe("where wires meet their shapes (drawio-wire-anchors)", () => {
         wire("w3", "b", "c", "html=1;", "", "stock"),
     ));
     assert.deepEqual(issues, []);
+  });
+});
+
+describe("points handed out on a crowded shape", () => {
+  const at = (x: number, y: number, width: number, height: number) => ({ x, y, width, height });
+  const line = (id: string, source: string, target: string, from: { x: number; y: number }, to: { x: number; y: number }, label = id, exit?: { x: number; y: number }): AnchorWire => ({
+    id,
+    label,
+    source,
+    target,
+    exit,
+    entry: undefined,
+    points: [from, to],
+    waypoints: [],
+  });
+
+  test("more ends than a side has points: the rest go to another side, never back onto a point in use", () => {
+    // Nine wires leave a on its left, facing away from t on the right: all nine move to the right side
+    const boxes = new Map([["a", at(0, 0, 100, 100)], ["t", at(400, 0, 100, 900)]]);
+    const wires = Array.from({ length: 9 }, (_, index) => line(`w${index}`, "a", "t", { x: 0, y: 50 }, { x: 400, y: 50 + index * 100 }, `w${index}`, { x: 0, y: 0.5 }));
+    const placements = placeMovingEnds(wires, boxes, new Set(wires.map((wire) => `${wire.id}:exit`)));
+    const values = wires.map((wire) => placements.get(`${wire.id}:exit`));
+    assert.equal(new Set(values).size, 9, values.join(" | "));
+    assert.equal(values.filter((value) => value?.startsWith("X=1;")).length, 7, values.join(" | "));
+  });
+
+  test("a point handed to another shape's end does not count as taken on this one", () => {
+    // a's right side holds a wire at each of the seven positions, and an eighth shares the middle:
+    // it goes to a's bottom, where nothing is. b's two ends move to b's bottom, 0.25 and 0.75 —
+    // fractions of b, which say nothing about a's bottom
+    const boxes = new Map([["a", at(0, 0, 100, 100)], ["t", at(400, 0, 100, 900)], ["b", at(0, 300, 100, 100)], ["c", at(0, 600, 100, 100)]]);
+    const along = [12.5, 25, 37.5, 50, 62.5, 75, 87.5];
+    const wires = [
+      ...along.map((y, index) => line(`r${index}`, "a", "t", { x: 100, y }, { x: 400, y: 50 + index * 100 })),
+      line("r7", "a", "t", { x: 100, y: 50 }, { x: 400, y: 800 }),
+      line("b1", "b", "c", { x: 50, y: 300 }, { x: 25, y: 600 }, "b1", { x: 0.5, y: 0 }),
+      line("b2", "b", "c", { x: 50, y: 300 }, { x: 75, y: 600 }, "b2", { x: 0.5, y: 0 }),
+    ];
+    const shared = wireAnchorIssues(wires, boxes).find((issue) => issue.rule === "shared-point" && issue.shapes[0] === "a");
+    assert.ok(shared, "the shared middle of a's right side is warned");
+    assert.match(shared.message, /exitX=0\.25;exitY=1 for "r7", on its bottom/);
   });
 });

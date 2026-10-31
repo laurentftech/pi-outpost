@@ -283,7 +283,10 @@ div.mxRubberband { position: absolute; overflow: hidden; border: 1px solid #29b6
     if (!handler || !handler.bends || geometry === null || !geometry.points || geometry.points.length === 0) return;
     var view = graph.view;
     var scale = view.scale;
-    var shown = function (point) { return { x: (point.x + view.translate.x) * scale, y: (point.y + view.translate.y) * scale }; };
+    // A wire inside a group or a lane has its waypoints relative to that parent
+    var parentState = view.getState(graph.getModel().getParent(cell));
+    var origin = parentState && parentState.origin ? parentState.origin : { x: 0, y: 0 };
+    var shown = function (point) { return { x: (point.x + origin.x + view.translate.x) * scale, y: (point.y + origin.y + view.translate.y) * scale }; };
     var near = function (a, b) { return Math.abs(a.x - b.x) <= 2 && Math.abs(a.y - b.y) <= 2; };
     var bounds = handler.bends[index].bounds;
     var handle = { x: bounds.getCenterX(), y: bounds.getCenterY() };
