@@ -239,3 +239,99 @@ describe("arranging in draw.io's touch-up", () => {
     expect(screen.queryByRole("button", { name: "✎ arrange in draw.io" })).toBeNull();
   });
 });
+
+describe("the transitions around arranging (task 7.2)", () => {
+  const graphWith = (nodes: Array<{ id: string; label: string; kind?: string }>, edges: Array<{ from: string; to: string; kind: string }>, viewpoints?: unknown[]) => {
+    const outcome = parseStructuredExchange(
+      { schema: viewpoints === undefined ? "urn:structured-exchange:1" : "urn:structured-exchange:2", kind: "graph", ...(viewpoints === undefined ? {} : { viewpoints }), data: { nodes, edges } },
+      checkStructuredExchangeSchemaInBrowser,
+    );
+    if (!outcome.valid) throw new Error(JSON.stringify(outcome.issues));
+    return outcome.envelope as ValidatedStructuredExchange;
+  };
+  const view = (io: FileIo, shown: ValidatedStructuredExchange) => (
+    <DrawioFilesContext.Provider value={{ serverUrl: "", fileIo: io }}>
+      <StructuredExchangeDocument envelope={shown} source={SOURCE} file={{ path: "models/car.json", writable: true }} />
+    </DrawioFilesContext.Provider>
+  );
+  async function frameAnswering() {
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+    const element = screen.getByTitle("Arrange in draw.io") as HTMLIFrameElement;
+    const own = element.contentWindow!;
+    const sent = vi.spyOn(own, "postMessage");
+    const answer = (data: Record<string, unknown>) => act(() => {
+      window.dispatchEvent(new MessageEvent("message", { data, source: own }));
+    });
+    answer({ type: DRAWIO_MESSAGE.READY });
+    answer({ type: DRAWIO_MESSAGE.RENDERED, pages: 1 });
+    const drawn = () => sent.mock.calls.map(([message]) => message as { xml?: string }).filter((message) => message.xml !== undefined).at(-1)?.xml ?? "";
+    return { sent, answer, drawn };
+  }
+
+  it("done pressed while a keep is in flight leaves once it has landed, without asking", async () => {
+    const confirm = vi.spyOn(window, "confirm");
+    let release!: () => void;
+    const { io, kept } = fakeFileIo();
+    io.keepArrangement = (documentPath, content) => new Promise((resolve) => {
+      release = () => { kept.push({ documentPath, content }); resolve("models/car.arrangement.json"); };
+    });
+    mount(io);
+    fireEvent.click(screen.getByRole("button", { name: "✎ arrange in draw.io" }));
+    const { answer, drawn } = await frameAnswering();
+    answer({ type: DRAWIO_MESSAGE.CHANGED, dirty: true, canUndo: true, canRedo: false });
+    fireEvent.click(screen.getByRole("button", { name: "✓ keep" }));
+    answer({ type: DRAWIO_MESSAGE.SAVED, page: 0, xml: /<mxGraphModel>[\s\S]*<\/mxGraphModel>/.exec(drawn())![0] });
+    fireEvent.click(screen.getByRole("button", { name: "done" }));
+    expect(confirm).not.toHaveBeenCalled();
+    expect(screen.getByTestId("structured-touchup")).toBeTruthy();
+    // The keep lands: kept, and only then is the touch-up left
+    await waitFor(() => expect(release).toBeDefined());
+    await act(async () => release());
+    await waitFor(() => expect(screen.queryByTestId("structured-touchup")).toBeNull());
+    expect(kept).toHaveLength(1);
+  });
+
+  it("a touch-up opened on the whole document is kept for the whole document, and the viewpoint cannot be switched under it", async () => {
+    const shown = graphWith(
+      [{ id: "battery", label: "Battery", kind: "source" }, { id: "inverter", label: "Inverter", kind: "converter" }, { id: "ecu", label: "ECU", kind: "controller" }],
+      [{ from: "battery", to: "inverter", kind: "power" }, { from: "ecu", to: "inverter", kind: "signal" }],
+      [{ id: "power", label: "Power", concern: "Energy", elementKinds: ["source", "converter"], relationshipKinds: ["power"] }],
+    );
+    const { io, kept } = fakeFileIo();
+    render(view(io, shown));
+    fireEvent.click(screen.getByRole("button", { name: "✎ arrange in draw.io" }));
+    expect(screen.getByTestId("viewpoint-select")).toBeDisabled();
+    expect(screen.getByTestId("diagram-orientation")).toBeDisabled();
+    const { answer, drawn } = await frameAnswering();
+    answer({ type: DRAWIO_MESSAGE.CHANGED, dirty: true, canUndo: true, canRedo: false });
+    fireEvent.click(screen.getByRole("button", { name: "✓ keep" }));
+    answer({ type: DRAWIO_MESSAGE.SAVED, page: 0, xml: /<mxGraphModel>[\s\S]*<\/mxGraphModel>/.exec(drawn())![0] });
+    await waitFor(() => expect(kept).toHaveLength(1));
+    expect(Object.keys((readArrangement(kept[0]!.content) as { arrangement: Arrangement }).arrangement.views)).toEqual([""]);
+  });
+
+  it("the document changed on disk mid touch-up: drawn afresh when nothing is pending, said and filtered when something is", async () => {
+    const { io, kept } = fakeFileIo();
+    const first = render(view(io, envelope));
+    fireEvent.click(screen.getByRole("button", { name: "✎ arrange in draw.io" }));
+    const { answer, drawn } = await frameAnswering();
+    // Nothing pending: the charger the document now holds is in the touch-up
+    const charged = graphWith([...DOCUMENT.data.nodes, { id: "charger", label: "Charger" }], [...DOCUMENT.data.edges, { from: "charger", to: "battery", kind: "power" }]);
+    first.rerender(view(io, charged));
+    const again = await frameAnswering();
+    expect(again.drawn()).toContain('id="n:charger"');
+
+    // Touch-ups pending, then the motor removed on disk: said, and the motor's place is not kept
+    again.answer({ type: DRAWIO_MESSAGE.CHANGED, dirty: true, canUndo: true, canRedo: false });
+    const shrunk = graphWith(DOCUMENT.data.nodes.filter((node) => node.id !== "motor").concat({ id: "charger", label: "Charger" }), [DOCUMENT.data.edges[0]!, { from: "charger", to: "battery", kind: "power" }]);
+    first.rerender(view(io, shrunk));
+    expect(await screen.findByTestId("structured-touchup-changed")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "✓ keep" }));
+    again.answer({ type: DRAWIO_MESSAGE.SAVED, page: 0, xml: /<mxGraphModel>[\s\S]*<\/mxGraphModel>/.exec(again.drawn())![0] });
+    await waitFor(() => expect(kept).toHaveLength(1));
+    const elements = (readArrangement(kept[0]!.content) as { arrangement: Arrangement }).arrangement.views[""]!.elements;
+    expect(Object.keys(elements).sort()).toEqual(["id:battery", "id:charger", "id:inverter"]);
+    void answer;
+    void drawn;
+  });
+});

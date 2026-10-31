@@ -1313,6 +1313,8 @@ export function StructuredExchangeDocument({ envelope, source, rawOutput, dispat
   const [arrangement, setArrangement] = useState<Arrangement>(emptyArrangement);
   /** Arranging the graph in draw.io's touch-up, in place of the drawing. */
   const [arranging, setArranging] = useState(false);
+  /** The view the touch-up was opened on, which its keeps go to. */
+  const arrangingKey = useRef("");
   /** Whether the last move was kept, when that is worth saying. */
   const [arrangementNote, setArrangementNote] = useState<string | undefined>(undefined);
   const arrangementPath = file === undefined || envelope.kind !== "graph" ? undefined : arrangementPathFor(file.path);
@@ -1378,10 +1380,11 @@ export function StructuredExchangeDocument({ envelope, source, rawOutput, dispat
   const orientation = chosenOrientation ?? storedView?.orientation ?? chooses;
   // An arrangement is made for one orientation: turned the other way, the graph is laid out afresh
   const appliedView = storedView !== undefined && (storedView.orientation === undefined || storedView.orientation === orientation) ? storedView : undefined;
-  const arrange = (next: ArrangementView | undefined) => {
+  // `key`: the view arranged, which a touch-up fixes when it opens rather than reading when it keeps
+  const arrange = (next: ArrangementView | undefined, key: string = viewKey) => {
     const views = { ...arrangement.views };
-    if (next === undefined) delete views[viewKey];
-    else views[viewKey] = next;
+    if (next === undefined) delete views[key];
+    else views[key] = next;
     const updated: Arrangement = { ...arrangement, views };
     setArrangement(updated);
     if (file === undefined) return;
@@ -1676,7 +1679,7 @@ export function StructuredExchangeDocument({ envelope, source, rawOutput, dispat
             hidden={hidden}
             orientation={orientation}
             arrangement={appliedView}
-            onArrange={arrange}
+            onArrange={(next) => arrange(next, arrangingKey.current)}
             onNote={setArrangementNote}
             onDone={() => setArranging(false)}
           />
@@ -1764,6 +1767,9 @@ export function StructuredExchangeDocument({ envelope, source, rawOutput, dispat
               className="rounded border border-zinc-300 bg-white px-1 py-0.5 text-xs text-zinc-700 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300"
               value={viewpoint?.id ?? ""}
               onChange={(event) => selectViewpoint(event.target.value)}
+              // A touch-up arranges the view it was opened on: switching under it would mix two
+              disabled={arranging}
+              title={arranging ? "Leave the touch-up to switch viewpoint" : undefined}
             >
               <option value="">Whole document</option>
               {declaredViewpoints.map((candidate) => (
@@ -1801,6 +1807,7 @@ export function StructuredExchangeDocument({ envelope, source, rawOutput, dispat
             }
             aria-label={`Turn the diagram ${otherOrientation(orientation)}`}
             onClick={turn}
+            disabled={arranging}
           >
             {orientation === "portrait" ? "↔ landscape" : "↕ portrait"}
           </button>
@@ -1810,7 +1817,10 @@ export function StructuredExchangeDocument({ envelope, source, rawOutput, dispat
             type="button"
             className={DIAGRAM_ACTION}
             title="Move boxes, wire ends, bends and labels in draw.io's touch-up; kept beside the document, which is not changed"
-            onClick={() => setArranging(true)}
+            onClick={() => {
+              arrangingKey.current = viewKey;
+              setArranging(true);
+            }}
           >
             ✎ arrange in draw.io
           </button>

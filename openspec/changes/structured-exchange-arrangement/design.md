@@ -182,6 +182,21 @@ It is returned:
 - *Alternative:* never record automatically. Rejected: two successive additions would each move the
   first, which is the instability this change exists to remove.
 
+### What the monkey test found (task 7.2)
+Driven destructively in the running app (`scripts/probes/structured-arrangement/serve.mts`):
+- **Done pressed during a keep** asked "leave without keeping?" while the keep was landing. Done
+  now waits for the keep, then leaves.
+- **The viewpoint switched under a touch-up** kept a whole-document touch-up under the new
+  viewpoint. A touch-up now keeps the view it was opened on, and the viewpoint and orientation
+  controls are disabled while arranging.
+- **The document changed on disk mid touch-up** left the old page open, with gone elements
+  movable and new ones missing. With nothing pending the touch-up now opens again on what the
+  document holds. With touch-ups pending it says so, and a keep takes only the places of what
+  the document still holds.
+- **A reread of the arrangement file** after a keep wiped the note about what was not kept
+  (task 7.1). A good read now clears only its own "not used" note.
+- **A double keep** held: one keep in flight at a time.
+
 ## Risks / Trade-offs
 
 - **[The routing port refuses some styles]** → the generated cells use only what the port follows

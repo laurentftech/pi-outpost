@@ -66,3 +66,23 @@ test("a read-only sandbox says it cannot keep the arrangement", async (t) => {
   assert.equal(refused.reason, "denied");
   await assert.rejects(readFile(path.join(root, "car.arrangement.json"), "utf8"));
 });
+
+test("two arrangements kept at once both answer, and the last one is on disk", async (t) => {
+  const root = await makeWorkspace({ "car.json": DOCUMENT });
+  const server = await startServer(root, { sandbox: undefined });
+  t.after(() => server.stop());
+  const client = connect(server.wsUrl());
+  t.after(() => client.close());
+  await client.waitFor("hello");
+
+  client.send({ type: "save_arrangement", documentPath: "car.json", content: arrangement(40), requestId: "p-1" });
+  client.send({ type: "save_arrangement", documentPath: "car.json", content: arrangement(80), requestId: "p-2" });
+  const first = await client.waitFor((message) => message.requestId === "p-1", 5_000);
+  const second = await client.waitFor((message) => message.requestId === "p-2", 5_000);
+  assert.equal(first.type, "arrangement_saved", JSON.stringify(first));
+  assert.equal(second.type, "arrangement_saved", JSON.stringify(second));
+  // Still answering afterwards
+  client.send({ type: "save_arrangement", documentPath: "car.json", content: arrangement(120), requestId: "p-3" });
+  assert.equal((await client.waitFor((message) => message.requestId === "p-3", 5_000)).type, "arrangement_saved");
+  assert.equal(await readFile(path.join(root, "car.arrangement.json"), "utf8"), arrangement(120));
+});

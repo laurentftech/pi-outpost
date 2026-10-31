@@ -31,7 +31,7 @@
 ## 7. Touch-up round-trip
 
 - [x] 7.1 "Arrange in draw.io": serialise the view's cells into a page, open it in the touch-up frame, and read a save back into the arrangement by key, listing content edits as not kept (design 6). Verify ATouchUpIsReadBackByIdentity and AContentEditInDrawioIsNotAModelChange in UI tests, and in the running app: move a box, move a wire end to another side, remove a bend, edit a label, then save, and read back the arrangement, the document and the message shown
-- [ ] 7.2 Monkey-test the round-trip in the running app: save twice quickly, close during a save, change the document on disk while touch-up is open, switch viewpoint mid-touch-up. Report what broke and fix it
+- [x] 7.2 Monkey-test the round-trip in the running app: save twice quickly, close during a save, change the document on disk while touch-up is open, switch viewpoint mid-touch-up. Report what broke and fix it
 
 ## 8. The agent's figure tool
 
