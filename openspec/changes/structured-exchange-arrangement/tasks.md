@@ -40,7 +40,7 @@
 ## 9. Integration
 
 - [x] 9.1 One live run: ask an agent to write a figure of the vehicle architecture for a Word document, then to add an element as the chief engineer would ask, and write the figure again. Read the transcript, the two figures and the arrangement diff. Insert both figures into a `.docx` and send it to the user to judge in Word desktop
-- [ ] 9.2 Write `scenario-coverage.md` covering every scenario from `rg '^#### Scenario:' openspec/changes/structured-exchange-arrangement`, run `node scripts/check-scenario-coverage.mjs --change structured-exchange-arrangement`, `npm run lint`, `npm run typecheck`, the server and UI suites and `openspec validate structured-exchange-arrangement --strict`, all green
+- [x] 9.2 Write `scenario-coverage.md` covering every scenario from `rg '^#### Scenario:' openspec/changes/structured-exchange-arrangement`, run `node scripts/check-scenario-coverage.mjs --change structured-exchange-arrangement`, `npm run lint`, `npm run typecheck`, the server and UI suites and `openspec validate structured-exchange-arrangement --strict`, all green
 
 ## Workflow follow-up
 
