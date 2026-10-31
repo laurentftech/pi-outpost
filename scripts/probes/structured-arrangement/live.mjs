@@ -6,9 +6,11 @@
  *
  *   OUT=<dir> node --import tsx scripts/probes/structured-arrangement/live.mjs [provider/model]
  *
- * Credentials: only the chosen provider's entry of ~/.pi/agent/auth.json is copied into the
- * throwaway agent dir — an API key, never an OAuth login, so nothing of the developer's own
- * connections can be refreshed or spent (an OAuth copy broke an OpenAI login, 2026-10-31).
+ * Credentials: only the chosen provider's entry of ~/.pi/agent/auth.json is read and copied into
+ * the throwaway agent dir; nothing of ~/.pi/agent is written. An OAuth login is used only while its
+ * access token has more than half an hour left, so the run never refreshes it: a refresh rotates
+ * the refresh token, and the spent one left in the real file broke an OpenAI login on 2026-10-31.
+ * When it is closer to expiry, use the login once in pi itself, which refreshes it in place.
  */
 import { copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import os from "node:os";
@@ -17,7 +19,7 @@ import { fileURLToPath } from "node:url";
 import { connect, makeWorkspace, startServer } from "../../../server/test/harness.mjs";
 import { vehicle } from "./vehicle.mts";
 
-const [provider, id] = (process.argv[2] ?? "google/gemini-3.1-pro").split("/");
+const [provider, id] = (process.argv[2] ?? "openai/gpt-5.6-luna").split("/");
 const out = process.env.OUT;
 if (!out) throw new Error("set OUT to a directory for the results");
 await mkdir(out, { recursive: true });
@@ -25,7 +27,13 @@ await mkdir(out, { recursive: true });
 const auth = JSON.parse(await readFile(path.join(os.homedir(), ".pi", "agent", "auth.json"), "utf8"));
 const entry = auth[provider];
 if (entry === undefined) throw new Error(`no credentials for ${provider}`);
-if (entry.type !== "api_key") throw new Error(`${provider} is an ${entry.type} login: refused, an API key only`);
+if (entry.type === "oauth") {
+  const expires = Number(entry.expires ?? entry.expiresAt ?? 0);
+  const left = (expires > 1e12 ? expires : expires * 1000) - Date.now();
+  if (!(left > 30 * 60_000)) {
+    throw new Error(`the ${provider} login expires in ${Math.round(left / 60_000)} min: send one message with it in pi first, which refreshes it in place, then run this again`);
+  }
+}
 
 const document = (data) => `${JSON.stringify({ schema: "urn:structured-exchange:1", kind: "graph", data }, null, 2)}\n`;
 const root = await makeWorkspace({ "models/vehicle.json": document(vehicle) });
@@ -60,7 +68,15 @@ client.ws.on("message", (data) => {
 async function turn(text) {
   const before = client.received.length;
   client.send({ type: "prompt", text });
-  await client.waitFor((m) => m.type === "agent_end" || m.type === "error", 300_000).catch(() => console.log(`[${elapsed()}] still running after 5 minutes: stopped`));
+  // This turn's end, not the last turn's, which is still among what was received
+  const ended = () => client.received.slice(before).some((m) => m.type === "agent_end" || m.type === "error");
+  for (const deadline = Date.now() + 300_000; !ended(); ) {
+    if (Date.now() > deadline) {
+      console.log(`[${elapsed()}] still running after 5 minutes: stopped`);
+      break;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  }
   const said = client.received.slice(before).filter((m) => m.type === "block_delta" && typeof m.delta === "string").map((m) => m.delta).join("");
   console.log(`\n=== reply\n${said.trim()}\n`);
 }
@@ -74,6 +90,9 @@ const keep = async (name, from) => {
 
 try {
   await client.waitFor("hello", 60_000);
+  // Someone can watch the run in a browser: the URL, then a moment to open it
+  console.log(`=== watch it at ${server.wsUrl().replace(/^ws/, "http").replace(/\/ws.*$/, "/")}`);
+  if (process.env.WATCH) await new Promise((resolve) => setTimeout(resolve, Number(process.env.WATCH) * 1000));
   client.send({ type: "set_model", provider, id });
   await new Promise((resolve) => setTimeout(resolve, 1500));
 
@@ -112,5 +131,10 @@ try {
   console.log(`=== turn total: ${elapsed()}`);
 } finally {
   client.close();
+  // Left running for whoever is watching, until the probe is stopped
+  if (process.env.KEEP) {
+    console.log("=== the server stays up for viewing; stop the probe to end it");
+    await new Promise(() => {});
+  }
   await server.stop();
 }

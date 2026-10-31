@@ -197,6 +197,20 @@ Driven destructively in the running app (`scripts/probes/structured-arrangement/
   (task 7.1). A good read now clears only its own "not used" note.
 - **A double keep** held: one keep in flight at a time.
 
+### Live run (task 9.1)
+`scripts/probes/structured-arrangement/live.mjs`, GPT-5.6 Luna, the twelve-element vehicle
+architecture. The OAuth login was read only while fresh, and nothing of `~/.pi/agent` was written.
+- Luna read the skill, found `write_structure_figure` through `tool_search`, and wrote v1. The
+  tool recorded `vehicle.arrangement.json`.
+- The probe added a heat pump. Luna wrote v2 and `rapport.docx` (via `docx_create`) with both
+  figures.
+- Between the two arrangements, 0 elements moved and only `id:heatpump` was added.
+- Luna could not render the report itself (no Office in its environment) and said so in its work
+  plan. The report was sent to the user to judge in Word desktop.
+- The user watched the run in the browser.
+- The structural difference between two versions of a graph is not drawn yet. That is the next
+  change, a graph counterpart of `compare_timelines`.
+
 ## Risks / Trade-offs
 
 - **[The routing port refuses some styles]** → the generated cells use only what the port follows
