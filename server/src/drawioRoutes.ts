@@ -4,7 +4,7 @@
  * draw.io works it out from the shapes, the wire's style and its waypoints when drawing. To
  * tell whether a wire crosses a box, the check needs that same route, not a guess at it.
  *
- * This is a port of draw.io's routing at the vendored release (v32.5.5): mxGraph's
+ * This is a port of draw.io's routing at the vendored release (v32.6.9; its routing is unchanged since v32.5.5): mxGraph's
  * mxGraphView (fixed and floating terminal points, label position), mxEdgeStyle
  * (OrthConnector, SegmentConnector) and mxPerimeter (rectangle, ellipse, rhombus), with
  * draw.io's own overrides from js/grapheditor/Graph.js (the elbow connectors, centerPerimeter,
@@ -101,6 +101,8 @@ function routable(terminal: Terminal): boolean {
   const shape = String(style.shape ?? "");
   if (shape.startsWith("mxgraph.") || shape.startsWith("stencil(")) return false;
   if (number(style, "roundedPerimeter", 0) === 1 && number(style, "rounded", 0) === 1) return false;
+  // Since 32.6 a wire may end on the shape's label instead (mxGraphView.getLabelPerimeterPoint), not ported
+  if (number(style, "labelPerimeter", 0) === 1) return false;
   const perimeter = style.perimeter;
   return perimeter === undefined || ["rectanglePerimeter", "ellipsePerimeter", "rhombusPerimeter", "centerPerimeter"].includes(String(perimeter));
 }
