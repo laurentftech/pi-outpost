@@ -1311,6 +1311,10 @@ export function StructuredExchangeDocument({ envelope, source, rawOutput, dispat
   const enlargedRef = useRef<HTMLDivElement>(null);
   const { fileIo } = useDrawioFiles();
   const [arrangement, setArrangement] = useState<Arrangement>(emptyArrangement);
+  /** How many moves and touch-ups were kept here: a read begun before the last one answers too late. */
+  const localEdits = useRef(0);
+  /** The arrangement file beside the document cannot be read: it is not used, and never overwritten. */
+  const [unusable, setUnusable] = useState(false);
   /** Arranging the graph in draw.io's touch-up, in place of the drawing. */
   const [arranging, setArranging] = useState(false);
   /** The view the touch-up was opened on, which its keeps go to. */
@@ -1321,23 +1325,37 @@ export function StructuredExchangeDocument({ envelope, source, rawOutput, dispat
   // The arrangement beside the document, read when it opens and again when it changes on disk —
   // the agent's figure tool records places in it too
   useEffect(() => {
+    // Another document, or none: nothing of the last one's arrangement may be drawn or saved here
+    setArrangement(emptyArrangement());
+    setUnusable(false);
+    setArrangementNote(undefined);
     if (arrangementPath === undefined || fileIo === undefined) return;
     let live = true;
-    const load = () =>
-      fileIo.read(arrangementPath).then(
+    const load = () => {
+      // A move or touch-up kept after this read began is newer than what it will answer
+      const since = localEdits.current;
+      const current = () => live && localEdits.current === since;
+      return fileIo.read(arrangementPath).then(
         (answer) => {
-          if (!live) return;
+          if (!current()) return;
           const reading = readArrangement(answer.content);
-          if (reading.ok) setArrangement(reading.arrangement);
+          // An unreadable file is neither used nor overwritten: what it holds is the reader's
+          setArrangement(reading.ok ? reading.arrangement : emptyArrangement());
+          setUnusable(!reading.ok);
           // A good read clears only what a bad one said: the note about the last move or
           // touch-up kept stays, though keeping it is what made the file change
           setArrangementNote((note) =>
             !reading.ok ? `${UNUSED_ARRANGEMENT}${reading.reason}.` : note?.startsWith(UNUSED_ARRANGEMENT) ? undefined : note,
           );
         },
-        // No arrangement yet is the usual case, not an error to show
-        () => undefined,
+        // No arrangement (yet, or any more) is the usual case, not an error to show
+        () => {
+          if (!current()) return;
+          setArrangement(emptyArrangement());
+          setUnusable(false);
+        },
       );
+    };
     void load();
     const unsubscribe = fileIo.onChanged(arrangementPath, () => void load());
     return () => {
@@ -1382,12 +1400,17 @@ export function StructuredExchangeDocument({ envelope, source, rawOutput, dispat
   const appliedView = storedView !== undefined && (storedView.orientation === undefined || storedView.orientation === orientation) ? storedView : undefined;
   // `key`: the view arranged, which a touch-up fixes when it opens rather than reading when it keeps
   const arrange = (next: ArrangementView | undefined, key: string = viewKey) => {
+    localEdits.current += 1;
     const views = { ...arrangement.views };
     if (next === undefined) delete views[key];
     else views[key] = next;
     const updated: Arrangement = { ...arrangement, views };
     setArrangement(updated);
     if (file === undefined) return;
+    if (unusable) {
+      setArrangementNote(`This arrangement is not kept: the arrangement file beside the document cannot be read, and is left as it is. Fix or remove it to keep moves.`);
+      return;
+    }
     if (!file.writable || fileIo?.keepArrangement === undefined) {
       setArrangementNote("This arrangement is not kept: the document is outside the writable zone.");
       return;

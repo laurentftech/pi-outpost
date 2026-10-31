@@ -111,11 +111,15 @@ export function readArrangement(text: string): ArrangementReading {
       if (raw.orientation !== "landscape" && raw.orientation !== "portrait") return { ok: false, reason: `view "${name}" has an unknown orientation` };
       view.orientation = raw.orientation;
     }
-    for (const [key, point] of Object.entries(isRecord(raw.elements) ? raw.elements : {})) {
+    // Both maps are required: a view missing one would be read as empty, and the next save
+    // would write that emptiness over whatever the file held
+    if (!isRecord(raw.elements)) return { ok: false, reason: `view "${name}" has no elements` };
+    if (!isRecord(raw.relationships)) return { ok: false, reason: `view "${name}" has no relationships` };
+    for (const [key, point] of Object.entries(raw.elements)) {
       if (!isPoint(point)) return { ok: false, reason: `element "${key}" of view "${name}" has no x and y` };
       view.elements[key] = { x: point.x, y: point.y };
     }
-    for (const [key, entry] of Object.entries(isRecord(raw.relationships) ? raw.relationships : {})) {
+    for (const [key, entry] of Object.entries(raw.relationships)) {
       if (!isRecord(entry)) return { ok: false, reason: `relationship "${key}" of view "${name}" is not an object` };
       const read: ArrangedRelationship = {};
       for (const end of ["exit", "entry"] as const) {

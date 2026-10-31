@@ -67,6 +67,10 @@ describe("the arrangement file", () => {
     assert.equal(readArrangement(JSON.stringify({ views: {} })).ok, false);
     const bad = readArrangement(JSON.stringify({ format: "pi-outpost/structured-exchange-arrangement-1", views: { "": { elements: { "id:a": { x: "40" } }, relationships: {} } } }));
     assert.deepEqual(bad, { ok: false, reason: 'element "id:a" of view "" has no x and y' });
+    // A view missing a map is refused, not read as empty and later written over
+    const format = "pi-outpost/structured-exchange-arrangement-1";
+    assert.deepEqual(readArrangement(JSON.stringify({ format, views: { "": { relationships: {} } } })), { ok: false, reason: 'view "" has no elements' });
+    assert.deepEqual(readArrangement(JSON.stringify({ format, views: { power: { elements: {}, relationships: [] } } })), { ok: false, reason: 'view "power" has no relationships' });
   });
 
   // openlore: scenario=AnArrangementIsNeverReadAsADocument spec=structured-exchange-arrangement

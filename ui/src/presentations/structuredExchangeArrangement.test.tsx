@@ -335,3 +335,50 @@ describe("the transitions around arranging (task 7.2)", () => {
     void drawn;
   });
 });
+
+describe("an arrangement belongs to its own document", () => {
+  const arranged = (y: number) =>
+    writeArrangement({ format: "pi-outpost/structured-exchange-arrangement-1", views: { "": { elements: { "id:battery": { x: 40, y }, "id:inverter": { x: 260, y }, "id:motor": { x: 480, y } }, relationships: {} } } });
+  /** A fileIo holding one arrangement per document path, recording what it is asked to keep. */
+  const ioFor = (files: Record<string, string>) => {
+    const kept: Array<{ documentPath: string; content: string }> = [];
+    const io: FileIo = {
+      read: (path) => (files[path] !== undefined ? Promise.resolve({ content: files[path]!, mtimeMs: 1 }) : Promise.reject(new FileIoError("not found", "not-found"))),
+      write: () => Promise.reject(new Error("unused")),
+      onChanged: () => () => {},
+      keepArrangement: (documentPath, content) => {
+        kept.push({ documentPath, content });
+        return Promise.resolve(documentPath.replace(/\.json$/, ".arrangement.json"));
+      },
+    };
+    return { io, kept };
+  };
+  const at = (path: string, io: FileIo) => (
+    <DrawioFilesContext.Provider value={{ serverUrl: "", fileIo: io }}>
+      <StructuredExchangeDocument envelope={envelope} source={SOURCE} file={{ path, writable: true }} />
+    </DrawioFilesContext.Provider>
+  );
+
+  it("switching to a document with no arrangement does not draw, nor keep, the last one's", async () => {
+    const { io, kept } = ioFor({ "models/car.arrangement.json": arranged(300) });
+    const view = render(at("models/car.json", io));
+    await waitFor(() => expect(firstBox().y).toBe(300));
+    view.rerender(at("models/truck.json", io));
+    await waitFor(() => expect(firstBox().y).not.toBe(300));
+    await act(async () => drag({ x: 0, y: 40 }));
+    await waitFor(() => expect(kept).toHaveLength(1));
+    expect(kept[0]!.documentPath).toBe("models/truck.json");
+    // Only the truck's own layout: nothing of the car's arrangement carried over
+    const views = (readArrangement(kept[0]!.content) as { arrangement: Arrangement }).arrangement.views;
+    expect(views[""]!.elements["id:inverter"]!.y).not.toBe(300);
+  });
+
+  it("an arrangement file that cannot be read is neither used nor overwritten by a move", async () => {
+    const { io, kept } = ioFor({ "models/car.arrangement.json": '{ "format": "pi-outpost/structured-exchange-arrangement-1", "views": { "": { "elements": {} } } }' });
+    mount(io);
+    await waitFor(() => expect(screen.getByTestId("structured-arrangement-note").textContent).toBe('The arrangement beside this document is not used: view "" has no relationships.'));
+    await act(async () => drag({ x: 0, y: 120 }));
+    expect(kept).toHaveLength(0);
+    expect(screen.getByTestId("structured-arrangement-note").textContent).toMatch(/^This arrangement is not kept: the arrangement file beside the document cannot be read, and is left as it is/);
+  });
+});
