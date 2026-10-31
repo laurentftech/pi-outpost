@@ -76,6 +76,9 @@ describe("drawio_check sees wires", () => {
     // The routing says so: no route rather than a guess
     const page = readDrawio(model(ROW + wire("w", "a", "c", "edgeStyle=isometricEdgeStyle;html=1;")))[0]!;
     assert.equal(routeWire(page.cells.find((cell) => cell.id === "w")!, pageGeometry(page)), undefined);
+    // draw.io 32.6 ends a wire on the label of a shape with labelPerimeter=1, not on its outline
+    const labelled = readDrawio(model(box("a", 40, 40, "shape=image;labelPerimeter=1;verticalLabelPosition=bottom;html=1;") + box("b", 240, 40) + box("c", 440, 40) + wire("w", "a", "c", "html=1;")))[0]!;
+    assert.equal(routeWire(labelled.cells.find((cell) => cell.id === "w")!, pageGeometry(labelled)), undefined);
   });
 
   test("A route is draw.io's: an orthogonal wire around the corner, ends on the outlines", () => {

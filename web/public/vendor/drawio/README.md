@@ -1,12 +1,12 @@
 # draw.io viewer (vendored)
 
 `viewer-static.min.js` is jgraph's draw.io viewer, unmodified, from
-[jgraph/drawio](https://github.com/jgraph/drawio) at tag `v32.5.5`
+[jgraph/drawio](https://github.com/jgraph/drawio) at tag `v32.6.9`
 (`src/main/webapp/js/viewer-static.min.js`), under the Apache License 2.0 in `LICENSE`.
 "draw.io" is a trademark of JGraph Ltd; pi-outpost is not affiliated with it.
 
-- Version: 32.5.5
-- SHA-256: 15777571ef7c042b2a4a6c6d29052f416fbaaaae5dcf868521c4a3a75f2147d8
+- Version: 32.6.9
+- SHA-256: 21f5b0a744765eba94fdc14f4006f2e024ef01635579f421191529f4712b57b7
 
 It renders `.drawio` files in the file viewer, inside a sandboxed frame that allows it no
 network access (`ui/src/components/DrawioFrame.tsx`). Move it to another release with
