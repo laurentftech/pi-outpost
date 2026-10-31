@@ -12,6 +12,7 @@ import { checkStructuredExchangeSchemaInBrowser } from "@pi-outpost/shared/struc
 import { DrawioFilesContext } from "../components/drawioFiles";
 import { FileIoError, type FileIo } from "../fileIo";
 import { StructuredExchangeDocument } from "./StructuredExchangeView";
+import { DRAWIO_MESSAGE } from "../util/drawioPage";
 import type { DocumentExport } from "./documentExport";
 import { figureForEnvelope } from "@pi-outpost/shared/structured-exchange/export";
 
@@ -181,5 +182,60 @@ describe("the figure that leaves", () => {
     expect(fromBrowser.boxes).toHaveLength(3);
     expect(fromBrowser.routes).toHaveLength(2);
     expect(fromBrowser).toEqual(drawing((written as { svg: string }).svg));
+  });
+});
+
+describe("arranging in draw.io's touch-up", () => {
+  /** The touch-up frame, answering as the vendored viewer does. */
+  async function touchUpFrame() {
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+    const element = screen.getByTitle("Arrange in draw.io") as HTMLIFrameElement;
+    const own = element.contentWindow!;
+    const sent = vi.spyOn(own, "postMessage");
+    const answer = (data: Record<string, unknown>) => act(() => {
+      window.dispatchEvent(new MessageEvent("message", { data, source: own }));
+    });
+    answer({ type: DRAWIO_MESSAGE.READY });
+    answer({ type: DRAWIO_MESSAGE.RENDERED, pages: 1 });
+    return { sent, answer };
+  }
+
+  // openlore: scenario=ATouchUpIsReadBackByIdentity spec=structured-exchange-arrangement
+  it("ATouchUpIsReadBackByIdentity: the page touched up comes back into the arrangement by identity, kept beside the document", async () => {
+    const { io, kept } = fakeFileIo();
+    mount(io);
+    fireEvent.click(screen.getByRole("button", { name: "✎ arrange in draw.io" }));
+    const { sent, answer } = await touchUpFrame();
+    // What the frame is given to draw is the figure's own page, cells named by identity
+    const render = sent.mock.calls.map(([message]) => message as { type: string; xml?: string }).find((message) => message.xml !== undefined);
+    expect(render?.xml).toContain('id="n:battery"');
+    const keep = screen.getByRole("button", { name: "✓ keep" });
+    expect(keep).toBeDisabled();
+    answer({ type: DRAWIO_MESSAGE.CHANGED, dirty: true, canUndo: true, canRedo: false });
+    fireEvent.click(keep);
+    // The motor dragged to (500, 300), the text of the inverter edited: the place is kept, the text is not
+    const model = /<mxGraphModel>[\s\S]*<\/mxGraphModel>/.exec(render!.xml!)![0]
+      .replace(/(<mxCell id="n:motor"[^>]*>\s*<mxGeometry\b)[^>]*?(width=)/, '$1 x="500" y="300" $2')
+      .replace(/(<mxCell id="n:inverter" value=")Inverter(")/, "$1Onduleur$2");
+    answer({ type: DRAWIO_MESSAGE.SAVED, page: 0, xml: model });
+    await waitFor(() => expect(kept).toHaveLength(1));
+    const reading = readArrangement(kept[0]!.content);
+    expect((reading as { arrangement: Arrangement }).arrangement.views[""]!.elements["id:motor"]).toEqual({ x: 500, y: 300 });
+    expect(screen.getByTestId("structured-arrangement-note").textContent).toBe(
+      'Kept the arrangement. Not kept: the text of "Inverter" was changed to "Onduleur": the document\'s text is not changed from here.',
+    );
+    // Marked clean, the frame says so; then leaving draws the graph with what was kept
+    await waitFor(() => expect(sent.mock.calls.map(([message]) => (message as { type: string }).type)).toContain(DRAWIO_MESSAGE.CLEAN));
+    answer({ type: DRAWIO_MESSAGE.CHANGED, dirty: false, canUndo: true, canRedo: false });
+    fireEvent.click(screen.getByRole("button", { name: "done" }));
+    await waitFor(() => expect(screen.queryByTestId("structured-touchup")).toBeNull());
+    const motor = [...document.querySelectorAll('[data-draggable="node"]')].find((node) => node.textContent?.includes("Motor"))!.querySelector("rect")!;
+    expect({ x: Number(motor.getAttribute("x")), y: Number(motor.getAttribute("y")) }).toEqual({ x: 500, y: 300 });
+  });
+
+  it("is not offered for a document outside the writable zone", () => {
+    const { io } = fakeFileIo();
+    mount(io, false);
+    expect(screen.queryByRole("button", { name: "✎ arrange in draw.io" })).toBeNull();
   });
 });

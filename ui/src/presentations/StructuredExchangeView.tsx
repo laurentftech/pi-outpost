@@ -51,6 +51,7 @@ import { checkArrangement } from "@pi-outpost/shared/structured-exchange/arrange
 import { moveInView } from "@pi-outpost/shared/structured-exchange/placement";
 import { elementCellId } from "@pi-outpost/shared/structured-exchange/wiring";
 import { useDrawioFiles } from "../components/drawioFiles";
+import { StructuredExchangeTouchUp } from "./StructuredExchangeTouchUp";
 import { otherOrientation, type Orientation } from "@pi-outpost/shared/diagram-orientation";
 import { resolveViewpoint, sameNarrowing, viewpointsOf } from "@pi-outpost/shared/structured-exchange/model";
 import type { StructuredViewpoint } from "@pi-outpost/shared/structured-exchange";
@@ -1295,6 +1296,9 @@ function targetRef(envelope: ValidatedStructuredExchange): string | undefined {
   return undefined;
 }
 
+/** How a note about an arrangement file that cannot be read starts. */
+const UNUSED_ARRANGEMENT = "The arrangement beside this document is not used: ";
+
 export function StructuredExchangeDocument({ envelope, source, rawOutput, dispatch, conformance, exportRef, file }: StructuredExchangeDocumentProps) {
   const appearance = useContext(StructuredAppearanceContext);
   const [enlarged, setEnlarged] = useState(false);
@@ -1307,6 +1311,8 @@ export function StructuredExchangeDocument({ envelope, source, rawOutput, dispat
   const enlargedRef = useRef<HTMLDivElement>(null);
   const { fileIo } = useDrawioFiles();
   const [arrangement, setArrangement] = useState<Arrangement>(emptyArrangement);
+  /** Arranging the graph in draw.io's touch-up, in place of the drawing. */
+  const [arranging, setArranging] = useState(false);
   /** Whether the last move was kept, when that is worth saying. */
   const [arrangementNote, setArrangementNote] = useState<string | undefined>(undefined);
   const arrangementPath = file === undefined || envelope.kind !== "graph" ? undefined : arrangementPathFor(file.path);
@@ -1321,7 +1327,11 @@ export function StructuredExchangeDocument({ envelope, source, rawOutput, dispat
           if (!live) return;
           const reading = readArrangement(answer.content);
           if (reading.ok) setArrangement(reading.arrangement);
-          setArrangementNote(reading.ok ? undefined : `The arrangement beside this document is not used: ${reading.reason}.`);
+          // A good read clears only what a bad one said: the note about the last move or
+          // touch-up kept stays, though keeping it is what made the file change
+          setArrangementNote((note) =>
+            !reading.ok ? `${UNUSED_ARRANGEMENT}${reading.reason}.` : note?.startsWith(UNUSED_ARRANGEMENT) ? undefined : note,
+          );
         },
         // No arrangement yet is the usual case, not an error to show
         () => undefined,
@@ -1660,7 +1670,19 @@ export function StructuredExchangeDocument({ envelope, source, rawOutput, dispat
           arrives as a sliver, which is how a seventeen-node architecture rendered as
           an empty line. Enlarge gives the whole thing without the horizontal scrub. */}
       <div ref={diagramRef} className="overflow-x-auto">
-        {view}
+        {arranging && envelope.kind === "graph" ? (
+          <StructuredExchangeTouchUp
+            data={envelope.data as StructuredGraphData}
+            hidden={hidden}
+            orientation={orientation}
+            arrangement={appliedView}
+            onArrange={arrange}
+            onNote={setArrangementNote}
+            onDone={() => setArranging(false)}
+          />
+        ) : (
+          view
+        )}
       </div>
       {arrangementNote !== undefined && (
         <p className="text-xs text-amber-700 dark:text-amber-300" data-testid="structured-arrangement-note">
@@ -1781,6 +1803,16 @@ export function StructuredExchangeDocument({ envelope, source, rawOutput, dispat
             onClick={turn}
           >
             {orientation === "portrait" ? "↔ landscape" : "↕ portrait"}
+          </button>
+        )}
+        {envelope.kind === "graph" && file?.writable === true && !arranging && (
+          <button
+            type="button"
+            className={DIAGRAM_ACTION}
+            title="Move boxes, wire ends, bends and labels in draw.io's touch-up; kept beside the document, which is not changed"
+            onClick={() => setArranging(true)}
+          >
+            ✎ arrange in draw.io
           </button>
         )}
         {envelope.kind === "table" ? (

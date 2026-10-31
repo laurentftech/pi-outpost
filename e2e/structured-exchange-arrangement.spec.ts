@@ -6,7 +6,7 @@
  */
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Frame, type Locator, type Page } from "@playwright/test";
 
 const DOCUMENT = `${JSON.stringify(
   {
@@ -83,5 +83,65 @@ test("AMovedBoxIsKeptInTheArrangement: dragged in the running app, kept beside t
   await page.getByText("arranged", { exact: true }).click();
   await page.getByText("car.json", { exact: true }).click();
   await expect.poll(() => boxAt(page, "ECU")).toEqual(moved);
+  expect(errors).toEqual([]);
+});
+
+/** The labels the touch-up frame draws, once each. */
+const frameLabels = (frame: Frame) =>
+  frame.evaluate(() => [...new Set([...document.querySelectorAll("svg foreignObject div")].filter((d) => d.querySelector("div") === null).map((d) => d.textContent?.trim() ?? "").filter(Boolean))]);
+
+/** Where the touch-up frame draws a box's label, in page coordinates. */
+async function labelCentre(frame: Frame, element: Locator, label: string) {
+  const box = (await element.boundingBox())!;
+  const point = await frame.evaluate((name) => {
+    const el = [...document.querySelectorAll("svg foreignObject div")].find((d) => d.querySelector("div") === null && d.textContent?.trim() === name)!;
+    const r = el.getBoundingClientRect();
+    return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+  }, label);
+  return { x: box.x + point.x, y: box.y + point.y };
+}
+
+// openlore: scenario=ATouchUpIsReadBackByIdentity spec=structured-exchange-arrangement
+// openlore: scenario=AContentEditInDrawioIsNotAModelChange spec=structured-exchange-arrangement
+test("ATouchUpIsReadBackByIdentity: arranged in the vendored draw.io touch-up, a box moved is kept and a label retyped is not", async ({ page }) => {
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(String(error)));
+  const { file, arrangement } = await openGraph(page, "touched.json");
+  await page.getByRole("button", { name: "✎ arrange in draw.io" }).click();
+  const element = page.getByTitle("Arrange in draw.io");
+  await expect(element).toBeVisible();
+  const frame = (await (await element.elementHandle())!.contentFrame())!;
+  await expect.poll(() => frameLabels(frame)).toContain("Motor");
+  // The editor is on once its container takes the keyboard
+  await expect.poll(() => frame.evaluate(() => document.querySelector("[tabindex='-1']") !== null)).toBe(true);
+
+  // Drag the motor down
+  const motor = await labelCentre(frame, element, "Motor");
+  await page.mouse.move(motor.x, motor.y);
+  await page.mouse.down();
+  await page.mouse.move(motor.x, motor.y + 120, { steps: 12 });
+  await page.mouse.up();
+  await expect(page.getByTestId("structured-touchup-status")).toHaveText("● not kept yet");
+
+  // Retype the inverter's label in place: content, which is not kept
+  const inverter = await labelCentre(frame, element, "Inverter");
+  await page.mouse.dblclick(inverter.x, inverter.y);
+  await page.keyboard.press("ControlOrMeta+a");
+  await page.keyboard.type("Onduleur");
+  const box = (await element.boundingBox())!;
+  await page.mouse.click(box.x + box.width - 20, box.y + box.height - 20);
+
+  await page.getByRole("button", { name: "✓ keep" }).click();
+  await expect.poll(() => readFile(arrangement, "utf8").catch(() => ""), { timeout: 10_000 }).toContain('"id:motor"');
+  expect(await readFile(file, "utf8")).toBe(DOCUMENT);
+  await expect(page.getByTestId("structured-arrangement-note")).toHaveText(/^Kept the arrangement\. Not kept: the text of "Inverter" was changed to "Onduleur"/);
+  const kept = JSON.parse(await readFile(arrangement, "utf8")).views[""].elements;
+
+  await expect(page.getByTestId("structured-touchup-status")).not.toHaveText("● not kept yet");
+  await page.getByRole("button", { name: "done" }).click();
+  await expect(page.getByTestId("structured-touchup")).toHaveCount(0);
+  // Drawn with what was kept: the motor where it was put, the inverter still called Inverter
+  await expect.poll(() => boxAt(page, "Motor")).toEqual(kept["id:motor"]);
+  await expect(page.getByTestId("file-structured-exchange").locator('[data-draggable="node"]', { hasText: "Inverter" })).toHaveCount(1);
   expect(errors).toEqual([]);
 });
