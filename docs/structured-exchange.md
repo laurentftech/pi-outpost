@@ -246,6 +246,36 @@ from the size of anyone's window, so a figure written by `write_structure_figure
 the same way the reader's is. Nothing about this reaches the document: the orientation is not
 part of what you emit and not part of what comes back.
 
+### Arranging a graph, and keeping it arranged
+
+Relationships are drawn as draw.io draws an orthogonal connector, in horizontal and vertical
+runs. The routes come from the same port of draw.io's routing that `drawio_check` uses, so a
+figure opened in draw.io routes the same way.
+
+What a reader arranges is kept in an **arrangement file** beside the document:
+`vehicle.json` → `vehicle.arrangement.json`. It holds the following:
+- where boxes are;
+- which side each relationship leaves and enters by;
+- the relationship's bends;
+- where its label sits;
+- the orientation.
+
+It holds one arrangement per viewpoint, plus `""` for the whole document. Its format is
+[`shared/schemas/structured-exchange-arrangement-1.json`](../shared/schemas/structured-exchange-arrangement-1.json).
+
+- **It is presentation only.** It is never part of the document you emit and never goes back to
+  the authority. Opening it in the viewer shows plain JSON, not a document.
+- **It is meant to be versioned with the document.** Keys are sorted, places are on a grid of 10,
+  and each place is on one line. A moved box is a one-line diff, and the same arrangement is
+  always the same bytes.
+- **Entries name things by identity.** An element is named by its reference when it carries
+  one (`ref:REQ-1`), otherwise by its id in the envelope (`id:battery`). A relationship is named
+  by its reference, or by its endpoints, kind and rank (`id:a>id:b[power]#0`). Relabelling a
+  relationship keeps its entry; re-attaching it does not. Give lasting elements a reference, so
+  a new version of the document finds their places even if their envelope ids change.
+- **It is partial.** Anything it does not name is laid out automatically, then tidied by the
+  same wire rules `drawio_check` applies.
+
 ## A table that reports a change
 
 A table cannot be proposed — it has no identity per row for a patch to join against,

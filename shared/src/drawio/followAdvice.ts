@@ -4,7 +4,7 @@
  * removed, and the file is checked again, until no warning gives anything to apply or a state
  * repeats. Used by drawioAdvice.test.ts and scripts/probes/drawio-follow-advice.mts.
  */
-import { checkDrawio } from "../src/drawio.ts";
+import { checkDrawio } from "./check.ts";
 
 /** Sets `key=value` in a style string, replacing the key when present. */
 export function setStyle(style: string, key: string, value: string): string {

@@ -38,7 +38,16 @@
     "./structured-exchange/timeline-comparison": "./src/structuredExchangeTimelineComparison.ts",
     "./diagram-orientation": "./src/diagramOrientation.ts",
     "./docx": "./src/docx/index.ts",
-    "./markdown-math": "./src/markdownMath.ts"
+    "./markdown-math": "./src/markdownMath.ts",
+    "./xml": "./src/xml.ts",
+    "./drawio/read": "./src/drawio/read.ts",
+    "./drawio/check": "./src/drawio/check.ts",
+    "./drawio/routes": "./src/drawio/routes.ts",
+    "./drawio/anchors": "./src/drawio/anchors.ts",
+    "./drawio/follow-advice": "./src/drawio/followAdvice.ts",
+    "./drawio/write": "./src/drawio/write.ts",
+    "./structured-exchange/wiring": "./src/structuredExchangeWiring.ts",
+    "./structured-exchange/arrangement": "./src/structuredExchangeArrangement.ts"
   },
   "dependencies": {
     "@dagrejs/dagre": "^3.1.1",

@@ -9,7 +9,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, test } from "node:test";
 import { checkDrawio } from "../src/drawio.ts";
-import { applyLabelMoves, followAdvice, labelMoves } from "./drawioFollowAdvice.ts";
+import { applyLabelMoves, followAdvice, labelMoves } from "@pi-outpost/shared/drawio/follow-advice";
 
 const FIXTURES = path.join(import.meta.dirname, "fixtures");
 const files = [

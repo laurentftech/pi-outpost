@@ -9,7 +9,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { readDrawio } from "../../server/src/drawio.ts";
-import { labelPoint, pageGeometry, routeWire, type Point } from "../../server/src/drawioRoutes.ts";
+import { labelPoint, pageGeometry, routeWire, type Point } from "@pi-outpost/shared/drawio/routes";
 import { sameRoute } from "../../e2e/fixtures/drawio-viewer-routes.ts";
 import { oracle } from "./drawio-routes-oracle.mts";
 

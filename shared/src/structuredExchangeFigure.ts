@@ -14,6 +14,8 @@
  *
  * Nothing here imports React, touches a DOM, or measures anything.
  */
+import type { DrawioPage } from "./drawio/read.ts";
+import { detourWaypoints, graphPage, routeGraph, spreadParallelEnds, wirePath, type Wire, type WiredBox, type WiredRelationship } from "./structuredExchangeWiring.ts";
 import {
   changeLines,
   LINE_HEIGHT,
@@ -851,6 +853,55 @@ export function graphOrientationFor(data: StructuredGraphData, hidden: Narrowing
 }
 
 /**
+ * The graph's relationships as draw.io connectors between the boxes as drawn, and their routes
+ * (structured-exchange-arrangement). Computed from where the boxes are, not carried along with
+ * them: a moved box gets a route of its own, never a stretched one.
+ */
+function wireGraph(
+  shown: StructuredGraphData,
+  layout: ReturnType<typeof layoutGraph>,
+  boxFor: (id: string) => Box | undefined,
+): { page: DrawioPage; wires: Map<number, Wire> } {
+  const wiredBoxes = new Map<string, WiredBox>();
+  const labels = new Map<string, string>();
+  for (const node of layout.nodes) {
+    const box = boxFor(node.id);
+    if (box !== undefined) wiredBoxes.set(node.id, { x: box.x, y: box.y, width: box.w, height: box.h });
+  }
+  for (const node of shown.nodes) labels.set(node.id, displayLabel(node));
+  const wired: WiredRelationship[] = shown.edges.map((edge, index) => ({ index, from: edge.from, to: edge.to, label: edge.label ?? "" }));
+  const parallel = spreadParallelEnds(wiredBoxes, wired);
+  const withEnds = wired.map((relationship) => ({ ...relationship, ends: parallel.get(relationship.index) }));
+  // The layout engine's route for whatever draw.io would draw through a box between its ends
+  const layoutRoutes = new Map(layout.edges.map((placed) => [placed.index, placed.points]));
+  const detours = detourWaypoints(wiredBoxes, withEnds, layoutRoutes);
+  const page = graphPage(
+    wiredBoxes,
+    withEnds.map((relationship) => {
+      const waypoints = detours.get(relationship.index);
+      return waypoints === undefined ? relationship : { ...relationship, ends: { ...relationship.ends, waypoints } };
+    }),
+    labels,
+  );
+  return { page, wires: routeGraph(page) };
+}
+
+/**
+ * The draw.io page a graph's figure routes its relationships on, as a reader first sees it:
+ * what touch-up opens, and what the e2e holds against the vendored viewer.
+ */
+export function graphFigurePage(data: StructuredGraphData, options: Pick<GraphFigureOptions, "hidden" | "orientation"> = {}): DrawioPage {
+  const shown = shownGraph(data, options.hidden ?? NOTHING_HIDDEN);
+  const { layout } = laidOutGraph(shown, options.orientation);
+  const at = new Map(layout.nodes.map((node) => [node.id, node]));
+  const boxFor = (id: string): Box | undefined => {
+    const placed = at.get(id);
+    return placed === undefined ? undefined : { x: placed.x, y: placed.y, cx: placed.x + placed.width / 2, cy: placed.y + placed.height / 2, w: placed.width, h: placed.height };
+  };
+  return wireGraph(shown, layout, boxFor).page;
+}
+
+/**
  * The graph as a figure.
  *
  * Everything below was computed inside the component that drew it. None of it needed
@@ -954,27 +1005,16 @@ export function graphFigure(data: StructuredGraphData, options: GraphFigureOptio
     seenPairs.set(pair, next + 1);
   }
 
-  /** Layout routes, matched back to the relationships they were computed for. */
-  const byIndex = new Map(layout.edges.map((placed) => [placed.index, placed.points]));
-  const routeOf = new Map<StructuredGraphData["edges"][number], { x: number; y: number }[]>();
-  shown.edges.forEach((edge, index) => {
-    const points = byIndex.get(index);
-    if (points !== undefined) routeOf.set(edge, points);
-  });
+  const { wires } = wireGraph(shown, layout, boxFor);
 
-  const still: Nudge = { dx: 0, dy: 0 };
-  const shapes = shown.edges.map((edge) => {
+  const shapes = shown.edges.map((edge, index) => {
     const from = boxFor(edge.from);
     const to = boxFor(edge.to);
     if (from === undefined || to === undefined) return undefined;
-    const moved = nudges.has(edge.from) || nudges.has(edge.to);
-    return edgePath(
-      from,
-      edge.from === edge.to ? from : to,
-      routeOf.get(edge),
-      rankOf.get(edge) ?? 0,
-      moved ? { from: nudges.get(edge.from) ?? still, to: nudges.get(edge.to) ?? still } : undefined,
-    );
+    const wire = wires.get(index);
+    if (wire !== undefined) return { d: wirePath(wire.points), labelAt: wire.labelAt, span: wire.span };
+    // A loop, or a relationship the routing does not follow: drawn as before
+    return edgePath(from, edge.from === edge.to ? from : to, undefined, rankOf.get(edge) ?? 0);
   });
 
   /**

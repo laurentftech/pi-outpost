@@ -1374,7 +1374,8 @@ describe("every declared relationship is a relationship you can see", () => {
     expect(apart).toBeGreaterThan(8);
   });
 
-  it("fans three relationships between one pair to either side of the straight run", () => {
+  // openlore: scenario=ParallelRelationshipsAreDrawnApart spec=structured-exchange
+  it("gives three relationships between one pair a run of their own each", () => {
     renderBody(
       withStructured(
         graphOf([
@@ -1387,10 +1388,11 @@ describe("every declared relationship is a relationship you can see", () => {
     const drawn = paths();
     expect(drawn).toHaveLength(3);
     expect(new Set(drawn).size).toBe(3);
-    // The first is the straight run; the other two curve, one each way
-    expect(drawn[0]).toMatch(/^M [\d.-]+ [\d.-]+ L/);
-    expect(drawn[1]).toContain("Q");
-    expect(drawn[2]).toContain("Q");
+    // Each leaves its own point, far enough from the others to be told apart
+    const starts = drawn.map((d) => pointsOf(d)[0]!);
+    for (let i = 0; i < starts.length; i++) {
+      for (let j = i + 1; j < starts.length; j++) expect(Math.hypot(starts[i]!.x - starts[j]!.x, starts[i]!.y - starts[j]!.y)).toBeGreaterThan(8);
+    }
   });
 
   it("gives opposite directions between the same pair their own straight run each", () => {
@@ -1460,9 +1462,9 @@ describe("every declared relationship is a relationship you can see", () => {
     expect(spanning, "the relationship spanning three ranks should be a routed polyline").toBeDefined();
   });
 
-  it("turns its corners as curves rather than as kinks", () => {
-    // A route drawn as bare segments turns through hard angles, which read as a
-    // broken line rather than as a path going somewhere.
+  // openlore: scenario=WiresRunInStraightSegments spec=structured-exchange-arrangement
+  it("WiresRunInStraightSegments: every relationship between two elements is horizontal and vertical runs", () => {
+    // Routed as draw.io routes an orthogonal connector (structured-exchange-arrangement)
     renderBody(
       withStructured({
         schema: S,
@@ -1479,10 +1481,13 @@ describe("every declared relationship is a relationship you can see", () => {
       }),
     );
 
-    const routed = paths().find((d) => (d.match(/L/g) ?? []).length > 1)!;
-    expect(routed).toContain("Q");
-    // Every corner rounded, so none is left as a bare angle
-    expect((routed.match(/Q/g) ?? []).length).toBeGreaterThanOrEqual(1);
+    const drawn = paths();
+    expect(drawn).toHaveLength(4);
+    for (const d of drawn) {
+      expect(d, d).toMatch(/^M [\d.-]+ [\d.-]+( L [\d.-]+ [\d.-]+)+$/);
+      const points = pointsOf(d);
+      for (let i = 1; i < points.length; i++) expect(points[i]!.x === points[i - 1]!.x || points[i]!.y === points[i - 1]!.y, `${d}: segment ${i} is slanted`).toBe(true);
+    }
   });
 
   it("leaves a two-point route alone rather than inventing a curve in it", () => {
@@ -2305,18 +2310,20 @@ describe("a moved box takes its relationships with it", () => {
   const routedPath = () =>
     [...document.querySelectorAll('[data-relationship-role] path[data-edge="line"]')][3]?.getAttribute("d");
 
-  it("keeps the rounded route after a box is moved, rather than snapping to a straight line", () => {
+  it("routes again from where the box is after a move, in straight runs rather than stretched", () => {
     renderBody(withStructured(chain));
     const before = routedPath();
     expect(before, "the spanning relationship should be routed to begin with").toBeDefined();
-    expect(before).toContain("Q");
 
     dragBox(0, { x: 0, y: -90 });
 
     const after = routedPath();
     expect(after, "the route should survive the drag").toBeDefined();
-    expect(after, "and keep its rounded corners").toContain("Q");
     expect(after).not.toBe(before);
+    const numbers = (after!.match(/-?\d+(\.\d+)?/g) ?? []).map(Number);
+    for (let i = 2; i + 1 < numbers.length; i += 2) {
+      expect(numbers[i] === numbers[i - 2] || numbers[i + 1] === numbers[i - 1], `${after}: a slanted segment`).toBe(true);
+    }
   });
 
   it("moves the route with the end that moved", () => {
