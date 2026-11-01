@@ -4922,7 +4922,28 @@ async function handleWriteFile(workspace: Workspace,
  * as every write from the browser; the document is never touched. The last arrangement kept
  * wins: it is presentation, and a reader moving a box is the newest word on where it goes.
  */
-async function handleSaveArrangement(workspace: Workspace, socket: WebSocket, documentPath: string, content: string, requestId: string): Promise<void> {
+/**
+ * The arrangement saves of each file, in the order they came: one at a time. Two saves of the
+ * same arrangement at once each write a temporary file and rename it over the target, and on
+ * Windows the second rename fails EPERM while the first replaces the file — run in order, both
+ * land and the last one sent is the one on disk.
+ */
+const arrangementSaves = new Map<string, Promise<void>>();
+
+function handleSaveArrangement(workspace: Workspace, socket: WebSocket, documentPath: string, content: string, requestId: string): Promise<void> {
+  const key = `${workspace.id}\0${arrangementPathFor(documentPath)}`;
+  const previous = arrangementSaves.get(key) ?? Promise.resolve();
+  // After the previous one, however it ended: one failed save must not hold back the next.
+  const save = previous.catch(() => {}).then(() => saveArrangement(workspace, socket, documentPath, content, requestId));
+  arrangementSaves.set(key, save);
+  // The last save of a file forgets the chain once it is done, so the map holds only what is in flight.
+  void save.finally(() => {
+    if (arrangementSaves.get(key) === save) arrangementSaves.delete(key);
+  });
+  return save;
+}
+
+async function saveArrangement(workspace: Workspace, socket: WebSocket, documentPath: string, content: string, requestId: string): Promise<void> {
   const target = arrangementPathFor(documentPath);
   try {
     const reading = readArrangement(content);
