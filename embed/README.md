@@ -11,7 +11,7 @@ npx pi-outpost init   # writes a starter config
 npx pi-outpost        # http://127.0.0.1:3141/
 ```
 
-See the [main README](https://github.com/laurentftech/pi-outpost#readme) for configuring it.
+See the [configuration reference](../docs/configuration.md) for configuring it.
 
 ## Install
 
