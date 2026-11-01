@@ -49,6 +49,9 @@ const HELP = `pi-outpost — a web chat UI for the pi coding agent
 
 Usage
   pi-outpost [options]           start the server
+  pi-outpost -p "<prompt>" [options]
+                                 run one turn without a browser: the answer on stdout, the rest on
+                                 stderr, exit status 1 if the turn failed ("-p -" reads stdin)
   pi-outpost init [options]      write a starter configuration file
   pi-outpost config [options]    print the configuration that would be used, and where it came from
   pi-outpost doctor [options]    check whether this installation can start and serve, and say what stops it
@@ -74,6 +77,9 @@ Options
   --open-in <shape>  window (its own window, the default) or browser (a tab)
   --terminal         enable the integrated interactive web terminal (default: disabled)
   --no-terminal      explicitly disable the integrated web terminal
+  --json             with -p: every event of the turn, one JSON line each, instead of the text
+  --grants <answer>  with -p: refuse (default), once or session — the answer to a grant request
+  --model <p/id>     with -p: the model for the turn, as provider/id
   -h, --help         show this help
   -v, --version      show the version
 
@@ -169,8 +175,10 @@ Agent runtime
 export class CliError extends Error {}
 
 export interface ParsedCli {
-  command: "serve" | "init" | "config" | "doctor" | "login" | "logout" | "build-exe" | "update" | "help" | "version";
+  command: "serve" | "print" | "init" | "config" | "doctor" | "login" | "logout" | "build-exe" | "update" | "help" | "version";
   flags: CliOptions;
+  /** `-p`: one turn, its answer on stdout. `prompt` is `-` for stdin. */
+  print: { prompt?: string; json: boolean; grants: PrintGrants; model?: string };
   init: { global: boolean; force: boolean };
   login: { provider?: string };
   logout: { provider?: string };
@@ -179,6 +187,10 @@ export interface ParsedCli {
   /** undefined when neither --open nor --no-open was given, so config still decides. */
   open?: boolean;
 }
+
+/** How print mode answers a grant request, with nobody to click. */
+export type PrintGrants = "refuse" | "once" | "session";
+const PRINT_GRANTS: readonly string[] = ["refuse", "once", "session"] satisfies PrintGrants[];
 
 type Command = "init" | "config" | "doctor" | "login" | "logout" | "build-exe" | "update";
 const COMMANDS: readonly string[] = ["init", "config", "doctor", "login", "logout", "build-exe", "update"] satisfies Command[];
@@ -218,6 +230,10 @@ export function parseCli(argv: string[]): ParsedCli {
         "open-in": { type: "string" },
         terminal: { type: "boolean", default: false },
         "no-terminal": { type: "boolean", default: false },
+        print: { type: "string", short: "p" },
+        json: { type: "boolean", default: false },
+        grants: { type: "string" },
+        model: { type: "string" },
         help: { type: "boolean", short: "h", default: false },
         version: { type: "boolean", short: "v", default: false },
       },
@@ -257,6 +273,22 @@ export function parseCli(argv: string[]): ParsedCli {
   if (values.global && command !== "init") {
     throw new CliError('"--global" belongs to "pi-outpost init" — see "pi-outpost --help"');
   }
+  // Print mode: one turn and out. Its flags mean nothing to a server, and a command beside it
+  // would be two things asked at once.
+  const printing = values.print !== undefined;
+  if (printing && command !== undefined) throw new CliError(`"-p" runs a prompt, not "pi-outpost ${command}" — see "pi-outpost --help"`);
+  if (printing && values.print!.trim() === "") throw new CliError('"-p" needs a prompt, or "-" to read it from stdin — see "pi-outpost --help"');
+  for (const flag of ["json", "grants", "model"] as const) {
+    if (!printing && (flag === "json" ? values.json : values[flag] !== undefined)) {
+      throw new CliError(`"--${flag}" belongs to "pi-outpost -p" — see "pi-outpost --help"`);
+    }
+  }
+  if (values.grants !== undefined && !PRINT_GRANTS.includes(values.grants)) {
+    throw new CliError(`"--grants" must be one of ${PRINT_GRANTS.join(", ")} (got "${values.grants}") — see "pi-outpost --help"`);
+  }
+  if (values.model !== undefined && !/^[^/\s]+\/\S+$/.test(values.model)) {
+    throw new CliError(`"--model" names a provider and a model, "provider/id" (got "${values.model}") — see "pi-outpost --help"`);
+  }
   const openIn = values["open-in"] as string | undefined;
   if (openIn !== undefined && !OPEN_SHAPES.includes(openIn as OpenShape)) {
     throw new CliError(`"--open-in" must be one of ${OPEN_SHAPES.join(", ")} (got "${openIn}") — see "pi-outpost --help"`);
@@ -285,10 +317,11 @@ export function parseCli(argv: string[]): ParsedCli {
     ...(values["no-terminal"] ? { terminal: false } : {}),
   };
 
-  const kind = values.help ? "help" : values.version ? "version" : (command ?? "serve");
+  const kind = values.help ? "help" : values.version ? "version" : printing ? "print" : (command ?? "serve");
   return {
     command: kind,
     flags,
+    print: { ...(printing ? { prompt: values.print } : {}), json: values.json, grants: (values.grants ?? "refuse") as PrintGrants, ...(values.model ? { model: values.model } : {}) },
     init: { global: values.global, force: values.force },
     login: { provider: values.provider },
     logout: { provider: values.provider },

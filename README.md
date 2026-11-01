@@ -861,6 +861,8 @@ executes model-generated Python with your permissions and is not a sandbox eithe
 
 ```
 pi-outpost [options]          start the server
+pi-outpost -p "<prompt>" [options]
+                              run one turn without a browser, the answer on stdout
 pi-outpost init [options]     write a starter configuration file
 pi-outpost config [options]   print the configuration that would be used, and where it came from
 pi-outpost doctor [options]   check whether this installation can start and serve, and say what stops it
@@ -896,9 +898,31 @@ pi-outpost update --extensions [--check]
 | `update --check` | Report what is available and install nothing |
 | `update --extensions` | Update the agent's npm pi packages instead of pi-outpost |
 | `update --all` | Update pi-outpost, then those packages |
+| `-p, --print <prompt>` | Run one turn and exit: see [`pi-outpost -p`](#pi-outpost--p). `-` reads the prompt from stdin |
+| `--json` | With `-p`: every event of the turn, one JSON line each, instead of the text |
+| `--grants <answer>` | With `-p`: `refuse` (default), `once` or `session` — the answer to a grant request |
+| `--model <provider/id>` | With `-p`: the model for the turn |
 
 There is deliberately **no `--token` flag**: a secret on the command line is readable by
 anyone who can list processes. Use `PI_OUTPOST_TOKEN` or the file's `server.token`.
+
+### `pi-outpost -p`
+
+Runs one turn of the agent without a browser, then exits — to script a task, or to try a sandbox,
+a grant or a skill from a terminal:
+
+```bash
+pi-outpost -p "What is the title of https://example.com?" --grants once
+echo "Summarise README.md" | pi-outpost -p - --model openai-codex/gpt-6.1-sol
+```
+
+It is the server the configuration describes — its sandbox, runner, grants, extensions and sessions —
+bound to `127.0.0.1` on a port of its own, with no browser and no terminal, and talked to as the
+interface does; the turn runs in a new session. Only the assistant's answer goes to stdout; the
+server's log, the tools the agent calls and every answer given go to stderr. The exit status is 0 when
+the turn ended, 1 when it failed (a provider error, a model not allowed). With nobody there to click,
+a grant request is answered by `--grants` (refused by default), and an extension's dialog is declined,
+each said on stderr. `--json` prints the turn's events instead of its text.
 
 ### `pi-outpost doctor`
 
