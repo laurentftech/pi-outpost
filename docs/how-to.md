@@ -2,8 +2,8 @@
 
 Short recipes for the things people actually set out to do. Each one is
 self-contained: the configuration it needs, the command that proves it works, and the
-caution that goes with it. The [README](../README.md) has the reference — every key,
-every flag.
+caution that goes with it. The [configuration reference](configuration.md) covers every key; the
+[command-line reference](command-line.md) covers every flag.
 
 - [Let the agent write in one folder only](#let-the-agent-write-in-one-folder-only)
 - [Give the agent a shell](#give-the-agent-a-shell)
@@ -785,7 +785,7 @@ For a server other people connect to, decide what the browser may change:
 
 All of it is enforced by the server: a client that sends the request anyway is
 refused, nothing is persisted and no session is rebuilt. Add `server.token`, and read
-the security note in the README before binding off loopback.
+the [security note](getting-started.md#why-it-insists-on-a-configuration-file) before binding off loopback.
 
 ## Put it inside your own web app
 
@@ -847,7 +847,7 @@ The executable may also be a Pi-derived agent. For [Prime Agent](https://github.
 ```
 
 Leave `tools` unset (Prime Agent's only built-in tool is `ipython`), and expect the
-conversation tree as a single branch. See the README's [Agent runtimes](../README.md#agent-runtimes).
+conversation tree as a single branch. See [Agent runtimes](configuration.md#agent-runtimes).
 
 ## When something does not work
 

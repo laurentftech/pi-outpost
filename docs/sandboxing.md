@@ -255,7 +255,7 @@ run unconfined. On Apple silicon either runner works; MXC's is maintained by Mic
    `wxc-exec.exe --probe` must report `"tier": "base-container"`; pi-outpost refuses the lower tiers.
 2. **MXC's executor comes with pi-outpost**: `wxc-exec.exe`, signed by Microsoft, in the optional
    dependency `@microsoft/mxc-sdk` — installed by default, see
-   [MXC comes with pi-outpost](../README.md#mxc-comes-with-pi-outpost). `"mxc"` names it, for this
+   [MXC comes with pi-outpost](configuration.md#mxc-comes-with-pi-outpost). `"mxc"` names it, for this
    machine's architecture; a path to another `wxc-exec.exe` works too. The standalone executable looks
    for `wxc-exec.exe` beside itself, where `pi-outpost build-exe` puts it.
 3. **Run the server in your interactive session**, not as a service nor over SSH.

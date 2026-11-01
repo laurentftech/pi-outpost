@@ -1,7 +1,7 @@
 # Developing pi-outpost
 
 Everything here is for people working *on* pi-outpost. Running it is covered by the
-[README](../README.md).
+[getting-started guide](getting-started.md).
 
 ## Layout
 
@@ -321,3 +321,34 @@ hand (`gh workflow run release.yml --ref <branch>`), `executables_only` left on.
 
 OpenSpec changes are archived when their PR merges, not at release time — from `main`,
 never from the feature branch, or the main specs would claim what `main` does not have.
+
+## Runtime architecture
+
+```
+shared/  (protocol types — events, ChatItem, DialogRequest)
+         (structured-exchange: schema, validation, and the figure — one list of
+          shapes both renderers draw, so neither can decide anything alone)
+
+ui/  (React components & hooks)       server/  (Fastify + ws)
+┌──────────────────────────┐          ┌──────────────────────────┐
+│ @pi-outpost/ui exports   │          │ workspace registry       │
+│ CopyButton, DiffBlocks,  │  /ws     │  └ per project: session, │
+│ ToolCard, useAgent, …    │ ◄──────► │    sandbox, files, git   │
+│                          │  JSON    │ agent runtime boundary   │
+└────────┬─────────────────┘          │  ├ embedded AgentSession │
+         │ import                     │  └ pi --mode rpc child   │
+         ▼                            └──────────────────────────┘
+web/  (React + Vite + Tailwind)     embed/  (Shadow-DOM widget)
+┌──────────────────────┐            ┌──────────────────────────┐
+│ Standalone app       │            │ @pi-outpost/embed        │
+│ (mounts UI from ui/) │            │ (mounts UI from ui/)     │
+└──────────────────────┘            └──────────────────────────┘
+```
+
+Sessions persist in `<agentDir>/sessions/`, per project — reconnecting clients receive the
+full history of the project they are bound to.
+
+**Single-tenant by design.** Everyone connected to a server shares the same projects and the
+same conversations: there is one identity, not one per person. That is deliberate for a
+personal deployment, and the thing to fix before a shared one — see [#4, multi-user
+support](https://github.com/laurentftech/pi-outpost/issues/4).

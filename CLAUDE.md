@@ -113,6 +113,9 @@ Before opening or updating any pull request:
 
 This is an impact review, not a mandatory full reread of unrelated documentation.
 
+Keep `README.md` short: an entry point and links. Details go in the matching `docs/`
+guide; touch the README only to fix a sentence that has become false, or to add a link.
+
 ## Spec scenario coverage
 
 Before calling a feature complete, prove that every applicable OpenSpec scenario
