@@ -221,7 +221,8 @@ run unconfined. On Apple silicon either runner works; MXC's is maintained by Mic
 3. **Run the server in your interactive session**, not as a service nor over SSH.
 
 Nothing else is installed: Windows PowerShell 5.1 comes with Windows. `pwsh.exe` (PowerShell 7) works
-too. With a PowerShell `bashShell` the agent is given pi's `powershell` tool instead of `bash`, so the
+too — a bare name is looked up on `PATH` when the configuration loads, and one not found stops the
+server, saying so. With a PowerShell `bashShell` the agent is given pi's `powershell` tool instead of `bash`, so the
 model writes PowerShell; every command runs from a script, without profile, with the execution policy
 given for the process (the sandbox cannot read the registry's), progress bars off (drawing one is
 refused inside) and output as plain text (PowerShell 7 colours tables and errors otherwise, and the model
@@ -241,6 +242,10 @@ MXC for no clipboard and no input injection. Limits:
   other projects…), denied by name at each launch — git needs it (microsoft/mxc#1464). Something created
   after the launch is not denied, and `Program Files` and `ProgramData` stay readable. Never make a
   drive's root the sandbox root: nothing would be left to deny.
+- Every folder on the shell's `PATH` is readable, so a tool installed for you runs — Python in
+  `AppDataLocalPrograms`, `uv`. A `PATH` entry that is or holds your home directory, or holds the
+  agent directory or the configuration, is left out. The Python launcher `py.exe` still finds no
+  interpreter (it reads the registry); `python` runs.
 - A folder readable but not writable can be neither listed nor entered: leave the whole root writable
   (no narrower `writableRoot`) where git runs.
 - `git push` has no credentials, and signed commits fail: GnuPG for Windows is built without ASLR, which

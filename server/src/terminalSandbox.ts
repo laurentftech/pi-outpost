@@ -412,6 +412,29 @@ export interface MxcTerminalInput {
   readOnlyFiles?: string[];
   /** `sandbox.allowedHosts`' proxy: the network closed but for it. The agent's shell only. */
   networkProxy?: string;
+  /**
+   * The shell's search path: each folder it names is readable, so a program it finds can run —
+   * a tool installed for the user (Python in `AppData\Local\Programs`) sits in the denied profile.
+   */
+  searchPath?: string;
+  /** The user's home directory (`%USERPROFILE%`): a search-path entry this broad is left out. */
+  home?: string;
+}
+
+/**
+ * The folders of a Windows search path a command may read: every absolute entry but those that
+ * would undo the sandbox — a drive's root, the home directory or a folder above it, a folder
+ * holding the agent directory or the configuration. Compared without case, as Windows does.
+ */
+export function readableSearchEntries(searchPath: string | undefined, guard: { home?: string; agentDir?: string; configFile?: string }): string[] {
+  const lower = (p: string) => p.toLowerCase().replace(/[\\/]+$/, "");
+  const under = (child: string, parent: string) => lower(child) === lower(parent) || lower(child).startsWith(`${lower(parent)}\\`);
+  return searchEntries(searchPath, path.win32).filter(
+    (entry) =>
+      !(guard.home && under(guard.home, entry)) &&
+      !(guard.agentDir && under(guard.agentDir, entry)) &&
+      !(guard.configFile && under(guard.configFile, entry)),
+  );
 }
 
 /**
@@ -433,7 +456,9 @@ export function mxcTerminalConfig(input: MxcTerminalInput): MxcTerminalConfig {
   const writable = input.allowWrite ? [input.writableRoot ?? input.root] : [];
   const shellDir = path.win32.isAbsolute(input.shell) ? [path.win32.dirname(input.shell)] : [];
   const readwritePaths = unique([...writable, input.tmp]);
-  const readonlyPaths = unique([drive, input.root, ...shellDir, ...(input.readOnlyFiles ?? [])].filter((p) => !readwritePaths.includes(p)));
+  // The search path's folders, each a more specific allow inside the denied siblings and profile.
+  const tools = readableSearchEntries(input.searchPath, { home: input.home, agentDir: input.agentDir, configFile: input.configFile });
+  const readonlyPaths = unique([drive, input.root, ...shellDir, ...tools, ...(input.readOnlyFiles ?? [])].filter((p) => !readwritePaths.includes(p)));
   const allowed = new Set([...readwritePaths, ...readonlyPaths].map((p) => p.toLowerCase()));
   const deniedPaths = unique([...input.siblings, input.agentDir, input.configFile].filter((p): p is string => Boolean(p)))
     // Denying a path that is also allowed leaves which one wins to the sandbox: never ask.

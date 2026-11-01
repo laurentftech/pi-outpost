@@ -905,6 +905,33 @@ export function asObject(value: unknown, key: string): Record<string, unknown> {
  * @param launchDir directory the server was started from — where an implicit
  *   `pi-outpost.config.json` is looked for, and what the agent's cwd defaults to.
  */
+/**
+ * `sandbox.bashShell` as the runner must be handed it: a path, resolved against the config's
+ * folder, or a bare name found on PATH — a runner starts the shell itself and looks nothing up,
+ * so a bare `pwsh.exe` failed every command with "error code 2" (#391). Not on PATH: refused now,
+ * naming it, rather than at the first command.
+ */
+export function resolveShell(shell: string, resolve: (p: string) => string, env: NodeJS.ProcessEnv, platform: NodeJS.Platform = process.platform): string {
+  if (shell.includes("/") || shell.includes("\\")) return resolve(shell);
+  const flavour = platform === "win32" ? path.win32 : path.posix;
+  const searchPath = env.PATH ?? env.Path ?? "";
+  const extensions =
+    platform === "win32" && flavour.extname(shell) === ""
+      ? (env.PATHEXT ?? ".COM;.EXE;.BAT;.CMD").split(";").filter(Boolean)
+      : [""];
+  for (const directory of searchPath.split(platform === "win32" ? ";" : ":").filter((entry) => entry && flavour.isAbsolute(entry))) {
+    for (const extension of extensions) {
+      const candidate = flavour.join(directory, shell + extension.toLowerCase());
+      try {
+        if (fs.statSync(candidate).isFile()) return candidate;
+      } catch {
+        // Not here: the next folder.
+      }
+    }
+  }
+  fail(`"sandbox.bashShell" names ${JSON.stringify(shell)}, which is not on PATH: give its full path (e.g. "C:\\\\Program Files\\\\PowerShell\\\\7\\\\pwsh.exe")`);
+}
+
 export function loadConfig(
   launchDir: string,
   flags: CliOptions = {},
@@ -1061,7 +1088,7 @@ export function loadConfig(
       allowBash,
       ...(bashFrom === undefined ? {} : { bashFrom: bashFrom.trim() }),
       ...(resolvedBashRunner === undefined ? {} : { bashRunner: resolvedBashRunner }),
-      ...(bashShell === undefined ? {} : { bashShell: resolve(bashShell) }),
+      ...(bashShell === undefined ? {} : { bashShell: resolveShell(bashShell, resolve, env) }),
       ...(bashImage === undefined ? {} : { bashImage }),
       ...(allowedHosts === undefined ? {} : { allowedHosts: allowedHosts.map((host) => host.toLowerCase()) }),
       readExceptions: [

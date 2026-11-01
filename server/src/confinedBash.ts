@@ -221,6 +221,8 @@ export function confinedBashOperations(options: ConfinedBashOptions): BashOperat
             cwd: startIn,
             env,
             siblings: siblingsToDeny(options.root),
+            searchPath: env.PATH,
+            ...(process.env.USERPROFILE ? { home: process.env.USERPROFILE } : {}),
             readOnlyFiles,
             ...(options.networkProxy === undefined ? {} : { networkProxy: options.networkProxy.url }),
           });
