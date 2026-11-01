@@ -138,19 +138,22 @@ function posixCanary(bait: CanaryBait, options: ScriptOptions): string {
 }
 
 function powerShellCanary(bait: CanaryBait, options: ScriptOptions): string {
-  const lines = [`function R($n, $ok) { if ($ok) { "${MARK} $n reached" } else { "${MARK} $n refused" } }`];
+  // Not `R`: an alias outranks a function, and `r` is Invoke-History's.
+  const lines = [`function Report-Canary($n, $ok) { if ($ok) { "${MARK} $n reached" } else { "${MARK} $n refused" } }`];
+  // `$( )`, not `( )`: `try` is a statement, and in parentheses PowerShell reads it as a command.
+  const report = (attempt: ConfinementAttempt, statement: string) => `Report-Canary ${attempt} $(${statement})`;
   const reads = (file: string) => `try { [IO.File]::ReadAllBytes(${quotePs(file)}) | Out-Null; $true } catch { $false }`;
-  if (bait.agentMarker) lines.push(`R agent-directory (${reads(bait.agentMarker)})`);
+  if (bait.agentMarker) lines.push(report("agent-directory", reads(bait.agentMarker)));
   if (bait.besideDir) {
-    lines.push(`R beside-root (${reads(path.join(bait.besideDir, "marker"))})`);
-    lines.push(`R write-beside-root (try { [IO.File]::WriteAllText(${quotePs(path.join(bait.besideDir, "written"))}, 'x'); $true } catch { $false })`);
+    lines.push(report("beside-root", reads(path.join(bait.besideDir, "marker"))));
+    lines.push(report("write-beside-root", `try { [IO.File]::WriteAllText(${quotePs(path.join(bait.besideDir, "written"))}, 'x'); $true } catch { $false }`));
   }
-  if (bait.victim?.pid) lines.push(`R signal-process (try { [System.Diagnostics.Process]::GetProcessById(${bait.victim.pid}).Kill(); $true } catch { $false })`);
-  lines.push(`R server-environment ([bool][Environment]::GetEnvironmentVariable(${quotePs(bait.envName)}))`);
+  if (bait.victim?.pid) lines.push(report("signal-process", `try { [System.Diagnostics.Process]::GetProcessById(${bait.victim.pid}).Kill(); $true } catch { $false }`));
+  lines.push(report("server-environment", `[bool][Environment]::GetEnvironmentVariable(${quotePs(bait.envName)})`));
   if (options.proxied) {
     lines.push(
-      `R unlisted-host (try { Invoke-WebRequest -Uri 'https://canary.invalid/' -UseBasicParsing -TimeoutSec 10 | Out-Null; $true } catch { $false })`,
-      `R direct-connection (try { $c = [System.Net.Sockets.TcpClient]::new(); $ok = $c.ConnectAsync('1.1.1.1', 443).Wait(5000); $c.Dispose(); $ok } catch { $false })`,
+      report("unlisted-host", `try { Invoke-WebRequest -Uri 'https://canary.invalid/' -UseBasicParsing -TimeoutSec 10 | Out-Null; $true } catch { $false }`),
+      report("direct-connection", `try { $c = [System.Net.Sockets.TcpClient]::new(); $ok = $c.ConnectAsync('1.1.1.1', 443).Wait(5000); $c.Dispose(); $ok } catch { $false }`),
     );
   }
   lines.push("exit 0", "");

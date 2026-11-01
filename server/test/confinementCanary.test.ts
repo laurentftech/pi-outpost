@@ -4,13 +4,13 @@
  * `MXC_LXC_EXEC` with `MXC_LINUX_EXPECT=confined` (the Linux container) names one.
  */
 import assert from "node:assert/strict";
-import { execFile } from "node:child_process";
+import { execFile, spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { after, before, describe, test } from "node:test";
-import { confinedBashOperations } from "../src/confinedBash.ts";
+import { confinedBashOperations, POWERSHELL_SCRIPT_ARGS, powerShellScript } from "../src/confinedBash.ts";
 import { shellIsConfined } from "../src/confinementStatus.ts";
 import { canaryScript, expectedAttempts, prepareBait, readCanary, runCanary, secretVariables, serverEnvironment } from "../src/confinementCanary.ts";
 
@@ -134,12 +134,54 @@ describe("a runner that confines nothing", { skip: process.platform === "win32" 
     }
   });
 
-  test("the PowerShell canary reports the same attempts", () => {
-    const script = canaryScript({ id: "x", agentMarker: "/a/m", besideDir: "/b", envName: "PI_OUTPOST_CANARY_X", envValue: "v", notChecked: [], cleanup: async () => {} }, { powerShell: true, proxied: true, serverPid: 1 });
-    for (const attempt of ["agent-directory", "beside-root", "write-beside-root", "server-environment", "unlisted-host", "direct-connection"]) {
-      assert.match(script, new RegExp(`^R ${attempt} `, "m"), attempt);
+});
+
+test("the PowerShell canary reports the same attempts", () => {
+  const script = canaryScript({ id: "x", agentMarker: "/a/m", besideDir: "/b", envName: "PI_OUTPOST_CANARY_X", envValue: "v", notChecked: [], cleanup: async () => {} }, { powerShell: true, proxied: true, serverPid: 1 });
+  for (const attempt of ["agent-directory", "beside-root", "write-beside-root", "server-environment", "unlisted-host", "direct-connection"]) {
+    // A subexpression: `try` in plain parentheses is read as a command named "try".
+    assert.match(script, new RegExp(`^Report-Canary ${attempt} \\$\\(`, "m"), attempt);
+  }
+  assert.match(script, /^function Report-Canary\(/m);
+  // `r` is Invoke-History's alias, and an alias outranks a function.
+  assert.doesNotMatch(script, /\bR\b/);
+});
+
+/** The PowerShells this machine has: Windows PowerShell on Windows, and PowerShell 7 wherever it is installed. */
+const PWSH = process.platform === "win32" ? "pwsh.exe" : "pwsh";
+const POWERSHELLS = [
+  ...(process.platform === "win32" ? ["powershell.exe"] : []),
+  ...(spawnSync(PWSH, ["-NoProfile", "-Command", "exit 0"], { windowsHide: true }).status === 0 ? [PWSH] : []),
+];
+
+describe("a PowerShell that confines nothing", { skip: POWERSHELLS.length === 0 && "no PowerShell on this machine" }, () => {
+  const unconfined = (run: (shell: string, command: string, root: string) => Promise<string>) => async () => {
+    for (const shell of POWERSHELLS) {
+      const home = await mkdtemp(path.join(tmpdir(), "canary-agent-"));
+      const root = await mkdtemp(path.join(tmpdir(), "canary-root-"));
+      try {
+        const verdict = await runCanary({ runner: shell, agentDir: home, root, powerShell: true, proxied: false, exec: (command) => run(shell, command, root) });
+        assert.equal(verdict.state, "leaking", `${shell}: ${JSON.stringify(verdict)}`);
+        assert.deepEqual(verdict.state === "leaking" && verdict.reached, ["agent-directory", "beside-root", "write-beside-root", "signal-process", "server-environment"], shell);
+      } finally {
+        await rm(home, { recursive: true, force: true });
+        await rm(root, { recursive: true, force: true });
+      }
     }
-  });
+  };
+  const output = (shell: string, args: string[], cwd: string) =>
+    new Promise<string>((resolve) => execFile(shell, args, { env: process.env, cwd, windowsHide: true }, (_error, stdout, stderr) => resolve(`${stdout}${stderr}`)));
+
+  test("every attempt is reported through the agent's shell: a .ps1 script", unconfined(async (shell, command, root) => {
+    const script = path.join(root, "command.ps1");
+    await writeFile(script, powerShellScript(command));
+    return output(shell, [...POWERSHELL_SCRIPT_ARGS, script], root);
+  }));
+
+  test("every attempt is reported through the terminal: one line, -Command", unconfined((shell, command, root) => {
+    const oneLine = command.split(/\r?\n/).filter(Boolean).join("; ");
+    return output(shell, ["-NoProfile", "-NonInteractive", "-Command", oneLine], root);
+  }));
 });
 
 const SEATBELT = process.platform === "darwin" ? process.env.SEATBELT_EXEC : undefined;
