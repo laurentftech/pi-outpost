@@ -115,7 +115,8 @@ inside the runner, in that shell, with the policy, environment and refusals of a
 A confined PowerShell command SHALL run from a script file written UTF-8 with a byte-order mark, in a
 PowerShell started without profile, non-interactive, with the execution policy given for the process,
 progress display off and output in UTF-8, as plain text. Its exit status SHALL be the one set with `exit`; otherwise,
-when its last statement failed, the native program's exit code or 1; otherwise 0.
+when its last statement failed, the native program's exit code or 1; otherwise 0. Setting that status SHALL
+NOT cut the command's output short: a command that does not exit itself gives back everything it printed.
 
 #### Scenario: PowerShellExitStatusComesBack
 - **GIVEN** the `powershell` tool confined by a runner
@@ -131,6 +132,11 @@ when its last statement failed, the native program's exit code or 1; otherwise 0
 - **GIVEN** the `powershell` tool confined by a runner, PowerShell 7 or Windows PowerShell 5.1
 - **WHEN** the agent runs a command printing a table and failing a cmdlet
 - **THEN** the table and the error come back as plain text, with no terminal escape sequence
+
+#### Scenario: AFormattedObjectDoesNotCutTheOutputShort
+- **GIVEN** the `powershell` tool confined by a runner, PowerShell 7 or Windows PowerShell 5.1
+- **WHEN** the agent runs a command printing a line, then an object PowerShell formats as a table (`Get-Location`), then another line, and one doing the same and ending on a failed cmdlet
+- **THEN** both lines and the table come back, in order, and the statuses are 0 and 1
 
 ### Requirement: MxcComesWithPiOutpost
 
@@ -286,15 +292,21 @@ server's proxy as its only way out, and the proxy SHALL relay a connection to a 
 
 ### Requirement: AnUnnamedHostIsRefusedAndNothingBypassesTheProxy
 
-Under `sandbox.allowedHosts`, the proxy SHALL refuse a host the list does not name with a response naming
-that host and `sandbox.allowedHosts`, the command's output SHALL end with a note naming every host refused
-while it ran, and the server SHALL log the refusal. A direct connection, and any other service on the host's
-loopback, SHALL be unreachable from a command.
+Under `sandbox.allowedHosts`, a host the list does not name SHALL be refused, unless the user, asked while
+the connection waits, allows it (see `sandbox-approved-grants`). Refused without anyone to ask, the
+proxy's response SHALL name that host and `sandbox.allowedHosts`, the command's output SHALL end with a note
+naming every host refused while it ran, and the server SHALL log the refusal. A direct connection, and any
+other service on the host's loopback, SHALL be unreachable from a command.
 
 #### Scenario: AnotherHostIsRefusedWithTheReason
-- **GIVEN** `sandbox.allowedHosts` and the agent's shell confined by MXC
+- **GIVEN** `sandbox.allowedHosts`, the agent's shell confined by MXC, and no one to ask about a host
 - **WHEN** a command fetches a host the list does not name
 - **THEN** it fails, the command's output ends with a note naming that host and `sandbox.allowedHosts` — curl, git and Windows PowerShell print only the status code — the proxy's own answer names them too, and the server logs the refusal
+
+#### Scenario: NoOneToAskKeepsTheListAlone
+- **GIVEN** `sandbox.allowedHosts`, the agent's shell confined by MXC, and `sandbox.grants: "never"`
+- **WHEN** a command fetches a host the list does not name
+- **THEN** it is refused at once, nobody is asked, and the note ending its output asks for the host to be added to `sandbox.allowedHosts`
 
 #### Scenario: TheProxyCannotBeBypassed
 - **GIVEN** the same configuration
@@ -409,3 +421,26 @@ some, it SHALL be shown partly confined, naming those variables and never their 
 - **GIVEN** the same runner, and a server started with `OPENAI_API_KEY` in its environment
 - **WHEN** the canary runs
 - **THEN** the lock is shown partly confined, naming `OPENAI_API_KEY` and not its value, and `doctor` reports it as a warning
+
+### Requirement: UnderMxcOnWindowsTheSearchPathIsReadable
+
+Under MXC on Windows, a confined command SHALL be able to read every absolute folder its `PATH` names,
+so that a program found on `PATH` runs, even inside the user's denied profile. A folder that is or holds
+the home directory, holds the agent directory or the configuration file, or is a drive's root SHALL NOT
+be made readable by this, and the agent directory and the configuration file SHALL stay denied.
+
+#### Scenario: AToolInstalledForTheUserRuns
+- **GIVEN** the agent's shell confined by MXC on Windows, and Python installed for the user under `AppData\Local\Programs`, its folder on `PATH`
+- **WHEN** a command runs `python --version` and a line of Python
+- **THEN** both run, while the agent directory's keys file is still refused and the profile's other folders stay out of reach
+
+### Requirement: ABareShellIsFoundOnThePath
+
+A `sandbox.bashShell` given as a bare name SHALL be looked up on `PATH` when the configuration loads,
+with `PATHEXT` on Windows, and SHALL run from what is found there. One not on `PATH` SHALL stop startup
+with a message naming it. A path SHALL be resolved against the configuration's folder, as before.
+
+#### Scenario: ABareShellNameIsFoundOnThePath
+- **GIVEN** `sandbox.bashShell: "pwsh.exe"` and PowerShell 7 on `PATH`
+- **WHEN** the configuration loads, and the agent's shell runs under MXC
+- **THEN** the shell is PowerShell 7 from `PATH`, and the canary finds it confined; a name not on `PATH` stops startup saying so

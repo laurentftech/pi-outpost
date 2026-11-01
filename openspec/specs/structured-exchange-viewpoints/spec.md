@@ -205,6 +205,8 @@ SHALL list the identifiers each declares; naming a viewpoint when neither declar
 saying so. Nothing SHALL be written when a request is refused.
 
 The result SHALL name the viewpoint the figure shows, and whether it came from the document or its profile.
+The figure SHALL be drawn with that viewpoint's arrangement, and hidden kinds named on top of it
+SHALL leave the arranged places of what remains unchanged.
 
 #### Scenario: AFigureIsWrittenForADeclaredViewpoint
 - **WHEN** the agent requests a figure for a viewpoint the document declares
@@ -237,3 +239,8 @@ The result SHALL name the viewpoint the figure shows, and whether it came from t
 #### Scenario: TheResultNamesTheViewpoint
 - **WHEN** a figure is written for a viewpoint
 - **THEN** the result names the viewpoint it shows
+
+#### Scenario: HiddenKindsKeepTheArrangedPlaces
+- **GIVEN** a viewpoint with an arrangement
+- **WHEN** the agent writes its figure hiding one kind it retains
+- **THEN** every box still drawn is at its arranged place
