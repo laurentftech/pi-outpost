@@ -102,6 +102,42 @@ export function isPosixMxc(runner: string): boolean {
 }
 
 /**
+ * The first build of each Windows 11 release whose process container MXC supports, and the update
+ * that brings it — MXC's own table (docs/backends/process-container/os-version-support.md). Only
+ * to word a refusal: the probe decides, since MXC says runtime probing is authoritative.
+ */
+const MXC_WINDOWS_BUILDS: Record<string, { ubr: number; update: string }> = {
+  "26100": { ubr: 9278, update: "the August 2026 cumulative update (KB5120998) or later" },
+  "26200": { ubr: 9278, update: "the August 2026 cumulative update (KB5120998) or later" },
+  "26300": { ubr: 9550, update: "the September 2026 cumulative update (KB5124010) or later" },
+  "28000": { ubr: 2804, update: "the August 2026 cumulative update (KB5120996) or later" },
+};
+
+/** What a Windows build lacks for MXC's process container, in words a user can act on. */
+export function windowsBuildAdvice(build: string, ubr: number): string {
+  const here = `This machine is Windows build ${build}.${ubr}`;
+  const known = MXC_WINDOWS_BUILDS[build];
+  if (known) return ubr < known.ubr ? `${here}; MXC's process container needs ${build}.${known.ubr}: install ${known.update}` : here;
+  if (Number(build) < 26100) return `${here}; MXC's process container needs Windows 11 24H2 (26100.9278) or later`;
+  return here;
+}
+
+/** This machine's Windows build and update revision, from the registry; undefined when unreadable. */
+async function windowsBuild(exec: Exec): Promise<{ build: string; ubr: number } | undefined> {
+  const key = "HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion";
+  try {
+    const [build, ubr] = await Promise.all(
+      ["CurrentBuild", "UBR"].map(async (name) => (await exec("reg", ["query", key, "/v", name], { timeout: RUNNER_CHECK_TIMEOUT_MS })).stdout),
+    );
+    const buildValue = /CurrentBuild\s+REG_SZ\s+(\d+)/.exec(build)?.[1];
+    const ubrValue = /UBR\s+REG_DWORD\s+0x([0-9a-f]+)/i.exec(ubr)?.[1];
+    return buildValue && ubrValue ? { build: buildValue, ubr: Number.parseInt(ubrValue, 16) } : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
  * MXC's self-check: `wxc-exec --probe` names the tier it would pick.
  *
  * Only tier 1 (`base-container`, Windows 11 24H2 with the August 2026 update) is accepted.
@@ -134,9 +170,12 @@ async function checkMxcRunner(runner: string, exec: Exec, platform: NodeJS.Platf
     return { ok: false, reason: `MXC's executor answered its probe with something that is not JSON: ${output.stdout.trim().slice(0, 200)}` };
   }
   if (probe.tier !== "base-container") {
+    const build = await windowsBuild(exec);
     return {
       ok: false,
-      reason: `MXC would confine terminals with tier "${String(probe.tier)}"; a terminal needs "base-container" (Windows 11 24H2 or 25H2 with the August 2026 update or later)`,
+      reason:
+        `MXC would confine terminals with tier "${String(probe.tier)}"; a terminal needs "base-container" (Windows 11 24H2 or 25H2 with the August 2026 update or later)` +
+        (build ? `. ${windowsBuildAdvice(build.build, build.ubr)}` : ""),
     };
   }
   if (probe.probes?.baseContainerSupportsDenyPaths === false) {

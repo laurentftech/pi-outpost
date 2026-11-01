@@ -24,6 +24,7 @@
 import type { ConfinementAttempt, ConfinementVerdict } from "@pi-outpost/shared";
 import fsSync from "node:fs";
 import path from "node:path";
+import { CONFINE_SUGGESTION } from "./autoRunner.ts";
 import { type AppConfig, implicitConfigCandidates, NoConfigError } from "./config.ts";
 import { browsableUrl } from "./openBrowser.ts";
 import { type InstallChannel } from "./update.ts";
@@ -452,6 +453,18 @@ export function confinementChecks(results: ReadonlyArray<{ surface: "shell" | "t
         return { name, status: "warn" as const, detail: [`could not check ${verdict.runner}'s confinement: ${verdict.reason}`] };
       case "checking":
         return { name, status: "warn" as const, detail: [`${verdict.runner}'s confinement was not checked`] };
+      case "unavailable":
+        // The server serves; its shell refuses every command. A warning, with the way out.
+        return { name, status: "warn" as const, detail: [verdict.reason] };
+      case "unconfined":
+        return verdict.available
+          ? {
+              name,
+              status: "warn" as const,
+              detail: [`the agent's shell runs unconfined, and ${verdict.available.label} (${verdict.available.runner}) passes its self-check on this machine`],
+              remedy: [`Confine it: ${CONFINE_SUGGESTION}.`],
+            }
+          : { name, status: "ok" as const, detail: [`the agent's shell runs unconfined, as configured: nothing can confine it on this machine${verdict.reason ? ` — ${verdict.reason}` : ""}`] };
     }
   });
 }

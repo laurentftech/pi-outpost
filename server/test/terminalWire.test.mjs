@@ -26,7 +26,7 @@ const openTerminal = async (client, terminalId) => {
 
 test("UnknownShellIsRefused: only advertised shell identifiers may be opened", async (t) => {
   const root = await makeWorkspace();
-  const server = await startServer(root, { sandbox: undefined, terminal: { enabled: true } });
+  const server = await startServer(root, { sandbox: false, terminal: { enabled: true } });
   t.after(() => server.stop());
   const client = connect(server.wsUrl());
   t.after(() => client.close());
@@ -45,7 +45,7 @@ test("InstalledShellsOnly: removing an advertised executable refuses a stale cho
   const root = await makeWorkspace();
   const executable = path.join(root, process.platform === "win32" ? "removed-shell.exe" : "removed-shell");
   await fs.writeFile(executable, "#!/bin/sh\n", { mode: 0o755 });
-  const server = await startServer(root, { sandbox: undefined, terminal: { enabled: true, shell: executable } });
+  const server = await startServer(root, { sandbox: false, terminal: { enabled: true, shell: executable } });
   t.after(() => server.stop());
   const client = connect(server.wsUrl());
   t.after(() => client.close());
@@ -59,7 +59,7 @@ test("InstalledShellsOnly: removing an advertised executable refuses a stale cho
 
 test("a server with no terminal configured advertises none and refuses to open one", async (t) => {
   const root = await makeWorkspace();
-  const server = await startServer(root, { sandbox: undefined });
+  const server = await startServer(root, { sandbox: false });
   t.after(() => server.stop());
   const client = connect(server.wsUrl());
   t.after(() => client.close());
@@ -85,7 +85,7 @@ test("a server with no terminal configured advertises none and refuses to open o
 test("a locked terminal says so in the snapshot, so Settings cannot offer to switch it on", async (t) => {
   const root = await makeWorkspace();
   const server = await startServer(root, {
-    sandbox: undefined,
+    sandbox: false,
     terminal: { enabled: true },
     sandboxLocks: { terminal: true },
   });
@@ -125,7 +125,7 @@ test("the environment variable turns the terminal on where no config file asked 
   const root = await makeWorkspace();
   // No `terminal` key in the config at all: the deployment switch is the environment,
   // which is how a container turns this on without rewriting the file it was given.
-  const server = await startServer(root, { sandbox: undefined }, { env: { PI_OUTPOST_TERMINAL: "1" } });
+  const server = await startServer(root, { sandbox: false }, { env: { PI_OUTPOST_TERMINAL: "1" } });
   t.after(() => server.stop());
   const client = connect(server.wsUrl());
   t.after(() => client.close());
@@ -150,7 +150,7 @@ test("the environment variable turns the terminal on where no config file asked 
 
 test("PI_OUTPOST_TERMINAL=0 leaves it off, so the variable is a switch and not a mere presence", async (t) => {
   const root = await makeWorkspace();
-  const server = await startServer(root, { sandbox: undefined }, { env: { PI_OUTPOST_TERMINAL: "0" } });
+  const server = await startServer(root, { sandbox: false }, { env: { PI_OUTPOST_TERMINAL: "0" } });
   t.after(() => server.stop());
   const client = connect(server.wsUrl());
   t.after(() => client.close());

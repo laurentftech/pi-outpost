@@ -317,8 +317,10 @@ describe("configuration: discovery, precedence, profiles", () => {
     assert.equal(code, 0);
     const config = resolved(out);
     assert.equal(config.port, 3141);
-    assert.equal(config.sandbox.allowBash, false, "the starter config must not hand out bash");
-    assert.equal(config.sandbox.allowWrite, false);
+    // The default sandbox, written out: a shell, but one the server confines or refuses.
+    assert.equal(config.sandbox.allowBash, true);
+    assert.equal(config.sandbox.allowWrite, true);
+    assert.ok(config.sandbox.autoRunner, "the starter config's shell is confined by the runner the server picks");
 
     const again = await cli(["init"], { cwd: fresh, env: { XDG_CONFIG_HOME: xdg } });
     assert.equal(again.code, 1);

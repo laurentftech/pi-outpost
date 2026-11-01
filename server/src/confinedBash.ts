@@ -76,6 +76,12 @@ export interface ConfinedBashOptions {
   startProxy?: (options: EgressProxyOptions) => Promise<EgressProxy>;
   /** Whose rules. A parameter so the Windows path is tested everywhere. */
   platform?: NodeJS.Platform;
+  /**
+   * Asked before every command: a refusal, or nothing. `"auto"` passes one that waits for the
+   * runner's self-check and the confinement canary (see `autoRunner.ts`), so a runner the server
+   * chose runs nothing it has not shown it confines.
+   */
+  gate?: () => Promise<string | undefined>;
   /** The runner's self-check. A parameter for tests; cached per runner otherwise. */
   check?: (runner: string) => Promise<RunnerCheck>;
   /**
@@ -139,7 +145,7 @@ function grantedDirectories(grant: Grant): { grantedRead: string[]; grantedWrite
 /** One self-check per runner path, for the life of the server: asked on first use. */
 const checks = new Map<string, Promise<RunnerCheck>>();
 
-function cachedCheck(runner: string): Promise<RunnerCheck> {
+export function cachedCheck(runner: string): Promise<RunnerCheck> {
   let check = checks.get(runner);
   if (!check) {
     check = checkRunner(runner);
@@ -220,6 +226,9 @@ export function confinedBashOperations(options: ConfinedBashOptions): ConfinedBa
   const powerShell = !wslc && isPowerShell(shell);
   const launchCommand = async (command: string, cwd: string, { onData, signal, timeout }: ExecOptions, extra: Grant) => {
     const timeoutMs = timeoutInMs(timeout);
+    if (signal?.aborted) throw new Error("aborted");
+    const refusal = await options.gate?.();
+    if (refusal !== undefined) throw new Error(refusal);
     if (signal?.aborted) throw new Error("aborted");
     const check = await (options.check ?? cachedCheck)(options.runner);
     if (!check.ok) throw new Error(`bash is confined by ${options.runner}, which cannot run it: ${check.reason}`);

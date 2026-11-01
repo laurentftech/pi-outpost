@@ -250,3 +250,19 @@ test("a relative path the sandbox admits is not served from the session's workin
 
   assert.doesNotMatch(toolResult, /OUTSIDE_SANDBOX_BODY/, "the agent read a file outside its sandbox root");
 });
+
+// openlore: scenario=SettingsCannotSelectNone spec=sandbox-defaults
+test("SettingsCannotSelectNone: a Settings update naming a runner is refused, and the runner stays \"auto\"", async (t) => {
+  const project = await realpath(await makeWorkspace());
+  const server = await startServer(project, { sandbox: { root: project, allowWrite: true, allowBash: true, bashRunner: "auto" } });
+  t.after(() => server.stop());
+  const client = connect(server.wsUrl());
+  t.after(() => client.close());
+  await client.waitFor("hello", 30_000);
+  client.send({ type: "update_config", sandbox: { root: project, allowWrite: true, allowBash: true, bashRunner: "none" } });
+  const answer = await client.waitFor((message) => message.type === "update_config_ack" || message.type === "error", 30_000);
+  assert.equal(answer.type, "error");
+  assert.match(answer.message, /configuration file only/);
+  const written = JSON.parse(await readFile(path.join(project, "pi-outpost.test.json"), "utf8"));
+  assert.equal(written.sandbox.bashRunner, "auto", "the file still names \"auto\"");
+});

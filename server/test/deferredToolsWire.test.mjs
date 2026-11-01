@@ -173,7 +173,7 @@ test("The RPC child loads and keeps a searched tool, and declares none before", 
   const server = await startServer(
     root,
     {
-      sandbox: undefined,
+      sandbox: false,
       agentRuntime: {
         mode: "rpc",
         executable: process.execPath,
@@ -208,7 +208,7 @@ test("The RPC child loads each diagram, poster and structure tool on demand", as
   const server = await startServer(
     root,
     {
-      sandbox: undefined,
+      sandbox: false,
       agentRuntime: {
         mode: "rpc",
         executable: process.execPath,

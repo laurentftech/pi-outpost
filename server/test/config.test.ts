@@ -1397,3 +1397,111 @@ describe("loadConfig — sandbox.bashFrom", () => {
     await assert.rejects(load({ bashFrom: 3 }), /bashFrom/);
   });
 });
+
+// ---------------------------------------------------------------------------
+// The default sandbox, "auto" and "none" (sandbox-defaults)
+// ---------------------------------------------------------------------------
+describe("the default sandbox", () => {
+  async function withConfig<T>(content: unknown, fn: (dir: string, configPath: string) => T | Promise<T>): Promise<T> {
+    const dir = await mkdtemp(path.join(tmpdir(), "pi-outpost-default-sandbox-"));
+    try {
+      const configPath = path.join(dir, "config.json");
+      await writeFile(configPath, JSON.stringify(content, null, 2));
+      return await fn(dir, configPath);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  }
+
+  // openlore: scenario=NoSandboxSectionGetsTheDefault spec=sandbox-defaults
+  test("NoSandboxSectionGetsTheDefault: the project, writable, and a shell whose runner the server chooses", async () => {
+    await withConfig({}, (dir, configPath) => {
+      const sandbox = loadConfig(dir, { config: configPath }).sandbox!;
+      assert.ok(sandbox, "a configuration without a sandbox section is sandboxed");
+      assert.equal(sandbox.root, dir);
+      assert.equal(sandbox.allowWrite, true);
+      assert.equal(sandbox.writableRoot, undefined);
+      assert.equal(sandbox.allowBash, true);
+      assert.ok(sandbox.autoRunner, "the runner is chosen automatically");
+      if (sandbox.autoRunner!.unavailable === undefined) {
+        assert.ok(sandbox.bashRunner, "a platform with a runner names it");
+        assert.ok(path.isAbsolute(sandbox.bashRunner!));
+      } else {
+        assert.equal(sandbox.bashRunner, undefined);
+      }
+      if (process.platform === "win32") assert.match(sandbox.bashShell ?? "", /powershell\.exe$/i);
+    });
+  });
+
+  // openlore: scenario=NoSandboxSectionGetsTheDefault spec=sandbox-defaults
+  test("the default follows a workspace moved by --cwd, which a scoped section refuses", async () => {
+    await withConfig({}, async (dir, configPath) => {
+      const elsewhere = path.join(dir, "elsewhere");
+      await mkdir(elsewhere);
+      assert.equal(loadConfig(dir, { config: configPath, cwd: elsewhere }).sandbox!.root, elsewhere);
+    });
+  });
+
+  // openlore: scenario=RpcModeGetsNoDefault spec=sandbox-defaults
+  test("RpcModeGetsNoDefault: rpc loads without a sandbox, and without the rpc refusal", async () => {
+    await withConfig({ agentRuntime: { mode: "rpc", executable: process.execPath } }, (dir, configPath) => {
+      assert.equal(loadConfig(dir, { config: configPath }).sandbox, undefined);
+    });
+    await withConfig({ agentRuntime: { mode: "rpc", executable: process.execPath }, sandbox: { root: "." } }, (dir, configPath) => {
+      assert.throws(() => loadConfig(dir, { config: configPath }), /cannot be enforced when "agentRuntime.mode" is "rpc"/);
+    });
+  });
+
+  // openlore: scenario=SandboxFalseRestoresTheOldBehaviour spec=sandbox-defaults
+  test("SandboxFalseRestoresTheOldBehaviour: \"sandbox\": false loads no sandbox at all", async () => {
+    await withConfig({ sandbox: false }, (dir, configPath) => {
+      assert.equal(loadConfig(dir, { config: configPath }).sandbox, undefined);
+    });
+  });
+
+  // openlore: scenario=AutoAndNoneAreNotPaths spec=sandbox-runner-bash
+  test("AutoAndNoneAreNotPaths: \"auto\" and \"none\" are keywords, not paths beside the configuration", async () => {
+    await withConfig({ sandbox: { root: ".", allowBash: true, bashRunner: "auto" } }, (dir, configPath) => {
+      const sandbox = loadConfig(dir, { config: configPath }).sandbox!;
+      assert.ok(sandbox.autoRunner);
+      assert.notEqual(sandbox.bashRunner, path.join(dir, "auto"));
+    });
+    await withConfig({ sandbox: { root: ".", allowBash: true, bashRunner: "none" } }, (dir, configPath) => {
+      const sandbox = loadConfig(dir, { config: configPath }).sandbox!;
+      assert.equal(sandbox.bashRunner, undefined, "none: unconfined");
+      assert.equal(sandbox.autoRunner, undefined);
+    });
+  });
+
+  // openlore: scenario=LegacyAllowBashStaysUnconfined spec=sandbox-defaults
+  test("LegacyAllowBashStaysUnconfined: an explicit section keeps its unconfined shell, and allowBash stays off when omitted", async () => {
+    await withConfig({ sandbox: { allowBash: true } }, (dir, configPath) => {
+      const sandbox = loadConfig(dir, { config: configPath }).sandbox!;
+      assert.equal(sandbox.allowBash, true);
+      assert.equal(sandbox.bashRunner, undefined);
+      assert.equal(sandbox.autoRunner, undefined);
+    });
+    await withConfig({ sandbox: { root: "." } }, (dir, configPath) => {
+      const sandbox = loadConfig(dir, { config: configPath }).sandbox!;
+      assert.equal(sandbox.allowBash, false);
+      assert.equal(sandbox.allowWrite, false);
+    });
+  });
+
+  test("\"auto\" holds the network for allowedHosts; \"none\" cannot, and neither takes a WSLC image", async () => {
+    await withConfig({ sandbox: { root: ".", allowBash: true, bashRunner: "auto", allowedHosts: ["registry.npmjs.org"] } }, (dir, configPath) => {
+      assert.deepEqual(loadConfig(dir, { config: configPath }).sandbox!.allowedHosts, ["registry.npmjs.org"]);
+    });
+    await withConfig({ sandbox: { root: ".", allowBash: true, bashRunner: "none", allowedHosts: ["registry.npmjs.org"] } }, (dir, configPath) => {
+      assert.throws(() => loadConfig(dir, { config: configPath }), /"sandbox\.allowedHosts" needs MXC or Seatbelt/);
+    });
+    for (const bashRunner of ["auto", "none"]) {
+      await withConfig({ sandbox: { root: ".", allowBash: true, bashRunner, bashImage: "buildpack-deps:bookworm-scm" } }, (dir, configPath) => {
+        assert.throws(() => loadConfig(dir, { config: configPath }), /"sandbox\.bashImage" runs bash in a WSLC container: it needs MXC/);
+      });
+    }
+    await withConfig({ sandbox: { root: ".", allowBash: true, bashRunner: "none", bashFrom: "npm:pi-landstrip" } }, (dir, configPath) => {
+      assert.throws(() => loadConfig(dir, { config: configPath }), /both say who runs bash/);
+    });
+  });
+});

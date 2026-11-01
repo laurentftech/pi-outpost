@@ -54,7 +54,7 @@ export async function startScriptedServer(root, openProjects, script, extraConfi
       // pairing is refused at config load — see config.ts. Each workspace is still
       // rooted at its own directory, which is what the browser confinement below
       // actually rides on.
-      sandbox: undefined,
+      sandbox: false,
       agentRuntime: { mode: "rpc", executable: process.execPath, args: [FAKE], startupTimeoutMs: 10_000 },
     },
     { env: { FAKE_PI_RPC_CONFIG: fakeConfig } },

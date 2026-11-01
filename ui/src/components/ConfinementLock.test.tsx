@@ -108,3 +108,50 @@ describe("the agent shell's lock", () => {
     expect(screen.queryByTestId("shell-confinement")).toBeNull();
   });
 });
+
+describe("the lock of a shell the server chose, or that runs unconfined", () => {
+  // openlore: scenario=TheInterfaceShowsTheChoiceInProgress spec=sandbox-defaults
+  it("TheInterfaceShowsTheChoiceInProgress: while \"auto\" is checked, it says so, and is not a closed lock", () => {
+    bar({ state: "checking", runner: "C:\\mxc\\wxc-exec.exe" });
+    const lock = screen.getByTestId("shell-confinement");
+    expect(lock).toHaveAttribute("data-state", "checking");
+    expect(lock).toHaveTextContent("checking confinement");
+    expect(lock).not.toHaveTextContent("🔒");
+  });
+
+  // openlore: scenario=TheInterfaceShowsWhyTheShellIsUnavailable spec=sandbox-defaults
+  it("TheInterfaceShowsWhyTheShellIsUnavailable: unavailable, with the tool's own reason", () => {
+    const reason = 'The agent\'s shell is unavailable: wxc-exec.exe cannot confine it on this machine — This machine is Windows build 26100.8000. To run the shell unconfined instead, set "sandbox.bashRunner": "none" in the configuration file.';
+    bar({ state: "unavailable", runner: "C:\\mxc\\wxc-exec.exe", reason });
+    const lock = screen.getByTestId("shell-confinement");
+    expect(lock).toHaveAttribute("data-state", "unavailable");
+    expect(lock).toHaveTextContent("⛔ shell unavailable");
+    expect(lock.getAttribute("title")).toContain(reason);
+  });
+
+  // openlore: scenario=AnUnconfinedShellIsMarked spec=sandbox-runner-bash
+  // openlore: scenario=ACapableMachineIsNudged spec=sandbox-defaults
+  // openlore: scenario=TheSuggestionNamesTheCommand spec=sandbox-defaults
+  it("ACapableMachineIsNudged: an open, highlighted lock naming the runner and pi-outpost config --confine", () => {
+    bar({ state: "unconfined", available: { runner: "C:\\mxc\\wxc-exec.exe", label: "MXC" } });
+    const lock = screen.getByTestId("shell-confinement");
+    expect(lock).toHaveAttribute("data-state", "unconfined");
+    expect(lock).toHaveAttribute("data-nudge", "true");
+    expect(lock).toHaveTextContent("🔓 shell not confined");
+    const title = lock.getAttribute("title") ?? "";
+    expect(title).toContain("MXC can confine it on this machine");
+    expect(title).toContain("pi-outpost config --confine");
+  });
+
+  // openlore: scenario=AnIncapableMachineIsNotNudged spec=sandbox-defaults
+  // openlore: scenario=NoneUnlocksTheShellOnAnOldBuild spec=sandbox-defaults
+  it("AnIncapableMachineIsNotNudged: an open, neutral lock giving the reason, suggesting nothing", () => {
+    bar({ state: "unconfined", reason: 'MXC would confine terminals with tier "appcontainer-dacl"' });
+    const lock = screen.getByTestId("shell-confinement");
+    expect(lock).toHaveTextContent("🔓 shell not confined");
+    expect(lock).not.toHaveAttribute("data-nudge");
+    const title = lock.getAttribute("title") ?? "";
+    expect(title).toContain("appcontainer-dacl");
+    expect(title).not.toContain("--confine");
+  });
+});

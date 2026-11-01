@@ -150,7 +150,7 @@ test("a runtime that cannot read a branch says so instead of serving part of one
     root,
     {
       // RPC refuses to be paired with a sandbox, and confinement is not what this test is about.
-      sandbox: undefined,
+      sandbox: false,
       agentRuntime: { mode: "rpc", executable: process.execPath, args: [FAKE_RPC], startupTimeoutMs: 5_000 },
     },
     { env: { FAKE_PI_RPC_CONFIG: fakeConfig } },

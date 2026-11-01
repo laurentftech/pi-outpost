@@ -8,6 +8,7 @@ import path from "node:path";
 import { describe, test } from "node:test";
 import {
   checkRunner,
+  windowsBuildAdvice,
   confinedEnvironment,
   gitReadOnlyFiles,
   isLinuxMxc,
@@ -556,6 +557,39 @@ describe("checkRunner with MXC's executor", () => {
       const noDeny = await checkRunner(runner, probe("base-container", false), "win32");
       assert.ok(!noDeny.ok && /deny paths/.test(noDeny.reason));
     });
+  });
+
+  // openlore: scenario=AnOldWindowsBuildRefusesTheShell spec=sandbox-defaults
+  test("AnOldWindowsBuildRefusesTheShell: below MXC's table, the reason names the build and the update to install", async () => {
+    await withExecutor(async (runner) => {
+      const host = (build: string, ubr: number) => async (file: string, args: string[]) => {
+        if (args[0] === "--probe") return { stdout: JSON.stringify({ tier: "appcontainer-dacl", probes: {} }), stderr: "" };
+        assert.equal(file, "reg");
+        const value = args.at(-1);
+        return {
+          stdout: value === "UBR" ? `    UBR    REG_DWORD    0x${ubr.toString(16)}\r\n` : `    CurrentBuild    REG_SZ    ${build}\r\n`,
+          stderr: "",
+        };
+      };
+      const old = await checkRunner(runner, host("26100", 8000), "win32");
+      assert.ok(!old.ok);
+      assert.match(old.reason, /Windows build 26100\.8000; MXC's process container needs 26100\.9278: install the August 2026 cumulative update \(KB5120998\)/);
+      const older = await checkRunner(runner, host("22631", 4000), "win32");
+      assert.ok(!older.ok && /22631\.4000; MXC's process container needs Windows 11 24H2/.test(older.reason));
+      const unreadable = await checkRunner(runner, async (_file: string, args: string[]) => {
+        if (args[0] === "--probe") return { stdout: JSON.stringify({ tier: "appcontainer-dacl" }), stderr: "" };
+        throw new Error("reg is not there");
+      }, "win32");
+      assert.ok(!unreadable.ok && /appcontainer-dacl/.test(unreadable.reason) && !/Windows build/.test(unreadable.reason));
+    });
+  });
+
+  test("windowsBuildAdvice: each release's first supported build, and nothing to install at or above it", () => {
+    assert.match(windowsBuildAdvice("26200", 9000), /26200\.9278: install the August 2026/);
+    assert.match(windowsBuildAdvice("26300", 9500), /26300\.9550: install the September 2026 cumulative update \(KB5124010\)/);
+    assert.match(windowsBuildAdvice("28000", 2000), /28000\.2804: install the August 2026 cumulative update \(KB5120996\)/);
+    assert.equal(windowsBuildAdvice("26100", 9711), "This machine is Windows build 26100.9711");
+    assert.equal(windowsBuildAdvice("29000", 1), "This machine is Windows build 29000.1");
   });
 
   test("anywhere but Windows, or a probe that fails or says nothing usable, is a reason", async () => {

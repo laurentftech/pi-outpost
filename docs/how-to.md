@@ -55,12 +55,14 @@ start logs it too.
 { "sandbox": { "root": "/home/me/projects/site", "allowWrite": true, "allowBash": true } }
 ```
 
-Be deliberate about this one. **Bash cannot be path-confined**: `allowBash` gives the
+Without a `sandbox` section the agent already has a confined shell: see
+[the default](sandboxing.md#the-default). In a section you write, be deliberate about this one.
+**Bash cannot be path-confined**: `allowBash` without a runner gives the
 agent everything the account running the server can do, inside the sandbox or not.
 Where that matters, run pi-outpost as a dedicated user, or in a container, and treat
 the sandbox as being that boundary rather than the `sandbox` key.
 
-To confine it, name a sandbox runner in `sandbox.bashRunner`: pi-outpost's own `bash` then runs every
+To confine it, run `pi-outpost config --confine`, or name a sandbox runner in `sandbox.bashRunner`: pi-outpost's own `bash` then runs every
 command inside it, reading the root, writing the writable zone, with no key in reach — landstrip on
 Linux (Docker included), MXC with Windows PowerShell on Windows 11. A sandboxing extension such as pi-landstrip
 is the alternative, but only if you also name it in `sandbox.bashFrom`: installed alone, its confined

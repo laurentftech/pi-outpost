@@ -1,9 +1,10 @@
 # Sandboxing
 
-pi-outpost confines its own file tools. The agent's `bash` and the terminal panel are confined only
-when you name a sandbox runner; otherwise a command runs with every right of the account the server
-runs as.
+pi-outpost confines its own file tools, and by default the agent's shell too: a configuration that says
+nothing about the sandbox gets one, and the server picks this machine's runner for the shell. The
+terminal panel is confined only when you name a runner for it.
 
+- [The default](#the-default)
 - [Recommended setup](#recommended-setup)
 - [What is confined](#what-is-confined)
 - [Linux: landstrip](#linux-landstrip)
@@ -14,6 +15,45 @@ runs as.
 - [Older Windows](#older-windows)
 - [Check that it is really confined](#check-that-it-is-really-confined)
 - [Alternative: hand bash to an extension](#alternative-hand-bash-to-an-extension)
+
+## The default
+
+Without a `sandbox` section, the configuration behaves as if it held:
+
+```json
+{ "sandbox": { "allowWrite": true, "allowBash": true, "bashRunner": "auto" } }
+```
+
+The agent reads and writes inside the project (the working directory), and its shell runs under the
+runner `"auto"` picks:
+
+| Platform | Runner | Shell |
+| --- | --- | --- |
+| Windows 11 | [MXC](#windows-11-mxc-and-powershell) | PowerShell (the agent gets a `powershell` tool) |
+| Linux | [MXC](#linux-as-an-option-mxc) | `/bin/bash` |
+| macOS | [Seatbelt](#macos-every-mac-seatbelt) | `/bin/bash` |
+
+The runner is used only after its self-check and the [canary](#check-that-it-is-really-confined) have
+both passed. The session does not wait for them: a command issued earlier waits, then runs. If they
+fail (an [older Windows](#older-windows), a Docker container without user namespaces, a leak), the shell
+**refuses every command** and says why. Nothing falls back to running unconfined.
+
+| You want | Write |
+| --- | --- |
+| An unconfined shell (a machine nothing can confine yet) | `"bashRunner": "none"` in `sandbox` — in the file only, never from Settings |
+| No sandbox at all, as before this default | `"sandbox": false` |
+| Another runner, a shell, allowed hosts | see [Recommended setup](#recommended-setup) |
+
+An existing `sandbox` section keeps its meaning: `allowBash` without a `bashRunner` is still an unconfined
+shell. Its lock is shown open. When this machine's runner passes its self-check, the lock is highlighted
+and says so, as do the startup log and `pi-outpost doctor`. One command confines it:
+
+```sh
+pi-outpost config --confine
+```
+
+It runs the self-check and the canary, and only if both pass sets `"bashRunner": "auto"` in the file,
+changing nothing else. Otherwise the file is left as it was and the reason printed.
 
 ## Recommended setup
 
@@ -41,8 +81,8 @@ that filters it.
 | | Confined |
 | --- | --- |
 | `read`, `ls`, `grep`, `find` | To `sandbox.root`, symlinks resolved, plus read-only the directories of the skills the session loaded — never the disk's root, the home directory, or one holding the agent directory. |
-| `edit`, `write`, document tools | To `sandbox.writableRoot`, with `allowWrite` only. Never inside a `.pi` directory, where an extension's policy may live. |
-| `bash` (`allowBash`) | **Only with `bashRunner`** (or `bashFrom`). Otherwise it can do anything the server's user can. With a PowerShell `bashShell`, the agent's shell tool is `powershell` instead, confined the same way. |
+| `edit`, `write`, document tools | To `sandbox.writableRoot`, with `allowWrite` only. Never inside a `.pi` directory, where an extension's policy may live, and never pi-outpost's configuration file, which sets the sandbox. |
+| `bash` (`allowBash`) | **Only with `bashRunner`** — `"auto"` by default — or `bashFrom`. With `"none"`, or `allowBash` and no runner in a section of your own, it can do anything the server's user can. With a PowerShell `bashShell`, the agent's shell tool is `powershell` instead, confined the same way. |
 | The terminal panel | **Only with `terminal.sandbox`.** |
 | Extensions, MCP servers | **No.** They run with the server's rights, or their own process's. |
 
@@ -347,8 +387,18 @@ environment is the container's own. Limits, all the backend's:
 Without MXC's tier 1, no runner confines natively: landstrip's AppContainer cannot run git
 (landstrip/landstrip#204), and MXC's lower tiers hit the same wall. Two ways out, neither easy:
 
-- **Update to Windows 11 with the August 2026 update**, then the setup above. This is the supported
-  path.
+- **Update Windows**, then the setup above. This is the supported path. MXC's process container needs
+  one of these builds or later (`winver` shows yours); below them the shell's refusal names your build and
+  the update to install:
+
+  | Windows 11 | Build | Update |
+  | --- | --- | --- |
+  | 24H2 | 26100.9278 | August 2026 (KB5120998) |
+  | 25H2 | 26200.9278 | August 2026 (KB5120998) |
+  | 26H2 | 26300.9550 | September 2026 (KB5124010) |
+  | 26H1 | 28000.2804 | August 2026 (KB5120996) |
+- **Until then, `"bashRunner": "none"`** gives the agent its shell back, unconfined. Once the update is
+  installed, the lock says so; `pi-outpost config --confine` switches back.
 - **Run pi-outpost inside WSL** with the [Linux setup](#linux-landstrip). WSL mounts every drive
   read-write and can start any Windows program, unconfined, so this holds only after closing those doors
   (`[interop] enabled = false`, `appendWindowsPath = false`, `[automount] enabled = false` in
@@ -452,10 +502,14 @@ The verdict is shown next to the context indicator for the agent's shell, and as
 | 🔓 `not confined`, in red | anything else got through; the tooltip names which. The configuration is left as it is: fix the runner or its host, or stop relying on it |
 | `checking confinement` | the canary is running |
 | ⚠ `confinement unchecked` | the canary could not answer; the tooltip says why |
-| nothing | no runner: the shell is not confined, as the settings say |
+| ⛔ `shell unavailable` | a runner `"auto"` chose did not pass, or there is none: every command is refused, and the tooltip says why |
+| 🔓 `shell not confined`, highlighted | no runner, yet this machine's passes its self-check: the tooltip says to run `pi-outpost config --confine` |
+| 🔓 `shell not confined`, grey | no runner, and none can confine here: the tooltip says why |
+| nothing | no shell (`allowBash` off), or the shell is an extension's |
 
 `pi-outpost doctor` runs the same canary for each confined surface (`shell sandbox`, `terminal sandbox`)
-and exits non-zero when one leaks — the check for a headless server.
+and exits non-zero when one leaks — the check for a headless server. It warns about an `"auto"` shell
+that is unavailable, and about an unconfined one this machine could confine.
 
 On Linux, landstrip leaves the server's `/proc/<pid>/environ` readable (see
 [Linux: landstrip](#linux-landstrip)). The canary sees it, and the server judges it by what its start

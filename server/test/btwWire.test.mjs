@@ -186,7 +186,7 @@ test("embedded: a blocked /btw is neither offered nor run", async (t) => {
 // openlore: scenario=AHandledCommandStartsNoTurn spec=btw-side-question
 test("rpc: a real Pi child answers /btw mid-turn, echoes nothing, and a handled command leaves the session idle", async (t) => {
   const ctx = await boot(t, {
-    sandbox: undefined,
+    sandbox: false,
     agentRuntime: {
       mode: "rpc",
       executable: process.execPath,

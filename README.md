@@ -53,8 +53,9 @@ cd ~/projects/my-app
 npx pi-outpost init
 ```
 
-That gives you a read-only agent — it can read this directory, and nothing else: no
-writing, no shell.
+That gives the agent this directory to read and write, and a shell confined by this
+machine's sandbox runner — refused, never unconfined, where none can confine it (see
+[the default sandbox](docs/sandboxing.md#the-default)).
 
 **3. Start it.**
 
@@ -96,14 +97,14 @@ also covers building one yourself with `npx pi-outpost build-exe`.
 
 pi-outpost never starts without one: the agent's working directory, its tools and its
 sandbox are decided there, and guessing them from whatever directory you happen to be
-standing in is not a decision anyone wants made for them. `init` writes the safe version of
-that file — read-only, no bash — for you to open up as needed:
+standing in is not a decision anyone wants made for them. `init` writes the default sandbox
+out, so you can see it and change it:
 
 ```json
 {
   "cwd": ".",
   "agentRuntime": { "mode": "embedded" },
-  "sandbox": { "root": ".", "allowWrite": false, "allowBash": false },
+  "sandbox": { "root": ".", "allowWrite": true, "allowBash": true, "bashRunner": "auto" },
   "server": { "port": 3141, "host": "127.0.0.1" },
   "branding": { "title": "π" }
 }
@@ -122,7 +123,7 @@ anything.
 > (stored locally, stripped from the URL) or via the embed widget's `token` option. Use a
 > reverse proxy or Tailscale for transport encryption.
 >
-> The `sandbox` confines pi-outpost's file tools, not `bash`, extensions or MCP servers — see
+> The `sandbox` confines pi-outpost's file tools and, by default, the agent's shell — not extensions or MCP servers — see
 > [what is and is not confined](docs/sandboxing.md), and the [setup to use on each platform](docs/sandboxing.md#recommended-setup).
 
 ## How do I…
@@ -583,11 +584,12 @@ in [`pi-outpost.config.example.json`](pi-outpost.config.example.json).
 |-----|--------|
 | `cwd` | Agent working directory, and the default project |
 | `agentDir` | Own config dir (auth, models, settings, sessions) — fully separate from `~/.pi/agent`. It starts with **no credentials**: see [Model credentials](#model-credentials). Exported as `PI_CODING_AGENT_DIR` for extensions that look it up themselves; the terminal panel keeps yours |
+| `sandbox` | Absent: the [default sandbox](docs/sandboxing.md#the-default) — the project, writable, and a shell confined by the runner the server picks (`"bashRunner": "auto"`). `false`: no sandbox at all |
 | `sandbox.root` | Read-only zone: read/ls/grep/find are confined to this directory, symlinks resolved — plus, read-only, the directories of the skills the session loaded. Defaults to `cwd`. Applies to the `cwd` project; every other open project is confined to its own directory |
 | `sandbox.allowWrite` | Adds edit/write, confined to `sandbox.writableRoot` (default `false`). Never inside a `.pi` directory, which holds the configuration that confines the agent — see [docs/sandboxing.md](docs/sandboxing.md#what-is-confined) |
 | `sandbox.writableRoot` | Read-write zone: a subdirectory of `root` that edit/write are further confined to. Defaults to `root` itself. Ignored while `allowWrite` is false, and applies to the `cwd` project only: every other open project is writable in its whole directory |
-| `sandbox.allowBash` | Adds bash — **not path-confined** unless `bashRunner` or `bashFrom` confines it, explicit opt-in (default `false`) |
-| `sandbox.bashRunner` | Runs every command of pi-outpost's own `bash` inside a sandbox runner — MXC's `wxc-exec.exe` (Windows 11; `"mxc"` names the one installed with pi-outpost, see [MXC comes with pi-outpost](#mxc-comes-with-pi-outpost)), landstrip's binary (Linux), or — as an option on Linux, loosening Docker's profile — MXC's `lxc-exec` (`"mxc"` there; see [docs/sandboxing.md](docs/sandboxing.md#linux-as-an-option-mxc)), or on Apple-silicon macOS MXC's `mxc-exec-mac` (`"mxc"`; see [docs/sandboxing.md](docs/sandboxing.md#macos-on-apple-silicon-mxc)), or on any Mac `"seatbelt"`, macOS' own `sandbox-exec` (see [docs/sandboxing.md](docs/sandboxing.md#macos-every-mac-seatbelt)) — with the policy of a confined terminal: reads in the root, writes in the writable zone, no keys. A missing or failing runner refuses each command, never runs it unconfined. Exclusive with `bashFrom`. See [docs/sandboxing.md](docs/sandboxing.md#recommended-setup) |
+| `sandbox.allowBash` | Adds bash — **not path-confined** unless `bashRunner` or `bashFrom` confines it (default `false` in a section you write; on in the default sandbox) |
+| `sandbox.bashRunner` | `"auto"`: the server picks this machine's runner and uses it once its check passes, refusing every command otherwise — see [the default](docs/sandboxing.md#the-default). `"none"`: the shell runs unconfined. Otherwise, runs every command of pi-outpost's own `bash` inside a sandbox runner — MXC's `wxc-exec.exe` (Windows 11; `"mxc"` names the one installed with pi-outpost, see [MXC comes with pi-outpost](#mxc-comes-with-pi-outpost)), landstrip's binary (Linux), or — as an option on Linux, loosening Docker's profile — MXC's `lxc-exec` (`"mxc"` there; see [docs/sandboxing.md](docs/sandboxing.md#linux-as-an-option-mxc)), or on Apple-silicon macOS MXC's `mxc-exec-mac` (`"mxc"`; see [docs/sandboxing.md](docs/sandboxing.md#macos-on-apple-silicon-mxc)), or on any Mac `"seatbelt"`, macOS' own `sandbox-exec` (see [docs/sandboxing.md](docs/sandboxing.md#macos-every-mac-seatbelt)) — with the policy of a confined terminal: reads in the root, writes in the writable zone, no keys. A missing or failing runner refuses each command, never runs it unconfined. Exclusive with `bashFrom`. See [docs/sandboxing.md](docs/sandboxing.md#recommended-setup) |
 | `sandbox.bashShell` | The shell `bashRunner` runs commands in (default `/bin/bash`). Required on Windows, where Git Bash cannot start in a sandbox: `powershell.exe` (the agent then gets a `powershell` tool instead of `bash`), or busybox-w32's `sh.exe` — a full path, or a bare name found on `PATH` |
 | `sandbox.bashImage` | Experimental, Windows 11 with MXC: a Linux image (e.g. `buildpack-deps:bookworm-scm`) every command of the agent's `bash` runs in, through MXC's WSLC backend — a real bash, with only the root mounted (at `/mnt/c/…`). Needs MXC as `bashRunner` and no `bashShell`; the writable zone is the whole root. See [docs/sandboxing.md](docs/sandboxing.md#a-real-bash-wslc-experimental) |
 | `sandbox.allowedHosts` | With MXC (Windows 11, Linux with [its Docker flags](docs/sandboxing.md#linux-as-an-option-mxc), or [Apple-silicon macOS](docs/sandboxing.md#macos-on-apple-silicon-mxc)) or [Seatbelt](docs/sandboxing.md#macos-every-mac-seatbelt) (any Mac): the only hosts the agent's shell may reach — names (`"registry.npmjs.org"`) or suffixes (`"*.githubusercontent.com"`). Outbound traffic is denied and a proxy the server runs is the only way out; any other host is refused with a reason naming it. Needs MXC or Seatbelt as `bashRunner` and no `bashImage`. Absent: the network is open. See [docs/sandboxing.md](docs/sandboxing.md#the-network-only-named-hosts) |
@@ -865,6 +867,8 @@ pi-outpost -p "<prompt>" [options]
                               run one turn without a browser, the answer on stdout
 pi-outpost init [options]     write a starter configuration file
 pi-outpost config [options]   print the configuration that would be used, and where it came from
+pi-outpost config --confine   confine the agent's shell: check this machine's runner, then set
+                              "sandbox.bashRunner": "auto" (see docs/sandboxing.md#the-default)
 pi-outpost doctor [options]   check whether this installation can start and serve, and say what stops it
 pi-outpost login --provider <name>
                               run account sign-in, or store an API key

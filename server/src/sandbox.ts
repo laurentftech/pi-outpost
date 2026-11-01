@@ -9,6 +9,7 @@
  * explicitly allowed in the config, because a shell cannot be path-scoped.
  */
 import fs from "node:fs/promises";
+import { realpathSync } from "node:fs";
 import path from "node:path";
 import {
   type AgentSession,
@@ -60,7 +61,8 @@ import { createDrawioCheckToolDefinition } from "./drawioTool.ts";
 import { createPosterCheckToolDefinition } from "./posterCheckTool.ts";
 import { createPosterPicturesToolDefinition } from "./posterPicturesTool.ts";
 import { createStructuredExchangeTableToolDefinition } from "./structuredExchangeTableTool.ts";
-import { confinedBashOperations, isPowerShell, type ConfinedBashOptions } from "./confinedBash.ts";
+import { confinedBashOperations, isPowerShell, type ConfinedBashOperations, type ConfinedBashOptions } from "./confinedBash.ts";
+import { autoShellRefusal, autoUnavailableRefusal, sharedShellVerdict } from "./confinementStatus.ts";
 import { sharedEgressProxy } from "./egressProxy.ts";
 import type { SandboxGrantBroker } from "./sandboxGrantBroker.ts";
 import { createRunWithGrantToolDefinition } from "./sandboxGrantTool.ts";
@@ -166,6 +168,31 @@ function scopeToRoot(
 }
 
 /**
+ * Files none of pi-outpost's tools may write, wherever the writable zone is: the server's own
+ * configuration. The default sandbox makes the project writable, and a project often holds its
+ * `pi-outpost.config.json` — which names the shell's runner, so a write there could turn
+ * `"auto"` into `"none"` for the next start. Real paths; compared without case on Windows.
+ */
+const protectedFiles = new Set<string>();
+
+const comparable = (file: string) => (process.platform === "win32" ? file.toLowerCase() : file);
+
+/** Protect `file` from every write of the agent's tools, for the life of the server. */
+export function protectFromWrites(file: string): void {
+  let real: string;
+  try {
+    real = realpathSync(file);
+  } catch {
+    real = path.resolve(file);
+  }
+  protectedFiles.add(comparable(real));
+}
+
+export function isProtectedFromWrites(resolved: string): boolean {
+  return protectedFiles.has(comparable(resolved));
+}
+
+/**
  * Why a write to `resolved` is refused for being Pi configuration, or undefined when it is not.
  *
  * A `.pi` directory under the writable zone holds the configuration that confines the
@@ -176,6 +203,12 @@ function scopeToRoot(
  * which is the user's own hand, is not held to this.
  */
 export function piConfigWriteRefusal(writableRoot: string, resolved: string, target: string): string | undefined {
+  if (isProtectedFromWrites(resolved)) {
+    return (
+      `Cannot write "${target}": it is pi-outpost's configuration, which sets the sandbox the agent runs in. ` +
+      "Edit it yourself if it needs to change."
+    );
+  }
   const relative = path.relative(writableRoot, resolved);
   if (relative === "" || relative.startsWith("..") || path.isAbsolute(relative)) return undefined;
   if (!relative.split(path.sep).includes(".pi")) return undefined;
@@ -358,11 +391,19 @@ export async function createSandboxedTools(
     // runner is named, which runs every command inside an OS sandbox with the policy
     // of a confined terminal. The root still has to be pinned onto the context, or
     // the shell starts in the project root instead — see `withCwd`.
-    const broker = sandbox.bashRunner && sandbox.grants !== "never" ? grants : undefined;
-    const bashOptions = sandbox.bashRunner ? await agentBashOptions(sandbox, neverReadable) : undefined;
-    const operations = bashOptions
+    // `"auto"` with no runner on this platform: the shell is registered, and refuses every command
+    // with the reason — never a fallback to running unconfined.
+    const unavailable = sandbox.autoRunner?.unavailable;
+    const broker = sandbox.bashRunner && unavailable === undefined && sandbox.grants !== "never" ? grants : undefined;
+    const bashOptions = sandbox.bashRunner && unavailable === undefined ? await agentBashOptions(sandbox, neverReadable) : undefined;
+    // `"auto"` with a runner: its canary starts now, with the session, and a command waits for it.
+    if (bashOptions && sandbox.autoRunner) void sharedShellVerdict(sandbox, neverReadable);
+    const operations: ConfinedBashOperations | undefined = unavailable !== undefined
+      ? refusingOperations(autoUnavailableRefusal(unavailable))
+      : bashOptions
       ? confinedBashOperations({
           ...bashOptions,
+          ...(sandbox.autoRunner ? { gate: () => autoShellRefusal(sandbox, neverReadable) } : {}),
           ...(broker ? { grants: () => broker.sessionGrants() } : {}),
           // A host the list does not name is asked about when a command connects to it — only
           // where a command is shown to reach no other command's proxy (`hostGrantsRefusal`).
@@ -445,6 +486,14 @@ export const PI_BUILTIN_TOOL_NAMES = ["read", "bash", "powershell", "edit", "wri
  * and a read-only one its unconfined `write` and `edit`. Excluding a name drops it
  * from the registry altogether, whoever registered it.
  */
+/** A shell that runs nothing: every command, granted or not, fails with `reason`. */
+function refusingOperations(reason: string): ConfinedBashOperations {
+  const refuse = async (): Promise<never> => {
+    throw new Error(reason);
+  };
+  return { exec: refuse, execWithGrant: refuse };
+}
+
 /**
  * How the agent's shell is confined, from the sandbox: the options every command of it runs
  * with, and the ones the confinement canary runs with, so that what is checked is what runs.

@@ -16,11 +16,10 @@ import { OPEN_SHAPES, type OpenShape } from "./openBrowser.ts";
  *
  * The local file pins the workspace to its own directory (`.` resolves against the
  * config file). The **global** one must not: `.` there is `~/.config/pi-outpost`,
- * which would (a) nail the agent to the config directory from wherever you run it,
- * and (b) put the very file granting the sandbox *inside* the sandbox the moment
- * someone flips allowWrite — the agent could then grant itself bash for the next
- * run. Omitting both keys makes them fall back to the launch directory, which is
- * what "configure once, run anywhere" actually means.
+ * which would nail the agent to the config directory from wherever you run it.
+ * Omitting both keys makes them fall back to the launch directory, which is
+ * what "configure once, run anywhere" actually means. (The file inside its own
+ * writable sandbox is no longer a way out: no tool of the agent may write it.)
  */
 const starterConfig = (global: boolean) => ({
   ...(global ? {} : { cwd: "." }),
@@ -31,10 +30,14 @@ const starterConfig = (global: boolean) => ({
   agentRuntime: {
     mode: "embedded",
   },
+  // The default sandbox, written out: the project writable, and a shell the server confines with
+  // this machine's runner once its check passes — refused, never unconfined, where none can.
+  // The agent's tools cannot write this file, so it cannot loosen any of it.
   sandbox: {
     ...(global ? {} : { root: "." }),
-    allowWrite: false,
-    allowBash: false,
+    allowWrite: true,
+    allowBash: true,
+    bashRunner: "auto",
   },
   server: {
     port: 3141,
@@ -54,6 +57,8 @@ Usage
                                  stderr, exit status 1 if the turn failed ("-p -" reads stdin)
   pi-outpost init [options]      write a starter configuration file
   pi-outpost config [options]    print the configuration that would be used, and where it came from
+  pi-outpost config --confine    confine the agent's shell: check this machine's sandbox runner, then
+                                 set "sandbox.bashRunner": "auto" in the configuration file
   pi-outpost doctor [options]    check whether this installation can start and serve, and say what stops it
   pi-outpost login --provider <name>
                                  sign in to a provider, or store an API key
@@ -180,6 +185,8 @@ export interface ParsedCli {
   /** `-p`: one turn, its answer on stdout. `prompt` is `-` for stdin. */
   print: { prompt?: string; json: boolean; grants: PrintGrants; model?: string };
   init: { global: boolean; force: boolean };
+  /** `config --confine`: check this machine's runner, then confine the shell in the file. */
+  config: { confine: boolean };
   login: { provider?: string };
   logout: { provider?: string };
   buildExe: { out?: string; force: boolean };
@@ -234,6 +241,7 @@ export function parseCli(argv: string[]): ParsedCli {
         json: { type: "boolean", default: false },
         grants: { type: "string" },
         model: { type: "string" },
+        confine: { type: "boolean", default: false },
         help: { type: "boolean", short: "h", default: false },
         version: { type: "boolean", short: "v", default: false },
       },
@@ -269,6 +277,9 @@ export function parseCli(argv: string[]): ParsedCli {
   }
   if (values.provider !== undefined && command !== "login" && command !== "logout") {
     throw new CliError('"--provider" belongs to "pi-outpost login" or "pi-outpost logout" — see "pi-outpost --help"');
+  }
+  if (values.confine && command !== "config") {
+    throw new CliError('"--confine" belongs to "pi-outpost config" — see "pi-outpost --help"');
   }
   if (values.global && command !== "init") {
     throw new CliError('"--global" belongs to "pi-outpost init" — see "pi-outpost --help"');
@@ -323,6 +334,7 @@ export function parseCli(argv: string[]): ParsedCli {
     flags,
     print: { ...(printing ? { prompt: values.print } : {}), json: values.json, grants: (values.grants ?? "refuse") as PrintGrants, ...(values.model ? { model: values.model } : {}) },
     init: { global: values.global, force: values.force },
+    config: { confine: values.confine },
     login: { provider: values.provider },
     logout: { provider: values.provider },
     buildExe: { out: values.out, force: values.force },

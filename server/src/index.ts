@@ -85,7 +85,19 @@ import { bindFailureMessage, holdConsoleIfOwned } from "./startupFailure.ts";
 import { BuildExeError, buildExecutable } from "./buildExe.ts";
 import { probePty, TerminalManager, type TerminalConfinement } from "./terminalManager.ts";
 import { LoginRelay } from "./loginRelay.ts";
-import { agentShellVerdict, buildTerminalConfinement, shellIsConfined, terminalVerdict } from "./confinementStatus.ts";
+import { confineConfiguration } from "./confineCommand.ts";
+import {
+  autoShown,
+  autoUnavailableRefusal,
+  buildTerminalConfinement,
+  confineSuggestion,
+  sharedShellVerdict,
+  shellIsConfined,
+  shellIsUnconfined,
+  shellVerdict,
+  terminalVerdict,
+  unconfinedShellVerdict,
+} from "./confinementStatus.ts";
 import { readPrompt, runPrintTurn } from "./printMode.ts";
 import { checkRunner, gitReadOnlyFiles, isPosixMxc, mxcPosixConfig, mxcTerminalConfig, seatbeltPolicy, runnerKind, siblingsToDeny, terminalPolicy, userGitConfig, type RunnerCheck } from "./terminalSandbox.ts";
 import { isPowerShell } from "./confinedBash.ts";
@@ -235,6 +247,7 @@ import {
   assertNoUnconfinedBuiltIns,
   delegatedBuiltIns,
   isWithin,
+  protectFromWrites,
   realResolve,
   SandboxDelegationError,
   shadowedBashWarning,
@@ -418,6 +431,26 @@ if (cli.command === "update") {
   process.exit(code);
 }
 
+// Before the configuration is loaded: it reads and rewrites the file itself, and with no file it
+// says what the default would do rather than the server's "no configuration" refusal.
+if (cli.command === "config" && cli.config.confine) {
+  try {
+    const agentDir = (() => {
+      try {
+        return loadConfig(LAUNCH_DIR, cli.flags, process.env, { quiet: true }).agentDir ?? getAgentDir();
+      } catch {
+        return getAgentDir();
+      }
+    })();
+    const result = await confineConfiguration({ launchDir: LAUNCH_DIR, flags: cli.flags, agentDir });
+    for (const line of result.lines) (result.exitCode === 0 ? console.log : console.error)(line);
+    process.exit(result.exitCode);
+  } catch (error) {
+    complain(error);
+    process.exit(1);
+  }
+}
+
 // Before the configuration is loaded, and that is the entire point: the failure this
 // command exists to explain is a configuration that cannot be found or cannot be
 // read, and a diagnostic that loads one first would die of the disease it diagnoses.
@@ -462,9 +495,8 @@ if (cli.command === "doctor") {
       const neverReadable = { agentDir, ...(loaded.configFile ? { configFile: loaded.configFile } : {}) };
       const results: Array<{ surface: "shell" | "terminal"; verdict: ConfinementVerdict }> = [];
       const sandbox = loaded.sandbox;
-      if (shellIsConfined(sandbox)) {
-        results.push({ surface: "shell", verdict: await agentShellVerdict(sandbox, neverReadable) });
-      }
+      const shell = await shellVerdict(sandbox, neverReadable);
+      if (shell) results.push({ surface: "shell", verdict: shell });
       if (loaded.terminal.enabled && loaded.terminal.sandbox) {
         const confine = buildTerminalConfinement({
           runner: loaded.terminal.sandbox,
@@ -511,6 +543,9 @@ const config = await (async () => {
     process.exit(1);
   }
 })();
+// The configuration names the sandbox, so none of the agent's tools may write it — the default
+// sandbox makes the project writable, and the project often holds this very file.
+protectFromWrites(config.configFile);
 // Find git once, before anything asks for it. `PATH` alone is not enough: git is
 // installed on every machine that has a working VS Code, and is routinely absent from
 // the PATH a server process inherits — which used to remove the entire git surface
@@ -2778,9 +2813,15 @@ const confinementVerdicts = new Map<string, ConfinementVerdict>();
 function confinementOf(workspace: Workspace): SessionSnapshot["confinement"] {
   const result: NonNullable<SessionSnapshot["confinement"]> = {};
   const sandbox = workspace.settings.sandbox;
-  if (shellIsConfined(sandbox)) {
+  if (sandbox?.autoRunner?.unavailable !== undefined && sandbox.allowBash && sandbox.bashFrom === undefined) {
+    result.bash = { state: "unavailable", runner: "", reason: autoUnavailableRefusal(sandbox.autoRunner.unavailable) };
+  } else if (shellIsConfined(sandbox)) {
     const neverReadable = { agentDir: AGENT_DIR, configFile: config.configFile };
-    result.bash = verdictFor(workspace, `bash\0${JSON.stringify(sandbox)}`, sandbox.bashRunner, () => agentShellVerdict(sandbox, neverReadable));
+    const verdict = verdictFor(workspace, `bash\0${JSON.stringify(sandbox)}`, sandbox.bashRunner, () => sharedShellVerdict(sandbox, neverReadable));
+    // A runner the server chose runs nothing it has not shown it confines: anything short of that is a refused shell.
+    result.bash = sandbox.autoRunner ? autoShown(verdict) : verdict;
+  } else if (shellIsUnconfined(sandbox)) {
+    result.bash = unconfinedVerdictFor(workspace);
   }
   const confine = config.terminal?.enabled ? terminalConfinement(workspace) : undefined;
   if (confine && typeof terminalRunner === "object" && terminalRunner.ok) {
@@ -2790,6 +2831,30 @@ function confinementOf(workspace: Workspace): SessionSnapshot["confinement"] {
     result.terminal = verdictFor(workspace, key, confine.runner, () => terminalVerdict(confine, shell, AGENT_DIR, writableRoot));
   }
   return result.bash || result.terminal ? result : undefined;
+}
+
+/** Whether this machine could confine an unconfined shell: asked once per server, the lock's nudge. */
+let unconfinedVerdict: ConfinementVerdict | undefined;
+let unconfinedPending: Promise<ConfinementVerdict> | undefined;
+
+/** Ask once, and say the suggestion in the log when there is one: at startup, or on the first snapshot. */
+function askUnconfined(): Promise<ConfinementVerdict> {
+  unconfinedPending ??= unconfinedShellVerdict().then((verdict) => {
+    unconfinedVerdict = verdict;
+    const suggestion = confineSuggestion(verdict);
+    if (suggestion) console.log(`[sandbox] ${suggestion}`);
+    return verdict;
+  });
+  return unconfinedPending;
+}
+
+function unconfinedVerdictFor(workspace: Workspace): ConfinementVerdict {
+  if (unconfinedVerdict) return unconfinedVerdict;
+  void askUnconfined().then(() => {
+    const confinement = confinementOf(workspace);
+    if (confinement) broadcast(workspace, { type: "confinement", confinement });
+  });
+  return { state: "unconfined" };
 }
 
 function verdictFor(workspace: Workspace, key: string, runner: string, check: () => Promise<ConfinementVerdict>): ConfinementVerdict {
@@ -3631,6 +3696,8 @@ async function handleUpdateConfig(
         ...(config.sandbox?.bashFrom === undefined ? {} : { bashFrom: config.sandbox.bashFrom }),
         // Likewise, or an apply would hand bash back unconfined.
         ...(config.sandbox?.bashRunner === undefined ? {} : { bashRunner: config.sandbox.bashRunner }),
+        // Or an apply would turn a runner the server chose into an unconfined shell.
+        ...(config.sandbox?.autoRunner === undefined ? {} : { autoRunner: config.sandbox.autoRunner }),
         ...(config.sandbox?.bashShell === undefined ? {} : { bashShell: config.sandbox.bashShell }),
         ...(config.sandbox?.bashImage === undefined ? {} : { bashImage: config.sandbox.bashImage }),
         // Or an apply would open the network the file closed.
@@ -6488,6 +6555,12 @@ function handleClientMessage(socket: WebSocket, raw: string): void {
           return;
         }
       }
+      // The runner is the configuration file's alone: an interface that could pick `"none"`
+      // would let what is confined loosen its own confinement.
+      if (message.sandbox && typeof message.sandbox === "object" && ["bashRunner", "bashShell", "bashFrom", "bashImage"].some((key) => key in message.sandbox!)) {
+        send(socket, { type: "error", message: "The sandbox runner is set in the configuration file only, not from Settings" });
+        return;
+      }
       if (
         message.sandbox === undefined &&
         message.userSkillPaths === undefined &&
@@ -6702,7 +6775,9 @@ if (config.sandbox) {
     // Who confines bash, if anyone: the line an operator reads to know what the agent can do.
     ...(config.sandbox.allowBash
       ? [
-          config.sandbox.bashRunner
+          config.sandbox.autoRunner?.unavailable !== undefined
+            ? `${isPowerShell(config.sandbox.bashShell) ? "powershell" : "bash"} (REFUSED: "auto" found no runner — ${config.sandbox.autoRunner.unavailable})`
+            : config.sandbox.bashRunner
             ? `${isPowerShell(config.sandbox.bashShell) ? "powershell" : "bash"} (confined by ${config.sandbox.bashRunner}, ${config.sandbox.bashImage ? `WSLC image ${config.sandbox.bashImage}` : `shell ${config.sandbox.bashShell ?? "/bin/bash"}`}${config.sandbox.allowedHosts ? `, network only to ${config.sandbox.allowedHosts.join(", ") || "nothing"}` : ""})`
             : config.sandbox.bashFrom
               ? `bash (from ${config.sandbox.bashFrom})`
@@ -6710,7 +6785,9 @@ if (config.sandbox) {
         ]
       : []),
   ].join(", ");
-  console.log(`[pi] sandbox ${config.sandbox.root} · ${extras}`);
+  console.log(`[pi] sandbox ${config.sandbox.root} · ${extras}${config.sandbox.autoRunner && config.sandbox.bashRunner ? " — chosen automatically, used once its confinement check passes" : ""}`);
+  // An unconfined shell this machine could confine: say so now, not only in the interface.
+  if (shellIsUnconfined(config.sandbox)) void askUnconfined();
 }
 console.log(`[pi] file browser root ${workspace.browserRoot}`);
 // Worth a line: it changes where models come from, and its absence is what makes

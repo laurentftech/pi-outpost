@@ -26,6 +26,7 @@ import { normalizeThinkingLevels, THEMES, type Theme, type ThinkingLevel } from 
 import { STRUCTURED_EXCHANGE_BYTES_CEILING_ANY } from "@pi-outpost/shared/structured-exchange/bounds";
 import { normalizeCommandPattern } from "./commandPolicy.ts";
 import { isAllowedHostPattern } from "./egressProxy.ts";
+import { AUTO_RUNNER, NO_RUNNER, platformRunner } from "./autoRunner.ts";
 import { BUNDLED_MXC, bundledMxcExecutor, mxcMissingReason } from "./mxcExecutor.ts";
 
 /** The value of `sandbox.bashRunner` and `terminal.sandbox` that names macOS' `sandbox-exec`. */
@@ -81,6 +82,12 @@ export interface SandboxConfig {
    * executor pi-outpost ships (`mxcExecutor.ts`). Absolute after load.
    */
   bashRunner?: string;
+  /**
+   * Present when `bashRunner` was `"auto"`: the runner, if this platform has one, is `bashRunner`,
+   * and it runs a command only once its self-check and the confinement canary have passed.
+   * `unavailable`: why no runner can confine here — every command is refused with it.
+   */
+  autoRunner?: { label?: string; unavailable?: string };
   /**
    * The shell `bashRunner` runs commands in. Default `/bin/bash`; required on Windows:
    * PowerShell (the agent then gets a `powershell` tool) or busybox-w32's `sh.exe`.
@@ -1035,8 +1042,11 @@ export function loadConfig(
   applyDirectories(config, flags, env);
   const cwdOverridden = config.cwd !== fileCwd;
 
-  if (raw.sandbox !== undefined) {
-    const sandbox = asObject(raw.sandbox, "sandbox");
+  // No section: the default sandbox — the project, writable, and a shell whose runner the server
+  // chooses (see autoRunner.ts). `false`: none at all, as before the default existed.
+  const sandboxDefaulted = raw.sandbox === undefined;
+  if (raw.sandbox !== false) {
+    const sandbox = sandboxDefaulted ? { allowWrite: true, allowBash: true, bashRunner: AUTO_RUNNER } : asObject(raw.sandbox, "sandbox");
     const root = optionalString(sandbox, "root");
     const allowWrite = optionalBoolean(sandbox, "allowWrite", false);
     const allowBash = optionalBoolean(sandbox, "allowBash", false);
@@ -1047,7 +1057,7 @@ export function loadConfig(
     const bashRunner = optionalString(sandbox, "bashRunner", "sandbox.bashRunner");
     const bashShell = optionalString(sandbox, "bashShell", "sandbox.bashShell");
     const bashImage = optionalString(sandbox, "bashImage", "sandbox.bashImage");
-    if (bashImage !== undefined && (bashRunner === undefined || bashShell !== undefined || (bashRunner !== BUNDLED_MXC && runnerKind(bashRunner) !== "mxc"))) {
+    if (bashImage !== undefined && (bashRunner === undefined || bashShell !== undefined || bashRunner === AUTO_RUNNER || bashRunner === NO_RUNNER || (bashRunner !== BUNDLED_MXC && runnerKind(bashRunner) !== "mxc"))) {
       fail(`"sandbox.bashImage" runs bash in a WSLC container: it needs MXC as "sandbox.bashRunner", and no "sandbox.bashShell"`);
     }
     if (bashRunner !== undefined && bashFrom !== undefined) {
@@ -1056,7 +1066,9 @@ export function loadConfig(
     const allowedHosts = optionalStringArray(sandbox, "allowedHosts");
     if (allowedHosts !== undefined) {
       // Only MXC's process container, or Seatbelt, can close the network around the proxy here.
-      const holdsNetwork = bashRunner === BUNDLED_MXC || bashRunner === SEATBELT || (bashRunner !== undefined && runnerKind(bashRunner) !== "landstrip");
+      // `"auto"` only ever takes MXC or Seatbelt.
+      const holdsNetwork =
+        bashRunner === BUNDLED_MXC || bashRunner === SEATBELT || bashRunner === AUTO_RUNNER || (bashRunner !== undefined && bashRunner !== NO_RUNNER && runnerKind(bashRunner) !== "landstrip");
       if (bashRunner === undefined || bashImage !== undefined || !holdsNetwork) {
         fail(`"sandbox.allowedHosts" needs MXC or Seatbelt as "sandbox.bashRunner", and no "sandbox.bashImage": no other backend can hold the network to it`);
       }
@@ -1074,7 +1086,9 @@ export function loadConfig(
     // that is what moving the workspace means. A sandbox that grants write or bash
     // may not: an inherited PI_OUTPOST_CWD would turn "write inside my project" into
     // "write inside /". Granting a scope demands naming it.
-    if (root === undefined && cwdOverridden && (allowWrite || allowBash)) {
+    // The default follows the workspace wherever it moves: it replaces no sandbox at all, not one
+    // whose author scoped it to their project.
+    if (!sandboxDefaulted && root === undefined && cwdOverridden && (allowWrite || allowBash)) {
       fail(
         `"sandbox" grants ${allowWrite ? "write" : "bash"} but has no "root", so it would fall back ` +
           `to "cwd" — which was overridden from outside ${filePath}. Set "sandbox.root" explicitly.`,
@@ -1091,7 +1105,27 @@ export function loadConfig(
         fail(`"sandbox.writableRoot" must be inside "sandbox.root"`);
       }
     }
-    const resolvedBashRunner = bashRunner === undefined ? undefined : resolveRunner(bashRunner, "sandbox.bashRunner");
+    // `"none"`, and an explicit section's `allowBash` without a runner: the shell runs unconfined.
+    // `"auto"`: the platform's runner, earned at run time by its self-check and the canary.
+    let autoRunner: SandboxConfig["autoRunner"];
+    let resolvedBashRunner: string | undefined;
+    let effectiveShell = bashShell === undefined ? undefined : resolveShell(bashShell, resolve, env);
+    if (bashRunner === AUTO_RUNNER) {
+      const candidate = platformRunner();
+      autoRunner = "reason" in candidate ? { unavailable: candidate.reason } : { label: candidate.label };
+      if (!("reason" in candidate)) resolvedBashRunner = candidate.runner;
+      // Windows has no shell a runner can start by default but PowerShell: the agent gets `powershell`.
+      if (effectiveShell === undefined && bashImage === undefined && process.platform === "win32") {
+        try {
+          effectiveShell = resolveShell("powershell.exe", resolve, env);
+        } catch {
+          effectiveShell = "powershell.exe";
+          autoRunner = { ...autoRunner, unavailable: autoRunner.unavailable ?? "powershell.exe, the shell a confined command runs in on Windows, is not on PATH" };
+        }
+      }
+    } else if (bashRunner !== undefined && bashRunner !== NO_RUNNER) {
+      resolvedBashRunner = resolveRunner(bashRunner, "sandbox.bashRunner");
+    }
     if (bashImage !== undefined && resolvedBashRunner !== undefined && isPosixMxc(resolvedBashRunner)) {
       fail(`"sandbox.bashImage" runs bash in a WSLC container, which MXC has on Windows only: on Linux and macOS, MXC's own runner confines bash already — remove "sandbox.bashImage"`);
     }
@@ -1102,7 +1136,8 @@ export function loadConfig(
       allowBash,
       ...(bashFrom === undefined ? {} : { bashFrom: bashFrom.trim() }),
       ...(resolvedBashRunner === undefined ? {} : { bashRunner: resolvedBashRunner }),
-      ...(bashShell === undefined ? {} : { bashShell: resolveShell(bashShell, resolve, env) }),
+      ...(effectiveShell === undefined ? {} : { bashShell: effectiveShell }),
+      ...(autoRunner === undefined ? {} : { autoRunner }),
       ...(bashImage === undefined ? {} : { bashImage }),
       ...(allowedHosts === undefined ? {} : { allowedHosts: allowedHosts.map((host) => host.toLowerCase()) }),
       ...(grants === undefined ? {} : { grants: grants as SandboxGrantsMode }),
@@ -1195,6 +1230,8 @@ export function loadConfig(
    * write and bash. Refusing the pair is the only honest answer: a sandbox that
    * silently does not apply is worse than no sandbox, because it is trusted.
    */
+  // The default is not a sandbox anyone asked for: under `rpc`, there is simply none.
+  if (config.agentRuntime.mode === "rpc" && config.sandbox !== undefined && sandboxDefaulted) delete config.sandbox;
   if (config.agentRuntime.mode === "rpc" && config.sandbox !== undefined) {
     fail(
       `"sandbox" cannot be enforced when "agentRuntime.mode" is "rpc": the sandbox replaces this server's own file tools, ` +
@@ -1720,6 +1757,11 @@ export function persistEditableSettings(
     existing.allowBash = update.sandbox.allowBash;
     if (update.sandbox.writableRoot === undefined) delete existing.writableRoot;
     else existing.writableRoot = path.resolve(update.sandbox.writableRoot);
+    // A file that said nothing ran the default, whose shell the server confines. Writing the
+    // section without its runner would read back as the unconfined legacy spelling.
+    if (config.sandbox?.autoRunner !== undefined && existing.bashRunner === undefined && existing.bashFrom === undefined) {
+      existing.bashRunner = "auto";
+    }
     raw.sandbox = existing;
   }
   // Written under its own key: `skillPaths` belongs to whoever wrote the file, and

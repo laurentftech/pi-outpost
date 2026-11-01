@@ -60,7 +60,7 @@ test("workspace review readiness follows only persisted Work Plan transitions", 
 
   const server = await startServer(
     root,
-    { sandbox: undefined, agentRuntime: { mode: "rpc", executable: process.execPath, args: [FAKE], startupTimeoutMs: 5_000 } },
+    { sandbox: false, agentRuntime: { mode: "rpc", executable: process.execPath, args: [FAKE], startupTimeoutMs: 5_000 } },
     { env: { FAKE_PI_RPC_CONFIG: fakeConfig } },
   );
   const client = connect(server.wsUrl());
@@ -239,7 +239,7 @@ test("running server restores, forks, reconnects, and broadcasts authoritative W
   const server = await startServer(
     root,
     {
-      sandbox: undefined,
+      sandbox: false,
       agentRuntime: { mode: "rpc", executable: process.execPath, args: [FAKE], startupTimeoutMs: 5_000 },
     },
     { env: { FAKE_PI_RPC_CONFIG: fakeConfig } },
@@ -361,7 +361,7 @@ test("running server restores, forks, reconnects, and broadcasts authoritative W
 test("a real Pi RPC child executes work_plan and synchronizes its persisted result", async () => {
   const root = await makeWorkspace();
   const server = await startServer(root, {
-    sandbox: undefined,
+    sandbox: false,
     agentRuntime: {
       mode: "rpc",
       executable: process.execPath,

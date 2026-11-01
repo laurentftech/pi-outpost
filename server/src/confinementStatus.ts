@@ -6,7 +6,8 @@
 import { execFile } from "node:child_process";
 import path from "node:path";
 import type { ConfinementVerdict } from "@pi-outpost/shared";
-import { confinedBashOperations, isPowerShell } from "./confinedBash.ts";
+import { CONFINE_SUGGESTION, platformRunner, type PlatformRunner } from "./autoRunner.ts";
+import { cachedCheck, confinedBashOperations, isPowerShell } from "./confinedBash.ts";
 import { runCanary } from "./confinementCanary.ts";
 import { agentBashOptions } from "./sandbox.ts";
 import type { SandboxConfig } from "./config.ts";
@@ -17,6 +18,7 @@ import {
   mxcPosixConfig,
   mxcTerminalConfig,
   runnerKind,
+  type RunnerCheck,
   seatbeltPolicy,
   siblingsToDeny,
   terminalPolicy,
@@ -131,4 +133,138 @@ export async function terminalVerdict(confine: TerminalConfinement, shell: strin
       }
     },
   });
+}
+
+/**
+ * The agent shell's verdict, computed once per sandbox and shared: the lock the interface shows
+ * and the gate an `"auto"` runner's commands wait at are the same canary run. A verdict that could
+ * not be reached (`failed`) is forgotten once known, so the next command asks again.
+ */
+const sharedVerdicts = new Map<string, Promise<ConfinementVerdict>>();
+
+export function sharedShellVerdict(
+  sandbox: SandboxConfig,
+  neverReadable: { agentDir?: string; configFile?: string },
+  verdict: typeof agentShellVerdict = agentShellVerdict,
+): Promise<ConfinementVerdict> {
+  const key = JSON.stringify([sandbox, neverReadable.agentDir ?? null, neverReadable.configFile ?? null]);
+  const known = sharedVerdicts.get(key);
+  if (known) return known;
+  const pending = verdict(sandbox, neverReadable);
+  sharedVerdicts.set(key, pending);
+  void pending.then((result) => {
+    if (result.state === "failed" && sharedVerdicts.get(key) === pending) sharedVerdicts.delete(key);
+  });
+  return pending;
+}
+
+/** What the canary attempts, as the refusal of an `"auto"` shell names them. */
+const ATTEMPT_WORDS: Record<string, string> = {
+  "agent-directory": "read the agent directory (the provider keys)",
+  "beside-root": "read a file beside the root",
+  "write-beside-root": "write beside the root",
+  "signal-process": "signal another process of the server's user",
+  "server-environment": "inherit the server's environment",
+  "server-process-environment": "read the server's process environment",
+  "unlisted-host": "reach a host not in sandbox.allowedHosts",
+  "direct-connection": "connect around the proxy",
+};
+
+/** The way back to an unconfined shell, named in every refusal of an `"auto"` one. */
+export const UNCONFINED_ESCAPE = `To run the shell unconfined instead, set "sandbox.bashRunner": "none" in the configuration file.`;
+
+/**
+ * Why an `"auto"` runner may not run the agent's shell, from its verdict; undefined once the canary
+ * saw every attempt refused. Anything short of that refuses: the server chose this runner, so it
+ * runs nothing it has not shown it confines.
+ */
+export function autoVerdictRefusal(verdict: ConfinementVerdict): string | undefined {
+  const why = (() => {
+    switch (verdict.state) {
+      case "verified":
+        return undefined;
+      case "checking":
+        return "its confinement has not been checked yet";
+      case "failed":
+        return verdict.reason;
+      case "leaking":
+        return `its confinement check got through — a command could ${verdict.reached.map((attempt) => ATTEMPT_WORDS[attempt] ?? attempt).join(", ")}`;
+      case "partial":
+        return `a command could read the server's process environment, which holds ${verdict.exposed.join(", ")}: move these out of the server's environment`;
+      default:
+        return "it is not a confined shell";
+    }
+  })();
+  if (why === undefined) return undefined;
+  return `The agent's shell is unavailable: ${verdict.runner ? `${path.basename(verdict.runner)} ` : ""}cannot confine it on this machine — ${why}. ${UNCONFINED_ESCAPE}`;
+}
+
+/** The refusal of an `"auto"` shell whose platform has no runner at all. */
+export function autoUnavailableRefusal(reason: string): string {
+  return `The agent's shell is unavailable: nothing can confine it on this machine — ${reason}. ${UNCONFINED_ESCAPE}`;
+}
+
+/** The gate an `"auto"` runner's commands wait at: the shared verdict, read as a refusal or nothing. */
+export async function autoShellRefusal(
+  sandbox: SandboxConfig,
+  neverReadable: { agentDir?: string; configFile?: string },
+  verdict: typeof agentShellVerdict = agentShellVerdict,
+): Promise<string | undefined> {
+  return autoVerdictRefusal(await sharedShellVerdict(sandbox, neverReadable, verdict));
+}
+
+/**
+ * What an `"auto"` shell's verdict means for the interface: checked and holding, or still being
+ * checked, as the canary said; anything else, a shell that refuses every command, and why.
+ */
+export function autoShown(verdict: ConfinementVerdict): ConfinementVerdict {
+  if (verdict.state === "verified" || verdict.state === "checking") return verdict;
+  return { state: "unavailable", runner: verdict.runner ?? "", reason: autoVerdictRefusal(verdict) ?? "" };
+}
+
+/**
+ * An unconfined shell's verdict: whether this machine's runner passes its self-check, so the
+ * shell could be confined (the nudge), or why it cannot. The self-check only — no canary: it is
+ * enough to say a runner would work, and `config --confine` runs the canary before writing.
+ */
+export async function unconfinedShellVerdict(
+  candidate: PlatformRunner = platformRunner(),
+  check: (runner: string) => Promise<RunnerCheck> = cachedCheck,
+): Promise<ConfinementVerdict> {
+  if ("reason" in candidate) return { state: "unconfined", reason: candidate.reason };
+  const result = await check(candidate.runner);
+  return result.ok
+    ? { state: "unconfined", available: { runner: candidate.runner, label: candidate.label } }
+    : { state: "unconfined", reason: result.reason };
+}
+
+/** Whether the agent's own shell runs unconfined: bash on, no runner, nothing chosen for it, not an extension's. */
+export function shellIsUnconfined(sandbox: SandboxConfig | undefined): boolean {
+  return Boolean(sandbox?.allowBash && !sandbox.bashRunner && sandbox.autoRunner === undefined && sandbox.bashFrom === undefined);
+}
+
+/**
+ * The agent shell's verdict, awaited — what `doctor` reports: the canary's for a runner, its
+ * `"auto"` reading, the refusal of an `"auto"` shell with no runner, or the nudge for an
+ * unconfined one. Undefined with no shell of pi-outpost's own.
+ */
+export async function shellVerdict(
+  sandbox: SandboxConfig | undefined,
+  neverReadable: { agentDir?: string; configFile?: string },
+): Promise<ConfinementVerdict | undefined> {
+  if (!sandbox?.allowBash || sandbox.bashFrom !== undefined) return undefined;
+  if (sandbox.autoRunner?.unavailable !== undefined) {
+    return { state: "unavailable", runner: "", reason: autoUnavailableRefusal(sandbox.autoRunner.unavailable) };
+  }
+  if (shellIsConfined(sandbox)) {
+    const verdict = await sharedShellVerdict(sandbox, neverReadable);
+    return sandbox.autoRunner ? autoShown(verdict) : verdict;
+  }
+  return unconfinedShellVerdict();
+}
+
+/** What the startup log and `doctor` say of an unconfined shell this machine could confine; undefined otherwise. */
+export function confineSuggestion(verdict: ConfinementVerdict | undefined): string | undefined {
+  if (verdict?.state !== "unconfined" || !verdict.available) return undefined;
+  return `the agent's shell runs unconfined, and ${verdict.available.label} can confine it on this machine: ${CONFINE_SUGGESTION}`;
 }
