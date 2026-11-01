@@ -53,7 +53,14 @@ export function buildTerminalConfinement(input: {
         : kind === "mxc" && isPosixMxc(runner)
           ? (terminal) => mxcPosixConfig(runner, { ...limits, ...terminal, searchPath: terminal.env.PATH })
           : kind === "mxc"
-            ? (terminal) => mxcTerminalConfig({ ...limits, ...terminal, siblings: siblingsToDeny(root) })
+            ? (terminal) =>
+                mxcTerminalConfig({
+                  ...limits,
+                  ...terminal,
+                  siblings: siblingsToDeny(root),
+                  searchPath: terminal.env.PATH,
+                  ...(process.env.USERPROFILE ? { home: process.env.USERPROFILE } : {}),
+                })
             : ({ tmp }) => terminalPolicy({ ...limits, tmp, searchPath: process.env.PATH, systemRoot: process.env.SystemRoot, userProfile: process.env.USERPROFILE }),
   };
 }
