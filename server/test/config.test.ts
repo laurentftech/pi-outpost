@@ -542,6 +542,26 @@ describe("loadConfig — resource path resolution", () => {
     });
   });
 
+  // openlore: scenario=ABareShellNameIsFoundOnThePath spec=sandbox-runner-bash
+  test("ABareShellNameIsFoundOnThePath: a bare bashShell is looked up on PATH, PATHEXT included; one not on it stops startup; a path is resolved", async () => {
+    await withTempDir(async (dir) => {
+      const bin = path.join(dir, "bin");
+      await mkdir(bin);
+      const shellName = process.platform === "win32" ? "pwsh.exe" : "pwsh";
+      await writeFile(path.join(bin, shellName), "");
+      const configPath = path.join(dir, "config.json");
+      const env = { ...process.env, PATH: [path.join(dir, "elsewhere"), bin].join(path.delimiter), Path: undefined };
+      const load = async (bashShell: string) => {
+        await writeFile(configPath, JSON.stringify({ sandbox: { root: ".", allowBash: true, bashRunner: "./mxc/wxc-exec.exe", bashShell } }));
+        return loadConfig(dir, { config: configPath }, env).sandbox!.bashShell;
+      };
+      assert.equal(await load(shellName), path.join(bin, shellName), "found where PATH has it, not in the config's folder");
+      if (process.platform === "win32") assert.equal(await load("pwsh"), path.join(bin, "pwsh.exe"), "a name without extension, through PATHEXT");
+      await assert.rejects(async () => load("no-such-shell.exe"), /"sandbox\.bashShell" names "no-such-shell\.exe", which is not on PATH: give its full path/);
+      assert.equal(await load("./tools/sh.exe"), path.join(dir, "tools", "sh.exe"), "a path is the config folder's, as before");
+    });
+  });
+
   // openlore: scenario=AnAllowlistNeedsMxcWithoutAnImage spec=sandbox-runner-bash
   test("AnAllowlistNeedsMxcWithoutAnImage: allowed hosts are kept with MXC, refused without it, beside an image, or malformed", async () => {
     await withTempDir(async (dir) => {

@@ -19,6 +19,7 @@ import {
   sbplString,
   seatbeltPolicy,
   mxcTerminalConfig,
+  readableSearchEntries,
   prepareConfinedTerminal,
   quotePosixArgument,
   quoteWindowsArgument,
@@ -586,6 +587,34 @@ describe("mxcTerminalConfig", () => {
     agentDir: "C:\\Users\\me\\.pi\\agent",
     configFile: "C:\\Users\\me\\work\\app\\pi-outpost.config.json",
   };
+
+  // openlore: scenario=AToolInstalledForTheUserRuns spec=sandbox-runner-bash
+  test("AToolInstalledForTheUserRuns: the search path's folders are readable, but never one that would undo the sandbox", () => {
+    const python = "C:\\Users\\me\\AppData\\Local\\Programs\\Python\\Python314";
+    const searchPath = [
+      `${python}\\Scripts\\`,
+      python,
+      "C:\\Users\\me\\AppData\\Local\\Microsoft\\WindowsApps",
+      "C:\\Program Files\\nodejs\\",
+      // Too broad: they would open the profile, or the folder holding the agent directory.
+      "C:\\Users\\me",
+      "c:\\users",
+      "C:\\Users\\me\\.pi",
+      "C:\\",
+      "relative\\bin",
+      "",
+    ].join(";");
+    const config = mxcTerminalConfig({ ...base, searchPath, home: "C:\\Users\\me" });
+    for (const entry of [`${python}\\Scripts`, python, "C:\\Users\\me\\AppData\\Local\\Microsoft\\WindowsApps", "C:\\Program Files\\nodejs"]) {
+      assert.ok(config.filesystem.readonlyPaths.includes(entry), `${entry} not readable: ${config.filesystem.readonlyPaths.join(", ")}`);
+    }
+    for (const entry of ["C:\\Users\\me", "c:\\users", "C:\\Users\\me\\.pi", "relative\\bin"]) {
+      assert.ok(!config.filesystem.readonlyPaths.includes(entry), `${entry} made readable`);
+    }
+    // The secrets stay denied, and a granted tool folder is not also denied as a sibling.
+    assert.ok(config.filesystem.deniedPaths.includes(base.agentDir));
+    assert.deepEqual(readableSearchEntries(undefined, {}), []);
+  });
 
   test("the drive is readable for git, everything beside the root denied, secrets denied by name", () => {
     const config = mxcTerminalConfig({ ...base, writableRoot: wroot + "\\out" });
