@@ -97,7 +97,7 @@ describe("SandboxGrantBroker", () => {
     b.instance.answer(b.requested()[0].id, "session");
     assert.equal(await first, "approved-session");
     assert.deepEqual(b.instance.sessionGrants(), grant);
-    assert.ok(b.announced.some((m) => m.type === "sandbox_grants" && m.active.hosts.includes("example.com")));
+    assert.ok(b.announced.some((m) => m.type === "sandbox_grants" && m.active.hosts.length === 1 && m.active.hosts[0] === "example.com"));
 
     const waiting = b.instance.ask({ ...ask, command: "ls" });
     b.instance.endSession();
