@@ -108,6 +108,27 @@ describe("pi-outpost config --confine", () => {
     });
   });
 
+  test("a file edited while the canary runs is not overwritten", async (t) => {
+    if (!(await hasRunner())) return t.skip("no runner on this platform for \"auto\" to take");
+    await inDir(CRLF_CONFIG, async (dir, file) => {
+      const edited = CRLF_CONFIG.replace('"port": 4000', '"port": 4001');
+      const result = await confineConfiguration({
+        launchDir: dir,
+        flags: { config: file },
+        env: { XDG_CONFIG_HOME: path.join(dir, "xdg"), APPDATA: path.join(dir, "xdg"), PATH: process.env.PATH ?? process.env.Path ?? "" },
+        agentDir: path.join(dir, "agent"),
+        verdict: async () => {
+          await writeFile(file, edited); // the user, or a server persisting Settings, meanwhile
+          return verified;
+        },
+      });
+      assert.equal(result.exitCode, 1);
+      assert.equal(await readFile(file, "utf8"), edited, "the edit made during the check is kept");
+      assert.match(result.lines.join("\n"), /changed while[\s\S]*run "pi-outpost config --confine" again/);
+      assert.deepEqual((await readdir(dir)).filter((name) => name.endsWith(".tmp")), []);
+    });
+  });
+
   // openlore: scenario=AlreadyConfinedIsANoOp spec=sandbox-defaults
   test("AlreadyConfinedIsANoOp: \"auto\", \"mxc\" or a path: unchanged, exit 0, no canary", async () => {
     for (const bashRunner of ["auto", "mxc", "./bin/landstrip"]) {

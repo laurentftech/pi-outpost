@@ -422,11 +422,14 @@ export async function createSandboxedTools(
             : {}),
         })
       : undefined;
-    const powerShell = Boolean(operations && isPowerShell(sandbox.bashShell));
-    // A confined PowerShell gets pi's `powershell` tool — its description tells the model
-    // which language to write — in place of `bash`, which is then never registered.
+    // PowerShell, confined or not (`"none"` with a PowerShell `bashShell`), gets pi's `powershell`
+    // tool — its description tells the model which language to write — in place of `bash`, which
+    // is then never registered. Unconfined, pi's own PowerShell operations run it.
+    const powerShell = isPowerShell(sandbox.bashShell);
     const shellToolFor = (ops: BashOperations | undefined) =>
-      (powerShell ? createPowerShellToolDefinition(realRoot, { operations: ops! }) : createBashToolDefinition(realRoot, ops ? { operations: ops } : undefined)) as ToolDefinition;
+      (powerShell
+        ? createPowerShellToolDefinition(realRoot, ops ? { operations: ops } : undefined)
+        : createBashToolDefinition(realRoot, ops ? { operations: ops } : undefined)) as ToolDefinition;
     const shellTool = shellToolFor(operations);
     tools.push({
       ...shellTool,

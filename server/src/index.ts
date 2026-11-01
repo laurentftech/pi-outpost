@@ -94,6 +94,8 @@ import {
   sharedShellVerdict,
   shellIsConfined,
   shellIsUnconfined,
+  onShellVerdictSettled,
+  settledShellVerdict,
   shellVerdict,
   terminalVerdict,
   unconfinedShellVerdict,
@@ -2817,7 +2819,13 @@ function confinementOf(workspace: Workspace): SessionSnapshot["confinement"] {
     result.bash = { state: "unavailable", runner: "", reason: autoUnavailableRefusal(sandbox.autoRunner.unavailable) };
   } else if (shellIsConfined(sandbox)) {
     const neverReadable = { agentDir: AGENT_DIR, configFile: config.configFile };
-    const verdict = verdictFor(workspace, `bash\0${JSON.stringify(sandbox)}`, sandbox.bashRunner, () => sharedShellVerdict(sandbox, neverReadable));
+    // The very verdict the shell's commands wait at, so the lock cannot disagree with them: a retry
+    // after a failed check updates both (see onShellVerdictSettled below).
+    let verdict = settledShellVerdict(sandbox, neverReadable);
+    if (verdict === undefined) {
+      void sharedShellVerdict(sandbox, neverReadable);
+      verdict = { state: "checking", runner: sandbox.bashRunner };
+    }
     // A runner the server chose runs nothing it has not shown it confines: anything short of that is a refused shell.
     result.bash = sandbox.autoRunner ? autoShown(verdict) : verdict;
   } else if (shellIsUnconfined(sandbox)) {
@@ -2832,6 +2840,20 @@ function confinementOf(workspace: Workspace): SessionSnapshot["confinement"] {
   }
   return result.bash || result.terminal ? result : undefined;
 }
+
+/**
+ * Every shared shell verdict that settles — the first check, or a command's retry after a failed one —
+ * reaches every open project's lock: a project shows only its own sandbox's verdict, so the rest
+ * see nothing change.
+ */
+onShellVerdictSettled((verdict) => {
+  if (verdict.state === "leaking") console.warn(`[sandbox] ${verdict.runner} does not confine: ${verdict.reached.join(", ")} reached by the canary`);
+  if (verdict.state === "failed") console.warn(`[sandbox] could not check ${verdict.runner}'s confinement: ${verdict.reason}`);
+  for (const open of workspaces.all()) {
+    const confinement = confinementOf(open);
+    if (confinement) broadcast(open, { type: "confinement", confinement });
+  }
+});
 
 /** Whether this machine could confine an unconfined shell: asked once per server, the lock's nudge. */
 let unconfinedVerdict: ConfinementVerdict | undefined;

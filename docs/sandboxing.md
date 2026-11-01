@@ -40,7 +40,7 @@ fail (an [older Windows](#older-windows), a Docker container without user namesp
 
 | You want | Write |
 | --- | --- |
-| An unconfined shell (a machine nothing can confine yet) | `"bashRunner": "none"` in `sandbox` — in the file only, never from Settings |
+| An unconfined shell (a machine nothing can confine yet) | `"bashRunner": "none"` in `sandbox` — in the file only, never from Settings. With `"bashShell": "powershell.exe"` the agent gets its `powershell` tool, otherwise `bash` |
 | No sandbox at all, as before this default | `"sandbox": false` |
 | Another runner, a shell, allowed hosts | see [Recommended setup](#recommended-setup) |
 
