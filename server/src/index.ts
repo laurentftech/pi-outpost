@@ -86,6 +86,7 @@ import { BuildExeError, buildExecutable } from "./buildExe.ts";
 import { probePty, TerminalManager, type TerminalConfinement } from "./terminalManager.ts";
 import { LoginRelay } from "./loginRelay.ts";
 import { agentShellVerdict, buildTerminalConfinement, shellIsConfined, terminalVerdict } from "./confinementStatus.ts";
+import { readPrompt, runPrintTurn } from "./printMode.ts";
 import { checkRunner, gitReadOnlyFiles, isPosixMxc, mxcPosixConfig, mxcTerminalConfig, seatbeltPolicy, runnerKind, siblingsToDeny, terminalPolicy, userGitConfig, type RunnerCheck } from "./terminalSandbox.ts";
 import { isPowerShell } from "./confinedBash.ts";
 import { browsableUrl, openBrowser, shouldOpenBrowser } from "./openBrowser.ts";
@@ -292,6 +293,14 @@ const cli = await (async () => {
     process.exit(2);
   }
 })();
+
+// Print mode keeps stdout for the answer alone: every line the server writes goes to stderr.
+if (cli.command === "print") {
+  const toStderr = (...args: unknown[]) => console.error(...args);
+  console.log = toStderr;
+  console.info = toStderr;
+  console.debug = toStderr;
+}
 
 if (cli.command === "help") {
   console.log(helpText());
@@ -561,6 +570,15 @@ if (cli.command === "config") {
   const { token, ...rest } = config;
   console.log(JSON.stringify({ ...rest, token: token ? "<set>" : undefined }, null, 2));
   process.exit(0);
+}
+
+// Print mode: the configured server, for this process alone — the loopback, a port of the
+// system's choosing so it never collides with a running one, no browser, no terminal.
+if (cli.command === "print") {
+  config.port = 0;
+  config.host = "127.0.0.1";
+  config.openBrowser = false;
+  if (config.terminal) config.terminal.enabled = false;
 }
 
 const PORT = config.port;
@@ -1282,6 +1300,7 @@ try {
   await holdConsoleIfOwned();
   process.exit(1);
 }
+
 
 /**
  * Land the operator in the interface they just started.
@@ -6637,6 +6656,33 @@ getHealth = () => (workspace.agent.ok ? { ok: true, sessionId: workspace.agent.s
 // as they start (ensureStarted). Not awaited: a registry lookup never delays startup.
 void refreshPiPackages(workspace);
 startupComplete = true;
+
+// Print mode's turn, now that the server takes clients: a client of the address it bound.
+if (cli.command === "print") {
+  const bound = app.server.address();
+  const port = typeof bound === "object" && bound !== null ? bound.port : PORT;
+  const token = config.token === undefined ? "" : `?token=${encodeURIComponent(config.token)}`;
+  void readPrompt(cli.print.prompt ?? "")
+    .then((prompt) =>
+      runPrintTurn({
+        url: `ws://127.0.0.1:${port}/ws${token}`,
+        prompt,
+        json: cli.print.json,
+        grants: cli.print.grants,
+        ...(cli.print.model ? { model: cli.print.model } : {}),
+        out: (text) => process.stdout.write(text),
+        err: (text) => process.stderr.write(text),
+      }),
+    )
+    .then(
+      (code) => process.stdout.write("", () => process.exit(code)),
+      (error) => {
+        complain(error);
+        process.exit(1);
+      },
+    );
+}
+
 if (outpostUpdate) broadcastServerWide({ type: "outpost_update", notice: outpostUpdate });
 if (outpostChanges) broadcastServerWide({ type: "outpost_changes", changes: outpostChanges });
 

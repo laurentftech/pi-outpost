@@ -34,6 +34,13 @@ function stream(model, context) {
   const steps = process.env.BASH_CALL_STEPS ? JSON.parse(process.env.BASH_CALL_STEPS) : undefined;
   const out = createAssistantMessageEventStream();
 
+  // BASH_CALL_FAIL: the provider fails the turn, as a down one does.
+  if (process.env.BASH_CALL_FAIL) {
+    const failed = { ...message(model, [], "error"), errorMessage: process.env.BASH_CALL_FAIL };
+    queueMicrotask(() => out.push({ type: "error", reason: "error", error: failed }));
+    return out;
+  }
+
   if (steps && results.length < steps.length) {
     const step = steps[results.length];
     const toolCall = { type: "toolCall", id: `step-${Date.now()}-${results.length}`, name: step.tool, arguments: step.args };

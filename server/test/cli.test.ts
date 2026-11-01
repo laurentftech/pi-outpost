@@ -376,3 +376,34 @@ describe("--open-in", () => {
     assert.equal(parsed.flags.openIn, "window");
   });
 });
+
+// openlore: scenario=AStrayPrintFlagIsRefused spec=cli
+describe("parseCli — print mode", () => {
+  test("-p runs a prompt: the command, its prompt, and its flags with their defaults", () => {
+    const parsed = parseCli(["-p", "Say hello"]);
+    assert.equal(parsed.command, "print");
+    assert.deepEqual(parsed.print, { prompt: "Say hello", json: false, grants: "refuse" });
+    const full = parseCli(["--print", "-", "--json", "--grants", "session", "--model", "openai-codex/gpt-6.1-sol"]);
+    assert.deepEqual(full.print, { prompt: "-", json: true, grants: "session", model: "openai-codex/gpt-6.1-sol" });
+    assert.equal(parseCli([]).command, "serve", "no -p: the server, as before");
+  });
+
+  test("AStrayPrintFlagIsRefused: a print flag without -p, -p beside a command, or a bad value, each named", () => {
+    for (const [args, flag] of [
+      [["--json"], /"--json" belongs to "pi-outpost -p"/],
+      [["--grants", "once"], /"--grants" belongs to "pi-outpost -p"/],
+      [["--model", "a/b"], /"--model" belongs to "pi-outpost -p"/],
+      [["doctor", "-p", "hi"], /"-p" runs a prompt, not "pi-outpost doctor"/],
+      [["-p", "hi", "--grants", "always"], /"--grants" must be one of refuse, once, session \(got "always"\)/],
+      [["-p", "hi", "--model", "gpt"], /"--model" names a provider and a model, "provider\/id"/],
+      [["-p", "  "], /"-p" needs a prompt, or "-" to read it from stdin/],
+    ] as const) {
+      assert.throws(() => parseCli([...args]), (error: unknown) => error instanceof CliError && flag.test(error.message), args.join(" "));
+    }
+  });
+
+  test("the help names -p and its flags", () => {
+    const help = helpText();
+    for (const text of ['pi-outpost -p "<prompt>"', "--json", "--grants <answer>", "--model <p/id>"]) assert.ok(help.includes(text), text);
+  });
+});
