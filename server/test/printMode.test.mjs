@@ -11,6 +11,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { after, before, describe, test } from "node:test";
 import { fileURLToPath } from "node:url";
+import { envWithoutCoverageSink } from "./childEnv.mjs";
 
 const SERVER = fileURLToPath(new URL("..", import.meta.url));
 const ENTRY = path.join(SERVER, "src", "index.ts");
@@ -23,7 +24,7 @@ function print(args, { config, env = {}, stdin } = {}) {
     // Resolved from here: the process starts in the test's own folder, where a bare "tsx" is not found.
     const child = spawn(process.execPath, ["--import", import.meta.resolve("tsx"), ENTRY, ...args, "--config", config], {
       cwd: path.dirname(config),
-      env: { ...process.env, PI_OUTPOST_CONFIG: undefined, PI_OUTPOST_PROFILE: undefined, PI_OFFLINE: "1", ...env },
+      env: envWithoutCoverageSink({ PI_OUTPOST_CONFIG: undefined, PI_OUTPOST_PROFILE: undefined, PI_OFFLINE: "1", ...env }),
       windowsHide: true,
     });
     let stdout = "";
