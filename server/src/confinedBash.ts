@@ -176,6 +176,13 @@ export const POWERSHELL_SCRIPT_ARGS = ["-NoProfile", "-NonInteractive", "-Execut
  * gives what `-Command` (pi's local tool) gives instead — the native program's code, or
  * 1 for a failed cmdlet. It runs only when the command did not `exit` itself, and on its
  * own lines so a comment ending the command cannot swallow it.
+ *
+ * The command's output goes through `Out-Default` before that `exit`: the implicit formatter
+ * holds a table back while it waits for more objects of its type, and an `exit` right after
+ * drops it — `'a'; Get-Location; 'b'` printed `a` alone, exit 0. The command is dot-sourced, so
+ * its variables stay in the script's scope, and its `$?` is taken inside the block, right after
+ * it: after the pipe it would be `Out-Default`'s. A command that itself exits (or throws) right
+ * after a table still loses it: PowerShell does that under `-Command` too, pi's own tool included.
  */
 export function powerShellScript(command: string): string {
   return [
@@ -186,10 +193,19 @@ export function powerShellScript(command: string): string {
     // Under sandbox.allowedHosts MXC sets HTTPS_PROXY, which Windows PowerShell's web
     // cmdlets ignore: they would go direct, and be refused.
     "if ($env:HTTPS_PROXY) { $PSDefaultParameterValues['Invoke-WebRequest:Proxy'] = $env:HTTPS_PROXY; $PSDefaultParameterValues['Invoke-RestMethod:Proxy'] = $env:HTTPS_PROXY }",
+    // Windows PowerShell parses a page with Internet Explorer's engine unless told not to, and
+    // in the sandbox that ends in "not in interactive mode": every plain Invoke-WebRequest failed.
+    // PowerShell 7 takes the switch and ignores it.
+    "$PSDefaultParameterValues['Invoke-WebRequest:UseBasicParsing'] = $true",
     "$global:LASTEXITCODE = $null",
+    // A command that returns at its top level ends the block with nothing failed.
+    "$global:PiOutpostCommandOk = $true",
+    ". {",
     command,
     "",
-    "if (-not $?) { if ($LASTEXITCODE) { exit $LASTEXITCODE } else { exit 1 } }",
+    "$global:PiOutpostCommandOk = $?",
+    "} | Out-Default",
+    "if (-not $global:PiOutpostCommandOk) { if ($LASTEXITCODE) { exit $LASTEXITCODE } else { exit 1 } }",
     "exit 0",
     "",
   ].join("\n");

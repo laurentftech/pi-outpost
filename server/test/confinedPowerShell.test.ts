@@ -121,7 +121,9 @@ describe("a confined PowerShell", () => {
     const lines = script.split("\n");
     const at = lines.indexOf("Get-Date # a trailing comment");
     assert.ok(at > 0);
-    assert.ok(lines.slice(at + 1).some((line) => line.startsWith("if (-not $?)")), "the trailer was swallowed by the comment");
+    // The command's status, taken on its own line right after it, and the trailer reading it.
+    assert.equal(lines.slice(at + 1).find((line) => line.trim() !== ""), "$global:PiOutpostCommandOk = $?", "the status was swallowed by the comment");
+    assert.ok(lines.slice(at + 1).some((line) => line.startsWith("if (-not $global:PiOutpostCommandOk)")), "the trailer was swallowed by the comment");
     assert.deepEqual(POWERSHELL_SCRIPT_ARGS.at(-1), "-File");
   });
 
@@ -170,6 +172,18 @@ describe("a confined PowerShell", () => {
       assert.match(output, /Major/);
       assert.match(output, /no-such-file/);
       assert.doesNotMatch(output, /\u001b\[/);
+    });
+
+    // openlore: scenario=AFormattedObjectDoesNotCutTheOutputShort spec=sandbox-runner-bash
+    test(`AFormattedObjectDoesNotCutTheOutputShort (${label}): a table between two lines, all of it, in order`, { skip }, async () => {
+      // The trailer's `exit` used to drop the table the formatter held back, and everything after it.
+      const whole = await exec(shell!, "Write-Output 'first-line'; Get-Location; Write-Output 'last-line'");
+      assert.equal(whole.exitCode, 0, whole.output);
+      assert.match(whole.output, /first-line[\s\S]*Path[\s\S]*----[\s\S]*last-line/, whole.output);
+      const failing = await exec(shell!, "Write-Output 'first-line'; Get-Location; Get-Item -LiteralPath (Join-Path $PWD 'no-such-file')");
+      assert.equal(failing.exitCode, 1, failing.output);
+      assert.match(failing.output, /first-line[\s\S]*Path[\s\S]*----/, failing.output);
+      assert.match(failing.output, /no-such-file/);
     });
   }
 });

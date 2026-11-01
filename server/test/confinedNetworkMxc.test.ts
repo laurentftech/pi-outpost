@@ -99,6 +99,10 @@ describe("the agent's powershell under MXC, network only to allowed hosts", { sk
     const result = await ps("'status=' + (Invoke-WebRequest -UseBasicParsing -Uri https://registry.npmjs.org/ -TimeoutSec 20).StatusCode");
     assert.equal(result.exitCode, 0, result.output);
     assert.match(result.output, /status=200/, result.output);
+    // Without the switch, Windows PowerShell reached for Internet Explorer's engine and failed "not in interactive mode".
+    const plain = await ps("'plain=' + (Invoke-WebRequest -Uri https://registry.npmjs.org/ -TimeoutSec 20).StatusCode");
+    assert.equal(plain.exitCode, 0, plain.output);
+    assert.match(plain.output, /plain=200/, plain.output);
   });
 
   // openlore: scenario=AnotherHostIsRefusedWithTheReason spec=sandbox-runner-bash
