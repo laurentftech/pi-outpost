@@ -7,6 +7,70 @@ version you had and the one you run now, without going online.
 Releases before 0.41.0 are described on
 [GitHub Releases](https://github.com/laurentftech/pi-outpost/releases).
 
+## [0.56.0] - 2026-11-01
+
+### Changed
+
+- **The agent is now sandboxed by default.** This is the main change of this
+  release. If your configuration has no `sandbox` section, the agent can now read
+  and write only inside the project, and its shell runs in the operating
+  system's sandbox: MXC on Windows and Linux, Seatbelt on macOS. Commands run
+  once the sandbox has passed its check; where it cannot confine — a Windows 11
+  build without the August 2026 update, a container without user namespaces —
+  the shell refuses every command and says why. To get an unconfined shell
+  back, set `"bashRunner": "none"` in `sandbox`; to turn the sandbox off
+  entirely, `"sandbox": false`. A configuration that already has a `sandbox`
+  section behaves as before. The agent can no longer write pi-outpost's
+  configuration file, and `pi-outpost init` writes this default out.
+  ([#397](https://github.com/laurentftech/pi-outpost/pull/397))
+- **A shorter README.** Setup, configuration, the command line, features,
+  deployment and integrations each have their own guide under `docs/`.
+  ([#398](https://github.com/laurentftech/pi-outpost/pull/398))
+- The draw.io viewer is updated to 32.6.9.
+  ([#386](https://github.com/laurentftech/pi-outpost/pull/386))
+
+### Added
+
+- **Confine an unconfined shell in one command.** When your configuration runs
+  the shell unconfined and this machine can confine it, the lock next to the
+  model is highlighted and says so; `pi-outpost config --confine` checks the
+  sandbox, then switches it on in your configuration file.
+  ([#397](https://github.com/laurentftech/pi-outpost/pull/397))
+- **Let a confined command through, once or for the session.** When a sandboxed
+  command connects to a host that is not allowed, or the agent needs a folder
+  beside the project, you are asked, and choose this command only, this session,
+  or no. The agent directory, the configuration and `.pi` folders are never
+  offered. ([#392](https://github.com/laurentftech/pi-outpost/pull/392))
+- **Run one turn from the terminal.** `pi-outpost -p "<prompt>"` answers on
+  stdout and exits, without a browser; `-p -` reads the prompt from stdin and
+  `--json` prints every event.
+  ([#395](https://github.com/laurentftech/pi-outpost/pull/395))
+- **Search file contents from the Files panel.** The magnifying glass searches
+  text files and the text of PDFs; a hit opens the file at the match.
+  ([#385](https://github.com/laurentftech/pi-outpost/pull/385))
+- **Graphs with straight, readable wires that keep their layout.** Structured
+  graphs are drawn with right-angled wires routed like draw.io's, and a layout you
+  adjust — by dragging, or touched up in draw.io — is kept beside the document and
+  reused when the model is revised.
+  ([#390](https://github.com/laurentftech/pi-outpost/pull/390))
+- **`drawio_check` checks where wires meet.** It warns about wires that share a
+  point while carrying different data, exits facing the wrong way, long detours
+  and needless bends, with advice that settles the diagram.
+  ([#389](https://github.com/laurentftech/pi-outpost/pull/389))
+
+### Fixed
+
+- **Tools installed for your user run in the Windows sandbox.** A confined
+  command finds what `PATH` finds (Python in your profile, for example), and a
+  bare `sandbox.bashShell` such as `pwsh.exe` is looked up on `PATH`.
+  ([#393](https://github.com/laurentftech/pi-outpost/pull/393))
+- **The PowerShell confinement check reports again**, instead of always showing
+  "confinement unchecked". ([#388](https://github.com/laurentftech/pi-outpost/pull/388))
+- **Two arrangements saved at once both stick on Windows.**
+  ([#394](https://github.com/laurentftech/pi-outpost/pull/394))
+- **`drawio_check`'s advice is read in linear time**, whatever a diagram's labels
+  hold. ([#396](https://github.com/laurentftech/pi-outpost/pull/396))
+
 ## [0.55.0] - 2026-10-29
 
 ### Added
