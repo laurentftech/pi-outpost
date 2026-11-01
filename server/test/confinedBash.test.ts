@@ -13,7 +13,9 @@ import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promi
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { after, before, describe, test } from "node:test";
+import type { SandboxGrantOutcome } from "@pi-outpost/shared";
 import { confinedBashOperations } from "../src/confinedBash.ts";
+import type { EgressProxyOptions } from "../src/egressProxy.ts";
 
 const FAKE_RUNNER = `
 const fs = require("node:fs");
@@ -109,6 +111,95 @@ describe("confinedBashOperations", () => {
       if (saved === undefined) delete process.env.OPENAI_API_KEY;
       else process.env.OPENAI_API_KEY = saved;
     }
+  });
+
+  test("a grant reaches the launch it was approved for, and the next launch without it is confined as before", async () => {
+    const slashed = (paths: string[]) => paths.map((p) => p.replaceAll("\\", "/"));
+    const beside = path.join(base, "beside");
+    const notes = path.join(base, "notes");
+    const ops = operations();
+    const grant = { hosts: [], directories: [{ path: beside, access: "write" as const }, { path: notes, access: "read" as const }] };
+    await ops.execWithGrant("0", root, { onData: () => {} }, grant);
+    const granted = (await lastRecord()).policy.filesystem;
+    assert.ok(slashed(granted.allowWrite).includes(slashed([beside])[0]), "the write grant is writable");
+    assert.ok(slashed(granted.allowRead).includes(slashed([beside])[0]), "and readable");
+    assert.ok(slashed(granted.allowRead).includes(slashed([notes])[0]), "the read grant is readable");
+    assert.ok(!slashed(granted.allowWrite).includes(slashed([notes])[0]), "but not writable");
+
+    await exec("0", { ops });
+    const after = (await lastRecord()).policy.filesystem;
+    for (const dir of slashed([beside, notes])) {
+      assert.ok(!slashed(after.allowRead).includes(dir) && !slashed(after.allowWrite).includes(dir), `${dir} reached the next launch`);
+    }
+  });
+
+  test("a session's grants reach every launch, read when each one starts", async () => {
+    const slashed = (paths: string[]) => paths.map((p) => p.replaceAll("\\", "/"));
+    const beside = path.join(base, "session-beside");
+    let session = { hosts: [] as string[], directories: [] as Array<{ path: string; access: "read" | "write" }> };
+    const ops = operations({ grants: () => session, allowWrite: false });
+    await exec("0", { ops });
+    assert.ok(!slashed((await lastRecord()).policy.filesystem.allowWrite).includes(slashed([beside])[0]));
+    session = { hosts: [], directories: [{ path: beside, access: "write" }] };
+    for (let i = 0; i < 2; i++) {
+      await exec("0", { ops });
+      // Writing off: the zone is gone, the user's grant is not.
+      assert.ok(slashed((await lastRecord()).policy.filesystem.allowWrite).includes(slashed([beside])[0]), `launch ${i + 1}`);
+    }
+  });
+
+  describe("with someone to ask, each command gets a proxy of its own that asks", () => {
+    /** A proxy that records how it was started, and plays the connections given to it. */
+    function proxies(connections: string[] = []) {
+      const started: Array<{ allowedHosts: readonly string[]; closed: boolean }> = [];
+      const start = async (proxyOptions: EgressProxyOptions) => {
+        const entry = { allowedHosts: proxyOptions.allowedHosts, closed: false };
+        started.push(entry);
+        // The command connects while it runs: the proxy asks, as a real one would.
+        for (const host of connections) await proxyOptions.ask?.(host);
+        return { url: `http://127.0.0.1:${4000 + started.length}`, watchRefusals: () => () => {}, close: async () => void (entry.closed = true) };
+      };
+      return { started, start };
+    }
+    const base = { url: "http://127.0.0.1:3999", watchRefusals: () => () => {} };
+
+    test("the list and the session's hosts, a proxy per command, closed after it", async () => {
+      const spy = proxies();
+      const ops = operations({ networkProxy: base, allowedHosts: ["registry.npmjs.org"], askHost: async () => "refused", startProxy: spy.start, grants: () => ({ hosts: ["github.com"], directories: [] }) });
+      await exec("0", { ops });
+      await exec("0", { ops });
+      assert.deepEqual(spy.started, [
+        { allowedHosts: ["registry.npmjs.org", "github.com"], closed: true },
+        { allowedHosts: ["registry.npmjs.org", "github.com"], closed: true },
+      ]);
+    });
+
+    test("each host asked about is named after the output with the user's answer; a refusal says not to retry", async () => {
+      const asked: Array<{ command: string; host: string }> = [];
+      const answers: Record<string, SandboxGrantOutcome> = { "example.com": "approved-once", "example.org": "refused" };
+      const ops = operations({
+        networkProxy: base,
+        allowedHosts: [],
+        askHost: async ({ command, host }) => (asked.push({ command, host }), answers[host]),
+        startProxy: proxies(["example.com", "example.org", "127.0.0.1"]).start,
+      });
+      const { output } = await exec(`console.log("ran")`, { ops });
+      assert.deepEqual(asked, [{ command: `console.log("ran")`, host: "example.com" }, { command: `console.log("ran")`, host: "example.org" }], "the forbidden one is never asked about");
+      assert.match(output, /\[pi-outpost\] network: the user allowed example\.com for this command\./);
+      assert.match(output, /\[pi-outpost\] network: the user refused example\.org\./);
+      assert.match(output, /\[pi-outpost\] network: 127\.0\.0\.1 is never granted: a grant names a host by its name, never an IP address\./);
+      assert.match(output, /Do not retry a refused host for this request: tell the user what it blocked\.\s*$/);
+    });
+
+    test("without someone to ask, the shared proxy refuses, and the note names the list", async () => {
+      const spy = proxies();
+      // The shared proxy refuses a host while the command runs: told to the launch's watcher.
+      const shared = { url: base.url, watchRefusals: (listener: (host: string) => void) => (listener("example.com"), () => {}) };
+      const ops = operations({ networkProxy: shared, allowedHosts: [], startProxy: spy.start });
+      const { output } = await exec("0", { ops });
+      assert.equal(spy.started.length, 0, "no proxy of its own");
+      assert.match(output, /\[pi-outpost\] network refused: example\.com — not in sandbox\.allowedHosts\. Ask the user to add it there if the command needs it\.\s*$/);
+    });
   });
 
   test("a working directory outside the root starts the command in the root", async () => {

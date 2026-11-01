@@ -12,6 +12,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import {
   type AgentSession,
+  type BashOperations,
   createBashToolDefinition,
   createPowerShellToolDefinition,
   createEditToolDefinition,
@@ -61,6 +62,9 @@ import { createPosterPicturesToolDefinition } from "./posterPicturesTool.ts";
 import { createStructuredExchangeTableToolDefinition } from "./structuredExchangeTableTool.ts";
 import { confinedBashOperations, isPowerShell, type ConfinedBashOptions } from "./confinedBash.ts";
 import { sharedEgressProxy } from "./egressProxy.ts";
+import type { SandboxGrantBroker } from "./sandboxGrantBroker.ts";
+import { createRunWithGrantToolDefinition } from "./sandboxGrantTool.ts";
+import { hostGrantsRefusal } from "./sandboxGrants.ts";
 import { userGitConfig } from "./terminalSandbox.ts";
 
 /**
@@ -218,6 +222,11 @@ export async function createSandboxedTools(
   skillReadRoots?: () => readonly string[],
   /** What a `bash` confined by `sandbox.bashRunner` may never read. */
   neverReadable: { agentDir?: string; configFile?: string } = {},
+  /**
+   * The project's grant requests and session grants. With it, a confined shell gets
+   * `run_with_grant` beside it, unless `sandbox.grants` is `"never"`.
+   */
+  grants?: SandboxGrantBroker,
 ): Promise<ToolDefinition[]> {
   const realRoot = await fs.realpath(sandbox.root);
   const readFactories: Array<(cwd: string) => ToolDefinition> = [
@@ -349,12 +358,35 @@ export async function createSandboxedTools(
     // runner is named, which runs every command inside an OS sandbox with the policy
     // of a confined terminal. The root still has to be pinned onto the context, or
     // the shell starts in the project root instead — see `withCwd`.
-    const operations = sandbox.bashRunner ? confinedBashOperations(await agentBashOptions(sandbox, neverReadable)) : undefined;
+    const broker = sandbox.bashRunner && sandbox.grants !== "never" ? grants : undefined;
+    const bashOptions = sandbox.bashRunner ? await agentBashOptions(sandbox, neverReadable) : undefined;
+    const operations = bashOptions
+      ? confinedBashOperations({
+          ...bashOptions,
+          ...(broker ? { grants: () => broker.sessionGrants() } : {}),
+          // A host the list does not name is asked about when a command connects to it — only
+          // where a command is shown to reach no other command's proxy (`hostGrantsRefusal`).
+          ...(broker && asksAboutHosts(sandbox)
+            ? {
+                askHost: ({ command, host, signal }: { command: string; host: string; signal?: AbortSignal }) =>
+                  broker.ask({
+                    kind: "connection",
+                    command,
+                    grant: { hosts: [host], directories: [] },
+                    reason: `The running command is connecting to ${host}, which sandbox.allowedHosts does not list.`,
+                    overridesReadOnly: false,
+                    ...(signal ? { signal } : {}),
+                  }),
+              }
+            : {}),
+        })
+      : undefined;
+    const powerShell = Boolean(operations && isPowerShell(sandbox.bashShell));
     // A confined PowerShell gets pi's `powershell` tool — its description tells the model
     // which language to write — in place of `bash`, which is then never registered.
-    const shellTool = (operations && isPowerShell(sandbox.bashShell)
-      ? createPowerShellToolDefinition(realRoot, { operations })
-      : createBashToolDefinition(realRoot, operations ? { operations } : undefined)) as ToolDefinition;
+    const shellToolFor = (ops: BashOperations | undefined) =>
+      (powerShell ? createPowerShellToolDefinition(realRoot, { operations: ops! }) : createBashToolDefinition(realRoot, ops ? { operations: ops } : undefined)) as ToolDefinition;
+    const shellTool = shellToolFor(operations);
     tools.push({
       ...shellTool,
       // A model often batches dependent steps (create, then rename) in one message, and pi
@@ -364,6 +396,33 @@ export async function createSandboxedTools(
       execute: (toolCallId, params, signal, onUpdate, ctx) =>
         shellTool.execute(toolCallId, params, signal, onUpdate, withCwd(ctx, realRoot)),
     });
+    if (operations && bashOptions && broker) {
+      const grantContext = {
+        root: realRoot,
+        allowWrite: bashOptions.allowWrite,
+        ...(bashOptions.writableRoot ? { writableRoot: bashOptions.writableRoot } : {}),
+        ...(sandbox.allowedHosts ? { allowedHosts: sandbox.allowedHosts } : {}),
+        ...neverReadable,
+        wslc: sandbox.bashImage !== undefined,
+      };
+      tools.push({
+        ...createRunWithGrantToolDefinition({
+          broker,
+          context: () => grantContext,
+          shellTool: shellTool.name,
+          // pi's own shell tool, its launches carrying the grant the user approved for this command.
+          run: (grant, params, toolCallId, signal, onUpdate, ctx) =>
+            shellToolFor({ exec: (command, cwd, options) => operations.execWithGrant(command, cwd, options, grant) }).execute(
+              toolCallId,
+              params,
+              signal,
+              onUpdate,
+              withCwd(ctx, realRoot),
+            ),
+        }),
+        executionMode: "sequential" as const,
+      });
+    }
   }
   return tools;
 }
@@ -407,8 +466,17 @@ export async function agentBashOptions(
     ...neverReadable,
     // git's identity: the user's ~/.gitconfig, readable on its own.
     gitConfig: userGitConfig(),
-    ...(sandbox.allowedHosts === undefined ? {} : { networkProxy: await sharedEgressProxy(sandbox.allowedHosts) }),
+    ...(sandbox.allowedHosts === undefined ? {} : { networkProxy: await sharedEgressProxy(sandbox.allowedHosts), allowedHosts: sandbox.allowedHosts }),
   };
+}
+
+/**
+ * Whether a command of the agent's shell has the user asked about a host its list does not name:
+ * grants on, a list to start from, and a runner shown to keep a command off other commands' proxies.
+ * Otherwise such a host is refused, as the list says.
+ */
+export function asksAboutHosts(sandbox: SandboxConfig): boolean {
+  return Boolean(sandbox.bashRunner) && sandbox.grants !== "never" && sandbox.allowedHosts !== undefined && hostGrantsRefusal(sandbox.bashRunner!) === undefined;
 }
 
 export function unsuppliedBuiltIns(sandboxedTools: ToolDefinition[], delegated: readonly string[] = []): string[] {

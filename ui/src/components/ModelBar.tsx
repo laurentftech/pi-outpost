@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { ConfinementVerdict, ContextUsage, ModelChoice, ThinkingLevel } from "@pi-outpost/shared";
+import type { ConfinementVerdict, ContextUsage, ModelChoice, SandboxGrantSet, ThinkingLevel } from "@pi-outpost/shared";
 import { ConfinementLock } from "./ConfinementLock";
 import { THINKING_LEVELS } from "@pi-outpost/shared";
 import { formatCost, formatTokens, type SessionUsage } from "../util/sessionUsage";
@@ -16,6 +16,8 @@ interface ModelBarProps {
   contextUsage: ContextUsage | null;
   /** The agent's shell's confinement, as observed: absent when it has no runner. */
   shellConfinement?: ConfinementVerdict;
+  /** The session's grants beyond the shell's sandbox, shown on its lock. */
+  shellGrants?: SandboxGrantSet;
   /** Billed totals for the session so far; absent turns simply do not count. */
   sessionUsage: SessionUsage;
   /**
@@ -273,7 +275,7 @@ export function ModelBar(props: ModelBarProps) {
 
       {props.shellConfinement && (
         <span className="ml-auto">
-          <ConfinementLock verdict={props.shellConfinement} surface="shell" />
+          <ConfinementLock verdict={props.shellConfinement} surface="shell" grants={props.shellGrants} />
         </span>
       )}
 

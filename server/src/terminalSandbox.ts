@@ -277,6 +277,12 @@ export interface TerminalPolicyInput {
    * re-grants on every launch — npm's alone made a terminal take thirteen seconds to appear.
    */
   userProfile?: string;
+  /**
+   * Directories the user granted this command beyond the sandbox (`sandboxGrants.ts`): read
+   * only, and read-write. A write grant holds even without `allowWrite`: the user asked for it.
+   */
+  grantedRead?: string[];
+  grantedWrite?: string[];
 }
 
 /**
@@ -304,8 +310,8 @@ export function terminalPolicy(input: TerminalPolicyInput): TerminalPolicy {
   return {
     filesystem: {
       denyRead: unique(denyRead),
-      allowRead: unique([...SYSTEM_READ, ...toolTrees(input.searchPath, path.posix), input.root, input.tmp, ...(input.readOnlyFiles ?? [])]),
-      allowWrite: unique([...writable, input.tmp, "/dev/null", "/dev/tty", "/dev/pts"]),
+      allowRead: unique([...SYSTEM_READ, ...toolTrees(input.searchPath, path.posix), input.root, input.tmp, ...(input.readOnlyFiles ?? []), ...granted(input)]),
+      allowWrite: unique([...writable, ...(input.grantedWrite ?? []), input.tmp, "/dev/null", "/dev/tty", "/dev/pts"]),
     },
     network: { allowNetwork: true },
   };
@@ -328,7 +334,7 @@ function windowsTerminalPolicy(input: TerminalPolicyInput): TerminalPolicy {
   // Python) made a terminal take eleven seconds to appear.
   const profile = input.userProfile ? slash(input.userProfile).toLowerCase().replace(/\/+$/, "") + "/" : undefined;
   const tools = searchEntries(input.searchPath, path.win32).filter((entry) => !profile || !slash(entry).toLowerCase().startsWith(profile));
-  const allowRead = [input.systemRoot, ...tools, input.root, input.tmp, ...(input.readOnlyFiles ?? [])]
+  const allowRead = [input.systemRoot, ...tools, input.root, input.tmp, ...(input.readOnlyFiles ?? []), ...granted(input)]
     .filter((entry): entry is string => Boolean(entry))
     .map(slash);
   const denyRead = [...new Set(allowRead.map((entry) => `${path.win32.parse(entry).root.replaceAll("\\", "/")}`))];
@@ -339,7 +345,7 @@ function windowsTerminalPolicy(input: TerminalPolicyInput): TerminalPolicy {
     filesystem: {
       denyRead: unique(denyRead),
       allowRead: unique(allowRead),
-      allowWrite: unique([...writable, input.tmp].map(slash)),
+      allowWrite: unique([...writable, ...(input.grantedWrite ?? []), input.tmp].map(slash)),
     },
     network: { allowNetwork: true },
     windows: { appContainerMode: "standard" },
@@ -365,6 +371,11 @@ function searchEntries(searchPath: string | undefined, flavour: path.PlatformPat
     .filter((entry) => entry && flavour.isAbsolute(entry))
     .map((entry) => entry.replace(/[\\/]+$/, "") || entry)
     .filter((entry) => entry !== flavour.parse(entry).root);
+}
+
+/** Every granted directory: a write grant is readable too. */
+function granted(input: { grantedRead?: string[]; grantedWrite?: string[] }): string[] {
+  return [...(input.grantedRead ?? []), ...(input.grantedWrite ?? [])];
 }
 
 function unique(values: string[]): string[] {
@@ -412,6 +423,12 @@ export interface MxcTerminalInput {
   readOnlyFiles?: string[];
   /** `sandbox.allowedHosts`' proxy: the network closed but for it. The agent's shell only. */
   networkProxy?: string;
+  /**
+   * Directories the user granted this command beyond the sandbox (`sandboxGrants.ts`): read
+   * only, and read-write. A write grant holds even without `allowWrite`: the user asked for it.
+   */
+  grantedRead?: string[];
+  grantedWrite?: string[];
 }
 
 /**
@@ -432,8 +449,9 @@ export function mxcTerminalConfig(input: MxcTerminalInput): MxcTerminalConfig {
   const drive = path.win32.parse(input.root).root;
   const writable = input.allowWrite ? [input.writableRoot ?? input.root] : [];
   const shellDir = path.win32.isAbsolute(input.shell) ? [path.win32.dirname(input.shell)] : [];
-  const readwritePaths = unique([...writable, input.tmp]);
-  const readonlyPaths = unique([drive, input.root, ...shellDir, ...(input.readOnlyFiles ?? [])].filter((p) => !readwritePaths.includes(p)));
+  const readwritePaths = unique([...writable, ...(input.grantedWrite ?? []), input.tmp]);
+  // A granted directory beside the root needs no change to `siblings`: the more specific allow wins.
+  const readonlyPaths = unique([drive, input.root, ...shellDir, ...(input.readOnlyFiles ?? []), ...(input.grantedRead ?? [])].filter((p) => !readwritePaths.includes(p)));
   const allowed = new Set([...readwritePaths, ...readonlyPaths].map((p) => p.toLowerCase()));
   const deniedPaths = unique([...input.siblings, input.agentDir, input.configFile].filter((p): p is string => Boolean(p)))
     // Denying a path that is also allowed leaves which one wins to the sandbox: never ask.
@@ -497,6 +515,12 @@ export interface MxcLinuxInput {
   networkProxy?: string;
   /** Which paths exist: only those are mounted. A parameter for tests. */
   exists?: (file: string) => boolean;
+  /**
+   * Directories the user granted this command beyond the sandbox (`sandboxGrants.ts`): read
+   * only, and read-write. A write grant holds even without `allowWrite`: the user asked for it.
+   */
+  grantedRead?: string[];
+  grantedWrite?: string[];
 }
 
 /** The system trees a Linux shell needs, those this host has. Not `/dev`, `/proc`: the sandbox's own. */
@@ -517,7 +541,7 @@ export function linuxSystemTrees(exists: (file: string) => boolean = existsSync)
 export function mxcLinuxConfig(input: MxcLinuxInput): MxcLinuxConfig {
   const exists = input.exists ?? existsSync;
   const writable = input.allowWrite ? [input.writableRoot ?? input.root] : [];
-  const readwritePaths = unique([...writable, input.tmp]);
+  const readwritePaths = unique([...writable, ...(input.grantedWrite ?? []), input.tmp]);
   const shellDir = path.posix.isAbsolute(input.shell) ? [path.posix.dirname(input.shell)] : [];
   const readonlyPaths = unique([
     ...linuxSystemTrees(exists),
@@ -525,6 +549,7 @@ export function mxcLinuxConfig(input: MxcLinuxInput): MxcLinuxConfig {
     ...shellDir,
     input.root,
     ...(input.readOnlyFiles ?? []),
+    ...(input.grantedRead ?? []),
   ]).filter((p) => !readwritePaths.includes(p) && !readwritePaths.some((rw) => isUnder(p, rw)));
   const deniedPaths = unique([input.agentDir, input.configFile].filter((p): p is string => Boolean(p)));
   return {
@@ -602,7 +627,7 @@ export function mxcMacConfig(input: MxcMacInput): MxcMacConfig {
   const env = { ...input.env };
   if (gitFirst) env.PATH = env.PATH ? `${gitFirst}:${env.PATH}` : gitFirst;
   const writable = input.allowWrite ? [input.writableRoot ?? input.root] : [];
-  const readwritePaths = unique([...writable, input.tmp].map(real));
+  const readwritePaths = unique([...writable, ...(input.grantedWrite ?? []), input.tmp].map(real));
   const shellDir = path.posix.isAbsolute(input.shell) ? [path.posix.dirname(input.shell)] : [];
   const readonlyPaths = unique(
     [
@@ -612,6 +637,7 @@ export function mxcMacConfig(input: MxcMacInput): MxcMacConfig {
       ...shellDir,
       input.root,
       ...(input.readOnlyFiles ?? []),
+      ...(input.grantedRead ?? []),
     ].map(real),
   ).filter((p) => !readwritePaths.includes(p) && !readwritePaths.some((rw) => isUnder(p, rw)));
   const deniedPaths = unique([input.agentDir, input.configFile].filter((p): p is string => Boolean(p)).map(real));

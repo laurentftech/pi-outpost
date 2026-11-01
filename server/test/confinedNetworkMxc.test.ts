@@ -112,6 +112,74 @@ describe("the agent's powershell under MXC, network only to allowed hosts", { sk
     assert.ok(refused.some((line) => /^\[sandbox\] network: refused CONNECT example\.com:443 — example\.com is not in sandbox\.allowedHosts$/.test(line)), refused.join("\n"));
   });
 
+  describe("a connection to an unlisted host, asked about while it waits", () => {
+    const status = "'curl=' + (curl.exe -s -o NUL -m 20 --ssl-no-revoke -w '%{http_code}' https://example.com/)";
+    async function run(command: string, extra: Partial<Parameters<typeof confinedBashOperations>[0]> = {}) {
+      const ops = confinedBashOperations({
+        runner: RUNNER!,
+        shell: POWERSHELL,
+        root,
+        allowWrite: true,
+        agentDir: path.join(base, "agent"),
+        networkProxy: proxy,
+        allowedHosts: ["registry.npmjs.org", "github.com", "*.pki.goog"],
+        ...extra,
+      });
+      let output = "";
+      await ops.exec(command, root, { onData: (data: Buffer) => (output += data.toString()) });
+      return output;
+    }
+
+    // openlore: scenario=AConnectionToAnUnlistedHostWaitsForTheUser spec=sandbox-approved-grants
+    test("allowed for the command: the connection goes through after the answer, and the note says who allowed it", { timeout: 120_000 }, async () => {
+      const asked: string[] = [];
+      const output = await run(status, {
+        askHost: async ({ host }) => {
+          asked.push(host);
+          await new Promise((resolve) => setTimeout(resolve, 1500));
+          return "approved-once";
+        },
+      });
+      assert.match(output, /curl=200/, output);
+      assert.deepEqual(asked, ["example.com"]);
+      assert.match(output, /\[pi-outpost\] network: the user allowed example\.com for this command\.\s*$/, output);
+    });
+
+    // openlore: scenario=ARefusedConnectionFailsAndSaysWhy spec=sandbox-approved-grants
+    test("refused: the connection is refused with the user's answer, and the note says not to retry", { timeout: 120_000 }, async () => {
+      const output = await run(`${status}; curl.exe -s -v -m 20 --ssl-no-revoke https://example.com/ 2>&1 | Select-String '< HTTP'`, { askHost: async () => "refused" });
+      assert.doesNotMatch(output, /curl=200/, output);
+      assert.match(output, /< HTTP\/1\.1 403 the user refused example\.com/, output);
+      assert.match(output, /\[pi-outpost\] network: the user refused example\.com\.\n\[pi-outpost\] Do not retry a refused host for this request: tell the user what it blocked\.\s*$/, output);
+    });
+
+    test("a command that never connects is never asked about: opening the user's browser asks nothing", { timeout: 120_000 }, async () => {
+      // What a model did when asked to "open" a site: hand the URL to the desktop, outside the sandbox.
+      let asked = 0;
+      const output = await run("Start-Process 'https://example.com'", { askHost: async () => (asked++, "approved-once") });
+      assert.match(output, /Start-Process/, output);
+      assert.equal(asked, 0, "the user was asked about a connection that never happened");
+      assert.doesNotMatch(output, /\[pi-outpost\] network/, output);
+    });
+
+    // openlore: scenario=NoOneToAskKeepsTheListAlone spec=sandbox-runner-bash
+    test("with no one to ask, the list alone decides, and the note names it", { timeout: 120_000 }, async () => {
+      const output = await run(status);
+      assert.match(output, /\[pi-outpost\] network refused: example\.com — not in sandbox\.allowedHosts\. Ask the user to add it there if the command needs it\.\s*$/, output);
+    });
+
+    test("another command's proxy is not a way out", { timeout: 120_000 }, async () => {
+      const other = await startEgressProxy({ allowedHosts: ["example.com"] });
+      try {
+        const port = new URL(other.url).port;
+        const output = await run(`'borrowed=' + (curl.exe -s -o NUL -m 10 --ssl-no-revoke -x http://127.0.0.1:${port} -w '%{http_code}' https://example.com/)`, { askHost: async () => "refused" });
+        assert.doesNotMatch(output, /borrowed=200/, `a command reached another command's proxy: ${output}`);
+      } finally {
+        await other.close();
+      }
+    });
+  });
+
   // openlore: scenario=TheProxyCannotBeBypassed spec=sandbox-runner-bash
   test("TheProxyCannotBeBypassed: no direct connection, and no other service on the host's loopback", { timeout: 120_000 }, async () => {
     relayed.length = 0;

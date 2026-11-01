@@ -273,8 +273,11 @@ way out. MXC hands the command `HTTPS_PROXY` and `HTTP_PROXY`; curl, git and npm
 PowerShell's `Invoke-WebRequest` and `Invoke-RestMethod` are pointed at the proxy too. The proxy relays a
 listed host on any port and refuses any other; a direct connection — or a program that ignores
 `HTTPS_PROXY` — is refused by the sandbox, as is any other service listening on your machine's loopback.
-The server logs each refusal (`[sandbox] network: refused …`), and the command's output ends with a note
-naming the hosts refused while it ran, so the agent can tell you what to add:
+With grants on (the default), a connection to an unlisted host is not refused outright: it waits while
+you are asked ([grants](#grants-beyond-the-sandbox-when-you-say-so)), and the command's output ends
+with your answer. With `sandbox.grants: "never"`, the server logs each refusal
+(`[sandbox] network: refused …`), and the command's output ends with a note naming the hosts refused
+while it ran, so the agent can tell you what to add:
 
 ```
 curl: (56) CONNECT tunnel failed, response 403
@@ -346,6 +349,74 @@ Without MXC's tier 1, no runner confines natively: landstrip's AppContainer cann
   (`[interop] enabled = false`, `appendWindowsPath = false`, `[automount] enabled = false` in
   `/etc/wsl.conf`, the project alone mounted from `/etc/fstab`, `"files": { "watch": false }`), in a
   distribution of its own. It is fiddly to get right and easy to undo; prefer the update.
+
+## Grants: beyond the sandbox, when you say so
+
+A confined command sometimes needs one thing the policy refuses: a host `sandbox.allowedHosts` does not
+list, a directory beside the root. Rather than widening the configuration for every later command, you
+are asked — and you answer in the interface, for that command only, for the rest of the session, or not
+at all. No answer within five minutes, an aborted turn, or no browser connected to the project refuses.
+A grant never takes a command out of the sandbox: it widens it, and nothing more. Nothing is written to
+the configuration or to the project's settings: to keep a host for good, add it to `sandbox.allowedHosts`.
+
+**A host is asked about when a command connects to it.** Each command gets a proxy of its own, and a
+connection to a host the list does not name waits there while you are asked, with the running command
+in front of you:
+
+- **Allow for this command**: the connection goes through, and so does every later one of that command.
+- **Allow for this session**: the same, and every later command of the session reaches that host too,
+  until the session ends or is replaced, a sandbox settings change is applied, or the server restarts.
+- **Refuse**: the connection is refused, saying so.
+
+The agent does not ask for hosts and cannot: a request exists only once a command has really connected.
+The command's output ends with what you answered, which the agent reads and the transcript keeps:
+
+```
+[pi-outpost] network: the user allowed example.com for this command.
+```
+
+**A directory is asked for by the agent**, with the command that needs it — a file access cannot wait
+the way a connection does. Its `run_with_grant` tool names the command, the directories (read, or
+read-write) and why; nothing runs until you answer, and allowed once, it is that exact command alone:
+the next one is confined as before, even the same one run again. A read-write grant applies even with
+`allowWrite: false`, and the dialog says so. The result starts with the grant it ran with:
+
+```
+Ran with the user's grant for this command: read-write C:\work\beside.
+```
+
+Some targets are refused before you are asked, whatever you would answer: the agent directory (the
+provider keys) and the configuration file, or a directory holding either; a `.pi` directory or anything
+inside one; a drive's root and your home directory itself; and, as hosts, IP addresses and `localhost`
+and the names under it. No grant lets a command start a program outside the sandbox — your browser, a
+desktop application (`Start-Process` on a URL, `start`, `open`): it is not a connection, so nobody is
+asked, and it stays refused.
+
+| Runner | Directories | Hosts |
+| --- | --- | --- |
+| MXC on Windows 11 | asked for by the agent | asked about on connection, under `sandbox.allowedHosts` |
+| MXC on Linux and Apple-silicon macOS, Seatbelt | asked for by the agent | refused, as the list says: a command there is yet to be shown to reach no other command's proxy |
+| landstrip | asked for by the agent | — (the network is open) |
+| WSLC (`sandbox.bashImage`) | refused: the container's mounts are fixed when it starts | — |
+
+Without someone to ask — `sandbox.grants: "never"`, or a runner that does not take host questions — a
+host the list does not name is refused at once, and the note asks you to add it to the list. The agent's
+shell only: the terminal panel is yours, and the file tools (`edit`, `write`) keep their zones.
+
+Every request leaves a line in the server's log — approved once or for the session, refused, expired,
+aborted, refused with no one to ask, or forbidden:
+
+```
+[sandbox] grant approved once: host example.com for "curl -sI https://example.com/" — The running command is connecting to example.com, which sandbox.allowedHosts does not list.
+```
+
+While the session holds grants, the shell's lock says how many (`🔒 shell confined · 1 grant`) and its
+description lists them; the canary's verdict is the base policy's, unchanged. To keep the old behaviour,
+nobody asked and no grant tool:
+
+```json
+{ "sandbox": { "grants": "never" } }
+```
 
 ## Check that it is really confined
 

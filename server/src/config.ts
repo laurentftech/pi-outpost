@@ -99,6 +99,12 @@ export interface SandboxConfig {
    */
   allowedHosts?: string[];
   /**
+   * Whether the agent's confined shell may ask the user for a grant — named hosts or
+   * directories beyond the sandbox, for one command or the session (`sandboxGrants.ts`).
+   * Absent: `"ask"`. `"never"`: no grant tool. Read from the file only; Settings carry it over.
+   */
+  grants?: SandboxGrantsMode;
+  /**
    * Extra directories (absolute paths) that read tools (read/ls/grep/find) are
    * allowed to access in addition to `root`. Write tools are NOT affected — these
    * are read-only exceptions. Populated from `skillPaths`, `promptPaths`,
@@ -304,6 +310,10 @@ export type EmbedWorkspaceControls = (typeof EMBED_WORKSPACE_CONTROLS)[number];
 export interface EmbedConfig {
   workspaceControls: EmbedWorkspaceControls;
 }
+
+/** `sandbox.grants`: whether the confined shell may ask the user for a grant. */
+export const SANDBOX_GRANTS_MODES = ["ask", "never"] as const;
+export type SandboxGrantsMode = (typeof SANDBOX_GRANTS_MODES)[number];
 
 export const AGENT_RUNTIME_MODES = ["embedded", "rpc"] as const;
 export type AgentRuntimeMode = (typeof AGENT_RUNTIME_MODES)[number];
@@ -1028,6 +1038,10 @@ export function loadConfig(
         fail(`"sandbox.allowedHosts" holds ${JSON.stringify(invalid)}: name a host ("registry.npmjs.org") or a suffix ("*.githubusercontent.com")`);
       }
     }
+    const grants = optionalString(sandbox, "grants", "sandbox.grants");
+    if (grants !== undefined && !SANDBOX_GRANTS_MODES.includes(grants as SandboxGrantsMode)) {
+      fail(`"sandbox.grants" must be one of ${SANDBOX_GRANTS_MODES.join(", ")} (got "${grants}")`);
+    }
 
     // A sandbox that only *reads* may follow the workspace the user just named —
     // that is what moving the workspace means. A sandbox that grants write or bash
@@ -1064,6 +1078,7 @@ export function loadConfig(
       ...(bashShell === undefined ? {} : { bashShell: resolve(bashShell) }),
       ...(bashImage === undefined ? {} : { bashImage }),
       ...(allowedHosts === undefined ? {} : { allowedHosts: allowedHosts.map((host) => host.toLowerCase()) }),
+      ...(grants === undefined ? {} : { grants: grants as SandboxGrantsMode }),
       readExceptions: [
         ...(optionalStringArray(raw, "skillPaths") ?? []).map(resolve),
         ...(optionalStringArray(raw, "userSkillPaths") ?? []).map(resolve),

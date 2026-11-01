@@ -36,6 +36,7 @@ import {
 } from "./attachments";
 import { Composer } from "./components/Composer";
 import { ExtensionDialog } from "./components/ExtensionDialog";
+import { SandboxGrantDialog } from "./components/SandboxGrantDialog";
 import { ExtensionNotifications } from "./components/ExtensionNotifications";
 import { ExtensionWidgets } from "./components/ExtensionWidgets";
 import { FileViewer } from "./components/FileViewer";
@@ -130,6 +131,7 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
     loadOlderItems,
     fetchOlderItems,
     respondToDialog,
+    respondToGrant,
     dismissNotification,
     listDirectory,
     refreshFileTree,
@@ -1409,6 +1411,7 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
                 isStreaming={state.isStreaming}
                 contextUsage={state.contextUsage}
                 shellConfinement={state.confinement?.bash}
+                shellGrants={state.sandboxGrants?.active}
                 sessionUsage={usage}
                 analysisOpen={analysisOpen}
                 onToggleAnalysis={toggleAnalysis}
@@ -1423,6 +1426,10 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
       </div>
 
       {state.dialogQueue[0] && <ExtensionDialog request={state.dialogQueue[0]} onRespond={respondToDialog} />}
+      {/* After an extension's question, never over it: one dialog at a time, each with its own answer. */}
+      {!state.dialogQueue[0] && state.sandboxGrants?.pending[0] && (
+        <SandboxGrantDialog request={state.sandboxGrants.pending[0]} onRespond={respondToGrant} />
+      )}
       <ExtensionNotifications notifications={state.notifications} onDismiss={dismissNotification} />
     </DrawioFilesContext.Provider>
     </StructuredAppearanceContext.Provider>

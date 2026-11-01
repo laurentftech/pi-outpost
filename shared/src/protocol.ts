@@ -994,6 +994,52 @@ export interface SessionSnapshot {
    * with no runner. The interface's lock is drawn from this, never from the configuration alone.
    */
   confinement?: { bash?: ConfinementVerdict; terminal?: ConfinementVerdict };
+  /**
+   * Grants for the agent's confined shell: the requests waiting for an answer, so that a client
+   * connecting or reloading shows them, and what this session holds. Absent with no confined shell.
+   */
+  sandboxGrants?: SandboxGrantState;
+}
+
+/** Hosts and directories beyond the sandbox, as the user grants them to the agent's confined shell. */
+export interface SandboxGrantSet {
+  hosts: string[];
+  /** Absolute, symlinks resolved. `write` is read-write. */
+  directories: Array<{ path: string; access: "read" | "write" }>;
+}
+
+/**
+ * The agent asks to run one command with a grant. Sent by the server alone: no extension can
+ * raise it, and only a `sandbox_grant_response` answers it.
+ */
+export interface SandboxGrantRequest {
+  id: string;
+  /**
+   * `command`: the agent asks to run a command with directories beyond the sandbox, and nothing
+   * runs before the answer. `connection`: a running command connected to a host the list does not
+   * name, and that connection waits for the answer — the agent did not ask.
+   */
+  kind: "command" | "connection";
+  /** `command`: exactly the command that runs if approved. `connection`: the command that is running. */
+  command: string;
+  grant: SandboxGrantSet;
+  /** `command`: the agent's words, shown as such. `connection`: the server's. */
+  reason: string;
+  /** A read-write grant while the sandbox's `allowWrite` is off: the dialog says so. */
+  overridesReadOnly: boolean;
+  /** Epoch milliseconds: unanswered by then, the request is refused. */
+  expiresAt: number;
+}
+
+export type SandboxGrantDecision = "once" | "session" | "refuse";
+
+/** `unattended`: no client was connected to the project to ask. */
+export type SandboxGrantOutcome = "approved-once" | "approved-session" | "refused" | "expired" | "aborted" | "unattended";
+
+export interface SandboxGrantState {
+  pending: SandboxGrantRequest[];
+  /** The session's grants, every later command of it keeps. */
+  active: SandboxGrantSet;
 }
 
 /** One thing the confinement canary tries, which a confined command must not be able to do. */
@@ -1245,6 +1291,12 @@ export type ServerMessage =
   | { type: "context_usage"; usage: ContextUsage }
   /** A confinement canary finished (or started): the project's verdicts as they now stand. */
   | { type: "confinement"; confinement: NonNullable<SessionSnapshot["confinement"]> }
+  /** The agent asks the user to approve a grant: show it until it is resolved. */
+  | { type: "sandbox_grant_request"; request: SandboxGrantRequest }
+  /** A grant request was answered, expired or aborted, from whichever client: close its dialog. */
+  | { type: "sandbox_grant_resolved"; id: string; outcome: SandboxGrantOutcome }
+  /** The session's grants changed: a session grant approved, or every grant ended with the session. */
+  | { type: "sandbox_grants"; active: SandboxGrantSet }
   | { type: "work_plan_changed"; workPlan: WorkPlan | null }
   | { type: "workspace_outcome"; requestId: string; outcome: WorkspaceOutcome }
   /**
@@ -1656,6 +1708,8 @@ export type ClientMessage =
   | { type: "terminal_resize"; terminalId: string; cols: number; rows: number }
   | { type: "terminal_get_cwd"; terminalId: string }
   | { type: "terminal_close"; terminalId: string }
+  /** The user's answer to a `sandbox_grant_request`. The first answer decides. */
+  | { type: "sandbox_grant_response"; id: string; decision: SandboxGrantDecision }
   | ExtensionUIResponse;
 
 /**

@@ -125,3 +125,87 @@ describe("the proxy", () => {
     assert.deepEqual(watched, ["c.pki.goog"]);
   });
 });
+
+// openlore: scenario=AConnectionToAnUnlistedHostWaitsForTheUser spec=sandbox-approved-grants
+describe("a proxy that asks about an unlisted host", () => {
+  let upstream: Server;
+  let upstreamPort: number;
+  before(async () => {
+    upstream = createServer((_req, res) => res.end("from-upstream"));
+    await new Promise<void>((resolve) => upstream.listen(0, "127.0.0.1", resolve));
+    upstreamPort = (upstream.address() as { port: number }).port;
+  });
+  after(async () => {
+    await new Promise((resolve) => upstream.close(resolve));
+  });
+  const get = `GET / HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n`;
+
+  test("the connection waits for the answer, then goes through; the host is asked about once, however many connect", async () => {
+    let release!: (answer: { allowed: true }) => void;
+    const asked: string[] = [];
+    const proxy = await startEgressProxy({
+      allowedHosts: [],
+      onRefused: () => {},
+      ask: (host) => {
+        asked.push(host);
+        return new Promise((resolve) => (release = resolve));
+      },
+    });
+    try {
+      const port = Number(new URL(proxy.url).port);
+      const first = tunnel(port, `127.0.0.1:${upstreamPort}`, get);
+      const second = tunnel(port, `127.0.0.1:${upstreamPort}`, get);
+      const settled = await Promise.race([first.then(() => "answered"), new Promise((resolve) => setTimeout(() => resolve("waiting"), 300))]);
+      assert.equal(settled, "waiting", "nothing is sent back before the user answers");
+      release({ allowed: true });
+      for (const result of [await first, await second]) {
+        assert.equal(result.status, "HTTP/1.1 200 Connection Established");
+        assert.match(result.body, /from-upstream/);
+      }
+      await tunnel(port, `127.0.0.1:${upstreamPort}`, get);
+      assert.deepEqual(asked, ["127.0.0.1"], "one question for every connection to that host");
+    } finally {
+      await proxy.close();
+    }
+  });
+
+  test("a refusal answers 403 with the reason, and is logged and watched as any refusal", async () => {
+    const lines: string[] = [];
+    const proxy = await startEgressProxy({ allowedHosts: [], onRefused: (line) => lines.push(line), ask: async () => ({ allowed: false, why: "the user refused 127.0.0.1" }) });
+    try {
+      const watched: string[] = [];
+      proxy.watchRefusals((host) => watched.push(host));
+      const { status } = await tunnel(Number(new URL(proxy.url).port), `127.0.0.1:${upstreamPort}`, get);
+      assert.equal(status, "HTTP/1.1 403 the user refused 127.0.0.1");
+      assert.deepEqual(watched, ["127.0.0.1"]);
+      assert.ok(lines.some((line) => /refused CONNECT 127\.0\.0\.1:\d+ — the user refused 127\.0\.0\.1/.test(line)), lines.join("\n"));
+    } finally {
+      await proxy.close();
+    }
+  });
+
+  test("closing the proxy ends the connections still waiting on an answer, plain HTTP and tunnels alike", async () => {
+    const proxy = await startEgressProxy({ allowedHosts: [], onRefused: () => {}, ask: () => new Promise(() => {}) });
+    const port = Number(new URL(proxy.url).port);
+    const plain = request({ host: "127.0.0.1", port, path: "http://example.com/", headers: { host: "example.com" } });
+    plain.on("error", () => {});
+    plain.end();
+    const tunnelled = tunnel(port, "example.com:443", "").catch(() => undefined);
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    const closed = await Promise.race([proxy.close().then(() => "closed"), new Promise((resolve) => setTimeout(() => resolve("still open"), 3000))]);
+    assert.equal(closed, "closed", "a command's end waits on this close");
+    await tunnelled;
+  });
+
+  test("a listed host is never asked about", async () => {
+    let asked = 0;
+    const proxy = await startEgressProxy({ allowedHosts: ["127.0.0.1"], onRefused: () => {}, ask: async () => (asked++, { allowed: false, why: "no" }) });
+    try {
+      const { status } = await tunnel(Number(new URL(proxy.url).port), `127.0.0.1:${upstreamPort}`, get);
+      assert.equal(status, "HTTP/1.1 200 Connection Established");
+      assert.equal(asked, 0);
+    } finally {
+      await proxy.close();
+    }
+  });
+});

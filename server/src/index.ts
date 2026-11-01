@@ -745,6 +745,12 @@ function workspaceOptions(settings: WorkspaceSettings): Omit<WorkspaceOptions, "
     // Bound to the workspace being built, so a tree change reaches the clients
     // watching THAT project and no others.
     onDirectoryChanged: () => {},
+    // A grant request goes to the clients of its own project, and is only asked of them.
+    grantEvents: {
+      announce: (target, message) => broadcast(target, message),
+      hasClients: (target) => [...clients.values()].includes(target),
+      onPendingChanged: () => announceWorkspaceActivity(),
+    },
   };
 }
 
@@ -2618,7 +2624,15 @@ function projectFields(workspace: Workspace) {
       const confinement = confinementOf(workspace);
       return confinement ? { confinement } : {};
     })(),
+    // What a client connecting or reloading has to show: the requests still waiting, and the
+    // session's grants. Only where the agent's shell can ask for one.
+    ...(grantsEnabled(workspace.settings.sandbox) ? { sandboxGrants: workspace.grants.state() } : {}),
   };
+}
+
+/** Whether the agent's shell may ask the user for grants: confined by a runner, and not turned off. */
+function grantsEnabled(sandbox: SandboxConfig | undefined): boolean {
+  return shellIsConfined(sandbox) && sandbox.grants !== "never";
 }
 
 /**
@@ -3148,6 +3162,8 @@ function onRuntimeEvent(workspace: Workspace, event: RuntimeEvent): void {
     case "dialogs_cancelled":
       // The replaced session's questions were cancelled; only the new session's remain.
       workspace.pendingDialogs.clear();
+      // Its grants were the user's answer to that session: the new one starts without any.
+      workspace.grants.endSession();
       announceWorkspaceActivity();
       break;
     case "extensions_bound": {
@@ -3600,6 +3616,8 @@ async function handleUpdateConfig(
         ...(config.sandbox?.bashImage === undefined ? {} : { bashImage: config.sandbox.bashImage }),
         // Or an apply would open the network the file closed.
         ...(config.sandbox?.allowedHosts === undefined ? {} : { allowedHosts: config.sandbox.allowedHosts }),
+        // Or an apply would let the agent ask for grants the file turned off.
+        ...(config.sandbox?.grants === undefined ? {} : { grants: config.sandbox.grants }),
         readExceptions: [],
       };
     }
@@ -6096,6 +6114,13 @@ function handleClientMessage(socket: WebSocket, raw: string): void {
       // Failures surface via the compaction_end event (errorMessage) — avoid double-reporting.
       workspace.agent.compact().catch(() => {});
       break;
+    case "sandbox_grant_response": {
+      // Only this message answers a grant, and only with one of three decisions: anything
+      // else — an extension's answer, a malformed frame — leaves the request waiting.
+      if (typeof message.id !== "string" || !["once", "session", "refuse"].includes(message.decision)) return;
+      workspace.grants.answer(message.id, message.decision);
+      break;
+    }
     case "extension_ui_response": {
       // Every other case here checks its fields; this one used to pass the parsed
       // frame straight through to the child's stdin. The type is pinned by the
