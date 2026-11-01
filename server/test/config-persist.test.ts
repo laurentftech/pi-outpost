@@ -105,6 +105,35 @@ describe("persistEditableSettings", () => {
     }
   });
 
+  // openlore: scenario=ApplyingSettingsKeepsTheRunner spec=sandbox-runner-bash
+  test("a Settings change to the default sandbox keeps its shell confined: the section is written with \"auto\"", async () => {
+    const { dir, file } = await workspace({ skillPaths: [] });
+    try {
+      const before = load(dir, file);
+      assert.ok(before.sandbox?.autoRunner, "no section: the default, with a runner the server chooses");
+      persistEditableSettings(before, { sandbox: { root: dir, allowWrite: false, allowBash: true } }, {});
+      const raw = JSON.parse(await readFile(file, "utf8")) as { sandbox: Record<string, unknown> };
+      assert.equal(raw.sandbox.bashRunner, "auto", "not the unconfined legacy spelling");
+      const after = load(dir, file);
+      assert.equal(after.sandbox?.allowWrite, false);
+      assert.ok(after.sandbox?.autoRunner);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("a Settings change to an explicit unconfined section leaves it unconfined", async () => {
+    const { dir, file } = await workspace({ sandbox: { root: ".", allowBash: true } });
+    try {
+      persistEditableSettings(load(dir, file), { sandbox: { root: dir, allowWrite: true, allowBash: true } }, {});
+      const raw = JSON.parse(await readFile(file, "utf8")) as { sandbox: Record<string, unknown> };
+      assert.equal(raw.sandbox.bashRunner, undefined);
+      assert.equal(load(dir, file).sandbox?.autoRunner, undefined);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
   test("clears writableRoot when the update drops it", async () => {
     const { dir, file } = await workspace({
       sandbox: { root: ".", allowWrite: true, writableRoot: "./out" },

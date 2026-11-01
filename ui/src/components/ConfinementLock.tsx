@@ -53,6 +53,20 @@ export function confinementDescription(verdict: ConfinementVerdict, surface: "sh
       ].join("\n");
     case "failed":
       return `${what}'s confinement could not be checked (${verdict.runner}, ${at(verdict.checkedAt)}): ${verdict.reason}`;
+    case "unavailable":
+      // The reason is the refusal the tool gives, which already says what is refused and why.
+      return verdict.reason || `${what} refuses every command.`;
+    case "unconfined":
+      return verdict.available
+        ? [
+            `${what} is NOT confined: a command runs with every right of the server's account.`,
+            `${verdict.available.label} can confine it on this machine. To confine it, run:`,
+            "  pi-outpost config --confine",
+            `It checks ${verdict.available.label} first, then sets "sandbox.bashRunner": "auto" in the configuration file.`,
+          ].join("\n")
+        : verdict.reason
+          ? `${what} is not confined, as configured: nothing can confine it on this machine — ${verdict.reason}`
+          : `${what} is not confined, as configured.`;
   }
 }
 
@@ -79,11 +93,19 @@ export function ConfinementLock({ verdict, surface, root, grants }: { verdict: C
         ? { icon: "🔓", text: "not confined", tone: "bg-red-100 text-red-800 dark:bg-red-900/50 dark:text-red-200" }
         : verdict.state === "failed"
           ? { icon: "⚠", text: "confinement unchecked", tone: "bg-amber-100 text-amber-800 dark:bg-amber-900/50 dark:text-amber-200" }
+          : verdict.state === "unavailable"
+          ? { icon: "⛔", text: "unavailable", tone: "bg-red-100 text-red-800 dark:bg-red-900/50 dark:text-red-200" }
+          : verdict.state === "unconfined"
+          ? verdict.available
+            // The nudge: this machine could confine the shell, and the lock says how.
+            ? { icon: "🔓", text: "not confined", tone: "bg-amber-100 text-amber-800 ring-1 ring-amber-400 dark:bg-amber-900/50 dark:text-amber-200 dark:ring-amber-500" }
+            : { icon: "🔓", text: "not confined", tone: "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300" }
           : { icon: "…", text: "checking confinement", tone: "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300" };
   return (
     <span
       data-testid={surface === "shell" ? "shell-confinement" : "terminal-confined"}
       data-state={verdict.state}
+      data-nudge={verdict.state === "unconfined" && verdict.available ? "true" : undefined}
       data-grants={granted}
       title={[confinementDescription(verdict, surface), ...(grants ? grantsDescription(grants) : [])].join("\n")}
       className={`shrink-0 whitespace-nowrap rounded px-1.5 py-0.5 font-sans text-[11px] ${look.tone}`}

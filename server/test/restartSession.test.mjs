@@ -13,7 +13,7 @@ const extension = name => `export default function(pi) {
 test("RestartWithoutChanges: reloads edited extensions without writing settings or requiring a sandbox", async t => {
   const root = await makeWorkspace({ "extension.ts": extension("reload_v1") });
   const file = path.join(root, "extension.ts");
-  const server = await startServer(root, { sandbox: undefined, noExtensions: true, extensionScripts: [file] });
+  const server = await startServer(root, { sandbox: false, noExtensions: true, extensionScripts: [file] });
   t.after(() => server.stop());
   const client = connect(server.wsUrl());
   t.after(() => client.close());
@@ -73,7 +73,7 @@ readline.createInterface({input:process.stdin}).on('line',line=>{
   const mcpFile = path.join(agentDir, "mcp.json");
   const config = version => JSON.stringify({ mcpServers: { probe: { command: process.execPath, args: [executable, version], exposure: "direct" } } });
   await writeFile(mcpFile, config("v1"));
-  const server = await startServer(root, { sandbox: undefined });
+  const server = await startServer(root, { sandbox: false });
   t.after(() => server.stop());
   const client = connect(server.wsUrl());
   t.after(() => client.close());

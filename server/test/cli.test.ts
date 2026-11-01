@@ -208,8 +208,10 @@ describe("runInit", () => {
 
       const content = JSON.parse(readFileSync(written, "utf8"));
       assert.equal(content.cwd, ".");
-      assert.equal(content.sandbox.allowWrite, false);
-      assert.equal(content.sandbox.allowBash, false);
+      // The default sandbox, written out (sandbox-defaults): writable, a shell the server confines.
+      assert.equal(content.sandbox.allowWrite, true);
+      assert.equal(content.sandbox.allowBash, true);
+      assert.equal(content.sandbox.bashRunner, "auto");
       assert.equal(content.server.port, 3141);
       assert.equal(content.server.host, "127.0.0.1");
       assert.equal(content.branding.title, "\u03c0");

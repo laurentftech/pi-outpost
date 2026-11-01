@@ -19,7 +19,7 @@ const arrangement = (x) =>
 
 test("an arrangement is kept beside its document, created then rewritten, and the document is left alone", async (t) => {
   const root = await makeWorkspace({ "models/car.json": DOCUMENT });
-  const server = await startServer(root, { sandbox: undefined });
+  const server = await startServer(root, { sandbox: false });
   t.after(() => server.stop());
   const client = connect(server.wsUrl());
   t.after(() => client.close());
@@ -38,7 +38,7 @@ test("an arrangement is kept beside its document, created then rewritten, and th
 
 test("content that is not an arrangement is refused, and nothing is written", async (t) => {
   const root = await makeWorkspace({ "car.json": DOCUMENT });
-  const server = await startServer(root, { sandbox: undefined });
+  const server = await startServer(root, { sandbox: false });
   t.after(() => server.stop());
   const client = connect(server.wsUrl());
   t.after(() => client.close());
@@ -69,7 +69,7 @@ test("a read-only sandbox says it cannot keep the arrangement", async (t) => {
 
 test("two arrangements kept at once both answer, and the last one is on disk", async (t) => {
   const root = await makeWorkspace({ "car.json": DOCUMENT });
-  const server = await startServer(root, { sandbox: undefined });
+  const server = await startServer(root, { sandbox: false });
   t.after(() => server.stop());
   const client = connect(server.wsUrl());
   t.after(() => client.close());

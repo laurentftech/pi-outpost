@@ -191,7 +191,7 @@ describe("extension paths from the interface", () => {
     const server = await startServer(
       root,
       {
-        sandbox: undefined,
+        sandbox: false,
         agentRuntime: { mode: "rpc", executable: process.execPath, args: [FAKE_RPC], startupTimeoutMs: 5_000 },
       },
       { env: { FAKE_PI_RPC_CONFIG: fakeConfig } },

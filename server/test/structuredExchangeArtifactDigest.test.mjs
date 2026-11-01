@@ -48,7 +48,7 @@ describe("an artifact is opened only when its bytes are the ones approved", () =
       // tree opens without complaint.
       "evidence/large.txt": `${"e".repeat(2 * 1024 * 1024)}\n`,
     });
-    server = await startServer(root, { sandbox: undefined });
+    server = await startServer(root, { sandbox: false });
     client = connect(server.wsUrl());
     await client.waitFor("hello");
   });

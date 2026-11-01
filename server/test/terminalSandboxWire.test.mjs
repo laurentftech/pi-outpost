@@ -58,7 +58,7 @@ if (process.argv[2] === "doctor") {
 test("a runner that fails its self-check means no terminal, with its reason, and no shell", { skip: !POSIX && "fake runner needs a shebang" }, async (t) => {
   const root = await makeWorkspace();
   const { runner, calls } = await fakeRunner(root, `process.stdout.write(JSON.stringify({ ok: false, error: "landlock unavailable" }) + "\\n"); process.exit(1);`);
-  const server = await startServer(root, { sandbox: undefined, terminal: { enabled: true, sandbox: runner } });
+  const server = await startServer(root, { sandbox: false, terminal: { enabled: true, sandbox: runner } });
   t.after(() => server.stop());
   const client = connect(server.wsUrl());
   t.after(() => client.close());
@@ -87,7 +87,7 @@ test("a runner that fails its self-check means no terminal, with its reason, and
 test("a runner that does not exist means no terminal, with a reason naming the path", async (t) => {
   const root = await makeWorkspace();
   const missing = path.join(root, "no", "such", "landstrip");
-  const server = await startServer(root, { sandbox: undefined, terminal: { enabled: true, sandbox: missing } });
+  const server = await startServer(root, { sandbox: false, terminal: { enabled: true, sandbox: missing } });
   t.after(() => server.stop());
   const client = connect(server.wsUrl());
   t.after(() => client.close());

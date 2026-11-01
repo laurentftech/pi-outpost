@@ -41,7 +41,7 @@ test("a turn that failed on the provider reads as a sentence, not as a web page"
   const server = await startServer(
     root,
     {
-      sandbox: undefined,
+      sandbox: false,
       agentRuntime: { mode: "rpc", executable: process.execPath, args: [FAKE], startupTimeoutMs: 5_000 },
     },
     { env: { FAKE_PI_RPC_CONFIG: fakeConfig } },

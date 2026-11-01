@@ -56,7 +56,7 @@ test("a supervised child is named instead of the SDK, and never alongside it", a
     root,
     {
       // RPC refuses to be paired with a sandbox: the child builds its own toolset.
-      sandbox: undefined,
+      sandbox: false,
       agentRuntime: { mode: "rpc", executable: process.execPath, args: [FAKE], startupTimeoutMs: 5_000 },
     },
     { env: { FAKE_PI_RPC_CONFIG: fakeConfig } },

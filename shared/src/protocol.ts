@@ -1058,7 +1058,8 @@ export type ConfinementAttempt =
  * process environment was readable but holds no secret (`environmentReadable`). `partial`: that
  * environment was readable and holds secret-looking variables, named in `exposed` (never their
  * values) — the one gap landstrip on Linux leaves. `leaking`: anything else got through. `failed`:
- * the canary itself could not run or answer, so nothing is known.
+ * the canary itself could not run or answer, so nothing is known. `unavailable` and `unconfined`
+ * are not the canary's: see each.
  */
 export type ConfinementVerdict =
   | { state: "checking"; runner: string }
@@ -1079,7 +1080,15 @@ export type ConfinementVerdict =
       notChecked: Array<{ attempt: ConfinementAttempt; why: string }>;
     }
   | { state: "leaking"; runner: string; checkedAt: string; reached: ConfinementAttempt[]; refused: ConfinementAttempt[] }
-  | { state: "failed"; runner: string; checkedAt: string; reason: string };
+  | { state: "failed"; runner: string; checkedAt: string; reason: string }
+  /** A runner the server chose (`"auto"`) that has not shown it confines: every command is refused, with `reason`. */
+  | { state: "unavailable"; runner: string; reason: string }
+  /**
+   * A shell that runs unconfined (`"none"`, or `allowBash` without a runner). `available`: this
+   * machine's runner passed its self-check, so the shell could be confined; `reason`: why not.
+   * Neither, while that is still being asked.
+   */
+  | { state: "unconfined"; runner?: undefined; available?: { runner: string; label: string }; reason?: string };
 
 /**
  * What the client needs to decide between "you have not set up a provider yet"
