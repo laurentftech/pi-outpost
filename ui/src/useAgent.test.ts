@@ -2476,6 +2476,23 @@ describe("assembling a turn", () => {
     );
     await waitFor(() => expect(result.current.state.confinement?.bash?.state).toBe("leaking"));
   });
+
+  it("holds a grant request until the server resolves it, whoever answered; the session's grants follow", async () => {
+    const result = await connected();
+    const request = { id: "g1", kind: "command" as const, command: "ls ../beside", grant: { hosts: [], directories: [{ path: "/w/beside", access: "read" as const }] }, reason: "list it", overridesReadOnly: false, expiresAt: 1 };
+    act(() => mockWs!.receive({ type: "sandbox_grant_request", request }));
+    act(() => mockWs!.receive({ type: "sandbox_grant_request", request }));
+    await waitFor(() => expect(result.current.state.sandboxGrants?.pending.map((p) => p.id)).toEqual(["g1"]));
+
+    act(() => result.current.respondToGrant("g1", "session"));
+    expect(JSON.parse(mockWs!.sent.at(-1)!)).toEqual({ type: "sandbox_grant_response", id: "g1", decision: "session" });
+    // Answering sends, and only the server's resolution closes it.
+    expect(result.current.state.sandboxGrants?.pending).toHaveLength(1);
+    act(() => mockWs!.receive({ type: "sandbox_grant_resolved", id: "g1", outcome: "approved-session" }));
+    act(() => mockWs!.receive({ type: "sandbox_grants", active: request.grant }));
+    await waitFor(() => expect(result.current.state.sandboxGrants?.pending).toEqual([]));
+    expect(result.current.state.sandboxGrants?.active).toEqual(request.grant);
+  });
 });
 
 describe("compaction", () => {

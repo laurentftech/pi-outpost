@@ -29,9 +29,25 @@ function stream(model, context) {
   const lastUserIndex = messages.findLastIndex((item) => item.role === "user");
   const results = messages.filter((item, index) => item.role === "toolResult" && index > lastUserIndex);
   const batch = process.env.BASH_CALL_COMMANDS ? JSON.parse(process.env.BASH_CALL_COMMANDS) : undefined;
+  // BASH_CALL_STEPS (a JSON array of { tool, args }) makes it call one tool per round trip, each
+  // after the previous one's result, and record every result, in order.
+  const steps = process.env.BASH_CALL_STEPS ? JSON.parse(process.env.BASH_CALL_STEPS) : undefined;
   const out = createAssistantMessageEventStream();
 
-  if (results.length === 0) {
+  if (steps && results.length < steps.length) {
+    const step = steps[results.length];
+    const toolCall = { type: "toolCall", id: `step-${Date.now()}-${results.length}`, name: step.tool, arguments: step.args };
+    const partial = message(model, [toolCall], "toolUse");
+    queueMicrotask(() => {
+      out.push({ type: "start", partial });
+      out.push({ type: "toolcall_start", contentIndex: 0, partial });
+      out.push({ type: "toolcall_end", contentIndex: 0, toolCall, partial });
+      out.push({ type: "done", reason: "toolUse", message: partial });
+    });
+    return out;
+  }
+
+  if (!steps && results.length === 0) {
     // BASH_CALL_COMMAND lets a probe ask for something else; the suites use the default.
     // BASH_CALL_TOOL names another shell tool (`powershell`).
     const commands = batch ?? [process.env.BASH_CALL_COMMAND ?? "echo from-the-shell"];
@@ -50,7 +66,11 @@ function stream(model, context) {
   }
 
   const file = process.env.BASH_CALL_LOG;
-  const recorded = batch ? results.map((item) => item.content) : results.at(-1).content;
+  const recorded = steps
+    ? results.map((item) => ({ content: item.content, isError: item.isError === true }))
+    : batch
+      ? results.map((item) => item.content)
+      : results.at(-1).content;
   if (file) require("node:fs").writeFileSync(file, JSON.stringify(recorded));
   const partial = message(model, [{ type: "text", text: "done" }], "stop");
   queueMicrotask(() => {

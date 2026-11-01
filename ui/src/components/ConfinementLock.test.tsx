@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { render, screen } from "@testing-library/react";
-import type { ConfinementVerdict } from "@pi-outpost/shared";
+import type { ConfinementVerdict, SandboxGrantSet } from "@pi-outpost/shared";
 import { ModelBar } from "./ModelBar";
 
-const bar = (shellConfinement?: ConfinementVerdict) =>
+const bar = (shellConfinement?: ConfinementVerdict, shellGrants?: SandboxGrantSet) =>
   render(
     <ModelBar
       model="m/x"
@@ -21,8 +21,40 @@ const bar = (shellConfinement?: ConfinementVerdict) =>
       onSetThinking={() => {}}
       onCompact={() => {}}
       {...(shellConfinement ? { shellConfinement } : {})}
+      {...(shellGrants ? { shellGrants } : {})}
     />,
   );
+
+describe("the session's grants on the shell's lock", () => {
+  const verified: ConfinementVerdict = { state: "verified", runner: "C:\\mxc\\wxc-exec.exe", checkedAt: "2026-11-01T10:00:00Z", refused: ["agent-directory", "beside-root"], notChecked: [] };
+
+  // openlore: scenario=TheLockNamesItsGrants spec=sandbox-approved-grants
+  it("TheLockNamesItsGrants: confined with one grant, listed beside the canary's refusals, the verdict unchanged", () => {
+    bar(verified, { hosts: ["example.com"], directories: [] });
+    const lock = screen.getByTestId("shell-confinement");
+    expect(lock).toHaveTextContent("🔒 shell confined · 1 grant");
+    expect(lock.getAttribute("data-state")).toBe("verified");
+    expect(lock.getAttribute("data-grants")).toBe("1");
+    const title = lock.getAttribute("title")!;
+    expect(title).toMatch(/A command could not:\n• read the agent directory/);
+    expect(title).toMatch(/Granted by you for this session:\n• host example\.com$/);
+  });
+
+  it("counts every host and directory, and says how each directory is granted", () => {
+    bar(verified, { hosts: ["example.com"], directories: [{ path: "/work/beside", access: "write" }, { path: "/work/notes", access: "read" }] });
+    const lock = screen.getByTestId("shell-confinement");
+    expect(lock).toHaveTextContent("· 3 grants");
+    expect(lock.getAttribute("title")).toMatch(/• read and write \/work\/beside\n• read \/work\/notes/);
+  });
+
+  // openlore: scenario=TheLockReturnsWhenGrantsEnd spec=sandbox-approved-grants
+  it("TheLockReturnsWhenGrantsEnd: with none, the plain lock", () => {
+    bar(verified, { hosts: [], directories: [] });
+    const lock = screen.getByTestId("shell-confinement");
+    expect(lock).toHaveTextContent(/^🔒 shell confined$/);
+    expect(lock.getAttribute("title")).not.toMatch(/Granted/);
+  });
+});
 
 describe("the agent shell's lock", () => {
   // openlore: scenario=AVerifiedRunnerEarnsTheLock spec=sandbox-runner-bash

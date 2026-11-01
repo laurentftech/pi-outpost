@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { randomId } from "./util/randomId";
-import type { LoginEvent, LoginPrompt, OutpostChanges, OutpostUpdateNotice, PiPackageInfo, SessionSnapshot } from "@pi-outpost/shared";
+import type { LoginEvent, LoginPrompt, OutpostChanges, OutpostUpdateNotice, PiPackageInfo, SandboxGrantDecision, SandboxGrantState, SessionSnapshot } from "@pi-outpost/shared";
 import type { ProjectAppearance, StructuredConformance } from "@pi-outpost/shared/structured-exchange/profile";
 import { workspaceKey } from "./util/workspaceKey";
 import { bootstrapToken, storedToken, storeToken } from "./authToken";
@@ -440,6 +440,11 @@ export interface AgentState {
   /** Whether confinement was seen holding (the canary's verdicts), per surface. */
   confinement?: SessionSnapshot["confinement"] | null;
   /**
+   * The agent shell's grant requests waiting for an answer, and the session's grants. A request
+   * leaves only when the server says it is resolved: the first answer may come from another tab.
+   */
+  sandboxGrants: SandboxGrantState | null;
+  /**
    * Skill paths added through Settings — the list the user may add to and remove
    * from. The configuration file's own `skillPaths` are not carried into the UI:
    * they load regardless, and nothing here may touch them.
@@ -521,6 +526,7 @@ const initialState: AgentState = {
   contextUsage: null,
   isCompacting: false,
   dialogQueue: [],
+  sandboxGrants: null,
   notifications: [],
   statuses: {},
   widgets: {},
@@ -766,6 +772,8 @@ function applySnapshot(state: AgentState, message: ServerMessage & { sessionId: 
     sandbox: message.sandbox ?? null,
     terminal: message.terminal ?? null,
     confinement: message.confinement ?? null,
+    // The server's word on what is still waiting: a request answered while this client was away is gone.
+    sandboxGrants: message.sandboxGrants ?? null,
     userSkillPaths: message.userSkillPaths ?? [],
     serverBrowse: null,
     settingsApply: null,
@@ -1412,6 +1420,16 @@ function reduce(state: AgentState, action: Action): AgentState {
       return { ...state, contextUsage: message.usage };
     case "confinement":
       return { ...state, confinement: message.confinement };
+    case "sandbox_grant_request": {
+      const grants = state.sandboxGrants ?? { pending: [], active: { hosts: [], directories: [] } };
+      if (grants.pending.some((request) => request.id === message.request.id)) return state;
+      return { ...state, sandboxGrants: { ...grants, pending: [...grants.pending, message.request] } };
+    }
+    case "sandbox_grant_resolved":
+      if (!state.sandboxGrants) return state;
+      return { ...state, sandboxGrants: { ...state.sandboxGrants, pending: state.sandboxGrants.pending.filter((request) => request.id !== message.id) } };
+    case "sandbox_grants":
+      return { ...state, sandboxGrants: { pending: state.sandboxGrants?.pending ?? [], active: message.active } };
     case "compaction_start":
       return { ...state, isCompacting: true };
     case "compaction_end":
@@ -2632,6 +2650,8 @@ export function useAgent(serverUrl = "", explicitToken?: string, embedded = fals
       sendMessage({ type: "extension_ui_response", ...response });
       dispatch({ type: "dialog_answered" });
     },
+    /** Answer a grant request. Its dialog stays until the server resolves it, whoever answered first. */
+    respondToGrant: (id: string, decision: SandboxGrantDecision) => sendMessage({ type: "sandbox_grant_response", id, decision }),
     dismissNotification: (id: string) => dispatch({ type: "dismiss_notification", id }),
     /** List a directory's children (path is relative to the browser root; "" = root). */
     listDirectory: (path: string) => requestDirectory(path),

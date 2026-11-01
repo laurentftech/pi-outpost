@@ -42,32 +42,57 @@ export interface EgressProxy {
   close(): Promise<void>;
 }
 
+/** The answer to a connection to a host the list does not name: through, or refused and why. */
+export type HostDecision = { allowed: true } | { allowed: false; why: string };
+
 export interface EgressProxyOptions {
   allowedHosts: readonly string[];
   /** Told of every refusal, with the line to log. Default: the server's console. */
   onRefused?: (line: string) => void;
   /** Told of every relayed `host:port`. */
   onRelayed?: (target: string) => void;
+  /**
+   * Asked about a host the list does not name, while the connection waits: the user decides
+   * (`sandboxGrantBroker.ts`). Asked once per host for the proxy's life — every connection to it
+   * waits on the same answer, and keeps it. Absent: such a host is refused at once.
+   */
+  ask?: (host: string) => Promise<HostDecision>;
 }
 
 export async function startEgressProxy(options: EgressProxyOptions): Promise<EgressProxy> {
   const refused = options.onRefused ?? ((line) => console.log(line));
   const sockets = new Set<Socket>();
   const watchers = new Set<(host: string) => void>();
+  const relayed = (host: string, port: number) => options.onRelayed?.(`${host}:${port}`);
+  const answers = new Map<string, Promise<HostDecision>>();
+  const unlisted = (host: string) => `${host} is not in sandbox.allowedHosts`;
+  /** Whether a connection to `host` goes through: the list, or the user's answer about it. */
+  const decide = (host: string): Promise<HostDecision> => {
+    if (hostAllowed(host, options.allowedHosts)) return Promise.resolve({ allowed: true });
+    if (!options.ask) return Promise.resolve({ allowed: false, why: unlisted(host) });
+    const name = host.toLowerCase();
+    let answer = answers.get(name);
+    if (!answer) {
+      answer = options.ask(name).catch((error: unknown) => ({ allowed: false as const, why: `${host} could not be asked about: ${(error as Error).message}` }));
+      answers.set(name, answer);
+    }
+    return answer;
+  };
   const refuse = (host: string, what: string, why: string) => {
     refused(`[sandbox] network: refused ${what} — ${why}`);
     for (const watcher of watchers) watcher(host);
     return why.replace(/[\r\n]/g, " ");
   };
 
-  const server: Server = createServer((request: IncomingMessage, response) => {
+  const server: Server = createServer(async (request: IncomingMessage, response) => {
     // Absolute-form requests: plain HTTP through the proxy, relayed to a listed host as a
     // tunnel is. Windows' TLS needs it: Schannel fetches a certificate's revocation list from
     // its authority over plain HTTP (`http://c.pki.goog/…`), and curl fails without it.
     const url = URL.canParse(request.url ?? "") ? new URL(request.url!) : undefined;
-    if (!url || url.protocol !== "http:" || !hostAllowed(url.hostname, options.allowedHosts)) {
+    const decision: HostDecision = url && url.protocol === "http:" ? await decide(url.hostname) : { allowed: false, why: unlisted(url?.hostname || String(request.url)) };
+    if (!url || !decision.allowed) {
       const host = url?.hostname || String(request.url);
-      const reason = refuse(host, `${request.method} ${request.url}`, `${host} is not in sandbox.allowedHosts`);
+      const reason = refuse(host, `${request.method} ${request.url}`, decision.allowed ? unlisted(host) : decision.why);
       response.writeHead(403, reason, { "content-type": "text/plain", connection: "close" }).end(`${reason}\n`);
       return;
     }
@@ -75,7 +100,7 @@ export async function startEgressProxy(options: EgressProxyOptions): Promise<Egr
     const port = Number(url.port) || 80;
     const headers = Object.fromEntries(Object.entries(request.headers).filter(([name]) => !/^proxy-/i.test(name)));
     const upstream = httpRequest({ host, port, method: request.method, path: `${url.pathname}${url.search}`, headers }, (answer) => {
-      options.onRelayed?.(`${host}:${port}`);
+      relayed(host, port);
       response.writeHead(answer.statusCode ?? 502, answer.statusMessage, answer.headers);
       answer.pipe(response);
     });
@@ -85,19 +110,22 @@ export async function startEgressProxy(options: EgressProxyOptions): Promise<Egr
     });
     request.pipe(upstream);
   });
-  server.on("connect", (request: IncomingMessage, client: Socket, head: Buffer) => {
+  server.on("connect", async (request: IncomingMessage, client: Socket, head: Buffer) => {
     sockets.add(client);
     client.on("close", () => sockets.delete(client));
     client.on("error", () => client.destroy());
     const target = connectTarget(request.url);
-    if (!target || !hostAllowed(target.host, options.allowedHosts)) {
+    // The connection waits while the user is asked: nothing is sent back before the answer.
+    const decision: HostDecision = target ? await decide(target.host) : { allowed: false, why: unlisted(String(request.url)) };
+    if (client.destroyed) return;
+    if (!target || !decision.allowed) {
       const host = target?.host ?? String(request.url);
-      const reason = refuse(host, `CONNECT ${request.url}`, `${host} is not in sandbox.allowedHosts`);
+      const reason = refuse(host, `CONNECT ${request.url}`, decision.allowed ? unlisted(host) : decision.why);
       client.end(`HTTP/1.1 403 ${reason}\r\ncontent-type: text/plain\r\nconnection: close\r\n\r\n${reason}\n`);
       return;
     }
     const upstream = connect(target.port, target.host, () => {
-      options.onRelayed?.(`${target.host}:${target.port}`);
+      relayed(target.host, target.port);
       client.write("HTTP/1.1 200 Connection Established\r\n\r\n");
       if (head.length > 0) upstream.write(head);
       upstream.pipe(client);
@@ -115,6 +143,12 @@ export async function startEgressProxy(options: EgressProxyOptions): Promise<Egr
     client.on("close", () => upstream.destroy());
   });
 
+  // Every connection, not only the tunnels: a plain HTTP request waiting on the user's answer holds
+  // its socket open, and closing the proxy has to end it rather than wait for it.
+  server.on("connection", (socket: Socket) => {
+    sockets.add(socket);
+    socket.on("close", () => sockets.delete(socket));
+  });
   await new Promise<void>((resolve, reject) => {
     server.once("error", reject);
     server.listen(0, "127.0.0.1", () => resolve());

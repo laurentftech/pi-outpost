@@ -13,7 +13,7 @@ if [ "$(uname -s)" != Darwin ]; then
   exit 1
 fi
 export SEATBELT_EXEC=/usr/bin/sandbox-exec
-tests=(test/confinedBashSeatbelt.test.ts test/terminalSandboxSeatbelt.test.ts test/confinementCanary.test.ts)
+tests=(test/confinedBashSeatbelt.test.ts test/terminalSandboxSeatbelt.test.ts test/confinementCanary.test.ts test/sandboxGrantsReal.test.ts)
 if [ "$(uname -m)" = arm64 ]; then
   MXC_MAC_EXEC=$(node -p "require('path').join(require('path').dirname(require.resolve('@microsoft/mxc-sdk/package.json')), 'bin', 'arm64', 'mxc-exec-mac')")
   export MXC_MAC_EXEC

@@ -18,4 +18,4 @@ RUN npm ci --no-audit --no-fund --loglevel=error --maxsockets=4 --workspace serv
 
 WORKDIR /app/server
 # The executor for this image's architecture: x64 on a PC, arm64 on Apple silicon.
-CMD ["bash", "-c", "arch=$(uname -m | sed 's/x86_64/x64/; s/aarch64/arm64/'); export MXC_LXC_EXEC=/app/node_modules/@microsoft/mxc-sdk/bin/$arch/lxc-exec; exec node --import tsx/esm --test test/confinedBashMxcLinux.test.ts test/terminalSandboxMxcLinux.test.ts test/confinementCanary.test.ts"]
+CMD ["bash", "-c", "arch=$(uname -m | sed 's/x86_64/x64/; s/aarch64/arm64/'); export MXC_LXC_EXEC=/app/node_modules/@microsoft/mxc-sdk/bin/$arch/lxc-exec; exec node --import tsx/esm --test test/confinedBashMxcLinux.test.ts test/terminalSandboxMxcLinux.test.ts test/confinementCanary.test.ts test/sandboxGrantsReal.test.ts"]

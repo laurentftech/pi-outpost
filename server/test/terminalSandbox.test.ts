@@ -789,3 +789,81 @@ describe("siblingsToDeny", () => {
     }
   });
 });
+
+// openlore: scenario=AReadGrantDoesNotWrite spec=sandbox-approved-grants
+describe("grants, in every policy", () => {
+  const work = "/work/app";
+  const beside = "/work/beside";
+  const notes = "/work/notes";
+  const grant = { grantedWrite: [beside], grantedRead: [notes] };
+  const posix = {
+    root: work,
+    allowWrite: true,
+    tmp: "/tmp/pi-outpost-bash-1",
+    shell: "/bin/bash",
+    shellArgs: ["/tmp/pi-outpost-bash-1/command.sh"],
+    cwd: work,
+    env: { PATH: "/usr/bin:/bin" },
+    exists: () => true,
+    realPath: (file: string) => file,
+    developerDir: null,
+  };
+  const read = (fs: { readwritePaths: string[]; readonlyPaths: string[] }) => [...fs.readwritePaths, ...fs.readonlyPaths];
+
+  test("landstrip: a write grant is readable and writable, a read grant readable only; none without a grant", () => {
+    const policy = terminalPolicy({ ...linux, root: work, allowWrite: true, tmp, ...grant });
+    assert.ok(policy.filesystem.allowWrite.includes(beside) && policy.filesystem.allowRead.includes(beside));
+    assert.ok(policy.filesystem.allowRead.includes(notes) && !policy.filesystem.allowWrite.includes(notes));
+    const plain = terminalPolicy({ ...linux, root: work, allowWrite: true, tmp });
+    assert.ok(![...plain.filesystem.allowRead, ...plain.filesystem.allowWrite].some((p) => p === beside || p === notes));
+  });
+
+  test("landstrip on Windows: the same, with the grant's drive denied so reading stays an allowlist", () => {
+    const policy = terminalPolicy({ platform: "win32", systemRoot: "C:\\Windows", root: "C:\\work\\app", allowWrite: true, tmp: "C:\\Temp\\t", grantedWrite: ["D:\\beside"], grantedRead: ["C:\\notes"] });
+    assert.ok(policy.filesystem.allowWrite.includes("D:/beside") && policy.filesystem.allowRead.includes("D:/beside"));
+    assert.ok(policy.filesystem.allowRead.includes("C:/notes") && !policy.filesystem.allowWrite.includes("C:/notes"));
+    assert.ok(policy.filesystem.denyRead.includes("D:/"), "a granted drive is denied but for the grant");
+  });
+
+  test("a write grant holds with writing off: the user asked for it", () => {
+    const policy = terminalPolicy({ ...linux, root: work, allowWrite: false, tmp, grantedWrite: [beside] });
+    assert.ok(policy.filesystem.allowWrite.includes(beside) && !policy.filesystem.allowWrite.includes(work));
+    assert.deepEqual(mxcLinuxConfig({ ...posix, allowWrite: false, grantedWrite: [beside] }).filesystem.readwritePaths, [beside, posix.tmp]);
+  });
+
+  test("MXC on Linux and macOS: the write grant read-write, the read grant read-only", () => {
+    for (const config of [mxcLinuxConfig({ ...posix, ...grant }), mxcMacConfig({ ...posix, ...grant })]) {
+      assert.ok(config.filesystem.readwritePaths.includes(beside), config.containment);
+      assert.ok(config.filesystem.readonlyPaths.includes(notes) && !config.filesystem.readwritePaths.includes(notes), config.containment);
+      assert.ok(!read(mxcLinuxConfig(posix).filesystem).includes(beside), "nothing without a grant");
+    }
+  });
+
+  test("Seatbelt: the write grant gets file-write, the read grant file-read only, before the secrets' deny", () => {
+    const { seatbelt } = seatbeltPolicy({ ...posix, ...grant, agentDir: "/srv/agent" });
+    assert.ok(seatbelt.includes(`(allow file-read* file-write* (subpath "${beside}"))`), seatbelt);
+    assert.ok(seatbelt.includes(`(subpath "${notes}")`) && !seatbelt.includes(`file-write* (subpath "${notes}")`));
+    assert.ok(seatbelt.lastIndexOf("/srv/agent") > seatbelt.lastIndexOf(beside), "the agent directory's deny comes last and wins");
+  });
+
+  test("MXC on Windows: a grant beside the root is allowed over its denied sibling", () => {
+    const wroot = "C:\\Users\\me\\work\\app";
+    const config = mxcTerminalConfig({
+      root: wroot,
+      allowWrite: true,
+      tmp: "C:\\Temp\\t",
+      shell: "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+      shellArgs: [],
+      cwd: wroot,
+      env: {},
+      siblings: ["C:\\Users\\me\\work\\beside", "C:\\Users\\me\\Documents"],
+      grantedWrite: ["C:\\Users\\me\\work\\beside"],
+      grantedRead: ["C:\\Users\\me\\Documents\\notes"],
+    });
+    assert.ok(config.filesystem.readwritePaths.includes("C:\\Users\\me\\work\\beside"));
+    assert.ok(!config.filesystem.deniedPaths.includes("C:\\Users\\me\\work\\beside"), "a path both allowed and denied is never sent");
+    assert.ok(config.filesystem.readonlyPaths.includes("C:\\Users\\me\\Documents\\notes"));
+    // The rest of the sibling stays denied: the grant is more specific than the deny.
+    assert.ok(config.filesystem.deniedPaths.includes("C:\\Users\\me\\Documents"));
+  });
+});

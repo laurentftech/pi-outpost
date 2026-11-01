@@ -28,6 +28,8 @@ import { resolveBrowserRoot, resolveWritableRoot } from "./fileBrowser.ts";
 import { discoverRepos, whyGitCannotServe, type GitRepo } from "./git.ts";
 import { ExtensionRenderer } from "./extensionRender.ts";
 import { createSandboxedTools } from "./sandbox.ts";
+import { SandboxGrantBroker } from "./sandboxGrantBroker.ts";
+import type { ServerMessage } from "@pi-outpost/shared";
 import type { RenderSettings } from "./presentationRender.ts";
 import type { ExtensionUIRequest, GitUnavailable, WorkPlan } from "@pi-outpost/shared";
 
@@ -133,6 +135,17 @@ export interface WorkspaceOptions {
    * Set by `Workspace.create`; one object shared by every rebuild of this workspace.
    */
   skillReadRoots?: { dirs: readonly string[] };
+  /**
+   * Where this workspace's grant requests go, and whom they can ask (`sandboxGrantBroker.ts`).
+   * Given the workspace, so one definition serves every construction site.
+   */
+  grantEvents?: {
+    announce(workspace: Workspace, message: ServerMessage): void;
+    hasClients(workspace: Workspace): boolean;
+    onPendingChanged?(workspace: Workspace): void;
+  };
+  /** Set by `Workspace.create`: one broker shared by every rebuild of this workspace. */
+  grants?: SandboxGrantBroker;
 }
 
 /** The identity of a project's `index`th side session. */
@@ -248,7 +261,12 @@ export class Workspace {
   readonly pendingDialogs = new Map<string, ExtensionUIRequest>();
 
   get needsAttention(): boolean {
-    return this.pendingDialogs.size > 0;
+    return this.pendingDialogs.size > 0 || this.grants.hasPending;
+  }
+
+  /** The agent's grant requests and the session's grants (`sandboxGrantBroker.ts`). */
+  get grants(): SandboxGrantBroker {
+    return this.options.grants!;
   }
 
   /**
@@ -319,9 +337,19 @@ export class Workspace {
     // answer to a path its sessions are not stored under — SessionManager is keyed
     // by cwd — and let two different projects collide on one sandbox subtree.
     const root = await fs.realpath(options.settings.cwd);
-    const withSkillRoots = { ...options, skillReadRoots: options.skillReadRoots ?? { dirs: [] } };
+    // Built before the toolset that asks it, and bound to the workspace once there is one.
+    let self: Workspace | undefined;
+    const grants =
+      options.grants ??
+      new SandboxGrantBroker({
+        announce: (message) => self && options.grantEvents?.announce(self, message),
+        hasClients: () => (self ? (options.grantEvents?.hasClients(self) ?? false) : false),
+        onPendingChanged: () => self && options.grantEvents?.onPendingChanged?.(self),
+      });
+    const withSkillRoots = { ...options, skillReadRoots: options.skillReadRoots ?? { dirs: [] }, grants };
     const resources = await buildResources(withSkillRoots);
-    return new Workspace(root, undefined, resources, withSkillRoots, sideIndex);
+    self = new Workspace(root, undefined, resources, withSkillRoots, sideIndex);
+    return self;
   }
 
   /** Whether this is a side session rather than a project's main session. */
@@ -391,6 +419,8 @@ export class Workspace {
     // exactly as it was, settings included: the same discipline handleUpdateConfig
     // already applies, so that nothing ever reports a boundary it did not apply.
     const resources = await buildResources({ ...this.options, settings });
+    // A grant was the user's answer under the sandbox that just changed: none survives it.
+    if (JSON.stringify(settings.sandbox) !== JSON.stringify(this.settings.sandbox)) this.grants.endSession();
     this.settings = settings;
     this.retired = false;
     this.fileWatcher?.close();
@@ -468,6 +498,7 @@ export class Workspace {
   async stop(): Promise<void> {
     if (this.stopped) return;
     this.stopped = true;
+    this.grants.endSession();
     if (this.repoRescan !== undefined) clearTimeout(this.repoRescan);
     this.repoRescan = undefined;
     this.fileWatcher?.close();
@@ -488,6 +519,8 @@ export class Workspace {
    */
   async retire(): Promise<void> {
     this.retired = true;
+    // The session goes, and its grants with it: the one rebuilt on next use starts without any.
+    this.grants.endSession();
     this.fileWatcher?.close();
     this.fileWatcher = undefined;
     this.gitWatcher?.close();
@@ -563,6 +596,7 @@ async function buildResources(options: WorkspaceOptions): Promise<WorkspaceResou
           options.onDocumentsWritten,
           options.skillReadRoots ? () => options.skillReadRoots!.dirs : undefined,
           limits.neverReadable,
+          options.grants,
         )),
         ...options.unconfinedTools,
       ])

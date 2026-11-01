@@ -17,7 +17,9 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import type { BashOperations } from "@earendil-works/pi-coding-agent";
-import type { EgressProxy } from "./egressProxy.ts";
+import type { SandboxGrantOutcome } from "@pi-outpost/shared";
+import { startEgressProxy, type EgressProxy, type EgressProxyOptions } from "./egressProxy.ts";
+import { EMPTY_GRANT, forbiddenHost, isEmptyGrant, mergeGrants, type Grant } from "./sandboxGrants.ts";
 import {
   checkRunner,
   confinedEnvironment,
@@ -61,10 +63,77 @@ export interface ConfinedBashOptions {
    * hosts it refuses while a command runs are named after the command's output.
    */
   networkProxy?: Pick<EgressProxy, "url" | "watchRefusals">;
+  /** `sandbox.allowedHosts` itself, which a command's own proxy starts from. */
+  allowedHosts?: readonly string[];
+  /**
+   * Asks the user about a host the list does not name, while the command's connection to it
+   * waits (`sandboxGrantBroker.ts`). With it, each command gets a proxy of its own — the list
+   * and the session's hosts — that asks, and is closed after the command. Absent: an unlisted
+   * host is refused at once, by the shared proxy.
+   */
+  askHost?: (request: { command: string; host: string; signal?: AbortSignal }) => Promise<SandboxGrantOutcome>;
+  /** How a command's own proxy is started. A parameter for tests. */
+  startProxy?: (options: EgressProxyOptions) => Promise<EgressProxy>;
   /** Whose rules. A parameter so the Windows path is tested everywhere. */
   platform?: NodeJS.Platform;
   /** The runner's self-check. A parameter for tests; cached per runner otherwise. */
   check?: (runner: string) => Promise<RunnerCheck>;
+  /**
+   * The session's grants (`sandboxGrants.ts`), read at each launch: what the user allowed every
+   * command of this session beyond the sandbox. Absent: none.
+   */
+  grants?: () => Grant;
+}
+
+type ExecOptions = Parameters<BashOperations["exec"]>[2];
+
+/** pi's `BashOperations`, and one command run with a grant the user approved for it alone. */
+export interface ConfinedBashOperations extends BashOperations {
+  execWithGrant(command: string, cwd: string, options: ExecOptions, grant: Grant): ReturnType<BashOperations["exec"]>;
+}
+
+/** What ends a command whose hosts the proxy refused without anyone to ask: which ones, and the way through. */
+export function refusalNote(hosts: string[]): string {
+  const them = hosts.length > 1 ? "them" : "it";
+  return `[pi-outpost] network refused: ${hosts.join(", ")} — not in sandbox.allowedHosts. Ask the user to add ${them} there if the command needs ${them}.`;
+}
+
+/** What the user answered about a host a command connected to, or why nobody was asked. */
+export type HostAnswer = SandboxGrantOutcome | { forbidden: string };
+
+/** How an answer reads, in the proxy's refusal and in the note after the command. */
+export function hostAnswerText(host: string, answer: HostAnswer): string {
+  if (typeof answer === "object") return `${host} is never granted: ${answer.forbidden}`;
+  switch (answer) {
+    case "approved-once":
+      return `the user allowed ${host} for this command`;
+    case "approved-session":
+      return `the user allowed ${host} for the rest of the session`;
+    case "refused":
+      return `the user refused ${host}`;
+    case "expired":
+      return `nobody answered about ${host} in time`;
+    case "aborted":
+      return `the question about ${host} was cancelled with the turn or the session`;
+    case "unattended":
+      return `no one was connected to approve ${host}`;
+  }
+}
+
+/** What ends a command that connected to hosts the list does not name, the user asked about each. */
+export function networkNote(answers: ReadonlyMap<string, HostAnswer>): string {
+  const lines = [...answers].map(([host, answer]) => `[pi-outpost] network: ${hostAnswerText(host, answer)}.`);
+  const refused = [...answers.values()].some((answer) => answer !== "approved-once" && answer !== "approved-session");
+  if (refused) lines.push("[pi-outpost] Do not retry a refused host for this request: tell the user what it blocked.");
+  return lines.join("\n");
+}
+
+/** A grant's directories as the policies take them: read only, and read-write. */
+function grantedDirectories(grant: Grant): { grantedRead: string[]; grantedWrite: string[] } {
+  return {
+    grantedRead: grant.directories.filter((directory) => directory.access === "read").map((directory) => directory.path),
+    grantedWrite: grant.directories.filter((directory) => directory.access === "write").map((directory) => directory.path),
+  };
 }
 
 /** One self-check per runner path, for the life of the server: asked on first use. */
@@ -107,6 +176,13 @@ export const POWERSHELL_SCRIPT_ARGS = ["-NoProfile", "-NonInteractive", "-Execut
  * gives what `-Command` (pi's local tool) gives instead — the native program's code, or
  * 1 for a failed cmdlet. It runs only when the command did not `exit` itself, and on its
  * own lines so a comment ending the command cannot swallow it.
+ *
+ * The command's output goes through `Out-Default` before that `exit`: the implicit formatter
+ * holds a table back while it waits for more objects of its type, and an `exit` right after
+ * drops it — `'a'; Get-Location; 'b'` printed `a` alone, exit 0. The command is dot-sourced, so
+ * its variables stay in the script's scope, and its `$?` is taken inside the block, right after
+ * it: after the pipe it would be `Out-Default`'s. A command that itself exits (or throws) right
+ * after a table still loses it: PowerShell does that under `-Command` too, pi's own tool included.
  */
 export function powerShellScript(command: string): string {
   return [
@@ -117,152 +193,194 @@ export function powerShellScript(command: string): string {
     // Under sandbox.allowedHosts MXC sets HTTPS_PROXY, which Windows PowerShell's web
     // cmdlets ignore: they would go direct, and be refused.
     "if ($env:HTTPS_PROXY) { $PSDefaultParameterValues['Invoke-WebRequest:Proxy'] = $env:HTTPS_PROXY; $PSDefaultParameterValues['Invoke-RestMethod:Proxy'] = $env:HTTPS_PROXY }",
+    // Windows PowerShell parses a page with Internet Explorer's engine unless told not to, and
+    // in the sandbox that ends in "not in interactive mode": every plain Invoke-WebRequest failed.
+    // PowerShell 7 takes the switch and ignores it.
+    "$PSDefaultParameterValues['Invoke-WebRequest:UseBasicParsing'] = $true",
     "$global:LASTEXITCODE = $null",
+    // A command that returns at its top level ends the block with nothing failed.
+    "$global:PiOutpostCommandOk = $true",
+    ". {",
     command,
     "",
-    "if (-not $?) { if ($LASTEXITCODE) { exit $LASTEXITCODE } else { exit 1 } }",
+    "$global:PiOutpostCommandOk = $?",
+    "} | Out-Default",
+    "if (-not $global:PiOutpostCommandOk) { if ($LASTEXITCODE) { exit $LASTEXITCODE } else { exit 1 } }",
     "exit 0",
     "",
   ].join("\n");
 }
 
-export function confinedBashOperations(options: ConfinedBashOptions): BashOperations {
+export function confinedBashOperations(options: ConfinedBashOptions): ConfinedBashOperations {
   const platform = options.platform ?? process.platform;
   const windows = platform === "win32";
   const kind = runnerKind(options.runner);
   const wslc = options.image !== undefined && kind === "mxc";
   const shell = wslc ? "/bin/bash" : (options.shell ?? (windows ? undefined : "/bin/bash"));
   const powerShell = !wslc && isPowerShell(shell);
-  return {
-    exec: async (command, cwd, { onData, signal, timeout }) => {
-      const timeoutMs = timeoutInMs(timeout);
-      if (signal?.aborted) throw new Error("aborted");
-      const check = await (options.check ?? cachedCheck)(options.runner);
-      if (!check.ok) throw new Error(`bash is confined by ${options.runner}, which cannot run it: ${check.reason}`);
-      if (!shell) {
-        throw new Error(
-          `bash is confined by ${options.runner}, but "sandbox.bashShell" names no shell. On Windows, Git Bash cannot start in a sandbox: name powershell.exe, or busybox-w32's sh.exe.`,
-        );
-      }
+  const launchCommand = async (command: string, cwd: string, { onData, signal, timeout }: ExecOptions, extra: Grant) => {
+    const timeoutMs = timeoutInMs(timeout);
+    if (signal?.aborted) throw new Error("aborted");
+    const check = await (options.check ?? cachedCheck)(options.runner);
+    if (!check.ok) throw new Error(`bash is confined by ${options.runner}, which cannot run it: ${check.reason}`);
+    if (!shell) {
+      throw new Error(
+        `bash is confined by ${options.runner}, but "sandbox.bashShell" names no shell. On Windows, Git Bash cannot start in a sandbox: name powershell.exe, or busybox-w32's sh.exe.`,
+      );
+    }
 
-      const tmp = await mkdtemp(path.join(tmpdir(), "pi-outpost-bash-"));
-      try {
-        const script = path.join(tmp, powerShell ? "command.ps1" : "command.sh");
-        await writeFile(script, powerShell ? powerShellScript(command) : command, { mode: 0o600 });
-        const shellArgs = powerShell ? [...POWERSHELL_SCRIPT_ARGS, script] : [script];
-        // A start outside the root could not be entered from inside it.
-        const startIn = isInside(cwd, options.root) ? cwd : options.root;
-        const env = confinedEnvironment(process.env, { root: options.root, tmp, shell, platform, gitConfig: options.gitConfig });
-        const readOnlyFiles = gitReadOnlyFiles(options.gitConfig);
-        const policyFile = path.join(tmp, "policy.json");
-        let args: string[];
-        // sandbox-exec hands the command its own environment: the one its policy says.
-        let runnerEnv = env;
-        if (kind === "seatbelt") {
-          const policy = seatbeltPolicy({
-            root: options.root,
-            writableRoot: options.writableRoot,
-            allowWrite: options.allowWrite,
-            agentDir: options.agentDir,
-            configFile: options.configFile,
-            tmp,
-            shell,
-            shellArgs,
-            cwd: startIn,
-            env,
-            searchPath: env.PATH,
-            readOnlyFiles,
-            ...(options.networkProxy === undefined ? {} : { networkProxy: options.networkProxy.url }),
-          });
-          const profileFile = path.join(tmp, "policy.sb");
-          await writeFile(profileFile, policy.seatbelt, { mode: 0o600 });
-          args = ["-f", profileFile, shell, ...shellArgs];
-          runnerEnv = policy.env;
-        } else if (wslc) {
-          const request = mxcWslcConfig({
-            image: options.image!,
-            root: options.root,
-            writableRoot: options.writableRoot,
-            allowWrite: options.allowWrite,
-            tmp,
-            script,
-            cwd: startIn,
-          });
-          await writeFile(policyFile, JSON.stringify(request), { mode: 0o600 });
-          args = ["--config", policyFile];
-        } else if (kind === "mxc" && isPosixMxc(options.runner)) {
-          const request = mxcPosixConfig(options.runner, {
-            root: options.root,
-            writableRoot: options.writableRoot,
-            allowWrite: options.allowWrite,
-            agentDir: options.agentDir,
-            configFile: options.configFile,
-            tmp,
-            shell,
-            shellArgs,
-            cwd: startIn,
-            env,
-            searchPath: env.PATH,
-            readOnlyFiles,
-            ...(options.networkProxy === undefined ? {} : { networkProxy: options.networkProxy.url }),
-          });
-          await writeFile(policyFile, JSON.stringify(request), { mode: 0o600 });
-          args = [policyFile];
-        } else if (kind === "mxc") {
-          const request = mxcTerminalConfig({
-            root: options.root,
-            writableRoot: options.writableRoot,
-            allowWrite: options.allowWrite,
-            agentDir: options.agentDir,
-            configFile: options.configFile,
-            tmp,
-            shell,
-            shellArgs,
-            cwd: startIn,
-            env,
-            siblings: siblingsToDeny(options.root),
-            searchPath: env.PATH,
-            ...(process.env.USERPROFILE ? { home: process.env.USERPROFILE } : {}),
-            readOnlyFiles,
-            ...(options.networkProxy === undefined ? {} : { networkProxy: options.networkProxy.url }),
-          });
-          await writeFile(policyFile, JSON.stringify(request), { mode: 0o600 });
-          args = [policyFile];
-        } else {
-          const policy = terminalPolicy({
-            root: options.root,
-            writableRoot: options.writableRoot,
-            allowWrite: options.allowWrite,
-            agentDir: options.agentDir,
-            configFile: options.configFile,
-            tmp,
-            searchPath: env.PATH,
-            systemRoot: process.env.SystemRoot,
-            userProfile: process.env.USERPROFILE,
-            readOnlyFiles,
-            platform,
-          });
-          await writeFile(policyFile, JSON.stringify(policy), { mode: 0o600 });
-          args = ["run", "-p", policyFile, "--", shell, ...shellArgs];
-        }
-        const launch = () => run(options.runner, args, { cwd: startIn, env: runnerEnv, onData, signal, timeoutMs, timeout, windows });
-        // curl, git and PowerShell print only "403" for a refused tunnel: the model is told which
-        // host, and why. Commands of the agent's shell run one at a time, so these are this one's.
-        const refused = new Set<string>();
-        const unwatch = wslc ? undefined : options.networkProxy?.watchRefusals((host) => refused.add(host));
-        try {
-          return await (wslc ? oneWslcAtATime(launch) : launch());
-        } finally {
-          unwatch?.();
-          if (refused.size > 0) {
-            const hosts = [...refused].join(", ");
-            onData(Buffer.from(`\n[pi-outpost] network refused: ${hosts} — not in sandbox.allowedHosts. Ask the user to add ${refused.size > 1 ? "them" : "it"} there if the command needs ${refused.size > 1 ? "them" : "it"}.\n`));
-          }
-        }
-      } finally {
-        await rm(tmp, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }).catch(() => {});
+    const session = options.grants?.() ?? EMPTY_GRANT;
+    const grant = mergeGrants(session, extra);
+    if (wslc && grant.directories.length > 0) {
+      throw new Error("a directory grant cannot reach bash in a WSLC container: its mounts are fixed when it starts");
+    }
+    const directories = grantedDirectories(grant);
+    // A host the list does not name is asked about while the connection waits — by a proxy of
+    // this command's own, so that what it asks is this command's, and closed after it. The shared
+    // proxy of the list is left as it is, for every other command and session using it.
+    let networkProxy = options.networkProxy;
+    let dedicated: EgressProxy | undefined;
+    const answers = new Map<string, HostAnswer>();
+    const askHost = options.askHost;
+    if (networkProxy !== undefined && askHost !== undefined && !wslc) {
+      dedicated = await (options.startProxy ?? startEgressProxy)({
+        allowedHosts: [...(options.allowedHosts ?? []), ...session.hosts],
+        ask: async (host) => {
+          const forbidden = forbiddenHost(host);
+          const answer: HostAnswer = forbidden ? { forbidden } : await askHost({ command, host, ...(signal ? { signal } : {}) });
+          answers.set(host, answer);
+          return answer === "approved-once" || answer === "approved-session" ? { allowed: true } : { allowed: false, why: hostAnswerText(host, answer) };
+        },
+      });
+      networkProxy = dedicated;
+    }
+
+    const tmp = await mkdtemp(path.join(tmpdir(), "pi-outpost-bash-"));
+    try {
+      const script = path.join(tmp, powerShell ? "command.ps1" : "command.sh");
+      await writeFile(script, powerShell ? powerShellScript(command) : command, { mode: 0o600 });
+      const shellArgs = powerShell ? [...POWERSHELL_SCRIPT_ARGS, script] : [script];
+      // A start outside the root could not be entered from inside it.
+      const startIn = isInside(cwd, options.root) ? cwd : options.root;
+      const env = confinedEnvironment(process.env, { root: options.root, tmp, shell, platform, gitConfig: options.gitConfig });
+      const readOnlyFiles = gitReadOnlyFiles(options.gitConfig);
+      const policyFile = path.join(tmp, "policy.json");
+      let args: string[];
+      // sandbox-exec hands the command its own environment: the one its policy says.
+      let runnerEnv = env;
+      if (kind === "seatbelt") {
+        const policy = seatbeltPolicy({
+          root: options.root,
+          writableRoot: options.writableRoot,
+          allowWrite: options.allowWrite,
+          ...directories,
+          agentDir: options.agentDir,
+          configFile: options.configFile,
+          tmp,
+          shell,
+          shellArgs,
+          cwd: startIn,
+          env,
+          searchPath: env.PATH,
+          readOnlyFiles,
+          ...(networkProxy === undefined ? {} : { networkProxy: networkProxy.url }),
+        });
+        const profileFile = path.join(tmp, "policy.sb");
+        await writeFile(profileFile, policy.seatbelt, { mode: 0o600 });
+        args = ["-f", profileFile, shell, ...shellArgs];
+        runnerEnv = policy.env;
+      } else if (wslc) {
+        const request = mxcWslcConfig({
+          image: options.image!,
+          root: options.root,
+          writableRoot: options.writableRoot,
+          allowWrite: options.allowWrite,
+          tmp,
+          script,
+          cwd: startIn,
+        });
+        await writeFile(policyFile, JSON.stringify(request), { mode: 0o600 });
+        args = ["--config", policyFile];
+      } else if (kind === "mxc" && isPosixMxc(options.runner)) {
+        const request = mxcPosixConfig(options.runner, {
+          root: options.root,
+          writableRoot: options.writableRoot,
+          allowWrite: options.allowWrite,
+          ...directories,
+          agentDir: options.agentDir,
+          configFile: options.configFile,
+          tmp,
+          shell,
+          shellArgs,
+          cwd: startIn,
+          env,
+          searchPath: env.PATH,
+          readOnlyFiles,
+          ...(networkProxy === undefined ? {} : { networkProxy: networkProxy.url }),
+        });
+        await writeFile(policyFile, JSON.stringify(request), { mode: 0o600 });
+        args = [policyFile];
+      } else if (kind === "mxc") {
+        const request = mxcTerminalConfig({
+          root: options.root,
+          writableRoot: options.writableRoot,
+          allowWrite: options.allowWrite,
+          ...directories,
+          agentDir: options.agentDir,
+          configFile: options.configFile,
+          tmp,
+          shell,
+          shellArgs,
+          cwd: startIn,
+          env,
+          siblings: siblingsToDeny(options.root),
+          searchPath: env.PATH,
+          ...(process.env.USERPROFILE ? { home: process.env.USERPROFILE } : {}),
+          readOnlyFiles,
+          ...(networkProxy === undefined ? {} : { networkProxy: networkProxy.url }),
+        });
+        await writeFile(policyFile, JSON.stringify(request), { mode: 0o600 });
+        args = [policyFile];
+      } else {
+        const policy = terminalPolicy({
+          root: options.root,
+          writableRoot: options.writableRoot,
+          allowWrite: options.allowWrite,
+          ...directories,
+          agentDir: options.agentDir,
+          configFile: options.configFile,
+          tmp,
+          searchPath: env.PATH,
+          systemRoot: process.env.SystemRoot,
+          userProfile: process.env.USERPROFILE,
+          readOnlyFiles,
+          platform,
+        });
+        await writeFile(policyFile, JSON.stringify(policy), { mode: 0o600 });
+        args = ["run", "-p", policyFile, "--", shell, ...shellArgs];
       }
-    },
+      const launch = () => run(options.runner, args, { cwd: startIn, env: runnerEnv, onData, signal, timeoutMs, timeout, windows });
+      // curl, git and PowerShell print only "403" for a refused tunnel: the model is told which
+      // host, and why. Commands of the agent's shell run one at a time, so these are this one's.
+      const refused = new Set<string>();
+      const unwatch = wslc ? undefined : networkProxy?.watchRefusals((host) => refused.add(host));
+      try {
+        return await (wslc ? oneWslcAtATime(launch) : launch());
+      } finally {
+        unwatch?.();
+        // With someone to ask, every unlisted host was asked about: what each answer was. Without,
+        // the hosts refused, and that the list is where they would go.
+        if (answers.size > 0) onData(Buffer.from(`\n${networkNote(answers)}\n`));
+        else if (refused.size > 0) onData(Buffer.from(`\n${refusalNote([...refused])}\n`));
+      }
+    } finally {
+      await rm(tmp, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }).catch(() => {});
+      await dedicated?.close().catch(() => {});
+    }
+  };
+  return {
+    exec: (command, cwd, execOptions) => launchCommand(command, cwd, execOptions, EMPTY_GRANT),
+    execWithGrant: (command, cwd, execOptions, grant) => launchCommand(command, cwd, execOptions, isEmptyGrant(grant) ? EMPTY_GRANT : grant),
   };
 }
 

@@ -1,4 +1,4 @@
-import type { ConfinementAttempt, ConfinementVerdict } from "@pi-outpost/shared";
+import type { ConfinementAttempt, ConfinementVerdict, SandboxGrantSet } from "@pi-outpost/shared";
 
 /**
  * Whether the agent's shell (or the terminal) is confined — as observed, not as configured.
@@ -56,8 +56,20 @@ export function confinementDescription(verdict: ConfinementVerdict, surface: "sh
   }
 }
 
-export function ConfinementLock({ verdict, surface, root }: { verdict: ConfinementVerdict; surface: "shell" | "terminal"; root?: string }) {
+/** The session's grants, one per line: what the user let every later command reach. */
+export function grantsDescription(grants: SandboxGrantSet): string[] {
+  const lines = [
+    ...grants.hosts.map((host) => `• host ${host}`),
+    ...grants.directories.map((directory) => `• ${directory.access === "write" ? "read and write" : "read"} ${directory.path}`),
+  ];
+  return lines.length ? ["Granted by you for this session:", ...lines] : [];
+}
+
+export function ConfinementLock({ verdict, surface, root, grants }: { verdict: ConfinementVerdict; surface: "shell" | "terminal"; root?: string; grants?: SandboxGrantSet }) {
   const where = root ? ` to ${root}` : "";
+  // The verdict is the canary's, of the base policy: grants are said beside it, never folded into it.
+  const granted = grants ? grants.hosts.length + grants.directories.length : 0;
+  const withGrants = granted > 0 ? ` · ${granted} grant${granted > 1 ? "s" : ""}` : "";
   const look =
     verdict.state === "verified"
       ? { icon: "🔒", text: `confined${where}`, tone: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-200" }
@@ -72,10 +84,12 @@ export function ConfinementLock({ verdict, surface, root }: { verdict: Confineme
     <span
       data-testid={surface === "shell" ? "shell-confinement" : "terminal-confined"}
       data-state={verdict.state}
-      title={confinementDescription(verdict, surface)}
+      data-grants={granted}
+      title={[confinementDescription(verdict, surface), ...(grants ? grantsDescription(grants) : [])].join("\n")}
       className={`shrink-0 whitespace-nowrap rounded px-1.5 py-0.5 font-sans text-[11px] ${look.tone}`}
     >
       {look.icon} {surface === "shell" ? `shell ${look.text}` : look.text}
+      {withGrants}
     </span>
   );
 }

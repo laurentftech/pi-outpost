@@ -588,6 +588,22 @@ describe("loadConfig — resource path resolution", () => {
     });
   });
 
+  test("sandbox.grants: absent is the default, \"ask\" and \"never\" are kept, anything else stops startup", async () => {
+    await withTempDir(async (dir) => {
+      const configPath = path.join(dir, "config.json");
+      const load = async (grants?: unknown) => {
+        await writeFile(configPath, JSON.stringify({ sandbox: { root: ".", allowBash: true, bashRunner: "./mxc/wxc-exec.exe", ...(grants === undefined ? {} : { grants }) } }, null, 2));
+        return loadConfig(dir, { config: configPath }).sandbox!;
+      };
+      assert.equal((await load()).grants, undefined, "absent: the default, which asks");
+      assert.equal((await load("ask")).grants, "ask");
+      assert.equal((await load("never")).grants, "never");
+      for (const grants of ["always", "", true, ["never"]]) {
+        await assert.rejects(async () => load(grants), /sandbox\.grants/, JSON.stringify(grants));
+      }
+    });
+  });
+
   // openlore: scenario=SeatbeltNamesTheSystemRunner spec=sandbox-runner-bash
   test("SeatbeltNamesTheSystemRunner: \"seatbelt\" is /usr/bin/sandbox-exec on macOS and refused elsewhere; allowed hosts kept, an image refused", async () => {
     await withTempDir(async (dir) => {

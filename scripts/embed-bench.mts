@@ -511,6 +511,43 @@ const rootMode = await startServer(
   { env: onlyOneFakeProvider() },
 );
 
+// The agent's shell confined by MXC, network held to an allowlist, and a directory beside the
+// project: what a grant is for. Windows only — MXC's process container and Windows PowerShell.
+// Live, the agent is the real one and has to reach for `run_with_grant` by itself; the bench's own
+// agent directory gets only the developer's credentials, so their sessions and extensions stay out.
+const grantsRoot = process.platform === "win32" ? await realpath(await makeWorkspace({ "readme.md": "# grants\n" })) : undefined;
+const grantsBeside = grantsRoot ? `${grantsRoot}-beside` : undefined;
+let grants: Awaited<ReturnType<typeof startServer>> | undefined;
+if (grantsRoot && grantsBeside) {
+  const { copyFile, mkdir } = await import("node:fs/promises");
+  const { homedir } = await import("node:os");
+  await mkdir(grantsBeside, { recursive: true });
+  await writeFile(path.join(grantsBeside, "notes.txt"), "release notes v1\n");
+  const agentDir = path.join(grantsRoot, ".pi-agent");
+  if (LIVE) {
+    await mkdir(agentDir, { recursive: true });
+    await copyFile(path.join(homedir(), ".pi", "agent", "auth.json"), path.join(agentDir, "auth.json")).catch(() => {});
+    await writeFile(path.join(agentDir, "settings.json"), JSON.stringify({ defaultProvider: "openai-codex", defaultModel: "gpt-6.1-sol" }));
+  }
+  grants = await startServer(
+    grantsRoot,
+    {
+      server: { allowedOrigins: [host.url], port: HOST_PORT + 9 },
+      branding: { title: "bench grants" },
+      agentDir,
+      sandbox: {
+        root: grantsRoot,
+        allowWrite: true,
+        allowBash: true,
+        bashRunner: "mxc",
+        bashShell: path.join(process.env.SystemRoot ?? "C:\\Windows", "System32", "WindowsPowerShell", "v1.0", "powershell.exe"),
+        allowedHosts: ["registry.npmjs.org", "*.pki.goog"],
+      },
+    },
+    { env: onlyOneFakeProvider() },
+  );
+}
+
 const projectsSecond = await realpath(await makeWorkspace({ "readme.md": "# second project\n" }));
 const projectsMode = await startServer(
   await makeWorkspace({ "readme.md": "# projects mode\n" }),
@@ -775,6 +812,9 @@ console.log(`  tool progress bar           ${link(progress.base)}   (send any pr
 console.log(`  agent question panel        ${link(question.base)}   (send any prompt; the panel holds until answered)`);
 console.log(`  project profiles            ${link(profiles.base)}   (statements beside each table, then the rules register and the rule patterns; edit ${profilesRoot}/profiles/requirements.json and reload)`);
 console.log(`  model-aware thinking slider ${link(thinking.base)}   (🧠: low..xhigh, no off; switch to Plain Mini — declared off-only — and watch it settle)`);
+if (grants) {
+  console.log(`  sandbox grants (MXC)        ${link(grants.base)}   ask it to fetch https://example.com/, or to write in ${grantsBeside}`);
+}
 console.log("\n  embed workspace controls — the same widget under each policy\n");
 console.log(`  settings (the default)      ${link(plain.base)}   no header control; the root lives in Settings`);
 console.log(`  root                        ${link(rootMode.base)}   one root, moved from the header`);
@@ -787,6 +827,7 @@ const stop = async () => {
   stopping = true;
   await profiles.stop();
   await projectsMode.stop();
+  await grants?.stop();
   await rootMode.stop();
   await question.stop();
   await thinking.stop();

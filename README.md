@@ -591,6 +591,7 @@ in [`pi-outpost.config.example.json`](pi-outpost.config.example.json).
 | `sandbox.bashShell` | The shell `bashRunner` runs commands in (default `/bin/bash`). Required on Windows, where Git Bash cannot start in a sandbox: `powershell.exe` (the agent then gets a `powershell` tool instead of `bash`), or busybox-w32's `sh.exe` — a full path, or a bare name found on `PATH` |
 | `sandbox.bashImage` | Experimental, Windows 11 with MXC: a Linux image (e.g. `buildpack-deps:bookworm-scm`) every command of the agent's `bash` runs in, through MXC's WSLC backend — a real bash, with only the root mounted (at `/mnt/c/…`). Needs MXC as `bashRunner` and no `bashShell`; the writable zone is the whole root. See [docs/sandboxing.md](docs/sandboxing.md#a-real-bash-wslc-experimental) |
 | `sandbox.allowedHosts` | With MXC (Windows 11, Linux with [its Docker flags](docs/sandboxing.md#linux-as-an-option-mxc), or [Apple-silicon macOS](docs/sandboxing.md#macos-on-apple-silicon-mxc)) or [Seatbelt](docs/sandboxing.md#macos-every-mac-seatbelt) (any Mac): the only hosts the agent's shell may reach — names (`"registry.npmjs.org"`) or suffixes (`"*.githubusercontent.com"`). Outbound traffic is denied and a proxy the server runs is the only way out; any other host is refused with a reason naming it. Needs MXC or Seatbelt as `bashRunner` and no `bashImage`. Absent: the network is open. See [docs/sandboxing.md](docs/sandboxing.md#the-network-only-named-hosts) |
+| `sandbox.grants` | `"ask"` (default) or `"never"`. With a `bashRunner`, you are asked when a command connects to a host `allowedHosts` does not list (the connection waits for your answer), or when the agent needs a directory beyond the sandbox; allow it for that command or the rest of the session, or refuse. Only your click grants, and the agent directory and the configuration can never be granted. `"never"`: nobody is asked, the list alone decides. Settings do not edit it. See [docs/sandboxing.md](docs/sandboxing.md#grants-beyond-the-sandbox-when-you-say-so) |
 | `sandbox.bashFrom` | Hands bash to a sandboxing extension instead: its package source as pi lists it (`"npm:pi-landstrip"`) or the path of its file or directory. pi-outpost then supplies no `bash` of its own — which would otherwise shadow the extension's, since an application's tool wins over an extension's of the same name. The session refuses to start unless that extension registers `bash`, and a Settings change that would leave it without one is rolled back. Only while `allowBash` is on. See [Confining bash with an extension](#confining-bash-with-an-extension) |
 | `sandboxLocks` | Which sandbox fields Settings may **not** change: `root`, `writableRoot`, `allowWrite`, `allowBash` |
 | `workspaceLock` | Pin the server to one project: opening, closing and switching are refused, and no control is offered |
@@ -631,6 +632,13 @@ Without an extension, `sandbox.bashRunner` confines pi-outpost's own `bash` with
 the terminal: each command runs inside the runner, with the terminal's policy. On Windows 11 this is
 the way that works today (MXC with Windows PowerShell, nothing to install); see
 [docs/sandboxing.md](docs/sandboxing.md#recommended-setup).
+
+When a confined command needs one thing more — a host the allowlist does not name, a directory beside
+the project — you are asked instead of widening the configuration: a connection to an unlisted host
+waits while you decide, and a directory is asked for by the agent with the command that needs it. Allow
+it for that command, for the session, or refuse. The
+agent directory and the configuration can never be granted. See
+[docs/sandboxing.md](docs/sandboxing.md#grants-beyond-the-sandbox-when-you-say-so).
 
 #### MXC comes with pi-outpost
 
