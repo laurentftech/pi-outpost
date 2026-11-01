@@ -334,6 +334,8 @@ export function confinedBashOperations(options: ConfinedBashOptions): ConfinedBa
           cwd: startIn,
           env,
           siblings: siblingsToDeny(options.root),
+          searchPath: env.PATH,
+          ...(process.env.USERPROFILE ? { home: process.env.USERPROFILE } : {}),
           readOnlyFiles,
           ...(networkProxy === undefined ? {} : { networkProxy: networkProxy.url }),
         });
