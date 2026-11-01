@@ -18,6 +18,8 @@ import {
   autoShellRefusal,
   autoVerdictRefusal,
   confineSuggestion,
+  onShellVerdictSettled,
+  settledShellVerdict,
   sharedShellVerdict,
   shellIsUnconfined,
   unconfinedShellVerdict,
@@ -234,5 +236,71 @@ describe("the nudge for an unconfined shell", () => {
     assert.equal(shellIsUnconfined({ ...base, allowBash: true, bashRunner: "/r" }), false);
     assert.equal(shellIsUnconfined({ ...base, allowBash: true, autoRunner: { unavailable: "x" } }), false);
     assert.equal(shellIsUnconfined({ ...base, allowBash: true, bashFrom: "npm:pi-landstrip" }), false);
+  });
+});
+
+describe("an unconfined shell names its language", () => {
+  // openlore: scenario=NoneUnlocksTheShellOnAnOldBuild spec=sandbox-defaults
+  test("\"none\" with a PowerShell bashShell is pi's powershell tool, and runs a command", async (t) => {
+    if (process.platform !== "win32") return t.skip("Windows PowerShell is a Windows shell");
+    const root = await mkdtemp(path.join(tmpdir(), "none-powershell-"));
+    try {
+      const tools = await createSandboxedTools({
+        root,
+        allowWrite: true,
+        allowBash: true,
+        bashShell: "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+        readExceptions: [],
+      });
+      const shell = tools.find((tool) => tool.name === "powershell");
+      assert.ok(shell, "the agent gets powershell");
+      assert.ok(!tools.some((tool) => tool.name === "bash"), "and no bash beside it");
+      const result = (await (shell.execute as unknown as (id: string, params: unknown, signal?: AbortSignal, onUpdate?: unknown, ctx?: unknown) => Promise<{ content: Array<{ text?: string }> }>)(
+        "call-1",
+        { command: "Write-Output unconfined-ps" },
+        undefined,
+        undefined,
+        { cwd: root, sessionManager: { getSessionId: () => "none-ps", getSessionFile: () => undefined } },
+      )) as { content: Array<{ text?: string }> };
+      assert.match(result.content.map((part) => part.text ?? "").join(""), /unconfined-ps/);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("without a PowerShell bashShell, an unconfined shell stays bash", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "none-bash-"));
+    try {
+      const tools = await createSandboxedTools({ root, allowWrite: true, allowBash: true, readExceptions: [] });
+      assert.ok(tools.some((tool) => tool.name === "bash"));
+      assert.ok(!tools.some((tool) => tool.name === "powershell"));
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("the lock follows a retry", () => {
+  test("a failed check, retried by a command, updates what the lock reads and tells its listeners", async () => {
+    const box: SandboxConfig = { root: path.join(tmpdir(), "retry-lock"), allowWrite: true, allowBash: true, bashRunner: "/r", autoRunner: { label: "MXC" }, readExceptions: [] };
+    const answers: ConfinementVerdict[] = [
+      { state: "failed", runner: "/r", checkedAt: "2026-11-01T10:00:00Z", reason: "timed out" },
+      verified("/r"),
+    ];
+    const heard: string[] = [];
+    const stop = onShellVerdictSettled((verdict) => heard.push(verdict.state));
+    try {
+      const fake = async () => answers.shift()!;
+      assert.equal(settledShellVerdict(box, {}), undefined, "nothing reached yet: the lock says checking");
+      assert.match((await autoShellRefusal(box, {}, fake))!, /timed out/);
+      await new Promise((resolve) => setImmediate(resolve));
+      assert.equal(settledShellVerdict(box, {})?.state, "failed");
+      assert.equal(await autoShellRefusal(box, {}, fake), undefined, "the next command retries, and runs");
+      await new Promise((resolve) => setImmediate(resolve));
+      assert.equal(settledShellVerdict(box, {})?.state, "verified", "and the lock reads the retry, not the failure");
+      assert.deepEqual(heard, ["failed", "verified"]);
+    } finally {
+      stop();
+    }
   });
 });

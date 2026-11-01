@@ -141,19 +141,38 @@ export async function terminalVerdict(confine: TerminalConfinement, shell: strin
  * not be reached (`failed`) is forgotten once known, so the next command asks again.
  */
 const sharedVerdicts = new Map<string, Promise<ConfinementVerdict>>();
+/** The last verdict each sandbox reached — kept across a retry, until the retry answers. */
+const settledVerdicts = new Map<string, ConfinementVerdict>();
+const settleListeners = new Set<(verdict: ConfinementVerdict) => void>();
+
+const verdictKey = (sandbox: SandboxConfig, neverReadable: { agentDir?: string; configFile?: string }) =>
+  JSON.stringify([sandbox, neverReadable.agentDir ?? null, neverReadable.configFile ?? null]);
+
+/** Called whenever a shared verdict settles, a retry's included: what the interface shows follows it. */
+export function onShellVerdictSettled(listener: (verdict: ConfinementVerdict) => void): () => void {
+  settleListeners.add(listener);
+  return () => settleListeners.delete(listener);
+}
+
+/** The last verdict reached for this sandbox, or undefined while none has been. */
+export function settledShellVerdict(sandbox: SandboxConfig, neverReadable: { agentDir?: string; configFile?: string }): ConfinementVerdict | undefined {
+  return settledVerdicts.get(verdictKey(sandbox, neverReadable));
+}
 
 export function sharedShellVerdict(
   sandbox: SandboxConfig,
   neverReadable: { agentDir?: string; configFile?: string },
   verdict: typeof agentShellVerdict = agentShellVerdict,
 ): Promise<ConfinementVerdict> {
-  const key = JSON.stringify([sandbox, neverReadable.agentDir ?? null, neverReadable.configFile ?? null]);
+  const key = verdictKey(sandbox, neverReadable);
   const known = sharedVerdicts.get(key);
   if (known) return known;
   const pending = verdict(sandbox, neverReadable);
   sharedVerdicts.set(key, pending);
   void pending.then((result) => {
     if (result.state === "failed" && sharedVerdicts.get(key) === pending) sharedVerdicts.delete(key);
+    settledVerdicts.set(key, result);
+    for (const listener of settleListeners) listener(result);
   });
   return pending;
 }

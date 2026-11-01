@@ -101,6 +101,11 @@ export async function confineConfiguration(input: ConfineInput): Promise<Confine
     const verdict = await (input.verdict ?? agentShellVerdict)(sandbox, { agentDir: input.agentDir, configFile: file });
     const refusal = autoVerdictRefusal(verdict);
     if (refusal !== undefined) return unchanged(1, refusal);
+    // The canary can take a minute: someone — the user, a server persisting Settings — may have
+    // written the file meanwhile. Replacing it would lose that; say so, and let them run it again.
+    if (fs.readFileSync(file, "utf8") !== original) {
+      return unchanged(1, `It changed while ${label} was being checked, so nothing was written: run "pi-outpost config --confine" again.`);
+    }
     fs.renameSync(candidate, file);
     return {
       exitCode: 0,
