@@ -45,7 +45,7 @@ export function advice(messages: string[]): Map<string, Record<string, string>> 
     const detour = /^connector "([^"]+)".*fix its exit and entry on those sides \(((?:(?:exit|entry)[XY]=[\d.]+;?)+)\)/.exec(message);
     if (detour) put(detour[1]!, detour[2]!);
     // Shared run: `move its exit to exitY=0.25 (keeping exitX=1)`
-    const runEnd = /Fix "([^"]+)"(?: \([^)]*\))?: move its (?:exit|entry) to ((?:exit|entry)[XY]=[\d.]+) \(keeping ((?:exit|entry)[XY]=[\d.]+)\)/.exec(message);
+    const runEnd = /Fix "([^"]{1,200})"(?: \([^)]{0,80}\))?: move its (?:exit|entry) to ((?:exit|entry)[XY]=[\d.]+) \(keeping ((?:exit|entry)[XY]=[\d.]+)\)/.exec(message);
     if (runEnd) put(runEnd[1]!, `${runEnd[2]};${runEnd[3]}`);
     // Needless bend: drop the fixed ends
     const dropEnds = /^connector "([^"]+)".*Fix it: drop exitX\/exitY and entryX\/entryY to let draw\.io choose where/.exec(message);
@@ -67,7 +67,7 @@ export interface WaypointFix {
 /** All of a wire's waypoints replaced: `Fix "id": move its waypoints to (x, y), (x, y)`. */
 export function waypointSets(messages: string[]): Array<{ wire: string; points: Array<{ x: number; y: number }> }> {
   return messages.flatMap((message) => {
-    const match = /Fix "([^"]+)"(?: \([^)]*\))?: (?:move its waypoints to|add waypoints at) ((?:\(-?\d+, -?\d+\)(?:, )?)+)/.exec(message);
+    const match = /Fix "([^"]{1,200})"(?: \([^)]{0,80}\))?: (?:move its waypoints to|add waypoints at) ((?:\(-?\d+, -?\d+\)(?:, )?)+)/.exec(message);
     if (!match) return [];
     return [{ wire: match[1]!, points: [...match[2]!.matchAll(/\((-?\d+), (-?\d+)\)/g)].map((m) => ({ x: Number(m[1]), y: Number(m[2]) })) }];
   });
@@ -88,10 +88,10 @@ export function applyWaypointSets(xml: string, sets: Array<{ wire: string; point
 
 export function waypointFixes(messages: string[]): WaypointFix[] {
   return messages.flatMap((message): WaypointFix[] => {
-    const runWire = /Fix "([^"]+)"(?: \([^)]*\))?: move its waypoint at/.exec(message)?.[1];
+    const runWire = /Fix "([^"]{1,200})"(?: \([^)]{0,80}\))?: move its waypoint at/.exec(message)?.[1];
     const wire = runWire ?? /^connector "([^"]+)"/.exec(message)?.[1];
     if (wire === undefined) return [];
-    const move = /(?:Fix it|Fix "[^"]+"(?: \([^)]*\))?): move its waypoint at \((-?\d+), (-?\d+)\) to \((-?\d+), (-?\d+)\)/.exec(message);
+    const move = /(?:Fix it|Fix "[^"]{1,200}"(?: \([^)]{0,80}\))?): move its waypoint at \((-?\d+), (-?\d+)\) to \((-?\d+), (-?\d+)\)/.exec(message);
     if (move) return [{ wire, from: { x: Number(move[1]), y: Number(move[2]) }, to: { x: Number(move[3]), y: Number(move[4]) } }];
     const remove = /Fix it: remove its waypoint at \((-?\d+), (-?\d+)\)/.exec(message);
     if (remove) return [{ wire, from: { x: Number(remove[1]), y: Number(remove[2]) }, to: null }];
@@ -148,7 +148,7 @@ function applyAddedArray(xml: string, wire: string, list: string): string {
 /** Waypoints to add to a wire that has none: `Fix "id": add a waypoint at (x, y)`. */
 export function addedWaypoints(messages: string[]): Array<{ wire: string; at: { x: number; y: number } }> {
   return messages.flatMap((message) => {
-    const match = /Fix "([^"]+)"(?: \([^)]*\))?: add a waypoint at \((-?\d+), (-?\d+)\)/.exec(message);
+    const match = /Fix "([^"]{1,200})"(?: \([^)]{0,80}\))?: add a waypoint at \((-?\d+), (-?\d+)\)/.exec(message);
     return match ? [{ wire: match[1]!, at: { x: Number(match[2]), y: Number(match[3]) } }] : [];
   });
 }
@@ -166,7 +166,7 @@ export function applyAddedWaypoints(xml: string, adds: Array<{ wire: string; at:
 /** Shapes a report says to move: `move "id" (label) by +9 on y`. */
 export function shapeMoves(messages: string[]): Array<{ shape: string; axis: "x" | "y"; by: number }> {
   return messages.flatMap((message) => {
-    const match = /Fix it: line up the shapes .*: move "([^"]+)"(?: \([^)]*\))? by ([+-]?\d+) on (x|y)/.exec(message);
+    const match = /Fix it: line up the shapes it joins, whose middles are \d+ units apart: move "([^"]{1,200})"(?: \([^)]{0,80}\))? by ([+-]?\d+) on (x|y)/.exec(message);
     return match ? [{ shape: match[1]!, by: Number(match[2]), axis: match[3] as "x" | "y" }] : [];
   });
 }

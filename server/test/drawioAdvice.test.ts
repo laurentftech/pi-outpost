@@ -9,7 +9,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, test } from "node:test";
 import { checkDrawio } from "../src/drawio.ts";
-import { applyLabelMoves, applyWaypointFixes, applyWaypointSets, followAdvice, labelMoves, stripWaypoints } from "@pi-outpost/shared/drawio/follow-advice";
+import { addedWaypoints, applyLabelMoves, applyWaypointFixes, applyWaypointSets, followAdvice, labelMoves, shapeMoves, stripWaypoints, waypointFixes, waypointSets } from "@pi-outpost/shared/drawio/follow-advice";
 
 const FIXTURES = path.join(import.meta.dirname, "fixtures");
 const files = [
@@ -91,5 +91,22 @@ describe("applying advice to one wire leaves the next one alone", () => {
     // A wire with no waypoints has none to move or strip: the next wire's are not taken for its own
     assert.equal(applyWaypointFixes(xml, [{ wire: "a", from: { x: 230, y: 147 }, to: null }]), xml);
     assert.equal(stripWaypoints(xml, new Set(["a"])), xml);
+  });
+
+  test("a message built to make the parsing backtrack is read in linear time", () => {
+    // CodeQL js/polynomial-redos: an unbounded label or id after each "Fix \"" rescanned the rest of
+    // the message from every one of them. A wire id comes from the diagram, so the message is input.
+    const pumps = ['Fix "!" ('.repeat(20_000), `Fix it: line up the shapes ${": move \"!\" (".repeat(20_000)}`];
+    const started = performance.now();
+    for (const message of pumps) {
+      assert.deepEqual(waypointSets([message]), []);
+      assert.deepEqual(waypointFixes([message]), []);
+      assert.deepEqual(addedWaypoints([message]), []);
+      assert.deepEqual(shapeMoves([message]), []);
+    }
+    assert.ok(performance.now() - started < 2_000, `took ${Math.round(performance.now() - started)} ms`);
+    // The messages the check really writes are still read
+    assert.deepEqual(shapeMoves(['connector "w" x. Fix it: line up the shapes it joins, whose middles are 9 units apart: move "b" (Box) by +9 on y']), [{ shape: "b", by: 9, axis: "y" }]);
+    assert.deepEqual(addedWaypoints(['Fix "w" (label): add a waypoint at (10, -20)']), [{ wire: "w", at: { x: 10, y: -20 } }]);
   });
 });
