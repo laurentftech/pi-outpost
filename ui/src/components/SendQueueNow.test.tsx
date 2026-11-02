@@ -21,7 +21,7 @@ describe("SendQueueNow", () => {
 
   it("names a single prompt as such", () => {
     setup({ count: 1 });
-    expect(screen.getByRole("button", { name: "send it now" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "send now" })).toBeInTheDocument();
   });
 
   // openlore: scenario=SendingNowAsksFirstWhileATurnRuns spec=queued-prompts
@@ -44,6 +44,25 @@ describe("SendQueueNow", () => {
     fireEvent.click(screen.getByRole("button", { name: "send all 2 now" }));
     fireEvent.click(screen.getByRole("button", { name: "stop and send" }));
     expect(onSend).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("group", { name: /confirm/i })).not.toBeInTheDocument();
+  });
+
+  it("says the prompts are queued, as a quiet line with the link beside it", () => {
+    setup();
+    expect(screen.getByText("queued", { exact: true })).toBeInTheDocument();
+    // A text link, not a framed button.
+    expect(screen.getByRole("button", { name: "send all 2 now" }).className).not.toMatch(/\bborder\b/);
+  });
+
+  it("still says queued, with nothing to click, when the queue cannot be sent", () => {
+    const { rerenderWith } = setup({ isStreaming: true });
+    fireEvent.click(screen.getByRole("button", { name: "send all 2 now" }));
+    rerenderWith({ canSend: false });
+    expect(screen.queryByRole("group", { name: /confirm/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button")).not.toBeInTheDocument();
+    expect(screen.getByText("queued", { exact: true })).toBeInTheDocument();
+    // Sendable again mid-turn: the old confirmation does not come back on its own.
+    rerenderWith({ canSend: true });
     expect(screen.queryByRole("group", { name: /confirm/i })).not.toBeInTheDocument();
   });
 

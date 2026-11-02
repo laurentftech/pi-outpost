@@ -1111,7 +1111,7 @@ describe("App — model bar and tree", () => {
   // openlore: scenario=TheQueueIsSentAfterAStop spec=queued-prompts
   it("offers to send the queue left by a stop, with no message to type", () => {
     const api = mount({ isStreaming: false, queue: [{ id: "q1", text: "pending", kind: "steer", editable: true }] });
-    fireEvent.click(screen.getByRole("button", { name: "send it now" }));
+    fireEvent.click(screen.getByRole("button", { name: "send now" }));
     expect(api.sendQueueNow).toHaveBeenCalledTimes(1);
   });
 
@@ -1119,6 +1119,8 @@ describe("App — model bar and tree", () => {
   it("offers no action on a queue the server cannot rewrite", () => {
     mount({ isStreaming: true, queue: [{ id: "q1", text: "from an extension", kind: "followUp", editable: false }] });
     expect(screen.queryByRole("button", { name: /now$/ })).not.toBeInTheDocument();
+    // Still said to be waiting: the "queued" line stays, only its link goes.
+    expect(screen.getByText("queued", { exact: true })).toBeInTheDocument();
     expect(screen.getByText("from an extension")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Edit this queued message" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Remove this queued message" })).not.toBeInTheDocument();
