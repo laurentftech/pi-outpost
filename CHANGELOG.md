@@ -33,6 +33,10 @@ Releases before 0.41.0 are described on
 
 ### Fixed
 
+- **Messages sent in quick succession reach the agent in the order you sent
+  them.** A message naming files with `@` could be overtaken by a plain one
+  sent right after it.
+  ([#401](https://github.com/laurentftech/pi-outpost/pull/401))
 - **A message queued before a stop no longer vanishes.** It disappeared from the
   screen while the agent kept it and sent it with your next message; it now
   stays visible, and can be changed, removed or sent.

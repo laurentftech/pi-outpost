@@ -4392,18 +4392,22 @@ async function absolutizeMentions(workspace: Workspace, text: string): Promise<s
 }
 
 async function handlePrompt(workspace: Workspace, text: string, images?: WireImage[]): Promise<void> {
-  // The last word before a turn: whatever path put the session on a model, none runs on one
-  // the deployment excluded.
-  if (!(await keepToAllowedModel(workspace))) {
-    broadcast(workspace, { type: "error", message: `No model allowed by "allowedModels" can answer — check its credentials` });
-    return;
-  }
-  const source = await promptSource(workspace, text, images);
-  // Held until the runtime has answered, not until the turn ends: a prompt sent during a
-  // turn must not land in the middle of an edit's take-back and re-queue.
-  const release = await lockQueue(workspace);
+  // Claimed before the first await, so prompts reach the agent in the order they arrived:
+  // claimed after the preparation below, a prompt naming a file — whose mentions take a
+  // stat each — was overtaken by a plain one sent right behind it. Held until the runtime
+  // has answered, not until the turn ends, so that a prompt sent during a turn does not
+  // land in the middle of an edit's take-back and re-queue either.
+  const locked = lockQueue(workspace);
   let attempt: PromptAttempt;
+  const release = await locked;
   try {
+    // The last word before a turn: whatever path put the session on a model, none runs on
+    // one the deployment excluded.
+    if (!(await keepToAllowedModel(workspace))) {
+      broadcast(workspace, { type: "error", message: `No model allowed by "allowedModels" can answer — check its credentials` });
+      return;
+    }
+    const source = await promptSource(workspace, text, images);
     attempt = promptOnce(workspace, source);
     await attempt.accepted;
   } finally {
