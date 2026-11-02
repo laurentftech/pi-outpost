@@ -11,10 +11,38 @@ import { createCustomMessage } from "../../node_modules/@earendil-works/pi-codin
 import { ansiLinesToHtml } from "../../node_modules/@earendil-works/pi-coding-agent/dist/core/export-html/ansi-to-html.js";
 import { createToolHtmlRenderer } from "../../node_modules/@earendil-works/pi-coding-agent/dist/core/export-html/tool-renderer.js";
 import { getThemeByName } from "../../node_modules/@earendil-works/pi-coding-agent/dist/modes/interactive/theme/theme.js";
-import type { MessageRenderer, ToolRenderers } from "@earendil-works/pi-coding-agent";
+import type { KeybindingHints, MessageRenderer, ToolRenderers } from "@earendil-works/pi-coding-agent";
 import type { Theme, ThemeColor } from "@earendil-works/pi-coding-agent";
 
 const RENDER_WIDTH = 100;
+
+/**
+ * The keybinding hints pi hands its renderers (`ctx.keyText`, `ctx.keyHint`). A server
+ * has no keybindings — the widget expands a card with a click, not a key — so a hint
+ * such as `keyHint("app.tools.expand", "to expand")` renders as nothing rather than a
+ * description with no key in front of it. pi's own `keyHint` would also throw here: it
+ * styles through the global theme, which the server never initialises.
+ */
+const NO_KEYBINDINGS: KeybindingHints = {
+  keyText: () => "",
+  keyHint: () => "",
+};
+
+/**
+ * pi's export renderer (`createToolHtmlRenderer`) hands tool renderers its own
+ * `keyText`/`keyHint`, the throwing ones described above: substitute ours.
+ */
+function withServerKeybindings(renderers: ToolRenderers | undefined): ToolRenderers | undefined {
+  if (!renderers) return renderers;
+  const { renderCall, renderResult } = renderers;
+  return {
+    ...renderers,
+    ...(renderCall ? { renderCall: (args, theme, context) => renderCall(args, theme, { ...context, ...NO_KEYBINDINGS }) } : {}),
+    ...(renderResult
+      ? { renderResult: (result, options, theme, context) => renderResult(result, options, theme, { ...context, ...NO_KEYBINDINGS }) }
+      : {}),
+  };
+}
 
 /**
  * The theme's panel backgrounds: the boxes pi paints behind a tool card or a custom
@@ -140,7 +168,7 @@ export class ExtensionRenderer {
     this.toolRenderer =
       next && this.theme
         ? createToolHtmlRenderer({
-            getToolRenderers: (name: string) => next.getToolRenderers(name),
+            getToolRenderers: (name: string) => withServerKeybindings(next.getToolRenderers(name)),
             theme: this.theme,
             cwd: next.cwd,
             width: RENDER_WIDTH,
@@ -202,7 +230,7 @@ export class ExtensionRenderer {
         toolCallId, args: this.callArgs.get(toolCallId), cwd: this.deps!.cwd, state: {},
         invalidate() {}, lastComponent: undefined, executionStarted: false, argsComplete: true,
         isPartial: true, expanded, showImages: false, isError: false,
-        durationMs: undefined, outputPad: 1,
+        durationMs: undefined, outputPad: 1, ...NO_KEYBINDINGS,
       });
       return ansiLinesToHtml(component.render(RENDER_WIDTH));
     };
@@ -227,8 +255,8 @@ export class ExtensionRenderer {
         details,
         new Date().toISOString(),
       );
-      const collapsed = this.forTheWidget(componentToHtml(msgRenderer(message, { expanded: false, outputPad: 0 }, this.theme) as RenderComponent));
-      const expanded = this.forTheWidget(componentToHtml(msgRenderer(message, { expanded: true, outputPad: 0 }, this.theme) as RenderComponent));
+      const collapsed = this.forTheWidget(componentToHtml(msgRenderer(message, { expanded: false, outputPad: 0, ...NO_KEYBINDINGS }, this.theme) as RenderComponent));
+      const expanded = this.forTheWidget(componentToHtml(msgRenderer(message, { expanded: true, outputPad: 0, ...NO_KEYBINDINGS }, this.theme) as RenderComponent));
       if (!expanded) return undefined;
       return {
         expanded,
