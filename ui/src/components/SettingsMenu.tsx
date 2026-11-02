@@ -2,7 +2,7 @@ import { Credits } from "./Credits";
 import { useEffect, useRef, useState } from "react";
 import type { PiPackageInfo } from "@pi-outpost/shared";
 import type { AgentState } from "../useAgent";
-import { PiPackages } from "./PiPackages";
+import { PiPackages, type PiPackageEdits } from "./PiPackages";
 import { RestartNeeded } from "./RestartNeeded";
 import { useClickOutside } from "../util/clickOutside";
 import { ServerPathPicker } from "./ServerPathPicker";
@@ -76,6 +76,8 @@ interface SettingsMenuProps {
   /** The npm pi packages the agent loads, and the update and restart they offer. */
   piPackages?: PiPackageInfo[] | null;
   piPackageUpdate?: AgentState["piPackageUpdate"];
+  /** Adding and removing packages; absent, the list offers updates only. */
+  piPackageEdits?: PiPackageEdits;
   /** The standalone interface may restart the server; a widget may not. */
   canRestartServer?: boolean;
   serverRestarting?: boolean;
@@ -150,6 +152,7 @@ export function SettingsMenu({
   extensionLock,
   piPackages = null,
   piPackageUpdate = null,
+  piPackageEdits,
   canRestartServer = false,
   serverRestarting = false,
   onCheckPiPackages,
@@ -496,6 +499,7 @@ export function SettingsMenu({
                 locked={extensionLock}
                 onCheck={() => onCheckPiPackages?.()}
                 onUpdate={(source) => onUpdatePiPackage?.(source)}
+                {...(piPackageEdits ? { edits: piPackageEdits } : {})}
               />
               <RestartNeeded reasons={restartNeeded} canRestart={canRestartServer} restarting={serverRestarting} onRestart={() => onRestartServer?.()} />
             </section>

@@ -241,7 +241,8 @@
 - First run in the browser asks for credentials instead of failing cryptically: sign in when
   the provider supports it, paste an API key, or declare your own OpenAI-compatible endpoint
 - [Settings from the browser](configuration.md#settings-from-the-browser): sandbox permissions and roots,
-  skill and extension directories — persisted to your configuration file, no restart
+  skill and extension directories — persisted to your configuration file, no restart; [pi
+  packages](deployment.md#staying-up-to-date) added, updated and removed from Settings
 - A sandbox that decides what the agent can read, write and run, per project
 - [Installable as an app](deployment.md#installing-it-as-an-app), and downloadable as a single executable
   with no Node.js needed

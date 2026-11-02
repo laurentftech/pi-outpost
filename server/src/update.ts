@@ -227,13 +227,27 @@ export function npmPackageName(name: string): string {
   return name;
 }
 
+/**
+ * An exact version, or the `latest` dist-tag. The only other piece of an `npm view`
+ * command line a user controls, so it is held to the same rule as the name: no range,
+ * no tag, nothing cmd.exe would read as syntax.
+ */
+export function npmExactVersion(version: string): string {
+  if (version === "latest") return version;
+  if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/.test(version) || version.length > 64) {
+    throw new Error(`"${version}" is not an exact version`);
+  }
+  return version;
+}
+
 export function npmViewInvocation(
   registry?: string,
   platform: NodeJS.Platform = process.platform,
   npmExecPath = process.env.npm_execpath,
   packageName: string = PACKAGE_NAME,
+  version = "latest",
 ): NpmViewInvocation {
-  const viewArgs = ["view", `${npmPackageName(packageName)}@latest`, "version", "--json"];
+  const viewArgs = ["view", `${npmPackageName(packageName)}@${npmExactVersion(version)}`, "version", "--json"];
   if (platform === "win32" && !npmExecPath?.trim()) {
     return {
       command: process.env.ComSpec?.trim() || "cmd.exe",
@@ -337,6 +351,8 @@ export type VersionLookup = (
     registry?: string;
     /** The package to look up; pi-outpost itself when absent. */
     packageName?: string;
+    /** An exact version to look for instead of the `latest` dist-tag. */
+    version?: string;
     /** True only when the lookup must not keep the process alive. */
     background: boolean;
   },
@@ -376,7 +392,7 @@ export function condenseNpmError(stderr: string): string {
 
 const npmViewLatestVersion: VersionLookup = async (options) => {
   const { execFile } = process.getBuiltinModule("node:child_process");
-  const { command, args, env } = npmViewInvocation(options.registry, process.platform, process.env.npm_execpath, options.packageName);
+  const { command, args, env } = npmViewInvocation(options.registry, process.platform, process.env.npm_execpath, options.packageName, options.version);
 
   return await new Promise<unknown>((resolve, reject) => {
     const child = execFile(
@@ -397,6 +413,11 @@ const npmViewLatestVersion: VersionLookup = async (options) => {
             return;
           }
           reject(new Error(condenseNpmError(stderr) || error.message));
+          return;
+        }
+        // npm prints nothing for a version it does not have: not an error, no version.
+        if (stdout.trim() === "") {
+          resolve(undefined);
           return;
         }
         try {
@@ -444,7 +465,7 @@ const directRegistryLatestVersion: VersionLookup = async (options) => {
   const base = configured?.trim() || PUBLIC_REGISTRY;
   // A scoped name keeps its `@` and encodes its `/`: `@scope%2Fname`, as registries expect.
   const name = npmPackageName(options.packageName ?? PACKAGE_NAME).replaceAll("/", "%2F");
-  const target = new URL(`${base.replace(/\/+$/, "")}/${name}/latest`);
+  const target = new URL(`${base.replace(/\/+$/, "")}/${name}/${npmExactVersion(options.version ?? "latest")}`);
   const transport = target.protocol === "http:"
     ? await import("node:http")
     : await import("node:https");
@@ -478,7 +499,7 @@ const directRegistryLatestVersion: VersionLookup = async (options) => {
   });
 };
 
-const defaultLatestVersionLookup: VersionLookup = async (options) => {
+export const defaultLatestVersionLookup: VersionLookup = async (options) => {
   try {
     return await npmViewLatestVersion(options);
   } catch (error) {
@@ -543,6 +564,48 @@ export async function fetchLatestVersion(
         ? error.message
         : String(error);
     return { status: "failed", running, reason };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** What the registry says about one package (and version), for installing it. */
+export type PublishedVersion =
+  | { status: "found"; version: string }
+  | { status: "missing" }
+  | { status: "failed"; reason: string };
+
+/**
+ * The version installing `packageName` would get — the `latest` dist-tag, or `version`
+ * when one is given — asked through the same npm configuration as the update check.
+ * A package or version the registry does not have is `missing`, kept apart from a
+ * registry that could not be asked: only the first is the user's typo.
+ */
+export async function fetchPublishedVersion(
+  packageName: string,
+  version: string | undefined,
+  options: { lookupImpl?: VersionLookup; timeoutMs?: number; registry?: string } = {},
+): Promise<PublishedVersion> {
+  const lookup = options.lookupImpl ?? defaultLatestVersionLookup;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), options.timeoutMs ?? REGISTRY_TIMEOUT_MS);
+  try {
+    const answer: unknown = await lookup({
+      signal: controller.signal,
+      background: false,
+      packageName,
+      ...(version !== undefined ? { version } : {}),
+      ...(options.registry ? { registry: options.registry } : {}),
+    });
+    if (answer === undefined || answer === null || answer === "") return { status: "missing" };
+    if (typeof answer !== "string") return { status: "failed", reason: "npm answered without a version" };
+    return { status: "found", version: answer };
+  } catch (error) {
+    if (controller.signal.aborted) return { status: "failed", reason: `no answer within ${options.timeoutMs ?? REGISTRY_TIMEOUT_MS} ms` };
+    const reason = error instanceof Error ? error.message : String(error);
+    // npm's E404, or the direct fallback's 404: the registry answered, and it has no such thing.
+    if (/\bE404\b|\b404\b/.test(reason)) return { status: "missing" };
+    return { status: "failed", reason };
   } finally {
     clearTimeout(timer);
   }

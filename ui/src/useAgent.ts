@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { randomId } from "./util/randomId";
 import type { LoginEvent, LoginPrompt, OutpostChanges, OutpostUpdateNotice, PiPackageInfo, SandboxGrantDecision, SandboxGrantState, SessionSnapshot } from "@pi-outpost/shared";
+type PiPackageScope = PiPackageInfo["scope"];
 import type { ProjectAppearance, StructuredConformance } from "@pi-outpost/shared/structured-exchange/profile";
 import { workspaceKey } from "./util/workspaceKey";
 import { bootstrapToken, storedToken, storeToken } from "./authToken";
@@ -380,6 +381,17 @@ export interface AgentState {
     | { requestId: string; source: string; status: "pending" }
     | { requestId: string; source: string; status: "installed" | "failed" | "refused"; message: string }
     | null;
+  /** The add form's registry lookup in flight, or its answer. */
+  piPackageLookup:
+    | { requestId: string; name: string; version?: string; scope: PiPackageScope; status: "pending" }
+    | { requestId: string; name: string; version?: string; scope: PiPackageScope; status: "found"; resolved: string; message: string }
+    | { requestId: string; name: string; version?: string; scope: PiPackageScope; status: "refused"; message: string }
+    | null;
+  /** The one install, removal or restore in flight, or the last one's answer; `key` is `scope:name`. */
+  piPackageChange:
+    | { requestId: string; key: string; action: "install" | "remove" | "restore"; status: "pending" }
+    | { requestId: string; key: string; action: "install" | "remove" | "restore"; status: "installed" | "removed" | "restored" | "failed" | "refused"; message: string }
+    | null;
   /** The server said it is restarting; cleared by the next snapshot. */
   serverRestarting: boolean;
   /** What is installed and waits on a restart to run, by name. */
@@ -525,6 +537,8 @@ const initialState: AgentState = {
   outpostChanges: null,
   piPackages: null,
   piPackageUpdate: null,
+  piPackageLookup: null,
+  piPackageChange: null,
   serverRestarting: false,
   restartNeeded: [],
   outcome: null,
@@ -577,6 +591,9 @@ type Action =
   | { type: "connected" }
   | { type: "workspace_switching" }
   | { type: "pi_package_update_started"; requestId: string; source: string }
+  | { type: "pi_package_lookup_started"; requestId: string; name: string; version?: string; scope: PiPackageScope }
+  | { type: "pi_package_lookup_closed" }
+  | { type: "pi_package_change_started"; requestId: string; key: string; action: "install" | "remove" | "restore" }
   | { type: "disconnected" }
   | { type: "auth_required" }
   | { type: "auth_retrying" }
@@ -707,8 +724,12 @@ function applySnapshot(state: AgentState, message: ServerMessage & { sessionId: 
     agentStarting: message.agentStarting === true,
     outpostUpdate: message.outpostUpdate ?? state.outpostUpdate,
     outpostChanges: message.outpostChanges ?? state.outpostChanges,
-    // Absent from a snapshot the server built before listing: keep what is known.
-    piPackages: message.piPackages ?? state.piPackages,
+    // Absent from a snapshot the server built before listing: keep what is known — of
+    // this project. Another project's list, form and answers are not this one's.
+    piPackages: message.piPackages ?? (message.type === "workspace_switched" || message.type === "workspace_starting" ? null : state.piPackages),
+    ...(message.type === "workspace_switched" || message.type === "workspace_starting"
+      ? { piPackageLookup: null, piPackageChange: null, piPackageUpdate: null }
+      : {}),
     serverRestarting: false,
     restartNeeded: message.restartNeeded ?? [],
     connected: true,
@@ -806,6 +827,15 @@ function reduce(state: AgentState, action: Action): AgentState {
   if (action.type === "workspace_switching") return { ...state, switching: true };
   if (action.type === "pi_package_update_started") {
     return { ...state, piPackageUpdate: { requestId: action.requestId, source: action.source, status: "pending" } };
+  }
+  if (action.type === "pi_package_lookup_started") {
+    const { type: _type, ...lookup } = action;
+    return { ...state, piPackageLookup: { ...lookup, status: "pending" } };
+  }
+  if (action.type === "pi_package_lookup_closed") return { ...state, piPackageLookup: null };
+  if (action.type === "pi_package_change_started") {
+    const { type: _type, ...change } = action;
+    return { ...state, piPackageChange: { ...change, status: "pending" } };
   }
   if (action.type === "auth_required") return { ...state, connected: false, authRequired: true };
   if (action.type === "auth_retrying") return { ...state, authRequired: false };
@@ -1420,11 +1450,33 @@ function reduce(state: AgentState, action: Action): AgentState {
     case "outpost_changes":
       return { ...state, outpostChanges: message.changes };
     case "pi_packages":
-      return { ...state, piPackages: message.packages };
+      // A settled answer (a refusal, a failure) was about the list before this one; the
+      // new list now says what is true, and an old "already being changed" would not be.
+      return {
+        ...state,
+        piPackages: message.packages,
+        ...(state.piPackageChange && state.piPackageChange.status !== "pending" ? { piPackageChange: null } : {}),
+      };
     case "pi_package_update_result": {
       const pending = state.piPackageUpdate;
       if (pending?.requestId !== message.requestId) return state;
       return { ...state, piPackageUpdate: { requestId: message.requestId, source: pending.source, status: message.outcome, message: message.message } };
+    }
+    case "pi_package_lookup_result": {
+      // Only the lookup still asked: one the user has since closed or replaced is stale.
+      const pending = state.piPackageLookup;
+      if (pending?.requestId !== message.requestId) return state;
+      const { status: _status, ...asked } = pending;
+      return message.outcome === "found" && message.version !== undefined
+        ? { ...state, piPackageLookup: { ...asked, status: "found", resolved: message.version, message: message.message } }
+        : { ...state, piPackageLookup: { ...asked, status: "refused", message: message.message } };
+    }
+    case "pi_package_change_result": {
+      const pending = state.piPackageChange;
+      if (pending?.requestId !== message.requestId) return state;
+      const changed = { ...state, piPackageChange: { requestId: pending.requestId, key: pending.key, action: pending.action, status: message.outcome, message: message.message } };
+      // Installed: the add form has done its job.
+      return message.outcome === "installed" ? { ...changed, piPackageLookup: null } : changed;
     }
     case "restart_needed":
       return { ...state, restartNeeded: message.reasons };
@@ -2623,6 +2675,32 @@ export function useAgent(serverUrl = "", explicitToken?: string, embedded = fals
       const requestId = `pkg:${randomId()}`;
       dispatch({ type: "pi_package_update_started", requestId, source });
       sendMessage({ type: "update_pi_package", source, requestId });
+    },
+    /** Ask what adding a package would install. Installs nothing. */
+    lookupPiPackage: (name: string, version: string | undefined, scope: PiPackageScope) => {
+      const requestId = `pkg:${randomId()}`;
+      dispatch({ type: "pi_package_lookup_started", requestId, name, scope, ...(version !== undefined ? { version } : {}) });
+      sendMessage({ type: "lookup_pi_package", name, scope, requestId, ...(version !== undefined ? { version } : {}) });
+    },
+    /** Close the add form's lookup: a late answer is then ignored. */
+    closePiPackageLookup: () => dispatch({ type: "pi_package_lookup_closed" }),
+    /** Install a looked-up package. The caller has had the user confirm. */
+    installPiPackage: (name: string, version: string | undefined, scope: PiPackageScope, confirmed: string) => {
+      const requestId = `pkg:${randomId()}`;
+      dispatch({ type: "pi_package_change_started", requestId, key: `${scope}:${name}`, action: "install" });
+      sendMessage({ type: "install_pi_package", name, scope, confirmed, requestId, ...(version !== undefined ? { version } : {}) });
+    },
+    /** Remove a configured package. The caller has had the user confirm. */
+    removePiPackage: (entry: PiPackageInfo) => {
+      const requestId = `pkg:${randomId()}`;
+      dispatch({ type: "pi_package_change_started", requestId, key: `${entry.scope}:${entry.name}`, action: "remove" });
+      sendMessage({ type: "remove_pi_package", source: entry.source, scope: entry.scope, requestId });
+    },
+    /** Put back a package removed since the server started. */
+    restorePiPackage: (entry: PiPackageInfo) => {
+      const requestId = `pkg:${randomId()}`;
+      dispatch({ type: "pi_package_change_started", requestId, key: `${entry.scope}:${entry.name}`, action: "restore" });
+      sendMessage({ type: "restore_pi_package", name: entry.name, scope: entry.scope, requestId });
     },
     /** Restart pi-outpost to load updated packages. The caller has had the user confirm. */
     restartServer: () => sendMessage({ type: "restart_server" }),

@@ -13,7 +13,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { DefaultPackageManager, SettingsManager } from "@earendil-works/pi-coding-agent";
 import type { PiPackageInfo } from "@pi-outpost/shared";
-import { CHECK_INTERVAL_MS, type VersionCheck } from "./update.ts";
+import { CHECK_INTERVAL_MS, npmExactVersion, npmPackageName, type PublishedVersion, type VersionCheck } from "./update.ts";
 
 /** An `npm:` source's package name and, when it names one, the version it is pinned to. */
 export function parseNpmSource(source: string): { name: string; pinned?: string } | undefined {
@@ -44,6 +44,10 @@ const managers = new Map<string, { manager: DefaultPackageManager; settings: Set
  * read again before each use, since `pi install` may have changed them.
  */
 export async function packageManagerFor(cwd: string, agentDir: string): Promise<DefaultPackageManager> {
+  return (await keptManager(cwd, agentDir)).manager;
+}
+
+async function keptManager(cwd: string, agentDir: string): Promise<{ manager: DefaultPackageManager; settings: SettingsManager }> {
   const key = `${agentDir}\0${cwd}`;
   let kept = managers.get(key);
   if (!kept) {
@@ -53,7 +57,7 @@ export async function packageManagerFor(cwd: string, agentDir: string): Promise<
   } else {
     await kept.settings.reload();
   }
-  return kept.manager;
+  return kept;
 }
 
 /**
@@ -160,6 +164,179 @@ export async function installNewerPiPackage(cwd: string, agentDir: string, entry
     return { outcome: "failed", message: `${entry.name} is still at ${entry.installed ?? "no version"}: the package manager installed nothing${offline}` };
   }
   return { outcome: "installed", installed, message: `${entry.name} ${installed} is installed` };
+}
+
+// --- adding and removing from Settings ---------------------------------------------
+
+export type PiPackageScope = PiPackageInfo["scope"];
+
+export type PiPackageLookup =
+  | { outcome: "found"; version: string; message: string }
+  | { outcome: "refused"; message: string };
+
+const where = (scope: PiPackageScope) => (scope === "user" ? "the agent's settings" : "this project's settings");
+
+/**
+ * What installing `name` (at `version`) into `scope` would install, or why it will not.
+ *
+ * Refused before the registry is asked: a name or version that is not one (both reach
+ * an npm command line), a package already in that scope's settings, and one removed
+ * there since the server started — it still runs, and restoring it is the way back.
+ * Nothing is installed.
+ */
+export async function lookupPiPackage(
+  request: { name: string; version?: string; scope: PiPackageScope },
+  listed: readonly PiPackageInfo[],
+  published: (name: string, version: string | undefined) => Promise<PublishedVersion>,
+): Promise<PiPackageLookup> {
+  const name = request.name.trim().replace(/^npm:/, "");
+  try {
+    npmPackageName(name);
+  } catch {
+    return { outcome: "refused", message: `"${name}" is not an npm package name` };
+  }
+  if (request.version !== undefined) {
+    try {
+      // `latest` is a tag, not a version: pinning to it would pin nothing.
+      if (request.version === "latest") throw new Error("a tag");
+      npmExactVersion(request.version);
+    } catch {
+      return { outcome: "refused", message: `"${request.version}" is not an exact version, such as 1.2.3` };
+    }
+  }
+  const known = listed.find((entry) => entry.name === name && entry.scope === request.scope);
+  if (known?.removed) {
+    return { outcome: "refused", message: `${name} was removed and still runs until pi-outpost restarts — undo the removal instead` };
+  }
+  if (known) return { outcome: "refused", message: `${name} is already in ${where(request.scope)}` };
+  const answer = await published(name, request.version);
+  if (answer.status === "missing") {
+    return {
+      outcome: "refused",
+      message: request.version === undefined ? `${name} was not found on the registry` : `${name} ${request.version} was not found on the registry`,
+    };
+  }
+  if (answer.status === "failed") return { outcome: "refused", message: `${name} could not be looked up: ${answer.reason}` };
+  return { outcome: "found", version: answer.version, message: `${name} ${answer.version}` };
+}
+
+export type PiPackageChange =
+  | { outcome: "installed" | "removed" | "restored"; message: string }
+  | { outcome: "failed"; message: string };
+
+const failure = (error: unknown) => (error instanceof Error ? error.message : String(error));
+
+/** Write what the settings manager queued, and say what it could not write. */
+async function flushed(settings: SettingsManager): Promise<string | undefined> {
+  await settings.flush();
+  const errors = settings.drainErrors();
+  return errors.length > 0 ? errors.map(({ error }) => error.message).join("; ") : undefined;
+}
+
+/**
+ * Install `name` into `scope` and record it there — pinned when `version` is given.
+ *
+ * `exact` is the version the user confirmed, and the one installed: an unpinned
+ * package is recorded unpinned, but what lands on disk is never a `latest` published
+ * after the confirmation. Judged by the listing afterwards, like an update: a package
+ * manager that returns without installing leaves no installed version, and that is a
+ * failure. The settings entry is taken out again then, so a failed install is not
+ * configured.
+ */
+export async function installPiPackage(
+  cwd: string,
+  agentDir: string,
+  request: { name: string; version?: string; scope: PiPackageScope; exact?: string },
+): Promise<PiPackageChange> {
+  const source = request.version === undefined ? `npm:${request.name}` : `npm:${request.name}@${request.version}`;
+  const exact = request.exact ?? request.version;
+  const local = request.scope === "project";
+  const { manager, settings } = await keptManager(cwd, agentDir);
+  try {
+    if (exact === undefined) {
+      await manager.installAndPersist(source, { local });
+    } else {
+      await manager.install(`npm:${request.name}@${npmExactVersion(exact)}`, { local });
+      manager.addSourceToSettings(source, { local });
+    }
+    const writeError = await flushed(settings);
+    if (writeError) throw new Error(`the settings could not be written: ${writeError}`);
+  } catch (error) {
+    await undoSettingsEntry(cwd, agentDir, source, local);
+    return { outcome: "failed", message: `${request.name} was not installed: ${failure(error)}` };
+  }
+  const entry = (await listPiPackages(cwd, agentDir)).find((candidate) => candidate.name === request.name && candidate.scope === request.scope);
+  if (entry?.installed === undefined) {
+    await undoSettingsEntry(cwd, agentDir, source, local);
+    const offline = process.env.PI_OFFLINE ? " — pi's offline mode (PI_OFFLINE) is on" : "";
+    return { outcome: "failed", message: `${request.name} was not installed: the package manager installed nothing${offline}` };
+  }
+  if (exact !== undefined && entry.installed !== exact) {
+    await undoSettingsEntry(cwd, agentDir, source, local);
+    return { outcome: "failed", message: `${request.name} was not installed: ${entry.installed} is on disk, not the ${exact} confirmed` };
+  }
+  return { outcome: "installed", message: `${request.name} ${entry.installed} is installed in ${where(request.scope)} — restart pi-outpost to use it` };
+}
+
+async function undoSettingsEntry(cwd: string, agentDir: string, source: string, local: boolean): Promise<void> {
+  try {
+    const { manager, settings } = await keptManager(cwd, agentDir);
+    if (manager.removeSourceFromSettings(source, { local })) await flushed(settings);
+  } catch {
+    // Best effort: the listing the caller sends next shows what is configured.
+  }
+}
+
+/**
+ * Take a configured package out of its settings and uninstall it. A running server
+ * keeps its code loaded, so the caller lists it as removed until a restart.
+ */
+export async function removePiPackage(cwd: string, agentDir: string, entry: PiPackageInfo): Promise<PiPackageChange> {
+  const local = entry.scope === "project";
+  const { manager, settings } = await keptManager(cwd, agentDir);
+  try {
+    await manager.removeAndPersist(entry.source, { local });
+    const writeError = await flushed(settings);
+    if (writeError) {
+      // Uninstalled, and still configured on disk: put the code back, or the failed
+      // removal would leave a package configured with nothing installed.
+      if (entry.installed !== undefined) await manager.install(`npm:${entry.name}@${entry.installed}`, { local }).catch(() => undefined);
+      await settings.reload();
+      throw new Error(`the settings could not be written: ${writeError}`);
+    }
+  } catch (error) {
+    return { outcome: "failed", message: `${entry.name} was not removed: ${failure(error)}` };
+  }
+  const still = (await listPiPackages(cwd, agentDir)).some((candidate) => candidate.name === entry.name && candidate.scope === entry.scope);
+  if (still) return { outcome: "failed", message: `${entry.name} was not removed: it is still in ${where(entry.scope)}` };
+  return { outcome: "removed", message: `${entry.name} is removed from ${where(entry.scope)} — it stops running when pi-outpost restarts` };
+}
+
+/**
+ * Put back a package removed since the server started, as it was: the version still
+ * running, under the source it was configured with — so nothing waits on a restart.
+ */
+export async function restorePiPackage(
+  cwd: string,
+  agentDir: string,
+  removed: { name: string; scope: PiPackageScope; source: string; version: string },
+): Promise<PiPackageChange> {
+  const local = removed.scope === "project";
+  const { manager, settings } = await keptManager(cwd, agentDir);
+  try {
+    await manager.install(`npm:${removed.name}@${removed.version}`, { local });
+    manager.addSourceToSettings(removed.source, { local });
+    const writeError = await flushed(settings);
+    if (writeError) throw new Error(`the settings could not be written: ${writeError}`);
+  } catch (error) {
+    await undoSettingsEntry(cwd, agentDir, removed.source, local);
+    return { outcome: "failed", message: `${removed.name} was not restored: ${failure(error)}` };
+  }
+  const entry = (await listPiPackages(cwd, agentDir)).find((candidate) => candidate.name === removed.name && candidate.scope === removed.scope);
+  if (entry?.installed !== removed.version) {
+    return { outcome: "failed", message: `${removed.name} was not restored: ${entry?.installed ?? "no version"} is installed, not ${removed.version}` };
+  }
+  return { outcome: "restored", message: `${removed.name} ${removed.version} is back in ${where(removed.scope)}` };
 }
 
 // --- from the terminal: `pi-outpost update --extensions` -------------------------

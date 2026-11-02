@@ -30,6 +30,18 @@ open window reconnects by itself and conversations are kept. Restarting is refus
 agent is running a turn, and is never offered in an embedded widget; `extensionLock` forbids
 updating. A version changed from a terminal (`pi update`) is marked the same way.
 
+**Add a package** installs one without a terminal: type its npm name (`openlore`,
+`@scope/name`, or `name@1.2.3` to pin that version) and choose *all projects* (the agent's
+settings, the default) or *this project only* (the project's `.pi/settings.json`, which lives
+in the repository). The name is looked up on the registry your npm configuration names first;
+a name it does not know, or a package already there, is refused in place. A confirmation
+names the version and where it goes, and the package runs once pi-outpost restarts.
+**Remove** takes a package out of its settings and uninstalls it, after a confirmation. The
+agent keeps running it until the restart, so it stays listed, struck through, with **Undo**,
+which puts it back as it was. The restart notice names each package once, by its latest
+change, and drops one that is back to what runs. Adding and removing are refused while a
+session that loads the package is running a turn, and under `extensionLock`.
+
 From a terminal, `pi-outpost update --extensions` does the same for every npm pi package at
 once — the agent directory's, the one the server uses (`agentDir`, `--agent-dir`), and the
 current directory's project — and `pi-outpost update --all` updates pi-outpost first, then
