@@ -3,9 +3,8 @@
 ### Requirement: ConfinementIsVerifiedBeforeItIsShown
 
 When `sandbox.bashRunner` is set and its self-check passes, the server SHALL run a canary through that
-runner, with the agent shell's policy, attempting what confinement must refuse (see design: the agent
-directory, beside the root, a signal, the server's environment, an unlisted host). It SHALL run again
-when the sandbox settings change; its verdict SHALL be sent to clients. An unconfined shell (`"none"`,
+runner, with the agent shell's policy, attempting what confinement must refuse (see design). It SHALL run
+again when the sandbox settings change; its verdict SHALL be sent to clients. An unconfined shell (`"none"`,
 or `allowBash` without a runner in an explicit section) SHALL be shown with an open lock. An RPC child's
 shell SHALL NOT be judged.
 

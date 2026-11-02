@@ -381,10 +381,10 @@ server's proxy.
 ### Requirement: ConfinementIsVerifiedBeforeItIsShown
 
 When `sandbox.bashRunner` is set and its self-check passes, the server SHALL run a canary through that
-runner, with the agent shell's policy, attempting what confinement must refuse (see design: the agent
-directory, beside the root, a signal, the server's environment, an unlisted host). It SHALL run again
-when the sandbox settings change; its verdict SHALL be sent to clients. An unconfined shell (`"none"`,
-or `allowBash` without a runner in an explicit section) SHALL be shown with an open lock.
+runner, with the agent shell's policy, attempting what confinement must refuse (see design). It SHALL run
+again when the sandbox settings change; its verdict SHALL be sent to clients. An unconfined shell (`"none"`,
+or `allowBash` without a runner in an explicit section) SHALL be shown with an open lock. An RPC child's
+shell SHALL NOT be judged.
 
 #### Scenario: AVerifiedRunnerEarnsTheLock
 - **GIVEN** a configured runner that refuses every attempt of the canary
@@ -405,6 +405,11 @@ or `allowBash` without a runner in an explicit section) SHALL be shown with an o
 - **GIVEN** `allowBash` on and `bashRunner: "none"`, or `allowBash` on with no `bashRunner` in an explicit `sandbox` section
 - **WHEN** the interface shows the agent's shell
 - **THEN** an open lock is shown, and its description says that the shell is not confined
+
+#### Scenario: AnRpcChildsShellIsNotJudged
+- **GIVEN** the `rpc` agent runtime
+- **WHEN** the interface shows the agent's shell
+- **THEN** no lock is shown
 
 ### Requirement: DoctorRunsTheCanary
 
