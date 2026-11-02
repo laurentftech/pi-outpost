@@ -24,8 +24,9 @@ interface UserMessageProps {
  * it and asks again, so the new answer branches off (the original exchange stays
  * reachable in the conversation tree). Attached images ride along unchanged.
  *
- * A queued prompt is drawn the same way, set apart as waiting: the agent has not read
- * it, so the same pencil rewrites it where it stands, and ✕ takes it out.
+ * A queued prompt is drawn the same way, paler, as waiting: the agent has not read it,
+ * so the same pencil rewrites it where it stands, and ✕ takes it out. The visible
+ * "queued" word sits once under the whole queue (SendQueueNow), not on every bubble.
  */
 export function UserMessage({ item, canEdit, onEdit, queued }: UserMessageProps) {
   const [draft, setDraft] = useState<string | null>(null);
@@ -102,14 +103,14 @@ export function UserMessage({ item, canEdit, onEdit, queued }: UserMessageProps)
       )}
       <div
         className={
-          queued
-            ? "min-w-0 flex-1 rounded-xl border border-dashed border-blue-300 bg-blue-50 px-4 py-2 text-[15px] text-blue-950 dark:border-blue-900 dark:bg-blue-950/30 dark:text-zinc-100"
+          // Waiting, the bubble is the same shape, only paler: no frame or heading to read past.
+          queued && !editing
+            ? "min-w-0 flex-1 rounded-xl bg-blue-50 px-4 py-2 text-[15px] text-blue-950/70 dark:bg-blue-950/25 dark:text-zinc-400"
             : "min-w-0 flex-1 rounded-xl bg-blue-100 px-4 py-2 text-[15px] text-blue-950 dark:bg-blue-950/60 dark:text-zinc-100"
         }
+        {...(queued && !editing ? { title: "queued — the agent has not read it yet" } : {})}
       >
-        {queued && !editing && (
-          <div className="mb-0.5 text-[11px] uppercase tracking-wide text-blue-900/60 dark:text-zinc-400">queued — not read yet</div>
-        )}
+        {queued && !editing && <span className="sr-only">queued — not read yet</span>}
         {item.images && item.images.length > 0 && (
           <div className="mb-1.5 flex flex-wrap gap-1.5">
             {item.images.map((image, j) => (

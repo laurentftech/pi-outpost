@@ -5,6 +5,11 @@ interface SendQueueNowProps {
   isStreaming: boolean;
   /** How many prompts wait; worded in the button. */
   count: number;
+  /**
+   * The queue can be sent now (every prompt is ours and the socket is up). Without it the
+   * line still says the prompts are queued, with nothing to click.
+   */
+  canSend?: boolean;
   onSend: () => void;
 }
 
@@ -15,26 +20,36 @@ interface SendQueueNowProps {
  * While a turn runs this stops it, which abandons the step in progress (a reply being
  * written is dropped, a running tool stopped); completed work stays. That is said before
  * it happens, inline: a native `confirm()` is blocked silently in a sandboxed embed.
+ *
+ * At rest it is one quiet line under the queue, "queued · send now": the only visible
+ * word that the bubbles above are waiting, and a text link rather than a framed button.
  */
-export function SendQueueNow({ isStreaming, count, onSend }: SendQueueNowProps) {
+export function SendQueueNow({ isStreaming, count, canSend = true, onSend }: SendQueueNowProps) {
   const [confirming, setConfirming] = useState(false);
   // The turn ended on its own meanwhile: nothing left to interrupt, so nothing to confirm.
+  // Nor once the queue cannot be sent: a confirmation must never come back without a click.
   useEffect(() => {
-    if (!isStreaming) setConfirming(false);
-  }, [isStreaming]);
+    if (!isStreaming || !canSend) setConfirming(false);
+  }, [isStreaming, canSend]);
 
-  const label = count === 1 ? "send it now" : `send all ${count} now`;
-  if (!confirming) {
+  const label = count === 1 ? "send now" : `send all ${count} now`;
+  if (!confirming || !canSend) {
     return (
-      <div className="flex justify-end">
-        <button
-          type="button"
-          onClick={() => (isStreaming ? setConfirming(true) : onSend())}
-          title={isStreaming ? "stop the current step and send the queued messages now" : "send the queued messages now"}
-          className="rounded border border-blue-300 px-2 py-0.5 text-xs text-blue-900 hover:bg-blue-50 dark:border-blue-900 dark:text-zinc-300 dark:hover:bg-blue-950/40"
-        >
-          {label}
-        </button>
+      <div className="flex justify-end gap-1.5 pr-1 text-xs text-zinc-500">
+        <span>queued</span>
+        {canSend && (
+          <>
+            <span aria-hidden="true">·</span>
+            <button
+              type="button"
+              onClick={() => (isStreaming ? setConfirming(true) : onSend())}
+              title={isStreaming ? "stop the current step and send the queued messages now" : "send the queued messages now"}
+              className="underline-offset-2 hover:text-blue-700 hover:underline focus-visible:underline dark:hover:text-blue-300"
+            >
+              {label}
+            </button>
+          </>
+        )}
       </div>
     );
   }

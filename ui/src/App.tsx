@@ -1328,8 +1328,13 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
                   queued={{ onRemove: () => removeQueuedPrompt(prompt.id), onDraftChange: trackQueuedDraft(prompt.id, prompt.text) }}
                 />
               ))}
-              {state.queue.length > 0 && state.queue.every((prompt) => prompt.editable) && state.connected && (
-                <SendQueueNow isStreaming={state.isStreaming} count={state.queue.length} onSend={sendQueueNow} />
+              {state.queue.length > 0 && (
+                <SendQueueNow
+                  isStreaming={state.isStreaming}
+                  count={state.queue.length}
+                  canSend={state.queue.every((prompt) => prompt.editable) && state.connected}
+                  onSend={sendQueueNow}
+                />
               )}
 
               {attachmentErrors.map((error, i) => (

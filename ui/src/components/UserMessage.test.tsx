@@ -174,7 +174,10 @@ describe("UserMessage", () => {
     // openlore: scenario=AQueuedPromptWaitsAsAPendingBubble spec=queued-prompts
     it("says it is waiting, and offers the pencil and the ✕", () => {
       queuedSetup();
-      expect(screen.getByText("queued — not read yet")).toBeInTheDocument();
+      // Said to screen readers and on hover; seen as a paler bubble with no frame or heading.
+      expect(screen.getByText("queued — not read yet")).toHaveClass("sr-only");
+      expect(screen.getByText("fix the tpyo").closest("[title]")).toHaveAttribute("title", "queued — the agent has not read it yet");
+      expect(screen.getByText("fix the tpyo").closest("[title]")!.className).not.toMatch(/border-dashed/);
       expect(editQueued()).toHaveTextContent("✎");
       expect(removeQueued()).toHaveTextContent("✕");
       expect(screen.queryByRole("button", { name: "Edit this prompt" })).not.toBeInTheDocument();

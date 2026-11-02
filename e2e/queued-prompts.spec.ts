@@ -225,7 +225,7 @@ test("send now: asks while a turn runs, cancel changes nothing, confirmed it sto
   await expect(page.getByText("working…")).toHaveCount(0);
   await expect(queued(page)).toHaveCount(1);
   const before = (await sent()).length;
-  await page.getByRole("button", { name: "send it now" }).click();
+  await page.getByRole("button", { name: "send now" }).click();
   await expect(page.getByRole("group", { name: /confirm sending/i })).toHaveCount(0);
   await expect.poll(async () => (await sent()).slice(before).some((request) => request.users.at(-1)?.text === "three")).toBe(true);
   await expect(queued(page)).toHaveCount(0);
