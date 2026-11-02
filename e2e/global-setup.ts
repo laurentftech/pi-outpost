@@ -621,6 +621,20 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
     { env: onlyOneFakeProvider() },
   );
 
+  // Queued prompts: a provider that holds request n while `<gates>-n` exists, so a test keeps
+  // a turn running while it queues, edits and removes prompts, then reads what was sent.
+  const queuedRoot = await realpath(await makeWorkspace({ "readme.md": "# queued prompts\n" }));
+  const queuedGates = path.join(queuedRoot, "gate");
+  const queuedLog = path.join(queuedRoot, "requests.jsonl");
+  const queued = await startServer(
+    queuedRoot,
+    {
+      extensionPaths: [path.join(REPO, "server/test/fixtures/queued-prompts-provider.mjs")],
+      allowedModels: [{ provider: "queue-test", id: "queue-test" }],
+    },
+    { env: { ...onlyOneFakeProvider(), QUEUE_GATES: queuedGates, QUEUE_LOG: queuedLog } },
+  );
+
   // A dedicated multi-project server with two independently authoritative
   // review-ready sidecars. Distinct private markers catch plan mix-ups as well as
   // content leaking through the server-wide summary.
@@ -790,6 +804,9 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
   process.env.PI_E2E_PROGRESS_URL = progress.base;
   process.env.PI_E2E_THINKING_URL = thinking.base;
   process.env.PI_E2E_SIDE_SESSIONS_URL = sideSessions.base;
+  process.env.PI_E2E_QUEUED_URL = queued.base;
+  process.env.PI_E2E_QUEUED_GATES = queuedGates;
+  process.env.PI_E2E_QUEUED_LOG = queuedLog;
   process.env.PI_E2E_OUTCOME_URL = outcome.base;
   process.env.PI_E2E_OUTCOME_WORKSPACE = outcomeRoot;
   process.env.PI_E2E_OUTCOME_SECOND = outcomeSecond;
@@ -811,6 +828,7 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
     await reviewReady.stop();
     await thinking.stop();
     await sideSessions.stop();
+    await queued.stop();
     await progress.stop();
     await notifications.stop();
     await plans.stop();
@@ -824,6 +842,7 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
     await embedRootMode.stop();
     await server.stop();
     await rm(secondRoot, { recursive: true, force: true });
+    await rm(queuedRoot, { recursive: true, force: true });
     await rm(accountsRoot, { recursive: true, force: true });
     await rm(accountOnboardingRoot, { recursive: true, force: true });
     await rm(projectsSecondRoot, { recursive: true, force: true });

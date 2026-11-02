@@ -42,6 +42,7 @@ import {
   type OutpostChanges,
   type OutpostUpdateNotice,
   type PiPackageInfo,
+  type QueuedPrompt,
   type SessionSnapshot,
   type ConfinementVerdict,
   type WorkspaceActivity,
@@ -241,6 +242,7 @@ import { composeAppendSystemPrompt } from "./systemPrompt.ts";
 import { createMailExtractToolDefinition } from "./mailTool.ts";
 import { createPdfExtractToolDefinition, createPdfRenderToolDefinition } from "./pdfTool.ts";
 import { Workspace, shouldRetireWorkspace, type WorkspaceOptions, type WorkspaceSettings } from "./workspace.ts";
+import type { QueuedPromptSource } from "./queuedPrompts.ts";
 import { WorkspaceRegistry } from "./workspaceRegistry.ts";
 import { discoverSkillCatalogue, ResourceRepositoryService } from "./resourceRepositories.ts";
 import { deriveWorkspaceActivity, workspaceActivityNeedsAttention } from "./workspaceActivity.ts";
@@ -2758,6 +2760,7 @@ function snapshot(workspace: Workspace): SessionSnapshot {
     commands: offeredCommands(state.commands, commandPolicy()),
     ...(state.extensionsBinding ? { extensionsBinding: true } : {}),
     ...(resourceInventories.get(workspace.root) ? { agentResources: resourceInventories.get(workspace.root) } : {}),
+    ...(workspace.queuedPrompts.size > 0 ? { queuedPrompts: queueView(workspace) } : {}),
     contextUsage: state.contextUsage,
     // A runtime replacement is synchronous but its sidecar read is not. Never
     // combine the new transcript/session id with the previous session's plan.
@@ -3218,9 +3221,14 @@ function onRuntimeEvent(workspace: Workspace, event: RuntimeEvent): void {
       }
       break;
     }
-    case "queue":
-      broadcast(workspace, { type: "queue", steering: event.steering, followUp: event.followUp });
+    case "queue": {
+      const { delivered, changed } = workspace.queuedPrompts.update(event);
+      // A queued prompt joins the conversation when the agent reads it, not when it was
+      // queued: here, before the reply that follows it.
+      for (const entry of delivered) if (entry.source) broadcastUser(workspace, entry.source);
+      if (changed) broadcastQueue(workspace);
       break;
+    }
     case "thinking_changed":
       broadcast(workspace, { type: "thinking_changed", level: event.level });
       break;
@@ -3246,6 +3254,8 @@ function onRuntimeEvent(workspace: Workspace, event: RuntimeEvent): void {
       break;
     }
     case "session_replaced":
+      // A new session has a new, empty queue: nothing sent to the old one is coming.
+      workspace.queuedPrompts.reset();
       // The runtime has already rebound itself; renderers may belong to a new
       // extension runner, so refresh the HTML bridge before the snapshot goes out.
       refreshExtensionRender(workspace);
@@ -4388,6 +4398,29 @@ async function handlePrompt(workspace: Workspace, text: string, images?: WireIma
     broadcast(workspace, { type: "error", message: `No model allowed by "allowedModels" can answer — check its credentials` });
     return;
   }
+  const source = await promptSource(workspace, text, images);
+  // Held until the runtime has answered, not until the turn ends: a prompt sent during a
+  // turn must not land in the middle of an edit's take-back and re-queue.
+  const release = await lockQueue(workspace);
+  let attempt: PromptAttempt;
+  try {
+    attempt = promptOnce(workspace, source);
+    await attempt.accepted;
+  } finally {
+    release();
+  }
+  // The entries and tree are announced when the turn settles, not here: an RPC
+  // prompt resolves at *acceptance* (that is Pi's contract — a failure after
+  // acceptance reports through the event stream, never as a second result), so
+  // reading the conversation at this point would read it before the turn ran.
+  await attempt.done;
+}
+
+/**
+ * What a prompt is, before it is sent: the text the user typed (and sees), the text the
+ * agent gets — mentions made absolute — and the document tools that text publishes.
+ */
+async function promptSource(workspace: Workspace, text: string, images?: WireImage[]): Promise<QueuedPromptSource & { published: string[] }> {
   const promptText = await absolutizeMentions(workspace, text);
   // Read now: a registry edited by hand since the last turn lists different files.
   workspace.projectModelFiles = await projectModelFiles(workspace.root);
@@ -4395,26 +4428,254 @@ async function handlePrompt(workspace: Workspace, text: string, images?: WireIma
   // Before the turn, not after: a tool published once the request is on its way is a
   // tool the model could not call. The composer references an attached document by
   // path, so the text naming a document is the same event as one arriving.
-  const publishedNow = publishDocumentTools(workspace, promptText);
-  await workspace.agent.prompt(promptText, {
-    ...(images?.length ? { images } : {}),
-    // Echo the user message only once accepted (avoids ghost bubbles on reject).
-    // The *original* text, not promptText: the absolute path is for the model,
-    // never for what the user sees — see historyToItems for the reload side of
-    // the same rule.
-    // A prompt an extension command handled is neither saved nor run: echoing it would
-    // show a bubble that is gone on reload, and for `/btw` the question as if the agent
-    // had been asked it.
-    onAccepted: (accepted, disposition) => {
-      if (accepted && disposition !== "handled") broadcast(workspace, { type: "user", text, ...(images?.length ? { images } : {}) });
+  const published = publishDocumentTools(workspace, promptText);
+  return { text, promptText, ...(images?.length ? { images } : {}), published };
+}
+
+interface PromptAttempt {
+  /** Settles once the runtime has accepted or refused the prompt — never rejects. */
+  accepted: Promise<void>;
+  /** The runtime's own promise: for the embedded runtime, the whole turn. */
+  done: Promise<void>;
+}
+
+/**
+ * Send one prompt. Its user bubble is echoed once accepted — and only if it was not
+ * queued: a queued prompt joins the conversation when the agent receives it, and waits
+ * in the queue until then (see `queuedPrompts.ts`).
+ */
+function promptOnce(workspace: Workspace, source: QueuedPromptSource & { published?: string[] }): PromptAttempt {
+  const expectation = workspace.queuedPrompts.expect(source);
+  let answered!: () => void;
+  const accepted = new Promise<void>((resolve) => {
+    answered = resolve;
+  });
+  const done = workspace.agent.prompt(source.promptText, {
+    ...(source.images?.length ? { images: source.images } : {}),
+    onAccepted: (ok, disposition) => {
+      const queued = ok && disposition === "queued";
+      workspace.queuedPrompts.settle(expectation, queued);
+      // The *original* text, not promptText: the absolute path is for the model, never
+      // for what the user sees — see historyToItems for the reload side of the same rule.
+      // A prompt an extension command handled is neither saved nor run: echoing it would
+      // show a bubble that is gone on reload, and for `/btw` the question as if the agent
+      // had been asked it.
+      if (ok && disposition !== "handled" && !queued) broadcastUser(workspace, source);
       // A refused or handled prompt runs no turn, so nothing would ever age these out.
-      else unpublishDocumentTools(workspace, publishedNow);
+      if ((!ok || disposition === "handled") && source.published) unpublishDocumentTools(workspace, source.published);
+      answered();
     },
   });
-  // The entries and tree are announced when the turn settles, not here: an RPC
-  // prompt resolves at *acceptance* (that is Pi's contract — a failure after
-  // acceptance reports through the event stream, never as a second result), so
-  // reading the conversation at this point would read it before the turn ran.
+  done.then(answered, () => {
+    workspace.queuedPrompts.settle(expectation, false);
+    answered();
+  });
+  return { accepted, done };
+}
+
+function broadcastUser(workspace: Workspace, source: QueuedPromptSource): void {
+  broadcast(workspace, { type: "user", text: source.text, ...(source.images?.length ? { images: source.images } : {}) });
+}
+
+/** Whether this workspace's runtime can take its queue back, which editing needs. */
+function canRewriteQueue(workspace: Workspace): boolean {
+  const agent = workspace.agent;
+  return typeof agent.clearQueue === "function" && typeof agent.queueMessage === "function" && agent.canClearQueue === true;
+}
+
+function queueView(workspace: Workspace): QueuedPrompt[] {
+  return workspace.queuedPrompts.view(canRewriteQueue(workspace));
+}
+
+function broadcastQueue(workspace: Workspace): void {
+  broadcast(workspace, { type: "queue", prompts: queueView(workspace) });
+}
+
+/** Wait for the workspace's queue to be free; the result releases it. */
+async function lockQueue(workspace: Workspace): Promise<() => void> {
+  const previous = workspace.queueLock;
+  let release!: () => void;
+  workspace.queueLock = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await previous;
+  return release;
+}
+
+const QUEUED_PROMPT_DELIVERED = "The agent has already received that message — it can no longer be changed";
+
+/** Resolve once the runtime reports no turn running, or after `timeoutMs`; says which. */
+async function waitUntilIdle(workspace: Workspace, timeoutMs = 15_000): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs;
+  while (workspace.agent.snapshot().isStreaming) {
+    if (Date.now() > deadline) return false;
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  return true;
+}
+
+/**
+ * Send every queued prompt now, as the first request of a new turn — what the user would
+ * otherwise get by stopping and typing something, without the typing.
+ *
+ * A running turn is stopped first: pi then keeps its queue, and the step in progress is
+ * dropped (its partial reply is never replayed to the model; a running tool is killed),
+ * while completed steps stay. The queue is then taken back; all but the first prompt are
+ * queued again as steers and the first is sent as a prompt — pi polls the steering queue as
+ * a run starts, so they all go out together, in order, in its first request.
+ */
+async function sendQueueNow(workspace: Workspace, socket: WebSocket): Promise<void> {
+  const refuse = (message: string): void => send(socket, { type: "queued_prompt_refused", message });
+  const release = await lockQueue(workspace);
+  try {
+    const tracker = workspace.queuedPrompts;
+    const { clearQueue, queueMessage } = workspace.agent;
+    if (!clearQueue || !queueMessage || !canRewriteQueue(workspace)) {
+      refuse(new RuntimeUnsupportedError("Sending queued messages now", workspace.agent.kind).message);
+      return;
+    }
+    if (tracker.size === 0) return;
+    if (tracker.hasForeign) {
+      refuse("The queue also holds a message an extension queued; it cannot be rewritten");
+      return;
+    }
+    if (workspace.replacingSession) {
+      refuse("Session change already in progress");
+      return;
+    }
+    if (workspace.agent.snapshot().isStreaming) {
+      await workspace.agent.abort();
+      if (!(await waitUntilIdle(workspace))) {
+        refuse("The running turn did not stop; the queued messages were left as they were");
+        return;
+      }
+    }
+
+    tracker.suspend();
+    let returned: { steering: string[]; followUp: string[] };
+    try {
+      returned = await clearQueue.call(workspace.agent);
+    } catch (error) {
+      tracker.resume();
+      refuse(`The queue could not be sent: ${error instanceof Error ? error.message : String(error)}`);
+      return;
+    }
+    const { delivered, kept } = tracker.takeBack(returned);
+    for (const entry of delivered) if (entry.source) broadcastUser(workspace, entry.source);
+    const [first, ...rest] = kept;
+    if (!first) {
+      broadcastQueue(workspace);
+      return;
+    }
+    for (const entry of rest) {
+      const source = entry.source ?? { text: entry.piText, promptText: entry.piText };
+      const expectation = tracker.expect(source, { kind: entry.kind, id: entry.id });
+      try {
+        tracker.settle(expectation, (await queueMessage.call(workspace.agent, source.promptText, source.images, entry.kind)) === "queued");
+      } catch (error) {
+        tracker.settle(expectation, false);
+        send(socket, { type: "error", message: `A queued message could not be sent: ${error instanceof Error ? error.message : String(error)}` });
+      }
+    }
+    // The first starts the turn, and takes the rest along in the same request.
+    const attempt = promptOnce(workspace, first.source ?? { text: first.piText, promptText: first.piText });
+    attempt.done.catch(reportError);
+    await attempt.accepted;
+    broadcastQueue(workspace);
+  } finally {
+    release();
+  }
+}
+
+/**
+ * Edit (`text`) or remove (`text` undefined) a prompt waiting in the agent's queue.
+ *
+ * pi can only give its whole queue back, so this takes everything back and queues it
+ * again in order, the edited prompt in its place or the removed one left out. What pi
+ * did not give back, it had delivered just before: that goes into the conversation, and
+ * if it was the prompt being changed, the change is refused and the edit offered back.
+ */
+async function changeQueuedPrompt(workspace: Workspace, socket: WebSocket, id: string, text: string | undefined): Promise<void> {
+  const refuse = (message: string): void => {
+    send(socket, { type: "queued_prompt_refused", message, ...(text !== undefined ? { text } : {}) });
+  };
+  const release = await lockQueue(workspace);
+  try {
+    const tracker = workspace.queuedPrompts;
+    const target = tracker.find(id);
+    const { clearQueue, queueMessage } = workspace.agent;
+    if (!clearQueue || !queueMessage || !canRewriteQueue(workspace)) {
+      refuse(new RuntimeUnsupportedError("Changing a queued message", workspace.agent.kind).message);
+      return;
+    }
+    if (!target?.source) {
+      // Not "received": it may as well have been removed, here or by another client.
+      refuse(target ? "That message was queued by an extension and cannot be changed" : "That message is no longer in the queue");
+      return;
+    }
+    if (tracker.hasForeign) {
+      refuse("The queue also holds a message an extension queued; it cannot be rewritten");
+      return;
+    }
+    if (workspace.replacingSession) {
+      refuse("Session change already in progress");
+      return;
+    }
+    // Prepared before the take-back, to keep the window in which the queue is empty short.
+    let edited: (QueuedPromptSource & { published: string[] }) | undefined;
+    if (text !== undefined) {
+      const trimmed = text.trim();
+      if (!trimmed) {
+        refuse("A queued message cannot be empty — remove it instead");
+        return;
+      }
+      edited = await promptSource(workspace, trimmed, target.source.images);
+    }
+
+    tracker.suspend();
+    let returned: { steering: string[]; followUp: string[] };
+    try {
+      returned = await clearQueue.call(workspace.agent);
+    } catch (error) {
+      tracker.resume();
+      if (edited) unpublishDocumentTools(workspace, edited.published);
+      refuse(`The queue could not be changed: ${error instanceof Error ? error.message : String(error)}`);
+      return;
+    }
+    const { delivered, kept } = tracker.takeBack(returned);
+    for (const entry of delivered) if (entry.source) broadcastUser(workspace, entry.source);
+    if (!kept.some((entry) => entry.id === id)) {
+      if (edited) unpublishDocumentTools(workspace, edited.published);
+      refuse(QUEUED_PROMPT_DELIVERED);
+    }
+    // Queued, not prompted: `steer`/`follow_up` queue whether or not a turn runs, so an
+    // edit made after an abort, or as the turn ended, never starts one. What waits in the
+    // queue then goes with the next prompt, as pi does with anything left queued.
+    for (const entry of kept) {
+      const isTarget = entry.id === id;
+      const source = isTarget ? edited : (entry.source ?? { text: entry.piText, promptText: entry.piText });
+      if (!source) continue; // the one being removed
+      // Same id: a client with another queued prompt open in its editor still names it.
+      const expectation = tracker.expect(source, { kind: entry.kind, id: entry.id });
+      try {
+        const disposition = await queueMessage.call(workspace.agent, source.promptText, source.images, entry.kind);
+        tracker.settle(expectation, disposition === "queued");
+      } catch (error) {
+        tracker.settle(expectation, false);
+        const reason = error instanceof Error ? error.message : String(error);
+        if (isTarget) {
+          if (edited) unpublishDocumentTools(workspace, edited.published);
+          refuse(`The edited message could not be queued: ${reason}`);
+        } else {
+          send(socket, { type: "error", message: `A queued message could not be queued again: ${reason}` });
+        }
+      }
+    }
+    // The take-back's empty queue was not read; whatever the re-queue left is the list.
+    broadcastQueue(workspace);
+  } finally {
+    release();
+  }
 }
 
 /**
@@ -6160,6 +6421,17 @@ function handleClientMessage(socket: WebSocket, raw: string): void {
       handlePrompt(workspace, text || "(see attached images)", images).catch(reportError);
       break;
     }
+    case "edit_queued_prompt":
+      if (typeof message.id !== "string" || typeof message.text !== "string") return;
+      changeQueuedPrompt(workspace, socket, message.id, message.text).catch(reportError);
+      return;
+    case "remove_queued_prompt":
+      if (typeof message.id !== "string") return;
+      changeQueuedPrompt(workspace, socket, message.id, undefined).catch(reportError);
+      return;
+    case "send_queue_now":
+      sendQueueNow(workspace, socket).catch(reportError);
+      return;
     case "abort":
       workspace.agent.abort().catch(() => {});
       break;

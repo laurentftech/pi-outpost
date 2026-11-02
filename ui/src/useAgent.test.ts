@@ -2422,8 +2422,8 @@ describe("assembling a turn", () => {
       mockWs!.receive({ type: "structured_conformance", toolCallId: "elsewhere", conformance: { state: "unchecked", openValues: 0 } }),
     );
     // A later message proves the statement was processed before this assertion.
-    act(() => mockWs!.receive({ type: "queue", steering: ["later"], followUp: [] }));
-    await waitFor(() => expect(result.current.state.queue.steering).toEqual(["later"]));
+    act(() => mockWs!.receive({ type: "queue", prompts: [{ id: "q1", text: "later", kind: "steer", editable: true }] }));
+    await waitFor(() => expect(result.current.state.queue.map((prompt) => prompt.text)).toEqual(["later"]));
     expect(result.current.state.items.some((item) => item.kind === "tool")).toBe(false);
     expect(result.current.state.items).toHaveLength(1);
   });
@@ -2460,11 +2460,72 @@ describe("assembling a turn", () => {
 
   it("tracks the queue and the context usage", async () => {
     const result = await connected();
-    act(() => mockWs!.receive({ type: "queue", steering: ["stop"], followUp: ["then this"] }));
+    const prompts = [
+      { id: "q1", text: "stop", kind: "steer" as const, editable: true },
+      { id: "q2", text: "then this", kind: "followUp" as const, editable: true },
+    ];
+    act(() => mockWs!.receive({ type: "queue", prompts }));
     act(() => mockWs!.receive({ type: "context_usage", usage: { tokens: 100, contextWindow: 1000, percent: 10 } }));
 
-    await waitFor(() => expect(result.current.state.queue.steering).toEqual(["stop"]));
+    await waitFor(() => expect(result.current.state.queue).toEqual(prompts));
     expect(result.current.state.contextUsage).toMatchObject({ percent: 10 });
+  });
+
+  describe("queued prompts", () => {
+    const queued = (text: string, id = "q1") => ({ id, text, kind: "steer" as const, editable: true });
+
+    // openlore: scenario=AQueuedPromptWaitsAsAPendingBubble spec=queued-prompts
+    it("a prompt sent during a turn leaves its placeholder for the queue, not for the conversation", async () => {
+      const result = await connected([userItem("start")]);
+      act(() => mockWs!.receive({ type: "agent_start" }));
+      act(() => result.current.prompt("fix the typo"));
+      expect(result.current.state.pendingPrompt?.text).toBe("fix the typo");
+      act(() => mockWs!.receive({ type: "queue", prompts: [queued("fix the typo")] }));
+      await waitFor(() => expect(result.current.state.pendingPrompt).toBeNull());
+      expect(result.current.state.queue.map((prompt) => prompt.text)).toEqual(["fix the typo"]);
+      expect(result.current.state.items.filter((item) => item.kind === "user")).toHaveLength(1);
+    });
+
+    // openlore: scenario=APendingPromptOutlivesAnAbort spec=queued-prompts
+    it("keeps the queue through the end of a turn: the server says when it changes", async () => {
+      const result = await connected();
+      act(() => mockWs!.receive({ type: "agent_start" }));
+      act(() => mockWs!.receive({ type: "queue", prompts: [queued("still waiting")] }));
+      act(() => mockWs!.receive({ type: "agent_end" }));
+      await waitFor(() => expect(result.current.state.isStreaming).toBe(false));
+      expect(result.current.state.queue.map((prompt) => prompt.text)).toEqual(["still waiting"]);
+    });
+
+    // openlore: scenario=ALateClientSeesThePendingPrompts spec=queued-prompts
+    it("takes the queue from the snapshot a client connects with", async () => {
+      const result = await connected([], { queuedPrompts: [queued("from another client")] });
+      await waitFor(() => expect(result.current.state.queue.map((prompt) => prompt.text)).toEqual(["from another client"]));
+    });
+
+    it("sends an edit and a removal by queue id, and the queue on request", async () => {
+      const result = await connected();
+      act(() => result.current.editQueuedPrompt("q7", "better"));
+      act(() => result.current.removeQueuedPrompt("q8"));
+      act(() => result.current.sendQueueNow());
+      expect(mockWs!.sent.slice(-3).map((frame) => JSON.parse(frame))).toEqual([
+        { type: "edit_queued_prompt", id: "q7", text: "better" },
+        { type: "remove_queued_prompt", id: "q8" },
+        { type: "send_queue_now" },
+      ]);
+    });
+
+    // openlore: scenario=AnEditOfADeliveredPromptIsRefused spec=queued-prompts
+    it("shows a refusal and keeps the refused edit for the composer, once per refusal", async () => {
+      const result = await connected();
+      act(() => mockWs!.receive({ type: "queued_prompt_refused", message: "already received", text: "my edit" }));
+      await waitFor(() => expect(result.current.state.errors).toContain("already received"));
+      expect(result.current.state.queuedEditRefused).toEqual({ text: "my edit", nonce: 1 });
+      act(() => mockWs!.receive({ type: "queued_prompt_refused", message: "already received", text: "my edit" }));
+      await waitFor(() => expect(result.current.state.queuedEditRefused?.nonce).toBe(2));
+      act(() => mockWs!.receive({ type: "queued_prompt_refused", message: "removal refused" }));
+      await waitFor(() => expect(result.current.state.errors).toContain("removal refused"));
+      expect(result.current.state.queuedEditRefused?.nonce).toBe(2);
+    });
   });
 
   it("takes the confinement verdicts a canary reports, replacing the checking state", async () => {

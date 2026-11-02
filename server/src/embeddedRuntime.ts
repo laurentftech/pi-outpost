@@ -16,6 +16,7 @@ import type {
   ExtensionUIResponse,
   ModelChoice,
   ThinkingLevel,
+  WireImage,
 } from "@pi-outpost/shared";
 import { normalizeThinkingLevels } from "@pi-outpost/shared";
 import type {
@@ -598,6 +599,17 @@ export class EmbeddedRuntime implements AgentRuntime {
   async abort(): Promise<void> {
     for (const release of [...this.waitingPrompts]) release();
     await this.session.abort();
+  }
+
+  readonly canClearQueue = true;
+
+  async clearQueue(): Promise<{ steering: string[]; followUp: string[] }> {
+    return this.session.clearQueue();
+  }
+
+  async queueMessage(text: string, images: WireImage[] | undefined, kind: "steer" | "followUp"): Promise<PromptDisposition> {
+    const content = images?.length ? images.map((image) => ({ type: "image" as const, ...image })) : undefined;
+    return kind === "steer" ? this.session.steer(text, content) : this.session.followUp(text, content);
   }
 
   async setModel(provider: string, id: string): Promise<RuntimeModel> {

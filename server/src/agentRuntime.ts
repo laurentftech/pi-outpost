@@ -290,6 +290,21 @@ export interface AgentRuntime {
 
   prompt(text: string, options?: PromptOptions): Promise<void>;
   abort(): Promise<void>;
+  /**
+   * Take every queued message back and return pi's texts for them, steering then
+   * follow-up, as pi held them. The only way to change pi's queue: it has no per-message
+   * removal. Absent, or `canClearQueue` false, where the runtime has no such command
+   * (an RPC dialect other than standard pi).
+   */
+  clearQueue?(): Promise<{ steering: string[]; followUp: string[] }>;
+  /**
+   * Put a message on pi's queue (`steer` or `follow_up`), whether or not a turn runs:
+   * unlike `prompt`, it never starts one. Expanded like a prompt; refuses an extension
+   * command. Used to queue again what `clearQueue` took back.
+   */
+  queueMessage?(text: string, images: WireImage[] | undefined, kind: "steer" | "followUp"): Promise<PromptDisposition | undefined>;
+  /** Whether `clearQueue` and `queueMessage` can be used. Read each time: an RPC runtime learns it at start. */
+  readonly canClearQueue?: boolean;
   setModel(provider: string, id: string): Promise<RuntimeModel>;
   setThinkingLevel(level: ThinkingLevel): Promise<void>;
   /**

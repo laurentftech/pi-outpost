@@ -30,6 +30,7 @@ import type {
   GitUnavailable,
   ModelChoice,
   ProviderCompat,
+  QueuedPrompt,
   ServerDirEntry,
   ServerMessage,
   SessionSummary,
@@ -385,7 +386,13 @@ export interface AgentState {
   restartNeeded: string[];
   /** Latest workspace Outcome request/result; null until the drawer is opened. */
   outcome: OutcomeState | null;
-  queue: { steering: string[]; followUp: string[] };
+  /** Prompts waiting in the agent's queue, oldest first: not in the conversation until the agent reads them. */
+  queue: QueuedPrompt[];
+  /**
+   * The last edit of a queued prompt the server refused — the agent had read it first. Its
+   * text belongs back in the composer; `nonce` tells one refusal from the next.
+   */
+  queuedEditRefused: { text: string; nonce: number } | null;
   errors: string[];
   contextUsage: ContextUsage | null;
   isCompacting: boolean;
@@ -521,7 +528,8 @@ const initialState: AgentState = {
   serverRestarting: false,
   restartNeeded: [],
   outcome: null,
-  queue: { steering: [], followUp: [] },
+  queue: [],
+  queuedEditRefused: null,
   errors: [],
   contextUsage: null,
   isCompacting: false,
@@ -578,6 +586,7 @@ type Action =
   | { type: "login_dismissed" }
   | { type: "prompt_sent"; text: string; images?: WireImage[] }
   | { type: "pending_prompt_cancelled"; restoreText: boolean }
+  | { type: "composer_prefilled"; text: string; notice?: string }
   | { type: "dismiss_notification"; id: string }
   | { type: "dialog_answered" }
   | { type: "dir_list_started"; path: string; requestId: string; preserveEntries?: boolean }
@@ -741,7 +750,9 @@ function applySnapshot(state: AgentState, message: ServerMessage & { sessionId: 
     // drawer would otherwise render under whichever session or workspace the
     // snapshot brings until a refresh lands.
     outcome: null,
-    queue: { steering: [], followUp: [] },
+    // The server's word on what is still queued: a reconnect or a new client finds the
+    // prompts another client queued, and a new session has none.
+    queue: message.queuedPrompts ?? [],
     errors: [],
     contextUsage: message.contextUsage ?? null,
     isCompacting: false,
@@ -822,6 +833,13 @@ function reduce(state: AgentState, action: Action): AgentState {
   // (see the /branding fetch below); "hello" still wins if it arrives with a different value.
   if (action.type === "branding_settled") return { ...state, brandingReady: true };
   if (action.type === "branding_loaded") return { ...state, brandingReady: true, branding: action.branding };
+  if (action.type === "composer_prefilled") {
+    return {
+      ...state,
+      editorPrefill: { text: action.text, nonce: state.editorPrefill ? state.editorPrefill.nonce + 1 : 1 },
+      ...(action.notice ? { errors: [...state.errors, action.notice] } : {}),
+    };
+  }
   if (action.type === "prompt_sent") {
     // An extension command is handled, not added to the conversation, and the server echoes
     // nothing for it: a placeholder would stand there until some unrelated event cleared it.
@@ -1328,7 +1346,8 @@ function reduce(state: AgentState, action: Action): AgentState {
       return {
         ...state,
         isStreaming: false,
-        queue: { steering: [], followUp: [] },
+        // Not emptied here: an abort leaves the agent's queue as it was, and the server
+        // says when it changes.
         items: state.items.map((item) => {
           if (item.kind === "tool" && item.running) return { ...item, running: false };
           if (item.kind === "assistant" && item.streaming) return { ...item, streaming: false };
@@ -1415,7 +1434,21 @@ function reduce(state: AgentState, action: Action): AgentState {
     case "reply_structured_conformance":
       return { ...state, replyConformance: { ...state.replyConformance, [message.key]: message.conformance } };
     case "queue":
-      return { ...state, queue: { steering: message.steering, followUp: message.followUp } };
+      return {
+        ...state,
+        queue: message.prompts,
+        // A prompt sent during a turn is not echoed until the agent reads it: its placeholder
+        // has served its purpose once the queue shows it (ours, or another client's — either
+        // way leaving it would show the prompt twice).
+        pendingPrompt: message.prompts.length > state.queue.length ? null : state.pendingPrompt,
+      };
+    case "queued_prompt_refused":
+      return {
+        ...state,
+        errors: [...state.errors, message.message],
+        queuedEditRefused:
+          message.text !== undefined ? { text: message.text, nonce: (state.queuedEditRefused?.nonce ?? 0) + 1 } : state.queuedEditRefused,
+      };
     case "context_usage":
       return { ...state, contextUsage: message.usage };
     case "confinement":
@@ -2637,6 +2670,14 @@ export function useAgent(serverUrl = "", explicitToken?: string, embedded = fals
     listTree: () => sendMessage({ type: "list_tree" }),
     navigateTree: (entryId: string) => sendMessage({ type: "navigate_tree", entryId }),
     forkSession: (entryId: string) => sendMessage({ type: "fork_session", entryId }),
+    /** Put text in the composer, replacing what it holds. */
+    prefillComposer: (text: string, notice?: string) => dispatch({ type: "composer_prefilled", text, ...(notice ? { notice } : {}) }),
+    /** Replace the text of a prompt still waiting in the agent's queue. */
+    editQueuedPrompt: (id: string, text: string) => sendMessage({ type: "edit_queued_prompt", id, text }),
+    /** Take a prompt still waiting in the agent's queue out of it. */
+    removeQueuedPrompt: (id: string) => sendMessage({ type: "remove_queued_prompt", id }),
+    /** Send every queued prompt now; a running turn is stopped first. */
+    sendQueueNow: () => sendMessage({ type: "send_queue_now" }),
     /** Re-send a past user message with edited text — the answer branches off, the original stays in the tree. */
     editPrompt: (entryId: string, text: string, images?: WireImage[]) =>
       sendMessage({ type: "edit_prompt", entryId, text, ...(images?.length ? { images } : {}) }),
