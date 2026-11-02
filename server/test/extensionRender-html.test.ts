@@ -117,6 +117,13 @@ describe("renderCustomMessageHtml", () => {
     assert.deepEqual(seen.details, { step: 2 });
   });
 
+  test("a message renderer that asks for a keybinding hint still renders", () => {
+    configureWith((_message, options: any) =>
+      component([`plan [${options.keyText("app.tools.expand")}] [${options.keyHint("app.tools.expand", "to expand")}]`]));
+    const rendered = renderer.renderCustomMessageHtml("plan", "content", undefined, true);
+    assert.ok(rendered?.expanded.includes("plan [] []"), rendered?.expanded);
+  });
+
   test("accepts structured content as well as a string", () => {
     configureWith(() => component(["ok"]));
     const rendered = renderer.renderCustomMessageHtml("plan", [{ type: "text", text: "hello" }], undefined, true);
@@ -142,6 +149,30 @@ describe("tool rendering once configured", () => {
     assert.ok(html?.expanded.includes("full live calls"));
     assert.ok(html?.collapsed?.includes("compact live calls"));
     assert.equal(contexts.length, 2);
+  });
+
+  // pi 1.5.0 hands renderers `keyText`/`keyHint` and recommends them over importing
+  // the functions. A server has no keybindings and no global pi theme, which pi's own
+  // `keyHint` styles through: a renderer using the hint must still render its card.
+  test("a call renderer that asks for a keybinding hint still renders", () => {
+    renderer.configure({ cwd: process.cwd(), getMessageRenderer: () => undefined, getToolRenderers: () => ({
+      renderCall: (_args: any, _theme: any, context: any) =>
+        component([`call [${context.keyText("app.tools.expand")}] [${context.keyHint("app.tools.expand", "to expand")}]`]),
+    }) });
+    const html = renderer.renderToolCallHtml("c1", "codemode", { code: "read" });
+    assert.ok(html?.includes("call [] []"), html);
+  });
+
+  test("a result renderer that asks for a keybinding hint still renders, partial or final", () => {
+    renderer.configure({ cwd: process.cwd(), getMessageRenderer: () => undefined, getToolRenderers: () => ({
+      renderResult: (_result: any, options: any, _theme: any, context: any) =>
+        component([`${options.isPartial ? "live" : "done"} [${context.keyText("app.tools.expand")}] [${context.keyHint("app.tools.expand", "to expand")}]`]),
+    }) });
+    renderer.renderToolCallHtml("c1", "codemode", { code: "read" });
+    const partial = renderer.renderToolResultHtml("c1", "codemode", [], {}, false, true);
+    assert.ok(partial?.expanded.includes("live [] []"), partial?.expanded);
+    const final = renderer.renderToolResultHtml("c1", "codemode", [], {}, false);
+    assert.ok(final?.expanded.includes("done [] []"), final?.expanded);
   });
 
   test("a broken partial renderer falls back without throwing", () => {
