@@ -7,6 +7,32 @@ version you had and the one you run now, without going online.
 Releases before 0.41.0 are described on
 [GitHub Releases](https://github.com/laurentftech/pi-outpost/releases).
 
+## [0.58.0] - 2026-11-03
+
+### Added
+
+- **Add and remove pi packages from Settings.** Under Extensions → Packages,
+  **Add a package** takes an npm name (`openlore`, `@scope/name`, or
+  `name@1.2.3` to pin that version) and installs it for all projects or for
+  this project only. The name is looked up on the registry your npm
+  configuration uses first, and the confirmation names the version that will
+  be installed. **Remove** uninstalls a package; it keeps running until
+  pi-outpost restarts, so it stays listed with **Undo** until then. Nothing
+  changes while an agent is working, and `extensionLock` forbids both.
+  ([#404](https://github.com/laurentftech/pi-outpost/pull/404))
+
+### Changed
+
+- **Queued messages are lighter.** A message waiting for the agent now looks
+  like a sent one, only paler, without a frame or a heading; a single line under
+  the queue says "queued", with "send now" as a plain link. When the queue
+  cannot be sent (a message an extension queued, or the connection dropped), the
+  line still says "queued", without the link.
+  ([#403](https://github.com/laurentftech/pi-outpost/pull/403))
+- **The restart notice names each package once, by its latest change.** It now
+  covers packages added and removed, and drops one put back as it was.
+  ([#404](https://github.com/laurentftech/pi-outpost/pull/404))
+
 ## [0.57.0] - 2026-11-02
 
 ### Added
