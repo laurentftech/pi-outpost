@@ -41,7 +41,7 @@ fail (an [older Windows](#older-windows), a Docker container without user namesp
 | You want | Write |
 | --- | --- |
 | An unconfined shell (a machine nothing can confine yet) | `"bashRunner": "none"` in `sandbox` — in the file only, never from Settings. With `"bashShell": "powershell.exe"` the agent gets its `powershell` tool, otherwise `bash` |
-| No sandbox at all, as before this default | `"sandbox": false` |
+| No sandbox at all, as before this default | `"sandbox": false` — the shell's lock is shown open, saying the sandbox is turned off; there is none when the agent has no `bash` tool, or under the `rpc` runtime, whose child shell pi-outpost does not judge |
 | Another runner, a shell, allowed hosts | see [Recommended setup](#recommended-setup) |
 
 An existing `sandbox` section keeps its meaning: `allowBash` without a `bashRunner` is still an unconfined

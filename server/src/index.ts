@@ -2814,6 +2814,17 @@ if (config.terminal?.sandbox) {
  */
 const confinementVerdicts = new Map<string, ConfinementVerdict>();
 
+/**
+ * The sandbox is off and the agent has a shell of its own: an embedded runtime (an RPC child's
+ * shell is its own business — it may well be confined by means this server cannot see) with a
+ * `bash` tool active. Decided from the tools the agent has, since a `tools` allowlist may leave
+ * the shell out whatever the sandbox says.
+ */
+function runsUnsandboxedShell(workspace: Workspace): boolean {
+  if (workspace.agent.kind !== "embedded") return false;
+  return (workspace.agent.snapshot().tools ?? []).some((tool) => tool.active && (tool.name === "bash" || tool.name === "powershell"));
+}
+
 /** The project's verdicts for its snapshot, starting a canary for any surface not yet checked. */
 function confinementOf(workspace: Workspace): SessionSnapshot["confinement"] {
   const result: NonNullable<SessionSnapshot["confinement"]> = {};
@@ -2833,6 +2844,9 @@ function confinementOf(workspace: Workspace): SessionSnapshot["confinement"] {
     result.bash = sandbox.autoRunner ? autoShown(verdict) : verdict;
   } else if (shellIsUnconfined(sandbox)) {
     result.bash = unconfinedVerdictFor(workspace);
+  } else if (sandbox === undefined && runsUnsandboxedShell(workspace)) {
+    // `"sandbox": false`: a shell pi-outpost does not confine, shown as such rather than as no shell.
+    result.bash = { state: "unconfined", sandboxOff: true };
   }
   const confine = config.terminal?.enabled ? terminalConfinement(workspace) : undefined;
   if (confine && typeof terminalRunner === "object" && terminalRunner.ok) {

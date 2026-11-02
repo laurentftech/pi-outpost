@@ -154,4 +154,18 @@ describe("the lock of a shell the server chose, or that runs unconfined", () => 
     expect(title).toContain("appcontainer-dacl");
     expect(title).not.toContain("--confine");
   });
+
+  // openlore: scenario=SandboxFalseRestoresTheOldBehaviour spec=sandbox-defaults
+  it("TheSandboxOff: an open, neutral lock saying the sandbox is turned off, suggesting nothing", () => {
+    bar({ state: "unconfined", sandboxOff: true });
+    const lock = screen.getByTestId("shell-confinement");
+    expect(lock).toHaveTextContent("🔓 shell not confined");
+    expect(lock).toHaveAttribute("data-state", "unconfined");
+    expect(lock).not.toHaveAttribute("data-nudge");
+    expect(lock.className).not.toMatch(/ring-/);
+    const title = lock.getAttribute("title") ?? "";
+    expect(title).toContain('the sandbox is turned off ("sandbox": false)');
+    expect(title).toContain("not confined by pi-outpost");
+    expect(title).not.toContain("--confine");
+  });
 });
