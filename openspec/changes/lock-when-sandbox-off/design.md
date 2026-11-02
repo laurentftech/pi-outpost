@@ -12,10 +12,18 @@ An extension can register its own `bash`; pi-outpost cannot see whether that one
 description therefore says what pi-outpost knows: the sandbox is off, pi-outpost does not confine the shell,
 and, unless an extension does, a command runs with the server account's rights.
 
-### No suggestion
+### `config --confine` restores the sandbox, and says what that changes
 
-The unconfined lock elsewhere suggests `pi-outpost config --confine`; that command refuses a turned-off
-sandbox, since restoring it also scopes the file tools. The lock is neutral and suggests nothing.
+`config --confine` used to refuse `"sandbox": false`, because turning the sandbox back on also scopes the
+file tools. It now restores the default sandbox — the same section `init` writes, without `root`, so it
+follows the working directory as the implicit default does — after the same self-check and canary, and
+prints that the file tools are limited to the project from now on. A command named "confine" that
+confines the agent, files included, stays within its name; a separate command would be one more to know.
+Under `rpc` it still refuses: a sandbox cannot be enforced for a child that builds its own tools.
+
+The lock follows: neutral where this machine's runner fails its self-check, highlighted with the command
+where it passes — the same check, cached, as for an unconfined shell inside a sandbox. Its description says
+the file tools would be scoped too, so the suggestion does not hide its cost.
 
 ### Not under `rpc`
 

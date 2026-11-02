@@ -29,7 +29,10 @@ Releases before 0.41.0 are described on
 
 - **A turned-off sandbox shows the shell's lock open.** With `"sandbox": false`,
   the agent's shell runs with every right of the server's account; the lock next
-  to the model now says so, instead of showing nothing.
+  to the model now says so, instead of showing nothing. Where this machine can
+  confine the shell, it offers `pi-outpost config --confine`, which now turns
+  the sandbox back on (after checking the runner) and tells you that the
+  agent's file tools are limited to the project again.
   ([#402](https://github.com/laurentftech/pi-outpost/pull/402))
 - **Pi SDK 1.5.0.** The npm CLI and server use the updated SDK, which also brings
   the `undici` security fix it had been pinning out.

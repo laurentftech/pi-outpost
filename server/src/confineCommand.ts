@@ -4,7 +4,9 @@
  * It writes `"sandbox.bashRunner": "auto"` into the configuration file, but only after the
  * runner `"auto"` would choose has passed its self-check and the confinement canary, run the
  * way the server runs them. Otherwise the file is left byte for byte as it was, and the reason
- * is printed. Loosening is never this command's to do: there is no `--unconfine`.
+ * is printed. With `"sandbox": false` it restores the default sandbox, which also scopes the
+ * agent's file tools to the project, and says so. Loosening is never this command's to do:
+ * there is no `--unconfine`.
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -59,17 +61,20 @@ export async function confineConfiguration(input: ConfineInput): Promise<Confine
   const raw = JSON.parse(original) as Record<string, unknown>;
   const unchanged = (exitCode: number, ...lines: string[]): ConfineResult => ({ exitCode, lines: [`${file}: unchanged.`, ...lines] });
 
-  if (raw.sandbox === false) {
+  // `"sandbox": false` turns the whole sandbox off; confining the shell means turning it back on,
+  // as the default, which also scopes the file tools to the project: said before and after.
+  const restoring = raw.sandbox === false;
+  if (restoring && (raw.agentRuntime as { mode?: unknown } | undefined)?.mode === "rpc") {
     return unchanged(
       1,
-      `"sandbox" is false: there is no sandbox to confine the shell in. Turning it back on would also limit the`,
-      `agent's file tools to the project, so it is yours to do by hand: remove "sandbox": false to get the default.`,
+      `"sandbox" is false, and the agent runs as an RPC child, which builds its own tools: a sandbox cannot be`,
+      `enforced there. Confine the child by other means (a container, a dedicated user).`,
     );
   }
   if (raw.sandbox === undefined) {
     return unchanged(0, `No "sandbox" section: the default sandbox already chooses a runner ("bashRunner": "auto").`);
   }
-  const section = raw.sandbox as Record<string, unknown>;
+  const section = (restoring ? { allowWrite: true, allowBash: true } : raw.sandbox) as Record<string, unknown>;
   if (section.bashFrom !== undefined) {
     return unchanged(0, `The shell is the extension's ("sandbox.bashFrom": ${JSON.stringify(section.bashFrom)}): pi-outpost's own shell is not in use.`);
   }
@@ -110,9 +115,14 @@ export async function confineConfiguration(input: ConfineInput): Promise<Confine
     return {
       exitCode: 0,
       lines: [
-        `${file}: "sandbox.bashRunner": ${section.bashRunner === undefined ? "(absent)" : JSON.stringify(section.bashRunner)} → "auto"`,
+        restoring
+          ? `${file}: "sandbox": false → the default sandbox (writing allowed, the shell confined by "auto")`
+          : `${file}: "sandbox.bashRunner": ${section.bashRunner === undefined ? "(absent)" : JSON.stringify(section.bashRunner)} → "auto"`,
         `${label} (${sandbox.bashRunner}) passed its self-check and the confinement canary on this machine.`,
         ...(sandbox.bashShell && section.bashShell === undefined ? [`Commands will run in ${sandbox.bashShell}.`] : []),
+        ...(restoring
+          ? ["The agent's file tools are now limited to the project: reads and writes outside it will be refused."]
+          : []),
         "Restart pi-outpost for the agent's shell to be confined.",
       ],
     };

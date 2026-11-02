@@ -13,7 +13,8 @@ pi-outpost -p "<prompt>" [options]
 pi-outpost init [options]     write a starter configuration file
 pi-outpost config [options]   print the configuration that would be used, and where it came from
 pi-outpost config --confine   confine the agent's shell: check this machine's runner, then set
-                              "sandbox.bashRunner": "auto" (see sandboxing.md#the-default)
+                              "sandbox.bashRunner": "auto", or restore the default sandbox where it
+                              is false (see sandboxing.md#the-default)
 pi-outpost doctor [options]   check whether this installation can start and serve, and say what stops it
 pi-outpost login --provider <name>
                               run account sign-in, or store an API key

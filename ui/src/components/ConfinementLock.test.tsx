@@ -168,4 +168,18 @@ describe("the lock of a shell the server chose, or that runs unconfined", () => 
     expect(title).toContain("not confined by pi-outpost");
     expect(title).not.toContain("--confine");
   });
+
+  // openlore: scenario=SandboxFalseIsNudgedWhereItCanBeConfined spec=sandbox-defaults
+  it("TheSandboxOffOnACapableMachine: highlighted, offering config --confine and saying it scopes the file tools", () => {
+    bar({ state: "unconfined", sandboxOff: true, available: { runner: "/usr/bin/sandbox-exec", label: "Seatbelt" } });
+    const lock = screen.getByTestId("shell-confinement");
+    expect(lock).toHaveAttribute("data-nudge", "true");
+    expect(lock.className).toMatch(/ring-amber/);
+    const title = lock.getAttribute("title") ?? "";
+    expect(title).toContain("the sandbox is turned off");
+    expect(title).toContain("Seatbelt can confine it on this machine");
+    expect(title).toContain("pi-outpost config --confine");
+    expect(title).toContain("also limits the agent's file tools to the project");
+    expect(title).not.toContain("bashRunner");
+  });
 });

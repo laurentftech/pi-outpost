@@ -2821,7 +2821,9 @@ const confinementVerdicts = new Map<string, ConfinementVerdict>();
  * the shell out whatever the sandbox says.
  */
 function runsUnsandboxedShell(workspace: Workspace): boolean {
-  if (workspace.agent.kind !== "embedded") return false;
+  // A project whose agent is still starting has no runtime to ask yet (reading it throws); its
+  // lock comes with the snapshot that follows the start.
+  if (!workspace.started || workspace.agent.kind !== "embedded") return false;
   return (workspace.agent.snapshot().tools ?? []).some((tool) => tool.active && (tool.name === "bash" || tool.name === "powershell"));
 }
 
@@ -2845,8 +2847,10 @@ function confinementOf(workspace: Workspace): SessionSnapshot["confinement"] {
   } else if (shellIsUnconfined(sandbox)) {
     result.bash = unconfinedVerdictFor(workspace);
   } else if (sandbox === undefined && runsUnsandboxedShell(workspace)) {
-    // `"sandbox": false`: a shell pi-outpost does not confine, shown as such rather than as no shell.
-    result.bash = { state: "unconfined", sandboxOff: true };
+    // `"sandbox": false`: a shell pi-outpost does not confine, shown as such rather than as no shell —
+    // with the same check of this machine's runner, since `config --confine` restores the sandbox.
+    const machine = unconfinedVerdictFor(workspace);
+    result.bash = machine.state === "unconfined" ? { ...machine, sandboxOff: true } : { state: "unconfined", sandboxOff: true };
   }
   const confine = config.terminal?.enabled ? terminalConfinement(workspace) : undefined;
   if (confine && typeof terminalRunner === "object" && terminalRunner.ok) {

@@ -58,7 +58,8 @@ Usage
   pi-outpost init [options]      write a starter configuration file
   pi-outpost config [options]    print the configuration that would be used, and where it came from
   pi-outpost config --confine    confine the agent's shell: check this machine's sandbox runner, then
-                                 set "sandbox.bashRunner": "auto" in the configuration file
+                                 set "sandbox.bashRunner": "auto" in the configuration file, or restore
+                                 the default sandbox where "sandbox" is false
   pi-outpost doctor [options]    check whether this installation can start and serve, and say what stops it
   pi-outpost login --provider <name>
                                  sign in to a provider, or store an API key

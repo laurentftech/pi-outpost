@@ -12,7 +12,7 @@ import { connect, makeWorkspace, startServer } from "./harness.mjs";
 
 const FAKE_RPC = fileURLToPath(new URL("./fixtures/fake-pi-rpc.mjs", import.meta.url));
 
-async function helloWith(t, config, env = {}) {
+async function helloWith(t, config, env = {}, onClient) {
   const root = await realpath(await makeWorkspace({ "readme.md": "# lock\n" }));
   const server = await startServer(root, typeof config === "function" ? await config(root) : config, { env });
   const client = connect(server.wsUrl());
@@ -21,14 +21,24 @@ async function helloWith(t, config, env = {}) {
     await server.stop();
     await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
   });
+  onClient?.(client);
   return client.waitFor("hello", 30_000);
 }
 
 // openlore: scenario=SandboxFalseRestoresTheOldBehaviour spec=sandbox-defaults
 test("with the sandbox off, the agent's shell is shown not confined, saying the sandbox is off", async (t) => {
-  const hello = await helloWith(t, { sandbox: false });
+  let client;
+  const hello = await helloWith(t, { sandbox: false }, {}, (c) => (client = c));
   assert.ok(hello.tools.some((tool) => tool.name === "bash" && tool.active), "the agent has its shell");
-  assert.deepEqual(hello.confinement?.bash, { state: "unconfined", sandboxOff: true });
+  assert.equal(hello.confinement?.bash?.state, "unconfined");
+  assert.equal(hello.confinement?.bash?.sandboxOff, true);
+  // Then the machine's runner is checked, as for any unconfined shell: either it could confine
+  // (and `config --confine` is offered) or the reason it cannot is given — still sandbox off.
+  const settled = await client.waitFor((message) =>
+    (message.type === "hello" || message.type === "confinement") &&
+    (message.confinement?.bash?.available !== undefined || message.confinement?.bash?.reason !== undefined), 30_000);
+  assert.equal(settled.confinement.bash.state, "unconfined");
+  assert.equal(settled.confinement.bash.sandboxOff, true);
 });
 
 // openlore: scenario=SandboxFalseWithoutAShellShowsNoLock spec=sandbox-defaults

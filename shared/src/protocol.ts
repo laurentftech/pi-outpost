@@ -1105,8 +1105,8 @@ export type ConfinementVerdict =
    * A shell that runs unconfined (`"none"`, or `allowBash` without a runner). `available`: this
    * machine's runner passed its self-check, so the shell could be confined; `reason`: why not.
    * Neither, while that is still being asked. `sandboxOff`: the whole sandbox is turned off
-   * (`"sandbox": false`), so pi-outpost confines nothing and suggests nothing — restoring the
-   * sandbox would also scope the file tools.
+   * (`"sandbox": false`), so pi-outpost confines nothing; `available` then means that
+   * `config --confine` would restore the default sandbox, file tools scoped with it.
    */
   | { state: "unconfined"; runner?: undefined; available?: { runner: string; label: string }; reason?: string; sandboxOff?: true };
 

@@ -41,7 +41,7 @@ fail (an [older Windows](#older-windows), a Docker container without user namesp
 | You want | Write |
 | --- | --- |
 | An unconfined shell (a machine nothing can confine yet) | `"bashRunner": "none"` in `sandbox` — in the file only, never from Settings. With `"bashShell": "powershell.exe"` the agent gets its `powershell` tool, otherwise `bash` |
-| No sandbox at all, as before this default | `"sandbox": false` — the shell's lock is shown open, saying the sandbox is turned off; there is none when the agent has no `bash` tool, or under the `rpc` runtime, whose child shell pi-outpost does not judge |
+| No sandbox at all, as before this default | `"sandbox": false` — the shell's lock is shown open, saying the sandbox is turned off, and highlighted with `pi-outpost config --confine` when this machine can confine; there is none when the agent has no `bash` tool, or under the `rpc` runtime, whose child shell pi-outpost does not judge |
 | Another runner, a shell, allowed hosts | see [Recommended setup](#recommended-setup) |
 
 An existing `sandbox` section keeps its meaning: `allowBash` without a `bashRunner` is still an unconfined
@@ -54,6 +54,11 @@ pi-outpost config --confine
 
 It runs the self-check and the canary, and only if both pass sets `"bashRunner": "auto"` in the file,
 changing nothing else. Otherwise the file is left as it was and the reason printed.
+
+With `"sandbox": false`, the same command turns the sandbox back on: once both checks pass, it replaces
+`false` with the default sandbox (writing allowed, `allowBash` on, `"bashRunner": "auto"`), and says so —
+the agent's file tools are then limited to the project too. It refuses under the `rpc` runtime, where no
+sandbox can be enforced.
 
 ## Recommended setup
 

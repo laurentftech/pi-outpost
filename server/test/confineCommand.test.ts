@@ -157,14 +157,48 @@ describe("pi-outpost config --confine", () => {
     }
   });
 
+  // openlore: scenario=SandboxFalseIsRestoredAsTheDefault spec=sandbox-defaults
+  test("SandboxFalseIsRestoredAsTheDefault: the default sandbox written in its place, the other keys kept, the file tools' new scope said", async (t) => {
+    if (!(await hasRunner())) return t.skip("no runner on this platform for \"auto\" to take");
+    const content = JSON.stringify({ port: 4000, sandbox: false, branding: { title: "x" } }, null, 2) + "\n";
+    await inDir(content, async (dir, file) => {
+      const calls = { count: 0 };
+      const result = await confine(dir, file, verified, calls);
+      assert.equal(result.exitCode, 0, result.lines.join("\n"));
+      assert.equal(calls.count, 1, "the canary ran before anything was written");
+      assert.deepEqual(JSON.parse(await readFile(file, "utf8")), {
+        port: 4000,
+        sandbox: { allowWrite: true, allowBash: true, bashRunner: "auto" },
+        branding: { title: "x" },
+      });
+      const said = result.lines.join("\n");
+      assert.match(said, /"sandbox": false → the default sandbox/);
+      assert.match(said, /file tools are now limited to the project/);
+      assert.deepEqual((await readdir(dir)).filter((name) => name.endsWith(".tmp")), [], "no rehearsal file is left behind");
+    });
+  });
+
   // openlore: scenario=SandboxFalseIsNotOverridden spec=sandbox-defaults
-  test("SandboxFalseIsNotOverridden: unchanged, saying it must be turned back on by hand", async () => {
+  test("SandboxFalseIsNotOverridden: a runner that leaks, or none at all, leaves the file as it was", async () => {
     const content = JSON.stringify({ sandbox: false });
     await inDir(content, async (dir, file) => {
-      const result = await confine(dir, file, verified);
-      assert.equal(result.exitCode, 1);
+      const result = await confine(dir, file, leaking);
+      assert.equal(result.exitCode, 1, result.lines.join("\n"));
       assert.equal(await readFile(file, "utf8"), content);
-      assert.match(result.lines.join("\n"), /"sandbox" is false[\s\S]*by hand/);
+      assert.match(result.lines[0], /unchanged/);
+    });
+  });
+
+  // openlore: scenario=SandboxFalseUnderRpcIsNotRestored spec=sandbox-defaults
+  test("SandboxFalseUnderRpcIsNotRestored: an RPC child cannot be sandboxed, and the canary never runs", async () => {
+    const content = JSON.stringify({ sandbox: false, agentRuntime: { mode: "rpc", executable: "pi" } });
+    await inDir(content, async (dir, file) => {
+      const calls = { count: 0 };
+      const result = await confine(dir, file, verified, calls);
+      assert.equal(result.exitCode, 1);
+      assert.equal(calls.count, 0);
+      assert.equal(await readFile(file, "utf8"), content);
+      assert.match(result.lines.join("\n"), /RPC child[\s\S]*cannot be[\s\S]*enforced/);
     });
   });
 
