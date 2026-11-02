@@ -13,7 +13,7 @@ double ✕, an abort, a reload, edit spam, two clients on one prompt, a new sess
 queue). The UI's reducer and components are pinned in `ui/src/useAgent.test.ts`,
 `ui/src/components/UserMessage.test.tsx` and `ui/src/App.test.tsx`.
 
-## Capability: `queued-prompts` (12 scenarios)
+## Capability: `queued-prompts` (15 scenarios)
 
 | Scenario | Coverage | Assertion evidence |
 | --- | --- | --- |
@@ -29,6 +29,9 @@ queue). The UI's reducer and components are pinned in `ui/src/useAgent.test.ts`,
 | APromptSentDuringAnEditQueuesAfterIt | covered | `server/test/queuedPromptsWire.test.mjs` — "embedded: queued prompts wait as typed…": a prompt sent right behind the edit lands third, after the re-queued first and second |
 | ARuntimeWithoutClearQueueIsReadOnly | covered | `server/test/queuedPromptsWire.test.mjs` — "rpc: a dialect without clear_queue shows its queue read-only and refuses edits": OMP's dialect (no `get_tree`), the queued prompt is `editable: false`, the edit is refused naming the RPC runtime, and the child's command log has no `clear_queue`; `ui/src/components/UserMessage.test.tsx` — "offers neither action when the queue cannot be rewritten"; `ui/src/App.test.tsx` — "offers no action on a queue the server cannot rewrite" |
 | AnExtensionMessageMakesTheQueueReadOnly | covered | `server/test/queuedPromptsWire.test.mjs` — "embedded: a message an extension queued makes the whole queue read-only": the extension's follow-up appears as foreign, every entry is `editable: false`, the edit is refused naming the extension, and nothing was taken back; `server/test/queuedPrompts.test.ts` — "an extension's message queued while ours is in flight is not taken for ours" |
+| TheQueueIsSentAfterAStop | covered | `server/test/queuedPromptsWire.test.mjs` — "embedded: the queue left by a stop is sent now…": after `abort`, `send_queue_now` opens a request whose last two user messages are A (with `image/png`) and B, the queue empties, and the conversation holds start, A, B once each; `e2e/queued-prompts.spec.ts` — "send now: …": after Stop, "send it now" sends without confirmation and the next request ends with "three"; `ui/src/components/SendQueueNow.test.tsx` — "sends at once when no turn runs"; `ui/src/App.test.tsx` — "offers to send the queue left by a stop, with no message to type" |
+| SendingNowStopsTheStepInProgress | covered | `server/test/queuedPromptsWire.test.mjs` — "embedded: sending now mid-turn stops the step in progress and keeps the completed one": request 1 answered, X delivered, request 2 held; `send_queue_now` opens request 3 whose users are start, X, Y, whose completed replies are exactly "answer 1", and whose only other reply is the aborted, empty one (pi's own providers drop it before the request); "rpc: a real Pi child stops its step and takes the queue in the new turn's first request": the child's next request holds start, A, B; `e2e/queued-prompts.spec.ts` — "send now: …": confirmed (double-clicked), the next request ends with one, two, each in the conversation once, and a half-typed composer draft is untouched; `ui/src/components/SendQueueNow.test.tsx` — "sends once confirmed" |
+| SendingNowAsksFirstWhileATurnRuns | covered | `ui/src/components/SendQueueNow.test.tsx` — "asks first while a turn runs, saying what is lost and what is kept, and cancel changes nothing", "drops a pending confirmation when the turn ends on its own"; `e2e/queued-prompts.spec.ts` — "send now: …": the confirmation names the dropped reply, cancel leaves "working…" and both bubbles |
 
 ## Capability: `model` (2 scenarios, modified)
 

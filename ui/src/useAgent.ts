@@ -2676,6 +2676,8 @@ export function useAgent(serverUrl = "", explicitToken?: string, embedded = fals
     editQueuedPrompt: (id: string, text: string) => sendMessage({ type: "edit_queued_prompt", id, text }),
     /** Take a prompt still waiting in the agent's queue out of it. */
     removeQueuedPrompt: (id: string) => sendMessage({ type: "remove_queued_prompt", id }),
+    /** Send every queued prompt now; a running turn is stopped first. */
+    sendQueueNow: () => sendMessage({ type: "send_queue_now" }),
     /** Re-send a past user message with edited text — the answer branches off, the original stays in the tree. */
     editPrompt: (entryId: string, text: string, images?: WireImage[]) =>
       sendMessage({ type: "edit_prompt", entryId, text, ...(images?.length ? { images } : {}) }),

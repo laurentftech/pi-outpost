@@ -54,6 +54,23 @@ shown pending, and go with the next prompt — as anything left queued after an 
 Edits, removals and prompts sent during a turn are serialised per workspace, so two clients' edits,
 or a prompt typed during an edit, cannot interleave with a re-queue.
 
+### Send the queue now
+
+After a stop, pi keeps its queue but runs nothing until a new prompt arrives: the pending
+bubbles had no way out without typing a message to carry them. And mid-turn, a steer waits for
+the end of the step — the model's reply and the tools it called — which can be long.
+
+pi has no public "continue" (`Agent.continue()` drains the queue but is not on `AgentSession` nor
+in RPC), so `send_queue_now` uses the same primitives as an edit: stop a running turn and wait
+until idle, take the queue back, queue all but the first again as steers, and send the first as
+a prompt. A run polls the steering queue as it starts (`agent-loop.js`), so every queued prompt
+goes out in the new turn's first request, in order.
+
+Stopping abandons the step in progress: a partial reply stays in the session as aborted and is
+never replayed to the model (`transformMessages` skips aborted replies), and a running tool is
+killed. Completed steps stay. The interface says so before it happens, inline — a native
+`confirm()` returns false, silently, in a sandboxed embed without `allow-modals`.
+
 ### Read-only when a re-queue would lose something
 
 Pencil and ✕ are offered only when the runtime can clear its queue (embedded; RPC with standard pi,

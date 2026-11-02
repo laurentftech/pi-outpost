@@ -316,3 +316,81 @@ test("embedded: a sent prompt is edited by rewinding into a branch, and not whil
   const last = (await requests(ctx.log)).at(-1);
   assert.deepEqual(last.users.map((user) => user.text), ["first ask, edited"], "the agent is asked the edit, without the rewound turns");
 });
+
+// openlore: scenario=TheQueueIsSentAfterAStop spec=queued-prompts
+test("embedded: the queue left by a stop is sent now, all of it in the new turn's first request", async (t) => {
+  const ctx = await boot(t);
+  const { client, log } = ctx;
+  await holdTurn(ctx);
+  client.send({ type: "prompt", text: "A", images: [IMAGE] });
+  client.send({ type: "prompt", text: "B" });
+  await eventually(() => queueTexts(client).join("|") === "A|B", "both queued");
+  const ended = next(client, (message) => message.type === "agent_end");
+  client.send({ type: "abort" });
+  await ended;
+  assert.deepEqual(queueTexts(client), ["A", "B"], "left pending by the stop");
+  const before = (await requests(log)).length;
+
+  client.send({ type: "send_queue_now" });
+  await eventually(async () => (await requests(log)).length > before, "a new request");
+  const first = (await requests(log))[before];
+  assert.deepEqual(first.users.slice(-2).map(({ text, images }) => ({ text, images })), [
+    { text: "A", images: ["image/png"] },
+    { text: "B", images: [] },
+  ], "both, in order, in the first request");
+  await eventually(() => latestQueue(client).length === 0, "nothing left pending");
+  await client.waitFor((message) => message.type === "agent_end" && client.received.filter((m) => m.type === "agent_end").length >= 2);
+  assert.deepEqual(users(client).map((message) => message.text), ["start", "A", "B"], "each once in the conversation");
+});
+
+// openlore: scenario=SendingNowStopsTheStepInProgress spec=queued-prompts
+test("embedded: sending now mid-turn stops the step in progress and keeps the completed one", async (t) => {
+  const ctx = await boot(t);
+  const { client, log, gate } = ctx;
+  // Request 1 answers at once; the steer X it delivers opens request 2, held: a completed
+  // step ("answer 1"), then a step in progress.
+  const n = (await requests(log)).length;
+  await writeFile(gate(n + 1), "");
+  await writeFile(gate(n + 2), "");
+  client.send({ type: "prompt", text: "start" });
+  await eventually(async () => (await requests(log)).length === n + 1, "request 1");
+  client.send({ type: "prompt", text: "X" });
+  await eventually(() => queueTexts(client).join("|") === "X", "X queued");
+  await rm(gate(n + 1));
+  await eventually(async () => (await requests(log)).length === n + 2, "request 2, in progress");
+  client.send({ type: "prompt", text: "Y" });
+  await eventually(() => queueTexts(client).join("|") === "Y", "Y queued");
+
+  client.send({ type: "send_queue_now" });
+  await eventually(async () => (await requests(log)).length === n + 3, "the new turn's request");
+  const request = (await requests(log))[n + 2];
+  assert.deepEqual(request.users.map((user) => user.text), ["start", "X", "Y"]);
+  assert.deepEqual(request.assistants.filter((reply) => reply.stopReason !== "aborted").map((reply) => reply.text), ["answer 1"], "the completed step is kept");
+  assert.deepEqual(request.assistants.filter((reply) => reply.stopReason === "aborted").map((reply) => reply.text), [""], "the step in progress was abandoned, with nothing in it");
+  await eventually(() => latestQueue(client).length === 0, "nothing left pending");
+  assert.deepEqual(users(client).map((message) => message.text), ["start", "X", "Y"]);
+  await rm(gate(n + 2), { force: true });
+});
+
+// openlore: scenario=SendingNowStopsTheStepInProgress spec=queued-prompts
+test("rpc: a real Pi child stops its step and takes the queue in the new turn's first request", async (t) => {
+  const ctx = await boot(t, {
+    sandbox: false,
+    agentRuntime: {
+      mode: "rpc",
+      executable: process.execPath,
+      args: [REAL_PI, "--provider", MODEL.provider, "--model", MODEL.id, "--api-key", "test", "--extension", PROVIDER, "--no-approve"],
+      startupTimeoutMs: 15_000,
+    },
+  });
+  const { client, log, gate } = ctx;
+  await holdTurn(ctx);
+  client.send({ type: "prompt", text: "A" });
+  client.send({ type: "prompt", text: "B" });
+  await eventually(() => queueTexts(client).join("|") === "A|B", "both queued in the child");
+  client.send({ type: "send_queue_now" });
+  await eventually(async () => (await requests(log)).length >= 2, "the new turn's request");
+  assert.deepEqual((await requests(log))[1].users.map((user) => user.text), ["start", "A", "B"]);
+  await eventually(() => latestQueue(client).length === 0, "nothing left pending");
+  await rm(gate(1), { force: true });
+});

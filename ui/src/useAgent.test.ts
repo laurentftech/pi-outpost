@@ -2502,13 +2502,15 @@ describe("assembling a turn", () => {
       await waitFor(() => expect(result.current.state.queue.map((prompt) => prompt.text)).toEqual(["from another client"]));
     });
 
-    it("sends an edit and a removal by queue id", async () => {
+    it("sends an edit and a removal by queue id, and the queue on request", async () => {
       const result = await connected();
       act(() => result.current.editQueuedPrompt("q7", "better"));
       act(() => result.current.removeQueuedPrompt("q8"));
-      expect(mockWs!.sent.slice(-2).map((frame) => JSON.parse(frame))).toEqual([
+      act(() => result.current.sendQueueNow());
+      expect(mockWs!.sent.slice(-3).map((frame) => JSON.parse(frame))).toEqual([
         { type: "edit_queued_prompt", id: "q7", text: "better" },
         { type: "remove_queued_prompt", id: "q8" },
+        { type: "send_queue_now" },
       ]);
     });
 

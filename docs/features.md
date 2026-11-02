@@ -28,8 +28,9 @@
   by file, an edit becomes the diff it applied — the raw output always one keystroke away
 - Steer the agent while it works, and abort. A message sent mid-turn waits below the turn,
   marked as queued, until the agent reads it at the end of its current step: until then the
-  usual ✎ rewrites it and ✕ takes it out. Once read, it joins the conversation where the agent
-  read it
+  usual ✎ rewrites it and ✕ takes it out, and "send now" sends the queue at once — after a stop,
+  or mid-turn by stopping the current step (completed work is kept). Once read, it joins the
+  conversation where the agent read it
 - Ask a side question while the agent works: `/btw where are you at?` is answered from the
   conversation so far, in a side note above the composer, without interrupting the turn, reaching
   the agent or entering the conversation. Another `/btw` can follow up on it; × closes the note

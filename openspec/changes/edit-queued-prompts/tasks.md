@@ -11,8 +11,13 @@
 - [x] 2.1 Pending bubbles with the pencil and ✕ in place of the dashed box (`UserMessage`'s queued variant); a refused edit, or an open edit whose prompt leaves the queue, goes to the composer after any draft.
 - [x] 2.2 Component and reducer tests (`UserMessage.test.tsx`, `useAgent.test.ts`, `App.test.tsx`).
 
-## 3. Verification
+## 3. Send the queue now
 
-- [x] 3.1 Scenario matrix in `scenario-coverage.md`; `npm run check:scenarios`.
-- [x] 3.2 Playwright in the running app (`e2e/queued-prompts.spec.ts`), with two monkey passes: an edit the agent overtakes, a double ✕, an abort, a reload, edit spam, two clients on one prompt, a new session under a queue.
-- [x] 3.3 `openspec validate edit-queued-prompts --strict`; documentation impact.
+- [x] 3.1 `send_queue_now`: stop a running turn and wait until idle, take the queue back, queue all but the first again as steers, send the first as a prompt — pi polls the steering queue as a run starts, so all of them go out in its first request. Wire tests after a stop and mid-turn (completed step kept, step in progress abandoned).
+- [x] 3.2 `SendQueueNow`: one button under the pending bubbles; while a turn runs it asks inline what is lost and kept (a native `confirm()` is silently blocked in a sandboxed embed). Component, App and Playwright tests.
+
+## 4. Verification
+
+- [x] 4.1 Scenario matrix in `scenario-coverage.md`; `npm run check:scenarios`.
+- [x] 4.2 Playwright in the running app (`e2e/queued-prompts.spec.ts`), with two monkey passes: an edit the agent overtakes, a double ✕, an abort, a reload, edit spam, two clients on one prompt, a new session under a queue.
+- [x] 4.3 `openspec validate edit-queued-prompts --strict`; documentation impact.

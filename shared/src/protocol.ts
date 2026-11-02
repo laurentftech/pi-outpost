@@ -1559,6 +1559,11 @@ export type ClientMessage =
   | { type: "edit_queued_prompt"; id: string; text: string }
   /** Take a prompt still waiting in the agent's queue out of it. */
   | { type: "remove_queued_prompt"; id: string }
+  /**
+   * Send every prompt waiting in the agent's queue now, as the first request of a new turn.
+   * A running turn is stopped first: its step in progress is abandoned, completed work kept.
+   */
+  | { type: "send_queue_now" }
   | { type: "abort" }
   | { type: "set_model"; provider: string; id: string }
   | { type: "set_thinking"; level: ThinkingLevel }

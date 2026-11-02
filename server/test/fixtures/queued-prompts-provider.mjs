@@ -9,8 +9,10 @@
  *
  * Typing "queue one for me" makes the extension queue a follow-up of its own.
  *
- * Each request is appended to QUEUE_LOG as one JSON line: { n, users }, `users` being the
- * conversation's user messages as { text, images } — images counted, by MIME type.
+ * Each request is appended to QUEUE_LOG as one JSON line: { n, users, assistants }, `users`
+ * being the conversation's user messages as { text, images } — images counted, by MIME type —
+ * and `assistants` the replies in the context, as { text, stopReason } — a fake provider is handed
+ * aborted replies too; pi's own providers drop them before the request (`transformMessages`).
  */
 import { appendFileSync, existsSync } from "node:fs";
 import { createAssistantMessageEventStream } from "@earendil-works/pi-ai/compat";
@@ -32,7 +34,10 @@ function stream(model, context, options) {
   // request of the conversation, so it neither takes a number nor waits on a gate.
   const titling = users.length === 1 && users[0].text.startsWith("<conversation>");
   const n = titling ? 0 : ++requests;
-  if (process.env.QUEUE_LOG && !titling) appendFileSync(process.env.QUEUE_LOG, `${JSON.stringify({ n, users })}\n`);
+  const assistants = (context.messages ?? [])
+    .filter((message) => message.role === "assistant")
+    .map((message) => ({ text: blocks(message.content).filter((block) => block.type === "text").map((block) => block.text).join(""), stopReason: message.stopReason }));
+  if (process.env.QUEUE_LOG && !titling) appendFileSync(process.env.QUEUE_LOG, `${JSON.stringify({ n, users, assistants })}\n`);
 
   const out = createAssistantMessageEventStream();
   const partial = { role: "assistant", content: [{ type: "text", text: titling ? "A title" : `answer ${n}` }], api: model.api, provider: model.provider, model: model.id, usage, stopReason: "stop", timestamp: Date.now() };

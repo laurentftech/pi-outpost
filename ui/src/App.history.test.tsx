@@ -106,6 +106,7 @@ function agentApi(state: ReturnType<typeof agentState>, overrides: Record<string
     editPrompt: vi.fn(),
     editQueuedPrompt: vi.fn(),
     removeQueuedPrompt: vi.fn(),
+    sendQueueNow: vi.fn(),
     prefillComposer: vi.fn(),
     compact: vi.fn(),
     loadOlderItems: vi.fn(),

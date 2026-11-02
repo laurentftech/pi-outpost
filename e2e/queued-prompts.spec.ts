@@ -186,3 +186,52 @@ test("monkey: edit spam, two clients on one prompt, a new session under a queue"
   expect(await conversation(page)).toEqual([]);
   await other.close();
 });
+
+// openlore: scenario=TheQueueIsSentAfterAStop spec=queued-prompts
+// openlore: scenario=SendingNowAsksFirstWhileATurnRuns spec=queued-prompts
+// openlore: scenario=SendingNowStopsTheStepInProgress spec=queued-prompts
+test("send now: asks while a turn runs, cancel changes nothing, confirmed it stops the step; after a stop it just sends", async ({ page }) => {
+  const first = await holdTurn(page, 3);
+  const composer = page.getByRole("textbox", { name: /message pi|steer the agent/i });
+  await send(page, "one");
+  await send(page, "two");
+  await expect(queued(page)).toHaveCount(2);
+
+  // Mid-turn: asks, and cancel leaves the turn and the queue as they were.
+  await page.getByRole("button", { name: "send all 2 now" }).click();
+  const confirm = page.getByRole("group", { name: /confirm sending/i });
+  await expect(confirm).toContainText("reply being written is dropped");
+  await confirm.getByRole("button", { name: "cancel" }).click();
+  await expect(confirm).toHaveCount(0);
+  await expect(page.getByText("working…")).toBeVisible();
+  await expect(queued(page)).toHaveCount(2);
+
+  // A half-typed draft in the composer survives everything below.
+  await composer.fill("half a thought");
+
+  // Confirmed, clicked twice: the step stops once, both prompts go out together, once.
+  await page.getByRole("button", { name: "send all 2 now" }).click();
+  await confirm.getByRole("button", { name: "stop and send" }).dblclick({ force: true }).catch(() => {});
+  await expect(queued(page)).toHaveCount(0);
+  await expect.poll(async () => (await sent()).length).toBeGreaterThanOrEqual(first + 1);
+  const next = (await sent())[first];
+  expect(next.users.slice(-2).map((user) => user.text)).toEqual(["one", "two"]);
+  await expect(composer).toHaveValue("half a thought");
+
+  // Stop with a new prompt queued, then send it: no confirmation, nothing to type.
+  await send(page, "three");
+  await expect(queued(page)).toHaveCount(1);
+  await page.getByRole("button", { name: "Stop the agent" }).click();
+  await expect(page.getByText("working…")).toHaveCount(0);
+  await expect(queued(page)).toHaveCount(1);
+  const before = (await sent()).length;
+  await page.getByRole("button", { name: "send it now" }).click();
+  await expect(page.getByRole("group", { name: /confirm sending/i })).toHaveCount(0);
+  await expect.poll(async () => (await sent()).slice(before).some((request) => request.users.at(-1)?.text === "three")).toBe(true);
+  await expect(queued(page)).toHaveCount(0);
+
+  for (let n = first; n <= first + 3; n++) await rm(gate(n), { force: true });
+  await expect(page.getByText("working…")).toHaveCount(0);
+  const users = await conversation(page);
+  for (const text of ["one", "two", "three"]) expect(users.filter((user) => user === text)).toHaveLength(1);
+});

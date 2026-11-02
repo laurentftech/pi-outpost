@@ -21,6 +21,9 @@ and returns its text. pi's own terminal uses it for Alt+Up, "return queued messa
 - **The ✕ removes a queued prompt**, by the same take-back and re-queue without it.
 - **A prompt pi delivered meanwhile is not rewritten.** The edit or removal is refused, the edited text
   goes back to the composer, and the rest of the queue is queued again as it was.
+- **"Send now" sends the whole queue at once**: after a stop, without typing a message to carry it;
+  mid-turn, by stopping the step in progress after saying what is lost (that step) and kept
+  (everything completed).
 - **Read-only where re-queueing would lose something**: an RPC dialect without `clear_queue` (OMP, Prime
   Agent), or a queue holding a message an extension queued, shows its pending prompts without pencil or ✕.
 

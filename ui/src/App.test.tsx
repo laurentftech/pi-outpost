@@ -109,6 +109,7 @@ function agentApi(state: ReturnType<typeof agentState>) {
     editPrompt: vi.fn(),
     editQueuedPrompt: vi.fn(),
     removeQueuedPrompt: vi.fn(),
+    sendQueueNow: vi.fn(),
     prefillComposer: vi.fn(),
     compact: vi.fn(),
     loadOlderItems: vi.fn(),
@@ -1107,9 +1108,17 @@ describe("App — model bar and tree", () => {
     expect(elsewhere.prefillComposer).not.toHaveBeenCalled();
   });
 
+  // openlore: scenario=TheQueueIsSentAfterAStop spec=queued-prompts
+  it("offers to send the queue left by a stop, with no message to type", () => {
+    const api = mount({ isStreaming: false, queue: [{ id: "q1", text: "pending", kind: "steer", editable: true }] });
+    fireEvent.click(screen.getByRole("button", { name: "send it now" }));
+    expect(api.sendQueueNow).toHaveBeenCalledTimes(1);
+  });
+
   // openlore: scenario=AQueueThatCannotBeRewrittenIsReadOnly spec=queued-prompts
   it("offers no action on a queue the server cannot rewrite", () => {
     mount({ isStreaming: true, queue: [{ id: "q1", text: "from an extension", kind: "followUp", editable: false }] });
+    expect(screen.queryByRole("button", { name: /now$/ })).not.toBeInTheDocument();
     expect(screen.getByText("from an extension")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Edit this queued message" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Remove this queued message" })).not.toBeInTheDocument();

@@ -83,3 +83,22 @@ Pending prompts SHALL offer no edit or remove action, and the server SHALL refus
 - **GIVEN** a pending prompt and a message an extension queued behind it
 - **WHEN** the pending list is shown
 - **THEN** no pending prompt offers an edit or remove action, and an edit request is refused
+
+### Requirement: TheUserSendsTheQueueNow
+
+The pending prompts SHALL offer to be sent now, as one action for the whole queue, without the user typing anything. Sent now, every pending prompt SHALL reach the agent in the first request of a new turn, in queue order, with its images. While a turn runs, sending now SHALL stop it first, and SHALL ask before doing so, saying that the step in progress is abandoned and the completed work kept; declining SHALL change nothing.
+
+#### Scenario: TheQueueIsSentAfterAStop
+- **GIVEN** two pending prompts left by a stopped turn
+- **WHEN** the user sends the queue now
+- **THEN** a turn starts whose first request holds both prompts in order, and nothing was typed in the composer
+
+#### Scenario: SendingNowStopsTheStepInProgress
+- **GIVEN** a running turn that has completed one step, and a pending prompt
+- **WHEN** the user sends the queue now and confirms
+- **THEN** the step in progress is stopped, the completed step stays in the conversation, and the next request holds it and the pending prompt
+
+#### Scenario: SendingNowAsksFirstWhileATurnRuns
+- **GIVEN** a running turn and a pending prompt
+- **WHEN** the user asks to send the queue now
+- **THEN** a confirmation says the step in progress will be abandoned and completed work kept, and declining leaves the turn running and the prompt pending

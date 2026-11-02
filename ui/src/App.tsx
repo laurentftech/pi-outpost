@@ -25,6 +25,7 @@ import { repoForPath } from "./util/gitRepos";
 import { ToolCard } from "./components/ToolCard";
 import { createActionDispatch } from "./presentations/actions";
 import { UserMessage } from "./components/UserMessage";
+import { SendQueueNow } from "./components/SendQueueNow";
 import { useTheme } from "./theme/useTheme";
 import { rawFileWorkspace } from "./util/workspacePath";
 import {
@@ -129,6 +130,7 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
     editPrompt,
     editQueuedPrompt,
     removeQueuedPrompt,
+    sendQueueNow,
     prefillComposer,
     compact,
     loadOlderItems,
@@ -266,7 +268,9 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
   // is being typed there rather than over it: the text exists nowhere else.
   const restoreToComposer = (text: string, notice?: string) => {
     const draft = drafts.current[boundKey ?? ""]?.trim();
-    prefillComposer(draft ? `${draft}\n\n${text}` : text, notice);
+    const merged = draft ? `${draft}\n\n${text}` : text;
+    if (notice) prefillComposer(merged, notice);
+    else prefillComposer(merged);
   };
   // The server refused it: the agent read the prompt first.
   const refusedEdit = state.queuedEditRefused;
@@ -1324,6 +1328,9 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
                   queued={{ onRemove: () => removeQueuedPrompt(prompt.id), onDraftChange: trackQueuedDraft(prompt.id, prompt.text) }}
                 />
               ))}
+              {state.queue.length > 0 && state.queue.every((prompt) => prompt.editable) && state.connected && (
+                <SendQueueNow isStreaming={state.isStreaming} count={state.queue.length} onSend={sendQueueNow} />
+              )}
 
               {attachmentErrors.map((error, i) => (
                 <div

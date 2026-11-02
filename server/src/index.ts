@@ -4504,6 +4504,89 @@ async function lockQueue(workspace: Workspace): Promise<() => void> {
 
 const QUEUED_PROMPT_DELIVERED = "The agent has already received that message — it can no longer be changed";
 
+/** Resolve once the runtime reports no turn running, or after `timeoutMs`; says which. */
+async function waitUntilIdle(workspace: Workspace, timeoutMs = 15_000): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs;
+  while (workspace.agent.snapshot().isStreaming) {
+    if (Date.now() > deadline) return false;
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  return true;
+}
+
+/**
+ * Send every queued prompt now, as the first request of a new turn — what the user would
+ * otherwise get by stopping and typing something, without the typing.
+ *
+ * A running turn is stopped first: pi then keeps its queue, and the step in progress is
+ * dropped (its partial reply is never replayed to the model; a running tool is killed),
+ * while completed steps stay. The queue is then taken back; all but the first prompt are
+ * queued again as steers and the first is sent as a prompt — pi polls the steering queue as
+ * a run starts, so they all go out together, in order, in its first request.
+ */
+async function sendQueueNow(workspace: Workspace, socket: WebSocket): Promise<void> {
+  const refuse = (message: string): void => send(socket, { type: "queued_prompt_refused", message });
+  const release = await lockQueue(workspace);
+  try {
+    const tracker = workspace.queuedPrompts;
+    const { clearQueue, queueMessage } = workspace.agent;
+    if (!clearQueue || !queueMessage || !canRewriteQueue(workspace)) {
+      refuse(new RuntimeUnsupportedError("Sending queued messages now", workspace.agent.kind).message);
+      return;
+    }
+    if (tracker.size === 0) return;
+    if (tracker.hasForeign) {
+      refuse("The queue also holds a message an extension queued; it cannot be rewritten");
+      return;
+    }
+    if (workspace.replacingSession) {
+      refuse("Session change already in progress");
+      return;
+    }
+    if (workspace.agent.snapshot().isStreaming) {
+      await workspace.agent.abort();
+      if (!(await waitUntilIdle(workspace))) {
+        refuse("The running turn did not stop; the queued messages were left as they were");
+        return;
+      }
+    }
+
+    tracker.suspend();
+    let returned: { steering: string[]; followUp: string[] };
+    try {
+      returned = await clearQueue.call(workspace.agent);
+    } catch (error) {
+      tracker.resume();
+      refuse(`The queue could not be sent: ${error instanceof Error ? error.message : String(error)}`);
+      return;
+    }
+    const { delivered, kept } = tracker.takeBack(returned);
+    for (const entry of delivered) if (entry.source) broadcastUser(workspace, entry.source);
+    const [first, ...rest] = kept;
+    if (!first) {
+      broadcastQueue(workspace);
+      return;
+    }
+    for (const entry of rest) {
+      const source = entry.source ?? { text: entry.piText, promptText: entry.piText };
+      const expectation = tracker.expect(source, { kind: entry.kind, id: entry.id });
+      try {
+        tracker.settle(expectation, (await queueMessage.call(workspace.agent, source.promptText, source.images, entry.kind)) === "queued");
+      } catch (error) {
+        tracker.settle(expectation, false);
+        send(socket, { type: "error", message: `A queued message could not be sent: ${error instanceof Error ? error.message : String(error)}` });
+      }
+    }
+    // The first starts the turn, and takes the rest along in the same request.
+    const attempt = promptOnce(workspace, first.source ?? { text: first.piText, promptText: first.piText });
+    attempt.done.catch(reportError);
+    await attempt.accepted;
+    broadcastQueue(workspace);
+  } finally {
+    release();
+  }
+}
+
 /**
  * Edit (`text`) or remove (`text` undefined) a prompt waiting in the agent's queue.
  *
@@ -6345,6 +6428,9 @@ function handleClientMessage(socket: WebSocket, raw: string): void {
     case "remove_queued_prompt":
       if (typeof message.id !== "string") return;
       changeQueuedPrompt(workspace, socket, message.id, undefined).catch(reportError);
+      return;
+    case "send_queue_now":
+      sendQueueNow(workspace, socket).catch(reportError);
       return;
     case "abort":
       workspace.agent.abort().catch(() => {});
