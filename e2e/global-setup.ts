@@ -12,6 +12,8 @@ import { POSTER_EXAMPLE } from "@pi-outpost/posters/guide";
 // SDK's model runtime never reaches the network.
 // @ts-expect-error -- .mjs harness, no types; the shape is asserted below
 import { makeWorkspace, startServer } from "../server/test/harness.mjs";
+// @ts-expect-error -- a plain .mjs test helper, without type declarations
+import { agentDirAtOldVersion } from "../server/test/fakePiPackages.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.join(HERE, "..");
@@ -365,6 +367,34 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
       extensionLock: true,
     },
     { env: onlyOneFakeProvider() },
+  );
+
+  // Packages added and removed from Settings: a real npm against a registry of our own,
+  // holding a tiny extension at 1.0.0 (installed) and 1.1.0 (published, so an update is
+  // offered). The registry is a node:test-style helper; its teardowns are collected here.
+  const packageTeardowns: (() => unknown)[] = [];
+  const packagesFixture = await agentDirAtOldVersion({ after: (fn: () => unknown) => packageTeardowns.push(fn) }, "pi-e2e-packages-");
+  packagesFixture.reg.state.published.add("1.1.0");
+  packagesFixture.reg.state.latest = "1.1.0";
+  const packagesRoot = await realpath(await makeWorkspace({ "readme.md": "# packages\n" }));
+  const packages = await startServer(
+    packagesRoot,
+    {
+      agentDir: packagesFixture.agentDir,
+      updateCheck: true,
+      updateRegistry: packagesFixture.reg.url,
+      branding: { title: "packages" },
+    },
+    {
+      env: {
+        ...onlyOneFakeProvider(),
+        // The harness keeps the SDK offline; its package manager then refuses to install.
+        PI_OFFLINE: undefined,
+        npm_config_registry: packagesFixture.reg.url,
+        npm_config_prefix: packagesFixture.emptyGlobal,
+        npm_config_cache: packagesFixture.cache,
+      },
+    },
   );
 
   // A second server, token-protected. The widget then sends `Authorization`,
@@ -819,8 +849,13 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
   process.env.PI_E2E_EXTENSIONS_LOCKED_URL = extensionsLocked.base;
   process.env.PI_E2E_TERMINAL_URL = terminalServer.base;
   process.env.PI_E2E_TOKEN = E2E_TOKEN;
+  process.env.PI_E2E_PACKAGES_URL = packages.base;
+  process.env.PI_E2E_PACKAGES_ROOT = packagesRoot;
+  process.env.PI_E2E_PACKAGES_AGENT_DIR = packagesFixture.agentDir;
 
   return async () => {
+    await packages.stop();
+    for (const teardown of packageTeardowns) await teardown();
     await terminalServer.stop();
     await accounts.stop();
     await accountOnboarding.stop();

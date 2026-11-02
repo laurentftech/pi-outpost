@@ -17,6 +17,7 @@ import {
 } from "../conversationFilters";
 import { GitMenu } from "./GitMenu";
 import { SettingsMenu } from "./SettingsMenu";
+import type { PiPackageEdits } from "./PiPackages";
 import { TreeMenu } from "./TreeMenu";
 import { HEADER_CONTROL } from "./headerControl";
 
@@ -64,6 +65,8 @@ interface HeaderProps {
   /** The npm pi packages the agent loads, and the update and restart they offer. */
   piPackages?: PiPackageInfo[] | null;
   piPackageUpdate?: AgentState["piPackageUpdate"];
+  /** Adding and removing packages; absent, Settings offers updates only. */
+  piPackageEdits?: PiPackageEdits;
   /** The standalone interface may restart the server; a widget may not. */
   canRestartServer?: boolean;
   serverRestarting?: boolean;
@@ -767,6 +770,7 @@ export function Header(props: HeaderProps) {
           extensionLock={props.extensionLock}
           piPackages={props.piPackages ?? null}
           piPackageUpdate={props.piPackageUpdate ?? null}
+          {...(props.piPackageEdits ? { piPackageEdits: props.piPackageEdits } : {})}
           canRestartServer={props.canRestartServer ?? false}
           serverRestarting={props.serverRestarting ?? false}
           {...(props.onCheckPiPackages ? { onCheckPiPackages: props.onCheckPiPackages } : {})}

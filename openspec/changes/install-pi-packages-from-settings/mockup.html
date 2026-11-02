@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Package install mockup</title>
+<script src="https://cdn.tailwindcss.com/3.4.17"></script>
+<script>tailwind.config = { darkMode: "class" };</script>
+</head>
+<body class="bg-zinc-100 font-sans text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100">
+<div class="mx-auto max-w-4xl p-4">
+  <div class="mb-3 flex flex-wrap items-center gap-2 text-sm">
+    <strong>Settings → Extensions → Packages (mockup)</strong>
+    <button id="theme" class="rounded border border-zinc-400 px-2 py-0.5 dark:border-zinc-700">light / dark</button>
+    <label>scenario
+      <select id="scenario" class="rounded border border-zinc-400 bg-transparent px-1 dark:border-zinc-700">
+        <option value="normal">two packages, one with an update</option>
+        <option value="empty">no package yet</option>
+        <option value="locked">extensionLock on</option>
+      </select>
+    </label>
+    <span class="text-zinc-500">try: <code>openlore</code> (ok), <code>nope-xyz</code> (not found), <code>@gotgenes/pi-permission-system</code> (already there)</span>
+  </div>
+
+  <!-- The Settings dropdown, at its real width -->
+  <div class="ml-auto flex max-h-[80vh] w-[380px] flex-col rounded-lg border border-zinc-200 bg-white shadow-xl dark:border-zinc-700 dark:bg-zinc-900">
+    <div class="overflow-y-auto p-4">
+      <section class="mb-4">
+        <h3 class="mb-2 text-xs font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Extensions</h3>
+        <details><summary class="cursor-pointer text-xs text-zinc-600 dark:text-zinc-400">3 extensions loaded</summary></details>
+        <p id="lockNote" hidden class="mt-2 text-xs text-zinc-400 dark:text-zinc-500">Extension paths and repository updates that contain extensions are locked by this deployment.</p>
+        <div id="packages" class="mt-3"></div>
+        <div id="restart"></div>
+      </section>
+    </div>
+  </div>
+</div>
+
+<script>
+const $ = (s, r = document) => r.querySelector(s);
+const esc = (s) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+const REGISTRY = { openlore: "2.4.1", "pi-landstrip": "0.9.0", "@gotgenes/pi-permission-system": "33.1.0" };
+
+let state;
+function reset(scenario) {
+  state = {
+    locked: scenario === "locked",
+    packages: scenario === "empty" ? [] : [
+      { name: "@gotgenes/pi-permission-system", scope: "user", installed: "33.0.1", latest: "33.1.0" },
+      { name: "pi-landstrip", scope: "project", installed: "0.9.0", latest: "0.9.0" },
+    ],
+    adding: false, draft: "", draftScope: "user", addError: "", confirmAdd: null, pending: null,
+    confirming: null, // { kind: "update" | "remove", name }
+    result: null, // { name, ok, message }
+    restart: [],
+  };
+  render();
+}
+
+function status(p) {
+  if (state.pending === "update:" + p.name) return `updating to ${p.latest}…`;
+  if (state.pending === "remove:" + p.name) return "removing…";
+  if (state.pending === "undo:" + p.name) return `reinstalling ${p.installed}…`;
+  if (state.result && state.result.name === p.name && !state.result.ok) return state.result.message;
+  if (p.removed) return "removed — still running until pi-outpost restarts";
+  if (p.restartNeeded) return `${p.installed} installed — restart to use it`;
+  if (p.installed !== p.latest) return `${p.installed} — ${p.latest} available`;
+  return `${p.installed}, up to date`;
+}
+
+const btn = "shrink-0 rounded border border-zinc-300 px-1.5 py-0.5 text-zinc-700 hover:bg-zinc-100 disabled:opacity-50 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-700";
+const quiet = "shrink-0 rounded px-1.5 py-0.5 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 hover:text-red-700 disabled:opacity-50 dark:hover:bg-zinc-700 dark:hover:text-red-400";
+const amber = "mt-1 rounded border border-amber-300 bg-amber-50 p-2 text-amber-900 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-200";
+const amberGo = "rounded bg-amber-600 px-2 py-0.5 text-white hover:bg-amber-700";
+const amberNo = "rounded px-2 py-0.5 hover:bg-amber-100 dark:hover:bg-amber-900/40";
+const scopeLabel = (s) => (s === "user" ? "all projects" : "the pi-outpost project");
+
+function render() {
+  $("#lockNote").hidden = !state.locked;
+  const busy = state.pending !== null;
+  const rows = state.packages.map((p) => {
+    const c = state.confirming && state.confirming.name === p.name ? state.confirming.kind : null;
+    const canUpdate = !state.locked && !p.removed && !p.restartNeeded && p.installed !== p.latest;
+    const canRemove = !state.locked && !p.removed;
+    // Two fixed slots, always laid out: the name never changes width, nothing slides.
+    const slot1 = canUpdate ? `<button class="${btn} w-16" data-act="update" ${busy ? "disabled" : ""}>Update</button>` : `<span class="${btn} invisible w-16" aria-hidden="true">Update</span>`;
+    const slot2 = p.removed && !state.locked
+      ? `<button class="${btn} w-16" data-act="undo" ${busy ? "disabled" : ""}>Undo</button>`
+      : canRemove ? `<button class="${quiet} w-16" data-act="remove" ${busy ? "disabled" : ""} aria-label="Remove ${esc(p.name)}">Remove</button>` : `<span class="${btn} invisible w-16" aria-hidden="true">Update</span>`;
+    return `<li class="rounded bg-zinc-50 px-2 py-1 text-xs dark:bg-zinc-800" data-name="${esc(p.name)}">
+      <div class="flex items-center justify-between gap-2">
+        <span class="min-w-0 flex-1 truncate font-medium ${p.removed ? "text-zinc-400 line-through" : "text-zinc-700 dark:text-zinc-200"}" title="npm:${esc(p.name)}">${esc(p.name)}</span>
+        ${c ? "" : slot1 + slot2}
+      </div>
+      <div class="truncate text-zinc-500 dark:text-zinc-400" title="${esc(status(p))}">${p.scope === "project" ? "this project · " : ""}${esc(status(p))}</div>
+      ${c === "update" ? `<div class="${amber}"><p>This replaces code that runs with the agent's privileges: ${esc(p.name)} ${p.installed} → ${p.latest}. It takes effect when pi-outpost restarts.</p>
+        <div class="mt-1 flex gap-2"><button class="${amberGo}" data-act="update-go">Install ${p.latest}</button><button class="${amberNo}" data-act="cancel">Cancel</button></div></div>` : ""}
+      ${c === "remove" ? `<div class="${amber}"><p>Removes ${esc(p.name)} from ${p.scope === "user" ? "the agent's settings (all projects)" : "the pi-outpost project's settings"} and uninstalls it. The agent keeps running it until pi-outpost restarts.</p>
+        <div class="mt-1 flex gap-2"><button class="${amberGo}" data-act="remove-go">Remove</button><button class="${amberNo}" data-act="cancel">Cancel</button></div></div>` : ""}
+    </li>`;
+  }).join("");
+
+  const empty = state.packages.length === 0 ? `<p class="text-xs text-zinc-400 dark:text-zinc-500">No packages installed</p>` : "";
+
+  let add = "";
+  if (state.locked) {
+    add = "";
+  } else if (state.pending === "install") {
+    add = "";
+  } else if (state.confirmAdd) {
+    const a = state.confirmAdd;
+    add = `<div class="${amber} text-xs"><p>This installs code that runs with the agent's privileges: ${esc(a.name)} ${a.version}, for ${scopeLabel(a.scope)}. It takes effect when pi-outpost restarts.</p>
+      <div class="mt-1 flex gap-2"><button class="${amberGo}" data-act="add-go">Install ${esc(a.name)}</button><button class="${amberNo}" data-act="add-back">Cancel</button></div></div>`;
+  } else if (state.adding) {
+    add = `<form id="addForm" class="mt-1 rounded border border-zinc-200 p-2 text-xs dark:border-zinc-700">
+      <label class="block text-zinc-600 dark:text-zinc-400" for="pkg">npm package</label>
+      <input id="pkg" autocomplete="off" spellcheck="false" value="${esc(state.draft)}" placeholder="openlore, @scope/name or name@1.2.3"
+        class="mt-0.5 w-full rounded border border-zinc-300 bg-white px-2 py-1 text-xs outline-none focus:ring-1 focus:ring-blue-400 dark:border-zinc-600 dark:bg-zinc-800" ${busy ? "disabled" : ""}>
+      <fieldset class="mt-2 flex gap-3 text-zinc-600 dark:text-zinc-400"><legend class="sr-only">Install for</legend>
+        <label><input type="radio" name="scope" value="user" ${state.draftScope === "user" ? "checked" : ""}> all projects</label>
+        <label><input type="radio" name="scope" value="project" ${state.draftScope === "project" ? "checked" : ""}> this project only (pi-outpost)</label>
+      </fieldset>
+      <div class="mt-2 flex justify-end gap-2">
+        <button type="button" class="rounded px-2 py-0.5 hover:bg-zinc-100 dark:hover:bg-zinc-700" data-act="add-cancel">Cancel</button>
+        <button type="submit" class="${btn}" ${busy || !state.draft.trim() ? "disabled" : ""}>Install…</button>
+      </div>
+      <p class="mt-1 min-h-[1rem] ${state.addError ? "text-amber-700 dark:text-amber-400" : "text-zinc-500 dark:text-zinc-400"}" ${state.addError ? 'role="alert"' : 'role="status"'}>${state.addError ? esc(state.addError) : state.pending === "lookup" ? `looking up ${esc(state.draft.trim())}…` : ""}</p></form>`;
+  } else {
+    add = `<button class="mt-1 text-xs text-zinc-500 underline hover:text-zinc-800 dark:hover:text-zinc-200" data-act="add-open" ${busy ? "disabled" : ""}>Add a package</button>`;
+  }
+
+  $("#packages").innerHTML = `
+    <div class="mb-1 flex items-center justify-between">
+      <span class="text-xs font-medium text-zinc-600 dark:text-zinc-400">Packages</span>
+      ${state.packages.length ? `<button class="text-xs text-zinc-500 underline hover:text-zinc-800 dark:hover:text-zinc-200">check for updates</button>` : ""}
+    </div>
+    ${empty}<ul class="space-y-1">${rows}</ul>
+    ${state.pending === "install" ? `<p class="mt-1 text-xs text-zinc-500" role="status">installing ${esc(state.installing.name)} ${state.installing.version}…</p>` : ""}
+    ${add}`;
+
+  $("#restart").innerHTML = state.restart.length
+    ? `<div class="mt-3 rounded border border-sky-200 bg-sky-50 p-2 text-xs text-sky-900 dark:border-sky-900 dark:bg-sky-950/40 dark:text-sky-200">
+        <p>Waiting on a restart: ${state.restart.map((r) => esc(r.label)).join(", ")}.</p>
+        <div class="mt-1"><button class="rounded bg-sky-700 px-2 py-0.5 text-white hover:bg-sky-800">Restart pi-outpost</button></div></div>`
+    : "";
+  if (state.adding && !state.confirmAdd) { const i = $("#pkg"); if (i && document.activeElement !== i) { i.focus(); i.setSelectionRange(i.value.length, i.value.length); } }
+}
+
+function setRestart(name, label) { state.restart = state.restart.filter((r) => r.name !== name).concat({ name, label }); }
+const later = (ms, f) => setTimeout(() => { f(); render(); }, ms);
+
+document.addEventListener("click", (e) => {
+  const t = e.target.closest("[data-act]");
+  if (!t) return;
+  const name = t.closest("[data-name]")?.dataset.name;
+  const p = state.packages.find((x) => x.name === name);
+  switch (t.dataset.act) {
+    case "update": state.confirming = { kind: "update", name }; state.result = null; break;
+    case "remove": state.confirming = { kind: "remove", name }; state.result = null; break;
+    case "cancel": state.confirming = null; break;
+    case "undo":
+      state.pending = "undo:" + name; state.result = null;
+      later(900, () => { p.removed = false; state.pending = null; state.restart = state.restart.filter((r) => r.name !== name); state.result = { name, ok: true, message: `Reinstalled ${p.installed}. Nothing waits on a restart for it.` }; });
+      break;
+    case "update-go":
+      state.confirming = null; state.pending = "update:" + name;
+      later(900, () => { p.installed = p.latest; p.restartNeeded = true; state.pending = null; setRestart(name, `${name} ${p.latest}`); state.result = { name, ok: true, message: `Installed ${p.latest}. It runs after a restart.` }; });
+      break;
+    case "remove-go":
+      state.confirming = null; state.pending = "remove:" + name;
+      later(900, () => { p.removed = true; state.pending = null; setRestart(name, `${name} removed`); state.result = null; });
+      break;
+    case "add-open": state.adding = true; state.addError = ""; state.result = null; break;
+    case "add-cancel": state.adding = false; state.draft = ""; state.addError = ""; break;
+    case "add-back": state.confirmAdd = null; break;
+    case "add-go": {
+      if (state.pending) break;
+      const a = state.confirmAdd; state.pending = "install"; state.installing = a; state.confirmAdd = null;
+      later(1200, () => {
+        state.packages.push({ name: a.name, scope: a.scope, installed: a.version, latest: a.version, restartNeeded: true });
+        setRestart(a.name, `${a.name} ${a.version}`);
+        state.result = { name: a.name, ok: true, message: `Installed ${a.version}. It runs after a restart.` };
+        state.pending = null; state.installing = null; state.adding = false; state.draft = "";
+      });
+      break;
+    }
+  }
+  render();
+});
+
+document.addEventListener("input", (e) => {
+  if (e.target.id === "pkg") { state.draft = e.target.value; state.addError = ""; const b = $("#addForm button[type=submit]"); if (b) b.disabled = !state.draft.trim() || state.pending !== null; const a = $("#addForm [role=alert]"); if (a) { a.textContent = ""; a.className = "mt-1 min-h-[1rem]"; a.setAttribute("role", "status"); } }
+  if (e.target.name === "scope") state.draftScope = e.target.value;
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && state.adding && !state.confirmAdd) { state.adding = false; state.draft = ""; state.addError = ""; render(); }
+});
+document.addEventListener("submit", (e) => {
+  e.preventDefault();
+  const raw = state.draft.trim().replace(/^npm:/, "");
+  if (!raw || state.pending) return;
+  const at = raw.lastIndexOf("@");
+  const [name, pinned] = at > 0 ? [raw.slice(0, at), raw.slice(at + 1)] : [raw, null];
+  state.pending = "lookup"; render();
+  later(700, () => {
+    state.pending = null;
+    const known = state.packages.find((p) => p.name === name);
+    if (known && known.removed) { state.addError = `${name} was just removed and still runs until pi-outpost restarts — use Undo on its row.`; return; }
+    if (known) { state.addError = `${name} is already installed — update it from the list above.`; return; }
+    if (!REGISTRY[name]) { state.addError = `${name} was not found on the registry this installation uses (npm view: 404).`; return; }
+    state.confirmAdd = { name, version: pinned || REGISTRY[name], scope: state.draftScope };
+  });
+});
+
+$("#scenario").onchange = (e) => reset(e.target.value);
+$("#theme").onclick = () => document.documentElement.classList.toggle("dark");
+reset("normal");
+</script>
+</body>
+</html>

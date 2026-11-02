@@ -109,6 +109,7 @@ import {
   currentEvidence,
   detectChannel,
   fetchLatestVersion,
+  fetchPublishedVersion,
   runStartupUpdateNotice,
   defaultAgentDir,
   runUpdateCommand,
@@ -221,7 +222,7 @@ import { readProjectAppearance } from "@pi-outpost/shared/structured-exchange/pr
 import { STRUCTURED_EXCHANGE_PROFILE_REGISTRY_PATH } from "@pi-outpost/shared/structured-exchange/profile";
 import { arrangementPathFor, readArrangement } from "@pi-outpost/shared/structured-exchange/arrangement";
 import { replyBlockKey, structuredExchangeBlocks } from "@pi-outpost/shared/structured-exchange/reply-blocks";
-import { checkPiPackages, hintPiPackagesBehind, installNewerPiPackage, listPiPackages, runPiPackagesUpdate, unlistedPiPackageSources } from "./piPackages.ts";
+import { checkPiPackages, hintPiPackagesBehind, installNewerPiPackage, installPiPackage, listPiPackages, lookupPiPackage, removePiPackage, restorePiPackage, runPiPackagesUpdate, unlistedPiPackageSources } from "./piPackages.ts";
 import { createStructuredExchangeFigureToolDefinition } from "./structuredExchangeFigureTool.ts";
 import { createTimelineComparisonToolDefinition } from "./timelineComparisonTool.ts";
 import { createDrawioCheckToolDefinition } from "./drawioTool.ts";
@@ -568,14 +569,14 @@ let outpostChanges: OutpostChanges | undefined;
 let startupComplete = false;
 /** Each project's npm pi packages, as last listed and checked — the snapshot's copy. */
 const piPackageLists = new Map<string, PiPackageInfo[]>();
-/** Packages being installed right now, so a second click does not start a second npm. */
-const updatingPiPackages = new Set<string>();
+/** Packages being changed right now (updated, installed, removed, restored), by name, so a second click does not start a second npm. */
+const changingPiPackages = new Set<string>();
 /**
  * The version of each package the running server loaded, by scope — the agent
  * directory's once, each project's when it first lists. Anything installed since, or
  * added since, is not what is running.
  */
-const loadedPiPackages = new Map<string, string | null>();
+const loadedPiPackages = new Map<string, { version: string | null; source: string }>();
 const loadedPiPackageScopes = new Set<string>();
 /**
  * Connections that may restart the server: the standalone interface — same address as
@@ -584,11 +585,29 @@ const loadedPiPackageScopes = new Set<string>();
  */
 const mayRestart = new WeakSet<WebSocket>();
 /**
- * What is installed and not running — a pi package at another version than the one
- * loaded, an extension repository updated since startup — by name. A new process
- * starts with none.
+ * Extension repositories updated since startup, by name: installed and not running. A
+ * new process starts with none.
  */
 const restartReasons = new Set<string>();
+/**
+ * Pi packages whose state on disk is not what this server loaded, by scope and name —
+ * recomputed on every listing, so a change undone before a restart drops out again.
+ */
+const packageRestartReasons = new Map<string, string>();
+let announcedRestartReasons: string[] = [];
+
+/** Everything that waits on a restart, one entry per package or repository. */
+function currentRestartReasons(): string[] {
+  return [...restartReasons, ...packageRestartReasons.values()];
+}
+
+/** Tell every client what waits on a restart, when it changed. */
+function announceRestartReasons(): void {
+  const reasons = currentRestartReasons();
+  if (reasons.length === announcedRestartReasons.length && reasons.every((reason, i) => reason === announcedRestartReasons[i])) return;
+  announcedRestartReasons = reasons;
+  if (startupComplete) broadcastServerWide({ type: "restart_needed", reasons });
+}
 
 try {
   useGitExecutable(await resolveGitExecutable(config.gitPath));
@@ -2643,7 +2662,7 @@ function projectFields(workspace: Workspace) {
     ...(outpostUpdate ? { outpostUpdate } : {}),
     ...(outpostChanges ? { outpostChanges } : {}),
     ...(piPackageLists.has(workspace.root) ? { piPackages: piPackageLists.get(workspace.root) } : {}),
-    ...(restartReasons.size > 0 ? { restartNeeded: [...restartReasons] } : {}),
+    ...(currentRestartReasons().length > 0 ? { restartNeeded: currentRestartReasons() } : {}),
     ...(config.workspaceLock ? { workspaceLocked: true } : {}),
     // Absent means "settings", so a client that predates the setting sees what it saw before.
     ...(config.embed.workspaceControls !== "settings" ? { embedWorkspaceControls: config.embed.workspaceControls } : {}),
@@ -5808,31 +5827,50 @@ function affectedResourceWorkspaces(repositoryPath: string): Workspace[] {
 
 
 /**
- * Compare what is installed with what this server loaded. The first listing of a scope
- * records it; later ones mark a package installed at another version, or configured
- * since, as needing a restart.
+ * Compare what is configured and installed with what this server loaded. The first
+ * listing of a scope records it; later ones mark a package installed at another
+ * version, or configured since, as needing a restart, and list a package removed since
+ * — still loaded — as removed. The restart notice follows: one entry per package, by
+ * its latest change, and none once what is on disk is again what runs.
  */
 function markRestartNeeded(target: Workspace, listed: PiPackageInfo[]): PiPackageInfo[] {
   const scopeKey = (scope: PiPackageInfo["scope"]) => (scope === "user" ? "user" : `project:${target.root}`);
   for (const scope of ["user", "project"] as const) {
     if (loadedPiPackageScopes.has(scopeKey(scope))) continue;
     loadedPiPackageScopes.add(scopeKey(scope));
-    for (const entry of listed) if (entry.scope === scope) loadedPiPackages.set(`${scopeKey(scope)}:${entry.name}`, entry.installed ?? null);
+    for (const entry of listed) {
+      if (entry.scope === scope) loadedPiPackages.set(`${scopeKey(scope)}:${entry.name}`, { version: entry.installed ?? null, source: entry.source });
+    }
   }
   const marked = listed.map((entry): PiPackageInfo => {
-    const key = `${scopeKey(entry.scope)}:${entry.name}`;
-    const loaded = loadedPiPackages.has(key) ? loadedPiPackages.get(key) : null;
+    const loaded = loadedPiPackages.get(`${scopeKey(entry.scope)}:${entry.name}`)?.version ?? null;
     return entry.installed !== undefined && entry.installed !== loaded ? { ...entry, restartNeeded: true } : entry;
   });
-  for (const entry of marked) if (entry.restartNeeded) noteRestartReason(entry.name);
-  return marked;
+  const removed: PiPackageInfo[] = [];
+  for (const scope of ["user", "project"] as const) {
+    const prefix = `${scopeKey(scope)}:`;
+    for (const [key, loaded] of loadedPiPackages) {
+      if (!key.startsWith(prefix) || loaded.version === null) continue;
+      const name = key.slice(prefix.length);
+      if (listed.some((entry) => entry.scope === scope && entry.name === name)) continue;
+      removed.push({ source: loaded.source, name, scope, removed: true, loaded: loaded.version });
+    }
+  }
+  for (const scope of ["user", "project"] as const) {
+    const prefix = `${scopeKey(scope)}:`;
+    for (const key of [...packageRestartReasons.keys()]) if (key.startsWith(prefix)) packageRestartReasons.delete(key);
+  }
+  for (const entry of marked) if (entry.restartNeeded) packageRestartReasons.set(`${scopeKey(entry.scope)}:${entry.name}`, `${entry.name} ${entry.installed}`);
+  for (const entry of removed) packageRestartReasons.set(`${scopeKey(entry.scope)}:${entry.name}`, `${entry.name} removed`);
+  announceRestartReasons();
+  return [...marked, ...removed];
 }
 
-/** Something now waits on a restart: say so to every client, once. */
+/** An extension repository waits on a restart: say so to every client, once. */
 function noteRestartReason(name: string): void {
   if (restartReasons.has(name)) return;
   restartReasons.add(name);
-  if (startupComplete) broadcastServerWide({ type: "restart_needed", reasons: [...restartReasons] });
+  announceRestartReasons();
 }
 
 /** Every started session on a project, told its project's packages. */
@@ -5885,6 +5923,34 @@ async function refreshPiPackages(target: Workspace, force = false): Promise<void
  * The same rules as updating an extension repository: locked by `extensionLock`, and
  * refused while a session that loads the package is working.
  */
+/**
+ * Whether a package in `scope` may change now: not under `extensionLock`, not while the
+ * same package is already changing, and not while a session that loads that scope is
+ * working — every session for the agent's settings, the project's for the project's.
+ * The reason it may not, or the sessions to refresh afterwards.
+ */
+function piPackageChangeRefusal(workspace: Workspace, scope: PiPackageInfo["scope"], name: string): string | { affected: Workspace[] } {
+  if (config.extensionLock) return "Extensions are locked by this deployment's configuration";
+  if (changingPiPackages.has(name)) return `${name} is already being changed`;
+  const affected = (scope === "user" ? [...workspaces.all()] : workspaces.sessionsOf(workspace.root)).filter((open) => open.started);
+  return busyResourceConsumer(affected) ?? { affected };
+}
+
+/** Run one package change under its guard, then list again everywhere it shows. */
+async function changePiPackage<T>(workspace: Workspace, name: string, affected: Workspace[], change: () => Promise<T>): Promise<T> {
+  changingPiPackages.add(name);
+  try {
+    return await change();
+  } finally {
+    changingPiPackages.delete(name);
+    const roots = new Set(affected.map((open) => open.root).concat(workspace.root));
+    for (const root of roots) {
+      const target = workspaces.get(root);
+      if (target) await refreshPiPackages(target);
+    }
+  }
+}
+
 async function handleUpdatePiPackage(workspace: Workspace, socket: WebSocket, source: string, requestId: string): Promise<void> {
   const answer = (outcome: "installed" | "failed" | "refused", message: string) =>
     send(socket, { type: "pi_package_update_result", requestId, outcome, message });
@@ -5901,31 +5967,119 @@ async function handleUpdatePiPackage(workspace: Workspace, socket: WebSocket, so
     answer("refused", `${entry.name} is pinned at ${entry.pinned}`);
     return;
   }
-  if (updatingPiPackages.has(entry.name)) {
-    answer("refused", `${entry.name} is already being updated`);
+  const guard = piPackageChangeRefusal(workspace, entry.scope, entry.name);
+  if (typeof guard === "string") {
+    answer("refused", guard);
     return;
   }
-  // A package in the agent directory's settings is loaded by every project; one in a
-  // project's settings, by that project's sessions.
-  const affected = (entry.scope === "user" ? [...workspaces.all()] : workspaces.sessionsOf(workspace.root)).filter((open) => open.started);
-  const busy = busyResourceConsumer(affected);
-  if (busy) {
-    answer("refused", busy);
-    return;
-  }
+  const result = await changePiPackage(workspace, entry.name, guard.affected, () => installNewerPiPackage(workspace.settings.cwd, AGENT_DIR, entry));
+  answer(result.outcome, result.outcome === "installed" ? `${result.message} — restart pi-outpost to use it` : result.message);
+}
 
-  updatingPiPackages.add(entry.name);
-  try {
-    const result = await installNewerPiPackage(workspace.settings.cwd, AGENT_DIR, entry);
-    answer(result.outcome, result.outcome === "installed" ? `${result.message} — restart pi-outpost to use it` : result.message);
-  } finally {
-    updatingPiPackages.delete(entry.name);
-    const roots = new Set(affected.map((open) => open.root).concat(workspace.root));
-    for (const root of roots) {
-      const target = workspaces.get(root);
-      if (target) await refreshPiPackages(target);
-    }
+/** The registry pi-outpost's own lookups use, as `fetchPublishedVersion` options. */
+const publishedVersion = (name: string, version: string | undefined) =>
+  fetchPublishedVersion(name, version, config.updateRegistry !== undefined ? { registry: config.updateRegistry } : {});
+
+/** This project's packages as Settings shows them, removed ones included. */
+async function listedPiPackages(workspace: Workspace): Promise<PiPackageInfo[]> {
+  return markRestartNeeded(workspace, await listPiPackages(workspace.settings.cwd, AGENT_DIR));
+}
+
+async function handleLookupPiPackage(workspace: Workspace, socket: WebSocket, request: { name: string; version?: string; scope: PiPackageInfo["scope"] }, requestId: string): Promise<void> {
+  const answer = (result: { outcome: "found" | "refused"; message: string; version?: string }) =>
+    send(socket, { type: "pi_package_lookup_result", requestId, ...result });
+  if (config.extensionLock) {
+    answer({ outcome: "refused", message: "Extensions are locked by this deployment's configuration" });
+    return;
   }
+  answer(await lookupPiPackage(request, await listedPiPackages(workspace), publishedVersion));
+}
+
+async function handleInstallPiPackage(
+  workspace: Workspace,
+  socket: WebSocket,
+  request: { name: string; version?: string; scope: PiPackageInfo["scope"]; confirmed: string },
+  requestId: string,
+): Promise<void> {
+  const answer = (outcome: "installed" | "failed" | "refused", message: string) =>
+    send(socket, { type: "pi_package_change_result", requestId, outcome, message });
+  const name = request.name.trim().replace(/^npm:/, "");
+  const guard = piPackageChangeRefusal(workspace, request.scope, name);
+  if (typeof guard === "string") {
+    answer("refused", guard);
+    return;
+  }
+  // Looked up again: the confirmation may have waited, and this is the server's own check.
+  const found = await lookupPiPackage({ ...request, name }, await listedPiPackages(workspace), publishedVersion);
+  if (found.outcome === "refused") {
+    answer("refused", found.message);
+    return;
+  }
+  // The user confirmed one version: a newer one published meanwhile is not what they agreed to.
+  if (found.version !== request.confirmed) {
+    answer("refused", `${name} is now ${found.version} on the registry, not the ${request.confirmed} you confirmed — look it up again`);
+    return;
+  }
+  // Every guard again after the lookup's await: a turn may have started, or a second
+  // confirmation begun, while the registry answered.
+  const settled = piPackageChangeRefusal(workspace, request.scope, name);
+  if (typeof settled === "string") {
+    answer("refused", settled);
+    return;
+  }
+  const result = await changePiPackage(workspace, name, settled.affected, () =>
+    installPiPackage(workspace.settings.cwd, AGENT_DIR, {
+      name,
+      scope: request.scope,
+      exact: found.version,
+      ...(request.version !== undefined ? { version: request.version } : {}),
+    }),
+  );
+  answer(result.outcome === "installed" ? "installed" : "failed", result.message);
+}
+
+async function handleRemovePiPackage(workspace: Workspace, socket: WebSocket, source: string, scope: PiPackageInfo["scope"], requestId: string): Promise<void> {
+  const answer = (outcome: "removed" | "failed" | "refused", message: string) =>
+    send(socket, { type: "pi_package_change_result", requestId, outcome, message });
+  if (config.extensionLock) {
+    answer("refused", "Extensions are locked by this deployment's configuration");
+    return;
+  }
+  const entry = (await listPiPackages(workspace.settings.cwd, AGENT_DIR)).find((candidate) => candidate.source === source && candidate.scope === scope);
+  if (!entry) {
+    answer("refused", `${source} is not a pi package configured in ${scope === "user" ? "the agent's settings" : "this project's settings"}`);
+    return;
+  }
+  const guard = piPackageChangeRefusal(workspace, entry.scope, entry.name);
+  if (typeof guard === "string") {
+    answer("refused", guard);
+    return;
+  }
+  const result = await changePiPackage(workspace, entry.name, guard.affected, () => removePiPackage(workspace.settings.cwd, AGENT_DIR, entry));
+  answer(result.outcome === "removed" ? "removed" : "failed", result.message);
+}
+
+async function handleRestorePiPackage(workspace: Workspace, socket: WebSocket, name: string, scope: PiPackageInfo["scope"], requestId: string): Promise<void> {
+  const answer = (outcome: "restored" | "failed" | "refused", message: string) =>
+    send(socket, { type: "pi_package_change_result", requestId, outcome, message });
+  if (config.extensionLock) {
+    answer("refused", "Extensions are locked by this deployment's configuration");
+    return;
+  }
+  const removed = (await listedPiPackages(workspace)).find((entry) => entry.removed && entry.name === name && entry.scope === scope);
+  if (!removed?.loaded) {
+    answer("refused", `${name} was not removed since pi-outpost started, so there is nothing to undo`);
+    return;
+  }
+  const guard = piPackageChangeRefusal(workspace, scope, name);
+  if (typeof guard === "string") {
+    answer("refused", guard);
+    return;
+  }
+  const result = await changePiPackage(workspace, name, guard.affected, () =>
+    restorePiPackage(workspace.settings.cwd, AGENT_DIR, { name, scope, source: removed.source, version: removed.loaded! }),
+  );
+  answer(result.outcome === "restored" ? "restored" : "failed", result.message);
 }
 
 /**
@@ -6419,6 +6573,30 @@ function handleClientMessage(socket: WebSocket, raw: string): void {
     case "update_pi_package":
       if (typeof message.source !== "string" || typeof message.requestId !== "string") return;
       handleUpdatePiPackage(workspace, socket, message.source, message.requestId).catch(reportError);
+      return;
+    case "lookup_pi_package":
+    case "install_pi_package": {
+      if (typeof message.name !== "string" || typeof message.requestId !== "string") return;
+      if (message.scope !== "user" && message.scope !== "project") return;
+      if (message.version !== undefined && typeof message.version !== "string") return;
+      const request = { name: message.name, scope: message.scope, ...(message.version !== undefined ? { version: message.version } : {}) };
+      if (message.type === "lookup_pi_package") {
+        handleLookupPiPackage(workspace, socket, request, message.requestId).catch(reportError);
+        return;
+      }
+      if (typeof message.confirmed !== "string") return;
+      handleInstallPiPackage(workspace, socket, { ...request, confirmed: message.confirmed }, message.requestId).catch(reportError);
+      return;
+    }
+    case "remove_pi_package":
+      if (typeof message.source !== "string" || typeof message.requestId !== "string") return;
+      if (message.scope !== "user" && message.scope !== "project") return;
+      handleRemovePiPackage(workspace, socket, message.source, message.scope, message.requestId).catch(reportError);
+      return;
+    case "restore_pi_package":
+      if (typeof message.name !== "string" || typeof message.requestId !== "string") return;
+      if (message.scope !== "user" && message.scope !== "project") return;
+      handleRestorePiPackage(workspace, socket, message.name, message.scope, message.requestId).catch(reportError);
       return;
     case "prompt": {
       if (typeof message.text !== "string") return;

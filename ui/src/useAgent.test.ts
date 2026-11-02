@@ -605,6 +605,67 @@ describe("switching projects", () => {
     expect(result.current.state.serverRestarting).toBe(false);
   });
 
+  it("looks a package up, installs, removes and restores it, keeping only the answers it asked for", async () => {
+    const { result } = renderHook(() => useAgent());
+    act(() => mockWs!.open());
+    act(() => mockWs!.receive(switched("/srv/alpha")));
+    await waitFor(() => expect(result.current.state.workspace?.root).toBe("/srv/alpha"));
+
+    act(() => result.current.lookupPiPackage("openlore", "2.3.0", "project"));
+    const lookup = sentFrames().at(-1) as { requestId: string };
+    expect(lookup).toMatchObject({ type: "lookup_pi_package", name: "openlore", version: "2.3.0", scope: "project" });
+    expect(result.current.state.piPackageLookup).toMatchObject({ status: "pending", name: "openlore", scope: "project" });
+    act(() => mockWs!.receive({ type: "pi_package_lookup_result", requestId: "stale", outcome: "refused", message: "x" }));
+    expect(result.current.state.piPackageLookup?.status).toBe("pending");
+    act(() => mockWs!.receive({ type: "pi_package_lookup_result", requestId: lookup.requestId, outcome: "found", version: "2.3.0", message: "openlore 2.3.0" }));
+    expect(result.current.state.piPackageLookup).toMatchObject({ status: "found", resolved: "2.3.0", version: "2.3.0" });
+
+    // A refusal keeps what was asked, so the form can show it beside the typed name.
+    act(() => result.current.lookupPiPackage("nope-xyz", undefined, "user"));
+    const refused = sentFrames().at(-1) as { requestId: string };
+    expect(refused).not.toHaveProperty("version");
+    act(() => mockWs!.receive({ type: "pi_package_lookup_result", requestId: refused.requestId, outcome: "refused", message: "nope-xyz was not found on the registry" }));
+    expect(result.current.state.piPackageLookup).toMatchObject({ status: "refused", name: "nope-xyz", message: "nope-xyz was not found on the registry" });
+
+    // Closed, a late answer is ignored.
+    act(() => result.current.lookupPiPackage("openlore", undefined, "user"));
+    const late = sentFrames().at(-1) as { requestId: string };
+    act(() => result.current.closePiPackageLookup());
+    act(() => mockWs!.receive({ type: "pi_package_lookup_result", requestId: late.requestId, outcome: "found", version: "2.4.1", message: "openlore 2.4.1" }));
+    expect(result.current.state.piPackageLookup).toBeNull();
+
+    act(() => result.current.lookupPiPackage("openlore", undefined, "user"));
+    act(() => result.current.installPiPackage("openlore", undefined, "user", "2.4.1"));
+    const install = sentFrames().at(-1) as { requestId: string };
+    expect(install).toMatchObject({ type: "install_pi_package", name: "openlore", scope: "user", confirmed: "2.4.1" });
+    expect(result.current.state.piPackageChange).toMatchObject({ status: "pending", key: "user:openlore", action: "install" });
+    act(() => mockWs!.receive({ type: "pi_package_change_result", requestId: install.requestId, outcome: "installed", message: "openlore 2.4.1 is installed" }));
+    expect(result.current.state.piPackageChange).toMatchObject({ status: "installed", key: "user:openlore" });
+    expect(result.current.state.piPackageLookup).toBeNull();
+
+    const entry = { source: "npm:pi-landstrip", name: "pi-landstrip", scope: "project" as const, installed: "0.9.0" };
+    act(() => result.current.removePiPackage(entry));
+    const remove = sentFrames().at(-1) as { requestId: string };
+    expect(remove).toMatchObject({ type: "remove_pi_package", source: "npm:pi-landstrip", scope: "project" });
+    act(() => mockWs!.receive({ type: "pi_package_change_result", requestId: remove.requestId, outcome: "removed", message: "removed" }));
+    expect(result.current.state.piPackageChange).toMatchObject({ status: "removed", key: "project:pi-landstrip", action: "remove" });
+
+    // A newer list speaks for itself: a settled answer about the old one is dropped.
+    act(() => mockWs!.receive({ type: "pi_packages", packages: [] }));
+    expect(result.current.state.piPackageChange).toBeNull();
+
+    act(() => result.current.restorePiPackage({ ...entry, installed: undefined, removed: true, loaded: "0.9.0" } as never));
+    expect(sentFrames().at(-1)).toMatchObject({ type: "restore_pi_package", name: "pi-landstrip", scope: "project" });
+
+    // Another project: its list, its form and its answers are not this one's.
+    act(() => mockWs!.receive({ type: "pi_packages", packages: [entry] }));
+    act(() => result.current.lookupPiPackage("openlore", undefined, "project"));
+    act(() => mockWs!.receive(switched("/srv/beta")));
+    expect(result.current.state.piPackages).toBeNull();
+    expect(result.current.state.piPackageLookup).toBeNull();
+    expect(result.current.state.piPackageChange).toBeNull();
+  });
+
   it("keeps each reply block's profile statement by key, until the next snapshot restates them", async () => {
     const { result } = renderHook(() => useAgent());
     act(() => mockWs!.open());

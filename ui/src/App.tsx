@@ -188,6 +188,11 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
     openSideSession,
     checkPiPackages,
     updatePiPackage,
+    lookupPiPackage,
+    closePiPackageLookup,
+    installPiPackage,
+    removePiPackage,
+    restorePiPackage,
     restartServer,
     restartSession,
     openTerminal,
@@ -1002,6 +1007,16 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
             onOpenSideSession={openSideSession}
             piPackages={state.piPackages}
             piPackageUpdate={state.piPackageUpdate}
+            piPackageEdits={{
+              lookup: state.piPackageLookup,
+              change: state.piPackageChange,
+              projectName: state.workspace?.name ?? "this",
+              onLookup: lookupPiPackage,
+              onCloseLookup: closePiPackageLookup,
+              onInstall: installPiPackage,
+              onRemove: removePiPackage,
+              onRestore: restorePiPackage,
+            }}
             canRestartServer={!embedded}
             serverRestarting={state.serverRestarting}
             onCheckPiPackages={checkPiPackages}

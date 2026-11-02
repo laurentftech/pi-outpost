@@ -762,6 +762,14 @@ export interface PiPackageInfo {
    * from Settings or from a terminal since. It takes effect on a restart.
    */
   restartNeeded?: true;
+  /**
+   * Removed from its settings and uninstalled since the server started, but still
+   * loaded: it stops running on a restart. `installed` is then absent and `loaded` is
+   * the version still running.
+   */
+  removed?: true;
+  /** The version this server loaded; set on a removed package. */
+  loaded?: string;
   check?:
     | { state: "checking" }
     | { state: "newer"; latest: string }
@@ -1316,6 +1324,28 @@ export type ServerMessage =
       outcome: "installed" | "failed" | "refused";
       message: string;
     }
+  /** The answer to one `lookup_pi_package`: the version an install would get, or why not. */
+  | {
+      type: "pi_package_lookup_result";
+      requestId: string;
+      outcome: "found" | "refused";
+      /** Set when found: the version the registry resolved. */
+      version?: string;
+      message: string;
+    }
+  /** The answer to one `install_pi_package`, `remove_pi_package` or `restore_pi_package`. */
+  | {
+      type: "pi_package_change_result";
+      requestId: string;
+      /**
+       * `refused`: nothing changed (locked, busy, unknown, already configured). `failed`:
+       * the package manager failed or changed nothing, and the settings are as they were.
+       * The others say what is now on disk; none of it runs before a restart, except a
+       * restore, which puts back what is running.
+       */
+      outcome: "installed" | "removed" | "restored" | "failed" | "refused";
+      message: string;
+    }
   /** The agent's queue changed: the prompts now waiting, oldest first. */
   | { type: "queue"; prompts: QueuedPrompt[] }
   /**
@@ -1556,6 +1586,28 @@ export type ClientMessage =
    * load it. Sent only after the user confirmed that code is changing.
    */
   | { type: "update_pi_package"; source: string; requestId: string }
+  /**
+   * Ask the registry what installing `name` (at `version`, when given) would install,
+   * into the agent's settings (`user`) or this project's. Installs nothing.
+   */
+  | { type: "lookup_pi_package"; name: string; version?: string; scope: "user" | "project"; requestId: string }
+  /**
+   * Install a looked-up package and record it in the chosen settings, pinned when the user
+   * gave a version. Sent only after the user confirmed that code is added.
+   */
+  | {
+      type: "install_pi_package";
+      name: string;
+      version?: string;
+      scope: "user" | "project";
+      /** The version the confirmation named: refused if the registry now says otherwise. */
+      confirmed: string;
+      requestId: string;
+    }
+  /** Remove a configured package from its settings and uninstall it. Sent after confirmation. */
+  | { type: "remove_pi_package"; source: string; scope: "user" | "project"; requestId: string }
+  /** Put back a package removed since the server started, at the version still running. */
+  | { type: "restore_pi_package"; name: string; scope: "user" | "project"; requestId: string }
   | { type: "prompt"; text: string; images?: WireImage[] }
   /** Replace the text of a prompt still waiting in the agent's queue. */
   | { type: "edit_queued_prompt"; id: string; text: string }

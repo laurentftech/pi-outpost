@@ -20,7 +20,7 @@ export function RestartNeeded({ reasons, canRestart, restarting, onRestart }: Re
   if (reasons.length === 0) return null;
   return (
     <div className="mt-3 rounded border border-sky-200 bg-sky-50 p-2 text-xs text-sky-900 dark:border-sky-900 dark:bg-sky-950/40 dark:text-sky-200" data-testid="restart-needed">
-      <p>Installed and waiting on a restart to run: {reasons.join(", ")}.</p>
+      <p>Waiting on a restart to take effect: {reasons.join(", ")}.</p>
       {!canRestart ? null : restarting ? (
         <p className="mt-1">Restarting pi-outpost…</p>
       ) : confirming ? (
