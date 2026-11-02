@@ -127,6 +127,9 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
     navigateTree,
     forkSession,
     editPrompt,
+    editQueuedPrompt,
+    removeQueuedPrompt,
+    prefillComposer,
     compact,
     loadOlderItems,
     fetchOlderItems,
@@ -258,6 +261,44 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
   const embedControl =
     state.embedWorkspaceControls === "projects" ? "projects" : state.embedWorkspaceControls === "root" ? "root" : "none";
   const drafts = useRef<Record<string, string>>({});
+
+  // An edit of a queued prompt that cannot land goes back to the composer, after whatever
+  // is being typed there rather than over it: the text exists nowhere else.
+  const restoreToComposer = (text: string, notice?: string) => {
+    const draft = drafts.current[boundKey ?? ""]?.trim();
+    prefillComposer(draft ? `${draft}\n\n${text}` : text, notice);
+  };
+  // The server refused it: the agent read the prompt first.
+  const refusedEdit = state.queuedEditRefused;
+  useEffect(() => {
+    if (refusedEdit) restoreToComposer(refusedEdit.text);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once per refusal
+  }, [refusedEdit?.nonce]);
+  // Or it was never sent: the prompt left the queue — read by the agent, removed elsewhere —
+  // while its editor was open, and the editor went with it.
+  const queuedDrafts = useRef<{ key: string | null; drafts: Map<string, { original: string; draft: string }> }>({ key: null, drafts: new Map() });
+  useEffect(() => {
+    const held = queuedDrafts.current;
+    // Another project: its queue is not this one's, and neither are the drafts.
+    if (held.key !== boundKey) {
+      queuedDrafts.current = { key: boundKey, drafts: new Map() };
+      return;
+    }
+    const queued = new Set(state.queue.map((prompt) => prompt.id));
+    for (const [id, { original, draft }] of held.drafts) {
+      if (queued.has(id)) continue;
+      held.drafts.delete(id);
+      if (draft.trim() && draft.trim() !== original) {
+        restoreToComposer(draft.trim(), "The agent read that message before your edit was saved — your edit is in the composer");
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- runs when the queue or the project changes
+  }, [state.queue, boundKey]);
+  const trackQueuedDraft = (id: string, original: string) => (draft: string | null) => {
+    if (queuedDrafts.current.key !== boundKey) queuedDrafts.current = { key: boundKey, drafts: new Map() };
+    if (draft === null) queuedDrafts.current.drafts.delete(id);
+    else queuedDrafts.current.drafts.set(id, { original, draft });
+  };
   const attachmentsRef = useRef<Attachment[]>([]);
   // Badge click in the tree opens the file straight onto its uncommitted diff
   const [diffOnOpen, setDiffOnOpen] = useState(false);
@@ -1268,16 +1309,21 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
               */}
               {state.isStreaming && !state.pendingPrompt && <WorkingIndicator label="working…" />}
 
-              {(state.queue.steering.length > 0 || state.queue.followUp.length > 0) && (
-                <div className="rounded-lg border border-dashed border-zinc-300 px-3 py-2 text-xs text-zinc-500 dark:border-zinc-700">
-                  {state.queue.steering.map((text, i) => (
-                    <div key={`s${i}`}>⏩ steering: {text}</div>
-                  ))}
-                  {state.queue.followUp.map((text, i) => (
-                    <div key={`f${i}`}>⏭ follow-up: {text}</div>
-                  ))}
-                </div>
-              )}
+              {/*
+                Prompts waiting in the agent's queue. Not in the conversation yet — the
+                agent has not read them — so they sit below the running turn, and the
+                usual pencil rewrites one where it stands. Each joins the conversation
+                above when the agent reads it.
+              */}
+              {state.queue.map((prompt) => (
+                <UserMessage
+                  key={prompt.id}
+                  item={{ kind: "user", text: prompt.text, entryId: prompt.id, ...(prompt.images ? { images: prompt.images } : {}) }}
+                  canEdit={prompt.editable && state.connected}
+                  onEdit={(id, text) => editQueuedPrompt(id, text)}
+                  queued={{ onRemove: () => removeQueuedPrompt(prompt.id), onDraftChange: trackQueuedDraft(prompt.id, prompt.text) }}
+                />
+              ))}
 
               {attachmentErrors.map((error, i) => (
                 <div

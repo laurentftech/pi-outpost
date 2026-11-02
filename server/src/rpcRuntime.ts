@@ -22,6 +22,7 @@ import type {
   ExtensionUIResponse,
   ModelChoice,
   ThinkingLevel,
+  WireImage,
 } from "@pi-outpost/shared";
 import { normalizeThinkingLevels } from "@pi-outpost/shared";
 import type {
@@ -34,7 +35,7 @@ import type {
   RuntimeSnapshot,
   RuntimeTreeNode,
 } from "./agentRuntime.ts";
-import { toolUpdateEvent } from "./agentRuntime.ts";
+import { RuntimeUnsupportedError, toolUpdateEvent } from "./agentRuntime.ts";
 import type { AgentRuntimeConfig } from "./config.ts";
 import { PiRpcProcess, probeAgentLabel, type RpcIncoming } from "./piRpcProcess.ts";
 import { explainRejectedFlags } from "./rpcResourceArgs.ts";
@@ -734,6 +735,32 @@ class RpcRuntime implements AgentRuntime {
 
   async abort(): Promise<void> {
     await this.command("abort");
+  }
+
+  /**
+   * Standard pi has `clear_queue`. OMP's and Prime Agent's dialects — the ones that end at
+   * `agent_end` — have no command that takes the queue back, so their queue is read-only.
+   */
+  get canClearQueue(): boolean {
+    return this.completionEvent === "agent_settled";
+  }
+
+  async clearQueue(): Promise<{ steering: string[]; followUp: string[] }> {
+    if (!this.canClearQueue) throw new RuntimeUnsupportedError("Changing a queued prompt", this.kind);
+    const data = (await this.command("clear_queue")) as { steering?: unknown; followUp?: unknown } | undefined;
+    // The child reported its queue before answering; let those records be handled first,
+    // so the caller reads them as from before the take-back, not after it.
+    await this.queued(async () => {});
+    return { steering: toStringArray(data?.steering), followUp: toStringArray(data?.followUp) };
+  }
+
+  async queueMessage(text: string, images: WireImage[] | undefined, kind: "steer" | "followUp"): Promise<PromptDisposition | undefined> {
+    if (!this.canClearQueue) throw new RuntimeUnsupportedError("Changing a queued prompt", this.kind);
+    const answered = await this.command(kind === "steer" ? "steer" : "follow_up", {
+      message: text,
+      ...(images?.length ? { images: images.map((image) => ({ type: "image", data: image.data, mimeType: image.mimeType })) } : {}),
+    });
+    return promptDisposition(answered);
   }
 
   async setModel(provider: string, id: string): Promise<RuntimeModel> {

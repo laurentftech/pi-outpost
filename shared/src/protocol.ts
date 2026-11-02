@@ -804,6 +804,22 @@ export interface OutpostChanges {
   releaseNotes: string;
 }
 
+/**
+ * A prompt waiting in the agent's queue behind the running turn, as the user typed it.
+ * It is not in the conversation yet: it joins it, as a `user` message, when the agent
+ * receives it.
+ */
+export interface QueuedPrompt {
+  /** The server's handle for edits and removals; stable while the prompt stays queued. */
+  id: string;
+  text: string;
+  images?: WireImage[];
+  /** `steer`: read at the end of the current assistant turn; `followUp`: after the run. */
+  kind: "steer" | "followUp";
+  /** The server can rewrite the queue: offer edit and remove. */
+  editable: boolean;
+}
+
 /** Snapshot of session state, sent on connect and after session replacement. */
 export interface SessionSnapshot {
   /**
@@ -885,6 +901,8 @@ export interface SessionSnapshot {
   extensionsBinding?: boolean;
   /** Git-aware skill and extension inventory. Optional for older servers/clients. */
   agentResources?: AgentResourceInventory;
+  /** Prompts waiting in the agent's queue, oldest first. Absent when none are. */
+  queuedPrompts?: QueuedPrompt[];
   contextUsage?: ContextUsage;
   /** Agent-owned, session-persistent plan; null when this session has none. */
   workPlan?: WorkPlan | null;
@@ -1296,7 +1314,13 @@ export type ServerMessage =
       outcome: "installed" | "failed" | "refused";
       message: string;
     }
-  | { type: "queue"; steering: string[]; followUp: string[] }
+  /** The agent's queue changed: the prompts now waiting, oldest first. */
+  | { type: "queue"; prompts: QueuedPrompt[] }
+  /**
+   * An edit or removal of a queued prompt was not applied — typically because the agent
+   * received the prompt first. `text` is the edit, for the composer of the client that made it.
+   */
+  | { type: "queued_prompt_refused"; message: string; text?: string }
   | { type: "context_usage"; usage: ContextUsage }
   /** A confinement canary finished (or started): the project's verdicts as they now stand. */
   | { type: "confinement"; confinement: NonNullable<SessionSnapshot["confinement"]> }
@@ -1531,6 +1555,10 @@ export type ClientMessage =
    */
   | { type: "update_pi_package"; source: string; requestId: string }
   | { type: "prompt"; text: string; images?: WireImage[] }
+  /** Replace the text of a prompt still waiting in the agent's queue. */
+  | { type: "edit_queued_prompt"; id: string; text: string }
+  /** Take a prompt still waiting in the agent's queue out of it. */
+  | { type: "remove_queued_prompt"; id: string }
   | { type: "abort" }
   | { type: "set_model"; provider: string; id: string }
   | { type: "set_thinking"; level: ThinkingLevel }

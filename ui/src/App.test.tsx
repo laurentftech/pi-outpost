@@ -49,7 +49,8 @@ function agentState(overrides: Record<string, unknown> = {}) {
     olderHistory: null,
     workPlan: null,
     outcome: null,
-    queue: { steering: [], followUp: [] },
+    queue: [],
+    queuedEditRefused: null,
     errors: [],
     contextUsage: null,
     isCompacting: false,
@@ -106,6 +107,9 @@ function agentApi(state: ReturnType<typeof agentState>) {
     navigateTree: vi.fn(),
     forkSession: vi.fn(),
     editPrompt: vi.fn(),
+    editQueuedPrompt: vi.fn(),
+    removeQueuedPrompt: vi.fn(),
+    prefillComposer: vi.fn(),
     compact: vi.fn(),
     loadOlderItems: vi.fn(),
     fetchOlderItems: vi.fn(),
@@ -1038,10 +1042,94 @@ describe("App — model bar and tree", () => {
     expect(api.readFile).toHaveBeenCalledWith("readme.md");
   });
 
-  it("shows the steering and follow-up queue", () => {
-    mount({ queue: { steering: ["stop that"], followUp: ["then this"] } });
-    expect(screen.getByText(/stop that/)).toBeInTheDocument();
-    expect(screen.getByText(/then this/)).toBeInTheDocument();
+  // openlore: scenario=AQueuedPromptWaitsAsAPendingBubble spec=queued-prompts
+  it("shows queued prompts as waiting bubbles below the turn, outside the conversation", () => {
+    mount({
+      isStreaming: true,
+      items: [{ kind: "user", text: "start", entryId: "e1" }],
+      queue: [
+        { id: "q1", text: "stop that", kind: "steer", editable: true },
+        { id: "q2", text: "then this", kind: "followUp", editable: true },
+      ],
+    });
+    const bubbles = document.querySelectorAll("[data-queued-prompt]");
+    expect([...bubbles].map((bubble) => bubble.getAttribute("data-queued-prompt"))).toEqual(["q1", "q2"]);
+    expect(bubbles[0]).toHaveTextContent("stop that");
+    expect(bubbles[1]).toHaveTextContent("then this");
+    expect(screen.getAllByText("queued — not read yet")).toHaveLength(2);
+  });
+
+  // openlore: scenario=EditAQueuedPrompt spec=queued-prompts
+  // openlore: scenario=RemoveAQueuedPrompt spec=queued-prompts
+  it("edits and removes a queued prompt by its queue id while the agent runs", () => {
+    const api = mount({ isStreaming: true, queue: [{ id: "q1", text: "stop tht", kind: "steer", editable: true }] });
+    fireEvent.click(screen.getByRole("button", { name: "Edit this queued message" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "Edit prompt" }), { target: { value: "stop that" } });
+    fireEvent.click(screen.getByRole("button", { name: "save" }));
+    expect(api.editQueuedPrompt).toHaveBeenCalledWith("q1", "stop that");
+    fireEvent.click(screen.getByRole("button", { name: "Remove this queued message" }));
+    expect(api.removeQueuedPrompt).toHaveBeenCalledWith("q1");
+  });
+
+  // openlore: scenario=AnEditOfADeliveredPromptIsRefused spec=queued-prompts
+  it("keeps an open edit when the agent reads the prompt under it, in the composer", () => {
+    const queued = { id: "q1", text: "stop tht", kind: "steer", editable: true };
+    mockUseAgent.mockReturnValue(agentApi(agentState({ isStreaming: true, queue: [queued] })));
+    const { rerender } = render(<App />);
+    fireEvent.click(screen.getByRole("button", { name: "Edit this queued message" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "Edit prompt" }), { target: { value: "stop that" } });
+
+    // Delivered while the editor was open: the bubble goes, the edit does not.
+    const api = agentApi(agentState({ isStreaming: true, queue: [], items: [{ kind: "user", text: "stop tht" }] }));
+    mockUseAgent.mockReturnValue(api);
+    rerender(<App />);
+    expect(screen.queryByRole("textbox", { name: "Edit prompt" })).not.toBeInTheDocument();
+    expect(api.prefillComposer).toHaveBeenCalledWith("stop that", expect.stringMatching(/read that message before your edit/));
+  });
+
+  it("drops an unchanged open edit with its prompt, and never carries one to another project", () => {
+    const queued = { id: "q1", text: "as typed", kind: "steer", editable: true };
+    mockUseAgent.mockReturnValue(agentApi(agentState({ isStreaming: true, queue: [queued] })));
+    const { rerender } = render(<App />);
+    fireEvent.click(screen.getByRole("button", { name: "Edit this queued message" }));
+    const unchanged = agentApi(agentState({ isStreaming: true, queue: [] }));
+    mockUseAgent.mockReturnValue(unchanged);
+    rerender(<App />);
+    expect(unchanged.prefillComposer).not.toHaveBeenCalled();
+
+    mockUseAgent.mockReturnValue(agentApi(agentState({ isStreaming: true, queue: [queued] })));
+    rerender(<App />);
+    fireEvent.click(screen.getByRole("button", { name: "Edit this queued message" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "Edit prompt" }), { target: { value: "edited here" } });
+    const elsewhere = agentApi(agentState({ workspace: { root: "/srv/other", name: "other" }, queue: [] }));
+    mockUseAgent.mockReturnValue(elsewhere);
+    rerender(<App />);
+    expect(elsewhere.prefillComposer).not.toHaveBeenCalled();
+  });
+
+  // openlore: scenario=AQueueThatCannotBeRewrittenIsReadOnly spec=queued-prompts
+  it("offers no action on a queue the server cannot rewrite", () => {
+    mount({ isStreaming: true, queue: [{ id: "q1", text: "from an extension", kind: "followUp", editable: false }] });
+    expect(screen.getByText("from an extension")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Edit this queued message" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Remove this queued message" })).not.toBeInTheDocument();
+  });
+
+  // openlore: scenario=AnEditOfADeliveredPromptIsRefused spec=queued-prompts
+  it("puts a refused edit in the composer, after a draft rather than over it", () => {
+    const empty = agentApi(agentState({ queuedEditRefused: { text: "my edit", nonce: 1 } }));
+    mockUseAgent.mockReturnValue(empty);
+    render(<App />).unmount();
+    expect(empty.prefillComposer).toHaveBeenCalledWith("my edit");
+
+    mockUseAgent.mockReturnValue(agentApi(agentState()));
+    const { rerender } = render(<App />);
+    fireEvent.change(screen.getByPlaceholderText(/message/i), { target: { value: "half a thought" } });
+    const api = agentApi(agentState({ queuedEditRefused: { text: "my edit", nonce: 2 } }));
+    mockUseAgent.mockReturnValue(api);
+    rerender(<App />);
+    expect(api.prefillComposer).toHaveBeenCalledTimes(1);
+    expect(api.prefillComposer).toHaveBeenCalledWith("half a thought\n\nmy edit");
   });
 
   it("shows an extension's widget above the editor", () => {

@@ -161,4 +161,65 @@ describe("UserMessage", () => {
       expect(screen.getByText("a different turn")).toBeInTheDocument();
     });
   });
+
+  describe("a queued prompt", () => {
+    const queuedSetup = (overrides: Partial<Props> = {}) => {
+      const onRemove = vi.fn();
+      const view = setup({ item: item({ entryId: "q3", text: "fix the tpyo" }), queued: { onRemove }, ...overrides });
+      return { onRemove, ...view };
+    };
+    const editQueued = () => screen.getByRole("button", { name: "Edit this queued message" });
+    const removeQueued = () => screen.getByRole("button", { name: "Remove this queued message" });
+
+    // openlore: scenario=AQueuedPromptWaitsAsAPendingBubble spec=queued-prompts
+    it("says it is waiting, and offers the pencil and the ✕", () => {
+      queuedSetup();
+      expect(screen.getByText("queued — not read yet")).toBeInTheDocument();
+      expect(editQueued()).toHaveTextContent("✎");
+      expect(removeQueued()).toHaveTextContent("✕");
+      expect(screen.queryByRole("button", { name: "Edit this prompt" })).not.toBeInTheDocument();
+    });
+
+    // openlore: scenario=EditAQueuedPrompt spec=queued-prompts
+    it("edits in place and saves under its queue id, while the agent runs", () => {
+      const { onEdit } = queuedSetup();
+      fireEvent.click(editQueued());
+      expect(draftBox()).toHaveValue("fix the tpyo");
+      expect(screen.getByText(/replaces the queued message/)).toBeInTheDocument();
+      fireEvent.change(draftBox(), { target: { value: "fix the typo" } });
+      fireEvent.click(screen.getByRole("button", { name: "save" }));
+      expect(onEdit).toHaveBeenCalledWith("q3", "fix the typo", undefined);
+      expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
+    });
+
+    // openlore: scenario=RemoveAQueuedPrompt spec=queued-prompts
+    it("removes itself with the ✕, once however fast it is clicked", () => {
+      const { onRemove, onEdit } = queuedSetup();
+      const button = removeQueued();
+      fireEvent.click(button);
+      fireEvent.click(button);
+      expect(onRemove).toHaveBeenCalledTimes(1);
+      expect(onEdit).not.toHaveBeenCalled();
+      expect(screen.queryByRole("button", { name: "Remove this queued message" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Edit this queued message" })).not.toBeInTheDocument();
+    });
+
+    // openlore: scenario=AQueueThatCannotBeRewrittenIsReadOnly spec=queued-prompts
+    it("offers neither action when the queue cannot be rewritten", () => {
+      queuedSetup({ canEdit: false });
+      expect(screen.getByText("fix the tpyo")).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Edit this queued message" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Remove this queued message" })).not.toBeInTheDocument();
+    });
+
+    it("keeps an open draft when the connection drops, and saves nothing", () => {
+      const { onEdit, rerenderWith } = queuedSetup();
+      fireEvent.click(editQueued());
+      fireEvent.change(draftBox(), { target: { value: "fix the typo" } });
+      rerenderWith({ canEdit: false });
+      expect(screen.getByRole("button", { name: "save" })).toBeDisabled();
+      expect(draftBox()).toHaveValue("fix the typo");
+      expect(onEdit).not.toHaveBeenCalled();
+    });
+  });
 });

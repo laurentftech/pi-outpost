@@ -27,6 +27,7 @@ import { type GitMetadataWatcher, createGitMetadataWatcher } from "./gitMetadata
 import { resolveBrowserRoot, resolveWritableRoot } from "./fileBrowser.ts";
 import { discoverRepos, whyGitCannotServe, type GitRepo } from "./git.ts";
 import { ExtensionRenderer } from "./extensionRender.ts";
+import { QueuedPrompts } from "./queuedPrompts.ts";
 import { createSandboxedTools } from "./sandbox.ts";
 import { SandboxGrantBroker } from "./sandboxGrantBroker.ts";
 import type { ServerMessage } from "@pi-outpost/shared";
@@ -277,6 +278,16 @@ export class Workspace {
    * operation in the other.
    */
   replacingSession = false;
+
+  /** The prompts waiting in the agent's queue, as the user typed them. */
+  readonly queuedPrompts = new QueuedPrompts();
+
+  /**
+   * Serialises what changes the agent's queue — a prompt sent during a turn, an edit, a
+   * removal — up to the point the runtime has accepted it, so that none lands in the
+   * middle of another's take-back and re-queue.
+   */
+  queueLock: Promise<void> = Promise.resolve();
 
   /**
    * When this project last had a client watching it, or a turn running.

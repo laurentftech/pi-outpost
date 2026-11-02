@@ -1,0 +1,46 @@
+# Scenario coverage — edit-queued-prompts
+
+Three levels. `server/test/queuedPrompts.test.ts` drives the queue tracker with the shapes pi
+reports (one change per `queue_update`, removal of the first entry with a delivered text, the
+texts `clearQueue()` returns). `server/test/queuedPromptsWire.test.mjs` runs the real server and
+a real session — the embedded SDK, a real `pi --mode rpc` child, and the fake RPC child for a
+dialect without `clear_queue` — over a WebSocket, with a provider
+(`server/test/fixtures/queued-prompts-provider.mjs`) that holds request *n* while a gate file
+exists and logs what each request was sent: what the agent received is read from that log, not
+inferred from the server's messages. `e2e/queued-prompts.spec.ts` drives the built app in
+Chromium against the same provider, including two monkey passes (an edit the agent overtakes, a
+double ✕, an abort, a reload, edit spam, two clients on one prompt, a new session under a
+queue). The UI's reducer and components are pinned in `ui/src/useAgent.test.ts`,
+`ui/src/components/UserMessage.test.tsx` and `ui/src/App.test.tsx`.
+
+## Capability: `queued-prompts` (12 scenarios)
+
+| Scenario | Coverage | Assertion evidence |
+| --- | --- | --- |
+| AQueuedPromptWaitsAsAPendingBubble | covered | `server/test/queuedPromptsWire.test.mjs` — "embedded: queued prompts wait as typed…": the `queue` message holds the prompt as typed, with its image, `steer`, editable, and no `user` message is sent for it while queued; `e2e/queued-prompts.spec.ts` — "a prompt sent mid-turn waits as a bubble…": one `[data-queued-prompt]` bubble reading "queued — not read yet", and the conversation holds only the turn's own prompt; `ui/src/useAgent.test.ts` — "a prompt sent during a turn leaves its placeholder for the queue…"; `ui/src/App.test.tsx` — "shows queued prompts as waiting bubbles below the turn…" |
+| AQueuedPromptJoinsTheConversationWhenDelivered | covered | `server/test/queuedPromptsWire.test.mjs` — "embedded: queued prompts wait as typed…": after the gate opens, the `user` messages are exactly start, the edited prompt (with its image), third, and the order of `user` and `assistant_end` frames puts each after the reply before it; the provider's log shows the image reached the agent; `e2e/queued-prompts.spec.ts` — the bubble leaves the queue and the conversation reads start, "fix the typo" after "answer n" |
+| APendingPromptOutlivesAnAbort | covered | `server/test/queuedPromptsWire.test.mjs` — "embedded: a prompt the agent received is not changed, and one left by an abort stays pending": after `abort` and `agent_end`, a new client's `hello.queuedPrompts` is B, editable; `e2e/queued-prompts.spec.ts` — "monkey: an edit the agent overtakes…": after Stop, the bubble is still there in both pages; `ui/src/useAgent.test.ts` — "keeps the queue through the end of a turn" |
+| ALateClientSeesThePendingPrompts | covered | `server/test/queuedPromptsWire.test.mjs` — "embedded: queued prompts wait as typed…": a second connection's `hello.queuedPrompts` lists both queued prompts in order; `e2e/queued-prompts.spec.ts` — a second page and a reload both show the pending bubble; `ui/src/useAgent.test.ts` — "takes the queue from the snapshot a client connects with" |
+| EditAQueuedPrompt | covered | `server/test/queuedPromptsWire.test.mjs` — "embedded: queued prompts wait as typed…": after `edit_queued_prompt` the queue reads edited, second, third under the same ids, the edit keeps the image, and the provider's request carries the edited text with `image/png`; "rpc: a real Pi child's queue is edited and pruned…": the child receives "A edited" with its image and never "A"; `e2e/queued-prompts.spec.ts` — the pencil, the editor and "save" in the app, and the provider's log; `ui/src/components/UserMessage.test.tsx` — "edits in place and saves under its queue id, while the agent runs" |
+| AnEditStartsFromWhatWasTyped | covered | `server/test/queuedPromptsWire.test.mjs` — "embedded: queued prompts wait as typed…": a `/skill:greet once` prompt is shown as typed, edited to `/skill:greet twice`, and the request the agent receives contains the skill's body ("Say hello warmly") and "twice", not "once" — expanded again from what was typed |
+| AnEditOfADeliveredPromptIsRefused | covered | `server/test/queuedPromptsWire.test.mjs` — "embedded: a prompt the agent received is not changed…": with A delivered and B held, the edit of A is answered `queued_prompt_refused` with the edit's text, A is in the conversation once, B still queued; `server/test/queuedPrompts.test.ts` — "what the take-back did not return was delivered just before" (the race inside the take-back); `e2e/queued-prompts.spec.ts` — "monkey…": an editor open on A when the agent reads it closes, the composer holds the edit, the notice is shown, and the agent never receives the edit; `ui/src/App.test.tsx` — "keeps an open edit when the agent reads the prompt under it…", "puts a refused edit in the composer, after a draft rather than over it" |
+| RemoveAQueuedPrompt | covered | `server/test/queuedPromptsWire.test.mjs` — "embedded: queued prompts wait as typed…": after `remove_queued_prompt` the queue reads edited, third, and no request the agent receives contains "second"; "rpc: …": B never reaches the child; `e2e/queued-prompts.spec.ts` — the ✕ in the app, and the log; `ui/src/components/UserMessage.test.tsx` — "removes itself with the ✕, once however fast it is clicked" |
+| RemovingADeliveredPromptIsRefused | covered | `server/test/queuedPromptsWire.test.mjs` — "embedded: a prompt the agent received is not changed…": removing delivered A is refused (no text to restore), and A is in the conversation exactly once |
+| APromptSentDuringAnEditQueuesAfterIt | covered | `server/test/queuedPromptsWire.test.mjs` — "embedded: queued prompts wait as typed…": a prompt sent right behind the edit lands third, after the re-queued first and second |
+| ARuntimeWithoutClearQueueIsReadOnly | covered | `server/test/queuedPromptsWire.test.mjs` — "rpc: a dialect without clear_queue shows its queue read-only and refuses edits": OMP's dialect (no `get_tree`), the queued prompt is `editable: false`, the edit is refused naming the RPC runtime, and the child's command log has no `clear_queue`; `ui/src/components/UserMessage.test.tsx` — "offers neither action when the queue cannot be rewritten"; `ui/src/App.test.tsx` — "offers no action on a queue the server cannot rewrite" |
+| AnExtensionMessageMakesTheQueueReadOnly | covered | `server/test/queuedPromptsWire.test.mjs` — "embedded: a message an extension queued makes the whole queue read-only": the extension's follow-up appears as foreign, every entry is `editable: false`, the edit is refused naming the extension, and nothing was taken back; `server/test/queuedPrompts.test.ts` — "an extension's message queued while ours is in flight is not taken for ours" |
+
+## Capability: `model` (2 scenarios, modified)
+
+| Scenario | Coverage | Assertion evidence |
+| --- | --- | --- |
+| PairAfterTurn | covered | `ui/src/useAgent.test.ts` — "user_entries pairing › pairs bubbles to entries from the end": both bubbles carry `e1`, `e2` |
+| PhantomBubbleFailsClosed | covered | `ui/src/useAgent.test.ts` — "user_entries pairing › stops at the first mismatch instead of shifting every id": the newest pairs, the unpersisted bubble and every one before it carry no entry id |
+
+## Capability: `conversation-tree` (3 scenarios, modified)
+
+| Scenario | Coverage | Assertion evidence |
+| --- | --- | --- |
+| EditCreatesBranch | covered | `server/test/queuedPromptsWire.test.mjs` — "embedded: a sent prompt is edited by rewinding into a branch, and not while a turn runs": the tree's roots are the original and the edited prompt, and the agent's request holds only the edited prompt |
+| UnconfirmedBubbleNotEditable | covered | `ui/src/components/UserMessage.test.tsx` — "hides it for a turn with no persisted entry to rewind to"; `ui/src/useAgent.test.ts` — "stops at the first mismatch instead of shifting every id" |
+| EditRefusedWhileRunning | covered | `server/test/queuedPromptsWire.test.mjs` — "embedded: a sent prompt is edited by rewinding…": `edit_prompt` during a turn is answered with "while the agent is running"; `ui/src/components/UserMessage.test.tsx` — "holds the draft open rather than swallowing it when the agent starts running" |
