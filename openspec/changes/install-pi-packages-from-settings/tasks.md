@@ -23,7 +23,7 @@
 ## 4. Integration
 
 - [x] 4.1 Drive the feature in the running app with a real registry (bench), then a monkey pass: double clicks, removing during an update of another package, two clients on one package, switching project with the add form open, removing the package's directory underneath; record what broke and fix it
-- [ ] 4.2 Write `openspec/changes/install-pi-packages-from-settings/scenario-coverage.md` covering every scenario in the delta spec; verify `npm run check:scenarios` and `openspec validate install-pi-packages-from-settings --strict` pass
+- [x] 4.2 Write `openspec/changes/install-pi-packages-from-settings/scenario-coverage.md` covering every scenario in the delta spec; verify `npm run check:scenarios` and `openspec validate install-pi-packages-from-settings --strict` pass
 
 ## Workflow follow-up
 
