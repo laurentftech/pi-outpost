@@ -57,6 +57,19 @@ export function confinementDescription(verdict: ConfinementVerdict, surface: "sh
       // The reason is the refusal the tool gives, which already says what is refused and why.
       return verdict.reason || `${what} refuses every command.`;
     case "unconfined":
+      if (verdict.sandboxOff) {
+        return [
+          `${what} is not confined by pi-outpost: the sandbox is turned off ("sandbox": false).`,
+          "Unless an extension confines it, a command runs with every right of the server's account, and the file tools reach beyond the project.",
+          ...(verdict.available
+            ? [
+                `${verdict.available.label} can confine it on this machine. To turn the sandbox back on, run:`,
+                "  pi-outpost config --confine",
+                `It checks ${verdict.available.label} first, then writes the default sandbox, which also limits the agent's file tools to the project.`,
+              ]
+            : []),
+        ].join("\n");
+      }
       return verdict.available
         ? [
             `${what} is NOT confined: a command runs with every right of the server's account.`,

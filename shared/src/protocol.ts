@@ -1104,9 +1104,11 @@ export type ConfinementVerdict =
   /**
    * A shell that runs unconfined (`"none"`, or `allowBash` without a runner). `available`: this
    * machine's runner passed its self-check, so the shell could be confined; `reason`: why not.
-   * Neither, while that is still being asked.
+   * Neither, while that is still being asked. `sandboxOff`: the whole sandbox is turned off
+   * (`"sandbox": false`), so pi-outpost confines nothing; `available` then means that
+   * `config --confine` would restore the default sandbox, file tools scoped with it.
    */
-  | { state: "unconfined"; runner?: undefined; available?: { runner: string; label: string }; reason?: string };
+  | { state: "unconfined"; runner?: undefined; available?: { runner: string; label: string }; reason?: string; sandboxOff?: true };
 
 /**
  * What the client needs to decide between "you have not set up a provider yet"
