@@ -394,3 +394,18 @@ test("rpc: a real Pi child stops its step and takes the queue in the new turn's 
   await eventually(() => latestQueue(client).length === 0, "nothing left pending");
   await rm(gate(1), { force: true });
 });
+
+// openlore: scenario=AQueuedPromptWaitsAsAPendingBubble spec=queued-prompts
+test("embedded: prompts sent back to back are queued in the order they were sent", async (t) => {
+  // A prompt naming files takes a stat per mention before it can be sent; one sent right
+  // behind it, plain, used to overtake it.
+  const files = Object.fromEntries(Array.from({ length: 60 }, (_, i) => [`dir${i % 6}/f${i}.md`, "x\n"]));
+  const ctx = await boot(t, {}, files);
+  const { client } = ctx;
+  await holdTurn(ctx);
+  const sent = [];
+  for (let k = 0; k < 4; k++) sent.push(`A${k} about @notes.md and @dir3/f3.md`, `B${k}`);
+  for (const text of sent) client.send({ type: "prompt", text });
+  await eventually(() => latestQueue(client).length === sent.length, "all queued");
+  assert.deepEqual(queueTexts(client), sent);
+});
