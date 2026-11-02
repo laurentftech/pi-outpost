@@ -27,6 +27,10 @@ Releases before 0.41.0 are described on
 
 ### Changed
 
+- **A turned-off sandbox shows the shell's lock open.** With `"sandbox": false`,
+  the agent's shell runs with every right of the server's account; the lock next
+  to the model now says so, instead of showing nothing.
+  ([#402](https://github.com/laurentftech/pi-outpost/pull/402))
 - **Pi SDK 1.5.0.** The npm CLI and server use the updated SDK, which also brings
   the `undici` security fix it had been pinning out.
   ([#399](https://github.com/laurentftech/pi-outpost/pull/399))
