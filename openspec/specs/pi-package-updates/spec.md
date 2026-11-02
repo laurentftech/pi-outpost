@@ -8,7 +8,7 @@ Lets a user see which pi packages the agent loads, whether a newer version of ea
 
 ### Requirement: TheLoadedPackagesAreListedWithTheirVersions
 
-Settings SHALL list every npm pi package configured for the agent — in the agent directory's settings and in the project's — with its name, its installed version, and whether its version is pinned. A configured package that is not installed SHALL be listed as not installed.
+Settings SHALL list every npm pi package configured for the agent — in the agent directory's settings and in the project's — with its name, its installed version, whether its version is pinned, and, for a package in the project's settings, that it belongs to this project. A configured package that is not installed SHALL be listed as not installed. With no package configured, Settings SHALL say so and still offer to add one.
 
 #### Scenario: AnInstalledPackageIsListed
 - **GIVEN** the agent directory's settings configure `npm:@gotgenes/pi-permission-system`, installed at 33.0.1
@@ -19,6 +19,16 @@ Settings SHALL list every npm pi package configured for the agent — in the age
 - **GIVEN** a package configured at an exact version
 - **WHEN** Settings is opened
 - **THEN** it is listed as pinned at that version, and no update is offered for it
+
+#### Scenario: AProjectPackageIsSaidToBeThisProjects
+- **GIVEN** a package configured in the project's settings
+- **WHEN** Settings is opened
+- **THEN** it is listed as belonging to this project
+
+#### Scenario: AnEmptyListOffersToAddAPackage
+- **GIVEN** no npm pi package configured in either settings
+- **WHEN** Settings is opened
+- **THEN** the packages section says no package is installed and offers to add one
 
 ### Requirement: ANewerVersionIsFoundOrTheCheckSaysWhyNot
 
@@ -68,7 +78,7 @@ Updating a package SHALL require an explicit confirmation stating that code runn
 
 ### Requirement: RestartingTheServerLoadsWhatWasUpdated
 
-A package whose installed version differs from the version the server loaded when it started SHALL be listed as needing a restart, whether it was updated from Settings or from a terminal. When any package needs a restart, the standalone interface SHALL offer to restart pi-outpost, with a confirmation saying that every connected client reconnects and conversations are kept. A restart SHALL be refused while any agent is running a turn, naming it. Once confirmed, the server SHALL stop, start again with the same command, arguments and environment in the same terminal, and the interface SHALL reconnect by itself, with the updated packages loaded. An embedded widget SHALL NOT offer it, and the server SHALL refuse a restart requested from a widget's connection.
+A package whose installed version differs from the version the server loaded when it started SHALL be listed as needing a restart, whether it was updated from Settings or from a terminal; a package installed since the server started, or removed since, SHALL be too. The restart notice SHALL name each such package once, by its latest change, and SHALL drop a package whose state again matches what the server loaded. When any package needs a restart, the standalone interface SHALL offer to restart pi-outpost, with a confirmation saying that every connected client reconnects and conversations are kept. A restart SHALL be refused while any agent is running a turn, naming it. Once confirmed, the server SHALL stop, start again with the same command, arguments and environment in the same terminal, and the interface SHALL reconnect by itself, with the updated packages loaded. An embedded widget SHALL NOT offer it, and the server SHALL refuse a restart requested from a widget's connection.
 
 #### Scenario: ARestartLoadsTheUpdatedPackage
 - **GIVEN** a package updated from Settings and listed as needing a restart
@@ -84,6 +94,16 @@ A package whose installed version differs from the version the server loaded whe
 - **GIVEN** an embedded widget connected from a host page
 - **WHEN** it is shown, and when a restart request arrives from its connection anyway
 - **THEN** it offers no restart, and the server refuses the request
+
+#### Scenario: TheRestartNoticeNamesEachPackageOnce
+- **GIVEN** a package removed from Settings, then restored before a restart
+- **WHEN** the restart notice is shown
+- **THEN** it does not name that package, since what runs is again what is configured
+
+#### Scenario: ARestartUnloadsARemovedPackage
+- **GIVEN** a package removed from Settings and listed as removed
+- **WHEN** the user restarts pi-outpost and confirms
+- **THEN** the interface reconnects, the agent no longer has the package's tools, and the package is no longer listed
 
 ### Requirement: TheTerminalUpdatesThePackages
 
@@ -144,3 +164,109 @@ Updating the packages SHALL NOT depend on how pi-outpost itself was installed. A
 - **GIVEN** a package with a newer published version
 - **WHEN** the operator runs `pi-outpost update` without `--extensions` or `--all`
 - **THEN** after its verdict on pi-outpost it names that package and `pi-outpost update --extensions`, and installs no package
+
+### Requirement: APackageIsLookedUpBeforeItIsInstalled
+
+Adding a package SHALL take an npm package name, optionally with a version, and SHALL look it up on the package registry the installation uses before offering to install it. A name the registry does not know, a name that is not a valid npm package name, or a package already configured in the chosen settings SHALL be refused with the reason, keeping what the user typed. Nothing SHALL be installed by the lookup.
+
+#### Scenario: AnUnknownPackageIsRefusedInPlace
+- **GIVEN** a registry that does not know `nope-xyz`
+- **WHEN** the user asks to add `nope-xyz`
+- **THEN** it is refused saying the registry does not know it, the field still holds `nope-xyz`, and nothing is installed
+
+#### Scenario: AConfiguredPackageIsNotAddedTwice
+- **GIVEN** `@gotgenes/pi-permission-system` configured in the agent's settings
+- **WHEN** the user asks to add it to the agent's settings
+- **THEN** it is refused saying it is already installed, and the list is unchanged
+
+#### Scenario: ALookupUsesTheInstallationsRegistry
+- **GIVEN** an installation whose npm configuration names a private registry
+- **WHEN** the user asks to add a package
+- **THEN** the lookup asks that registry, not the public one
+
+### Requirement: AddingAPackageFromSettings
+
+Installing a looked-up package SHALL require an explicit confirmation naming the package, the version to install and the settings it goes to, and saying that code running with the agent's privileges is added and takes effect on a restart. Once confirmed, the system SHALL install it and record it in those settings — the agent's by default, the project's when chosen — pinned when the user gave a version. The package SHALL then be listed as installed and needing a restart.
+
+#### Scenario: AConfirmedInstallIsListedAndAsksForARestart
+- **GIVEN** `openlore` published at 2.4.1 and not configured
+- **WHEN** the user adds `openlore`, keeps the agent's settings, and confirms
+- **THEN** the agent's settings configure `npm:openlore`, 2.4.1 is installed, and the list shows it as installed and needing a restart
+
+#### Scenario: AProjectInstallGoesToTheProjectsSettings
+- **WHEN** the user adds a package, chooses this project, and confirms
+- **THEN** the project's settings configure it, the agent's settings do not, and it is listed as this project's
+
+#### Scenario: AVersionGivenIsPinned
+- **WHEN** the user adds `openlore@2.3.0` and confirms
+- **THEN** 2.3.0 is installed and the package is listed as pinned at 2.3.0
+
+#### Scenario: NoInstallWithoutConfirmation
+- **WHEN** the user looks a package up and cancels the confirmation
+- **THEN** no install request reaches the server, and the settings are unchanged
+
+#### Scenario: AFailedInstallLeavesTheSettingsAlone
+- **WHEN** installing the package fails, or installs nothing
+- **THEN** the settings do not configure it, the reason is shown, and nothing is said to need a restart
+
+### Requirement: RemovingAPackageFromSettings
+
+Removing a package SHALL require an explicit confirmation naming the package and the settings it is removed from, and saying that the agent keeps running it until pi-outpost restarts. Once confirmed, the system SHALL remove it from those settings and uninstall it. A running server cannot unload an extension, so the package SHALL stay listed as removed and still running until a restart, and SHALL NOT be offered for update while removed.
+
+#### Scenario: AConfirmedRemovalIsListedUntilARestart
+- **GIVEN** `pi-landstrip` configured in the project's settings
+- **WHEN** the user removes it and confirms
+- **THEN** the project's settings no longer configure it, it is uninstalled, and the list shows it as removed and still running until a restart
+
+#### Scenario: NoRemovalWithoutConfirmation
+- **WHEN** the user starts a removal and cancels the confirmation
+- **THEN** no removal request reaches the server, and the package is unchanged
+
+#### Scenario: AFailedRemovalChangesNothing
+- **WHEN** removing the package fails
+- **THEN** the package is still configured and installed, and the reason is shown
+
+### Requirement: ARemovedPackageCanBeRestoredBeforeARestart
+
+Until pi-outpost restarts, a removed package SHALL offer to undo the removal, which SHALL configure it again in the same settings at the version the server loaded, without a second confirmation since the code is already running. Asking to add a package that is listed as removed SHALL be refused, pointing at the undo.
+
+#### Scenario: UndoRestoresWhatIsRunning
+- **GIVEN** `pi-landstrip` 0.9.0 removed from the project's settings, no restart since
+- **WHEN** the user undoes the removal
+- **THEN** the project's settings configure it again, 0.9.0 is installed, and it is listed as up to date with nothing waiting on a restart for it
+
+#### Scenario: AddingARemovedPackagePointsAtUndo
+- **GIVEN** a package listed as removed
+- **WHEN** the user asks to add the same package
+- **THEN** it is refused saying it was removed and still runs, pointing at undo, and no second entry appears
+
+### Requirement: PackageChangesFollowTheUpdatesRules
+
+Installing, removing and restoring a package SHALL be refused, with nothing changed, when extension changes are locked by configuration — and no such action SHALL be offered — and while a started session that loads that settings scope (every session for the agent's settings, the project's sessions for the project's) is running a turn or replacing its session, naming it. Only one change to a given package SHALL run at a time; a second request for it while one runs SHALL be refused.
+
+#### Scenario: LockedExtensionsOfferNoInstallOrRemoval
+- **GIVEN** extension changes locked by configuration
+- **WHEN** Settings is opened, and when install, remove or restore requests arrive anyway
+- **THEN** no add, remove or undo action is offered, and each request is refused
+
+#### Scenario: AnInstallWaitsForARunningTurn
+- **GIVEN** a session running a turn
+- **WHEN** an install to the agent's settings is requested
+- **THEN** it is refused naming that session, and the settings are unchanged
+
+#### Scenario: ADoubleConfirmationInstallsOnce
+- **WHEN** the user confirms an install twice in quick succession
+- **THEN** one install runs, the package is configured once, and the list shows one entry for it
+
+### Requirement: ThePackagesSectionStaysStill
+
+The packages section SHALL use one text size, and its actions SHALL keep their labels and places while they run and after they end: progress and outcomes SHALL be shown in the package's status line, and a refusal while adding SHALL appear without moving the field or its buttons.
+
+#### Scenario: AnUpdateInProgressMovesNothing
+- **GIVEN** two listed packages, the first with a newer version
+- **WHEN** the user updates the first, and when the update completes
+- **THEN** the first package's name, the remove actions and the add action keep their positions, and the first package's status line shows the progress and then the outcome
+
+#### Scenario: ARefusalDoesNotMoveTheForm
+- **WHEN** adding a package is refused
+- **THEN** the field and its buttons keep their positions, and the reason is shown below them
