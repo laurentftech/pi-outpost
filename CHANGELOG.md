@@ -7,6 +7,37 @@ version you had and the one you run now, without going online.
 Releases before 0.41.0 are described on
 [GitHub Releases](https://github.com/laurentftech/pi-outpost/releases).
 
+## [0.57.0] - 2026-11-02
+
+### Added
+
+- **Change a message the agent has not read yet.** A message you send while the
+  agent works waits until the end of its current step. It now shows below the
+  running turn, marked as queued, with the usual ✎ to rewrite it and a ✕ to
+  take it out; once the agent reads it, it joins the conversation where it was
+  read. If the agent reads it while you are editing it, your edit lands in the
+  composer instead of being lost.
+  ([#400](https://github.com/laurentftech/pi-outpost/pull/400))
+- **Send queued messages now.** One button sends everything that is queued at
+  once. After a stop, it sends them without your typing a new message. While
+  the agent works, it first stops the current step, and tells you so before
+  doing it: a reply being written is dropped and a running tool is stopped,
+  while the work already done is kept.
+  ([#400](https://github.com/laurentftech/pi-outpost/pull/400))
+
+### Changed
+
+- **Pi SDK 1.5.0.** The npm CLI and server use the updated SDK, which also brings
+  the `undici` security fix it had been pinning out.
+  ([#399](https://github.com/laurentftech/pi-outpost/pull/399))
+
+### Fixed
+
+- **A message queued before a stop no longer vanishes.** It disappeared from the
+  screen while the agent kept it and sent it with your next message; it now
+  stays visible, and can be changed, removed or sent.
+  ([#400](https://github.com/laurentftech/pi-outpost/pull/400))
+
 ## [0.56.0] - 2026-11-01
 
 ### Changed
