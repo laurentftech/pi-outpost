@@ -258,6 +258,7 @@ test("send now while a command runs: the stopped turn ends, and the queued promp
   const answered = (await sent()).find((request) => request.users.at(-1)?.text === "answer me after the stop")!.n;
   await expect(page.getByText(`answer ${answered}`, { exact: true })).toBeVisible();
   expect((await conversation(page)).filter((text) => text === "answer me after the stop")).toHaveLength(1);
+});
 
 test("a queued prompt in a long conversation scrolls with it, and never makes the page itself scroll", async ({ page }) => {
   await page.goto(process.env.PI_E2E_QUEUED_URL!);
