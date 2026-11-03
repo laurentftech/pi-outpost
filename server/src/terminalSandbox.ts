@@ -641,9 +641,10 @@ export interface MxcMacInput extends MxcLinuxInput {
   realPath?: (file: string) => string;
 }
 
-// SecureTransport verifies certificate chains through trustd. These two services do not
+// SecureTransport verifies certificate chains through the system trust evaluation service.
+// This lookup does not
 // grant access to the user's Keychain (MXC's broader keychainAccess remains disabled).
-const MAC_TRUST_SERVICES = ["com.apple.trustd", "com.apple.trustd.agent"];
+const MAC_TRUST_SERVICES = ["com.apple.TrustEvaluationAgent"];
 
 /** The system trees a macOS shell needs, those this host has. */
 export function macSystemTrees(exists: (file: string) => boolean = existsSync): string[] {

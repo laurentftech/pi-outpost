@@ -403,7 +403,7 @@ describe("mxcMacConfig", () => {
   test("OnMacOsWithoutAnAllowlistTheNetworkIsOpen: Seatbelt, real paths, the developer tools readable, secrets denied", () => {
     const config = mxcMacConfig(base);
     assert.equal(config.containment, "seatbelt");
-    assert.deepEqual(config.seatbelt, { extraMachLookups: ["com.apple.trustd", "com.apple.trustd.agent"] }, "TLS verification may use trustd without enabling Keychain access");
+    assert.deepEqual(config.seatbelt, { extraMachLookups: ["com.apple.TrustEvaluationAgent"] }, "TLS verification may use trustd without enabling Keychain access");
     assert.deepEqual(config.filesystem.readwritePaths, [mroot, `/private${mtmp}`], "the temp as Seatbelt matches it");
     assert.deepEqual(config.filesystem.readonlyPaths, ["/usr", "/bin", "/sbin", "/System", "/Library", "/private/etc", "/opt/homebrew", "/Applications/Xcode.app", "/Users/me/.gitconfig"]);
     assert.deepEqual(config.filesystem.deniedPaths, [base.agentDir, base.configFile]);
@@ -473,7 +473,7 @@ describe("seatbeltPolicy", () => {
     assert.ok(seatbelt.includes(`(subpath "${base.agentDir}")`) && seatbelt.includes(`(subpath "${base.configFile}")`));
     assert.equal(env.PATH, `${developerDir}/usr/bin:/usr/bin:/bin`, "the developer tools' git first, as under MXC");
     assert.equal(env.HTTPS_PROXY, undefined);
-    for (const service of ["com.apple.trustd", "com.apple.trustd.agent"]) assert.ok(seatbelt.includes(`(global-name "${service}")`), "SecureTransport may verify certificates");
+    for (const service of ["com.apple.TrustEvaluationAgent"]) assert.ok(seatbelt.includes(`(global-name "${service}")`), "SecureTransport may verify certificates");
     assert.ok(!seatbelt.includes('(global-name "com.apple.securityd")'), "no Keychain access");
   });
 

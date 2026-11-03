@@ -222,10 +222,6 @@ jobs:
           cache: npm
       - run: npm ci --workspace server --workspace shared --workspace office --include-workspace-root=false
       - run: bash scripts/mxc-macos/test.sh
-      - name: Mac sandbox denial diagnostics
-        if: failure()
-        run: sudo log show --last 2m --style compact --predicate 'eventMessage CONTAINS "deny" AND (eventMessage CONTAINS "curl" OR eventMessage CONTAINS "trustd")' | tail -100
-
 
   # The badge, drawn and pushed here rather than by a marketplace action: this is
   # the only job that may write to the repository, and nothing outside it runs.
