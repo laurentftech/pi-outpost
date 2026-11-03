@@ -18,7 +18,7 @@
     "@resvg/resvg-js": "^2.6.2",
     "docx": "^9.11.0",
     "jsdom": "~30.0.1",
-    "mermaid": "^12.2.0"
+    "mermaid": "^12.3.0"
   },
   "devDependencies": {
     "@types/jsdom": "^21.1.7",
