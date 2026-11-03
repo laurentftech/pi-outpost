@@ -9,7 +9,7 @@
  * `sandbox.allowedHosts`.
  */
 import assert from "node:assert/strict";
-import { spawn, type ChildProcess } from "node:child_process";
+import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { lookup } from "node:dns/promises";
 import { mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { createServer, type Server } from "node:http";
@@ -166,9 +166,16 @@ describe("the agent's bash under Seatbelt (sandbox-exec)", { skip }, () => {
     test("UnderSeatbeltWithoutAnAllowlistTheNetworkIsOpen: a public host is reached, the loopback is not", async (t) => {
       if (!online) return t.skip("this host does not reach registry.npmjs.org");
       const result = await bash(
-        [`echo "open=$(curl -s -o /dev/null -m 20 -w '%{http_code}' https://example.com/)"`, `curl -s -m 5 http://127.0.0.1:${otherPort}/; echo " loopback=$?"`].join("\n"),
+        [`echo "open=$(curl -sS -o /dev/null -m 20 -w '%{http_code}' https://example.com/)"`, `curl -s -m 5 http://127.0.0.1:${otherPort}/; echo " loopback=$?"`].join("\n"),
       );
-      assert.match(result.output, /open=200/, result.output);
+      // Keep curl's error and compare the same endpoint outside the sandbox on failure:
+      // HTTP 000 alone cannot distinguish DNS, TLS, confinement or an unavailable host.
+      let diagnostic = result.output;
+      if (!/open=200/.test(result.output)) {
+        const host = spawnSync("curl", ["-sS", "-o", "/dev/null", "-m", "20", "-w", "host=%{http_code}\n", "https://example.com/"], { encoding: "utf8", timeout: 25_000 });
+        diagnostic += `\nOutside the sandbox (exit ${host.status}):\n${host.stdout ?? ""}${host.stderr ?? ""}${host.error?.message ?? ""}`;
+      }
+      assert.match(result.output, /open=200/, diagnostic);
       assert.doesNotMatch(result.output, /other-local-service/, "a service on the loopback was reached");
       assert.match(result.output, /loopback=(?!0\b)\d+/, result.output);
     });
