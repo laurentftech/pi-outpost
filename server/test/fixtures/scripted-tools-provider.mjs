@@ -43,7 +43,11 @@ function record(context) {
 function nextStep(context) {
   const { user, after } = sinceLastUser(context);
   const match = /STEPS:(\[.*\])/s.exec(textOf(user?.content));
-  if (!match) return undefined;
+  if (!match) {
+    if (textOf(user?.content).trim() !== "Reuse the tool" || after.some((message) => message.role === "toolResult")) return undefined;
+    const previous = [...(context.messages ?? [])].reverse().flatMap((message) => message.role === "assistant" && Array.isArray(message.content) ? message.content : []).find((block) => block.type === "toolCall" && block.name === "pptx_extract");
+    return previous ? { tool: previous.name, args: previous.arguments } : undefined;
+  }
   const steps = JSON.parse(match[1]);
   return steps[after.filter((message) => message.role === "toolResult").length];
 }
