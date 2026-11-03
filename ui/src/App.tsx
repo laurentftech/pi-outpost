@@ -1198,8 +1198,12 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
             /* During a switch the outgoing conversation fades and holds rather than
                emptying: a blank pane makes a switch read as a page reload, which is
                the one thing this transition exists to avoid. No skeleton — the old
-               content stays until the new arrives. */
-            className={`flex-1 overflow-y-auto transition-opacity duration-150 ${state.switching ? "opacity-40" : "opacity-100"} ${analysisOpen ? "md:pr-[26rem]" : state.workPlan && workPlanOpen ? "md:pr-[23rem]" : ""}`}
+               content stays until the new arrives.
+               `relative`: the containing block of what is positioned inside the transcript —
+               screen-reader-only text (`sr-only` is `position: absolute`) first. Without it
+               such text is placed against the page, at its spot far down the conversation,
+               outside this scroller's clipping, and the page grows a second scrollbar. */
+            className={`relative flex-1 overflow-y-auto transition-opacity duration-150 ${state.switching ? "opacity-40" : "opacity-100"} ${analysisOpen ? "md:pr-[26rem]" : state.workPlan && workPlanOpen ? "md:pr-[23rem]" : ""}`}
           >
             <div className="mx-auto flex max-w-3xl flex-col gap-3 px-4 py-6">
               {state.items.length === 0 && (

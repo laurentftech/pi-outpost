@@ -235,3 +235,38 @@ test("send now: asks while a turn runs, cancel changes nothing, confirmed it sto
   const users = await conversation(page);
   for (const text of ["one", "two", "three"]) expect(users.filter((user) => user === text)).toHaveLength(1);
 });
+
+test("a queued prompt in a long conversation scrolls with it, and never makes the page itself scroll", async ({ page }) => {
+  await page.goto(process.env.PI_E2E_QUEUED_URL!);
+  await expect(page.getByTitle("connected")).toBeVisible();
+  await page.getByRole("combobox").selectOption({ label: "queue-test/queue-test" });
+  // Long enough that the transcript scrolls: the queued bubble lands far below the window.
+  for (let i = 0; i < 6; i++) {
+    const before = (await sent()).length;
+    await send(page, `long ${i} ${"lorem ipsum ".repeat(60)}`);
+    await expect.poll(async () => (await sent()).length).toBe(before + 1);
+    await expect(page.getByText("working…")).toHaveCount(0);
+  }
+  const held = (await sent()).length + 1;
+  await writeFile(gate(held), "");
+  await send(page, "held");
+  await expect(page.getByText("working…")).toBeVisible();
+  await send(page, "queued far down");
+  await expect(queued(page)).toHaveCount(1);
+
+  // Only the transcript scrolls: an element of the queued bubble placed against the page (its
+  // screen-reader label, `position: absolute`) used to stretch the document past the window.
+  const page_ = await page.evaluate(() => ({
+    scroll: document.documentElement.scrollHeight,
+    window: document.documentElement.clientHeight,
+    transcriptScrolls: (() => {
+      const main = document.querySelector("main")!;
+      return main.scrollHeight > main.clientHeight;
+    })(),
+  }));
+  expect(page_.transcriptScrolls, "the transcript is long enough to scroll").toBe(true);
+  expect(page_.scroll, "the page does not scroll").toBeLessThanOrEqual(page_.window);
+
+  await rm(gate(held), { force: true });
+  await expect(page.getByText("working…")).toHaveCount(0);
+});
