@@ -6,6 +6,7 @@
  * snapshot were derived *from* this backend, so any divergence would be a bug
  * rather than an adaptation. The RPC runtime is the one doing real work to match.
  */
+import { DEFERRED_TOOLS } from "./documentTools.ts";
 import type { AgentSession, CreateAgentSessionRuntimeFactory, SessionManager } from "@earendil-works/pi-coding-agent";
 import { createAgentSessionRuntime } from "@earendil-works/pi-coding-agent";
 import type {
@@ -407,6 +408,9 @@ export class EmbeddedRuntime implements AgentRuntime {
 
   // --- binding -------------------------------------------------------------
 
+  private executionTools?: AgentSession["agent"]["state"]["tools"];
+  private preparedSessions = new WeakSet<AgentSession>();
+
   /**
    * Event subscriptions attach to one AgentSession — rebind after replacement.
    *
@@ -427,6 +431,16 @@ export class EmbeddedRuntime implements AgentRuntime {
    * work — arrives afterwards through `extensions_bound`.
    */
   async bind(options?: { graceMs?: number }): Promise<void> {
+    const session = this.session;
+    if (!this.preparedSessions.has(session)) {
+      this.preparedSessions.add(session);
+      const prepare = session.agent.prepareRequest;
+      session.agent.prepareRequest = async (request, signal) => {
+        const prepared = await prepare?.(request, signal);
+        this.executionTools = (prepared?.context ?? request.context).tools;
+        return prepared || undefined;
+      };
+    }
     this.unsubscribe = this.session.subscribe((event: any) => this.translate(event));
     const bound = this.session;
     const startedAt = Date.now();
@@ -470,6 +484,7 @@ export class EmbeddedRuntime implements AgentRuntime {
         this.emit({ type: "agent_start" });
         break;
       case "agent_end":
+        this.executionTools = undefined;
         this.emit({ type: "agent_end" });
         break;
       case "message_start":
@@ -492,6 +507,13 @@ export class EmbeddedRuntime implements AgentRuntime {
         }
         break;
       case "tool_execution_start":
+        // Declarations have already reached the provider. Resolve a remembered name
+        // in the execution snapshot, retaining SDK validation and extension hooks.
+        if (DEFERRED_TOOLS.includes(event.toolName) && this.session.getCallableToolNames().includes(event.toolName)) {
+          this.setToolPublished(event.toolName, true);
+          const tool = this.session.agent.state.tools.find((candidate) => candidate.name === event.toolName);
+          if (tool && this.executionTools && !this.executionTools.some((candidate) => candidate.name === tool.name)) this.executionTools.push(tool);
+        }
         this.emit({ type: "tool_start", toolCallId: event.toolCallId, toolName: event.toolName, args: event.args });
         break;
       case "tool_execution_update":

@@ -181,7 +181,9 @@
   called, an extractor goes again when the turn ends; named and used, it stays through the
   work around that document and is forgotten after five quiet turns. Naming the document
   again brings it back, and the agent can load one by itself with `tool_search` — for a
-  file it found on its own, say
+  file it found on its own, say. Resuming an embedded conversation restores recently used
+  tools with the same inactivity counts; an explicit call to a remembered deferred tool
+  reactivates it even after its schema has expired
 - Email dropped on the composer: an Outlook `.msg`, or a `.eml`/`.emlx` from macOS Mail, Gmail or
   any webmail, is copied into the workspace and read by `mail_extract` — subject, sender,
   recipients, date, the body as markdown, and an inventory of its attachments. Ask for the

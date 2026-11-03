@@ -15,7 +15,7 @@ caution that goes with it. The [configuration reference](configuration.md) cover
 - [Hand it to someone who has no Node](#hand-it-to-someone-who-has-no-node)
 - [Teach the agent something](#teach-the-agent-something)
 - [Restrict which models can be picked](#restrict-which-models-can-be-picked)
-- [Let the agent read a big PDF, Word or Excel file](#let-the-agent-read-a-big-pdf-word-or-excel-file)
+- [Let the agent read a big PDF, Word, Excel or PowerPoint file](#let-the-agent-read-a-big-pdf-word-excel-or-powerpoint-file)
 - [Make a PowerPoint deck from a template](#make-a-powerpoint-deck-from-a-template)
 - [Search the project's files](#search-the-projects-files)
 - [Ask a side question while the agent works](#ask-a-side-question-while-the-agent-works)
@@ -428,13 +428,18 @@ With it, no turn runs on another model: a session that would start on the agent 
 default (`settings.json`) is moved to the first listed model — for that session only, the default
 is left alone — and a client asking for a model outside the list is refused.
 
-## Let the agent read a big PDF, Word or Excel file
+## Let the agent read a big PDF, Word, Excel or PowerPoint file
 
 Nothing to enable: `pdf_extract`, `docx_extract`, `xlsx_extract`, `pptx_extract` and
 `mail_extract` are available wherever `read` is, need no shell and no external binary, and are
 confined to the sandbox root like every other file tool. Drop the document into the
 composer and it is uploaded into the workspace and attached as a path, which is what
 those tools take.
+
+When you resume a conversation, recently used document tools return with it, keeping their
+inactivity counters. In the embedded runtime, the agent can also repeat a remembered extraction
+call after its schema has gone idle; it does not need you to attach or name the file again.
+The existing file permissions and sandbox still apply.
 
 A picture in the document is named where it sits — `[picture 3: PNG 800×600 — "its alt
 text"]` — and nothing more is spent on it unless you ask. `images: "all"` returns them
