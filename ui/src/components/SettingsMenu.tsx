@@ -411,13 +411,13 @@ export function SettingsMenu({
             </details>}
             <section className="mb-4">
               <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Agent resources</h3>
-              {tools.length === 0 ? <p className="text-xs text-zinc-400 dark:text-zinc-500">Tool inventory unavailable for this runtime</p> : <details data-testid="tools-loaded">
+              {tools.length === 0 ? <p className="text-xs text-zinc-600 dark:text-zinc-400">Tool inventory unavailable for this runtime</p> : <details data-testid="tools-loaded">
                 <summary className="cursor-pointer text-xs text-zinc-600 dark:text-zinc-400">{activeTools.length} tools active{inactiveTools.length ? ` · ${inactiveTools.length} inactive` : ""}</summary>
                 <ul className="mt-2 space-y-1">
                   {sortedTools.map((tool) => <li key={tool.name} className="flex justify-between rounded bg-zinc-50 px-2 py-1 font-mono text-xs text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400"><span>{tool.name}</span><span>{tool.active ? "active" : "inactive"}</span></li>)}
                 </ul>
               </details>}
-              {skills.length === 0 ? <p className="mt-2 text-xs text-zinc-400 dark:text-zinc-500">No skills loaded</p> : <details className="mt-2" data-testid="skills-loaded">
+              {skills.length === 0 ? <p className="mt-2 text-xs text-zinc-600 dark:text-zinc-400">No skills loaded</p> : <details className="mt-2" data-testid="skills-loaded">
                 <summary className="cursor-pointer text-xs text-zinc-600 dark:text-zinc-400">{skills.length} skills loaded</summary>
                 {/* Inventory, not settings: this lists what the session actually has,
                     built-in skills included, and offers no way to remove any of them.
@@ -434,7 +434,7 @@ export function SettingsMenu({
                 }}
                 className="mt-3 w-full rounded-md border border-zinc-300 px-3 py-2 text-xs font-medium text-zinc-700 hover:bg-zinc-50 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800"
               >
-                Manage resources…
+                Manage agent resources
               </button>
             </section>
             {/* Extensions section */}

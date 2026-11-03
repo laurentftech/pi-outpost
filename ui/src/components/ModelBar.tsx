@@ -249,6 +249,7 @@ export function ModelBar(props: ModelBarProps) {
     <div className="mt-2 flex items-center gap-2">
       <select
         value={model}
+        aria-label="Model"
         onChange={(e) => {
           const choice = models.find((m) => `${m.provider}/${m.id}` === e.target.value);
           if (choice) props.onSetModel(choice.provider, choice.id);

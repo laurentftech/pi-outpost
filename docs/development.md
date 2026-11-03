@@ -70,9 +70,17 @@ package downgrades suggested by `npm audit fix --force` as a substitute for a fi
 npm run test --workspace server        # integration tests: no model auth, no tokens spent
 npm run test --workspace ui            # component unit tests (vitest, jsdom, testing-library)
 npm run test:e2e                        # real built app in Chromium, including multi-project flows
+npm run test:webbench                   # core app/widget flows in Chromium, Firefox and WebKit, plus WCAG 2.2 AA scans
 npm run test:live --workspace server   # drives real agent turns (needs model auth, costs tokens)
 npm run test:linux                     # the ubuntu CI leg — suite then coverage — on Linux, non-root
 ```
+
+Install the three Playwright engines once with `npx playwright install chromium firefox webkit`.
+The web bench exercises the standalone app, assistant-rendered content, the embedded widget,
+document-tool reuse after session resume, and queued-prompt recovery after repeated interruptions
+in each engine. Its axe scans cover the standalone app's initial screen and Settings panel;
+automated checks are a useful baseline, not a substitute for keyboard and assistive-technology
+review.
 
 Server integration tests boot a real server against a throwaway workspace (isolated
 `agentDir`, so your own sessions and extensions are never touched) and talk to it over
