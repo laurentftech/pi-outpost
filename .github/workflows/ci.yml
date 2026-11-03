@@ -188,6 +188,7 @@ jobs:
         run: npm run test:webbench
         env:
           CI: true
+          HOME: /root
       - uses: actions/upload-artifact@v7
         if: failure()
         with:
