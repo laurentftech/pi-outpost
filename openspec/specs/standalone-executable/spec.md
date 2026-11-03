@@ -111,6 +111,8 @@ lives with the command surface (`StartingOpensTheInterface`); what this adds is 
 the executable's own default SHALL be to open, since there is no terminal for it to
 print an address to that anyone would read.
 
+> Corpus edge: spec-cites-requirement StartingOpensTheInterface
+
 #### Scenario: LaunchedFromAFileManager
 - **WHEN** a person double-clicks the executable on a desktop machine
 - **THEN** the browser opens on the interface, served by that executable, with no other step

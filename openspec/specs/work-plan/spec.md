@@ -123,6 +123,9 @@ The system SHALL provide a persistent or readily accessible Work Plan view along
 The structured Work Plan interface SHALL expose object schemas whose `action` property enumerates the operations that schema carries and whose remaining properties are optional, individually typed, and documented with the actions that use them. Every nested input field, accepted status, and nullable clearing value SHALL be declared. An agent SHALL be able to construct a valid call from the tool name, description, schema, and prompt guidelines without learning required fields from rejected mutations. A refused call SHALL be answered with a diagnosis that names the refused field, and SHALL NOT enumerate the failures of operations the call did not request.
 
 The interface SHALL be published as two tools, described under **The Work Plan contract is split by what an operation needs**. Each SHALL be self-describing on its own terms: an agent reading either SHALL be able to call every action that tool carries, and SHALL be told where the others live. The prompt guidelines that accompany an operation SHALL follow the tool that carries it, so what an agent is told matches what it is currently able to call.
+
+> Corpus edge: spec-cites-requirement The Work Plan contract is split by what an operation needs
+
 #### Scenario: Creation schema declares its complete input
 - **WHEN** an agent inspects the Work Plan tool schema
 - **THEN** the schema declares the plan title and the recursively nested task shape, including the task dependency list

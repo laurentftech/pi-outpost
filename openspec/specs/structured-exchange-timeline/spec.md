@@ -475,6 +475,8 @@ as a sequence is.
 specifies. `write_structure_table` SHALL refuse a timeline, saying that no table is written for one, and
 SHALL write nothing.
 
+> Corpus edge: spec-cites-requirement TheFigureWriterDrawsATimeline
+
 #### Scenario: TheAgentPresentsATimeline
 - **WHEN** the agent calls `present_structure` with a valid version 3 timeline
 - **THEN** the interface draws it natively, and the tool result reports how many tasks, activities, milestones and dependencies it holds

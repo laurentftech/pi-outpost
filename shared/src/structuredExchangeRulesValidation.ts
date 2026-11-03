@@ -260,7 +260,7 @@ export function registryRulesIssues(
       });
     }
     for (const rule of entry.rules.rules) {
-      const key = `${entry.rules.profile} ${rule.id}`;
+      const key = `${entry.rules.profile}\0${rule.id}`;
       const first = firstRule.get(key);
       if (first === undefined) firstRule.set(key, { path: entry.path });
       else if (first.path !== entry.path) {

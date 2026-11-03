@@ -23,6 +23,8 @@ When `gitAvailable` is false the snapshot SHALL also carry why, as described in
 SayWhyGitIsUnavailable. Hiding the features and saying nothing about them is what makes a
 missing binary indistinguishable from a directory that was never a repository.
 
+> Corpus edge: spec-cites-requirement SayWhyGitIsUnavailable
+
 #### Scenario: InsideRepository
 - **WHEN** the server starts with a browser root inside a git work tree
 - **THEN** the snapshot carries gitAvailable: true and git requests are served

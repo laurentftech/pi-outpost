@@ -1247,6 +1247,8 @@ narrowed, the figure SHALL be narrowed identically and SHALL carry the statement
 `ReaderMayAdjustAndNarrowTheView` requires of it, so that a figure separated from its document still
 says how much of that document it shows.
 
+> Corpus edge: spec-cites-requirement ReaderMayAdjustAndNarrowTheView
+
 #### Scenario: TheFigureStandsAlone
 - **WHEN** a figure is exported and opened outside the application
 - **THEN** it draws the same picture, with no reference to any resource of the application
