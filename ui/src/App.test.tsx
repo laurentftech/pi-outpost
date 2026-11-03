@@ -1481,7 +1481,12 @@ describe("ReturnToLatest", () => {
   it("jumps rather than animates for a reader who asked for less motion", () => {
     // `behavior: "smooth"` is not softened by the preference the way a CSS
     // transition is: the browser animates it either way unless asked not to.
-    const matchMedia = vi.fn((query: string) => ({ matches: query.includes("reduce"), media: query }));
+    const matchMedia = vi.fn((query: string) => ({
+      matches: query.includes("reduce"),
+      media: query,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    }));
     vi.stubGlobal("matchMedia", matchMedia);
     const behaviors: (string | undefined)[] = [];
     Element.prototype.scrollIntoView = vi.fn(function (this: Element, options?: ScrollIntoViewOptions | boolean) {
@@ -1500,7 +1505,12 @@ describe("ReturnToLatest", () => {
   });
 
   it("animates for everyone else", () => {
-    vi.stubGlobal("matchMedia", vi.fn((query: string) => ({ matches: false, media: query })));
+    vi.stubGlobal("matchMedia", vi.fn((query: string) => ({
+      matches: false,
+      media: query,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    })));
     const behaviors: (string | undefined)[] = [];
     Element.prototype.scrollIntoView = vi.fn(function (this: Element, options?: ScrollIntoViewOptions | boolean) {
       behaviors.push(typeof options === "object" ? options.behavior : undefined);

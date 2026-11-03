@@ -184,11 +184,18 @@ jobs:
       - run: npm run test:e2e
         env:
           CI: true
+      - name: Cross-browser and accessibility bench
+        run: npm run test:webbench
+        env:
+          CI: true
+          HOME: /root
       - uses: actions/upload-artifact@v7
         if: failure()
         with:
-          name: playwright-report
-          path: e2e/test-results/
+          name: playwright-reports
+          path: |
+            e2e/test-results/
+            e2e/test-results-webbench/
           retention-days: 7
 
   # MXC's Linux executor (lxc-exec, Bubblewrap) in the shape docs/sandboxing.md documents:

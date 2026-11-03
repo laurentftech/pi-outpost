@@ -297,6 +297,8 @@ Tasks use five states: `todo`, `in_progress`, `blocked`, `needs_review` and `don
 or review state can carry a reason, and tasks can link to resources; workspace resources open
 directly in the file viewer. The panel is read-only for now, so the conversation stays your
 control surface while the agent owns the plan through its `work_plan` tool.
+At narrow window widths, the panel starts collapsed so the conversation stays visible; open
+the compact Work Plan control in the header to view it.
 
 The agent sees that tool in two halves. `work_plan` — creating a plan, adding, updating,
 moving and removing tasks — is always there. `work_plan_extended`, which sets a task's

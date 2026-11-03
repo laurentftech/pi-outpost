@@ -260,6 +260,60 @@ test("send now while a command runs: the stopped turn ends, and the queued promp
   expect((await conversation(page)).filter((text) => text === "answer me after the stop")).toHaveLength(1);
 });
 
+test("monkey: repeated send-now interrupts deliver each queued batch once and in order", async ({ page }, testInfo) => {
+  await page.goto(process.env.PI_E2E_QUEUED_URL!);
+  await expect(page.getByTitle("connected")).toBeVisible();
+  await page.getByRole("combobox").selectOption({ label: "queue-test/queue-test" });
+
+  const composer = page.getByRole("textbox", { name: /message pi|steer the agent/i });
+  const delivered: string[] = [];
+
+  for (let round = 0; round < 3; round++) {
+    const before = (await sent()).length;
+    await send(page, "run a long command");
+    await expect(page.getByText("working…")).toBeVisible();
+    await expect.poll(async () => (await sent()).length).toBe(before + 1);
+
+    const batch = [0, 1, 2].map((index) => `recovery ${testInfo.project.name} ${round} prompt ${index}`);
+    delivered.push(...batch);
+    for (const prompt of batch) await send(page, prompt);
+    await expect(queued(page)).toHaveCount(batch.length);
+    if (round === 0 && testInfo.project.name === "chromium") {
+      await page.screenshot({ path: testInfo.outputPath("queue-pending.png"), fullPage: true });
+    }
+
+    await page.getByRole("button", { name: `send all ${batch.length} now` }).click();
+    const confirm = page.getByRole("group", { name: /confirm sending/i });
+    await confirm.getByRole("button", { name: "stop and send" }).click();
+
+    await expect(queued(page)).toHaveCount(0);
+    await expect(page.getByText("working…")).toHaveCount(0);
+    await expect
+      .poll(async () =>
+        (await sent()).find(
+          (item) => item.n > before && item.users.at(-1)?.text === batch.at(-1),
+        ),
+      )
+      .toBeDefined();
+
+    const recovery = (await sent()).find(
+      (item) => item.n > before && item.users.at(-1)?.text === batch.at(-1),
+    );
+    expect(recovery, `recovery turn after interrupt ${round}`).toBeTruthy();
+    expect(recovery!.users.slice(-batch.length).map(({ text }) => text)).toEqual(batch);
+    await expect(page.getByText(`answer ${recovery!.n}`, { exact: true })).toBeVisible();
+    if (round === 0 && testInfo.project.name === "chromium") {
+      await page.screenshot({ path: testInfo.outputPath("queue-recovered.png"), fullPage: true });
+    }
+
+    const texts = await conversation(page);
+    for (const prompt of batch) expect(texts.filter((text) => text === prompt)).toHaveLength(1);
+    await composer.fill("");
+  }
+
+  expect(new Set(delivered).size).toBe(delivered.length);
+});
+
 test("a queued prompt in a long conversation scrolls with it, and never makes the page itself scroll", async ({ page }) => {
   await page.goto(process.env.PI_E2E_QUEUED_URL!);
   await expect(page.getByTitle("connected")).toBeVisible();
