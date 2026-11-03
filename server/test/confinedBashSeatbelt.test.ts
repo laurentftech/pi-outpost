@@ -18,7 +18,7 @@ import path from "node:path";
 import { after, before, describe, test } from "node:test";
 import { confinedBashOperations } from "../src/confinedBash.ts";
 import { startEgressProxy, type EgressProxy } from "../src/egressProxy.ts";
-import { checkRunner } from "../src/terminalSandbox.ts";
+import { checkRunner, confinedEnvironment, seatbeltPolicy } from "../src/terminalSandbox.ts";
 
 const RUNNER = process.env.SEATBELT_EXEC;
 const skip = process.platform !== "darwin" ? "sandbox-exec runs on macOS" : !RUNNER ? "SEATBELT_EXEC is not set (the path of sandbox-exec)" : false;
@@ -174,6 +174,19 @@ describe("the agent's bash under Seatbelt (sandbox-exec)", { skip }, () => {
       if (!/open=200/.test(result.output)) {
         const host = spawnSync("curl", ["-sS", "-o", "/dev/null", "-m", "20", "-w", "host=%{http_code}\n", "https://example.com/"], { encoding: "utf8", timeout: 25_000 });
         diagnostic += `\nOutside the sandbox (exit ${host.status}):\n${host.stdout ?? ""}${host.stderr ?? ""}${host.error?.message ?? ""}`;
+        const policy = seatbeltPolicy({ root, tmp: root, shell: "/usr/bin/curl", shellArgs: [], cwd: root, allowWrite: true, agentDir, env: confinedEnvironment(process.env, { root, tmp: root, shell: "/bin/bash" }) });
+        const stores = '(allow file-read* (subpath "/private/var/protected/trustd") (subpath "/private/var/db/mds"))';
+        for (const [label, rules] of [
+          ["public trust stores", stores],
+          ["certificate services", stores + '\n(allow mach-lookup (global-name "com.apple.SecurityServer") (global-name "com.apple.securityd") (global-name "com.apple.ocspd"))'],
+          ["preferences", stores + '\n(allow mach-lookup (global-name "com.apple.cfprefsd.daemon") (global-name "com.apple.cfprefsd.agent"))'],
+        ]) {
+          const probe = spawnSync("/usr/bin/sandbox-exec", ["-p", policy.seatbelt + rules, "/usr/bin/curl", "-sS", "-o", "/dev/null", "-m", "10", "-w", "probe=%{http_code}\n", "https://example.com/"], { cwd: root, env: policy.env, encoding: "utf8", timeout: 15_000 });
+          diagnostic += `\n${label} (exit ${probe.status}):\n${probe.stdout ?? ""}${probe.stderr ?? ""}${probe.error?.message ?? ""}`;
+        }
+        const backend = await bash("CURL_SSL_BACKEND=openssl curl -sS --cacert /etc/ssl/cert.pem -o /dev/null -m 10 -w 'openssl=%{http_code}\\n' https://example.com/");
+        diagnostic += `\nOpenSSL backend (exit ${backend.exitCode}):\n${backend.output}`;
+
 
       }
       assert.match(result.output, /open=200/, diagnostic);
