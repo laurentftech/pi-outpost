@@ -22,6 +22,10 @@ If session replacement is refused before handoff to the new session, the system 
 
 A preview SHALL be bound to the repository revision, catalogue and root set it observed, SHALL expire, and SHALL be usable once: a confirmation arriving after expiry, after a second use, or after the observed catalogue or roots changed SHALL be refused and SHALL require a fresh preview. A cloned worktree with neither a catalogued skill nor a recognizable extension root, or a selected skill or root that changes before confirmation, SHALL be refused without changing settings. Re-enrolling a canonical worktree already represented as a collection SHALL merge newly confirmed extension roots and skills into its existing group without duplicating paths, selections or repositories, and SHALL leave skills already on as they were. Re-enrolling a canonical worktree already represented through user skill roots SHALL keep those roots and their load-everything behaviour. Removing a repository is governed by Whole-repository removal.
 
+> Corpus edge: spec-cites-requirement Skill collection catalogue
+> Corpus edge: spec-cites-requirement Affected runtime reload
+> Corpus edge: spec-cites-requirement Whole-repository removal
+
 #### Scenario: Add a local skill folder
 - **WHEN** the user selects Add local folder, chooses an existing directory, and identifies it as a skill root
 - **THEN** that directory is persisted once in the user skill paths and rebuilt into the active runtime

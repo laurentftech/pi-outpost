@@ -80,6 +80,8 @@ reports tier 1 (`base-container`); any other tier, or a host other than Windows,
 unavailable with the reason. Under MXC the policy SHALL keep the read and write limits and the denied
 secrets of `TheTerminalMayRunConfined`, and git SHALL be able to run in a writable root.
 
+> Corpus edge: spec-cites-requirement TheTerminalMayRunConfined
+
 #### Scenario: AnMxcRunnerBelowTier1MeansNoTerminal
 - **GIVEN** `terminal.sandbox` naming MXC's executor on a host whose probe reports a tier other than `base-container`
 - **WHEN** the runner is checked
@@ -146,6 +148,8 @@ On Linux, `terminal.sandbox` MAY name MXC's Linux executor. When an interactive 
 the terminal SHALL keep the limits of `TheTerminalMayRunConfined`; when it cannot, the terminal SHALL be
 unavailable with the reason, and the agent's shell SHALL NOT be affected.
 
+> Corpus edge: spec-cites-requirement TheTerminalMayRunConfined
+
 #### Scenario: OnLinuxWithMxcGitRunsInTheTerminal
 - **GIVEN** a confined terminal under MXC's real Linux executor in a git repository that is its writable root
 - **WHEN** the user runs `git status` and reads the agent directory's `auth.json`
@@ -157,6 +161,8 @@ On macOS on Apple silicon, `terminal.sandbox` MAY name MXC's macOS executor. The
 the limits of `TheTerminalMayRunConfined`, its size and resizes SHALL reach the shell, Ctrl-C SHALL
 interrupt the running command without ending the shell, and the shell's working directory SHALL be
 found as for an unconfined terminal.
+
+> Corpus edge: spec-cites-requirement TheTerminalMayRunConfined
 
 #### Scenario: OnMacOsWithMxcGitRunsInTheTerminal
 - **GIVEN** a confined terminal under MXC's real macOS executor in a git repository that is its writable root
@@ -190,6 +196,8 @@ move the cursor, see the user's windows, or open the clipboard.
 On macOS, `terminal.sandbox` MAY name the Seatbelt runner. The terminal SHALL then keep the limits of
 `TheTerminalMayRunConfined`, its size and resizes SHALL reach the shell, Ctrl-C SHALL interrupt the
 running command without ending the shell, and the shell's working directory SHALL be found.
+
+> Corpus edge: spec-cites-requirement TheTerminalMayRunConfined
 
 #### Scenario: UnderSeatbeltGitRunsInTheTerminal
 - **GIVEN** a confined terminal under the Seatbelt runner in a git repository that is its writable root

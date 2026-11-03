@@ -145,6 +145,8 @@ than returned empty (see HiddenContentIsSkippedAndNamed), so positions are conti
 returned columns; the header row's letters are the workbook's own, which is what makes a removal
 visible — `A | B | E` says two columns are missing and which.
 
+> Corpus edge: spec-cites-requirement HiddenContentIsSkippedAndNamed
+
 #### Scenario: EmptyCellsKeepTheirPosition
 - **GIVEN** a row whose second and third cells are empty and whose fourth holds a value
 - **WHEN** the sheet is extracted

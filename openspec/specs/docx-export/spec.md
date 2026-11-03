@@ -222,6 +222,8 @@ other format has no part it could become, and degrades to its alt text under the
 embedded picture SHALL declare a physical size derived from the image's own dimensions and SHALL be
 constrained to the page's text width when it would otherwise exceed it.
 
+> Corpus edge: spec-cites-requirement DiagramsAreEmbeddedAsVectorWithRasterFallback
+
 An image the export cannot obtain SHALL degrade to the reference's alt text, exactly as an
 unreferenced image does today: a file that no longer exists, a path the server refuses, and a
 payload that is not a readable image are all local failures. Such a failure MUST NOT fail the
