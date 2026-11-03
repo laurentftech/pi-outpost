@@ -18,7 +18,7 @@ import path from "node:path";
 import { after, before, describe, test } from "node:test";
 import { confinedBashOperations } from "../src/confinedBash.ts";
 import { startEgressProxy, type EgressProxy } from "../src/egressProxy.ts";
-import { checkRunner, confinedEnvironment } from "../src/terminalSandbox.ts";
+import { checkRunner } from "../src/terminalSandbox.ts";
 
 const RUNNER = process.env.SEATBELT_EXEC;
 const skip = process.platform !== "darwin" ? "sandbox-exec runs on macOS" : !RUNNER ? "SEATBELT_EXEC is not set (the path of sandbox-exec)" : false;
@@ -174,10 +174,7 @@ describe("the agent's bash under Seatbelt (sandbox-exec)", { skip }, () => {
       if (!/open=200/.test(result.output)) {
         const host = spawnSync("curl", ["-sS", "-o", "/dev/null", "-m", "20", "-w", "host=%{http_code}\n", "https://example.com/"], { encoding: "utf8", timeout: 25_000 });
         diagnostic += `\nOutside the sandbox (exit ${host.status}):\n${host.stdout ?? ""}${host.stderr ?? ""}${host.error?.message ?? ""}`;
-        const clean = spawnSync("curl", ["-sS", "-o", "/dev/null", "-m", "20", "-w", "clean=%{http_code}\n", "https://example.com/"], { encoding: "utf8", timeout: 25_000, env: confinedEnvironment(process.env, { root, tmp: root, shell: "/bin/bash" }) });
-        diagnostic += `\nOutside with the confined environment (exit ${clean.status}):\n${clean.stdout ?? ""}${clean.stderr ?? ""}${clean.error?.message ?? ""}`;
-        const explicit = await bash("command -v curl; curl --version; curl -sS --cacert /etc/ssl/cert.pem -o /dev/null -m 20 -w 'explicit-ca=%{http_code}\\n' https://example.com/");
-        diagnostic += `\nInside with an explicit system CA bundle (exit ${explicit.exitCode}):\n${explicit.output}`;
+
       }
       assert.match(result.output, /open=200/, diagnostic);
       assert.doesNotMatch(result.output, /other-local-service/, "a service on the loopback was reached");
