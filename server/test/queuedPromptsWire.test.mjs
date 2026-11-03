@@ -409,3 +409,46 @@ test("embedded: prompts sent back to back are queued in the order they were sent
   await eventually(() => latestQueue(client).length === sent.length, "all queued");
   assert.deepEqual(queueTexts(client), sent);
 });
+
+/** A turn whose step runs a long bash command; returns once the tool has started. */
+async function turnInATool(client) {
+  client.send({ type: "prompt", text: "run a long command" });
+  await client.waitFor((message) => message.type === "tool_start" && message.toolName === "bash", 30_000);
+}
+
+// openlore: scenario=SendingNowStopsTheStepInProgress spec=queued-prompts
+test("embedded: sending now while a tool runs sends the queue in a new turn, instead of losing it to the stopped one", async (t) => {
+  const ctx = await boot(t, { sandbox: false });
+  const { client, log } = ctx;
+  await turnInATool(client);
+  client.send({ type: "prompt", text: "queued during the tool" });
+  await eventually(() => queueTexts(client).join("|") === "queued during the tool", "queued");
+
+  client.send({ type: "send_queue_now" });
+  // A stopped tool ends its step, and pi reads the steering queue then: had the queue still been
+  // there, the stopped turn would have swallowed it into a request it aborts — no model call.
+  await eventually(async () => (await requests(log)).some((request) => request.users.at(-1)?.text === "queued during the tool"), "the model is asked the queued prompt");
+  await eventually(() => latestQueue(client).length === 0, "nothing left pending");
+  assert.deepEqual(users(client).map((message) => message.text), ["run a long command", "queued during the tool"]);
+});
+
+// openlore: scenario=APendingPromptOutlivesAnAbort spec=queued-prompts
+test("embedded: Stop while a tool runs leaves the queue pending, unsent, for the next prompt", async (t) => {
+  const ctx = await boot(t, { sandbox: false });
+  const { client, log } = ctx;
+  await turnInATool(client);
+  client.send({ type: "prompt", text: "keep me queued" });
+  await eventually(() => queueTexts(client).join("|") === "keep me queued", "queued");
+  const queuedId = latestQueue(client)[0].id;
+
+  client.send({ type: "abort" });
+  await client.waitFor((message) => message.type === "agent_end", 30_000);
+  await new Promise((resolve) => setTimeout(resolve, 500));
+  assert.deepEqual(latestQueue(client).map(({ id, text }) => ({ id, text })), [{ id: queuedId, text: "keep me queued" }], "still pending, same id");
+  assert.deepEqual(users(client).map((message) => message.text), ["run a long command"], "not in the conversation");
+  assert.ok(!(await requests(log)).some((request) => request.users.some((user) => user.text === "keep me queued")), "the model was not sent it");
+
+  // The next prompt takes it along, as pi does with anything left queued.
+  client.send({ type: "prompt", text: "carry on" });
+  await eventually(async () => (await requests(log)).some((request) => request.users.some((user) => user.text === "keep me queued")), "delivered with the next turn");
+});

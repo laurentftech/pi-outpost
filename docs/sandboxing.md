@@ -207,6 +207,9 @@ configuration or anything beside the root. It cannot signal a process outside it
 included — and gets the minimal environment. `sandbox.allowedHosts` holds the network to the hosts it
 names, as on Windows ([below](#the-network-only-named-hosts)).
 
+Both macOS runners allow certificate verification through the system's `TrustEvaluationAgent` service, so HTTPS
+clients can validate certificate chains. This does not enable access to the user's Keychain.
+
 `/usr/bin/git` is Apple's `xcrun` shim, which cannot find its cache folders in the sandbox and warns
 on every call: the confined search path puts the developer tools' own `git` first (Xcode's or the
 Command Line Tools', whichever `xcode-select -p` names).

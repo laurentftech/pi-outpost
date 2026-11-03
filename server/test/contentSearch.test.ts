@@ -60,7 +60,9 @@ describe("searchContent", () => {
   });
 
   test("SearchAcrossWorkspaceFiles: matching paths and lines, with excerpts holding the match", async () => {
-    const { hits, truncated } = await searchContent(root, "needle", { limits: { maxHitsPerFile: 50 } });
+    // This checks complete results, including cold PDF loading, rather than the production
+    // wall-clock budget on a busy Windows runner. The spent-deadline test below checks that cap.
+    const { hits, truncated } = await searchContent(root, "needle", { limits: { maxHitsPerFile: 50, deadlineMs: 60_000 } });
     const lines = hits.filter((hit) => hit.kind === "line" && hit.path !== "many.txt");
 
     assert.deepEqual(

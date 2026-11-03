@@ -8,7 +8,7 @@
  * `sandbox.allowedHosts`.
  */
 import assert from "node:assert/strict";
-import { spawn, type ChildProcess } from "node:child_process";
+import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { lookup } from "node:dns/promises";
 import { mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { createServer, type Server } from "node:http";
@@ -164,8 +164,15 @@ describe("the agent's bash under MXC on macOS", { skip }, () => {
     // openlore: scenario=OnMacOsWithoutAnAllowlistTheNetworkIsOpen spec=sandbox-runner-bash
     test("without allowedHosts the network is open", async (t) => {
       if (!online) return t.skip("this host does not reach registry.npmjs.org");
-      const result = await bash(`echo "open=$(curl -s -o /dev/null -m 20 -w '%{http_code}' https://example.com/)"`);
-      assert.match(result.output, /open=200/, result.output);
+      const result = await bash(`echo "open=$(/usr/bin/curl -sS -o /dev/null -m 20 -w '%{http_code}' https://example.com/)"`);
+      // Keep curl's error and compare the same endpoint outside the sandbox on failure:
+      // HTTP 000 alone cannot distinguish DNS, TLS, confinement or an unavailable host.
+      let diagnostic = result.output;
+      if (!/open=200/.test(result.output)) {
+        const host = spawnSync("curl", ["-sS", "-o", "/dev/null", "-m", "20", "-w", "host=%{http_code}\n", "https://example.com/"], { encoding: "utf8", timeout: 25_000 });
+        diagnostic += `\nOutside the sandbox (exit ${host.status}):\n${host.stdout ?? ""}${host.stderr ?? ""}${host.error?.message ?? ""}`;
+      }
+      assert.match(result.output, /open=200/, diagnostic);
     });
   });
 });
