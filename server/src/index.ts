@@ -243,7 +243,7 @@ import { composeAppendSystemPrompt } from "./systemPrompt.ts";
 import { createMailExtractToolDefinition } from "./mailTool.ts";
 import { createPdfExtractToolDefinition, createPdfRenderToolDefinition } from "./pdfTool.ts";
 import { Workspace, shouldRetireWorkspace, type WorkspaceOptions, type WorkspaceSettings } from "./workspace.ts";
-import type { QueuedPromptSource } from "./queuedPrompts.ts";
+import type { QueuedEntry, QueuedPromptSource } from "./queuedPrompts.ts";
 import { WorkspaceRegistry } from "./workspaceRegistry.ts";
 import { discoverSkillCatalogue, ResourceRepositoryService } from "./resourceRepositories.ts";
 import { deriveWorkspaceActivity, workspaceActivityNeedsAttention } from "./workspaceActivity.ts";
@@ -4556,6 +4556,96 @@ async function waitUntilIdle(workspace: Workspace, timeoutMs = 15_000): Promise<
 }
 
 /**
+ * Take pi's whole queue back, reporting what it had already delivered. The tracker reads no
+ * queue report meanwhile, so the take-back's empty queue is not a delivery. The caller holds the
+ * queue lock and queues `kept` again, or sends it.
+ */
+async function takeQueueBack(workspace: Workspace): Promise<QueuedEntry[]> {
+  const tracker = workspace.queuedPrompts;
+  tracker.suspend();
+  let returned: { steering: string[]; followUp: string[] };
+  try {
+    returned = await workspace.agent.clearQueue!.call(workspace.agent);
+  } catch (error) {
+    tracker.resume();
+    throw error;
+  }
+  const { delivered, kept } = tracker.takeBack(returned);
+  for (const entry of delivered) if (entry.source) broadcastUser(workspace, entry.source);
+  return kept;
+}
+
+/** Queue entries again, in order, under their ids — after a take-back that sends none of them. */
+async function requeue(workspace: Workspace, socket: WebSocket | undefined, entries: QueuedEntry[]): Promise<void> {
+  const tracker = workspace.queuedPrompts;
+  for (const entry of entries) {
+    const source = entry.source ?? { text: entry.piText, promptText: entry.piText };
+    const expectation = tracker.expect(source, { kind: entry.kind, id: entry.id });
+    try {
+      tracker.settle(expectation, (await workspace.agent.queueMessage!.call(workspace.agent, source.promptText, source.images, entry.kind)) === "queued");
+    } catch (error) {
+      tracker.settle(expectation, false);
+      const message = `A queued message could not be queued again: ${error instanceof Error ? error.message : String(error)}`;
+      if (socket) send(socket, { type: "error", message });
+      else broadcast(workspace, { type: "error", message });
+    }
+  }
+  broadcastQueue(workspace);
+}
+
+/** Stop the running turn and wait for its end: the runtime's `agent_end`, then no turn running. */
+async function stopTurn(workspace: Workspace, timeoutMs = 15_000): Promise<boolean> {
+  const ended = new Promise<boolean>((resolve) => {
+    const timer = setTimeout(() => {
+      unsubscribe();
+      resolve(false);
+    }, timeoutMs);
+    const unsubscribe = workspace.agent.subscribe((event) => {
+      if (event.type !== "agent_end") return;
+      clearTimeout(timer);
+      unsubscribe();
+      resolve(true);
+    });
+  });
+  await workspace.agent.abort();
+  return (await ended) && (await waitUntilIdle(workspace, timeoutMs));
+}
+
+/**
+ * The Stop button. With prompts waiting that the server can rewrite, they are taken back first
+ * and queued again once the turn has ended, so they stay pending — a turn stopped during a tool
+ * would otherwise read them as its step ends and swallow them into the request it aborts.
+ *
+ * The queue lock is waited for briefly only: a prompt waiting for the extensions to bind holds
+ * it, and only this abort releases that prompt. Past the wait, a plain stop.
+ */
+async function abortTurn(workspace: Workspace): Promise<void> {
+  const keepQueue = workspace.agent.snapshot().isStreaming && workspace.queuedPrompts.size > 0 && canRewriteQueue(workspace) && !workspace.queuedPrompts.hasForeign;
+  if (!keepQueue) {
+    await workspace.agent.abort();
+    return;
+  }
+  const locking = lockQueue(workspace);
+  const release = await Promise.race([locking, new Promise<undefined>((resolve) => setTimeout(() => resolve(undefined), 1_000))]);
+  if (!release) {
+    void locking.then((late) => late());
+    await workspace.agent.abort();
+    return;
+  }
+  try {
+    if (workspace.queuedPrompts.size === 0 || !workspace.agent.snapshot().isStreaming) {
+      await workspace.agent.abort();
+      return;
+    }
+    const taken = await takeQueueBack(workspace);
+    await stopTurn(workspace);
+    await requeue(workspace, undefined, taken);
+  } finally {
+    release();
+  }
+}
+
+/**
  * Send every queued prompt now, as the first request of a new turn — what the user would
  * otherwise get by stopping and typing something, without the typing.
  *
@@ -4584,25 +4674,22 @@ async function sendQueueNow(workspace: Workspace, socket: WebSocket): Promise<vo
       refuse("Session change already in progress");
       return;
     }
-    if (workspace.agent.snapshot().isStreaming) {
-      await workspace.agent.abort();
-      if (!(await waitUntilIdle(workspace))) {
-        refuse("The running turn did not stop; the queued messages were left as they were");
-        return;
-      }
-    }
-
-    tracker.suspend();
-    let returned: { steering: string[]; followUp: string[] };
+    // Taken back before the turn is stopped, not after: a turn stopped during a tool reads
+    // the steering queue as its step ends, and would swallow the queue into a request it
+    // then aborts — shown as sent, never seen by the model.
+    let taken: QueuedEntry[];
     try {
-      returned = await clearQueue.call(workspace.agent);
+      taken = await takeQueueBack(workspace);
     } catch (error) {
-      tracker.resume();
       refuse(`The queue could not be sent: ${error instanceof Error ? error.message : String(error)}`);
       return;
     }
-    const { delivered, kept } = tracker.takeBack(returned);
-    for (const entry of delivered) if (entry.source) broadcastUser(workspace, entry.source);
+    if (workspace.agent.snapshot().isStreaming && !(await stopTurn(workspace))) {
+      await requeue(workspace, socket, taken);
+      refuse("The running turn did not stop; the queued messages were left as they were");
+      return;
+    }
+    const kept = taken;
     const [first, ...rest] = kept;
     if (!first) {
       broadcastQueue(workspace);
@@ -6633,7 +6720,7 @@ function handleClientMessage(socket: WebSocket, raw: string): void {
       sendQueueNow(workspace, socket).catch(reportError);
       return;
     case "abort":
-      workspace.agent.abort().catch(() => {});
+      abortTurn(workspace).catch(reportError);
       break;
     case "set_model": {
       if (typeof message.provider !== "string" || typeof message.id !== "string") return;

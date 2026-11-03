@@ -235,3 +235,27 @@ test("send now: asks while a turn runs, cancel changes nothing, confirmed it sto
   const users = await conversation(page);
   for (const text of ["one", "two", "three"]) expect(users.filter((user) => user === text)).toHaveLength(1);
 });
+
+// openlore: scenario=SendingNowStopsTheStepInProgress spec=queued-prompts
+test("send now while a command runs: the stopped turn ends, and the queued prompt is answered in a new one", async ({ page }) => {
+  await page.goto(process.env.PI_E2E_QUEUED_URL!);
+  await expect(page.getByTitle("connected")).toBeVisible();
+  await page.getByRole("combobox").selectOption({ label: "queue-test/queue-test" });
+  const before = (await sent()).length;
+  await send(page, "run a long command");
+  await expect(page.getByText("working…")).toBeVisible();
+  await expect.poll(async () => (await sent()).length).toBe(before + 1);
+  await send(page, "answer me after the stop");
+  await expect(queued(page)).toHaveCount(1);
+
+  await page.getByRole("button", { name: /send now/ }).click();
+  await page.getByRole("group", { name: /confirm sending/i }).getByRole("button", { name: "stop and send" }).click();
+
+  // The model is asked the queued prompt, and answers it.
+  await expect.poll(async () => (await sent()).slice(before).some((request) => request.users.at(-1)?.text === "answer me after the stop")).toBe(true);
+  await expect(queued(page)).toHaveCount(0);
+  await expect(page.getByText("working…")).toHaveCount(0);
+  const answered = (await sent()).find((request) => request.users.at(-1)?.text === "answer me after the stop")!.n;
+  await expect(page.getByText(`answer ${answered}`, { exact: true })).toBeVisible();
+  expect((await conversation(page)).filter((text) => text === "answer me after the stop")).toHaveLength(1);
+});
