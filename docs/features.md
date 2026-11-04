@@ -271,13 +271,12 @@ toolchain, then reinstall:
 
 ```bash
 sudo apt install -y build-essential python3   # Debian, Ubuntu, WSL
-npx -y npm@11 install -g pi-outpost
+npm install -g --allow-scripts=node-pty,koffi pi-outpost
 ```
 
-Use npm 11 for that install: npm 12 skips install scripts by default, which leaves
-`node-pty` unbuilt in the same way. With the terminal enabled, the server says at startup
-when `node-pty` will not load, with the same instructions, and `pi-outpost doctor` checks it
-again after a reinstall. The standalone executable does not include it at all; install
+With npm 12, the explicit script permissions build the terminal binding and native
+sandbox FFI. The repository policy does not apply to global installs or `npx`. With
+the terminal enabled, startup and `pi-outpost doctor` report a missing binding. The standalone executable does not include it at all; install
 the npm package for the terminal.
 
 

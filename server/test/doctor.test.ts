@@ -388,18 +388,18 @@ describe("terminalCheck", () => {
 
   const missing = async () => ({ ok: false as const, error: "Cannot find module 'node-pty'" });
 
-  test("on Linux it names the toolchain and the reinstall, with npm 11", async () => {
+  test("on Linux it names the toolchain and the reinstall, with explicit npm 12 script permissions", async () => {
     const check = await terminalCheck(healthy({ platform: "linux", channel: "global", loadPty: missing }), true);
     assert.ok(check);
     assert.match(text(check), /no prebuilt binary for Linux \(WSL included\)/);
     assert.match(text(check), /sudo apt install -y build-essential python3/);
-    assert.match(text(check), /npx -y npm@11 install -g pi-outpost/);
+    assert.match(text(check), /npm install -g --allow-scripts=node-pty,koffi pi-outpost/);
   });
 
   test("on Linux in a checkout it reinstalls the checkout, not a global package", async () => {
     const check = await terminalCheck(healthy({ platform: "linux", channel: "checkout", loadPty: missing }), true);
     assert.ok(check);
-    assert.match(text(check), /npx -y npm@11 install$/m);
+    assert.match(text(check), /npm ci$/m);
     assert.doesNotMatch(text(check), /install -g/);
   });
 
@@ -548,7 +548,7 @@ describe("terminalUnavailableNotice", () => {
     assert.match(notice, /^\[terminal\] enabled in the configuration, but node-pty could not be loaded/);
     assert.match(notice, /Cannot find module 'node-pty'/);
     assert.match(notice, /sudo apt install -y build-essential python3/);
-    assert.match(notice, /npx -y npm@11 install -g pi-outpost/);
+    assert.match(notice, /npm install -g --allow-scripts=node-pty,koffi pi-outpost/);
     assert.match(notice, /pi-outpost doctor/);
   });
 });

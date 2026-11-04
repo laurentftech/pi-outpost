@@ -442,7 +442,7 @@ describe("npmCommand", () => {
     const registry = "https://nexus.internal/npm?one=1&two=2";
     const invocation = npmInstallInvocation(registry, "win32");
     assert.match(invocation.command.toLowerCase(), /cmd(?:\.exe)?$/);
-    assert.deepEqual(invocation.args, ["/d", "/s", "/c", "npm.cmd install -g pi-outpost@latest"]);
+    assert.deepEqual(invocation.args, ["/d", "/s", "/c", "npm.cmd install -g --allow-scripts=node-pty,koffi pi-outpost@latest"]);
     assert.equal(invocation.env.npm_config_registry, registry);
     assert.ok(!invocation.args.some((arg) => arg.includes(registry)));
   });
@@ -587,7 +587,7 @@ describe("update, by channel", () => {
     // And what was printed is still what was run.
     assert.equal(
       run.lines.find((line) => line.startsWith("[pi] running:")),
-      `[pi] running: ${npmExecutable()} install -g --registry https://nexus.internal/npm pi-outpost@latest`,
+      `[pi] running: ${npmExecutable()} install -g --allow-scripts=node-pty,koffi --registry https://nexus.internal/npm pi-outpost@latest`,
     );
   });
 
@@ -620,7 +620,7 @@ describe("update, by channel", () => {
   test("an ephemeral run is told its next invocation already fetches", async () => {
     const run = await runUpdate({ channel: "ephemeral", latest: "0.9.0" });
     assert.equal(run.code, 1);
-    assert.ok(run.said(/npx pi-outpost/));
+    assert.ok(run.said(/npx --allow-scripts=node-pty,koffi pi-outpost/));
     assert.deepEqual(run.installs, []);
   });
 

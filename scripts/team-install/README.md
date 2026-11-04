@@ -1,7 +1,7 @@
 # Team install
 
 One command that installs pi-outpost for someone who would otherwise only run
-`npm install -g pi-outpost`, together with the
+`npm install -g --allow-scripts=node-pty,koffi pi-outpost`, together with the
 [`@gotgenes/pi-permission-system`](https://www.npmjs.com/package/@gotgenes/pi-permission-system)
 extension and a permission policy you choose — and, if asked,
 [OpenLore](https://www.npmjs.com/package/openlore)'s structural code tools.
@@ -21,7 +21,7 @@ extension's own quick-start example, not a recommendation.
 
 ## What it does
 
-1. `npm install -g pi-outpost`.
+1. `npm install -g --allow-scripts=node-pty,koffi pi-outpost`.
 2. Installs the extension with pi's own installer, fetched by `npx` — no global `pi`
    needed. The package is recorded in `~/.pi/agent/settings.json`, and pi-outpost loads
    it on start: `~/.pi/agent` is the agent directory pi-outpost uses unless
@@ -37,9 +37,14 @@ another agent directory; the script installs into the same one.
 
 - **npm must work on the machine.** Both the pi-outpost install and the extension install
   go through it, including a corporate registry set in `.npmrc`.
-- **npm 12 blocks install scripts by default.** `tree-sitter-bash` asks to compile a native
-  binding and is skipped with a warning; the extension still loads. If bash commands stop
-  being recognised by the policy, that is the place to look.
+- **Use npm 12.2.1 or newer.** The installer authorizes only `node-pty` and `koffi`
+  for pi-outpost's terminal and native sandbox. Extensions have a separate npm project
+  under `~/.pi/agent/npm` (or your configured agent directory). Review their scripts with
+  `npm --prefix ~/.pi/agent/npm approve-scripts --allow-scripts-pending`, then approve
+  only the native packages you trust. For example, the permission extension's
+  `tree-sitter-bash` needs its native build to recognize bash commands. OpenLore's
+  optional native dependencies require the same review; the installer does not grant
+  every extension permission to run arbitrary lifecycle code.
 - **Running the script again is safe**: each step can be repeated, and the policy file is
   overwritten with the one next to the script — which is how a policy change reaches
   everyone. The extensions themselves are updated from pi-outpost's Settings, which says when

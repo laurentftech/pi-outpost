@@ -22,7 +22,7 @@ pi_install() {
 }
 
 echo "1/4  pi-outpost"
-npm install -g pi-outpost
+npm install -g --allow-scripts=node-pty,koffi pi-outpost
 
 echo "2/4  permission system extension"
 pi_install npm:@gotgenes/pi-permission-system

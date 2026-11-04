@@ -20,7 +20,7 @@ function Install-PiPackage([string]$Source) {
 }
 
 Write-Host "1/4  pi-outpost"
-npm install -g pi-outpost
+npm install -g --allow-scripts=node-pty,koffi pi-outpost
 if ($LASTEXITCODE -ne 0) { throw "npm install failed" }
 
 Write-Host "2/4  permission system extension"

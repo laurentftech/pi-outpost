@@ -17,7 +17,8 @@ e2e/     Playwright suites
 ## Running from the repository
 
 ```bash
-npm install
+npm install -g npm@12.2.1
+npm ci
 npm run dev
 ```
 
@@ -33,9 +34,20 @@ developers.
 *your* configuration rather than the dev one. There is no hot reload in that mode: rebuild
 (`npm run build --workspace web`) and restart after a UI change.
 
+## npm 12 installation regression checks
+
+After `npm run build --workspace cli`, run `npm run test:npm-install` with npm 12.2.1.
+It packs the built CLI and checks fresh global and npx installs, an actual native terminal,
+and refusal of an unrelated lifecycle script. CI runs this on Linux, Windows and macOS.
+The test uses temporary prefixes, caches and npm configuration and removes them afterwards.
+
 ## Dependency maintenance
 
-Regenerate `package-lock.json` with npm 11 when changing dependencies. Keep the
+Use npm 12.2.1 locally and in CI. Regenerate `package-lock.json` with that version
+when changing dependencies. Review install-script changes explicitly: `npm
+approve-scripts --allow-scripts-pending` lists undecided packages. The committed
+`allowScripts` policy allows reviewed native/build scripts and denies the Google
+SDK no-op and protobufjs version advisory. `.npmrc` rejects unreviewed scripts. Keep the
 Playwright container tag in `.github/workflows/ci.yml` aligned with the locked
 `@playwright/test` version.
 
@@ -263,17 +275,17 @@ by hand, on `main`.
 4. **Bump both packages.** Set the same version in `cli/package.json` and
    `embed/package.json`. Leave `web/`, `server/`, `ui/` and `shared/` alone: they are not
    published.
-5. **Update the lockfile with npm 11**, the npm CI runs:
+5. **Update the lockfile with npm 12.2.1**, the npm CI runs:
 
    ```bash
-   npx -y npm@11 install --package-lock-only
+   npx -y npm@12.2.1 install --package-lock-only
    git diff package-lock.json   # only the two workspace versions
    ```
 
-   A bump that skips this leaves the lockfile behind, and the next `npm install` rewrites
-   it inside an unrelated PR. Do not use npm 12 here: it writes a lockfile npm 11 does not,
-   and drops `hasShrinkwrap` from any dependency published with a shrinkwrap (as
-   `@earendil-works/pi-coding-agent` was up to 1.0.0).
+   Inspect the diff: a release-only version bump changes only the two workspace
+   versions. Dependency changes may update lock metadata; review them with the
+   install-script policy rather than regenerating with a different npm major.
+
 6. **Commit and push to `main`:**
 
    ```bash
