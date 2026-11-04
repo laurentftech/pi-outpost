@@ -49,41 +49,18 @@ try {
   });
   await assert.rejects(access(strictMarker), { code: "ENOENT" });
   console.log("strict policy rejects unknown lifecycle code before execution");
-  const probe = path.join(root, "probe.cjs");
-  await writeFile(probe, `
-const assert = require('node:assert/strict');
-const fs = require('node:fs');
-const path = require('node:path');
-const { createRequire } = require('node:module');
-const { execFileSync } = require('node:child_process');
-const home = process.env.PI_INSTALLED_PACKAGE || process.env.PATH.split(path.delimiter)
-  .map(p => path.resolve(p, '..', 'pi-outpost')).find(p => fs.existsSync(path.join(p, 'package.json')));
-assert.ok(home, 'the npx package is present in its fresh cache');
-const req = createRequire(path.join(home, 'package.json'));
-assert.equal(req('./package.json').version, ${JSON.stringify(version)});
-const cli = path.join(home, 'dist/pi-outpost.mjs');
-assert.equal(execFileSync(process.execPath, [cli, '--version'], {encoding:'utf8'}).trim(), ${JSON.stringify(version)});
-const pty = req('node-pty');
-let output = '';
-let exited = false;
-let complete = false;
-const child = pty.spawn(process.execPath, ['-e', 'console.log("PI_NPM12_PTY_OK")'], { name:'xterm-color', cols:80, rows:24, cwd:process.cwd(), env:process.env });
-const timer = setTimeout(() => { child.kill(); throw new Error('installed PTY never exited'); }, 15000);
-function finish() { if (!complete && exited && /PI_NPM12_PTY_OK/.test(output)) { complete = true; clearTimeout(timer); console.log('installed CLI + real PTY passed'); } }
-child.onData(data => { output += data; finish(); });
-child.onExit(({exitCode}) => { assert.equal(exitCode, 0); exited = true; finish(); });
-`);
+  const probe = path.join(repo, "scripts/npm-install-probe.cjs");
   for (const mode of ["global", "npx"]) {
     const cache = path.join(root, `${mode}-cache`);
     const marker = path.join(root, `${mode}-canary-ran`);
-    const extra = { npm_config_cache: cache, npm_config_devdir: path.join(root, "node-gyp"), PI_CANARY_MARKER: marker };
+    const extra = { npm_config_cache: cache, npm_config_devdir: path.join(root, "node-gyp"), PI_CANARY_MARKER: marker, PI_EXPECTED_VERSION: version, PI_EXPECTED_INSTALL_ROOT: cache };
     // openlore: scenario=ConsumerInstallsKeepTheirTerminal spec=npm-install-security
     // openlore: scenario=UnapprovedDependencyScriptsStayBlocked spec=npm-install-security
     if (mode === "global") {
       const prefix = path.join(root, "prefix");
       run(["install", "--global", "--prefix", prefix, policy, "--no-audit", "--no-fund", tarball, canaryTarball], root, extra);
       const home = path.join(prefix, process.platform === "win32" ? "node_modules" : "lib/node_modules", "pi-outpost");
-      execFileSync(process.execPath, [probe], { cwd: root, env: { ...env, ...extra, PI_INSTALLED_PACKAGE: home }, stdio: "inherit", timeout: 30_000 });
+      execFileSync(process.execPath, [probe], { cwd: root, env: { ...env, ...extra, PI_INSTALLED_PACKAGE: home, PI_EXPECTED_INSTALL_ROOT: prefix }, stdio: "inherit", timeout: 120_000 });
     } else {
       run(["exec", "--yes", policy, "--package", tarball, "--package", canaryTarball, "--", "node", probe], root, extra);
     }

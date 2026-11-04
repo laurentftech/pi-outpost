@@ -11,6 +11,11 @@ $ErrorActionPreference = "Stop"
 $agentDir = if ($env:PI_OUTPOST_AGENT_DIR) { $env:PI_OUTPOST_AGENT_DIR } else { Join-Path $HOME ".pi\agent" }
 if (-not (Test-Path $Policy)) { throw "Policy file not found: $Policy" }
 
+$taskNpmVersion = npm --version
+if ($LASTEXITCODE -ne 0 -or $taskNpmVersion -notmatch '^12\.') {
+  throw "This installer requires npm 12. Install it with: npm install -g npm@12.2.1"
+}
+
 # pi's own installer, fetched by npx: it records a package in $agentDir, where
 # pi-outpost loads it on start. No global pi needed.
 function Install-PiPackage([string]$Source) {

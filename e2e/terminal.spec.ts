@@ -52,6 +52,7 @@ test.describe("Integrated Terminal (when enabled via config/flag)", () => {
     const button = page.getByRole("button", { name: />_ terminal/i });
     await button.click();
     const input = page.locator(".xterm-helper-textarea").first();
+    await expect(page.locator(".xterm-rows")).toContainText(/[$#>%]/);
     await input.focus();
     await page.keyboard.type(`node -e "console.log('PI_'+'NPM12_BROWSER_OK')"`);
     await page.keyboard.press("Enter");

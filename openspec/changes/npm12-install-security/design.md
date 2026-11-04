@@ -11,7 +11,7 @@ these same permissions; registry values remain environment data on Windows. No b
 all-scripts, Git or remote-URL permissions are introduced.
 
 The installation smoke test packs the built CLI, uses two fresh caches and an isolated
-prefix/user configuration, checks CLI version, then starts a real native PTY and reads its
+prefix/user configuration, checks CLI version, then starts the installed server, opens its terminal over WebSocket and reads real PTY
 output and exit code. A lifecycle canary verifies unknown code is blocked, including with
 selective consumer approval; strict-project installation must report ESTRICTALLOWSCRIPTS.
 The checker uses node + npm_execpath, so npm.cmd never needs direct spawn on Windows.
