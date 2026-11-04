@@ -1,0 +1,27 @@
+name: Diagnose Windows command cleanup
+on:
+  push:
+    branches: [fix/windows-aborted-command-cleanup]
+permissions:
+  contents: read
+jobs:
+  reproduce:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Repeat real queued command tests
+        shell: pwsh
+        run: |
+          $failed = $false
+          for ($i = 1; $i -le 5; $i++) {
+            Write-Output "Attempt $i"
+            node --import tsx/esm --test --test-timeout=120000 server/test/queuedPromptsWire.test.mjs
+            if ($LASTEXITCODE -ne 0) { $failed = $true }
+          }
+          if ($failed) { exit 1 }

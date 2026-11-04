@@ -214,7 +214,15 @@ async function startServerOn(root, config, options, port) {
       if (!exited) throw new Error(`test server ${child.pid} did not exit after termination`);
       // Windows may briefly keep descendant handles open after taskkill returns.
       // Wait for the parent process above, then allow transient EBUSY about nine seconds to clear.
-      await rm(root, { recursive: true, force: true, maxRetries: 8, retryDelay: 250 });
+      try {
+        await rm(root, { recursive: true, force: true, maxRetries: 8, retryDelay: 250 });
+      } catch (error) {
+        console.error("LOCKED WORKSPACE", root, "SERVER PID", child.pid, "SERVER LOG", log);
+        if (process.platform === "win32") {
+          console.error(execSync(`powershell.exe -NoProfile -Command "Get-CimInstance Win32_Process | Where-Object { $_.Name -match 'node|bash|taskkill|sh.exe' } | Select-Object ProcessId,ParentProcessId,Name,CommandLine | ConvertTo-Json -Depth 3"`, { encoding: "utf8" }));
+        }
+        throw error;
+      }
     },
   };
 }
