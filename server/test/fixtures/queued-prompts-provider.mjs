@@ -7,7 +7,8 @@
  * next request, so releasing gate 1 alone delivers exactly the first queued prompt and holds
  * the second behind gate 2.
  *
- * Typing "queue one for me" makes the extension queue a follow-up of its own.
+ * Typing "queue one for me" makes the extension queue a follow-up of its own; "run a long command"
+ * makes the step call bash with a command held until test teardown (the session needs bash).
  *
  * Each request is appended to QUEUE_LOG as one JSON line: { n, users, assistants }, `users`
  * being the conversation's user messages as { text, images } — images counted, by MIME type —
@@ -40,6 +41,23 @@ function stream(model, context, options) {
   if (process.env.QUEUE_LOG && !titling) appendFileSync(process.env.QUEUE_LOG, `${JSON.stringify({ n, users, assistants })}\n`);
 
   const out = createAssistantMessageEventStream();
+  // "run a long command": the step calls bash with a command that lasts — so a stop lands during
+  // a tool, after which pi reads the steering queue as the step ends.
+  const last = (context.messages ?? []).at(-1);
+  if (!titling && users.at(-1)?.text === "run a long command" && last?.role === "user") {
+    // Own the fixture's lifetime independently of shell-tree cancellation: Git Bash on
+    // Windows can leave the native node child orphaned after its shell is killed.
+    const command = `node -e "const fs = require('node:fs'); fs.writeFileSync('.queue-tool-pid', String(process.pid)); const timer = setInterval(() => { if (fs.existsSync('.queue-tool-release')) clearInterval(timer); }, 25); setTimeout(() => process.exit(0), 30000).unref();"`;
+    const call = { type: "toolCall", id: `long-${n}`, name: "bash", arguments: { command } };
+    const calling = { role: "assistant", content: [call], api: model.api, provider: model.provider, model: model.id, usage, stopReason: "toolUse", timestamp: Date.now() };
+    queueMicrotask(() => {
+      out.push({ type: "start", partial: calling });
+      out.push({ type: "toolcall_start", contentIndex: 0, partial: calling });
+      out.push({ type: "toolcall_end", contentIndex: 0, toolCall: call, partial: calling });
+      out.push({ type: "done", reason: "toolUse", message: calling });
+    });
+    return out;
+  }
   const partial = { role: "assistant", content: [{ type: "text", text: titling ? "A title" : `answer ${n}` }], api: model.api, provider: model.provider, model: model.id, usage, stopReason: "stop", timestamp: Date.now() };
   const gate = process.env.QUEUE_GATES && !titling ? `${process.env.QUEUE_GATES}-${n}` : undefined;
   const signal = options?.signal;

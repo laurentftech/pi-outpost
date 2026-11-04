@@ -181,7 +181,9 @@
   called, an extractor goes again when the turn ends; named and used, it stays through the
   work around that document and is forgotten after five quiet turns. Naming the document
   again brings it back, and the agent can load one by itself with `tool_search` — for a
-  file it found on its own, say
+  file it found on its own, say. Resuming an embedded conversation restores recently used
+  tools with the same inactivity counts; an explicit call to a remembered deferred tool
+  reactivates it even after its schema has expired
 - Email dropped on the composer: an Outlook `.msg`, or a `.eml`/`.emlx` from macOS Mail, Gmail or
   any webmail, is copied into the workspace and read by `mail_extract` — subject, sender,
   recipients, date, the body as markdown, and an inventory of its attachments. Ask for the
@@ -269,13 +271,12 @@ toolchain, then reinstall:
 
 ```bash
 sudo apt install -y build-essential python3   # Debian, Ubuntu, WSL
-npx -y npm@11 install -g pi-outpost
+npm install -g --allow-scripts=node-pty,koffi pi-outpost
 ```
 
-Use npm 11 for that install: npm 12 skips install scripts by default, which leaves
-`node-pty` unbuilt in the same way. With the terminal enabled, the server says at startup
-when `node-pty` will not load, with the same instructions, and `pi-outpost doctor` checks it
-again after a reinstall. The standalone executable does not include it at all; install
+With npm 12, the explicit script permissions build the terminal binding and native
+sandbox FFI. The repository policy does not apply to global installs or `npx`. With
+the terminal enabled, startup and `pi-outpost doctor` report a missing binding. The standalone executable does not include it at all; install
 the npm package for the terminal.
 
 
@@ -295,6 +296,8 @@ Tasks use five states: `todo`, `in_progress`, `blocked`, `needs_review` and `don
 or review state can carry a reason, and tasks can link to resources; workspace resources open
 directly in the file viewer. The panel is read-only for now, so the conversation stays your
 control surface while the agent owns the plan through its `work_plan` tool.
+At narrow window widths, the panel starts collapsed so the conversation stays visible; open
+the compact Work Plan control in the header to view it.
 
 The agent sees that tool in two halves. `work_plan` — creating a plan, adding, updating,
 moving and removing tasks — is always there. `work_plan_extended`, which sets a task's

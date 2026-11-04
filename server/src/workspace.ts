@@ -217,8 +217,9 @@ export class Workspace {
    * around it continues, since extraction is rarely a single call, and is forgotten only
    * once the conversation has plainly moved on.
    *
-   * Naming the document again republishes it: that is the only way back, and it is the
-   * user's to take, since an agent cannot ask for a tool it can no longer see.
+   * Naming the document, searching for the tool or directly calling a remembered
+   * deferred tool republishes it. Session replacement reconstructs the counts from
+   * the selected branch rather than losing the loadout on resume.
    */
   documentToolIdleTurns = new Map<string, number>();
   documentToolsEverUsed = new Set<string>();

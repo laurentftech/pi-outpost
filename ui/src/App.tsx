@@ -337,8 +337,27 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
   // Session analysis drawer: closed until asked for, from the model bar's usage indicator.
   const [analysisOpen, setAnalysisOpen] = useState(false);
   const [workPlanOpen, setWorkPlanOpen] = useState(true);
+  const [isNarrowViewport, setIsNarrowViewport] = useState(() => typeof window !== "undefined" && window.innerWidth < 768);
+  const [narrowWorkPlanOpen, setNarrowWorkPlanOpen] = useState(false);
+  const workPlanDisplayedOpen = isNarrowViewport ? narrowWorkPlanOpen : workPlanOpen;
   const [terminalOpen, setTerminalOpen] = useState(false);
   const terminalEnabled = state.terminal?.enabled ?? false;
+
+  useEffect(() => {
+    const media = window.matchMedia("(max-width: 767px)");
+    const updateViewport = () => {
+      const nextIsNarrow = media.matches;
+      if (nextIsNarrow) setNarrowWorkPlanOpen(false);
+      setIsNarrowViewport(nextIsNarrow);
+    };
+    updateViewport();
+    media.addEventListener("change", updateViewport);
+    window.addEventListener("resize", updateViewport);
+    return () => {
+      media.removeEventListener("change", updateViewport);
+      window.removeEventListener("resize", updateViewport);
+    };
+  }, []);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -358,9 +377,15 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
   function toggleAnalysis() {
     const next = !analysisOpen;
     setAnalysisOpen(next);
-    if (next) { setWorkPlanOpen(false); setOutcomeOpen(false); }
+    if (next) { setWorkPlanOpen(false); setNarrowWorkPlanOpen(false); setOutcomeOpen(false); }
   }
   function toggleWorkPlan() {
+    if (isNarrowViewport) {
+      const next = !narrowWorkPlanOpen;
+      setNarrowWorkPlanOpen(next);
+      if (next) { setAnalysisOpen(false); setOutcomeOpen(false); }
+      return;
+    }
     const next = !workPlanOpen;
     setWorkPlanOpen(next);
     if (next) { setAnalysisOpen(false); setOutcomeOpen(false); }
@@ -368,7 +393,7 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
   function toggleOutcome() {
     const next = !outcomeOpen;
     setOutcomeOpen(next);
-    if (next) { setAnalysisOpen(false); setWorkPlanOpen(false); }
+    if (next) { setAnalysisOpen(false); setWorkPlanOpen(false); setNarrowWorkPlanOpen(false); }
   }
   useEffect(() => {
     setOutcomeActive(outcomeOpen);
@@ -1109,7 +1134,7 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
           {state.workPlan && (
             <WorkPlanPanel
               plan={state.workPlan}
-              open={workPlanOpen}
+              open={workPlanDisplayedOpen}
               onToggle={toggleWorkPlan}
               onOpenWorkspace={(path) => {
                 setDiffOnOpen(false);
@@ -1198,8 +1223,12 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
             /* During a switch the outgoing conversation fades and holds rather than
                emptying: a blank pane makes a switch read as a page reload, which is
                the one thing this transition exists to avoid. No skeleton — the old
-               content stays until the new arrives. */
-            className={`flex-1 overflow-y-auto transition-opacity duration-150 ${state.switching ? "opacity-40" : "opacity-100"} ${analysisOpen ? "md:pr-[26rem]" : state.workPlan && workPlanOpen ? "md:pr-[23rem]" : ""}`}
+               content stays until the new arrives.
+               `relative`: the containing block of what is positioned inside the transcript —
+               screen-reader-only text (`sr-only` is `position: absolute`) first. Without it
+               such text is placed against the page, at its spot far down the conversation,
+               outside this scroller's clipping, and the page grows a second scrollbar. */
+            className={`relative flex-1 overflow-y-auto transition-opacity duration-150 ${state.switching ? "opacity-40" : "opacity-100"} ${analysisOpen ? "md:pr-[26rem]" : state.workPlan && workPlanDisplayedOpen ? "md:pr-[23rem]" : ""}`}
           >
             <div className="mx-auto flex max-w-3xl flex-col gap-3 px-4 py-6">
               {state.items.length === 0 && (
@@ -1391,7 +1420,7 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
               drawer, so the button centres on the conversation the reader can
               see rather than on the region the drawer is sitting in. */}
           <div
-            className={`pointer-events-none absolute inset-x-0 bottom-4 z-0 flex justify-center ${analysisOpen || outcomeOpen ? "md:pr-[26rem]" : state.workPlan && workPlanOpen ? "md:pr-[23rem]" : ""}`}
+            className={`pointer-events-none absolute inset-x-0 bottom-4 z-0 flex justify-center ${analysisOpen || outcomeOpen ? "md:pr-[26rem]" : state.workPlan && workPlanDisplayedOpen ? "md:pr-[23rem]" : ""}`}
           >
           {!atBottom && (
             <button
@@ -1448,8 +1477,14 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
             />
           )}
 
-          <footer className="border-t border-zinc-200 px-4 py-3 dark:border-zinc-800">
-            <div className="mx-auto max-w-3xl">
+          <footer className="shrink-0 border-t border-zinc-200 px-4 py-3 dark:border-zinc-800">
+            {state.dialogQueue[0] && (
+              <div className="mx-auto max-w-3xl">
+                <ExtensionDialog key={state.dialogQueue[0].id} request={state.dialogQueue[0]} onRespond={respondToDialog} />
+              </div>
+            )}
+            {/* Keep the composer mounted so an unanswered question cannot erase a draft. */}
+            <div className="mx-auto max-w-3xl" hidden={!!state.dialogQueue[0]}>
               <ExtensionWidgets widgets={state.widgets} placement="aboveEditor" controls={widgetControls} />
               <Composer
                 // Remount on a project change so the restored draft becomes the
@@ -1498,7 +1533,6 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
         </div>
       </div>
 
-      {state.dialogQueue[0] && <ExtensionDialog request={state.dialogQueue[0]} onRespond={respondToDialog} />}
       {/* After an extension's question, never over it: one dialog at a time, each with its own answer. */}
       {!state.dialogQueue[0] && state.sandboxGrants?.pending[0] && (
         <SandboxGrantDialog request={state.sandboxGrants.pending[0]} onRespond={respondToGrant} />

@@ -14,6 +14,7 @@ describe("EmbeddedRuntime tool rebuilding", () => {
     const factoriesUsed: CreateAgentSessionRuntimeFactory[] = [];
 
     const makeSession = (bindFails: boolean) => ({
+      agent: { prepareRequest: undefined },
       subscribe: () => () => {},
       bindExtensions: async () => {
         if (bindFails) throw new Error("extension bind failed");
@@ -109,6 +110,7 @@ describe("EmbeddedRuntime startup binding", () => {
   it("stops waiting on extensions that outlive the grace, and reports them when they land", async () => {
     let release: () => void = () => {};
     const session = {
+      agent: { prepareRequest: undefined },
       subscribe: () => () => {},
       bindExtensions: async () => {
         await new Promise<void>((resolve) => (release = resolve));
@@ -133,6 +135,7 @@ describe("EmbeddedRuntime startup binding", () => {
 
   it("replays a dialog raised before anything subscribed", async () => {
     const session = {
+      agent: { prepareRequest: undefined },
       subscribe: () => () => {},
       bindExtensions: async (bindings: { uiContext: { confirm: (title: string, message: string) => Promise<boolean> } }) => {
         // What a `session_start` handler does when it wants an answer: the promise
@@ -159,12 +162,13 @@ describe("EmbeddedRuntime startup binding", () => {
   it("says nothing for a binding whose session has since been replaced", async () => {
     let release: () => void = () => {};
     const first = {
+      agent: { prepareRequest: undefined },
       subscribe: () => () => {},
       bindExtensions: async () => {
         await new Promise<void>((resolve) => (release = resolve));
       },
     };
-    const second = { subscribe: () => () => {}, bindExtensions: async () => {} };
+    const second = { agent: { prepareRequest: undefined }, subscribe: () => () => {}, bindExtensions: async () => {} };
     let session: unknown = first;
     const runtime = new EmbeddedRuntime({ get session() { return session; } } as never, "/nowhere");
     const warnings = captureWarnings();
@@ -189,6 +193,7 @@ describe("EmbeddedRuntime startup binding", () => {
 
   it("keeps a binding failure inside the grace fatal, and a later one merely reported", async () => {
     const immediate = {
+      agent: { prepareRequest: undefined },
       subscribe: () => () => {},
       bindExtensions: async () => {
         throw new Error("extension bind failed");
@@ -199,6 +204,7 @@ describe("EmbeddedRuntime startup binding", () => {
 
     let fail: (error: Error) => void = () => {};
     const late = {
+      agent: { prepareRequest: undefined },
       subscribe: () => () => {},
       bindExtensions: async () => {
         await new Promise<void>((_resolve, reject) => (fail = reject));
@@ -231,7 +237,7 @@ describe("EmbeddedRuntime session replacement timing", () => {
     const clock = mock.method(Date, "now", () => now);
     const warned: string[] = [];
     const warn = mock.method(console, "warn", (message: string) => warned.push(message));
-    const session = { subscribe: () => () => {}, bindExtensions: async () => {} };
+    const session = { agent: { prepareRequest: undefined }, subscribe: () => () => {}, bindExtensions: async () => {} };
     const sdkRuntime = {
       session,
       async newSession() {

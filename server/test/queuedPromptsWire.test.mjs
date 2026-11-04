@@ -57,6 +57,7 @@ async function boot(t, configFor = {}, files = {}) {
     { env: { QUEUE_LOG: log, QUEUE_GATES: gates, FAKE_PI_RPC_CONFIG: config.fakeConfig ?? "" } },
   );
   const clients = [];
+  const beforeStop = [];
   const open = async () => {
     const client = connect(server.wsUrl());
     clients.push(client);
@@ -67,7 +68,11 @@ async function boot(t, configFor = {}, files = {}) {
   // Pi child, still runs in it.
   t.after(async () => {
     for (const client of clients) client.close();
-    await server.stop();
+    try {
+      for (const cleanup of beforeStop) await cleanup();
+    } finally {
+      await server.stop();
+    }
     await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
   });
   const { client, hello } = await open();
@@ -76,7 +81,7 @@ async function boot(t, configFor = {}, files = {}) {
     await client.waitFor("model_changed");
   }
   const gate = (n) => `${gates}-${n}`;
-  return { root, log, gate, server, client, hello, open };
+  return { root, log, gate, server, client, hello, open, beforeStop };
 }
 
 /** Start a turn held on gate 1, and return once its first request is waiting. */
@@ -408,4 +413,65 @@ test("embedded: prompts sent back to back are queued in the order they were sent
   for (const text of sent) client.send({ type: "prompt", text });
   await eventually(() => latestQueue(client).length === sent.length, "all queued");
   assert.deepEqual(queueTexts(client), sent);
+});
+
+/** A turn whose step runs a long bash command; returns once the tool has started. */
+async function turnInATool({ client, root, beforeStop }) {
+  const pidFile = path.join(root, ".queue-tool-pid");
+  beforeStop.push(async () => {
+    // Abort may kill Git Bash before it can reap its native child on Windows.
+    // Release our fixture, then verify it exited before stop() removes its cwd.
+    await writeFile(path.join(root, ".queue-tool-release"), "");
+    const pid = Number(await readFile(pidFile, "utf8").catch(() => ""));
+    if (pid) await eventually(() => {
+      try {
+        process.kill(pid, 0);
+        return false;
+      } catch (error) {
+        if (error.code === "ESRCH") return true;
+        throw error;
+      }
+    }, "the command fixture exits before workspace removal", 5_000);
+  });
+  client.send({ type: "prompt", text: "run a long command" });
+  await client.waitFor((message) => message.type === "tool_start" && message.toolName === "bash", 30_000);
+  // tool_start precedes process creation; interrupt an actually running command.
+  await eventually(async () => /^\d+$/.test(await readFile(pidFile, "utf8").catch(() => "")), "the command process starts");
+}
+
+// openlore: scenario=SendingNowStopsTheStepInProgress spec=queued-prompts
+test("embedded: sending now while a tool runs sends the queue in a new turn, instead of losing it to the stopped one", async (t) => {
+  const ctx = await boot(t, { sandbox: false });
+  const { client, log } = ctx;
+  await turnInATool(ctx);
+  client.send({ type: "prompt", text: "queued during the tool" });
+  await eventually(() => queueTexts(client).join("|") === "queued during the tool", "queued");
+
+  client.send({ type: "send_queue_now" });
+  // A stopped tool ends its step, and pi reads the steering queue then: had the queue still been
+  // there, the stopped turn would have swallowed it into a request it aborts — no model call.
+  await eventually(async () => (await requests(log)).some((request) => request.users.at(-1)?.text === "queued during the tool"), "the model is asked the queued prompt");
+  await eventually(() => latestQueue(client).length === 0, "nothing left pending");
+  assert.deepEqual(users(client).map((message) => message.text), ["run a long command", "queued during the tool"]);
+});
+
+// openlore: scenario=APendingPromptOutlivesAnAbort spec=queued-prompts
+test("embedded: Stop while a tool runs leaves the queue pending, unsent, for the next prompt", async (t) => {
+  const ctx = await boot(t, { sandbox: false });
+  const { client, log } = ctx;
+  await turnInATool(ctx);
+  client.send({ type: "prompt", text: "keep me queued" });
+  await eventually(() => queueTexts(client).join("|") === "keep me queued", "queued");
+  const queuedId = latestQueue(client)[0].id;
+
+  client.send({ type: "abort" });
+  await client.waitFor((message) => message.type === "agent_end", 30_000);
+  await new Promise((resolve) => setTimeout(resolve, 500));
+  assert.deepEqual(latestQueue(client).map(({ id, text }) => ({ id, text })), [{ id: queuedId, text: "keep me queued" }], "still pending, same id");
+  assert.deepEqual(users(client).map((message) => message.text), ["run a long command"], "not in the conversation");
+  assert.ok(!(await requests(log)).some((request) => request.users.some((user) => user.text === "keep me queued")), "the model was not sent it");
+
+  // The next prompt takes it along, as pi does with anything left queued.
+  client.send({ type: "prompt", text: "carry on" });
+  await eventually(async () => (await requests(log)).some((request) => request.users.some((user) => user.text === "keep me queued")), "delivered with the next turn");
 });

@@ -150,7 +150,11 @@ async function startServerOn(root, config, options, port) {
   const deadline = Date.now() + 60_000;
   // The exit code can be known before the pipes are drained: wait for them, or the
   // reason the server gave for dying is lost and the failure reads "exited (1):".
-  const drained = new Promise((resolve) => child.once("close", resolve));
+  let closed = false;
+  const drained = new Promise((resolve) => child.once("close", () => {
+    closed = true;
+    resolve();
+  }));
   for (;;) {
     if (child.exitCode !== null) {
       await Promise.race([drained, new Promise((r) => setTimeout(r, 2_000))]);
@@ -194,9 +198,23 @@ async function startServerOn(root, config, options, port) {
         }
       };
       killGroup("SIGTERM");
-      await new Promise((r) => setTimeout(r, 300));
-      killGroup("SIGKILL");
-      await rm(root, { recursive: true, force: true });
+      const waitForExit = async (timeoutMs) => {
+        if (closed) return true;
+        let timer;
+        const timedOut = new Promise((resolve) => {
+          timer = setTimeout(() => resolve(false), timeoutMs);
+        });
+        const exited = await Promise.race([drained.then(() => true), timedOut]);
+        clearTimeout(timer);
+        return exited;
+      };
+      const stopped = await waitForExit(300);
+      if (!stopped) killGroup("SIGKILL");
+      const exited = await waitForExit(5_000);
+      if (!exited) throw new Error(`test server ${child.pid} did not exit after termination`);
+      // Windows may briefly keep descendant handles open after taskkill returns.
+      // Wait for the parent process above, then allow transient EBUSY about nine seconds to clear.
+      await rm(root, { recursive: true, force: true, maxRetries: 8, retryDelay: 250 });
     },
   };
 }

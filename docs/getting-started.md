@@ -20,7 +20,7 @@ cd ~/projects/my-app
 **2. Write a starter configuration.**
 
 ```bash
-npx pi-outpost init
+npx --allow-scripts=node-pty,koffi pi-outpost init
 ```
 
 That gives the agent this directory to read and write, and a shell confined by this
@@ -30,7 +30,7 @@ machine's sandbox runner — refused, never unconfined, where none can confine i
 **3. Start it.**
 
 ```bash
-npx pi-outpost
+npx --allow-scripts=node-pty,koffi pi-outpost
 ```
 
 It serves on `http://127.0.0.1:3141/` and opens the interface in a window of its own — no
@@ -61,7 +61,7 @@ file:
 inside. On macOS and Linux, `chmod +x` it first — a release download carries no execute
 bit. Unsigned, so macOS blocks a fresh download outright and Windows SmartScreen warns on
 first launch — both clear in a step; see [docs/sea-packaging.md](sea-packaging.md), which
-also covers building one yourself with `npx pi-outpost build-exe`.
+also covers building one yourself with `npx --allow-scripts=node-pty,koffi pi-outpost build-exe`.
 
 ### Why it insists on a configuration file
 

@@ -15,6 +15,12 @@ agent_dir=${PI_OUTPOST_AGENT_DIR:-"$HOME/.pi/agent"}
 
 [ -f "$policy" ] || { echo "Policy file not found: $policy" >&2; exit 1; }
 
+task_npm_version=$(npm --version)
+case "$task_npm_version" in
+  12.*) ;;
+  *) echo "This installer requires npm 12. Install it with: npm install -g npm@12.2.1" >&2; exit 1 ;;
+esac
+
 # pi's own installer, fetched by npx: it records a package in $agent_dir, where
 # pi-outpost loads it on start. No global pi needed.
 pi_install() {
@@ -22,7 +28,7 @@ pi_install() {
 }
 
 echo "1/4  pi-outpost"
-npm install -g pi-outpost
+npm install -g --allow-scripts=node-pty,koffi pi-outpost
 
 echo "2/4  permission system extension"
 pi_install npm:@gotgenes/pi-permission-system

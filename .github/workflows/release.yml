@@ -59,6 +59,8 @@ jobs:
           # what produces an executable, and it landed in 26.
           node-version: 26
           cache: npm
+      - name: Use npm 12.2.1
+        run: npm install -g npm@12.2.1
       - run: npm ci
       # The executable inlines the built web UI, so the UI has to exist first
       - run: npm run build
@@ -113,15 +115,9 @@ jobs:
           cache: npm
           registry-url: https://registry.npmjs.org
 
-      # Dependencies first, with the npm this Node ships.
-      #
-      # The upgrade below used to run before this line, and it cost a release.
-      # npm 12 blocks a dependency's install scripts by default (allowScripts), and
-      # `node-pty` publishes prebuilds for darwin and win32 only — on Linux it has to
-      # compile at install time. Blocked, it installs with no binary at all, and the
-      # four TerminalManager tests that spawn a real PTY fail with "Cannot find module
-      # './prebuilds/linux-x64//pty.node'". The same command passes in CI, which never
-      # replaces its npm, so nothing before the tag ever showed it.
+      - name: Use npm 12.2.1
+        run: npm install -g npm@12.2.1
+      # Explicit install-script policy is shared with local npm 12 installs.
       - run: npm ci
 
       # A tag claims a version; at least one package must actually be at it, and none
@@ -159,7 +155,7 @@ jobs:
       - name: The changelog must describe this release
         run: node scripts/changelog-section.mjs "${GITHUB_REF_NAME#v}" > /dev/null
 
-      # Tests et Lint en Node 22
+      # Tests and lint on Node 24
       - run: npm run typecheck
       - run: npm run build --workspace @pi-outpost/embed
       - run: npm run lint
@@ -189,6 +185,8 @@ jobs:
           node-version: 26
           cache: npm
 
+      - name: Use npm 12.2.1
+        run: npm install -g npm@12.2.1
       # Build the SEA blob (Node 26, --experimental-sea-config pour le blob cross-platform)
       - run: npm run build:sea --workspace server
 
@@ -201,12 +199,9 @@ jobs:
       # entry that stopped covering dist/, both land here and nowhere earlier.
       - run: npm run check:cli
 
-      # setup-node selects a separate npm installation for Node 26. Upgrade after
-      # the final Node switch so publish uses an npm with trusted publishing support
-      # (>= 11.5.1), while dependency installation keeps the bundled npm.
+      # Reassert the pinned npm version after the Node switch; publish uses OIDC.
       - name: Prepare npm for trusted publishing
         run: |
-          npm install -g npm@latest
           node --version
           npm --version
 
@@ -234,6 +229,8 @@ jobs:
         with:
           node-version: 24
           cache: npm
+      - name: Use npm 12.2.1
+        run: npm install -g npm@12.2.1
       - run: npm ci
       - run: npm run pack --workspace @pi-outpost/mcp
       - run: npm run test:bundle --workspace @pi-outpost/mcp
@@ -314,6 +311,8 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version: 24
+      - name: Use npm 12.2.1
+        run: npm install -g npm@12.2.1
       # image.sh runs node on the runner, not only in the container: it draws its test
       # picture with @napi-rs/canvas and reads the document back with tsx. CI installs
       # the dependencies before it; without this the check died here on v0.36.0, with

@@ -416,6 +416,7 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
     {
       server: { allowedOrigins: [host.url] },
       branding: { title: "terminal smoke" },
+      sandbox: false,
       terminal: { enabled: true },
     },
     { env: onlyOneFakeProvider() },
@@ -661,6 +662,8 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
     {
       extensionPaths: [path.join(REPO, "server/test/fixtures/queued-prompts-provider.mjs")],
       allowedModels: [{ provider: "queue-test", id: "queue-test" }],
+      // A bash tool, for a stop that lands during a running command.
+      sandbox: false,
     },
     { env: { ...onlyOneFakeProvider(), QUEUE_GATES: queuedGates, QUEUE_LOG: queuedLog } },
   );

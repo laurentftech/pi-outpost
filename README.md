@@ -18,15 +18,18 @@ One Node process runs the agent and serves the interface. Work across projects w
 
 ## Start in 5 minutes
 
-You need **Node.js ≥ 24** and a model provider account or API key. The pi SDK is bundled; no separate pi installation is needed.
+You need **Node.js 24.15+ (or 26+) and npm 12.2.1** and a model provider account or API key. The pi SDK is bundled; no separate pi installation is needed.
 
 In the project you want the agent to work on:
 
 ```bash
 cd ~/projects/my-app
-npx pi-outpost init
-npx pi-outpost
+npx --allow-scripts=node-pty,koffi pi-outpost init
+npx --allow-scripts=node-pty,koffi pi-outpost
 ```
+
+The script permissions enable the native terminal (`node-pty`) and sandbox FFI (`koffi`);
+other dependency install scripts remain blocked.
 
 Open `http://127.0.0.1:3141/` if the interface does not open automatically. Pick a provider and sign in or enter an API key, then ask **“What does this project do?”** You can also configure a local or OpenAI-compatible model from the setup screen.
 

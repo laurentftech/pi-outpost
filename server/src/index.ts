@@ -230,6 +230,7 @@ import { registerPendingWriteHooks } from "./pendingWrites.ts";
 import { createPosterCheckToolDefinition } from "./posterCheckTool.ts";
 import { createPosterPicturesToolDefinition } from "./posterPicturesTool.ts";
 import { createWorkPlanExtendedToolDefinition, createWorkPlanToolDefinition, WORK_PLAN_EXTENDED_TOOL, WORK_PLAN_TOOL } from "./workPlanTool.ts";
+import { DOCUMENT_TOOL_IDLE_LIMIT, restoredDocumentTools } from "./documentToolState.ts";
 import { DEFERRED_TOOLS, deferOnDemandTools, documentToolsFor, documentToolsForToolCall, documentToolsForWrittenPaths, TOOL_SEARCH_TOOL } from "./documentTools.ts";
 import {
   PROJECT_MODEL_TOOL,
@@ -243,7 +244,7 @@ import { composeAppendSystemPrompt } from "./systemPrompt.ts";
 import { createMailExtractToolDefinition } from "./mailTool.ts";
 import { createPdfExtractToolDefinition, createPdfRenderToolDefinition } from "./pdfTool.ts";
 import { Workspace, shouldRetireWorkspace, type WorkspaceOptions, type WorkspaceSettings } from "./workspace.ts";
-import type { QueuedPromptSource } from "./queuedPrompts.ts";
+import type { QueuedEntry, QueuedPromptSource } from "./queuedPrompts.ts";
 import { WorkspaceRegistry } from "./workspaceRegistry.ts";
 import { discoverSkillCatalogue, ResourceRepositoryService } from "./resourceRepositories.ts";
 import { deriveWorkspaceActivity, workspaceActivityNeedsAttention } from "./workspaceActivity.ts";
@@ -2044,7 +2045,7 @@ for (const root of config.openProjects) {
 workspace.workPlan = await loadWorkPlan(workspace.agent.snapshot().sessionFile);
 workspace.workPlanSessionFile = workspace.agent.snapshot().sessionFile;
 // Withheld first: it clears the idle counts, and the work plan tools enrol in them.
-withholdDocumentTools(workspace);
+restoreDocumentTools(workspace);
 // The bound session may already have a plan — resumed, or the server restarted under
 // one. An agent that inherits work should inherit the tools for it, not discover them.
 publishWorkPlanTools(workspace, workspace.workPlan);
@@ -2056,17 +2057,23 @@ publishWorkPlanTools(workspace, workspace.workPlan);
  * could overwrite the copied plan with null.
  */
 /**
- * Withhold every document extractor until a document of its kind turns up.
+ * Restore recently used tools from this branch; withhold unrelated and expired schemas.
  *
  * Their four schemas come to some 8 000 characters — around a quarter of a session's
  * prompt floor — telling a conversation how to read Word, Excel, PowerPoint and PDF.
  * Most conversations never open one, and the ones that do say so first.
  */
-function withholdDocumentTools(workspace: Workspace): void {
+function restoreDocumentTools(workspace: Workspace): void {
   // And the project model tool, withheld for the same reason: see projectModelTool.ts.
   for (const tool of DEFERRED_TOOLS) workspace.agent.setToolPublished(tool, false);
   workspace.documentToolIdleTurns.clear();
   workspace.documentToolsEverUsed.clear();
+  workspace.documentToolsUsedThisTurn.clear();
+  const restored = restoredDocumentTools(workspace.agent.branchEntries?.() ?? workspace.agent.contextEntries());
+  for (const name of restored.everUsed) workspace.documentToolsEverUsed.add(name);
+  for (const [name, count] of restored.idle) {
+    if (workspace.agent.setToolPublished(name, true)) workspace.documentToolIdleTurns.set(name, count);
+  }
   // Withheld, not out of reach: they are registered deferred, and this is how the agent
   // loads one by itself. Pi registers it inactive and only switches it on for MCP servers.
   // Not registered under noExtensions, and then this does nothing.
@@ -2144,19 +2151,6 @@ function unpublishDocumentTools(workspace: Workspace, tools: string[]): void {
 }
 
 /**
- * How many turns a published extractor may go unused before it is forgotten.
- *
- * One, for a tool that has never been called: it was published on a text match that
- * turned out to be wrong, and every later request would carry the mistake.
- *
- * Five, for one that has been used: the work around a document rarely ends with the call
- * that opened it — a spreadsheet read sheet by sheet, a passage checked again two answers
- * later — and taking the tool away mid-task would strand an agent that cannot ask for it
- * back. Five turns of silence is the conversation having moved on.
- */
-const DOCUMENT_TOOL_IDLE_LIMIT = { unused: 1, used: 5 };
-
-/**
  * How long the extended Work Plan tool may go unused before it is withdrawn.
  *
  * Five, like an extractor that has been called, and for the same reason: a plan is worked
@@ -2168,8 +2162,7 @@ const DOCUMENT_TOOL_IDLE_LIMIT = { unused: 1, used: 5 };
  * What makes ageing it safe at all is that the way back is the agent's, not only the
  * user's. `work_plan` is never withheld, its description names the extended half, and any
  * successful call to either republishes the pair from inside the turn — see the
- * `tool_result` handler. An extractor has no such path, which is why its own comment says
- * naming the document again is the only way back.
+ * `tool_result` handler. Extractors can likewise return through a remembered call or search.
  */
 const WORK_PLAN_EXTENDED_IDLE_LIMIT = 5;
 
@@ -2246,10 +2239,9 @@ function queueWorkPlanSessionSync(workspace: Workspace, after?: Promise<unknown>
     if (!sameSessionFile(workspace.agent.snapshot().sessionFile, sessionFile)) return;
     workspace.workPlan = plan;
     workspace.workPlanSessionFile = sessionFile;
-    // A replaced session is a new conversation: whatever documents the last one saw are
-    // not this one's, and the first prompt naming one publishes what it needs. Before the
-    // work plan tools, which enrol in the idle counts this clears.
-    withholdDocumentTools(workspace);
+    // Rebuild from the selected branch: a resumed conversation keeps its recent tools,
+    // while a new conversation starts empty. Restore the work plan tools afterwards.
+    restoreDocumentTools(workspace);
     publishWorkPlanTools(workspace, plan);
     // A new session starts from the default model again; a resumed one from its own.
     await keepToAllowedModel(workspace);
@@ -3142,6 +3134,8 @@ function onRuntimeEvent(workspace: Workspace, event: RuntimeEvent): void {
       broadcast(workspace, { type: "custom_message", item: customMessageToItem(event.message as never, workspace.renderer) });
       break;
     case "tool_start": {
+      // A known deferred tool may be called by name even when its schema was aged out.
+      if (DEFERRED_TOOLS.includes(event.toolName)) publishToolDuringTurn(workspace, event.toolName);
       // Called, so the clock goes back to zero — and it is no longer a tool nobody has
       // ever wanted, which is what decides how long it may sit idle from here. Noted as
       // used *this turn* too: the turn that called it is not one of its idle ones, and
@@ -4184,7 +4178,7 @@ async function ensureStarted(target: Workspace): Promise<void> {
     // Same as the boot workspace: withheld first, because it clears the idle counts the
     // work plan tools enrol in; then a project reopened onto an existing plan publishes
     // the tools that plan needs, rather than making its agent find them again.
-    withholdDocumentTools(target);
+    restoreDocumentTools(target);
     publishWorkPlanTools(target, target.workPlan);
     target.lastUsedAt = Date.now();
     // Listed, and looked up past startup's delay; a recent answer is reused.
@@ -4556,6 +4550,96 @@ async function waitUntilIdle(workspace: Workspace, timeoutMs = 15_000): Promise<
 }
 
 /**
+ * Take pi's whole queue back, reporting what it had already delivered. The tracker reads no
+ * queue report meanwhile, so the take-back's empty queue is not a delivery. The caller holds the
+ * queue lock and queues `kept` again, or sends it.
+ */
+async function takeQueueBack(workspace: Workspace): Promise<QueuedEntry[]> {
+  const tracker = workspace.queuedPrompts;
+  tracker.suspend();
+  let returned: { steering: string[]; followUp: string[] };
+  try {
+    returned = await workspace.agent.clearQueue!.call(workspace.agent);
+  } catch (error) {
+    tracker.resume();
+    throw error;
+  }
+  const { delivered, kept } = tracker.takeBack(returned);
+  for (const entry of delivered) if (entry.source) broadcastUser(workspace, entry.source);
+  return kept;
+}
+
+/** Queue entries again, in order, under their ids — after a take-back that sends none of them. */
+async function requeue(workspace: Workspace, socket: WebSocket | undefined, entries: QueuedEntry[]): Promise<void> {
+  const tracker = workspace.queuedPrompts;
+  for (const entry of entries) {
+    const source = entry.source ?? { text: entry.piText, promptText: entry.piText };
+    const expectation = tracker.expect(source, { kind: entry.kind, id: entry.id });
+    try {
+      tracker.settle(expectation, (await workspace.agent.queueMessage!.call(workspace.agent, source.promptText, source.images, entry.kind)) === "queued");
+    } catch (error) {
+      tracker.settle(expectation, false);
+      const message = `A queued message could not be queued again: ${error instanceof Error ? error.message : String(error)}`;
+      if (socket) send(socket, { type: "error", message });
+      else broadcast(workspace, { type: "error", message });
+    }
+  }
+  broadcastQueue(workspace);
+}
+
+/** Stop the running turn and wait for its end: the runtime's `agent_end`, then no turn running. */
+async function stopTurn(workspace: Workspace, timeoutMs = 15_000): Promise<boolean> {
+  const ended = new Promise<boolean>((resolve) => {
+    const timer = setTimeout(() => {
+      unsubscribe();
+      resolve(false);
+    }, timeoutMs);
+    const unsubscribe = workspace.agent.subscribe((event) => {
+      if (event.type !== "agent_end") return;
+      clearTimeout(timer);
+      unsubscribe();
+      resolve(true);
+    });
+  });
+  await workspace.agent.abort();
+  return (await ended) && (await waitUntilIdle(workspace, timeoutMs));
+}
+
+/**
+ * The Stop button. With prompts waiting that the server can rewrite, they are taken back first
+ * and queued again once the turn has ended, so they stay pending — a turn stopped during a tool
+ * would otherwise read them as its step ends and swallow them into the request it aborts.
+ *
+ * The queue lock is waited for briefly only: a prompt waiting for the extensions to bind holds
+ * it, and only this abort releases that prompt. Past the wait, a plain stop.
+ */
+async function abortTurn(workspace: Workspace): Promise<void> {
+  const keepQueue = workspace.agent.snapshot().isStreaming && workspace.queuedPrompts.size > 0 && canRewriteQueue(workspace) && !workspace.queuedPrompts.hasForeign;
+  if (!keepQueue) {
+    await workspace.agent.abort();
+    return;
+  }
+  const locking = lockQueue(workspace);
+  const release = await Promise.race([locking, new Promise<undefined>((resolve) => setTimeout(() => resolve(undefined), 1_000))]);
+  if (!release) {
+    void locking.then((late) => late());
+    await workspace.agent.abort();
+    return;
+  }
+  try {
+    if (workspace.queuedPrompts.size === 0 || !workspace.agent.snapshot().isStreaming) {
+      await workspace.agent.abort();
+      return;
+    }
+    const taken = await takeQueueBack(workspace);
+    await stopTurn(workspace);
+    await requeue(workspace, undefined, taken);
+  } finally {
+    release();
+  }
+}
+
+/**
  * Send every queued prompt now, as the first request of a new turn — what the user would
  * otherwise get by stopping and typing something, without the typing.
  *
@@ -4584,25 +4668,22 @@ async function sendQueueNow(workspace: Workspace, socket: WebSocket): Promise<vo
       refuse("Session change already in progress");
       return;
     }
-    if (workspace.agent.snapshot().isStreaming) {
-      await workspace.agent.abort();
-      if (!(await waitUntilIdle(workspace))) {
-        refuse("The running turn did not stop; the queued messages were left as they were");
-        return;
-      }
-    }
-
-    tracker.suspend();
-    let returned: { steering: string[]; followUp: string[] };
+    // Taken back before the turn is stopped, not after: a turn stopped during a tool reads
+    // the steering queue as its step ends, and would swallow the queue into a request it
+    // then aborts — shown as sent, never seen by the model.
+    let taken: QueuedEntry[];
     try {
-      returned = await clearQueue.call(workspace.agent);
+      taken = await takeQueueBack(workspace);
     } catch (error) {
-      tracker.resume();
       refuse(`The queue could not be sent: ${error instanceof Error ? error.message : String(error)}`);
       return;
     }
-    const { delivered, kept } = tracker.takeBack(returned);
-    for (const entry of delivered) if (entry.source) broadcastUser(workspace, entry.source);
+    if (workspace.agent.snapshot().isStreaming && !(await stopTurn(workspace))) {
+      await requeue(workspace, socket, taken);
+      refuse("The running turn did not stop; the queued messages were left as they were");
+      return;
+    }
+    const kept = taken;
     const [first, ...rest] = kept;
     if (!first) {
       broadcastQueue(workspace);
@@ -6633,7 +6714,7 @@ function handleClientMessage(socket: WebSocket, raw: string): void {
       sendQueueNow(workspace, socket).catch(reportError);
       return;
     case "abort":
-      workspace.agent.abort().catch(() => {});
+      abortTurn(workspace).catch(reportError);
       break;
     case "set_model": {
       if (typeof message.provider !== "string" || typeof message.id !== "string") return;

@@ -22,7 +22,7 @@
   },
   "dependencies": {
     "@pi-outpost/office": "*",
-    "grapesjs": "0.23.8",
+    "grapesjs": "0.23.9",
     "grapesjs-parser-postcss": "1.0.3"
   },
   "devDependencies": {

@@ -10,6 +10,12 @@ functions cannot see.
 The harness pins `agentDir` inside the temp workspace, so runs never touch your real
 `~/.pi/agent` (no reading your extensions, no writing your sessions).
 
+Long-running command fixtures must have an explicit teardown release and wait for their
+process to exit before `server.stop()` removes the workspace. On Windows, killing Git Bash
+can leave native descendants orphaned, so waiting for the server to close does not prove
+that the workspace is free. `queuedPromptsWire.test.mjs` uses a release file for this and
+waits for the command's readiness marker before testing interruption.
+
 ```bash
 npm run test --workspace server        # offline: no model auth needed, no tokens spent
 npm run test:live --workspace server   # drives real agent turns (needs model auth, costs tokens)

@@ -301,13 +301,14 @@ export function npmInstallInvocation(
   const displayArgs = [
     "install",
     "-g",
+    "--allow-scripts=node-pty,koffi",
     ...(registry ? ["--registry", registry] : []),
     `${PACKAGE_NAME}@latest`,
   ];
   if (platform === "win32") {
     return {
       command: process.env.ComSpec?.trim() || "cmd.exe",
-      args: ["/d", "/s", "/c", `npm.cmd install -g ${PACKAGE_NAME}@latest`],
+      args: ["/d", "/s", "/c", `npm.cmd install -g --allow-scripts=node-pty,koffi ${PACKAGE_NAME}@latest`],
       env: npmEnvironmentWithOverride(registry, process.env),
       displayCommand,
       displayArgs,
@@ -712,7 +713,7 @@ export async function runUpdateCommand(options: UpdateCommandOptions): Promise<n
       say(`[pi] this copy is a source checkout, not an installed package — update it with "git pull"`);
       return 1;
     case "ephemeral":
-      say(`[pi] this copy runs from a one-off cache: your next "npx ${PACKAGE_NAME}" already fetches the newest version`);
+      say(`[pi] this copy runs from a one-off cache: your next "npx --allow-scripts=node-pty,koffi ${PACKAGE_NAME}" already fetches the newest version`);
       return 1;
     case "executable":
       say(`[pi] this copy is a self-contained executable and will not replace itself`);

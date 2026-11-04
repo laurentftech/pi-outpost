@@ -270,7 +270,7 @@ agent directory and the configuration can never be granted. See
 MXC's executor (`wxc-exec.exe`, signed by Microsoft, MIT; on Linux `lxc-exec`; on Apple-silicon macOS `mxc-exec-mac`) ships in
 [`@microsoft/mxc-sdk`](https://www.npmjs.com/package/@microsoft/mxc-sdk), which pi-outpost declares
 as an **optional dependency**. In npm, *optional* does not mean *opt-in*: `npm install -g
-pi-outpost`, `npx pi-outpost` and `npm ci` **install it by default**, with nothing to add. It only
+pi-outpost`, `npx --allow-scripts=node-pty,koffi pi-outpost` and `npm ci` **install it by default**, with nothing to add. It only
 means that an install which fails for that package does not fail pi-outpost's install, and that
 `--omit=optional` (or `npm config set omit optional`) leaves it out. To use it, write the word
 `"mxc"` instead of a path:
@@ -293,7 +293,7 @@ means that an install which fails for that package does not fail pi-outpost's in
 without `--omit=optional`:
 
 ```powershell
-npm install -g pi-outpost --include=optional
+npm install -g --allow-scripts=node-pty,koffi pi-outpost --include=optional
 ```
 
 The **standalone executable** has no `node_modules`: `"mxc"` looks for `wxc-exec.exe` **beside

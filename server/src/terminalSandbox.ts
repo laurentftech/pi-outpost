@@ -632,7 +632,7 @@ export function mxcLinuxConfig(input: MxcLinuxInput): MxcLinuxConfig {
 }
 
 /** MXC's request on macOS: Linux's document, run by Seatbelt. */
-export type MxcMacConfig = Omit<MxcLinuxConfig, "containment"> & { containment: "seatbelt" };
+export type MxcMacConfig = Omit<MxcLinuxConfig, "containment"> & { containment: "seatbelt"; seatbelt: { extraMachLookups: string[] } };
 
 export interface MxcMacInput extends MxcLinuxInput {
   /** The developer tools' directory (`xcode-select -p`): git lives there. Default: asked once. */
@@ -640,6 +640,11 @@ export interface MxcMacInput extends MxcLinuxInput {
   /** A path as Seatbelt sees it, symlinks resolved. A parameter for tests. */
   realPath?: (file: string) => string;
 }
+
+// SecureTransport verifies certificate chains through the system trust evaluation service.
+// This lookup does not
+// grant access to the user's Keychain (MXC's broader keychainAccess remains disabled).
+const MAC_TRUST_SERVICES = ["com.apple.TrustEvaluationAgent"];
 
 /** The system trees a macOS shell needs, those this host has. */
 export function macSystemTrees(exists: (file: string) => boolean = existsSync): string[] {
@@ -708,6 +713,7 @@ export function mxcMacConfig(input: MxcMacInput): MxcMacConfig {
   return {
     version: "1.0.0",
     containment: "seatbelt",
+    seatbelt: { extraMachLookups: [...MAC_TRUST_SERVICES] },
     process: {
       commandLine: [input.shell, ...input.shellArgs].map(quotePosixArgument).join(" "),
       cwd: real(input.cwd),
@@ -770,7 +776,9 @@ export function seatbeltPolicy(input: MxcMacInput): SeatbeltPolicy {
     '    (global-name "com.apple.system.logger")',
     '    (global-name "com.apple.distributed_notifications@Uv3")',
     '    (global-name "com.apple.CoreServices.coreservicesd")',
-    '    (global-name "com.apple.FSEvents"))',
+    '    (global-name "com.apple.FSEvents")',
+    ...MAC_TRUST_SERVICES.map((name) => `    (global-name ${sbplString(name)})`),
+    ")",
     '(allow file-read-data (literal "/"))',
     "(allow file-read*",
     subpaths(["/bin", "/sbin", "/usr/bin", "/usr/sbin", "/usr/lib", "/usr/libexec", "/usr/share", "/System", "/Library", "/private/var/db/timezone", "/private/var/db/dyld", "/private/var/select", "/private/etc"]) + ")",

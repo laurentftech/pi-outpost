@@ -68,3 +68,37 @@ test("agent-owned Work Plan survives reload, switches with sessions, and isolate
   expect(source.tasks[0].status).toBe("done");
   expect(fork.tasks[0].status).toBe("in_progress");
 });
+
+test("narrow viewport automatically compacts the Work Plan and keeps the conversation visible", async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 640, height: 800 });
+  await page.goto(process.env.PI_E2E_PLANS_URL!);
+  await expect(page.getByTitle("connected")).toBeVisible();
+  await prompt(page, "Create a plan for this release");
+
+  await expect(page.getByRole("button", { name: "Open Work Plan" })).toBeVisible();
+  await expect(page.getByRole("complementary", { name: "Work Plan" })).toHaveCount(0);
+  await expect(page.getByText("Create a plan for this release", { exact: true })).toBeVisible();
+
+  await page.getByRole("button", { name: "Open Work Plan" }).click();
+  const narrowPanel = page.getByRole("complementary", { name: "Work Plan" });
+  await expect(narrowPanel).toBeVisible();
+  await narrowPanel.getByRole("button", { name: "Close Work Plan" }).click();
+  await expect(narrowPanel).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Open Work Plan" }).click();
+  await expect(narrowPanel).toBeVisible();
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await expect(narrowPanel).toBeVisible();
+  await page.setViewportSize({ width: 640, height: 800 });
+  await expect(page.getByRole("button", { name: "Open Work Plan" })).toBeVisible();
+  await expect(narrowPanel).toHaveCount(0);
+
+  if (testInfo.project.name === "chromium") {
+    await page.mouse.move(10, 180);
+    await expect(page.getByRole("tooltip")).toBeHidden();
+    await page.screenshot({ path: testInfo.outputPath("workplan-narrow-compact.png"), fullPage: true });
+  }
+
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await expect(page.getByRole("complementary", { name: "Work Plan" })).toBeVisible();
+});
