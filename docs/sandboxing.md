@@ -438,6 +438,11 @@ The command's output ends with what you answered, which the agent reads and the 
 [pi-outpost] network: the user allowed example.com for this command.
 ```
 
+Permission requests appear below the conversation, leaving its evidence readable and scrollable.
+Long commands, target lists and explanations scroll within a panel limited to 40% of the screen's
+height. The refusal and approval buttons stay visible while you inspect the details. Reading the
+conversation or resizing the window does not answer the request; nothing is approved by default.
+
 **A directory is asked for by the agent**, with the command that needs it — a file access cannot wait
 the way a connection does. Its `run_with_grant` tool names the command, the directories (read, or
 read-write) and why; nothing runs until you answer, and allowed once, it is that exact command alone:
