@@ -213,8 +213,8 @@ async function startServerOn(root, config, options, port) {
       const exited = await waitForExit(5_000);
       if (!exited) throw new Error(`test server ${child.pid} did not exit after termination`);
       // Windows may briefly keep descendant handles open after taskkill returns.
-      // Wait for the parent process above, then retry transient EBUSY during removal.
-      await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+      // Wait for the parent process above, then allow transient EBUSY about nine seconds to clear.
+      await rm(root, { recursive: true, force: true, maxRetries: 8, retryDelay: 250 });
     },
   };
 }
