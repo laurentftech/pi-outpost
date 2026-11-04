@@ -225,7 +225,7 @@ directories. The paths below are examples; use the home and binary paths chosen 
 distribution and npm installation.
 
 ```bash
-npm install -g pi-outpost
+npm install -g --allow-scripts=node-pty,koffi pi-outpost
 command -v pi-outpost             # use this exact path in ExecStart below
 sudo useradd --system --create-home --shell /usr/sbin/nologin pi-outpost
 sudo install -d -o pi-outpost -g pi-outpost /etc/pi-outpost

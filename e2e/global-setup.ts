@@ -416,6 +416,7 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
     {
       server: { allowedOrigins: [host.url] },
       branding: { title: "terminal smoke" },
+      sandbox: false,
       terminal: { enabled: true },
     },
     { env: onlyOneFakeProvider() },

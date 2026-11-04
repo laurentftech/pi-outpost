@@ -88,6 +88,7 @@ mkdir -p /w
 cd /src
 tar cf - --exclude=./node_modules --exclude=./.git --exclude='*/node_modules' . | (cd /w && tar xf -)
 cd /w
+npm install -g npm@12.2.1
 
 STAMP=/w/node_modules/.pi-outpost-lock-hash
 if [ "${fresh ? "1" : "0"}" = "1" ] || [ ! -f "$STAMP" ] || [ "$(cat "$STAMP" 2>/dev/null)" != "${lockHash}" ]; then

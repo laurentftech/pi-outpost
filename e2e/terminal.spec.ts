@@ -47,6 +47,25 @@ test.describe("Integrated Terminal (when enabled via config/flag)", () => {
     await expect(page.getByText("terminal 1")).not.toBeVisible();
   });
 
+  // openlore: scenario=ConsumerInstallsKeepTheirTerminal spec=npm-install-security
+  test("executes a real terminal command after opening and reopening the panel", async ({ page }) => {
+    const button = page.getByRole("button", { name: />_ terminal/i });
+    await button.click();
+    const input = page.locator(".xterm-helper-textarea").first();
+    await expect(page.locator(".xterm-rows")).toContainText(/[$#>%]/);
+    await input.focus();
+    await page.keyboard.type(`node -e "console.log('PI_'+'NPM12_BROWSER_OK')"`);
+    await page.keyboard.press("Enter");
+    await expect(page.locator(".xterm-rows")).toContainText("PI_NPM12_BROWSER_OK");
+    await button.click();
+    await button.click();
+    await input.focus();
+    await page.keyboard.type(`node -e "console.log('PI_'+'NPM12_REOPEN_OK')"`);
+    await page.keyboard.press("Enter");
+    await expect(page.locator(".xterm-rows")).toContainText("PI_NPM12_REOPEN_OK");
+    await expect(page.getByTestId("terminal-unavailable")).toHaveCount(0);
+  });
+
   test("supports adding and renaming terminal tabs", async ({ page }) => {
     await page.getByRole("button", { name: />_ terminal/i }).click();
     await expect(page.getByText("terminal 1")).toBeVisible();

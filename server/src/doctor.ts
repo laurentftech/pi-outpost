@@ -328,19 +328,19 @@ export function ptyRemedy(platform: NodeJS.Platform, channel: InstallChannel): s
   if (channel === "executable") {
     return [
       "The standalone executable does not carry node-pty. Install the npm package",
-      "(npm install -g pi-outpost) to get the terminal.",
+      "(npm install -g --allow-scripts=node-pty,koffi pi-outpost) to get the terminal.",
     ];
   }
   if (platform !== "linux") {
     return ["node-pty is an optional native dependency: it needs a C++ toolchain at install time."];
   }
-  const reinstall = channel === "checkout" ? "npx -y npm@11 install" : "npx -y npm@11 install -g pi-outpost";
+  const reinstall = channel === "checkout" ? "npm ci" : "npm install -g --allow-scripts=node-pty,koffi pi-outpost";
   return [
     "node-pty has no prebuilt binary for Linux (WSL included): npm compiles it at install,",
     "and a missing toolchain fails silently because it is optional. Install one, then reinstall:",
     "  sudo apt install -y build-essential python3    (Debian, Ubuntu, WSL)",
     `  ${reinstall}`,
-    "npm 11 because npm 12 skips install scripts, which leaves node-pty unbuilt the same way.",
+    "Use npm 12; allow the reviewed native scripts for global installs and npx. The checkout carries its own allowScripts policy.",
   ];
 }
 

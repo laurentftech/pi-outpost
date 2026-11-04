@@ -9,9 +9,10 @@
 # See docs/openwebui.md.
 
 FROM node:24-slim AS build
+RUN npm install -g npm@12.2.1
 WORKDIR /repo
 # Every workspace's manifest, so `npm ci` sees the same workspace graph as the lockfile.
-COPY package.json package-lock.json ./
+COPY package.json package-lock.json .npmrc ./
 COPY shared/package.json shared/
 COPY server/package.json server/
 COPY web/package.json web/

@@ -28,6 +28,8 @@ jobs:
         with:
           node-version: 24
           cache: npm
+      - name: Use npm 12.2.1
+        run: npm install -g npm@12.2.1
       - run: npm ci
       - run: npm run typecheck
       - run: npm run build --workspace @pi-outpost/embed
@@ -128,6 +130,23 @@ jobs:
           git fetch --no-tags --depth=1 origin ${{ github.event.pull_request.base.ref || github.event.repository.default_branch }}
           node scripts/check-scenario-coverage.mjs --base FETCH_HEAD
 
+  npm-install:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+      - run: npm install -g npm@12.2.1
+      - run: npm ci --foreground-scripts
+      - run: npm run build --workspace cli
+      - run: npm run test:npm-install
+
   # The two ways this project is consumed, in a real browser: the app the server
   # serves, and the widget a host page mounts. Shadow DOM, cross-origin wiring and
   # an actually-applied stylesheet are all invisible to jsdom, which is where the
@@ -153,6 +172,8 @@ jobs:
         with:
           node-version: 24
           cache: npm
+      - name: Use npm 12.2.1
+        run: npm install -g npm@12.2.1
       # node-pty is optional for users, but this job must exercise the terminal.
       # Keep native build failures visible instead of discovering missing types
       # in the subsequent TypeScript build.
@@ -227,6 +248,8 @@ jobs:
         with:
           node-version: 24
           cache: npm
+      - name: Use npm 12.2.1
+        run: npm install -g npm@12.2.1
       - run: npm ci --workspace server --workspace shared --workspace office --include-workspace-root=false
       - run: bash scripts/mxc-macos/test.sh
 

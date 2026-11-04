@@ -15,7 +15,7 @@ inlined at build time into the bundle.
 `-linux-x64`, `-windows-x64.exe`. Nothing installed, nothing built.
 
 No Intel macOS artifact is currently published. On an Intel Mac, build your own with
-`npx pi-outpost build-exe` — the fallback path used for the macOS x64 runtime is covered by
+`npx --allow-scripts=node-pty,koffi pi-outpost build-exe` — the fallback path used for the macOS x64 runtime is covered by
 the build command's launch smoke test.
 
 On macOS and Linux, mark it executable first — a release asset is a plain HTTP
@@ -53,7 +53,7 @@ certificate on Windows; neither is done here.
 
 ```bash
 npm install pi-outpost
-npx pi-outpost build-exe          # → ./pi-outpost (./pi-outpost.exe on Windows)
+npx --allow-scripts=node-pty,koffi pi-outpost build-exe          # → ./pi-outpost (./pi-outpost.exe on Windows)
 ```
 
 That is the whole procedure. The command writes the SEA config itself — including

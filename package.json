@@ -40,7 +40,8 @@
     "pretest:webbench": "node scripts/ensure-embedded-web.mjs --reset",
     "test:webbench": "npm run build:e2e-host && playwright test --config e2e/web-bench.config.ts",
     "bench": "tsx scripts/embed-bench.mts",
-    "check:export-chunk": "node scripts/check-export-chunk.mjs"
+    "check:export-chunk": "node scripts/check-export-chunk.mjs",
+    "test:npm-install": "node scripts/check-npm-install.mjs"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.14.0",
@@ -57,6 +58,16 @@
     }
   },
   "allowScripts": {
-    "node-pty@1.1.0": true
+    "@google/genai": false,
+    "esbuild@0.28.2": true,
+    "fsevents@2.3.3": true,
+    "koffi@3.3.3": true,
+    "node-pty@1.1.0": true,
+    "protobufjs": false
+  },
+  "packageManager": "npm@12.2.1",
+  "engines": {
+    "node": "^24.15.0 || >=26.0.0",
+    "npm": ">=12.2.1 <13"
   }
 }
