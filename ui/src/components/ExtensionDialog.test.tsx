@@ -260,8 +260,8 @@ describe("ExtensionDialog", () => {
     });
   });
 
-  describe("backdrop interaction", () => {
-    it("keeps the dialog up when clicking backdrop overlay", () => {
+  describe("conversation interaction", () => {
+    it("keeps the question pending while the user interacts outside it", () => {
       const request: DialogRequest = {
         type: "extension_ui_request",
         id: "backdrop1",
@@ -269,10 +269,10 @@ describe("ExtensionDialog", () => {
         title: "Test",
         options: ["A"],
       };
-      const { container } = render(<ExtensionDialog request={request} onRespond={mockOnRespond} />);
-      const overlay = container.firstChild;
-      expect(overlay).toBeInTheDocument();
-      if (overlay) fireEvent.click(overlay);
+      const readContext = vi.fn();
+      render(<><button onClick={readContext}>Read earlier context</button><ExtensionDialog request={request} onRespond={mockOnRespond} /></>);
+      fireEvent.click(screen.getByRole("button", { name: "Read earlier context" }));
+      expect(readContext).toHaveBeenCalledOnce();
       expect(mockOnRespond).not.toHaveBeenCalled();
       // Still answerable: the question survives the stray click.
       expect(screen.getByText("A")).toBeInTheDocument();
@@ -280,7 +280,7 @@ describe("ExtensionDialog", () => {
       expect(mockOnRespond).toHaveBeenCalledWith({ id: "backdrop1", value: "A" });
     });
 
-    it("flashes the panel so a backdrop click is not silently swallowed", () => {
+    it("names the question as a non-modal region", () => {
       const request: DialogRequest = {
         type: "extension_ui_request",
         id: "backdrop2",
@@ -288,15 +288,12 @@ describe("ExtensionDialog", () => {
         title: "Test",
         options: ["A"],
       };
-      const { container } = render(<ExtensionDialog request={request} onRespond={mockOnRespond} />);
-      const overlay = container.firstChild as HTMLElement;
-      const panel = overlay.firstChild as HTMLElement;
-      expect(panel.className).not.toMatch(/ring-2/);
-      fireEvent.click(overlay);
-      expect(panel.className).toMatch(/ring-2/);
+      render(<ExtensionDialog request={request} onRespond={mockOnRespond} />);
+      expect(screen.getByRole("region", { name: "Test" })).toBeInTheDocument();
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     });
 
-    it("does not cancel when clicking inside modal content", () => {
+    it("does not cancel when choosing an answer", () => {
       const request: DialogRequest = {
         type: "extension_ui_request",
         id: "inside1",

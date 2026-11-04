@@ -498,7 +498,11 @@ function ExtensionStatuses({ statuses, bar }: { statuses: Record<string, string>
         return;
       }
       const cut = Array.from(inline.current?.querySelectorAll<HTMLElement>("[data-status-text]") ?? []).some((text) => text.scrollWidth > text.clientWidth + 1);
-      if (cut || header.scrollWidth > header.clientWidth + 1) {
+      // A narrow toolbar can wrap instead of overflowing. Fold statuses in that
+      // case too, keeping the same compact affordance while controls stay reachable.
+      const first = header.firstElementChild?.getBoundingClientRect();
+      const wrapped = first && first.height > 0 && Array.from(header.children).some((child) => child.getBoundingClientRect().top >= first.bottom);
+      if (cut || wrapped || header.scrollWidth > header.clientWidth + 1) {
         foldedAt.current = header.clientWidth;
         setFolded(true);
       }
@@ -619,7 +623,7 @@ export function Header(props: HeaderProps) {
     // positioned and spill over the content area. Without a stacking context of its
     // own, the header competes there on DOM order alone — and the open FileViewer,
     // declared after it, wins. The menus would open *behind* the file preview.
-    <header ref={setBar} className="relative z-30 flex min-w-0 items-center gap-1.5 border-b border-zinc-200 px-4 py-2 dark:border-zinc-800">
+    <header ref={setBar} className="relative z-30 flex min-w-0 flex-wrap items-center gap-1.5 border-b border-zinc-200 px-4 py-2 dark:border-zinc-800">
       {/* The workspace affordance comes first: it scopes everything else in this
           bar. Which one appears is the deployment's choice; the project selector
           still renders nothing while a single project is open or on a pinned
@@ -691,7 +695,7 @@ export function Header(props: HeaderProps) {
           while the project and the branch beside it say where the agent works. */}
       <span
         title={props.title ?? undefined}
-        className="min-w-[2.25rem] shrink-[4] truncate whitespace-nowrap text-lg font-semibold leading-tight tracking-tight"
+        className="hidden min-w-[2.25rem] shrink-[4] truncate whitespace-nowrap text-lg font-semibold leading-tight tracking-tight sm:block"
         style={{ color: "var(--accent, inherit)" }}
       >
         {props.title ?? "π"}
@@ -699,7 +703,7 @@ export function Header(props: HeaderProps) {
 
       <ExtensionStatuses statuses={props.statuses} bar={bar} />
 
-      <div className="ml-auto flex shrink-0 items-center gap-1.5">
+      <div className="ml-auto flex w-full max-w-full shrink-0 flex-wrap items-center gap-1 sm:w-auto sm:gap-1.5">
         <ConversationFilterMenu filters={props.filters} onFilterChange={props.onFilterChange} />
         {props.onExportConversation && (
           <button
