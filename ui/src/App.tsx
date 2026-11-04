@@ -1477,8 +1477,14 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
             />
           )}
 
-          <footer className="border-t border-zinc-200 px-4 py-3 dark:border-zinc-800">
-            <div className="mx-auto max-w-3xl">
+          <footer className="shrink-0 border-t border-zinc-200 px-4 py-3 dark:border-zinc-800">
+            {state.dialogQueue[0] && (
+              <div className="mx-auto max-w-3xl">
+                <ExtensionDialog key={state.dialogQueue[0].id} request={state.dialogQueue[0]} onRespond={respondToDialog} />
+              </div>
+            )}
+            {/* Keep the composer mounted so an unanswered question cannot erase a draft. */}
+            <div className="mx-auto max-w-3xl" hidden={!!state.dialogQueue[0]}>
               <ExtensionWidgets widgets={state.widgets} placement="aboveEditor" controls={widgetControls} />
               <Composer
                 // Remount on a project change so the restored draft becomes the
@@ -1527,7 +1533,6 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
         </div>
       </div>
 
-      {state.dialogQueue[0] && <ExtensionDialog request={state.dialogQueue[0]} onRespond={respondToDialog} />}
       {/* After an extension's question, never over it: one dialog at a time, each with its own answer. */}
       {!state.dialogQueue[0] && state.sandboxGrants?.pending[0] && (
         <SandboxGrantDialog request={state.sandboxGrants.pending[0]} onRespond={respondToGrant} />

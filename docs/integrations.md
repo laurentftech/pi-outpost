@@ -81,7 +81,12 @@ iframeWindow.postMessage({ type: "pi-outpost:set-theme", theme: "light" }, "http
 Extensions using pi's [Custom
 UI](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/extensions.md#custom-ui)
 (`ctx.ui.select/confirm/input/editor/notify/setStatus/setWidget/setTitle/setEditorText`) work
-in the web interface: dialogs render as a modal, `notify()` as a toast, `setStatus()` as a
+in the web interface: questions appear in the response area below the conversation, leaving
+the timeline readable and scrollable while you choose. Long questions scroll within a
+panel limited to 40% of the viewport height. Clicking the conversation does not dismiss a
+question; use its answer buttons or the explicit refusal control. On narrow screens the
+header controls wrap to keep the page within the screen width. Your composer draft
+returns after the questions are answered. `notify()` renders as a toast, `setStatus()` as a
 header badge, `setWidget()` above or below the composer. Status badges preserve ANSI
 foreground colours and text styles, including in the overflow list; hover titles use plain text.
 Extensions using `ctx.ui.theme.fg()` (for example pi-blackhole's gauges) receive the SDK's

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import type { DialogRequest } from "../useAgent";
 
 type DialogResponse = { id: string; value: string } | { id: string; confirmed: boolean } | { id: string; cancelled: true };
@@ -76,12 +76,11 @@ export function parseMultiSelect(request: DialogRequest): { heading: string; opt
   return { heading, options };
 }
 
-/** Modal for extension "Custom UI" dialogs (select/confirm/input/editor) — see extensions.md#custom-ui. */
+/** In-flow question panel: the conversation stays readable while the agent waits. */
 export function ExtensionDialog({ request, onRespond }: ExtensionDialogProps) {
+  const headingId = useId();
   const [text, setText] = useState(request.method === "editor" ? (request.prefill ?? "") : "");
   const [checked, setChecked] = useState<number[]>([]);
-  /** Set by a click on the backdrop; cleared shortly after, so the flash repeats on every try. */
-  const [nudged, setNudged] = useState(false);
   const hasTimeout = (request.method === "select" || request.method === "confirm" || request.method === "input") && request.timeout;
   const [remaining, setRemaining] = useState<number | null>(hasTimeout ? Math.ceil(hasTimeout / 1000) : null);
 
@@ -103,12 +102,6 @@ export function ExtensionDialog({ request, onRespond }: ExtensionDialogProps) {
   }
 
   useEffect(() => {
-    if (!nudged) return;
-    const timer = setTimeout(() => setNudged(false), 400);
-    return () => clearTimeout(timer);
-  }, [nudged]);
-
-  useEffect(() => {
     if (remaining === null) return;
     if (remaining <= 0) {
       onRespond({ id: request.id, cancelled: true });
@@ -119,181 +112,171 @@ export function ExtensionDialog({ request, onRespond }: ExtensionDialogProps) {
   }, [remaining, request.id, onRespond]);
 
   return (
-    // The agent is blocked on this answer, so the backdrop does not dismiss: a
-    // stray click outside used to send `cancelled` and lose the question. It
-    // only flashes the panel to say "the answer is in here" — refusing is the
-    // ✕ in the corner, which nobody presses by accident.
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
-      onClick={() => setNudged(true)}
+    <section
+      role="region"
+      aria-labelledby={headingId}
+      className="max-h-[40dvh] overflow-y-auto overscroll-contain rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-700 dark:bg-zinc-900"
     >
-      <div
-        className={`w-full ${body ? "max-w-2xl" : "max-w-md"} rounded-xl border bg-white p-4 shadow-2xl transition-shadow dark:bg-zinc-900 ${
-          nudged
-            ? "border-zinc-400 ring-2 ring-zinc-400/60 dark:border-zinc-500 dark:ring-zinc-500/60"
-            : "border-zinc-200 dark:border-zinc-700"
-        }`}
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* The one deliberate refusal: none of the options fit, and the extension
-            hears "cancelled" rather than an answer nobody meant to give. */}
-        <div className="mb-3 flex items-start gap-3">
-          <h2 className="flex-1 text-sm font-semibold text-zinc-900 dark:text-zinc-100">{heading}</h2>
-          <button
-            type="button"
-            onClick={cancel}
-            aria-label="Refuse to answer"
-            title="Refuse to answer"
-            className="-mr-1 -mt-1 rounded-md px-1.5 py-0.5 text-sm leading-none text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700 dark:text-zinc-500 dark:hover:bg-zinc-800 dark:hover:text-zinc-200"
-          >
-            ✕
-          </button>
-        </div>
-
-        {/* Option lists and previews the walker folded into the title: the host lays them out. */}
-        {body && !multiSelect && (
-          <pre className="mb-3 max-h-72 overflow-auto whitespace-pre-wrap break-words rounded-md bg-zinc-50 p-2 font-mono text-xs text-zinc-600 dark:bg-zinc-950 dark:text-zinc-400">
-            {body}
-          </pre>
-        )}
-
-        {request.method === "select" && (
-          <div className="mb-1 flex flex-col gap-1">
-            {request.options.map((option) => {
-              const parsed = parseOptionLine(option);
-              return (
-                <button
-                  key={option}
-                  type="button"
-                  onClick={() => onRespond({ id: request.id, value: option })}
-                  className={`text-left ${buttonBase}`}
-                >
-                  {parsed ? (
-                    <>
-                      <span className="font-medium text-zinc-900 dark:text-zinc-100">{parsed.label}</span>
-                      {parsed.description && (
-                        <span className="mt-0.5 block text-xs text-zinc-500 dark:text-zinc-400">{parsed.description}</span>
-                      )}
-                    </>
-                  ) : (
-                    option
-                  )}
-                </button>
-              );
-            })}
-          </div>
-        )}
-
-        {request.method === "confirm" && (
-          <>
-            <p className="mb-4 text-sm text-zinc-600 dark:text-zinc-400">{request.message}</p>
-            <div className="flex justify-end gap-2">
-              <button type="button" onClick={() => onRespond({ id: request.id, confirmed: false })} className={buttonBase}>
-                No
-              </button>
-              <button type="button" onClick={() => onRespond({ id: request.id, confirmed: true })} className={primaryButton}>
-                Yes
-              </button>
-            </div>
-          </>
-        )}
-
-        {multiSelect && (
-          <>
-            <div className="mb-3 flex flex-col gap-1">
-              {multiSelect.options.map((option) => (
-                <label
-                  key={option.index}
-                  className="flex cursor-pointer items-start gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-zinc-100 dark:hover:bg-zinc-800"
-                >
-                  <input
-                    type="checkbox"
-                    checked={checked.includes(option.index)}
-                    onChange={() => toggle(option.index)}
-                    className="mt-0.5"
-                  />
-                  <span>
-                    <span className="font-medium text-zinc-900 dark:text-zinc-100">{option.label}</span>
-                    {option.description && (
-                      <span className="mt-0.5 block text-xs text-zinc-500 dark:text-zinc-400">{option.description}</span>
-                    )}
-                  </span>
-                </label>
-              ))}
-            </div>
-            <input
-              value={text}
-              onChange={(e) => setText(e.target.value)}
-              placeholder="…or type your own answer"
-              onKeyDown={(e) => {
-                if (e.key === "Enter") submitMultiSelect();
-                if (e.key === "Escape") cancel();
-              }}
-              className={`mb-1 ${fieldBase}`}
-            />
-            <p className="mb-4 text-xs text-zinc-400 dark:text-zinc-600">A typed answer replaces the selection above.</p>
-            <div className="flex justify-end gap-2">
-              <button type="button" onClick={cancel} className={buttonBase}>
-                Cancel
-              </button>
-              <button type="button" onClick={submitMultiSelect} className={primaryButton}>
-                OK
-              </button>
-            </div>
-          </>
-        )}
-
-        {request.method === "input" && !multiSelect && (
-          <>
-            <input
-              autoFocus
-              value={text}
-              onChange={(e) => setText(e.target.value)}
-              placeholder={request.placeholder}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") onRespond({ id: request.id, value: text });
-                if (e.key === "Escape") cancel();
-              }}
-              className={fieldClass}
-            />
-            <div className="flex justify-end gap-2">
-              <button type="button" onClick={cancel} className={buttonBase}>
-                Cancel
-              </button>
-              <button type="button" onClick={() => onRespond({ id: request.id, value: text })} className={primaryButton}>
-                OK
-              </button>
-            </div>
-          </>
-        )}
-
-        {request.method === "editor" && (
-          <>
-            <textarea
-              autoFocus
-              value={text}
-              onChange={(e) => setText(e.target.value)}
-              rows={8}
-              onKeyDown={(e) => {
-                if (e.key === "Escape") cancel();
-              }}
-              className={`resize-none font-mono ${fieldClass}`}
-            />
-            <div className="flex justify-end gap-2">
-              <button type="button" onClick={cancel} className={buttonBase}>
-                Cancel
-              </button>
-              <button type="button" onClick={() => onRespond({ id: request.id, value: text })} className={primaryButton}>
-                OK
-              </button>
-            </div>
-          </>
-        )}
-
-        {remaining !== null && (
-          <p className="mt-3 text-right text-xs text-zinc-400 dark:text-zinc-600">auto-dismiss in {remaining}s</p>
-        )}
+      {/* The one deliberate refusal: none of the options fit, and the extension
+          hears "cancelled" rather than an answer nobody meant to give. */}
+      <div className="mb-3 flex items-start gap-3">
+        <h2 id={headingId} className="min-w-0 flex-1 break-words text-sm font-semibold text-zinc-900 dark:text-zinc-100">{heading}</h2>
+        <button
+          type="button"
+          onClick={cancel}
+          aria-label="Refuse to answer"
+          title="Refuse to answer"
+          className="-mr-1 -mt-1 shrink-0 rounded-md px-1.5 py-0.5 text-sm leading-none text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700 dark:text-zinc-500 dark:hover:bg-zinc-800 dark:hover:text-zinc-200"
+        >
+          ✕
+        </button>
       </div>
-    </div>
+
+      {/* Option lists and previews the walker folded into the title: the host lays them out. */}
+      {body && !multiSelect && (
+        <pre className="mb-3 max-h-72 overflow-auto whitespace-pre-wrap break-words rounded-md bg-zinc-50 p-2 font-mono text-xs text-zinc-600 dark:bg-zinc-950 dark:text-zinc-400">
+          {body}
+        </pre>
+      )}
+
+      {request.method === "select" && (
+        <div className="mb-1 flex flex-col gap-1">
+          {request.options.map((option, index) => {
+            const parsed = parseOptionLine(option);
+            return (
+              <button
+                key={option}
+                type="button"
+                autoFocus={index === 0}
+                onClick={() => onRespond({ id: request.id, value: option })}
+                className={`break-words text-left ${buttonBase}`}
+              >
+                {parsed ? (
+                  <>
+                    <span className="font-medium text-zinc-900 dark:text-zinc-100">{parsed.label}</span>
+                    {parsed.description && (
+                      <span className="mt-0.5 block text-xs text-zinc-500 dark:text-zinc-400">{parsed.description}</span>
+                    )}
+                  </>
+                ) : (
+                  option
+                )}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {request.method === "confirm" && (
+        <>
+          <p className="mb-4 text-sm text-zinc-600 dark:text-zinc-400">{request.message}</p>
+          <div className="flex justify-end gap-2">
+            <button type="button" onClick={() => onRespond({ id: request.id, confirmed: false })} className={buttonBase}>
+              No
+            </button>
+            <button type="button" onClick={() => onRespond({ id: request.id, confirmed: true })} className={primaryButton}>
+              Yes
+            </button>
+          </div>
+        </>
+      )}
+
+      {multiSelect && (
+        <>
+          <div className="mb-3 flex flex-col gap-1">
+            {multiSelect.options.map((option) => (
+              <label
+                key={option.index}
+                className="flex cursor-pointer items-start gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-zinc-100 dark:hover:bg-zinc-800"
+              >
+                <input
+                  type="checkbox"
+                  checked={checked.includes(option.index)}
+                  onChange={() => toggle(option.index)}
+                  className="mt-0.5"
+                />
+                <span>
+                  <span className="font-medium text-zinc-900 dark:text-zinc-100">{option.label}</span>
+                  {option.description && (
+                    <span className="mt-0.5 block text-xs text-zinc-500 dark:text-zinc-400">{option.description}</span>
+                  )}
+                </span>
+              </label>
+            ))}
+          </div>
+          <input
+            autoFocus
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            placeholder="…or type your own answer"
+            onKeyDown={(e) => {
+              if (e.key === "Enter") submitMultiSelect();
+              if (e.key === "Escape") cancel();
+            }}
+            className={`mb-1 ${fieldBase}`}
+          />
+          <p className="mb-4 text-xs text-zinc-400 dark:text-zinc-600">A typed answer replaces the selection above.</p>
+          <div className="flex justify-end gap-2">
+            <button type="button" onClick={cancel} className={buttonBase}>
+              Cancel
+            </button>
+            <button type="button" onClick={submitMultiSelect} className={primaryButton}>
+              OK
+            </button>
+          </div>
+        </>
+      )}
+
+      {request.method === "input" && !multiSelect && (
+        <>
+          <input
+            autoFocus
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            placeholder={request.placeholder}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") onRespond({ id: request.id, value: text });
+              if (e.key === "Escape") cancel();
+            }}
+            className={fieldClass}
+          />
+          <div className="flex justify-end gap-2">
+            <button type="button" onClick={cancel} className={buttonBase}>
+              Cancel
+            </button>
+            <button type="button" onClick={() => onRespond({ id: request.id, value: text })} className={primaryButton}>
+              OK
+            </button>
+          </div>
+        </>
+      )}
+
+      {request.method === "editor" && (
+        <>
+          <textarea
+            autoFocus
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            rows={8}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") cancel();
+            }}
+            className={`resize-none font-mono ${fieldClass}`}
+          />
+          <div className="flex justify-end gap-2">
+            <button type="button" onClick={cancel} className={buttonBase}>
+              Cancel
+            </button>
+            <button type="button" onClick={() => onRespond({ id: request.id, value: text })} className={primaryButton}>
+              OK
+            </button>
+          </div>
+        </>
+      )}
+
+      {remaining !== null && (
+        <p className="mt-3 text-right text-xs text-zinc-400 dark:text-zinc-600">auto-dismiss in {remaining}s</p>
+      )}
+    </section>
   );
 }
