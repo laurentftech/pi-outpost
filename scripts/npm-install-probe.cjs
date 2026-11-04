@@ -41,7 +41,7 @@ const { once } = require('node:events');
     const deadline = Date.now() + 60000;
     for (;;) {
       if (server.exitCode !== null) throw new Error(`installed server exited: ${log}`);
-      try { if ((await fetch(`http://127.0.0.1:${port}/health`)).ok) break; } catch {}
+      try { if ((await fetch(`http://127.0.0.1:${port}/health`, {signal:AbortSignal.timeout(1000)})).ok) break; } catch {}
       if (Date.now() > deadline) throw new Error(`installed server did not start: ${log}`);
       await new Promise(resolve => setTimeout(resolve,100));
     }
@@ -77,7 +77,7 @@ const { once } = require('node:events');
     socket?.close();
     if (server.exitCode === null && server.signalCode === null) {
       try {
-        if (process.platform === 'win32') execFileSync('taskkill', ['/PID',String(server.pid),'/T','/F'], {stdio:'ignore',windowsHide:true});
+        if (process.platform === 'win32') execFileSync(path.join(process.env.SystemRoot || 'C:\\Windows','System32','taskkill.exe'), ['/PID',String(server.pid),'/T','/F'], {stdio:'ignore',windowsHide:true});
         else process.kill(-server.pid, 'SIGKILL');
       } catch {}
     }
