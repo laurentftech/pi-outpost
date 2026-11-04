@@ -7,6 +7,33 @@ version you had and the one you run now, without going online.
 Releases before 0.41.0 are described on
 [GitHub Releases](https://github.com/laurentftech/pi-outpost/releases).
 
+## [0.59.0] - 2026-11-04
+
+### Changed
+
+- **Keep the conversation visible in narrow windows.** The Work Plan collapses
+  automatically below 768 pixels and restores its desktop state when the window
+  widens. The model selector and Settings resources also have clearer accessible
+  names and improved contrast.
+  ([#407](https://github.com/laurentftech/pi-outpost/pull/407))
+- **Updated diagram and page editors.** Mermaid is now 12.3.0 and GrapesJS 0.23.9.
+  ([#407](https://github.com/laurentftech/pi-outpost/pull/407))
+
+### Fixed
+
+- **Send queued messages immediately after an interruption.** “Send now” starts a
+  new turn with the pending messages, including when the agent was running a tool.
+  Stopping the agent keeps pending messages ready for the next prompt. Long
+  conversations no longer create a second page scrollbar.
+  ([#405](https://github.com/laurentftech/pi-outpost/pull/405))
+- **Reuse document tools after reopening a session.** Tools discovered for PDFs,
+  Word documents, presentations and spreadsheets are restored when the session
+  resumes. Repeating an earlier tool call works without another discovery step.
+  ([#406](https://github.com/laurentftech/pi-outpost/pull/406))
+- **HTTPS commands work in the macOS sandbox.** The sandbox now permits the
+  system certificate trust service needed to validate HTTPS connections.
+  ([#405](https://github.com/laurentftech/pi-outpost/pull/405))
+
 ## [0.58.0] - 2026-11-03
 
 ### Added
