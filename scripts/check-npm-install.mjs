@@ -20,10 +20,21 @@ env.npm_config_cache = path.join(root, "pack-cache");
 await writeFile(env.npm_config_userconfig, "registry=https://registry.npmjs.org/\n");
 await writeFile(env.npm_config_globalconfig, "");
 function run(args, cwd = root, extra = {}) {
-  return execFileSync(process.execPath, [npm, ...args], {
-    cwd, env: { ...env, ...extra }, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"],
-    timeout: 300_000, maxBuffer: 16 * 1024 * 1024, windowsHide: true,
-  });
+  const installing = args[0] === "install" || args[0] === "exec";
+  const started = Date.now();
+  const label = args.slice(0, 2).join(" ");
+  console.log(`[npm-install] ${label}: starting`);
+  try {
+    return execFileSync(process.execPath, [npm, "--timing", ...args], {
+      cwd, env: { ...env, ...extra }, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"],
+      // Cold dependency extraction takes several minutes on Windows. Both probes
+      // retain 60 s startup / 20 s terminal deadlines; the global probe also has
+      // a separate 120 s outer limit.
+      timeout: installing ? 600_000 : 120_000, maxBuffer: 16 * 1024 * 1024, windowsHide: true,
+    });
+  } finally {
+    console.log(`[npm-install] ${label}: finished in ${((Date.now() - started) / 1000).toFixed(1)} s`);
+  }
 }
 try {
   assert.match(run(["--version"]).trim(), /^12\./, "Installation checks must run under npm 12");

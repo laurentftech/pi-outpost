@@ -40,6 +40,8 @@ After `npm run build --workspace cli`, run `npm run test:npm-install` with npm 1
 It packs the built CLI and checks fresh global and npx installs, an actual native terminal,
 and refusal of an unrelated lifecycle script. CI runs this on Linux, Windows and macOS.
 The test uses temporary prefixes, caches and npm configuration and removes them afterwards.
+Cold installs have a ten-minute budget each, including dependency download and extraction.
+The installed application keeps separate, shorter startup and terminal deadlines.
 
 ## Dependency maintenance
 
