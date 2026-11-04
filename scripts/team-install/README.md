@@ -37,7 +37,7 @@ another agent directory; the script installs into the same one.
 
 - **npm must work on the machine.** Both the pi-outpost install and the extension install
   go through it, including a corporate registry set in `.npmrc`.
-- **Use npm 12.2.1 or newer.** The installer authorizes only `node-pty` and `koffi`
+- **Use npm 12.2.1.** The installer authorizes only `node-pty` and `koffi`
   for pi-outpost's terminal and native sandbox. Extensions have a separate npm project
   under `~/.pi/agent/npm` (or your configured agent directory). Review their scripts with
   `npm --prefix ~/.pi/agent/npm approve-scripts --allow-scripts-pending`, then approve

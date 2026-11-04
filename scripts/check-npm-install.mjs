@@ -66,6 +66,9 @@ try {
     }
     await assert.rejects(access(marker), { code: "ENOENT" }, `${mode}: the unapproved script must not execute`);
     console.log(`${mode}: fresh cache, CLI version, real PTY and denied canary passed`);
+    // Each mode starts fresh; release its installed tree before downloading the next.
+    await rm(cache, { recursive: true, force: true, maxRetries: 8, retryDelay: 250 });
+    if (mode === "global") await rm(path.join(root, "prefix"), { recursive: true, force: true, maxRetries: 8, retryDelay: 250 });
   }
 } finally {
   await rm(root, { recursive: true, force: true, maxRetries: 8, retryDelay: 250 });
