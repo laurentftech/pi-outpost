@@ -8,23 +8,23 @@ adds a stricter deployment gate: both actual doctor canaries must report verifie
 Build locally from pinned npm packages, keeping make/g++ for Python's native dependencies. The first
 real CI run disproved the assumption that current landstrip works under Docker's default profile:
 0.20.20 requires user/PID/mount namespaces and private procfs. Supply a Docker-derived default-deny
-seccomp profile permitting only its exact clone flags and two mount flags, and an AppArmor profile
+seccomp profile permitting its exact clone flags, two mount flags and pidfd_getfd flags 0, and an AppArmor profile
 permitting those mounts and userns while keeping protected proc/sys paths. Unmasking system paths is
 also necessary for the private proc mount. Do not change host-wide userns restrictions. No Docker
-socket, privileged mode, extra capabilities or host networking. This does not restrict networking.
+socket, privileged mode, extra capabilities or host networking.
 
-The actual Python HTTP test showed that landstrip's allowNetwork does not grant local binding.
-The deployment includes an adapter with listener permission OFF by default. Only an explicit
-operator ALLOW_APP_LISTENERS=1 opt-in, stored in the protected agent directory, can enable binding
-for the app's single generated policy when allowNetwork is true and the binding key is absent. Preserve every explicit refusal
-and filesystem/process rule. Doctor and other invocations execute the extracted native runner
-unchanged. A real negative bind test checks that the adapter respects an explicit refusal.
+The native socket broker duplicates the tracee's socket with pidfd_getfd. Docker's baseline blocks
+that syscall without CAP_SYS_PTRACE; permitting the syscall with flags 0 lets the broker enforce
+the existing native network policy, while kernel ptrace checks still apply and no capability is added.
+Native policy resolution confirms allowNetwork true is unrestricted IP networking; allowLocalBinding
+is a narrower option in restricted mode, not a separate refusal when IP access is unrestricted.
 
-The native permission allows only loopback binding. An optional relay, disabled by the default
-Compose profile, shares only the app network namespace and forwards operator-selected bridge
-ports to same-number loopback TCP ports. It has no mounts, no additional capabilities, and its own
-PID namespace. Listener opt-in plus a nonempty APP_PORTS list is mandatory; port 3141 is rejected.
-This exposes Python apps through chosen host-loopback ports without a wildcard bind in the sandbox.
+The deployment adapter never enlarges a caller policy. By default it tightens the app's generated
+single-file policy to deny IP connections and local binding. Explicit operator ALLOW_AGENT_NETWORK=1,
+stored in the protected agent directory, only forwards the original policy unchanged. A caller's
+explicit restricted network policy therefore remains restricted. Actual bind/connect probes check
+both the default ceiling and the explicit caller refusal. Python HTTP through a host-loopback port
+is tested only after the operator opt-in; filesystem protection is rechecked in that mode.
 
 The app and Python share the image; Python venvs belong to the project bind mount. A separate
 named volume holds credentials, conversations and runtime config. The config template is used only

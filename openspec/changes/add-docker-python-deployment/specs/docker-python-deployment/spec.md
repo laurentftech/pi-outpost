@@ -18,7 +18,7 @@ capabilities, use no-new-privileges and publish on loopback without a Docker soc
 The agent's shell and interactive terminal SHALL use landstrip with the project's policy. The recipe
 SHALL refuse startup if either real confinement canary is not verified. It SHALL read the web token
 from a secret file into protected config, not expose it in the server's environment or logs. The
-documentation SHALL explicitly state that outbound networking remains open.
+documentation SHALL describe the deployment's operator-controlled agent IP network ceiling.
 
 #### Scenario: RunsPythonInTheConfinedTerminal
 - **WHEN** the user creates a venv and executes Python in the app's real terminal
@@ -40,32 +40,21 @@ documentation SHALL explicitly state that outbound networking remains open.
 - **THEN** real output remains observable, a live terminal can be opened after reconnect, and closed
   terminals are not silently revived
 
-### Requirement: OperatorControlledListeners
-Listener permission SHALL be off by default. Only an explicit operator opt-in MAY enable the adapter
-to allow local binding for a generated single-file policy when networking is allowed and binding
-policy is absent. The opt-in SHALL be stored outside agent-writable paths. The adapter SHALL preserve
-explicit binding refusals and every filesystem/process restriction.
+### Requirement: OperatorControlledNetwork
+IP networking in the agent's shell and terminal SHALL be denied by default. The adapter SHALL only tighten the generated
+single-file policy. With explicit operator opt-in it SHALL forward the caller's policy unchanged,
+never turn a denied permission on. The operator choice SHALL be protected from agent writes.
+Filesystem and process restrictions SHALL remain unchanged.
 
-#### Scenario: ListenersNeedOperatorOptIn
+#### Scenario: AgentNetworkNeedsOperatorOptIn
 - **GIVEN** the shipped default with no operator opt-in
-- **WHEN** a policy allows networking but omits the binding permission
-- **THEN** a Python socket bind is still refused
+- **WHEN** the generated policy permits networking
+- **THEN** actual Python bind and connect calls are still refused by the deployment ceiling
 
-#### Scenario: HonorsAnExplicitBindingRefusal
-- **GIVEN** an operator opt-in and a policy allowing networking but explicitly refusing local binding
-- **WHEN** the recipe's runner adapter executes a Python socket listener
-- **THEN** the bind fails; the deployment adapter does not overwrite the explicit refusal
-
-### Requirement: LoopbackApplicationRelay
-The recipe SHALL provide an optional TCP relay only for operator-selected application ports.
-It SHALL require listener opt-in, exclude port 3141, run non-root without capabilities, and have
-no project, state or secret mounts. It SHALL share the app's network namespace but retain its own PID namespace.
-
-#### Scenario: RelayHasNoAgentState
-- **GIVEN** explicit operator opt-in and a selected application port
-- **WHEN** the optional relay starts
-- **THEN** it has no mounts or capabilities, runs non-root in its own PID namespace, and the
-  app's loopback Python HTTP listener is reachable through the explicitly published host-loopback port
+#### Scenario: HonorsAnExplicitNetworkRefusal
+- **GIVEN** an operator opt-in and a caller policy denying networking and local binding
+- **WHEN** the runner executes Python bind and connect probes
+- **THEN** both calls remain refused; the adapter does not overwrite the caller's restrictions
 
 ### Requirement: PersistentProjectAndAgentState
 The recipe SHALL bind-mount the existing project and use a separate named volume for agent state

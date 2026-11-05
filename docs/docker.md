@@ -52,7 +52,13 @@ variable. The app is single-tenant: use a separate Compose project, data volume 
 The port is published on loopback only. Remote access needs an authenticated TLS reverse proxy or
 SSH tunnel; do not expose it by casually changing the bind address.
 
-The terminal is enabled. In its panel:
+The terminal is enabled. Python scripts and venv creation work without agent IP networking.
+For downloads such as pip packages, set `ALLOW_AGENT_NETWORK=1` in `.env`, then recreate the service
+with `docker compose up --build -d`. This permits IP connections and listeners inside the container
+subject to the caller's policy. It does not change filesystem or process confinement.
+The trusted server's model API requests are separate and work with this option off.
+
+With that explicit network opt-in, in the terminal:
 
 ```sh
 python3 -m venv .venv
@@ -64,8 +70,7 @@ The virtual environment and generated files live in the mounted project and surv
 replacement. For reproducible projects, install from your own pinned requirements file. Additional
 OS libraries belong in the Dockerfile and require rebuilding the image.
 
-App listeners and their TCP relay are **disabled by default**. To opt in for a Python web app, set
-`ALLOW_APP_LISTENERS=1` and `APP_PORTS=8000` in `.env`, then publish the chosen port on loopback in a
+For a Python web app, use that same explicit network opt-in and publish the chosen port on loopback in a
 `compose.override.yml` beside the recipe, for example:
 
 ```yaml
@@ -75,25 +80,23 @@ services:
       - "127.0.0.1:8000:8000"
 ```
 
-Start the optional relay profile with `docker compose --profile apps up --build -d`, then start
-the Python app from the terminal listening on `127.0.0.1:8000` inside the container.
-For a simple file server: `python3 -m http.server 8000 --bind 127.0.0.1`. Open
+Recreate the service with `docker compose up --build -d`, then start
+the Python app from the terminal listening on `0.0.0.0:8000` inside the container.
+For a simple file server: `python3 -m http.server 8000 --bind 0.0.0.0`. Open
 `http://127.0.0.1:8000/` on the host. This additional app has its own authentication requirements;
 the pi-outpost access token does not protect it. No Docker socket is needed.
 
-landstrip permits local listeners, not a wildcard bind. The optional relay shares the app's
-network namespace and forwards the selected bridge-address TCP ports to the same ports on
-127.0.0.1. It has its own PID namespace and no project, data or secret mounts. The agent and Python
-still run together in the main container. Only explicitly listed ports 1024–65535 are accepted;
-3141 is reserved for pi-outpost. If the app already listens on all container interfaces, do not
-start a second listener on that port; this recipe expects the sandboxed loopback listener.
+The app, agent and Python run in one container. Docker publishes only the host ports the operator
+chooses; there is no relay service or access to the Docker daemon.
 
 ## What the boundaries mean
 
 - The service runs as the unprivileged `node` user, with all Linux capabilities dropped,
   `no-new-privileges` and an init process. There is no Docker socket, host networking or privileged mode.
 - **The Docker profile has explicit exceptions.** The supplied seccomp profile keeps Docker's
-  default-deny baseline and allows landstrip's exact clone flags and two mount flag combinations.
+  default-deny baseline and allows landstrip's exact clone flags, two mount flag combinations and
+  `pidfd_getfd` with flags 0 so its broker can inspect a tracee socket. Kernel ptrace checks still
+  apply; no `CAP_SYS_PTRACE` is added.
   The AppArmor profile permits user namespaces and the two mounts while retaining Docker's protected
   proc/sys paths. Compose also unmasks system paths so the child can mount its private procfs.
   These changes are required by landstrip 0.20.20; this is not Docker's unchanged default profile.
@@ -106,14 +109,13 @@ start a second listener on that port; this recipe expects the sandboxed loopback
   separate anyway: the web token is read from a Compose secret file into protected config, and model
   credentials belong in the credential store. Do not add API keys to the service's environment.
   `PI_OUTPOST_TOKEN` is explicitly refused by this recipe.
-- **The network remains open.** This recipe does not implement a host allowlist. Apply outbound
-  restrictions around the container if you need them; see [sandboxing](sandboxing.md#linux-landstrip).
-- Listener permission stays off unless the operator explicitly sets `ALLOW_APP_LISTENERS=1` and
-  recreates the service. The protected `/data/agent/docker-network.json` records this choice; agent
-  commands cannot edit it. Only with that opt-in does the runner adapter enable `allowLocalBinding`
-  when networking is allowed and the binding key is absent. An explicit `allowLocalBinding: false`
-  and all filesystem/process rules remain unchanged. Host access additionally requires the optional
-  `apps` profile, an explicit `APP_PORTS` list and a loopback port publication in Compose.
+- **IP networking in the agent's shell and terminal is disabled by default.** The adapter tightens the app's generated
+  policy to deny IP connections and listeners. Only the operator can opt in with
+  `ALLOW_AGENT_NETWORK=1`; the choice is recorded in protected `/data/agent/docker-network.json`.
+  With that opt-in, the adapter forwards the caller's policy unchanged; it never turns a denied
+  permission on. An explicit restricted network policy remains restricted. The native unrestricted
+  IP policy permits both outgoing IP traffic and listeners; it is not a host allowlist.
+  Apply any additional outbound restrictions around the container.
 - Extensions and MCP servers retain their process's rights. Run trusted resources only; the shell
   sandbox does not turn a shared server or malicious extension into an isolated multi-user service.
 

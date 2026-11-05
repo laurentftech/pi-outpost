@@ -1263,6 +1263,12 @@
         }
       ],
       "comment": "landstrip: private procfs with MS_NOSUID | MS_NODEV | MS_NOEXEC"
+    },
+    {
+      "names": ["pidfd_getfd"],
+      "action": "SCMP_ACT_ALLOW",
+      "args": [{"index": 2, "value": 0, "op": "SCMP_CMP_EQ"}],
+      "comment": "landstrip socket broker: inspect its own tracee socket; kernel ptrace checks still apply, no CAP_SYS_PTRACE is granted"
     }
   ]
 }

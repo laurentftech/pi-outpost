@@ -12,7 +12,7 @@ services:
     init: true
     restart: unless-stopped
     environment:
-      OUTPOST_ALLOW_APP_LISTENERS: ${ALLOW_APP_LISTENERS:-0}
+      OUTPOST_ALLOW_AGENT_NETWORK: ${ALLOW_AGENT_NETWORK:-0}
     cap_drop: [ALL]
     security_opt:
       - no-new-privileges:true
@@ -36,19 +36,6 @@ services:
       timeout: 5s
       start_period: 60s
       retries: 3
-  app-relay:
-    profiles: [apps]
-    image: pi-outpost-python:${PI_OUTPOST_VERSION:-0.59.1}
-    init: true
-    restart: unless-stopped
-    entrypoint: [node, /opt/pi-outpost-docker/relay.cjs]
-    network_mode: service:pi-outpost
-    depends_on: [pi-outpost]
-    cap_drop: [ALL]
-    security_opt: [no-new-privileges:true]
-    environment:
-      ALLOW_APP_LISTENERS: ${ALLOW_APP_LISTENERS:-0}
-      APP_PORTS: ${APP_PORTS:-}
 secrets:
   pi_outpost_token:
     file: ./server-token
