@@ -67,7 +67,7 @@ Name the same runner for the agent's `bash` (`sandbox.bashRunner`) and for the t
 
 | Where the server runs | Runner | Shell (`sandbox.bashShell`) |
 | --- | --- | --- |
-| Linux: a Docker container, the host, a VM, WSL2 | [landstrip](#linux-landstrip) — or, loosening Docker's profile, [MXC](#linux-as-an-option-mxc) | `/bin/bash`, the default |
+| Linux: a Docker container, the host, a VM, WSL2 | [landstrip](#linux-landstrip) or [MXC](#linux-as-an-option-mxc) — current versions need namespace permissions in Docker; see the [Docker recipe](docker.md) | `/bin/bash`, the default |
 | Windows 11 with the August 2026 update or later | [MXC](#windows-11-mxc-and-powershell): `"mxc"`, installed with pi-outpost | `powershell.exe` (the agent gets a `powershell` tool), busybox-w32's `sh.exe`, or — experimental — a real bash in a [Linux container](#a-real-bash-wslc-experimental) (`sandbox.bashImage`) |
 | Older Windows | none works natively: see [Older Windows](#older-windows) | |
 | macOS on Apple silicon | [MXC](#macos-on-apple-silicon-mxc): `"mxc"`, installed with pi-outpost — or [Seatbelt](#macos-every-mac-seatbelt): `"seatbelt"` | `/bin/bash`, the default |
@@ -135,8 +135,10 @@ The Linux package is an AppImage. Use the extracted executable as the runner whe
 including in Docker; keep its extracted directory and license notices. The full-app recipe performs
 this extraction while building the image and keeps `/opt/landstrip/bin/landstrip` as its runner path.
 
-It needs Landlock (kernel 5.13 or later, enabled) and a seccomp profile that lets its calls through;
-Docker's default one does.
+It needs Landlock and a seccomp profile that lets its calls through. landstrip 0.20.20 also creates
+user, PID and mount namespaces, with a private procfs: Docker's unchanged default profile refuses it.
+The [full-app recipe](docker.md) supplies dedicated seccomp and AppArmor profiles and documents the
+system-path exception. Verify the actual runner on the host; do not disable confinement to make it start.
 
 **In Docker, keep the runner.** The container protects the host, not what the server holds inside it:
 the agent directory, the configuration, every mounted project. Also:
@@ -147,7 +149,8 @@ and checks both confined surfaces before serving.
 - run the server as an ordinary user, not root (`--security-opt no-new-privileges` is compatible);
 - mount only the projects and the agent directory — never the Docker socket, never `--privileged`;
 - keep provider keys in the credential store (`pi-outpost login`, or Settings), not in the server's
-  environment: a command can still read it through `/proc/<pid>/environ` (same account).
+  environment. landstrip 0.20.20 hides the server's processes in a separate PID namespace; a runner
+  using filesystem confinement alone can leave same-account `/proc/<pid>/environ` readable.
 
 ## Linux, as an option: MXC
 

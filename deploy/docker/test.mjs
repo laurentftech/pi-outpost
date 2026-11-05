@@ -3,7 +3,7 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { mkdtemp, mkdir, writeFile, readFile, copyFile, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, writeFile, readFile, copyFile, cp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -25,6 +25,7 @@ const token = randomBytes(32).toString("hex");
 const workspace = path.join(root, "workspace");
 await mkdir(workspace);
 await copyFile(new URL("compose.yml", recipe), path.join(root, "compose.yml"));
+await cp(new URL("profiles/", recipe), path.join(root, "profiles"), { recursive: true });
 await writeFile(path.join(root, ".env"), `PROJECT_DIR=${workspace}\nPI_OUTPOST_PORT=0\n`);
 await writeFile(path.join(root, "server-token"), token, { mode: 0o600 });
 await writeFile(path.join(root, "test.yml"), JSON.stringify({ services: { "pi-outpost": {
@@ -99,6 +100,7 @@ try {
   const inspected = JSON.parse(docker(["inspect", container]))[0];
   assert.equal(inspected.Config.User, "node");
   assert.equal(inspected.HostConfig.Privileged, false);
+  assert.ok(!inspected.HostConfig.SecurityOpt.includes("seccomp=unconfined"));
   assert.ok(!inspected.Config.Env.some(value => /^PI_OUTPOST_TOKEN=/.test(value)));
   console.log("KeepsTheDockerDaemonOutsideTheApp passed");
   // openlore: scenario=UsesPinnedNpmWithNativeBindings spec=docker-python-deployment
@@ -166,7 +168,10 @@ print('DOCKER_' + 'PYTHON_OK', flush=True)
   template.sandbox.bashRunner = "/missing-runner";
   await writeFile(path.join(data, "config.json"), JSON.stringify(template));
   for (const missingSecret of [true, false]) {
-    const args = ["run", "--rm", "--init", "--cap-drop=ALL", "--security-opt=no-new-privileges", "-e", "PI_OFFLINE=1",
+    const args = ["run", "--rm", "--init", "--cap-drop=ALL", "--security-opt=no-new-privileges",
+      "--security-opt", `seccomp=${path.join(root, "profiles/seccomp-landstrip.json")}`,
+      "--security-opt", `apparmor=${process.env.LANDSTRIP_APPARMOR_PROFILE ?? "unconfined"}`,
+      "--security-opt", "systempaths=unconfined", "-e", "PI_OFFLINE=1",
       "--mount", `type=bind,src=${workspace},dst=/workspace`, "--mount", `type=bind,src=${data},dst=/data`];
     if (!missingSecret) args.push("--mount", `type=bind,src=${path.join(root, "server-token")},dst=/run/secrets/pi_outpost_token,readonly`);
     let failed;

@@ -12,7 +12,11 @@ services:
     init: true
     restart: unless-stopped
     cap_drop: [ALL]
-    security_opt: [no-new-privileges:true]
+    security_opt:
+      - no-new-privileges:true
+      - seccomp=./profiles/seccomp-landstrip.json
+      - apparmor=${LANDSTRIP_APPARMOR_PROFILE:-unconfined}
+      - systempaths=unconfined
     ports:
       - "127.0.0.1:${PI_OUTPOST_PORT:-3141}:3141"
     volumes:

@@ -9,8 +9,9 @@ from a pinned published pi-outpost package, not published automatically by the r
 
 ## Start
 
-You need Docker with Compose v2 and a Linux kernel with Landlock enabled (5.13 or later). Docker
-Desktop uses its Linux VM's kernel. Startup checks the actual runner and both confined surfaces;
+You need Docker with Compose v2 and a Linux kernel with Landlock and user namespaces enabled.
+Docker Desktop uses its Linux VM's kernel. Linux hosts with AppArmor need AppArmor 4 and the dedicated
+profile below. Startup checks the actual runner and both confined surfaces;
 an unsupported host is refused, without turning off the sandbox.
 
 From a checkout:
@@ -27,6 +28,18 @@ Edit `.env`: point `PROJECT_DIR` at an **existing** project directory. On Linux 
 host ownership: set `APP_UID` and `APP_GID` to the output of `id -u` and `id -g`. They must be nonzero.
 The project must be writable and `server-token` readable by that UID. Docker Desktop's file-sharing
 ownership differs by platform; use the same UID mapping if access is refused.
+
+On a Linux host with AppArmor, load the supplied profile, then set
+`LANDSTRIP_APPARMOR_PROFILE=pi-outpost-landstrip` in `.env`:
+
+```sh
+sudo apparmor_parser -r profiles/pi-outpost-landstrip.apparmor
+```
+
+This grants user namespaces to this profile without changing the host-wide
+`kernel.apparmor_restrict_unprivileged_userns` setting. A host administrator must load the profile
+again after reboot, or install it in the host's normal persistent AppArmor profile directory.
+Docker Desktop hosts without AppArmor keep `LANDSTRIP_APPARMOR_PROFILE=unconfined`.
 
 ```sh
 docker compose up --build -d
@@ -69,16 +82,21 @@ the pi-outpost access token does not protect it. No Docker socket is needed.
 ## What the boundaries mean
 
 - The service runs as the unprivileged `node` user, with all Linux capabilities dropped,
-  `no-new-privileges` and an init process. It uses Docker's default seccomp profile. There is no
-  Docker socket, host networking or privileged mode.
+  `no-new-privileges` and an init process. There is no Docker socket, host networking or privileged mode.
+- **The Docker profile has explicit exceptions.** The supplied seccomp profile keeps Docker's
+  default-deny baseline and allows landstrip's exact clone flags and two mount flag combinations.
+  The AppArmor profile permits user namespaces and the two mounts while retaining Docker's protected
+  proc/sys paths. Compose also unmasks system paths so the child can mount its private procfs.
+  These changes are required by landstrip 0.20.20; this is not Docker's unchanged default profile.
+  Policy sources, license and changes are recorded in `deploy/docker/profiles/NOTICE.md`.
 - **landstrip 0.20.20** confines both the agent's shell and the interactive terminal to `/workspace`
   and private temporary storage. The agent directory and runtime configuration are denied. A real
   canary checks each surface at startup. Any non-verified verdict refuses this recipe's startup.
   Its AppImage is extracted at build time, so running it needs neither FUSE nor an extra device.
-- Landlock does not hide the server's `/proc` environment from another process with the same UID.
-  That is why the web token is read from a Compose secret file and stored in the protected config,
-  and provider credentials belong in the credential store. Do not add API keys to the service's
-  environment. `PI_OUTPOST_TOKEN` is explicitly refused by this recipe.
+- landstrip 0.20.20 adds a private PID namespace and procfs to filesystem confinement. Keep credentials
+  separate anyway: the web token is read from a Compose secret file into protected config, and model
+  credentials belong in the credential store. Do not add API keys to the service's environment.
+  `PI_OUTPOST_TOKEN` is explicitly refused by this recipe.
 - **The network remains open.** This recipe does not implement a host allowlist. Apply outbound
   restrictions around the container if you need them; see [sandboxing](sandboxing.md#linux-landstrip).
 - Extensions and MCP servers retain their process's rights. Run trusted resources only; the shell
@@ -117,6 +135,9 @@ and Playwright Chromium, run from the repository root:
 ```sh
 node deploy/docker/test.mjs
 ```
+
+On an AppArmor host, set `LANDSTRIP_APPARMOR_PROFILE=pi-outpost-landstrip` for that test command
+too; it uses an isolated temporary Compose project rather than the recipe's `.env` file.
 
 The test uses an isolated Compose project and fake provider credentials, exercises the installed
 app's real terminal, creates a venv, executes Python, checks refused reads/writes outside the project,

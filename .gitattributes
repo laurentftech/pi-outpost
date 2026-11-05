@@ -39,3 +39,4 @@ web/public/vendor/**           -text
 
 # Docker executes this script on Linux even when the host checkout is Windows.
 deploy/docker/entrypoint.sh    text eol=lf
+deploy/docker/profiles/*.apparmor text eol=lf

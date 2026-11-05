@@ -17,6 +17,8 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v5
+      - name: Load the dedicated AppArmor profile
+        run: sudo apparmor_parser -r deploy/docker/profiles/pi-outpost-landstrip.apparmor
       - uses: actions/setup-node@v5
         with:
           node-version: 24
@@ -32,6 +34,8 @@ jobs:
           docker build --build-arg APP_UID="$(id -u)" --build-arg APP_GID="$(id -g)" \
             -t pi-outpost-python:0.59.1 deploy/docker
       - name: Exercise the installed app, confinement, terminal and persistence
+        env:
+          LANDSTRIP_APPARMOR_PROFILE: pi-outpost-landstrip
         run: node deploy/docker/test.mjs
       - name: Diagnose namespace requirements on a failed recipe
         if: failure()
