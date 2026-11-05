@@ -1,0 +1,77 @@
+name: Bug report
+description: Report something that does not work as expected.
+title: "[Bug]: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This report will be public. Remove tokens, provider keys, personal documents and private conversation content.
+        For a suspected vulnerability, [report privately](https://github.com/laurentftech/pi-outpost/security/advisories/new).
+  - type: input
+    id: version
+    attributes:
+      label: pi-outpost version
+      description: Include the package version or commit SHA for a repository checkout.
+      placeholder: "For example, 0.59.1"
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - Windows
+        - macOS
+        - Linux
+        - Other
+    validations:
+      required: true
+  - type: dropdown
+    id: installation
+    attributes:
+      label: Installation or deployment
+      options:
+        - npm / npx
+        - Standalone executable
+        - Docker
+        - Embedded widget
+        - Repository / development
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment details
+      description: OS version, browser, Node.js version and sandbox runner/runtime where relevant. Redact any diagnostic output.
+      placeholder: "For example, Windows 11, Edge, Node 24, embedded runtime with MXC."
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce
+      description: Provide a minimal example using test data. Include relevant configuration without credentials.
+      placeholder: |
+        1. Start pi-outpost with ...
+        2. Open ...
+        3. ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behaviour
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behaviour
+      description: Include the error message if available.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Redacted logs or diagnostics
+      description: Optional. Remove credentials and private data before pasting.
+      render: text

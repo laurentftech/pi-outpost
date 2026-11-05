@@ -11,6 +11,11 @@ architectural change, describe the problem and proposed scope in an issue first.
 the pi-outpost version, OS, runtime/sandbox runner, minimal reproduction and expected behaviour.
 Redact tokens, provider keys, personal documents and conversation content from shared logs.
 
+The [new issue chooser](https://github.com/laurentftech/pi-outpost/issues/new/choose) provides a bug
+report form and a feature request form, plus a link to private security reporting. Blank issues
+remain available for other requests, including asking for a private contact channel without
+publishing vulnerability details.
+
 ## Development setup
 
 Use Node.js 24 (the main CI runtime), Git and **npm 12.2.1**. Native terminal dependencies may

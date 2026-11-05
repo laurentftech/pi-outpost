@@ -1,0 +1,32 @@
+name: Feature request
+description: Describe a use case or improvement.
+title: "[Feature]: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Search existing issues first. Use anonymized examples and keep private data out of this public request.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or use case
+      description: What are you trying to accomplish, and where does the current behaviour fall short?
+    validations:
+      required: true
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Desired outcome
+      description: Describe what would help. A technical implementation proposal is optional.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives or workarounds
+      description: What have you tried, and why is it insufficient?
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Optional examples, affected platforms or related issues.
