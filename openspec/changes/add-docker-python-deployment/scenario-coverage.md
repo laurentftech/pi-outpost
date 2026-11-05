@@ -10,6 +10,7 @@ Their implementation is unchanged; the new deployment boundary is exercised agai
 | KeepsTheDockerDaemonOutsideTheApp | partial | `deploy/docker/test.mjs`: `KeepsTheDockerDaemonOutsideTheApp` — resolved Compose and inspected container, non-root, capabilities, loopback, no socket. Pending execution. |
 | HonorsAnExplicitBindingRefusal | partial | `deploy/docker/test.mjs`: `HonorsAnExplicitBindingRefusal` — actual native runner bind with allowNetwork true and explicit allowLocalBinding false remains refused. Pending execution. |
 | ListenersNeedOperatorOptIn | partial | `deploy/docker/test.mjs`: `ListenersNeedOperatorOptIn` — default protected choice is false and an omitted binding key still refuses a real Python bind. Pending execution. |
+| RelayHasNoAgentState | partial | `deploy/docker/test.mjs`: `RelayHasNoAgentState` — inspected relay has no mounts/caps, non-root user, private PID namespace; actual host HTTP fetch proves the selected TCP route. Pending execution. |
 | UsesPinnedNpmWithNativeBindings | partial | `deploy/docker/test.mjs`: `UsesPinnedNpmWithNativeBindings` — exact npm version and live installed-app PTY. Pending execution. |
 | RunsPythonInTheConfinedTerminal | partial | `deploy/docker/test.mjs`: `RunsPythonInTheConfinedTerminal` — real venv/Python writes, host readback, interrupt followed by another command. Pending execution. |
 | ProtectsCredentialsAndConfiguration | partial | `deploy/docker/test.mjs`: `ProtectsCredentialsAndConfiguration` — four real refused reads, refused write, secret-free environment/logs. Pending execution. |

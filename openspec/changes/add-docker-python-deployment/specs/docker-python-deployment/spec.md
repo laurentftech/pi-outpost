@@ -56,6 +56,17 @@ explicit binding refusals and every filesystem/process restriction.
 - **WHEN** the recipe's runner adapter executes a Python socket listener
 - **THEN** the bind fails; the deployment adapter does not overwrite the explicit refusal
 
+### Requirement: LoopbackApplicationRelay
+The recipe SHALL provide an optional TCP relay only for operator-selected application ports.
+It SHALL require listener opt-in, exclude port 3141, run non-root without capabilities, and have
+no project, state or secret mounts. It SHALL share the app's network namespace but retain its own PID namespace.
+
+#### Scenario: RelayHasNoAgentState
+- **GIVEN** explicit operator opt-in and a selected application port
+- **WHEN** the optional relay starts
+- **THEN** it has no mounts or capabilities, runs non-root in its own PID namespace, and the
+  app's loopback Python HTTP listener is reachable through the explicitly published host-loopback port
+
 ### Requirement: PersistentProjectAndAgentState
 The recipe SHALL bind-mount the existing project and use a separate named volume for agent state
 and runtime configuration. Recreating a container SHALL preserve both, including settings changes.

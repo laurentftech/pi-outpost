@@ -33,8 +33,8 @@ RUN --mount=type=secret,id=proxy_ca \
  && if [ "${APP_UID}" != 1000 ]; then usermod -u "${APP_UID}" node; fi \
  && mkdir -p /data/agent /workspace /opt/pi-outpost-docker \
  && chown -R "${APP_UID}:${APP_GID}" /data /workspace /home/node \
- && cp /recipe/bootstrap.mjs /recipe/config.json /recipe/entrypoint.sh /opt/pi-outpost-docker/ \
- && chmod 644 /opt/pi-outpost-docker/bootstrap.mjs /opt/pi-outpost-docker/config.json \
+ && cp /recipe/bootstrap.mjs /recipe/config.json /recipe/entrypoint.sh /recipe/relay.cjs /opt/pi-outpost-docker/ \
+ && chmod 644 /opt/pi-outpost-docker/bootstrap.mjs /opt/pi-outpost-docker/config.json /opt/pi-outpost-docker/relay.cjs \
  && chmod 755 /opt/pi-outpost-docker/entrypoint.sh \
  && npm cache clean --force \
  && rm -rf /var/lib/apt/lists/* /root/.cache /tmp/*.tgz

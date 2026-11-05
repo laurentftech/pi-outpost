@@ -64,8 +64,8 @@ The virtual environment and generated files live in the mounted project and surv
 replacement. For reproducible projects, install from your own pinned requirements file. Additional
 OS libraries belong in the Dockerfile and require rebuilding the image.
 
-App listeners are **disabled by default**. To opt in for a Python web app, the operator must set
-`ALLOW_APP_LISTENERS=1` in `.env` and publish its port explicitly on loopback in a
+App listeners and their TCP relay are **disabled by default**. To opt in for a Python web app, set
+`ALLOW_APP_LISTENERS=1` and `APP_PORTS=8000` in `.env`, then publish the chosen port on loopback in a
 `compose.override.yml` beside the recipe, for example:
 
 ```yaml
@@ -75,10 +75,18 @@ services:
       - "127.0.0.1:8000:8000"
 ```
 
-Recreate the service, then start the app from the terminal listening on `0.0.0.0:8000` inside the
-container. For a simple file server: `python3 -m http.server 8000 --bind 0.0.0.0`. Open
+Start the optional relay profile with `docker compose --profile apps up --build -d`, then start
+the Python app from the terminal listening on `127.0.0.1:8000` inside the container.
+For a simple file server: `python3 -m http.server 8000 --bind 127.0.0.1`. Open
 `http://127.0.0.1:8000/` on the host. This additional app has its own authentication requirements;
 the pi-outpost access token does not protect it. No Docker socket is needed.
+
+landstrip permits local listeners, not a wildcard bind. The optional relay shares the app's
+network namespace and forwards the selected bridge-address TCP ports to the same ports on
+127.0.0.1. It has its own PID namespace and no project, data or secret mounts. The agent and Python
+still run together in the main container. Only explicitly listed ports 1024–65535 are accepted;
+3141 is reserved for pi-outpost. If the app already listens on all container interfaces, do not
+start a second listener on that port; this recipe expects the sandboxed loopback listener.
 
 ## What the boundaries mean
 
@@ -104,7 +112,8 @@ the pi-outpost access token does not protect it. No Docker socket is needed.
   recreates the service. The protected `/data/agent/docker-network.json` records this choice; agent
   commands cannot edit it. Only with that opt-in does the runner adapter enable `allowLocalBinding`
   when networking is allowed and the binding key is absent. An explicit `allowLocalBinding: false`
-  and all filesystem/process rules remain unchanged. Only published ports are exposed on the host.
+  and all filesystem/process rules remain unchanged. Host access additionally requires the optional
+  `apps` profile, an explicit `APP_PORTS` list and a loopback port publication in Compose.
 - Extensions and MCP servers retain their process's rights. Run trusted resources only; the shell
   sandbox does not turn a shared server or malicious extension into an isolated multi-user service.
 

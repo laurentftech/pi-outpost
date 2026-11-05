@@ -20,6 +20,12 @@ for the app's single generated policy when allowNetwork is true and the binding 
 and filesystem/process rule. Doctor and other invocations execute the extracted native runner
 unchanged. A real negative bind test checks that the adapter respects an explicit refusal.
 
+The native permission allows only loopback binding. An optional relay, disabled by the default
+Compose profile, shares only the app network namespace and forwards operator-selected bridge
+ports to same-number loopback TCP ports. It has no mounts, no additional capabilities, and its own
+PID namespace. Listener opt-in plus a nonempty APP_PORTS list is mandatory; port 3141 is rejected.
+This exposes Python apps through chosen host-loopback ports without a wildcard bind in the sandbox.
+
 The app and Python share the image; Python venvs belong to the project bind mount. A separate
 named volume holds credentials, conversations and runtime config. The config template is used only
 for first startup, with the web token refreshed from a Compose secret file each time. Credentials
