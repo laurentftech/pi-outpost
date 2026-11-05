@@ -3,7 +3,7 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { mkdtemp, mkdir, writeFile, readFile, copyFile, cp, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, writeFile, readFile, copyFile, cp, rm, chown } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -18,16 +18,28 @@ function docker(args, options = {}) {
     encoding: "utf8", timeout: 120_000, maxBuffer: 2 * 1024 * 1024, ...options,
   });
 }
+// CI tests the distributable image's default UID 1000, even on a UID 1001 runner.
+// Only this harness runs as root there; every app container stays non-root.
+// openlore: scenario=ValidatesTheDistributableImage spec=docker-python-deployment
+const [imageUid, imageGid] = docker(["run", "--rm", "--entrypoint", "node", image,
+  "-p", "process.getuid()+':'+process.getgid()"] ).trim().split(":").map(Number);
+assert.ok(imageUid > 0 && imageGid > 0, "The image must run as a non-root UID/GID");
+async function ownedByApp(file) {
+  if (process.getuid() === 0) await chown(file, imageUid, imageGid);
+  else assert.equal(process.getuid(), imageUid, "Build with APP_UID matching your UID, or run the test harness with sudo");
+}
 const composeArgs = ["compose", "--project-name", project, "--project-directory", root,
   "--file", path.join(root, "compose.yml"), "--file", path.join(root, "test.yml")];
 const compose = args => docker([...composeArgs, ...args]);
 const token = randomBytes(32).toString("hex");
 const workspace = path.join(root, "workspace");
 await mkdir(workspace);
+await ownedByApp(workspace);
 await copyFile(new URL("compose.yml", recipe), path.join(root, "compose.yml"));
 await cp(new URL("profiles/", recipe), path.join(root, "profiles"), { recursive: true });
 await writeFile(path.join(root, ".env"), `PROJECT_DIR=${workspace}\nPI_OUTPOST_PORT=0\n`);
 await writeFile(path.join(root, "server-token"), token, { mode: 0o600 });
+await ownedByApp(path.join(root, "server-token"));
 await writeFile(path.join(root, "test.yml"), JSON.stringify({ services: { "pi-outpost": {
   image, restart: "no", environment: { PI_OFFLINE: "1", OUTPOST_ALLOW_AGENT_NETWORK: "0" },
   ports: ["127.0.0.1:0:8000"],
@@ -105,6 +117,7 @@ try {
   console.log("KeepsTheDockerDaemonOutsideTheApp passed");
   // openlore: scenario=UsesPinnedNpmWithNativeBindings spec=docker-python-deployment
   assert.equal(docker(["exec", container, "npm", "--version"]).trim(), "12.2.1");
+  assert.equal(docker(["exec", container, "pi-outpost", "--version"]).trim(), process.env.PI_OUTPOST_TEST_VERSION ?? "0.59.1");
   const logs = compose(["logs", "--no-color"]);
   assert.match(logs, /\[ok  \] shell sandbox\s+confined by/);
   assert.match(logs, /\[ok  \] terminal sandbox\s+confined by/);
@@ -201,9 +214,11 @@ print('DOCKER_' + 'PYTHON_OK', flush=True)
   // openlore: scenario=RefusesMissingCredentialsOrUnverifiedConfinement spec=docker-python-deployment
   const data = path.join(root, "negative-data");
   await mkdir(data);
+  await ownedByApp(data);
   const template = JSON.parse(await readFile(new URL("config.json", recipe), "utf8"));
   template.sandbox.bashRunner = "/missing-runner";
   await writeFile(path.join(data, "config.json"), JSON.stringify(template));
+  await ownedByApp(path.join(data, "config.json"));
   for (const missingSecret of [true, false]) {
     const args = ["run", "--rm", "--init", "--cap-drop=ALL", "--security-opt=no-new-privileges",
       "--security-opt", `seccomp=${path.join(root, "profiles/seccomp-landstrip.json")}`,
@@ -219,6 +234,7 @@ print('DOCKER_' + 'PYTHON_OK', flush=True)
     assert.ok(!output.includes(token));
   }
   console.log("RefusesMissingCredentialsOrUnverifiedConfinement passed");
+  console.log("ValidatesTheDistributableImage passed (CLI version, non-root image and all real-app checks)");
   console.log("Docker recipe and running-app browser checks passed.");
 } finally {
   socket?.close();

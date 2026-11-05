@@ -4,8 +4,9 @@ This recipe runs **pi-outpost itself**, including its web interface, agent and i
 It is separate from the [Open WebUI tool-server image](openwebui.md).
 
 Node.js, npm **12.2.1**, Python 3, pip, venv, git and curl run in the same container. The agent uses
-these installed tools; it does not launch another Python container. The image is built locally
-from a pinned published pi-outpost package, not published automatically by the release workflow.
+these installed tools; it does not launch another Python container. You can build locally from a
+pinned published pi-outpost package. Starting with the first release containing this recipe, the
+release workflow also publishes the tested Linux x64 image to `ghcr.io/laurentftech/pi-outpost`.
 
 ## Start
 
@@ -125,6 +126,32 @@ the build context.
 
 ## Persistence, configuration and updates
 
+### Use the published image
+
+Once a release containing this recipe has completed, set these values in the recipe's `.env`,
+replacing `X.Y.Z` with that release's version (the existing `0.59.1` release has no full-app image):
+
+```dotenv
+PI_OUTPOST_IMAGE=ghcr.io/laurentftech/pi-outpost
+PI_OUTPOST_VERSION=X.Y.Z
+```
+
+Keep the same project, token, volume and security profiles from the setup above, then run:
+
+```sh
+docker compose pull pi-outpost
+docker compose up --no-build -d
+```
+
+The published image runs as UID/GID **1000:1000**. Its mounted project must be writable and its
+private token file readable by that UID. `APP_UID`/`APP_GID` customize local builds only: if you
+need a different UID, keep `PI_OUTPOST_IMAGE` unset and use the local build instructions.
+Published images are Linux x64 only. Every release has its exact version tag; stable releases
+also update `latest`, while prereleases never move it. Prefer a version pin for controlled updates.
+To update, change `PI_OUTPOST_VERSION`, pull again and recreate with `--no-build`.
+
+### Local builds and persistent data
+
 `PROJECT_DIR` is mounted at `/workspace`. The `pi-outpost-data` named volume keeps `/data/agent`
 (credentials and conversations), `/data/config.json` and user configuration/cache directories.
 The template is copied on first start only: settings survive recreation. The token is refreshed
@@ -159,6 +186,9 @@ node deploy/docker/test.mjs
 
 On an AppArmor host, set `LANDSTRIP_APPARMOR_PROFILE=pi-outpost-landstrip` for that test command
 too; it uses an isolated temporary Compose project rather than the recipe's `.env` file.
+The test host UID must match the image UID. CI instead runs only the fixture/browser harness with
+`sudo` so it can give its temporary files to UID 1000 and test the exact distributable image;
+the application container remains non-root, and the token file remains mode 0600.
 
 The test uses an isolated Compose project and fake provider credentials, exercises the installed
 app's real terminal, creates a venv, executes Python, checks refused reads/writes outside the project,

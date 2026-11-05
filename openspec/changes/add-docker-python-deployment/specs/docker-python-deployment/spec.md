@@ -1,5 +1,21 @@
 ## ADDED Requirements
 
+### Requirement: AutomaticReleaseImage
+After successful package publication, the release workflow SHALL build and test the full Linux
+x64 image from that release's CLI before pushing the same image to GHCR. It SHALL retain default
+unprivileged UID/GID 1000. The CLI tarball SHALL remain internal. Version tags SHALL always be
+pushed; latest SHALL move only for stable versions. Anonymous manifest access SHALL be checked.
+
+#### Scenario: FullAppReleaseTagsFollowTheChannel
+- **WHEN** a stable or prerelease version is assigned full-app image tags
+- **THEN** the exact version tag is present, latest is present only for stable versions, and
+  a prerelease naming the latest channel is refused
+
+#### Scenario: ValidatesTheDistributableImage
+- **WHEN** the full-app image is tested for release
+- **THEN** its actual CLI reports the intended version, its UID/GID are nonzero, and the same
+  image passes the real deployment and browser checks before the push step can execute
+
 ### Requirement: FullApplicationRecipe
 The repository SHALL provide a local Docker/Compose recipe for the full app with pinned pi-outpost,
 npm 12.2.1, Python, venv and native terminal bindings. It SHALL run as an unprivileged user, drop

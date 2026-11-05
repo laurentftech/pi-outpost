@@ -32,5 +32,14 @@ for first startup, with the web token refreshed from a Compose secret file each 
 stay out of the server environment even with landstrip's private procfs. User authentication
 and provider configuration otherwise use the existing app, with no new product flow.
 
-The image is a recipe, not a new automatically published release artifact. The existing release
-pipeline and its Open WebUI image remain outside this change's implementation scope.
+The user's follow-up extends the recipe to automatic GHCR publication. After successful npm
+publication, the release job packs the already built CLI without rerunning lifecycle scripts and
+passes it as an internal artifact. The full-app image installs that tarball, asserts its exact
+version, and runs all confinement and browser checks before tagging/pushing the same image.
+This avoids the observed npm registry propagation delay. The attachment job filters public
+artifacts so the internal tarball is not accidentally uploaded to GitHub Releases.
+The image uses UID/GID 1000, including during tests; only CI's temporary fixture harness runs
+as root to chown its own files, including the mode-0600 token. The app remains non-root.
+Reuse image-tags.mjs so prereleases cannot move latest. Publish only tested Linux x64 initially.
+Anonymous manifest inspection gates completion and exposes first-publish visibility problems.
+The existing Open WebUI image remains separate and its build is unchanged.

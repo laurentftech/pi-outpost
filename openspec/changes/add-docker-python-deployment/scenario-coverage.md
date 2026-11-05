@@ -7,6 +7,8 @@ Their implementation is unchanged; the new deployment boundary is exercised agai
 
 | Scenario | Status | Test file and name |
 |---|---|---|
+| FullAppReleaseTagsFollowTheChannel | covered | `scripts/image-tags.test.mjs`: `FullAppReleaseTagsFollowTheChannel` — stable version + latest; beta/rc/numeric prereleases version only; latest-named prerelease refused. |
+| ValidatesTheDistributableImage | partial | `deploy/docker/test.mjs` asserts actual CLI version, image UID/GID and all existing real-app checks. Both workflows build/test with UID 1000 and the release pushes only after that step. Updated runtime validation is pending CI. |
 | KeepsTheDockerDaemonOutsideTheApp | covered | `deploy/docker/test.mjs`: `KeepsTheDockerDaemonOutsideTheApp` — resolved Compose and inspected container, non-root, capabilities, loopback, no socket. |
 | HonorsAnExplicitNetworkRefusal | covered | `deploy/docker/test.mjs`: `HonorsAnExplicitNetworkRefusal` — caller denies network/local binding; actual Python bind/connect remain refused even with operator opt-in. |
 | AgentNetworkNeedsOperatorOptIn | covered | `deploy/docker/test.mjs`: `AgentNetworkNeedsOperatorOptIn` — protected operator choice false; actual bind/connect refused despite generated allowNetwork true. |

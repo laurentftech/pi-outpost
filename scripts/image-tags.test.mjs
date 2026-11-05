@@ -23,3 +23,15 @@ test("what the channel rule refuses, the tags refuse too", () => {
   assert.throws(() => imageTags("not-a-version", IMAGE));
   assert.throws(() => imageTags("0.34.0", `${IMAGE}:dev`));
 });
+
+// openlore: scenario=FullAppReleaseTagsFollowTheChannel spec=docker-python-deployment
+test("FullAppReleaseTagsFollowTheChannel: version always, latest only for stable releases", () => {
+  const image = "ghcr.io/LaurentFTech/pi-outpost";
+  assert.deepEqual(imageTags("0.60.0", image), [
+    "ghcr.io/laurentftech/pi-outpost:0.60.0", "ghcr.io/laurentftech/pi-outpost:latest",
+  ]);
+  for (const version of ["0.60.0-beta.1", "0.60.0-rc.2", "0.60.0-0"]) {
+    assert.deepEqual(imageTags(version, image), [`ghcr.io/laurentftech/pi-outpost:${version}`]);
+  }
+  assert.throws(() => imageTags("0.60.0-latest.1", image));
+});

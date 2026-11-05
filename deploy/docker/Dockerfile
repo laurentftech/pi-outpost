@@ -2,6 +2,7 @@
 # Full coding app, distinct from openwebui/Dockerfile's tool server.
 FROM node:24-bookworm-slim
 ARG PI_OUTPOST_VERSION=0.59.1
+ARG PI_OUTPOST_PACKAGE
 ARG LANDSTRIP_VERSION=0.20.20
 ARG APP_UID=1000
 ARG APP_GID=1000
@@ -15,7 +16,8 @@ RUN --mount=type=secret,id=proxy_ca \
  && apt-get install -y --no-install-recommends bash ca-certificates curl git python3 python3-pip python3-venv make g++ \
  && if [ -f /run/secrets/proxy_ca ]; then export NODE_EXTRA_CA_CERTS=/run/secrets/proxy_ca; fi \
  && npm install -g npm@12.2.1 \
- && npm install -g --prefix /opt/pi-outpost --allow-scripts=node-pty,koffi --no-audit --no-fund "pi-outpost@${PI_OUTPOST_VERSION}" \
+ && npm install -g --prefix /opt/pi-outpost --allow-scripts=node-pty,koffi --no-audit --no-fund "${PI_OUTPOST_PACKAGE:-pi-outpost@${PI_OUTPOST_VERSION}}" \
+ && test "$(node -p 'require("/opt/pi-outpost/lib/node_modules/pi-outpost/package.json").version')" = "${PI_OUTPOST_VERSION}" \
  && case "${TARGETARCH}" in amd64) arch=x64 ;; arm64) arch=arm64 ;; *) echo 'Use linux/amd64 or linux/arm64' >&2; exit 1 ;; esac \
  && mkdir /opt/landstrip \
  && npm pack "@landstrip/landstrip-linux-${arch}@${LANDSTRIP_VERSION}" --ignore-scripts --pack-destination /tmp \

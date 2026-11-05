@@ -1,7 +1,7 @@
 name: pi-outpost-python
 services:
   pi-outpost:
-    image: pi-outpost-python:${PI_OUTPOST_VERSION:-0.59.1}
+    image: ${PI_OUTPOST_IMAGE:-pi-outpost-python}:${PI_OUTPOST_VERSION:-0.59.1}
     build:
       context: .
       args:

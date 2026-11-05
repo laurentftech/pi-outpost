@@ -6,6 +6,8 @@ on:
       - deploy/docker/**
       - docs/docker.md
       - .github/workflows/docker-python.yml
+      - .github/workflows/release.yml
+      - scripts/image-tags*
   workflow_dispatch:
 
 permissions:
@@ -15,6 +17,8 @@ jobs:
   recipe:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    env:
+      PLAYWRIGHT_BROWSERS_PATH: ${{ runner.temp }}/pi-outpost-playwright
     steps:
       - uses: actions/checkout@v5
       - name: Load the dedicated AppArmor profile
@@ -31,9 +35,11 @@ jobs:
       - run: npx playwright install --with-deps chromium
       - name: Build the full application image
         run: |
-          docker build --build-arg APP_UID="$(id -u)" --build-arg APP_GID="$(id -g)" \
+          package=$(npm pack pi-outpost@0.59.1 --ignore-scripts --pack-destination deploy/docker --silent)
+          mv "deploy/docker/$package" deploy/docker/pi-outpost.tgz
+          docker build --build-arg PI_OUTPOST_PACKAGE=/recipe/pi-outpost.tgz \
             -t pi-outpost-python:0.59.1 deploy/docker
       - name: Exercise the installed app, confinement, terminal and persistence
         env:
           LANDSTRIP_APPARMOR_PROFILE: pi-outpost-landstrip
-        run: node deploy/docker/test.mjs
+        run: sudo --preserve-env=LANDSTRIP_APPARMOR_PROFILE,PLAYWRIGHT_BROWSERS_PATH "$(command -v node)" deploy/docker/test.mjs

@@ -217,6 +217,20 @@ jobs:
             npm publish --workspace "$pkg" --tag "$channel"
           done
 
+      # npm may take minutes to expose an accepted publish. Hand the exact built
+      # package to Docker so image builds do not race registry propagation.
+      - name: Pack the released CLI for the full application image
+        run: |
+          test "$(node -p "require('./cli/package.json').version")" = "${GITHUB_REF_NAME#v}"
+          mkdir -p docker-package
+          npm pack --workspace cli --ignore-scripts --pack-destination docker-package
+          mv docker-package/*.tgz docker-package/pi-outpost.tgz
+      - uses: actions/upload-artifact@v7
+        with:
+          name: docker-cli-package
+          path: docker-package/pi-outpost.tgz
+          if-no-files-found: error
+
   # The MCP App bundle for Claude Desktop (docs/claude-desktop.md): packed at this
   # version, and started over stdio from the packed file before it is attached.
   bundle:
@@ -262,6 +276,7 @@ jobs:
       - uses: actions/download-artifact@v8
         with:
           path: executables
+          pattern: pi-outpost-*
           merge-multiple: true
       - name: Create the release if needed and attach the executables
         env:
@@ -293,6 +308,71 @@ jobs:
             gh release edit "$GITHUB_REF_NAME" --prerelease=false --latest --repo "$GITHUB_REPOSITORY"
           fi
           gh release upload "$GITHUB_REF_NAME" executables/* --clobber --repo "$GITHUB_REPOSITORY"
+
+  # The full coding app, including Python and the confined interactive terminal.
+  # The exact image tested below is tagged and pushed; no rebuild after testing.
+  app-image:
+    needs: publish
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    env:
+      PLAYWRIGHT_BROWSERS_PATH: ${{ runner.temp }}/pi-outpost-playwright
+      LANDSTRIP_APPARMOR_PROFILE: pi-outpost-landstrip
+      PI_OUTPOST_TEST_IMAGE: pi-outpost-python:release
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v8
+        with:
+          name: docker-cli-package
+          path: deploy/docker
+      - name: Load the dedicated AppArmor profile
+        run: sudo apparmor_parser -r deploy/docker/profiles/pi-outpost-landstrip.apparmor
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+      - name: Use npm 12.2.1
+        run: npm install -g npm@12.2.1
+      - run: npm ci --workspaces=false --ignore-scripts --no-audit --no-fund
+      - run: npx playwright install --with-deps chromium
+      - name: Build the full application image (Linux x64)
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          node scripts/image-tags.mjs "$version" "ghcr.io/${GITHUB_REPOSITORY_OWNER}/pi-outpost" > /dev/null
+          docker build --platform linux/amd64 -t "$PI_OUTPOST_TEST_IMAGE" \
+            --build-arg PI_OUTPOST_VERSION="$version" \
+            --build-arg PI_OUTPOST_PACKAGE=/recipe/pi-outpost.tgz \
+            --label "org.opencontainers.image.source=https://github.com/${GITHUB_REPOSITORY}" \
+            --label "org.opencontainers.image.revision=${GITHUB_SHA}" \
+            --label "org.opencontainers.image.version=$version" deploy/docker
+      - name: Test the exact image before publishing
+        run: |
+          export PI_OUTPOST_TEST_VERSION="${GITHUB_REF_NAME#v}"
+          sudo --preserve-env=PI_OUTPOST_TEST_IMAGE,PI_OUTPOST_TEST_VERSION,LANDSTRIP_APPARMOR_PROFILE,PLAYWRIGHT_BROWSERS_PATH \
+            "$(command -v node)" deploy/docker/test.mjs
+      - name: Push the tested full application image
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tags=$(node scripts/image-tags.mjs "${GITHUB_REF_NAME#v}" "ghcr.io/${GITHUB_REPOSITORY_OWNER}/pi-outpost")
+          echo "$GH_TOKEN" | docker login ghcr.io -u "${GITHUB_ACTOR}" --password-stdin
+          for tag in $tags; do
+            docker tag "$PI_OUTPOST_TEST_IMAGE" "$tag"
+            docker push "$tag"
+          done
+      - name: Verify the image is publicly pullable
+        run: |
+          anonymous=$(mktemp -d)
+          trap 'rm -rf "$anonymous"' EXIT
+          image="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/pi-outpost:${GITHUB_REF_NAME#v}"
+          if ! DOCKER_CONFIG="$anonymous" docker manifest inspect "$image" > /dev/null; then
+            echo '::error::Image is not anonymously pullable. Check GHCR package visibility (Package settings → Change visibility → Public).'
+            exit 1
+          fi
 
   # pi-outpost's Open WebUI server, as the container image deployments run next to
   # Open WebUI (docs/openwebui.md). After `publish`, so an image only ships for a
