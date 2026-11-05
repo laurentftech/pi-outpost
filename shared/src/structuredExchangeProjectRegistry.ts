@@ -91,11 +91,9 @@ async function realResolve(target: string): Promise<string> {
   }
 }
 
-const isWithin = (root: string, target: string): boolean => target === root || target.startsWith(root + path.sep);
-const sameResolvedPath = (first: string, second: string): boolean => {
-  const left = path.resolve(first);
-  const right = path.resolve(second);
-  return process.platform === "win32" ? left.toLowerCase() === right.toLowerCase() : left === right;
+const isWithin = (root: string, target: string): boolean => {
+  const relative = path.relative(root, target);
+  return relative === "" || (relative !== ".." && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative));
 };
 
 function digestOf(text: string): string {
@@ -115,8 +113,35 @@ async function readConfinedJson(root: string, relative: string, maxBytes: number
     process.platform === "win32"
       ? "r"
       : fsConstants.O_RDONLY | fsConstants.O_NONBLOCK | fsConstants.O_NOFOLLOW;
-  const input = await fs.open(resolved, flags).catch(() => null);
-  if (input === null) return { ok: "missing" };
+  const openResult = await fs.open(resolved, flags).then(
+    (input) => ({ input }),
+    (error: unknown) => ({ error }),
+  );
+  if ("error" in openResult) {
+    const openError = openResult.error;
+    const code = (openError as NodeJS.ErrnoException).code;
+    if (code === "ENOENT") return { ok: "missing" };
+    if (code === "ELOOP") {
+      // O_NOFOLLOW refuses the link before opening its target. Resolve only to
+      // report whether that refused target would have left the project.
+      try {
+        const target = await fs.realpath(resolved);
+        if (!isWithin(root, target)) {
+          return {
+            ok: false,
+            issue: { rule: `${namespace}/outside-project`, path: "", message: `"${relative}" resolves outside the project directory` },
+          };
+        }
+      } catch {
+        // A dangling or cyclic link remains unreadable rather than missing.
+      }
+    }
+    return {
+      ok: false,
+      issue: { rule: `${namespace}/unreadable`, path: "", message: `"${relative}" cannot be opened: ${(openError as Error).message}` },
+    };
+  }
+  const input = openResult.input;
   let text: string;
   try {
     const stat = await input.stat();
@@ -128,8 +153,14 @@ async function readConfinedJson(root: string, relative: string, maxBytes: number
       fs.stat(resolved, { bigint: true }),
       fs.realpath(resolved),
     ]);
+    if (!isWithin(root, realPath)) {
+      return {
+        ok: false,
+        issue: { rule: `${namespace}/outside-project`, path: "", message: `"${relative}" resolves outside the project directory` },
+      };
+    }
     if (
-      opened.dev !== atPath.dev || opened.ino === 0n || opened.ino !== atPath.ino || !sameResolvedPath(realPath, resolved)
+      opened.dev !== atPath.dev || opened.ino === 0n || opened.ino !== atPath.ino
     ) {
       return { ok: false, issue: { rule: `${namespace}/unreadable`, path: "", message: `"${relative}" changed while opening` } };
     }

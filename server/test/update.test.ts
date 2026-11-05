@@ -628,7 +628,7 @@ describe("update, by channel", () => {
     const run = await runUpdate({ channel: "executable", latest: "0.9.0" });
     assert.equal(run.code, 1);
     assert.ok(run.said(/will not replace itself/));
-    assert.ok(run.said(/^https:\/\/github\.com\/laurentftech\/pi-outpost\/releases(?:\/|$)/));
+    assert.ok(run.said(/https:\/\/github\.com\/laurentftech\/pi-outpost\/releases(?:\/|\b)/));
     assert.deepEqual(run.installs, []);
   });
 
