@@ -34,15 +34,15 @@ client.ws.on("message", (data) => {
   const m = JSON.parse(data.toString());
   if (m.type === "tool_start") {
     names.set(m.toolCallId, m.toolName);
-    console.log(`[${elapsed()}] → ${m.toolName} ${JSON.stringify(m.args).slice(0, 160)}`);
+    console.log(`[${elapsed()}] → ${String(m.toolName).replace(/[\r\n]/g, " ")} ${JSON.stringify(m.args).slice(0, 160)}`);
   } else if (m.type === "tool_end") {
     const name = names.get(m.toolCallId);
-    console.log(`[${elapsed()}] ← ${name}${m.isError ? " (error)" : ""}${name === "drawio_check" || m.isError ? `\n${m.text}` : ""}`);
+    console.log(`[${elapsed()}] ← ${String(name).replace(/[\r\n]/g, " ")}${m.isError ? " (error)" : ""}${name === "drawio_check" || m.isError ? `\n${String(m.text).replace(/[\r\n]/g, " ")}` : ""}`);
   } else if (m.type === "assistant_end" && m.item?.errorMessage) {
     // A provider failure ends the turn quietly: an empty reply in two seconds, otherwise
-    console.log(`[${elapsed()}] model error: ${m.item.errorMessage}`);
+    console.log(`[${elapsed()}] model error: ${String(m.item.errorMessage).replace(/[\r\n]/g, " ")}`);
   } else if (m.type === "agent_end" || m.type === "error" || m.type === "extension_ui_request") {
-    console.log(`[${elapsed()}] ${m.type} ${m.message ?? m.method ?? ""}`);
+    console.log(`[${elapsed()}] ${String(m.type).replace(/[\r\n]/g, " ")} ${String(m.message ?? m.method ?? "").replace(/[\r\n]/g, " ")}`);
   }
 });
 try {
@@ -60,7 +60,7 @@ try {
   // Four minutes, then say where it stood rather than wait on
   await client.waitFor((m) => m.type === "agent_end" || m.type === "error", 240_000).catch(() => console.log(`[${elapsed()}] still running after 4 minutes: stopped`));
   const said = client.received.filter((m) => m.type === "block_delta" && typeof m.delta === "string").map((m) => m.delta).join("");
-  console.log(`\n=== reply\n${said.trim()}`);
+  console.log(`\n=== reply\n${said.trim().replace(/[\r\n]/g, " ")}`);
   const checks = client.received.filter((m) => m.type === "tool_start" && m.toolName === "drawio_check").length;
   const edits = client.received.filter((m) => m.type === "tool_start" && (m.toolName === "edit" || m.toolName === "write")).length;
   console.log(`\n=== turn: ${elapsed()}, ${checks} drawio_check, ${edits} write/edit`);
@@ -77,8 +77,8 @@ try {
       for (const cell of page.cells.filter((c) => c.edge)) routeWire(cell, geometry) ? routed++ : unrouted++;
     }
     const issues = checkDrawio(xml).issues;
-    console.log(`=== final ${name}: ${routed} wires routed, ${unrouted} unrouted, ${issues.length} issue(s)`);
-    for (const issue of issues) console.log(`  ${issue.severity}: ${issue.message.slice(0, 220)}`);
+    console.log(`=== final ${String(name).replace(/[\r\n]/g, " ")}: ${routed} wires routed, ${unrouted} unrouted, ${issues.length} issue(s)`);
+    for (const issue of issues) console.log(`  ${String(issue.severity).replace(/[\r\n]/g, " ")}: ${issue.message.slice(0, 220).replace(/[\r\n]/g, " ")}`);
   }
 } finally {
   client.close();
@@ -100,7 +100,7 @@ try {
       console.log("=== the real auth.json changed during the run: refreshed credentials NOT written back");
     }
   } catch (error) {
-    console.log(`=== could not write refreshed credentials back: ${error.message}`);
+    console.log(`=== could not write refreshed credentials back: ${String(error.message).replace(/[\r\n]/g, " ")}`);
   }
   await server.stop();
   await rm(agentDir, { recursive: true, force: true });

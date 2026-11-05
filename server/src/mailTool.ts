@@ -13,7 +13,6 @@
  *   on. The answer therefore opens by saying so, before any of the message's own
  *   words. Nothing in the reading path fetches, resolves or executes anything.
  */
-import fs from "node:fs/promises";
 import path from "node:path";
 import { Type } from "typebox";
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
@@ -21,6 +20,7 @@ import { assertWritableDestination, excerptOf, extractionSummary, writeExtractio
 import { MailError, readMessage, type MailAddress, type MailAttachment, type MailMessage } from "./mail.ts";
 import { unpackAttachments, type UnpackedAttachment } from "./mailAttachments.ts";
 import { isWithinAny, realResolve } from "./sandbox.ts";
+import { readFileSafely } from "./readFileSafely.ts";
 
 export interface MailToolOptions {
   /** Paths the model gives are resolved against this. */
@@ -238,11 +238,10 @@ export function createMailExtractToolDefinition(options: MailToolOptions): ToolD
         throw new Error(`Access denied: "${target}" is outside the sandbox (${options.allowedRoots[0]})`);
       }
 
-      const stat = await fs.stat(resolved).catch(() => null);
-      if (stat === null || !stat.isFile()) throw new Error(`No such file: ${target}`);
-      if (stat.size > options.maxBytes) {
-        throw new Error(`"${target}" is larger than the ${describeSize(options.maxBytes)} mail limit`);
-      }
+      const inputFile = await readFileSafely(resolved, options.maxBytes);
+      if (inputFile.kind === "missing" || inputFile.kind === "not-file") throw new Error(`No such file: ${target}`);
+      if (inputFile.kind === "too-large") throw new Error(`"${target}" is larger than the ${describeSize(options.maxBytes)} mail limit`);
+      if (inputFile.kind === "error") throw inputFile.error;
 
       // Checked before parsing: a refusal is knowable now, and spending the parse
       // first only to refuse afterwards wastes it.
@@ -252,7 +251,7 @@ export function createMailExtractToolDefinition(options: MailToolOptions): ToolD
 
       let message: MailMessage;
       try {
-        message = readMessage(await fs.readFile(resolved));
+        message = readMessage(inputFile.bytes);
       } catch (error) {
         // The reason is the useful part: "encrypted" and "not a message" call for
         // different next moves, and neither is worth a retry loop.

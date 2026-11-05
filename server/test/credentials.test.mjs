@@ -17,7 +17,7 @@ import { connect, makeWorkspace, startServer } from "./harness.mjs";
 function withoutProviderKeys() {
   const stripped = {};
   for (const name of Object.keys(process.env)) {
-    if (/API_KEY|AUTH_TOKEN|_TOKEN$/.test(name)) stripped[name] = undefined;
+    if (name.includes("API_KEY") || name.includes("AUTH_TOKEN") || name.endsWith("_TOKEN")) stripped[name] = undefined;
   }
   return stripped;
 }

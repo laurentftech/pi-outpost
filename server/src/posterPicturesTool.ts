@@ -12,13 +12,13 @@
  * SECURITY: `path` is named exactly that so `scopeToRoot` in sandbox.ts confines it like
  * every other file tool, and the resolved path is checked against the read zone here too.
  */
-import fs from "node:fs/promises";
 import path from "node:path";
 import { Type } from "typebox";
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { MAX_POSTER_BYTES, POSTER_SUFFIX, PosterRefusal, readPage } from "@pi-outpost/posters/format";
 import { MAX_SEEN_PICTURES, hidePictures, pictureKind, seeablePicture } from "@pi-outpost/posters/markers";
 import { isWithinAny, realResolve } from "./sandbox.ts";
+import { readFileSafely } from "./readFileSafely.ts";
 
 export interface PosterPicturesToolOptions {
   /** Paths the model gives are resolved against this. */
@@ -59,10 +59,11 @@ export function createPosterPicturesToolDefinition(options: PosterPicturesToolOp
       if (!isWithinAny(options.allowedRoots, resolved)) {
         throw new Error(`Access denied: "${target}" is outside the sandbox (${options.allowedRoots[0]})`);
       }
-      const stat = await fs.stat(resolved).catch(() => null);
-      if (stat === null || !stat.isFile()) return answer([{ type: "text", text: `No such file: ${target}` }], true);
-      if (stat.size > MAX_POSTER_BYTES + 64 * 1024) return answer([{ type: "text", text: `"${target}" is larger than a poster may be.` }], true);
-      const text = await fs.readFile(resolved, "utf8");
+      const file = await readFileSafely(resolved, MAX_POSTER_BYTES + 64 * 1024);
+      if (file.kind === "missing" || file.kind === "not-file") return answer([{ type: "text", text: `No such file: ${target}` }], true);
+      if (file.kind === "too-large") return answer([{ type: "text", text: `"${target}" is larger than a poster may be.` }], true);
+      if (file.kind === "error") throw file.error;
+      const text = file.bytes.toString("utf8");
       // A page that is no poster holds no frame either: saying so beats "its frames are empty".
       try {
         readPage(text);

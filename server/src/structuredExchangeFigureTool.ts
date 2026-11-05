@@ -41,6 +41,7 @@ import {
   type ArrangementView,
 } from "@pi-outpost/shared/structured-exchange/arrangement";
 import { isWithinAny, realResolve } from "./sandbox.ts";
+import { readFileSafely } from "./readFileSafely.ts";
 import { describeUnusableProfiles, readProjectProfiles } from "./structuredExchangeProfiles.ts";
 import { localToday } from "@pi-outpost/shared/structured-exchange/timeline";
 import type { ProjectAppearance } from "@pi-outpost/shared/structured-exchange/profile";
@@ -238,13 +239,11 @@ export function createStructuredExchangeFigureToolDefinition(
         writableRoot: options.writableRoot,
       });
 
-      const stat = await fs.stat(resolved).catch(() => null);
-      if (stat === null || !stat.isFile()) throw new Error(`No such file: ${target}`);
-      if (stat.size > options.maxBytes) {
-        throw new Error(`"${target}" is larger than the ${describeSize(options.maxBytes)} document limit`);
-      }
-
-      const text = await fs.readFile(resolved, "utf8");
+      const file = await readFileSafely(resolved, options.maxBytes);
+      if (file.kind === "missing" || file.kind === "not-file") throw new Error(`No such file: ${target}`);
+      if (file.kind === "too-large") throw new Error(`"${target}" is larger than the ${describeSize(options.maxBytes)} document limit`);
+      if (file.kind === "error") throw file.error;
+      const text = file.bytes.toString("utf8");
 
       // Held to the project's profile exactly as presenting it would be: a figure is a
       // way for a document to leave, and one that strays from the model must not leave

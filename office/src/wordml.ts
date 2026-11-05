@@ -133,7 +133,9 @@ export function bodyLayout(documentXml: string): BodyLayout {
 export function rootAttributes(xml: string): Record<string, string> {
   const end = tagEnd(xml, 0);
   const tag = xml.slice(0, end + 1);
-  const attributes: Record<string, string> = {};
+  // Document XML is untrusted; keep attacker-controlled attribute names out of
+  // Object.prototype (for example, `__proto__`).
+  const attributes: Record<string, string> = Object.create(null) as Record<string, string>;
   for (const match of tag.matchAll(/([\w:.-]+)\s*=\s*(?:"([^"]*)"|'([^']*)')/g)) {
     attributes[match[1]] = decodeEntities(match[2] ?? match[3] ?? "");
   }

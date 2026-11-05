@@ -69,7 +69,7 @@ try {
     const results = await Promise.all(Array.from({ length: parallel }, (_, i) => once(`r${round}#${i}`)));
     for (const result of results.filter(Boolean)) {
       failures++;
-      console.log(result);
+      console.log(result.replace(/[\r\n]/g, " "));
     }
   }
 } finally {

@@ -31,7 +31,7 @@ export default (pi) => {
 // The developer's keys removed, and one fake key so the interface is the chat, not the
 // setup screen (as the e2e does): nothing typed here can reach a real model.
 const noCredentials: Record<string, string | undefined> = {
-  ...Object.fromEntries(Object.keys(process.env).filter((key) => /API_KEY|AUTH_TOKEN|_TOKEN$/.test(key)).map((key) => [key, undefined])),
+  ...Object.fromEntries(Object.keys(process.env).filter((key) => key.includes("API_KEY") || key.includes("AUTH_TOKEN") || key.endsWith("_TOKEN")).map((key) => [key, undefined])),
   ANTHROPIC_API_KEY: "sk-ant-not-a-real-key",
 };
 const server = await startServer(root, { extensionPaths: [extension], blockedCommands: ["setup*"] }, { env: noCredentials });

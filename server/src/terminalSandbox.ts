@@ -23,7 +23,7 @@
  * writes in the shape MXC generates (`seatbeltPolicy`).
  */
 import { execFile, execFileSync } from "node:child_process";
-import { closeSync, constants as fsConstants, existsSync, lstatSync, openSync, readdirSync, readFileSync, realpathSync } from "node:fs";
+import { closeSync, constants as fsConstants, existsSync, fstatSync, lstatSync, openSync, readdirSync, readFileSync, realpathSync } from "node:fs";
 import { access, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import path from "node:path";
@@ -883,8 +883,15 @@ function deniable(entry: string): boolean {
   // Sockets and devices are left out with it.
   if (!stats.isFile()) return false;
   try {
-    closeSync(openSync(entry, process.platform === "win32" ? fsConstants.O_RDONLY | EXCLUSIVE_OPEN : "r"));
-    return true;
+    const flags = process.platform === "win32"
+      ? fsConstants.O_RDONLY | EXCLUSIVE_OPEN
+      : fsConstants.O_RDONLY | fsConstants.O_NONBLOCK | fsConstants.O_NOFOLLOW;
+    const descriptor = openSync(entry, flags);
+    try {
+      return fstatSync(descriptor).isFile();
+    } finally {
+      closeSync(descriptor);
+    }
   } catch {
     return false;
   }

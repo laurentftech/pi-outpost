@@ -7,7 +7,6 @@
  * reinvented here. The check below is the same primitive (realResolve +
  * isWithinAny), applied so the tool is confined on the non-sandboxed path too.
  */
-import fs from "node:fs/promises";
 import path from "node:path";
 import { Type } from "typebox";
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
@@ -16,6 +15,7 @@ import { assertWritableDestination, excerptOf, extractionSummary, writeExtractio
 import { PptxError, extractPptx } from "./pptx.ts";
 import { rasterizeSvg } from "./presentationRender.ts";
 import { isWithinAny, realResolve } from "./sandbox.ts";
+import { readFileSafely } from "./readFileSafely.ts";
 
 export interface PptxToolOptions {
   /** Paths the model gives are resolved against this. */
@@ -97,11 +97,10 @@ export function createPptxExtractToolDefinition(options: PptxToolOptions): ToolD
         throw new Error(`Access denied: "${target}" is outside the sandbox (${options.allowedRoots[0]})`);
       }
 
-      const stat = await fs.stat(resolved).catch(() => null);
-      if (stat === null || !stat.isFile()) throw new Error(`No such file: ${target}`);
-      if (stat.size > options.maxBytes) {
-        throw new Error(`"${target}" is larger than the ${describeSize(options.maxBytes)} presentation limit`);
-      }
+      const file = await readFileSafely(resolved, options.maxBytes);
+      if (file.kind === "missing" || file.kind === "not-file") throw new Error(`No such file: ${target}`);
+      if (file.kind === "too-large") throw new Error(`"${target}" is larger than the ${describeSize(options.maxBytes)} presentation limit`);
+      if (file.kind === "error") throw file.error;
 
       // Checked before any parsing: a refusal is knowable now, and spending the
       // parse first only to refuse afterwards wastes it.
@@ -115,7 +114,7 @@ export function createPptxExtractToolDefinition(options: PptxToolOptions): ToolD
 
       let extraction: Awaited<ReturnType<typeof extractPptx>>;
       try {
-        extraction = await extractPptx(new Uint8Array(await fs.readFile(resolved)), {
+        extraction = await extractPptx(new Uint8Array(file.bytes), {
           ...(slides === undefined ? {} : { slides }),
           ...(wholePresentation ? { full: true } : {}),
         });

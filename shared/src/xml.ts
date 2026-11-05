@@ -64,7 +64,9 @@ function safeFromCodePoint(code: number, fallback: string): string {
 
 /** Attributes of one tag. Values are quoted in XML, which is what bounds the scan. */
 function readAttributes(source: string): Record<string, string> {
-  const attributes: Record<string, string> = {};
+  // XML input is untrusted. A normal object lets names such as `__proto__` or
+  // `constructor` interact with Object.prototype when assigned as properties.
+  const attributes: Record<string, string> = Object.create(null) as Record<string, string>;
   const pattern = /([^\s=/>]+)\s*=\s*("([^"]*)"|'([^']*)')/g;
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(source)) !== null) {

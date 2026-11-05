@@ -20,6 +20,7 @@
  * Node-only.
  */
 import { createHash } from "node:crypto";
+import { constants as fsConstants, type BigIntStats } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import {
@@ -91,6 +92,11 @@ async function realResolve(target: string): Promise<string> {
 }
 
 const isWithin = (root: string, target: string): boolean => target === root || target.startsWith(root + path.sep);
+const sameResolvedPath = (first: string, second: string): boolean => {
+  const left = path.resolve(first);
+  const right = path.resolve(second);
+  return process.platform === "win32" ? left.toLowerCase() === right.toLowerCase() : left === right;
+};
 
 function digestOf(text: string): string {
   return `sha256:${createHash("sha256").update(text, "utf8").digest("hex")}`;
@@ -105,31 +111,80 @@ async function readConfinedJson(root: string, relative: string, maxBytes: number
       issue: { rule: `${namespace}/outside-project`, path: "", message: `"${relative}" is outside the project directory` },
     };
   }
-  const stat = await fs.stat(resolved).catch(() => null);
-  if (stat === null) return { ok: "missing" };
-  if (!stat.isFile()) {
-    return { ok: false, issue: { rule: `${namespace}/not-a-file`, path: "", message: `"${relative}" is not a file` } };
+  let expected: BigIntStats;
+  try {
+    if (!sameResolvedPath(await fs.realpath(resolved), resolved)) {
+      return { ok: false, issue: { rule: `${namespace}/outside-project`, path: "", message: `"${relative}" resolves outside the project directory` } };
+    }
+    expected = await fs.stat(resolved, { bigint: true });
+  } catch {
+    return { ok: "missing" };
   }
-  if (stat.size > maxBytes) {
-    return {
-      ok: false,
-      issue: {
-        rule: `${namespace}/too-large`,
-        path: "",
-        message: `"${relative}" is ${stat.size} bytes, past the ${maxBytes}-byte limit`,
-        limit: maxBytes,
-        observed: stat.size,
-        level: "ceiling",
-      },
-    };
-  }
+  const flags: string | number =
+    process.platform === "win32"
+      ? "r"
+      : fsConstants.O_RDONLY | fsConstants.O_NONBLOCK | fsConstants.O_NOFOLLOW;
+  const input = await fs.open(resolved, flags).catch(() => null);
+  if (input === null) return { ok: "missing" };
   let text: string;
   try {
-    text = await fs.readFile(resolved, "utf8");
+    const stat = await input.stat();
+    if (!stat.isFile()) {
+      return { ok: false, issue: { rule: `${namespace}/not-a-file`, path: "", message: `"${relative}" is not a file` } };
+    }
+    const opened = await input.stat({ bigint: true });
+    const [atPath, realPath] = await Promise.all([
+      fs.stat(resolved, { bigint: true }),
+      fs.realpath(resolved),
+    ]);
+    if (
+      opened.dev !== expected.dev || opened.ino === 0n || opened.ino !== expected.ino ||
+      opened.dev !== atPath.dev || opened.ino !== atPath.ino || !sameResolvedPath(realPath, resolved)
+    ) {
+      return { ok: false, issue: { rule: `${namespace}/unreadable`, path: "", message: `"${relative}" changed while opening` } };
+    }
+    if (stat.size > maxBytes) {
+      return {
+        ok: false,
+        issue: {
+          rule: `${namespace}/too-large`,
+          path: "",
+          message: `"${relative}" is ${stat.size} bytes, past the ${maxBytes}-byte limit`,
+          limit: maxBytes,
+          observed: stat.size,
+          level: "ceiling",
+        },
+      };
+    }
+    const chunks: Buffer[] = [];
+    let bytesRead = 0;
+    while (bytesRead <= maxBytes) {
+      const chunk = Buffer.allocUnsafe(Math.min(64 * 1024, maxBytes + 1 - bytesRead));
+      const read = await input.read(chunk, 0, chunk.length, null);
+      if (read.bytesRead === 0) break;
+      chunks.push(chunk.subarray(0, read.bytesRead));
+      bytesRead += read.bytesRead;
+    }
+    if (bytesRead > maxBytes) {
+      return {
+        ok: false,
+        issue: {
+          rule: `${namespace}/too-large`,
+          path: "",
+          message: `"${relative}" is more than ${maxBytes} bytes, past the limit`,
+          limit: maxBytes,
+          observed: bytesRead,
+          level: "ceiling",
+        },
+      };
+    }
+    text = Buffer.concat(chunks, bytesRead).toString("utf8");
   } catch (error) {
-    // Removed between the measurement and the read: the same answer as never there.
+    // Removed before opening: the same answer as never there.
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return { ok: "missing" };
     return { ok: false, issue: { rule: `${namespace}/unreadable`, path: "", message: `"${relative}" cannot be read: ${(error as Error).message}` } };
+  } finally {
+    await input.close();
   }
   try {
     return { ok: true, value: JSON.parse(text), sha256: digestOf(text) };

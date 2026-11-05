@@ -42,6 +42,16 @@ export function useTheme(
 
   useEffect(() => {
     function onMessage(event: MessageEvent) {
+      const trustedOrigin = window.parent === window
+        ? window.location.origin
+        : (() => {
+            try {
+              return new URL(document.referrer).origin;
+            } catch {
+              return "";
+            }
+          })();
+      if (event.source !== window.parent || event.origin !== trustedOrigin) return;
       const data = event.data as { type?: string; theme?: string } | undefined;
       if (data?.type !== "pi-outpost:set-theme") return;
       if (data.theme !== "light" && data.theme !== "dark" && data.theme !== "system") return;

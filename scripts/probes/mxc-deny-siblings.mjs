@@ -8,7 +8,7 @@
 // out: junctions and symlinks (0x8007010B; the compatibility junctions - "Application Data",
 // "Documents and Settings" - point at folders that are denied, or system, anyway) and files that
 // cannot be opened, such as the loaded NTUSER.DAT (0x80070020, sharing violation).
-import { closeSync, lstatSync, openSync, readdirSync } from "node:fs";
+import { closeSync, constants as fsConstants, fstatSync, lstatSync, openSync, readdirSync } from "node:fs";
 import { join, parse, sep } from "node:path";
 
 const project = process.argv[2];
@@ -20,7 +20,15 @@ function deniable(path) {
   try { st = lstatSync(path); } catch { return false; }
   if (st.isSymbolicLink()) return false; // Node reports junctions as symlinks too.
   if (st.isDirectory()) return true;
-  try { closeSync(openSync(path, "r")); return true; } catch { return false; }
+  let fd;
+  try {
+    fd = openSync(path, process.platform === "win32" ? "r" : fsConstants.O_RDONLY | fsConstants.O_NONBLOCK | fsConstants.O_NOFOLLOW);
+    return fstatSync(fd).isFile();
+  } catch {
+    return false;
+  } finally {
+    if (fd !== undefined) closeSync(fd);
+  }
 }
 
 const { root } = parse(project);

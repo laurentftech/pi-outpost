@@ -9,13 +9,13 @@
  * SECURITY: `path` is named exactly that so `scopeToRoot` in sandbox.ts confines it like
  * every other file tool, and the resolved path is checked against the read zone here too.
  */
-import fs from "node:fs/promises";
 import path from "node:path";
 import { Type } from "typebox";
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { checkDrawio, describeDrawioReport, DrawioReadError } from "./drawio.ts";
 import { writesSettled } from "./pendingWrites.ts";
 import { isWithinAny, realResolve } from "./sandbox.ts";
+import { readFileSafely } from "./readFileSafely.ts";
 
 /** Largest diagram this tool opens. draw.io files are text; a bigger one is not a diagram anyone reads. */
 export const DRAWIO_MAX_BYTES = 16 * 1024 * 1024;
@@ -62,11 +62,11 @@ export function createDrawioCheckToolDefinition(options: DrawioToolOptions): Too
       if (!isWithinAny(options.allowedRoots, resolved)) {
         throw new Error(`Access denied: "${target}" is outside the sandbox (${options.allowedRoots[0]})`);
       }
-      const stat = await fs.stat(resolved).catch(() => null);
-      if (stat === null || !stat.isFile()) return refused(`No such file: ${target}`);
-      if (stat.size > maxBytes) return refused(`"${target}" is larger than the ${Math.round(maxBytes / (1024 * 1024))} MB a diagram may be`);
-
-      const text = await fs.readFile(resolved, "utf8");
+      const file = await readFileSafely(resolved, maxBytes);
+      if (file.kind === "missing" || file.kind === "not-file") return refused(`No such file: ${target}`);
+      if (file.kind === "too-large") return refused(`"${target}" is larger than the ${Math.round(maxBytes / (1024 * 1024))} MB a diagram may be`);
+      if (file.kind === "error") throw file.error;
+      const text = file.bytes.toString("utf8");
       try {
         const report = checkDrawio(text);
         return { content: [{ type: "text", text: describeDrawioReport(target, report) }], details: undefined };

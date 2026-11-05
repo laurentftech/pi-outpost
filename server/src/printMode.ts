@@ -16,6 +16,8 @@ import type { PrintGrants } from "./cli.ts";
 export interface PrintTurn {
   /** The server's WebSocket, `ws://127.0.0.1:<port>/ws`. */
   url: string;
+  /** The port this process bound; prevents a supplied URL targeting another local service. */
+  port: number;
   prompt: string;
   json: boolean;
   grants: PrintGrants;
@@ -30,8 +32,16 @@ const DECISION: Record<PrintGrants, SandboxGrantDecision> = { refuse: "refuse", 
 
 /** Runs the turn and resolves with the exit status: 0 when it ended, 1 when it failed. */
 export function runPrintTurn(turn: PrintTurn): Promise<number> {
+  const target = new URL(turn.url);
+  const targetPort = target.port === "" ? 80 : Number(target.port);
+  if (
+    target.protocol !== "ws:" || target.hostname !== "127.0.0.1" || targetPort !== turn.port ||
+    target.pathname !== "/ws" || target.username !== "" || target.password !== "" || target.hash !== ""
+  ) {
+    throw new Error("Print mode may connect only to its local pi-outpost WebSocket");
+  }
   return new Promise((resolve) => {
-    const socket = new WebSocket(turn.url);
+    const socket = new WebSocket(target);
     let phase: "hello" | "session" | "model" | "turn" | "done" = "hello";
     let failed = false;
     let started = false;

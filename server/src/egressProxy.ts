@@ -79,7 +79,7 @@ export async function startEgressProxy(options: EgressProxyOptions): Promise<Egr
     return answer;
   };
   const refuse = (host: string, what: string, why: string) => {
-    refused(`[sandbox] network: refused ${what} — ${why}`);
+    refused(`[sandbox] network: refused ${what} — ${why}`.replace(/[\r\n]/g, " "));
     for (const watcher of watchers) watcher(host);
     return why.replace(/[\r\n]/g, " ");
   };

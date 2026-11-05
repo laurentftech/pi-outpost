@@ -9,7 +9,7 @@ import { connect, makeWorkspace, startServer } from "../../server/test/harness.m
 
 const keep = process.argv[2] ?? "MISTRAL_API_KEY";
 if (!process.env[keep]) throw new Error(`${keep} is not set`);
-const env = Object.fromEntries(Object.keys(process.env).filter((key) => /API_KEY|AUTH_TOKEN|_TOKEN$/.test(key) && key !== keep).map((key) => [key, undefined]));
+const env = Object.fromEntries(Object.keys(process.env).filter((key) => (key.includes("API_KEY") || key.includes("AUTH_TOKEN") || key.endsWith("_TOKEN")) && key !== keep).map((key) => [key, undefined]));
 // PI_OFFLINE keeps the catalog local; the request itself still goes out.
 const server = await startServer(await makeWorkspace({ "notes.md": "# Notes\n" }), {}, { env });
 const client = connect(server.wsUrl());
@@ -20,7 +20,7 @@ try {
   await client.waitFor((m) => m.type === "agent_end" || m.type === "error", 120_000);
   const error = client.received.find((m) => m.type === "error");
   const text = client.received.filter((m) => m.type === "block_delta" && typeof m.delta === "string").map((m) => m.delta).join("");
-  console.log(error ? `error: ${error.message}` : `answer: ${JSON.stringify(text.trim())}`);
+  console.log(error ? `error: ${String(error.message).replace(/[\r\n]/g, " ")}` : `answer: ${JSON.stringify(text.trim())}`);
   console.log("events:", [...new Set(client.received.map((m) => m.type))].join(","));
 } finally {
   client.close();

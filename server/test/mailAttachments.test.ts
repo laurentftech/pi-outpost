@@ -8,7 +8,7 @@
  * most likely to make.
  */
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, stat, writeFile, mkdir } from "node:fs/promises";
+import { mkdtemp, open, readFile, stat, writeFile, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { before, describe, test } from "node:test";
@@ -119,8 +119,13 @@ describe("unpackAttachments", () => {
     );
     // Compared after the same resolution the writer applies — never by joining "/".
     const written = path.join(root, "uploads", "mail-a.msg.attachments", "1-deck.pptx");
-    assert.ok((await stat(written)).isFile());
-    assert.ok((await readFile(written)).equals(deck), "the bytes are the sender's bytes");
+    const writtenFile = await open(written, "r");
+    try {
+      assert.ok((await writtenFile.stat()).isFile());
+      assert.ok((await writtenFile.readFile()).equals(deck), "the bytes are the sender's bytes");
+    } finally {
+      await writtenFile.close();
+    }
   });
 
   test("unpacks one attachment by its identifier", async () => {

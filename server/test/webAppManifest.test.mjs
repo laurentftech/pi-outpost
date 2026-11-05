@@ -70,7 +70,11 @@ test("every icon the manifest names is actually served", async (t) => {
   // the manifest and not to the build is exactly the failure this catches.
   assert.ok(manifest.icons.length > 0, "a manifest with no icons is not installable");
   for (const icon of manifest.icons) {
-    const response = await fetch(server.base + icon.src);
+    assert.equal(typeof icon.src, "string");
+    assert.match(icon.src, /^\/(?!\/)/, "an icon must be served by this app, not another host");
+    const target = new URL(icon.src, server.base);
+    assert.equal(target.origin, new URL(server.base).origin, "an icon must stay on this app's origin");
+    const response = await fetch(target);
     assert.equal(response.status, 200, `${icon.src} is declared and not served`);
     assert.match(response.headers.get("content-type") ?? "", /^image\//, `${icon.src} is not served as an image`);
     const bytes = Buffer.from(await response.arrayBuffer());

@@ -100,6 +100,11 @@ function unescapeText(value: string): string {
 const STYLE_END = /<\/style/gi;
 const ESCAPED_STYLE_END = /<\\\/style/gi;
 
+/** CSS is raw text in HTML; escape only the end-tag sequence without changing CSS meaning. */
+function cssForStyleElement(css: string): string {
+  return css.replace(STYLE_END, "<\\/style");
+}
+
 /** The page written for a poster: printable at its paper size with no margin, colours kept. */
 export function pageOf(title: string, content: PosterContent): string {
   const { html, css, format } = checkPoster(content);
@@ -108,7 +113,7 @@ export function pageOf(title: string, content: PosterContent): string {
 <html>
 <head>
 <meta charset="utf-8">
-<meta name="poster-format" content="${format}">
+<meta name="poster-format" content="${escapeText(format)}">
 <title>${escapeText(title)}</title>
 <style>
 @page { size: ${paper}; margin: 0; }
@@ -118,7 +123,7 @@ body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 .poster-page { width: ${width}px; height: ${height}px; overflow: hidden; position: relative; }
 </style>
 <style data-poster>
-${css.replace(STYLE_END, "<\\/style")}
+${cssForStyleElement(css)}
 </style>
 </head>
 <body><div class="poster-page">${html}</div></body>

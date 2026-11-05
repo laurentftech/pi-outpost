@@ -399,11 +399,17 @@ export function runInit(
   env: NodeJS.ProcessEnv = process.env,
 ): string {
   const target = initTarget(launchDir, options.global, env);
-  if (fs.existsSync(target) && !options.force) {
-    throw new CliError(`${target} already exists — pass --force to overwrite it`);
-  }
   fs.mkdirSync(path.dirname(target), { recursive: true });
-  fs.writeFileSync(target, `${JSON.stringify(starterConfig(options.global), null, 2)}\n`);
+  try {
+    fs.writeFileSync(target, `${JSON.stringify(starterConfig(options.global), null, 2)}\n`, {
+      flag: options.force ? "w" : "wx",
+    });
+  } catch (error) {
+    if (!options.force && error !== null && typeof error === "object" && "code" in error && error.code === "EEXIST") {
+      throw new CliError(`${target} already exists — pass --force to overwrite it`);
+    }
+    throw error;
+  }
   return target;
 }
 

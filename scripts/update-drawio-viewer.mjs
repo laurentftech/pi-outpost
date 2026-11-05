@@ -18,11 +18,32 @@ if (!/^\d+\.\d+\.\d+$/.test(version ?? "")) {
 }
 const base = `https://raw.githubusercontent.com/jgraph/drawio/v${version}`;
 const dir = new URL("../web/public/vendor/drawio/", import.meta.url);
+const RAW_ORIGIN = "https://raw.githubusercontent.com";
+const MAX_ASSET_BYTES = 20 * 1024 * 1024;
 
 async function download(path) {
-  const response = await fetch(`${base}/${path}`);
+  const assetUrl = new URL(`${base}/${path}`);
+  if (assetUrl.origin !== RAW_ORIGIN || !assetUrl.pathname.startsWith(`/jgraph/drawio/v${version}/`)) {
+    throw new Error("refusing an asset URL outside the selected draw.io release");
+  }
+  const response = await fetch(assetUrl, { redirect: "error" });
   if (!response.ok) throw new Error(`${path}: HTTP ${response.status} for v${version}`);
-  return Buffer.from(await response.arrayBuffer());
+  if (response.url !== assetUrl.href) throw new Error(`${path}: the asset URL changed during download`);
+  if (!response.body) throw new Error(`${path}: empty response body`);
+  const reader = response.body.getReader();
+  const chunks = [];
+  let size = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    size += value.byteLength;
+    if (size > MAX_ASSET_BYTES) {
+      await reader.cancel();
+      throw new Error(`${path}: asset is over the ${MAX_ASSET_BYTES}-byte download limit`);
+    }
+    chunks.push(Buffer.from(value));
+  }
+  return Buffer.concat(chunks, size);
 }
 
 const viewer = await download("src/main/webapp/js/viewer-static.min.js");

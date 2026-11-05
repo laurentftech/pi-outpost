@@ -8,7 +8,8 @@
  * application/octet-stream MIME bug that happened when the Vite *source*
  * index.html was served instead of the production build.
  */
-import { readdir, readFile, stat, writeFile, mkdir } from "node:fs/promises";
+import { constants as fsConstants } from "node:fs";
+import { readdir, lstat, open, writeFile, mkdir } from "node:fs/promises";
 import { join, relative, sep } from "node:path";
 
 export const MIME = {
@@ -49,14 +50,22 @@ function mimeFor(file) {
 async function walk(dir, base, out) {
   for (const entry of await readdir(dir)) {
     const abs = join(dir, entry);
-    const s = await stat(abs);
+    const s = await lstat(abs);
+    if (s.isSymbolicLink()) continue;
     if (s.isDirectory()) {
       await walk(abs, base, out);
-    } else {
+    } else if (s.isFile()) {
       const rel = relative(base, abs).split(sep).join("/");
       const url = "/" + rel;
-      const buf = await readFile(abs);
-      out[url] = { b64: buf.toString("base64"), type: mimeFor(entry) };
+      const input = await open(abs, process.platform === "win32" ? "r" : fsConstants.O_RDONLY | fsConstants.O_NONBLOCK | fsConstants.O_NOFOLLOW);
+      try {
+        if ((await input.stat()).isFile()) {
+          const buf = await input.readFile();
+          out[url] = { b64: buf.toString("base64"), type: mimeFor(entry) };
+        }
+      } finally {
+        await input.close();
+      }
     }
   }
 }
