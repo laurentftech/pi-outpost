@@ -19,7 +19,7 @@
   "dependencies": {
     "@earendil-works/pi-coding-agent": "^1.5.0",
     "@fastify/rate-limit": "^11.2.1",
-    "@fastify/static": "^10.1.6",
+    "@fastify/static": "^10.1.10",
     "@fastify/websocket": "^11.3.4",
     "@pi-outpost/office": "*",
     "@pi-outpost/posters": "*",
