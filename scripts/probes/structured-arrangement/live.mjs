@@ -53,15 +53,15 @@ client.ws.on("message", (data) => {
   const m = JSON.parse(data.toString());
   if (m.type === "tool_start") {
     names.set(m.toolCallId, m.toolName);
-    console.log(`[${elapsed()}] → ${String(m.toolName).replace(/[\r\n]/g, " ")} ${JSON.stringify(m.args).slice(0, 200)}`);
+    console.log(`[${elapsed()}] tool started`);
   } else if (m.type === "tool_end") {
     const name = names.get(m.toolCallId);
     if (name === "write_structure_figure") figureResults.push(m.text);
-    console.log(`[${elapsed()}] ← ${String(name).replace(/[\r\n]/g, " ")}${m.isError ? " (error)" : ""}${name === "write_structure_figure" || m.isError ? `\n${String(m.text).replace(/[\r\n]/g, " ")}` : ""}`);
+    console.log(`[${elapsed()}] tool finished`);
   } else if (m.type === "assistant_end" && m.item?.errorMessage) {
-    console.log(`[${elapsed()}] model error: ${String(m.item.errorMessage).replace(/[\r\n]/g, " ")}`);
+    console.log(`[${elapsed()}] model error`);
   } else if (m.type === "extension_ui_request") {
-    console.log(`[${elapsed()}] extension asks: ${String(m.method).replace(/[\r\n]/g, " ")} ${String(m.message ?? "").replace(/[\r\n]/g, " ")}`);
+    console.log(`[${elapsed()}] extension requested UI`);
   }
 });
 
@@ -77,8 +77,7 @@ async function turn(text) {
     }
     await new Promise((resolve) => setTimeout(resolve, 500));
   }
-  const said = client.received.slice(before).filter((m) => m.type === "block_delta" && typeof m.delta === "string").map((m) => m.delta).join("");
-  console.log(`\n=== reply\n${said.trim().replace(/[\r\n]/g, " ")}\n`);
+  console.log("\n=== reply received\n");
 }
 
 const keep = async (name, from) => {

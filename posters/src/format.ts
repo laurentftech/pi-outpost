@@ -95,14 +95,13 @@ function unescapeText(value: string): string {
   return value.replace(/&(amp|lt|gt|quot);/g, (_match, name: string) => ({ amp: "&", lt: "<", gt: ">", quot: '"' })[name]!);
 }
 
-// `</style` inside the stylesheet would end its element early; written as `<\/style`, which
-// CSS reads the same (a backslash before `/` is that character), and turned back on reading.
-const STYLE_END = /<\/style/gi;
+// CSS escapes preserve `<` as a CSS code point while keeping it out of HTML's raw-text parser.
+// This prevents any stylesheet text from terminating its surrounding style element.
 const ESCAPED_STYLE_END = /<\\\/style/gi;
 
-/** CSS is raw text in HTML; escape only the end-tag sequence without changing CSS meaning. */
+/** CSS is raw text in HTML; CSS-escape every `<` without changing its CSS meaning. */
 function cssForStyleElement(css: string): string {
-  return css.replace(STYLE_END, "<\\/style");
+  return css.replace(/</g, "\\3C ");
 }
 
 /** The page written for a poster: printable at its paper size with no margin, colours kept. */

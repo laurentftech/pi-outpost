@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
+import { closeSync, openSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 
 // Do not put the web token or provider keys in the server's environment: under
@@ -28,7 +28,18 @@ if (networkOption !== "0" && networkOption !== "1") {
 }
 writeFileSync("/data/agent/docker-network.json", JSON.stringify({ allowAgentNetwork: networkOption === "1" }), { mode: 0o600 });
 console.log(`[docker] Shell/terminal IP network: ${networkOption === "1" ? "caller policy (operator opt-in)" : "disabled (default)"}`);
-const config = existsSync(configFile) ? JSON.parse(readFileSync(configFile, "utf8")) : template;
+let existingConfig;
+try {
+  const configFd = openSync(configFile, "r");
+  try {
+    existingConfig = readFileSync(configFd, "utf8");
+  } finally {
+    closeSync(configFd);
+  }
+} catch (error) {
+  if (error.code !== "ENOENT") throw error;
+}
+const config = existingConfig === undefined ? template : JSON.parse(existingConfig);
 config.server = { ...config.server, token };
 writeFileSync(configFile, JSON.stringify(config, null, 2) + "\n", { mode: 0o600 });
 

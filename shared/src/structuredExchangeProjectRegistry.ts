@@ -20,7 +20,7 @@
  * Node-only.
  */
 import { createHash } from "node:crypto";
-import { constants as fsConstants, type BigIntStats } from "node:fs";
+import { constants as fsConstants } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import {
@@ -104,21 +104,12 @@ function digestOf(text: string): string {
 
 /** Reads one confined JSON file, bounded before it is parsed. */
 async function readConfinedJson(root: string, relative: string, maxBytes: number, namespace: string): Promise<FileRead> {
-  const resolved = await realResolve(path.resolve(root, relative));
+  const resolved = path.resolve(root, relative);
   if (path.isAbsolute(relative) || !isWithin(root, resolved)) {
     return {
       ok: false,
       issue: { rule: `${namespace}/outside-project`, path: "", message: `"${relative}" is outside the project directory` },
     };
-  }
-  let expected: BigIntStats;
-  try {
-    if (!sameResolvedPath(await fs.realpath(resolved), resolved)) {
-      return { ok: false, issue: { rule: `${namespace}/outside-project`, path: "", message: `"${relative}" resolves outside the project directory` } };
-    }
-    expected = await fs.stat(resolved, { bigint: true });
-  } catch {
-    return { ok: "missing" };
   }
   const flags: string | number =
     process.platform === "win32"
@@ -138,8 +129,7 @@ async function readConfinedJson(root: string, relative: string, maxBytes: number
       fs.realpath(resolved),
     ]);
     if (
-      opened.dev !== expected.dev || opened.ino === 0n || opened.ino !== expected.ino ||
-      opened.dev !== atPath.dev || opened.ino !== atPath.ino || !sameResolvedPath(realPath, resolved)
+      opened.dev !== atPath.dev || opened.ino === 0n || opened.ino !== atPath.ino || !sameResolvedPath(realPath, resolved)
     ) {
       return { ok: false, issue: { rule: `${namespace}/unreadable`, path: "", message: `"${relative}" changed while opening` } };
     }

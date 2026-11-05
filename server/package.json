@@ -33,7 +33,8 @@
     "remark-math": "^6.0.0",
     "remark-parse": "^11.0.0",
     "typebox": "1.3.18",
-    "unified": "^11.0.5"
+    "unified": "^11.0.5",
+    "ws": "^8.22.0"
   },
   "optionalDependencies": {
     "@microsoft/mxc-sdk": "^1.0.1",

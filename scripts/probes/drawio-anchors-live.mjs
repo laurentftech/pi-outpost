@@ -29,20 +29,17 @@ const client = connect(server.wsUrl());
 // Each tool as it happens: a turn that stalls shows where, instead of nothing until the end
 const started = Date.now();
 const elapsed = () => `${Math.round((Date.now() - started) / 1000)}s`;
-const names = new Map();
 client.ws.on("message", (data) => {
   const m = JSON.parse(data.toString());
   if (m.type === "tool_start") {
-    names.set(m.toolCallId, m.toolName);
-    console.log(`[${elapsed()}] → ${String(m.toolName).replace(/[\r\n]/g, " ")} ${JSON.stringify(m.args).slice(0, 160)}`);
+    console.log(`[${elapsed()}] tool started`);
   } else if (m.type === "tool_end") {
-    const name = names.get(m.toolCallId);
-    console.log(`[${elapsed()}] ← ${String(name).replace(/[\r\n]/g, " ")}${m.isError ? " (error)" : ""}${name === "drawio_check" || m.isError ? `\n${String(m.text).replace(/[\r\n]/g, " ")}` : ""}`);
+    console.log(`[${elapsed()}] tool finished`);
   } else if (m.type === "assistant_end" && m.item?.errorMessage) {
     // A provider failure ends the turn quietly: an empty reply in two seconds, otherwise
-    console.log(`[${elapsed()}] model error: ${String(m.item.errorMessage).replace(/[\r\n]/g, " ")}`);
+    console.log(`[${elapsed()}] model error`);
   } else if (m.type === "agent_end" || m.type === "error" || m.type === "extension_ui_request") {
-    console.log(`[${elapsed()}] ${String(m.type).replace(/[\r\n]/g, " ")} ${String(m.message ?? m.method ?? "").replace(/[\r\n]/g, " ")}`);
+    console.log(`[${elapsed()}] agent event`);
   }
 });
 try {
@@ -59,8 +56,7 @@ try {
   });
   // Four minutes, then say where it stood rather than wait on
   await client.waitFor((m) => m.type === "agent_end" || m.type === "error", 240_000).catch(() => console.log(`[${elapsed()}] still running after 4 minutes: stopped`));
-  const said = client.received.filter((m) => m.type === "block_delta" && typeof m.delta === "string").map((m) => m.delta).join("");
-  console.log(`\n=== reply\n${said.trim().replace(/[\r\n]/g, " ")}`);
+  console.log("\n=== reply received");
   const checks = client.received.filter((m) => m.type === "tool_start" && m.toolName === "drawio_check").length;
   const edits = client.received.filter((m) => m.type === "tool_start" && (m.toolName === "edit" || m.toolName === "write")).length;
   console.log(`\n=== turn: ${elapsed()}, ${checks} drawio_check, ${edits} write/edit`);

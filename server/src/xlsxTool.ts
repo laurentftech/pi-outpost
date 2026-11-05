@@ -7,7 +7,6 @@
  * reinvented here. The check below is the same primitive (realResolve +
  * isWithinAny), applied so the tool is confined on the non-sandboxed path too.
  */
-import fs from "node:fs/promises";
 import path from "node:path";
 import { Type } from "typebox";
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";

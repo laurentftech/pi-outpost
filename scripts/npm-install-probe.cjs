@@ -83,4 +83,4 @@ const { once } = require('node:events');
     }
     await closed;
   }
-})().catch(error => { console.error(String(error && error.stack || error).replace(/[\r\n]/g, ' ')); process.exitCode = 1; });
+})().catch(() => { console.error('install probe failed'); process.exitCode = 1; });

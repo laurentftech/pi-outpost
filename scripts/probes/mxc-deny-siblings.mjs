@@ -16,15 +16,30 @@ const keep = new Set((process.argv[3] ?? "").split(";").filter(Boolean).map((p) 
 const system = new Set(["windows", "program files", "program files (x86)", "programdata"]);
 
 function deniable(path) {
-  let st;
-  try { st = lstatSync(path); } catch { return false; }
-  if (st.isSymbolicLink()) return false; // Node reports junctions as symlinks too.
-  if (st.isDirectory()) return true;
   let fd;
   try {
-    fd = openSync(path, process.platform === "win32" ? "r" : fsConstants.O_RDONLY | fsConstants.O_NONBLOCK | fsConstants.O_NOFOLLOW);
-    return fstatSync(fd).isFile();
+    const flags = process.platform === "win32" ? "r" : fsConstants.O_RDONLY | fsConstants.O_NONBLOCK | fsConstants.O_NOFOLLOW;
+    fd = openSync(path, flags);
+    const opened = fstatSync(fd);
+    if (opened.isDirectory()) {
+      if (process.platform !== "win32") return true;
+      const atPath = lstatSync(path);
+      return !atPath.isSymbolicLink() && atPath.dev === opened.dev && atPath.ino === opened.ino;
+    }
+    if (!opened.isFile()) return false;
+    if (process.platform === "win32") {
+      const atPath = lstatSync(path);
+      return !atPath.isSymbolicLink() && atPath.dev === opened.dev && atPath.ino === opened.ino;
+    }
+    return true;
   } catch {
+    // Windows may not open a directory handle; retain real directories only.
+    if (process.platform === "win32") {
+      try {
+        const st = lstatSync(path);
+        return !st.isSymbolicLink() && st.isDirectory();
+      } catch {}
+    }
     return false;
   } finally {
     if (fd !== undefined) closeSync(fd);

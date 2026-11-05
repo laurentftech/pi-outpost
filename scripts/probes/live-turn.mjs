@@ -19,8 +19,7 @@ try {
   client.send({ type: "prompt", text: "Reply with the single word OK, nothing else." });
   await client.waitFor((m) => m.type === "agent_end" || m.type === "error", 120_000);
   const error = client.received.find((m) => m.type === "error");
-  const text = client.received.filter((m) => m.type === "block_delta" && typeof m.delta === "string").map((m) => m.delta).join("");
-  console.log(error ? `error: ${String(error.message).replace(/[\r\n]/g, " ")}` : `answer: ${JSON.stringify(text.trim())}`);
+  console.log(error ? "request failed" : "response received");
   console.log("events:", [...new Set(client.received.map((m) => m.type))].join(","));
 } finally {
   client.close();

@@ -1050,11 +1050,13 @@ app.get("/ws", { websocket: true }, (socket, req) => {
     socket.close(1008, "forbidden origin");
     return;
   }
-  // Browsers cannot set headers on WebSockets, so the token rides a query
-  // parameter. Close AFTER the handshake with an app code — a pre-handshake
-  // rejection reads as an opaque 1006 that the client can't act on.
+  // Browsers cannot set headers on WebSockets, so they send the token as a query
+  // parameter. Native clients may use the usual Bearer header. Close AFTER the
+  // handshake with an app code — a pre-handshake rejection reads as an opaque 1006.
   const url = new URL(req.url ?? "/ws", "http://localhost");
-  const token = url.searchParams.get("token");
+  const authorization = req.headers.authorization;
+  const bearer = authorization?.startsWith("Bearer ") ? authorization.slice("Bearer ".length) : undefined;
+  const token = bearer ?? url.searchParams.get("token");
   if (!tokenValid(token ?? undefined)) {
     console.warn(`[server] rejected ws connection with bad or missing token from ${String(req.ip).replace(/[\r\n]/g, " ")}`);
     socket.close(WS_CLOSE_UNAUTHORIZED, "unauthorized");
@@ -1137,12 +1139,12 @@ app.addContentTypeParser(DOCX_CONTENT_TYPE, { parseAs: "buffer", bodyLimit: conf
 const DOCX_TEMPLATE_EXPORTS_PER_MINUTE = 30;
 app.post("/files/docx-template", { config: { rateLimit: { max: DOCX_TEMPLATE_EXPORTS_PER_MINUTE, timeWindow: "1 minute" } } }, async (req, reply) => {
   if (!hostAllowed(req.headers.host)) {
-    console.warn(`[server] rejected /files/docx-template request with foreign host ${String(req.headers.host).replace(/[\r\n]/g, " ")} from ${String(req.ip).replace(/[\r\n]/g, " ")}`);
+    console.warn("[server] rejected /files/docx-template request with foreign host");
     return reply.code(403).send({ error: "forbidden" });
   }
   const auth = req.headers.authorization;
   if (!tokenValid(auth?.startsWith("Bearer ") ? auth.slice("Bearer ".length) : undefined)) {
-    console.warn(`[server] rejected /files/docx-template request with bad or missing token from ${String(req.ip).replace(/[\r\n]/g, " ")}`);
+    console.warn("[server] rejected /files/docx-template request with bad or missing token");
     return reply.code(401).send({ error: "unauthorized" });
   }
   const templatePath = config.docx.template;
@@ -1193,14 +1195,14 @@ function rawFileWorkspace(named: string | undefined): Workspace | undefined {
 app.get("/files/raw", async (req, reply) => {
   const query = req.query as Record<string, unknown>;
   if (!hostAllowed(req.headers.host)) {
-    console.warn(`[server] rejected /files/raw request with foreign host ${String(req.headers.host).replace(/[\r\n]/g, " ")} from ${String(req.ip).replace(/[\r\n]/g, " ")}`);
+    console.warn("[server] rejected /files/raw request with foreign host");
     return reply.code(403).send({ error: "forbidden" });
   }
   const auth = req.headers.authorization;
   const bearer = auth?.startsWith("Bearer ") ? auth.slice("Bearer ".length) : undefined;
   const queryToken = typeof query.token === "string" ? query.token : undefined;
   if (!tokenValid(bearer) && !tokenValid(queryToken)) {
-    console.warn(`[server] rejected /files/raw request with bad or missing token from ${String(req.ip).replace(/[\r\n]/g, " ")}`);
+    console.warn("[server] rejected /files/raw request with bad or missing token");
     return reply.code(401).send({ error: "unauthorized" });
   }
   const relPath = typeof query.path === "string" ? query.path : undefined;
