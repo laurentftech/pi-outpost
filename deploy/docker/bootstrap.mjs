@@ -28,25 +28,18 @@ if (networkOption !== "0" && networkOption !== "1") {
 }
 writeFileSync("/data/agent/docker-network.json", JSON.stringify({ allowAgentNetwork: networkOption === "1" }), { mode: 0o600 });
 console.log(`[docker] Shell/terminal IP network: ${networkOption === "1" ? "caller policy (operator opt-in)" : "disabled (default)"}`);
-const existingConfigFlags = fsConstants.O_RDWR | fsConstants.O_NOFOLLOW;
-const createConfigFlags = existingConfigFlags | fsConstants.O_CREAT | fsConstants.O_EXCL;
-let configFd;
-let createdConfig = false;
+// Open or create the path in one operation, without a path-based existence
+// check followed by another open. O_NOFOLLOW rejects a symlink at the final
+// component; all later operations use this descriptor.
+const configFd = openSync(
+  configFile,
+  fsConstants.O_RDWR | fsConstants.O_CREAT | fsConstants.O_NOFOLLOW,
+  0o600,
+);
 try {
-  configFd = openSync(configFile, existingConfigFlags);
-} catch (error) {
-  if (error.code !== "ENOENT") throw error;
-  try {
-    configFd = openSync(configFile, createConfigFlags, 0o600);
-    createdConfig = true;
-  } catch (createError) {
-    if (createError.code !== "EEXIST") throw createError;
-    configFd = openSync(configFile, existingConfigFlags);
-  }
-}
-try {
-  if (!fstatSync(configFd).isFile()) throw new Error("/data/config.json must be a regular file");
-  const config = createdConfig ? template : JSON.parse(readFileSync(configFd, "utf8"));
+  const configStat = fstatSync(configFd);
+  if (!configStat.isFile()) throw new Error("/data/config.json must be a regular file");
+  const config = configStat.size === 0 ? template : JSON.parse(readFileSync(configFd, "utf8"));
   config.server = { ...config.server, token };
   const serialized = Buffer.from(JSON.stringify(config, null, 2) + "\n");
   ftruncateSync(configFd, 0);
