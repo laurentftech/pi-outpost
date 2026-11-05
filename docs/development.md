@@ -3,6 +3,10 @@
 Everything here is for people working *on* pi-outpost. Running it is covered by the
 [getting-started guide](getting-started.md).
 
+Start with [CONTRIBUTING.md](../CONTRIBUTING.md) for contributions and PR expectations.
+[Code quality](quality.md) describes the CI checks, warning budget, coverage exclusions and current
+merge-enforcement limits. Report suspected vulnerabilities through [SECURITY.md](../SECURITY.md).
+
 ## Layout
 
 ```
