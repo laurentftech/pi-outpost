@@ -64,7 +64,7 @@ describe("the grant dialog", () => {
     for (const button of screen.getAllByRole("button")) expect((button as HTMLButtonElement).disabled).toBe(true);
   });
 
-  it("is not the default for the session: nothing is focused, and the backdrop answers nothing", () => {
+  it("is not the default for the session: nothing is focused, and reading outside answers nothing", () => {
     const onRespond = vi.fn();
     render(<SandboxGrantDialog request={request()} onRespond={onRespond} />);
     expect(document.activeElement?.tagName).not.toBe("BUTTON");
