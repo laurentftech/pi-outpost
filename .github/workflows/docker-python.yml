@@ -18,7 +18,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
-      PLAYWRIGHT_BROWSERS_PATH: ${{ runner.temp }}/pi-outpost-playwright
+      PLAYWRIGHT_BROWSERS_PATH: /tmp/pi-outpost-playwright
     steps:
       - uses: actions/checkout@v5
       - name: Load the dedicated AppArmor profile
