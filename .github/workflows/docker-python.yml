@@ -1,0 +1,33 @@
+name: Docker app with Python
+
+on:
+  pull_request:
+    paths:
+      - deploy/docker/**
+      - docs/docker.md
+      - .github/workflows/docker-python.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  recipe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+      - name: Use npm 12.2.1
+        run: npm install -g npm@12.2.1
+      # Only the browser client is needed on the host; the app and its native
+      # dependencies are installed and exercised inside the Docker image.
+      - run: npm ci --workspaces=false --ignore-scripts --no-audit --no-fund
+      - run: npx playwright install --with-deps chromium
+      - name: Build the full application image
+        run: docker build -t pi-outpost-python:0.59.1 deploy/docker
+      - name: Exercise the installed app, confinement, terminal and persistence
+        run: node deploy/docker/test.mjs

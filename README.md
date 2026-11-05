@@ -63,6 +63,7 @@ See the [feature guide](docs/features.md) for details.
 | [Features](docs/features.md) | Chat, files, documents, terminal, Work Plans, Outcome |
 | [Sandboxing](docs/sandboxing.md) | File and shell confinement, platform setup, network grants |
 | [Deployment and updates](docs/deployment.md) | Updates, service installation, desktop app |
+| [Docker with Python](docs/docker.md) | Full app, integrated terminal, persistent projects and landstrip confinement |
 | [Integrations](docs/integrations.md) | Embedding, extension UI, tool progress, Open WebUI, Claude Desktop |
 | [Development](docs/development.md) | Repository layout, local development, testing, releases |
 

@@ -1,0 +1,27 @@
+{
+  "cwd": "/workspace",
+  "agentDir": "/data/agent",
+  "workspaceLock": true,
+  "openBrowser": false,
+  "updateCheck": false,
+  "sandbox": {
+    "root": "/workspace",
+    "allowWrite": true,
+    "allowBash": true,
+    "bashRunner": "/opt/landstrip/bin/landstrip"
+  },
+  "sandboxLocks": {
+    "root": true,
+    "writableRoot": true,
+    "allowWrite": true,
+    "allowBash": true
+  },
+  "terminal": {
+    "enabled": true,
+    "sandbox": "/opt/landstrip/bin/landstrip"
+  },
+  "server": {
+    "host": "0.0.0.0",
+    "port": 3141
+  }
+}

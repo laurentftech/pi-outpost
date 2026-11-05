@@ -136,6 +136,9 @@ Docker's default one does.
 **In Docker, keep the runner.** The container protects the host, not what the server holds inside it:
 the agent directory, the configuration, every mounted project. Also:
 
+The [full-app Docker recipe](docker.md) includes Python, the integrated terminal and landstrip,
+and checks both confined surfaces before serving.
+
 - run the server as an ordinary user, not root (`--security-opt no-new-privileges` is compatible);
 - mount only the projects and the agent directory — never the Docker socket, never `--privileged`;
 - keep provider keys in the credential store (`pi-outpost login`, or Settings), not in the server's
