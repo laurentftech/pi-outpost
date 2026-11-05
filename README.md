@@ -66,5 +66,8 @@ See the [feature guide](docs/features.md) for details.
 | [Docker with Python](docs/docker.md) | Full app, integrated terminal, persistent projects and landstrip confinement |
 | [Integrations](docs/integrations.md) | Embedding, extension UI, tool progress, Open WebUI, Claude Desktop |
 | [Development](docs/development.md) | Repository layout, local development, testing, releases |
+| [Contributing](CONTRIBUTING.md) | Bug reports, development workflow, tests and pull requests |
+| [Security policy](SECURITY.md) | Private vulnerability reporting, supported versions and trust boundaries |
+| [Code quality](docs/quality.md) | Enforced checks, coverage scope, known debt and merge rules |
 
 [Compare with other tools](docs/comparison.md) · [Changelog](CHANGELOG.md) · [MIT license](LICENSE)
