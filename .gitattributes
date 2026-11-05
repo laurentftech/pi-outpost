@@ -36,3 +36,8 @@ server/test/fixtures/*.msg     binary
 # A vendored third-party file is distributed as the exact bytes its README's checksum
 # names; no conversion, on any checkout.
 web/public/vendor/**           -text
+
+# Docker executes this script on Linux even when the host checkout is Windows.
+deploy/docker/entrypoint.sh    text eol=lf
+deploy/docker/landstrip.cjs    text eol=lf
+deploy/docker/profiles/*.apparmor text eol=lf

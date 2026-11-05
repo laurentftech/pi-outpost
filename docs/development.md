@@ -323,12 +323,24 @@ by hand, on `main`.
    `ghcr.io/laurentftech/pi-outpost-openwebui:X.Y.Z`, and to `latest` for a stable version. Check
    it with `docker manifest inspect ghcr.io/laurentftech/pi-outpost-openwebui:X.Y.Z`.
 
+   The *app-image* job also publishes the full coding app with Python to
+   `ghcr.io/laurentftech/pi-outpost:X.Y.Z` (Linux x64), plus `latest` for stable releases only.
+   It consumes the built CLI tarball passed by the successful publish job, avoiding npm's
+   propagation delay. Before any push, it checks the installed version and runs the real
+   Docker confinement, Python, terminal, browser and persistence checks against that exact image.
+   The image keeps its default non-root UID 1000; only the host-side temporary fixture harness
+   runs as root to accommodate GitHub's different runner UID. The tarball is an internal workflow
+   artifact; the release attachment job downloads only the five public `pi-outpost-*` artifacts.
+   A final anonymous manifest check must pass. Verify both image jobs before calling the release
+   complete; deployment instructions are in [Docker with Python](docker.md).
+
    **It must be pullable without a login,** or the demo `docker-compose.yml` fails at the pull:
    `curl -s "https://ghcr.io/token?scope=repository:laurentftech/pi-outpost-openwebui:pull"` then
    the manifest with that token must answer 200. It came out public on its first publish (v0.34.0),
    inheriting the repository's visibility through the image's `org.opencontainers.image.source`
    label. Should it ever come out private, make it public in *Package settings → Change visibility*
-   (GitHub's API cannot change a package's visibility).
+   (GitHub's API cannot change a package's visibility). This first-publish visibility check applies
+   to both packages; the full-app image job fails explicitly if anonymous access is unavailable.
 
 The executables can be built from any branch without publishing anything, to check a
 change to the single-executable build before it meets a tag: run the *Release* workflow by
