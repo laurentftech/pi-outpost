@@ -294,7 +294,8 @@ describe("drawio_check", () => {
 describe("the agent is told to show the diagram", () => {
   // openlore: scenario=TheGuidanceAsksToShowTheDiagram spec=drawio-diagrams
   test("TheGuidanceAsksToShowTheDiagram: the check tool and the skill both ask for the file as a picture in the reply", () => {
-    const tool = createDrawioCheckToolDefinition({ cwd: tmpdir(), allowedRoots: [tmpdir()] });
+    const root = process.cwd();
+    const tool = createDrawioCheckToolDefinition({ cwd: root, allowedRoots: [root] });
     const guidance = (tool.promptGuidelines ?? []).join("\n");
     assert.match(guidance, /Once drawio_check reports no error, show the diagram in your reply as a picture of the file — !\[name\]\(\.\/path\/to\/file\.drawio\)/);
     const skill = readFileSync(path.join(import.meta.dirname, "..", "..", "skills", "drawio", "SKILL.md"), "utf8");

@@ -1,4 +1,4 @@
-import { closeSync, openSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { closeSync, constants as fsConstants, fstatSync, ftruncateSync, openSync, readFileSync, writeFileSync, writeSync, mkdirSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 
 // Do not put the web token or provider keys in the server's environment: under
@@ -28,20 +28,37 @@ if (networkOption !== "0" && networkOption !== "1") {
 }
 writeFileSync("/data/agent/docker-network.json", JSON.stringify({ allowAgentNetwork: networkOption === "1" }), { mode: 0o600 });
 console.log(`[docker] Shell/terminal IP network: ${networkOption === "1" ? "caller policy (operator opt-in)" : "disabled (default)"}`);
-let existingConfig;
+const existingConfigFlags = fsConstants.O_RDWR | fsConstants.O_NOFOLLOW;
+const createConfigFlags = existingConfigFlags | fsConstants.O_CREAT | fsConstants.O_EXCL;
+let configFd;
+let createdConfig = false;
 try {
-  const configFd = openSync(configFile, "r");
-  try {
-    existingConfig = readFileSync(configFd, "utf8");
-  } finally {
-    closeSync(configFd);
-  }
+  configFd = openSync(configFile, existingConfigFlags);
 } catch (error) {
   if (error.code !== "ENOENT") throw error;
+  try {
+    configFd = openSync(configFile, createConfigFlags, 0o600);
+    createdConfig = true;
+  } catch (createError) {
+    if (createError.code !== "EEXIST") throw createError;
+    configFd = openSync(configFile, existingConfigFlags);
+  }
 }
-const config = existingConfig === undefined ? template : JSON.parse(existingConfig);
-config.server = { ...config.server, token };
-writeFileSync(configFile, JSON.stringify(config, null, 2) + "\n", { mode: 0o600 });
+try {
+  if (!fstatSync(configFd).isFile()) throw new Error("/data/config.json must be a regular file");
+  const config = createdConfig ? template : JSON.parse(readFileSync(configFd, "utf8"));
+  config.server = { ...config.server, token };
+  const serialized = Buffer.from(JSON.stringify(config, null, 2) + "\n");
+  ftruncateSync(configFd, 0);
+  let offset = 0;
+  while (offset < serialized.length) {
+    const written = writeSync(configFd, serialized, offset, serialized.length - offset, offset);
+    if (written === 0) throw new Error("Could not write /data/config.json");
+    offset += written;
+  }
+} finally {
+  closeSync(configFd);
+}
 
 execFileSync("/opt/landstrip/bin/landstrip", ["doctor"], { stdio: "inherit", timeout: 10_000 });
 const report = execFileSync("pi-outpost", ["doctor", "--config", configFile], {
