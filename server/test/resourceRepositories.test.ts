@@ -299,6 +299,27 @@ describe("resource repository enrollment", () => {
 });
 
 describe("resource provenance grouping", () => {
+  test("keeps the configured extension alias as the removable root while grouping by the real target", async () => {
+    const root = await temp("extension-alias");
+    const target = path.join(root, "versioned-extensions");
+    const alias = path.join(root, "stable-extensions");
+    await mkdir(target);
+    const script = path.join(target, "index.ts");
+    await writeFile(script, "export default () => {};\n");
+    await symlink(target, alias, process.platform === "win32" ? "junction" : "dir");
+    const inventory = await new ResourceRepositoryService().buildInventory({
+      ...input([resource("extension", script)]), userExtensionPaths: [alias],
+    });
+    assert.equal(inventory.resources[0].path, await realpath(script));
+    assert.equal(inventory.resources[0].userRoot, alias);
+    assert.equal(inventory.resources[0].origin, "user");
+    const notLoaded = await new ResourceRepositoryService().buildInventory({
+      ...input([]), userExtensionPaths: [alias],
+    });
+    assert.equal(notLoaded.resources[0].path, await realpath(target));
+    assert.equal(notLoaded.resources[0].userRoot, alias, "a declared root stays removable even when not loaded");
+  });
+
   test("canonicalizes symlinked duplicate roots and keeps repository ids stable for the process", async () => {
     const root = await temp("canonical-roots");
     await initRepo(root);

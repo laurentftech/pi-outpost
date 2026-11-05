@@ -125,6 +125,7 @@ function ResourceList({ kind, resources, removalLocked = false, onRemove }: { ki
                 {resource.userRoot && !removalLocked ? <button type="button" aria-label={`Remove ${resource.userRoot}`} onClick={() => onRemove(resource)} className="text-xs text-zinc-500 hover:text-red-600">Remove</button> : null}
               </div>
               <p className="mt-0.5 truncate font-mono text-[11px] text-zinc-400" title={resource.path}>{resource.path ?? resource.unavailableReason ?? "Path unavailable"}</p>
+              {resource.kind === "extension" && resource.userRoot && resource.userRoot !== resource.path ? <p className="mt-0.5 truncate font-mono text-[11px] text-zinc-500" title={resource.userRoot}><span>Folder: </span><span>{resource.userRoot}</span></p> : null}
             </li>
           ))}
         </ul>
