@@ -146,6 +146,10 @@ container. `docker compose down` keeps the data volume; `down --volumes` deletes
 
 ## Verify the recipe
 
+The automated container and browser checks run on GitHub's Ubuntu x64 runner with AppArmor 4.
+ARM64 and Docker Desktop builds are not covered by this workflow; the startup probes remain
+mandatory on those hosts too.
+
 For contributors, after building the default image and installing the repository's Node dependencies
 and Playwright Chromium, run from the repository root:
 

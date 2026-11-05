@@ -37,21 +37,3 @@ jobs:
         env:
           LANDSTRIP_APPARMOR_PROFILE: pi-outpost-landstrip
         run: node deploy/docker/test.mjs
-      - name: Diagnose namespace requirements on a failed recipe
-        if: failure()
-        shell: bash
-        run: |
-          sysctl kernel.apparmor_restrict_unprivileged_userns || true
-          for probe_mode in default seccomp namespaces proc; do
-            probe_args=(--rm --cap-drop=ALL --security-opt=no-new-privileges)
-            case "$probe_mode" in
-              seccomp|namespaces|proc) probe_args+=(--security-opt=seccomp=unconfined) ;;
-            esac
-            case "$probe_mode" in
-              namespaces|proc) probe_args+=(--security-opt=apparmor=unconfined) ;;
-            esac
-            if [ "$probe_mode" = proc ]; then probe_args+=(--security-opt=systempaths=unconfined); fi
-            echo "Namespace diagnostic: $probe_mode"
-            docker run "${probe_args[@]}" --entrypoint /opt/landstrip/bin/landstrip \
-              pi-outpost-python:0.59.1 doctor || true
-          done
