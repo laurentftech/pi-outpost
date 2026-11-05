@@ -127,8 +127,13 @@ container when it has one:
 ```bash
 npm pack @landstrip/landstrip-linux-x64            # or -linux-arm64
 tar xzf landstrip-landstrip-linux-x64-*.tgz        # the binary is package/bin/landstrip
-./package/bin/landstrip doctor                     # {"ok":true,…,"implementation":"landlock+seccomp"}
+./package/bin/landstrip --appimage-extract         # no FUSE device needed
+./squashfs-root/usr/bin/landstrip doctor           # {"ok":true,…,"implementation":"landlock+seccomp"}
 ```
+
+The Linux package is an AppImage. Use the extracted executable as the runner when FUSE is unavailable,
+including in Docker; keep its extracted directory and license notices. The full-app recipe performs
+this extraction while building the image and keeps `/opt/landstrip/bin/landstrip` as its runner path.
 
 It needs Landlock (kernel 5.13 or later, enabled) and a seccomp profile that lets its calls through;
 Docker's default one does.
