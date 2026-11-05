@@ -329,7 +329,7 @@ describe("the figure stands on its own", () => {
       expect(svg).not.toContain("<image");
       expect(svg).not.toContain("xlink:href");
       expect(svg).not.toContain("@import");
-      expect(svg).not.toMatch(/https?:\/\/(?!www\.w3\.org)/);
+      expect(svg).not.toMatch(/^[\s\S]*https?:\/\/(?!www\.w3\.org)/);
       // The only url() a figure may carry is a reference to its own arrowheads.
       for (const reference of svg.match(/url\(([^)]*)\)/g) ?? []) {
         expect(reference).toMatch(/^url\(#/);

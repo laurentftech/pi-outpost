@@ -66,15 +66,20 @@ test("every icon the manifest names is actually served", async (t) => {
   if (!manifest) return t.skip("web/dist not built here");
   const server = await serve(t);
 
-  // Driven off the manifest itself rather than a list kept here: an icon added to
-  // the manifest and not to the build is exactly the failure this catches.
+  // Keep network destinations constant; the manifest is file data and must never
+  // choose the URL this test requests. The equality also makes a new icon require
+  // an explicit addition here.
+  const iconPaths = ["/icon-192.png", "/icon-512.png", "/icon-maskable-512.png"];
   assert.ok(manifest.icons.length > 0, "a manifest with no icons is not installable");
-  for (const icon of manifest.icons) {
-    const response = await fetch(server.base + icon.src);
-    assert.equal(response.status, 200, `${icon.src} is declared and not served`);
-    assert.match(response.headers.get("content-type") ?? "", /^image\//, `${icon.src} is not served as an image`);
+  assert.deepEqual(manifest.icons.map((icon) => icon.src).sort(), [...iconPaths].sort());
+  for (const iconPath of iconPaths) {
+    const target = new URL(iconPath, server.base);
+    assert.equal(target.origin, new URL(server.base).origin, "an icon must stay on this app's origin");
+    const response = await fetch(target);
+    assert.equal(response.status, 200, `${iconPath} is declared and not served`);
+    assert.match(response.headers.get("content-type") ?? "", /^image\//, `${iconPath} is not served as an image`);
     const bytes = Buffer.from(await response.arrayBuffer());
-    assert.ok(bytes.length > 0, `${icon.src} is empty`);
+    assert.ok(bytes.length > 0, `${iconPath} is empty`);
   }
 });
 

@@ -8,8 +8,9 @@
  * application/octet-stream MIME bug that happened when the Vite *source*
  * index.html was served instead of the production build.
  */
-import { readdir, readFile, stat, writeFile, mkdir } from "node:fs/promises";
-import { join, relative, sep } from "node:path";
+import { constants as fsConstants } from "node:fs";
+import { readdir, lstat, open, realpath, stat, writeFile, mkdir } from "node:fs/promises";
+import { isAbsolute, join, relative, resolve, sep } from "node:path";
 
 export const MIME = {
   ".html": "text/html; charset=utf-8",
@@ -46,24 +47,103 @@ function mimeFor(file) {
   return "application/octet-stream";
 }
 
-async function walk(dir, base, out) {
-  for (const entry of await readdir(dir)) {
+function fdPath(fd) {
+  if (process.platform === "linux") return `/proc/self/fd/${fd}`;
+  if (process.platform === "darwin") return `/dev/fd/${fd}`;
+  return undefined;
+}
+
+function samePath(first, second) {
+  const left = resolve(first);
+  const right = resolve(second);
+  return process.platform === "win32" ? left.toLowerCase() === right.toLowerCase() : left === right;
+}
+
+function insideRoot(root, target) {
+  const rel = relative(root, target);
+  return rel === "" || (rel !== ".." && !rel.startsWith(`..${sep}`) && !isAbsolute(rel));
+}
+
+async function openedPathIsStable(abs, logicalAbs, base, opened) {
+  try {
+    const [atPath, canonical] = await Promise.all([stat(abs), realpath(abs)]);
+    return atPath.dev === opened.dev && atPath.ino === opened.ino &&
+      samePath(canonical, logicalAbs) && insideRoot(base, canonical);
+  } catch {
+    return false;
+  }
+}
+
+async function directoryIsStable(dir, logicalDir, base, expected) {
+  try {
+    const [current, canonical] = await Promise.all([stat(dir), realpath(dir)]);
+    return current.isDirectory() && current.dev === expected.dev && current.ino === expected.ino &&
+      samePath(canonical, logicalDir) && insideRoot(base, canonical);
+  } catch {
+    return false;
+  }
+}
+
+async function walk(dir, logicalDir, base, out, expectedDirectory) {
+  if (!(await directoryIsStable(dir, logicalDir, base, expectedDirectory))) return;
+  const entries = await readdir(dir);
+  if (!(await directoryIsStable(dir, logicalDir, base, expectedDirectory))) return;
+  for (const entry of entries) {
     const abs = join(dir, entry);
-    const s = await stat(abs);
-    if (s.isDirectory()) {
-      await walk(abs, base, out);
-    } else {
-      const rel = relative(base, abs).split(sep).join("/");
+    const logicalAbs = join(logicalDir, entry);
+    const flags = process.platform === "win32" ? "r" : fsConstants.O_RDONLY | fsConstants.O_NONBLOCK | fsConstants.O_NOFOLLOW;
+    const input = await open(abs, flags).catch(() => null);
+    if (input === null) {
+      // Windows may refuse to open a directory handle. Check for a real directory
+      // only after the attempted open, then recurse.
+      if (process.platform === "win32") {
+        const stats = await lstat(abs).catch(() => null);
+        if (stats?.isDirectory() && !stats.isSymbolicLink()) await walk(abs, logicalAbs, base, out, stats);
+      }
+      continue;
+    }
+    try {
+      const opened = await input.stat();
+      if (opened.isDirectory()) {
+        if (!(await openedPathIsStable(abs, logicalAbs, base, opened))) continue;
+        const anchoredDir = fdPath(input.fd);
+        if (anchoredDir !== undefined) {
+          await walk(anchoredDir, logicalAbs, base, out, opened);
+        } else {
+          await input.close();
+          await walk(abs, logicalAbs, base, out, opened);
+        }
+        continue;
+      }
+      if (!opened.isFile()) continue;
+      if (!(await openedPathIsStable(abs, logicalAbs, base, opened))) continue;
+      const rel = relative(base, logicalAbs).split(sep).join("/");
       const url = "/" + rel;
-      const buf = await readFile(abs);
+      const buf = await input.readFile();
       out[url] = { b64: buf.toString("base64"), type: mimeFor(entry) };
+    } finally {
+      await input.close().catch(() => undefined);
     }
   }
 }
 
 export async function generateEmbeddedWeb(webDist, outFile) {
   const map = {};
-  await walk(webDist, webDist, map);
+  const base = await realpath(webDist);
+  if (process.platform === "win32") {
+    const rootStats = await lstat(base);
+    if (!rootStats.isDirectory() || rootStats.isSymbolicLink()) throw new Error("web/dist is not a real directory");
+    await walk(base, base, base, map, rootStats);
+  } else {
+    const rootFd = await open(base, fsConstants.O_RDONLY | fsConstants.O_DIRECTORY | fsConstants.O_NOFOLLOW);
+    try {
+      const opened = await rootFd.stat();
+      if (!(await openedPathIsStable(base, base, base, opened))) throw new Error("web/dist changed while opening");
+      await walk(fdPath(rootFd.fd) ?? base, base, base, map, opened);
+    } finally {
+      await rootFd.close();
+    }
+  }
   const count = Object.keys(map).length;
   const lines = [
     "// GENERATED by cli/scripts/embed-web.mjs — do not edit.",

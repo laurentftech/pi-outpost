@@ -43,6 +43,7 @@ import {
   type RenderSettings,
 } from "./presentationRender.ts";
 import { isWithinAny, realResolve } from "./sandbox.ts";
+import { readFileSafely } from "./readFileSafely.ts";
 
 export interface PresentationToolOptions {
   /** Paths the model gives are resolved against this. */
@@ -75,10 +76,11 @@ export async function readSource(target: string, options: Pick<PresentationToolO
   if (!isWithinAny(options.allowedRoots, resolved)) {
     throw new Error(`Access denied: "${target}" is outside the sandbox (${options.allowedRoots[0]})`);
   }
-  const stat = await fs.stat(resolved).catch(() => null);
-  if (stat === null || !stat.isFile()) throw new Error(`No such file: ${target}`);
-  if (stat.size > maxBytes) throw new Error(`"${target}" is larger than the ${describeSize(maxBytes)} ${what} limit`);
-  return { resolved, bytes: await fs.readFile(resolved) };
+  const file = await readFileSafely(resolved, maxBytes);
+  if (file.kind === "missing" || file.kind === "not-file") throw new Error(`No such file: ${target}`);
+  if (file.kind === "too-large") throw new Error(`"${target}" is larger than the ${describeSize(maxBytes)} ${what} limit`);
+  if (file.kind === "error") throw file.error;
+  return { resolved, bytes: file.bytes };
 }
 
 /**

@@ -20,9 +20,11 @@ test("APosterFileIsReadBack: every format comes back with its markup, stylesheet
   }
 });
 
-test("APosterFileIsReadBack: a stylesheet that says </style survives the round trip", () => {
+test("APosterFileIsReadBack: a stylesheet cannot close its HTML style element", () => {
   const css = `.x::after { content: "</style>"; }`;
-  assert.equal(readPage(pageOf("T", { html: HTML, css, format: "A4-portrait" })).css, css);
+  const page = pageOf("T", { html: HTML, css, format: "A4-portrait" });
+  assert.match(page, /content: "\\3C \/style>"/);
+  assert.equal(readPage(page).css, `.x::after { content: "\\3C /style>"; }`);
 });
 
 test("APosterFileIsReadBack: markup ending in nested divs keeps them all", () => {

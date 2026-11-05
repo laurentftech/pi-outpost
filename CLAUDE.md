@@ -94,6 +94,22 @@ and report the fallback.
 - ALWAYS use `rg` (ripgrep) instead of `grep` for code search and file inspection.
 - NEVER run recursive `grep -r` commands. `rg` is faster and respects `.gitignore`.
 
+## GitHub Code Scanning alerts
+
+Use the GitHub CLI to retrieve alerts; the connected GitHub tools do not expose the
+Code Scanning alerts endpoint. Paginate because `per_page=100` alone truncates
+repositories with more than 100 open alerts. Save a single JSON array with:
+
+```sh
+gh api --paginate --slurp \
+  -H "Accept: application/vnd.github+json" \
+  "/repos/laurentftech/pi-outpost/code-scanning/alerts?state=open&per_page=100" \
+  | jq 'add' > code-scanning-alerts.json
+```
+
+Keep the export local and untracked; it contains alert details. Summarize it by
+rule, severity, path, and line before inspecting and fixing findings in source.
+
 ## Documentation impact before every PR
 
 Before opening or updating any pull request:

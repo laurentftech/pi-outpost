@@ -95,10 +95,14 @@ function unescapeText(value: string): string {
   return value.replace(/&(amp|lt|gt|quot);/g, (_match, name: string) => ({ amp: "&", lt: "<", gt: ">", quot: '"' })[name]!);
 }
 
-// `</style` inside the stylesheet would end its element early; written as `<\/style`, which
-// CSS reads the same (a backslash before `/` is that character), and turned back on reading.
-const STYLE_END = /<\/style/gi;
+// CSS escapes preserve `<` as a CSS code point while keeping it out of HTML's raw-text parser.
+// This prevents any stylesheet text from terminating its surrounding style element.
 const ESCAPED_STYLE_END = /<\\\/style/gi;
+
+/** CSS is raw text in HTML; CSS-escape every `<` without changing its CSS meaning. */
+function cssForStyleElement(css: string): string {
+  return css.replace(/</g, "\\3C ");
+}
 
 /** The page written for a poster: printable at its paper size with no margin, colours kept. */
 export function pageOf(title: string, content: PosterContent): string {
@@ -108,7 +112,7 @@ export function pageOf(title: string, content: PosterContent): string {
 <html>
 <head>
 <meta charset="utf-8">
-<meta name="poster-format" content="${format}">
+<meta name="poster-format" content="${escapeText(format)}">
 <title>${escapeText(title)}</title>
 <style>
 @page { size: ${paper}; margin: 0; }
@@ -118,7 +122,7 @@ body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 .poster-page { width: ${width}px; height: ${height}px; overflow: hidden; position: relative; }
 </style>
 <style data-poster>
-${css.replace(STYLE_END, "<\\/style")}
+${cssForStyleElement(css)}
 </style>
 </head>
 <body><div class="poster-page">${html}</div></body>

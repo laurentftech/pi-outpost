@@ -28,6 +28,7 @@ import {
 import { compareTimelines } from "@pi-outpost/shared/structured-exchange/timeline-comparison";
 import { assertWritableDestination } from "./extractionOutput.ts";
 import { isWithinAny, realResolve } from "./sandbox.ts";
+import { readFileSafely } from "./readFileSafely.ts";
 import { digest } from "./structuredExchangeTool.ts";
 
 export interface TimelineComparisonToolOptions {
@@ -68,10 +69,12 @@ async function readTimeline(
   if (!isWithinAny(options.allowedRoots, resolved)) {
     throw new Error(`Access denied: "${target}" is outside the sandbox (${options.allowedRoots[0]})`);
   }
-  const stat = await fs.stat(resolved).catch(() => null);
-  if (stat === null || !stat.isFile()) throw new Error(`No such file: ${target}`);
-  if (stat.size > options.maxBytes) throw new Error(`"${target}" is larger than the document limit`);
-  const verdict = parseSerializedStructuredExchange(await fs.readFile(resolved, "utf8"), checkStructuredExchangeSchema, options.limits);
+  const file = await readFileSafely(resolved, options.maxBytes);
+  if (file.kind === "missing" || file.kind === "not-file") throw new Error(`No such file: ${target}`);
+  if (file.kind === "too-large") throw new Error(`"${target}" is larger than the document limit`);
+  if (file.kind === "error") throw file.error;
+  const text = file.bytes.toString("utf8");
+  const verdict = parseSerializedStructuredExchange(text, checkStructuredExchangeSchema, options.limits);
   if (!verdict.valid) {
     const lines = verdict.issues.map((issue) => `- ${issue.rule} at ${issue.path === "" ? "(document)" : issue.path}: ${issue.message}`);
     return { ok: false, text: [`\`${target}\` does not satisfy the structured-exchange contract:`, ...lines].join("\n") };

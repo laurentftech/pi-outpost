@@ -12,6 +12,7 @@ import path from "node:path";
 import type { ContentSearchHit } from "@pi-outpost/shared";
 import { looksBinary, SEARCH_MAX_VISITED, skippedBySearch } from "./fileBrowser.ts";
 import { pdfPageTexts } from "./pdf.ts";
+import { readFileSafely } from "./readFileSafely.ts";
 
 export interface ContentSearchLimits {
   maxHits: number;
@@ -118,34 +119,22 @@ export async function searchContent(
   async function searchFile(absolute: string, relPath: string): Promise<ContentSearchHit[] | null> {
     // Listed as a file a moment ago; checked again without following anything, so a
     // file swapped for a link since cannot lead the read outside the root.
-    let stat;
-    try {
-      stat = await fs.lstat(absolute);
-    } catch {
-      return null;
-    }
-    if (!stat.isFile()) return null;
     if (relPath.toLowerCase().endsWith(".pdf")) {
-      if (stat.size > limits.maxPdfBytes) return null;
-      return searchPdf(absolute, relPath);
+      const file = await readFileSafely(absolute, limits.maxPdfBytes);
+      if (file.kind !== "ok") return null;
+      return searchPdf(file.bytes, relPath);
     }
-    if (stat.size > limits.maxTextBytes) return null;
-    let buffer: Buffer;
-    try {
-      buffer = await fs.readFile(absolute);
-    } catch {
-      return null;
-    }
-    if (looksBinary(buffer.subarray(0, BINARY_PROBE_BYTES))) return null;
-    return lineHits(relPath, buffer.toString("utf8"), needle, limits.maxHitsPerFile + 1);
+    const file = await readFileSafely(absolute, limits.maxTextBytes);
+    if (file.kind !== "ok") return null;
+    if (looksBinary(file.bytes.subarray(0, BINARY_PROBE_BYTES))) return null;
+    return lineHits(relPath, file.bytes.toString("utf8"), needle, limits.maxHitsPerFile + 1);
   }
 
-  async function searchPdf(absolute: string, relPath: string): Promise<ContentSearchHit[] | null> {
+  async function searchPdf(bytes: Buffer, relPath: string): Promise<ContentSearchHit[] | null> {
     let texts: string[];
     try {
-      const bytes = new Uint8Array(await fs.readFile(absolute));
       const timeoutMs = Math.max(0, Math.min(limits.pdfTimeoutMs, deadline - Date.now()));
-      texts = await pdfPageTexts(bytes, { timeoutMs, signal });
+      texts = await pdfPageTexts(new Uint8Array(bytes), { timeoutMs, signal });
     } catch {
       signal?.throwIfAborted();
       result.skipped++;
@@ -154,7 +143,8 @@ export async function searchContent(
     return pageHits(relPath, texts, needle, limits.maxHitsPerFile + 1);
   }
 
-  await walk(root, "");
+  const searchRoot = await fs.realpath(root).catch(() => path.resolve(root));
+  await walk(searchRoot, "");
   return result;
 }
 

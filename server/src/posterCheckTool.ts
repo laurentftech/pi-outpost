@@ -11,7 +11,6 @@
  * every other file tool, and the resolved path is checked against the read zone here too. So is
  * every file a frame names: one outside the zone is refused unopened, as the editor's read would be.
  */
-import fs from "node:fs/promises";
 import path from "node:path";
 import { Type } from "typebox";
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
@@ -21,6 +20,7 @@ import { MAX_POSTER_BYTES, POSTER_SUFFIX } from "@pi-outpost/posters/format";
 import { DrawioReadError, readDrawio } from "./drawio.ts";
 import { DRAWIO_MAX_BYTES } from "./drawioTool.ts";
 import { isWithinAny, realResolve } from "./sandbox.ts";
+import { readFileSafely } from "./readFileSafely.ts";
 
 export interface PosterCheckToolOptions {
   /** Paths the model gives are resolved against this, and a frame's path starting with `/` too. */
@@ -49,16 +49,19 @@ async function frameIssue(frame: PosterFrame, poster: string, options: PosterChe
   const target = frame.path.startsWith("/") ? path.join(options.cwd, frame.path) : path.resolve(path.dirname(poster), frame.path);
   const resolved = await realResolve(target);
   if (!isWithinAny(options.allowedRoots, resolved)) return `${named} names a file outside the workspace, which the editor cannot read.`;
-  const stat = await fs.stat(resolved).catch(() => null);
   const from = frame.path.startsWith("/") ? "from the workspace root" : "from the poster's directory";
-  if (stat === null || !stat.isFile()) return `${named}: no such file ${from}. Write the path ${from}, or from the root starting with /.`;
+  const file = await readFileSafely(resolved, frame.kind === "picture" ? MAX_PICTURE_FILE_BYTES : DRAWIO_MAX_BYTES);
+  if (file.kind === "missing" || file.kind === "not-file") return `${named}: no such file ${from}. Write the path ${from}, or from the root starting with /.`;
   if (frame.kind === "picture") {
-    return stat.size > MAX_PICTURE_FILE_BYTES ? `${named}: the picture is ${Math.round(stat.size / 1024 / 1024)} MB, above the ${MAX_PICTURE_FILE_BYTES / 1024 / 1024} MB the editor reads.` : undefined;
+    if (file.kind === "too-large") return `${named}: the picture is ${Math.round(file.size / 1024 / 1024)} MB, above the ${MAX_PICTURE_FILE_BYTES / 1024 / 1024} MB the editor reads.`;
+    if (file.kind === "error") throw file.error;
+    return undefined;
   }
-  if (stat.size > DRAWIO_MAX_BYTES) return `${named}: the diagram is larger than the ${DRAWIO_MAX_BYTES / 1024 / 1024} MB a diagram may be.`;
+  if (file.kind === "too-large") return `${named}: the diagram is larger than the ${DRAWIO_MAX_BYTES / 1024 / 1024} MB a diagram may be.`;
+  if (file.kind === "error") throw file.error;
   let pages;
   try {
-    pages = readDrawio(await fs.readFile(resolved, "utf8"));
+    pages = readDrawio(file.bytes.toString("utf8"));
   } catch (error) {
     if (error instanceof DrawioReadError) return `${named}: draw.io cannot open it: ${error.message}. Run drawio_check on it.`;
     throw error;
@@ -114,11 +117,12 @@ export function createPosterCheckToolDefinition(options: PosterCheckToolOptions)
       if (!isWithinAny(options.allowedRoots, resolved)) {
         throw new Error(`Access denied: "${target}" is outside the sandbox (${options.allowedRoots[0]})`);
       }
-      const stat = await fs.stat(resolved).catch(() => null);
-      if (stat === null || !stat.isFile()) return refused(`No such file: ${target}`);
-      if (stat.size > MAX_POSTER_BYTES + 64 * 1024) return refused(`"${target}" is larger than a poster may be.`);
+      const file = await readFileSafely(resolved, MAX_POSTER_BYTES + 64 * 1024);
+      if (file.kind === "missing" || file.kind === "not-file") return refused(`No such file: ${target}`);
+      if (file.kind === "too-large") return refused(`"${target}" is larger than a poster may be.`);
+      if (file.kind === "error") throw file.error;
 
-      const { format, frames, issues } = checkPosterText(await fs.readFile(resolved, "utf8"));
+      const { format, frames, issues } = checkPosterText(file.bytes.toString("utf8"));
       for (const frame of frames) {
         // A filled frame is left as it is when the poster opens: what it names no longer matters.
         if (frame.filled) continue;

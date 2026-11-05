@@ -137,9 +137,9 @@ export function ownWindowOpenerFor(
 /** The platform's own opener. Nothing here parses a browser preference — the OS holds it. */
 function openerFor(platform: NodeJS.Platform, url: string): { command: string; args: string[] } {
   if (platform === "darwin") return { command: "open", args: [url] };
-  // `start` is a shell builtin, not a program; the empty string is the window title
-  // the first quoted argument would otherwise be taken for.
-  if (platform === "win32") return { command: "cmd", args: ["/c", "start", "", url] };
+  // explorer delegates URLs to the user's default browser without passing the URL
+  // through cmd.exe's command parser.
+  if (platform === "win32") return { command: "explorer.exe", args: [url] };
   return { command: "xdg-open", args: [url] };
 }
 

@@ -15,7 +15,7 @@ import { makeWorkspace, startServer } from "../../server/test/harness.mjs";
 const source = process.argv[2] ?? path.resolve(import.meta.dirname, "../../shared/conformance/valid/graph-minimal.json");
 const name = path.basename(source);
 const env: Record<string, string | undefined> = {
-  ...Object.fromEntries(Object.keys(process.env).filter((key) => /API_KEY|AUTH_TOKEN|_TOKEN$/.test(key)).map((key) => [key, undefined])),
+  ...Object.fromEntries(Object.keys(process.env).filter((key) => key.includes("API_KEY") || key.includes("AUTH_TOKEN") || key.endsWith("_TOKEN")).map((key) => [key, undefined])),
   ANTHROPIC_API_KEY: "sk-ant-not-a-real-key",
 };
 const server = await startServer(await makeWorkspace({ [name]: await readFile(source, "utf8") }), {}, { env });

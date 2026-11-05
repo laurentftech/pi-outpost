@@ -7,12 +7,12 @@
  * reinvented here. The check below is the same primitive (realResolve +
  * isWithinAny), applied so the tool is confined on the non-sandboxed path too.
  */
-import fs from "node:fs/promises";
 import path from "node:path";
 import { Type } from "typebox";
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { assertWritableDestination, excerptOf, extractionSummary, writeExtraction } from "./extractionOutput.ts";
 import { isWithinAny, realResolve } from "./sandbox.ts";
+import { readFileSafely } from "./readFileSafely.ts";
 import { XlsxError, extractXlsx } from "./xlsx.ts";
 
 export interface XlsxToolOptions {
@@ -98,12 +98,6 @@ export function createXlsxExtractToolDefinition(options: XlsxToolOptions): ToolD
         throw new Error(`Access denied: "${target}" is outside the sandbox (${options.allowedRoots[0]})`);
       }
 
-      const stat = await fs.stat(resolved).catch(() => null);
-      if (stat === null || !stat.isFile()) throw new Error(`No such file: ${target}`);
-      if (stat.size > options.maxBytes) {
-        throw new Error(`"${target}" is larger than the ${describeSize(options.maxBytes)} spreadsheet limit`);
-      }
-
       // Checked before any parsing: a refusal is knowable now, and spending the
       // parse first only to refuse afterwards wastes it.
       if (destination !== undefined) {
@@ -114,9 +108,14 @@ export function createXlsxExtractToolDefinition(options: XlsxToolOptions): ToolD
       // a long sheet looks finished, which is worse than no file at all.
       const wholeWorkbook = full === true || destination !== undefined;
 
+      const file = await readFileSafely(resolved, options.maxBytes);
+      if (file.kind === "missing" || file.kind === "not-file") throw new Error(`No such file: ${target}`);
+      if (file.kind === "too-large") throw new Error(`"${target}" is larger than the ${describeSize(options.maxBytes)} spreadsheet limit`);
+      if (file.kind === "error") throw file.error;
+
       let extraction: Awaited<ReturnType<typeof extractXlsx>>;
       try {
-        extraction = await extractXlsx(new Uint8Array(await fs.readFile(resolved)), {
+        extraction = await extractXlsx(new Uint8Array(file.bytes), {
           ...(sheet === undefined ? {} : { sheet }),
           ...(rows === undefined ? {} : { rows }),
           ...(wholeWorkbook ? { full: true } : {}),

@@ -8,7 +8,7 @@
 // out: junctions and symlinks (0x8007010B; the compatibility junctions - "Application Data",
 // "Documents and Settings" - point at folders that are denied, or system, anyway) and files that
 // cannot be opened, such as the loaded NTUSER.DAT (0x80070020, sharing violation).
-import { closeSync, lstatSync, openSync, readdirSync } from "node:fs";
+import { closeSync, constants as fsConstants, fstatSync, lstatSync, openSync, readdirSync } from "node:fs";
 import { join, parse, sep } from "node:path";
 
 const project = process.argv[2];
@@ -16,11 +16,34 @@ const keep = new Set((process.argv[3] ?? "").split(";").filter(Boolean).map((p) 
 const system = new Set(["windows", "program files", "program files (x86)", "programdata"]);
 
 function deniable(path) {
-  let st;
-  try { st = lstatSync(path); } catch { return false; }
-  if (st.isSymbolicLink()) return false; // Node reports junctions as symlinks too.
-  if (st.isDirectory()) return true;
-  try { closeSync(openSync(path, "r")); return true; } catch { return false; }
+  let fd;
+  try {
+    const flags = process.platform === "win32" ? "r" : fsConstants.O_RDONLY | fsConstants.O_NONBLOCK | fsConstants.O_NOFOLLOW;
+    fd = openSync(path, flags);
+    const opened = fstatSync(fd);
+    if (opened.isDirectory()) {
+      if (process.platform !== "win32") return true;
+      const atPath = lstatSync(path);
+      return !atPath.isSymbolicLink() && atPath.dev === opened.dev && atPath.ino === opened.ino;
+    }
+    if (!opened.isFile()) return false;
+    if (process.platform === "win32") {
+      const atPath = lstatSync(path);
+      return !atPath.isSymbolicLink() && atPath.dev === opened.dev && atPath.ino === opened.ino;
+    }
+    return true;
+  } catch {
+    // Windows may not open a directory handle; retain real directories only.
+    if (process.platform === "win32") {
+      try {
+        const st = lstatSync(path);
+        return !st.isSymbolicLink() && st.isDirectory();
+      } catch {}
+    }
+    return false;
+  } finally {
+    if (fd !== undefined) closeSync(fd);
+  }
 }
 
 const { root } = parse(project);

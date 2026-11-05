@@ -43,7 +43,7 @@ const agentDir = await mkdtemp(path.join(tmpdir(), "pi-outpost-changelog-agent-"
 await writeFile(path.join(agentDir, "outpost-version.json"), JSON.stringify({ version: process.env.CHANGELOG_FROM ?? "0.43.0" }));
 
 const env: Record<string, string | undefined> = {};
-for (const name of Object.keys(process.env)) if (/API_KEY|AUTH_TOKEN|_TOKEN$/.test(name)) env[name] = undefined;
+for (const name of Object.keys(process.env)) if (name.includes("API_KEY") || name.includes("AUTH_TOKEN") || name.endsWith("_TOKEN")) env[name] = undefined;
 env.ANTHROPIC_API_KEY = "sk-ant-not-a-real-key";
 
 await startServer(

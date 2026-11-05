@@ -20,6 +20,7 @@
  * Node-only.
  */
 import { createHash } from "node:crypto";
+import { constants as fsConstants } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import {
@@ -90,7 +91,10 @@ async function realResolve(target: string): Promise<string> {
   }
 }
 
-const isWithin = (root: string, target: string): boolean => target === root || target.startsWith(root + path.sep);
+const isWithin = (root: string, target: string): boolean => {
+  const relative = path.relative(root, target);
+  return relative === "" || (relative !== ".." && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative));
+};
 
 function digestOf(text: string): string {
   return `sha256:${createHash("sha256").update(text, "utf8").digest("hex")}`;
@@ -98,38 +102,110 @@ function digestOf(text: string): string {
 
 /** Reads one confined JSON file, bounded before it is parsed. */
 async function readConfinedJson(root: string, relative: string, maxBytes: number, namespace: string): Promise<FileRead> {
-  const resolved = await realResolve(path.resolve(root, relative));
+  const resolved = path.resolve(root, relative);
   if (path.isAbsolute(relative) || !isWithin(root, resolved)) {
     return {
       ok: false,
       issue: { rule: `${namespace}/outside-project`, path: "", message: `"${relative}" is outside the project directory` },
     };
   }
-  const stat = await fs.stat(resolved).catch(() => null);
-  if (stat === null) return { ok: "missing" };
-  if (!stat.isFile()) {
-    return { ok: false, issue: { rule: `${namespace}/not-a-file`, path: "", message: `"${relative}" is not a file` } };
-  }
-  if (stat.size > maxBytes) {
+  const flags: string | number =
+    process.platform === "win32"
+      ? "r"
+      : fsConstants.O_RDONLY | fsConstants.O_NONBLOCK | fsConstants.O_NOFOLLOW;
+  const openResult = await fs.open(resolved, flags).then(
+    (input) => ({ input }),
+    (error: unknown) => ({ error }),
+  );
+  if ("error" in openResult) {
+    const openError = openResult.error;
+    const code = (openError as NodeJS.ErrnoException).code;
+    if (code === "ENOENT") return { ok: "missing" };
+    if (code === "ELOOP") {
+      // O_NOFOLLOW refuses the link before opening its target. Resolve only to
+      // report whether that refused target would have left the project.
+      try {
+        const target = await fs.realpath(resolved);
+        if (!isWithin(root, target)) {
+          return {
+            ok: false,
+            issue: { rule: `${namespace}/outside-project`, path: "", message: `"${relative}" resolves outside the project directory` },
+          };
+        }
+      } catch {
+        // A dangling or cyclic link remains unreadable rather than missing.
+      }
+    }
     return {
       ok: false,
-      issue: {
-        rule: `${namespace}/too-large`,
-        path: "",
-        message: `"${relative}" is ${stat.size} bytes, past the ${maxBytes}-byte limit`,
-        limit: maxBytes,
-        observed: stat.size,
-        level: "ceiling",
-      },
+      issue: { rule: `${namespace}/unreadable`, path: "", message: `"${relative}" cannot be opened: ${(openError as Error).message}` },
     };
   }
+  const input = openResult.input;
   let text: string;
   try {
-    text = await fs.readFile(resolved, "utf8");
+    const stat = await input.stat();
+    if (!stat.isFile()) {
+      return { ok: false, issue: { rule: `${namespace}/not-a-file`, path: "", message: `"${relative}" is not a file` } };
+    }
+    const opened = await input.stat({ bigint: true });
+    const [atPath, realPath] = await Promise.all([
+      fs.stat(resolved, { bigint: true }),
+      fs.realpath(resolved),
+    ]);
+    if (!isWithin(root, realPath)) {
+      return {
+        ok: false,
+        issue: { rule: `${namespace}/outside-project`, path: "", message: `"${relative}" resolves outside the project directory` },
+      };
+    }
+    if (
+      opened.dev !== atPath.dev || opened.ino === 0n || opened.ino !== atPath.ino
+    ) {
+      return { ok: false, issue: { rule: `${namespace}/unreadable`, path: "", message: `"${relative}" changed while opening` } };
+    }
+    if (stat.size > maxBytes) {
+      return {
+        ok: false,
+        issue: {
+          rule: `${namespace}/too-large`,
+          path: "",
+          message: `"${relative}" is ${stat.size} bytes, past the ${maxBytes}-byte limit`,
+          limit: maxBytes,
+          observed: stat.size,
+          level: "ceiling",
+        },
+      };
+    }
+    const chunks: Buffer[] = [];
+    let bytesRead = 0;
+    while (bytesRead <= maxBytes) {
+      const chunk = Buffer.allocUnsafe(Math.min(64 * 1024, maxBytes + 1 - bytesRead));
+      const read = await input.read(chunk, 0, chunk.length, null);
+      if (read.bytesRead === 0) break;
+      chunks.push(chunk.subarray(0, read.bytesRead));
+      bytesRead += read.bytesRead;
+    }
+    if (bytesRead > maxBytes) {
+      return {
+        ok: false,
+        issue: {
+          rule: `${namespace}/too-large`,
+          path: "",
+          message: `"${relative}" is more than ${maxBytes} bytes, past the limit`,
+          limit: maxBytes,
+          observed: bytesRead,
+          level: "ceiling",
+        },
+      };
+    }
+    text = Buffer.concat(chunks, bytesRead).toString("utf8");
   } catch (error) {
-    // Removed between the measurement and the read: the same answer as never there.
+    // Removed before opening: the same answer as never there.
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return { ok: "missing" };
     return { ok: false, issue: { rule: `${namespace}/unreadable`, path: "", message: `"${relative}" cannot be read: ${(error as Error).message}` } };
+  } finally {
+    await input.close();
   }
   try {
     return { ok: true, value: JSON.parse(text), sha256: digestOf(text) };

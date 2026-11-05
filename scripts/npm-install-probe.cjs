@@ -30,7 +30,7 @@ const { once } = require('node:events');
   const config = path.join(workspace, 'config.json');
   fs.writeFileSync(config, JSON.stringify({ cwd:workspace, agentDir:path.join(workspace,'.pi-agent'), openBrowser:false, noSkills:true, noPromptTemplates:true, webContext:false, sandbox:false, terminal:{enabled:true}, server:{host:'127.0.0.1',port} }));
   const env = {...process.env, PI_OFFLINE:'1', PI_CODING_AGENT_DIR:path.join(workspace,'.pi-agent'), ANTHROPIC_API_KEY:'sk-ant-not-a-real-key'};
-  for (const key of Object.keys(env)) if (/API_KEY|AUTH_TOKEN|_TOKEN$/.test(key) && key !== 'ANTHROPIC_API_KEY') delete env[key];
+  for (const key of Object.keys(env)) if ((key.includes('API_KEY') || key.includes('AUTH_TOKEN') || key.endsWith('_TOKEN')) && key !== 'ANTHROPIC_API_KEY') delete env[key];
   const server = spawn(process.execPath, [cli, '--config', config], {cwd:workspace, env, stdio:['ignore','pipe','pipe'], detached:true, windowsHide:true});
   let log = '';
   server.stdout.on('data', data => log += data);
@@ -83,4 +83,4 @@ const { once } = require('node:events');
     }
     await closed;
   }
-})().catch(error => { console.error(error); process.exitCode = 1; });
+})().catch(() => { console.error('install probe failed'); process.exitCode = 1; });

@@ -29,7 +29,7 @@ async function play(turn: Array<Record<string, unknown>>, grants: PrintGrants) {
   const port = (server.address() as { port: number }).port;
   let out = "";
   let err = "";
-  const code = await runPrintTurn({ url: `ws://127.0.0.1:${port}/ws`, prompt: "go", json: false, grants, out: (text) => (out += text), err: (text) => (err += text) });
+  const code = await runPrintTurn({ url: `ws://127.0.0.1:${port}/ws`, port, prompt: "go", json: false, grants, out: (text) => (out += text), err: (text) => (err += text) });
   await new Promise((resolve) => server.close(resolve));
   return { code, out, err, sent };
 }

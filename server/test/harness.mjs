@@ -162,7 +162,9 @@ async function startServerOn(root, config, options, port) {
       throw new Failure(`server exited (${child.exitCode}):\n${log}`);
     }
     try {
-      const res = await fetch(`${base}/health`);
+      const health = new URL("/health", base);
+      if (health.hostname !== "127.0.0.1" || health.port !== String(port)) throw new Error("test health check escaped its local server");
+      const res = await fetch(health);
       // Ready, and *ours*. freePort() let the port go before the child bound it, so
       // another test file's server may hold it and answer here while the child is still
       // on its way to dying at bind — harnessOwnServer.test.mjs. The child logs its

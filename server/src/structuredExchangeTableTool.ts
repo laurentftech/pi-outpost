@@ -28,6 +28,7 @@ import type { StructuredExchangeLimits } from "@pi-outpost/shared/structured-exc
 import { readTableRow, type StructuredTableData } from "@pi-outpost/shared/structured-exchange";
 import { assertWritableDestination } from "./extractionOutput.ts";
 import { isWithinAny, realResolve } from "./sandbox.ts";
+import { readFileSafely } from "./readFileSafely.ts";
 import { describeUnusableProfiles, readProjectProfiles } from "./structuredExchangeProfiles.ts";
 
 export interface StructuredExchangeTableToolOptions {
@@ -90,13 +91,13 @@ export function createStructuredExchangeTableToolDefinition(options: StructuredE
       }
       const writeTo = await assertWritableDestination(destination, { cwd: options.cwd, writableRoot: options.writableRoot });
 
-      const stat = await fs.stat(resolved).catch(() => null);
-      if (stat === null || !stat.isFile()) throw new Error(`No such file: ${target}`);
-      if (stat.size > options.maxBytes) {
-        throw new Error(`"${target}" is larger than the ${describeSize(options.maxBytes)} document limit`);
-      }
+      const file = await readFileSafely(resolved, options.maxBytes);
+      if (file.kind === "missing" || file.kind === "not-file") throw new Error(`No such file: ${target}`);
+      if (file.kind === "too-large") throw new Error(`"${target}" is larger than the ${describeSize(options.maxBytes)} document limit`);
+      if (file.kind === "error") throw file.error;
+      const text = file.bytes.toString("utf8");
 
-      const verdict = parseSerializedStructuredExchange(await fs.readFile(resolved, "utf8"), checkStructuredExchangeSchema, options.limits);
+      const verdict = parseSerializedStructuredExchange(text, checkStructuredExchangeSchema, options.limits);
       if (!verdict.valid) {
         const lines = verdict.issues.map((issue) => `- ${issue.rule} at ${issue.path === "" ? "(document)" : issue.path}: ${issue.message}`);
         return refused([`No table was written. \`${target}\` does not satisfy the structured-exchange contract:`, ...lines].join("\n"));

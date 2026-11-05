@@ -70,7 +70,9 @@ Two things to configure server-side, whatever the topology:
   works without a proxy in front. The allowlist is the whole of it
 
 A raw iframe (`<iframe src="https://your-pi-outpost-server">`) still works too, and honours
-`branding.allowThemeToggle: false` plus the host-driven theme channel:
+`branding.allowThemeToggle: false` plus the host-driven theme channel. Send the message
+from the embedding page itself and target the pi-outpost origin; messages from another
+window or origin are ignored:
 
 ```js
 iframeWindow.postMessage({ type: "pi-outpost:set-theme", theme: "light" }, "https://your-pi-outpost-origin")

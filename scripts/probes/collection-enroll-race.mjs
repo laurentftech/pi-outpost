@@ -67,10 +67,9 @@ let failures = 0;
 try {
   for (let round = 0; round < rounds; round++) {
     const results = await Promise.all(Array.from({ length: parallel }, (_, i) => once(`r${round}#${i}`)));
-    for (const result of results.filter(Boolean)) {
-      failures++;
-      console.log(result);
-    }
+    const failedThisRound = results.filter(Boolean).length;
+    failures += failedThisRound;
+    if (failedThisRound > 0) console.log("enrollment race failed");
   }
 } finally {
   for (const child of burn) child.kill();

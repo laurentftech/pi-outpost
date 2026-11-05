@@ -88,7 +88,7 @@ function serveHostPage(): Promise<{ url: string; close: () => Promise<void> }> {
 function onlyOneFakeProvider(): Record<string, string | undefined> {
   const env: Record<string, string | undefined> = {};
   for (const name of Object.keys(process.env)) {
-    if (/API_KEY|AUTH_TOKEN|_TOKEN$/.test(name)) env[name] = undefined;
+    if (name.includes("API_KEY") || name.includes("AUTH_TOKEN") || name.endsWith("_TOKEN")) env[name] = undefined;
   }
   env.ANTHROPIC_API_KEY = "sk-ant-not-a-real-key";
   return env;

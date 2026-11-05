@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
+import { closeSync, constants as fsConstants, fstatSync, ftruncateSync, openSync, readFileSync, writeFileSync, writeSync, mkdirSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 
 // Do not put the web token or provider keys in the server's environment: under
@@ -28,9 +28,30 @@ if (networkOption !== "0" && networkOption !== "1") {
 }
 writeFileSync("/data/agent/docker-network.json", JSON.stringify({ allowAgentNetwork: networkOption === "1" }), { mode: 0o600 });
 console.log(`[docker] Shell/terminal IP network: ${networkOption === "1" ? "caller policy (operator opt-in)" : "disabled (default)"}`);
-const config = existsSync(configFile) ? JSON.parse(readFileSync(configFile, "utf8")) : template;
-config.server = { ...config.server, token };
-writeFileSync(configFile, JSON.stringify(config, null, 2) + "\n", { mode: 0o600 });
+// Open or create the path in one operation, without a path-based existence
+// check followed by another open. O_NOFOLLOW rejects a symlink at the final
+// component; all later operations use this descriptor.
+const configFd = openSync(
+  configFile,
+  fsConstants.O_RDWR | fsConstants.O_CREAT | fsConstants.O_NOFOLLOW,
+  0o600,
+);
+try {
+  const configStat = fstatSync(configFd);
+  if (!configStat.isFile()) throw new Error("/data/config.json must be a regular file");
+  const config = configStat.size === 0 ? template : JSON.parse(readFileSync(configFd, "utf8"));
+  config.server = { ...config.server, token };
+  const serialized = Buffer.from(JSON.stringify(config, null, 2) + "\n");
+  ftruncateSync(configFd, 0);
+  let offset = 0;
+  while (offset < serialized.length) {
+    const written = writeSync(configFd, serialized, offset, serialized.length - offset, offset);
+    if (written === 0) throw new Error("Could not write /data/config.json");
+    offset += written;
+  }
+} finally {
+  closeSync(configFd);
+}
 
 execFileSync("/opt/landstrip/bin/landstrip", ["doctor"], { stdio: "inherit", timeout: 10_000 });
 const report = execFileSync("pi-outpost", ["doctor", "--config", configFile], {

@@ -20,7 +20,7 @@ const files: Record<string, string> = {
   ...(process.argv[2] ? { [path.basename(process.argv[2])]: await readFile(process.argv[2], "utf8") } : {}),
 };
 const env: Record<string, string | undefined> = {
-  ...Object.fromEntries(Object.keys(process.env).filter((key) => /API_KEY|AUTH_TOKEN|_TOKEN$/.test(key)).map((key) => [key, undefined])),
+  ...Object.fromEntries(Object.keys(process.env).filter((key) => key.includes("API_KEY") || key.includes("AUTH_TOKEN") || key.endsWith("_TOKEN")).map((key) => [key, undefined])),
   ANTHROPIC_API_KEY: "sk-ant-not-a-real-key",
 };
 const server = await startServer(await makeWorkspace(files), {}, { env });

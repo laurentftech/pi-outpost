@@ -250,7 +250,7 @@ export function npmViewInvocation(
   const viewArgs = ["view", `${npmPackageName(packageName)}@${npmExactVersion(version)}`, "version", "--json"];
   if (platform === "win32" && !npmExecPath?.trim()) {
     return {
-      command: process.env.ComSpec?.trim() || "cmd.exe",
+      command: "cmd.exe",
       args: ["/d", "/s", "/c", `npm.cmd ${viewArgs.join(" ")}`],
       env: npmEnvironmentWithOverride(registry),
     };
@@ -278,7 +278,7 @@ export function npmRootInvocation(
 ): NpmViewInvocation {
   if (platform === "win32" && !npmExecPath?.trim()) {
     return {
-      command: process.env.ComSpec?.trim() || "cmd.exe",
+      command: "cmd.exe",
       args: ["/d", "/s", "/c", "npm.cmd root -g"],
       env: envForNpm(),
     };
@@ -307,7 +307,7 @@ export function npmInstallInvocation(
   ];
   if (platform === "win32") {
     return {
-      command: process.env.ComSpec?.trim() || "cmd.exe",
+      command: "cmd.exe",
       args: ["/d", "/s", "/c", `npm.cmd install -g --allow-scripts=node-pty,koffi ${PACKAGE_NAME}@latest`],
       env: npmEnvironmentWithOverride(registry, process.env),
       displayCommand,

@@ -23,7 +23,7 @@
  * writes in the shape MXC generates (`seatbeltPolicy`).
  */
 import { execFile, execFileSync } from "node:child_process";
-import { closeSync, constants as fsConstants, existsSync, lstatSync, openSync, readdirSync, readFileSync, realpathSync } from "node:fs";
+import { closeSync, constants as fsConstants, existsSync, fstatSync, lstatSync, openSync, readdirSync, readFileSync, realpathSync } from "node:fs";
 import { access, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import path from "node:path";
@@ -870,23 +870,39 @@ export function siblingsToDeny(root: string): string[] {
 const EXCLUSIVE_OPEN = (fsConstants as { UV_FS_O_EXLOCK?: number }).UV_FS_O_EXLOCK ?? 0x10000000;
 
 function deniable(entry: string): boolean {
-  let stats;
+  let descriptor: number | undefined;
   try {
-    stats = lstatSync(entry);
-  } catch {
-    return false;
-  }
-  if (stats.isSymbolicLink()) return false; // Node reports junctions as symbolic links too.
-  if (stats.isDirectory()) return true;
-  // Only a regular file is opened to test it: opening a FIFO for reading blocks until a
-  // writer comes — synchronously, forever (it hung CI's Linux job on a pipe in /tmp).
-  // Sockets and devices are left out with it.
-  if (!stats.isFile()) return false;
-  try {
-    closeSync(openSync(entry, process.platform === "win32" ? fsConstants.O_RDONLY | EXCLUSIVE_OPEN : "r"));
+    const flags = process.platform === "win32"
+      ? fsConstants.O_RDONLY | EXCLUSIVE_OPEN
+      : fsConstants.O_RDONLY | fsConstants.O_NONBLOCK | fsConstants.O_NOFOLLOW;
+    descriptor = openSync(entry, flags);
+    const opened = fstatSync(descriptor);
+    if (opened.isDirectory()) {
+      if (process.platform !== "win32") return true;
+      const atPath = lstatSync(entry);
+      return !atPath.isSymbolicLink() && atPath.dev === opened.dev && atPath.ino === opened.ino;
+    }
+    // O_NONBLOCK keeps FIFOs from hanging; sockets and devices are left out too.
+    if (!opened.isFile()) return false;
+    if (process.platform === "win32") {
+      const atPath = lstatSync(entry);
+      return !atPath.isSymbolicLink() && atPath.dev === opened.dev && atPath.ino === opened.ino;
+    }
     return true;
   } catch {
+    // Windows cannot open directory handles this way; retain directory entries, but
+    // do the fallback metadata check only after the attempted open.
+    if (process.platform === "win32") {
+      try {
+        const stats = lstatSync(entry);
+        return !stats.isSymbolicLink() && stats.isDirectory();
+      } catch {
+        return false;
+      }
+    }
     return false;
+  } finally {
+    if (descriptor !== undefined) closeSync(descriptor);
   }
 }
 

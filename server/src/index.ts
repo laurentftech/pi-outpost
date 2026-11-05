@@ -80,6 +80,7 @@ import { createInterface } from "node:readline/promises";
 import { runCliProviderLogin, runCliProviderLogout, type CliAccountRuntime } from "./cliAccounts.ts";
 import { pathToFileURL } from "node:url";
 import { CliError, helpText, parseCli, readSecret, runInit } from "./cli.ts";
+import { readFileSafely } from "./readFileSafely.ts";
 import { createBtwExtension } from "./btwExtension.ts";
 import { COMMAND_NOT_AVAILABLE, offeredCommands, refusesPrompt, type CommandPolicy } from "./commandPolicy.ts";
 import { bindFailureMessage, holdConsoleIfOwned } from "./startupFailure.ts";
@@ -1037,7 +1038,7 @@ app.addHook("onRequest", async (req, reply) => {
 app.get("/branding", (req, reply) => {
   const auth = req.headers.authorization;
   if (!tokenValid(auth?.startsWith("Bearer ") ? auth.slice("Bearer ".length) : undefined)) {
-    console.warn(`[server] rejected /branding request with bad or missing token from ${req.ip}`);
+    console.warn(`[server] rejected /branding request with bad or missing token from ${String(req.ip).replace(/[\r\n]/g, " ")}`);
     return reply.code(401).send({ error: "unauthorized" });
   }
   return config.branding;
@@ -1045,17 +1046,19 @@ app.get("/branding", (req, reply) => {
 app.get("/ws", { websocket: true }, (socket, req) => {
   const origin = req.headers.origin;
   if (origin !== undefined && !originAllowed(origin)) {
-    console.warn(`[server] rejected ws connection from origin ${origin}`);
+    console.warn(`[server] rejected ws connection from origin ${String(origin).replace(/[\r\n]/g, " ")}`);
     socket.close(1008, "forbidden origin");
     return;
   }
-  // Browsers cannot set headers on WebSockets, so the token rides a query
-  // parameter. Close AFTER the handshake with an app code — a pre-handshake
-  // rejection reads as an opaque 1006 that the client can't act on.
+  // Browsers cannot set headers on WebSockets, so they send the token as a query
+  // parameter. Native clients may use the usual Bearer header. Close AFTER the
+  // handshake with an app code — a pre-handshake rejection reads as an opaque 1006.
   const url = new URL(req.url ?? "/ws", "http://localhost");
-  const token = url.searchParams.get("token");
+  const authorization = req.headers.authorization;
+  const bearer = authorization?.startsWith("Bearer ") ? authorization.slice("Bearer ".length) : undefined;
+  const token = bearer ?? url.searchParams.get("token");
   if (!tokenValid(token ?? undefined)) {
-    console.warn(`[server] rejected ws connection with bad or missing token from ${req.ip}`);
+    console.warn(`[server] rejected ws connection with bad or missing token from ${String(req.ip).replace(/[\r\n]/g, " ")}`);
     socket.close(WS_CLOSE_UNAUTHORIZED, "unauthorized");
     return;
   }
@@ -1136,25 +1139,26 @@ app.addContentTypeParser(DOCX_CONTENT_TYPE, { parseAs: "buffer", bodyLimit: conf
 const DOCX_TEMPLATE_EXPORTS_PER_MINUTE = 30;
 app.post("/files/docx-template", { config: { rateLimit: { max: DOCX_TEMPLATE_EXPORTS_PER_MINUTE, timeWindow: "1 minute" } } }, async (req, reply) => {
   if (!hostAllowed(req.headers.host)) {
-    console.warn(`[server] rejected /files/docx-template request with foreign host ${req.headers.host} from ${req.ip}`);
+    console.warn("[server] rejected /files/docx-template request with foreign host");
     return reply.code(403).send({ error: "forbidden" });
   }
   const auth = req.headers.authorization;
   if (!tokenValid(auth?.startsWith("Bearer ") ? auth.slice("Bearer ".length) : undefined)) {
-    console.warn(`[server] rejected /files/docx-template request with bad or missing token from ${req.ip}`);
+    console.warn("[server] rejected /files/docx-template request with bad or missing token");
     return reply.code(401).send({ error: "unauthorized" });
   }
   const templatePath = config.docx.template;
   if (templatePath === undefined) return reply.code(404).send({ error: "no-template", message: "No Word template is configured (docx.template)." });
   if (!Buffer.isBuffer(req.body)) return reply.code(415).send({ error: "unsupported", message: "Send the document as a .docx body." });
-  let templateBytes: Buffer;
-  try {
-    const stat = await fs.stat(templatePath);
-    if (stat.size > config.docx.maxBytes) return reply.code(422).send({ error: "template", message: `The Word template ${path.basename(templatePath)} is larger than the Word ceiling.` });
-    templateBytes = await fs.readFile(templatePath);
-  } catch {
+  const resolvedTemplatePath = await realResolve(path.resolve(templatePath));
+  const template = await readFileSafely(resolvedTemplatePath, config.docx.maxBytes);
+  if (template.kind === "too-large") {
+    return reply.code(422).send({ error: "template", message: `The Word template ${path.basename(templatePath)} is larger than the Word ceiling.` });
+  }
+  if (template.kind !== "ok") {
     return reply.code(422).send({ error: "template", message: `The Word template ${path.basename(templatePath)} cannot be read.` });
   }
+  const templateBytes = template.bytes;
   try {
     const created = createFromContent(readWordPackage(templateBytes), contentFromDocx(req.body), []);
     return reply
@@ -1191,14 +1195,14 @@ function rawFileWorkspace(named: string | undefined): Workspace | undefined {
 app.get("/files/raw", async (req, reply) => {
   const query = req.query as Record<string, unknown>;
   if (!hostAllowed(req.headers.host)) {
-    console.warn(`[server] rejected /files/raw request with foreign host ${req.headers.host} from ${req.ip}`);
+    console.warn("[server] rejected /files/raw request with foreign host");
     return reply.code(403).send({ error: "forbidden" });
   }
   const auth = req.headers.authorization;
   const bearer = auth?.startsWith("Bearer ") ? auth.slice("Bearer ".length) : undefined;
   const queryToken = typeof query.token === "string" ? query.token : undefined;
   if (!tokenValid(bearer) && !tokenValid(queryToken)) {
-    console.warn(`[server] rejected /files/raw request with bad or missing token from ${req.ip}`);
+    console.warn("[server] rejected /files/raw request with bad or missing token");
     return reply.code(401).send({ error: "unauthorized" });
   }
   const relPath = typeof query.path === "string" ? query.path : undefined;
@@ -7308,6 +7312,7 @@ if (cli.command === "print") {
     .then((prompt) =>
       runPrintTurn({
         url: `ws://127.0.0.1:${port}/ws${token}`,
+        port,
         prompt,
         json: cli.print.json,
         grants: cli.print.grants,

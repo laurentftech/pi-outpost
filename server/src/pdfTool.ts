@@ -6,7 +6,6 @@
  * reinvented here. The check below is the same primitive (realResolve +
  * isWithinAny), applied so the tool is confined on the non-sandboxed path too.
  */
-import fs from "node:fs/promises";
 import path from "node:path";
 import { Type } from "typebox";
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
@@ -15,6 +14,7 @@ import { assertWritableDestination, excerptOf, extractionSummary, writeExtractio
 import { extractPdf, parsePageRange, PdfError, type PdfMode } from "./pdf.ts";
 import { rasterizePdf } from "./presentationRender.ts";
 import { isWithinAny, realResolve } from "./sandbox.ts";
+import { readFileSafely } from "./readFileSafely.ts";
 
 export interface PdfToolOptions {
   /** Paths the model gives are resolved against this. */
@@ -105,11 +105,10 @@ export function createPdfExtractToolDefinition(options: PdfToolOptions): ToolDef
         throw new Error(`Access denied: "${target}" is outside the sandbox (${options.allowedRoots[0]})`);
       }
 
-      const stat = await fs.stat(resolved).catch(() => null);
-      if (stat === null || !stat.isFile()) throw new Error(`No such file: ${target}`);
-      if (stat.size > options.maxBytes) {
-        throw new Error(`"${target}" is larger than the ${describeSize(options.maxBytes)} PDF limit`);
-      }
+      const file = await readFileSafely(resolved, options.maxBytes);
+      if (file.kind === "missing" || file.kind === "not-file") throw new Error(`No such file: ${target}`);
+      if (file.kind === "too-large") throw new Error(`"${target}" is larger than the ${describeSize(options.maxBytes)} PDF limit`);
+      if (file.kind === "error") throw file.error;
 
       // Checked before any parsing: a refusal is knowable now, and spending the
       // parse first only to refuse afterwards wastes it.
@@ -123,7 +122,7 @@ export function createPdfExtractToolDefinition(options: PdfToolOptions): ToolDef
 
       let extraction: Awaited<ReturnType<typeof extractPdf>>;
       try {
-        extraction = await extractPdf(new Uint8Array(await fs.readFile(resolved)), {
+        extraction = await extractPdf(new Uint8Array(file.bytes), {
           ...(pages === undefined ? {} : { pages }),
           ...(mode === undefined ? {} : { mode }),
           ...(wholeDocument ? { full: true } : {}),
@@ -214,13 +213,12 @@ export function createPdfRenderToolDefinition(options: PdfToolOptions): ToolDefi
       if (!isWithinAny(options.allowedRoots, resolved)) {
         throw new Error(`Access denied: "${target}" is outside the sandbox (${options.allowedRoots[0]})`);
       }
-      const stat = await fs.stat(resolved).catch(() => null);
-      if (stat === null || !stat.isFile()) throw new Error(`No such file: ${target}`);
-      if (stat.size > options.maxBytes) {
-        throw new Error(`"${target}" is larger than the ${describeSize(options.maxBytes)} PDF limit`);
-      }
+      const file = await readFileSafely(resolved, options.maxBytes);
+      if (file.kind === "missing" || file.kind === "not-file") throw new Error(`No such file: ${target}`);
+      if (file.kind === "too-large") throw new Error(`"${target}" is larger than the ${describeSize(options.maxBytes)} PDF limit`);
+      if (file.kind === "error") throw file.error;
 
-      const bytes = await fs.readFile(resolved);
+      const bytes = file.bytes;
       // The page count is not known until the document is open, so the range is
       // parsed against what came back rather than guessed at beforehand.
       const drawn = await rasterizePdf(bytes, [], DRAWN_PAGE_WIDTH);
