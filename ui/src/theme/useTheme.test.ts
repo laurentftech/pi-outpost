@@ -88,7 +88,11 @@ describe("useTheme precedence", () => {
 describe("useTheme following what changes after mount", () => {
   it("takes the theme a host page posts, and ignores any other message or value", async () => {
     const result = mount("light");
-    const post = (data: unknown) => act(() => window.dispatchEvent(new MessageEvent("message", { data })));
+    const post = (data: unknown) => act(() => window.dispatchEvent(new MessageEvent("message", {
+      data,
+      origin: window.location.origin,
+      source: window,
+    })));
     post({ type: "something-else", theme: "dark" });
     post({ type: "pi-outpost:set-theme", theme: "purple" });
     expect(result.current.theme).toBe("light");
