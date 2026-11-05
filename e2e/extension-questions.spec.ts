@@ -98,6 +98,31 @@ test("read and scroll the conversation while a question is pending, then answer 
   await expect(panel).toHaveCount(0);
 });
 
+// openlore: scenario=AnUnansweredQuestionSurvivesBrowserReconnection spec=extension-question-reconnect
+test("an unanswered question survives losing the last browser connection and an outside click on return", async ({ page }) => {
+  // A second test connection would hide the last-client cancellation bug.
+  client.close();
+  await client.waitForClose();
+  const composer = page.getByRole("textbox", { name: /message pi/i });
+  await composer.fill("/question-select");
+  await composer.press("Escape");
+  await composer.press("Enter");
+  const question = page.getByRole("region", { name: "Choose using the evidence" });
+  await expect(question).toBeVisible();
+  await expect(page.getByText(/auto-dismiss in/)).toHaveCount(0);
+  // Reload closes the only socket, as a sleeping/offline browser can, then reconnects.
+  await page.reload();
+  await expect(question).toBeVisible();
+  const main = page.getByRole("main");
+  await main.hover();
+  await page.mouse.wheel(0, -100_000);
+  await page.getByText("Evidence 1: compare the original figures before choosing.", { exact: true }).click();
+  await expect(question).toBeVisible();
+  await expect(page.getByText("Selected: cancelled", { exact: true })).toHaveCount(0);
+  await question.getByRole("button", { name: "Option 2", exact: true }).click();
+  await expect(page.getByText("Selected: Option 2", { exact: true })).toBeVisible();
+});
+
 // openlore: scenario=LongQuestionsLeaveMobileContextReadable spec=extension-question-context
 test("a long mobile question scrolls independently and survives resizing and context clicks", async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 390, height: 740 });
