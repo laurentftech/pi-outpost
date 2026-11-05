@@ -11,6 +11,8 @@ services:
         APP_GID: ${APP_GID:-1000}
     init: true
     restart: unless-stopped
+    environment:
+      OUTPOST_ALLOW_APP_LISTENERS: ${ALLOW_APP_LISTENERS:-0}
     cap_drop: [ALL]
     security_opt:
       - no-new-privileges:true

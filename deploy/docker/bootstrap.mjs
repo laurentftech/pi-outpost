@@ -22,6 +22,12 @@ if (token.length < 32 || /\s/.test(token)) {
 const configFile = "/data/config.json";
 const template = JSON.parse(readFileSync(new URL("./config.json", import.meta.url), "utf8"));
 mkdirSync("/data/agent", { recursive: true, mode: 0o700 });
+const listenerOption = process.env.OUTPOST_ALLOW_APP_LISTENERS ?? "0";
+if (listenerOption !== "0" && listenerOption !== "1") {
+  throw new Error("OUTPOST_ALLOW_APP_LISTENERS must be 0 or 1; the default is 0 (disabled).");
+}
+writeFileSync("/data/agent/docker-network.json", JSON.stringify({ allowAppListeners: listenerOption === "1" }), { mode: 0o600 });
+console.log(`[docker] App listeners: ${listenerOption === "1" ? "enabled by operator opt-in" : "disabled (default)"}`);
 const config = existsSync(configFile) ? JSON.parse(readFileSync(configFile, "utf8")) : template;
 config.server = { ...config.server, token };
 writeFileSync(configFile, JSON.stringify(config, null, 2) + "\n", { mode: 0o600 });

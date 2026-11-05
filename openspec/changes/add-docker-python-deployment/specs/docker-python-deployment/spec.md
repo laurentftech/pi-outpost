@@ -23,7 +23,7 @@ documentation SHALL explicitly state that outbound networking remains open.
 #### Scenario: RunsPythonInTheConfinedTerminal
 - **WHEN** the user creates a venv and executes Python in the app's real terminal
 - **THEN** the command runs and its output file lands in the host project; a Python HTTP server can
-  serve that file through an explicitly published loopback port, and Ctrl+C interrupts a process
+  serve that file after operator opt-in through an explicitly published loopback port, and Ctrl+C interrupts a process
   without breaking subsequent commands
 
 #### Scenario: ProtectsCredentialsAndConfiguration
@@ -39,6 +39,22 @@ documentation SHALL explicitly state that outbound networking remains open.
 - **WHEN** the user executes Python, interrupts a process, opens/closes tabs and reconnects in the app
 - **THEN** real output remains observable, a live terminal can be opened after reconnect, and closed
   terminals are not silently revived
+
+### Requirement: OperatorControlledListeners
+Listener permission SHALL be off by default. Only an explicit operator opt-in MAY enable the adapter
+to allow local binding for a generated single-file policy when networking is allowed and binding
+policy is absent. The opt-in SHALL be stored outside agent-writable paths. The adapter SHALL preserve
+explicit binding refusals and every filesystem/process restriction.
+
+#### Scenario: ListenersNeedOperatorOptIn
+- **GIVEN** the shipped default with no operator opt-in
+- **WHEN** a policy allows networking but omits the binding permission
+- **THEN** a Python socket bind is still refused
+
+#### Scenario: HonorsAnExplicitBindingRefusal
+- **GIVEN** an operator opt-in and a policy allowing networking but explicitly refusing local binding
+- **WHEN** the recipe's runner adapter executes a Python socket listener
+- **THEN** the bind fails; the deployment adapter does not overwrite the explicit refusal
 
 ### Requirement: PersistentProjectAndAgentState
 The recipe SHALL bind-mount the existing project and use a separate named volume for agent state

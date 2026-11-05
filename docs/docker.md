@@ -64,8 +64,9 @@ The virtual environment and generated files live in the mounted project and surv
 replacement. For reproducible projects, install from your own pinned requirements file. Additional
 OS libraries belong in the Dockerfile and require rebuilding the image.
 
-For a Python web app, publish its port explicitly on loopback in a `compose.override.yml`
-beside the recipe, for example:
+App listeners are **disabled by default**. To opt in for a Python web app, the operator must set
+`ALLOW_APP_LISTENERS=1` in `.env` and publish its port explicitly on loopback in a
+`compose.override.yml` beside the recipe, for example:
 
 ```yaml
 services:
@@ -99,6 +100,11 @@ the pi-outpost access token does not protect it. No Docker socket is needed.
   `PI_OUTPOST_TOKEN` is explicitly refused by this recipe.
 - **The network remains open.** This recipe does not implement a host allowlist. Apply outbound
   restrictions around the container if you need them; see [sandboxing](sandboxing.md#linux-landstrip).
+- Listener permission stays off unless the operator explicitly sets `ALLOW_APP_LISTENERS=1` and
+  recreates the service. The protected `/data/agent/docker-network.json` records this choice; agent
+  commands cannot edit it. Only with that opt-in does the runner adapter enable `allowLocalBinding`
+  when networking is allowed and the binding key is absent. An explicit `allowLocalBinding: false`
+  and all filesystem/process rules remain unchanged. Only published ports are exposed on the host.
 - Extensions and MCP servers retain their process's rights. Run trusted resources only; the shell
   sandbox does not turn a shared server or malicious extension into an isolated multi-user service.
 

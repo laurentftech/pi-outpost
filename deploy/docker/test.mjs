@@ -29,7 +29,7 @@ await cp(new URL("profiles/", recipe), path.join(root, "profiles"), { recursive:
 await writeFile(path.join(root, ".env"), `PROJECT_DIR=${workspace}\nPI_OUTPOST_PORT=0\n`);
 await writeFile(path.join(root, "server-token"), token, { mode: 0o600 });
 await writeFile(path.join(root, "test.yml"), JSON.stringify({ services: { "pi-outpost": {
-  image, restart: "no", environment: { PI_OFFLINE: "1" },
+  image, restart: "no", environment: { PI_OFFLINE: "1", OUTPOST_ALLOW_APP_LISTENERS: "0" },
   ports: ["127.0.0.1:0:8000"],
 } } }));
 let socket;
@@ -113,7 +113,7 @@ try {
   // openlore: scenario=RunsPythonInTheConfinedTerminal spec=docker-python-deployment
   // openlore: scenario=ProtectsCredentialsAndConfiguration spec=docker-python-deployment
   await writeFile(path.join(workspace, "probe.py"), `from pathlib import Path
-for name in ['/data/agent/auth.json', '/data/config.json', '/data/private-canary', '/run/secrets/pi_outpost_token']:
+for name in ['/data/agent/auth.json', '/data/agent/docker-network.json', '/data/config.json', '/data/private-canary', '/run/secrets/pi_outpost_token']:
     try:
         Path(name).read_text()
     except (PermissionError, FileNotFoundError):
@@ -134,13 +134,20 @@ print('DOCKER_' + 'PYTHON_OK', flush=True)
   await pty.waitFor("DOCKER_PYTHON_OK");
   assert.equal(await readFile(path.join(workspace, "python-proof.txt"), "utf8"), "persisted");
   assert.equal(docker(["exec", container, "cat", "/data/private-canary"]).trim(), "outside");
-  pty.send("python3 -m http.server 8000 --bind 0.0.0.0\r");
-  await pty.waitFor("Serving HTTP on");
-  const appPort = JSON.parse(docker(["inspect", container]))[0].NetworkSettings.Ports["8000/tcp"][0].HostPort;
-  const served = await fetch(`http://127.0.0.1:${appPort}/python-proof.txt`, { signal: AbortSignal.timeout(5000) });
-  assert.equal(served.status, 200);
-  assert.equal(await served.text(), "persisted");
-  pty.send("\x03");
+  async function bindingMustBeRefused(network) {
+    await writeFile(path.join(workspace, "deny-binding.json"), JSON.stringify({ network }));
+    let refusal;
+    try {
+      docker(["exec", container, "/opt/landstrip/bin/landstrip", "run", "-p", "/workspace/deny-binding.json", "--",
+        "python3", "-c", "import socket; socket.socket().bind(('0.0.0.0',8001))"]);
+    } catch (error) { refusal = error; }
+    assert.ok(refusal?.status > 0, "A forbidden listener must not be enabled by the adapter");
+    assert.match(`${refusal.stderr ?? ""}`, /PermissionError|Operation not permitted/);
+  }
+  // openlore: scenario=ListenersNeedOperatorOptIn spec=docker-python-deployment
+  assert.equal(JSON.parse(docker(["exec", container, "cat", "/data/agent/docker-network.json"])).allowAppListeners, false);
+  await bindingMustBeRefused({ allowNetwork: true });
+  console.log("ListenersNeedOperatorOptIn passed (omitted binding permission stays refused)");
   pty.send("python3 -c \"import time; print('WAIT_'+'READY', flush=True); time.sleep(60)\"\r");
   await pty.waitFor("WAIT_READY");
   pty.send("\x03");
@@ -148,7 +155,7 @@ print('DOCKER_' + 'PYTHON_OK', flush=True)
   await pty.waitFor("INTERRUPT_OK");
   socket.close();
   console.log("RunsPythonInTheConfinedTerminal passed (venv, Python, Ctrl+C)");
-  console.log("ProtectsCredentialsAndConfiguration passed (four outside reads and one write refused)");
+  console.log("ProtectsCredentialsAndConfiguration passed (five outside reads and one write refused)");
   const { checkBrowser } = await import("./browser.mjs");
   await checkBrowser({ base, token, workspace });
   // openlore: scenario=PersistsProjectsAndAgentState spec=docker-python-deployment
@@ -160,6 +167,29 @@ print('DOCKER_' + 'PYTHON_OK', flush=True)
   assert.equal(JSON.parse(docker(["exec", container, "cat", "/data/agent/auth.json"])).anthropic.key, "docker-test-not-a-real-key");
   assert.equal(await readFile(path.join(workspace, "python-proof.txt"), "utf8"), "persisted");
   console.log("PersistsProjectsAndAgentState passed (container recreation)");
+  // Isolated test-only operator opt-in. The shipped Compose default stays OFF.
+  // No real credentials or public/LAN ports are used in this temporary project.
+  await writeFile(path.join(root, "test.yml"), JSON.stringify({ services: { "pi-outpost": {
+    image, restart: "no", environment: { PI_OFFLINE: "1", OUTPOST_ALLOW_APP_LISTENERS: "1" },
+    ports: ["127.0.0.1:0:8000"],
+  } } }));
+  compose(["up", "--detach", "--no-build", "--force-recreate"]);
+  await ready();
+  // openlore: scenario=HonorsAnExplicitBindingRefusal spec=docker-python-deployment
+  await bindingMustBeRefused({ allowNetwork: true, allowLocalBinding: false });
+  console.log("HonorsAnExplicitBindingRefusal passed (even after operator opt-in)");
+  const appPty = await terminal();
+  appPty.send(".venv/bin/python probe.py\r");
+  await appPty.waitFor("DOCKER_PYTHON_OK");
+  appPty.send("python3 -m http.server 8000 --bind 0.0.0.0\r");
+  await appPty.waitFor("Serving HTTP on");
+  const appPort = JSON.parse(docker(["inspect", container]))[0].NetworkSettings.Ports["8000/tcp"][0].HostPort;
+  const served = await fetch(`http://127.0.0.1:${appPort}/python-proof.txt`, { signal: AbortSignal.timeout(5000) });
+  assert.equal(served.status, 200);
+  assert.equal(await served.text(), "persisted");
+  appPty.send("\x03");
+  socket.close();
+  console.log("Opted-in Python HTTP app passed, with filesystem confinement rechecked");
   compose(["down"]);
   // openlore: scenario=RefusesMissingCredentialsOrUnverifiedConfinement spec=docker-python-deployment
   const data = path.join(root, "negative-data");

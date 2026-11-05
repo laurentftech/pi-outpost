@@ -13,6 +13,13 @@ permitting those mounts and userns while keeping protected proc/sys paths. Unmas
 also necessary for the private proc mount. Do not change host-wide userns restrictions. No Docker
 socket, privileged mode, extra capabilities or host networking. This does not restrict networking.
 
+The actual Python HTTP test showed that landstrip's allowNetwork does not grant local binding.
+The deployment includes an adapter with listener permission OFF by default. Only an explicit
+operator ALLOW_APP_LISTENERS=1 opt-in, stored in the protected agent directory, can enable binding
+for the app's single generated policy when allowNetwork is true and the binding key is absent. Preserve every explicit refusal
+and filesystem/process rule. Doctor and other invocations execute the extracted native runner
+unchanged. A real negative bind test checks that the adapter respects an explicit refusal.
+
 The app and Python share the image; Python venvs belong to the project bind mount. A separate
 named volume holds credentials, conversations and runtime config. The config template is used only
 for first startup, with the web token refreshed from a Compose secret file each time. Credentials
