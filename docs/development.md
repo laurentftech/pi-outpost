@@ -61,6 +61,8 @@ The browser CI container needs both `build-essential` and `python3` to compile
 `node-pty` on Linux. Its install step shows lifecycle output and checks that the
 native terminal binding loads before building: npm can silently omit this optional
 dependency when compilation fails.
+APT network waits in this job are bounded, with retries and a five-minute cap for each update/install
+command. A stalled mirror must fail with diagnostics rather than consume the whole CI run.
 
 Keep jsdom on `~30.0.1` for now: 30.1.2 breaks the Blob/object-URL path used by
 the Mermaid raster export tests (`Cannot read properties of undefined (reading
