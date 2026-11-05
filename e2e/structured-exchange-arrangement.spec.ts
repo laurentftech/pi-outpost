@@ -126,8 +126,13 @@ test("ATouchUpIsReadBackByIdentity: arranged in the vendored draw.io touch-up, a
   // Retype the inverter's label in place: content, which is not kept
   const inverter = await labelCentre(frame, element, "Inverter");
   await page.mouse.dblclick(inverter.x, inverter.y);
-  await page.keyboard.press("ControlOrMeta+a");
-  await page.keyboard.type("Onduleur");
+  // mxCellEditor appends and focuses its editor in a setTimeout callback. Typing
+  // on the page immediately can start a second edit and keep only the last key.
+  const labelEditor = frame.locator('.mxCellEditor[contenteditable="true"]');
+  await expect(labelEditor).toBeVisible();
+  await labelEditor.press("ControlOrMeta+a");
+  await labelEditor.pressSequentially("Onduleur");
+  await expect(labelEditor).toHaveText("Onduleur");
   const box = (await element.boundingBox())!;
   await page.mouse.click(box.x + box.width - 20, box.y + box.height - 20);
 

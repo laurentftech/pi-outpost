@@ -7,6 +7,39 @@ version you had and the one you run now, without going online.
 Releases before 0.41.0 are described on
 [GitHub Releases](https://github.com/laurentftech/pi-outpost/releases).
 
+## [0.60.0] - 2026-11-05
+
+### Added
+
+- **Run the full app with Python in Docker.** A Compose recipe includes the web
+  interface, agent, Python/venv and integrated terminal, with persistent projects
+  and agent settings. The app runs as a non-root user and verifies shell and terminal
+  confinement before serving. Agent shell networking is off by default and can be
+  enabled explicitly by the operator. Releases now publish the tested Linux x64 image
+  to `ghcr.io/laurentftech/pi-outpost`, with a version tag and `latest` for stable releases.
+  The deployment guide documents the required sandbox profiles and host prerequisites.
+  ([#416](https://github.com/laurentftech/pi-outpost/pull/416))
+
+### Changed
+
+- **Clearer contribution and security guidance.** The repository now documents
+  contribution requirements, private vulnerability reporting, quality checks and
+  their limitations. Bug and feature issue forms help provide useful reports.
+  Server lint and broader JavaScript/TypeScript CodeQL analysis extend the existing
+  checks; the analysis also reports existing findings that need triage.
+  ([#418](https://github.com/laurentftech/pi-outpost/pull/418))
+- **Updated dependency maintenance.** Bump glob and related locked dependencies.
+  ([#415](https://github.com/laurentftech/pi-outpost/pull/415))
+
+### Fixed
+
+- **Keep stable extension symlinks across updates.** Adding an extension folder
+  preserves the chosen symlink or Windows junction instead of saving its versioned
+  target. The resource manager displays the configured folder and removes the correct
+  entry without deleting its files. After repointing the link, restart pi-outpost to
+  load the new extension code.
+  ([#417](https://github.com/laurentftech/pi-outpost/pull/417))
+
 ## [0.59.1] - 2026-11-05
 
 ### Changed
