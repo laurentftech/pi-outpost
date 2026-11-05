@@ -29,6 +29,7 @@ await writeFile(path.join(root, ".env"), `PROJECT_DIR=${workspace}\nPI_OUTPOST_P
 await writeFile(path.join(root, "server-token"), token, { mode: 0o600 });
 await writeFile(path.join(root, "test.yml"), JSON.stringify({ services: { "pi-outpost": {
   image, restart: "no", environment: { PI_OFFLINE: "1" },
+  ports: ["127.0.0.1:0:8000"],
 } } }));
 let socket;
 let base;
@@ -131,6 +132,13 @@ print('DOCKER_' + 'PYTHON_OK', flush=True)
   await pty.waitFor("DOCKER_PYTHON_OK");
   assert.equal(await readFile(path.join(workspace, "python-proof.txt"), "utf8"), "persisted");
   assert.equal(docker(["exec", container, "cat", "/data/private-canary"]).trim(), "outside");
+  pty.send("python3 -m http.server 8000 --bind 0.0.0.0\r");
+  await pty.waitFor("Serving HTTP on");
+  const appPort = JSON.parse(docker(["inspect", container]))[0].NetworkSettings.Ports["8000/tcp"][0].HostPort;
+  const served = await fetch(`http://127.0.0.1:${appPort}/python-proof.txt`, { signal: AbortSignal.timeout(5000) });
+  assert.equal(served.status, 200);
+  assert.equal(await served.text(), "persisted");
+  pty.send("\x03");
   pty.send("python3 -c \"import time; print('WAIT_'+'READY', flush=True); time.sleep(60)\"\r");
   await pty.waitFor("WAIT_READY");
   pty.send("\x03");

@@ -20,6 +20,12 @@ RUN --mount=type=secret,id=proxy_ca \
  && mkdir /opt/landstrip \
  && npm pack "@landstrip/landstrip-linux-${arch}@${LANDSTRIP_VERSION}" --ignore-scripts --pack-destination /tmp \
  && tar -xzf "/tmp/landstrip-landstrip-linux-${arch}-${LANDSTRIP_VERSION}.tgz" -C /opt/landstrip --strip-components=1 \
+ && cd /opt/landstrip \
+ && ./bin/landstrip --appimage-extract \
+ && mv squashfs-root runtime \
+ && rm bin/landstrip \
+ && ln -s ../runtime/usr/bin/landstrip bin/landstrip \
+ && chmod -R a+rX /opt/landstrip \
  && test "${APP_UID}" -gt 0 && test "${APP_GID}" -gt 0 \
  && if ! getent group "${APP_GID}" > /dev/null; then groupmod -g "${APP_GID}" node; fi \
  && usermod -g "${APP_GID}" node \

@@ -51,6 +51,21 @@ The virtual environment and generated files live in the mounted project and surv
 replacement. For reproducible projects, install from your own pinned requirements file. Additional
 OS libraries belong in the Dockerfile and require rebuilding the image.
 
+For a Python web app, publish its port explicitly on loopback in a `compose.override.yml`
+beside the recipe, for example:
+
+```yaml
+services:
+  pi-outpost:
+    ports:
+      - "127.0.0.1:8000:8000"
+```
+
+Recreate the service, then start the app from the terminal listening on `0.0.0.0:8000` inside the
+container. For a simple file server: `python3 -m http.server 8000 --bind 0.0.0.0`. Open
+`http://127.0.0.1:8000/` on the host. This additional app has its own authentication requirements;
+the pi-outpost access token does not protect it. No Docker socket is needed.
+
 ## What the boundaries mean
 
 - The service runs as the unprivileged `node` user, with all Linux capabilities dropped,
@@ -59,6 +74,7 @@ OS libraries belong in the Dockerfile and require rebuilding the image.
 - **landstrip 0.20.20** confines both the agent's shell and the interactive terminal to `/workspace`
   and private temporary storage. The agent directory and runtime configuration are denied. A real
   canary checks each surface at startup. Any non-verified verdict refuses this recipe's startup.
+  Its AppImage is extracted at build time, so running it needs neither FUSE nor an extra device.
 - Landlock does not hide the server's `/proc` environment from another process with the same UID.
   That is why the web token is read from a Compose secret file and stored in the protected config,
   and provider credentials belong in the credential store. Do not add API keys to the service's

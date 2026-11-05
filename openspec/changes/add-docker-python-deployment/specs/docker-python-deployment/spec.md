@@ -22,7 +22,8 @@ documentation SHALL explicitly state that outbound networking remains open.
 
 #### Scenario: RunsPythonInTheConfinedTerminal
 - **WHEN** the user creates a venv and executes Python in the app's real terminal
-- **THEN** the command runs and its output file lands in the host project; Ctrl+C interrupts a process
+- **THEN** the command runs and its output file lands in the host project; a Python HTTP server can
+  serve that file through an explicitly published loopback port, and Ctrl+C interrupts a process
   without breaking subsequent commands
 
 #### Scenario: ProtectsCredentialsAndConfiguration
