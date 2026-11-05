@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import type { SandboxGrantDecision, SandboxGrantRequest } from "@pi-outpost/shared";
 
 interface SandboxGrantDialogProps {
@@ -25,14 +25,8 @@ const until = (epoch: number) => new Date(epoch).toLocaleTimeString([], { hour: 
  * resolved — answered here, in another tab, expired or aborted — not when a button is pressed.
  */
 export function SandboxGrantDialog({ request, onRespond }: SandboxGrantDialogProps) {
+  const headingId = useId();
   const [answered, setAnswered] = useState<SandboxGrantDecision | null>(null);
-  const [nudged, setNudged] = useState(false);
-
-  useEffect(() => {
-    if (!nudged) return;
-    const timer = setTimeout(() => setNudged(false), 400);
-    return () => clearTimeout(timer);
-  }, [nudged]);
 
   // A new request in the same place starts unanswered.
   useEffect(() => setAnswered(null), [request.id]);
@@ -46,20 +40,15 @@ export function SandboxGrantDialog({ request, onRespond }: SandboxGrantDialogPro
   const { hosts, directories } = request.grant;
   const connection = request.kind === "connection";
   return (
-    // The agent waits on this answer: the backdrop does not dismiss it, it only points at the panel.
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setNudged(true)}>
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="sandbox-grant-title"
-        data-testid="sandbox-grant-dialog"
-        data-request-id={request.id}
-        className={`w-full max-w-2xl rounded-xl border bg-white p-4 shadow-2xl transition-shadow dark:bg-zinc-900 ${
-          nudged ? "border-zinc-400 ring-2 ring-zinc-400/60 dark:border-zinc-500 dark:ring-zinc-500/60" : "border-zinc-200 dark:border-zinc-700"
-        }`}
-        onClick={(event) => event.stopPropagation()}
-      >
-        <h2 id="sandbox-grant-title" className="mb-3 text-sm font-semibold text-zinc-900 dark:text-zinc-100">
+    <section
+      role="region"
+      aria-labelledby={headingId}
+      data-testid="sandbox-grant-dialog"
+      data-request-id={request.id}
+      className="flex max-h-[40dvh] flex-col overflow-hidden rounded-xl border border-zinc-200 bg-white dark:border-zinc-700 dark:bg-zinc-900"
+    >
+      <div data-testid="sandbox-grant-details" className="min-h-0 overflow-y-auto overscroll-contain break-words p-4">
+        <h2 id={headingId} className="mb-3 text-sm font-semibold text-zinc-900 dark:text-zinc-100">
           {connection ? `A running command is connecting to ${hosts.join(", ")}` : "The agent asks to run a command beyond its sandbox"}
         </h2>
 
@@ -75,7 +64,7 @@ export function SandboxGrantDialog({ request, onRespond }: SandboxGrantDialogPro
         <ul data-testid="sandbox-grant-targets" className="mb-3 list-disc pl-5 text-sm text-zinc-800 dark:text-zinc-200">
           {hosts.map((host) => (
             <li key={`host:${host}`}>
-              host <code className="font-mono">{host}</code>
+              host <code className="break-all font-mono">{host}</code>
             </li>
           ))}
           {directories.map((directory) => (
@@ -103,20 +92,19 @@ export function SandboxGrantDialog({ request, onRespond }: SandboxGrantDialogPro
             </blockquote>
           </>
         )}
-
-        <div className="flex flex-wrap items-center justify-end gap-2">
-          <span className="mr-auto text-xs text-zinc-500 dark:text-zinc-400">Refused if unanswered by {until(request.expiresAt)}</span>
-          <button type="button" className={buttonBase} disabled={answered !== null} onClick={() => answer("refuse")}>
-            Refuse
-          </button>
-          <button type="button" className={buttonBase} disabled={answered !== null} onClick={() => answer("session")}>
-            Allow for this session
-          </button>
-          <button type="button" className={primaryButton} disabled={answered !== null} onClick={() => answer("once")}>
-            {connection ? "Allow for this command" : "Allow once"}
-          </button>
-        </div>
       </div>
-    </div>
+      <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 border-t border-zinc-200 p-3 dark:border-zinc-700">
+        <span className="mr-auto text-xs text-zinc-500 dark:text-zinc-400">Refused if unanswered by {until(request.expiresAt)}</span>
+        <button type="button" className={buttonBase} disabled={answered !== null} onClick={() => answer("refuse")}>
+          Refuse
+        </button>
+        <button type="button" className={buttonBase} disabled={answered !== null} onClick={() => answer("session")}>
+          Allow for this session
+        </button>
+        <button type="button" className={primaryButton} disabled={answered !== null} onClick={() => answer("once")}>
+          {connection ? "Allow for this command" : "Allow once"}
+        </button>
+      </div>
+    </section>
   );
 }

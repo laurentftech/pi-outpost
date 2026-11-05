@@ -1,0 +1,43 @@
+name: pi-outpost-python
+services:
+  pi-outpost:
+    image: ${PI_OUTPOST_IMAGE:-pi-outpost-python}:${PI_OUTPOST_VERSION:-0.59.1}
+    build:
+      context: .
+      args:
+        PI_OUTPOST_VERSION: ${PI_OUTPOST_VERSION:-0.59.1}
+        LANDSTRIP_VERSION: ${LANDSTRIP_VERSION:-0.20.20}
+        APP_UID: ${APP_UID:-1000}
+        APP_GID: ${APP_GID:-1000}
+    init: true
+    restart: unless-stopped
+    environment:
+      OUTPOST_ALLOW_AGENT_NETWORK: ${ALLOW_AGENT_NETWORK:-0}
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+      - seccomp=./profiles/seccomp-landstrip.json
+      - apparmor=${LANDSTRIP_APPARMOR_PROFILE:-unconfined}
+      - systempaths=unconfined
+    ports:
+      - "127.0.0.1:${PI_OUTPOST_PORT:-3141}:3141"
+    volumes:
+      - type: bind
+        source: ${PROJECT_DIR:?set PROJECT_DIR in .env}
+        target: /workspace
+        bind:
+          create_host_path: false
+      - pi-outpost-data:/data
+    secrets:
+      - pi_outpost_token
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://127.0.0.1:3141/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      start_period: 60s
+      retries: 3
+secrets:
+  pi_outpost_token:
+    file: ./server-token
+volumes:
+  pi-outpost-data:

@@ -86,9 +86,14 @@ UI](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/ex
 in the web interface: questions appear in the response area below the conversation, leaving
 the timeline readable and scrollable while you choose. Long questions scroll within a
 panel limited to 40% of the viewport height. Clicking the conversation does not dismiss a
-question; use its answer buttons or the explicit refusal control. On narrow screens the
-header controls wrap to keep the page within the screen width. Your composer draft
-returns after the questions are answered. `notify()` renders as a toast, `setStatus()` as a
+question; use its answer buttons or the explicit refusal control. Brief choices use up to
+two columns when the panel has room for roughly 320 px per choice. Narrow panels and long
+descriptions stay in one column; checkbox selections survive resizing. On narrow screens the
+header controls wrap to keep the page within the screen width. Questions without an
+extension-defined time limit stay pending when the browser sleeps or disconnects, and
+reappear on reconnection. Returning to the conversation or clicking outside the question
+does not refuse it. Starting a new session deliberately abandons the old question.
+Your composer draft returns after the questions are answered. `notify()` renders as a toast, `setStatus()` as a
 header badge, `setWidget()` above or below the composer. Status badges preserve ANSI
 foreground colours and text styles, including in the overflow list; hover titles use plain text.
 Extensions using `ctx.ui.theme.fg()` (for example pi-blackhole's gauges) receive the SDK's

@@ -1,6 +1,6 @@
 {
   "name": "pi-outpost",
-  "version": "0.59.0",
+  "version": "0.60.0",
   "type": "module",
   "description": "A web interface for the pi coding agent: a browser chat UI you run with npx — no clone, no build.",
   "license": "MIT",
@@ -56,7 +56,7 @@
   },
   "dependencies": {
     "@earendil-works/pi-coding-agent": "^1.5.0",
-    "@fastify/static": "^10.1.6",
+    "@fastify/static": "^10.1.10",
     "@fastify/websocket": "^11.3.4",
     "fastify": "^5.12.7",
     "jsdom": "~30.0.1",

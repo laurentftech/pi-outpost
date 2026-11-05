@@ -1,5 +1,5 @@
 /**
- * The tags a release pushes for pi-outpost's Open WebUI server image.
+ * The tags a release pushes for pi-outpost's full-app and Open WebUI images.
  *
  * Every release is pushed under its own version. Only a release on the default
  * channel moves `latest` — the same rule, from the same function, that decides the

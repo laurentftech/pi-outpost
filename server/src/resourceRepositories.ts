@@ -822,10 +822,10 @@ async function normalizeResources(
   declared: Array<{ kind: AgentResourceKind; path: string; origin: "configured" | "user" }>,
 ): Promise<AgentResourceInfo[]> {
   const result = new Map<string, AgentResourceInfo>();
-  const canonicalDeclared: Array<{ kind: AgentResourceKind; path: string; origin: "configured" | "user" }> = [];
+  const canonicalDeclared: Array<{ kind: AgentResourceKind; path: string; sourcePath: string; origin: "configured" | "user" }> = [];
   for (const entry of declared) {
     const canonical = await canonicalExisting(entry.path);
-    if (canonical) canonicalDeclared.push({ ...entry, path: canonical });
+    if (canonical) canonicalDeclared.push({ ...entry, path: canonical, sourcePath: entry.path });
   }
   for (const resource of runtimeResources) {
     const canonical = resource.path ? await canonicalExisting(resource.path) : undefined;
@@ -838,7 +838,7 @@ async function normalizeResources(
       ...resource,
       id: `${resource.kind}:${canonical ?? resource.id}`,
       ...(canonical ? { path: canonical } : {}),
-      ...(owner ? { origin: owner.origin, ...(owner.origin === "user" ? { userRoot: owner.path } : {}) } : {}),
+      ...(owner ? { origin: owner.origin, ...(owner.origin === "user" ? { userRoot: owner.sourcePath } : {}) } : {}),
     };
     result.set(normalized.id, normalized);
   }
@@ -854,7 +854,7 @@ async function normalizeResources(
       name: path.basename(entry.path) || entry.path,
       origin: entry.origin,
       path: entry.path,
-      ...(entry.origin === "user" ? { userRoot: entry.path } : {}),
+      ...(entry.origin === "user" ? { userRoot: entry.sourcePath } : {}),
     });
   }
   return [...result.values()].sort(resourceSort);
@@ -954,9 +954,8 @@ async function confinedResourceCandidate(repositoryRoot: string, candidate: stri
     if (entry.isSymbolicLink() || !entry.isDirectory()) return undefined;
     const canonical = await fs.realpath(candidate);
     // A different canonical spelling means an intermediate directory was a
-    // symlink. Preview roots must be owned by the cloned worktree itself: settings
-    // persistence canonicalizes them later, so accepting one here could otherwise
-    // activate arbitrary code outside the reviewed repository.
+    // symlink. Preview roots must be owned by the cloned worktree itself:
+    // accepting one could activate arbitrary code outside the reviewed repository.
     if (canonical !== path.resolve(candidate) || !isWithin(repositoryRoot, canonical)) return undefined;
     return canonical;
   } catch {

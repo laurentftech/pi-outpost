@@ -3388,6 +3388,14 @@ async function replaceSession(workspace: Workspace, socket: WebSocket, action: (
   }
   workspace.replacingSession = true;
   try {
+    // Session replacement is deliberate abandonment. Release a blocked extension
+    // command here so the RPC child can process the replacement, rather than
+    // treating a disconnected browser as a refusal.
+    if (workspace.pendingDialogs.size > 0) {
+      workspace.agent.cancelPendingExtensionRequests();
+      workspace.pendingDialogs.clear();
+      announceWorkspaceActivity();
+    }
     // The runtime rebinds and emits `session_replaced` itself; this only has to
     // decide whether a replacement happened at all.
     const result = await action();
@@ -3663,21 +3671,27 @@ async function handleUpdateConfig(
     refuse(`${workspaceTitle(busySibling)} is working — wait for its turn to finish before applying settings`);
     return undefined;
   }
-  const canonicalResourcePaths = async (values: string[] | undefined): Promise<string[] | undefined> => {
+  const validatedResourcePaths = async (
+    values: string[] | undefined,
+    { preserveSymlinks = false } = {},
+  ): Promise<string[] | undefined> => {
     if (!values) return undefined;
-    const canonical = await Promise.all(values.map(async (value) => {
-      const resolved = await fs.realpath(resolve(value));
+    const validated = await Promise.all(values.map(async (value) => {
+      const requested = resolve(value);
+      const resolved = await fs.realpath(requested);
       if (!(await fs.stat(resolved)).isDirectory()) throw new Error(`${value} is not a directory`);
-      return resolved;
+      // Operators use stable aliases across versioned extension installs. Validate
+      // the target without pinning settings to today's target directory.
+      return preserveSymlinks ? requested : resolved;
     }));
-    return [...new Set(canonical)];
+    return [...new Set(validated)];
   };
   let mergedSkillPaths: string[] | undefined;
   let mergedExtensionPaths: string[] | undefined;
   try {
     [mergedSkillPaths, mergedExtensionPaths] = await Promise.all([
-      canonicalResourcePaths(update.userSkillPaths),
-      canonicalResourcePaths(update.userExtensionPaths),
+      validatedResourcePaths(update.userSkillPaths),
+      validatedResourcePaths(update.userExtensionPaths, { preserveSymlinks: true }),
     ]);
   } catch (error) {
     refuse(`Could not use resource folder: ${error instanceof Error ? error.message : String(error)}`);
@@ -7272,28 +7286,8 @@ handleWsConnection = (socket, workspaceRoot) => {
     clients.delete(socket);
     // The idle clock starts when the last watcher leaves, not at the next sweep.
     if (bound && ![...clients.values()].includes(bound)) bound.lastUsedAt = Date.now();
-    // Nobody left to answer a dialog. An extension blocked on one holds its command
-    // open, and for `prompt` that command's timeout is deliberately suspended while
-    // a dialog is up — so without this the child waits on a question no one can see,
-    // with no watchdog left to end it, and the way out (a new session) is itself a
-    // command to the blocked child.
-    // No clients ON THE SERVER, not on this workspace. Under multi-project a
-    // workspace nobody is watching is the normal state — an agent is meant to keep
-    // working there — so cancelling on "nobody is looking at this one" would
-    // discard the very requests the attention badge exists to surface. Only when
-    // the last client of the whole server leaves is there truly nobody who could
-    // ever answer, and then every workspace's pending requests go.
-    // `started` guards the access: a retired project has no runtime, and it can
-    // hold no pending dialog either — reaching `agent` there would throw out of a
-    // socket close callback.
-    if (clients.size === 0) {
-      for (const open of workspaces.all()) {
-        if (!open.started) continue;
-        open.agent.cancelPendingExtensionRequests();
-        open.pendingDialogs.clear();
-      }
-      announceWorkspaceActivity();
-    }
+    // A sleeping/offline browser can return. Keep unanswered extension requests
+    // for sendBindingExtras to replay; losing the transport is not a user refusal.
   });
 };
 // A failed runtime reports unready: /health answers 503 and the operator's probe
@@ -7401,8 +7395,8 @@ workspace.agent.subscribe((event) => onRuntimeEvent(workspace, event));
 /**
  * Release projects nobody is using.
  *
- * Two conditions, and both are required: no client subscribed, and no turn
- * running. Age alone is never enough — under multi-project a workspace nobody is
+ * Two conditions, and both are required: no client subscribed, and no running
+ * turn or pending question. Age alone is never enough — under multi-project a workspace nobody is
  * watching is the *normal* state, because an agent is meant to keep working there,
  * so retiring on age would kill the one thing this whole feature exists to allow.
  *
@@ -7417,14 +7411,14 @@ function sweepIdleWorkspaces(): void {
     if (open === workspaces.default) continue;
     if (!open.started) continue;
     const isWatched = watched.has(open);
-    const isBusy = open.isBusy();
+    const isBusy = open.isBusy() || open.needsAttention;
     if (isWatched) {
       open.lastUsedAt = now;
       continue;
     }
     if (isBusy) {
-      // A long turn keeps its project alive however long it runs. This is the line
-      // that makes "unused" mean unused rather than unwatched.
+      // A long turn or pending question keeps its project alive. Extension
+      // commands can be waiting for a human without the model streaming.
       open.lastUsedAt = now;
       continue;
     }

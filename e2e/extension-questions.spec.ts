@@ -22,6 +22,13 @@ const extension = `export default pi => {
     const confirmed = await ctx.ui.confirm("Finish?", "Confirm the answers");
     report("Answers: " + JSON.stringify({first, second, edited, multi, next, confirmed}));
   }});
+  pi.registerCommand("question-long", {handler: async (_args, ctx) => {
+    report(context);
+    const description = "Review each path and the full explanation before granting access. ".repeat(5);
+    const answer = await ctx.ui.select("Long descriptions", ["1. Review access — " + description, "2. Refuse access — Keep the current sandbox"]);
+    const multi = await ctx.ui.input("Long checkbox descriptions\\n1. Review access — " + description + "\\n2. Refuse access — Keep the current sandbox", "1,3");
+    report("Long choices: " + JSON.stringify({answer, multi}));
+  }});
 };`;
 
 let root: string;
@@ -36,6 +43,18 @@ test.beforeEach(async ({ page }) => {
   await page.goto(server.base);
   await expect(page.getByRole("textbox", { name: /message pi/i })).toBeEnabled();
 });
+
+async function assertChoiceColumns(page: Page, heading: string, columns: 1 | 2) {
+  const choices = page.getByRole("region", { name: heading, exact: true }).getByRole("group", { name: "Answer choices" });
+  await expect(choices).toBeVisible();
+  await expect.poll(async () => {
+    const [a, b] = await Promise.all([choices.locator(":scope > *").nth(0).boundingBox(), choices.locator(":scope > *").nth(1).boundingBox()]);
+    return !!a && !!b && (columns === 2
+      ? Math.abs(a.y - b.y) < 1 && b.x >= a.x + a.width && a.width >= 320 && b.width >= 320
+      : b.y >= a.y + a.height && Math.abs(a.x - b.x) < 1);
+  }).toBe(true);
+  return choices;
+}
 
 test.afterEach(async () => {
   client?.close();
@@ -72,10 +91,36 @@ test("read and scroll the conversation while a question is pending, then answer 
   client.send({ type: "prompt", text: "/question-select" });
   await expect(page.getByRole("region", { name: "Choose using the evidence" })).toBeVisible();
   const panel = await assertSeparateScrollAreas(page);
+  await assertChoiceColumns(page, "Choose using the evidence", 2);
   await panel.getByRole("button", { name: "Option 2", exact: true }).focus();
   await page.keyboard.press("Enter");
   await expect(page.getByText("Selected: Option 2", { exact: true })).toBeVisible();
   await expect(panel).toHaveCount(0);
+});
+
+// openlore: scenario=AnUnansweredQuestionSurvivesBrowserReconnection spec=extension-question-reconnect
+test("an unanswered question survives losing the last browser connection and an outside click on return", async ({ page }) => {
+  // A second test connection would hide the last-client cancellation bug.
+  client.close();
+  await client.waitForClose();
+  const composer = page.getByRole("textbox", { name: /message pi/i });
+  await composer.fill("/question-select");
+  await composer.press("Escape");
+  await composer.press("Enter");
+  const question = page.getByRole("region", { name: "Choose using the evidence" });
+  await expect(question).toBeVisible();
+  await expect(page.getByText(/auto-dismiss in/)).toHaveCount(0);
+  // Reload closes the only socket, as a sleeping/offline browser can, then reconnects.
+  await page.reload();
+  await expect(question).toBeVisible();
+  const main = page.getByRole("main");
+  await main.hover();
+  await page.mouse.wheel(0, -100_000);
+  await page.getByText("Evidence 1: compare the original figures before choosing.", { exact: true }).click();
+  await expect(question).toBeVisible();
+  await expect(page.getByText("Selected: cancelled", { exact: true })).toHaveCount(0);
+  await question.getByRole("button", { name: "Option 2", exact: true }).click();
+  await expect(page.getByText("Selected: Option 2", { exact: true })).toBeVisible();
 });
 
 // openlore: scenario=LongQuestionsLeaveMobileContextReadable spec=extension-question-context
@@ -84,6 +129,7 @@ test("a long mobile question scrolls independently and survives resizing and con
   client.send({ type: "prompt", text: "/question-select" });
   await expect(page.getByRole("region", { name: "Choose using the evidence" })).toBeVisible();
   const panel = await assertSeparateScrollAreas(page);
+  await assertChoiceColumns(page, "Choose using the evidence", 1);
   await page.setViewportSize({ width: 820, height: 620 });
   await assertSeparateScrollAreas(page);
   await page.setViewportSize({ width: 390, height: 740 });
@@ -93,6 +139,37 @@ test("a long mobile question scrolls independently and survives resizing and con
   await page.screenshot({ path: testInfo.outputPath("question-with-readable-context.png") });
   await panel.getByRole("button", { name: "Option 30", exact: true }).click();
   await expect(page.getByText("Selected: Option 30", { exact: true })).toBeVisible();
+});
+
+// openlore: scenario=ShortChoicesFollowAvailablePanelWidth spec=responsive-question-choices
+test("brief choices use two columns only when the panel has room, including after resize", async ({ page }) => {
+  await page.setViewportSize({ width: 960, height: 900 });
+  client.send({ type: "prompt", text: "/question-select" });
+  const choices = await assertChoiceColumns(page, "Choose using the evidence", 2);
+  const order = Array.from({ length: 30 }, (_, i) => `Option ${i + 1}`);
+  await expect(choices.getByRole("button")).toHaveText(order);
+  // The viewport stays wide: the open files panel reduces the question's available width.
+  await page.getByRole("banner").getByRole("button", { name: /files/ }).click();
+  await assertChoiceColumns(page, "Choose using the evidence", 1);
+  await expect(choices.getByRole("button")).toHaveText(order);
+  await page.getByRole("banner").getByRole("button", { name: /files/ }).click();
+  await assertChoiceColumns(page, "Choose using the evidence", 2);
+  await page.setViewportSize({ width: 390, height: 740 });
+  await assertChoiceColumns(page, "Choose using the evidence", 1);
+  await page.getByRole("button", { name: "Refuse to answer" }).click();
+  await expect(page.getByText("Selected: cancelled", { exact: true })).toBeVisible();
+});
+
+// openlore: scenario=LongChoiceDescriptionsStayStacked spec=responsive-question-choices
+test("long descriptions stay in one column for buttons and checkboxes on a wide screen", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  client.send({ type: "prompt", text: "/question-long" });
+  const buttons = await assertChoiceColumns(page, "Long descriptions", 1);
+  await buttons.getByRole("button", { name: /Refuse access/ }).click();
+  const checks = await assertChoiceColumns(page, "Long checkbox descriptions", 1);
+  await checks.getByRole("checkbox", { name: /Refuse access/ }).check();
+  await page.getByRole("button", { name: "OK", exact: true }).click();
+  await expect(page.getByText('Long choices: {"answer":"2. Refuse access — Keep the current sandbox","multi":"2"}', { exact: true })).toBeVisible();
 });
 
 // openlore: scenario=SuccessiveQuestionsPreserveDraftAndIsolateAnswers spec=extension-question-context
@@ -113,7 +190,13 @@ test("successive questions reset answers, preserve the composer draft, and allow
   await expect(editor).toHaveValue("Original text");
   await editor.fill("Edited text");
   await page.getByRole("button", { name: "OK", exact: true }).click();
+  await assertChoiceColumns(page, "Pick several", 2);
   await page.getByRole("checkbox", { name: /Apples/ }).check();
+  await page.setViewportSize({ width: 390, height: 740 });
+  await assertChoiceColumns(page, "Pick several", 1);
+  await expect(page.getByRole("checkbox", { name: /Apples/ })).toBeChecked();
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await assertChoiceColumns(page, "Pick several", 2);
   await page.getByRole("button", { name: "OK", exact: true }).click();
   await expect(page.getByRole("region", { name: "Pick again" })).toBeVisible();
   await expect(page.getByRole("checkbox", { name: /Apples/ })).not.toBeChecked();

@@ -154,6 +154,7 @@ jobs:
   # running in parallel keeps it off the critical path.
   browser:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     # Chromium and the twenty-odd system libraries it needs are already in this
     # image. Installing them per run took eleven minutes against a job whose real
     # work — checkout, install, build, the suite — takes about one, and it did it
@@ -166,7 +167,9 @@ jobs:
       image: mcr.microsoft.com/playwright:v1.64.1-noble
     steps:
       - name: Install build tools for native addons
-        run: apt-get update && apt-get install -y build-essential python3
+        run: |
+          timeout 5m apt-get -o Acquire::Retries=2 -o Acquire::http::Timeout=15 -o Acquire::https::Timeout=15 update
+          timeout 5m apt-get -o Acquire::Retries=2 -o Acquire::http::Timeout=15 -o Acquire::https::Timeout=15 install -y build-essential python3
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
         with:

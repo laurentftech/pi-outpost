@@ -1,0 +1,45 @@
+name: Docker app with Python
+
+on:
+  pull_request:
+    paths:
+      - deploy/docker/**
+      - docs/docker.md
+      - .github/workflows/docker-python.yml
+      - .github/workflows/release.yml
+      - scripts/image-tags*
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  recipe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      PLAYWRIGHT_BROWSERS_PATH: /tmp/pi-outpost-playwright
+    steps:
+      - uses: actions/checkout@v5
+      - name: Load the dedicated AppArmor profile
+        run: sudo apparmor_parser -r deploy/docker/profiles/pi-outpost-landstrip.apparmor
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+      - name: Use npm 12.2.1
+        run: npm install -g npm@12.2.1
+      # Only the browser client is needed on the host; the app and its native
+      # dependencies are installed and exercised inside the Docker image.
+      - run: npm ci --workspaces=false --ignore-scripts --no-audit --no-fund
+      - run: npx playwright install --with-deps chromium
+      - name: Build the full application image
+        run: |
+          package=$(npm pack pi-outpost@0.59.1 --ignore-scripts --pack-destination deploy/docker --silent)
+          mv "deploy/docker/$package" deploy/docker/pi-outpost.tgz
+          docker build --build-arg PI_OUTPOST_PACKAGE=/recipe/pi-outpost.tgz \
+            -t pi-outpost-python:0.59.1 deploy/docker
+      - name: Exercise the installed app, confinement, terminal and persistence
+        env:
+          LANDSTRIP_APPARMOR_PROFILE: pi-outpost-landstrip
+        run: sudo --preserve-env=LANDSTRIP_APPARMOR_PROFILE,PLAYWRIGHT_BROWSERS_PATH "$(command -v node)" deploy/docker/test.mjs

@@ -4,6 +4,7 @@
 
 - [Staying up to date](#staying-up-to-date)
 - [Running it as a service](#running-it-as-a-service)
+- [Docker with Python](docker.md)
 - [Installing it as an app](#installing-it-as-an-app)
 
 ## Staying up to date
@@ -90,6 +91,9 @@ npm run start
 Builds the interface once and starts **one** Node process serving the app, `/ws`,
 `/branding` and `/health` together on `server.port` — nothing else to run or keep track of.
 Point a process manager (systemd, pm2, Docker `CMD`, …) at that one command.
+
+For a complete Docker/Compose recipe with Python, the integrated terminal and landstrip confinement,
+see [Docker with Python](docker.md). It runs the full app; the Open WebUI tool-server image is separate.
 
 It reads *your* configuration (`./pi-outpost.config.json`, or any of the locations above);
 with none, it refuses to start and says so. There is no hot reload here: rebuild

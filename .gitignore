@@ -64,3 +64,6 @@ RELEASE_NOTES.md
 
 # Cygwin/MSYS crash dumps, which a Windows working tree grows on its own.
 *.stackdump
+
+# Exact CLI package handed from the release job to the Docker build.
+/deploy/docker/pi-outpost.tgz

@@ -76,6 +76,12 @@ export function parseMultiSelect(request: DialogRequest): { heading: string; opt
   return { heading, options };
 }
 
+/** Brief choices can share a row once the panel offers roughly 320 px each. */
+function choiceLayout(options: string[]): string {
+  const brief = options.length > 1 && options.every((option) => option.length <= 120);
+  return `grid grid-cols-1 gap-2${brief ? " @min-[41rem]:grid-cols-2" : ""}`;
+}
+
 /** In-flow question panel: the conversation stays readable while the agent waits. */
 export function ExtensionDialog({ request, onRespond }: ExtensionDialogProps) {
   const headingId = useId();
@@ -115,7 +121,7 @@ export function ExtensionDialog({ request, onRespond }: ExtensionDialogProps) {
     <section
       role="region"
       aria-labelledby={headingId}
-      className="max-h-[40dvh] overflow-y-auto overscroll-contain rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-700 dark:bg-zinc-900"
+      className="@container max-h-[40dvh] overflow-y-auto overscroll-contain rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-700 dark:bg-zinc-900"
     >
       {/* The one deliberate refusal: none of the options fit, and the extension
           hears "cancelled" rather than an answer nobody meant to give. */}
@@ -140,7 +146,7 @@ export function ExtensionDialog({ request, onRespond }: ExtensionDialogProps) {
       )}
 
       {request.method === "select" && (
-        <div className="mb-1 flex flex-col gap-1">
+        <div role="group" aria-label="Answer choices" className={`mb-1 ${choiceLayout(request.options)}`}>
           {request.options.map((option, index) => {
             const parsed = parseOptionLine(option);
             return (
@@ -149,7 +155,7 @@ export function ExtensionDialog({ request, onRespond }: ExtensionDialogProps) {
                 type="button"
                 autoFocus={index === 0}
                 onClick={() => onRespond({ id: request.id, value: option })}
-                className={`break-words text-left ${buttonBase}`}
+                className={`min-w-0 break-words text-left ${buttonBase}`}
               >
                 {parsed ? (
                   <>
@@ -183,11 +189,11 @@ export function ExtensionDialog({ request, onRespond }: ExtensionDialogProps) {
 
       {multiSelect && (
         <>
-          <div className="mb-3 flex flex-col gap-1">
+          <div role="group" aria-label="Answer choices" className={`mb-3 ${choiceLayout(multiSelect.options.map((option) => `${option.label} ${option.description}`))}`}>
             {multiSelect.options.map((option) => (
               <label
                 key={option.index}
-                className="flex cursor-pointer items-start gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                className="flex min-w-0 cursor-pointer items-start gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-zinc-100 dark:hover:bg-zinc-800"
               >
                 <input
                   type="checkbox"
@@ -195,7 +201,7 @@ export function ExtensionDialog({ request, onRespond }: ExtensionDialogProps) {
                   onChange={() => toggle(option.index)}
                   className="mt-0.5"
                 />
-                <span>
+                <span className="min-w-0 break-words">
                   <span className="font-medium text-zinc-900 dark:text-zinc-100">{option.label}</span>
                   {option.description && (
                     <span className="mt-0.5 block text-xs text-zinc-500 dark:text-zinc-400">{option.description}</span>
