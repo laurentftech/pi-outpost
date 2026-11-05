@@ -3669,21 +3669,27 @@ async function handleUpdateConfig(
     refuse(`${workspaceTitle(busySibling)} is working — wait for its turn to finish before applying settings`);
     return undefined;
   }
-  const canonicalResourcePaths = async (values: string[] | undefined): Promise<string[] | undefined> => {
+  const validatedResourcePaths = async (
+    values: string[] | undefined,
+    { preserveSymlinks = false } = {},
+  ): Promise<string[] | undefined> => {
     if (!values) return undefined;
-    const canonical = await Promise.all(values.map(async (value) => {
-      const resolved = await fs.realpath(resolve(value));
+    const validated = await Promise.all(values.map(async (value) => {
+      const requested = resolve(value);
+      const resolved = await fs.realpath(requested);
       if (!(await fs.stat(resolved)).isDirectory()) throw new Error(`${value} is not a directory`);
-      return resolved;
+      // Operators use stable aliases across versioned extension installs. Validate
+      // the target without pinning settings to today's target directory.
+      return preserveSymlinks ? requested : resolved;
     }));
-    return [...new Set(canonical)];
+    return [...new Set(validated)];
   };
   let mergedSkillPaths: string[] | undefined;
   let mergedExtensionPaths: string[] | undefined;
   try {
     [mergedSkillPaths, mergedExtensionPaths] = await Promise.all([
-      canonicalResourcePaths(update.userSkillPaths),
-      canonicalResourcePaths(update.userExtensionPaths),
+      validatedResourcePaths(update.userSkillPaths),
+      validatedResourcePaths(update.userExtensionPaths, { preserveSymlinks: true }),
     ]);
   } catch (error) {
     refuse(`Could not use resource folder: ${error instanceof Error ? error.message : String(error)}`);

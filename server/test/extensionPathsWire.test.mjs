@@ -10,7 +10,7 @@
  * Each subtest boots a server. Keep the count low.
  */
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, test } from "node:test";
@@ -33,9 +33,14 @@ async function extensionDir(root, name, command) {
 const commandNames = (message) => (message.commands ?? []).map((c) => c.name);
 
 describe("extension paths from the interface", () => {
-  test("an applied path loads its extension, reaches the config file, and can be taken back", async () => {
+  // openlore: scenario=PreservesTheChosenExtensionAlias spec=extension-path-aliases
+  // openlore: scenario=RetargetedAliasLoadsAfterRestart spec=extension-path-aliases
+  // openlore: scenario=RemovesTheAliasWithoutRemovingItsTarget spec=extension-path-aliases
+  test("an applied symlink stays in config, follows a new target after restart, and can be taken back", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "pi-outpost-ext-wire-"));
     const mine = await extensionDir(root, "mine", "mine-hello");
+    const alias = path.join(root, "stable-extensions");
+    await symlink(mine, alias, process.platform === "win32" ? "junction" : "dir");
     const deployment = await extensionDir(root, "deployment", "deployment-hello");
     let server;
     let second;
@@ -71,7 +76,7 @@ describe("extension paths from the interface", () => {
       assert.ok(commandNames(hello).includes("deployment-hello"), "precondition: the deployment's extension loaded");
       assert.ok(!commandNames(hello).includes("mine-hello"));
 
-      client.send({ type: "update_config", userExtensionPaths: [mine, mine] });
+      client.send({ type: "update_config", userExtensionPaths: [alias, alias] });
       const ack = await client.waitFor("update_config_ack", 30_000);
 
       assert.ok(
@@ -79,11 +84,20 @@ describe("extension paths from the interface", () => {
         "the replacement session loaded the extension discovered in the added directory",
       );
       assert.ok(commandNames(ack).includes("deployment-hello"), "and kept the deployment's");
-      assert.deepEqual(ack.userExtensionPaths, [await realpath(mine)]);
+      assert.deepEqual(ack.userExtensionPaths, [alias]);
+      const added = ack.agentResources.resources.find((resource) => resource.kind === "extension" && resource.origin === "user");
+      assert.equal(added?.userRoot, alias, "the Remove action must identify the configured alias");
 
       const written = JSON.parse(await readFile(server.configFile, "utf8"));
-      assert.deepEqual(written.userExtensionPaths, [await realpath(mine)], "persisted before the acknowledgement");
+      assert.deepEqual(written.userExtensionPaths, [alias], "persisted before the acknowledgement");
       assert.deepEqual(written.extensionPaths, [deployment], "the deployment's list untouched");
+
+      // An update moves the extension and repoints its stable directory alias.
+      // Remove the old target so a saved realpath cannot accidentally keep working.
+      const updated = await extensionDir(root, "mine-next", "mine-updated");
+      await rm(alias);
+      await symlink(updated, alias, process.platform === "win32" ? "junction" : "dir");
+      await rm(mine, { recursive: true });
 
       // Same configuration, new process: what the user chose has to still be there.
       // Started before the first is stopped — `stop()` deletes the workspace the
@@ -93,10 +107,11 @@ describe("extension paths from the interface", () => {
       await restarted.open();
       const helloAgain = await restarted.waitFor("hello", 30_000);
       assert.ok(
-        commandNames(helloAgain).includes("mine-hello"),
+        commandNames(helloAgain).includes("mine-updated"),
         "a restarted server loads the extensions discovered in the directory the user chose",
       );
-      assert.deepEqual(helloAgain.userExtensionPaths, [await realpath(mine)]);
+      assert.ok(!commandNames(helloAgain).includes("mine-hello"), "the old target is no longer loaded");
+      assert.deepEqual(helloAgain.userExtensionPaths, [alias]);
       assert.deepEqual(helloAgain.configuredExtensionPaths, [deployment]);
       restarted.close();
 
@@ -110,7 +125,9 @@ describe("extension paths from the interface", () => {
         30_000,
       );
       assert.ok(!commandNames(removed).includes("mine-hello"), "removal rebuilds a session without it");
+      assert.ok(!commandNames(removed).includes("mine-updated"));
       assert.ok(commandNames(removed).includes("deployment-hello"));
+      assert.equal(await realpath(alias), await realpath(updated), "removing a resource does not remove its link or files");
       client.close();
     } finally {
       await server?.stop();
@@ -178,6 +195,30 @@ describe("extension paths from the interface", () => {
       await client.waitFor((m) => m.type === "error" && /Nothing to update/.test(m.message), 30_000);
       client.send({ type: "update_config", userExtensionPaths: ["  "] });
       await client.waitFor((m) => m.type === "error" && /Invalid extension paths/.test(m.message), 30_000);
+      client.close();
+    } finally {
+      await server.stop();
+    }
+  });
+
+  // openlore: scenario=RefusesInvalidExtensionAliases spec=extension-path-aliases
+  test("invalid extension paths leave settings and the active session unchanged", async () => {
+    const root = await makeWorkspace({ "not-a-directory.txt": "file" });
+    const dangling = path.join(root, "dangling");
+    await symlink(path.join(root, "missing"), dangling, process.platform === "win32" ? "junction" : "dir");
+    const server = await startServer(root);
+    try {
+      const client = connect(server.wsUrl());
+      await client.open();
+      const hello = await client.waitFor("hello", 30_000);
+      for (const invalid of [dangling, path.join(root, "not-a-directory.txt")]) {
+        client.send({ type: "update_config", userExtensionPaths: [invalid] });
+        await client.waitFor((m) => m.type === "error" && m.message.includes(invalid), 30_000);
+        const written = JSON.parse(await readFile(server.configFile, "utf8"));
+        assert.equal(written.userExtensionPaths, undefined);
+      }
+      assert.equal(client.received.some((m) => m.type === "update_config_ack"), false);
+      assert.equal(client.received.some((m) => m.type === "session_replaced" && m.sessionId !== hello.sessionId), false);
       client.close();
     } finally {
       await server.stop();

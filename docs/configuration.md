@@ -127,6 +127,13 @@ Two lists, deliberately: what the **configuration file** declares (`skillPaths`,
 remove it. What is added from Settings lives under its own key, and is the only thing the
 interface offers to remove.
 
+For a local extension folder, a symbolic link (or a Windows directory junction) stays in
+`userExtensionPaths` as the absolute path you chose. Its target must be an existing directory,
+but saving it does not replace the alias with today's versioned target. The resource manager
+shows that configured folder alongside the loaded file. After updating the link, restart
+pi-outpost to load the new extension code. Removing the entry unregisters it; the link and its
+target files remain on disk.
+
 A deployment can forbid any of it: `sandboxLocks` locks individual sandbox fields,
 `extensionLock` forbids extension-path changes (skill paths stay editable — loading code is
 not the same act as pointing the agent at more text to read). What is locked is refused by

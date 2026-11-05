@@ -1,0 +1,5 @@
+- [x] Reproduce canonicalization at the real update_config boundary.
+- [x] Preserve validated extension spelling and inventory removal provenance.
+- [x] Exercise add, retarget/restart, removal and invalid paths over real connections.
+- [x] Exercise enrollment/removal in Playwright and delete the alias before confirmation to test stale state.
+- [x] Update configuration documentation and validate scenario coverage and OpenSpec strictly.
