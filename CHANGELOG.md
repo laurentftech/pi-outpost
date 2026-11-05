@@ -7,6 +7,32 @@ version you had and the one you run now, without going online.
 Releases before 0.41.0 are described on
 [GitHub Releases](https://github.com/laurentftech/pi-outpost/releases).
 
+## [0.59.1] - 2026-11-05
+
+### Changed
+
+- **Keep the conversation visible while answering questions.** Questions now appear
+  below the timeline, leaving the context readable and scrollable. Short choices use
+  up to two columns when there is room; long descriptions and narrow windows keep
+  one column. Sandbox permission requests scroll their command, paths and explanation
+  independently, with all three decision buttons kept visible.
+  ([#412](https://github.com/laurentftech/pi-outpost/pull/412),
+  [#413](https://github.com/laurentftech/pi-outpost/pull/413))
+- **Install safely with npm 12.** Installation instructions and the updater explicitly
+  allow the native scripts needed by the terminal and sandbox while blocking unrelated
+  dependency scripts. Use `npx --allow-scripts=node-pty,koffi pi-outpost` with npm 12
+  and a compatible Node version (24.15+ or 26+).
+  ([#411](https://github.com/laurentftech/pi-outpost/pull/411))
+
+### Fixed
+
+- **Unanswered questions survive browser disconnections.** A connection lost during
+  browser sleep no longer becomes a refusal sent to the agent. Questions without an
+  extension-defined deadline reappear on reconnect, and a project waiting for your
+  answer stays available even after its idle timeout. Starting a new session can
+  still deliberately abandon an old question.
+  ([#414](https://github.com/laurentftech/pi-outpost/pull/414))
+
 ## [0.59.0] - 2026-11-04
 
 ### Changed
