@@ -28,6 +28,8 @@ jobs:
       - run: npm ci --workspaces=false --ignore-scripts --no-audit --no-fund
       - run: npx playwright install --with-deps chromium
       - name: Build the full application image
-        run: docker build -t pi-outpost-python:0.59.1 deploy/docker
+        run: |
+          docker build --build-arg APP_UID="$(id -u)" --build-arg APP_GID="$(id -g)" \
+            -t pi-outpost-python:0.59.1 deploy/docker
       - name: Exercise the installed app, confinement, terminal and persistence
         run: node deploy/docker/test.mjs

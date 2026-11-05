@@ -10,7 +10,10 @@ const tokenFile = process.env.PI_OUTPOST_TOKEN_FILE ?? "/run/secrets/pi_outpost_
 let token;
 try {
   token = readFileSync(tokenFile, "utf8").trim();
-} catch {
+} catch (error) {
+  if (error.code === "EACCES") {
+    throw new Error(`The pi_outpost_token secret is not readable by container UID ${process.getuid()}. Match APP_UID/APP_GID to the host file owner and rebuild.`);
+  }
   throw new Error("Missing pi_outpost_token secret. Create server-token before starting Compose.");
 }
 if (token.length < 32 || /\s/.test(token)) {
