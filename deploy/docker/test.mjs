@@ -24,6 +24,10 @@ function docker(args, options = {}) {
 const [imageUid, imageGid] = docker(["run", "--rm", "--entrypoint", "node", image,
   "-p", "process.getuid()+':'+process.getgid()"] ).trim().split(":").map(Number);
 assert.ok(imageUid > 0 && imageGid > 0, "The image must run as a non-root UID/GID");
+if (process.getuid() === 0) {
+  assert.equal(`${imageUid}:${imageGid}`, "1000:1000", "CI must test the distributable image's default identity");
+}
+console.log(`Testing app image UID/GID ${imageUid}:${imageGid}`);
 async function ownedByApp(file) {
   if (process.getuid() === 0) await chown(file, imageUid, imageGid);
   else assert.equal(process.getuid(), imageUid, "Build with APP_UID matching your UID, or run the test harness with sudo");
@@ -142,6 +146,7 @@ else:
 Path('python-proof.txt').write_text('persisted')
 print('DOCKER_' + 'PYTHON_OK', flush=True)
 `);
+  await ownedByApp(path.join(workspace, "probe.py"));
   const pty = await terminal();
   pty.send("python3 -m venv .venv && .venv/bin/python probe.py\r");
   await pty.waitFor("DOCKER_PYTHON_OK");
@@ -149,6 +154,7 @@ print('DOCKER_' + 'PYTHON_OK', flush=True)
   assert.equal(docker(["exec", container, "cat", "/data/private-canary"]).trim(), "outside");
   async function networkMustBeRefused(network) {
     await writeFile(path.join(workspace, "deny-binding.json"), JSON.stringify({ network }));
+    await ownedByApp(path.join(workspace, "deny-binding.json"));
     for (const probe of [
       { marker: "BIND_ATTEMPT", call: "s.bind(('127.0.0.1',8001))" },
       { marker: "CONNECT_ATTEMPT", call: "s.connect(('127.0.0.1',3141))" },

@@ -149,6 +149,8 @@ need a different UID, keep `PI_OUTPOST_IMAGE` unset and use the local build inst
 Published images are Linux x64 only. Every release has its exact version tag; stable releases
 also update `latest`, while prereleases never move it. Prefer a version pin for controlled updates.
 To update, change `PI_OUTPOST_VERSION`, pull again and recreate with `--no-build`.
+For network/port changes described above, also recreate with `--no-build` when using a published
+image; the `--build` commands are for the local-build setup.
 
 ### Local builds and persistent data
 

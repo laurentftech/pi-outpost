@@ -10,5 +10,7 @@
 - [x] Reuse release channel tags and keep internal artifacts off release attachments.
 - [x] Test the default non-root distributable image with private fixture ownership.
 - [x] Document published-image use, platforms, UID mapping and release verification.
-- [ ] Confirm the updated exact-image integration checks in CI.
+- [x] Confirm the updated exact-image integration checks in CI.
+
+## First release verification (after merge)
 - [ ] Verify first actual release publication and anonymous GHCR access after merge.
