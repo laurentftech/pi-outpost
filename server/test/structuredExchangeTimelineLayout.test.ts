@@ -446,7 +446,7 @@ describe("TheReaderMayCompactSections", () => {
     assert.ok(compacted.height < expanded.height);
     // A task endpoint folded into a section still anchors at its span: KO → A1 ends at A1's start.
     const toA1 = compacted.dependencies.find((arrow) => arrow.to === "A1")!;
-    assert.equal(toA1.points.at(-1)!.x, (day("2027-01-01") - day("2027-01-01")) * TIMELINE_PX_PER_DAY);
+    assert.equal(toA1.points.at(-1)!.x, 0);
   });
 
   test("AnUnlabelledActivityIsNamedByItsTaskWhenCompacted", () => {

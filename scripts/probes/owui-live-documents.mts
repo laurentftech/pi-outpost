@@ -72,6 +72,9 @@ try {
       for (let at = 0; at < (await button.count()); at++) {
         const [download] = await Promise.all([page.waitForEvent("download", { timeout: 30_000 }), button.nth(at).click()]);
         const file = path.join(outDir!, `${index + 1}-download-${downloads.length + 1}.bin`);
+        // This probe deliberately saves a document the operator downloads from their own
+        // Open WebUI, under a numbered name in the explicitly supplied output directory.
+        // Neither the remote filename nor the downloaded bytes choose a path or get executed.
         await download.saveAs(file);
         downloads.push(file);
       }
