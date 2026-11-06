@@ -28,6 +28,7 @@ import { unified } from "unified";
 import type { ChatItem } from "@pi-outpost/shared";
 import { drawioLinkLabel, isDrawioReference } from "@pi-outpost/shared/docx";
 import { chatHtmlSchema } from "../components/AssistantMessage";
+import { parseAnsi } from "../util/ansi";
 import { normalizeMathDelimiters } from "../util/markdownMath";
 
 /** What the document says about itself, so a file arriving alone still explains itself. */
@@ -219,6 +220,31 @@ export function escapeHtml(text: string): string {
  * either colour scheme. `prefers-color-scheme` rather than a toggle, because a toggle
  * is a script.
  */
+/**
+ * Tool output with its terminal styling, as the tool card shows it.
+ *
+ * The same reading as the app (`parseAnsi`), written as escaped text in styled
+ * spans: a stray ESC would otherwise print as `[2m…[22m` litter, and dropping the
+ * codes would lose what the colours separated. The text stays escaped, so the
+ * output is never markup; the style values come from parseAnsi's own palette or
+ * its digits-only rgb(), and are escaped too.
+ */
+function ansiToHtml(text: string): string {
+  return parseAnsi(text)
+    .map((segment) => {
+      const style = [
+        segment.color ? `color:${segment.color}` : "",
+        segment.bold ? "font-weight:600" : "",
+        segment.dim ? "opacity:0.7" : "",
+        segment.italic ? "font-style:italic" : "",
+        segment.underline ? "text-decoration:underline" : "",
+      ].filter(Boolean).join(";");
+      const body = escapeHtml(segment.text);
+      return style ? `<span style="${escapeHtml(style)}">${body}</span>` : body;
+    })
+    .join("");
+}
+
 const STYLESHEET = `
 :root {
   --bg: #ffffff; --fg: #18181b; --muted: #71717a; --line: #e4e4e7;
@@ -301,7 +327,7 @@ async function itemToHtml(
         `<article class="tool"><details class="tool">`,
         `<summary>${escapeHtml(item.toolName)}${status}</summary>`,
         `<pre><code>${escapeHtml(args)}</code></pre>`,
-        `<pre><code>${escapeHtml(item.output)}</code></pre>`,
+        `<pre><code>${ansiToHtml(item.output)}</code></pre>`,
         `</details></article>`,
       ].join("");
     }

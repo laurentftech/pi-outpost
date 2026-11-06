@@ -137,6 +137,24 @@ describe("the document is self-contained", () => {
     // No `open` attribute: a reader scrolling the conversation is not reading tool output.
     expect(html).not.toContain("<details class=\"tool\" open");
   });
+
+  it("shows a tool's terminal colours as the card does, never its escapes", async () => {
+    const items: ChatItem[] = [
+      {
+        kind: "tool",
+        toolCallId: "t1",
+        toolName: "bash",
+        args: { command: "npm run build" },
+        output: "\u001b[2m../\u001b[22m\u001b[32m✓ built <script>x</script>\u001b[39m done",
+      },
+    ];
+    const html = await conversationToHtml(items, options());
+    expect(html).not.toContain("\u001b");
+    expect(html).not.toContain("[32m");
+    expect(html).toContain('<span style="opacity:0.7">../</span>');
+    expect(html).toContain('<span style="color:#16a34a">✓ built &lt;script&gt;x&lt;/script&gt;</span> done');
+    expect(html).not.toContain("<script>x");
+  });
 });
 
 describe("the document carries no active content", () => {

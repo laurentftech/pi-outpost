@@ -7,6 +7,7 @@ import { normalizeMathDelimiters } from "../util/markdownMath";
 import { getFormattedToolOutput, parseLooseJson } from "../util/toolOutput";
 import { diffLines } from "../util/diff";
 import { DiffBlock, SplitDiffBlock } from "../components/DiffBlocks";
+import { AnsiText } from "../components/AnsiText";
 import { RenderedHtml } from "../components/RenderedHtml";
 import { formatOrientSummary } from "./orientSummary";
 import type { PresentationProps, ToolItem } from "./types";
@@ -27,11 +28,16 @@ export function ToolMarkdown({ text }: { text: string }) {
 /**
  * The tool's own output, inert. Never parsed as markup — this is the untrusted
  * channel (see design.md, decision 3).
+ *
+ * Terminal styling is honoured, though: a command run through bash keeps its SGR
+ * escapes (vite, npm, git, rg all colour their output), and printed verbatim they
+ * read as `[2m…[22m` litter. AnsiText turns them into React text spans, so the
+ * output stays text — nothing in it is ever interpreted as markup.
  */
 export function RawBody({ item }: { item: ToolItem }) {
   return (
     <pre className="max-h-96 overflow-auto whitespace-pre-wrap font-mono text-xs text-zinc-700 dark:text-zinc-300">
-      {item.output ? item.output : item.running ? "running…" : "(no output)"}
+      {item.output ? <AnsiText text={item.output} /> : item.running ? "running…" : "(no output)"}
     </pre>
   );
 }
