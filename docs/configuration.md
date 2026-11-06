@@ -165,12 +165,49 @@ supplies an **extension** is not — a running server cannot load an extension's
 the update says its code runs after a restart, and the repository joins what
 **Restart pi-outpost** in Settings runs.
 
-Clone and fetch are non-interactive: existing credential helpers, SSH agents, and other
-non-prompting Git authentication continue to work, but the server never opens a terminal or
-askpass prompt. Credential-bearing addresses are redacted from browser errors and stored
-origins. An RPC runtime may omit skill paths and does not currently inventory extensions;
+Clone and fetch are non-interactive: the server never opens a terminal or askpass prompt.
+A repository that needs a login is handled as described in
+[Git credentials for Agent resources](#git-credentials-for-agent-resources). An RPC runtime may omit skill paths and does not currently inventory extensions;
 those resources remain visible under **Provenance unavailable** and cannot be Git-managed
 until the runtime reports filesystem provenance.
+
+### Git credentials for Agent resources
+
+When a clone or a check fails because an HTTPS host wants a login, **Agent resources** names
+the host (`git.example.com:8447 requires authentication`) and asks for a user name and a
+password or access token. **Save and retry** stores them on the server and runs the same clone
+or check again; a credential the host refuses is said on the same prompt. Writing the address as
+`https://user:token@host/team/repo.git` does the same: the credential is stored for that host,
+and the clone's `origin` is recorded without it, so later checks and updates keep working.
+
+- **One credential per host.** It is used for every repository on that host — scheme, host and
+  port must match, so `git.example.com:8447` and `git.example.com` are two hosts.
+- **Where it lives.** `<agentDir>/git-credentials`, mode `0600`, beside the provider
+  credentials, in git's own `credential-store` format. It is unreadable from a confined
+  terminal or agent shell, and is never sent back to the browser: **Settings → Accounts → Git
+  hosts** lists the host and user name only, and removes them.
+- **What uses it.** Only the git commands of Agent resources. The project's own Git features and
+  the terminal keep using your own git configuration.
+- **Your own git authentication comes first.** A credential helper, an SSH agent or a key the
+  server already has is asked before the stored credential, and nothing it answers is copied
+  into the store. If it answers with a wrong credential, git stops there: fix or remove it.
+- **SSH is not managed.** An SSH refusal is named, but no key is stored. Give the server's user
+  a key without a passphrase (or an agent) in its `~/.ssh`, with the host in `known_hosts`, or
+  use the repository's HTTPS address.
+- **`credentialsLock: true`** shows the hosts without offering to add or remove one, refuses
+  both from any client, and does not store a credential written into an address.
+
+To configure a host from the server side instead, give the server's user a git credential
+helper, for example:
+
+```sh
+git config --global credential.helper store
+printf 'https://%s:%s@%s\n' "$USER_NAME" "$TOKEN" git.example.com:8447 >> ~/.git-credentials
+chmod 600 ~/.git-credentials
+```
+
+In a container, that home directory must survive the container being recreated — see
+[Docker: persistent data](docker.md#local-builds-and-persistent-data).
 
 ## Configuration file
 

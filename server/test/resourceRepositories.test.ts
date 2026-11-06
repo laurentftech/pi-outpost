@@ -169,7 +169,13 @@ describe("resource repository enrollment", () => {
     const started = Date.now();
     await assert.rejects(
       () => service.cloneAndPreview("https://user:super-secret@127.0.0.1:1/no.git", path.join(emptyRoot, "private"), false),
-      (error: Error) => !error.message.includes("super-secret") && /Could not clone/.test(error.message),
+      (error: Error) => {
+        assert.doesNotMatch(error.message, /super-secret/);
+        // git's reason, not its progress line (#425).
+        assert.match(error.message, /^Could not clone https:\/\/\*\*\*@127\.0\.0\.1:1\/no\.git: fatal: /);
+        assert.doesNotMatch(error.message, /Cloning into/);
+        return true;
+      },
     );
     assert.ok(Date.now() - started < 10_000, "non-interactive authentication failure should not wait for the git timeout");
   });

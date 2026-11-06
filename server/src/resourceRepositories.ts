@@ -25,9 +25,11 @@ import type {
   AgentResourceRepositoryStatus,
   AgentSkillCatalogueBound,
   AgentSkillCatalogueEntry,
+  GitAuthFailure,
 } from "@pi-outpost/shared";
 import { parseFrontmatter } from "@earendil-works/pi-coding-agent";
 import { currentGitExecutable, gitFailureMessage } from "./git.ts";
+import { classifyGitAuthFailure, embeddedCredential, gitCredentialHelperEnv, hostLabel, storeGitHostCredential } from "./gitHostCredentials.ts";
 import { type SkillCollection, userConfigDir } from "./config.ts";
 import { isWithin } from "./sandbox.ts";
 
@@ -108,6 +110,17 @@ export function useResourceRemover(remover?: (target: string) => Promise<void>):
   resourceRemover = remover ?? removeTreeForcefully;
 }
 
+/**
+ * The Git host credential store these git processes are offered (git-host-credentials),
+ * and whether credentials are locked on this server. Set once by the server at start;
+ * unset, git gets the deployment's own authentication only, as before the store existed.
+ */
+let gitCredentialStore: { file: string; locked: boolean } | undefined;
+
+export function useGitCredentialStore(store?: { file: string; locked: boolean }): void {
+  gitCredentialStore = store;
+}
+
 /** Test seam for proving command shape and concurrency without replacing Git. */
 export function useResourceGitObserver(observer?: ResourceGitObserver): void {
   resourceGitObserver = observer;
@@ -182,10 +195,28 @@ export interface ResourceUpdateOptions {
 }
 
 export class ResourceRepositoryError extends Error {
-  constructor(message: string) {
+  /** What git wrote to stderr, whole, when this came from a git process — for classification, never for display. */
+  readonly gitStderr?: string;
+  /** Set when git failed because the host wants credentials. */
+  readonly auth?: GitAuthFailure;
+  constructor(message: string, details: { gitStderr?: string; auth?: GitAuthFailure } = {}) {
     super(message);
     this.name = "ResourceRepositoryError";
+    if (details.gitStderr !== undefined) this.gitStderr = details.gitStderr;
+    if (details.auth !== undefined) this.auth = details.auth;
   }
+}
+
+/** "git.example.com:8447 requires authentication", or undefined when git said nothing of the kind. */
+function authFailureOf(error: unknown, address: string | undefined): GitAuthFailure | undefined {
+  const stderr = error instanceof ResourceRepositoryError ? error.gitStderr : undefined;
+  return classifyGitAuthFailure(stderr, address);
+}
+
+function authMessage(auth: GitAuthFailure): string {
+  return auth.scheme === "https"
+    ? `${hostLabel(auth.host)} requires authentication`
+    : `${auth.host} refused SSH authentication`;
 }
 
 export class ResourceRepositoryService {
@@ -397,6 +428,15 @@ export class ResourceRepositoryService {
       }
     } else {
       await fs.mkdir(this.hooksDir, { recursive: true });
+      // Credentials in the address go to the store, and the clone runs without them —
+      // so it authenticates the way every later refresh will. Under the lock nothing is
+      // stored and the address is used as given, for this clone only.
+      const embedded = embeddedCredential(address);
+      let cloneAddress = address;
+      if (embedded && gitCredentialStore && !gitCredentialStore.locked) {
+        await storeGitHostCredential(gitCredentialStore.file, embedded.host, embedded.username, embedded.secret);
+        cloneAddress = repositoryAddressWithoutCredentials(address);
+      }
       try {
         await runGit(this.managedRoot, [
           "-c",
@@ -406,11 +446,16 @@ export class ResourceRepositoryService {
           "--origin",
           "origin",
           "--",
-          address,
+          cloneAddress,
           destination,
         ]);
       } catch (error) {
-        throw new ResourceRepositoryError(`Could not clone ${redactRepositoryAddress(address)}: ${redactSecrets(firstLine(error))}`);
+        const auth = authFailureOf(error, address);
+        const reason = redactSecrets(messageOf(error));
+        throw new ResourceRepositoryError(
+          `Could not clone ${redactRepositoryAddress(address)}: ${auth ? `${authMessage(auth)} (${reason})` : reason}`,
+          auth ? { auth } : {},
+        );
       }
     }
     const credentialFreeAddress = repositoryAddressWithoutCredentials(address);
@@ -662,10 +707,14 @@ export class ResourceRepositoryService {
       }
       return (repo.assessment = { ...base, status: "diverged", reason: "The local branch has diverged from its upstream" });
     } catch (error) {
+      const reason = redactSecrets(messageOf(error));
+      const remote = error instanceof ResourceRepositoryError && error.gitStderr ? await tryGit(repo.path, ["ls-remote", "--get-url"]) : undefined;
+      const auth = authFailureOf(error, remote);
       return (repo.assessment = {
         repositoryId: repo.id,
         status: "failed",
-        reason: redactSecrets(firstLine(error)),
+        reason: auth ? `${authMessage(auth)} (${reason})` : reason,
+        ...(auth ? { auth } : {}),
         checkedAt,
       });
     }
@@ -1110,7 +1159,8 @@ function resourceSort(a: AgentResourceInfo, b: AgentResourceInfo): number {
 }
 
 async function runGit(cwd: string, args: string[]): Promise<string> {
-  const env = nonInteractiveEnv();
+  const base = nonInteractiveEnv();
+  const env = gitCredentialStore ? { ...base, ...gitCredentialHelperEnv(gitCredentialStore.file, currentGitExecutable(), base) } : base;
   resourceGitObserver?.({ phase: "start", cwd, args, env });
   try {
     const { stdout } = await execFileAsync(currentGitExecutable(), args, {
@@ -1123,7 +1173,11 @@ async function runGit(cwd: string, args: string[]): Promise<string> {
     });
     return stdout;
   } catch (error) {
-    throw new ResourceRepositoryError(gitFailureMessage(args[0], error, COMMAND_TIMEOUT_MS, MAX_BUFFER));
+    const stderr = (error as { stderr?: unknown }).stderr;
+    throw new ResourceRepositoryError(
+      gitFailureMessage(args[0], error, COMMAND_TIMEOUT_MS, MAX_BUFFER),
+      typeof stderr === "string" ? { gitStderr: stderr } : {},
+    );
   } finally {
     resourceGitObserver?.({ phase: "end", cwd, args, env });
   }
@@ -1142,7 +1196,16 @@ async function exitsZero(cwd: string, args: string[]): Promise<boolean> {
 }
 
 function firstLine(error: unknown): string {
-  return (error instanceof Error ? error.message : String(error)).split("\n")[0];
+  return messageOf(error).split("\n")[0];
+}
+
+/**
+ * A failure's whole message. Git errors arrive already reduced to git's reason line
+ * (`gitFailureMessage`); cutting them again to their first line is what once kept
+ * `Cloning into '…'...` and dropped the cause (#425).
+ */
+function messageOf(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 async function canonicalCloneDestination(value: string): Promise<string> {

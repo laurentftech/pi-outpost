@@ -9,6 +9,7 @@ import { repoForPath } from "./util/gitRepos";
 import type {
   AgentResourceInventory,
   AgentResourceRepositoryPreview,
+  GitAuthFailure,
   AgentResourceRemovalResult,
   AgentResourceUpdateResult,
   Branding,
@@ -260,9 +261,18 @@ export interface ServerBrowseState {
  */
 export type SettingsApplyState = { status: "applying" } | { status: "error"; message: string };
 
+/**
+ * The Git host credential being stored, so the panel that asked can retry once it lands
+ * and say why when it does not (git-host-credentials).
+ */
+export type GitHostCredentialState =
+  | { requestId: string; status: "saving" }
+  | { requestId: string; status: "saved"; host: string }
+  | { requestId: string; status: "error"; message: string };
+
 export interface AgentResourceOperationState {
   clonePath: { requestId: string; status: "loading" | "ready" | "error"; path?: string; message?: string } | null;
-  preview: { requestId: string; status: "loading" | "ready" | "error"; preview?: AgentResourceRepositoryPreview; message?: string } | null;
+  preview: { requestId: string; status: "loading" | "ready" | "error"; preview?: AgentResourceRepositoryPreview; message?: string; auth?: GitAuthFailure } | null;
   enrollment: { requestId: string; status: "loading" | "ready" | "error"; message?: string } | null;
   refresh: { requestId: string; repositoryId?: string; status: "loading" | "ready" | "error"; message?: string } | null;
   updates: Record<string, { requestId: string; status: "loading" | "ready" | "error"; result?: AgentResourceUpdateResult; message?: string }>;
@@ -475,6 +485,8 @@ export interface AgentState {
   settingsApply: SettingsApplyState | null;
   agentResources: AgentResourceInventory | null;
   agentResourceOperations: AgentResourceOperationState;
+  /** The last Git host credential this client asked to store or remove; null when none. */
+  gitHostCredential: GitHostCredentialState | null;
   versions: { piOutpost: string; piSdk?: string; agent?: string } | null;
   gitAvailable: boolean;
   /** Why git is unavailable, when it is. Null whenever it is available. */
@@ -574,6 +586,7 @@ const initialState: AgentState = {
   settingsApply: null,
   agentResources: null,
   agentResourceOperations: emptyAgentResourceOperations(),
+  gitHostCredential: null,
   versions: null,
   gitAvailable: false,
   gitUnavailable: null,
@@ -638,6 +651,7 @@ type Action =
   | { type: "settings_apply_started" }
   | { type: "resource_clone_path_started"; requestId: string }
   | { type: "resource_preview_started"; requestId: string }
+  | { type: "git_host_credential_started"; requestId: string }
   | { type: "resource_enrollment_started"; requestId: string }
   | { type: "resource_refresh_started"; requestId: string; repositoryId?: string }
   | { type: "resource_update_started"; requestId: string; repositoryId: string }
@@ -1033,6 +1047,9 @@ function reduce(state: AgentState, action: Action): AgentState {
   if (action.type === "resource_clone_path_started") {
     return { ...state, agentResourceOperations: { ...state.agentResourceOperations, clonePath: { requestId: action.requestId, status: "loading" } } };
   }
+  if (action.type === "git_host_credential_started") {
+    return { ...state, gitHostCredential: { requestId: action.requestId, status: "saving" } };
+  }
   if (action.type === "resource_preview_started") {
     return { ...state, agentResourceOperations: { ...state.agentResourceOperations, preview: { requestId: action.requestId, status: "loading" } } };
   }
@@ -1228,7 +1245,9 @@ function reduce(state: AgentState, action: Action): AgentState {
       const fail = <T extends { requestId: string }>(pending: T | null): (T & { status: "error"; message: string }) | null =>
         pending?.requestId === message.requestId ? { ...pending, status: "error", message: message.message } : null;
       const clonePath = fail(state.agentResourceOperations.clonePath);
-      const preview = fail(state.agentResourceOperations.preview);
+      const failedPreview = fail(state.agentResourceOperations.preview);
+      // A clone the host refused for want of credentials says which host, so the panel can ask.
+      const preview = failedPreview && message.auth ? { ...failedPreview, auth: message.auth } : failedPreview;
       const enrollment = fail(state.agentResourceOperations.enrollment);
       const refresh = fail(state.agentResourceOperations.refresh);
       const failKeyed = <T extends { requestId: string }>(entries: Record<string, T>): Record<string, T> | null => {
@@ -1291,6 +1310,15 @@ function reduce(state: AgentState, action: Action): AgentState {
         ...state,
         login: { ...state.login, prompt: null, done: { ok: message.ok, ...(message.cancelled ? { cancelled: true } : {}), ...(message.message ? { message: message.message } : {}) } },
       };
+    case "git_host_credential_result": {
+      if (state.gitHostCredential?.requestId !== message.requestId) return state;
+      return {
+        ...state,
+        gitHostCredential: message.ok
+          ? { requestId: message.requestId, status: "saved", host: message.host }
+          : { requestId: message.requestId, status: "error", message: message.message },
+      };
+    }
     case "credentials_changed": {
       // Onboarding landed: new models, new status, same session — so nothing else here
       // is touched (a snapshot would wipe live extension dialogs and widgets).
@@ -2969,6 +2997,19 @@ export function useAgent(serverUrl = "", explicitToken?: string, embedded = fals
     /** Forget a finished (or stuck) sign-in's dialog. */
     dismissLogin: () => dispatch({ type: "login_dismissed" }),
     logoutProvider: (provider: string) => sendMessage({ type: "logout_provider", provider }),
+    /** Store the HTTPS credential for one Git host. Returns the request id the result will carry. */
+    setGitHostCredential: (host: string, username: string, secret: string): string => {
+      const requestId = `git-host:${randomId()}`;
+      dispatch({ type: "git_host_credential_started", requestId });
+      sendMessage({ type: "set_git_host_credential", host, username, secret, requestId });
+      return requestId;
+    },
+    removeGitHostCredential: (host: string): string => {
+      const requestId = `git-host:${randomId()}`;
+      dispatch({ type: "git_host_credential_started", requestId });
+      sendMessage({ type: "remove_git_host_credential", host, requestId });
+      return requestId;
+    },
     /** Onboarding: declare an OpenAI-compatible endpoint (corporate gateway, vLLM, Ollama…). */
     declareProvider: (declaration: { provider: string; baseUrl: string; apiKey: string; models: string[]; compat?: ProviderCompat }) =>
       sendMessage({ type: "declare_provider", ...declaration }),

@@ -4,7 +4,7 @@ import type { AgentState } from "../useAgent";
 import { MIN_SESSION_QUERY_LENGTH, type AgentResourceInventory, type GitUnavailable, type SessionSummary, type TreeNode, type WorkspaceInfo } from "@pi-outpost/shared";
 import { ProjectMenu } from "./ProjectMenu";
 import { WorkspaceRootControl, type WorkspaceRootSandbox } from "./WorkspaceRootControl";
-import type { AgentResourceOperationState, GitLogState, GitStatusState, ServerBrowseState, SessionSearch, SettingsApplyState } from "../useAgent";
+import type { AgentResourceOperationState, GitHostCredentialState, GitLogState, GitStatusState, ServerBrowseState, SessionSearch, SettingsApplyState } from "../useAgent";
 import { stripAnsi } from "../util/ansi";
 import { AnsiText } from "./AnsiText";
 import { useClickOutside } from "../util/clickOutside";
@@ -29,6 +29,9 @@ interface HeaderProps {
   onCancelLogin?: () => void;
   onDismissLogin?: () => void;
   onLogoutProvider?: (provider: string) => void;
+  gitHostCredential?: GitHostCredentialState | null;
+  onSetGitHostCredential?: (host: string, username: string, secret: string) => string;
+  onRemoveGitHostCredential?: (host: string) => string;
   title?: string;
   sessions: SessionSummary[] | null;
   /** Active session search (name / first message / transcript), null when the menu lists everything. */
@@ -768,6 +771,9 @@ export function Header(props: HeaderProps) {
           onCancelLogin={props.onCancelLogin}
           onDismissLogin={props.onDismissLogin}
           onLogoutProvider={props.onLogoutProvider}
+          gitHostCredential={props.gitHostCredential ?? null}
+          {...(props.onSetGitHostCredential ? { onSetGitHostCredential: props.onSetGitHostCredential } : {})}
+          {...(props.onRemoveGitHostCredential ? { onRemoveGitHostCredential: props.onRemoveGitHostCredential } : {})}
           extensionPaths={props.extensionPaths}
           configuredExtensionPaths={props.configuredExtensionPaths}
           userExtensionPaths={props.userExtensionPaths}

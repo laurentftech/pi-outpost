@@ -156,6 +156,10 @@ image; the `--build` commands are for the local-build setup.
 
 `PROJECT_DIR` is mounted at `/workspace`. The `pi-outpost-data` named volume keeps `/data/agent`
 (credentials and conversations), `/data/config.json` and user configuration/cache directories.
+Git host credentials entered in **Agent resources** are kept in `/data/agent` too. The server
+user's home, `/home/node`, is **not** on the volume: a `~/.gitconfig`, `~/.git-credentials` or
+`~/.ssh` written there is lost when the container is recreated — mount them, or prefer the
+credential prompt (see [Git credentials for Agent resources](configuration.md#git-credentials-for-agent-resources)).
 The template is copied on first start only: settings survive recreation. The token is refreshed
 from the secret file on each start. To rotate it, replace `server-token` then recreate the service.
 

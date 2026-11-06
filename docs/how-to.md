@@ -397,8 +397,10 @@ server-side boundary. Update confirmation is revision-bound and checked by the s
 The Git updater only performs a clean fast-forward to the assessed upstream revision. Fix
 dirty, detached, ahead, diverged, or missing-upstream states in an external terminal, then
 use **Check** again. It never commits, stashes, discards, rebases, pushes, switches branches,
-runs repository hooks, or initializes/updates submodules. Clone and fetch cannot prompt;
-configured credential helpers or SSH agents may authenticate non-interactively. If Git
+runs repository hooks, or initializes/updates submodules. Clone and fetch cannot prompt in a
+terminal; an HTTPS host that wants a login is named, and the dialog asks for a user name and
+token, stores them on the server and retries — see
+[Git credentials for Agent resources](configuration.md#git-credentials-for-agent-resources). If Git
 succeeds but a workspace reload fails, the clone stays advanced and the manager reports
 the partial reload instead of attempting a destructive rollback.
 

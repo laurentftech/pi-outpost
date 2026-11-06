@@ -29,6 +29,7 @@ import {
   terminalPolicy,
   userGitConfig,
 } from "../src/terminalSandbox.ts";
+import { gitCredentialsPath } from "../src/gitHostCredentials.ts";
 
 // The Linux policy, whatever host runs the test: POSIX paths, platform pinned.
 const p = (...parts: string[]) => path.posix.join("/", ...parts);
@@ -129,6 +130,39 @@ describe("terminalPolicy on Windows", () => {
     assert.deepEqual(policy.filesystem.allowWrite, ["C:/Users/me/work/app/out", "C:/Users/me/AppData/Local/Temp/pi-outpost-terminal-1"]);
     // lpac refused git even where it was allowed; standard runs it.
     assert.deepEqual(policy.windows, { appContainerMode: "standard" });
+  });
+});
+
+describe("the Git host credential store", () => {
+  /** Whether `file` is unreadable under `denied`: equal to a denied path or below one. */
+  const deniedBy = (denied: readonly string[], file: string, sep: "/" | "\\") =>
+    denied.some((entry) => entry !== "/" && !/^[A-Z]:[\\/]$/i.test(entry) && (file === entry || file.startsWith(entry.endsWith(sep) ? entry : entry + sep)));
+
+  // openlore: scenario=A confined shell cannot read the store spec=git-host-credentials
+  test("A confined shell cannot read the store: it sits in the agent directory, denied by name on every policy", () => {
+    const linuxStore = gitCredentialsPath(agentDir).replace(/\\/g, "/");
+    assert.ok(linuxStore.startsWith(agentDir + "/"), "the store is inside the agent directory");
+    const linuxPolicy = terminalPolicy({ ...linux, root, allowWrite: true, agentDir, configFile, tmp });
+    assert.ok(deniedBy(linuxPolicy.filesystem.denyRead, linuxStore, "/"), linuxStore);
+
+    const winAgent = "C:\\Users\\me\\.pi\\agent";
+    const winPolicy = terminalPolicy({ platform: "win32", root: "C:\\Users\\me\\work\\app", allowWrite: true, tmp: "C:\\Temp\\t", agentDir: winAgent });
+    const winStore = `${winAgent}\\git-credentials`.replace(/\\/g, "/");
+    assert.ok(deniedBy(winPolicy.filesystem.denyRead, winStore, "/"), winStore);
+
+    const mxc = mxcLinuxConfig({
+      root: "/work/app",
+      allowWrite: true,
+      tmp: "/tmp/pi-outpost-bash-1",
+      shell: "/bin/bash",
+      shellArgs: ["-c", "true"],
+      cwd: "/work/app",
+      env: { PATH: "/usr/bin" },
+      searchPath: "/usr/bin",
+      agentDir: "/home/node/.pi/agent",
+      exists: () => true,
+    });
+    assert.ok(deniedBy(mxc.filesystem.deniedPaths, gitCredentialsPath("/home/node/.pi/agent").replace(/\\/g, "/"), "/"));
   });
 });
 
