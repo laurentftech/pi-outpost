@@ -38,6 +38,18 @@ developers.
 *your* configuration rather than the dev one. There is no hot reload in that mode: rebuild
 (`npm run build --workspace web`) and restart after a UI change.
 
+## Server tests on Windows
+
+`npm test --workspace server` discovers every `test/*.test.mjs` and `test/*.test.ts`
+file. On Windows it runs the normal batch in parallel, then the `terminal*.test.*`
+files separately with one test worker. All files still run, including after a failure
+in the first batch, and any failed batch makes the command fail. Tests of concurrent
+opens within a server retain their own concurrency and assertions.
+
+This isolates real Windows consoles from unrelated test-process churn while
+[`node-pty`'s ConPTY teardown race](https://github.com/microsoft/node-pty/issues/1007)
+remains unresolved. Linux keeps the full parallel suite and its coverage command.
+
 ## npm 12 installation regression checks
 
 After `npm run build --workspace cli`, run `npm run test:npm-install` with npm 12.2.1.
