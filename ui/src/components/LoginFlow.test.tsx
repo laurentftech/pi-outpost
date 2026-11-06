@@ -43,4 +43,58 @@ describe("LoginFlow", () => {
     expect(screen.getByText(/your browser may say it cannot connect to localhost/i)).toBeInTheDocument();
     expect(screen.getByText(/copy the full address from that browser page/i)).toBeInTheDocument();
   });
+
+  it("shows progress, informational links, and the default authorization instructions", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });
+    render(<LoginFlow login={state({ events: [
+      { type: "auth_url", url: "https://example.test/auth" },
+      { type: "info", message: "Choose an account", links: [{ url: "https://example.test/help", label: "Help" }, { url: "https://example.test/docs" }] },
+      { type: "progress", message: "Waiting for approval" },
+    ] })} providerName="Example" onAnswer={vi.fn()} onCancel={vi.fn()} onDismiss={vi.fn()} />);
+    expect(screen.getByText("Open this page to sign in:")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Help" })).toHaveAttribute("href", "https://example.test/help");
+    expect(screen.getByRole("link", { name: "https://example.test/docs" })).toHaveAttribute("target", "_blank");
+    expect(screen.getByText("Waiting for approval")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Copy" }));
+    expect(writeText).toHaveBeenCalledWith("https://example.test/auth");
+  });
+
+  it("answers select prompts and trims text submitted with Enter", () => {
+    const answer = vi.fn();
+    const { rerender } = render(<LoginFlow login={state({ prompt: { promptId: "select", prompt: {
+      type: "select", message: "Choose a tenant", options: [{ id: "work", label: "Work", description: "Company" }, { id: "personal", label: "Personal" }],
+    } } })} providerName="Example" onAnswer={answer} onCancel={vi.fn()} onDismiss={vi.fn()} />);
+    expect(screen.getByRole("button", { name: "Work" })).toHaveAttribute("title", "Company");
+    fireEvent.click(screen.getByRole("button", { name: "Personal" }));
+    expect(answer).toHaveBeenCalledWith("personal");
+
+    rerender(<LoginFlow login={state({ prompt: { promptId: "text", prompt: { type: "text", message: "Account name" } } })} providerName="Example" onAnswer={answer} onCancel={vi.fn()} onDismiss={vi.fn()} />);
+    const input = screen.getByRole("textbox");
+    expect(screen.getByRole("button", { name: "Continue" })).toBeDisabled();
+    fireEvent.change(input, { target: { value: "   " } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(answer).toHaveBeenCalledTimes(1);
+    fireEvent.change(input, { target: { value: "  team  " } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(answer).toHaveBeenLastCalledWith("team");
+  });
+
+  it("renders successful, failed, and cancelled completion states and dismisses them", () => {
+    const dismiss = vi.fn();
+    const base = { providerName: "Example", onAnswer: vi.fn(), onCancel: vi.fn(), onDismiss: dismiss };
+    const { rerender } = render(<LoginFlow {...base} login={state({ done: { ok: true, cancelled: false } })} />);
+    expect(screen.getByTestId("login-done")).toHaveAttribute("data-ok", "true");
+    expect(screen.getByText("Signed in to Example.")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    expect(dismiss).toHaveBeenCalledOnce();
+
+    rerender(<LoginFlow {...base} login={state({ done: { ok: false, cancelled: true } })} />);
+    expect(screen.getByText("Sign-in cancelled.")).toBeInTheDocument();
+    rerender(<LoginFlow {...base} login={state({ done: { ok: false, cancelled: false, message: "provider offline" } })} />);
+    expect(screen.getByText("Sign-in failed: provider offline")).toBeInTheDocument();
+    rerender(<LoginFlow {...base} login={state({ done: { ok: false, cancelled: false } })} />);
+    expect(screen.getByText("Sign-in failed: unknown error")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Cancel" })).not.toBeInTheDocument();
+  });
 });
