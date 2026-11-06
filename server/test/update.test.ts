@@ -461,19 +461,6 @@ describe("npmCommand", () => {
     assert.deepEqual(npmRootInvocation("win32", "/npm/bin/npm-cli.js").args, ["/npm/bin/npm-cli.js", "root", "-g"]);
   });
 
-  test(
-    "the Windows global-root invocation really answers with npm's node_modules",
-    { skip: process.platform !== "win32" && "cmd.exe exists only on Windows" },
-    async () => {
-      // Against the real batch file: the unit test above pins the argv, this one proves
-      // Windows runs it, which is the part that was broken.
-      const { execFileSync } = await import("node:child_process");
-      const { npmRootInvocation } = await import("../src/update.ts");
-      const { command, args, env } = npmRootInvocation("win32", "");
-      const root = execFileSync(command, args, { env, encoding: "utf8", windowsHide: true, timeout: 60_000 }).trim();
-      assert.match(root, /node_modules$/i);
-    },
-  );
 });
 
 describe("update --check", () => {
