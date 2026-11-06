@@ -473,13 +473,18 @@ asked, and it stays refused.
 
 | Runner | Directories | Hosts |
 | --- | --- | --- |
-| MXC on Windows 11 | asked for by the agent | asked about on connection, under `sandbox.allowedHosts` |
-| MXC on Linux and Apple-silicon macOS, Seatbelt | asked for by the agent | refused, as the list says: a command there is yet to be shown to reach no other command's proxy |
+| MXC on Windows 11, Linux and Apple-silicon macOS, Seatbelt | asked for by the agent | asked about on connection, under `sandbox.allowedHosts` |
 | landstrip | asked for by the agent | — (the network is open) |
 | WSLC (`sandbox.bashImage`) | refused: the container's mounts are fixed when it starts | — |
 
-Without someone to ask — `sandbox.grants: "never"`, or a runner that does not take host questions — a
-host the list does not name is refused at once, and the note asks you to add it to the list. The agent's
+A runner takes host questions once a command under it is shown to reach its own proxy and no other
+command's — the condition for a grant to stay with the command it was given to. That is tested for each
+runner above in CI; a runner without that proof never asks. Without someone to ask — `sandbox.grants:
+"never"`, or such a runner — a host the list does not name is refused at once, and the note asks you to
+add it to the list.
+
+**An internal page is asked about by its name.** `wiki.corp.example` gets a question; `http://10.1.2.3/`
+does not, because a grant never names an IP address. Point the agent at the page's host name. The agent's
 shell only: the terminal panel is yours, and the file tools (`edit`, `write`) keep their zones.
 
 Every request leaves a line in the server's log — approved once or for the session, refused, expired,
