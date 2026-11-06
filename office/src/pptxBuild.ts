@@ -182,18 +182,18 @@ function parseShapes(xml: string, rootElement: string): ParsedShapes {
     }
     const local = localName(event.name);
     const parent = stack[stack.length - 1];
-    if (local === rootElement && stack.length === 0) type = event.attributes.type;
-    if (local === "cSld" && parent === rootElement) name = event.attributes.name;
+    if (local === rootElement && stack.length === 0) type = event.attributes.get("type");
+    if (local === "cSld" && parent === rootElement) name = event.attributes.get("name");
     if ((local === "sp" || local === "pic") && current === undefined && parent === "spTree") {
       current = { name: "", depth: stack.length };
     }
     if (current !== undefined) {
-      if (local === "cNvPr" && current.name === "") current.name = event.attributes.name ?? "";
-      if (local === "ph") current.ph = { type: event.attributes.type ?? "obj", idx: event.attributes.idx };
+      if (local === "cNvPr" && current.name === "") current.name = event.attributes.get("name") ?? "";
+      if (local === "ph") current.ph = { type: event.attributes.get("type") ?? "obj", idx: event.attributes.get("idx") };
       // The shape's own transform: spPr is a direct child of the shape, xfrm of spPr.
       const inOwnXfrm = stack.length === current.depth + 3 && stack[current.depth + 1] === "spPr" && stack[current.depth + 2] === "xfrm";
-      if (inOwnXfrm && local === "off") current.off = [Number(event.attributes.x), Number(event.attributes.y)];
-      if (inOwnXfrm && local === "ext") current.ext = [Number(event.attributes.cx), Number(event.attributes.cy)];
+      if (inOwnXfrm && local === "off") current.off = [Number(event.attributes.get("x")), Number(event.attributes.get("y"))];
+      if (inOwnXfrm && local === "ext") current.ext = [Number(event.attributes.get("cx")), Number(event.attributes.get("cy"))];
     }
     if (!event.selfClosing) stack.push(local);
   });

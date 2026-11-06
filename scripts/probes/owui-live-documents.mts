@@ -71,8 +71,7 @@ try {
       if ((await button.count()) === 0) continue;
       for (let at = 0; at < (await button.count()); at++) {
         const [download] = await Promise.all([page.waitForEvent("download", { timeout: 30_000 }), button.nth(at).click()]);
-        const filename = download.suggestedFilename().replace(/[\u0000-\u001f<>:"/\\|?*]/g, "_").replace(/[. ]+$/g, "");
-        const file = path.join(outDir!, `${index + 1}-${filename || "download"}`);
+        const file = path.join(outDir!, `${index + 1}-download-${downloads.length + 1}.bin`);
         await download.saveAs(file);
         downloads.push(file);
       }

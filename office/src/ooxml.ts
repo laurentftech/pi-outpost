@@ -43,8 +43,8 @@ export function parseRelationships(xml: string, base: string): Map<string, strin
   scanXml(xml, (event) => {
     if (event.kind !== "open") return;
     if (event.name !== "Relationship" && !event.name.endsWith(":Relationship")) return;
-    const id = event.attributes.Id;
-    const target = event.attributes.Target;
+    const id = event.attributes.get("Id");
+    const target = event.attributes.get("Target");
     if (id !== undefined && target !== undefined) targets.set(id, resolvePart(target, base));
   });
   return targets;
@@ -85,7 +85,10 @@ export function parseRelationshipList(xml: string | undefined, sourcePart: strin
   const list: Relationship[] = [];
   scanXml(xml, (event) => {
     if (event.kind !== "open" || localName(event.name) !== "Relationship") return;
-    const { Id: id, Type: type, Target: target, TargetMode: mode } = event.attributes;
+    const id = event.attributes.get("Id");
+    const type = event.attributes.get("Type");
+    const target = event.attributes.get("Target");
+    const mode = event.attributes.get("TargetMode");
     if (id === undefined || type === undefined || target === undefined) return;
     const external = mode === "External";
     list.push({ id, type, target: external ? target : resolvePart(target, base), external });
@@ -94,9 +97,9 @@ export function parseRelationshipList(xml: string | undefined, sourcePart: strin
 }
 
 /** Attributes of an `r:id`-style attribute, whatever prefix the writer bound. */
-export function relationshipIdOf(attributes: Record<string, string>): string | undefined {
-  if (attributes["r:id"] !== undefined) return attributes["r:id"];
-  for (const [name, value] of Object.entries(attributes)) {
+export function relationshipIdOf(attributes: ReadonlyMap<string, string>): string | undefined {
+  if (attributes.has("r:id")) return attributes.get("r:id");
+  for (const [name, value] of attributes) {
     if (name !== "id" && name.endsWith(":id")) return value;
   }
   return undefined;
@@ -110,9 +113,10 @@ export function contentTypeOf(contentTypes: string, part: string): string | unde
   scanXml(contentTypes, (event) => {
     if (event.kind !== "open") return;
     const local = localName(event.name);
-    if (local === "Override" && event.attributes.PartName?.replace(/^\//, "") === part) override = event.attributes.ContentType;
-    if (local === "Default" && event.attributes.Extension !== undefined) {
-      defaults.set(event.attributes.Extension.toLowerCase(), event.attributes.ContentType);
+    if (local === "Override" && event.attributes.get("PartName")?.replace(/^\//, "") === part) override = event.attributes.get("ContentType");
+    if (local === "Default" && event.attributes.has("Extension")) {
+      const extension = event.attributes.get("Extension")!;
+      defaults.set(extension.toLowerCase(), event.attributes.get("ContentType")!);
     }
   });
   return override ?? defaults.get(part.split(".").pop()!.toLowerCase());

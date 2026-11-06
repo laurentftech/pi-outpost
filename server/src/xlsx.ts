@@ -209,14 +209,14 @@ export function parseWorkbook(xml: string): WorkbookInfo {
     if (event.kind !== "open") return;
     if (event.name === "sheet" || event.name.endsWith(":sheet")) {
       sheets.push({
-        name: event.attributes.name ?? "",
-        state: event.attributes.state ?? "visible",
-        relationshipId: event.attributes["r:id"] ?? event.attributes.id ?? "",
+        name: event.attributes.get("name") ?? "",
+        state: event.attributes.get("state") ?? "visible",
+        relationshipId: event.attributes.get("r:id") ?? event.attributes.get("id") ?? "",
       });
       return;
     }
     if (event.name === "workbookPr" || event.name.endsWith(":workbookPr")) {
-      const flag = event.attributes.date1904 ?? event.attributes.dateCompatibility;
+      const flag = event.attributes.get("date1904") ?? event.attributes.get("dateCompatibility");
       epoch1904 = flag === "1" || flag === "true";
     }
   });
@@ -296,12 +296,12 @@ export function parseStyles(xml: string): WorkbookStyles {
       const name = localName(event.name);
       if (name === "cellXfs") inCellXfs = true;
       else if (name === "numFmt") {
-        const id = Number(event.attributes.numFmtId);
-        const code = event.attributes.formatCode;
+        const id = Number(event.attributes.get("numFmtId"));
+        const code = event.attributes.get("formatCode");
         if (Number.isInteger(id) && code !== undefined) formatCodes.set(id, code);
       } else if (name === "xf" && inCellXfs) {
         // `numFmtId` absent means "General", which is id 0 — not "unresolved"
-        const id = Number(event.attributes.numFmtId ?? 0);
+        const id = Number(event.attributes.get("numFmtId") ?? 0);
         numberFormatByStyle.push(Number.isInteger(id) ? id : 0);
       }
       if (event.selfClosing && name === "cellXfs") inCellXfs = false;
@@ -393,17 +393,17 @@ export function parseSheet(xml: string, context: SheetParseContext): SheetConten
       const name = localName(event.name);
       switch (name) {
         case "dimension": {
-          const ref = event.attributes.ref ?? "";
+          const ref = event.attributes.get("ref") ?? "";
           const last = ref.includes(":") ? ref.slice(ref.indexOf(":") + 1) : ref;
           const row = rowFromRef(last);
           if (row > 0) declaredLastRow = row;
           break;
         }
         case "col": {
-          const hidden = event.attributes.hidden;
+          const hidden = event.attributes.get("hidden");
           if (hidden === "1" || hidden === "true") {
-            const min = Number(event.attributes.min ?? 0);
-            const max = Number(event.attributes.max ?? min);
+            const min = Number(event.attributes.get("min") ?? 0);
+            const max = Number(event.attributes.get("max") ?? min);
             // A `<col>` may span the whole sheet; the bound keeps a hostile file
             // from making us allocate 16 384 entries per column element.
             for (let at = min; at <= Math.min(max, 16_384); at++) {
@@ -417,7 +417,7 @@ export function parseSheet(xml: string, context: SheetParseContext): SheetConten
           break;
         case "row": {
           if (!inSheetData) break;
-          const declared = Number(event.attributes.r);
+          const declared = Number(event.attributes.get("r"));
           rowNumber = Number.isInteger(declared) && declared > 0 ? declared : rowNumber + 1;
           cells = new Map();
           column = 0;
@@ -434,10 +434,10 @@ export function parseSheet(xml: string, context: SheetParseContext): SheetConten
         }
         case "c": {
           if (!inSheetData) break;
-          const ref = event.attributes.r;
+          const ref = event.attributes.get("r");
           column = ref === undefined ? column + 1 : columnFromRef(ref);
-          cellType = event.attributes.t ?? "n";
-          const style = event.attributes.s;
+          cellType = event.attributes.get("t") ?? "n";
+          const style = event.attributes.get("s");
           cellStyle = style === undefined ? undefined : Number(style);
           hasFormula = false;
           value = "";

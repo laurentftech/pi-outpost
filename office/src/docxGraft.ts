@@ -116,7 +116,7 @@ export function namespacesOf(xml: string): Map<string, string> {
   const start = xml.indexOf("<", xml.startsWith("<?") ? xml.indexOf("?>") + 2 : 0);
   const attributes = rootAttributes(xml.slice(start));
   const map = new Map<string, string>();
-  for (const [name, value] of Object.entries(attributes)) if (name.startsWith("xmlns:")) map.set(name.slice(6), value);
+  for (const [name, value] of attributes) if (name.startsWith("xmlns:")) map.set(name.slice(6), value);
   return map;
 }
 

@@ -130,14 +130,13 @@ export function bodyLayout(documentXml: string): BodyLayout {
 }
 
 /** The attributes of the first tag in `xml`. */
-export function rootAttributes(xml: string): Record<string, string> {
+export function rootAttributes(xml: string): ReadonlyMap<string, string> {
   const end = tagEnd(xml, 0);
   const tag = xml.slice(0, end + 1);
-  // Document XML is untrusted; keep attacker-controlled attribute names out of
-  // Object.prototype (for example, `__proto__`).
-  const attributes: Record<string, string> = Object.create(null) as Record<string, string>;
+  // Document XML is untrusted; keep attribute names as Map keys, not object properties.
+  const attributes = new Map<string, string>();
   for (const match of tag.matchAll(/([\w:.-]+)\s*=\s*(?:"([^"]*)"|'([^']*)')/g)) {
-    attributes[match[1]] = decodeEntities(match[2] ?? match[3] ?? "");
+    attributes.set(match[1], decodeEntities(match[2] ?? match[3] ?? ""));
   }
   return attributes;
 }
@@ -184,17 +183,17 @@ export function parseStyles(stylesXml: string | undefined): Map<string, WordStyl
   for (const element of childElements(stylesXml, root.index + root[0].length, end)) {
     if (element.local !== "style") continue;
     const attributes = rootAttributes(element.xml);
-    const id = attributes["w:styleId"];
+    const id = attributes.get("w:styleId");
     if (id === undefined) continue;
     const level = firstVal(element.xml, "outlineLvl");
     styles.set(id, {
       id,
       name: firstVal(element.xml, "name") ?? id,
-      type: attributes["w:type"] ?? "paragraph",
+      type: attributes.get("w:type") ?? "paragraph",
       basedOn: firstVal(element.xml, "basedOn"),
       outlineLevel: level === undefined ? undefined : Number(level),
       numbered: /<(?:\w+:)?numPr\b/.test(element.xml),
-      isDefault: attributes["w:default"] === "1" || attributes["w:default"] === "true",
+      isDefault: attributes.get("w:default") === "1" || attributes.get("w:default") === "true",
       xml: element.xml,
     });
   }

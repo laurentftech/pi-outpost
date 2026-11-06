@@ -114,10 +114,10 @@ function plainLabel(value: string | undefined): string {
   return text.replace(/&nbsp;/g, " ").replace(/\s+/g, " ").trim();
 }
 
-function readGeometry(attributes: Record<string, string>): Geometry {
-  const geometry: Geometry = { x: 0, y: 0, width: 0, height: 0, relative: attributes.relative === "1", unreadable: [], sourcePoint: false, targetPoint: false, points: [] };
+function readGeometry(attributes: ReadonlyMap<string, string>): Geometry {
+  const geometry: Geometry = { x: 0, y: 0, width: 0, height: 0, relative: attributes.get("relative") === "1", unreadable: [], sourcePoint: false, targetPoint: false, points: [] };
   for (const name of NUMERIC) {
-    const raw = attributes[name];
+    const raw = attributes.get(name);
     if (raw === undefined) continue;
     const value = Number(raw);
     if (raw.trim() === "" || !Number.isFinite(value)) geometry.unreadable.push(`${name}="${raw}"`);
@@ -132,7 +132,7 @@ function readModel(xml: string, page: string): DrawioCell[] {
   /** Open elements, by name. */
   const stack: string[] = [];
   /** `<object>`/`<UserObject>` wrapping the next `<mxCell>`: it carries the id and label. */
-  let wrapper: Record<string, string> | null = null;
+  let wrapper: ReadonlyMap<string, string> | null = null;
   let cell: DrawioCell | null = null;
   let geometry: Geometry | null = null;
   let sawModel = false;
@@ -158,32 +158,32 @@ function readModel(xml: string, page: string): DrawioCell[] {
       } else if (name === "mxCell") {
         const own = wrapper ?? attributes;
         const next: DrawioCell = {
-          id: own.id ?? attributes.id,
-          parent: attributes.parent,
-          vertex: attributes.vertex === "1",
-          edge: attributes.edge === "1",
-          source: attributes.source,
-          target: attributes.target,
-          label: plainLabel(wrapper ? (wrapper.label ?? wrapper.value) : attributes.value),
-          style: attributes.style ?? "",
+          id: own.get("id") ?? attributes.get("id"),
+          parent: attributes.get("parent"),
+          vertex: attributes.get("vertex") === "1",
+          edge: attributes.get("edge") === "1",
+          source: attributes.get("source"),
+          target: attributes.get("target"),
+          label: plainLabel(wrapper ? (wrapper.get("label") ?? wrapper.get("value")) : attributes.get("value")),
+          style: attributes.get("style") ?? "",
           geometry: undefined,
         };
         cells.push(next);
         cell = selfClosing ? null : next;
-      } else if (name === "mxGeometry" && cell !== null && (attributes.as ?? "geometry") === "geometry") {
+      } else if (name === "mxGeometry" && cell !== null && (attributes.get("as") ?? "geometry") === "geometry") {
         const read = readGeometry(attributes);
         (cell as DrawioCell).geometry = read;
         geometry = selfClosing ? null : read;
       } else if (name === "mxPoint" && geometry !== null) {
-        const point = { x: Number(attributes.x ?? 0) || 0, y: Number(attributes.y ?? 0) || 0 };
+        const point = { x: Number(attributes.get("x") ?? 0) || 0, y: Number(attributes.get("y") ?? 0) || 0 };
         const read = geometry as Geometry;
-        if (attributes.as === "sourcePoint") {
+        if (attributes.get("as") === "sourcePoint") {
           read.sourcePoint = true;
           read.sourcePointAt = point;
-        } else if (attributes.as === "targetPoint") {
+        } else if (attributes.get("as") === "targetPoint") {
           read.targetPoint = true;
           read.targetPointAt = point;
-        } else if (attributes.as === "offset") read.offset = point;
+        } else if (attributes.get("as") === "offset") read.offset = point;
         // A waypoint is an <mxPoint> of the <Array as="points"> right inside the geometry
         else if (stack[stack.length - 1] === "Array" && stack[stack.length - 2] === "mxGeometry") read.points.push(point);
       }
@@ -227,7 +227,10 @@ export function readDrawio(xml: string, inflatePage?: InflatePage): DrawioPage[]
   while ((match = pattern.exec(trimmed)) !== null) {
     let name = `Page-${pages.length + 1}`;
     scanXml(`<diagram${match[1]}/>`, (event) => {
-      if (event.kind === "open" && event.attributes.name) name = event.attributes.name;
+      if (event.kind === "open") {
+        const pageName = event.attributes.get("name");
+        if (pageName) name = pageName;
+      }
       return false;
     });
     const body = (match[3] ?? "").trim();

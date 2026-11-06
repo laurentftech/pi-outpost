@@ -60,7 +60,9 @@ export interface EgressProxyOptions {
 }
 
 export async function startEgressProxy(options: EgressProxyOptions): Promise<EgressProxy> {
-  const refused = options.onRefused ?? ((line) => console.log(line));
+  // Refusal reasons can include a remote host. Keep the default log independent of
+  // attacker-controlled values; callers that need details can provide their own sink.
+  const refused = options.onRefused ?? (() => console.log("Refused outbound connection"));
   const sockets = new Set<Socket>();
   const watchers = new Set<(host: string) => void>();
   const relayed = (host: string, port: number) => options.onRelayed?.(`${host}:${port}`);
@@ -79,9 +81,9 @@ export async function startEgressProxy(options: EgressProxyOptions): Promise<Egr
     return answer;
   };
   const refuse = (host: string, what: string, why: string) => {
-    refused(`[sandbox] network: refused ${what} — ${why}`.replace(/[\r\n]/g, " "));
+    refused(`[sandbox] network: refused ${what} — ${why}`.replace(/[\r\n]+/g, " "));
     for (const watcher of watchers) watcher(host);
-    return why.replace(/[\r\n]/g, " ");
+    return why.replace(/[\r\n]+/g, " ");
   };
 
   const server: Server = createServer(async (request: IncomingMessage, response) => {

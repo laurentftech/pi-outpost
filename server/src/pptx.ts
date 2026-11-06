@@ -114,9 +114,9 @@ export interface SlideEntry {
  * bare `id` attribute — its presentation-wide slide id — so falling back to `id`
  * would hand the relationship table a number it cannot resolve.
  */
-function relationshipIdOf(attributes: Record<string, string>): string {
-  if (attributes["r:id"] !== undefined) return attributes["r:id"];
-  for (const [name, value] of Object.entries(attributes)) {
+function relationshipIdOf(attributes: ReadonlyMap<string, string>): string {
+  if (attributes.has("r:id")) return attributes.get("r:id")!;
+  for (const [name, value] of attributes) {
     if (name.endsWith(":id")) return value;
   }
   return "";
@@ -143,7 +143,7 @@ export function parsePresentation(xml: string): SlideEntry[] {
         return;
       }
       if (inList && local === "sldId") {
-        slides.push({ id: event.attributes.id ?? "", relationshipId: relationshipIdOf(event.attributes) });
+        slides.push({ id: event.attributes.get("id") ?? "", relationshipId: relationshipIdOf(event.attributes) });
       }
       return;
     }
@@ -272,7 +272,7 @@ export function parseSlide(xml: string, deadline?: () => void, pictureMarkerFor?
           if (shapeDepth === 1) placeholder = undefined;
           break;
         case "ph":
-          if (shapeDepth > 0 && placeholder === undefined) placeholder = event.attributes.type ?? "body";
+          if (shapeDepth > 0 && placeholder === undefined) placeholder = event.attributes.get("type") ?? "body";
           break;
         case "pic":
           pictureDepth++;
@@ -286,16 +286,16 @@ export function parseSlide(xml: string, deadline?: () => void, pictureMarkerFor?
           break;
         case "cNvPr":
           // Where PowerPoint keeps a shape's alternative text.
-          if (pictureDepth > 0) pictureAlt ??= event.attributes.descr;
+          if (pictureDepth > 0) pictureAlt ??= event.attributes.get("descr");
           break;
         case "blip":
-          if (pictureDepth > 0) pictureRel ??= event.attributes["r:embed"];
+          if (pictureDepth > 0) pictureRel ??= event.attributes.get("r:embed");
           break;
         case "graphicData":
           // The uri names the kind of graphic: a chart and a SmartArt diagram are
           // both graphic frames, and neither yields text this reader can read.
-          if (/chart/i.test(event.attributes.uri ?? "")) visuals.charts++;
-          else if (/diagram/i.test(event.attributes.uri ?? "")) visuals.diagrams++;
+          if (/chart/i.test(event.attributes.get("uri") ?? "")) visuals.charts++;
+          else if (/diagram/i.test(event.attributes.get("uri") ?? "")) visuals.diagrams++;
           break;
         case "videoFile":
         case "audioFile":
