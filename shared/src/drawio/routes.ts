@@ -527,7 +527,6 @@ const OrthConnector: EdgeStyleFunction = (state, sourceTerminal, targetTerminal,
   if (preferredHorizDist > 0 && !preferredOrderSet) {
     prefOrdering[0] = [horPref[0]!, vertPref[0]!];
     prefOrdering[1] = [horPref[1]!, vertPref[1]!];
-    preferredOrderSet = true;
   }
   for (let i = 0; i < 2; i++) {
     if (dir[i] !== 0) continue;

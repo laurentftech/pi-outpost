@@ -136,7 +136,7 @@ export function attributeText(name: string, value: unknown): string {
 export function attributeValueText(value: unknown): string {
   if (Array.isArray(value)) return value.map((entry) => attributeValueText(entry)).join(", ");
   if (value === null) return "null";
-  if (value !== null && typeof value === "object" && typeof (value as { ref?: unknown }).ref === "string") {
+  if (typeof value === "object" && typeof (value as { ref?: unknown }).ref === "string") {
     return `<${(value as { ref: string }).ref}>`;
   }
   return String(value);

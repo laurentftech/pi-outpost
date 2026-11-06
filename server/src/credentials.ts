@@ -216,8 +216,10 @@ const TLS_CODES = new Set([
 ]);
 
 export function tlsHint(error: unknown): string | undefined {
-  for (let current: unknown = error, depth = 0; current && depth < 5; depth++) {
-    const { code, message } = (current ?? {}) as { code?: string; message?: string; cause?: unknown };
+  let current: unknown = error;
+  for (let depth = 0; depth < 5; depth++) {
+    if (current === null || current === undefined) break;
+    const { code, message } = current as { code?: string; message?: string; cause?: unknown };
     if ((code && TLS_CODES.has(code)) || (message && [...TLS_CODES].some((tlsCode) => message.includes(tlsCode)))) {
       return `The model server's TLS certificate could not be verified${code ? ` (${code})` : ""}. Behind a TLS-inspecting proxy, trust your organisation's certificate authority: set NODE_EXTRA_CA_CERTS=/path/to/ca.pem before starting pi-outpost.`;
     }

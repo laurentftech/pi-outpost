@@ -97,17 +97,16 @@ export function nightColour(colour: string): string {
   // Same hue; chroma given up only as far as the darker or lighter colour needs to
   // exist in sRGB, found by halving rather than clipped channel by channel, which
   // would shift the hue.
-  let scale = 1;
   let channels = linearOf({ l: lightness, a: day.a, b: day.b });
   if (!inGamut(channels)) {
     let low = 0;
     let high = 1;
     for (let step = 0; step < 20; step++) {
-      scale = (low + high) / 2;
+      const scale = (low + high) / 2;
       if (inGamut(linearOf({ l: lightness, a: day.a * scale, b: day.b * scale }))) low = scale;
       else high = scale;
     }
-    scale = low;
+    const scale = low;
     channels = linearOf({ l: lightness, a: day.a * scale, b: day.b * scale });
   }
   const night = hexOf(channels);
