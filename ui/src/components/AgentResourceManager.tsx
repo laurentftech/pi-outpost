@@ -6,7 +6,8 @@ import type {
   AgentResourceRepository,
   AgentResourceRepositoryPreview,
 } from "@pi-outpost/shared";
-import type { AgentResourceOperationState, ServerBrowseState, SettingsApplyState } from "../useAgent";
+import type { AgentResourceOperationState, GitHostCredentialState, ServerBrowseState, SettingsApplyState } from "../useAgent";
+import { GitHostCredentialPrompt } from "./GitHostCredentialPrompt";
 import { CollectionSkills, groupsOf, sameSelection, suppliedSelection } from "./CollectionSkills";
 import { ServerPathPicker } from "./ServerPathPicker";
 
@@ -54,7 +55,16 @@ interface AgentResourceManagerProps {
     upstreamRevision: string,
     allowExecutableChanges?: boolean,
   ) => void;
+  /** `credentialsLock`: a host that wants credentials is named, but none can be entered here. */
+  credentialsLocked?: boolean;
+  /** The Git host credential last asked to be stored, for the prompt that asked. */
+  gitHostCredential?: GitHostCredentialState | null;
+  /** Store a Git host credential; returns the request id its result will carry. */
+  onSetGitHostCredential?: (host: string, username: string, secret: string) => string;
 }
+
+/** What to run again once a credential is stored: the clone being added, or one repository's check. */
+type RetryTarget = { kind: "clone"; repositoryUrl: string; destinationPath: string } | { kind: "refresh"; repositoryId: string };
 
 const STATUS_LABEL: Record<AgentResourceRepository["assessment"]["status"], string> = {
   unchecked: "Not checked",
@@ -213,6 +223,15 @@ export function AgentResourceManager(props: AgentResourceManagerProps) {
    * what the user was in the middle of typing.
    */
   const [suggestedFor, setSuggestedFor] = useState("");
+  /** A credential submitted from a prompt, waiting for the server to store it before retrying. */
+  const [pendingRetry, setPendingRetry] = useState<{ requestId: string; host: string; username: string; target: RetryTarget } | null>(null);
+  /**
+   * The host and operation last retried with a fresh credential. When that same operation
+   * comes back refused by the same host, the credential was wrong — said on the prompt.
+   * Cleared when the person starts an operation themselves: a later refusal is then news
+   * about the host (say, a credential since removed), not about what they typed.
+   */
+  const [retriedWith, setRetriedWith] = useState<{ host: string; username: string; target: RetryTarget } | null>(null);
   const [confirmRepository, setConfirmRepository] = useState<AgentResourceRepository | null>(null);
   /**
    * Selections not yet applied, keyed by repository id. Applying replaces the
@@ -302,6 +321,31 @@ export function AgentResourceManager(props: AgentResourceManagerProps) {
     }
   }, [props.applyState]);
 
+  // Retry once the server confirms the credential is stored — not on submit, which would race it.
+  const credentialResult = props.gitHostCredential;
+  useEffect(() => {
+    if (!pendingRetry || credentialResult?.requestId !== pendingRetry.requestId) return;
+    if (credentialResult.status === "saving") return;
+    setPendingRetry(null);
+    if (credentialResult.status !== "saved") return;
+    setRetriedWith({ host: pendingRetry.host, username: pendingRetry.username, target: pendingRetry.target });
+    // The operation as it was submitted — never fields edited since (those cancel the retry).
+    if (pendingRetry.target.kind === "clone") props.onCloneRepository(pendingRetry.target.repositoryUrl, pendingRetry.target.destinationPath);
+    else props.onRefresh(pendingRetry.target.repositoryId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- runs on the result; the operation is captured in pendingRetry
+  }, [credentialResult, pendingRetry]);
+  // A retry belongs to what was on screen when the credential was submitted. Leaving it —
+  // closing the dialog, leaving Add Git repository, selecting another repository — drops
+  // the retry; the credential itself is still stored, as asked.
+  useEffect(() => { setPendingRetry(null); }, [props.open, addMode, selectedId]);
+
+  const askCredential = (host: string, target: RetryTarget) => (username: string, secret: string) => {
+    if (!props.onSetGitHostCredential) return;
+    setRetriedWith(null);
+    setPendingRetry({ requestId: props.onSetGitHostCredential(host, username, secret), host, username, target });
+  };
+  const credentialState = pendingRetry ? (credentialResult ?? null) : credentialResult?.status === "error" ? credentialResult : null;
+
   if (!props.open) return null;
   const repository = selected && "repository" in selected ? selected.repository : null;
   const updateState = repository ? props.operations.updates[repository.id] : undefined;
@@ -364,7 +408,7 @@ export function AgentResourceManager(props: AgentResourceManagerProps) {
       <div role="dialog" aria-modal="true" aria-labelledby="agent-resources-title" className="flex h-[min(760px,92vh)] w-[min(1120px,96vw)] flex-col overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-2xl dark:border-zinc-700 dark:bg-zinc-900">
         <header className="flex items-center justify-between border-b border-zinc-200 px-5 py-4 dark:border-zinc-800">
           <div><h2 id="agent-resources-title" className="text-lg font-semibold text-zinc-900 dark:text-zinc-100">Agent resources</h2><p className="text-xs text-zinc-500">Skills and extensions, grouped by repository</p></div>
-          <div className="flex gap-2"><button type="button" disabled={props.operations.refresh?.status === "loading"} onClick={() => props.onRefresh()} className="rounded-md border px-3 py-1.5 text-xs disabled:opacity-50">Refresh all</button><button ref={closeRef} type="button" aria-label="Close agent resources" onClick={props.onClose} className="rounded-md border px-2 py-1 text-sm">✕</button></div>
+          <div className="flex gap-2"><button type="button" disabled={props.operations.refresh?.status === "loading"} onClick={() => { setRetriedWith(null); props.onRefresh(); }} className="rounded-md border px-3 py-1.5 text-xs disabled:opacity-50">Refresh all</button><button ref={closeRef} type="button" aria-label="Close agent resources" onClick={props.onClose} className="rounded-md border px-2 py-1 text-sm">✕</button></div>
         </header>
         <div className="grid min-h-0 flex-1 grid-cols-[300px_1fr]">
           <aside className="flex min-h-0 flex-col border-r border-zinc-200 bg-zinc-50/80 p-3 dark:border-zinc-800 dark:bg-zinc-950/40">
@@ -403,16 +447,39 @@ export function AgentResourceManager(props: AgentResourceManagerProps) {
                 ? props.onEnrollRepository(props.operations.preview!.preview!.token, skills, extensions, enabledSkills)
                 : props.onEnrollRepository(props.operations.preview!.preview!.token, skills, extensions)} /> : <>
                 <div><h3 className="text-lg font-semibold">Add Git repository</h3><p className="text-xs text-zinc-500">Clone it to a local folder, then choose what to turn on.</p></div>
-                <label className="block"><span className="text-xs font-medium">Repository address</span><input aria-label="Repository address" value={repositoryUrl} onChange={(event) => setRepositoryUrl(event.target.value)} onBlur={() => { const address = repositoryUrl.trim(); if (address) { setDestinationEdited(false); setSuggestedFor(address); props.onSuggestClonePath(repositoryUrl); } }} placeholder="https://github.com/team/resources.git" className="mt-1 w-full rounded-md border bg-transparent px-3 py-2 text-sm" /></label>
-                <label className="block"><span className="text-xs font-medium">Local folder</span><div className="mt-1 flex gap-2"><input aria-label="Local clone folder" value={destinationPath} onChange={(event) => { setDestinationEdited(true); setDestinationPath(event.target.value); }} placeholder="/path/to/resource-repositories/team-resources-ab12cd" className="min-w-0 flex-1 rounded-md border bg-transparent px-3 py-2 text-sm" /><button type="button" onClick={() => { setPicker("clone-parent"); props.onBrowseServerPath(parentPath(destinationPath)); }} className="rounded-md border px-3 text-xs">Choose parent…</button></div></label>
+                <label className="block"><span className="text-xs font-medium">Repository address</span><input aria-label="Repository address" value={repositoryUrl} onChange={(event) => { setRepositoryUrl(event.target.value); setRetriedWith(null); setPendingRetry(null); }} onBlur={() => { const address = repositoryUrl.trim(); if (address) { setDestinationEdited(false); setSuggestedFor(address); props.onSuggestClonePath(repositoryUrl); } }} placeholder="https://github.com/team/resources.git" className="mt-1 w-full rounded-md border bg-transparent px-3 py-2 text-sm" /></label>
+                <label className="block"><span className="text-xs font-medium">Local folder</span><div className="mt-1 flex gap-2"><input aria-label="Local clone folder" value={destinationPath} onChange={(event) => { setDestinationEdited(true); setDestinationPath(event.target.value); setPendingRetry(null); }} placeholder="/path/to/resource-repositories/team-resources-ab12cd" className="min-w-0 flex-1 rounded-md border bg-transparent px-3 py-2 text-sm" /><button type="button" onClick={() => { setPicker("clone-parent"); props.onBrowseServerPath(parentPath(destinationPath)); }} className="rounded-md border px-3 text-xs">Choose parent…</button></div></label>
                 {props.operations.clonePath?.status === "loading" ? <p className="text-xs text-zinc-500">Suggesting a managed folder…</p> : null}
                 {props.operations.clonePath?.status === "error" && repositoryUrl.trim() === suggestedFor ? <p role="alert" className="text-xs text-red-600">{props.operations.clonePath.message}</p> : null}
                 {picker === "clone-parent" ? <ServerPathPicker label="Choose the clone's parent folder" browse={props.serverBrowse} onBrowse={props.onBrowseServerPath} onSelect={(value) => { setDestinationPath(joinParent(value, destinationPath)); setPicker(null); props.onCloseServerBrowser(); }} onCancel={() => { setPicker(null); props.onCloseServerBrowser(); }} /> : null}
-                {props.operations.preview?.status === "error" ? <p role="alert" className="text-xs text-red-600">{props.operations.preview.message}</p> : null}
-                <div className="flex gap-2"><button type="button" onClick={() => { setAddMode(null); setPicker(null); props.onCloseServerBrowser(); }} className="rounded-md border px-3 py-1.5 text-xs">Cancel</button><button type="button" disabled={!repositoryUrl.trim() || !destinationPath.trim() || props.operations.preview?.status === "loading"} onClick={() => props.onCloneRepository(repositoryUrl, destinationPath)} className="rounded-md bg-zinc-900 px-3 py-1.5 text-xs text-white disabled:opacity-50">{props.operations.preview?.status === "loading" ? "Cloning…" : "Clone and inspect"}</button></div>
+                {props.operations.preview?.status === "error" ? (props.operations.preview.auth ? (
+                  <GitHostCredentialPrompt
+                    key={props.operations.preview.auth.host}
+                    auth={props.operations.preview.auth}
+                    locked={props.credentialsLocked === true || !props.onSetGitHostCredential}
+                    state={credentialState}
+                    refused={retriedWith?.target.kind === "clone" && retriedWith.host === props.operations.preview.auth.host}
+                    initialUsername={retriedWith?.host === props.operations.preview.auth.host ? retriedWith.username : ""}
+                    onSubmit={askCredential(props.operations.preview.auth.host, { kind: "clone", repositoryUrl, destinationPath })}
+                  />
+                ) : <p role="alert" className="text-xs text-red-600">{props.operations.preview.message}</p>) : null}
+                <div className="flex gap-2"><button type="button" onClick={() => { setAddMode(null); setPicker(null); props.onCloseServerBrowser(); }} className="rounded-md border px-3 py-1.5 text-xs">Cancel</button><button type="button" disabled={!repositoryUrl.trim() || !destinationPath.trim() || props.operations.preview?.status === "loading"} onClick={() => { setRetriedWith(null); props.onCloneRepository(repositoryUrl, destinationPath); }} className="rounded-md bg-zinc-900 px-3 py-1.5 text-xs text-white disabled:opacity-50">{props.operations.preview?.status === "loading" ? "Cloning…" : "Clone and inspect"}</button></div>
               </>}
             </div> : selected ? <>
-              <div className="flex items-start justify-between gap-4"><div className="min-w-0"><div className="flex items-center gap-2"><h3 className="text-xl font-semibold">{selected.name}</h3>{repository ? <span className="rounded-full border px-2 py-0.5 text-[11px]">{STATUS_LABEL[repository.assessment.status]}</span> : null}</div><p className="mt-1 truncate font-mono text-xs text-zinc-500">{"repository" in selected ? selected.path : selected.reason}</p>{assessment?.branch ? <p className="mt-1 text-xs text-zinc-400">{assessment.branch}{assessment.upstream ? ` → ${assessment.upstream}` : ""}</p> : null}{repository?.removal && !repository.removal.allowed ? <p className="mt-1 text-xs text-zinc-500">{repository.removal.reason}</p> : null}</div>{repository ? <div className="flex gap-2">{repository.removal?.allowed ? <button type="button" disabled={props.operations.removals?.[repository.id]?.status === "loading"} onClick={() => setConfirmRemoval(repository)} className="rounded-md border border-red-200 px-3 py-1.5 text-xs text-red-700 disabled:opacity-50 dark:border-red-900 dark:text-red-400">Remove repository</button> : null}<button type="button" disabled={props.operations.refresh?.status === "loading"} onClick={() => props.onRefresh(repository.id)} className="rounded-md border px-3 py-1.5 text-xs">Check</button>{/* Offered only when there is something to apply: a greyed button that does nothing on click explained nothing. */}{updateable || updateState?.status === "loading" ? <button type="button" disabled={updateState?.status === "loading"} onClick={() => repository.containsExtensions ? setConfirmRepository(repository) : requestUpdate(repository)} className="rounded-md bg-zinc-900 px-3 py-1.5 text-xs text-white disabled:opacity-50">{updateState?.status === "loading" ? "Updating…" : "Update repository"}</button> : null}</div> : null}</div>
+              <div className="flex items-start justify-between gap-4"><div className="min-w-0"><div className="flex items-center gap-2"><h3 className="text-xl font-semibold">{selected.name}</h3>{repository ? <span className="rounded-full border px-2 py-0.5 text-[11px]">{STATUS_LABEL[repository.assessment.status]}</span> : null}</div><p className="mt-1 truncate font-mono text-xs text-zinc-500">{"repository" in selected ? selected.path : selected.reason}</p>{assessment?.branch ? <p className="mt-1 text-xs text-zinc-400">{assessment.branch}{assessment.upstream ? ` → ${assessment.upstream}` : ""}</p> : null}{repository?.removal && !repository.removal.allowed ? <p className="mt-1 text-xs text-zinc-500">{repository.removal.reason}</p> : null}</div>{repository ? <div className="flex gap-2">{repository.removal?.allowed ? <button type="button" disabled={props.operations.removals?.[repository.id]?.status === "loading"} onClick={() => setConfirmRemoval(repository)} className="rounded-md border border-red-200 px-3 py-1.5 text-xs text-red-700 disabled:opacity-50 dark:border-red-900 dark:text-red-400">Remove repository</button> : null}<button type="button" disabled={props.operations.refresh?.status === "loading"} onClick={() => { setRetriedWith(null); props.onRefresh(repository.id); }} className="rounded-md border px-3 py-1.5 text-xs">Check</button>{/* Offered only when there is something to apply: a greyed button that does nothing on click explained nothing. */}{updateable || updateState?.status === "loading" ? <button type="button" disabled={updateState?.status === "loading"} onClick={() => repository.containsExtensions ? setConfirmRepository(repository) : requestUpdate(repository)} className="rounded-md bg-zinc-900 px-3 py-1.5 text-xs text-white disabled:opacity-50">{updateState?.status === "loading" ? "Updating…" : "Update repository"}</button> : null}</div> : null}</div>
+              {repository && assessment?.status === "failed" && assessment.auth && props.operations.refresh?.status !== "loading" ? (
+                <div className="mt-5">
+                  <GitHostCredentialPrompt
+                    key={`${repository.id}:${assessment.auth.host}`}
+                    auth={assessment.auth}
+                    locked={props.credentialsLocked === true || !props.onSetGitHostCredential}
+                    state={credentialState}
+                    refused={retriedWith?.target.kind === "refresh" && retriedWith.target.repositoryId === repository.id && retriedWith.host === assessment.auth.host}
+                    initialUsername={retriedWith?.host === assessment.auth.host ? retriedWith.username : ""}
+                    onSubmit={askCredential(assessment.auth.host, { kind: "refresh", repositoryId: repository.id })}
+                  />
+                </div>
+              ) : null}
               {assessment?.reason ? <div className={`mt-5 rounded-lg border p-3 text-sm ${assessment.status === "dirty" ? "border-rose-200 bg-rose-50 text-rose-800" : "border-zinc-200 bg-zinc-50 text-zinc-700"}`}>{assessment.reason}{assessment.status === "dirty" ? <p className="mt-1 text-xs">Review and resolve these local changes in an external terminal, then check again. This updater never commits, stashes, discards, rebases, or merges them.</p> : null}</div> : null}
               {assessment?.hasSubmodules ? <p className="mt-3 rounded border border-amber-200 bg-amber-50 p-2 text-xs text-amber-800">This repository declares submodules. Their working trees will not be initialized or updated.</p> : null}
               {updateState?.status === "ready" ? <p role="status" className="mt-3 text-xs text-zinc-600">{updateState.result?.status === "updated" && updateState.result.reloads.some((reload) => reload.status === "restart-required") ? "Repository updated. Its skills are reloaded; its extension code runs after pi-outpost restarts — restart it from Settings." : updateState.result?.status === "updated" ? "Repository updated and runtimes reloaded." : updateState.result?.status === "updated-reload-failed" ? "Repository updated on disk, but at least one runtime failed to reload." : updateState.result?.reason}</p> : null}

@@ -28,6 +28,7 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import {
   type AgentResourceInventory,
+  type GitHostEntry,
   type AgentResourceReloadResult,
   AgentResourceRemovalResult,
   type AgentResourceUpdateResult,
@@ -247,7 +248,8 @@ import { createPdfExtractToolDefinition, createPdfRenderToolDefinition } from ".
 import { Workspace, shouldRetireWorkspace, type WorkspaceOptions, type WorkspaceSettings } from "./workspace.ts";
 import type { QueuedEntry, QueuedPromptSource } from "./queuedPrompts.ts";
 import { WorkspaceRegistry } from "./workspaceRegistry.ts";
-import { discoverSkillCatalogue, ResourceRepositoryService } from "./resourceRepositories.ts";
+import { discoverSkillCatalogue, ResourceRepositoryError, ResourceRepositoryService, useGitCredentialStore } from "./resourceRepositories.ts";
+import { GitCredentialError, gitCredentialsPath, listGitHosts, removeGitHostCredential, storeGitHostCredential } from "./gitHostCredentials.ts";
 import { deriveWorkspaceActivity, workspaceActivityNeedsAttention } from "./workspaceActivity.ts";
 import {
   assertDelegatedBash,
@@ -667,6 +669,11 @@ if (config.agentDir !== undefined && config.agentRuntime.mode !== "rpc" && proce
   }
   process.env.PI_CODING_AGENT_DIR = config.agentDir;
 }
+// Git host credentials live beside the provider credentials, under the same lock.
+const GIT_CREDENTIALS = gitCredentialsPath(AGENT_DIR);
+useGitCredentialStore({ file: GIT_CREDENTIALS, locked: config.credentialsLock === true });
+/** What every client is told about the store: hosts and user names. Re-read after each change. */
+let gitHosts: GitHostEntry[] = await listGitHosts(GIT_CREDENTIALS);
 // Own agentDir ⇒ own session store, fully separate from ~/.pi/agent
 const SESSION_DIR = config.agentDir ? path.join(config.agentDir, "sessions") : undefined;
 
@@ -2407,7 +2414,55 @@ function credentialStatus(workspace: Workspace, ): CredentialStatus {
     ...(usableModel ? {} : { agentDir: AGENT_DIR }),
     ...(config.credentialsLock ? { locked: true } : {}),
     ...(workspace.agent.credentials ? { signIn: true } : {}),
+    gitHosts,
   };
+}
+
+/**
+ * Re-read the Git host list and, when it changed, tell every client of every project:
+ * the store is server-wide, like the provider credentials.
+ */
+async function gitHostsChanged(): Promise<void> {
+  const next = await listGitHosts(GIT_CREDENTIALS);
+  if (JSON.stringify(next) === JSON.stringify(gitHosts)) return;
+  gitHosts = next;
+  for (const open of workspaces.all()) {
+    broadcast(open, { type: "credentials_changed", models: availableModels(open), model: modelName(open), credentials: credentialStatus(open) });
+  }
+}
+
+async function handleSetGitHostCredential(socket: WebSocket, host: string, username: string, secret: string, requestId: string): Promise<void> {
+  if (config.credentialsLock) {
+    send(socket, { type: "git_host_credential_result", requestId, ok: false, message: CREDENTIALS_LOCKED });
+    return;
+  }
+  try {
+    const key = await storeGitHostCredential(GIT_CREDENTIALS, host, username, secret);
+    send(socket, { type: "git_host_credential_result", requestId, ok: true, host: key });
+  } catch (error) {
+    // Never the secret: a store error names the host or the rule broken, nothing typed.
+    const message = error instanceof GitCredentialError ? error.message : "Could not store the credential on this server";
+    if (!(error instanceof GitCredentialError)) console.warn(`[pi] storing a Git host credential failed: ${error instanceof Error ? error.message : String(error)}`);
+    send(socket, { type: "git_host_credential_result", requestId, ok: false, message });
+    return;
+  }
+  await gitHostsChanged();
+}
+
+async function handleRemoveGitHostCredential(socket: WebSocket, host: string, requestId: string): Promise<void> {
+  if (config.credentialsLock) {
+    send(socket, { type: "git_host_credential_result", requestId, ok: false, message: CREDENTIALS_LOCKED });
+    return;
+  }
+  try {
+    await removeGitHostCredential(GIT_CREDENTIALS, host);
+    send(socket, { type: "git_host_credential_result", requestId, ok: true, host });
+  } catch (error) {
+    console.warn(`[pi] removing a Git host credential failed: ${error instanceof Error ? error.message : String(error)}`);
+    send(socket, { type: "git_host_credential_result", requestId, ok: false, message: "Could not remove the credential on this server" });
+    return;
+  }
+  await gitHostsChanged();
 }
 
 /**
@@ -5794,10 +5849,12 @@ function sendAgentResourceError(socket: WebSocket, requestId: string, error: unk
   // original address in its diagnostic.
   const message = raw.replace(/([a-z][a-z0-9+.-]*:\/\/)([^\s/@]+)@/gi, "$1");
   console.warn(`[pi] agent resource request failed: ${message}`);
+  const auth = error instanceof ResourceRepositoryError ? error.auth : undefined;
   send(socket, {
     type: "agent_resource_error",
     requestId,
     message,
+    ...(auth ? { auth } : {}),
   });
 }
 
@@ -5831,6 +5888,9 @@ async function handleCloneAgentResourceRepository(
     send(socket, { type: "agent_resource_preview", requestId, preview });
   } catch (error) {
     sendAgentResourceError(socket, requestId, error);
+  } finally {
+    // Credentials embedded in the address were stored before the clone ran, whatever came of it.
+    await gitHostsChanged().catch(() => {});
   }
 }
 
@@ -7019,6 +7079,19 @@ function handleClientMessage(socket: WebSocket, raw: string): void {
     case "logout_provider":
       if (!validProviderId(message.provider)) return;
       handleLogoutProvider(workspace, socket, message.provider).catch(reportError);
+      break;
+    case "set_git_host_credential":
+      if (
+        typeof message.host !== "string" ||
+        typeof message.username !== "string" ||
+        typeof message.secret !== "string" ||
+        typeof message.requestId !== "string"
+      ) return;
+      handleSetGitHostCredential(socket, message.host, message.username, message.secret, message.requestId).catch(reportError);
+      break;
+    case "remove_git_host_credential":
+      if (typeof message.host !== "string" || typeof message.requestId !== "string") return;
+      handleRemoveGitHostCredential(socket, message.host, message.requestId).catch(reportError);
       break;
     case "set_credential":
       if (credentialsRefused(socket)) return;
