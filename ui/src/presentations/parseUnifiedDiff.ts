@@ -1,3 +1,4 @@
+import { stripAnsi } from "../util/ansi";
 import type { DiffLine } from "../util/diff";
 
 export interface DiffFile {
@@ -34,7 +35,9 @@ export function parseUnifiedDiff(output: string): DiffFile[] {
     current = null;
   };
 
-  for (const line of output.split("\n")) {
+  // `git diff --color` prefixes every line with an SGR escape; the markers are
+  // only recognisable once it is gone.
+  for (const line of stripAnsi(output).split("\n")) {
     if (line.startsWith("diff --git ")) {
       push();
       inHunk = false;

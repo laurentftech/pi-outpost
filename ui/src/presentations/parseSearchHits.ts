@@ -1,3 +1,5 @@
+import { stripAnsi } from "../util/ansi";
+
 export interface SearchHit {
   line: number;
   text: string;
@@ -24,7 +26,9 @@ export function parseSearchHits(output: string): SearchFileGroup[] {
   const groups: SearchFileGroup[] = [];
   const byPath = new Map<string, SearchFileGroup>();
 
-  for (const raw of output.split("\n")) {
+  // `rg --color=always` / `grep --color=always` wrap path, line and match in SGR
+  // escapes; a path containing them would never group with its plain twin.
+  for (const raw of stripAnsi(output).split("\n")) {
     const match = HIT.exec(raw);
     if (match === null) continue;
     const [, path, line, text] = match;

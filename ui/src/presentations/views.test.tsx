@@ -52,6 +52,23 @@ describe("parseUnifiedDiff", () => {
   });
 });
 
+describe("coloured command output", () => {
+  const ESC = "\u001b";
+  const colour = (text: string, code: string) => `${ESC}[${code}m${text}${ESC}[m`;
+
+  it("parses a git diff --color result as a diff", () => {
+    const coloured = DIFF.split("\n").map((line) =>
+      line.startsWith("+") ? colour(line, "32") : line.startsWith("-") ? colour(line, "31") : colour(line, "1"),
+    ).join("\n");
+    expect(parseUnifiedDiff(coloured)).toEqual(parseUnifiedDiff(DIFF));
+  });
+
+  it("groups rg --color=always hits under their plain path", () => {
+    const coloured = `${colour("src/a.ts", "35")}:${colour("3", "32")}:const ${colour("x", "1;31")} = 1`;
+    expect(parseSearchHits(coloured)).toEqual([{ path: "src/a.ts", hits: [{ line: 3, text: "const x = 1" }] }]);
+  });
+});
+
 describe("gitDiffCommand", () => {
   it("claims only a command that starts with git diff or git show", () => {
     expect(gitDiffCommand(tool({ args: { command: "git diff" } }))).toBe("git diff");

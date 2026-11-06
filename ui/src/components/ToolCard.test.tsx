@@ -48,6 +48,29 @@ describe("ToolCard", () => {
     vi.clearAllMocks();
   });
 
+  it("renders a command's terminal colours instead of printing their escapes", () => {
+    const item: ToolItem = {
+      kind: "tool",
+      toolName: "bash",
+      running: false,
+      isError: false,
+      args: { command: "npm run build 2>&1 | tail -4" },
+      output: "\u001b[2m../\u001b[22m\u001b[36magent-sources.js\u001b[39m\n\u001b[32m✓ built in 264ms\u001b[39m <b>x</b>",
+    };
+    const { container } = render(<ToolCard item={item} />);
+    fireEvent.click(screen.getByRole("button"));
+    const pre = cardRoot(container).querySelector("pre")!;
+    expect(pre.textContent).toBe("../agent-sources.js\n✓ built in 264ms <b>x</b>");
+    expect(pre.textContent).not.toContain("\u001b");
+    // Styled, not merely stripped.
+    const built = [...pre.querySelectorAll("span")].find((span) => span.textContent?.startsWith("✓"))!;
+    expect(built.style.color).not.toBe("");
+    const dim = [...pre.querySelectorAll("span")].find((span) => span.textContent === "../")!;
+    expect(dim.style.opacity).toBe("0.7");
+    // Output stays inert: markup in it is text, never an element.
+    expect(pre.querySelector("b")).toBeNull();
+  });
+
   it("renders running tool with amber dot", () => {
     const item: ToolItem = {
       kind: "tool",
