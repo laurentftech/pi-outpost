@@ -15,6 +15,7 @@ const FIXTURES = path.join(path.dirname(fileURLToPath(import.meta.url)), "fixtur
 
 describe("searchContent", () => {
   let root: string;
+  let pdfRoot: string;
   let outside: string;
   /** Windows refuses symlink creation without a privilege CI does not have. */
   let symlinksAvailable = false;
@@ -31,6 +32,8 @@ describe("searchContent", () => {
     mkdirSync(path.join(base, "root"), { recursive: true });
     mkdirSync(path.join(base, "outside"), { recursive: true });
     root = await realResolve(path.join(base, "root"));
+    mkdirSync(path.join(base, "pdf-root"), { recursive: true });
+    pdfRoot = await realResolve(path.join(base, "pdf-root"));
     outside = await realResolve(path.join(base, "outside"));
 
     writeFileSync(path.join(outside, "secret.txt"), "the needle lives outside\n");
@@ -41,10 +44,10 @@ describe("searchContent", () => {
     write(".hidden/notes.txt", "needle in a dot directory\n");
     write("image.bin", Buffer.concat([Buffer.from("needle"), Buffer.from([0x00, 0x01])]));
     write("many.txt", Array.from({ length: 30 }, (_, i) => `needle ${i}`).join("\n"));
-    mkdirSync(path.join(root, "docs"), { recursive: true });
-    copyFileSync(path.join(FIXTURES, "pdf-text.pdf"), path.join(root, "docs", "report.pdf"));
-    copyFileSync(path.join(FIXTURES, "pdf-mixed-scan.pdf"), path.join(root, "docs", "scan.pdf"));
-    copyFileSync(path.join(FIXTURES, "pdf-corrupt.pdf"), path.join(root, "docs", "broken.pdf"));
+    mkdirSync(path.join(pdfRoot, "docs"), { recursive: true });
+    copyFileSync(path.join(FIXTURES, "pdf-text.pdf"), path.join(pdfRoot, "docs", "report.pdf"));
+    copyFileSync(path.join(FIXTURES, "pdf-mixed-scan.pdf"), path.join(pdfRoot, "docs", "scan.pdf"));
+    copyFileSync(path.join(FIXTURES, "pdf-corrupt.pdf"), path.join(pdfRoot, "docs", "broken.pdf"));
 
     try {
       symlinkSync(path.join(outside, "secret.txt"), path.join(root, "escape-link.txt"));
@@ -80,7 +83,7 @@ describe("searchContent", () => {
   });
 
   test("SearchPdfPagesAcrossTheWholeDocument: the page number and an excerpt", async () => {
-    const { hits } = await searchContent(root, "supply chain");
+    const { hits } = await searchContent(pdfRoot, "supply chain");
 
     assert.deepEqual(hits, [
       { path: "docs/report.pdf", kind: "pdf-page", page: 2, excerpt: "Outlook The second half depends on the supply chain." },
@@ -109,7 +112,7 @@ describe("searchContent", () => {
   });
 
   test("ScannedPdfPageHasNoTextMatches: a page with no text layer gives nothing and no error", async () => {
-    const { hits, skipped } = await searchContent(root, "cover page");
+    const { hits, skipped } = await searchContent(pdfRoot, "cover page");
 
     assert.deepEqual(hits, [{ path: "docs/scan.pdf", kind: "pdf-page", page: 1, excerpt: "Cover page with real text" }]);
     // The corrupt PDF is the only one skipped; the scanned page is not an extraction error.
