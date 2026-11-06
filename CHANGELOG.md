@@ -7,6 +7,14 @@ version you had and the one you run now, without going online.
 Releases before 0.41.0 are described on
 [GitHub Releases](https://github.com/laurentftech/pi-outpost/releases).
 
+## [0.60.1] - 2026-11-06
+
+### Fixed
+
+- Hardened filesystem access, document parsing, command execution, URL validation and
+  diagnostic logging against untrusted input. ([#420](https://github.com/laurentftech/pi-outpost/pull/420),
+  [#422](https://github.com/laurentftech/pi-outpost/pull/422))
+
 ## [0.60.0] - 2026-11-05
 
 ### Added
