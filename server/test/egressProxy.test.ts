@@ -184,7 +184,7 @@ describe("a proxy that asks about an unlisted host", () => {
     }
   });
 
-  test("the default logger strips newlines from an untrusted refusal reason", async () => {
+  test("the default logger does not include an untrusted refusal reason", async () => {
     const originalLog = console.log;
     const lines: string[] = [];
     console.log = (line) => lines.push(String(line));
@@ -192,9 +192,7 @@ describe("a proxy that asks about an unlisted host", () => {
     try {
       await tunnel(Number(new URL(proxy.url).port), `127.0.0.1:${upstreamPort}`, get);
       assert.equal(lines.length, 1);
-      assert.equal(lines[0]?.includes("\r"), false);
-      assert.equal(lines[0]?.includes("\n"), false);
-      assert.match(lines[0] ?? "", /blocked \[fake entry\]/);
+      assert.equal(lines[0], "Refused outbound connection");
     } finally {
       await proxy.close();
       console.log = originalLog;
