@@ -22,7 +22,7 @@ export class XmlError extends Error {
 
 export type XmlEvent =
   /** `<w:p …>` — `selfClosing` for `<w:br/>`, which has no matching close. */
-  | { kind: "open"; name: string; attributes: Record<string, string>; selfClosing: boolean }
+  | { kind: "open"; name: string; attributes: ReadonlyMap<string, string>; selfClosing: boolean }
   | { kind: "close"; name: string }
   | { kind: "text"; text: string };
 
@@ -63,14 +63,14 @@ function safeFromCodePoint(code: number, fallback: string): string {
 }
 
 /** Attributes of one tag. Values are quoted in XML, which is what bounds the scan. */
-function readAttributes(source: string): Record<string, string> {
-  // XML input is untrusted. A normal object lets names such as `__proto__` or
-  // `constructor` interact with Object.prototype when assigned as properties.
-  const attributes: Record<string, string> = Object.create(null) as Record<string, string>;
+function readAttributes(source: string): ReadonlyMap<string, string> {
+  // XML names are attacker-controlled; a Map keeps them as keys rather than
+  // assigning them as properties on an object.
+  const attributes = new Map<string, string>();
   const pattern = /([^\s=/>]+)\s*=\s*("([^"]*)"|'([^']*)')/g;
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(source)) !== null) {
-    attributes[match[1]] = decodeEntities(match[3] ?? match[4] ?? "");
+    attributes.set(match[1], decodeEntities(match[3] ?? match[4] ?? ""));
   }
   return attributes;
 }
@@ -134,7 +134,7 @@ export function scanXml(source: string, onEvent: (event: XmlEvent) => boolean | 
     const nameEnd = body.search(/[\s/]/);
     const name = (nameEnd === -1 ? body : body.slice(0, nameEnd)).trim();
     if (name === "") throw new XmlError("a tag has no name");
-    const attributes = nameEnd === -1 ? {} : readAttributes(body.slice(nameEnd));
+    const attributes = nameEnd === -1 ? new Map<string, string>() : readAttributes(body.slice(nameEnd));
     if (onEvent({ kind: "open", name, attributes, selfClosing }) === false) return;
   }
 

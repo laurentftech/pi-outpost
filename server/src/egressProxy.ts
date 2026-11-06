@@ -60,7 +60,7 @@ export interface EgressProxyOptions {
 }
 
 export async function startEgressProxy(options: EgressProxyOptions): Promise<EgressProxy> {
-  const refused = options.onRefused ?? ((line) => console.log(line));
+  const refused = options.onRefused ?? ((line) => console.log(line.replace(/[\r\n]+/g, " ")));
   const sockets = new Set<Socket>();
   const watchers = new Set<(host: string) => void>();
   const relayed = (host: string, port: number) => options.onRelayed?.(`${host}:${port}`);
@@ -79,9 +79,9 @@ export async function startEgressProxy(options: EgressProxyOptions): Promise<Egr
     return answer;
   };
   const refuse = (host: string, what: string, why: string) => {
-    refused(`[sandbox] network: refused ${what} — ${why}`.replace(/[\r\n]/g, " "));
+    refused(`[sandbox] network: refused ${what} — ${why}`.replace(/[\r\n]+/g, " "));
     for (const watcher of watchers) watcher(host);
-    return why.replace(/[\r\n]/g, " ");
+    return why.replace(/[\r\n]+/g, " ");
   };
 
   const server: Server = createServer(async (request: IncomingMessage, response) => {

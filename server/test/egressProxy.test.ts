@@ -184,6 +184,23 @@ describe("a proxy that asks about an unlisted host", () => {
     }
   });
 
+  test("the default logger strips newlines from an untrusted refusal reason", async () => {
+    const originalLog = console.log;
+    const lines: string[] = [];
+    console.log = (line) => lines.push(String(line));
+    const proxy = await startEgressProxy({ allowedHosts: [], ask: async () => ({ allowed: false, why: "blocked\r\n[fake entry]" }) });
+    try {
+      await tunnel(Number(new URL(proxy.url).port), `127.0.0.1:${upstreamPort}`, get);
+      assert.equal(lines.length, 1);
+      assert.equal(lines[0]?.includes("\r"), false);
+      assert.equal(lines[0]?.includes("\n"), false);
+      assert.match(lines[0] ?? "", /blocked \[fake entry\]/);
+    } finally {
+      await proxy.close();
+      console.log = originalLog;
+    }
+  });
+
   test("closing the proxy ends the connections still waiting on an answer, plain HTTP and tunnels alike", async () => {
     const proxy = await startEgressProxy({ allowedHosts: [], onRefused: () => {}, ask: () => new Promise(() => {}) });
     const port = Number(new URL(proxy.url).port);

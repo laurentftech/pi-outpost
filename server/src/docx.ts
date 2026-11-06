@@ -466,8 +466,8 @@ export function parseBody(
           if (event.selfClosing) {
             if (rowPropertiesDepth > 0 && (event.name === "w:del" || event.name === "w:ins")) {
               if (event.name === "w:del") rowDeleted = true;
-              const author = event.attributes["w:author"];
-              const date = event.attributes["w:date"];
+              const author = event.attributes.get("w:author");
+              const date = event.attributes.get("w:date");
               rowRevision = {
                 kind: event.name === "w:del" ? "del" : "ins",
                 ...(author !== undefined ? { author } : {}),
@@ -480,8 +480,8 @@ export function parseBody(
             return;
           }
           const kind = event.name.slice(2) as RevisionKind;
-          const author = event.attributes["w:author"];
-          const date = event.attributes["w:date"];
+          const author = event.attributes.get("w:author");
+          const date = event.attributes.get("w:date");
           const name = kind === "moveFrom" ? moveFromName : kind === "moveTo" ? moveToName : undefined;
           revisions.push({
             kind,
@@ -493,10 +493,10 @@ export function parseBody(
           break;
         }
         case "w:moveFromRangeStart":
-          moveFromName = event.attributes["w:name"];
+          moveFromName = event.attributes.get("w:name");
           break;
         case "w:moveToRangeStart":
-          moveToName = event.attributes["w:name"];
+          moveToName = event.attributes.get("w:name");
           break;
         case "w:moveFromRangeEnd":
           moveFromName = undefined;
@@ -505,7 +505,7 @@ export function parseBody(
           moveToName = undefined;
           break;
         case "w:commentRangeStart": {
-          const id = event.attributes["w:id"];
+          const id = event.attributes.get("w:id");
           if (review === undefined || id === undefined || review.replies.has(id)) break;
           rangedComments.add(id);
           noteComment(review, id);
@@ -515,7 +515,7 @@ export function parseBody(
           break;
         }
         case "w:commentRangeEnd": {
-          const id = event.attributes["w:id"];
+          const id = event.attributes.get("w:id");
           if (id === undefined || !openComments.delete(id)) break;
           if (!show) break;
           if (paragraphDepth > 0) {
@@ -529,7 +529,7 @@ export function parseBody(
         case "w:commentReference": {
           // Word writes one for a ranged comment too; only a comment with no range
           // is anchored here, at a point.
-          const id = event.attributes["w:id"];
+          const id = event.attributes.get("w:id");
           if (review === undefined || id === undefined || review.replies.has(id) || rangedComments.has(id)) break;
           noteComment(review, id);
           if (show) pushRaw(referenceSentinel(`c:${id}`));
@@ -567,10 +567,10 @@ export function parseBody(
           if (show && openComments.size > 0) pushRaw(ANCHOR_OPEN);
           break;
         case "w:pStyle":
-          styleId = event.attributes["w:val"];
+          styleId = event.attributes.get("w:val");
           break;
         case "w:outlineLvl":
-          outlineLevel = event.attributes["w:val"];
+          outlineLevel = event.attributes.get("w:val");
           break;
         case "w:pPr":
           paragraphPropertiesDepth++;
@@ -583,13 +583,13 @@ export function parseBody(
           break;
         case "w:strike":
         case "w:dstrike":
-          applyToggle(STRIKE, event.attributes["w:val"]);
+          applyToggle(STRIKE, event.attributes.get("w:val"));
           break;
         case "w:b":
-          applyToggle(BOLD, event.attributes["w:val"]);
+          applyToggle(BOLD, event.attributes.get("w:val"));
           break;
         case "w:i":
-          applyToggle(ITALIC, event.attributes["w:val"]);
+          applyToggle(ITALIC, event.attributes.get("w:val"));
           break;
         case "w:t":
         case "w:delText": {
@@ -615,17 +615,17 @@ export function parseBody(
         case "wp:docPr":
           // Where Word keeps a picture's alternative text and its name.
           if (drawingDepth > 0) {
-            pictureAlt = event.attributes["descr"];
-            pictureName = event.attributes["name"];
+            pictureAlt = event.attributes.get("descr");
+            pictureName = event.attributes.get("name");
           }
           break;
         case "a:blip":
-          if (drawingDepth > 0) pictureRel ??= event.attributes["r:embed"];
+          if (drawingDepth > 0) pictureRel ??= event.attributes.get("r:embed");
           break;
         case "v:imagedata":
           // The pre-2007 shape a `<w:pict>` still uses, and what Word writes for a
           // pasted metafile to this day.
-          if (drawingDepth > 0) pictureRel ??= event.attributes["r:id"];
+          if (drawingDepth > 0) pictureRel ??= event.attributes.get("r:id");
           break;
         case "w:tab":
         case "w:br":
@@ -799,7 +799,9 @@ export function parseComments(commentsXml: string | undefined, extendedXml: stri
     switch (event.name) {
       case "w:comment":
         if (opening && !event.selfClosing) {
-          const { "w:id": id, "w:author": author, "w:date": date } = event.attributes;
+          const id = event.attributes.get("w:id");
+          const author = event.attributes.get("w:author");
+          const date = event.attributes.get("w:date");
           current = id === undefined ? undefined : { id, ...(author ? { author } : {}), ...(date ? { date } : {}), paragraphs: [] };
         } else if (current !== undefined) {
           const { paragraphs, ...rest } = current;
@@ -810,7 +812,7 @@ export function parseComments(commentsXml: string | undefined, extendedXml: stri
       case "w:p":
         if (opening) {
           text = "";
-          const paraId = event.attributes["w14:paraId"];
+          const paraId = event.attributes.get("w14:paraId");
           if (current !== undefined && paraId !== undefined) lastParagraphOf.set(current.id, paraId);
         }
         if (!opening || event.selfClosing) current?.paragraphs.push(text.replace(/\s+/g, " ").trim());
@@ -835,10 +837,10 @@ export function parseComments(commentsXml: string | undefined, extendedXml: stri
   const extended = new Map<string, { parent?: string; done: boolean }>();
   scanXml(extendedXml, (event) => {
     if (event.kind !== "open" || event.name !== "w15:commentEx") return;
-    const paraId = event.attributes["w15:paraId"];
+    const paraId = event.attributes.get("w15:paraId");
     if (paraId === undefined) return;
-    const parent = event.attributes["w15:paraIdParent"];
-    extended.set(paraId, { ...(parent !== undefined ? { parent } : {}), done: event.attributes["w15:done"] === "1" });
+    const parent = event.attributes.get("w15:paraIdParent");
+    extended.set(paraId, { ...(parent !== undefined ? { parent } : {}), done: event.attributes.get("w15:done") === "1" });
   });
   const byParagraph = new Map([...lastParagraphOf].map(([id, paraId]) => [paraId, id]));
   for (const comment of comments.values()) {

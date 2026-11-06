@@ -469,9 +469,16 @@ describe("npmCommand", () => {
       // Windows runs it, which is the part that was broken.
       const { execFileSync } = await import("node:child_process");
       const { npmRootInvocation } = await import("../src/update.ts");
-      const { command, args, env } = npmRootInvocation("win32", "");
-      const root = execFileSync(command, args, { encoding: "utf8", env, windowsHide: true, timeout: 60_000 }).trim();
-      assert.match(root, /node_modules$/i);
+      const { command, args } = npmRootInvocation("win32", "");
+      const previousCoverage = process.env.NODE_V8_COVERAGE;
+      process.env.NODE_V8_COVERAGE = "";
+      try {
+        const root = execFileSync(command, args, { encoding: "utf8", windowsHide: true, timeout: 60_000 }).trim();
+        assert.match(root, /node_modules$/i);
+      } finally {
+        if (previousCoverage === undefined) delete process.env.NODE_V8_COVERAGE;
+        else process.env.NODE_V8_COVERAGE = previousCoverage;
+      }
     },
   );
 });

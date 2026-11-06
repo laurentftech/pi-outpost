@@ -11,6 +11,7 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import { decodeEntities, scanXml, XmlError, type XmlEvent } from "@pi-outpost/office/xml.ts";
+import { rootAttributes } from "@pi-outpost/office/wordml.ts";
 import { readZipEntry, ZipError } from "@pi-outpost/office/zip.ts";
 
 /** Every event the scanner emits for this document. */
@@ -33,8 +34,8 @@ function textOf(source: string): string {
 describe("scanXml", () => {
   test("reports open, text and close in document order", () => {
     assert.deepEqual(events("<a><b>hi</b></a>"), [
-      { kind: "open", name: "a", attributes: {}, selfClosing: false },
-      { kind: "open", name: "b", attributes: {}, selfClosing: false },
+      { kind: "open", name: "a", attributes: new Map(), selfClosing: false },
+      { kind: "open", name: "b", attributes: new Map(), selfClosing: false },
       { kind: "text", text: "hi" },
       { kind: "close", name: "b" },
       { kind: "close", name: "a" },
@@ -43,13 +44,27 @@ describe("scanXml", () => {
 
   test("marks a self-closing tag rather than inventing a close", () => {
     const [open] = events("<w:br/>");
-    assert.deepEqual(open, { kind: "open", name: "w:br", attributes: {}, selfClosing: true });
+    assert.deepEqual(open, { kind: "open", name: "w:br", attributes: new Map(), selfClosing: true });
   });
 
   test("reads attributes, including one that contains a greater-than", () => {
     const [open] = events(`<w:t w:val="a > b" xml:space='preserve'>x</w:t>`);
-    assert.equal(open.kind === "open" && open.attributes["w:val"], "a > b");
-    assert.equal(open.kind === "open" && open.attributes["xml:space"], "preserve");
+    assert.equal(open.kind === "open" && open.attributes.get("w:val"), "a > b");
+    assert.equal(open.kind === "open" && open.attributes.get("xml:space"), "preserve");
+  });
+
+  test("keeps untrusted attribute names as map keys", () => {
+    const [open] = events('<a __proto__="polluted" constructor="also data"/>');
+    assert.equal(open.kind === "open" && open.attributes.get("__proto__"), "polluted");
+    assert.equal(open.kind === "open" && open.attributes.get("constructor"), "also data");
+    assert.equal(({} as { polluted?: string }).polluted, undefined);
+  });
+
+  test("reads Word root attributes without assigning XML names to object properties", () => {
+    const attributes = rootAttributes('<w:styles __proto__="polluted" w:val="safe"/>');
+    assert.equal(attributes.get("__proto__"), "polluted");
+    assert.equal(attributes.get("w:val"), "safe");
+    assert.equal(({} as { polluted?: string }).polluted, undefined);
   });
 
   test("refuses a DOCTYPE, which is what makes entity expansion unreachable", () => {
@@ -95,7 +110,7 @@ describe("scanXml", () => {
 
   test("an unterminated comment ends the document instead of hanging", () => {
     assert.deepEqual(events("<a>text<!-- never closed"), [
-      { kind: "open", name: "a", attributes: {}, selfClosing: false },
+      { kind: "open", name: "a", attributes: new Map(), selfClosing: false },
       { kind: "text", text: "text" },
     ]);
   });
