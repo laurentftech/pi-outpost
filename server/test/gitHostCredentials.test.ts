@@ -24,10 +24,10 @@ import {
 } from "../src/gitHostCredentials.ts";
 import { ResourceRepositoryError, ResourceRepositoryService, useGitCredentialStore, useResourceGitObserver } from "../src/resourceRepositories.ts";
 // @ts-expect-error -- .mjs fixture, no types
-import { gitTrustEnv, makeBareRepository, startGitHttpServer } from "./fixtures/gitHttpServer.mjs";
+import { gitTrustEnv, isolatedGitConfig, makeBareRepository, startGitHttpServer } from "./fixtures/gitHttpServer.mjs";
 
 const run = promisify(execFile);
-const isolatedGit = { GIT_CONFIG_GLOBAL: devNull, GIT_CONFIG_NOSYSTEM: "1", ...gitTrustEnv() };
+const isolatedGit = gitTrustEnv();
 const saved = new Map<string, string | undefined>();
 const temps: string[] = [];
 
@@ -373,8 +373,7 @@ describe("Agent resources git with the store", () => {
     const { root, store, service } = setup("deployment-first");
     // A wrong credential in our store: if git asked us first, the clone would fail.
     await storeGitHostCredential(store, server.base, "mallory", "wrong");
-    const global = path.join(root, "gitconfig");
-    writeFileSync(global, `[credential]\n\thelper = "!f() { test \\"$1\\" = get && printf 'username=alice\\\\npassword=right\\\\n'; }; f"\n`);
+    const global = isolatedGitConfig(`[credential]\n\thelper = "!f() { test \\"$1\\" = get && printf 'username=alice\\\\npassword=right\\\\n'; }; f"`);
     const previous = process.env.GIT_CONFIG_GLOBAL;
     process.env.GIT_CONFIG_GLOBAL = global;
     try {

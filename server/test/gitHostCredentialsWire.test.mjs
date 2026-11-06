@@ -7,14 +7,14 @@
  */
 import assert from "node:assert/strict";
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
-import { devNull, tmpdir } from "node:os";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { after, before, describe, test } from "node:test";
 import { gitTrustEnv, makeBareRepository, startGitHttpServer } from "./fixtures/gitHttpServer.mjs";
 import { connect, makeWorkspace, startServer } from "./harness.mjs";
 
 const SECRET = "wire-secret-7c1f";
-const gitEnv = { GIT_CONFIG_GLOBAL: devNull, GIT_CONFIG_NOSYSTEM: "1", ...gitTrustEnv() };
+const gitEnv = gitTrustEnv();
 const AGENT_DIR = (root) => path.join(root, ".pi-agent");
 
 let gitServer;

@@ -12,7 +12,7 @@
  * `PROBE_LOCKED=1` starts the server with `credentialsLock: true`.
  */
 import { mkdtempSync } from "node:fs";
-import { devNull, tmpdir } from "node:os";
+import { tmpdir } from "node:os";
 import path from "node:path";
 // @ts-expect-error -- .mjs fixture, no types
 import { gitTrustEnv, makeBareRepository, startGitHttpServer } from "../../../server/test/fixtures/gitHttpServer.mjs";
@@ -29,7 +29,7 @@ for (const name of Object.keys(process.env)) {
   if (name.includes("API_KEY") || name.includes("AUTH_TOKEN") || name.endsWith("_TOKEN")) env[name] = undefined;
 }
 env.ANTHROPIC_API_KEY = "sk-ant-not-a-real-key";
-Object.assign(env, { GIT_CONFIG_GLOBAL: devNull, GIT_CONFIG_NOSYSTEM: "1", ...gitTrustEnv() });
+Object.assign(env, gitTrustEnv());
 const server = await startServer(
   root,
   {

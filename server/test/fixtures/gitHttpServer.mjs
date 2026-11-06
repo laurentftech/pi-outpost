@@ -21,17 +21,34 @@ import { spawn, execFileSync } from "node:child_process";
 
 import { createServer } from "node:https";
 import { fileURLToPath } from "node:url";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { devNull } from "node:os";
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 export const GIT_TEST_CA = path.join(HERE, "git-https-test.crt");
 const TLS = { key: readFileSync(path.join(HERE, "git-https-test.key")), cert: readFileSync(GIT_TEST_CA) };
 
-/** What a git process (or a server spawning one) needs to trust the test server. */
+/**
+ * A global git configuration of the test's own: none of the developer's helpers, and the test
+ * certificate trusted. A real file — `os.devNull` is `\\.\nul` on Windows, which git refuses to
+ * read ("unable to access '\\.\nul': Invalid argument"). On Windows git's default TLS backend is
+ * schannel, which ignores `sslCAInfo`; OpenSSL is named there. Elsewhere it is left alone: a git
+ * whose curl has a single backend dies when told to switch.
+ *
+ * `extra` is appended as-is (a `[credential]` section, for one test).
+ */
+export function isolatedGitConfig(extra = "") {
+  const file = path.join(mkdtempSync(path.join(tmpdir(), "pi-outpost-gitconfig-")), "gitconfig");
+  const ca = GIT_TEST_CA.replaceAll("\\", "/");
+  const http = [`[http]`, `\tsslCAInfo = ${ca}`, ...(process.platform === "win32" ? [`\tsslBackend = openssl`] : [])];
+  writeFileSync(file, `${[...http, extra].join("\n")}\n`);
+  return file;
+}
+
+/** What a git process (or a server spawning one) needs: the isolated configuration, nothing system-wide. */
 export function gitTrustEnv() {
-  return { GIT_SSL_CAINFO: GIT_TEST_CA };
+  return { GIT_CONFIG_GLOBAL: isolatedGitConfig(), GIT_CONFIG_NOSYSTEM: "1", GIT_SSL_CAINFO: GIT_TEST_CA };
 }
 
 /**
@@ -41,7 +58,7 @@ export function gitTrustEnv() {
 export function makeBareRepository(root, name, files = { "skills/demo/SKILL.md": "---\nname: demo\ndescription: Demo skill\n---\nDemo.\n" }) {
   const bare = path.join(root, `${name}.git`);
   const work = path.join(root, `${name}-work`);
-  const git = (cwd, args) => execFileSync("git", args, { cwd, stdio: "pipe", env: { ...process.env, GIT_CONFIG_GLOBAL: devNull, GIT_CONFIG_NOSYSTEM: "1" } });
+  const git = (cwd, args) => execFileSync("git", args, { cwd, stdio: "pipe", env: { ...process.env, ...gitTrustEnv() } });
   mkdirSync(bare, { recursive: true });
   git(bare, ["init", "-q", "--bare", "--initial-branch=main"]);
   // Smart HTTP refuses to serve a repository it was not told it may export.
@@ -91,7 +108,7 @@ export async function startGitHttpServer({ root, credentials }) {
         GIT_PROJECT_ROOT: root,
         GIT_HTTP_EXPORT_ALL: "1",
         GIT_CONFIG_NOSYSTEM: "1",
-        GIT_CONFIG_GLOBAL: devNull,
+        GIT_CONFIG_GLOBAL: isolatedGitConfig(),
         REQUEST_METHOD: req.method,
         PATH_INFO: url.pathname,
         QUERY_STRING: url.search.slice(1),
