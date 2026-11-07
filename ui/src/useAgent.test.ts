@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { renderHook, act, waitFor } from "@testing-library/react";
 import { useAgent } from "./useAgent";
+import type { ClientMessage } from "@pi-outpost/shared";
 
 // ---------------------------------------------------------------------------
 // Mock WebSocket — gives us full control over connection lifecycle
@@ -459,7 +460,7 @@ describe("switching projects", () => {
 
   /** The frames this client sent, newest last, as objects. */
   function sentFrames() {
-    return mockWs!.sent.map((raw) => JSON.parse(raw) as { type: string; root?: string });
+    return mockWs!.sent.map((raw) => JSON.parse(raw) as ClientMessage);
   }
 
   it("asks for another project, and fades the conversation while it waits", async () => {
@@ -1959,15 +1960,15 @@ describe("git messages", () => {
     // The gate that makes this message necessary: told at connect there was no
     // repository, the client suppresses every git request from then on
     const result = await connected([], { gitAvailable: false });
-    const before = mockWs.sent.length;
+    const before = mockWs!.sent.length;
     act(() => mockWs!.receive({ type: "file_changed", path: "projA/README.md" }));
-    expect(mockWs.sent.slice(before).filter((raw) => JSON.parse(raw).type === "git_status")).toHaveLength(0);
+    expect(mockWs!.sent.slice(before).filter((raw) => JSON.parse(raw).type === "git_status")).toHaveLength(0);
 
     act(() => mockWs!.receive({ type: "git_repositories_changed", available: true }));
 
     await waitFor(() => expect(result.current.state.gitAvailable).toBe(true));
     await waitFor(() =>
-      expect(mockWs.sent.slice(before).filter((raw) => JSON.parse(raw).type === "git_status").length).toBeGreaterThan(0),
+      expect(mockWs!.sent.slice(before).filter((raw) => JSON.parse(raw).type === "git_status").length).toBeGreaterThan(0),
     );
   });
 
@@ -1991,7 +1992,7 @@ describe("git messages", () => {
       };
     }
     const gitStatusesSince = (from: number) =>
-      mockWs.sent.slice(from).filter((raw) => JSON.parse(raw).type === "git_status");
+      mockWs!.sent.slice(from).filter((raw) => JSON.parse(raw).type === "git_status");
 
     // A switch rebinds the same socket, so no hello follows: the snapshot it answers
     // with is the only word on whether the new project has a repository. Left with the
@@ -2006,7 +2007,7 @@ describe("git messages", () => {
         act(() => mockWs!.receive({ type: "git_status", requestId: asked, repos: [], files: [] }));
         act(() => mockWs!.receive(switchedTo(false, type)));
         await waitFor(() => expect(result.current.state.gitAvailable).toBe(false));
-        const before = mockWs.sent.length;
+        const before = mockWs!.sent.length;
 
         act(() => mockWs!.receive({ type: "agent_end" }));
         act(() => mockWs!.receive({ type: "file_changed", path: "notes.md" }));
@@ -2018,7 +2019,7 @@ describe("git messages", () => {
 
     it("asks about git once a switch binds a project that has a repository", async () => {
       const result = await connected([], { gitAvailable: false });
-      const before = mockWs.sent.length;
+      const before = mockWs!.sent.length;
 
       act(() => mockWs!.receive(switchedTo(true)));
 
@@ -2073,12 +2074,12 @@ describe("git messages", () => {
     await connected([], { gitAvailable: true });
     // Connecting already asked once; settle it, or the next request coalesces into it
     act(() => mockWs!.receive({ type: "git_status", repos: [], files: [] }));
-    const before = mockWs.sent.length;
+    const before = mockWs!.sent.length;
 
     act(() => mockWs!.receive({ type: "agent_end" }));
 
     await waitFor(() => {
-      const statuses = mockWs.sent
+      const statuses = mockWs!.sent
         .slice(before)
         .map((raw) => JSON.parse(raw) as { type: string; repo?: string })
         .filter((frame) => frame.type === "git_status");
@@ -2306,7 +2307,7 @@ describe("extension UI", () => {
     act(() => mockWs!.receive(request({ id: "d2", method: "input", message: "name?" })));
     await waitFor(() => expect(result.current.state.dialogQueue).toHaveLength(2));
 
-    act(() => result.current.respondToDialog({ id: "d1", result: true }));
+    act(() => result.current.respondToDialog({ id: "d1", confirmed: true }));
     await waitFor(() => expect(result.current.state.dialogQueue).toHaveLength(1));
     expect(result.current.state.dialogQueue[0].id).toBe("d2");
   });
@@ -2620,7 +2621,10 @@ describe("assembling a turn", () => {
     const result = await connected();
     act(() => mockWs!.receive({ type: "tool_start", toolCallId: "t1", toolName: "crawl", args: {} }));
     act(() => mockWs!.receive({ type: "tool_update", toolCallId: "t1", text: "working" }));
-    expect(result.current.state.items[0].progress).toBeUndefined();
+    const item = result.current.state.items[0];
+    expect(item).toMatchObject({ kind: "tool", toolCallId: "t1", output: "working", running: true });
+    if (item.kind !== "tool") throw new Error("Expected the running tool");
+    expect(item.progress).toBeUndefined();
   });
 
   it("keeps two concurrent tool calls apart", async () => {

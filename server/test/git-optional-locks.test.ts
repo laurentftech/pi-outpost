@@ -82,7 +82,7 @@ describe("a read of a repository does not lock it", () => {
     // The failure in the field: the agent commits while the interface refreshes its
     // status, and the commit is the one that loses.
     writeFileSync(path.join(root, "second.txt"), "more\n");
-    const reading = Promise.all([gitStatus([repo()]), gitLog([repo()], 20), gitStatus([repo()])]);
+    const reading = Promise.all([gitStatus([repo()]), gitLog(repo(), 20), gitStatus([repo()])]);
 
     git("add", "second.txt");
     git("commit", "-m", "written while the interface was reading");

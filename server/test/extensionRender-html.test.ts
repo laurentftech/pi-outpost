@@ -21,7 +21,7 @@ let renderer = new ExtensionRenderer();
 
 /** A pi-tui component: renderers return one, and it yields lines of ANSI text. */
 function component(lines: string[]) {
-  return { render: () => lines };
+  return { render: () => lines, invalidate() {} };
 }
 
 /** Configure with a message renderer for `plan`, and nothing else. */

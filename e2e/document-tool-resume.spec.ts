@@ -66,7 +66,7 @@ test("Reuse the tool after four exchanges and a session reload extracts the pres
       await composer.fill(text);
       await composer.press("Enter");
       await client.waitFor(
-        (m: { type: string }) =>
+        (m) =>
           client.received.indexOf(m) >= seen && m.type === "agent_end",
         30_000,
       );
@@ -96,13 +96,15 @@ test("Reuse the tool after four exchanges and a session reload extracts the pres
     let seen = client.received.length;
     client.send({ type: "list_sessions" });
     const listed = await client.waitFor(
-      (m: { type: string }) =>
+      (m) =>
         client.received.indexOf(m) >= seen && m.type === "sessions",
     );
     seen = client.received.length;
+    expect(listed.type).toBe("sessions");
+    if (listed.type !== "sessions") throw new Error("Expected the session list");
     client.send({ type: "switch_session", path: listed.sessions[0].path });
     await client.waitFor(
-      (m: { type: string }) =>
+      (m) =>
         client.received.indexOf(m) >= seen && m.type === "session_replaced",
     );
     await page.reload();
@@ -132,7 +134,7 @@ test("Reuse the tool after four exchanges and a session reload extracts the pres
     seen = client.received.length;
     await page.getByTitle("new session", { exact: true }).click();
     await client.waitFor(
-      (m: { type: string }) =>
+      (m) =>
         client.received.indexOf(m) >= seen && m.type === "session_replaced",
     );
     await send("Reuse the tool");

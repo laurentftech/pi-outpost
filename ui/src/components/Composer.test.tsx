@@ -29,6 +29,7 @@ function setup(overrides: Partial<Props> = {}) {
     connected: true,
     commands: COMMANDS,
     fileSearch: null,
+    prefill: null,
     attachments: [],
     ...handlers,
     ...overrides,

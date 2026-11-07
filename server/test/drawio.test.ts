@@ -274,7 +274,7 @@ describe("drawio_check", () => {
   test("a write to another file does not hold the check, and a lost end does not hold it forever", async () => {
     writeFileSync(path.join(root, "free.drawio"), CLEAN);
     writeStarted("edit-elsewhere", path.join(root, "other.drawio"));
-    assert.match((await run("free.drawio")).content[0].text, /no defect/);
+    assert.match(textOf(await run("free.drawio")), /no defect/);
     writeEnded("edit-elsewhere");
     writeStarted("edit-lost", path.join(root, "free.drawio"));
     const started = Date.now();

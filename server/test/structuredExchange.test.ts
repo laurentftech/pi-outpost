@@ -16,7 +16,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, test } from "node:test";
 import { Check } from "typebox/value";
-import { STRUCTURED_EXCHANGE_CEILINGS, STRUCTURED_EXCHANGE_SCHEMA_V1, PROPOSABLE_KINDS } from "@pi-outpost/shared/structured-exchange";
+import { STRUCTURED_EXCHANGE_CEILINGS, STRUCTURED_EXCHANGE_SCHEMA_V1, PROPOSABLE_KINDS, type StructuredExchangeEnvelope } from "@pi-outpost/shared/structured-exchange";
 import { structuredExchangeField } from "../src/convert.ts";
 import { validateStructuredExchangeSemantics } from "@pi-outpost/shared/structured-exchange/validation";
 
@@ -455,7 +455,7 @@ describe("distinct types per vocabulary", () => {
       schema: STRUCTURED_EXCHANGE_SCHEMA_V1,
       kind: "graph" as const,
       data: { nodes, edges },
-    };
+    } satisfies StructuredExchangeEnvelope;
   };
 
   const refusals = (document: ReturnType<typeof withKinds>) =>
@@ -502,7 +502,7 @@ describe("distinct types per vocabulary", () => {
       schema: STRUCTURED_EXCHANGE_SCHEMA_V1,
       kind: "sequence" as const,
       data: { participants, messages: [] },
-    };
+    } satisfies StructuredExchangeEnvelope;
     const [issue] = validateStructuredExchangeSemantics(document).filter((i) => i.rule === "too-many-kinds");
     assert.match(issue.message, /participant types/);
   });

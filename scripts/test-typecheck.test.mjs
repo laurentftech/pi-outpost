@@ -11,7 +11,7 @@
  */
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { describe, test } from "node:test";
@@ -71,12 +71,19 @@ describe("type-checked test suites", () => {
 
       test("the suite's configuration is what `npm run typecheck` runs", () => {
         const manifest = JSON.parse(readFileSync(path.join(ROOT, suite.script.packageJson), "utf8"));
-        assert.ok(manifest.scripts?.typecheck?.includes(suite.script.typecheck), `${suite.script.packageJson} typecheck runs \`${suite.script.typecheck}\``);
+        assert.equal(manifest.scripts?.typecheck, suite.name === "e2e" ? "npm run typecheck --workspaces --if-present && tsc -p e2e" : suite.script.typecheck);
         const root = JSON.parse(readFileSync(path.join(ROOT, "package.json"), "utf8"));
         assert.match(root.scripts.typecheck, /npm run typecheck --workspaces --if-present/);
       });
     });
   }
+});
+
+test("NoCeilingOnceClean: every suite uses the compiler directly, with no transition ceiling", () => {
+  for (const file of ["scripts/check-type-ceilings.mjs", "scripts/type-ceilings.json"]) {
+    assert.equal(existsSync(path.join(ROOT, file)), false, `${file} must not tolerate errors in a clean suite`);
+  }
+  assert.match(readFileSync(path.join(ROOT, "docs/quality.md"), "utf8"), /no tolerated type-error ceiling/i);
 });
 
 describe("silencing the type checker in a test", () => {

@@ -19,7 +19,7 @@ function renderBar(sessionUsage: SessionUsage, onToggleAnalysis = () => {}) {
   return render(
     <ModelBar
       model="anthropic/claude-opus-5"
-      models={[{ provider: "anthropic", id: "claude-opus-5" }]}
+      models={[{ provider: "anthropic", id: "claude-opus-5", name: "Claude Opus 5", reasoning: true }]}
       thinkingLevel="off"
       modelSupportsReasoning={false}
       isStreaming={false}
@@ -73,7 +73,7 @@ describe("ModelBar usage indicator", () => {
     rerender(
       <ModelBar
         model="anthropic/claude-opus-5"
-        models={[{ provider: "anthropic", id: "claude-opus-5" }]}
+        models={[{ provider: "anthropic", id: "claude-opus-5", name: "Claude Opus 5", reasoning: true }]}
         thinkingLevel="off"
         modelSupportsReasoning={false}
         isStreaming={false}
@@ -104,8 +104,8 @@ describe("ModelBar controls", () => {
     const props = {
       model: "anthropic/claude-opus-5",
       models: [
-        { provider: "anthropic", id: "claude-opus-5" },
-        { provider: "openai", id: "gpt-5" },
+        { provider: "anthropic", id: "claude-opus-5", name: "Claude Opus 5", reasoning: true },
+        { provider: "openai", id: "gpt-5", name: "GPT-5", reasoning: true },
       ],
       thinkingLevel: "off",
       modelSupportsReasoning: true,
@@ -222,7 +222,7 @@ describe("ModelBar controls", () => {
     render(
       <ModelBar
         model="anthropic/claude-opus-5"
-        models={[{ provider: "anthropic", id: "claude-opus-5" }]}
+        models={[{ provider: "anthropic", id: "claude-opus-5", name: "Claude Opus 5", reasoning: true }]}
         thinkingLevel="off"
         modelSupportsReasoning={false}
         isStreaming={false}

@@ -98,7 +98,10 @@ describe("firstExchange", () => {
     ({ type: "message", message: { role: "user", content } }) as unknown as SessionEntry;
   const assistantMsg = (content: string) =>
     ({ type: "message", message: { role: "assistant", content } }) as unknown as SessionEntry;
-  const toolEntry = () => ({ type: "tool_call" }) as SessionEntry;
+  const toolEntry = (): SessionEntry => ({
+    type: "message", id: "tool-result", parentId: null, timestamp: new Date(0).toISOString(),
+    message: { role: "toolResult", toolCallId: "call", toolName: "read", content: [{ type: "text", text: "file contents" }], isError: false, timestamp: 0 },
+  });
 
   test("returns undefined for empty entries", () => {
     assert.equal(firstExchange([]), undefined);

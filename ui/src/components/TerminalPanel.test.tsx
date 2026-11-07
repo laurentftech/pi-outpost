@@ -377,11 +377,7 @@ describe("TerminalPanel", () => {
     const onSetWorkspaceRoot = vi.fn();
     const originalConfirm = window.confirm;
 
-    let capturedCallbacks: any;
-    const subscribeTerminal = vi.fn((_id, callbacks) => {
-      capturedCallbacks = callbacks;
-      return () => {};
-    });
+    const subscribeTerminal = vi.fn(() => () => {});
 
     render(
       <TerminalPanel

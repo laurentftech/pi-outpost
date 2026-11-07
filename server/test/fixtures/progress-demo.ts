@@ -15,6 +15,7 @@ const parameters = Type.Object({
 
 const progressDemo: ToolDefinition = {
   name: "progress_demo",
+  label: "Progress demo",
   description: "Does nothing useful for a few seconds, reporting a completion fraction as it goes.",
   parameters,
   async execute(_toolCallId, params, signal, onUpdate) {
@@ -24,11 +25,10 @@ const progressDemo: ToolDefinition = {
       if (signal?.aborted) break;
       onUpdate?.({
         content: [{ type: "text", text: `step ${i}/${steps}` }],
-        isPartial: true,
         details: { progress: i / steps },
       });
     }
-    return { content: [{ type: "text", text: "done" }] };
+    return { content: [{ type: "text", text: "done" }], details: {} };
   },
 };
 

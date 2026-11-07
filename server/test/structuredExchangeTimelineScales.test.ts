@@ -33,7 +33,7 @@ const plan = (start: string, end: string, scale: StructuredTimelineScale = "mont
 });
 const glyph = (laid: ReturnType<typeof layoutTimeline>, id: "a" | "b") => laid.items.find((item) => item.row === 0 && item.item === (id === "a" ? 0 : 1))!.glyph;
 const textsOf = (parts: ReturnType<typeof timelineFigureParts>, testId: string) =>
-  parts.header.flatMap((group) => group.primitives).filter((primitive) => primitive.testId === testId && primitive.shape === "text").map((primitive) => (primitive as { text: string }).text);
+  parts.header.flatMap((group) => group.primitives).flatMap((primitive) => primitive.shape === "text" && primitive.testId === testId ? [primitive.text] : []);
 
 describe("ScalesSetTheDensity", () => {
   test("a timeline is laid out at its declared scale's density", () => {

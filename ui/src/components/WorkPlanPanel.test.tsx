@@ -10,10 +10,10 @@ const plan: WorkPlan = {
   title: "Ship the feature",
   updatedAt: "2026-08-23T00:00:00.000Z",
   tasks: [
-    { id: "analyse", title: "Analyse impact", status: "done", dependsOn: [], resources: [] },
-    { id: "build", title: "Build UI", description: "Keep the plan readable.", status: "in_progress", dependsOn: ["analyse"], resources: [{ uri: "workspace:ui/src/App.tsx", label: "App" }] },
-    { id: "review", title: "Review output", status: "needs_review", parentId: "build", dependsOn: ["build"], resources: [{ uri: "model:SYS-421", label: "SYS-421" }], statusReason: "Needs human acceptance" },
-    { id: "blocked", title: "Publish", status: "blocked", dependsOn: ["review"], resources: [], statusReason: "Credentials unavailable" },
+    { id: "analyse", title: "Analyse impact", status: "done", evidence: [], dependsOn: [], resources: [] },
+    { id: "build", title: "Build UI", description: "Keep the plan readable.", status: "in_progress", evidence: [], dependsOn: ["analyse"], resources: [{ uri: "workspace:ui/src/App.tsx", label: "App" }] },
+    { id: "review", title: "Review output", status: "needs_review", parentId: "build", evidence: [], dependsOn: ["build"], resources: [{ uri: "model:SYS-421", label: "SYS-421" }], statusReason: "Needs human acceptance" },
+    { id: "blocked", title: "Publish", status: "blocked", evidence: [], dependsOn: ["review"], resources: [], statusReason: "Credentials unavailable" },
   ],
 };
 

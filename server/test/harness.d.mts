@@ -8,7 +8,7 @@ import type WebSocket from "ws";
 import type { ServerMessage } from "@pi-outpost/shared";
 
 /** A message as it comes off the socket: parsed JSON, read by each test for what it expects. */
-export type HarnessMessage = { type: string; requestId?: string } & Record<string, any>;
+export type HarnessMessage = ServerMessage;
 
 export interface HarnessServer {
   port: number;
@@ -34,6 +34,7 @@ export interface HarnessClient {
    * predicate accepts; a rejection on timeout.
    */
   waitFor<T extends ServerMessage["type"]>(type: T, timeoutMs?: number): Promise<Extract<ServerMessage, { type: T }>>;
+  waitFor<T extends ServerMessage>(match: (message: HarnessMessage) => message is T, timeoutMs?: number): Promise<T>;
   waitFor(match: (message: HarnessMessage) => boolean, timeoutMs?: number): Promise<HarnessMessage>;
   /** The close code; never rejects on a close, only when none comes in time. */
   waitForClose(timeoutMs?: number): Promise<number>;

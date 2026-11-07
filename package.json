@@ -26,7 +26,7 @@
     "start": "npm run build --workspace web && npm run start --workspace server",
     "build": "npm run build --workspaces --if-present",
     "build:validator": "node shared/scripts/build-validator.mjs",
-    "typecheck": "npm run typecheck --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present && tsc -p e2e",
     "lint": "npm run lint --workspaces --if-present && npm run lint:test-comments",
     "lint:test-comments": "oxlint -c .oxlintrc.test-comments.json ui/src server/test e2e",
     "check:css": "node scripts/check-web-css.mjs",

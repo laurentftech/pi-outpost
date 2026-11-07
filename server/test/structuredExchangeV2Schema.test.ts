@@ -226,7 +226,7 @@ describe("the enriched schema accepts what version 1 accepted", () => {
       // The one shape that deliberately changed: a target is an object, so that a
       // proposal can name the revision it was prepared against.
       if (typeof enriched.target === "string") enriched.target = { ref: enriched.target };
-      const errors = [...compiled.Errors(enriched)].map((issue) => `${issue.path} ${issue.message}`);
+      const errors = [...compiled.Errors(enriched)].map((issue) => `${issue.instancePath} ${issue.message}`);
       assert.deepEqual(errors, [], `refused under the enriched contract: ${errors.join(", ")}`);
     });
   }

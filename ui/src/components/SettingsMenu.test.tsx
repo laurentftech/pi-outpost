@@ -55,7 +55,7 @@ describe("SettingsMenu", () => {
     const root = field(/^Root/);
     fireEvent.change(root, { target: { value: "/draft" } });
     fireEvent.click(screen.getByRole("button", { name: "Credits →" }));
-    expect(screen.getByRole("heading", { name: "Credits", exact: true })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Credits" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Project website" })).toHaveAttribute("href", "https://laurentftech.github.io/pi-outpost/");
     expect(screen.getByText("draw.io / diagrams.net")).toBeVisible();
     expect(screen.getByText("GrapesJS")).toBeVisible();
@@ -72,7 +72,7 @@ describe("SettingsMenu", () => {
     fireEvent.click(screen.getByRole("button", { name: "Credits →" }));
     openMenu();
     openMenu();
-    expect(screen.getByRole("heading", { name: "Settings", exact: true })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Settings" })).toBeInTheDocument();
   });
   it("shows account sources and actions, and makes accounts read-only under the credentials lock", () => {
     const start = vi.fn();

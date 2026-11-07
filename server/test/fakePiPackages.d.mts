@@ -24,6 +24,6 @@ export interface AgentDirAtOldVersion {
 }
 
 /** An agent directory with 1.0.0 installed by npm itself, from a registry the test controls. */
-export function agentDirAtOldVersion(t: TestContext, prefix: string, others?: Record<string, string>): Promise<AgentDirAtOldVersion>;
+export function agentDirAtOldVersion(t: Pick<TestContext, "after">, prefix: string, others?: Record<string, string>): Promise<AgentDirAtOldVersion>;
 /** The version of the fake extension installed under `agentDir`. */
 export function installedVersion(agentDir: string): Promise<string>;

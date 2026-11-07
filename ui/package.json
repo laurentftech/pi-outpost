@@ -9,6 +9,7 @@
     "./util/*": "./src/util/*"
   },
   "scripts": {
+    "typecheck": "tsc --noEmit",
     "lint": "oxlint",
     "test": "vitest run",
     "test:watch": "vitest",

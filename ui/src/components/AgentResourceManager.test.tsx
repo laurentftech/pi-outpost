@@ -22,17 +22,13 @@ const operations = (overrides: Partial<AgentResourceOperationState> = {}): Agent
 });
 
 function assessment(repositoryId: string, status: AgentResourceRepositoryAssessment["status"], reason?: string): AgentResourceRepositoryAssessment {
+  if (status === "updateable" || status === "current") {
+    return { repositoryId, status, branch: "main", upstream: "origin/main", localRevision: "1".repeat(40), upstreamRevision: "2".repeat(40), token: `token-${repositoryId}` };
+  }
   return {
     repositoryId,
     status,
-    ...(reason ? { reason } : {}),
-    ...(status === "updateable" ? {
-      branch: "main",
-      upstream: "origin/main",
-      localRevision: "1111111111111111111111111111111111111111",
-      upstreamRevision: "2222222222222222222222222222222222222222",
-      token: `token-${repositoryId}`,
-    } : {}),
+    reason: reason ?? `${repositoryId} cannot be updated`,
   };
 }
 
