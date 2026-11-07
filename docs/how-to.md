@@ -871,3 +871,4 @@ conversation tree as a single branch. See [Agent runtimes](configuration.md#agen
 | The file tree does not follow changes | Watching may be off (`files.watch`) or the filesystem emits no events. The tree's ↻ control re-lists by hand |
 | Settings will not change the sandbox | Either a `sandboxLocks` entry, or the RPC runtime, which has no sandbox to change |
 | Not sure which file is in force | `pi-outpost config` prints the resolved configuration and where it came from |
+<!-- fast-path test: documentation-only PR -->
