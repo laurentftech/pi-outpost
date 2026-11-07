@@ -1013,3 +1013,4 @@ not carry them at all.
 **A vocabulary.** Relationship kinds are opaque strings. What `calls`, `composition`,
 or anything else means belongs to your domain, and enumerating it here would make a
 provider-neutral contract into somebody's particular one.
+<!-- fast-path test: contract page -->
