@@ -1,7 +1,9 @@
 # Contributing to pi-outpost
 
 Bug reports, documentation improvements and focused pull requests are welcome. For a suspected
-vulnerability, use the private reporting process in [SECURITY.md](SECURITY.md).
+vulnerability, use the private reporting process in [SECURITY.md](SECURITY.md). Everyone taking
+part follows the [code of conduct](CODE_OF_CONDUCT.md); [GOVERNANCE.md](GOVERNANCE.md) explains
+who decides, merges and releases.
 
 ## Before starting
 
