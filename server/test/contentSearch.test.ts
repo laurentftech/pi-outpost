@@ -83,8 +83,14 @@ describe("searchContent", () => {
   });
 
   test("SearchPdfPagesAcrossTheWholeDocument: the page number and an excerpt", async () => {
-    const { hits } = await searchContent(pdfRoot, "supply chain");
+    // The first PDF search pays pdf.js's cold load; on a loaded Windows CI runner that has
+    // run past the production budgets, skipping report.pdf and answering []. This test is
+    // about what a PDF hit holds — the budgets have their own tests below.
+    const { hits, truncated } = await searchContent(pdfRoot, "supply chain", {
+      limits: { pdfTimeoutMs: 120_000, deadlineMs: 240_000 },
+    });
 
+    assert.equal(truncated, false, "the search deadline ran out before every file was read");
     assert.deepEqual(hits, [
       { path: "docs/report.pdf", kind: "pdf-page", page: 2, excerpt: "Outlook The second half depends on the supply chain." },
     ]);
