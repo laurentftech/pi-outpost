@@ -21,13 +21,13 @@ error count on current `main` before starting its group (the counts in design.md
 ## 3. End-to-end specs
 
 - [x] 3.1 Add `e2e/tsconfig.json` (strict, `moduleResolution: "Bundler"`, DOM and Node types, `noEmit`) and extend the root `typecheck` script to run `tsc -p e2e`; verify with 1.1 that every `e2e/**/*.ts` file is listed
-- [ ] 3.2 Fix every e2e type error with the same classification and findings rule; verify `npm run typecheck` exits 0 and the Playwright suite (`npm run test:e2e`, after `npm run build`) still passes
+- [x] 3.2 Fix every e2e type error with the same classification and findings rule; verify `npm run typecheck` exits 0 and the Playwright suite (`npm run test:e2e`, after `npm run build`) still passes
 - [x] 3.3 Update the suite list in `docs/quality.md`; verify it matches the configurations
 
 ## 4. UI tests (after the concurrent `ui` work, #438, is merged)
 
 - [x] 4.1 Rebase on `main`, re-measure `tsc -p ui/tsconfig.json`, and add `"typecheck": "tsc --noEmit"` to `ui/package.json`; verify with 1.1 that every `ui/src/**/*.test.ts(x)` file is listed
-- [ ] 4.2 Fix every UI test type error with the same classification and findings rule, starting with `useAgent.test.ts` (the `progress` read on `ChatItem`); verify `npm run typecheck` exits 0, `npm test --workspace ui` passes, and the e2e/bench checks CLAUDE.md requires for UI-facing test changes still pass
+- [x] 4.2 Fix every UI test type error with the same classification and findings rule, starting with `useAgent.test.ts` (the `progress` read on `ChatItem`); verify `npm run typecheck` exits 0, `npm test --workspace ui` passes, and the e2e/bench checks CLAUDE.md requires for UI-facing test changes still pass
 - [x] 4.3 Update the suite list in `docs/quality.md` to "all TypeScript test suites"; verify against the configurations
 
 ## 5. Ceiling fallback (only if a suite cannot reach zero in its own PR)
@@ -38,7 +38,7 @@ error count on current `main` before starting its group (the counts in design.md
 ## 6. Integration
 
 - [x] 6.1 Open a throwaway PR that introduces one ill-typed line in a server test and confirm `check` and `CI ok` fail (scenario PullRequestWithIllTypedTestIsRed); close it unmerged and link the run in the final PR
-- [ ] 6.2 Write `scenario-coverage.md` mapping every scenario in `specs/test-type-checking/spec.md` to its evidence; run `npm run check:scenarios` and `openspec validate typecheck-test-suites --strict`
+- [x] 6.2 Write `scenario-coverage.md` mapping every scenario in `specs/test-type-checking/spec.md` to its evidence; run `npm run check:scenarios` and `openspec validate typecheck-test-suites --strict`
 - [ ] 6.3 Record CI type-check time before and after in the final PR, and update the OpenSSF Best Practices answers that mention strict TypeScript (`warnings_strict`) to say tests are included
 
 ## Workflow follow-up

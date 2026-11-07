@@ -36,3 +36,12 @@ Verified on 2026-11-07 using isolated copies of the production modules and test 
 
 All four expected failures were observed. Temporary copies were removed, and the actual
 production modules were never changed for these controls.
+
+## Full-suite CI follow-up
+
+The Ubuntu run on `a2f9ce3` exposed a polling race in
+`server/test/deferredToolsWire.test.mjs`: reading the provider's JSONL log while it
+appends could return a partial final record. The reader now parses only
+newline-terminated records. A regression test checks a truncated JSON string,
+valid JSON awaiting its newline, CRLF records, and rejection of malformed complete
+records. All nine tests in that file pass against the real embedded/RPC servers.
