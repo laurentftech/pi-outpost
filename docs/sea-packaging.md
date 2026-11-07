@@ -30,6 +30,20 @@ Skip this and it fails closed rather than misleadingly: `Permission denied`, exi
 126, nothing about signing or Gatekeeper. Windows needs no equivalent — a `.exe`
 carries no execute bit to lose.
 
+**Verify a download.** Releases after v0.60.1 carry a signed
+[SLSA build provenance](https://slsa.dev/provenance/) attestation for every attached
+file: it proves the file was built by this repository's release workflow from the
+tagged commit. With the GitHub CLI:
+
+```bash
+gh attestation verify pi-outpost-<version>-<os>-<arch> -R laurentftech/pi-outpost
+```
+
+The same Sigstore bundle is attached to the release as `pi-outpost-<version>.sigstore.json`,
+for checking without the GitHub API (`gh attestation verify <file> -R laurentftech/pi-outpost
+--bundle pi-outpost-<version>.sigstore.json`). This is provenance, not operating-system code
+signing: it does not change what Gatekeeper or SmartScreen do, described next.
+
 They are **not signed for distribution**, and no code fix closes that. The ad-hoc
 signature described below satisfies Apple Silicon's kernel-level requirement that a
 binary carry *some* signature to run at all — a different check from Gatekeeper's,

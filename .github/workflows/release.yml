@@ -277,6 +277,10 @@ jobs:
     timeout-minutes: 15
     permissions:
       contents: write
+      # Build provenance for what is attached: the OIDC token is the Sigstore
+      # signing identity, and the attestation is stored on the repository.
+      id-token: write
+      attestations: write
     steps:
       # This job downloads artifacts and nothing else, so it had no working copy —
       # and the rule deciding whether this tag is a prerelease lives in one.
@@ -286,6 +290,20 @@ jobs:
           path: executables
           pattern: pi-outpost-*
           merge-multiple: true
+      # One signed SLSA provenance statement covering every attached file. Anyone
+      # can check a download with `gh attestation verify <file> -R <this repo>`.
+      - name: Attest build provenance
+        id: provenance
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: executables/*
+      # The same bundle, attached to the release, so it can be verified offline
+      # and so release scanners (OpenSSF Scorecard) see that the release is signed.
+      # Copied in after attesting: it is not a subject of itself.
+      - name: Add the provenance bundle to the release files
+        env:
+          BUNDLE: ${{ steps.provenance.outputs.bundle-path }}
+        run: cp "$BUNDLE" "executables/pi-outpost-${GITHUB_REF_NAME#v}.sigstore.json"
       - name: Create the release if needed and attach the executables
         env:
           GH_TOKEN: ${{ github.token }}
