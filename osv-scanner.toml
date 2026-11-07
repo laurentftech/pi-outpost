@@ -1,0 +1,7 @@
+# OSV findings reviewed and ruled out. Read by osv-scanner and by the OpenSSF
+# Scorecard Vulnerabilities check. Each entry says why it does not apply.
+
+[[IgnoredVulns]]
+id = "GHSA-589f-c66p-hxr4"
+# CVE-2022-21802, grapesjs XSS.
+reason = "Affects grapesjs < 0.19.5 only; posters/ pins 0.23.9. The OSV record declares no fixed version, so OSV treats every version as affected, while the advisory itself states '< 0.19.5' and Dependabot does not flag 0.23.9."
