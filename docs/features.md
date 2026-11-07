@@ -84,7 +84,8 @@
   the **⋯**, a row keeps only the git badge (click it for the diff) and its **@**: shown on hover,
   lit while the entry is referenced, one click to reference or drop it.
 - Select several entries with Shift-click (a range) or Ctrl/Cmd-click (one at a time), Escape to
-  clear: the menu then deletes them with one confirmation, moves them (drag one onto a folder, or
+  clear: a bar above the tree counts them and holds what you can do with all of them — as does
+  the menu of any selected row. It deletes them with one confirmation, moves them (drag one onto a folder, or
   **Move to…** and pick the folder), downloads them as one `.zip`, or references them all. A
   deleted folder goes with everything in it. An archive is limited to 65 535 entries and 4 GiB,
   and leaves out — and says so — anything that leads outside the workspace.

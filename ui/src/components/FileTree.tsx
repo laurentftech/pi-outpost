@@ -16,6 +16,7 @@ import {
   type ActionEntry,
   type ActionHandlers,
   type RowActionId,
+  ROW_ACTION_SYMBOL,
 } from "./fileTreeModel";
 import { RowMenu } from "./RowMenu";
 
@@ -31,6 +32,13 @@ const REVEALED_ON_HOVER =
   "group-hover:opacity-100 focus-visible:opacity-100 [@media(hover:hover)]:opacity-0";
 const MORE_CLASS = `mr-1 shrink-0 rounded px-1 text-xs leading-none text-zinc-400 hover:bg-zinc-200 dark:text-zinc-600 dark:hover:bg-zinc-700 ${REVEALED_ON_HOVER}`;
 const SELECTED_ROW = "bg-blue-50 dark:bg-blue-950/40";
+/** The bar already says how many: its buttons say only what they do. */
+const BAR_LABEL: Partial<Record<RowActionId, string>> = {
+  reference: "Reference",
+  download: "Download",
+  move: "Move to…",
+  delete: "Delete…",
+};
 
 /**
  * The open creation input, threaded down to the directory it belongs to. Kept in
@@ -1009,7 +1017,10 @@ export function FileTree(props: TreeProps) {
         anchorRef.current = path;
         return true;
       }
-      setSelected(new Set([path]));
+      // A plain click on a folder opens or closes it: it starts a Shift range there but
+      // selects nothing. Selected, it would cover every file Ctrl-clicked inside it
+      // afterwards, and a deletion meant for those files would take the whole folder.
+      setSelected(isDirectory ? new Set() : new Set([path]));
       anchorRef.current = path;
       return false;
     },
@@ -1057,6 +1068,15 @@ export function FileTree(props: TreeProps) {
 
   const menuGroups = menu ? rowActions(menu.paths.map(actionEntry), handlers) : [];
   const pendingOff = new Set<RowActionId>(lifecyclePending ? ["open-native", "reveal", "rename", "move", "delete"] : []);
+  // The selection's own menu, laid out in a bar: the same actions, found without
+  // having to aim at the ⋯ of a row that belongs to the selection.
+  const selectionPaths = selected.size > 1 ? outermost(selected) : [];
+  const barActions =
+    selectionPaths.length > 0 && picking === null
+      ? rowActions(selectionPaths.map(actionEntry), handlers)
+          .flat()
+          .filter((action) => action.id in BAR_LABEL || action.id === "unreference")
+      : [];
 
   // The root has no row of its own, so its control sits above the listing —
   // without it the workspace root is the one directory nothing can be made in.
@@ -1123,6 +1143,42 @@ export function FileTree(props: TreeProps) {
             if (rootWritable && !importingRef.current) imports.start("", event.dataTransfer);
           }}
         >Workspace root</div>
+      )}
+      {selected.size > 1 && picking === null && (
+        <div
+          role="toolbar"
+          aria-label={`${selectionPaths.length} selected`}
+          className="sticky top-0 z-20 mb-1 flex flex-wrap items-center gap-1 rounded border border-blue-200 bg-blue-50 px-2 py-1 text-xs text-blue-900 shadow-sm dark:border-blue-900 dark:bg-blue-950 dark:text-blue-100"
+        >
+          {/* What the actions act on: a folder and a file inside it are one entry. */}
+          <span className="mr-1 font-medium">{selectionPaths.length} selected</span>
+          {barActions.map((action) => (
+            <button
+              key={action.id}
+              type="button"
+              aria-label={action.label}
+              title={action.label}
+              disabled={pendingOff.has(action.id)}
+              onClick={() => runAction(action.id, selectionPaths)}
+              className={`flex items-center gap-1 rounded px-1.5 py-0.5 hover:bg-blue-100 disabled:opacity-40 dark:hover:bg-blue-900/60 ${action.danger ? "text-red-700 dark:text-red-300" : ""}`}
+            >
+              <span aria-hidden className="font-mono">{ROW_ACTION_SYMBOL[action.id]}</span>
+              {BAR_LABEL[action.id] ?? action.label}
+            </button>
+          ))}
+          <button
+            type="button"
+            aria-label="Clear the selection"
+            title="Clear the selection (Esc)"
+            onClick={() => {
+              setSelected(new Set());
+              anchorRef.current = null;
+            }}
+            className="ml-auto rounded px-1.5 py-0.5 hover:bg-blue-100 dark:hover:bg-blue-900/60"
+          >
+            ✕
+          </button>
+        </div>
       )}
       {picking !== null && (
         <div role="status" className="mb-1 flex flex-wrap items-center gap-1 rounded bg-blue-50 px-2 py-1 text-xs text-blue-800 dark:bg-blue-950/40 dark:text-blue-200">

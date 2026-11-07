@@ -1186,10 +1186,27 @@ describe("acting on a selection", () => {
     const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
     const { onDeleteFile, onDeleteFiles } = everything();
     fireEvent.click(dirToggle("src"));
+    fireEvent.click(dirToggle("src"), { ctrlKey: true });
     fireEvent.click(label("main.ts"), { ctrlKey: true });
-    choose("src", /^Delete/);
+    expect(selectedNames()).toEqual(["src", "main.ts"]);
+    expect(screen.getByRole("toolbar", { name: "1 selected" })).toBeInTheDocument();
+    choose("main.ts", /^Delete/);
     expect(onDeleteFile).toHaveBeenCalledWith("src");
     expect(onDeleteFiles).not.toHaveBeenCalled();
+    confirm.mockRestore();
+  });
+
+  it("ExpandingAFolderDoesNotSelectIt: files Ctrl-clicked inside a folder just opened are deleted alone", () => {
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+    const { onDeleteFiles, onDeleteFile } = everything({ tree: { "": [dir("box"), file("other")], box: [file("one"), file("two"), file("three")] } });
+    fireEvent.click(dirToggle("box"));
+    fireEvent.click(label("one"), { ctrlKey: true });
+    fireEvent.click(label("three"), { ctrlKey: true });
+    expect(selectedNames()).toEqual(["one", "three"]);
+    expect(screen.getByRole("toolbar", { name: "2 selected" })).toBeInTheDocument();
+    fireEvent.click(within(screen.getByRole("toolbar")).getByRole("button", { name: "Delete 2 items…" }));
+    expect(onDeleteFiles).toHaveBeenCalledWith(["box/one", "box/three"]);
+    expect(onDeleteFile).not.toHaveBeenCalledWith("box");
     confirm.mockRestore();
   });
 
@@ -1297,6 +1314,82 @@ describe("acting on a selection", () => {
       },
     });
     expect(screen.getByRole("alert")).toHaveTextContent('2 of 3 moved. Not moved: outside/b.txt: "outside/b.txt" is outside the writable zone');
+  });
+});
+
+describe("the selection bar", () => {
+  const bar = () => screen.queryByRole("toolbar");
+  const barButtons = () => within(screen.getByRole("toolbar")).getAllByRole("button").map((button) => button.getAttribute("aria-label"));
+
+  it("TheBarAppearsWithASelection: it counts, and holds what the selection's menu holds", () => {
+    everything({ tree: flat });
+    fireEvent.click(label("a"));
+    expect(bar()).toBeNull();
+    fireEvent.click(label("b"), { ctrlKey: true });
+    expect(screen.getByRole("toolbar", { name: "2 selected" })).toHaveTextContent("2 selected");
+    fireEvent.click(label("c"), { ctrlKey: true });
+    expect(screen.getByRole("toolbar", { name: "3 selected" })).toBeInTheDocument();
+    expect(barButtons()).toEqual([
+      "Reference 3 items in prompt",
+      "Download 3 items as .zip",
+      "Move 3 items to…",
+      "Delete 3 items…",
+      "Clear the selection",
+    ]);
+    openMenu("b");
+    expect(screen.getAllByRole("menuitem").map((item) => item.getAttribute("aria-label") ?? within(item).getByText(/\w/, { selector: "span:not([aria-hidden])" }).textContent)).toEqual(barButtons().slice(0, -1));
+  });
+
+  it("DeleteFromTheBar: one confirmation, one batch, and the bar goes away", () => {
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+    const { onDeleteFiles } = everything({ tree: { "": [file("a"), dir("d"), file("z")], d: [] } });
+    fireEvent.click(label("a"));
+    fireEvent.click(label("z"), { shiftKey: true });
+    fireEvent.click(within(screen.getByRole("toolbar")).getByRole("button", { name: "Delete 3 items…" }));
+    expect(confirm).toHaveBeenCalledTimes(1);
+    expect(confirm).toHaveBeenCalledWith("Delete 3 items permanently? The folder is deleted with everything in it.");
+    expect(onDeleteFiles).toHaveBeenCalledWith(["a", "d", "z"]);
+    expect(bar()).toBeNull();
+    confirm.mockRestore();
+  });
+
+  it("the bar's other actions run on the whole selection too", () => {
+    const { onDownload, onToggleAttachPath } = everything({ tree: flat });
+    fireEvent.click(label("a"));
+    fireEvent.click(label("b"), { shiftKey: true });
+    const toolbar = within(screen.getByRole("toolbar"));
+    fireEvent.click(toolbar.getByRole("button", { name: "Download 2 items as .zip" }));
+    fireEvent.click(toolbar.getByRole("button", { name: "Reference 2 items in prompt" }));
+    fireEvent.click(toolbar.getByRole("button", { name: "Move 2 items to…" }));
+    expect(onDownload).toHaveBeenCalledWith(["a", "b"], false);
+    expect(onToggleAttachPath.mock.calls).toEqual([["a"], ["b"]]);
+    expect(screen.getByRole("status")).toHaveTextContent("Moving 2 items: choose a folder");
+    expect(bar()).toBeNull();
+  });
+
+  it("TheBarClearsTheSelection", () => {
+    everything({ tree: flat });
+    fireEvent.click(label("a"));
+    fireEvent.click(label("c"), { shiftKey: true });
+    fireEvent.click(screen.getByRole("button", { name: "Clear the selection" }));
+    expect(selectedNames()).toEqual([]);
+    expect(bar()).toBeNull();
+  });
+
+  it("NoBarForOneEntry, and a mixed selection's bar offers no deletion", () => {
+    everything({ writableRoot: "src" });
+    fireEvent.click(dirToggle("src"));
+    fireEvent.click(label("readme.md"));
+    expect(bar()).toBeNull();
+    fireEvent.click(label("main.ts"), { ctrlKey: true });
+    expect(barButtons()).toEqual(["Reference 2 items in prompt", "Download 2 items as .zip", "Clear the selection"]);
+  });
+
+  it("stays in view while the tree scrolls", () => {
+    everything({ tree: flat });
+    fireEvent.click(label("a"));
+    fireEvent.click(label("b"), { ctrlKey: true });
+    expect(screen.getByRole("toolbar").className).toMatch(/\bsticky\b/);
   });
 });
 

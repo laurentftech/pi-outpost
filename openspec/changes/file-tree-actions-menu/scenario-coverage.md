@@ -10,7 +10,7 @@ over HTTP in `server/test/files-download.test.mjs`, whose archives are read back
 checked. Expected paths are built with `path.join`, so the Windows CI job compares what the server
 resolves.
 
-## Capability: `components` (35 scenarios, modified and added)
+## Capability: `components` (40 scenarios, modified and added)
 
 | Scenario | Coverage | Assertion evidence |
 | --- | --- | --- |
@@ -38,6 +38,7 @@ resolves.
 | EscapeClearsTheSelection | covered | `ui/src/components/FileTree.test.tsx` — "EscapeClearsTheSelection": nothing selected after Escape on a row |
 | ARangeIncludesVisibleFoldersOnly | covered | `ui/src/components/FileTree.test.tsx` — "ARangeIncludesVisibleFoldersOnly: …": `a`, `open`, `b`, `shut`, `z` and not the collapsed folder's entry; a Ctrl-click on a folder neither expands nor fetches it; `ui/src/components/fileTreeModel.test.ts` — `visibleRows` order and exclusion |
 | ASelectedFolderCoversItsContent | covered | `ui/src/components/FileTree.test.tsx` — "ASelectedFolderCoversItsContent: …": `src` and "src/main.ts" selected, Delete reports `onDeleteFile("src")` and no batch; `ui/src/components/fileTreeModel.test.ts` — `outermost`; `server/test/file-lifecycle.test.mjs` — the server drops `writable/batch/folder/inner.txt` under its deleted folder too |
+| ExpandingAFolderDoesNotSelectIt | covered | `ui/src/components/FileTree.test.tsx` — "ExpandingAFolderDoesNotSelectIt: …": after a plain click opens `box`, the selection is `one` and `three` only, the bar says `2 selected`, and its Delete reports `onDeleteFiles(["box/one", "box/three"])`, never `box` |
 | ASelectionDoesNotOutliveItsFiles | covered | `ui/src/components/FileTree.test.tsx` — "ASelectionDoesNotOutliveItsFiles: …": `b` leaves the selection when its listing drops it; nothing is selected after an empty tree and a new one |
 | DeleteASelectionWithOneConfirmation | covered | `ui/src/components/FileTree.test.tsx` — "DeleteASelectionWithOneConfirmation: …": one `confirm`, saying the folder's content goes with it, then `onDeleteFiles(["readme.md", "src"])`, no single delete |
 | DownloadASelectionAsOneArchive | covered | `ui/src/components/FileTree.test.tsx` — "DownloadASelectionAsOneArchive, …": `onDownload(["readme.md", "src"], false)` once for the selection (and a file as itself, a folder as a zip); `ui/src/util/download.test.ts` — one fetch, one `save` under the server's name |
@@ -45,6 +46,10 @@ resolves.
 | AMixedSelectionOffersNoMutation | covered | `ui/src/components/FileTree.test.tsx` — "AMixedSelectionOffersNoMutation: …": no Delete or Move, `Download 2 items as .zip` and `Reference 2 items in prompt` present; `ui/src/components/fileTreeModel.test.ts` likewise |
 | TheMenuOfAnUnselectedRowActsOnThatRow | covered | `ui/src/components/FileTree.test.tsx` — "TheMenuOfAnUnselectedRowActsOnThatRow: …": the menu is named `Actions for d`, offers the single `Delete…`, and the earlier selection is gone |
 | KeyboardShortcutsOnTheSelection | covered | `ui/src/components/FileTree.test.tsx` — "KeyboardShortcutsOnTheSelection: …": Delete asks `Delete 2 items permanently?` once and reports `onDeleteFiles(["a", "b"])`; F2 opens `Rename c` |
+| TheBarAppearsWithASelection | covered | `ui/src/components/FileTree.test.tsx` — "TheBarAppearsWithASelection: …": no `toolbar` for one file, then one named `2 selected`, then `3 selected`, whose buttons are exactly the selected row's menu items plus `Clear the selection` |
+| DeleteFromTheBar | covered | `ui/src/components/FileTree.test.tsx` — "DeleteFromTheBar: …": one `confirm` naming the count and the folder, `onDeleteFiles(["a", "d", "z"])`, and no `toolbar` afterwards; "the bar's other actions run on the whole selection too" for Download, Reference and Move to… |
+| TheBarClearsTheSelection | covered | `ui/src/components/FileTree.test.tsx` — "TheBarClearsTheSelection": nothing selected, no `toolbar` |
+| NoBarForOneEntry | covered | `ui/src/components/FileTree.test.tsx` — "NoBarForOneEntry, and a mixed selection's bar offers no deletion" and "TheBarAppearsWithASelection" (no `toolbar` after a single click); the bar is `sticky` in "stays in view while the tree scrolls" |
 | PickADestination | covered | `ui/src/components/FileTree.test.tsx` — "PickADestination: …": the banner says `Moving 2 items: choose a folder`, `archive` is expanded while picking, `Move here: 2026` reports `onMoveFiles(["a", "b"], "archive/2026")`, and the banner goes |
 | CancelPicking | covered | `ui/src/components/FileTree.test.tsx` — "CancelPicking: …": Escape and Cancel each end it, no move of either kind reported |
 | AReadOnlyFolderIsNoTarget | covered | `ui/src/components/FileTree.test.tsx` — "a read-only folder offers no target while picking, …": no `Move here: ro`, `Move here: inbox` present |

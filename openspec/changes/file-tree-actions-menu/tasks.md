@@ -38,6 +38,7 @@
 - [x] 6.2 Make the menu act on the normalised selection (count in labels, unselected row becomes the selection, Delete with one confirmation, one archive for Download, Reference once per entry) and the drag of a selected row move the selection, and verify tests for FileTree acts on a selection, ASelectedFolderCoversItsContent and ReferenceASelection
 - [x] 6.3 Add Move to… picking mode (banner with Cancel, writable folders and root as targets except a moved folder and its descendants, folders still expand, Escape) and verify tests for PickADestination, CancelPicking, AReadOnlyFolderIsNoTarget and AMovedFolderIsNoTargetForItself
 - [x] 6.4 Show a batch result and an archive's left-out count in the tree, and verify tests for TheTreeReportsWhatWasRefused and AnEscapingLinkIsLeftOut on the tree side
+- [x] 6.5 Add the selection bar (count, the selection's actions, clear, kept in view while scrolling) and verify tests for every FileTree selection bar scenario, then check it in the running bench
 
 ## 7. Documentation
 

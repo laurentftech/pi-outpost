@@ -107,7 +107,7 @@ Each file and folder row SHALL carry one actions menu, opened by a `⋯` control
 
 ### Requirement: FileTree multi-selection
 
-`FileTree` SHALL let the user select several file and folder rows: Shift-click SHALL select every visible row between the anchor and the clicked row, Ctrl/Cmd-click SHALL add or remove one row, and Escape SHALL clear the selection. These clicks SHALL NOT open a file nor expand a folder. An entry inside a selected folder SHALL be covered by it and acted on once. A path that leaves the listing SHALL leave the selection.
+`FileTree` SHALL let the user select several file and folder rows: Shift-click SHALL select every visible row between the anchor and the clicked row, Ctrl/Cmd-click SHALL add or remove one row, and Escape SHALL clear the selection. These clicks SHALL NOT open a file nor expand a folder, and a plain click that expands a folder SHALL NOT select it. An entry inside a selected folder SHALL be covered by it and acted on once. A path that leaves the listing SHALL leave the selection.
 
 #### Scenario: ShiftClickSelectsARange
 - **GIVEN** files `a`, `b`, `c`, `d` listed in that order and `a` clicked
@@ -133,6 +133,11 @@ Each file and folder row SHALL carry one actions menu, opened by a `⋯` control
 - **GIVEN** the folder `docs` and the file `docs/a.md` are both selected
 - **WHEN** the user deletes, moves, downloads or references the selection
 - **THEN** the request carries `docs` once and not `docs/a.md`
+
+#### Scenario: ExpandingAFolderDoesNotSelectIt
+- **GIVEN** a folder opened with a plain click
+- **WHEN** the user Ctrl-clicks two files inside it and deletes the selection
+- **THEN** only those two files are requested for deletion, never the folder
 
 #### Scenario: ASelectionDoesNotOutliveItsFiles
 - **GIVEN** a selection including `b`
@@ -172,6 +177,29 @@ The actions menu of a selected row SHALL act on the whole selection and say how 
 - **GIVEN** a focused selected row in a selection of writable entries
 - **WHEN** the user presses Delete
 - **THEN** the same single confirmation is asked as from the menu, and F2 on a single focused writable file or folder opens its rename
+
+### Requirement: FileTree selection bar
+
+While two or more entries are selected, `FileTree` SHALL show a bar above the listing that stays in view while the tree scrolls. It SHALL name how many entries are selected, offer the actions the selection's menu offers, each running on the whole selection exactly as from the menu, and offer a control that clears the selection. With fewer than two entries selected, no bar SHALL be shown.
+
+#### Scenario: TheBarAppearsWithASelection
+- **GIVEN** one file selected
+- **WHEN** the user Ctrl-clicks a second entry, and then a third
+- **THEN** a bar appears saying 2 selected, then 3 selected, and it holds the same actions as the menu of a selected row
+
+#### Scenario: DeleteFromTheBar
+- **GIVEN** three writable entries selected
+- **WHEN** the user presses Delete in the bar and confirms once
+- **THEN** `FileTree` reports one batch delete request for the three paths and the bar goes away
+
+#### Scenario: TheBarClearsTheSelection
+- **GIVEN** a selection and its bar
+- **WHEN** the user presses the bar's clear control
+- **THEN** nothing is selected and the bar is gone
+
+#### Scenario: NoBarForOneEntry
+- **GIVEN** a single file clicked, or no selection
+- **THEN** no selection bar is shown
 
 ### Requirement: FileTree destination picking
 
