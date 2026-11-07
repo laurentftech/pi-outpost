@@ -37,6 +37,7 @@ vi.mock("../util/toolOutput", () => ({
 }));
 
 type ToolItem = Extract<ChatItem, { kind: "tool" }>;
+const TOOL_DEFAULTS = { toolCallId: "call-1", args: {}, output: "" } satisfies Pick<ToolItem, "toolCallId" | "args" | "output">;
 
 /** The ToolCard root is always container.children[0] (testing-library wraps output in a div). */
 function cardRoot(container: HTMLElement): HTMLElement {
@@ -49,7 +50,8 @@ describe("ToolCard", () => {
   });
 
   it("renders a command's terminal colours instead of printing their escapes", () => {
-    const item: ToolItem = {
+    const item: ToolItem = { ...TOOL_DEFAULTS,
+      toolCallId: "call-1",
       kind: "tool",
       toolName: "bash",
       running: false,
@@ -72,7 +74,9 @@ describe("ToolCard", () => {
   });
 
   it("renders running tool with amber dot", () => {
-    const item: ToolItem = {
+    const item: ToolItem = { ...TOOL_DEFAULTS,
+      toolCallId: "call-1",
+      output: "",
       kind: "tool",
       toolName: "bash",
       running: true,
@@ -89,7 +93,9 @@ describe("ToolCard", () => {
   });
 
   it("renders error tool with red dot", () => {
-    const item: ToolItem = {
+    const item: ToolItem = { ...TOOL_DEFAULTS,
+      toolCallId: "call-1",
+      output: "",
       kind: "tool",
       toolName: "bash",
       running: false,
@@ -106,7 +112,8 @@ describe("ToolCard", () => {
   });
 
   it("renders completed tool with emerald dot", () => {
-    const item: ToolItem = {
+    const item: ToolItem = { ...TOOL_DEFAULTS,
+      toolCallId: "call-1",
       kind: "tool",
       toolName: "bash",
       running: false,
@@ -124,7 +131,10 @@ describe("ToolCard", () => {
   });
 
   it("renders tool with callHtml in header", () => {
-    const item: ToolItem = {
+    const item: ToolItem = { ...TOOL_DEFAULTS,
+      toolCallId: "call-1",
+      args: {},
+      output: "",
       kind: "tool",
       toolName: "bash",
       running: false,
@@ -140,7 +150,9 @@ describe("ToolCard", () => {
   });
 
   it("renders tool with command summary in args", () => {
-    const item: ToolItem = {
+    const item: ToolItem = { ...TOOL_DEFAULTS,
+      toolCallId: "call-1",
+      output: "",
       kind: "tool",
       toolName: "bash",
       running: false,
@@ -155,7 +167,8 @@ describe("ToolCard", () => {
   });
 
   it("renders tool with formatted output in collapsed state", () => {
-    const item: ToolItem = {
+    const item: ToolItem = { ...TOOL_DEFAULTS,
+      toolCallId: "call-1",
       kind: "tool",
       toolName: "bash",
       running: false,
@@ -172,7 +185,9 @@ describe("ToolCard", () => {
   });
 
   it("renders edit tool with before/after pairs", () => {
-    const item: ToolItem = {
+    const item: ToolItem = { ...TOOL_DEFAULTS,
+      toolCallId: "call-1",
+      output: "",
       kind: "tool",
       toolName: "edit",
       running: false,
@@ -191,7 +206,9 @@ describe("ToolCard", () => {
   });
 
   it("renders write tool with new content", () => {
-    const item: ToolItem = {
+    const item: ToolItem = { ...TOOL_DEFAULTS,
+      toolCallId: "call-1",
+      output: "",
       kind: "tool",
       toolName: "write",
       running: false,
@@ -208,7 +225,10 @@ describe("ToolCard", () => {
   });
 
   it("renders tool with outputHtml in expanded content", () => {
-    const item: ToolItem = {
+    const item: ToolItem = { ...TOOL_DEFAULTS,
+      toolCallId: "call-1",
+      args: {},
+      output: "",
       kind: "tool",
       toolName: "bash",
       running: false,
@@ -228,7 +248,9 @@ describe("ToolCard", () => {
   });
 
   it("renders tool with plain text output", () => {
-    const item: ToolItem = {
+    const item: ToolItem = { ...TOOL_DEFAULTS,
+      toolCallId: "call-1",
+      args: {},
       kind: "tool",
       toolName: "bash",
       running: false,
@@ -247,7 +269,9 @@ describe("ToolCard", () => {
   });
 
   it("renders tool with no output", () => {
-    const item: ToolItem = {
+    const item: ToolItem = { ...TOOL_DEFAULTS,
+      toolCallId: "call-1",
+      output: "",
       kind: "tool",
       toolName: "bash",
       running: false,
@@ -264,7 +288,9 @@ describe("ToolCard", () => {
   });
 
   it("toggles expand/collapse state", () => {
-    const item: ToolItem = {
+    const item: ToolItem = { ...TOOL_DEFAULTS,
+      toolCallId: "call-1",
+      args: {},
       kind: "tool",
       toolName: "bash",
       running: false,
@@ -291,6 +317,7 @@ describe("ToolCard", () => {
 
   it("starts expanded for edit/write tools", () => {
     const editItem: ToolItem = {
+      ...TOOL_DEFAULTS,
       kind: "tool",
       toolName: "edit",
       running: false,
@@ -301,6 +328,7 @@ describe("ToolCard", () => {
     };
 
     const writeItem: ToolItem = {
+      ...TOOL_DEFAULTS,
       kind: "tool",
       toolName: "write",
       running: false,
@@ -318,7 +346,9 @@ describe("ToolCard", () => {
   });
 
   it("starts collapsed for non-edit/write tools", () => {
-    const item: ToolItem = {
+    const item: ToolItem = { ...TOOL_DEFAULTS,
+      toolCallId: "call-1",
+      args: {},
       kind: "tool",
       toolName: "bash",
       running: false,
@@ -333,7 +363,9 @@ describe("ToolCard", () => {
   });
 
   it("shows running message when tool is running with no output", () => {
-    const item: ToolItem = {
+    const item: ToolItem = { ...TOOL_DEFAULTS,
+      toolCallId: "call-1",
+      output: "",
       kind: "tool",
       toolName: "bash",
       running: true,
@@ -351,6 +383,7 @@ describe("ToolCard", () => {
 
   describe("completion progress bar", () => {
     const running = (extra: Partial<ToolItem> = {}): ToolItem => ({
+      toolCallId: "call-1",
       kind: "tool",
       toolName: "crawl",
       running: true,
@@ -403,7 +436,7 @@ describe("ToolCard", () => {
 
   it("keeps a long command whole and scrollable sideways instead of truncating it", () => {
     const command = `find . -name '*.ts' | xargs grep -n '${"a".repeat(200)}' | sort | uniq -c`;
-    const item: ToolItem = { kind: "tool", toolName: "bash", running: false, isError: false, args: { command } };
+    const item: ToolItem = { ...TOOL_DEFAULTS, kind: "tool", toolName: "bash", running: false, isError: false, args: { command } };
     render(<ToolCard item={item} />);
     const summary = screen.getByText(command);
     expect(summary.textContent).toBe(command);
@@ -414,7 +447,7 @@ describe("ToolCard", () => {
   });
 
   it("folds on a click in the call line, but not when the press dragged to select", () => {
-    const item: ToolItem = { kind: "tool", toolName: "bash", running: false, isError: false, args: { command: "ls -la" }, output: "out" };
+    const item: ToolItem = { ...TOOL_DEFAULTS, kind: "tool", toolName: "bash", running: false, isError: false, args: { command: "ls -la" }, output: "out" };
     const { container } = render(<ToolCard item={item} />);
     const root = cardRoot(container);
     const line = screen.getByText("ls -la");
@@ -427,7 +460,7 @@ describe("ToolCard", () => {
   });
 
   it("toggles from the keyboard through the button", () => {
-    const item: ToolItem = { kind: "tool", toolName: "bash", running: false, isError: false, args: { command: "ls" }, output: "out" };
+    const item: ToolItem = { ...TOOL_DEFAULTS, kind: "tool", toolName: "bash", running: false, isError: false, args: { command: "ls" }, output: "out" };
     const { container } = render(<ToolCard item={item} />);
     const button = screen.getByRole("button", { name: /bash/ });
     expect(button).toHaveAttribute("aria-expanded", "false");

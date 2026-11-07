@@ -2,7 +2,6 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { readFile, rm } from "node:fs/promises";
 import { expect, test } from "@playwright/test";
-// @ts-expect-error -- shared integration harness is JavaScript
 import { connect, makeWorkspace, startServer } from "../server/test/harness.mjs";
 
 const provider = fileURLToPath(new URL("../server/test/fixtures/scripted-tools-provider.mjs", import.meta.url));

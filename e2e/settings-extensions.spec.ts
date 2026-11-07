@@ -34,7 +34,10 @@ function repository(
         upstreamRevision: revision("2"),
         token: `assessment-${id}`,
       } as const
-    : {
+    : status === "current" ? {
+        repositoryId: id, status, branch: "main", upstream: "origin/main",
+        localRevision: revision("1"), upstreamRevision: revision("1"),
+      } : {
         repositoryId: id,
         status,
         reason: options.reason ?? `${name} cannot be updated`,

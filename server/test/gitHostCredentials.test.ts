@@ -23,7 +23,6 @@ import {
   storeGitHostCredential,
 } from "../src/gitHostCredentials.ts";
 import { ResourceRepositoryError, ResourceRepositoryService, useGitCredentialStore, useResourceGitObserver } from "../src/resourceRepositories.ts";
-// @ts-expect-error -- .mjs fixture, no types
 import { gitTrustEnv, isolatedGitConfig, makeBareRepository, startGitHttpServer } from "./fixtures/gitHttpServer.mjs";
 
 const run = promisify(execFile);

@@ -6,7 +6,7 @@
  * and the tool results it was handed back, not the server's account of either.
  */
 import assert from "node:assert/strict";
-import { copyFile, readFile } from "node:fs/promises";
+import { appendFile, copyFile, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
@@ -20,8 +20,25 @@ const WORKBOOK = fileURLToPath(new URL("./fixtures/xlsx-grid.xlsx", import.meta.
 /** Each request the provider recorded that declared any tool, in order. */
 async function requests(log) {
   const text = await readFile(log, "utf8").catch(() => "");
-  return text.split("\n").filter(Boolean).map((line) => JSON.parse(line)).filter((request) => request.tools.length > 0);
+  // The provider can still be appending when readFile takes its snapshot. Only
+  // newline-terminated records are complete; malformed complete records still fail.
+  return text.split(/\r?\n/).slice(0, -1).filter(Boolean).map((line) => JSON.parse(line)).filter((request) => request.tools.length > 0);
 }
+
+test("request polling waits for the JSONL record's terminating newline", async () => {
+  const root = await makeWorkspace({});
+  const log = path.join(root, "requests.jsonl");
+  const first = { tools: ["tool_search"] };
+  const second = { tools: ["drawio_check"] };
+  await writeFile(log, `${JSON.stringify(first)}\r\n{"tools":["drawio_`);
+  assert.deepEqual(await requests(log), [first]);
+  await appendFile(log, 'check"]}');
+  assert.deepEqual(await requests(log), [first], "even valid JSON waits for the record boundary");
+  await appendFile(log, "\r\n");
+  assert.deepEqual(await requests(log), [first, second]);
+  await appendFile(log, '{"tools":\n');
+  await assert.rejects(requests(log), SyntaxError, "a malformed complete record must not be hidden");
+});
 
 async function nthRequest(log, index, timeoutMs = 30_000) {
   const deadline = Date.now() + timeoutMs;

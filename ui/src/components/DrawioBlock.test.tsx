@@ -95,7 +95,7 @@ describe("DrawioBlock in a reply", () => {
   // openlore: scenario=AMissingDiagramSaysSo spec=drawio-diagrams
   it("AMissingDiagramSaysSo: a file that cannot be read is named, with no frame or broken picture", async () => {
     const io = fakeFileIo();
-    io.read.mockRejectedValue(new FileIoError("File not found", "not_found"));
+    io.read.mockRejectedValue(new FileIoError("File not found", "not-found"));
     mount(<DrawioBlock path={PATH} variant="reply" />, { fileIo: io });
     const alert = await screen.findByTestId("drawio-block-missing");
     expect(alert).toHaveTextContent(`The diagram ${PATH} could not be shown: File not found`);

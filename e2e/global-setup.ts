@@ -10,9 +10,7 @@ import { POSTER_EXAMPLE } from "@pi-outpost/posters/guide";
 // The same harness the server's own integration tests use: a real server, in its
 // own process group, against a throwaway workspace, with PI_OFFLINE set so the
 // SDK's model runtime never reaches the network.
-// @ts-expect-error -- .mjs harness, no types; the shape is asserted below
 import { makeWorkspace, startServer } from "../server/test/harness.mjs";
-// @ts-expect-error -- a plain .mjs test helper, without type declarations
 import { agentDirAtOldVersion } from "../server/test/fakePiPackages.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));

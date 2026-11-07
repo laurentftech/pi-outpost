@@ -84,6 +84,7 @@ describe("GitMenu", () => {
         status={status([{ repo: "", branch: "main", ahead: 2, behind: 3 }])}
         selected={null}
         log={LOG}
+        onCloseLog={vi.fn()}
         onFetchLog={vi.fn()}
         onShowCommit={vi.fn()}
       />,

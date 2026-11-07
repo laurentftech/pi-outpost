@@ -1,7 +1,6 @@
 import path from "node:path";
 import { readFile, readdir, rm, stat } from "node:fs/promises";
 import { expect, test as base, type Page, type Locator } from "@playwright/test";
-// @ts-expect-error -- shared integration harness is JavaScript
 import { makeWorkspace, startServer } from "../server/test/harness.mjs";
 
 type Workspace = { root: string; other: string; url: string };

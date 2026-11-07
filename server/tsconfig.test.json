@@ -1,0 +1,5 @@
+{
+  "//": "The server's shipped code and its TypeScript tests, under the same strict settings. `typecheck` runs this one: it is a superset of tsconfig.json. JavaScript tests (*.mjs) are out of scope.",
+  "extends": "./tsconfig.json",
+  "include": ["src", "test/**/*.ts", "test/**/*.d.mts"]
+}

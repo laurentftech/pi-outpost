@@ -10,7 +10,6 @@ import { describe, test, type TestContext } from "node:test";
 import { installPiPackage, listPiPackages, lookupPiPackage, removePiPackage, restorePiPackage } from "../src/piPackages.ts";
 import { fetchPublishedVersion, type PublishedVersion } from "../src/update.ts";
 import type { PiPackageInfo } from "@pi-outpost/shared";
-// @ts-expect-error -- a plain .mjs test helper, without type declarations
 import { NAME, agentDirAtOldVersion } from "./fakePiPackages.mjs";
 
 /** npm, pointed at the test's registry, cache and an empty global prefix, for one test. */

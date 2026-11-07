@@ -14,13 +14,14 @@ import { describe, test } from "node:test";
 import { createStructuredExchangeToolDefinition } from "../src/structuredExchangeTool.ts";
 import { STRUCTURED_EXCHANGE_SCHEMA_V1 as S, STRUCTURED_EXCHANGE_SCHEMA_V1 } from "@pi-outpost/shared/structured-exchange";
 import { structuredExchangeField } from "../src/convert.ts";
+import { UNUSED_TOOL_CONTEXT as UNUSED_CONTEXT } from "./toolContext.ts";
 
 // A project with no profile registry: these are the core contract's tests, and a
 // registry would make them tests of a profile instead.
 const tool = createStructuredExchangeToolDefinition({ projectRoot: mkdtempSync(path.join(tmpdir(), "pi-present-")) });
 
 const call = (document: unknown, summary = "a summary") =>
-  tool.execute("call-1", { document: typeof document === "string" ? document : JSON.stringify(document), summary }) as Promise<{
+  tool.execute("call-1", { document: typeof document === "string" ? document : JSON.stringify(document), summary }, undefined, undefined, UNUSED_CONTEXT) as Promise<{
     content: { type: string; text: string }[];
     details?: unknown;
     isError?: boolean;
@@ -188,7 +189,7 @@ describe("what survives from the tool to the interface", () => {
   });
 
   const recovered = async () => {
-    const result = await tool.execute("call-1", { document, summary: "a summary" });
+    const result = await tool.execute("call-1", { document, summary: "a summary" }, undefined, undefined, UNUSED_CONTEXT);
     const { structured } = structuredExchangeField((result as { details?: unknown }).details);
     assert.equal(typeof structured, "string", "the tool's document must reach the interface");
     return JSON.parse(structured!);
@@ -219,7 +220,7 @@ describe("what survives from the tool to the interface", () => {
     // The honest boundary: the document arrives parsed, so what comes back out is a
     // re-serialisation. It is the same document; it is not the same string, and no
     // test here should imply otherwise.
-    const result = await tool.execute("call-1", { document, summary: "a summary" });
+    const result = await tool.execute("call-1", { document, summary: "a summary" }, undefined, undefined, UNUSED_CONTEXT);
     const details = (result as { details?: unknown }).details;
     assert.equal(typeof details, "object", "the tool hands on a parsed value, not the text it was given");
     assert.deepEqual(details, JSON.parse(document));
@@ -277,7 +278,7 @@ describe("what survives from the tool to the interface", () => {
 });
 
 describe("when the agent should reach for present_structure, and when for mermaid", () => {
-  const guidance = () => (createStructuredExchangeToolDefinition().promptGuidelines ?? []).join("\n");
+  const guidance = () => (tool.promptGuidelines ?? []).join("\n");
 
   test("graphs, sequences and tables still go to present_structure", () => {
     assert.match(guidance(), /graph, a sequence or a table[^\n]*use present_structure/);

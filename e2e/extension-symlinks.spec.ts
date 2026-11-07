@@ -1,7 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { mkdir, readFile, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import path from "node:path";
-// @ts-expect-error -- shared real-server integration harness has no declarations
 import { makeWorkspace, startServer } from "../server/test/harness.mjs";
 
 // openlore: scenario=PreservesTheChosenExtensionAlias spec=extension-path-aliases

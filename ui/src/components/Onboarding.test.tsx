@@ -82,6 +82,8 @@ describe("Onboarding", () => {
     const onAnswerLogin = vi.fn();
     const onCancelLogin = vi.fn();
     const login: LoginFlowState = {
+      flowId: "flow-1",
+      method: "oauth",
       provider: "codex",
       events: [{ type: "auth_url", url: "https://example.test/sign-in" }],
       prompt: { promptId: "p1", prompt: { type: "manual_code", message: "Paste the code" } },

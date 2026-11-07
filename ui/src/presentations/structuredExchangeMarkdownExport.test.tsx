@@ -8,7 +8,8 @@
  */
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { fireEvent, render, screen, within } from "@testing-library/react";
-import type { ChatItem, StructuredTableData } from "@pi-outpost/shared";
+import type { ChatItem } from "@pi-outpost/shared";
+import type { StructuredTableData } from "@pi-outpost/shared/structured-exchange";
 import { tableMarkdown } from "@pi-outpost/shared/structured-exchange/table-export";
 import { structuredExchangePresentation } from "./StructuredExchangeView";
 

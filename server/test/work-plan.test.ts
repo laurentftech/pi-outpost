@@ -46,6 +46,7 @@ describe("Work Plan contract", () => {
         status,
         dependsOn: [],
         resources: [],
+        evidence: [],
       })),
     });
 
@@ -229,7 +230,7 @@ describe("Work Plan contract", () => {
         { id: "same", type: "test", result: "passed", summary: "Second" },
       ], /duplicate evidence id: same/],
     ] as const) {
-      assert.throws(() => validateWorkPlan(planWith(evidence as unknown[])), message);
+      assert.throws(() => validateWorkPlan(planWith([...evidence])), message);
     }
   });
 

@@ -10,6 +10,13 @@ import {
   messageUsage,
 } from "../src/convert.ts";
 import { ExtensionRenderer } from "../src/extensionRender.ts";
+import type { ChatItem } from "@pi-outpost/shared";
+
+/** The item, checked to be of `kind` before a test reads what only that kind carries. */
+function ofKind<K extends ChatItem["kind"]>(item: ChatItem, kind: K): Extract<ChatItem, { kind: K }> {
+  assert.equal(item.kind, kind);
+  return item as Extract<ChatItem, { kind: K }>;
+}
 
 // ---------------------------------------------------------------------------
 // contentText
@@ -227,7 +234,7 @@ describe("historyToItems", () => {
     assert.equal(items.length, 1);
     const tool = items[0] as Extract<(typeof items)[0], { kind: "tool" }>;
     assert.equal(tool.toolName, "grep");
-    assert.equal(tool.args.pattern, "foo");
+    assert.deepEqual(tool.args, { pattern: "foo" });
   });
 
   test("marks trailing assistant as streaming when flag is set", () => {
@@ -468,7 +475,7 @@ describe("assistantToItem", () => {
       content: [{ type: "text", text: "oops" }],
       errorMessage: "fail",
     });
-    assert.equal(item.errorMessage, "fail");
+    assert.equal(ofKind(item, "assistant").errorMessage, "fail");
   });
 
   test("carries the turn's usage when the provider reported it", () => {
@@ -477,8 +484,7 @@ describe("assistantToItem", () => {
       content: [{ type: "text", text: "done" }],
       usage: { input: 10, output: 5, cacheRead: 2, cacheWrite: 1, totalTokens: 18, cost: { total: 0.004 } },
     });
-    assert.equal(item.kind, "assistant");
-    assert.deepEqual(item.usage, {
+    assert.deepEqual(ofKind(item, "assistant").usage, {
       input: 10,
       output: 5,
       cacheRead: 2,
@@ -496,13 +502,14 @@ describe("assistantToItem", () => {
       content: [{ type: "text", text: "done" }],
       usage: { input: 10, output: 5, cacheRead: 0, cacheWrite: 0, totalTokens: 15 },
     });
-    assert.equal(item.usage?.totalTokens, 15);
-    assert.equal("cost" in (item.usage ?? {}), false);
+    const { usage } = ofKind(item, "assistant");
+    assert.equal(usage?.totalTokens, 15);
+    assert.equal("cost" in (usage ?? {}), false);
   });
 
   test("carries no usage when the message reports none", () => {
     const item = assistantToItem({ role: "assistant", content: [{ type: "text", text: "done" }] });
-    assert.equal(item.usage, undefined);
+    assert.equal(ofKind(item, "assistant").usage, undefined);
   });
 });
 
@@ -614,7 +621,7 @@ describe("customMessageToItem", () => {
       display: true,
       details: { key: "val" },
     });
-    assert.deepEqual(item.details, { key: "val" });
+    assert.deepEqual(ofKind(item, "custom").details, { key: "val" });
   });
 
   test("defaults customType to 'custom'", () => {
@@ -623,8 +630,9 @@ describe("customMessageToItem", () => {
       content: "plain",
       display: true,
     });
-    assert.equal(item.customType, "custom");
-    assert.equal(item.text, "plain");
+    const custom = ofKind(item, "custom");
+    assert.equal(custom.customType, "custom");
+    assert.equal(custom.text, "plain");
   });
 });
 

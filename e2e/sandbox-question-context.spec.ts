@@ -2,7 +2,6 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { access, mkdir, readFile, realpath, rm } from "node:fs/promises";
 import { expect, test } from "@playwright/test";
-// @ts-expect-error -- shared real-server integration harness is JavaScript
 import { connect, makeWorkspace, startServer } from "../server/test/harness.mjs";
 
 const provider = fileURLToPath(new URL("../server/test/fixtures/bash-call-provider.mjs", import.meta.url));
@@ -81,7 +80,9 @@ for (const decision of ["Refuse", "Allow once"] as const) {
       expect(client.received.some((m: { type: string }) => m.type === "sandbox_grant_resolved")).toBe(false);
       await page.screenshot({ path: testInfo.outputPath("long-sandbox-question-mobile.png") });
       await panel.getByRole("button", { name: decision, exact: true }).click();
-      const resolved = await client.waitFor((m: { type: string; id: string }) => m.type === "sandbox_grant_resolved" && m.id === request.id);
+      const resolved = await client.waitFor((m) => m.type === "sandbox_grant_resolved" && m.id === request.id);
+      expect(resolved.type).toBe("sandbox_grant_resolved");
+      if (resolved.type !== "sandbox_grant_resolved") throw new Error("Expected the grant resolution");
       expect(resolved.outcome).toBe(decision === "Refuse" ? "refused" : "approved-once");
       await expect(panel).toHaveCount(0);
       await expect.poll(() => exists(log)).toBe(true);

@@ -38,7 +38,7 @@ function setup(content: string, path = "diagrams/architecture.json", overrides: 
     file,
     isStreaming: false,
     gitDiff: null,
-    gitAvailable: false,
+    inRepository: false,
     onDirtyChange: vi.fn(),
     onFetchGitDiff: vi.fn(),
     onClearGitDiff: vi.fn(),
@@ -135,7 +135,7 @@ describe("a structured-exchange document opened as a file", () => {
         file={file}
         isStreaming={false}
         gitDiff={null}
-        gitAvailable={false}
+        inRepository={false}
         onDirtyChange={vi.fn()}
         onFetchGitDiff={vi.fn()}
         onClearGitDiff={vi.fn()}
@@ -172,7 +172,7 @@ describe("a structured-exchange document opened as a file", () => {
         file={file}
         isStreaming={false}
         gitDiff={null}
-        gitAvailable={false}
+        inRepository={false}
         onDirtyChange={vi.fn()}
         onFetchGitDiff={vi.fn()}
         onClearGitDiff={vi.fn()}

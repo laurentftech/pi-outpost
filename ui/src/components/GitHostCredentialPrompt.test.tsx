@@ -244,7 +244,7 @@ describe("a host that wants credentials, on refresh", () => {
     view.update({ operations: operations({ refresh: { requestId: "r1", repositoryId: "repo-demo", status: "ready" } }) });
     expect(screen.getByRole("alert")).toHaveTextContent("refused this user name or secret");
     // Later the person checks again themselves (the credential was removed meanwhile): no blame.
-    fireEvent.click(screen.getByRole("button", { name: "Check", exact: true }));
+    fireEvent.click(screen.getByRole("button", { name: "Check" }));
     view.update({ operations: operations({ refresh: { requestId: "r2", repositoryId: "repo-demo", status: "ready" } }) });
     expect(screen.queryByText(/refused this user name or secret/)).toBeNull();
     expect(screen.getByRole("form", { name: "Credentials for git.acme.example:8447" })).toBeInTheDocument();

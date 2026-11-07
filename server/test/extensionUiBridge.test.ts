@@ -285,8 +285,10 @@ describe("ExtensionUiBridge", () => {
       assert.notEqual(t.getFgAnsi("success"), t.getFgAnsi("warning"));
       assert.notEqual(t.getFgAnsi("warning"), t.getFgAnsi("error"));
       ctx.setStatus("blackhole", `${success} ${warning} ${error}`);
-      assert.equal(sent[0].statusText, `${success} ${warning} ${error}`);
-      assert.equal(sent[0].statusKey, "blackhole");
+      const [status] = sent;
+      assert.ok(status.method === "setStatus", "setStatus reaches the interface as a setStatus request");
+      assert.equal(status.statusText, `${success} ${warning} ${error}`);
+      assert.equal(status.statusKey, "blackhole");
       assert.ok(t.getFgAnsi("dim"));
       assert.ok(t.getFgAnsi("muted"));
       assert.ok(t.getFgAnsi("accent"));

@@ -179,7 +179,7 @@ describe("holding the window", () => {
 
 // openlore: {"domain":"cli","requirement":"AFailureToStartIsSaidOutLoud","scenario":"TheMessageOutlivesTheWindow","specFile":"openspec/changes/say-why-the-server-could-not-start/specs/cli/spec.md"}
 describe("holding the console for any pre-listen failure", () => {
-  const heldStream = (calls: string[]): Parameters<typeof holdConsoleIfOwned>[0]["stdin"] => ({
+  const heldStream = (calls: string[]): NonNullable<NonNullable<Parameters<typeof holdConsoleIfOwned>[0]>["stdin"]> => ({
     isTTY: true,
     setRawMode: (mode) => calls.push(`raw:${mode}`),
     resume: () => calls.push("resume"),

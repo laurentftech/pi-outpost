@@ -128,6 +128,7 @@ describe("validation resolves nothing it is handed", () => {
     assert.deepEqual(attempts, []);
     assert.equal(result.valid, true);
     if (!result.valid) return;
+    assert.ok("profile" in result.envelope);
     assert.equal(result.envelope.profile, "urn:nobody:has:heard:of:this");
   });
 
@@ -145,7 +146,10 @@ describe("validation resolves nothing it is handed", () => {
       );
       assert.deepEqual(attempts, [], `${profile} was resolved`);
       assert.equal(result.valid, true, `${profile} was refused rather than carried as text`);
-      if (result.valid) assert.equal(result.envelope.profile, profile);
+      if (result.valid) {
+        assert.ok("profile" in result.envelope);
+        assert.equal(result.envelope.profile, profile);
+      }
     }
   });
 

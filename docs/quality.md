@@ -8,7 +8,7 @@ workflow and [SECURITY.md](../SECURITY.md) for private vulnerability reports.
 
 | Control | Implementation | Scope and limits |
 |---|---|---|
-| Type checking | `npm run typecheck`, workspace TypeScript configurations | Strict TypeScript in the server and UI; build checks also validate the consuming applications. It does not validate runtime inputs by itself. |
+| Type checking | `npm run typecheck`, workspace and e2e TypeScript configurations | Strict TypeScript includes all TypeScript test suites and their support files. It does not validate runtime inputs by itself. |
 | Lint | `npm run lint`, workspace Oxlint configurations | Includes `server/src`; selected correctness rules fail the build. The server permits at most 43 existing warnings. This ceiling prevents the total growing; it does not prove each new line is warning-free. |
 | Static analysis | [CodeQL workflow](../.github/workflows/codeql.yml) | Actions, C# and JavaScript/TypeScript on PRs, main and weekly. JS/TS uses `security-and-quality`; other languages retain default queries. Findings still need review. |
 | Unit and integration tests | [CI workflow](../.github/workflows/ci.yml), workspace test scripts | Main suites run on Ubuntu and Windows; real HTTP/WebSocket tests use isolated server processes. Native install checks also run on macOS. |
@@ -17,6 +17,23 @@ workflow and [SECURITY.md](../SECURITY.md) for private vulnerability reports.
 | Spec scenario inventory | `scripts/check-scenario-coverage.mjs` | Checks a touched change's scenario matrix and cited files. A reviewer must still read the assertions and verify their outcomes. |
 | Packaging and confinement | CLI install, container, MCP bundle and native sandbox tests | Exercises installed/native artifacts and refusals. Some jobs run only on specific platforms or changed paths; use their actual result for the change. |
 | Install and publication policy | `.npmrc`, root `allowScripts`, release workflow | npm 12.2.1 rejects unreviewed install scripts; npm publication uses GitHub OIDC/provenance. Dependencies and upstream advisories still need review. |
+
+## Tests are type-checked
+
+`npm run typecheck` checks server sources and TypeScript tests through
+`server/tsconfig.test.json`, UI sources and tests through `ui/tsconfig.json`, and
+Playwright specs and support files through `e2e/tsconfig.json`. Office, Open WebUI,
+posters and MCP already include their tests in their workspace configurations.
+There is no tolerated type-error ceiling. JavaScript tests (`.mjs`) are outside this check.
+
+`npm run test:scripts` compares tracked test files with the compiler's actual file list
+and verifies that new ill-typed files fail the check. Lint rejects `@ts-ignore`,
+`@ts-nocheck` and unexplained `@ts-expect-error` comments in the UI, server tests and e2e.
+Type checking complements runtime assertions; it cannot prove that a test observes the
+right behaviour or that an untyped helper's declaration matches its implementation.
+
+The e2e compiler resolves the embed package's API from its source, so type checking
+works before the package is built. Browser tests still import its built public entry point.
 
 ## What the coverage badge means
 
