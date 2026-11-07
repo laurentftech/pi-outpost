@@ -9,7 +9,76 @@ permissions:
   contents: read
 
 jobs:
+  # Does this pull request change anything a test could see? A documentation-only PR
+  # skips the jobs below and is judged by `CI ok` in about a minute; anything else runs
+  # all of them. A push to main always runs everything: the coverage badge and Scorecard
+  # read main.
+  #
+  # Documentation only means: the Markdown files at the root listed below, the issue and
+  # PR templates, and files under docs/ that no other file names. Some docs/ pages are
+  # contracts — tests validate their examples, the CLI build copies them into the package
+  # — and the tests and build name them by their full repository path. So a docs/ file
+  # whose path appears anywhere outside Markdown and docs/ itself counts as code. A test
+  # that reads a docs/ file must therefore spell its path in full, as the quality guide
+  # says; and this comment avoids spelling any, so as not to claim a page by mention.
+  # A mention in a code comment or a user-facing link also counts: slower, never unsafe.
+  # Everything not matched, openspec/, skills/ and CHANGELOG.md included, runs the full CI.
+  changes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      code: ${{ steps.classify.outputs.code }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: github.event_name == 'pull_request'
+        with:
+          persist-credentials: false
+      - name: Classify the changed files
+        id: classify
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          if [ -z "$PR" ]; then
+            echo "not a pull request: full CI"
+            echo "code=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # A rename lists both names: the old path matters as much as the new one.
+          gh api "repos/$GITHUB_REPOSITORY/pulls/$PR/files" --paginate \
+            -q '.[] | .filename, (.previous_filename // empty)' > "$RUNNER_TEMP/files"
+          # The listing stops at 3000 files; a PR that size is not documentation.
+          if [ "$(wc -l < "$RUNNER_TEMP/files")" -ge 3000 ]; then
+            echo "too many files to list: full CI"
+            echo "code=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          code=false
+          while IFS= read -r file; do
+            case "$file" in
+              README.md|CONTRIBUTING.md|SECURITY.md|CLAUDE.md|AGENTS.md) continue ;;
+              .github/ISSUE_TEMPLATE/*|.github/pull_request_template.md) continue ;;
+              docs/*)
+                if git grep -qF -- "$file" -- ':!*.md' ':!docs/'; then
+                  echo "$file is named by: $(git grep -lF -- "$file" -- ':!*.md' ':!docs/' | tr '\n' ' ')"
+                  code=true
+                fi
+                ;;
+              *)
+                echo "$file is not documentation"
+                code=true
+                ;;
+            esac
+          done < "$RUNNER_TEMP/files"
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          if [ "$code" = false ]; then echo "documentation only: the test jobs are skipped"; fi
+
   check:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest]
@@ -131,6 +200,8 @@ jobs:
           node scripts/check-scenario-coverage.mjs --base FETCH_HEAD
 
   npm-install:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -153,6 +224,8 @@ jobs:
   # 847 UI tests run. Its own job: it needs a browser the other legs do not, and
   # running in parallel keeps it off the critical path.
   browser:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     # Chromium and the twenty-odd system libraries it needs are already in this
@@ -229,6 +302,8 @@ jobs:
   # terminal's directory — so they run on every pull request, from the same script a
   # developer runs (scripts/mxc-linux/test.sh). Its own job: Docker, not the suites' node.
   mxc-linux:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -243,6 +318,8 @@ jobs:
   # which ships for Apple silicon only — which macos-latest is and no developer machine here is.
   # The same script a developer on a Mac runs (scripts/mxc-macos/test.sh); these tests skip elsewhere.
   mxc-macos:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: macos-latest
     timeout-minutes: 20
     steps:
@@ -255,6 +332,26 @@ jobs:
         run: npm install -g npm@12.2.1
       - run: npm ci --workspace server --workspace shared --workspace office --include-workspace-root=false
       - run: bash scripts/mxc-macos/test.sh
+
+  # The one check the branch rules require, so the required list never has to follow the
+  # jobs above. A skipped matrix job reports no "check (ubuntu-latest)" at all, which a
+  # rule naming it would wait on forever; this job always reports. It passes when every
+  # job passed or was skipped as documentation-only, and fails on any failure or
+  # cancellation — or if the classification itself did not succeed.
+  ci-ok:
+    name: CI ok
+    if: always()
+    needs: [changes, check, npm-install, browser, mxc-linux, mxc-macos]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Every job passed, or was skipped as documentation-only
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: |
+          echo "$RESULTS" | jq -r 'to_entries[] | "\(.key): \(.value.result)"'
+          echo "$RESULTS" | jq -e '.changes.result == "success"
+            and all(.[]; .result == "success" or .result == "skipped")' > /dev/null
 
   # The badge, drawn and pushed here rather than by a marketplace action: this is
   # the only job that may write to the repository, and nothing outside it runs.
