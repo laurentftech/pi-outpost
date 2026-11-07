@@ -729,37 +729,74 @@ export async function revealPathNative(
   }
 }
 
-/** Resolve an existing non-symlink regular file inside the browser root. */
-async function resolveRegularFile(root: string, relPath: string): Promise<string> {
-  const resolved = await resolveConfined(root, relPath);
-  try {
-    // Reject a symlink in the final segment: mutating or copying its resolved
-    // target would make the visible tree entry's behavior surprising.
-    if (!(await fs.lstat(path.resolve(root, relPath))).isFile()) {
-      throw new FileBrowserError("not-found", `"${relPath}" is not a regular file`);
-    }
-  } catch (error) {
-    if (error instanceof FileBrowserError) throw error;
-    throw new FileBrowserError("not-found", `"${relPath}" does not exist`);
-  }
-  // Operate through the canonical path we just confined. Returning the lexical
-  // path would reopen a race where an intermediate symlink is retargeted.
-  return resolved;
+/** A tree entry the lifecycle operations act on: a regular file or a real (non-link) directory. */
+interface LifecycleEntry {
+  resolved: string;
+  kind: "file" | "directory";
 }
 
-/** Resolve an existing regular file and prove it is inside the writable zone. */
-async function resolveWritableFile(
+/**
+ * Resolve an existing non-symlink regular file or directory inside the browser root.
+ * A link in the final segment is refused: mutating or copying its target would
+ * surprise whoever looks at the tree entry.
+ */
+async function resolveLifecycleEntry(root: string, relPath: string): Promise<LifecycleEntry> {
+  const resolved = await resolveConfined(root, relPath);
+  let stat;
+  try {
+    stat = await fs.lstat(path.resolve(root, relPath));
+  } catch {
+    throw new FileBrowserError("not-found", `"${relPath}" does not exist`);
+  }
+  if (stat.isFile()) return { resolved, kind: "file" };
+  if (stat.isDirectory()) return { resolved, kind: "directory" };
+  throw new FileBrowserError("not-found", `"${relPath}" is not a regular file or folder`);
+}
+
+/**
+ * Resolve an existing file or folder that may be renamed, moved or deleted: inside
+ * the writable zone, and neither the browser root nor the writable root itself —
+ * `isWithin` alone would accept the writable root, which is within itself.
+ */
+async function resolveWritableEntry(
   root: string,
   writableRel: string | null | undefined,
   relPath: string,
-): Promise<string> {
+): Promise<LifecycleEntry> {
   if (writableRel === null) throw new FileBrowserError("denied", "The sandbox is read-only");
-  const resolved = await resolveRegularFile(root, relPath);
+  const entry = await resolveLifecycleEntry(root, relPath);
   const writableRoot = writableRel === undefined ? root : path.resolve(root, writableRel);
-  if (!isWithin(writableRoot, resolved)) {
+  if (entry.resolved === root || entry.resolved === writableRoot) {
+    throw new FileBrowserError("denied", `"${relPath === "" ? "/" : relPath}" is a root and cannot be renamed, moved or deleted`);
+  }
+  if (!isWithin(writableRoot, entry.resolved)) {
     throw new FileBrowserError("denied", `"${relPath}" is outside the writable zone`);
   }
-  return resolved;
+  return entry;
+}
+
+/**
+ * Move a directory without replacing anything that holds data. A directory cannot
+ * be hard-linked, so `linkThenUnlink` does not apply: `rename` runs after an
+ * `lstat` that found no destination. Between the two, a directory created by
+ * someone else could only be replaced if it is empty — `rename` refuses a non-empty
+ * destination on POSIX and any existing one on Windows.
+ */
+async function renameDirectoryNoReplace(source: string, destination: string, destinationRel: string, verb: "rename" | "move"): Promise<void> {
+  if (destination === source || isWithin(source, destination)) {
+    throw new FileBrowserError("denied", `Cannot ${verb} a folder into itself`);
+  }
+  const existing = await fs.lstat(destination).then(() => true, () => false);
+  if (existing) throw new FileBrowserError("conflict", `"${destinationRel}" already exists`);
+  try {
+    await fs.rename(source, destination);
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === "ENOTEMPTY" || code === "EEXIST" || (code === "EPERM" && (await fs.lstat(destination).then(() => true, () => false)))) {
+      throw new FileBrowserError("conflict", `"${destinationRel}" already exists`);
+    }
+    throw lifecycleError(error, destinationRel, verb);
+  }
 }
 
 /** Resolve an existing destination directory and prove it is writable. */
@@ -815,7 +852,7 @@ async function linkThenUnlink(source: string, destination: string, destinationRe
   }
 }
 
-/** Rename one regular file within its current directory, never overwriting. */
+/** Rename one regular file or folder within its current directory, never overwriting. */
 export async function renameFileFromBrowser(
   root: string,
   writableRel: string | null | undefined,
@@ -824,43 +861,50 @@ export async function renameFileFromBrowser(
 ): Promise<string> {
   assertCreatableName(name);
   if (name.includes("/")) throw new FileBrowserError("denied", `"${name}" is a path, not a name`);
-  const source = await resolveWritableFile(root, writableRel, relPath);
+  const source = await resolveWritableEntry(root, writableRel, relPath);
   const parentRel = relPath.includes("/") ? relPath.slice(0, relPath.lastIndexOf("/")) : "";
   await resolveWritableDirectory(root, writableRel, parentRel);
   const destinationRel = parentRel ? `${parentRel}/${name}` : name;
   const destination = await resolveConfined(root, destinationRel);
-  await linkThenUnlink(source, destination, destinationRel, "rename");
+  if (source.kind === "directory") await renameDirectoryNoReplace(source.resolved, destination, destinationRel, "rename");
+  else await linkThenUnlink(source.resolved, destination, destinationRel, "rename");
   return destinationRel;
 }
 
-/** Permanently delete one writable regular file. */
+/**
+ * Permanently delete one writable regular file, or one writable folder with
+ * everything inside it. `fs.rm` removes a symbolic link as a link: nothing a link
+ * inside the folder points to is touched.
+ */
 export async function deleteFileFromBrowser(
   root: string,
   writableRel: string | null | undefined,
   relPath: string,
 ): Promise<void> {
-  const source = await resolveWritableFile(root, writableRel, relPath);
+  const source = await resolveWritableEntry(root, writableRel, relPath);
   try {
-    await fs.unlink(source);
+    if (source.kind === "directory") await fs.rm(source.resolved, { recursive: true });
+    else await fs.unlink(source.resolved);
   } catch (error) {
     throw lifecycleError(error, relPath, "delete");
   }
 }
 
-/** Move one regular file into an existing writable directory, never overwriting. */
+/** Move one regular file or folder into an existing writable directory, never overwriting. */
 export async function moveFileFromBrowser(
   root: string,
   writableRel: string | null | undefined,
   relPath: string,
   destinationDirectory: string,
 ): Promise<string> {
-  const source = await resolveWritableFile(root, writableRel, relPath);
+  const source = await resolveWritableEntry(root, writableRel, relPath);
   const destinationDir = await resolveWritableDirectory(root, writableRel, destinationDirectory);
   const name = relPath.split("/").pop() ?? "";
   const destinationRel = destinationDirectory ? `${destinationDirectory}/${name}` : name;
   const destination = path.join(destinationDir, name);
   await resolveConfined(root, destinationRel);
-  await linkThenUnlink(source, destination, destinationRel, "move");
+  if (source.kind === "directory") await renameDirectoryNoReplace(source.resolved, destination, destinationRel, "move");
+  else await linkThenUnlink(source.resolved, destination, destinationRel, "move");
   return destinationRel;
 }
 
@@ -871,18 +915,154 @@ export async function copyFileFromBrowser(
   relPath: string,
   destinationDirectory: string,
 ): Promise<string> {
-  const source = await resolveRegularFile(root, relPath);
+  return (await copyEntryFromBrowser(root, writableRel, relPath, destinationDirectory)).path;
+}
+
+/**
+ * Copy one confined regular file, or one folder with everything inside it, into an
+ * existing writable directory under its own name, never overwriting. A folder's
+ * content comes from `walkConfined`, so what resolves outside the browser root is
+ * left out — and counted in `skipped` — exactly as an archive would leave it out.
+ * Creating the top folder is the no-overwrite claim; a failure after it leaves the
+ * partial copy and says so, and the source is never touched.
+ */
+export async function copyEntryFromBrowser(
+  root: string,
+  writableRel: string | null | undefined,
+  relPath: string,
+  destinationDirectory: string,
+): Promise<{ path: string; skipped: number }> {
+  const source = await resolveLifecycleEntry(root, relPath);
   const destinationDir = await resolveWritableDirectory(root, writableRel, destinationDirectory);
   const name = relPath.split("/").pop() ?? "";
   const destinationRel = destinationDirectory ? `${destinationDirectory}/${name}` : name;
   const destination = path.join(destinationDir, name);
   await resolveConfined(root, destinationRel);
+  if (source.kind === "file") {
+    try {
+      await fs.copyFile(source.resolved, destination, constants.COPYFILE_EXCL);
+    } catch (error) {
+      throw lifecycleError(error, destinationRel, "copy");
+    }
+    return { path: destinationRel, skipped: 0 };
+  }
+  if (destination === source.resolved || isWithin(source.resolved, destination)) {
+    throw new FileBrowserError("denied", "Cannot copy a folder into itself");
+  }
+  const walk = await walkConfined(root, [relPath]);
   try {
-    await fs.copyFile(source, destination, constants.COPYFILE_EXCL);
+    await fs.mkdir(destination);
   } catch (error) {
     throw lifecycleError(error, destinationRel, "copy");
   }
-  return destinationRel;
+  let copied = 0;
+  try {
+    for (const entry of walk.entries.slice(1)) {
+      // Entry names start with the folder's own name, which `destination` already is.
+      const target = path.join(destinationDir, ...entry.name.split("/"));
+      if (entry.kind === "directory") await fs.mkdir(target);
+      else await fs.copyFile(entry.absolute, target, constants.COPYFILE_EXCL);
+      copied++;
+    }
+  } catch (error) {
+    const reason = lifecycleError(error, destinationRel, "copy");
+    throw new FileBrowserError(reason.reason, `${reason.message} — a partial copy of ${copied} of ${walk.entries.length - 1} entries is left in "${destinationRel}"`);
+  }
+  return { path: destinationRel, skipped: walk.skipped };
+}
+
+/** One file or folder found by `walkConfined`. */
+export interface WalkedEntry {
+  /** `/`-separated name, starting with the walked entry's own name: what an archive calls it. */
+  name: string;
+  /** The resolved path to read from — always inside the browser root. */
+  absolute: string;
+  kind: "file" | "directory";
+  size: number;
+}
+
+export interface WalkLimits {
+  maxEntries: number;
+  maxBytes: number;
+}
+
+/**
+ * Every file and folder under the given entries, in a stable order (each folder
+ * before its content, names sorted), each entry named from its own top name.
+ *
+ * Confined like everything else here: a symbolic link is followed only when what it
+ * resolves to stays inside the browser root, and a folder already on the way down is
+ * not entered twice (a link cycle). What is left out is counted in `skipped`, never
+ * silently dropped. With limits, the walk stops as soon as one is passed, so asking
+ * for an archive of a huge tree costs no more than reaching the limit.
+ */
+export async function walkConfined(root: string, relPaths: string[], limits?: WalkLimits): Promise<{ entries: WalkedEntry[]; skipped: number }> {
+  const entries: WalkedEntry[] = [];
+  let skipped = 0;
+  let bytes = 0;
+  const push = (entry: WalkedEntry) => {
+    entries.push(entry);
+    bytes += entry.size;
+    if (limits && entries.length > limits.maxEntries) {
+      throw new FileBrowserError("too-large", `More than ${limits.maxEntries} entries: too many for one archive — download a subfolder instead`);
+    }
+    if (limits && bytes > limits.maxBytes) {
+      const gib = (limits.maxBytes / 1024 ** 3).toFixed(0);
+      throw new FileBrowserError("too-large", `More than ${gib} GiB: too large for one archive — download a subfolder instead`);
+    }
+  };
+
+  async function descend(absolute: string, name: string, ancestors: Set<string>): Promise<void> {
+    let dirents: Dirent[];
+    try {
+      dirents = await fs.readdir(absolute, { withFileTypes: true });
+    } catch (error) {
+      throw lifecycleError(error, name, "copy");
+    }
+    dirents.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+    for (const dirent of dirents) {
+      const childName = `${name}/${dirent.name}`;
+      let childAbsolute = path.join(absolute, dirent.name);
+      if (dirent.isSymbolicLink()) {
+        const target = await realResolve(childAbsolute).catch(() => null);
+        if (target === null || !isWithin(root, target)) {
+          skipped++;
+          continue;
+        }
+        childAbsolute = target;
+      }
+      const stat = await fs.stat(childAbsolute).catch(() => null);
+      if (stat?.isFile()) {
+        push({ name: childName, absolute: childAbsolute, kind: "file", size: stat.size });
+      } else if (stat?.isDirectory()) {
+        if (ancestors.has(childAbsolute)) {
+          skipped++;
+          continue;
+        }
+        push({ name: childName, absolute: childAbsolute, kind: "directory", size: 0 });
+        await descend(childAbsolute, childName, new Set([...ancestors, childAbsolute]));
+      } else {
+        // A socket, a device, a link that went away: nothing an archive can hold.
+        skipped++;
+      }
+    }
+  }
+
+  for (const relPath of relPaths) {
+    const resolved = await resolveConfined(root, relPath);
+    const stat = await fs.stat(resolved).catch(() => null);
+    if (stat === null) throw new FileBrowserError("not-found", `"${relPath}" does not exist`);
+    const name = relPath === "" ? path.basename(root) : (relPath.split("/").pop() ?? relPath);
+    if (stat.isFile()) {
+      push({ name, absolute: resolved, kind: "file", size: stat.size });
+    } else if (stat.isDirectory()) {
+      push({ name, absolute: resolved, kind: "directory", size: 0 });
+      await descend(resolved, name, new Set([resolved]));
+    } else {
+      throw new FileBrowserError("not-found", `"${relPath}" is not a regular file or folder`);
+    }
+  }
+  return { entries, skipped };
 }
 
 /**

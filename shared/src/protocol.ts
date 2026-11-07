@@ -1436,6 +1436,8 @@ export type ServerMessage =
       path: string;
       /** Previous path for rename and move, so clients can update active views. */
       previousPath?: string;
+      /** A folder copy only: entries left out because they resolve outside the browser root. */
+      skipped?: number;
     }
   | {
       type: "file_browser_error";

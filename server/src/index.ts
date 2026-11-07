@@ -161,7 +161,7 @@ import {
   assertWithinRoot,
   createDirectoryFromBrowser,
   createFileFromBrowser,
-  copyFileFromBrowser,
+  copyEntryFromBrowser,
   deleteFileFromBrowser,
   FileBrowserError,
   listDirectory,
@@ -179,6 +179,9 @@ import {
   uploadFileFromBrowser,
   writeFileFromBrowser,
 } from "./fileBrowser.ts";
+import { attachmentDisposition, prepareDownload } from "./download.ts";
+import { writeZipStream } from "@pi-outpost/office/zipStream.ts";
+import { PassThrough } from "node:stream";
 import { searchContent } from "./contentSearch.ts";
 import {
   GitError,
@@ -1243,6 +1246,59 @@ app.get("/files/raw", async (req, reply) => {
     }
     throw error;
   }
+});
+
+// A workspace entry, to save on the machine the browser runs on — the one way to get
+// a file off a remote server. Not /files/raw: that route's ceilings and inline image
+// types are what make it safe for <img>, and this one has neither. The token rides
+// the query string for the same reason as there: an <a download> sends no header.
+app.get("/files/download", async (req, reply) => {
+  const query = req.query as Record<string, unknown>;
+  if (!hostAllowed(req.headers.host)) {
+    console.warn("[server] rejected /files/download request with foreign host");
+    return reply.code(403).send({ error: "forbidden" });
+  }
+  const auth = req.headers.authorization;
+  const bearer = auth?.startsWith("Bearer ") ? auth.slice("Bearer ".length) : undefined;
+  const queryToken = typeof query.token === "string" ? query.token : undefined;
+  if (!tokenValid(bearer) && !tokenValid(queryToken)) {
+    console.warn("[server] rejected /files/download request with bad or missing token");
+    return reply.code(401).send({ error: "unauthorized" });
+  }
+  const paths = (Array.isArray(query.path) ? query.path : [query.path]).filter((value): value is string => typeof value === "string");
+  if (paths.length === 0) return reply.code(400).send({ error: "missing path" });
+  const target = rawFileWorkspace(typeof query.workspace === "string" ? query.workspace : undefined);
+  if (!target) return reply.code(404).send({ error: "not-found" });
+  let download;
+  try {
+    download = await prepareDownload(target.browserRoot, paths);
+  } catch (error) {
+    if (error instanceof FileBrowserError) {
+      const status = error.reason === "too-large" ? 413 : error.reason === "outside-root" ? 403 : 404;
+      return reply.code(status).send({ error: error.reason, message: error.message });
+    }
+    throw error;
+  }
+  reply
+    .header("X-Content-Type-Options", "nosniff")
+    .header("Cache-Control", "no-store")
+    .header("Content-Disposition", attachmentDisposition(download.name))
+    // An embedded tree on another origin reads the name and the left-out count.
+    .header("Access-Control-Expose-Headers", "Content-Disposition, X-Pi-Outpost-Skipped");
+  if (download.kind === "file") {
+    return reply.header("Content-Type", "application/octet-stream").header("Content-Length", String(download.size)).send(download.open());
+  }
+  const body = new PassThrough();
+  writeZipStream(download.entries, body, download.comment).then(
+    () => body.end(),
+    (error: unknown) => {
+      // Past the headers nothing can be said to the client but a cut connection,
+      // which a browser reports as a failed download rather than a whole file.
+      console.warn(`[server] /files/download archive failed: ${error instanceof Error ? error.message : String(error)}`);
+      body.destroy(error instanceof Error ? error : new Error(String(error)));
+    },
+  );
+  return reply.header("Content-Type", "application/zip").header("X-Pi-Outpost-Skipped", String(download.skipped)).send(body);
 });
 
 // Serve the built web UI as a single deployable unit when present (`npm run build
@@ -5643,9 +5699,9 @@ async function handleUploadFile(workspace: Workspace,
 
 async function handleCopyFile(workspace: Workspace, socket: WebSocket, filePath: string, destinationDirectory: string, requestId: string): Promise<void> {
   try {
-    const copiedPath = await copyFileFromBrowser(workspace.browserRoot, workspace.writableRoot, filePath, destinationDirectory);
-    send(socket, { type: "file_operation_result", requestId, operation: "copy_file", path: copiedPath });
-    broadcast(workspace, { type: "file_changed", path: copiedPath });
+    const copied = await copyEntryFromBrowser(workspace.browserRoot, workspace.writableRoot, filePath, destinationDirectory);
+    send(socket, { type: "file_operation_result", requestId, operation: "copy_file", path: copied.path, ...(copied.skipped > 0 ? { skipped: copied.skipped } : {}) });
+    broadcast(workspace, { type: "file_changed", path: copied.path });
   } catch (error) {
     sendFileBrowserError(socket, requestId, filePath, error);
   }

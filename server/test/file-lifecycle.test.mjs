@@ -24,7 +24,12 @@ describe("file lifecycle over the socket", () => {
       "writable/taken.docx": "taken",
       "writable/delete-me.txt": "delete",
       "writable/inbox/report.docx": "report",
+      "writable/folders/drafts/a.txt": "a",
+      "writable/folders/drafts/sub/b.txt": "b",
+      "writable/folders/old/c.txt": "c",
       "readonly.txt": "readonly",
+      "templates/letter.md": "letter",
+      "templates/deep/memo.md": "memo",
     });
     await mkdir(path.join(root, "writable/archive"), { recursive: true });
     server = await startServer(root, {
@@ -104,6 +109,42 @@ describe("file lifecycle over the socket", () => {
     assert.equal(reply.type, "file_browser_error");
     assert.equal(reply.reason, "denied");
     assert.equal(await readFile(path.join(root, "readonly.txt"), "utf8"), "readonly");
+  });
+
+  test("a folder is renamed, moved and deleted over the socket, and each change is broadcast", async () => {
+    const renamed = await ask({ type: "rename_file", path: "writable/folders/drafts", name: "final" });
+    assert.equal(renamed.type, "file_operation_result");
+    assert.equal(renamed.path, "writable/folders/final");
+    assert.equal(await readFile(path.join(root, "writable", "folders", "final", "sub", "b.txt"), "utf8"), "b");
+    await observer.waitFor((message) => message.type === "file_changed" && message.path === "writable/folders/final");
+
+    const moved = await ask({ type: "move_file", path: "writable/folders/final", destinationDirectory: "writable/archive" });
+    assert.equal(moved.type, "file_operation_result");
+    assert.equal(moved.path, "writable/archive/final");
+    assert.equal(await readFile(path.join(root, "writable", "archive", "final", "a.txt"), "utf8"), "a");
+
+    const deleted = await ask({ type: "delete_file", path: "writable/folders/old" });
+    assert.equal(deleted.type, "file_operation_result");
+    await assert.rejects(stat(path.join(root, "writable", "folders", "old")), { code: "ENOENT" });
+    await observer.waitFor((message) => message.type === "file_changed" && message.path === "writable/folders/old");
+  });
+
+  test("a read-only folder is copied into the writable zone with its content", async () => {
+    const reply = await ask({ type: "copy_file", path: "templates", destinationDirectory: "writable/archive" });
+
+    assert.equal(reply.type, "file_operation_result");
+    assert.equal(reply.path, "writable/archive/templates");
+    assert.equal(reply.skipped, undefined);
+    assert.equal(await readFile(path.join(root, "writable", "archive", "templates", "deep", "memo.md"), "utf8"), "memo");
+    assert.equal(await readFile(path.join(root, "templates", "letter.md"), "utf8"), "letter");
+  });
+
+  test("the writable root itself cannot be deleted over the socket", async () => {
+    const reply = await ask({ type: "delete_file", path: "writable" });
+
+    assert.equal(reply.type, "file_browser_error");
+    assert.equal(reply.reason, "denied");
+    assert.ok((await stat(path.join(root, "writable"))).isDirectory());
   });
 
   test("refuses an escaping mutation under the same request id", async () => {
