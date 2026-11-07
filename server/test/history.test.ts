@@ -13,6 +13,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { after, describe, test } from "node:test";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
+import type { ChatItem } from "@pi-outpost/shared";
 import type { AgentRuntime, RuntimeEntry } from "../src/agentRuntime.ts";
 import { ExtensionRenderer } from "../src/extensionRender.ts";
 import { HistoryUnavailableError, historyWindow, olderItemCount, precedingItems } from "../src/history.ts";
@@ -289,13 +290,16 @@ describe("olderItemCount", () => {
 });
 
 /** The text an item shows, whatever its kind — enough to compare transcripts by. */
-function itemText(item: { kind: string } & Record<string, unknown>): string {
-  if (item.kind === "user" || item.kind === "custom") return String(item.text ?? "");
-  if (item.kind === "assistant") {
-    const blocks = (item.blocks ?? []) as { text?: string }[];
-    return blocks.map((block) => block.text ?? "").join("");
+function itemText(item: ChatItem): string {
+  switch (item.kind) {
+    case "user":
+    case "custom":
+      return item.text;
+    case "assistant":
+      return item.blocks.map((block) => block.text).join("");
+    case "tool":
+      return `tool:${item.toolName}`;
+    case "compaction":
+      return `compaction:${item.summary}`;
   }
-  if (item.kind === "tool") return `tool:${String(item.toolName)}`;
-  if (item.kind === "compaction") return `compaction:${String(item.summary)}`;
-  return item.kind;
 }

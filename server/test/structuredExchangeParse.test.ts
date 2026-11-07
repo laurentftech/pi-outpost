@@ -10,9 +10,16 @@ import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import { parseStructuredExchange } from "@pi-outpost/shared/structured-exchange/parse";
 import { checkStructuredExchangeSchema } from "@pi-outpost/shared/structured-exchange/schema-node";
-import { STRUCTURED_EXCHANGE_SCHEMA_V1 as S } from "@pi-outpost/shared/structured-exchange";
+import { STRUCTURED_EXCHANGE_SCHEMA_V1 as S, type StructuredGraphData, type ValidatedStructuredExchange } from "@pi-outpost/shared/structured-exchange";
 
 const parse = (document: unknown) => parseStructuredExchange(document, checkStructuredExchangeSchema);
+
+/** A validated graph's data, checked to be a graph's before a test reads its nodes and edges. */
+function graphData(envelope: ValidatedStructuredExchange): StructuredGraphData {
+  assert.equal(envelope.kind, "graph");
+  if (envelope.kind !== "graph") throw new Error("not a graph");
+  return envelope.data;
+}
 
 /** The rules a refusal cited, for asserting on the reason rather than just failure. */
 function rules(document: unknown): string[] {
@@ -100,7 +107,7 @@ describe("structured-exchange two-stage validation", () => {
       assert.equal(verdict.valid, true);
       if (!verdict.valid) return;
       assert.equal(verdict.envelope.target, "artifact-1");
-      assert.ok(verdict.envelope.data.nodes.every((element) => element.ref === undefined));
+      assert.ok(graphData(verdict.envelope).nodes.every((element) => element.ref === undefined));
     });
 
     test("a removal without a target is refused", () => {
@@ -118,7 +125,7 @@ describe("structured-exchange two-stage validation", () => {
 
       assert.equal(verdict.valid, true);
       if (!verdict.valid) return;
-      assert.deepEqual(verdict.envelope.data.nodes[0], node);
+      assert.deepEqual(graphData(verdict.envelope).nodes[0], node);
     });
 
     test("a change needs something to change: set without a reference is refused", () => {
@@ -143,7 +150,7 @@ describe("structured-exchange two-stage validation", () => {
       assert.equal(verdict.valid, true);
       if (!verdict.valid) return;
       // No label declared: nothing about it is being changed
-      assert.equal(verdict.envelope.data.nodes[0].label, undefined);
+      assert.equal(graphData(verdict.envelope).nodes[0].label, undefined);
     });
 
     test("an element with no reference must declare what a new one requires", () => {
@@ -223,7 +230,7 @@ describe("structured-exchange two-stage validation", () => {
       assert.equal(verdict.valid, true);
       if (!verdict.valid) return;
       assert.equal(verdict.envelope.removals?.length, 1);
-      assert.equal(verdict.envelope.data.edges.length, 1);
+      assert.equal(graphData(verdict.envelope).edges.length, 1);
     });
   });
 

@@ -13,7 +13,7 @@ error count on current `main` before starting its group (the counts in design.md
 
 ## 2. Server tests
 
-- [ ] 2.1 Add `server/test/harness.d.mts` typing the exports of `harness.mjs` from how the tests use them; remove the `@ts-expect-error` comments that only existed to import it (server and e2e); verify the TS7016 errors are gone and the removed comments do not become "unused directive" errors
+- [x] 2.1 Add `server/test/harness.d.mts` typing the exports of `harness.mjs` from how the tests use them; remove the `@ts-expect-error` comments that only existed to import it (server and e2e); verify the TS7016 errors are gone and the removed comments do not become "unused directive" errors
 - [ ] 2.2 Add `server/tsconfig.test.json` (extends `tsconfig.json`, includes `src` and `test/**/*.ts`) and point `server`'s `typecheck` at it; verify with 1.1 that every `server/test/*.ts` file and `test/fixtures/*.ts` is listed
 - [ ] 2.3 Fix every remaining server test type error using the classification in design.md; for each stale-test fix, show the test can fail by breaking the behaviour locally; record tests found to prove nothing in `findings.md`; verify `npm run typecheck --workspace server` exits 0 and `npm test --workspace server` still passes
 - [ ] 2.4 Document in `docs/quality.md` (checks table and a short "Tests are type-checked" note) and `CONTRIBUTING.md` that test sources are type-checked and which suites are covered so far; verify the documented command runs as written

@@ -2,7 +2,6 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { access, mkdir, readFile, realpath, rm } from "node:fs/promises";
 import { expect, test } from "@playwright/test";
-// @ts-expect-error -- shared real-server integration harness is JavaScript
 import { connect, makeWorkspace, startServer } from "../server/test/harness.mjs";
 
 const provider = fileURLToPath(new URL("../server/test/fixtures/bash-call-provider.mjs", import.meta.url));

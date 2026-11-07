@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import { sanitizeName, hasBeenNamed, firstExchange, toSummary, snippetAround, searchSessions } from "../src/sessions.ts";
-import type { SessionEntry, SessionInfo } from "../src/sessions.ts";
+import type { SessionEntry, SessionInfo } from "@earendil-works/pi-coding-agent";
 // SessionSummary is from shared — just duck-type for tests
 
 // ---------------------------------------------------------------------------
@@ -70,7 +70,8 @@ describe("hasBeenNamed", () => {
   });
 
   test("returns false when no session_info entry exists", () => {
-    const entries = [{ type: "message" } as SessionEntry, { type: "tool_call" } as SessionEntry];
+    // Neither a name nor a message: a model change, one of the entries a real session holds.
+    const entries = [{ type: "message" } as SessionEntry, { type: "model_change" } as SessionEntry];
     assert.equal(hasBeenNamed(entries), false);
   });
 

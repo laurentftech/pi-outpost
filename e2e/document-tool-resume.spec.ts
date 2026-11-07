@@ -2,7 +2,6 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { readFile, rm } from "node:fs/promises";
 import { expect, test } from "@playwright/test";
-// @ts-expect-error JavaScript server integration harness
 import {
   connect,
   makeWorkspace,
