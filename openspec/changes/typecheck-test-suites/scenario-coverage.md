@@ -29,6 +29,18 @@ a tool result as the assistant's reply fails `assistant: Done!`; forcing a confi
 to false fails the exact outbound frame assertion; inventing zero progress for a
 text-only update fails the undefined-progress assertion. All temporary copies were removed.
 
+Full-suite CI follow-up: the server suite on Ubuntu passed on `4adeef5` in
+[run 42398812964](https://github.com/laurentftech/pi-outpost/actions/runs/42398812964),
+after fixing the concurrent JSONL-log read described in `findings.md`. The previous
+run on `a2f9ce3` passed the complete Playwright suite (287 tests), the three-engine
+webbench (24 tests), and the extension status-colour capture (1 test). The final
+PR readiness decision still requires all checks on its final commit to pass.
+
+The OpenSSF `warnings_strict` justification was saved and publicly read back on
+2026-11-07. It describes test inclusion in PR #445 and explicitly states that this
+extension is not yet merged into `main`; it also preserves the JavaScript and
+existing lint-warning-debt limitations.
+
 CI timing comparison, same-day Ubuntu `check` job: the typecheck step rose from 29 s
 ([baseline run](https://github.com/laurentftech/pi-outpost/actions/runs/42387788002)) to
 63 s ([implementation run](https://github.com/laurentftech/pi-outpost/actions/runs/42396512431)).

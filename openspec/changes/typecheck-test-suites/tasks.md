@@ -15,7 +15,7 @@ error count on current `main` before starting its group (the counts in design.md
 
 - [x] 2.1 Add `server/test/harness.d.mts` typing the exports of `harness.mjs` from how the tests use them; remove the `@ts-expect-error` comments that only existed to import it (server and e2e); verify the TS7016 errors are gone and the removed comments do not become "unused directive" errors
 - [x] 2.2 Add `server/tsconfig.test.json` (extends `tsconfig.json`, includes `src` and `test/**/*.ts`) and point `server`'s `typecheck` at it; verify with 1.1 that every `server/test/*.ts` file and `test/fixtures/*.ts` is listed
-- [ ] 2.3 Fix every remaining server test type error using the classification in design.md; for each stale-test fix, show the test can fail by breaking the behaviour locally; record tests found to prove nothing in `findings.md`; verify `npm run typecheck --workspace server` exits 0 and `npm test --workspace server` still passes
+- [x] 2.3 Fix every remaining server test type error using the classification in design.md; for each stale-test fix, show the test can fail by breaking the behaviour locally; record tests found to prove nothing in `findings.md`; verify `npm run typecheck --workspace server` exits 0 and `npm test --workspace server` still passes
 - [x] 2.4 Document in `docs/quality.md` (checks table and a short "Tests are type-checked" note) and `CONTRIBUTING.md` that test sources are type-checked and which suites are covered so far; verify the documented command runs as written
 
 ## 3. End-to-end specs
@@ -32,14 +32,18 @@ error count on current `main` before starting its group (the counts in design.md
 
 ## 5. Ceiling fallback (only if a suite cannot reach zero in its own PR)
 
-- [ ] 5.1 Add `scripts/check-type-ceilings.mjs` and `scripts/type-ceilings.json`: run the suite's compiler through `node` + `require.resolve("typescript/bin/tsc")`, count `error TS` lines, fail above the ceiling and below it with a "lower the ceiling" message; script tests prove ErrorsAboveCeilingFail and FixedErrorsMustLowerCeiling; record the ceiling in `docs/quality.md`
-- [ ] 5.2 When the last ceiling reaches zero, delete the script and JSON and remove the ceiling text; verify NoCeilingOnceClean (the suite is in `typecheck` with no tolerance)
+- [x] 5.1 Conditional fallback evaluated — **not applicable**: every suite reached zero directly, so no ceiling script/JSON was introduced. The optional implementation described in the design was not needed; this checkbox does not claim a ceiling implementation was tested.
+- [x] 5.2 Zero-tolerance end state verified by NoCeilingOnceClean: the suites run the compiler directly, no ceiling files exist, and the documentation records no tolerated type-error ceiling. No transitional files needed deletion.
 
 ## 6. Integration
 
 - [x] 6.1 Open a throwaway PR that introduces one ill-typed line in a server test and confirm `check` and `CI ok` fail (scenario PullRequestWithIllTypedTestIsRed); close it unmerged and link the run in the final PR
 - [x] 6.2 Write `scenario-coverage.md` mapping every scenario in `specs/test-type-checking/spec.md` to its evidence; run `npm run check:scenarios` and `openspec validate typecheck-test-suites --strict`
-- [ ] 6.3 Record CI type-check time before and after in the final PR, and update the OpenSSF Best Practices answers that mention strict TypeScript (`warnings_strict`) to say tests are included
+- [x] 6.3 Record CI type-check time before and after in the final PR, and update the OpenSSF Best Practices answers that mention strict TypeScript (`warnings_strict`) to say tests are included
+
+The saved OpenSSF justification links PR #445 and explicitly distinguishes its test
+checking from unmerged `main`. The public entry was read back on 2026-11-07. CI timing
+measurements and their single-run limitation are recorded in the PR and scenario matrix.
 
 ## Workflow follow-up
 
