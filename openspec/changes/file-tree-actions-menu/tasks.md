@@ -13,13 +13,13 @@
 
 - [x] 2.1 Write the streaming zip writer beside `office/src/zipWriter.ts` (data descriptors, deflate stream, CRC-32, UTF-8 names, entry and size limits) and verify a test that reads its output back with `office/src/zip.ts` and with `jszip`, byte for byte, including an empty folder and a non-ASCII name
 - [x] 2.2 Add `GET /files/download` in `server/src/index.ts` (host check, token, one file streamed as is, a folder or several paths as one zip named per the design, `filename*`, `nosniff`, `no-store`, limits checked before the first byte, `X-Pi-Outpost-Skipped`) and verify route tests for every DownloadFromBrowser and ArchivesAreBoundedAndConfined scenario, the large-folder case using a lowered limit
-- [ ] 2.3 Add `downloadUrl(paths)` beside `rawFileUrl` in `ui/src/util/workspacePath.ts` and a `download(paths)` helper (anchor for one file; fetch, show a refusal, then save for an archive), and verify unit tests for the URL (origin, token, workspace, repeated `path`) and for a refused archive surfacing its message
+- [x] 2.3 Add `downloadUrl(paths)` beside `rawFileUrl` in `ui/src/util/workspacePath.ts` and a `download(paths)` helper (anchor for one file; fetch, show a refusal, then save for an archive), and verify unit tests for the URL (origin, token, workspace, repeated `path`) and for a refused archive surfacing its message
 
 ## 3. Batch delete and move
 
-- [ ] 3.1 Add `delete_files`, `move_files` and `file_batch_result` to `shared/src/protocol.ts` and verify `npm run typecheck` passes
-- [ ] 3.2 Implement the batch handlers in `server/src/index.ts` over the single-entry helpers (continue after a refusal, no rollback, one `file_changed` per affected directory) and verify server tests for DeleteSeveralFiles (files and a folder), OneRefusalDoesNotStopTheBatch and ABatchMoveRefusesAnOverwrite
-- [ ] 3.3 Add `deleteFiles` / `moveFiles` and the batch `fileOperation` variant in `ui/src/useAgent.ts`, wire them through `Sidebar.tsx` and `App.tsx`, and verify `useAgent` tests for a batch result with refused paths and for the open file closing when it, or a folder holding it, is deleted
+- [x] 3.1 Add `delete_files`, `move_files` and `file_batch_result` to `shared/src/protocol.ts` and verify `npm run typecheck` passes
+- [x] 3.2 Implement the batch handlers in `server/src/index.ts` over the single-entry helpers (continue after a refusal, no rollback, one `file_changed` per affected directory) and verify server tests for DeleteSeveralFiles (files and a folder), OneRefusalDoesNotStopTheBatch and ABatchMoveRefusesAnOverwrite
+- [x] 3.3 Add `deleteFiles` / `moveFiles` and the batch `fileOperation` variant in `ui/src/useAgent.ts`, wire them through `Sidebar.tsx` and `App.tsx`, and verify `useAgent` tests for a batch result with refused paths and for the open file closing when it, or a folder holding it, is deleted
 
 ## 4. Tree state lift
 

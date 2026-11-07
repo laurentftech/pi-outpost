@@ -30,6 +30,15 @@ describe("file lifecycle over the socket", () => {
       "readonly.txt": "readonly",
       "templates/letter.md": "letter",
       "templates/deep/memo.md": "memo",
+      "writable/batch/one.txt": "1",
+      "writable/batch/two.txt": "2",
+      "writable/batch/three.txt": "3",
+      "writable/batch/folder/inner.txt": "inner",
+      "writable/moves/a.txt": "a",
+      "writable/moves/c.txt": "c",
+      "writable/moves/clash.txt": "mine",
+      "writable/moves/target/clash.txt": "theirs",
+      "outside-zone/b.txt": "b",
     });
     await mkdir(path.join(root, "writable/archive"), { recursive: true });
     server = await startServer(root, {
@@ -137,6 +146,63 @@ describe("file lifecycle over the socket", () => {
     assert.equal(reply.skipped, undefined);
     assert.equal(await readFile(path.join(root, "writable", "archive", "templates", "deep", "memo.md"), "utf8"), "memo");
     assert.equal(await readFile(path.join(root, "templates", "letter.md"), "utf8"), "letter");
+  });
+
+  test("DeleteSeveralFiles: files and a folder go in one request, one result, one notification for their directory", async () => {
+    const before = observer.received.length;
+    const reply = await ask({
+      type: "delete_files",
+      paths: ["writable/batch/one.txt", "writable/batch/two.txt", "writable/batch/three.txt", "writable/batch/folder", "writable/batch/folder/inner.txt"],
+    });
+
+    assert.equal(reply.type, "file_batch_result");
+    assert.equal(reply.operation, "delete_file");
+    assert.deepEqual(
+      reply.done.map((entry) => entry.path),
+      ["writable/batch/one.txt", "writable/batch/two.txt", "writable/batch/three.txt", "writable/batch/folder"],
+      "a path under a deleted folder is covered by it, not deleted twice",
+    );
+    assert.deepEqual(reply.refused, []);
+    for (const name of ["one.txt", "two.txt", "three.txt", "folder"]) {
+      await assert.rejects(stat(path.join(root, "writable", "batch", name)), { code: "ENOENT" });
+    }
+    // A request the observer makes now is answered after every broadcast already queued
+    // for it, so what it has received by then is all the batch announced.
+    observer.send({ type: "list_directory", path: "writable", requestId: "batch-barrier" });
+    await observer.waitFor((message) => message.requestId === "batch-barrier");
+    const changes = observer.received.slice(before).filter((message) => message.type === "file_changed");
+    assert.equal(changes.length, 1, `one notification for writable/batch, got ${JSON.stringify(changes.map((m) => m.path))}`);
+    assert.match(changes[0].path, /^writable\/batch\/[^/]+$/);
+  });
+
+  test("OneRefusalDoesNotStopTheBatch and ABatchMoveRefusesAnOverwrite", async () => {
+    const reply = await ask({
+      type: "move_files",
+      paths: ["writable/moves/a.txt", "outside-zone/b.txt", "writable/moves/clash.txt", "writable/moves/c.txt"],
+      destinationDirectory: "writable/moves/target",
+    });
+
+    assert.equal(reply.type, "file_batch_result");
+    assert.deepEqual(reply.done, [
+      { path: "writable/moves/a.txt", resultPath: "writable/moves/target/a.txt" },
+      { path: "writable/moves/c.txt", resultPath: "writable/moves/target/c.txt" },
+    ]);
+    assert.deepEqual(reply.refused.map((entry) => [entry.path, entry.reason]), [
+      ["outside-zone/b.txt", "denied"],
+      ["writable/moves/clash.txt", "conflict"],
+    ]);
+    assert.ok(reply.refused.every((entry) => entry.message.length > 0));
+    assert.equal(await readFile(path.join(root, "outside-zone", "b.txt"), "utf8"), "b");
+    assert.equal(await readFile(path.join(root, "writable", "moves", "clash.txt"), "utf8"), "mine");
+    assert.equal(await readFile(path.join(root, "writable", "moves", "target", "clash.txt"), "utf8"), "theirs");
+    assert.equal(await readFile(path.join(root, "writable", "moves", "target", "c.txt"), "utf8"), "c");
+  });
+
+  test("a malformed batch is ignored rather than half-applied", async () => {
+    client.send({ type: "delete_files", paths: ["writable/taken.docx", 42], requestId: "bad-batch" });
+    const probe = await ask({ type: "rename_file", path: "writable/taken.docx", name: "taken-still.docx" });
+    assert.equal(probe.type, "file_operation_result", "the earlier malformed batch deleted nothing");
+    await ask({ type: "rename_file", path: "writable/taken-still.docx", name: "taken.docx" });
   });
 
   test("the writable root itself cannot be deleted over the socket", async () => {

@@ -28,6 +28,7 @@ import { UserMessage } from "./components/UserMessage";
 import { SendQueueNow } from "./components/SendQueueNow";
 import { useTheme } from "./theme/useTheme";
 import { rawFileWorkspace } from "./util/workspacePath";
+import { downloadEntries } from "./util/download";
 import {
   addPathAttachment,
   type Attachment,
@@ -152,6 +153,8 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
     deleteFile,
     moveFile,
     copyFile,
+    deleteFiles,
+    moveFiles,
     closeFilePreview,
     searchFiles,
     clearFileSearch,
@@ -960,6 +963,9 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
             onDeleteFile={deleteFile}
             onMoveFile={moveFile}
             onCopyFile={copyFile}
+            onDeleteFiles={deleteFiles}
+            onMoveFiles={moveFiles}
+            onDownload={(paths, singleFile) => downloadEntries({ serverUrl, token: authToken, workspace: rawWorkspace }, paths, { singleFile })}
             fileOperation={state.fileOperation}
             createError={state.createError}
             created={state.created}

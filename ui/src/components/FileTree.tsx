@@ -83,6 +83,12 @@ interface TreeProps {
   onDeleteFile?: (path: string) => void;
   onMoveFile?: (path: string, destinationDirectory: string) => void;
   onCopyFile?: (path: string, destinationDirectory: string) => void;
+  /** Delete several entries in one request (the tree has confirmed it). */
+  onDeleteFiles?: (paths: string[]) => void;
+  /** Move several entries into one directory in one request. */
+  onMoveFiles?: (paths: string[], destinationDirectory: string) => void;
+  /** Save entries on this machine: a single file as itself, anything else as one archive. */
+  onDownload?: (paths: string[], singleFile: boolean) => Promise<{ skipped: number }>;
   /** Import external bytes into an existing directory, returning the actual saved path. */
   onUploadFile?: (name: string, contentBase64: string, destinationDirectory: string) => Promise<string>;
   /** Internal: the batch shared by every target in this tree. */

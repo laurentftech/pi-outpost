@@ -1556,6 +1556,95 @@ describe("file lifecycle operations", () => {
     expect(result.current.state.openFile?.path).toBe("draft.docx");
     expect(result.current.state.fileOperation).toMatchObject({ operation: "rename_file", path: "draft.docx" });
   });
+
+  it("sends a batch as one request and reports its refused paths in one sentence", async () => {
+    const result = await connected();
+    act(() => result.current.moveFiles(["a.txt", "outside/b.txt", "c.txt"], "archive"));
+    expect(lastSent()).toMatchObject({ type: "move_files", paths: ["a.txt", "outside/b.txt", "c.txt"], destinationDirectory: "archive" });
+    expect(result.current.state.fileOperation).toMatchObject({ status: "pending", operation: "move_file", paths: ["a.txt", "outside/b.txt", "c.txt"] });
+
+    act(() =>
+      mockWs!.receive({
+        type: "file_batch_result",
+        requestId: lastRequestId(),
+        operation: "move_file",
+        done: [
+          { path: "a.txt", resultPath: "archive/a.txt" },
+          { path: "c.txt", resultPath: "archive/c.txt" },
+        ],
+        refused: [{ path: "outside/b.txt", message: '"outside/b.txt" is outside the writable zone', reason: "denied" }],
+      }),
+    );
+
+    await waitFor(() => expect(result.current.state.fileOperation?.status).toBe("error"));
+    const operation = result.current.state.fileOperation;
+    expect(operation?.status === "error" && operation.message).toBe('2 of 3 moved. Not moved: outside/b.txt: "outside/b.txt" is outside the writable zone');
+    expect(operation?.status === "error" && operation.batch?.done).toHaveLength(2);
+  });
+
+  it("a batch with nothing refused succeeds", async () => {
+    const result = await connected();
+    act(() => result.current.deleteFiles(["a.txt", "b.txt"]));
+    expect(lastSent()).toMatchObject({ type: "delete_files", paths: ["a.txt", "b.txt"] });
+    act(() =>
+      mockWs!.receive({
+        type: "file_batch_result",
+        requestId: lastRequestId(),
+        operation: "delete_file",
+        done: [
+          { path: "a.txt", resultPath: "a.txt" },
+          { path: "b.txt", resultPath: "b.txt" },
+        ],
+        refused: [],
+      }),
+    );
+    await waitFor(() => expect(result.current.state.fileOperation?.status).toBe("succeeded"));
+  });
+
+  it("closes the viewer when the folder holding the open file is deleted, alone or in a batch", async () => {
+    const single = await withLoadedFile("docs/notes/draft.docx");
+    act(() => single.current.deleteFile("docs"));
+    act(() => mockWs!.receive({ type: "file_operation_result", requestId: lastRequestId(), operation: "delete_file", path: "docs" }));
+    await waitFor(() => expect(single.current.state.openFile).toBeNull());
+
+    const batch = await withLoadedFile("docs/notes/draft.docx");
+    act(() => batch.current.deleteFiles(["other.txt", "docs/notes"]));
+    act(() =>
+      mockWs!.receive({
+        type: "file_batch_result",
+        requestId: lastRequestId(),
+        operation: "delete_file",
+        done: [
+          { path: "other.txt", resultPath: "other.txt" },
+          { path: "docs/notes", resultPath: "docs/notes" },
+        ],
+        refused: [],
+      }),
+    );
+    await waitFor(() => expect(batch.current.state.openFile).toBeNull());
+  });
+
+  it("follows the open file when its folder is moved, and forgets the moved folder's cached listings", async () => {
+    const result = await withLoadedFile("docs/notes/draft.docx");
+    act(() => result.current.listDirectory("docs/notes"));
+    act(() =>
+      mockWs!.receive({
+        type: "directory_listing",
+        requestId: lastRequestId(),
+        path: "docs/notes",
+        entries: [{ name: "draft.docx", type: "file" }],
+      }),
+    );
+    await waitFor(() => expect(result.current.state.fileTree["docs/notes"]).toBeDefined());
+
+    act(() => result.current.moveFile("docs", "archive"));
+    act(() =>
+      mockWs!.receive({ type: "file_operation_result", requestId: lastRequestId(), operation: "move_file", previousPath: "docs", path: "archive/docs" }),
+    );
+
+    await waitFor(() => expect(result.current.state.openFile?.path).toBe("archive/docs/notes/draft.docx"));
+    expect(result.current.state.fileTree["docs/notes"]).toBeUndefined();
+  });
 });
 
 // ---------------------------------------------------------------------------

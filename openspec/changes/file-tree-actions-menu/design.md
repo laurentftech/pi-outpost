@@ -118,8 +118,11 @@ what make it safe for `<img>`, and one route with two contracts is the kind that
 wrong. The client builds the URL with a `downloadUrl(paths)` next to `rawFileUrl` (same
 origin/token/workspace handling). A single file is triggered with a temporary `<a download>`; an
 archive is fetched first, so a refusal (too large) can be shown on the tree instead of a browser
-download of an error body, then handed to the browser as a blob URL — streamed to disk where
-the File System Access API is available, buffered otherwise.
+download of an error body, then handed to the browser as a blob through the existing `save()`
+of `ui/src/util/download.ts`. Streaming it to disk with the File System Access API was dropped:
+its save picker needs a user gesture, which is spent once the `fetch` has been awaited, and
+asking for the file name before knowing whether the server accepts the archive would leave an
+empty file behind every refusal.
 
 **Destination picking**: a `picking: { paths } | null` state in `FileTree`. While set, a banner
 above the listing names what is moved with a Cancel button, writable folder rows and the root
@@ -130,9 +133,9 @@ and routed through the same functions the menu calls, so the confirmation is ide
 
 ## Risks / Trade-offs
 
-- [An archive fetched into a blob is held in the browser's memory where the File System Access
-  API is missing (Firefox, Safari)] → the 4 GiB limit bounds it; very large folders are better
-  downloaded per subfolder, which the error message suggests.
+- [An archive is held in the browser's memory before it is saved] → the 4 GiB limit bounds it;
+  very large folders are better downloaded per subfolder, which the error message suggests. A
+  single file is never buffered: the browser downloads it directly.
 - [A recursive delete of the wrong folder is not undoable] → the confirmation names the folder and
   says its content goes with it; the two roots are refused outright.
 - [A folder copy that fails midway leaves a partial copy] → reported with what was copied; the

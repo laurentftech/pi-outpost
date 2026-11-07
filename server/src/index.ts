@@ -5707,6 +5707,54 @@ async function handleCopyFile(workspace: Workspace, socket: WebSocket, filePath:
   }
 }
 
+/** A selection is bounded by what a person can click, not by what a socket can carry. */
+const MAX_BATCH_PATHS = 10_000;
+
+/** The parent of a browser-root-relative path ("" for a top-level entry). */
+function parentOf(relPath: string): string {
+  return relPath.includes("/") ? relPath.slice(0, relPath.lastIndexOf("/")) : "";
+}
+
+/**
+ * Several entries deleted, or moved into one directory, in one request. Each goes
+ * through the single-entry helper, so every rule is the same; a refusal is recorded
+ * and the next path goes on — nothing is rolled back. A path under another one in
+ * the request is dropped first: deleting a folder already deletes its content, and
+ * moving it already moves it. One `file_changed` per affected directory follows.
+ */
+async function handleFileBatch(
+  workspace: Workspace,
+  socket: WebSocket,
+  action: { operation: "delete_file" } | { operation: "move_file"; destinationDirectory: string },
+  paths: string[],
+  requestId: string,
+): Promise<void> {
+  const unique = [...new Set(paths)];
+  const outermost = unique.filter((candidate) => !unique.some((other) => other !== candidate && (other === "" || candidate.startsWith(`${other}/`))));
+  const done: { path: string; resultPath: string }[] = [];
+  const refused: { path: string; message: string; reason?: FileBrowserError["reason"] }[] = [];
+  for (const filePath of outermost) {
+    try {
+      const resultPath =
+        action.operation === "delete_file"
+          ? (await deleteFileFromBrowser(workspace.browserRoot, workspace.writableRoot, filePath), filePath)
+          : await moveFileFromBrowser(workspace.browserRoot, workspace.writableRoot, filePath, action.destinationDirectory);
+      done.push({ path: filePath, resultPath });
+    } catch (error) {
+      if (!(error instanceof FileBrowserError)) throw error;
+      refused.push({ path: filePath, message: error.message, reason: error.reason });
+    }
+  }
+  send(socket, { type: "file_batch_result", requestId, operation: action.operation, done, refused });
+  // `file_changed` re-lists the parent of the path it names: one path per directory touched.
+  const byDirectory = new Map<string, string>();
+  for (const { path: source, resultPath } of done) {
+    if (!byDirectory.has(parentOf(source))) byDirectory.set(parentOf(source), source);
+    if (!byDirectory.has(parentOf(resultPath))) byDirectory.set(parentOf(resultPath), resultPath);
+  }
+  for (const changed of byDirectory.values()) broadcast(workspace, { type: "file_changed", path: changed });
+}
+
 function sendFileBrowserError(socket: WebSocket, requestId: string, targetPath: string, error: unknown): void {
   if (error instanceof FileBrowserError) {
     send(socket, { type: "file_browser_error", requestId, path: targetPath, message: error.message, reason: error.reason });
@@ -6620,6 +6668,8 @@ const SERVED_WHILE_STARTING = new Set<ClientMessage["type"]>([
   "rename_file",
   "move_file",
   "copy_file",
+  "delete_files",
+  "move_files",
   "upload_file",
   "search_files",
   "search_content",
@@ -7041,6 +7091,28 @@ function handleClientMessage(socket: WebSocket, raw: string): void {
       }
       handleCopyFile(workspace, socket, message.path, message.destinationDirectory, message.requestId).catch(reportError);
       break;
+    case "delete_files":
+    case "move_files": {
+      const paths = message.paths as unknown;
+      if (
+        !Array.isArray(paths) ||
+        paths.length === 0 ||
+        paths.length > MAX_BATCH_PATHS ||
+        !paths.every((entry) => typeof entry === "string") ||
+        typeof message.requestId !== "string" ||
+        (message.type === "move_files" && typeof message.destinationDirectory !== "string")
+      ) {
+        return;
+      }
+      handleFileBatch(
+        workspace,
+        socket,
+        message.type === "delete_files" ? { operation: "delete_file" } : { operation: "move_file", destinationDirectory: message.destinationDirectory },
+        paths as string[],
+        message.requestId,
+      ).catch(reportError);
+      break;
+    }
     case "search_files":
       if (typeof message.query !== "string" || typeof message.requestId !== "string") return;
       handleSearchFiles(workspace, socket, message.query, message.requestId).catch(reportError);
