@@ -12,7 +12,7 @@ import { homedir } from "node:os";
 import path from "node:path";
 import { isAllowedHostPattern } from "./egressProxy.ts";
 import { isWithin, realResolve } from "./sandbox.ts";
-import { isPosixMxc, runnerKind } from "./terminalSandbox.ts";
+import { runnerKind } from "./terminalSandbox.ts";
 
 export type GrantAccess = "read" | "write";
 export type GrantScope = "once" | "session";
@@ -48,11 +48,17 @@ export interface GrantContext {
 /**
  * Why a runner may not have the user asked about a host, or undefined when it may. Each command
  * gets a proxy of its own on the loopback, waiting on a question about it, so a runner qualifies
- * only once a command under it is shown to reach its own proxy and no other loopback port
- * (`confinedNetworkMxc.test.ts`, `sandboxGrantsReal.test.ts`). Elsewhere an unlisted host is refused.
+ * only once a command under it is shown to reach its own proxy and no other loopback port.
+ *
+ * Admitted by kind, each because its proof runs in CI: MXC on Windows (`confinedNetworkMxc.test.ts`,
+ * "another command's proxy is not a way out"), MXC on Linux and macOS and Seatbelt
+ * (`sandboxGrantsReal.test.ts`, "another session's proxy under …", in the `mxc-linux` and
+ * `mxc-macos` jobs). Any other runner — one added later included — is refused until its own proof
+ * exists: an unlisted host is then refused, as the list says.
  */
 export function hostGrantsRefusal(runner: string): string | undefined {
-  if (runnerKind(runner) === "mxc" && !isPosixMxc(runner)) return undefined;
+  const kind = runnerKind(runner);
+  if (kind === "mxc" || kind === "seatbelt") return undefined;
   return `host grants are not yet proven under ${path.basename(runner)}: a command there must be shown to reach no other proxy on the loopback`;
 }
 

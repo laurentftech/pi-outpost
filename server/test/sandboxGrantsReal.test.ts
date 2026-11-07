@@ -36,6 +36,7 @@ const RUNNERS: Array<{ name: string; runner: string | undefined; skip: string | 
 // What `hostGrantsRefusal` waits for on the POSIX runners holding the network (MXC on Windows is
 // `confinedNetworkMxc.test.ts`): a command reaches its own proxy, and no other session's.
 for (const { name, runner, skip } of RUNNERS.filter((entry) => ["MXC on Linux", "MXC on macOS", "Seatbelt"].includes(entry.name))) {
+  // openlore: scenario=AnotherCommandsProxyIsNoWayOut spec=sandbox-approved-grants
   describe(`another session's proxy under ${name}`, { skip }, () => {
     let base: string;
     let root: string;
@@ -72,7 +73,69 @@ for (const { name, runner, skip } of RUNNERS.filter((entry) => ["MXC on Linux", 
       // Another proxy would answer too — 200 for its listed host, 403 otherwise. No answer: unreachable.
       assert.match(output, /other=000/, `a command reached another session's proxy: ${output}`);
     });
+
+    /**
+     * The question itself, as `sandbox.ts` wires it for a runner `hostGrantsRefusal` admits: a shared
+     * proxy for the list, a proxy of the command's own once someone can be asked, and the user played
+     * by `askHost`. A public host because loopback names and IP literals are never asked about.
+     */
+    async function asked(answer: "approved-once" | "refused") {
+      const questions: string[] = [];
+      const ops = confinedBashOperations({
+        runner: runner!,
+        root,
+        allowWrite: true,
+        agentDir: path.join(base, "agent"),
+        networkProxy: own,
+        allowedHosts: [],
+        askHost: async ({ host }) => {
+          questions.push(host);
+          return answer;
+        },
+      });
+      let output = "";
+      await ops.exec(
+        [
+          `echo "first=$(curl -s -o /dev/null -m 30 -w '%{http_code}' https://example.com/)"`,
+          `echo "second=$(curl -s -o /dev/null -m 30 -w '%{http_code}' https://example.com/)"`,
+        ].join("\n"),
+        root,
+        { onData: (data) => (output += data.toString()) },
+      );
+      return { output, questions };
+    }
+
+    // openlore: scenario=APosixRunnerAsksAboutAnUnlistedHost spec=sandbox-approved-grants
+    test("APosixRunnerAsksAboutAnUnlistedHost: allowed once, both connections go through, asked once, and said", async (t) => {
+      if (!(await online())) return t.skip("this host does not reach example.com");
+      const { output, questions } = await asked("approved-once");
+      assert.match(output, /first=200/, output);
+      assert.match(output, /second=200/, output);
+      assert.deepEqual(questions, ["example.com"], "one question for the command, however many connections");
+      assert.match(output, /\[pi-outpost\] network: the user allowed example\.com for this command\.\s*$/, output);
+    });
+
+    // openlore: scenario=APosixRunnerAppliesARefusal spec=sandbox-approved-grants
+    test("APosixRunnerAppliesARefusal: refused, nothing goes through, and the note says not to retry", async (t) => {
+      if (!(await online())) return t.skip("this host does not reach example.com");
+      const { output, questions } = await asked("refused");
+      assert.doesNotMatch(output, /(first|second)=200/, output);
+      assert.deepEqual(questions, ["example.com"]);
+      assert.match(output, /\[pi-outpost\] network: the user refused example\.com\./, output);
+      assert.match(output, /Do not retry a refused host for this request/, output);
+    });
   });
+}
+
+/**
+ * Whether this machine reaches the public host the question tests use, over HTTPS — not only its
+ * name: a runner may resolve names and still block outbound HTTPS, and the test would then wait out
+ * curl's timeouts and fail instead of skipping.
+ */
+let reachable: Promise<boolean> | undefined;
+function online(): Promise<boolean> {
+  reachable ??= fetch("https://example.com/", { method: "HEAD", signal: AbortSignal.timeout(5_000) }).then(() => true, () => false);
+  return reachable;
 }
 
 for (const { name, runner, shell, skip } of RUNNERS) {

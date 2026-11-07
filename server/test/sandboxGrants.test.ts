@@ -124,17 +124,23 @@ test("WslcRefusesADirectoryGrant: a directory grant to bash in a WSLC container 
 test("AnUnprovenRunnerAsksNothingAboutHosts: hosts are asked about under MXC on Windows, with a list and grants on — nowhere else", () => {
   const sandbox = { root: dir, allowWrite: true, allowBash: true, readExceptions: [], allowedHosts: ["registry.npmjs.org"], bashRunner: "C:\\pi\\bin\\x64\\wxc-exec.exe" };
   assert.equal(asksAboutHosts(sandbox), true);
+  // The POSIX runners whose proxy isolation CI proves ask too (host-questions-on-posix-runners).
   for (const bashRunner of ["/app/bin/x64/lxc-exec", "/app/bin/arm64/mxc-exec-mac", "/usr/bin/sandbox-exec"]) {
-    assert.equal(asksAboutHosts({ ...sandbox, bashRunner }), false, bashRunner);
+    assert.equal(asksAboutHosts({ ...sandbox, bashRunner }), true, bashRunner);
   }
+  assert.equal(asksAboutHosts({ ...sandbox, bashRunner: "/opt/landstrip/bin/landstrip" }), false, "a runner without the proof never asks");
   assert.equal(asksAboutHosts({ ...sandbox, grants: "never" }), false, "grants off: the list alone decides");
   assert.equal(asksAboutHosts({ ...sandbox, allowedHosts: undefined }), false, "no list: the network is open, nothing to ask");
 });
 
+// openlore: scenario=AnUnprovenRunnerAsksNothingAboutHosts spec=sandbox-approved-grants
 test("an unlisted host is asked about only under a runner shown to keep a command off other proxies", () => {
-  assert.equal(hostGrantsRefusal("C:\\pi\\node_modules\\@microsoft\\mxc-sdk\\bin\\x64\\wxc-exec.exe"), undefined);
-  for (const runner of ["/app/bin/x64/lxc-exec", "/app/bin/arm64/mxc-exec-mac", "/usr/bin/sandbox-exec", "/opt/landstrip/bin/landstrip"]) {
-    assert.match(hostGrantsRefusal(runner) ?? "", /not yet proven under/, runner);
+  for (const runner of ["C:\\pi\\node_modules\\@microsoft\\mxc-sdk\\bin\\x64\\wxc-exec.exe", "/app/bin/x64/lxc-exec", "/app/bin/arm64/mxc-exec-mac", "/usr/bin/sandbox-exec"]) {
+    assert.equal(hostGrantsRefusal(runner), undefined, runner);
+  }
+  // landstrip, and any runner nobody has proven: refused, saying what it must show.
+  for (const runner of ["/opt/landstrip/bin/landstrip", "/usr/local/bin/some-new-runner"]) {
+    assert.match(hostGrantsRefusal(runner) ?? "", /not yet proven under .*reach no other proxy/, runner);
   }
 });
 
