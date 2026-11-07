@@ -59,7 +59,7 @@ jobs:
           code=false
           while IFS= read -r file; do
             case "$file" in
-              README.md|CONTRIBUTING.md|SECURITY.md|CLAUDE.md|AGENTS.md) continue ;;
+              README.md|CONTRIBUTING.md|SECURITY.md|GOVERNANCE.md|CODE_OF_CONDUCT.md|CLAUDE.md|AGENTS.md) continue ;;
               .github/ISSUE_TEMPLATE/*|.github/pull_request_template.md) continue ;;
               docs/*)
                 if git grep -qF -- "$file" -- ':!*.md' ':!docs/'; then
