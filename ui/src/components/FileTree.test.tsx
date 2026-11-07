@@ -38,6 +38,19 @@ function setup(overrides: Partial<Props> = {}) {
  */
 const dirToggle = (name: string) => screen.getByRole("button", { name: new RegExp(`^[▸▾]\\s*${name}\\s*\\d*$`) });
 
+/** Open a row's actions menu from its ⋯ control and return the menu. */
+function openMenu(name: string) {
+  fireEvent.click(screen.getByRole("button", { name: `Actions for ${name}` }));
+  return screen.getByRole("menu");
+}
+const menuItem = (name: string | RegExp) => screen.getByRole("menuitem", { name });
+const queryMenuItem = (name: string | RegExp) => screen.queryByRole("menuitem", { name });
+/** Choose an item from a row's actions menu. */
+function choose(row: string, item: string | RegExp) {
+  openMenu(row);
+  fireEvent.click(menuItem(item));
+}
+
 describe("FileTree", () => {
   describe("expanding", () => {
     it("lists the root without expanding anything", () => {
@@ -242,35 +255,61 @@ describe("FileTree", () => {
   });
 
   describe("prompt references", () => {
-    it("offers a pin per file when attaching is possible", () => {
+    it("offers Reference in prompt in a file's menu when attaching is possible", () => {
       setup();
-      expect(screen.getByRole("button", { name: "Reference readme.md in the prompt" })).toBeInTheDocument();
+      openMenu("readme.md");
+      expect(menuItem("Reference in prompt")).toBeInTheDocument();
     });
 
-    it("omits the pin entirely when attaching is not offered", () => {
+    it("omits it entirely when attaching is not offered", () => {
       setup({ onToggleAttachPath: undefined });
-      expect(screen.queryByRole("button", { name: /in the prompt/ })).not.toBeInTheDocument();
+      openMenu("readme.md");
+      expect(queryMenuItem(/prompt/)).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /from the prompt/ })).not.toBeInTheDocument();
     });
 
-    it("reports the path to attach", () => {
+    it("User references a file from the tree: the menu reports the path to attach", () => {
       const { onToggleAttachPath } = setup();
-      fireEvent.click(screen.getByRole("button", { name: "Reference readme.md in the prompt" }));
+      choose("readme.md", "Reference in prompt");
       expect(onToggleAttachPath).toHaveBeenCalledWith("readme.md");
     });
 
-    it("says the file is already referenced, and offers to drop it", () => {
+    it("says the file is already referenced on its row, and the menu offers to drop it", () => {
       setup({ attachedPaths: ["readme.md"] });
-      const pin = screen.getByRole("button", { name: "Remove readme.md in the prompt" });
-      expect(pin).toHaveAttribute("aria-pressed", "true");
+      const marker = screen.getByRole("button", { name: "Remove readme.md from the prompt" });
+      expect(marker).toHaveAttribute("aria-pressed", "true");
+      openMenu("readme.md");
+      expect(menuItem("Remove from prompt")).toBeInTheDocument();
     });
 
-    it("keeps an attached pin visible rather than hiding it until hover", () => {
-      // Two files: one referenced, one not, so both pin styles are on screen
+    it("TheMarkerDropsTheReference: the marker and Remove from prompt both drop it", () => {
+      const { onToggleAttachPath } = setup({ attachedPaths: ["readme.md"] });
+      fireEvent.click(screen.getByRole("button", { name: "Remove readme.md from the prompt" }));
+      choose("readme.md", "Remove from prompt");
+      expect(onToggleAttachPath.mock.calls).toEqual([["readme.md"], ["readme.md"]]);
+    });
+
+    it("ReferenceAFolder: a folder is referenced from its menu and marked on its row", () => {
+      const { onToggleAttachPath, rerender } = setup();
+      choose("src", "Reference in prompt");
+      expect(onToggleAttachPath).toHaveBeenCalledWith("src");
+      rerender(<FileTree tree={tree()} onExpand={vi.fn()} onSelectFile={vi.fn()} onToggleAttachPath={onToggleAttachPath} attachedPaths={["src"]} />);
+      expect(screen.getByRole("button", { name: "Remove src from the prompt" })).toHaveAttribute("aria-pressed", "true");
+    });
+
+    it("keeps the @ lit on a referenced row, and reveals it only on hover elsewhere", () => {
       setup({ tree: { "": [file("readme.md"), file("notes.md")] }, attachedPaths: ["readme.md"] });
-      const attached = screen.getByRole("button", { name: /Remove readme.md/ });
-      const plain = screen.getByRole("button", { name: /Reference/ });
-      expect(attached.className).not.toMatch(/opacity-0/);
+      expect(screen.getByRole("button", { name: /Remove readme.md/ }).className).not.toMatch(/opacity-0/);
+      const plain = screen.getByRole("button", { name: "Reference notes.md in the prompt" });
+      expect(plain).toHaveAttribute("aria-pressed", "false");
       expect(plain.className).toMatch(/opacity-0/);
+    });
+
+    it("the @ on a row references the file or the folder in one click", () => {
+      const { onToggleAttachPath } = setup();
+      fireEvent.click(screen.getByRole("button", { name: "Reference readme.md in the prompt" }));
+      fireEvent.click(screen.getByRole("button", { name: "Reference src in the prompt" }));
+      expect(onToggleAttachPath.mock.calls).toEqual([["readme.md"], ["src"]]);
     });
   });
 
@@ -304,28 +343,30 @@ describe("FileTree", () => {
       const actions = handlers();
       setup({ ...actions, writableRoot: null });
 
-      fireEvent.click(screen.getByRole("button", { name: "Open readme.md with the associated application" }));
+      openMenu("readme.md");
+      expect(queryMenuItem(/^Rename/)).not.toBeInTheDocument();
+      expect(queryMenuItem(/^Delete/)).not.toBeInTheDocument();
+      fireEvent.click(menuItem("Open with associated app"));
 
       expect(actions.onOpenNative).toHaveBeenCalledWith("readme.md");
-      expect(screen.queryByRole("button", { name: "Rename readme.md" })).not.toBeInTheDocument();
-      expect(screen.queryByRole("button", { name: "Delete readme.md" })).not.toBeInTheDocument();
     });
 
     it("TheTreeOffersRevealOnFilesAndFolders: a file row and a folder row each ask to be shown in the file manager", () => {
       const onRevealNative = vi.fn();
       setup({ tree: { "": [dir("docs"), file("readme.md")] }, onRevealNative, writableRoot: null });
 
-      fireEvent.click(screen.getByRole("button", { name: "Show readme.md in the file manager" }));
-      fireEvent.click(screen.getByRole("button", { name: "Show docs in the file manager" }));
+      choose("readme.md", "Show in file manager");
+      choose("docs", "Show in file manager");
 
-      expect(onRevealNative.mock.calls).toEqual([["readme.md"], ["docs"]]);
       // Showing is not writing: a read-only tree offers it all the same, and nothing expanded.
-      expect(screen.getByRole("button", { name: "Show docs in the file manager" })).toHaveAttribute("title", "Show in the file manager");
+      expect(onRevealNative.mock.calls).toEqual([["readme.md"], ["docs"]]);
+      expect(screen.queryByText("empty")).not.toBeInTheDocument();
     });
 
     it("offers no reveal control when the page cannot ask for one", () => {
       setup({ tree: { "": [dir("docs"), file("readme.md")] } });
-      expect(screen.queryByRole("button", { name: /in the file manager$/ })).not.toBeInTheDocument();
+      openMenu("readme.md");
+      expect(queryMenuItem("Show in file manager")).not.toBeInTheDocument();
     });
 
     it("shows why a reveal failed, on the tree", () => {
@@ -340,7 +381,7 @@ describe("FileTree", () => {
     it("renames a writable file in place", () => {
       const actions = handlers();
       setup(actions);
-      fireEvent.click(screen.getByRole("button", { name: "Rename readme.md" }));
+      choose("readme.md", /^Rename/);
       const input = screen.getByRole("textbox", { name: "Rename readme.md" });
 
       fireEvent.change(input, { target: { value: "guide.md" } });
@@ -352,7 +393,7 @@ describe("FileTree", () => {
     it("cancels a rename submitted with a blank name", () => {
       const actions = handlers();
       setup(actions);
-      fireEvent.click(screen.getByRole("button", { name: "Rename readme.md" }));
+      choose("readme.md", /^Rename/);
       const input = screen.getByRole("textbox", { name: "Rename readme.md" });
 
       fireEvent.change(input, { target: { value: "" } });
@@ -367,7 +408,7 @@ describe("FileTree", () => {
     it("does not submit the same rename twice while its acknowledgement is pending", () => {
       const actions = handlers();
       const view = render(<FileTree tree={tree()} onExpand={vi.fn()} onSelectFile={vi.fn()} {...actions} />);
-      fireEvent.click(screen.getByRole("button", { name: "Rename readme.md" }));
+      choose("readme.md", /^Rename/);
       const input = screen.getByRole("textbox", { name: "Rename readme.md" });
       fireEvent.change(input, { target: { value: "guide.md" } });
       fireEvent.keyDown(input, { key: "Enter" });
@@ -392,7 +433,7 @@ describe("FileTree", () => {
       const view = render(
         <FileTree tree={tree()} onExpand={vi.fn()} onSelectFile={vi.fn()} {...actions} />,
       );
-      fireEvent.click(screen.getByRole("button", { name: "Rename readme.md" }));
+      choose("readme.md", /^Rename/);
       const input = screen.getByRole("textbox", { name: "Rename readme.md" });
       fireEvent.change(input, { target: { value: "taken.md" } });
       fireEvent.keyDown(input, { key: "Enter" });
@@ -422,9 +463,9 @@ describe("FileTree", () => {
       const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
       setup(actions);
 
-      fireEvent.click(screen.getByRole("button", { name: "Delete readme.md" }));
+      choose("readme.md", /^Delete/);
 
-      expect(confirm).toHaveBeenCalledWith('Delete "readme.md" permanently?');
+      expect(confirm).toHaveBeenCalledWith('Delete "readme.md"?');
       expect(actions.onDeleteFile).toHaveBeenCalledTimes(1);
       expect(actions.onDeleteFile).toHaveBeenCalledWith("readme.md");
       confirm.mockRestore();
@@ -435,7 +476,7 @@ describe("FileTree", () => {
       const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
       setup(actions);
 
-      fireEvent.click(screen.getByRole("button", { name: "Delete readme.md" }));
+      choose("readme.md", /^Delete/);
 
       expect(actions.onDeleteFile).not.toHaveBeenCalled();
       expect(screen.getByText("readme.md")).toBeInTheDocument();
@@ -453,10 +494,11 @@ describe("FileTree", () => {
         },
       });
 
-      expect(screen.getByRole("button", { name: "Open readme.md with the associated application" })).toBeDisabled();
-      expect(screen.getByRole("button", { name: "Rename readme.md" })).toBeDisabled();
-      expect(screen.getByRole("button", { name: "Delete readme.md" })).toBeDisabled();
       expect(screen.getByText("readme.md").closest("button")).toHaveAttribute("draggable", "false");
+      openMenu("readme.md");
+      expect(menuItem("Open with associated app")).toBeDisabled();
+      expect(menuItem(/^Rename/)).toBeDisabled();
+      expect(menuItem(/^Delete/)).toBeDisabled();
     });
 
     it("moves a dragged file onto a writable directory", () => {
@@ -557,28 +599,64 @@ describe("creating", () => {
         {...extra}
       />,
     );
-    fireEvent.click(screen.getByRole("button", { name: "New file or folder in src" }));
-    return { ...handlers, input: screen.getByRole("textbox", { name: /New file or folder in src/ }) };
+    choose("src", "New file…");
+    return { ...handlers, input: screen.getByRole("textbox", { name: /New file in src/ }) };
   }
 
-  it("offers no creation control without a creation callback", () => {
-    render(<FileTree tree={tree()} onExpand={vi.fn()} onSelectFile={vi.fn()} />);
+  /** The tree with both creation callbacks, nothing opened yet. */
+  function creatorsRendered() {
+    const handlers = creators();
+    render(<FileTree tree={tree()} onExpand={vi.fn()} onSelectFile={vi.fn()} {...handlers} />);
+    return handlers;
+  }
 
-    expect(screen.queryByRole("button", { name: /New file or folder/ })).toBeNull();
+  it("a folder's menu offers New file… and New folder…, and the root has a control for each", () => {
+    const { onCreateDirectory } = creatorsRendered();
+    openMenu("src");
+    expect(menuItem("New file…")).toBeInTheDocument();
+    expect(menuItem("New folder…")).toBeInTheDocument();
+    fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
+
+    fireEvent.click(screen.getByRole("button", { name: "New folder in the workspace root" }));
+    const input = screen.getByRole("textbox", { name: "New folder in the workspace root" });
+    fireEvent.change(input, { target: { value: "notes" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(onCreateDirectory).toHaveBeenCalledWith("notes");
+    expect(screen.getByRole("button", { name: "New file in the workspace root" })).toBeInTheDocument();
   });
 
-  it("offers no control on a directory outside the writable zone", () => {
+  it("New file… refuses a name ending in a slash, instead of making a folder of it", () => {
+    const { onCreateFile, onCreateDirectory, input } = openInputInSrc();
+    expect(input).toHaveAttribute("placeholder", "file name");
+    fireEvent.change(input, { target: { value: "widgets/" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(screen.getByText("A file name cannot end with /")).toBeInTheDocument();
+    expect(onCreateFile).not.toHaveBeenCalled();
+    expect(onCreateDirectory).not.toHaveBeenCalled();
+  });
+
+  it("offers no creation control without a creation callback", () => {
+    render(<FileTree tree={tree()} onExpand={vi.fn()} onSelectFile={vi.fn()} onRevealNative={vi.fn()} />);
+
+    expect(screen.queryByRole("button", { name: /New (file|folder)/ })).toBeNull();
+    openMenu("src");
+    expect(queryMenuItem(/^New (file|folder)…/)).toBeNull();
+  });
+
+  it("ReadOnlyDirectoryOffersNothing: no creation item on a directory outside the writable zone", () => {
     render(
-      <FileTree tree={tree()} onExpand={vi.fn()} onSelectFile={vi.fn()} writableRoot="other" {...creators()} />,
+      <FileTree tree={tree()} onExpand={vi.fn()} onSelectFile={vi.fn()} writableRoot="other" onRevealNative={vi.fn()} {...creators()} />,
     );
 
-    expect(screen.queryByRole("button", { name: "New file or folder in src" })).toBeNull();
+    openMenu("src");
+    expect(queryMenuItem(/^New (file|folder)…/)).toBeNull();
   });
 
-  it("offers nothing at all when the sandbox is read-only", () => {
+  it("offers nothing at all when the sandbox is read-only — a folder with no action has no ⋯ either", () => {
     render(<FileTree tree={tree()} onExpand={vi.fn()} onSelectFile={vi.fn()} writableRoot={null} {...creators()} />);
 
-    expect(screen.queryByRole("button", { name: /New file or folder/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /New (file|folder)/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Actions for src" })).toBeNull();
   });
 
   it("reports the joined path for a file", () => {
@@ -591,8 +669,10 @@ describe("creating", () => {
     expect(onCreateDirectory).not.toHaveBeenCalled();
   });
 
-  it("reads a trailing slash as a directory", () => {
-    const { onCreateFile, onCreateDirectory, input } = openInputInSrc();
+  it("New folder… creates a folder, the name typed plainly (a trailing slash tolerated)", () => {
+    const { onCreateFile, onCreateDirectory } = creatorsRendered();
+    choose("src", "New folder…");
+    const input = screen.getByRole("textbox", { name: "New folder in src" });
 
     fireEvent.change(input, { target: { value: "widgets/" } });
     fireEvent.keyDown(input, { key: "Enter" });
@@ -605,7 +685,7 @@ describe("creating", () => {
     const handlers = creators();
     render(<FileTree tree={tree()} onExpand={vi.fn()} onSelectFile={vi.fn()} {...handlers} />);
 
-    fireEvent.click(screen.getByRole("button", { name: "New file or folder in the workspace root" }));
+    fireEvent.click(screen.getByRole("button", { name: "New file in the workspace root" }));
     const input = screen.getByRole("textbox", { name: /workspace root/ });
     fireEvent.change(input, { target: { value: "notes.md" } });
     fireEvent.keyDown(input, { key: "Enter" });
@@ -621,7 +701,7 @@ describe("creating", () => {
 
     expect(onCreateFile).not.toHaveBeenCalled();
     expect(screen.getByText("That is a path, not a name")).toBeInTheDocument();
-    expect(screen.getByRole("textbox", { name: /New file or folder in src/ })).toHaveValue("deep/helper.ts");
+    expect(screen.getByRole("textbox", { name: /New file in src/ })).toHaveValue("deep/helper.ts");
   });
 
   it("refuses an empty name", () => {
@@ -643,7 +723,7 @@ describe("creating", () => {
     fireEvent.keyDown(input, { key: "Enter" });
 
     expect(screen.getByText('"src/taken.ts" already exists')).toBeInTheDocument();
-    expect(screen.getByRole("textbox", { name: /New file or folder in src/ })).toHaveValue("taken.ts");
+    expect(screen.getByRole("textbox", { name: /New file in src/ })).toHaveValue("taken.ts");
   });
 
   it("shows nothing for a refusal of some other path", () => {
@@ -662,8 +742,8 @@ describe("creating", () => {
     const { rerender } = render(
       <FileTree tree={tree()} onExpand={vi.fn()} onSelectFile={vi.fn()} {...handlers} />,
     );
-    fireEvent.click(screen.getByRole("button", { name: "New file or folder in src" }));
-    const input = screen.getByRole("textbox", { name: /New file or folder in src/ });
+    choose("src", "New file…");
+    const input = screen.getByRole("textbox", { name: /New file in src/ });
     fireEvent.change(input, { target: { value: "helper.ts" } });
     fireEvent.keyDown(input, { key: "Enter" });
 
@@ -678,7 +758,7 @@ describe("creating", () => {
       />,
     );
 
-    expect(screen.queryByRole("textbox", { name: /New file or folder in src/ })).toBeNull();
+    expect(screen.queryByRole("textbox", { name: /New file in src/ })).toBeNull();
   });
 
   it("does not read a listing that already holds the name as success", () => {
@@ -689,8 +769,8 @@ describe("creating", () => {
     const { rerender } = render(
       <FileTree tree={tree(existing)} onExpand={vi.fn()} onSelectFile={vi.fn()} {...handlers} />,
     );
-    fireEvent.click(screen.getByRole("button", { name: "New file or folder in src" }));
-    const input = screen.getByRole("textbox", { name: /New file or folder in src/ });
+    choose("src", "New file…");
+    const input = screen.getByRole("textbox", { name: /New file in src/ });
     fireEvent.change(input, { target: { value: "taken.ts" } });
     fireEvent.keyDown(input, { key: "Enter" });
 
@@ -704,7 +784,7 @@ describe("creating", () => {
       />,
     );
 
-    expect(screen.getByRole("textbox", { name: /New file or folder in src/ })).toHaveValue("taken.ts");
+    expect(screen.getByRole("textbox", { name: /New file in src/ })).toHaveValue("taken.ts");
     expect(screen.getByText('"src/taken.ts" already exists')).toBeInTheDocument();
   });
 
@@ -716,7 +796,7 @@ describe("creating", () => {
 
     expect(onCreateFile).not.toHaveBeenCalled();
     expect(onCreateDirectory).not.toHaveBeenCalled();
-    expect(screen.queryByRole("textbox", { name: /New file or folder in src/ })).toBeNull();
+    expect(screen.queryByRole("textbox", { name: /New file in src/ })).toBeNull();
   });
 });
 
@@ -738,7 +818,7 @@ describe("refreshing", () => {
     setup({ onRefresh: vi.fn(), writableRoot: null, onCreateFile: vi.fn() });
 
     expect(screen.getByRole("button", { name: "Refresh the file tree" })).toBeTruthy();
-    expect(screen.queryByRole("button", { name: /New file or folder in the workspace root/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /New (file|folder) in the workspace root/ })).toBeNull();
   });
 
   it("offers none when no refresh callback is supplied", () => {
@@ -846,4 +926,708 @@ describe("external file imports", () => {
     }
   });
 
+});
+
+// ---------------------------------------------------------------------------
+// The actions menu, folders at parity, selection, picking
+// ---------------------------------------------------------------------------
+
+/** Every callback wired, so each menu holds everything its entries can take. */
+function everything(overrides: Partial<Props> = {}) {
+  const handlers = {
+    onExpand: vi.fn(),
+    onSelectFile: vi.fn(),
+    onSelectDiff: vi.fn(),
+    onToggleAttachPath: vi.fn(),
+    onOpenNative: vi.fn(),
+    onRevealNative: vi.fn(),
+    onRenameFile: vi.fn(),
+    onDeleteFile: vi.fn(),
+    onMoveFile: vi.fn(),
+    onCopyFile: vi.fn(),
+    onDeleteFiles: vi.fn(),
+    onMoveFiles: vi.fn(),
+    onCreateFile: vi.fn(),
+    onCreateDirectory: vi.fn(),
+    onDownload: vi.fn(async () => ({ skipped: 0 })),
+    onRestoreDeleted: vi.fn(),
+  };
+  const view = render(<FileTree tree={tree()} {...handlers} {...overrides} />);
+  return { ...handlers, ...view };
+}
+
+/** The names of the rows the selection highlights, in display order. */
+const selectedNames = () =>
+  Array.from(document.querySelectorAll('[data-selected="true"]')).map((row) => row.querySelector("[title]")!.getAttribute("title"));
+const label = (name: string) => screen.getByText(name).closest("button")!;
+/** A menu item as it is seen: its symbol, then the accessible name it is chosen by. */
+const symbolAndName = (item: HTMLElement) =>
+  `${item.querySelector("[aria-hidden]")?.textContent ?? ""} ${item.getAttribute("aria-label") ?? within(item).getByText(/\w/, { selector: "span:not([aria-hidden])" }).textContent}`;
+const flat = { "": [file("a"), file("b"), file("c"), file("d")] };
+
+describe("the actions menu", () => {
+  it("TheRowKeepsTheAtAndItsStates: the @, the git badge and ⋯, nothing else, on files and folders", () => {
+    everything({ attachedPaths: ["readme.md"], gitFiles: { "readme.md": "modified" } });
+    const names = (row: HTMLElement) => within(row).getAllByRole("button").map((button) => button.getAttribute("aria-label") ?? button.textContent);
+    expect(names(label("readme.md").parentElement!)).toEqual([
+      "readme.md",
+      "Remove readme.md from the prompt",
+      "Show diff of readme.md",
+      "Actions for readme.md",
+    ]);
+    expect(names(dirToggle("src").parentElement!).slice(1)).toEqual(["Reference src in the prompt", "Actions for src"]);
+  });
+
+  it("each menu item carries the symbol of its action", () => {
+    everything({ attachedPaths: ["readme.md"] });
+    openMenu("readme.md");
+    expect(symbolAndName(menuItem("Remove from prompt"))).toBe("@ Remove from prompt");
+    expect(symbolAndName(menuItem("Show in file manager"))).toBe("⌂ Show in file manager");
+  });
+
+  it("AFileRowsMenuInItsOrder: the rendered menu reads its groups in order", () => {
+    everything({ gitFiles: { "readme.md": "modified" } });
+    const menu = openMenu("readme.md");
+    expect(within(menu).getAllByRole("group").map((group) => within(group).getAllByRole("menuitem").map(symbolAndName))).toEqual([
+      ["↵ Open", "± Show diff", "↗ Open with associated app", "⌂ Show in file manager"],
+      ["@ Reference in prompt", "⤓ Download"],
+      ["✎ Rename…", "→ Move to…"],
+      ["× Delete…"],
+    ]);
+  });
+
+  it("TheContextMenuOpensTheSameMenu: a right-click opens it instead of the browser's own", () => {
+    everything();
+    // fireEvent answers false when a handler prevented the default: the browser's menu.
+    expect(fireEvent.contextMenu(label("readme.md"), { clientX: 30, clientY: 40 })).toBe(false);
+    expect(screen.getByRole("menu", { name: "Actions for readme.md" })).toBeInTheDocument();
+    expect(menuItem("Open")).toBeInTheDocument();
+  });
+
+  it("OneMenuAtATime: opening another row's menu replaces the first; a new project closes it", () => {
+    const { rerender, ...handlers } = everything();
+    openMenu("readme.md");
+    openMenu("src");
+    expect(screen.getAllByRole("menu")).toHaveLength(1);
+    expect(screen.getByRole("menu", { name: "Actions for src" })).toBeInTheDocument();
+
+    rerender(<FileTree tree={{}} onExpand={handlers.onExpand} onSelectFile={handlers.onSelectFile} onRevealNative={handlers.onRevealNative} />);
+    expect(screen.queryByRole("menu")).toBeNull();
+  });
+
+  it("TheMenuIsAKeyboardMenu: Escape closes it and focus returns to the row's ⋯", () => {
+    everything();
+    const menu = openMenu("readme.md");
+    fireEvent.keyDown(menu, { key: "Escape" });
+    expect(screen.queryByRole("menu")).toBeNull();
+    expect(screen.getByRole("button", { name: "Actions for readme.md" })).toHaveFocus();
+  });
+
+  it("CreateDirectoryFromTree: the created folder appears expanded, and no file is opened", () => {
+    const { onCreateDirectory, onSelectFile, rerender, ...rest } = everything();
+    choose("src", "New folder…");
+    const input = screen.getByRole("textbox", { name: "New folder in src" });
+    expect(input).toHaveAttribute("placeholder", "folder name");
+    fireEvent.change(input, { target: { value: "widgets" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(onCreateDirectory).toHaveBeenCalledWith("src/widgets");
+
+    rerender(
+      <FileTree
+        {...rest}
+        onCreateDirectory={onCreateDirectory}
+        onSelectFile={onSelectFile}
+        tree={tree({ src: [file("main.ts"), dir("nested"), dir("widgets")], "src/widgets": [] })}
+        created="src/widgets"
+      />,
+    );
+    expect(dirToggle("widgets")).toHaveTextContent("▾");
+    expect(screen.getByText("empty")).toBeInTheDocument();
+    expect(onSelectFile).not.toHaveBeenCalled();
+  });
+
+  it("CreateFileFromTree: New file… opens the input inside the folder", () => {
+    const { onCreateFile } = everything();
+    choose("src", "New file…");
+    const input = screen.getByRole("textbox", { name: "New file in src" });
+    fireEvent.change(input, { target: { value: "util.ts" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(onCreateFile).toHaveBeenCalledWith("src/util.ts");
+  });
+
+  it("TheRootsOfferNoRemoval: the writable root's own folder cannot be renamed, moved or deleted", () => {
+    everything({ writableRoot: "src" });
+    openMenu("src");
+    expect(queryMenuItem(/^Rename/)).toBeNull();
+    expect(queryMenuItem(/^Move/)).toBeNull();
+    expect(queryMenuItem(/^Delete/)).toBeNull();
+    expect(menuItem("New file…")).toBeInTheDocument();
+    expect(menuItem("New folder…")).toBeInTheDocument();
+  });
+});
+
+describe("folders at parity", () => {
+  it("AFolderRowsMenu: a writable folder offers everything a file does that a folder can take", () => {
+    everything();
+    const menu = openMenu("src");
+    expect(within(menu).getAllByRole("menuitem").map(symbolAndName)).toEqual([
+      "+ New file…",
+      "⊞ New folder…",
+      "⌂ Show in file manager",
+      "@ Reference in prompt",
+      "⤓ Download as .zip",
+      "✎ Rename…",
+      "→ Move to…",
+      "× Delete…",
+    ]);
+  });
+
+  it("renames a folder in place, a trailing slash allowed", () => {
+    const { onRenameFile } = everything();
+    choose("src", /^Rename/);
+    const input = screen.getByRole("textbox", { name: "Rename src" });
+    fireEvent.change(input, { target: { value: "lib/" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(onRenameFile).toHaveBeenCalledWith("src", "lib");
+  });
+
+  it("ConfirmAFolderDeletion: the confirmation says its content goes with it", () => {
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+    const { onDeleteFile } = everything();
+    choose("src", /^Delete/);
+    expect(confirm).toHaveBeenCalledWith('Delete the folder "src" and everything in it?');
+    expect(onDeleteFile).toHaveBeenCalledWith("src");
+    confirm.mockRestore();
+  });
+
+  it("DragAFolderOntoAWritableFolder: it moves there, and never into one of its own subfolders", () => {
+    const { onMoveFile } = everything({ tree: { "": [dir("drafts"), dir("archive")], drafts: [dir("inner")], archive: [] } });
+    const stored = new Map<string, string>();
+    const dataTransfer = {
+      types: [] as string[],
+      effectAllowed: "none",
+      dropEffect: "none",
+      setData: (type: string, value: string) => {
+        stored.set(type, value);
+        dataTransfer.types.push(type);
+      },
+      getData: (type: string) => stored.get(type) ?? "",
+    };
+    fireEvent.click(dirToggle("drafts"));
+    fireEvent.dragStart(dirToggle("drafts"), { dataTransfer });
+
+    const inner = dirToggle("inner").parentElement!;
+    fireEvent.dragOver(inner, { dataTransfer });
+    expect(inner).not.toHaveClass("ring-1");
+    fireEvent.drop(inner, { dataTransfer });
+    expect(onMoveFile).not.toHaveBeenCalled();
+
+    const archive = dirToggle("archive").parentElement!;
+    fireEvent.dragOver(archive, { dataTransfer });
+    fireEvent.drop(archive, { dataTransfer });
+    expect(onMoveFile).toHaveBeenCalledWith("drafts", "archive");
+  });
+
+  it("a read-only folder dropped on a writable one is copied", () => {
+    const { onCopyFile } = everything({ tree: { "": [dir("reference"), dir("work")], work: [] }, writableRoot: "work" });
+    const stored = new Map<string, string>();
+    const dataTransfer = {
+      types: [] as string[],
+      effectAllowed: "none",
+      dropEffect: "none",
+      setData: (type: string, value: string) => {
+        stored.set(type, value);
+        dataTransfer.types.push(type);
+      },
+      getData: (type: string) => stored.get(type) ?? "",
+    };
+    fireEvent.dragStart(dirToggle("reference"), { dataTransfer });
+    expect(dataTransfer.effectAllowed).toBe("copy");
+    fireEvent.drop(dirToggle("work").parentElement!, { dataTransfer });
+    expect(onCopyFile).toHaveBeenCalledWith("reference", "work");
+  });
+
+  it("reports a folder copy that left entries out", () => {
+    everything({ fileOperation: { status: "succeeded", operation: "copy_file", path: "reference", resultPath: "work/reference", requestId: "fileop:1", skipped: 2 } });
+    expect(screen.getByRole("status")).toHaveTextContent("2 entries were left out of the copy");
+  });
+});
+
+describe("multi-selection", () => {
+  it("ShiftClickSelectsARange: from the anchor to the clicked row, without opening anything", () => {
+    const { onSelectFile } = everything({ tree: flat });
+    fireEvent.click(label("a"));
+    fireEvent.click(label("c"), { shiftKey: true });
+    expect(selectedNames()).toEqual(["a", "b", "c"]);
+    expect(onSelectFile).toHaveBeenCalledTimes(1);
+  });
+
+  it("CtrlClickTogglesOneFile: Ctrl or Cmd adds and removes one row", () => {
+    everything({ tree: flat });
+    fireEvent.click(label("a"));
+    fireEvent.click(label("b"), { ctrlKey: true });
+    expect(selectedNames()).toEqual(["a", "b"]);
+    fireEvent.click(label("b"), { metaKey: true });
+    fireEvent.click(label("d"), { ctrlKey: true });
+    expect(selectedNames()).toEqual(["a", "d"]);
+  });
+
+  it("EscapeClearsTheSelection", () => {
+    everything({ tree: flat });
+    fireEvent.click(label("a"));
+    fireEvent.click(label("c"), { shiftKey: true });
+    fireEvent.keyDown(label("b"), { key: "Escape" });
+    expect(selectedNames()).toEqual([]);
+  });
+
+  it("ARangeIncludesVisibleFoldersOnly: folder rows count, a collapsed folder's entries do not", () => {
+    const { onExpand } = everything({
+      tree: { "": [file("a"), dir("open"), dir("shut"), file("z")], open: [file("b")], shut: [file("hidden")] },
+    });
+    fireEvent.click(dirToggle("open"));
+    fireEvent.click(label("a"));
+    fireEvent.click(label("z"), { shiftKey: true });
+    expect(selectedNames()).toEqual(["a", "open", "b", "shut", "z"]);
+    // Selecting a folder with a modifier neither expands nor fetches it.
+    fireEvent.click(dirToggle("shut"), { ctrlKey: true });
+    expect(screen.queryByText("hidden")).toBeNull();
+    expect(onExpand).not.toHaveBeenCalledWith("shut");
+  });
+
+  it("ASelectionDoesNotOutliveItsFiles: a deleted file leaves it, another project clears it", () => {
+    const { rerender, ...handlers } = everything({ tree: flat });
+    fireEvent.click(label("a"));
+    fireEvent.click(label("c"), { shiftKey: true });
+    rerender(<FileTree {...handlers} tree={{ "": [file("a"), file("c"), file("d")] }} />);
+    expect(selectedNames()).toEqual(["a", "c"]);
+    rerender(<FileTree {...handlers} tree={{}} />);
+    rerender(<FileTree {...handlers} tree={flat} />);
+    expect(selectedNames()).toEqual([]);
+  });
+});
+
+describe("acting on a selection", () => {
+  it("DeleteASelectionWithOneConfirmation: one confirmation naming the count, one batch request", () => {
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+    const { onDeleteFiles, onDeleteFile } = everything();
+    fireEvent.click(label("readme.md"));
+    fireEvent.click(dirToggle("src"), { ctrlKey: true });
+    choose("readme.md", "Delete 2 items…");
+    expect(confirm).toHaveBeenCalledTimes(1);
+    expect(confirm).toHaveBeenCalledWith("Delete 2 items? The folder is deleted with everything in it.");
+    expect(onDeleteFiles).toHaveBeenCalledWith(["readme.md", "src"]);
+    expect(onDeleteFile).not.toHaveBeenCalled();
+    confirm.mockRestore();
+  });
+
+  it("ASelectedFolderCoversItsContent: a selected file inside a selected folder is not acted on twice", () => {
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+    const { onDeleteFile, onDeleteFiles } = everything();
+    fireEvent.click(dirToggle("src"));
+    fireEvent.click(dirToggle("src"), { ctrlKey: true });
+    fireEvent.click(label("main.ts"), { ctrlKey: true });
+    expect(selectedNames()).toEqual(["src", "main.ts"]);
+    expect(screen.getByRole("toolbar", { name: "1 selected" })).toBeInTheDocument();
+    choose("main.ts", /^Delete/);
+    expect(onDeleteFile).toHaveBeenCalledWith("src");
+    expect(onDeleteFiles).not.toHaveBeenCalled();
+    confirm.mockRestore();
+  });
+
+  it("ExpandingAFolderDoesNotSelectIt: files Ctrl-clicked inside a folder just opened are deleted alone", () => {
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+    const { onDeleteFiles, onDeleteFile } = everything({ tree: { "": [dir("box"), file("other")], box: [file("one"), file("two"), file("three")] } });
+    fireEvent.click(dirToggle("box"));
+    fireEvent.click(label("one"), { ctrlKey: true });
+    fireEvent.click(label("three"), { ctrlKey: true });
+    expect(selectedNames()).toEqual(["one", "three"]);
+    expect(screen.getByRole("toolbar", { name: "2 selected" })).toBeInTheDocument();
+    fireEvent.click(within(screen.getByRole("toolbar")).getByRole("button", { name: "Delete 2 items…" }));
+    expect(onDeleteFiles).toHaveBeenCalledWith(["box/one", "box/three"]);
+    expect(onDeleteFile).not.toHaveBeenCalledWith("box");
+    confirm.mockRestore();
+  });
+
+  it("DownloadASelectionAsOneArchive, and a single file or folder downloads as itself or a zip", async () => {
+    const { onDownload } = everything();
+    choose("readme.md", "Download");
+    choose("src", "Download as .zip");
+    fireEvent.click(label("readme.md"));
+    fireEvent.click(dirToggle("src"), { ctrlKey: true });
+    choose("src", "Download 2 items as .zip");
+    expect(onDownload.mock.calls).toEqual([
+      [["readme.md"], true],
+      [["src"], false],
+      [["readme.md", "src"], false],
+    ]);
+  });
+
+  it("ATooLargeFolderIsRefusedUpFront, on the tree: the refusal is shown, and a left-out count too", async () => {
+    const onDownload = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("More than 65535 entries: too many for one archive — download a subfolder instead"))
+      .mockResolvedValueOnce({ skipped: 1 });
+    everything({ onDownload });
+    choose("src", "Download as .zip");
+    await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("More than 65535 entries"));
+    choose("src", "Download as .zip");
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("1 entry was left out of the archive"));
+  });
+
+  it("TheMenuOfAnUnselectedRowActsOnThatRow: the selection becomes that row", () => {
+    everything({ tree: flat });
+    fireEvent.click(label("a"));
+    fireEvent.click(label("b"), { shiftKey: true });
+    const menu = openMenu("d");
+    expect(menu).toHaveAccessibleName("Actions for d");
+    expect(menuItem("Delete…")).toBeInTheDocument();
+    expect(selectedNames()).toEqual([]);
+  });
+
+  it("AMixedSelectionOffersNoMutation: a read-only entry in it takes Delete and Move away", () => {
+    everything({ writableRoot: "src" });
+    fireEvent.click(dirToggle("src"));
+    fireEvent.click(label("main.ts"));
+    fireEvent.click(label("readme.md"), { ctrlKey: true });
+    openMenu("main.ts");
+    expect(queryMenuItem(/^Delete/)).toBeNull();
+    expect(queryMenuItem(/^Move/)).toBeNull();
+    expect(menuItem("Download 2 items as .zip")).toBeInTheDocument();
+    expect(menuItem("Reference 2 items in prompt")).toBeInTheDocument();
+  });
+
+  it("DragASelectionOntoAFolder: dropping one selected row moves them all in one request", () => {
+    const { onMoveFiles, onMoveFile } = everything({ tree: { "": [dir("src"), file("readme.md"), file("notes.md")], src: [] } });
+    fireEvent.click(label("readme.md"));
+    fireEvent.click(label("notes.md"), { ctrlKey: true });
+    const stored = new Map<string, string>();
+    const dataTransfer = {
+      types: [] as string[],
+      effectAllowed: "none",
+      dropEffect: "none",
+      setData: (type: string, value: string) => {
+        stored.set(type, value);
+        dataTransfer.types.push(type);
+      },
+      getData: (type: string) => stored.get(type) ?? "",
+    };
+    fireEvent.dragStart(label("readme.md"), { dataTransfer });
+    fireEvent.dragOver(dirToggle("src").parentElement!, { dataTransfer });
+    fireEvent.drop(dirToggle("src").parentElement!, { dataTransfer });
+    expect(onMoveFiles).toHaveBeenCalledWith(["readme.md", "notes.md"], "src");
+    expect(onMoveFile).not.toHaveBeenCalled();
+  });
+
+  it("ReferenceASelection: each selected entry is referenced once, the one already referenced left alone", () => {
+    const { onToggleAttachPath } = everything({ tree: flat, attachedPaths: ["b"] });
+    fireEvent.click(label("a"));
+    fireEvent.click(label("c"), { shiftKey: true });
+    choose("a", "Reference 3 items in prompt");
+    expect(onToggleAttachPath.mock.calls).toEqual([["a"], ["c"]]);
+  });
+
+  it("KeyboardShortcutsOnTheSelection: Delete asks the same single confirmation, F2 renames one entry", () => {
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+    const { onDeleteFiles } = everything({ tree: flat });
+    fireEvent.click(label("a"));
+    fireEvent.click(label("b"), { shiftKey: true });
+    fireEvent.keyDown(label("a"), { key: "Delete" });
+    expect(confirm).toHaveBeenCalledWith("Delete 2 items?");
+    expect(onDeleteFiles).toHaveBeenCalledWith(["a", "b"]);
+
+    fireEvent.click(label("c"));
+    fireEvent.keyDown(label("c"), { key: "F2" });
+    expect(screen.getByRole("textbox", { name: "Rename c" })).toBeInTheDocument();
+    confirm.mockRestore();
+  });
+
+  it("TheTreeReportsWhatWasRefused: a batch with refusals says how many were done and why the others were not", () => {
+    everything({
+      fileOperation: {
+        status: "error",
+        operation: "move_file",
+        path: "a",
+        requestId: "fileop:1",
+        message: '2 of 3 moved. Not moved: outside/b.txt: "outside/b.txt" is outside the writable zone',
+      },
+    });
+    expect(screen.getByRole("alert")).toHaveTextContent('2 of 3 moved. Not moved: outside/b.txt: "outside/b.txt" is outside the writable zone');
+  });
+});
+
+describe("the selection bar", () => {
+  const bar = () => screen.queryByRole("toolbar");
+  const barButtons = () => within(screen.getByRole("toolbar")).getAllByRole("button").map((button) => button.getAttribute("aria-label"));
+
+  it("TheBarAppearsWithASelection: it counts, and holds what the selection's menu holds", () => {
+    everything({ tree: flat });
+    fireEvent.click(label("a"));
+    expect(bar()).toBeNull();
+    fireEvent.click(label("b"), { ctrlKey: true });
+    expect(screen.getByRole("toolbar", { name: "2 selected" })).toHaveTextContent("2 selected");
+    fireEvent.click(label("c"), { ctrlKey: true });
+    expect(screen.getByRole("toolbar", { name: "3 selected" })).toBeInTheDocument();
+    expect(barButtons()).toEqual([
+      "Reference 3 items in prompt",
+      "Download 3 items as .zip",
+      "Move 3 items to…",
+      "Delete 3 items…",
+      "Clear the selection",
+    ]);
+    openMenu("b");
+    expect(screen.getAllByRole("menuitem").map((item) => item.getAttribute("aria-label") ?? within(item).getByText(/\w/, { selector: "span:not([aria-hidden])" }).textContent)).toEqual(barButtons().slice(0, -1));
+  });
+
+  it("DeleteFromTheBar: one confirmation, one batch, and the bar goes away", () => {
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+    const { onDeleteFiles } = everything({ tree: { "": [file("a"), dir("d"), file("z")], d: [] } });
+    fireEvent.click(label("a"));
+    fireEvent.click(label("z"), { shiftKey: true });
+    fireEvent.click(within(screen.getByRole("toolbar")).getByRole("button", { name: "Delete 3 items…" }));
+    expect(confirm).toHaveBeenCalledTimes(1);
+    expect(confirm).toHaveBeenCalledWith("Delete 3 items? The folder is deleted with everything in it.");
+    expect(onDeleteFiles).toHaveBeenCalledWith(["a", "d", "z"]);
+    expect(bar()).toBeNull();
+    confirm.mockRestore();
+  });
+
+  it("the bar's other actions run on the whole selection too", () => {
+    const { onDownload, onToggleAttachPath } = everything({ tree: flat });
+    fireEvent.click(label("a"));
+    fireEvent.click(label("b"), { shiftKey: true });
+    const toolbar = within(screen.getByRole("toolbar"));
+    fireEvent.click(toolbar.getByRole("button", { name: "Download 2 items as .zip" }));
+    fireEvent.click(toolbar.getByRole("button", { name: "Reference 2 items in prompt" }));
+    fireEvent.click(toolbar.getByRole("button", { name: "Move 2 items to…" }));
+    expect(onDownload).toHaveBeenCalledWith(["a", "b"], false);
+    expect(onToggleAttachPath.mock.calls).toEqual([["a"], ["b"]]);
+    expect(screen.getByRole("status")).toHaveTextContent("Moving 2 items: choose a folder");
+    expect(bar()).toBeNull();
+  });
+
+  it("TheBarClearsTheSelection", () => {
+    everything({ tree: flat });
+    fireEvent.click(label("a"));
+    fireEvent.click(label("c"), { shiftKey: true });
+    fireEvent.click(screen.getByRole("button", { name: "Clear the selection" }));
+    expect(selectedNames()).toEqual([]);
+    expect(bar()).toBeNull();
+  });
+
+  it("NoBarForOneEntry, and a mixed selection's bar offers no deletion", () => {
+    everything({ writableRoot: "src" });
+    fireEvent.click(dirToggle("src"));
+    fireEvent.click(label("readme.md"));
+    expect(bar()).toBeNull();
+    fireEvent.click(label("main.ts"), { ctrlKey: true });
+    expect(barButtons()).toEqual(["Reference 2 items in prompt", "Download 2 items as .zip", "Clear the selection"]);
+  });
+
+  it("stays in view while the tree scrolls", () => {
+    everything({ tree: flat });
+    fireEvent.click(label("a"));
+    fireEvent.click(label("b"), { ctrlKey: true });
+    expect(screen.getByRole("toolbar").className).toMatch(/\bsticky\b/);
+  });
+});
+
+describe("undo of the last change", () => {
+  type Operation = NonNullable<Props["fileOperation"]>;
+  const moved: Operation = {
+    status: "succeeded",
+    operation: "move_file",
+    path: "inbox/a.txt",
+    resultPath: "archive/a.txt",
+    requestId: "fileop:move",
+    batch: {
+      done: [
+        { path: "inbox/a.txt", resultPath: "archive/a.txt" },
+        { path: "inbox/b.txt", resultPath: "archive/b.txt" },
+      ],
+      refused: [],
+    },
+  };
+  const projectTree = { "": [dir("inbox"), dir("archive"), file("readme.md")], inbox: [], archive: [file("a.txt"), file("b.txt")] };
+
+  /** Mount the tree, then answer with `operation` the way useAgent would. */
+  function after(operation: Operation) {
+    const view = everything({ tree: projectTree });
+    const { rerender, ...handlers } = view;
+    const answer = (next: Operation | null) => rerender(<FileTree {...handlers} tree={projectTree} fileOperation={next} />);
+    answer(operation);
+    return { ...view, answer };
+  }
+  const undoButton = () => screen.queryByRole("button", { name: "Undo" });
+
+  it("UndoAMove and AnUndoIsNotUndone: one move back, then the move is said undone and nothing more is offered", () => {
+    const { onMoveFiles, answer } = after(moved);
+    expect(screen.getByText("Moved 2 items to archive")).toBeInTheDocument();
+    fireEvent.click(undoButton()!);
+    expect(onMoveFiles).toHaveBeenCalledWith(["archive/a.txt", "archive/b.txt"], "inbox");
+
+    answer({ status: "pending", operation: "move_file", path: "archive/a.txt", requestId: "fileop:undo", paths: ["archive/a.txt", "archive/b.txt"] });
+    answer({ ...moved, requestId: "fileop:undo", batch: { done: [{ path: "archive/a.txt", resultPath: "inbox/a.txt" }, { path: "archive/b.txt", resultPath: "inbox/b.txt" }], refused: [] } });
+    expect(screen.getByText("Move undone.")).toBeInTheDocument();
+    expect(undoButton()).toBeNull();
+  });
+
+  it("UndoPutsEachBackWhereItCameFrom: one folder of origin at a time, the next once the first is answered", () => {
+    const { onMoveFile, answer } = after({
+      ...moved,
+      batch: { done: [{ path: "x/one.txt", resultPath: "archive/one.txt" }, { path: "y/two.txt", resultPath: "archive/two.txt" }], refused: [] },
+    });
+    fireEvent.click(undoButton()!);
+    expect(onMoveFile.mock.calls).toEqual([["archive/one.txt", "x"]]);
+
+    answer({ status: "pending", operation: "move_file", path: "archive/one.txt", requestId: "fileop:undo-1" });
+    expect(onMoveFile).toHaveBeenCalledTimes(1);
+    answer({ status: "succeeded", operation: "move_file", path: "archive/one.txt", resultPath: "x/one.txt", requestId: "fileop:undo-1" });
+    expect(onMoveFile.mock.calls).toEqual([["archive/one.txt", "x"], ["archive/two.txt", "y"]]);
+
+    answer({ status: "pending", operation: "move_file", path: "archive/two.txt", requestId: "fileop:undo-2" });
+    answer({ status: "succeeded", operation: "move_file", path: "archive/two.txt", resultPath: "y/two.txt", requestId: "fileop:undo-2" });
+    expect(screen.getByText("Move undone.")).toBeInTheDocument();
+    expect(undoButton()).toBeNull();
+  });
+
+  it("UndoByKeyboard: Cmd+Z, or Ctrl+Z, in the tree undoes it", () => {
+    const { onMoveFiles } = after(moved);
+    fireEvent.keyDown(label("readme.md"), { key: "z", metaKey: true });
+    expect(onMoveFiles).toHaveBeenCalledWith(["archive/a.txt", "archive/b.txt"], "inbox");
+  });
+
+  it("Ctrl+Z while typing a name stays the input's own undo", () => {
+    const { onMoveFiles } = after(moved);
+    choose("readme.md", /^Rename/);
+    fireEvent.keyDown(screen.getByRole("textbox", { name: "Rename readme.md" }), { key: "z", ctrlKey: true });
+    expect(onMoveFiles).not.toHaveBeenCalled();
+  });
+
+  it("UndoIsOfferedForTheLastMoveOnly: another operation, or a dismissal, takes the offer away", () => {
+    const { answer } = after(moved);
+    answer({ status: "pending", operation: "reveal_native", path: "readme.md", requestId: "fileop:other" });
+    expect(undoButton()).toBeNull();
+    answer({ ...moved, requestId: "fileop:move-2" });
+    expect(undoButton()).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
+    expect(undoButton()).toBeNull();
+  });
+
+  it("AnUndoThatCannotBeDoneSaysWhy: the refusal is shown, and offers no undo of the undo", () => {
+    const { answer } = after(moved);
+    fireEvent.click(undoButton()!);
+    answer({ status: "pending", operation: "move_file", path: "archive/a.txt", requestId: "fileop:undo" });
+    answer({
+      status: "error",
+      operation: "move_file",
+      path: "archive/a.txt",
+      requestId: "fileop:undo",
+      message: '1 of 2 moved. Not moved: archive/b.txt: "inbox/b.txt" already exists',
+      batch: { done: [{ path: "archive/a.txt", resultPath: "inbox/a.txt" }], refused: [{ path: "archive/b.txt", message: '"inbox/b.txt" already exists' }] },
+    });
+    expect(screen.getByRole("alert")).toHaveTextContent('"inbox/b.txt" already exists');
+    expect(undoButton()).toBeNull();
+  });
+
+  it("UndoARename: renamed back to its old name, and said undone; a refused undo of a rename is shown", () => {
+    const { onRenameFile, answer } = after({ status: "succeeded", operation: "rename_file", path: "inbox/draft.md", resultPath: "inbox/final.md", requestId: "fileop:rename" });
+    expect(screen.getByText('Renamed "draft.md" to "final.md"')).toBeInTheDocument();
+    fireEvent.click(undoButton()!);
+    expect(onRenameFile).toHaveBeenCalledWith("inbox/final.md", "draft.md");
+    answer({ status: "pending", operation: "rename_file", path: "inbox/final.md", requestId: "fileop:undo" });
+    answer({ status: "error", operation: "rename_file", path: "inbox/final.md", requestId: "fileop:undo", message: '"inbox/draft.md" already exists' });
+    expect(screen.getByRole("alert")).toHaveTextContent('"inbox/draft.md" already exists');
+
+    const again = after({ status: "succeeded", operation: "rename_file", path: "inbox/draft.md", resultPath: "inbox/final.md", requestId: "fileop:rename-2" });
+    fireEvent.click(screen.getAllByRole("button", { name: "Undo" }).at(-1)!);
+    again.answer({ status: "pending", operation: "rename_file", path: "inbox/final.md", requestId: "fileop:undo-2" });
+    again.answer({ status: "succeeded", operation: "rename_file", path: "inbox/final.md", resultPath: "inbox/draft.md", requestId: "fileop:undo-2" });
+    expect(screen.getByText("Rename undone.")).toBeInTheDocument();
+  });
+
+  it("UndoADeletion: every restore token in one request, and said undone", () => {
+    const { onRestoreDeleted, answer } = after({
+      status: "succeeded",
+      operation: "delete_file",
+      path: "a.txt",
+      resultPath: "a.txt",
+      requestId: "fileop:delete",
+      batch: {
+        done: [
+          { path: "a.txt", resultPath: "a.txt", restoreToken: "t1" },
+          { path: "b.txt", resultPath: "b.txt", restoreToken: "t2" },
+          { path: "folder", resultPath: "folder", restoreToken: "t3" },
+        ],
+        refused: [],
+      },
+    });
+    expect(screen.getByText("Deleted 3 items")).toBeInTheDocument();
+    fireEvent.click(undoButton()!);
+    expect(onRestoreDeleted).toHaveBeenCalledWith(["t1", "t2", "t3"]);
+    answer({ status: "pending", operation: "restore_deleted", path: "", requestId: "fileop:restore" });
+    answer({ status: "succeeded", operation: "restore_deleted", path: "", resultPath: "a.txt", requestId: "fileop:restore", batch: { done: [], refused: [] } });
+    expect(screen.getByText("Deletion undone.")).toBeInTheDocument();
+    expect(undoButton()).toBeNull();
+  });
+
+  it("a single deletion is offered back by its own token", () => {
+    const { onRestoreDeleted } = after({ status: "succeeded", operation: "delete_file", path: "inbox/note.md", resultPath: "inbox/note.md", requestId: "fileop:d", restoreToken: "tok" });
+    expect(screen.getByText('Deleted "note.md"')).toBeInTheDocument();
+    fireEvent.keyDown(label("readme.md"), { key: "z", ctrlKey: true });
+    expect(onRestoreDeleted).toHaveBeenCalledWith(["tok"]);
+  });
+});
+
+describe("destination picking", () => {
+  const nested = {
+    "": [file("a"), file("b"), dir("archive"), dir("project"), dir("reference")],
+    archive: [dir("2026")],
+    "archive/2026": [],
+    project: [dir("sub")],
+    "project/sub": [],
+    reference: [],
+  };
+
+  it("PickADestination: Move to… names what moves; a folder expanded meanwhile is a target", () => {
+    const { onMoveFiles } = everything({ tree: nested });
+    fireEvent.click(label("a"));
+    fireEvent.click(label("b"), { shiftKey: true });
+    choose("a", "Move 2 items to…");
+    expect(screen.getByRole("status")).toHaveTextContent("Moving 2 items: choose a folder");
+    fireEvent.click(dirToggle("archive"));
+    fireEvent.click(screen.getByRole("button", { name: "Move here: 2026" }));
+    expect(onMoveFiles).toHaveBeenCalledWith(["a", "b"], "archive/2026");
+    expect(screen.queryByText(/choose a folder/)).toBeNull();
+  });
+
+  it("CancelPicking: Escape or Cancel leaves without a move", () => {
+    const { onMoveFile, onMoveFiles } = everything({ tree: nested });
+    choose("a", "Move to…");
+    fireEvent.keyDown(dirToggle("archive"), { key: "Escape" });
+    expect(screen.queryByText(/choose a folder/)).toBeNull();
+    choose("a", "Move to…");
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByText(/choose a folder/)).toBeNull();
+    expect(onMoveFile).not.toHaveBeenCalled();
+    expect(onMoveFiles).not.toHaveBeenCalled();
+  });
+
+  it("AReadOnlyFolderIsNoTarget, AMovedFolderIsNoTargetForItself", () => {
+    const { onMoveFile } = everything({ tree: { ...nested, "": [...nested[""], dir("w")], w: [] }, writableRoot: "" });
+    choose("project", "Move to…");
+    fireEvent.click(dirToggle("project"));
+    expect(screen.queryByRole("button", { name: "Move here: project" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Move here: sub" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Move here: w" }));
+    expect(onMoveFile).toHaveBeenCalledWith("project", "w");
+  });
+
+  it("a read-only folder offers no target while picking, nor the folder the entry is already in", () => {
+    everything({ tree: { "": [dir("w"), dir("ro")], w: [file("x"), dir("inbox")], "w/inbox": [], ro: [] }, writableRoot: "w" });
+    fireEvent.click(dirToggle("w"));
+    choose("x", "Move to…");
+    expect(screen.queryByRole("button", { name: "Move here: ro" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Move here: w" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Move here: inbox" })).toBeInTheDocument();
+  });
 });

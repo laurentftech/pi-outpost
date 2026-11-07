@@ -72,16 +72,34 @@
   brackets closed and matched, Tab / Shift+Tab, several cursors (Ctrl+D, Alt-click), Alt+arrows
   to move lines, Ctrl+/ to comment, folding; Ctrl+S (Cmd+S) saves and stays in the editor, and a
   CRLF file is saved with CRLF. A file's source, when read rather than edited, is shown in the same
-  editor, read-only. Create, rename, move, copy, delete, open a
-  file with the system's own application, or show a file or folder in Finder, Explorer or
-  the Linux file manager; anything outside the writable zone is dimmed.
+  editor, read-only. Anything outside the writable zone is dimmed.
   Ctrl+F (Cmd+F) finds text in the open file — source, rendered Markdown, or a live edit
+- Every file and folder in the tree has one actions menu — the **⋯** at the end of its row, or a
+  right-click: open, show the diff, create a **New file…** or a **New folder…** inside a folder
+  (the root has **+ file** and **+ folder** above the tree), open with the system's own application, show it in Finder,
+  Explorer or the Linux file manager; reference it in the prompt; **Download** it to the machine
+  your browser runs on (a folder as a `.zip`), which is how you take a file off a remote server;
+  rename (F2), move to another folder, delete (Del). Folders take every action a file does; the
+  writable root itself cannot be renamed, moved or deleted. Each item carries the symbol of its
+  action (↗ open with app, ⌂ show, @ reference, ⤓ download, ✎ rename, → move, × delete). Besides
+  the **⋯**, a row keeps only the git badge (click it for the diff) and its **@**: shown on hover,
+  lit while the entry is referenced, one click to reference or drop it.
+- Select several entries with Shift-click (a range) or Ctrl/Cmd-click (one at a time), Escape to
+  clear: a bar above the tree counts them and holds what you can do with all of them — as does
+  the menu of any selected row. It deletes them with one confirmation, moves them (drag one onto a folder, or
+  **Move to…** and pick the folder), downloads them as one `.zip`, or references them all. A
+  deleted folder goes with everything in it. An archive is limited to 65 535 entries and 4 GiB,
+  and leaves out — and says so — anything that leads outside the workspace.
+- A move, a rename or a deletion made from the tree can be undone: **Undo** in the notice that
+  follows it, or Ctrl+Z (Cmd+Z), until the next change. A deletion is kept in pi-outpost's own
+  trash, outside the project and out of the agent's reach, so it can be restored; the trash is
+  emptied when the server restarts and of anything older than a day.
 - **Search in files** (the magnifying glass in the Files header) finds text across the project:
   case-insensitive, literal, in text files and in the text layer of PDFs. Each hit shows its line
   or PDF page with an excerpt; clicking it opens the file there with the match highlighted. See
   [Search the project's files](how-to.md#search-the-projects-files).
 - Opening a file only previews it; it does not attach it to your next message. Use the
-  file tree’s reference button, an `@` mention, or **Attach files** to add context explicitly.
+  file tree’s **Reference in prompt**, an `@` mention, or **Attach files** to add context explicitly.
 - HTML files open rendered, as Markdown does: the page's scripts run, and its stylesheets,
   pictures and scripts next to it in the workspace are loaded. A relative link opens that file
   in the viewer, an absolute one a new tab. The page is drawn in a sandboxed frame with an

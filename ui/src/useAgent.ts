@@ -141,10 +141,39 @@ export type ContentSearch = {
   skipped: number;
 };
 
+/** What a batch did, path by path: kept on the operation's state so the tree can say it. */
+export type FileBatchOutcome = {
+  /** A deletion's entries carry the token that restores them from the server's trash. */
+  done: { path: string; resultPath: string; restoreToken?: string }[];
+  refused: { path: string; message: string }[];
+};
+
+/**
+ * The last file operation the tree asked for. A batch (`delete_files` / `move_files`)
+ * is one operation: `path` is its first path, `paths` all of them, and `batch` what
+ * became of each — an `error` when anything was refused, with a message saying what.
+ */
 export type FileOperationState =
-  | { status: "pending"; operation: FileOperation; path: string; requestId: string }
-  | { status: "succeeded"; operation: FileOperation; path: string; resultPath: string; requestId: string }
-  | { status: "error"; operation: FileOperation; path: string; message: string; requestId: string };
+  | { status: "pending"; operation: FileOperation; path: string; requestId: string; paths?: string[] }
+  | { status: "succeeded"; operation: FileOperation; path: string; resultPath: string; requestId: string; skipped?: number; restoreToken?: string; batch?: FileBatchOutcome }
+  | { status: "error"; operation: FileOperation; path: string; message: string; requestId: string; batch?: FileBatchOutcome };
+
+/**
+ * Where `path` is after `from` became `to` (`null`: deleted). A path inside a moved
+ * or deleted folder follows it: the file open in the viewer, the diff on screen.
+ */
+export function followPath(path: string, from: string, to: string | null): string | null | undefined {
+  if (path !== from && !path.startsWith(`${from}/`)) return undefined;
+  return to === null ? null : to + path.slice(from.length);
+}
+
+/** The sentence a batch's outcome reads as, for the tree's banner. */
+export function describeBatch(operation: "delete_file" | "move_file" | "restore_deleted", outcome: FileBatchOutcome): string {
+  const total = outcome.done.length + outcome.refused.length;
+  const verb = operation === "delete_file" ? "deleted" : operation === "restore_deleted" ? "restored" : "moved";
+  const refused = outcome.refused.map((entry) => `${entry.path}: ${entry.message}`).join("; ");
+  return `${outcome.done.length} of ${total} ${verb}. Not ${verb}: ${refused}`;
+}
 
 /** Session menu search: results for the most recently issued query (matched server-side, transcripts included). */
 export type SessionSearch = {
@@ -625,7 +654,7 @@ type Action =
   | { type: "file_save_started"; path: string; requestId: string; content: string }
   | { type: "close_file_preview" }
   | { type: "file_create_started" }
-  | { type: "file_operation_started"; operation: FileOperation; path: string; requestId: string }
+  | { type: "file_operation_started"; operation: FileOperation; path: string; requestId: string; paths?: string[] }
   | { type: "file_search_started"; query: string; requestId: string }
   | { type: "file_search_cleared" }
   | { type: "content_search_started"; query: string; requestId: string }
@@ -836,6 +865,44 @@ function applySnapshot(state: AgentState, message: ServerMessage & { sessionId: 
   };
 }
 
+/**
+ * The views that name a path, carried along after entries were renamed, moved or
+ * deleted (`to: null`). A file open in the viewer follows its folder; a git view
+ * of a path that moved is dropped, as it was for a single file; and the listings
+ * cached under a moved or deleted folder are forgotten, so a later folder of the
+ * same name cannot show what the old one held.
+ */
+function followMoves(state: AgentState, moves: readonly [from: string, to: string | null][]): AgentState {
+  if (moves.length === 0) return state;
+  const follow = (path: string): string | null | undefined => {
+    for (const [from, to] of moves) {
+      const next = followPath(path, from, to);
+      if (next !== undefined) return next;
+    }
+    return undefined;
+  };
+  const touched = (path: string | undefined) => path !== undefined && moves.some(([from, to]) => followPath(path, from, to) !== undefined || (to !== null && followPath(path, to, to) !== undefined));
+  let openFile = state.openFile;
+  if (openFile) {
+    const next = follow(openFile.path);
+    if (next === null) openFile = null;
+    else if (next !== undefined) openFile = { ...openFile, path: next };
+  }
+  const fileTree = Object.fromEntries(Object.entries(state.fileTree).filter(([path]) => follow(path) === undefined));
+  const directoryRequests = Object.fromEntries(Object.entries(state.directoryRequests).filter(([path]) => follow(path) === undefined));
+  const historyTouched = touched(state.gitFileHistory?.path);
+  return {
+    ...state,
+    openFile,
+    fileTree,
+    directoryRequests,
+    gitFileHistory: historyTouched ? null : state.gitFileHistory,
+    gitFileDiff: historyTouched ? null : state.gitFileDiff,
+    gitDiff: touched(state.gitDiff?.path) ? null : state.gitDiff,
+    gitBaseline: touched(state.gitBaseline?.path) ? null : state.gitBaseline,
+  };
+}
+
 function reduce(state: AgentState, action: Action): AgentState {
   if (action.type === "connected") return { ...state, connected: true, authRequired: false };
   if (action.type === "workspace_switching") return { ...state, switching: true };
@@ -950,7 +1017,16 @@ function reduce(state: AgentState, action: Action): AgentState {
   if (action.type === "content_search_cleared") return { ...state, contentSearch: null };
   if (action.type === "file_create_started") return { ...state, createError: null, created: null };
   if (action.type === "file_operation_started") {
-    return { ...state, fileOperation: { status: "pending", operation: action.operation, path: action.path, requestId: action.requestId } };
+    return {
+      ...state,
+      fileOperation: {
+        status: "pending",
+        operation: action.operation,
+        path: action.path,
+        requestId: action.requestId,
+        ...(action.paths ? { paths: action.paths } : {}),
+      },
+    };
   }
   if (action.type === "session_search_started") {
     return {
@@ -1657,29 +1733,37 @@ function reduce(state: AgentState, action: Action): AgentState {
     case "file_operation_result": {
       if (state.fileOperation?.status !== "pending" || state.fileOperation.requestId !== message.requestId) return state;
       const previousPath = message.previousPath ?? message.path;
-      const openFile =
-        message.operation === "delete_file" && state.openFile?.path === message.path
-          ? null
-          : state.openFile?.path === previousPath
-            ? { ...state.openFile, path: message.path }
-            : state.openFile;
-      const affectsHistory = state.gitFileHistory?.path === previousPath || state.gitFileHistory?.path === message.path;
-      const affectsDiff = state.gitDiff?.path === previousPath || state.gitDiff?.path === message.path;
-      const affectsBaseline = state.gitBaseline?.path === previousPath || state.gitBaseline?.path === message.path;
+      const moves: [string, string | null][] =
+        message.operation === "delete_file"
+          ? [[message.path, null]]
+          : message.operation === "rename_file" || message.operation === "move_file"
+            ? [[previousPath, message.path]]
+            : [];
       return {
-        ...state,
-        openFile,
-        gitFileHistory: affectsHistory ? null : state.gitFileHistory,
-        gitFileDiff: affectsHistory ? null : state.gitFileDiff,
-        gitDiff: affectsDiff ? null : state.gitDiff,
-        gitBaseline: affectsBaseline ? null : state.gitBaseline,
+        ...followMoves(state, moves),
         fileOperation: {
           status: "succeeded",
           operation: message.operation,
           path: state.fileOperation.path,
           resultPath: message.path,
           requestId: message.requestId,
+          ...(message.skipped ? { skipped: message.skipped } : {}),
+          ...(message.restoreToken ? { restoreToken: message.restoreToken } : {}),
         },
+      };
+    }
+    case "file_batch_result": {
+      if (state.fileOperation?.status !== "pending" || state.fileOperation.requestId !== message.requestId) return state;
+      const moves: [string, string | null][] =
+        message.operation === "restore_deleted" ? [] : message.done.map((entry) => [entry.path, message.operation === "delete_file" ? null : entry.resultPath]);
+      const batch = { done: message.done, refused: message.refused.map(({ path, message: reason }) => ({ path, message: reason })) };
+      const operation = state.fileOperation;
+      return {
+        ...followMoves(state, moves),
+        fileOperation:
+          batch.refused.length === 0
+            ? { status: "succeeded", operation: message.operation, path: operation.path, resultPath: message.done[0]?.resultPath ?? operation.path, requestId: message.requestId, batch }
+            : { status: "error", operation: message.operation, path: operation.path, message: describeBatch(message.operation, batch), requestId: message.requestId, batch },
       };
     }
     case "file_browser_error": {
@@ -2495,16 +2579,27 @@ export function useAgent(serverUrl = "", explicitToken?: string, embedded = fals
             queueMicrotask(() => requestOutcomeRef.current());
           }
         }
-        if (message.type === "file_operation_result") {
+        if (message.type === "file_operation_result" || message.type === "file_batch_result") {
           // `file_changed` notifications follow the acknowledgement immediately.
           // Keep the event-handler ref in step before React's next effect so an
-          // old-path notification cannot reread a file that was renamed/deleted.
-          const previousPath = message.previousPath ?? message.path;
+          // old-path notification cannot reread a file that was renamed/deleted —
+          // or that sat in a folder that was.
+          const moves: [string, string | null][] =
+            message.type === "file_batch_result" && message.operation === "restore_deleted"
+              ? []
+              : message.type === "file_batch_result"
+              ? message.done.map((entry) => [entry.path, message.operation === "delete_file" ? null : entry.resultPath])
+              : message.operation === "delete_file"
+                ? [[message.path, null]]
+                : message.operation === "rename_file" || message.operation === "move_file"
+                  ? [[message.previousPath ?? message.path, message.path]]
+                  : [];
           const openFile = openFileRef.current;
-          if (message.operation === "delete_file" && openFile?.path === message.path) {
-            openFileRef.current = null;
-          } else if (openFile?.path === previousPath) {
-            openFileRef.current = { ...openFile, path: message.path };
+          for (const [from, to] of openFile ? moves : []) {
+            const next = followPath(openFile!.path, from, to);
+            if (next === undefined) continue;
+            openFileRef.current = next === null ? null : { ...openFile!, path: next };
+            break;
           }
         }
         dispatch({ type: "server", message });
@@ -2922,6 +3017,27 @@ export function useAgent(serverUrl = "", explicitToken?: string, embedded = fals
       const requestId = `fileop:${randomId()}`;
       dispatch({ type: "file_operation_started", operation: "copy_file", path, requestId });
       sendMessage({ type: "copy_file", path, destinationDirectory, requestId });
+    },
+    /** Delete several entries in one request; the tree has already asked for confirmation. */
+    deleteFiles: (paths: string[]) => {
+      if (paths.length === 0) return;
+      const requestId = `fileop:${randomId()}`;
+      dispatch({ type: "file_operation_started", operation: "delete_file", path: paths[0], paths, requestId });
+      sendMessage({ type: "delete_files", paths, requestId });
+    },
+    /** Move several entries into one directory in one request. */
+    /** Put deleted entries back from the server's trash, by the tokens their deletion answered. */
+    restoreDeleted: (tokens: string[]) => {
+      if (tokens.length === 0) return;
+      const requestId = `fileop:${randomId()}`;
+      dispatch({ type: "file_operation_started", operation: "restore_deleted", path: "", requestId });
+      sendMessage({ type: "restore_deleted", tokens, requestId });
+    },
+    moveFiles: (paths: string[], destinationDirectory: string) => {
+      if (paths.length === 0) return;
+      const requestId = `fileop:${randomId()}`;
+      dispatch({ type: "file_operation_started", operation: "move_file", path: paths[0], paths, requestId });
+      sendMessage({ type: "move_files", paths, destinationDirectory, requestId });
     },
     /** Search file/directory names for the composer's `@` mention autocomplete. */
     searchFiles: (query: string) => {

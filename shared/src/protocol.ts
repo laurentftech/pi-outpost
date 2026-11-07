@@ -561,7 +561,7 @@ export type FileBrowserErrorReason =
   | "invalid";
 
 /** Mutating/opening operation acknowledged by file_operation_result. */
-export type FileOperation = "open_native" | "reveal_native" | "rename_file" | "delete_file" | "move_file" | "copy_file";
+export type FileOperation = "open_native" | "reveal_native" | "rename_file" | "delete_file" | "move_file" | "copy_file" | "restore_deleted";
 
 /**
  * Why git is unavailable, when it is.
@@ -1436,6 +1436,23 @@ export type ServerMessage =
       path: string;
       /** Previous path for rename and move, so clients can update active views. */
       previousPath?: string;
+      /** A folder copy only: entries left out because they resolve outside the browser root. */
+      skipped?: number;
+      /** A deletion only: what `restore_deleted` takes to put the entry back, while the server's trash keeps it. */
+      restoreToken?: string;
+    }
+  | {
+      /**
+       * The answer to `delete_files` / `move_files`. Each path is either done or
+       * refused; a refusal did not stop the others, and nothing was rolled back.
+       */
+      type: "file_batch_result";
+      requestId: string;
+      operation: "delete_file" | "move_file" | "restore_deleted";
+      /** `resultPath` is where a moved entry now is; for a deletion, the deleted path. */
+      /** A deletion's entries carry the token that restores them. */
+      done: { path: string; resultPath: string; restoreToken?: string }[];
+      refused: { path: string; message: string; reason?: FileBrowserErrorReason }[];
     }
   | {
       type: "file_browser_error";
@@ -1724,14 +1741,20 @@ export type ClientMessage =
   | { type: "open_native"; path: string; requestId: string }
   /** Show a file or folder, selected, in the file manager of the machine the server runs on. */
   | { type: "reveal_native"; path: string; requestId: string }
-  /** Rename a regular file within its current directory. `name` is one path segment. */
+  /** Rename a regular file or folder within its current directory. `name` is one path segment. */
   | { type: "rename_file"; path: string; name: string; requestId: string }
-  /** Permanently delete one regular file. UI confirmation happens before this message. */
+  /** Permanently delete one regular file, or one folder with its content. UI confirmation happens before this message. */
   | { type: "delete_file"; path: string; requestId: string }
-  /** Move one regular file into an existing directory, preserving its basename. */
+  /** Move one regular file or folder into an existing directory, preserving its basename. */
   | { type: "move_file"; path: string; destinationDirectory: string; requestId: string }
-  /** Copy one confined regular file into an existing writable directory, preserving its basename. */
+  /** Copy one confined regular file or folder into an existing writable directory, preserving its basename. */
   | { type: "copy_file"; path: string; destinationDirectory: string; requestId: string }
+  /** Delete several entries in one request; answered by one `file_batch_result`. */
+  | { type: "delete_files"; paths: string[]; requestId: string }
+  /** Move several entries into one existing directory; answered by one `file_batch_result`. */
+  | { type: "move_files"; paths: string[]; destinationDirectory: string; requestId: string }
+  /** Put deleted entries back from the server's trash; answered by one `file_batch_result`. */
+  | { type: "restore_deleted"; tokens: string[]; requestId: string }
   | { type: "search_files"; query: string; requestId: string }
   /** Case-insensitive literal search of file contents under the browser root; a newer one supersedes it. */
   | { type: "search_content"; query: string; requestId: string }

@@ -161,8 +161,9 @@ import {
   assertWithinRoot,
   createDirectoryFromBrowser,
   createFileFromBrowser,
-  copyFileFromBrowser,
+  copyEntryFromBrowser,
   deleteFileFromBrowser,
+  restoreFromBrowser,
   FileBrowserError,
   listDirectory,
   MAX_PREVIEW_BYTES,
@@ -179,6 +180,10 @@ import {
   uploadFileFromBrowser,
   writeFileFromBrowser,
 } from "./fileBrowser.ts";
+import { attachmentDisposition, prepareDownload } from "./download.ts";
+import { Trash } from "./trash.ts";
+import { writeZipStream } from "@pi-outpost/office/zipStream.ts";
+import { PassThrough } from "node:stream";
 import { searchContent } from "./contentSearch.ts";
 import {
   GitError,
@@ -642,6 +647,13 @@ if (cli.command === "print") {
 const PORT = config.port;
 const HOST = config.host;
 const AGENT_DIR = config.agentDir ?? getAgentDir();
+/**
+ * Where deletions from the Files tree wait to be undone — see trash.ts. Emptied now:
+ * what an earlier run deleted is not this run's to restore.
+ */
+const TRASH = new Trash(path.join(AGENT_DIR, "outpost-trash"));
+await TRASH.reset().catch((error: unknown) => console.warn(`[server] could not empty the trash: ${error instanceof Error ? error.message : String(error)}`));
+setInterval(() => void TRASH.sweep().catch(() => {}), 60 * 60 * 1000).unref();
 /**
  * What the server was started with, for the terminal panel: the user's shell keeps it.
  *
@@ -1243,6 +1255,59 @@ app.get("/files/raw", async (req, reply) => {
     }
     throw error;
   }
+});
+
+// A workspace entry, to save on the machine the browser runs on — the one way to get
+// a file off a remote server. Not /files/raw: that route's ceilings and inline image
+// types are what make it safe for <img>, and this one has neither. The token rides
+// the query string for the same reason as there: an <a download> sends no header.
+app.get("/files/download", async (req, reply) => {
+  const query = req.query as Record<string, unknown>;
+  if (!hostAllowed(req.headers.host)) {
+    console.warn("[server] rejected /files/download request with foreign host");
+    return reply.code(403).send({ error: "forbidden" });
+  }
+  const auth = req.headers.authorization;
+  const bearer = auth?.startsWith("Bearer ") ? auth.slice("Bearer ".length) : undefined;
+  const queryToken = typeof query.token === "string" ? query.token : undefined;
+  if (!tokenValid(bearer) && !tokenValid(queryToken)) {
+    console.warn("[server] rejected /files/download request with bad or missing token");
+    return reply.code(401).send({ error: "unauthorized" });
+  }
+  const paths = (Array.isArray(query.path) ? query.path : [query.path]).filter((value): value is string => typeof value === "string");
+  if (paths.length === 0) return reply.code(400).send({ error: "missing path" });
+  const target = rawFileWorkspace(typeof query.workspace === "string" ? query.workspace : undefined);
+  if (!target) return reply.code(404).send({ error: "not-found" });
+  let download;
+  try {
+    download = await prepareDownload(target.browserRoot, paths);
+  } catch (error) {
+    if (error instanceof FileBrowserError) {
+      const status = error.reason === "too-large" ? 413 : error.reason === "outside-root" ? 403 : 404;
+      return reply.code(status).send({ error: error.reason, message: error.message });
+    }
+    throw error;
+  }
+  reply
+    .header("X-Content-Type-Options", "nosniff")
+    .header("Cache-Control", "no-store")
+    .header("Content-Disposition", attachmentDisposition(download.name))
+    // An embedded tree on another origin reads the name and the left-out count.
+    .header("Access-Control-Expose-Headers", "Content-Disposition, X-Pi-Outpost-Skipped");
+  if (download.kind === "file") {
+    return reply.header("Content-Type", "application/octet-stream").header("Content-Length", String(download.size)).send(download.open());
+  }
+  const body = new PassThrough();
+  writeZipStream(download.entries, body, download.comment).then(
+    () => body.end(),
+    (error: unknown) => {
+      // Past the headers nothing can be said to the client but a cut connection,
+      // which a browser reports as a failed download rather than a whole file.
+      console.warn(`[server] /files/download archive failed: ${error instanceof Error ? error.message : String(error)}`);
+      body.destroy(error instanceof Error ? error : new Error(String(error)));
+    },
+  );
+  return reply.header("Content-Type", "application/zip").header("X-Pi-Outpost-Skipped", String(download.skipped)).send(body);
 });
 
 // Serve the built web UI as a single deployable unit when present (`npm run build
@@ -5597,10 +5662,13 @@ async function handleRenameFile(workspace: Workspace, socket: WebSocket, filePat
   }
 }
 
+/** A deletion from the tree goes to the trash, so the tree can offer to undo it. */
+const toTrash = (workspace: Workspace, relPath: string) => (resolved: string) => TRASH.put(workspace.id, relPath, resolved);
+
 async function handleDeleteFile(workspace: Workspace, socket: WebSocket, filePath: string, requestId: string): Promise<void> {
   try {
-    await deleteFileFromBrowser(workspace.browserRoot, workspace.writableRoot, filePath);
-    send(socket, { type: "file_operation_result", requestId, operation: "delete_file", path: filePath });
+    const restoreToken = await deleteFileFromBrowser(workspace.browserRoot, workspace.writableRoot, filePath, toTrash(workspace, filePath));
+    send(socket, { type: "file_operation_result", requestId, operation: "delete_file", path: filePath, ...(restoreToken ? { restoreToken } : {}) });
     broadcast(workspace, { type: "file_changed", path: filePath });
   } catch (error) {
     sendFileBrowserError(socket, requestId, filePath, error);
@@ -5643,12 +5711,91 @@ async function handleUploadFile(workspace: Workspace,
 
 async function handleCopyFile(workspace: Workspace, socket: WebSocket, filePath: string, destinationDirectory: string, requestId: string): Promise<void> {
   try {
-    const copiedPath = await copyFileFromBrowser(workspace.browserRoot, workspace.writableRoot, filePath, destinationDirectory);
-    send(socket, { type: "file_operation_result", requestId, operation: "copy_file", path: copiedPath });
-    broadcast(workspace, { type: "file_changed", path: copiedPath });
+    const copied = await copyEntryFromBrowser(workspace.browserRoot, workspace.writableRoot, filePath, destinationDirectory);
+    send(socket, { type: "file_operation_result", requestId, operation: "copy_file", path: copied.path, ...(copied.skipped > 0 ? { skipped: copied.skipped } : {}) });
+    broadcast(workspace, { type: "file_changed", path: copied.path });
   } catch (error) {
     sendFileBrowserError(socket, requestId, filePath, error);
   }
+}
+
+/** A selection is bounded by what a person can click, not by what a socket can carry. */
+const MAX_BATCH_PATHS = 10_000;
+
+/** The parent of a browser-root-relative path ("" for a top-level entry). */
+function parentOf(relPath: string): string {
+  return relPath.includes("/") ? relPath.slice(0, relPath.lastIndexOf("/")) : "";
+}
+
+/**
+ * Several entries deleted, or moved into one directory, in one request. Each goes
+ * through the single-entry helper, so every rule is the same; a refusal is recorded
+ * and the next path goes on — nothing is rolled back. A path under another one in
+ * the request is dropped first: deleting a folder already deletes its content, and
+ * moving it already moves it. One `file_changed` per affected directory follows.
+ */
+async function handleFileBatch(
+  workspace: Workspace,
+  socket: WebSocket,
+  action: { operation: "delete_file" } | { operation: "move_file"; destinationDirectory: string },
+  paths: string[],
+  requestId: string,
+): Promise<void> {
+  const unique = [...new Set(paths)];
+  const outermost = unique.filter((candidate) => !unique.some((other) => other !== candidate && (other === "" || candidate.startsWith(`${other}/`))));
+  const done: { path: string; resultPath: string; restoreToken?: string }[] = [];
+  const refused: { path: string; message: string; reason?: FileBrowserError["reason"] }[] = [];
+  for (const filePath of outermost) {
+    try {
+      if (action.operation === "delete_file") {
+        const restoreToken = await deleteFileFromBrowser(workspace.browserRoot, workspace.writableRoot, filePath, toTrash(workspace, filePath));
+        done.push({ path: filePath, resultPath: filePath, ...(restoreToken ? { restoreToken } : {}) });
+      } else {
+        done.push({ path: filePath, resultPath: await moveFileFromBrowser(workspace.browserRoot, workspace.writableRoot, filePath, action.destinationDirectory) });
+      }
+    } catch (error) {
+      if (!(error instanceof FileBrowserError)) throw error;
+      refused.push({ path: filePath, message: error.message, reason: error.reason });
+    }
+  }
+  send(socket, { type: "file_batch_result", requestId, operation: action.operation, done, refused });
+  // `file_changed` re-lists the parent of the path it names: one path per directory touched.
+  const byDirectory = new Map<string, string>();
+  for (const { path: source, resultPath } of done) {
+    if (!byDirectory.has(parentOf(source))) byDirectory.set(parentOf(source), source);
+    if (!byDirectory.has(parentOf(resultPath))) byDirectory.set(parentOf(resultPath), resultPath);
+  }
+  for (const changed of byDirectory.values()) broadcast(workspace, { type: "file_changed", path: changed });
+}
+
+/**
+ * Put deleted entries back from the trash. A token restores once, and only into the
+ * workspace it was deleted from; one that fails to restore — its place taken since,
+ * its folder gone — stays in the trash, so a later attempt can still succeed.
+ */
+async function handleRestoreDeleted(workspace: Workspace, socket: WebSocket, tokens: string[], requestId: string): Promise<void> {
+  const done: { path: string; resultPath: string }[] = [];
+  const refused: { path: string; message: string; reason?: FileBrowserError["reason"] }[] = [];
+  for (const token of new Set(tokens)) {
+    const entry = TRASH.take(token, workspace.id);
+    if (!entry) {
+      refused.push({ path: "", message: "Nothing to restore: it is no longer in the trash", reason: "not-found" });
+      continue;
+    }
+    try {
+      await restoreFromBrowser(workspace.browserRoot, workspace.writableRoot, entry.relPath, entry.trashed);
+      await TRASH.discard(entry);
+      done.push({ path: entry.relPath, resultPath: entry.relPath });
+    } catch (error) {
+      TRASH.giveBack(entry);
+      if (!(error instanceof FileBrowserError)) throw error;
+      refused.push({ path: entry.relPath, message: error.message, reason: error.reason });
+    }
+  }
+  send(socket, { type: "file_batch_result", requestId, operation: "restore_deleted", done, refused });
+  const byDirectory = new Map<string, string>();
+  for (const { path: restored } of done) if (!byDirectory.has(parentOf(restored))) byDirectory.set(parentOf(restored), restored);
+  for (const changed of byDirectory.values()) broadcast(workspace, { type: "file_changed", path: changed });
 }
 
 function sendFileBrowserError(socket: WebSocket, requestId: string, targetPath: string, error: unknown): void {
@@ -6564,6 +6711,9 @@ const SERVED_WHILE_STARTING = new Set<ClientMessage["type"]>([
   "rename_file",
   "move_file",
   "copy_file",
+  "delete_files",
+  "restore_deleted",
+  "move_files",
   "upload_file",
   "search_files",
   "search_content",
@@ -6985,6 +7135,36 @@ function handleClientMessage(socket: WebSocket, raw: string): void {
       }
       handleCopyFile(workspace, socket, message.path, message.destinationDirectory, message.requestId).catch(reportError);
       break;
+    case "restore_deleted": {
+      const tokens = message.tokens as unknown;
+      if (!Array.isArray(tokens) || tokens.length === 0 || tokens.length > MAX_BATCH_PATHS || !tokens.every((token) => typeof token === "string") || typeof message.requestId !== "string") {
+        return;
+      }
+      handleRestoreDeleted(workspace, socket, tokens as string[], message.requestId).catch(reportError);
+      break;
+    }
+    case "delete_files":
+    case "move_files": {
+      const paths = message.paths as unknown;
+      if (
+        !Array.isArray(paths) ||
+        paths.length === 0 ||
+        paths.length > MAX_BATCH_PATHS ||
+        !paths.every((entry) => typeof entry === "string") ||
+        typeof message.requestId !== "string" ||
+        (message.type === "move_files" && typeof message.destinationDirectory !== "string")
+      ) {
+        return;
+      }
+      handleFileBatch(
+        workspace,
+        socket,
+        message.type === "delete_files" ? { operation: "delete_file" } : { operation: "move_file", destinationDirectory: message.destinationDirectory },
+        paths as string[],
+        message.requestId,
+      ).catch(reportError);
+      break;
+    }
     case "search_files":
       if (typeof message.query !== "string" || typeof message.requestId !== "string") return;
       handleSearchFiles(workspace, socket, message.query, message.requestId).catch(reportError);
