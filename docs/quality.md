@@ -100,7 +100,7 @@ classification has run, and CodeQL still runs, so such a PR can merge in minutes
 waiting for the full suites. A push to `main` always runs everything.
 
 The CI's `changes` job decides. Documentation only means: `README.md`, `CONTRIBUTING.md`,
-`SECURITY.md`, `CLAUDE.md`, `AGENTS.md`, the issue and pull request templates, and files under
+`SECURITY.md`, `GOVERNANCE.md`, `CODE_OF_CONDUCT.md`, `CLAUDE.md`, `AGENTS.md`, the issue and pull request templates, and files under
 `docs/` whose path no other file names. Everything else runs the full CI, including `openspec/`
 (the scenario-coverage check), `skills/` and `CHANGELOG.md`, which tests read and the packages
 ship.
