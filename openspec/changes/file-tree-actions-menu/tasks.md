@@ -41,12 +41,12 @@
 
 ## 7. Documentation
 
-- [ ] 7.1 Update `docs/features.md` (file tree menu, reference, Download and archives, selection, folder operations) and the tree mentions in `docs/how-to.md`, and verify every changed sentence matches the shipped labels and links resolve
+- [x] 7.1 Update `docs/features.md` (file tree menu, reference, Download and archives, selection, folder operations) and the tree mentions in `docs/how-to.md`, and verify every changed sentence matches the shipped labels and links resolve
 
 ## 8. Integration checks
 
-- [ ] 8.1 Write `openspec/changes/file-tree-actions-menu/scenario-coverage.md` mapping every scenario of the three delta specs to its test, and verify `npm run check:scenarios` passes
-- [ ] 8.2 Rebuild `web`, `@pi-outpost/embed` and `build:e2e-host`, run `npm run bench`, and drive the tree with Playwright on 127.0.0.1:4321 at 224 px and full width: open the menu by `⋯` and right-click on files and folders, download a file and a folder and check the saved bytes and archive entries, Shift/Ctrl-select files and folders and delete and move them, rename a folder, pick a destination; then a break-it pass (double clicks, menu left open while switching project, deleting a selected folder on disk, moving a folder while its child is open in the viewer, acting while a batch is pending) and read back the DOM and filesystem after each burst
+- [x] 8.1 Write `openspec/changes/file-tree-actions-menu/scenario-coverage.md` mapping every scenario of the three delta specs to its test, and verify `npm run check:scenarios` passes
+- [x] 8.2 Rebuild `web`, `@pi-outpost/embed` and `build:e2e-host`, run `npm run bench`, and drive the tree with Playwright on 127.0.0.1:4321 at 224 px and full width: open the menu by `⋯` and right-click on files and folders, download a file and a folder and check the saved bytes and archive entries, Shift/Ctrl-select files and folders and delete and move them, rename a folder, pick a destination; then a break-it pass (double clicks, menu left open while switching project, deleting a selected folder on disk, moving a folder while its child is open in the viewer, acting while a batch is pending) and read back the DOM and filesystem after each burst
 - [ ] 8.3 Run `npm run typecheck`, `npm run lint`, the server, office and ui suites, and `openspec validate file-tree-actions-menu --strict`, and verify all pass
 
 ## Workflow follow-up

@@ -968,6 +968,28 @@ describe("the actions menu", () => {
     expect(screen.getByRole("button", { name: "Actions for readme.md" })).toHaveFocus();
   });
 
+  it("CreateDirectoryFromTree: the created folder appears expanded, and no file is opened", () => {
+    const { onCreateDirectory, onSelectFile, rerender, ...rest } = everything();
+    choose("src", "New file or folder…");
+    const input = screen.getByRole("textbox", { name: "New file or folder in src" });
+    fireEvent.change(input, { target: { value: "widgets/" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(onCreateDirectory).toHaveBeenCalledWith("src/widgets");
+
+    rerender(
+      <FileTree
+        {...rest}
+        onCreateDirectory={onCreateDirectory}
+        onSelectFile={onSelectFile}
+        tree={tree({ src: [file("main.ts"), dir("nested"), dir("widgets")], "src/widgets": [] })}
+        created="src/widgets"
+      />,
+    );
+    expect(dirToggle("widgets")).toHaveTextContent("▾");
+    expect(screen.getByText("empty")).toBeInTheDocument();
+    expect(onSelectFile).not.toHaveBeenCalled();
+  });
+
   it("CreateFileFromTree: New file or folder… opens the input inside the folder", () => {
     const { onCreateFile } = everything();
     choose("src", "New file or folder…");

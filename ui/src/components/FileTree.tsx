@@ -654,10 +654,29 @@ export function FileTree(props: TreeProps) {
     },
   } : undefined;
 
+  const [openPaths, setOpenPaths] = useState<ReadonlySet<string>>(() => new Set());
+  const setOpen = useCallback(
+    (path: string, open: boolean) =>
+      setOpenPaths((current) => {
+        if (current.has(path) === open) return current;
+        const next = new Set(current);
+        if (open) next.add(path);
+        else next.delete(path);
+        return next;
+      }),
+    [],
+  );
+  // A tree with no root listing is a new browser root (a project switch clears the
+  // listings): what was open in the old one means nothing here.
+  const rootListed = props.tree[""] !== undefined;
+  useEffect(() => {
+    if (!rootListed) setOpenPaths((current) => (current.size === 0 ? current : new Set()));
+  }, [rootListed]);
+
   const [openIn, setOpenIn] = useState<string | null>(null);
   const [localError, setLocalError] = useState<string | null>(null);
   /** What was asked for, so the input can close once the tree shows it. */
-  const [pending, setPending] = useState<{ dir: string; name: string } | null>(null);
+  const [pending, setPending] = useState<{ dir: string; name: string; kind: "file" | "directory" } | null>(null);
   const [renamePath, setRenamePath] = useState<string | null>(null);
   const [renameLocalError, setRenameLocalError] = useState<string | null>(null);
   const [pendingRename, setPendingRename] = useState<string | null>(null);
@@ -675,10 +694,12 @@ export function FileTree(props: TreeProps) {
   useEffect(() => {
     if (pending === null || created === null) return;
     if (created !== joinPath(pending.dir, pending.name)) return;
+    // A created folder is shown open, ready for what goes in it; a file opens in the viewer instead.
+    if (pending.kind === "directory") setOpen(created, true);
     setOpenIn(null);
     setPending(null);
     setLocalError(null);
-  }, [pending, created]);
+  }, [pending, created, setOpen]);
 
   const renameServerError =
     props.fileOperation?.status === "error" &&
@@ -717,7 +738,7 @@ export function FileTree(props: TreeProps) {
             return;
           }
           setLocalError(null);
-          setPending({ dir, name: request.name });
+          setPending({ dir, name: request.name, kind: request.kind });
           const target = joinPath(dir, request.name);
           if (request.kind === "directory") props.onCreateDirectory?.(target);
           else props.onCreateFile?.(target);
@@ -765,25 +786,6 @@ export function FileTree(props: TreeProps) {
         },
       }
     : undefined;
-
-  const [openPaths, setOpenPaths] = useState<ReadonlySet<string>>(() => new Set());
-  const setOpen = useCallback(
-    (path: string, open: boolean) =>
-      setOpenPaths((current) => {
-        if (current.has(path) === open) return current;
-        const next = new Set(current);
-        if (open) next.add(path);
-        else next.delete(path);
-        return next;
-      }),
-    [],
-  );
-  // A tree with no root listing is a new browser root (a project switch clears the
-  // listings): what was open in the old one means nothing here.
-  const rootListed = props.tree[""] !== undefined;
-  useEffect(() => {
-    if (!rootListed) setOpenPaths((current) => (current.size === 0 ? current : new Set()));
-  }, [rootListed]);
 
   // ---------------------------------------------------------------------------
   // Selection, the actions menu, drags and destination picking
