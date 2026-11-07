@@ -78,7 +78,9 @@ on `main`:
   - `Analyze (actions)`, `Analyze (csharp)` and `Analyze (javascript-typescript)`;
 - blocks a merge on a CodeQL alert of high severity or above;
 - has **no bypass**: administrators are held to the same checks;
-- requires zero approving reviews (the project has one maintainer).
+- requires zero approving reviews (the project has one maintainer), and dismisses an approval
+  when new commits are pushed, so an approval given once reviewers exist cannot outlive the
+  change it approved.
 
 No legacy branch protection is set on `main`; the ruleset is the only rule. This is a snapshot:
 verify the live ruleset when reviewing enforcement. If CI is broken by something outside the
