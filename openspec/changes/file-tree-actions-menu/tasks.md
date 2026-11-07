@@ -23,21 +23,21 @@
 
 ## 4. Tree state lift
 
-- [ ] 4.1 Move folder open state from `TreeNode` into `FileTree` (one set of open paths, cleared on a browser-root change) and verify the existing `FileTree.test.tsx` and `Sidebar` tests pass unchanged
-- [ ] 4.2 Add pure `visibleRows(tree, openPaths)` and `outermost(paths)` and verify unit tests for display order, folders included, collapsed children excluded, and a child dropped under its selected folder
+- [x] 4.1 Move folder open state from `TreeNode` into `FileTree` (one set of open paths, cleared on a browser-root change) and verify the existing `FileTree.test.tsx` and `Sidebar` tests pass unchanged
+- [x] 4.2 Add pure `visibleRows(tree, openPaths)` and `outermost(paths)` and verify unit tests for display order, folders included, collapsed children excluded, and a child dropped under its selected folder
 
 ## 5. Actions menu
 
-- [ ] 5.1 Add the pure `rowActions(entry, context)` returning ordered groups, and verify unit tests for AFileRowsMenuInItsOrder, AFolderRowsMenu, AReadOnlyFileOffersOnlyWhatItCanTake, TheRootsOfferNoRemoval and a selection-wide variant (counts, mixed selection)
-- [ ] 5.2 Build `RowMenu` (menu/menuitem roles, arrow keys, Home/End, Enter, Escape, focus return, outside click, flip/clamp inside the panel) and verify component tests for TheMenuIsAKeyboardMenu and OneMenuAtATime
-- [ ] 5.3 Replace the row icons in `FileTree.tsx` with the `⋯` control and the context menu on file and folder rows, keep the git badge and the referenced marker, make folder rows renameable, deletable and draggable, and verify `FileTree.test.tsx` for OnlyStatesStayOnTheRow, TheContextMenuOpensTheSameMenu, the lifecycle scenarios (delete confirm/cancel, ConfirmAFolderDeletion, DragAFolderOntoAWritableFolder, open natively), TheTreeOffersRevealOnFilesAndFolders, CreateFileFromTree via the menu, ReadOnlyDirectoryOffersNothing, and the reference scenarios including ReferenceAFolder and TheMarkerDropsTheReference
+- [x] 5.1 Add the pure `rowActions(entry, context)` returning ordered groups, and verify unit tests for AFileRowsMenuInItsOrder, AFolderRowsMenu, AReadOnlyFileOffersOnlyWhatItCanTake, TheRootsOfferNoRemoval and a selection-wide variant (counts, mixed selection)
+- [x] 5.2 Build `RowMenu` (menu/menuitem roles, arrow keys, Home/End, Enter, Escape, focus return, outside click, flip/clamp inside the panel) and verify component tests for TheMenuIsAKeyboardMenu and OneMenuAtATime
+- [x] 5.3 Replace the row icons in `FileTree.tsx` with the `⋯` control and the context menu on file and folder rows, keep the git badge and the referenced marker, make folder rows renameable, deletable and draggable, and verify `FileTree.test.tsx` for OnlyStatesStayOnTheRow, TheContextMenuOpensTheSameMenu, the lifecycle scenarios (delete confirm/cancel, ConfirmAFolderDeletion, DragAFolderOntoAWritableFolder, open natively), TheTreeOffersRevealOnFilesAndFolders, CreateFileFromTree via the menu, ReadOnlyDirectoryOffersNothing, and the reference scenarios including ReferenceAFolder and TheMarkerDropsTheReference
 
 ## 6. Multi-selection and destination picking
 
-- [ ] 6.1 Add selection to `FileTree` (anchor, Shift range over visible rows, Ctrl/Cmd toggle without opening or expanding, Escape, pruning on listing and project change) and verify tests for every FileTree multi-selection scenario
-- [ ] 6.2 Make the menu act on the normalised selection (count in labels, unselected row becomes the selection, Delete with one confirmation, one archive for Download, Reference once per entry) and the drag of a selected row move the selection, and verify tests for FileTree acts on a selection, ASelectedFolderCoversItsContent and ReferenceASelection
-- [ ] 6.3 Add Move to… picking mode (banner with Cancel, writable folders and root as targets except a moved folder and its descendants, folders still expand, Escape) and verify tests for PickADestination, CancelPicking, AReadOnlyFolderIsNoTarget and AMovedFolderIsNoTargetForItself
-- [ ] 6.4 Show a batch result and an archive's left-out count in the tree, and verify tests for TheTreeReportsWhatWasRefused and AnEscapingLinkIsLeftOut on the tree side
+- [x] 6.1 Add selection to `FileTree` (anchor, Shift range over visible rows, Ctrl/Cmd toggle without opening or expanding, Escape, pruning on listing and project change) and verify tests for every FileTree multi-selection scenario
+- [x] 6.2 Make the menu act on the normalised selection (count in labels, unselected row becomes the selection, Delete with one confirmation, one archive for Download, Reference once per entry) and the drag of a selected row move the selection, and verify tests for FileTree acts on a selection, ASelectedFolderCoversItsContent and ReferenceASelection
+- [x] 6.3 Add Move to… picking mode (banner with Cancel, writable folders and root as targets except a moved folder and its descendants, folders still expand, Escape) and verify tests for PickADestination, CancelPicking, AReadOnlyFolderIsNoTarget and AMovedFolderIsNoTargetForItself
+- [x] 6.4 Show a batch result and an archive's left-out count in the tree, and verify tests for TheTreeReportsWhatWasRefused and AnEscapingLinkIsLeftOut on the tree side
 
 ## 7. Documentation
 
