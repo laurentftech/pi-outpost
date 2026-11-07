@@ -734,16 +734,21 @@ describe("App — attachments", () => {
     return { api, ...view };
   }
 
-  it("references a file pinned in the tree, and drops it when unpinned", () => {
+  /** Reference a tree entry from its actions menu, the way the Files panel offers it. */
+  function referenceFromTree(name: string) {
+    fireEvent.click(screen.getByRole("button", { name: `Actions for ${name}` }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Reference in prompt" }));
+  }
+
+  it("references a file from the tree, and drops it from its referenced marker", () => {
     mount({ fileTree: { "": [{ name: "readme.md", type: "file" }] } });
     fireEvent.click(sidebarToggle());
-    const pin = screen.getByRole("button", { name: "Reference readme.md in the prompt" });
 
-    fireEvent.click(pin);
-    expect(screen.getByRole("button", { name: "Remove readme.md in the prompt" })).toHaveAttribute("aria-pressed", "true");
+    referenceFromTree("readme.md");
+    expect(screen.getByRole("button", { name: "Remove readme.md from the prompt" })).toHaveAttribute("aria-pressed", "true");
 
-    fireEvent.click(screen.getByRole("button", { name: "Remove readme.md in the prompt" }));
-    expect(screen.getByRole("button", { name: "Reference readme.md in the prompt" })).toHaveAttribute("aria-pressed", "false");
+    fireEvent.click(screen.getByRole("button", { name: "Remove readme.md from the prompt" }));
+    expect(screen.queryByRole("button", { name: "Remove readme.md from the prompt" })).not.toBeInTheDocument();
   });
 
   it.each(["docs/report.docx", "sheets/budget.xlsx", "deck.pptx", "archive.zip", "report.pdf", "plot.png", "readme.md"])(
@@ -769,7 +774,7 @@ describe("App — attachments", () => {
     const state = { fileTree: { "": [{ name: "pinned.md", type: "file" }] } };
     const first = mount(state);
     fireEvent.click(sidebarToggle());
-    fireEvent.click(screen.getByRole("button", { name: "Reference pinned.md in the prompt" }));
+    referenceFromTree("pinned.md");
     for (const path of ["other.md", "plot.png", "report.pdf"]) {
       mockUseAgent.mockReturnValue(agentApi(agentState({ ...state, openFile: path.endsWith(".md") ? { status: "loaded", path, content: "other", size: 5, mtimeMs: 1 } : { status: "error", path, message: "Binary file — preview not supported" }, previewRevision: 2 })));
       first.rerender(<App />);
@@ -789,14 +794,14 @@ describe("App — attachments", () => {
   it("sends the prompt and clears what was attached to it", () => {
     const { api } = mount({ fileTree: { "": [{ name: "readme.md", type: "file" }] } });
     fireEvent.click(sidebarToggle());
-    fireEvent.click(screen.getByRole("button", { name: "Reference readme.md in the prompt" }));
+    referenceFromTree("readme.md");
 
     const box = screen.getByRole("textbox");
     fireEvent.change(box, { target: { value: "what is this?" } });
     fireEvent.keyDown(box, { key: "Enter" });
 
     expect(api.prompt).toHaveBeenCalledWith(expect.stringContaining("@readme.md"), undefined);
-    expect(screen.getByRole("button", { name: "Reference readme.md in the prompt" })).toHaveAttribute("aria-pressed", "false");
+    expect(screen.queryByRole("button", { name: "Remove readme.md from the prompt" })).not.toBeInTheDocument();
   });
 
   it("closes the viewer on send, since the user wants the conversation back", () => {

@@ -29,6 +29,7 @@ import {
   MAX_UPLOAD_BYTES,
   MAX_UPLOAD_BASE64_LENGTH,
   uploadFileFromBrowser,
+  copyEntryFromBrowser,
   copyFileFromBrowser,
   deleteFileFromBrowser,
   moveFileFromBrowser,
@@ -40,6 +41,7 @@ import {
   resolveBrowserRoot,
   resolveWritableRoot,
   searchFiles,
+  walkConfined,
   writeFileFromBrowser,
 } from "../src/fileBrowser.ts";
 import { STRUCTURED_EXCHANGE_SCHEMA_V1 } from "@pi-outpost/shared/structured-exchange";
@@ -828,6 +830,177 @@ describe("file browser", () => {
       );
       assert.equal(await reasonOf(() => moveFileFromBrowser(root, undefined, "escape-dir/secret.txt", "empty")), "outside-root");
       assert.equal(readFileSync(path.join(outside, "secret.txt"), "utf8"), "SECRET\n");
+    });
+
+    test("RenameAFolder: its content follows it, the old name is gone", async () => {
+      write("folders/drafts/a.txt", "a");
+      write("folders/drafts/sub/b.txt", "b");
+
+      const result = await renameFileFromBrowser(root, undefined, "folders/drafts", "final");
+
+      assert.equal(result, "folders/final");
+      assert.equal(readFileSync(path.join(root, "folders", "final", "a.txt"), "utf8"), "a");
+      assert.equal(readFileSync(path.join(root, "folders", "final", "sub", "b.txt"), "utf8"), "b");
+      assert.equal(statSync(path.join(root, "folders", "drafts"), { throwIfNoEntry: false }), undefined);
+    });
+
+    test("MoveAFolder: it lands in the destination with its content", async () => {
+      write("folders/inbox/project/notes.md", "notes");
+      mkdirSync(path.join(root, "folders", "archive"), { recursive: true });
+
+      const result = await moveFileFromBrowser(root, undefined, "folders/inbox/project", "folders/archive");
+
+      assert.equal(result, "folders/archive/project");
+      assert.equal(readFileSync(path.join(root, "folders", "archive", "project", "notes.md"), "utf8"), "notes");
+      assert.equal(statSync(path.join(root, "folders", "inbox", "project"), { throwIfNoEntry: false }), undefined);
+    });
+
+    test("RefuseMovingAFolderIntoItself: into itself or a descendant, nothing changes", async () => {
+      write("folders/self/sub/keep.txt", "keep");
+
+      assert.equal(await reasonOf(() => moveFileFromBrowser(root, undefined, "folders/self", "folders/self")), "denied");
+      assert.equal(await reasonOf(() => moveFileFromBrowser(root, undefined, "folders/self", "folders/self/sub")), "denied");
+      assert.equal(readFileSync(path.join(root, "folders", "self", "sub", "keep.txt"), "utf8"), "keep");
+    });
+
+    test("RefuseReplacingAFolder: an existing folder is never replaced, by a move or a rename, empty or not", async () => {
+      write("folders/replace/project/mine.txt", "mine");
+      write("folders/replace/archive/project/theirs.txt", "theirs");
+      mkdirSync(path.join(root, "folders", "replace", "empty-target"), { recursive: true });
+
+      assert.equal(await reasonOf(() => moveFileFromBrowser(root, undefined, "folders/replace/project", "folders/replace/archive")), "conflict");
+      assert.equal(await reasonOf(() => renameFileFromBrowser(root, undefined, "folders/replace/project", "empty-target")), "conflict");
+      assert.equal(readFileSync(path.join(root, "folders", "replace", "project", "mine.txt"), "utf8"), "mine");
+      assert.equal(readFileSync(path.join(root, "folders", "replace", "archive", "project", "theirs.txt"), "utf8"), "theirs");
+      assert.ok(statSync(path.join(root, "folders", "replace", "empty-target")).isDirectory());
+    });
+
+    test("DeleteAFolderWithItsContent: everything inside goes, a link's target stays", async (t) => {
+      write("folders/old/a.txt", "a");
+      write("folders/old/sub/b.txt", "b");
+      write("folders/kept-target.txt", "kept");
+      if (symlinksAvailable) symlinkSync(path.join(root, "folders", "kept-target.txt"), path.join(root, "folders", "old", "link.txt"));
+      else t.diagnostic("symlinks unavailable: the link half of this check is not exercised");
+
+      await deleteFileFromBrowser(root, undefined, "folders/old");
+
+      assert.equal(statSync(path.join(root, "folders", "old"), { throwIfNoEntry: false }), undefined);
+      assert.equal(readFileSync(path.join(root, "folders", "kept-target.txt"), "utf8"), "kept");
+    });
+
+    test("TheRootsCannotBeRemoved: the browser root and the writable root are refused for every mutation", async () => {
+      write("zone-root/inside.txt", "inside");
+      write("zone-root/target/keep.txt", "keep");
+
+      // [writable zone, path]: the browser root with no sandbox and with a whole-root zone,
+      // then the writable root itself when the zone is a subtree.
+      for (const [writable, target] of [[undefined, ""], ["", ""], ["zone-root", "zone-root"]] as const) {
+        const label = `${target || "/"} with zone ${String(writable)}`;
+        assert.equal(await reasonOf(() => deleteFileFromBrowser(root, writable, target)), "denied", `delete ${label}`);
+        assert.equal(await reasonOf(() => renameFileFromBrowser(root, writable, target, "renamed")), "denied", `rename ${label}`);
+        assert.equal(await reasonOf(() => moveFileFromBrowser(root, writable, target, "zone-root/target")), "denied", `move ${label}`);
+      }
+      assert.equal(readFileSync(path.join(root, "zone-root", "inside.txt"), "utf8"), "inside");
+      assert.equal(readFileSync(path.join(root, "readme.md"), "utf8"), "# hello\n");
+    });
+  });
+
+  describe("walkConfined", () => {
+    test("names every entry from its own top name, each folder before its content, empty folders included", async () => {
+      write("walk/tree/b.txt", "bb");
+      write("walk/tree/a/inner.txt", "i");
+      mkdirSync(path.join(root, "walk", "tree", "empty"), { recursive: true });
+
+      const { entries, skipped } = await walkConfined(root, ["walk/tree"]);
+
+      assert.deepEqual(
+        entries.map((entry) => [entry.name, entry.kind, entry.size]),
+        [
+          ["tree", "directory", 0],
+          ["tree/a", "directory", 0],
+          ["tree/a/inner.txt", "file", 1],
+          ["tree/b.txt", "file", 2],
+          ["tree/empty", "directory", 0],
+        ],
+      );
+      assert.equal(entries[2].absolute, path.join(root, "walk", "tree", "a", "inner.txt"));
+      assert.equal(skipped, 0);
+    });
+
+    test("an escaping file link and an escaping folder link are left out and counted; an inside link is followed", async (t) => {
+      if (!symlinksAvailable) return t.skip("symlinks unavailable on this platform");
+      write("walk/links/kept.txt", "kept");
+      write("walk/inside-target.txt", "inside");
+      symlinkSync(path.join(outside, "secret.txt"), path.join(root, "walk", "links", "escaping-file"));
+      symlinkSync(outside, path.join(root, "walk", "links", "escaping-dir"), "dir");
+      symlinkSync(path.join(root, "walk", "inside-target.txt"), path.join(root, "walk", "links", "inside-link"));
+
+      const { entries, skipped } = await walkConfined(root, ["walk/links"]);
+
+      assert.deepEqual(entries.map((entry) => entry.name), ["links", "links/inside-link", "links/kept.txt"]);
+      assert.equal(entries[1].absolute, path.join(root, "walk", "inside-target.txt"));
+      assert.equal(skipped, 2);
+      assert.ok(entries.every((entry) => !entry.absolute.startsWith(outside)));
+    });
+
+    test("a link cycle is entered once and counted", async (t) => {
+      if (!symlinksAvailable) return t.skip("symlinks unavailable on this platform");
+      write("walk/cycle/file.txt", "f");
+      symlinkSync(path.join(root, "walk", "cycle"), path.join(root, "walk", "cycle", "loop"), "dir");
+
+      const { entries, skipped } = await walkConfined(root, ["walk/cycle"]);
+
+      assert.deepEqual(entries.map((entry) => entry.name), ["cycle", "cycle/file.txt"]);
+      assert.equal(skipped, 1);
+    });
+
+    test("a limit stops the walk with a too-large refusal naming it", async () => {
+      write("walk/limit/1.txt", "1");
+      write("walk/limit/2.txt", "2");
+      write("walk/limit/3.txt", "3");
+
+      assert.equal(await reasonOf(() => walkConfined(root, ["walk/limit"], { maxEntries: 2, maxBytes: 1e9 })), "too-large");
+      assert.equal(await reasonOf(() => walkConfined(root, ["walk/limit"], { maxEntries: 100, maxBytes: 2 })), "too-large");
+      assert.equal(await reasonOf(() => walkConfined(root, ["../outside"])), "outside-root");
+    });
+  });
+
+  describe("folder copy", () => {
+    test("CopyAReadOnlyFolder: the copy holds the same files and folders, the source is unchanged", async () => {
+      write("reference/templates/letter.md", "letter");
+      write("reference/templates/deep/memo.md", "memo");
+      mkdirSync(path.join(root, "reference", "templates", "empty"), { recursive: true });
+      mkdirSync(path.join(root, "copy-workspace"), { recursive: true });
+
+      const result = await copyEntryFromBrowser(root, "copy-workspace", "reference/templates", "copy-workspace");
+
+      assert.deepEqual(result, { path: "copy-workspace/templates", skipped: 0 });
+      assert.equal(readFileSync(path.join(root, "copy-workspace", "templates", "letter.md"), "utf8"), "letter");
+      assert.equal(readFileSync(path.join(root, "copy-workspace", "templates", "deep", "memo.md"), "utf8"), "memo");
+      assert.ok(statSync(path.join(root, "copy-workspace", "templates", "empty")).isDirectory());
+      assert.equal(readFileSync(path.join(root, "reference", "templates", "letter.md"), "utf8"), "letter");
+    });
+
+    test("ACopyLeavesOutEscapingLinks: neither the link nor its target is copied, and the result counts it", async (t) => {
+      if (!symlinksAvailable) return t.skip("symlinks unavailable on this platform");
+      write("copy-links/src/kept.txt", "kept");
+      symlinkSync(path.join(outside, "secret.txt"), path.join(root, "copy-links", "src", "secret-link"));
+      mkdirSync(path.join(root, "copy-links", "dest"), { recursive: true });
+
+      const result = await copyEntryFromBrowser(root, undefined, "copy-links/src", "copy-links/dest");
+
+      assert.equal(result.skipped, 1);
+      assert.equal(readFileSync(path.join(root, "copy-links", "dest", "src", "kept.txt"), "utf8"), "kept");
+      assert.equal(existsSync(path.join(root, "copy-links", "dest", "src", "secret-link")), false);
+    });
+
+    test("an existing destination folder is refused and left as it was; a folder cannot be copied into itself", async () => {
+      write("copy-conflict/src/a.txt", "new");
+      write("copy-conflict/dest/src/a.txt", "old");
+
+      assert.equal(await reasonOf(() => copyEntryFromBrowser(root, undefined, "copy-conflict/src", "copy-conflict/dest")), "conflict");
+      assert.equal(readFileSync(path.join(root, "copy-conflict", "dest", "src", "a.txt"), "utf8"), "old");
+      assert.equal(await reasonOf(() => copyEntryFromBrowser(root, undefined, "copy-conflict/src", "copy-conflict/src")), "denied");
     });
   });
 

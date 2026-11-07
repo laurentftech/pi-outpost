@@ -32,6 +32,13 @@ interface SidebarProps {
   onDeleteFile?: (path: string) => void;
   onMoveFile?: (path: string, destinationDirectory: string) => void;
   onCopyFile?: (path: string, destinationDirectory: string) => void;
+  /** Delete, or move into one directory, several entries in one request. */
+  onDeleteFiles?: (paths: string[]) => void;
+  onMoveFiles?: (paths: string[], destinationDirectory: string) => void;
+  /** Put deleted entries back, by the tokens their deletion answered. */
+  onRestoreDeleted?: (tokens: string[]) => void;
+  /** Save entries on this machine: a file as itself, anything else as one archive. */
+  onDownload?: (paths: string[], singleFile: boolean) => Promise<{ skipped: number }>;
   onUploadFile?: (name: string, contentBase64: string, destinationDirectory: string) => Promise<string>;
   onExternalDragEnter?: () => void;
   fileOperation?: FileOperationState | null;
@@ -69,6 +76,10 @@ export function Sidebar({
   onDeleteFile,
   onMoveFile,
   onCopyFile,
+  onDeleteFiles,
+  onMoveFiles,
+  onRestoreDeleted,
+  onDownload,
   onUploadFile,
   onExternalDragEnter,
   fileOperation,
@@ -174,6 +185,10 @@ export function Sidebar({
           onDeleteFile={onDeleteFile}
           onMoveFile={onMoveFile}
           onCopyFile={onCopyFile}
+          onDeleteFiles={onDeleteFiles}
+          onMoveFiles={onMoveFiles}
+          onRestoreDeleted={onRestoreDeleted}
+          onDownload={onDownload}
           onUploadFile={onUploadFile}
           fileOperation={fileOperation}
           createError={createError}
