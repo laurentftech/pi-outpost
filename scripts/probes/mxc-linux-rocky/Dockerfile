@@ -1,7 +1,7 @@
 # The MXC Linux (Bubblewrap) tests on Rocky Linux 9, to compare with scripts/mxc-linux (Debian).
 # Built like scripts/mxc-linux/test.sh: from the working tree, piped as the build context.
-FROM node:24-bookworm AS node
-FROM rockylinux:9
+FROM node:24-bookworm@sha256:8fa96264f302f58bbb13aa7339c541547b56975766ce956c875da149452a3e40 AS node
+FROM rockylinux:9@sha256:d7be1c094cc5845ee815d4632fe377514ee6ebcf8efaed6892889657e5ddaaa6
 COPY --from=node /usr/local/bin/node /usr/local/bin/node
 COPY --from=node /usr/local/lib/node_modules /usr/local/lib/node_modules
 RUN ln -s /usr/local/lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \

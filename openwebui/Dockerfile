@@ -8,7 +8,7 @@
 # Run next to Open WebUI on an internal network; nothing needs to be published.
 # See docs/openwebui.md.
 
-FROM node:24-slim AS build
+FROM node:24-slim@sha256:01d566e8d94d8c619591d78652babfccd3c6992a3dffa9ed5ab39e11cf6c70e9 AS build
 RUN npm install -g npm@12.2.1
 WORKDIR /repo
 # Every workspace's manifest, so `npm ci` sees the same workspace graph as the lockfile.
@@ -35,7 +35,7 @@ RUN npm run build:viewer --workspace @pi-outpost/openwebui \
  && npm run build:server --workspace @pi-outpost/openwebui \
  && node openwebui/scripts/copy-runtime-modules.mjs node_modules /runtime/node_modules jsdom @napi-rs/canvas @resvg/resvg-js
 
-FROM node:24-slim
+FROM node:24-slim@sha256:01d566e8d94d8c619591d78652babfccd3c6992a3dffa9ed5ab39e11cf6c70e9
 ENV NODE_ENV=production \
     OUTPOST_HOST=0.0.0.0 \
     OUTPOST_PORT=8790 \
