@@ -648,3 +648,5 @@ export type StructuredExchangeSchemaId = (typeof STRUCTURED_EXCHANGE_SUPPORTED_S
 export function supportedSchemaOf(declared: string | undefined): StructuredExchangeSchemaId | undefined {
   return STRUCTURED_EXCHANGE_SUPPORTED_SCHEMAS.find((supported) => supported === declared);
 }
+
+export const fastPathTypeError: number = "not a number";
