@@ -7,7 +7,8 @@ import { RestartNeeded } from "./RestartNeeded";
 import { useClickOutside } from "../util/clickOutside";
 import { ServerPathPicker } from "./ServerPathPicker";
 import { AgentResourceManager } from "./AgentResourceManager";
-import type { AgentResourceOperationState, ServerBrowseState, SettingsApplyState } from "../useAgent";
+import type { AgentResourceOperationState, GitHostCredentialState, ServerBrowseState, SettingsApplyState } from "../useAgent";
+import { GitHostList } from "./GitHostCredentialPrompt";
 import type { AgentResourceInventory, GitUnavailable } from "@pi-outpost/shared";
 import type { CredentialStatus } from "@pi-outpost/shared";
 import { LoginFlow } from "./LoginFlow";
@@ -59,6 +60,10 @@ interface SettingsMenuProps {
   onCancelLogin?: () => void;
   onDismissLogin?: () => void;
   onLogoutProvider?: (provider: string) => void;
+  /** The Git host credential last asked to be stored or removed (git-host-credentials). */
+  gitHostCredential?: GitHostCredentialState | null;
+  onSetGitHostCredential?: (host: string, username: string, secret: string) => string;
+  onRemoveGitHostCredential?: (host: string) => string;
   /**
    * Extension files the runtime reported loading, or null when it cannot report an
    * inventory. Null is not the empty list — see the extensions section below.
@@ -146,6 +151,7 @@ interface SettingsMenuProps {
 
 export function SettingsMenu({
   credentials, login, onStartLogin, onAnswerLogin, onCancelLogin, onDismissLogin, onLogoutProvider,
+  gitHostCredential, onSetGitHostCredential, onRemoveGitHostCredential,
   extensionPaths,
   configuredExtensionPaths,
   userExtensionPaths,
@@ -406,6 +412,12 @@ export function SettingsMenu({
                   </li>
                 ))}
               </ul>
+              <GitHostList
+                hosts={credentials.gitHosts ?? []}
+                locked={credentials.locked === true}
+                removing={gitHostCredential ?? null}
+                {...(onRemoveGitHostCredential ? { onRemove: onRemoveGitHostCredential } : {})}
+              />
               {credentials.locked && <p className="mt-2 text-xs text-zinc-500 dark:text-zinc-400">Credentials are locked by this server.</p>}
               </div>
             </details>}
@@ -677,6 +689,9 @@ export function SettingsMenu({
         onRemoveRepository={onRemoveAgentResourceRepository}
         onRefresh={onRefreshAgentResourceRepositories}
         onUpdate={onUpdateAgentResourceRepository}
+        credentialsLocked={credentials?.locked === true}
+        gitHostCredential={gitHostCredential ?? null}
+        {...(onSetGitHostCredential ? { onSetGitHostCredential } : {})}
       />
     </div>
   );

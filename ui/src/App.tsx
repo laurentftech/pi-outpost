@@ -171,6 +171,8 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
     cancelLogin,
     dismissLogin,
     logoutProvider,
+    setGitHostCredential,
+    removeGitHostCredential,
     declareProvider,
     updateConfig,
     suggestAgentResourceClonePath,
@@ -1060,6 +1062,9 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
             onCancelLogin={cancelLogin}
             onDismissLogin={dismissLogin}
             onLogoutProvider={logoutProvider}
+            gitHostCredential={state.gitHostCredential}
+            onSetGitHostCredential={setGitHostCredential}
+            onRemoveGitHostCredential={removeGitHostCredential}
             sessions={state.sessions}
             sessionSearch={state.sessionSearch}
             sessionId={state.sessionId}

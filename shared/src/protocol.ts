@@ -268,9 +268,27 @@ export type AgentResourceRepositoryStatus =
   | "unavailable"
   | "failed";
 
+/**
+ * A git operation that failed because the host wants credentials (git-host-credentials).
+ * `host` is the host key for HTTPS (`https://git.example.com:8447`) — what a credential is
+ * stored under — and the bare host for SSH, whose keys pi-outpost does not manage.
+ */
+export interface GitAuthFailure {
+  scheme: "https" | "ssh";
+  host: string;
+}
+
+/** A Git host with a stored credential, as a client may see it: never the secret. */
+export interface GitHostEntry {
+  host: string;
+  username: string;
+}
+
 interface AgentResourceRepositoryAssessmentBase {
   repositoryId: string;
   reason?: string;
+  /** On a failed refresh: the host refused for want of credentials. */
+  auth?: GitAuthFailure;
   branch?: string;
   upstream?: string;
   localRevision?: string;
@@ -1140,6 +1158,8 @@ export interface CredentialStatus {
   locked?: boolean;
   /** Signing in with an account is possible here: the embedded runtime, which runs the flows. */
   signIn?: boolean;
+  /** Git hosts with a stored HTTPS credential (git-host-credentials): host and user name, never the secret. */
+  gitHosts?: GitHostEntry[];
 }
 
 /** A provider the server knows, and how — never with what — it is authenticated. */
@@ -1219,6 +1239,9 @@ export type ServerMessage =
    * live extension dialogs, notifications, statuses and widgets the server still holds.
    */
   | { type: "credentials_changed"; models: ModelChoice[]; model: string; credentials: CredentialStatus }
+  /** The answer to `set_git_host_credential` / `remove_git_host_credential`, to the asking client only. */
+  | { type: "git_host_credential_result"; requestId: string; ok: true; host: string }
+  | { type: "git_host_credential_result"; requestId: string; ok: false; message: string }
   /** A step of the sign-in this client started. Sent to that client only. */
   | { type: "login_event"; flowId: string; event: LoginEvent }
   /** A question of the sign-in this client started; answered with `login_answer`. */
@@ -1496,7 +1519,7 @@ export type ServerMessage =
       result: AgentResourceRemovalResult;
       inventory: AgentResourceInventory;
     }
-  | { type: "agent_resource_error"; requestId: string; message: string }
+  | { type: "agent_resource_error"; requestId: string; message: string; auth?: GitAuthFailure }
   /**
    * Editable runtime settings were persisted and the session rebuilt from them —
    * carries the full new snapshot. Sent only after a successful write: a client
@@ -1744,6 +1767,10 @@ export type ClientMessage =
   | { type: "cancel_login"; flowId: string }
   /** Remove the credential this server stored for a provider. */
   | { type: "logout_provider"; provider: string }
+  /** Store (or replace) the HTTPS credential for one Git host. Refused under `credentialsLock`. */
+  | { type: "set_git_host_credential"; host: string; username: string; secret: string; requestId: string }
+  /** Remove the stored credential for one Git host. Refused under `credentialsLock`. */
+  | { type: "remove_git_host_credential"; host: string; requestId: string }
   /** Declare an OpenAI-compatible endpoint (a corporate gateway, vLLM, Ollama…). */
   | { type: "declare_provider"; provider: string; baseUrl: string; apiKey: string; models: string[]; compat?: ProviderCompat }
   /** List the directories under one server-side path (absolute; `/` is the top). */

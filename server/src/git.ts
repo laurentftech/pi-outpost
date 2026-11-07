@@ -179,7 +179,22 @@ async function runGit(root: string, args: string[]): Promise<string> {
 }
 
 /**
- * Why a git command failed, in one line: git's own first line when it wrote one, and
+ * Git's reason for failing, out of everything it wrote to stderr.
+ *
+ * Not its first line: a clone writes `Cloning into '…'...` before the `fatal:` that says
+ * why, and a person shown the progress line has nothing to act on (#425). The first
+ * `fatal:` or `error:` line is the reason; when there is none, the last line that is not
+ * a `hint:` — git ends with its conclusion and appends advice after it.
+ */
+export function gitReasonLine(stderr: string | undefined): string | undefined {
+  const lines = (stderr ?? "").split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  const reason = lines.find((line) => /^(fatal|error):/i.test(line));
+  if (reason) return reason;
+  return lines.filter((line) => !/^hint:/i.test(line)).at(-1) ?? lines.at(-1);
+}
+
+/**
+ * Why a git command failed, in one line: git's own reason when it wrote one, and
  * otherwise what the server knows. A command git never got to explain — killed by the
  * time limit, never started, cut off at the output cap — writes nothing, and a bare
  * "git log failed" left a person looking at a red line with nothing to act on.
@@ -189,7 +204,7 @@ async function runGit(root: string, args: string[]): Promise<string> {
  */
 export function gitFailureMessage(command: string, error: unknown, timeoutMs: number, maxBuffer: number): string {
   const failure = error as { stderr?: string; code?: unknown; killed?: boolean };
-  const said = failure.stderr?.trim().split(/\r?\n/)[0];
+  const said = gitReasonLine(failure.stderr);
   if (said) return said;
   if (failure.code === "ENOENT") return "git was not found";
   if (failure.code === "ERR_CHILD_PROCESS_STDIO_MAXBUFFER") return `git ${command} wrote more than ${Math.round(maxBuffer / (1024 * 1024))} MB`;
