@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 # Full coding app, distinct from openwebui/Dockerfile's tool server.
-FROM node:24-bookworm-slim
+FROM node:24-bookworm-slim@sha256:01d566e8d94d8c619591d78652babfccd3c6992a3dffa9ed5ab39e11cf6c70e9
 ARG PI_OUTPOST_VERSION=0.59.1
 ARG PI_OUTPOST_PACKAGE
 ARG LANDSTRIP_VERSION=0.20.20

@@ -1,6 +1,6 @@
 # The tests of MXC's Linux executor (lxc-exec, Bubblewrap backend), in the Docker deployment's shape.
 # Built and run by scripts/mxc-linux/test.sh, from the working tree.
-FROM node:24-bookworm
+FROM node:24-bookworm@sha256:8fa96264f302f58bbb13aa7339c541547b56975766ce956c875da149452a3e40
 RUN npm install -g npm@12.2.1
 
 # Bubblewrap is MXC's Linux backend; slirp4netns, iptables and iproute2 (`ip`) carry any network rule.

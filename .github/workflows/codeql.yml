@@ -19,6 +19,10 @@ on:
   schedule:
     - cron: '19 14 * * 0'
 
+# Read-only by default; the analyze job states the extra scopes it needs.
+permissions:
+  contents: read
+
 jobs:
   analyze:
     name: Analyze (${{ matrix.language }})

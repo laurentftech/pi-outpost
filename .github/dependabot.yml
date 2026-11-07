@@ -10,3 +10,21 @@ updates:
     groups:
       github-actions:
         patterns: ["*"]
+
+  # Base images are pinned by digest (tag kept for readability); this refreshes
+  # the digests. Majors stay put: moving Node 24 or Rocky 9 is a decision, not
+  # a weekly bump.
+  - package-ecosystem: docker
+    directories:
+      - /deploy/docker
+      - /openwebui
+      - /scripts/mxc-linux
+      - /scripts/probes/mxc-linux-rocky
+    schedule:
+      interval: weekly
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+    groups:
+      docker-base-images:
+        patterns: ["*"]

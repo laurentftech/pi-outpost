@@ -17,14 +17,11 @@ on:
         type: boolean
         default: true
 
+# Read-only by default. Each job that writes states it: `publish` (the npm OIDC
+# token), `attach` (the GitHub Release), `app-image` and `image` (GHCR). A job
+# added later starts with nothing it did not ask for.
 permissions:
-  # The executables are uploaded to the release this tag created.
-  contents: write
-  # The OIDC token GitHub mints for this workflow. npm's trusted publisher for both
-  # packages names this repo and this file, so the token *is* the credential: no
-  # NPM_TOKEN, nothing to steal from the repo's secrets, and provenance is attested
-  # from it automatically.
-  id-token: write
+  contents: read
 
 jobs:
   # One executable per platform, built on that platform: a single-file executable
@@ -105,6 +102,13 @@ jobs:
     # PR #200, and again cutting v0.27.1). Uncapped, that waits out GitHub's six hours
     # with a tag pushed and nothing published. Normal run: about thirteen minutes.
     timeout-minutes: 45
+    permissions:
+      contents: read
+      # The OIDC token GitHub mints for this job. npm's trusted publisher for both
+      # packages names this repo and this file, so the token *is* the credential: no
+      # NPM_TOKEN, nothing to steal from the repo's secrets, and provenance is attested
+      # from it automatically.
+      id-token: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       
