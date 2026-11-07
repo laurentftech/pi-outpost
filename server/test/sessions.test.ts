@@ -121,10 +121,17 @@ describe("firstExchange", () => {
     assert.ok(result?.includes("assistant: Hi there!"));
   });
 
-  test("skips tool calls between user and assistant", () => {
-    const result = firstExchange([userMsg("Do something"), toolEntry(), assistantMsg("Done!")]);
-    assert.ok(result?.includes("user: Do something"));
-    assert.ok(result?.includes("assistant: Done!"));
+  /** An assistant message that only calls a tool, as a real session records one before its result. */
+  const assistantToolCall = () =>
+    ({ type: "message", message: { role: "assistant", content: [{ type: "toolCall", id: "call", name: "read", arguments: { path: "notes.md" } }] } }) as unknown as SessionEntry;
+
+  test("a reply that starts with a tool call: the question and the answer that follows, without the tool's output", () => {
+    const result = firstExchange([userMsg("Do something"), assistantToolCall(), toolEntry(), assistantMsg("Done!")]);
+    assert.equal(result, "user: Do something\n\nassistant: Done!");
+  });
+
+  test("a turn that only called tools has no exchange to title yet", () => {
+    assert.equal(firstExchange([userMsg("Do something"), assistantToolCall(), toolEntry()]), undefined);
   });
 
   test("stops at the first assistant reply", () => {
