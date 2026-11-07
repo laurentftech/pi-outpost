@@ -89,11 +89,17 @@ version differs from `packageManager`, or if a workflow or Dockerfile installs n
 To move to another npm version, change it in `tools/npm/package.json`, then:
 
 ```bash
-npx -y npm@<version> install --package-lock-only --prefix tools/npm --allow-remote=all
+npx -y npm@<version> install --prefix tools/npm --allow-remote=all --no-audit --no-fund
 cp tools/npm/package.json tools/npm/package-lock.json deploy/docker/npm/
 ```
 
-and update `packageManager`, `engines.npm` and the version named in this guide,
+Run a full install, not `--package-lock-only`. Without the tarball, npm cannot see the versions
+it bundles and writes stale ones into the lockfile: for npm 12.2.2 it recorded `undici` 6.29.0
+and `ip-address` 10.7.2, while the tarball ships the fixed 6.29.1 and 10.7.5, so `npm audit` and
+Dependabot reported advisories that did not apply (corrected in #453). To check a lockfile, compare
+it with what the install put in `tools/npm/node_modules/npm/node_modules`.
+
+Then update `packageManager`, `engines.npm` and the version named in this guide,
 [CONTRIBUTING.md](../CONTRIBUTING.md) and the `deploy/docker/test.mjs` check, in one commit.
 
 The browser CI container needs both `build-essential` and `python3` to compile
