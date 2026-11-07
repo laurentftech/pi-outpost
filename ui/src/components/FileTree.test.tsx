@@ -599,16 +599,48 @@ describe("creating", () => {
         {...extra}
       />,
     );
-    choose("src", "New file or folder…");
-    return { ...handlers, input: screen.getByRole("textbox", { name: /New file or folder in src/ }) };
+    choose("src", "New file…");
+    return { ...handlers, input: screen.getByRole("textbox", { name: /New file in src/ }) };
   }
+
+  /** The tree with both creation callbacks, nothing opened yet. */
+  function creatorsRendered() {
+    const handlers = creators();
+    render(<FileTree tree={tree()} onExpand={vi.fn()} onSelectFile={vi.fn()} {...handlers} />);
+    return handlers;
+  }
+
+  it("a folder's menu offers New file… and New folder…, and the root has a control for each", () => {
+    const { onCreateDirectory } = creatorsRendered();
+    openMenu("src");
+    expect(menuItem("New file…")).toBeInTheDocument();
+    expect(menuItem("New folder…")).toBeInTheDocument();
+    fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
+
+    fireEvent.click(screen.getByRole("button", { name: "New folder in the workspace root" }));
+    const input = screen.getByRole("textbox", { name: "New folder in the workspace root" });
+    fireEvent.change(input, { target: { value: "notes" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(onCreateDirectory).toHaveBeenCalledWith("notes");
+    expect(screen.getByRole("button", { name: "New file in the workspace root" })).toBeInTheDocument();
+  });
+
+  it("New file… refuses a name ending in a slash, instead of making a folder of it", () => {
+    const { onCreateFile, onCreateDirectory, input } = openInputInSrc();
+    expect(input).toHaveAttribute("placeholder", "file name");
+    fireEvent.change(input, { target: { value: "widgets/" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(screen.getByText("A file name cannot end with /")).toBeInTheDocument();
+    expect(onCreateFile).not.toHaveBeenCalled();
+    expect(onCreateDirectory).not.toHaveBeenCalled();
+  });
 
   it("offers no creation control without a creation callback", () => {
     render(<FileTree tree={tree()} onExpand={vi.fn()} onSelectFile={vi.fn()} onRevealNative={vi.fn()} />);
 
-    expect(screen.queryByRole("button", { name: /New file or folder/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /New (file|folder)/ })).toBeNull();
     openMenu("src");
-    expect(queryMenuItem("New file or folder…")).toBeNull();
+    expect(queryMenuItem(/^New (file|folder)…/)).toBeNull();
   });
 
   it("ReadOnlyDirectoryOffersNothing: no creation item on a directory outside the writable zone", () => {
@@ -617,13 +649,13 @@ describe("creating", () => {
     );
 
     openMenu("src");
-    expect(queryMenuItem("New file or folder…")).toBeNull();
+    expect(queryMenuItem(/^New (file|folder)…/)).toBeNull();
   });
 
   it("offers nothing at all when the sandbox is read-only — a folder with no action has no ⋯ either", () => {
     render(<FileTree tree={tree()} onExpand={vi.fn()} onSelectFile={vi.fn()} writableRoot={null} {...creators()} />);
 
-    expect(screen.queryByRole("button", { name: /New file or folder/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /New (file|folder)/ })).toBeNull();
     expect(screen.queryByRole("button", { name: "Actions for src" })).toBeNull();
   });
 
@@ -637,8 +669,10 @@ describe("creating", () => {
     expect(onCreateDirectory).not.toHaveBeenCalled();
   });
 
-  it("reads a trailing slash as a directory", () => {
-    const { onCreateFile, onCreateDirectory, input } = openInputInSrc();
+  it("New folder… creates a folder, the name typed plainly (a trailing slash tolerated)", () => {
+    const { onCreateFile, onCreateDirectory } = creatorsRendered();
+    choose("src", "New folder…");
+    const input = screen.getByRole("textbox", { name: "New folder in src" });
 
     fireEvent.change(input, { target: { value: "widgets/" } });
     fireEvent.keyDown(input, { key: "Enter" });
@@ -651,7 +685,7 @@ describe("creating", () => {
     const handlers = creators();
     render(<FileTree tree={tree()} onExpand={vi.fn()} onSelectFile={vi.fn()} {...handlers} />);
 
-    fireEvent.click(screen.getByRole("button", { name: "New file or folder in the workspace root" }));
+    fireEvent.click(screen.getByRole("button", { name: "New file in the workspace root" }));
     const input = screen.getByRole("textbox", { name: /workspace root/ });
     fireEvent.change(input, { target: { value: "notes.md" } });
     fireEvent.keyDown(input, { key: "Enter" });
@@ -667,7 +701,7 @@ describe("creating", () => {
 
     expect(onCreateFile).not.toHaveBeenCalled();
     expect(screen.getByText("That is a path, not a name")).toBeInTheDocument();
-    expect(screen.getByRole("textbox", { name: /New file or folder in src/ })).toHaveValue("deep/helper.ts");
+    expect(screen.getByRole("textbox", { name: /New file in src/ })).toHaveValue("deep/helper.ts");
   });
 
   it("refuses an empty name", () => {
@@ -689,7 +723,7 @@ describe("creating", () => {
     fireEvent.keyDown(input, { key: "Enter" });
 
     expect(screen.getByText('"src/taken.ts" already exists')).toBeInTheDocument();
-    expect(screen.getByRole("textbox", { name: /New file or folder in src/ })).toHaveValue("taken.ts");
+    expect(screen.getByRole("textbox", { name: /New file in src/ })).toHaveValue("taken.ts");
   });
 
   it("shows nothing for a refusal of some other path", () => {
@@ -708,8 +742,8 @@ describe("creating", () => {
     const { rerender } = render(
       <FileTree tree={tree()} onExpand={vi.fn()} onSelectFile={vi.fn()} {...handlers} />,
     );
-    choose("src", "New file or folder…");
-    const input = screen.getByRole("textbox", { name: /New file or folder in src/ });
+    choose("src", "New file…");
+    const input = screen.getByRole("textbox", { name: /New file in src/ });
     fireEvent.change(input, { target: { value: "helper.ts" } });
     fireEvent.keyDown(input, { key: "Enter" });
 
@@ -724,7 +758,7 @@ describe("creating", () => {
       />,
     );
 
-    expect(screen.queryByRole("textbox", { name: /New file or folder in src/ })).toBeNull();
+    expect(screen.queryByRole("textbox", { name: /New file in src/ })).toBeNull();
   });
 
   it("does not read a listing that already holds the name as success", () => {
@@ -735,8 +769,8 @@ describe("creating", () => {
     const { rerender } = render(
       <FileTree tree={tree(existing)} onExpand={vi.fn()} onSelectFile={vi.fn()} {...handlers} />,
     );
-    choose("src", "New file or folder…");
-    const input = screen.getByRole("textbox", { name: /New file or folder in src/ });
+    choose("src", "New file…");
+    const input = screen.getByRole("textbox", { name: /New file in src/ });
     fireEvent.change(input, { target: { value: "taken.ts" } });
     fireEvent.keyDown(input, { key: "Enter" });
 
@@ -750,7 +784,7 @@ describe("creating", () => {
       />,
     );
 
-    expect(screen.getByRole("textbox", { name: /New file or folder in src/ })).toHaveValue("taken.ts");
+    expect(screen.getByRole("textbox", { name: /New file in src/ })).toHaveValue("taken.ts");
     expect(screen.getByText('"src/taken.ts" already exists')).toBeInTheDocument();
   });
 
@@ -762,7 +796,7 @@ describe("creating", () => {
 
     expect(onCreateFile).not.toHaveBeenCalled();
     expect(onCreateDirectory).not.toHaveBeenCalled();
-    expect(screen.queryByRole("textbox", { name: /New file or folder in src/ })).toBeNull();
+    expect(screen.queryByRole("textbox", { name: /New file in src/ })).toBeNull();
   });
 });
 
@@ -784,7 +818,7 @@ describe("refreshing", () => {
     setup({ onRefresh: vi.fn(), writableRoot: null, onCreateFile: vi.fn() });
 
     expect(screen.getByRole("button", { name: "Refresh the file tree" })).toBeTruthy();
-    expect(screen.queryByRole("button", { name: /New file or folder in the workspace root/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /New (file|folder) in the workspace root/ })).toBeNull();
   });
 
   it("offers none when no refresh callback is supplied", () => {
@@ -991,9 +1025,10 @@ describe("the actions menu", () => {
 
   it("CreateDirectoryFromTree: the created folder appears expanded, and no file is opened", () => {
     const { onCreateDirectory, onSelectFile, rerender, ...rest } = everything();
-    choose("src", "New file or folder…");
-    const input = screen.getByRole("textbox", { name: "New file or folder in src" });
-    fireEvent.change(input, { target: { value: "widgets/" } });
+    choose("src", "New folder…");
+    const input = screen.getByRole("textbox", { name: "New folder in src" });
+    expect(input).toHaveAttribute("placeholder", "folder name");
+    fireEvent.change(input, { target: { value: "widgets" } });
     fireEvent.keyDown(input, { key: "Enter" });
     expect(onCreateDirectory).toHaveBeenCalledWith("src/widgets");
 
@@ -1011,10 +1046,10 @@ describe("the actions menu", () => {
     expect(onSelectFile).not.toHaveBeenCalled();
   });
 
-  it("CreateFileFromTree: New file or folder… opens the input inside the folder", () => {
+  it("CreateFileFromTree: New file… opens the input inside the folder", () => {
     const { onCreateFile } = everything();
-    choose("src", "New file or folder…");
-    const input = screen.getByRole("textbox", { name: "New file or folder in src" });
+    choose("src", "New file…");
+    const input = screen.getByRole("textbox", { name: "New file in src" });
     fireEvent.change(input, { target: { value: "util.ts" } });
     fireEvent.keyDown(input, { key: "Enter" });
     expect(onCreateFile).toHaveBeenCalledWith("src/util.ts");
@@ -1026,7 +1061,8 @@ describe("the actions menu", () => {
     expect(queryMenuItem(/^Rename/)).toBeNull();
     expect(queryMenuItem(/^Move/)).toBeNull();
     expect(queryMenuItem(/^Delete/)).toBeNull();
-    expect(menuItem("New file or folder…")).toBeInTheDocument();
+    expect(menuItem("New file…")).toBeInTheDocument();
+    expect(menuItem("New folder…")).toBeInTheDocument();
   });
 });
 
@@ -1035,7 +1071,8 @@ describe("folders at parity", () => {
     everything();
     const menu = openMenu("src");
     expect(within(menu).getAllByRole("menuitem").map(symbolAndName)).toEqual([
-      "+ New file or folder…",
+      "+ New file…",
+      "⊞ New folder…",
       "⌂ Show in file manager",
       "@ Reference in prompt",
       "⤓ Download as .zip",

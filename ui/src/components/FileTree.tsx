@@ -51,10 +51,12 @@ const BAR_LABEL: Partial<Record<RowActionId, string>> = {
 interface CreationState {
   /** Directory whose input row is open ("" = the browser root), or null. */
   openIn: string | null;
+  /** What the open input creates: chosen by the action, never by how the name is typed. */
+  kind: "file" | "directory";
   /** Local refusal, shown without a round trip (a name is not a path). */
   localError: string | null;
   serverError: string | null;
-  start: (dir: string) => void;
+  start: (dir: string, kind: "file" | "directory") => void;
   cancel: () => void;
   submit: (dir: string, raw: string) => void;
 }
@@ -190,9 +192,9 @@ function dirChangeCount(dirPath: string, gitFiles: Record<string, GitFileState> 
 }
 
 /**
- * The name is typed where the file will land, so the destination is shown rather
- * than restated. A trailing slash asks for a directory — one control, one
- * keystroke, the way the same intent reads on a command line.
+ * The name is typed where the file or folder will land, so the destination is shown
+ * rather than restated. Which of the two it creates is the action's choice — New
+ * file… or New folder… — not a convention of the name.
  */
 export function CreationRow({ dir, depth, creation }: { dir: string; depth: number; creation: CreationState }) {
   const [value, setValue] = useState("");
@@ -224,8 +226,8 @@ export function CreationRow({ dir, depth, creation }: { dir: string; depth: numb
         onBlur={() => {
           if (error === null) creation.cancel();
         }}
-        placeholder="name, or name/ for a folder"
-        aria-label={`New file or folder in ${dir === "" ? "the workspace root" : dir}`}
+        placeholder={creation.kind === "directory" ? "folder name" : "file name"}
+        aria-label={`New ${creation.kind === "directory" ? "folder" : "file"} in ${dir === "" ? "the workspace root" : dir}`}
         spellCheck={false}
         className="w-full rounded border border-zinc-300 bg-white px-1 py-0.5 text-xs text-zinc-800 outline-none focus:border-zinc-400 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200"
       />
@@ -598,12 +600,17 @@ function TreeNode({
   );
 }
 
-/** A name, not a route: the server enforces this too, but say so without a round trip. */
-export function creationRequest(raw: string): { kind: "file" | "directory"; name: string } | { error: string } {
+/**
+ * A name, not a route: the server enforces this too, but say so without a round trip.
+ * With `kind` the action has said what is created; a folder's name may still end in
+ * the slash a folder is often typed with. Without it, a trailing slash means a folder.
+ */
+export function creationRequest(raw: string, kind?: "file" | "directory"): { kind: "file" | "directory"; name: string } | { error: string } {
   const trimmed = raw.trim();
   if (trimmed === "") return { error: "A name is required" };
-  const directory = trimmed.endsWith("/");
-  const name = directory ? trimmed.slice(0, -1).trim() : trimmed;
+  if (kind === "file" && trimmed.endsWith("/")) return { error: "A file name cannot end with /" };
+  const directory = kind === undefined ? trimmed.endsWith("/") : kind === "directory";
+  const name = directory && trimmed.endsWith("/") ? trimmed.slice(0, -1).trim() : trimmed;
   if (name === "") return { error: "A name is required" };
   if (name.includes("/") || name.includes("\\")) return { error: "That is a path, not a name" };
   if (name === "." || name === "..") return { error: `"${name}" is not a name` };
@@ -695,6 +702,7 @@ export function FileTree(props: TreeProps) {
   }, [rootListed]);
 
   const [openIn, setOpenIn] = useState<string | null>(null);
+  const [creationKind, setCreationKind] = useState<"file" | "directory">("file");
   const [localError, setLocalError] = useState<string | null>(null);
   /** What was asked for, so the input can close once the tree shows it. */
   const [pending, setPending] = useState<{ dir: string; name: string; kind: "file" | "directory" } | null>(null);
@@ -740,9 +748,11 @@ export function FileTree(props: TreeProps) {
   const creation: CreationState | undefined = canCreate
     ? {
         openIn,
+        kind: creationKind,
         localError,
         serverError,
-        start: (dir) => {
+        start: (dir, kind) => {
+          setCreationKind(kind);
           setOpenIn(dir);
           setLocalError(null);
           setPending(null);
@@ -753,7 +763,7 @@ export function FileTree(props: TreeProps) {
           setPending(null);
         },
         submit: (dir, raw) => {
-          const request = creationRequest(raw);
+          const request = creationRequest(raw, creationKind);
           if ("error" in request) {
             setLocalError(request.error);
             return;
@@ -871,7 +881,8 @@ export function FileTree(props: TreeProps) {
     diff: props.onSelectDiff !== undefined,
     openNative: props.onOpenNative !== undefined,
     reveal: props.onRevealNative !== undefined,
-    create: creation !== undefined,
+    createFile: creation !== undefined && props.onCreateFile !== undefined,
+    createFolder: creation !== undefined && props.onCreateDirectory !== undefined,
     reference: props.onToggleAttachPath !== undefined,
     download: props.onDownload !== undefined,
     rename: rename !== undefined,
@@ -885,10 +896,10 @@ export function FileTree(props: TreeProps) {
   /** The paths a row acts on: the whole selection when it belongs to one, else itself. */
   const targetsOf = (path: string): string[] => (selected.size > 1 && selected.has(path) ? outermost(selected) : [path]);
 
-  const startCreating = (dir: string) => {
+  const startCreating = (dir: string, kind: "file" | "directory") => {
     setOpen(dir, true);
     if (props.tree[dir] === undefined) props.onExpand(dir);
-    creation?.start(dir);
+    creation?.start(dir, kind);
   };
 
   const closeMenu = useCallback(() => {
@@ -929,8 +940,11 @@ export function FileTree(props: TreeProps) {
       case "reveal":
         props.onRevealNative?.(first);
         break;
-      case "new":
-        startCreating(first);
+      case "new-file":
+        startCreating(first, "file");
+        break;
+      case "new-folder":
+        startCreating(first, "directory");
         break;
       case "reference":
         for (const path of paths) if (!(props.attachedPaths?.includes(path) ?? false)) props.onToggleAttachPath?.(path);
@@ -1353,14 +1367,26 @@ export function FileTree(props: TreeProps) {
       )}
       {((creation && rootWritable) || props.onRefresh) && (
         <div className="mb-1 flex items-center">
-          {creation && rootWritable && (
+          {creation && rootWritable && props.onCreateFile && (
             <button
               type="button"
-              onClick={() => creation.start("")}
-              aria-label="New file or folder in the workspace root"
+              onClick={() => creation.start("", "file")}
+              aria-label="New file in the workspace root"
+              title="New file in the workspace root"
               className="rounded px-1 py-0.5 text-xs text-zinc-400 hover:bg-zinc-100 hover:text-zinc-600 dark:text-zinc-600 dark:hover:bg-zinc-800 dark:hover:text-zinc-400"
             >
-              + new
+              + file
+            </button>
+          )}
+          {creation && rootWritable && props.onCreateDirectory && (
+            <button
+              type="button"
+              onClick={() => creation.start("", "directory")}
+              aria-label="New folder in the workspace root"
+              title="New folder in the workspace root"
+              className="rounded px-1 py-0.5 text-xs text-zinc-400 hover:bg-zinc-100 hover:text-zinc-600 dark:text-zinc-600 dark:hover:bg-zinc-800 dark:hover:text-zinc-400"
+            >
+              + folder
             </button>
           )}
           {props.onRefresh && (

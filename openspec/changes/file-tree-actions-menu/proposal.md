@@ -16,7 +16,7 @@ on several files means repeating the same click once per file.
   - file: **Open**, **Show diff** (when the file has changes), **Open with associated app**,
     **Show in file manager** · **Reference in prompt** / **Remove from prompt**, **Download** ·
     **Rename…**, **Move to…** · **Delete…**
-  - folder, at parity: **New file or folder…**, **Show in file manager** · **Reference in
+  - folder, at parity: **New file…**, **New folder…**, **Show in file manager** · **Reference in
     prompt**, **Download as .zip** · **Rename…**, **Move to…** · **Delete…**
   - an item the row cannot take (read-only entry, no handler wired) is absent, not disabled.
 - Besides the `⋯`, the row keeps the **git badge** (still opens the diff) and the **@** reference

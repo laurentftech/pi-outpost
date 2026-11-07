@@ -5,7 +5,7 @@
 ### Requirement: CreateFromTree
 
 The frontend SHALL let the user create a file or a directory from the file tree, in a directory the
-tree shows as writable. The affordance SHALL be the New file or folder… item of the directory's
+tree shows as writable. The affordances SHALL be the New file… and New folder… items of the directory's
 actions menu, and the workspace root's own control above the listing; it SHALL NOT be offered on a
 directory outside the writable zone.
 
@@ -19,7 +19,7 @@ rejected name can be corrected rather than retyped.
 
 #### Scenario: CreateFileFromTree
 - **GIVEN** a directory inside the writable zone
-- **WHEN** the user chooses New file or folder… in its actions menu, types a name and confirms
+- **WHEN** the user chooses New file… in its actions menu, types a name and confirms
 - **THEN** the file is created in that directory and opens in the viewer ready to be edited
 
 #### Scenario: CreateDirectoryFromTree
@@ -28,7 +28,7 @@ rejected name can be corrected rather than retyped.
 
 #### Scenario: ReadOnlyDirectoryOffersNothing
 - **GIVEN** a directory outside the writable zone, or a read-only sandbox
-- **THEN** its actions menu offers no New file or folder… item
+- **THEN** its actions menu offers neither New file… nor New folder…
 
 #### Scenario: CancelCreation
 - **WHEN** the user cancels the input

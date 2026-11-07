@@ -75,7 +75,8 @@
   editor, read-only. Anything outside the writable zone is dimmed.
   Ctrl+F (Cmd+F) finds text in the open file — source, rendered Markdown, or a live edit
 - Every file and folder in the tree has one actions menu — the **⋯** at the end of its row, or a
-  right-click: open, show the diff, open with the system's own application, show it in Finder,
+  right-click: open, show the diff, create a **New file…** or a **New folder…** inside a folder
+  (the root has **+ file** and **+ folder** above the tree), open with the system's own application, show it in Finder,
   Explorer or the Linux file manager; reference it in the prompt; **Download** it to the machine
   your browser runs on (a folder as a `.zip`), which is how you take a file off a remote server;
   rename (F2), move to another folder, delete (Del). Folders take every action a file does; the

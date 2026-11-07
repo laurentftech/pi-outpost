@@ -71,12 +71,12 @@ Each file and folder row SHALL carry one actions menu, opened by a `⋯` control
 #### Scenario: AFolderRowsMenu
 - **GIVEN** a writable folder row with every callback wired
 - **WHEN** the user opens its actions menu
-- **THEN** the items read, in order and grouped: New file or folder…, Show in file manager · Reference in prompt, Download as .zip · Rename…, Move to… · Delete…
+- **THEN** the items read, in order and grouped: New file…, New folder…, Show in file manager · Reference in prompt, Download as .zip · Rename…, Move to… · Delete…
 
 #### Scenario: AReadOnlyFileOffersOnlyWhatItCanTake
 - **GIVEN** a read-only file, and a read-only folder
 - **WHEN** the user opens each one's actions menu
-- **THEN** Rename…, Move to…, Delete… and New file or folder… are absent, and Download and Reference in prompt are present on both, and Open on the file
+- **THEN** Rename…, Move to…, Delete…, New file… and New folder… are absent, and Download and Reference in prompt are present on both, and Open on the file
 
 #### Scenario: TheRootsOfferNoRemoval
 - **GIVEN** the folder row that is the writable root itself

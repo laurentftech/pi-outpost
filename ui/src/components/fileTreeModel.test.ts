@@ -17,7 +17,8 @@ const all: ActionHandlers = {
   diff: true,
   openNative: true,
   reveal: true,
-  create: true,
+  createFile: true,
+  createFolder: true,
   reference: true,
   download: true,
   rename: true,
@@ -83,7 +84,7 @@ describe("rowActions", () => {
 
   it("AFolderRowsMenu: the same groups, at parity with a file", () => {
     expect(labels(rowActions([entry({ path: "src", kind: "directory" })], all))).toEqual([
-      ["New file or folder…", "Show in file manager"],
+      ["New file…", "New folder…", "Show in file manager"],
       ["Reference in prompt", "Download as .zip"],
       ["Rename…", "Move to…"],
       ["Delete…"],
@@ -106,7 +107,8 @@ describe("rowActions", () => {
     expect(groups).not.toContain("Rename…");
     expect(groups).not.toContain("Move to…");
     expect(groups).not.toContain("Delete…");
-    expect(groups).toContain("New file or folder…");
+    expect(groups).toContain("New file…");
+    expect(groups).toContain("New folder…");
   });
 
   it("an action no callback answers is absent, not disabled", () => {

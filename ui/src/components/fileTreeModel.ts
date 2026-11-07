@@ -74,7 +74,8 @@ export type RowActionId =
   | "show-diff"
   | "open-native"
   | "reveal"
-  | "new"
+  | "new-file"
+  | "new-folder"
   | "reference"
   | "unreference"
   | "download"
@@ -92,7 +93,8 @@ export const ROW_ACTION_SYMBOL: Record<RowActionId, string> = {
   "show-diff": "±",
   "open-native": "↗",
   reveal: "⌂",
-  new: "+",
+  "new-file": "+",
+  "new-folder": "⊞",
   reference: "@",
   unreference: "@",
   download: "⤓",
@@ -129,7 +131,8 @@ export interface ActionHandlers {
   diff: boolean;
   openNative: boolean;
   reveal: boolean;
-  create: boolean;
+  createFile: boolean;
+  createFolder: boolean;
   reference: boolean;
   download: boolean;
   rename: boolean;
@@ -163,8 +166,9 @@ export function rowActions(entries: readonly ActionEntry[], handlers: ActionHand
       if (handlers.open) show.push({ id: "open", label: "Open" });
       if (single.gitState && (handlers.diff || handlers.open)) show.push({ id: "show-diff", label: "Show diff" });
       if (handlers.openNative) show.push({ id: "open-native", label: "Open with associated app" });
-    } else if (handlers.create && !single.readOnly && !single.link) {
-      show.push({ id: "new", label: "New file or folder…" });
+    } else if (!single.readOnly && !single.link) {
+      if (handlers.createFile) show.push({ id: "new-file", label: "New file…" });
+      if (handlers.createFolder) show.push({ id: "new-folder", label: "New folder…" });
     }
     if (handlers.reveal) show.push({ id: "reveal", label: "Show in file manager" });
     groups.push(show);
