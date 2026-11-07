@@ -49,22 +49,47 @@ or a file-size threshold that merely encourages moving code without improving ow
 
 ## Merge enforcement
 
-As inspected on 2026-11-05, the active [protect_main ruleset](https://github.com/laurentftech/pi-outpost/rules/22049027)
-requires a pull request and prevents deletion/force-push, but lists **no required status checks**,
-requires zero approving reviews, and permits administrator bypass. A workflow's existence alone
-does not make its result mandatory before merging.
-This is a snapshot of that ruleset; legacy branch-protection settings were not readable through
-the available API access and must also be checked by a repository administrator.
+As set on 2026-11-07, the active [protect_main ruleset](https://github.com/laurentftech/pi-outpost/rules/22049027)
+on `main`:
 
-The proposed required checks are the always-run CI jobs:
+- requires a pull request, and prevents deletion and force-push;
+- requires these status checks to pass, on a branch up to date with `main`:
+  - `CI ok`, the CI job that waits for all the others (`check`, `npm-install`, `browser`,
+    `mxc-linux`, `mxc-macos`) and fails if any of them failed or was cancelled;
+  - `Analyze (actions)`, `Analyze (csharp)` and `Analyze (javascript-typescript)`;
+- blocks a merge on a CodeQL alert of high severity or above;
+- has **no bypass**: administrators are held to the same checks;
+- requires zero approving reviews (the project has one maintainer).
 
-- `check (ubuntu-latest)` and `check (windows-latest)`;
-- `browser`;
-- `npm-install (ubuntu-latest)`, `npm-install (windows-latest)` and `npm-install (macos-latest)`;
-- `mxc-linux` and `mxc-macos`;
-- `Analyze (actions)`, `Analyze (csharp)` and `Analyze (javascript-typescript)`.
+No legacy branch protection is set on `main`; the ruleset is the only rule. This is a snapshot:
+verify the live ruleset when reviewing enforcement. If CI is broken by something outside the
+repository (a runner outage), the ruleset has to be relaxed explicitly by an administrator; there
+is no silent bypass.
+
+Requiring `CI ok` rather than each job keeps the rule valid when jobs are added, and does not
+wait forever on a matrix job that was skipped (a skipped matrix reports no per-platform check).
 
 Do not make the path-filtered Docker recipe job a universal requirement: it can be absent on an
-unrelated PR. Review approval count, administrator exceptions and whether the branch must be up
+unrelated PR.
+
+### Documentation-only pull requests
+
+A pull request that only changes documentation skips the test jobs; `CI ok` passes once the
+classification has run, and CodeQL still runs, so such a PR can merge in minutes rather than
+waiting for the full suites. A push to `main` always runs everything.
+
+The CI's `changes` job decides. Documentation only means: `README.md`, `CONTRIBUTING.md`,
+`SECURITY.md`, `CLAUDE.md`, `AGENTS.md`, the issue and pull request templates, and files under
+`docs/` whose path no other file names. Everything else runs the full CI, including `openspec/`
+(the scenario-coverage check), `skills/` and `CHANGELOG.md`, which tests read and the packages
+ship.
+
+Some `docs/` pages are contracts: tests validate the examples in the structured-exchange guides,
+and the CLI build copies them into the package. The classification recognises them because those
+tests and scripts name them by full path. So **a test or script that reads a file under `docs/`
+must spell its repository path in full** (`"docs/<page>.md"`), not assemble it from parts: a
+page named that way is always tested; one reached through `path.join("docs", name)` would be
+skipped on a documentation-only PR. A mention in a code comment or a user-facing link also counts
+as naming a page; that only makes such a page's PRs run the full CI. Review approval count, administrator exceptions and whether the branch must be up
 to date are repository governance decisions. Verify the live ruleset when reviewing enforcement;
 this document does not change those settings or claim an independent review already happened.
