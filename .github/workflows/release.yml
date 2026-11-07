@@ -94,6 +94,7 @@ jobs:
           name: ${{ env.ARTIFACT }}
           path: ${{ env.ARTIFACT }}
           if-no-files-found: error
+          retention-days: 7
 
   publish:
     needs: executables
@@ -230,6 +231,7 @@ jobs:
           name: docker-cli-package
           path: docker-package/pi-outpost.tgz
           if-no-files-found: error
+          retention-days: 7
 
   # The MCP App bundle for Claude Desktop (docs/claude-desktop.md): packed at this
   # version, and started over stdio from the packed file before it is attached.
@@ -253,12 +255,14 @@ jobs:
           name: pi-outpost-plannings.mcpb
           path: mcp/dist/pi-outpost-plannings.mcpb
           if-no-files-found: error
+          retention-days: 7
       # The posters extension, packed by the same `pack` and checked by the same test:bundle.
       - uses: actions/upload-artifact@v7
         with:
           name: pi-outpost-posters.mcpb
           path: mcp/dist/pi-outpost-posters.mcpb
           if-no-files-found: error
+          retention-days: 7
 
   # Attached after publish, from the artifacts the matrix already proved runnable.
   attach:

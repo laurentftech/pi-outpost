@@ -349,6 +349,8 @@ by hand, on `main`.
    The image keeps its default non-root UID 1000; only the host-side temporary fixture harness
    runs as root to accommodate GitHub's different runner UID. The tarball is an internal workflow
    artifact; the release attachment job downloads only the five public `pi-outpost-*` artifacts.
+   The workflow keeps its artifacts 7 days (the Release keeps the public files): re-running a
+   failed *attach* or image job works within that week, after it the whole release must run again.
    A final anonymous manifest check must pass. Verify both image jobs before calling the release
    complete; deployment instructions are in [Docker with Python](docker.md).
 
