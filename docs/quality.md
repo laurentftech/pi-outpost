@@ -49,18 +49,22 @@ or a file-size threshold that merely encourages moving code without improving ow
 
 ## Merge enforcement
 
-As inspected on 2026-11-05, the active [protect_main ruleset](https://github.com/laurentftech/pi-outpost/rules/22049027)
-requires a pull request and prevents deletion/force-push, but lists **no required status checks**,
-requires zero approving reviews, and permits administrator bypass. A workflow's existence alone
-does not make its result mandatory before merging.
-This is a snapshot of that ruleset; legacy branch-protection settings were not readable through
-the available API access and must also be checked by a repository administrator.
+As set on 2026-11-07, the active [protect_main ruleset](https://github.com/laurentftech/pi-outpost/rules/22049027)
+on `main`:
 
-The proposed required checks are:
+- requires a pull request, and prevents deletion and force-push;
+- requires these status checks to pass, on a branch up to date with `main`:
+  - `CI ok`, the CI job that waits for all the others (`check`, `npm-install`, `browser`,
+    `mxc-linux`, `mxc-macos`) and fails if any of them failed or was cancelled;
+  - `Analyze (actions)`, `Analyze (csharp)` and `Analyze (javascript-typescript)`;
+- blocks a merge on a CodeQL alert of high severity or above;
+- has **no bypass**: administrators are held to the same checks;
+- requires zero approving reviews (the project has one maintainer).
 
-- `CI ok`, the CI job that waits for all the others (`check`, `npm-install`, `browser`,
-  `mxc-linux`, `mxc-macos`) and fails if any of them failed or was cancelled;
-- `Analyze (actions)`, `Analyze (csharp)` and `Analyze (javascript-typescript)`.
+No legacy branch protection is set on `main`; the ruleset is the only rule. This is a snapshot:
+verify the live ruleset when reviewing enforcement. If CI is broken by something outside the
+repository (a runner outage), the ruleset has to be relaxed explicitly by an administrator; there
+is no silent bypass.
 
 Requiring `CI ok` rather than each job keeps the rule valid when jobs are added, and does not
 wait forever on a matrix job that was skipped (a skipped matrix reports no per-platform check).
