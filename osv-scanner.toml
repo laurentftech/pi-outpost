@@ -5,3 +5,10 @@
 id = "GHSA-589f-c66p-hxr4"
 # CVE-2022-21802, grapesjs XSS.
 reason = "Affects grapesjs < 0.19.5 only; posters/ pins 0.23.9. The OSV record declares no fixed version, so OSV treats every version as affected, while the advisory itself states '< 0.19.5' and Dependabot does not flag 0.23.9."
+
+[[IgnoredVulns]]
+id = "GHSA-g3hv-75wg-m249"
+# minimatch DoS via globparts amplification; fixed only in 11.0.1.
+# Expires so the ruling is looked at again rather than kept by default.
+ignoreUntil = 2027-02-07
+reason = "Build-time only: minimatch 10.2.3 is pinned exactly by @microsoft/api-extractor (devDependency of embed, d.ts rollup; 7.60.1 still pins it, and no 10.x release is fixed). Only this repo's own config globs reach it; it is never shipped nor fed external input. Same ruling as Dependabot alert #82."
