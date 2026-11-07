@@ -155,6 +155,7 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
     copyFile,
     deleteFiles,
     moveFiles,
+    restoreDeleted,
     closeFilePreview,
     searchFiles,
     clearFileSearch,
@@ -965,6 +966,7 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
             onCopyFile={copyFile}
             onDeleteFiles={deleteFiles}
             onMoveFiles={moveFiles}
+            onRestoreDeleted={restoreDeleted}
             onDownload={(paths, singleFile) => downloadEntries({ serverUrl, token: authToken, workspace: rawWorkspace }, paths, { singleFile })}
             fileOperation={state.fileOperation}
             createError={state.createError}

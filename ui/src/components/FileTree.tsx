@@ -32,6 +32,9 @@ const REVEALED_ON_HOVER =
   "group-hover:opacity-100 focus-visible:opacity-100 [@media(hover:hover)]:opacity-0";
 const MORE_CLASS = `mr-1 shrink-0 rounded px-1 text-xs leading-none text-zinc-400 hover:bg-zinc-200 dark:text-zinc-600 dark:hover:bg-zinc-700 ${REVEALED_ON_HOVER}`;
 const SELECTED_ROW = "bg-blue-50 dark:bg-blue-950/40";
+type UndoKind = "move" | "rename" | "delete";
+const UNDONE: Record<UndoKind, string> = { move: "Move undone.", rename: "Rename undone.", delete: "Deletion undone." };
+
 /** The bar already says how many: its buttons say only what they do. */
 const BAR_LABEL: Partial<Record<RowActionId, string>> = {
   reference: "Reference",
@@ -144,6 +147,8 @@ interface TreeProps {
   onDeleteFiles?: (paths: string[]) => void;
   /** Move several entries into one directory in one request. */
   onMoveFiles?: (paths: string[], destinationDirectory: string) => void;
+  /** Put deleted entries back from the server's trash, by the tokens their deletion answered. */
+  onRestoreDeleted?: (tokens: string[]) => void;
   /** Save entries on this machine: a single file as itself, anything else as one archive. */
   onDownload?: (paths: string[], singleFile: boolean) => Promise<{ skipped: number }>;
   /** Import external bytes into an existing directory, returning the actual saved path. */
@@ -812,6 +817,14 @@ export function FileTree(props: TreeProps) {
   const [menu, setMenu] = useState<MenuState | null>(null);
   const [picking, setPicking] = useState<string[] | null>(null);
   const [notice, setNotice] = useState<{ kind: "error" | "info"; text: string } | null>(null);
+  /** The move whose undo offer was dismissed. */
+  const [dismissedUndo, setDismissedUndo] = useState<string | null>(null);
+  /** Requests sent to undo a move: their answers offer no undo of their own. */
+  const undoIdsRef = useRef(new Set<string>());
+  const pendingUndoRef = useRef(false);
+  const handledUndoRef = useRef<string | null>(null);
+  /** What the undo in flight puts back, for the sentence that says it was done. */
+  const undoKindRef = useRef<UndoKind>("move");
   const draggedRef = useRef<string[] | null>(null);
 
   /** Every listed entry by path: what the menu and the drag rules read. */
@@ -1084,11 +1097,103 @@ export function FileTree(props: TreeProps) {
   const pickingLabel = picking ? (picking.length === 1 ? `"${picking[0].split("/").pop()}"` : `${picking.length} items`) : "";
   const copied = props.fileOperation?.status === "succeeded" && props.fileOperation.operation === "copy_file" ? (props.fileOperation.skipped ?? 0) : 0;
 
+  // ---------------------------------------------------------------------------
+  // Undo of the last change: a move, a rename or a deletion
+  // ---------------------------------------------------------------------------
+  const operation = props.fileOperation ?? null;
+  const settled = operation !== null && operation.status !== "pending";
+  /** What the last move did, entry by entry: a single move, or the done half of a batch. */
+  const lastMove =
+    settled && operation.operation === "move_file"
+      ? (operation.batch?.done ?? (operation.status === "succeeded" ? [{ path: operation.path, resultPath: operation.resultPath }] : []))
+      : [];
+  const lastRename = settled && operation.operation === "rename_file" && operation.status === "succeeded" ? { from: operation.path, to: operation.resultPath } : null;
+  /** The deleted entries the server's trash can give back, and the paths they had. */
+  const lastDeletion =
+    settled && operation.operation === "delete_file"
+      ? operation.batch
+        ? operation.batch.done.flatMap((entry) => (entry.restoreToken ? [{ path: entry.path, token: entry.restoreToken }] : []))
+        : operation.status === "succeeded" && operation.restoreToken
+          ? [{ path: operation.path, token: operation.restoreToken }]
+          : []
+      : [];
+  const undoKind: UndoKind | null =
+    lastMove.length > 0 && props.onMoveFile ? "move" : lastRename && props.onRenameFile ? "rename" : lastDeletion.length > 0 && props.onRestoreDeleted ? "delete" : null;
+  const isUndo = operation !== null && undoIdsRef.current.has(operation.requestId);
+  const undoOffered = undoKind !== null && !isUndo && operation?.requestId !== dismissedUndo && rootListed && picking === null;
+  const undoQueueRef = useRef<{ paths: string[]; destination: string }[]>([]);
+  const sendMoveBack = (group: { paths: string[]; destination: string }) => {
+    pendingUndoRef.current = true;
+    if (group.paths.length === 1) props.onMoveFile?.(group.paths[0], group.destination);
+    else props.onMoveFiles?.(group.paths, group.destination);
+  };
+  const undoLast = () => {
+    if (!undoOffered || undoKind === null) return;
+    undoKindRef.current = undoKind;
+    setSelected(new Set());
+    if (undoKind === "rename" && lastRename) {
+      pendingUndoRef.current = true;
+      props.onRenameFile?.(lastRename.to, lastRename.from.split("/").pop() ?? lastRename.from);
+      return;
+    }
+    if (undoKind === "delete") {
+      pendingUndoRef.current = true;
+      props.onRestoreDeleted?.(lastDeletion.map((entry) => entry.token));
+      return;
+    }
+    // Back where each came from: one request per folder of origin, sent in turn,
+    // since a move takes one destination.
+    const byOrigin = new Map<string, string[]>();
+    for (const { path, resultPath } of lastMove) {
+      const origin = path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : "";
+      byOrigin.set(origin, [...(byOrigin.get(origin) ?? []), resultPath]);
+    }
+    const groups = [...byOrigin].map(([destination, paths]) => ({ paths, destination }));
+    undoQueueRef.current = groups.slice(1);
+    sendMoveBack(groups[0]);
+  };
+  // An undo request is known by the operation that starts right after it was sent;
+  // once it is answered, the next folder's group goes, if any is left.
+  useEffect(() => {
+    if (!operation) return;
+    if (operation.status === "pending") {
+      if (pendingUndoRef.current) {
+        undoIdsRef.current.add(operation.requestId);
+        pendingUndoRef.current = false;
+      }
+      return;
+    }
+    if (!undoIdsRef.current.has(operation.requestId) || handledUndoRef.current === operation.requestId) return;
+    handledUndoRef.current = operation.requestId;
+    const next = undoQueueRef.current.shift();
+    if (next) sendMoveBack(next);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [operation]);
+  const undoDone = isUndo && operation?.status === "succeeded" && undoQueueRef.current.length === 0;
+  const changeLabel = (() => {
+    const name = (path: string) => `"${path.split("/").pop()}"`;
+    if (undoKind === "move") {
+      const what = lastMove.length === 1 ? name(lastMove[0].path) : `${lastMove.length} items`;
+      const to = lastMove[0].resultPath.includes("/") ? lastMove[0].resultPath.slice(0, lastMove[0].resultPath.lastIndexOf("/")) : "";
+      return `Moved ${what} to ${to === "" ? "the workspace root" : to}`;
+    }
+    if (undoKind === "rename" && lastRename) return `Renamed ${name(lastRename.from)} to ${name(lastRename.to)}`;
+    if (undoKind === "delete") return `Deleted ${lastDeletion.length === 1 ? name(lastDeletion[0].path) : `${lastDeletion.length} items`}`;
+    return "";
+  })();
+
   return (
     <div
       ref={rootRef}
       className="relative text-sm"
       onKeyDown={(event) => {
+        if ((event.ctrlKey || event.metaKey) && !event.shiftKey && event.key.toLowerCase() === "z" && undoOffered) {
+          const target = event.target as HTMLElement;
+          if (target.tagName === "INPUT" || target.tagName === "TEXTAREA") return;
+          event.preventDefault();
+          undoLast();
+          return;
+        }
         if (event.key !== "Escape") return;
         if (picking !== null) {
           event.preventDefault();
@@ -1205,9 +1310,35 @@ export function FileTree(props: TreeProps) {
       {importing && <p role="status" className="mb-1 px-2 text-xs text-zinc-500">Importing files…</p>}
       {importPaths.length > 0 && <p role="status" className="mb-1 break-words px-2 text-xs text-emerald-700 dark:text-emerald-400">Imported: {importPaths.join(", ")}</p>}
       {importErrors.map((error, index) => <p key={index} role="alert" className="mb-1 break-words px-2 text-xs text-red-600 dark:text-red-400">{error}</p>)}
-      {props.fileOperation?.status === "error" && props.fileOperation.operation !== "rename_file" && (
+      {props.fileOperation?.status === "error" && (props.fileOperation.operation !== "rename_file" || isUndo) && (
         <p role="alert" className="mb-1 break-words rounded bg-red-50 px-2 py-1 text-xs text-red-700 dark:bg-red-950/40 dark:text-red-300">
           {props.fileOperation.message}
+        </p>
+      )}
+      {undoOffered && (
+        <div role="status" className="mb-1 flex flex-wrap items-center gap-1 rounded bg-zinc-100 px-2 py-1 text-xs text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300">
+          <span className="min-w-0 flex-1 break-words">{changeLabel}</span>
+          <button
+            type="button"
+            onClick={undoLast}
+            title="Undo (Ctrl+Z)"
+            className="rounded px-1.5 font-medium text-blue-700 hover:bg-zinc-200 dark:text-blue-300 dark:hover:bg-zinc-700"
+          >
+            Undo
+          </button>
+          <button
+            type="button"
+            onClick={() => setDismissedUndo(operation?.requestId ?? null)}
+            aria-label="Dismiss"
+            className="rounded px-1 hover:bg-zinc-200 dark:hover:bg-zinc-700"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+      {undoDone && (
+        <p role="status" className="mb-1 px-2 text-xs text-zinc-500 dark:text-zinc-400">
+          {UNDONE[undoKindRef.current]}
         </p>
       )}
       {copied > 0 && (

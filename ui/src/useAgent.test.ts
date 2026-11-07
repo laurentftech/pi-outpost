@@ -1582,6 +1582,44 @@ describe("file lifecycle operations", () => {
     expect(operation?.status === "error" && operation.batch?.done).toHaveLength(2);
   });
 
+  it("keeps the restore tokens a deletion answers, and restores them in one request", async () => {
+    const result = await connected();
+    act(() => result.current.deleteFile("old"));
+    act(() => mockWs!.receive({ type: "file_operation_result", requestId: lastRequestId(), operation: "delete_file", path: "old", restoreToken: "a".repeat(32) }));
+    await waitFor(() => expect(result.current.state.fileOperation).toMatchObject({ status: "succeeded", restoreToken: "a".repeat(32) }));
+
+    act(() => result.current.deleteFiles(["x", "y"]));
+    act(() =>
+      mockWs!.receive({
+        type: "file_batch_result",
+        requestId: lastRequestId(),
+        operation: "delete_file",
+        done: [
+          { path: "x", resultPath: "x", restoreToken: "b".repeat(32) },
+          { path: "y", resultPath: "y", restoreToken: "c".repeat(32) },
+        ],
+        refused: [],
+      }),
+    );
+    await waitFor(() => {
+      const operation = result.current.state.fileOperation;
+      expect(operation?.status === "succeeded" && operation.batch?.done.map((entry) => entry.restoreToken)).toEqual(["b".repeat(32), "c".repeat(32)]);
+    });
+
+    act(() => result.current.restoreDeleted(["b".repeat(32), "c".repeat(32)]));
+    expect(lastSent()).toMatchObject({ type: "restore_deleted", tokens: ["b".repeat(32), "c".repeat(32)] });
+    act(() =>
+      mockWs!.receive({
+        type: "file_batch_result",
+        requestId: lastRequestId(),
+        operation: "restore_deleted",
+        done: [{ path: "x", resultPath: "x" }],
+        refused: [{ path: "y", message: '"y" already exists', reason: "conflict" }],
+      }),
+    );
+    await waitFor(() => expect(result.current.state.fileOperation).toMatchObject({ status: "error", operation: "restore_deleted", message: '1 of 2 restored. Not restored: y: "y" already exists' }));
+  });
+
   it("a batch with nothing refused succeeds", async () => {
     const result = await connected();
     act(() => result.current.deleteFiles(["a.txt", "b.txt"]));

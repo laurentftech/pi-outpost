@@ -163,6 +163,7 @@ import {
   createFileFromBrowser,
   copyEntryFromBrowser,
   deleteFileFromBrowser,
+  restoreFromBrowser,
   FileBrowserError,
   listDirectory,
   MAX_PREVIEW_BYTES,
@@ -180,6 +181,7 @@ import {
   writeFileFromBrowser,
 } from "./fileBrowser.ts";
 import { attachmentDisposition, prepareDownload } from "./download.ts";
+import { Trash } from "./trash.ts";
 import { writeZipStream } from "@pi-outpost/office/zipStream.ts";
 import { PassThrough } from "node:stream";
 import { searchContent } from "./contentSearch.ts";
@@ -645,6 +647,13 @@ if (cli.command === "print") {
 const PORT = config.port;
 const HOST = config.host;
 const AGENT_DIR = config.agentDir ?? getAgentDir();
+/**
+ * Where deletions from the Files tree wait to be undone — see trash.ts. Emptied now:
+ * what an earlier run deleted is not this run's to restore.
+ */
+const TRASH = new Trash(path.join(AGENT_DIR, "outpost-trash"));
+await TRASH.reset().catch((error: unknown) => console.warn(`[server] could not empty the trash: ${error instanceof Error ? error.message : String(error)}`));
+setInterval(() => void TRASH.sweep().catch(() => {}), 60 * 60 * 1000).unref();
 /**
  * What the server was started with, for the terminal panel: the user's shell keeps it.
  *
@@ -5653,10 +5662,13 @@ async function handleRenameFile(workspace: Workspace, socket: WebSocket, filePat
   }
 }
 
+/** A deletion from the tree goes to the trash, so the tree can offer to undo it. */
+const toTrash = (workspace: Workspace, relPath: string) => (resolved: string) => TRASH.put(workspace.id, relPath, resolved);
+
 async function handleDeleteFile(workspace: Workspace, socket: WebSocket, filePath: string, requestId: string): Promise<void> {
   try {
-    await deleteFileFromBrowser(workspace.browserRoot, workspace.writableRoot, filePath);
-    send(socket, { type: "file_operation_result", requestId, operation: "delete_file", path: filePath });
+    const restoreToken = await deleteFileFromBrowser(workspace.browserRoot, workspace.writableRoot, filePath, toTrash(workspace, filePath));
+    send(socket, { type: "file_operation_result", requestId, operation: "delete_file", path: filePath, ...(restoreToken ? { restoreToken } : {}) });
     broadcast(workspace, { type: "file_changed", path: filePath });
   } catch (error) {
     sendFileBrowserError(socket, requestId, filePath, error);
@@ -5731,15 +5743,16 @@ async function handleFileBatch(
 ): Promise<void> {
   const unique = [...new Set(paths)];
   const outermost = unique.filter((candidate) => !unique.some((other) => other !== candidate && (other === "" || candidate.startsWith(`${other}/`))));
-  const done: { path: string; resultPath: string }[] = [];
+  const done: { path: string; resultPath: string; restoreToken?: string }[] = [];
   const refused: { path: string; message: string; reason?: FileBrowserError["reason"] }[] = [];
   for (const filePath of outermost) {
     try {
-      const resultPath =
-        action.operation === "delete_file"
-          ? (await deleteFileFromBrowser(workspace.browserRoot, workspace.writableRoot, filePath), filePath)
-          : await moveFileFromBrowser(workspace.browserRoot, workspace.writableRoot, filePath, action.destinationDirectory);
-      done.push({ path: filePath, resultPath });
+      if (action.operation === "delete_file") {
+        const restoreToken = await deleteFileFromBrowser(workspace.browserRoot, workspace.writableRoot, filePath, toTrash(workspace, filePath));
+        done.push({ path: filePath, resultPath: filePath, ...(restoreToken ? { restoreToken } : {}) });
+      } else {
+        done.push({ path: filePath, resultPath: await moveFileFromBrowser(workspace.browserRoot, workspace.writableRoot, filePath, action.destinationDirectory) });
+      }
     } catch (error) {
       if (!(error instanceof FileBrowserError)) throw error;
       refused.push({ path: filePath, message: error.message, reason: error.reason });
@@ -5752,6 +5765,36 @@ async function handleFileBatch(
     if (!byDirectory.has(parentOf(source))) byDirectory.set(parentOf(source), source);
     if (!byDirectory.has(parentOf(resultPath))) byDirectory.set(parentOf(resultPath), resultPath);
   }
+  for (const changed of byDirectory.values()) broadcast(workspace, { type: "file_changed", path: changed });
+}
+
+/**
+ * Put deleted entries back from the trash. A token restores once, and only into the
+ * workspace it was deleted from; one that fails to restore — its place taken since,
+ * its folder gone — stays in the trash, so a later attempt can still succeed.
+ */
+async function handleRestoreDeleted(workspace: Workspace, socket: WebSocket, tokens: string[], requestId: string): Promise<void> {
+  const done: { path: string; resultPath: string }[] = [];
+  const refused: { path: string; message: string; reason?: FileBrowserError["reason"] }[] = [];
+  for (const token of new Set(tokens)) {
+    const entry = TRASH.take(token, workspace.id);
+    if (!entry) {
+      refused.push({ path: "", message: "Nothing to restore: it is no longer in the trash", reason: "not-found" });
+      continue;
+    }
+    try {
+      await restoreFromBrowser(workspace.browserRoot, workspace.writableRoot, entry.relPath, entry.trashed);
+      await TRASH.discard(entry);
+      done.push({ path: entry.relPath, resultPath: entry.relPath });
+    } catch (error) {
+      TRASH.giveBack(entry);
+      if (!(error instanceof FileBrowserError)) throw error;
+      refused.push({ path: entry.relPath, message: error.message, reason: error.reason });
+    }
+  }
+  send(socket, { type: "file_batch_result", requestId, operation: "restore_deleted", done, refused });
+  const byDirectory = new Map<string, string>();
+  for (const { path: restored } of done) if (!byDirectory.has(parentOf(restored))) byDirectory.set(parentOf(restored), restored);
   for (const changed of byDirectory.values()) broadcast(workspace, { type: "file_changed", path: changed });
 }
 
@@ -6669,6 +6712,7 @@ const SERVED_WHILE_STARTING = new Set<ClientMessage["type"]>([
   "move_file",
   "copy_file",
   "delete_files",
+  "restore_deleted",
   "move_files",
   "upload_file",
   "search_files",
@@ -7091,6 +7135,14 @@ function handleClientMessage(socket: WebSocket, raw: string): void {
       }
       handleCopyFile(workspace, socket, message.path, message.destinationDirectory, message.requestId).catch(reportError);
       break;
+    case "restore_deleted": {
+      const tokens = message.tokens as unknown;
+      if (!Array.isArray(tokens) || tokens.length === 0 || tokens.length > MAX_BATCH_PATHS || !tokens.every((token) => typeof token === "string") || typeof message.requestId !== "string") {
+        return;
+      }
+      handleRestoreDeleted(workspace, socket, tokens as string[], message.requestId).catch(reportError);
+      break;
+    }
     case "delete_files":
     case "move_files": {
       const paths = message.paths as unknown;

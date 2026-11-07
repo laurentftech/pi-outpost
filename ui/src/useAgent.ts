@@ -143,7 +143,8 @@ export type ContentSearch = {
 
 /** What a batch did, path by path: kept on the operation's state so the tree can say it. */
 export type FileBatchOutcome = {
-  done: { path: string; resultPath: string }[];
+  /** A deletion's entries carry the token that restores them from the server's trash. */
+  done: { path: string; resultPath: string; restoreToken?: string }[];
   refused: { path: string; message: string }[];
 };
 
@@ -154,7 +155,7 @@ export type FileBatchOutcome = {
  */
 export type FileOperationState =
   | { status: "pending"; operation: FileOperation; path: string; requestId: string; paths?: string[] }
-  | { status: "succeeded"; operation: FileOperation; path: string; resultPath: string; requestId: string; skipped?: number; batch?: FileBatchOutcome }
+  | { status: "succeeded"; operation: FileOperation; path: string; resultPath: string; requestId: string; skipped?: number; restoreToken?: string; batch?: FileBatchOutcome }
   | { status: "error"; operation: FileOperation; path: string; message: string; requestId: string; batch?: FileBatchOutcome };
 
 /**
@@ -167,9 +168,9 @@ export function followPath(path: string, from: string, to: string | null): strin
 }
 
 /** The sentence a batch's outcome reads as, for the tree's banner. */
-export function describeBatch(operation: "delete_file" | "move_file", outcome: FileBatchOutcome): string {
+export function describeBatch(operation: "delete_file" | "move_file" | "restore_deleted", outcome: FileBatchOutcome): string {
   const total = outcome.done.length + outcome.refused.length;
-  const verb = operation === "delete_file" ? "deleted" : "moved";
+  const verb = operation === "delete_file" ? "deleted" : operation === "restore_deleted" ? "restored" : "moved";
   const refused = outcome.refused.map((entry) => `${entry.path}: ${entry.message}`).join("; ");
   return `${outcome.done.length} of ${total} ${verb}. Not ${verb}: ${refused}`;
 }
@@ -1747,12 +1748,14 @@ function reduce(state: AgentState, action: Action): AgentState {
           resultPath: message.path,
           requestId: message.requestId,
           ...(message.skipped ? { skipped: message.skipped } : {}),
+          ...(message.restoreToken ? { restoreToken: message.restoreToken } : {}),
         },
       };
     }
     case "file_batch_result": {
       if (state.fileOperation?.status !== "pending" || state.fileOperation.requestId !== message.requestId) return state;
-      const moves: [string, string | null][] = message.done.map((entry) => [entry.path, message.operation === "delete_file" ? null : entry.resultPath]);
+      const moves: [string, string | null][] =
+        message.operation === "restore_deleted" ? [] : message.done.map((entry) => [entry.path, message.operation === "delete_file" ? null : entry.resultPath]);
       const batch = { done: message.done, refused: message.refused.map(({ path, message: reason }) => ({ path, message: reason })) };
       const operation = state.fileOperation;
       return {
@@ -2582,7 +2585,9 @@ export function useAgent(serverUrl = "", explicitToken?: string, embedded = fals
           // old-path notification cannot reread a file that was renamed/deleted —
           // or that sat in a folder that was.
           const moves: [string, string | null][] =
-            message.type === "file_batch_result"
+            message.type === "file_batch_result" && message.operation === "restore_deleted"
+              ? []
+              : message.type === "file_batch_result"
               ? message.done.map((entry) => [entry.path, message.operation === "delete_file" ? null : entry.resultPath])
               : message.operation === "delete_file"
                 ? [[message.path, null]]
@@ -3021,6 +3026,13 @@ export function useAgent(serverUrl = "", explicitToken?: string, embedded = fals
       sendMessage({ type: "delete_files", paths, requestId });
     },
     /** Move several entries into one directory in one request. */
+    /** Put deleted entries back from the server's trash, by the tokens their deletion answered. */
+    restoreDeleted: (tokens: string[]) => {
+      if (tokens.length === 0) return;
+      const requestId = `fileop:${randomId()}`;
+      dispatch({ type: "file_operation_started", operation: "restore_deleted", path: "", requestId });
+      sendMessage({ type: "restore_deleted", tokens, requestId });
+    },
     moveFiles: (paths: string[], destinationDirectory: string) => {
       if (paths.length === 0) return;
       const requestId = `fileop:${randomId()}`;

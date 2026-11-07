@@ -140,11 +140,11 @@ describe("rowActions", () => {
 
 describe("deleteConfirmation", () => {
   it("names the file, says a folder goes with its content, and counts a selection", () => {
-    expect(deleteConfirmation([{ path: "docs/readme.md", kind: "file" }])).toBe('Delete "readme.md" permanently?');
-    expect(deleteConfirmation([{ path: "docs", kind: "directory" }])).toBe('Delete the folder "docs" and everything in it permanently?');
-    expect(deleteConfirmation([{ path: "a", kind: "file" }, { path: "b", kind: "file" }])).toBe("Delete 2 items permanently?");
+    expect(deleteConfirmation([{ path: "docs/readme.md", kind: "file" }])).toBe('Delete "readme.md"?');
+    expect(deleteConfirmation([{ path: "docs", kind: "directory" }])).toBe('Delete the folder "docs" and everything in it?');
+    expect(deleteConfirmation([{ path: "a", kind: "file" }, { path: "b", kind: "file" }])).toBe("Delete 2 items?");
     expect(deleteConfirmation([{ path: "a", kind: "file" }, { path: "d", kind: "directory" }])).toBe(
-      "Delete 2 items permanently? The folder is deleted with everything in it.",
+      "Delete 2 items? The folder is deleted with everything in it.",
     );
   });
 });

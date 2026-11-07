@@ -198,6 +198,46 @@ describe("file lifecycle over the socket", () => {
     assert.equal(await readFile(path.join(root, "writable", "moves", "target", "c.txt"), "utf8"), "c");
   });
 
+  test("DeleteThenRestore over the socket: a deletion answers a token, restore_deleted brings it back", async () => {
+    await mkdir(path.join(root, "writable", "undo", "folder"), { recursive: true });
+    await writeFile(path.join(root, "writable", "undo", "folder", "kept.txt"), "kept");
+    await writeFile(path.join(root, "writable", "undo", "one.txt"), "one");
+
+    const single = await ask({ type: "delete_file", path: "writable/undo/folder" });
+    assert.equal(single.type, "file_operation_result");
+    assert.match(single.restoreToken, /^[0-9a-f]{32}$/);
+    await assert.rejects(stat(path.join(root, "writable", "undo", "folder")), { code: "ENOENT" });
+    // The bytes wait under the agent directory's trash, not where they were.
+    assert.equal(await readFile(path.join(root, ".pi-agent", "outpost-trash", single.restoreToken, "entry", "kept.txt"), "utf8"), "kept");
+
+    const batch = await ask({ type: "delete_files", paths: ["writable/undo/one.txt"] });
+    assert.equal(batch.done.length, 1);
+    assert.match(batch.done[0].restoreToken, /^[0-9a-f]{32}$/);
+
+    const restored = await ask({ type: "restore_deleted", tokens: [single.restoreToken, batch.done[0].restoreToken] });
+    assert.equal(restored.type, "file_batch_result");
+    assert.equal(restored.operation, "restore_deleted");
+    assert.deepEqual(restored.done.map((entry) => entry.path).sort(), ["writable/undo/folder", "writable/undo/one.txt"]);
+    assert.deepEqual(restored.refused, []);
+    assert.equal(await readFile(path.join(root, "writable", "undo", "folder", "kept.txt"), "utf8"), "kept");
+    assert.equal(await readFile(path.join(root, "writable", "undo", "one.txt"), "utf8"), "one");
+    await observer.waitFor((message) => message.type === "file_changed" && message.path.startsWith("writable/undo/"));
+
+    const again = await ask({ type: "restore_deleted", tokens: [single.restoreToken] });
+    assert.deepEqual(again.done, []);
+    assert.equal(again.refused[0].reason, "not-found", "a token restores once");
+  });
+
+  test("RestoreRefusesAnOverwrite over the socket: a file that took the place is left alone", async () => {
+    await writeFile(path.join(root, "writable", "place.txt"), "old");
+    const deleted = await ask({ type: "delete_file", path: "writable/place.txt" });
+    await writeFile(path.join(root, "writable", "place.txt"), "new");
+
+    const restored = await ask({ type: "restore_deleted", tokens: [deleted.restoreToken] });
+    assert.deepEqual(restored.refused.map((entry) => [entry.path, entry.reason]), [["writable/place.txt", "conflict"]]);
+    assert.equal(await readFile(path.join(root, "writable", "place.txt"), "utf8"), "new");
+  });
+
   test("a malformed batch is ignored rather than half-applied", async () => {
     client.send({ type: "delete_files", paths: ["writable/taken.docx", 42], requestId: "bad-batch" });
     const probe = await ask({ type: "rename_file", path: "writable/taken.docx", name: "taken-still.docx" });

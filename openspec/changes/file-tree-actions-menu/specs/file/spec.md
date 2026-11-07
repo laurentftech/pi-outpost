@@ -200,6 +200,33 @@ Copying a directory SHALL copy everything inside it into the destination directo
 - **WHEN** it is copied
 - **THEN** the copy does not hold the link nor its target, and the result says one entry was left out
 
+### Requirement: Deleted entries can be restored
+
+A file or folder deleted from the browser SHALL be moved into a trash the server keeps outside every workspace, in a place the agent cannot read, and the answer SHALL carry a restore token. Restoring SHALL put the entry back at its path, with the rules of a move, never overwriting. The trash SHALL be emptied when the server starts, and of anything older than 24 hours.
+
+#### Scenario: DeleteThenRestore
+- **GIVEN** a writable folder `old` holding files, deleted from the browser
+- **WHEN** the browser asks to restore it with the token the deletion returned
+- **THEN** `old` is back with the same content, and connected clients are notified
+
+#### Scenario: RestoreRefusesAnOverwrite
+- **GIVEN** `notes.md` deleted, then a new `notes.md` created at the same path
+- **WHEN** the deletion is restored
+- **THEN** the restore of `notes.md` is refused as a conflict and the new file is unchanged
+
+#### Scenario: TheTrashIsOutsideTheWorkspace
+- **WHEN** a file is deleted from the browser
+- **THEN** it is in no listing of the browser root, and its bytes are under the server's own data directory, which the agent's tools cannot read
+
+#### Scenario: ATokenFromElsewhereRestoresNothing
+- **WHEN** a restore names an unknown token, a token already used, or a token of another project
+- **THEN** that token is refused and nothing is written
+
+#### Scenario: TheTrashIsEmptied
+- **GIVEN** entries in the trash
+- **WHEN** the server starts, or an entry is older than 24 hours
+- **THEN** that entry is erased for good and can no longer be restored
+
 ### Requirement: Batch file lifecycle operations
 
 The system SHALL delete, or move to one directory, several files and directories in one request, applying to each path the rules of the single-entry operations. It SHALL go on after a refused path, SHALL roll nothing back, SHALL report each path as done or refused with its reason, and SHALL notify connected clients once for the affected tree paths.

@@ -203,9 +203,9 @@ export function deleteConfirmation(entries: readonly Pick<ActionEntry, "path" | 
     const [entry] = entries;
     const name = entry.path.split("/").pop() ?? entry.path;
     return entry.kind === "directory"
-      ? `Delete the folder "${name}" and everything in it permanently?`
-      : `Delete "${name}" permanently?`;
+      ? `Delete the folder "${name}" and everything in it?`
+      : `Delete "${name}"?`;
   }
   const folders = entries.filter((entry) => entry.kind === "directory").length;
-  return `Delete ${count(entries.length)} permanently?${folders > 0 ? ` ${folders === 1 ? "The folder is" : "Folders are"} deleted with everything in ${folders === 1 ? "it" : "them"}.` : ""}`;
+  return `Delete ${count(entries.length)}?${folders > 0 ? ` ${folders === 1 ? "The folder is" : "Folders are"} deleted with everything in ${folders === 1 ? "it" : "them"}.` : ""}`;
 }

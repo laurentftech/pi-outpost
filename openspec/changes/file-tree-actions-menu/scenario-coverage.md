@@ -10,13 +10,13 @@ over HTTP in `server/test/files-download.test.mjs`, whose archives are read back
 checked. Expected paths are built with `path.join`, so the Windows CI job compares what the server
 resolves.
 
-## Capability: `components` (40 scenarios, modified and added)
+## Capability: `components` (48 scenarios, modified and added)
 
 | Scenario | Coverage | Assertion evidence |
 | --- | --- | --- |
 | Cancel a blank file rename | covered | `ui/src/components/FileTree.test.tsx` — "cancels a rename submitted with a blank name": no `onRenameFile`, the input gone, the row back, no error text |
-| Confirm a file deletion | covered | `ui/src/components/FileTree.test.tsx` — "sends one delete request only after confirmation": chosen from the menu, `confirm` called with `Delete "readme.md" permanently?`, one `onDeleteFile("readme.md")` |
-| ConfirmAFolderDeletion | covered | `ui/src/components/FileTree.test.tsx` — "ConfirmAFolderDeletion: …": `confirm` called with `Delete the folder "src" and everything in it permanently?`, then `onDeleteFile("src")` |
+| Confirm a file deletion | covered | `ui/src/components/FileTree.test.tsx` — "sends one delete request only after confirmation": chosen from the menu, `confirm` called with `Delete "readme.md"?`, one `onDeleteFile("readme.md")` |
+| ConfirmAFolderDeletion | covered | `ui/src/components/FileTree.test.tsx` — "ConfirmAFolderDeletion: …": `confirm` called with `Delete the folder "src" and everything in it?`, then `onDeleteFile("src")` |
 | DragAFolderOntoAWritableFolder | covered | `ui/src/components/FileTree.test.tsx` — "DragAFolderOntoAWritableFolder: …": the drag over its own subfolder leaves it without the drop ring and the drop reports nothing; the drop on `archive` reports `onMoveFile("drafts", "archive")` |
 | Cancel a file deletion | covered | `ui/src/components/FileTree.test.tsx` — "does not request deletion when confirmation is cancelled": no `onDeleteFile`, the row still shown |
 | Drag a file onto a writable folder | covered | `ui/src/components/FileTree.test.tsx` — "moves a dragged file onto a writable directory": `onMoveFile("readme.md", "src")`, no copy |
@@ -45,17 +45,25 @@ resolves.
 | DragASelectionOntoAFolder | covered | `ui/src/components/FileTree.test.tsx` — "DragASelectionOntoAFolder: …": `onMoveFiles(["readme.md", "notes.md"], "src")`, no single move |
 | AMixedSelectionOffersNoMutation | covered | `ui/src/components/FileTree.test.tsx` — "AMixedSelectionOffersNoMutation: …": no Delete or Move, `Download 2 items as .zip` and `Reference 2 items in prompt` present; `ui/src/components/fileTreeModel.test.ts` likewise |
 | TheMenuOfAnUnselectedRowActsOnThatRow | covered | `ui/src/components/FileTree.test.tsx` — "TheMenuOfAnUnselectedRowActsOnThatRow: …": the menu is named `Actions for d`, offers the single `Delete…`, and the earlier selection is gone |
-| KeyboardShortcutsOnTheSelection | covered | `ui/src/components/FileTree.test.tsx` — "KeyboardShortcutsOnTheSelection: …": Delete asks `Delete 2 items permanently?` once and reports `onDeleteFiles(["a", "b"])`; F2 opens `Rename c` |
+| KeyboardShortcutsOnTheSelection | covered | `ui/src/components/FileTree.test.tsx` — "KeyboardShortcutsOnTheSelection: …": Delete asks `Delete 2 items?` once and reports `onDeleteFiles(["a", "b"])`; F2 opens `Rename c` |
 | TheBarAppearsWithASelection | covered | `ui/src/components/FileTree.test.tsx` — "TheBarAppearsWithASelection: …": no `toolbar` for one file, then one named `2 selected`, then `3 selected`, whose buttons are exactly the selected row's menu items plus `Clear the selection` |
 | DeleteFromTheBar | covered | `ui/src/components/FileTree.test.tsx` — "DeleteFromTheBar: …": one `confirm` naming the count and the folder, `onDeleteFiles(["a", "d", "z"])`, and no `toolbar` afterwards; "the bar's other actions run on the whole selection too" for Download, Reference and Move to… |
 | TheBarClearsTheSelection | covered | `ui/src/components/FileTree.test.tsx` — "TheBarClearsTheSelection": nothing selected, no `toolbar` |
 | NoBarForOneEntry | covered | `ui/src/components/FileTree.test.tsx` — "NoBarForOneEntry, and a mixed selection's bar offers no deletion" and "TheBarAppearsWithASelection" (no `toolbar` after a single click); the bar is `sticky` in "stays in view while the tree scrolls" |
+| UndoAMove | covered | `ui/src/components/FileTree.test.tsx` — "UndoAMove and AnUndoIsNotUndone: …": the notice reads `Moved 2 items to archive`, Undo reports `onMoveFiles(["archive/a.txt", "archive/b.txt"], "inbox")` |
+| UndoPutsEachBackWhereItCameFrom | covered | `ui/src/components/FileTree.test.tsx` — "UndoPutsEachBackWhereItCameFrom: …": `onMoveFile("archive/one.txt", "x")` alone, and `onMoveFile("archive/two.txt", "y")` only once the first is answered |
+| UndoByKeyboard | covered | `ui/src/components/FileTree.test.tsx` — "UndoByKeyboard: Cmd+Z, or Ctrl+Z, in the tree undoes it" (the same request as the control); "Ctrl+Z while typing a name stays the input's own undo"; "a single deletion is offered back by its own token" with Ctrl+Z |
+| UndoIsOfferedForTheLastMoveOnly | covered | `ui/src/components/FileTree.test.tsx` — "UndoIsOfferedForTheLastMoveOnly: …": no Undo once another operation is pending; offered again for a new move; gone after Dismiss |
+| AnUndoThatCannotBeDoneSaysWhy | covered | `ui/src/components/FileTree.test.tsx` — "AnUndoThatCannotBeDoneSaysWhy: …": the refused undo's sentence is an `alert`, no Undo offered for it; the server side never overwrites, `server/test/file-lifecycle.test.mjs` "OneRefusalDoesNotStopTheBatch and ABatchMoveRefusesAnOverwrite" |
+| AnUndoIsNotUndone | covered | `ui/src/components/FileTree.test.tsx` — "UndoAMove and AnUndoIsNotUndone: …": after the undo's answer, `Move undone.` and no Undo button; likewise `Rename undone.` and `Deletion undone.` |
+| UndoARename | covered | `ui/src/components/FileTree.test.tsx` — "UndoARename: …": `Renamed "draft.md" to "final.md"`, Undo reports `onRenameFile("inbox/final.md", "draft.md")`, a refused undo is an `alert`, a successful one `Rename undone.` |
+| UndoADeletion | covered | `ui/src/components/FileTree.test.tsx` — "UndoADeletion: …": `Deleted 3 items`, Undo reports `onRestoreDeleted(["t1", "t2", "t3"])`, then `Deletion undone.`; `ui/src/useAgent.test.ts` — "keeps the restore tokens a deletion answers, and restores them in one request" |
 | PickADestination | covered | `ui/src/components/FileTree.test.tsx` — "PickADestination: …": the banner says `Moving 2 items: choose a folder`, `archive` is expanded while picking, `Move here: 2026` reports `onMoveFiles(["a", "b"], "archive/2026")`, and the banner goes |
 | CancelPicking | covered | `ui/src/components/FileTree.test.tsx` — "CancelPicking: …": Escape and Cancel each end it, no move of either kind reported |
 | AReadOnlyFolderIsNoTarget | covered | `ui/src/components/FileTree.test.tsx` — "a read-only folder offers no target while picking, …": no `Move here: ro`, `Move here: inbox` present |
 | AMovedFolderIsNoTargetForItself | covered | `ui/src/components/FileTree.test.tsx` — "AReadOnlyFolderIsNoTarget, AMovedFolderIsNoTargetForItself": no `Move here: project` nor `Move here: sub` while moving `project`; `Move here: w` reports `onMoveFile("project", "w")` |
 
-## Capability: `file` (37 scenarios, modified and added)
+## Capability: `file` (42 scenarios, modified and added)
 
 | Scenario | Coverage | Assertion evidence |
 | --- | --- | --- |
@@ -92,6 +100,11 @@ resolves.
 | AnEscapingLinkIsLeftOut | covered | `server/test/files-download.test.mjs` — "AnEscapingLinkIsLeftOut: …": `X-Pi-Outpost-Skipped: 1`, no `SECRET` in the bytes, no entry for the link, the comment starting `1 entry was left out`; `server/test/fileBrowser.test.ts` — the walk's escaping file and folder links and its link cycle; `ui/src/components/FileTree.test.tsx` — the tree says `1 entry was left out of the archive` |
 | CopyAReadOnlyFolder | covered | `server/test/fileBrowser.test.ts` — "CopyAReadOnlyFolder: …": `{ path: "copy-workspace/templates", skipped: 0 }`, nested files and the empty folder copied, the source unchanged; `server/test/file-lifecycle.test.mjs` — over the socket |
 | ACopyLeavesOutEscapingLinks | covered | `server/test/fileBrowser.test.ts` — "ACopyLeavesOutEscapingLinks: …": `skipped: 1`, no link and no target in the copy; `ui/src/components/FileTree.test.tsx` — "reports a folder copy that left entries out" |
+| DeleteThenRestore | covered | `server/test/trash.test.ts` — "DeleteThenRestore: …": a 32-hex token, the folder gone, then back with its nested file and the trash empty; `server/test/file-lifecycle.test.mjs` — "DeleteThenRestore over the socket: …": single and batch deletions answer tokens, `restore_deleted` brings both back, clients are notified, a token restores once |
+| RestoreRefusesAnOverwrite | covered | `server/test/trash.test.ts` — "RestoreRefusesAnOverwrite: …" (refused as `conflict`, the new file kept, the old one still restorable once the place is free) and "a folder whose place was taken is refused too, both kept"; `server/test/file-lifecycle.test.mjs` — "RestoreRefusesAnOverwrite over the socket: …" |
+| TheTrashIsOutsideTheWorkspace | covered | `server/test/trash.test.ts` — "TheTrashIsOutsideTheWorkspace: …": the bytes are under the trash root, not under the workspace, the original path gone; `server/test/file-lifecycle.test.mjs` reads them under `.pi-agent/outpost-trash/<token>`, the agent directory the sandbox never lets the agent read |
+| ATokenFromElsewhereRestoresNothing | covered | `server/test/trash.test.ts` — "ATokenFromElsewhereRestoresNothing: …": another project's, an unknown and an already used token all give nothing; `server/test/file-lifecycle.test.mjs` — a second restore of the same token is refused `not-found` |
+| TheTrashIsEmptied | covered | `server/test/trash.test.ts` — "TheTrashIsEmptied: …": with an injected clock the entry older than 24 h is erased and no longer restorable, the younger one kept, and `reset` (what the server runs at start) erases the rest |
 | DeleteSeveralFiles | covered | `server/test/file-lifecycle.test.mjs` — "DeleteSeveralFiles: …": one `file_batch_result` listing the three files and the folder as done (the folder's own file covered by it), all gone, and exactly one `file_changed` for their directory |
 | OneRefusalDoesNotStopTheBatch | covered | `server/test/file-lifecycle.test.mjs` — "OneRefusalDoesNotStopTheBatch and ABatchMoveRefusesAnOverwrite": "a.txt" and "c.txt" done after the refused `outside-zone/b.txt` (`denied`, with a message), which is unchanged |
 | ABatchMoveRefusesAnOverwrite | covered | Same test: `writable/moves/clash.txt` refused as `conflict`, both files keep `mine` and `theirs` |

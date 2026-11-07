@@ -89,6 +89,10 @@
   **Move to…** and pick the folder), downloads them as one `.zip`, or references them all. A
   deleted folder goes with everything in it. An archive is limited to 65 535 entries and 4 GiB,
   and leaves out — and says so — anything that leads outside the workspace.
+- A move, a rename or a deletion made from the tree can be undone: **Undo** in the notice that
+  follows it, or Ctrl+Z (Cmd+Z), until the next change. A deletion is kept in pi-outpost's own
+  trash, outside the project and out of the agent's reach, so it can be restored; the trash is
+  emptied when the server restarts and of anything older than a day.
 - **Search in files** (the magnifying glass in the Files header) finds text across the project:
   case-insensitive, literal, in text files and in the text layer of PDFs. Each hit shows its line
   or PDF page with an excerpt; clicking it opens the file there with the match highlighted. See

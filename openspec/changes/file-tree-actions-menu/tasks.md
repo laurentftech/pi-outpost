@@ -20,6 +20,8 @@
 - [x] 3.1 Add `delete_files`, `move_files` and `file_batch_result` to `shared/src/protocol.ts` and verify `npm run typecheck` passes
 - [x] 3.2 Implement the batch handlers in `server/src/index.ts` over the single-entry helpers (continue after a refusal, no rollback, one `file_changed` per affected directory) and verify server tests for DeleteSeveralFiles (files and a folder), OneRefusalDoesNotStopTheBatch and ABatchMoveRefusesAnOverwrite
 - [x] 3.3 Add `deleteFiles` / `moveFiles` and the batch `fileOperation` variant in `ui/src/useAgent.ts`, wire them through `Sidebar.tsx` and `App.tsx`, and verify `useAgent` tests for a batch result with refused paths and for the open file closing when it, or a folder holding it, is deleted
+- [x] 3.4 Move deletions into a server trash under `<agentDir>/outpost-trash` (restore tokens on single and batch results, `restore_deleted` with the move rules and no overwrite, EXDEV fallback, emptied at startup and swept of entries older than 24 h) and verify server tests for every Deleted entries can be restored scenario, over the socket
+- [x] 3.5 Carry restore tokens and `restoreDeleted` through `useAgent`, `Sidebar` and `App`, and verify a `useAgent` test for a restore request and its result
 
 ## 4. Tree state lift
 
@@ -39,6 +41,7 @@
 - [x] 6.3 Add Move to… picking mode (banner with Cancel, writable folders and root as targets except a moved folder and its descendants, folders still expand, Escape) and verify tests for PickADestination, CancelPicking, AReadOnlyFolderIsNoTarget and AMovedFolderIsNoTargetForItself
 - [x] 6.4 Show a batch result and an archive's left-out count in the tree, and verify tests for TheTreeReportsWhatWasRefused and AnEscapingLinkIsLeftOut on the tree side
 - [x] 6.5 Add the selection bar (count, the selection's actions, clear, kept in view while scrolling) and verify tests for every FileTree selection bar scenario, then check it in the running bench
+- [x] 6.6 Offer an undo of the last move, rename or deletion from the tree (notice with Undo, Ctrl/Cmd+Z, moves back grouped by folder of origin and sent in turn, rename back, one restore request, gone after another operation or a dismissal, no undo of an undo) and verify tests for every FileTree undo scenario, then check it in the running bench
 
 ## 7. Documentation
 

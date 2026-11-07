@@ -880,14 +880,77 @@ export async function deleteFileFromBrowser(
   root: string,
   writableRel: string | null | undefined,
   relPath: string,
-): Promise<void> {
+  /**
+   * Where the entry goes instead of being erased, answering a token that restores it
+   * (the server's trash). Without it the deletion is for good.
+   */
+  trash?: (resolved: string) => Promise<string>,
+): Promise<string | undefined> {
   const source = await resolveWritableEntry(root, writableRel, relPath);
   try {
+    if (trash) return await trash(source.resolved);
     if (source.kind === "directory") await fs.rm(source.resolved, { recursive: true });
     else await fs.unlink(source.resolved);
+    return undefined;
   } catch (error) {
     throw lifecycleError(error, relPath, "delete");
   }
+}
+
+/**
+ * Put a deleted entry back at `relPath`, from where the trash keeps it. The rules are a
+ * move's, checked against the tree as it is now rather than as it was: the folder it
+ * returns to must still exist inside the writable zone, and nothing that has since
+ * taken its place is overwritten. A file is linked in before its trashed copy goes —
+ * the same no-overwrite claim as a move — or copied with an exclusive create when the
+ * trash is on another disk.
+ */
+export async function restoreFromBrowser(
+  root: string,
+  writableRel: string | null | undefined,
+  relPath: string,
+  trashed: string,
+): Promise<string> {
+  const parentRel = relPath.includes("/") ? relPath.slice(0, relPath.lastIndexOf("/")) : "";
+  await resolveWritableDirectory(root, writableRel, parentRel);
+  const destination = await resolveConfined(root, relPath);
+  const writableRoot = writableRel === undefined || writableRel === null ? root : path.resolve(root, writableRel);
+  if (destination === root || !isWithin(writableRoot, destination)) {
+    throw new FileBrowserError("denied", `"${relPath}" is outside the writable zone`);
+  }
+  const stat = await fs.lstat(trashed).catch(() => null);
+  if (stat === null) throw new FileBrowserError("not-found", `"${relPath}" is no longer in the trash`);
+  if (stat.isDirectory()) {
+    // As for a folder move: nothing at the destination, then rename — which can only
+    // ever replace an empty folder created in between — or a copy that refuses any.
+    if (await fs.lstat(destination).then(() => true, () => false)) {
+      throw new FileBrowserError("conflict", `"${relPath}" already exists`);
+    }
+    try {
+      await fs.rename(trashed, destination);
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code === "ENOTEMPTY" || code === "EEXIST") throw new FileBrowserError("conflict", `"${relPath}" already exists`);
+      if (code !== "EXDEV") throw lifecycleError(error, relPath, "move");
+      await fs.cp(trashed, destination, { recursive: true, verbatimSymlinks: true, errorOnExist: true, force: false });
+      await fs.rm(trashed, { recursive: true, force: true });
+    }
+    return relPath;
+  }
+  try {
+    await fs.link(trashed, destination);
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === "EEXIST") throw new FileBrowserError("conflict", `"${relPath}" already exists`);
+    if (code !== "EXDEV" && code !== "EPERM" && code !== "ENOTSUP") throw lifecycleError(error, relPath, "move");
+    try {
+      await fs.copyFile(trashed, destination, constants.COPYFILE_EXCL);
+    } catch (copyError) {
+      throw lifecycleError(copyError, relPath, "move");
+    }
+  }
+  await fs.unlink(trashed).catch(() => {});
+  return relPath;
 }
 
 /** Move one regular file or folder into an existing writable directory, never overwriting. */

@@ -465,7 +465,7 @@ describe("FileTree", () => {
 
       choose("readme.md", /^Delete/);
 
-      expect(confirm).toHaveBeenCalledWith('Delete "readme.md" permanently?');
+      expect(confirm).toHaveBeenCalledWith('Delete "readme.md"?');
       expect(actions.onDeleteFile).toHaveBeenCalledTimes(1);
       expect(actions.onDeleteFile).toHaveBeenCalledWith("readme.md");
       confirm.mockRestore();
@@ -916,6 +916,7 @@ function everything(overrides: Partial<Props> = {}) {
     onCreateFile: vi.fn(),
     onCreateDirectory: vi.fn(),
     onDownload: vi.fn(async () => ({ skipped: 0 })),
+    onRestoreDeleted: vi.fn(),
   };
   const view = render(<FileTree tree={tree()} {...handlers} {...overrides} />);
   return { ...handlers, ...view };
@@ -1057,7 +1058,7 @@ describe("folders at parity", () => {
     const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
     const { onDeleteFile } = everything();
     choose("src", /^Delete/);
-    expect(confirm).toHaveBeenCalledWith('Delete the folder "src" and everything in it permanently?');
+    expect(confirm).toHaveBeenCalledWith('Delete the folder "src" and everything in it?');
     expect(onDeleteFile).toHaveBeenCalledWith("src");
     confirm.mockRestore();
   });
@@ -1176,7 +1177,7 @@ describe("acting on a selection", () => {
     fireEvent.click(dirToggle("src"), { ctrlKey: true });
     choose("readme.md", "Delete 2 items…");
     expect(confirm).toHaveBeenCalledTimes(1);
-    expect(confirm).toHaveBeenCalledWith("Delete 2 items permanently? The folder is deleted with everything in it.");
+    expect(confirm).toHaveBeenCalledWith("Delete 2 items? The folder is deleted with everything in it.");
     expect(onDeleteFiles).toHaveBeenCalledWith(["readme.md", "src"]);
     expect(onDeleteFile).not.toHaveBeenCalled();
     confirm.mockRestore();
@@ -1294,7 +1295,7 @@ describe("acting on a selection", () => {
     fireEvent.click(label("a"));
     fireEvent.click(label("b"), { shiftKey: true });
     fireEvent.keyDown(label("a"), { key: "Delete" });
-    expect(confirm).toHaveBeenCalledWith("Delete 2 items permanently?");
+    expect(confirm).toHaveBeenCalledWith("Delete 2 items?");
     expect(onDeleteFiles).toHaveBeenCalledWith(["a", "b"]);
 
     fireEvent.click(label("c"));
@@ -1347,7 +1348,7 @@ describe("the selection bar", () => {
     fireEvent.click(label("z"), { shiftKey: true });
     fireEvent.click(within(screen.getByRole("toolbar")).getByRole("button", { name: "Delete 3 items…" }));
     expect(confirm).toHaveBeenCalledTimes(1);
-    expect(confirm).toHaveBeenCalledWith("Delete 3 items permanently? The folder is deleted with everything in it.");
+    expect(confirm).toHaveBeenCalledWith("Delete 3 items? The folder is deleted with everything in it.");
     expect(onDeleteFiles).toHaveBeenCalledWith(["a", "d", "z"]);
     expect(bar()).toBeNull();
     confirm.mockRestore();
@@ -1390,6 +1391,153 @@ describe("the selection bar", () => {
     fireEvent.click(label("a"));
     fireEvent.click(label("b"), { ctrlKey: true });
     expect(screen.getByRole("toolbar").className).toMatch(/\bsticky\b/);
+  });
+});
+
+describe("undo of the last change", () => {
+  type Operation = NonNullable<Props["fileOperation"]>;
+  const moved: Operation = {
+    status: "succeeded",
+    operation: "move_file",
+    path: "inbox/a.txt",
+    resultPath: "archive/a.txt",
+    requestId: "fileop:move",
+    batch: {
+      done: [
+        { path: "inbox/a.txt", resultPath: "archive/a.txt" },
+        { path: "inbox/b.txt", resultPath: "archive/b.txt" },
+      ],
+      refused: [],
+    },
+  };
+  const projectTree = { "": [dir("inbox"), dir("archive"), file("readme.md")], inbox: [], archive: [file("a.txt"), file("b.txt")] };
+
+  /** Mount the tree, then answer with `operation` the way useAgent would. */
+  function after(operation: Operation) {
+    const view = everything({ tree: projectTree });
+    const { rerender, ...handlers } = view;
+    const answer = (next: Operation | null) => rerender(<FileTree {...handlers} tree={projectTree} fileOperation={next} />);
+    answer(operation);
+    return { ...view, answer };
+  }
+  const undoButton = () => screen.queryByRole("button", { name: "Undo" });
+
+  it("UndoAMove and AnUndoIsNotUndone: one move back, then the move is said undone and nothing more is offered", () => {
+    const { onMoveFiles, answer } = after(moved);
+    expect(screen.getByText("Moved 2 items to archive")).toBeInTheDocument();
+    fireEvent.click(undoButton()!);
+    expect(onMoveFiles).toHaveBeenCalledWith(["archive/a.txt", "archive/b.txt"], "inbox");
+
+    answer({ status: "pending", operation: "move_file", path: "archive/a.txt", requestId: "fileop:undo", paths: ["archive/a.txt", "archive/b.txt"] });
+    answer({ ...moved, requestId: "fileop:undo", batch: { done: [{ path: "archive/a.txt", resultPath: "inbox/a.txt" }, { path: "archive/b.txt", resultPath: "inbox/b.txt" }], refused: [] } });
+    expect(screen.getByText("Move undone.")).toBeInTheDocument();
+    expect(undoButton()).toBeNull();
+  });
+
+  it("UndoPutsEachBackWhereItCameFrom: one folder of origin at a time, the next once the first is answered", () => {
+    const { onMoveFile, answer } = after({
+      ...moved,
+      batch: { done: [{ path: "x/one.txt", resultPath: "archive/one.txt" }, { path: "y/two.txt", resultPath: "archive/two.txt" }], refused: [] },
+    });
+    fireEvent.click(undoButton()!);
+    expect(onMoveFile.mock.calls).toEqual([["archive/one.txt", "x"]]);
+
+    answer({ status: "pending", operation: "move_file", path: "archive/one.txt", requestId: "fileop:undo-1" });
+    expect(onMoveFile).toHaveBeenCalledTimes(1);
+    answer({ status: "succeeded", operation: "move_file", path: "archive/one.txt", resultPath: "x/one.txt", requestId: "fileop:undo-1" });
+    expect(onMoveFile.mock.calls).toEqual([["archive/one.txt", "x"], ["archive/two.txt", "y"]]);
+
+    answer({ status: "pending", operation: "move_file", path: "archive/two.txt", requestId: "fileop:undo-2" });
+    answer({ status: "succeeded", operation: "move_file", path: "archive/two.txt", resultPath: "y/two.txt", requestId: "fileop:undo-2" });
+    expect(screen.getByText("Move undone.")).toBeInTheDocument();
+    expect(undoButton()).toBeNull();
+  });
+
+  it("UndoByKeyboard: Cmd+Z, or Ctrl+Z, in the tree undoes it", () => {
+    const { onMoveFiles } = after(moved);
+    fireEvent.keyDown(label("readme.md"), { key: "z", metaKey: true });
+    expect(onMoveFiles).toHaveBeenCalledWith(["archive/a.txt", "archive/b.txt"], "inbox");
+  });
+
+  it("Ctrl+Z while typing a name stays the input's own undo", () => {
+    const { onMoveFiles } = after(moved);
+    choose("readme.md", /^Rename/);
+    fireEvent.keyDown(screen.getByRole("textbox", { name: "Rename readme.md" }), { key: "z", ctrlKey: true });
+    expect(onMoveFiles).not.toHaveBeenCalled();
+  });
+
+  it("UndoIsOfferedForTheLastMoveOnly: another operation, or a dismissal, takes the offer away", () => {
+    const { answer } = after(moved);
+    answer({ status: "pending", operation: "reveal_native", path: "readme.md", requestId: "fileop:other" });
+    expect(undoButton()).toBeNull();
+    answer({ ...moved, requestId: "fileop:move-2" });
+    expect(undoButton()).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
+    expect(undoButton()).toBeNull();
+  });
+
+  it("AnUndoThatCannotBeDoneSaysWhy: the refusal is shown, and offers no undo of the undo", () => {
+    const { answer } = after(moved);
+    fireEvent.click(undoButton()!);
+    answer({ status: "pending", operation: "move_file", path: "archive/a.txt", requestId: "fileop:undo" });
+    answer({
+      status: "error",
+      operation: "move_file",
+      path: "archive/a.txt",
+      requestId: "fileop:undo",
+      message: '1 of 2 moved. Not moved: archive/b.txt: "inbox/b.txt" already exists',
+      batch: { done: [{ path: "archive/a.txt", resultPath: "inbox/a.txt" }], refused: [{ path: "archive/b.txt", message: '"inbox/b.txt" already exists' }] },
+    });
+    expect(screen.getByRole("alert")).toHaveTextContent('"inbox/b.txt" already exists');
+    expect(undoButton()).toBeNull();
+  });
+
+  it("UndoARename: renamed back to its old name, and said undone; a refused undo of a rename is shown", () => {
+    const { onRenameFile, answer } = after({ status: "succeeded", operation: "rename_file", path: "inbox/draft.md", resultPath: "inbox/final.md", requestId: "fileop:rename" });
+    expect(screen.getByText('Renamed "draft.md" to "final.md"')).toBeInTheDocument();
+    fireEvent.click(undoButton()!);
+    expect(onRenameFile).toHaveBeenCalledWith("inbox/final.md", "draft.md");
+    answer({ status: "pending", operation: "rename_file", path: "inbox/final.md", requestId: "fileop:undo" });
+    answer({ status: "error", operation: "rename_file", path: "inbox/final.md", requestId: "fileop:undo", message: '"inbox/draft.md" already exists' });
+    expect(screen.getByRole("alert")).toHaveTextContent('"inbox/draft.md" already exists');
+
+    const again = after({ status: "succeeded", operation: "rename_file", path: "inbox/draft.md", resultPath: "inbox/final.md", requestId: "fileop:rename-2" });
+    fireEvent.click(screen.getAllByRole("button", { name: "Undo" }).at(-1)!);
+    again.answer({ status: "pending", operation: "rename_file", path: "inbox/final.md", requestId: "fileop:undo-2" });
+    again.answer({ status: "succeeded", operation: "rename_file", path: "inbox/final.md", resultPath: "inbox/draft.md", requestId: "fileop:undo-2" });
+    expect(screen.getByText("Rename undone.")).toBeInTheDocument();
+  });
+
+  it("UndoADeletion: every restore token in one request, and said undone", () => {
+    const { onRestoreDeleted, answer } = after({
+      status: "succeeded",
+      operation: "delete_file",
+      path: "a.txt",
+      resultPath: "a.txt",
+      requestId: "fileop:delete",
+      batch: {
+        done: [
+          { path: "a.txt", resultPath: "a.txt", restoreToken: "t1" },
+          { path: "b.txt", resultPath: "b.txt", restoreToken: "t2" },
+          { path: "folder", resultPath: "folder", restoreToken: "t3" },
+        ],
+        refused: [],
+      },
+    });
+    expect(screen.getByText("Deleted 3 items")).toBeInTheDocument();
+    fireEvent.click(undoButton()!);
+    expect(onRestoreDeleted).toHaveBeenCalledWith(["t1", "t2", "t3"]);
+    answer({ status: "pending", operation: "restore_deleted", path: "", requestId: "fileop:restore" });
+    answer({ status: "succeeded", operation: "restore_deleted", path: "", resultPath: "a.txt", requestId: "fileop:restore", batch: { done: [], refused: [] } });
+    expect(screen.getByText("Deletion undone.")).toBeInTheDocument();
+    expect(undoButton()).toBeNull();
+  });
+
+  it("a single deletion is offered back by its own token", () => {
+    const { onRestoreDeleted } = after({ status: "succeeded", operation: "delete_file", path: "inbox/note.md", resultPath: "inbox/note.md", requestId: "fileop:d", restoreToken: "tok" });
+    expect(screen.getByText('Deleted "note.md"')).toBeInTheDocument();
+    fireEvent.keyDown(label("readme.md"), { key: "z", ctrlKey: true });
+    expect(onRestoreDeleted).toHaveBeenCalledWith(["tok"]);
   });
 });
 

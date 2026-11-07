@@ -131,6 +131,29 @@ become click targets (reusing the drop-target styling), file rows are inert, Esc
 **Keyboard on rows**: rows already are buttons; F2 and Delete are handled on the row's keydown
 and routed through the same functions the menu calls, so the confirmation is identical.
 
+**Undo of the last change (move, rename, delete).** The tree derives the offer from the last
+`fileOperation` it holds: a move's `done` pairs, a rename's old and new path, a deletion's restore
+tokens. An undo is an ordinary request — moves back grouped by folder of origin and sent in turn
+(a move takes one destination), a rename back, or one `restore_deleted` — whose request id the
+tree remembers so that its answer offers no undo of its own. The offer disappears as soon as
+another operation replaces it, which is what "until the next operation" means, with no timer in
+the client.
+
+**Deletion goes to a server trash, not to the OS's.** `deleteFileFromBrowser` takes a `trash`
+callback; the server passes one that moves the entry under `<agentDir>/outpost-trash/<token>/`,
+where pi-outpost already keeps its own state and which the sandbox already marks never readable
+by the agent. The token is random (it is the only handle on the bytes) and bound to the
+workspace it came from. `rename` first, then `cp` + `rm` on `EXDEV`, since the workspace and the
+agent directory may be on different disks. Restoring re-runs the move rules — confinement,
+writable zone, no overwrite — at restore time, against the path as it is now. The trash is
+emptied at startup and swept hourly of anything older than 24 hours; the index of tokens lives in
+memory only, so a restart can never restore something it no longer knows. The OS recycle bin
+was rejected: restoring from it is a different, fragile mechanism on each platform, and on a
+remote server nobody sees that bin. A trash inside the workspace was rejected: the agent and
+`git status` would see it.
+
+The confirmation stays before a deletion: Undo is a second net, not a replacement for the first.
+
 ## Risks / Trade-offs
 
 - [An archive is held in the browser's memory before it is saved] → the 4 GiB limit bounds it;

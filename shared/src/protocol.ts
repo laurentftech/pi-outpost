@@ -561,7 +561,7 @@ export type FileBrowserErrorReason =
   | "invalid";
 
 /** Mutating/opening operation acknowledged by file_operation_result. */
-export type FileOperation = "open_native" | "reveal_native" | "rename_file" | "delete_file" | "move_file" | "copy_file";
+export type FileOperation = "open_native" | "reveal_native" | "rename_file" | "delete_file" | "move_file" | "copy_file" | "restore_deleted";
 
 /**
  * Why git is unavailable, when it is.
@@ -1438,6 +1438,8 @@ export type ServerMessage =
       previousPath?: string;
       /** A folder copy only: entries left out because they resolve outside the browser root. */
       skipped?: number;
+      /** A deletion only: what `restore_deleted` takes to put the entry back, while the server's trash keeps it. */
+      restoreToken?: string;
     }
   | {
       /**
@@ -1446,9 +1448,10 @@ export type ServerMessage =
        */
       type: "file_batch_result";
       requestId: string;
-      operation: "delete_file" | "move_file";
+      operation: "delete_file" | "move_file" | "restore_deleted";
       /** `resultPath` is where a moved entry now is; for a deletion, the deleted path. */
-      done: { path: string; resultPath: string }[];
+      /** A deletion's entries carry the token that restores them. */
+      done: { path: string; resultPath: string; restoreToken?: string }[];
       refused: { path: string; message: string; reason?: FileBrowserErrorReason }[];
     }
   | {
@@ -1750,6 +1753,8 @@ export type ClientMessage =
   | { type: "delete_files"; paths: string[]; requestId: string }
   /** Move several entries into one existing directory; answered by one `file_batch_result`. */
   | { type: "move_files"; paths: string[]; destinationDirectory: string; requestId: string }
+  /** Put deleted entries back from the server's trash; answered by one `file_batch_result`. */
+  | { type: "restore_deleted"; tokens: string[]; requestId: string }
   | { type: "search_files"; query: string; requestId: string }
   /** Case-insensitive literal search of file contents under the browser root; a newer one supersedes it. */
   | { type: "search_content"; query: string; requestId: string }

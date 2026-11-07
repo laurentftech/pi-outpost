@@ -201,6 +201,49 @@ While two or more entries are selected, `FileTree` SHALL show a bar above the li
 - **GIVEN** a single file clicked, or no selection
 - **THEN** no selection bar is shown
 
+### Requirement: FileTree undo of the last change
+
+After a move, a rename or a deletion made from the tree succeeds, for one entry or several, `FileTree` SHALL say what changed and offer to undo it, by a control and by Ctrl/Cmd+Z in the tree. Undoing SHALL move entries back where they came from, rename back, or restore what was deleted. The offer SHALL last until another file operation or its dismissal; an undo SHALL NOT offer an undo.
+
+#### Scenario: UndoAMove
+- **GIVEN** `inbox/a.txt` and `inbox/b.txt` moved to `archive`
+- **WHEN** the user presses Undo in the tree
+- **THEN** `FileTree` reports one move of `archive/a.txt` and `archive/b.txt` back to `inbox`, and says the move was undone
+
+#### Scenario: UndoPutsEachBackWhereItCameFrom
+- **GIVEN** `x/one.txt` and `y/two.txt` moved together to `archive`
+- **WHEN** the user undoes it
+- **THEN** `archive/one.txt` is moved back to `x`, and once that is answered `archive/two.txt` back to `y`
+
+#### Scenario: UndoByKeyboard
+- **GIVEN** a move just made from the tree
+- **WHEN** the user presses Ctrl+Z (Cmd+Z on macOS) in the tree
+- **THEN** the move is undone as with the Undo control
+
+#### Scenario: UndoIsOfferedForTheLastMoveOnly
+- **GIVEN** a move that can be undone
+- **WHEN** another file operation starts, or the user dismisses the offer
+- **THEN** no undo is offered any more
+
+#### Scenario: AnUndoThatCannotBeDoneSaysWhy
+- **GIVEN** a moved file whose original place has since been taken by another file of the same name
+- **WHEN** the user undoes the move
+- **THEN** that file is not moved back, nothing is overwritten, and the tree shows the refusal
+
+#### Scenario: AnUndoIsNotUndone
+- **WHEN** an undo has been answered
+- **THEN** the tree says the move was undone and offers no undo of the undo
+
+#### Scenario: UndoARename
+- **GIVEN** `draft.md` renamed to `final.md` from the tree
+- **WHEN** the user presses Undo
+- **THEN** `FileTree` reports a rename of `final.md` back to `draft.md`, and says the rename was undone
+
+#### Scenario: UndoADeletion
+- **GIVEN** two files and a folder deleted from the tree, confirmed once
+- **WHEN** the user presses Undo
+- **THEN** `FileTree` asks the server to restore all three in one request, and says the deletion was undone
+
 ### Requirement: FileTree destination picking
 
 Move to… SHALL put the tree in a destination-picking mode that names what is being moved: every writable folder row other than a moved folder or its descendants, and the workspace root, SHALL become a target; clicking one SHALL report the move and leave the mode; Escape or a Cancel control SHALL leave it without a request. Folders SHALL still expand while picking.
