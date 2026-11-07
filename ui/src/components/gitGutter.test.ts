@@ -35,9 +35,9 @@ describe("lineHunks", () => {
   });
 
   it("finds added lines at the start, in the middle and at the end", () => {
-    expect(lineHunks(lines("b\nc"), lines("a\nb\nc")).map(hunkKind)).toEqual(["added"]);
-    expect(lineHunks(lines("a\nc"), lines("a\nb\nc")).map(hunkKind)).toEqual(["added"]);
-    expect(lineHunks(lines("a\nb"), lines("a\nb\nc")).map(hunkKind)).toEqual(["added"]);
+    expect((lineHunks(lines("b\nc"), lines("a\nb\nc")) ?? []).map(hunkKind)).toEqual(["added"]);
+    expect((lineHunks(lines("a\nc"), lines("a\nb\nc")) ?? []).map(hunkKind)).toEqual(["added"]);
+    expect((lineHunks(lines("a\nb"), lines("a\nb\nc")) ?? []).map(hunkKind)).toEqual(["added"]);
   });
 });
 

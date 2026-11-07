@@ -7,6 +7,7 @@ import { after, describe, test } from "node:test";
 import { checkDrawio, describeDrawioReport, DrawioReadError, inflatePage, MAX_INFLATED_PAGE_BYTES, readDrawio } from "../src/drawio.ts";
 import { createDrawioCheckToolDefinition } from "../src/drawioTool.ts";
 import { writeEnded, writesSettled, writeStarted } from "../src/pendingWrites.ts";
+import { textOf, UNUSED_TOOL_CONTEXT } from "./toolContext.ts";
 
 const FIXTURES = path.join(import.meta.dirname, "fixtures", "drawio");
 
@@ -222,13 +223,13 @@ describe("drawio_check", () => {
   const root = realpathSync.native(mkdtempSync(path.join(tmpdir(), "pi-outpost-drawio-")));
   after(() => rmSync(root, { recursive: true, force: true }));
   const tool = createDrawioCheckToolDefinition({ cwd: root, allowedRoots: [root] });
-  const run = (target: string) => (tool.execute as (id: string, params: unknown) => Promise<{ content: { text: string }[]; isError?: boolean }>)("call", { path: target });
+  const run = (target: string) => tool.execute("call", { path: target }, undefined, undefined, UNUSED_TOOL_CONTEXT);
 
   test("reports on a file inside the workspace", async () => {
     writeFileSync(path.join(root, "clean.drawio"), CLEAN);
     const result = await run("clean.drawio");
     assert.equal(result.isError, undefined);
-    assert.match(result.content[0].text, /valid draw\.io diagram with no defect/);
+    assert.match(textOf(result), /valid draw\.io diagram with no defect/);
   });
 
   // openlore: scenario=TheCheckerStaysInTheSandbox spec=drawio-diagrams
@@ -244,10 +245,10 @@ describe("drawio_check", () => {
     writeFileSync(path.join(root, "page.drawio"), "<html><body>not a diagram</body></html>");
     const unreadable = await run("page.drawio");
     assert.equal(unreadable.isError, true);
-    assert.match(unreadable.content[0].text, /cannot be opened by draw\.io: its root is <html>/);
+    assert.match(textOf(unreadable), /cannot be opened by draw\.io: its root is <html>/);
     const missing = await run("nope.drawio");
     assert.equal(missing.isError, true);
-    assert.match(missing.content[0].text, /No such file/);
+    assert.match(textOf(missing), /No such file/);
   });
 
   // openlore: scenario=ACheckWaitsForAWriteInFlight spec=drawio-diagrams
@@ -267,13 +268,13 @@ describe("drawio_check", () => {
     writeEnded("edit-1");
     const result = await report;
     assert.equal(result.isError, undefined);
-    assert.match(result.content[0].text, /valid draw\.io diagram with no defect/);
+    assert.match(textOf(result), /valid draw\.io diagram with no defect/);
   });
 
   test("a write to another file does not hold the check, and a lost end does not hold it forever", async () => {
     writeFileSync(path.join(root, "free.drawio"), CLEAN);
     writeStarted("edit-elsewhere", path.join(root, "other.drawio"));
-    assert.match((await run("free.drawio")).content[0].text, /no defect/);
+    assert.match(textOf(await run("free.drawio")), /no defect/);
     writeEnded("edit-elsewhere");
     writeStarted("edit-lost", path.join(root, "free.drawio"));
     const started = Date.now();
@@ -285,9 +286,9 @@ describe("drawio_check", () => {
   test("a file over the size limit is refused before it is read", async () => {
     const small = createDrawioCheckToolDefinition({ cwd: root, allowedRoots: [root], maxBytes: 100 });
     writeFileSync(path.join(root, "big.drawio"), CLEAN);
-    const result = await (small.execute as (id: string, params: unknown) => Promise<{ content: { text: string }[]; isError?: boolean }>)("call", { path: "big.drawio" });
+    const result = await small.execute("call", { path: "big.drawio" }, undefined, undefined, UNUSED_TOOL_CONTEXT);
     assert.equal(result.isError, true);
-    assert.match(result.content[0].text, /larger than/);
+    assert.match(textOf(result), /larger than/);
   });
 });
 

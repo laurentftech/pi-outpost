@@ -1646,7 +1646,7 @@ describe("the text equivalent says everything the picture says", () => {
     const text = textOf(graph);
     expect(text).toContain("added");
     expect(text).toContain("changed");
-    expect(text).toContain("Ledger" === "" ? "" : "Battery manager");
+    expect(text).toContain("Battery manager");
     expect(text).toContain("removed relationship: REL-9");
   });
 

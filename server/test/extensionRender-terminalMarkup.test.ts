@@ -15,7 +15,7 @@ import { createEditToolDefinition, createReadToolDefinition } from "@earendil-wo
 import { ExtensionRenderer, withLightCounterparts, withoutBlankEdges, withoutTerminalMarkup } from "../src/extensionRender.ts";
 
 const cwd = process.cwd();
-const definitions = new Map([
+const definitions = new Map<string, ReturnType<typeof createEditToolDefinition> | ReturnType<typeof createReadToolDefinition>>([
   ["edit", createEditToolDefinition(cwd)],
   ["read", createReadToolDefinition(cwd)],
 ]);

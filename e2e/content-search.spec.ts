@@ -6,7 +6,6 @@ import { copyFile, mkdir, rm } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, test as base, type Page } from "@playwright/test";
-// @ts-expect-error -- shared integration harness is JavaScript
 import { makeWorkspace, startServer } from "../server/test/harness.mjs";
 
 const FIXTURES = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "server", "test", "fixtures");

@@ -49,7 +49,7 @@ function setup(content = VALID, overrides: Partial<Props> = {}, path = "diagrams
     onSave: vi.fn(),
     onImageLoad: vi.fn(),
   };
-  const props: Props = { file, isStreaming: false, gitDiff: null, gitAvailable: false, ...handlers, ...overrides };
+  const props: Props = { file, isStreaming: false, gitDiff: null, inRepository: false, ...handlers, ...overrides };
   const view = render(<FileViewer {...props} />);
   return { ...handlers, ...view };
 }

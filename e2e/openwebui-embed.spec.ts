@@ -54,7 +54,7 @@ async function host(page: Page): Promise<Frame> {
   return page.frames().find((candidate) => candidate !== page.mainFrame())!;
 }
 
-async function themedHost(page: Page, sandbox: string, dark: boolean, payload = PLANNING): Promise<Frame> {
+async function themedHost(page: Page, sandbox: string, dark: boolean, payload: Parameters<typeof embedPage>[0] = PLANNING): Promise<Frame> {
   await page.setContent(`<!doctype html><html class="${dark ? "dark" : ""}"><body style="margin:0">
     <iframe id="embed" sandbox="${sandbox}" style="width:900px;border:0"></iframe></body></html>`);
   await page.locator("#embed").evaluate((frame, html) => {

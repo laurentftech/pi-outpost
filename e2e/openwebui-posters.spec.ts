@@ -51,7 +51,7 @@ test.beforeAll(async () => {
   if (!address || typeof address === "string") throw new Error("could not start local Open WebUI test host");
   webUiOrigin = `http://127.0.0.1:${address.port}`;
   const config = {
-    host: "127.0.0.1", port: apiPort, secret: "s", identity: "headers" as const, identityKey: undefined,
+    host: "127.0.0.1", port: apiPort, secret: "s", identity: "plain" as const, identityKey: undefined,
     publicUrl: apiOrigin, webUiOrigin, dataDir,
     maxPlanningBytes: 1_000_000, maxRevisions: 500, maxPlanningsPerUser: 200, templatesDir: undefined,
     maxFileBytes: 5 * 1024 * 1024, maxImageBytes: 1024 * 1024, maxDocuments: 20, documentDays: 30,

@@ -24,6 +24,11 @@ type Props = React.ComponentProps<typeof Header>;
 function setup(overrides: Partial<Props> = {}) {
   const handlers = {
     onUpdateConfig: vi.fn(),
+    onSuggestAgentResourceClonePath: vi.fn(),
+    onCloneAgentResourceRepository: vi.fn(),
+    onEnrollAgentResourceRepository: vi.fn(),
+    onRefreshAgentResourceRepositories: vi.fn(),
+    onUpdateAgentResourceRepository: vi.fn(),
     onBrowseServerPath: vi.fn(),
     onCloseServerBrowser: vi.fn(),
     onToggleSidebar: vi.fn(),
@@ -41,6 +46,7 @@ function setup(overrides: Partial<Props> = {}) {
     onNavigateTree: vi.fn(),
     onForkSession: vi.fn(),
     onFetchGitLog: vi.fn(),
+    onCloseGitLog: vi.fn(),
     onShowCommit: vi.fn(),
   };
   const props: Props = {
@@ -53,6 +59,8 @@ function setup(overrides: Partial<Props> = {}) {
     workspace: null,
     workspaces: [],
     workspaceLocked: false,
+    workspaceControl: "projects",
+    gitSelectedPath: null,
     onSwitchWorkspace: vi.fn(),
     onOpenProject: vi.fn(),
     onCloseProject: vi.fn(),
@@ -64,6 +72,7 @@ function setup(overrides: Partial<Props> = {}) {
     filters: { tools: true, reasoning: true },
     gitAvailable: false,
     gitStatus: null,
+    gitUnavailable: null,
     gitLog: null,
     extensionPaths: [],
     configuredExtensionPaths: [],
@@ -73,6 +82,8 @@ function setup(overrides: Partial<Props> = {}) {
     userSkillPaths: [],
     serverBrowse: null,
     settingsApply: null,
+    agentResources: null,
+    agentResourceOperations: { clonePath: null, preview: null, enrollment: null, refresh: null, updates: {}, skills: {}, removals: {} },
     ...handlers,
     ...overrides,
   };

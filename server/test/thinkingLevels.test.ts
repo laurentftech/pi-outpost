@@ -27,7 +27,9 @@ describe("normalizeThinkingLevels", () => {
 
   test("a set with a gap stays a set with a gap", () => {
     // the qwen3.8-max case: low, medium, xhigh — no high
-    assert.deepEqual(normalizeThinkingLevels(["low", "medium", "xhigh"]).includes("high" as never), false);
+    const levels = normalizeThinkingLevels(["low", "medium", "xhigh"]);
+    assert.ok(levels);
+    assert.equal(levels.includes("high"), false);
   });
 
   test("an empty list, a non-array, or all-unknown names yield undefined", () => {

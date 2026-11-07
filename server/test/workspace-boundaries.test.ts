@@ -4,15 +4,17 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, test } from "node:test";
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
-import { Workspace, shouldRetireWorkspace, type WorkspaceOptions } from "../src/workspace.ts";
+import { Workspace, shouldRetireWorkspace, type WorkspaceOptions, type WorkspaceToolLimits } from "../src/workspace.ts";
+import { UNUSED_TOOL_CONTEXT } from "./toolContext.ts";
 import { deriveWorkspaceActivity, workspaceActivityNeedsAttention } from "../src/workspaceActivity.ts";
 
-const limits = {
+const limits: WorkspaceToolLimits = {
   pdfMaxBytes: 1_000_000,
   docxMaxBytes: 1_000_000,
   xlsxMaxBytes: 1_000_000,
   pptxMaxBytes: 1_000_000,
   structuredExchangeMaxBytes: 1_000_000,
+  mailMaxBytes: 1_000_000,
 };
 
 function options(cwd: string, sandboxRoot = cwd): WorkspaceOptions {
@@ -32,7 +34,7 @@ function options(cwd: string, sandboxRoot = cwd): WorkspaceOptions {
 }
 
 async function runPath(tool: ToolDefinition, target: string): Promise<unknown> {
-  return tool.execute("call-1", { path: target }, undefined);
+  return tool.execute("call-1", { path: target }, undefined, undefined, UNUSED_TOOL_CONTEXT);
 }
 
 async function fixture(): Promise<{ parent: string; alpha: string; beta: string; moved: string }> {

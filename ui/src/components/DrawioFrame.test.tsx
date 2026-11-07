@@ -189,7 +189,7 @@ describe("DrawioFrame touch-up", () => {
     post({ type: DRAWIO_MESSAGE.READY }, own);
     return { handle, own, sent, rerender: (p: typeof props) => view.rerender(element(p)) };
   }
-  const types = (sent: ReturnType<typeof vi.spyOn>) => sent.mock.calls.map(([message]) => (message as { type: string }).type);
+  const types = (sent: { mock: { calls: readonly (readonly [unknown, ...unknown[]])[] } }) => sent.mock.calls.map(([message]) => (message as { type: string }).type);
 
   // openlore: scenario=ReadingIsReadOnly spec=drawio-diagrams
   it("ReadingIsReadOnly: touch-up is asked of the frame only when editing is on", () => {

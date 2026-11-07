@@ -1,7 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { CustomMessageCard } from "./CustomMessageCard";
-import type { ChatItem } from "@pi-outpost/shared";
 
 vi.mock("react-markdown", () => ({
   default: ({ children }: { children: string }) => <div data-testid="markdown">{children}</div>,
@@ -23,7 +22,7 @@ describe("CustomMessageCard", () => {
   });
 
   it("renders HTML when contentHtml exists", () => {
-    render(<CustomMessageCard item={{ kind: "custom", customType: "t", contentHtml: "<p>HTML</p>" }} />);
+    render(<CustomMessageCard item={{ kind: "custom", customType: "t", text: "", contentHtml: "<p>HTML</p>" }} />);
     expect(screen.getByTestId("rendered-html")).toBeInTheDocument();
   });
 
@@ -38,7 +37,7 @@ describe("CustomMessageCard", () => {
   });
 
   it("shows toggle when contentHtmlCollapsed exists", () => {
-    render(<CustomMessageCard item={{ kind: "custom", customType: "t", contentHtml: "<p>F</p>", contentHtmlCollapsed: "<p>C</p>" }} />);
+    render(<CustomMessageCard item={{ kind: "custom", customType: "t", text: "", contentHtml: "<p>F</p>", contentHtmlCollapsed: "<p>C</p>" }} />);
     expect(screen.getByTitle("Show details")).toBeInTheDocument();
   });
 
@@ -64,12 +63,12 @@ describe("CustomMessageCard", () => {
   });
 
   it("uses contentHtmlCollapsed for preview", () => {
-    render(<CustomMessageCard item={{ kind: "custom", customType: "t", contentHtml: "<p>Full</p>", contentHtmlCollapsed: "<p>Preview</p>" }} />);
+    render(<CustomMessageCard item={{ kind: "custom", customType: "t", text: "", contentHtml: "<p>Full</p>", contentHtmlCollapsed: "<p>Preview</p>" }} />);
     expect(screen.getByText("<p>Preview</p>")).toBeInTheDocument();
   });
 
   it("uses full contentHtml when expanded", () => {
-    render(<CustomMessageCard item={{ kind: "custom", customType: "t", contentHtml: "<p>Full</p>", contentHtmlCollapsed: "<p>Prev</p>" }} />);
+    render(<CustomMessageCard item={{ kind: "custom", customType: "t", text: "", contentHtml: "<p>Full</p>", contentHtmlCollapsed: "<p>Prev</p>" }} />);
     fireEvent.click(screen.getByTitle("Show details"));
     expect(screen.getByText("<p>Full</p>")).toBeInTheDocument();
   });

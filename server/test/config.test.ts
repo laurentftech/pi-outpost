@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { mkdtemp, rm, writeFile, mkdir } from "node:fs/promises";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, test } from "node:test";
@@ -20,6 +21,23 @@ import type { AppConfig, CliOptions } from "../src/config.ts";
 import { parseCli } from "../src/cli.ts";
 import { bundledMxcExecutor, mxcExecutorName, mxcSupportsArch } from "../src/mxcExecutor.ts";
 import { STRUCTURED_EXCHANGE_BYTES_CEILING_ANY } from "@pi-outpost/shared/structured-exchange/bounds";
+
+/**
+ * A complete configuration: loadConfig's own defaults, read from an empty file, with what a
+ * test is about laid over them. Built from the real loader rather than written out by hand,
+ * so a field added to AppConfig cannot leave these tests running on a configuration the
+ * server would never produce.
+ */
+function defaultConfig(overrides: Partial<AppConfig>): AppConfig {
+  const dir = mkdtempSync(path.join(tmpdir(), "pi-config-defaults-"));
+  const file = path.join(dir, "pi-outpost.json");
+  writeFileSync(file, "{}");
+  try {
+    return { ...loadConfig(dir, { config: file }, {}, { quiet: true }), ...overrides };
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
 
 // ---------------------------------------------------------------------------
 // fail
@@ -181,25 +199,7 @@ describe("optionalModelList", () => {
 // applyDirectories
 // ---------------------------------------------------------------------------
 describe("applyDirectories", () => {
-  const baseConfig = (): AppConfig =>
-    ({
-      configFile: "/tmp/test.json",
-      cwd: "/default",
-      noExtensions: false,
-      extensionPaths: [],
-      extensionScripts: [],
-      noSkills: false,
-      skillPaths: [],
-      noPromptTemplates: false,
-      promptPaths: [],
-      appendSystemPrompt: [],
-      webContext: true,
-      offline: false,
-      port: 3141,
-      host: "127.0.0.1",
-      allowedOrigins: [],
-      branding: {},
-    }) as AppConfig;
+  const baseConfig = (): AppConfig => defaultConfig({ configFile: "/tmp/test.json", cwd: "/default" });
 
   test("keeps defaults when nothing is overridden", () => {
     const config = baseConfig();
@@ -238,25 +238,7 @@ describe("applyDirectories", () => {
 // applyRuntime
 // ---------------------------------------------------------------------------
 describe("applyRuntime", () => {
-  const baseConfig = (): AppConfig =>
-    ({
-      configFile: "/tmp/test.json",
-      cwd: "/tmp",
-      noExtensions: false,
-      extensionPaths: [],
-      extensionScripts: [],
-      noSkills: false,
-      skillPaths: [],
-      noPromptTemplates: false,
-      promptPaths: [],
-      appendSystemPrompt: [],
-      webContext: true,
-      offline: false,
-      port: 3141,
-      host: "127.0.0.1",
-      allowedOrigins: [],
-      branding: {},
-    }) as AppConfig;
+  const baseConfig = (): AppConfig => defaultConfig({ configFile: "/tmp/test.json", cwd: "/tmp" });
 
   test("keeps defaults when nothing is set", () => {
     const config = baseConfig();
@@ -370,26 +352,7 @@ describe("applyRuntime", () => {
 // requireTokenOffLoopback
 // ---------------------------------------------------------------------------
 describe("requireTokenOffLoopback", () => {
-  const loopbackConfig = (host: string, token?: string): AppConfig =>
-    ({
-      configFile: "/tmp/test.json",
-      cwd: "/tmp",
-      host,
-      token,
-      noExtensions: false,
-      extensionPaths: [],
-      extensionScripts: [],
-      noSkills: false,
-      skillPaths: [],
-      noPromptTemplates: false,
-      promptPaths: [],
-      appendSystemPrompt: [],
-      webContext: true,
-      offline: false,
-      port: 3141,
-      allowedOrigins: [],
-      branding: {},
-    }) as AppConfig;
+  const loopbackConfig = (host: string, token?: string): AppConfig => defaultConfig({ configFile: "/tmp/test.json", cwd: "/tmp", host, token });
 
   test("allows loopback hosts without token", () => {
     for (const host of ["127.0.0.1", "::1", "localhost", "::ffff:127.0.0.1"]) {

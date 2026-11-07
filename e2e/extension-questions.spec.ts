@@ -1,7 +1,6 @@
 import path from "node:path";
 import { rm } from "node:fs/promises";
 import { expect, test, type Page } from "@playwright/test";
-// @ts-expect-error -- shared real-server integration harness is JavaScript
 import { connect, makeWorkspace, startServer } from "../server/test/harness.mjs";
 
 const extension = `export default pi => {

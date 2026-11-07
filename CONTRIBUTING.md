@@ -53,6 +53,11 @@ npm test --workspace ui
 ```
 
 The [quality guide](docs/quality.md) describes what these checks enforce and their limitations.
+`npm run typecheck` includes all TypeScript test suites, including server fixtures and
+Playwright support files. New test files in those directories are included automatically.
+Fix stale assertions and fixtures rather than silencing diagnostics. Lint rejects
+`@ts-ignore`, `@ts-nocheck` and `@ts-expect-error` without a description in UI sources,
+server tests and e2e. JavaScript tests are not type-checked.
 The full CI also exercises the other workspaces, packaging and platform-specific sandbox runners.
 Use `path.join`/`path.resolve` in portable tests, account for CRLF, and use the existing Windows
 process-launch helpers rather than invoking `npm.cmd` as an executable.

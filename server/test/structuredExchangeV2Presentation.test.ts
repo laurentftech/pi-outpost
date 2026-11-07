@@ -185,7 +185,8 @@ describe("locations and artifacts arrive whole and inert", () => {
   test("nothing is fetched to describe either of them", () => {
     // Stated as the absence of any resolved content: the model carries the link,
     // never anything read from the other end of it.
-    const artifact = described(extraction).rows?.[1].artifacts[0] as Record<string, unknown>;
+    const artifact = described(extraction).rows?.[1].artifacts[0];
+    assert.ok(artifact);
     assert.deepEqual(Object.keys(artifact).sort(), ["rel", "sha256", "uri"]);
   });
 });

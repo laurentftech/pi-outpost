@@ -21,7 +21,7 @@ function setup(overrides: Partial<Props> = {}) {
     file: pdfFile(),
     isStreaming: false,
     gitDiff: null,
-    gitAvailable: false,
+    inRepository: false,
     onDirtyChange: vi.fn(),
     onFetchGitDiff: vi.fn(),
     onClearGitDiff: vi.fn(),

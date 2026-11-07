@@ -1,7 +1,6 @@
 import path from "node:path";
 import { rm } from "node:fs/promises";
 import { expect, test } from "@playwright/test";
-// @ts-expect-error -- shared integration harness is JavaScript
 import { makeWorkspace, startServer } from "../server/test/harness.mjs";
 
 test("extension status ANSI styles survive folding, resizing and a fresh update after reload", async ({ page }, testInfo) => {

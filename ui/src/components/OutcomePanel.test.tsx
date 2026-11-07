@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { OutcomeState } from "../useAgent";
 import { OutcomePanel } from "./OutcomePanel";
 
-function loaded(): OutcomeState {
+function loaded(): Extract<NonNullable<OutcomeState>, { status: "loaded" }> {
   return {
     status: "loaded",
     requestId: "r",

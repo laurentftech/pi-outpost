@@ -79,7 +79,7 @@ describe("ExtensionWidgets", () => {
 
     const second = { btw: { lines: ["Title", "› one?", "answer one", "", "› two?", "answer two"], placement: "aboveEditor" as const } };
     rerender(<ExtensionWidgets widgets={second} placement="aboveEditor" controls={{ btw: control }} />);
-    expect(scrolls.at(-1)).toBe(3 * 16, "the latest question, fourth line of the region, is at its top");
+    expect(scrolls.at(-1), "the latest question, fourth line of the region, is at its top").toBe(3 * 16);
     // The blank separator is a line of its own height, not collapsed.
     expect(screen.getByLabelText("Side answer").children[2]!.className).toMatch(/min-h-4/);
     offset.mockRestore();

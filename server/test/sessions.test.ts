@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import { sanitizeName, hasBeenNamed, firstExchange, toSummary, snippetAround, searchSessions } from "../src/sessions.ts";
-import type { SessionEntry, SessionInfo } from "../src/sessions.ts";
+import type { SessionEntry, SessionInfo } from "@earendil-works/pi-coding-agent";
 // SessionSummary is from shared — just duck-type for tests
 
 // ---------------------------------------------------------------------------
@@ -70,7 +70,8 @@ describe("hasBeenNamed", () => {
   });
 
   test("returns false when no session_info entry exists", () => {
-    const entries = [{ type: "message" } as SessionEntry, { type: "tool_call" } as SessionEntry];
+    // Neither a name nor a message: a model change, one of the entries a real session holds.
+    const entries = [{ type: "message" } as SessionEntry, { type: "model_change" } as SessionEntry];
     assert.equal(hasBeenNamed(entries), false);
   });
 
@@ -97,7 +98,10 @@ describe("firstExchange", () => {
     ({ type: "message", message: { role: "user", content } }) as unknown as SessionEntry;
   const assistantMsg = (content: string) =>
     ({ type: "message", message: { role: "assistant", content } }) as unknown as SessionEntry;
-  const toolEntry = () => ({ type: "tool_call" }) as SessionEntry;
+  const toolEntry = (): SessionEntry => ({
+    type: "message", id: "tool-result", parentId: null, timestamp: new Date(0).toISOString(),
+    message: { role: "toolResult", toolCallId: "call", toolName: "read", content: [{ type: "text", text: "file contents" }], isError: false, timestamp: 0 },
+  });
 
   test("returns undefined for empty entries", () => {
     assert.equal(firstExchange([]), undefined);
