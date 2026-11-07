@@ -56,8 +56,8 @@ jobs:
           # what produces an executable, and it landed in 26.
           node-version: 26
           cache: npm
-      - name: Use npm 12.2.1
-        run: npm install -g npm@12.2.1
+      - name: Use the pinned npm
+        uses: ./.github/actions/setup-npm
       - run: npm ci
       # The executable inlines the built web UI, so the UI has to exist first
       - run: npm run build
@@ -120,8 +120,8 @@ jobs:
           cache: npm
           registry-url: https://registry.npmjs.org
 
-      - name: Use npm 12.2.1
-        run: npm install -g npm@12.2.1
+      - name: Use the pinned npm
+        uses: ./.github/actions/setup-npm
       # Explicit install-script policy is shared with local npm 12 installs.
       - run: npm ci
 
@@ -190,8 +190,8 @@ jobs:
           node-version: 26
           cache: npm
 
-      - name: Use npm 12.2.1
-        run: npm install -g npm@12.2.1
+      - name: Use the pinned npm
+        uses: ./.github/actions/setup-npm
       # Build the SEA blob (Node 26, --experimental-sea-config pour le blob cross-platform)
       - run: npm run build:sea --workspace server
 
@@ -249,8 +249,8 @@ jobs:
         with:
           node-version: 24
           cache: npm
-      - name: Use npm 12.2.1
-        run: npm install -g npm@12.2.1
+      - name: Use the pinned npm
+        uses: ./.github/actions/setup-npm
       - run: npm ci
       - run: npm run pack --workspace @pi-outpost/mcp
       - run: npm run test:bundle --workspace @pi-outpost/mcp
@@ -361,8 +361,8 @@ jobs:
         with:
           node-version: 24
           cache: npm
-      - name: Use npm 12.2.1
-        run: npm install -g npm@12.2.1
+      - name: Use the pinned npm
+        uses: ./.github/actions/setup-npm
       - run: npm ci --workspaces=false --ignore-scripts --no-audit --no-fund
       - run: npx playwright install --with-deps chromium
       - name: Build the full application image (Linux x64)
@@ -417,8 +417,8 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 24
-      - name: Use npm 12.2.1
-        run: npm install -g npm@12.2.1
+      - name: Use the pinned npm
+        uses: ./.github/actions/setup-npm
       # image.sh runs node on the runner, not only in the container: it draws its test
       # picture with @napi-rs/canvas and reads the document back with tsx. CI installs
       # the dependencies before it; without this the check died here on v0.36.0, with

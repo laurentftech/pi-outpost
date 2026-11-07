@@ -3,4 +3,7 @@
 !config.json
 !entrypoint.sh
 !landstrip.cjs
+!npm/package.json
+!npm/package-lock.json
+!npm/.npmrc
 !pi-outpost.tgz

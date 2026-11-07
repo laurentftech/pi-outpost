@@ -69,6 +69,33 @@ SDK no-op and protobufjs version advisory. `.npmrc` rejects unreviewed scripts. 
 Playwright container tag in `.github/workflows/ci.yml` aligned with the locked
 `@playwright/test` version.
 
+### The pinned npm
+
+CI, the release workflow and the Dockerfiles do not run `npm install -g npm@12.2.1`: that
+fetches whatever the registry serves under that version. They install npm from
+[`tools/npm`](../tools/npm/package.json) with `npm ci`, so the tarball is checked against the
+integrity hash in its `package-lock.json`, and put `tools/npm/node_modules/.bin` first on
+`PATH`. Workflows use the [`setup-npm`](../.github/actions/setup-npm/action.yml) action,
+which also fails if the `npm` on `PATH` is not the pinned version.
+
+`tools/npm/.npmrc` sets `allow-remote=all` for that project only. npm 12 reads the
+dependencies npm bundles from its release tarball by URL, which its default
+`allow-remote=none` refuses; the tarball is still verified against the lockfile hash.
+
+`deploy/docker` is built with its own directory as the context, so it carries an identical
+copy in `deploy/docker/npm`. `npm run test:scripts` fails if the copies differ, if the pinned
+version differs from `packageManager`, or if a workflow or Dockerfile installs npm by version.
+
+To move to another npm version, change it in `tools/npm/package.json`, then:
+
+```bash
+npx -y npm@<version> install --package-lock-only --prefix tools/npm --allow-remote=all
+cp tools/npm/package.json tools/npm/package-lock.json deploy/docker/npm/
+```
+
+and update `packageManager`, `engines.npm` and the version named in this guide,
+[CONTRIBUTING.md](../CONTRIBUTING.md) and the `deploy/docker/test.mjs` check, in one commit.
+
 The browser CI container needs both `build-essential` and `python3` to compile
 `node-pty` on Linux. Its install step shows lifecycle output and checks that the
 native terminal binding loads before building: npm can silently omit this optional

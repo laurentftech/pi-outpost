@@ -7,7 +7,11 @@ COPY --from=node /usr/local/lib/node_modules /usr/local/lib/node_modules
 RUN ln -s /usr/local/lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
   && ln -s /usr/local/lib/node_modules/npm/bin/npx-cli.js /usr/local/bin/npx
 RUN dnf install -y -q epel-release && dnf install -y -q bubblewrap slirp4netns iptables-nft iproute git ca-certificates python3 make gcc-c++ findutils procps-ng && dnf clean all
-RUN (update-alternatives --set iptables /usr/sbin/iptables-nft 2>/dev/null || true) && npm install -g npm@12.2.1
+RUN (update-alternatives --set iptables /usr/sbin/iptables-nft 2>/dev/null || true)
+# The pinned npm, verified against its lockfile hash (docs/development.md#the-pinned-npm).
+COPY tools/npm/package.json tools/npm/package-lock.json tools/npm/.npmrc /opt/npm/
+RUN npm ci --prefix /opt/npm --no-audit --no-fund
+ENV PATH=/opt/npm/node_modules/.bin:$PATH
 RUN useradd -m node
 WORKDIR /app
 COPY . .

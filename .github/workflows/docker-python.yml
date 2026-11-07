@@ -27,8 +27,8 @@ jobs:
         with:
           node-version: 24
           cache: npm
-      - name: Use npm 12.2.1
-        run: npm install -g npm@12.2.1
+      - name: Use the pinned npm
+        uses: ./.github/actions/setup-npm
       # Only the browser client is needed on the host; the app and its native
       # dependencies are installed and exercised inside the Docker image.
       - run: npm ci --workspaces=false --ignore-scripts --no-audit --no-fund

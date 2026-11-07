@@ -97,8 +97,8 @@ jobs:
         with:
           node-version: 24
           cache: npm
-      - name: Use npm 12.2.1
-        run: npm install -g npm@12.2.1
+      - name: Use the pinned npm
+        uses: ./.github/actions/setup-npm
       - run: npm ci
       - run: npm run typecheck
       - run: npm run build --workspace @pi-outpost/embed
@@ -213,7 +213,8 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 24
-      - run: npm install -g npm@12.2.1
+      - name: Use the pinned npm
+        uses: ./.github/actions/setup-npm
       - run: npm ci --foreground-scripts
       - run: npm run build --workspace cli
       - run: npm run test:npm-install
@@ -248,8 +249,8 @@ jobs:
         with:
           node-version: 24
           cache: npm
-      - name: Use npm 12.2.1
-        run: npm install -g npm@12.2.1
+      - name: Use the pinned npm
+        uses: ./.github/actions/setup-npm
       # node-pty is optional for users, but this job must exercise the terminal.
       # Keep native build failures visible instead of discovering missing types
       # in the subsequent TypeScript build.
@@ -328,8 +329,8 @@ jobs:
         with:
           node-version: 24
           cache: npm
-      - name: Use npm 12.2.1
-        run: npm install -g npm@12.2.1
+      - name: Use the pinned npm
+        uses: ./.github/actions/setup-npm
       - run: npm ci --workspace server --workspace shared --workspace office --include-workspace-root=false
       - run: bash scripts/mxc-macos/test.sh
 
