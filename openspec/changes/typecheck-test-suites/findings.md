@@ -20,3 +20,19 @@ for those declarations; compilation alone cannot prove their accuracy.
 
 The progress-demo fixture now follows the actual tool contract (`label`, result `details`;
 partial updates are identified by the update callback, not an extra result field).
+
+## Can the corrected assertions fail?
+
+Verified on 2026-11-07 using isolated copies of the production modules and test files:
+
+- Enable optional Git locks: “a status leaves the index exactly as it found it” fails
+  on the index modification time.
+- Accept a tool result as the first assistant reply: “skips tool calls between user
+  and assistant” fails because `assistant: Done!` is absent.
+- Force an outbound confirmation to false: “queues dialogs and drops the answered
+  one” fails on the exact `extension_ui_response` frame.
+- Invent progress zero for a text-only update: “does not set progress from a text-only
+  tool_update” fails on the undefined-progress assertion.
+
+All four expected failures were observed. Temporary copies were removed, and the actual
+production modules were never changed for these controls.

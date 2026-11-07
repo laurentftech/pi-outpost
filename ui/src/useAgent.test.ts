@@ -2308,6 +2308,7 @@ describe("extension UI", () => {
     await waitFor(() => expect(result.current.state.dialogQueue).toHaveLength(2));
 
     act(() => result.current.respondToDialog({ id: "d1", confirmed: true }));
+    expect(JSON.parse(mockWs!.sent.at(-1)!)).toEqual({ type: "extension_ui_response", id: "d1", confirmed: true });
     await waitFor(() => expect(result.current.state.dialogQueue).toHaveLength(1));
     expect(result.current.state.dialogQueue[0].id).toBe("d2");
   });
