@@ -4,6 +4,9 @@
     "target": "ES2023",
     "module": "esnext",
     "moduleResolution": "bundler",
+    "paths": {
+      "@pi-outpost/embed": ["../embed/src/mount.tsx"]
+    },
     "lib": ["ES2023", "DOM", "DOM.Iterable"],
     "types": ["node"],
     "jsx": "react-jsx",

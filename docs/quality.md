@@ -18,9 +18,7 @@ workflow and [SECURITY.md](../SECURITY.md) for private vulnerability reports.
 | Packaging and confinement | CLI install, container, MCP bundle and native sandbox tests | Exercises installed/native artifacts and refusals. Some jobs run only on specific platforms or changed paths; use their actual result for the change. |
 | Install and publication policy | `.npmrc`, root `allowScripts`, release workflow | npm 12.2.1 rejects unreviewed install scripts; npm publication uses GitHub OIDC/provenance. Dependencies and upstream advisories still need review. |
 
-## What the coverage badge means
-
-### Tests are type-checked
+## Tests are type-checked
 
 `npm run typecheck` checks server sources and TypeScript tests through
 `server/tsconfig.test.json`, UI sources and tests through `ui/tsconfig.json`, and
@@ -33,6 +31,11 @@ and verifies that new ill-typed files fail the check. Lint rejects `@ts-ignore`,
 `@ts-nocheck` and unexplained `@ts-expect-error` comments in the UI, server tests and e2e.
 Type checking complements runtime assertions; it cannot prove that a test observes the
 right behaviour or that an untyped helper's declaration matches its implementation.
+
+The e2e compiler resolves the embed package's API from its source, so type checking
+works before the package is built. Browser tests still import its built public entry point.
+
+## What the coverage badge means
 
 Server coverage instruments the `.test.ts` unit suites. It excludes `server/src/index.ts`,
 `server/src/embeddedRuntime.ts`, generated code and the bundled reference validator. The `.mjs`

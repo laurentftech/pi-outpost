@@ -15,7 +15,7 @@ import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { describe, test } from "node:test";
-import { ROOT, SUITES, trackedFiles, tsc, uncheckedFiles } from "./test-typecheck-suites.mjs";
+import { ROOT, SUITES, checkedFiles, trackedFiles, tsc, uncheckedFiles } from "./test-typecheck-suites.mjs";
 
 const OXLINT = path.join(path.dirname(createRequire(import.meta.url).resolve("oxlint/package.json")), "bin", "oxlint");
 
@@ -84,6 +84,12 @@ test("NoCeilingOnceClean: every suite uses the compiler directly, with no transi
     assert.equal(existsSync(path.join(ROOT, file)), false, `${file} must not tolerate errors in a clean suite`);
   }
   assert.match(readFileSync(path.join(ROOT, "docs/quality.md"), "utf8"), /no tolerated type-error ceiling/i);
+});
+
+test("e2e typechecking resolves the embed API from source before any package build", () => {
+  const files = checkedFiles("e2e/tsconfig.json");
+  assert.ok(files.has("embed/src/mount.tsx"), "the host's package import must resolve without generated dist declarations");
+  assert.ok(![...files].some((file) => file.startsWith("embed/dist/")), "typechecking must not rely on a previous embed build");
 });
 
 describe("silencing the type checker in a test", () => {
