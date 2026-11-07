@@ -7,9 +7,9 @@ error count on current `main` before starting its group (the counts in design.md
 
 ## 1. Proof tooling (no suite enabled yet)
 
-- [ ] 1.1 Add a script test, run by `npm run test:scripts`, that for a given suite configuration lists the files `tsc --listFilesOnly` includes and fails when a tracked TypeScript test file of that suite (`git ls-files`) is missing; verify it fails on a deliberately excluded file and passes otherwise
-- [ ] 1.2 Add fixture-based script tests that write a tiny ill-typed test file into a temporary copy of a suite configuration and assert `tsc` exits non-zero naming that file; verify each fails if the configuration stops including the file
-- [ ] 1.3 Add the narrow lint step (`typescript/ban-ts-comment`: `ts-ignore`/`ts-nocheck` banned, described `ts-expect-error` allowed) over `ui/src`, `server/test` and `e2e`, hooked into the existing `lint` scripts; add fixture tests proving `// @ts-ignore` and an undescribed `// @ts-expect-error` make `npm run lint` fail (scenarios IgnoreCommentInTestIsRefused, UnexplainedExpectErrorIsRefused); verify `npm run lint` passes on `main`'s current tests
+- [x] 1.1 Add a script test, run by `npm run test:scripts`, that for a given suite configuration lists the files `tsc --listFilesOnly` includes and fails when a tracked TypeScript test file of that suite (`git ls-files`) is missing; verify it fails on a deliberately excluded file and passes otherwise
+- [x] 1.2 Add fixture-based script tests that write a tiny ill-typed test file into a temporary copy of a suite configuration and assert `tsc` exits non-zero naming that file; verify each fails if the configuration stops including the file
+- [x] 1.3 Add the narrow lint step (`typescript/ban-ts-comment`: `ts-ignore`/`ts-nocheck` banned, described `ts-expect-error` allowed) over `ui/src`, `server/test` and `e2e`, hooked into the existing `lint` scripts; add fixture tests proving `// @ts-ignore` and an undescribed `// @ts-expect-error` make `npm run lint` fail (scenarios IgnoreCommentInTestIsRefused, UnexplainedExpectErrorIsRefused); verify `npm run lint` passes on `main`'s current tests
 
 ## 2. Server tests
 
