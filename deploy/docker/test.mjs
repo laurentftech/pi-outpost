@@ -120,7 +120,7 @@ try {
   assert.ok(!inspected.Config.Env.some(value => /^PI_OUTPOST_TOKEN=/.test(value)));
   console.log("KeepsTheDockerDaemonOutsideTheApp passed");
   // openlore: scenario=UsesPinnedNpmWithNativeBindings spec=docker-python-deployment
-  assert.equal(docker(["exec", container, "npm", "--version"]).trim(), "12.2.1");
+  assert.equal(docker(["exec", container, "npm", "--version"]).trim(), "12.2.2");
   assert.equal(docker(["exec", container, "pi-outpost", "--version"]).trim(), process.env.PI_OUTPOST_TEST_VERSION ?? "0.59.1");
   const logs = compose(["logs", "--no-color"]);
   assert.match(logs, /\[ok  \] shell sandbox\s+confined by/);

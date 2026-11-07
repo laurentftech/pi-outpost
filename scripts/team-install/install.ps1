@@ -13,7 +13,7 @@ if (-not (Test-Path $Policy)) { throw "Policy file not found: $Policy" }
 
 $taskNpmVersion = npm --version
 if ($LASTEXITCODE -ne 0 -or $taskNpmVersion -notmatch '^12\.') {
-  throw "This installer requires npm 12. Install it with: npm install -g npm@12.2.1"
+  throw "This installer requires npm 12. Install it with: npm install -g npm@12.2.2"
 }
 
 # pi's own installer, fetched by npx: it records a package in $agentDir, where

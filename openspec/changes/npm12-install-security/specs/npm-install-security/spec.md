@@ -1,7 +1,7 @@
 ## ADDED Requirements
 
 ### Requirement: ReviewedRepositoryScriptPolicy
-The repository SHALL use pinned npm 12.2.1 and explicitly review dependency lifecycle scripts.
+The repository SHALL use pinned npm 12.2.2 and explicitly review dependency lifecycle scripts.
 An unreviewed script SHALL fail repository installation before execution.
 
 #### Scenario: UnreviewedRepositoryScriptsFailClosed

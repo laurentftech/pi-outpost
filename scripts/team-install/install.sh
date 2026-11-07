@@ -18,7 +18,7 @@ agent_dir=${PI_OUTPOST_AGENT_DIR:-"$HOME/.pi/agent"}
 task_npm_version=$(npm --version)
 case "$task_npm_version" in
   12.*) ;;
-  *) echo "This installer requires npm 12. Install it with: npm install -g npm@12.2.1" >&2; exit 1 ;;
+  *) echo "This installer requires npm 12. Install it with: npm install -g npm@12.2.2" >&2; exit 1 ;;
 esac
 
 # pi's own installer, fetched by npx: it records a package in $agent_dir, where

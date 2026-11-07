@@ -20,7 +20,7 @@ One Node process runs the agent and serves the interface. Work across projects w
 
 ## Start in 5 minutes
 
-You need **Node.js 24.15+ (or 26+) and npm 12.2.1** and a model provider account or API key. The pi SDK is bundled; no separate pi installation is needed.
+You need **Node.js 24.15+ (or 26+) and npm 12.2.2** and a model provider account or API key. The pi SDK is bundled; no separate pi installation is needed.
 
 In the project you want the agent to work on:
 
