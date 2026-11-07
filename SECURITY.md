@@ -22,6 +22,11 @@ Maintainers assess reports and coordinate fixes and disclosure through the priva
 Response and remediation times depend on availability and impact; no fixed deadline is promised.
 Please agree on disclosure timing through that channel rather than publishing an unreviewed exploit.
 
+When a confirmed vulnerability in pi-outpost is fixed, the advisory is published with its GHSA
+identifier and a CVE requested through GitHub, and the release that ships the fix names it in a
+**Security** section of its release notes ([CHANGELOG.md](CHANGELOG.md), which is also the GitHub
+Release's notes), with those identifiers, the affected versions and the fixed version.
+
 ## Supported versions
 
 Security fixes target the **latest stable release**. Older releases have no guaranteed backports;
