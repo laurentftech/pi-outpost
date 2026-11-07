@@ -79,23 +79,25 @@ export function hasBeenNamed(entries: SessionEntry[]): boolean {
   return entries.some((entry) => entry.type === "session_info");
 }
 
-/** The first user message and its reply — all a title needs, and all we pay the model for. */
+/**
+ * The first user message and its reply — all a title needs, and all we pay the model for.
+ *
+ * The reply is the first assistant message that says something. A turn that starts by
+ * calling a tool records an assistant message holding only that call, then the tool's
+ * result, then the answer: the call has no text to title from, and the tool's output is
+ * not the conversation, so both are passed over. A turn that only called tools has no
+ * reply yet, and the session waits for a later turn to be named.
+ */
 export function firstExchange(entries: SessionEntry[]): string | undefined {
   const message = (entry: SessionEntry): { role?: string; content?: unknown } | undefined =>
     entry.type === "message" ? (entry as { message?: { role?: string; content?: unknown } }).message : undefined;
+  const text = (entry: SessionEntry) => contentText(message(entry)?.content as never).slice(0, EXCHANGE_MESSAGE_LENGTH);
   const firstUser = entries.findIndex((entry) => message(entry)?.role === "user");
   if (firstUser === -1) return undefined;
-  const reply = entries.findIndex((entry, i) => i > firstUser && message(entry)?.role === "assistant");
+  const reply = entries.findIndex((entry, i) => i > firstUser && message(entry)?.role === "assistant" && text(entry) !== "");
   if (reply === -1) return undefined;
-  return entries
-    .slice(firstUser, reply + 1)
-    .flatMap((entry) => {
-      const content = message(entry);
-      if (!content?.role) return [];
-      const text = contentText(content.content as never).slice(0, EXCHANGE_MESSAGE_LENGTH);
-      return text ? [`${content.role}: ${text}`] : [];
-    })
-    .join("\n\n");
+  const question = text(entries[firstUser]);
+  return [...(question ? [`user: ${question}`] : []), `assistant: ${text(entries[reply])}`].join("\n\n");
 }
 
 /**
