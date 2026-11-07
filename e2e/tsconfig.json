@@ -8,7 +8,7 @@
       "@pi-outpost/embed": ["../embed/src/mount.tsx"]
     },
     "lib": ["ES2023", "DOM", "DOM.Iterable"],
-    "types": ["node"],
+    "types": ["node", "vite/client"],
     "jsx": "react-jsx",
     "strict": true,
     "allowImportingTsExtensions": true,

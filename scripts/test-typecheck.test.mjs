@@ -90,6 +90,8 @@ test("e2e typechecking resolves the embed API from source before any package bui
   const files = checkedFiles("e2e/tsconfig.json");
   assert.ok(files.has("embed/src/mount.tsx"), "the host's package import must resolve without generated dist declarations");
   assert.ok(![...files].some((file) => file.startsWith("embed/dist/")), "typechecking must not rely on a previous embed build");
+  const result = tsc(["-p", "e2e/tsconfig.json", "--pretty", "false"]);
+  assert.equal(result.status, 0, result.output);
 });
 
 describe("silencing the type checker in a test", () => {
