@@ -16,6 +16,6 @@ export default defineConfig({
     assetsInlineLimit: Number.MAX_SAFE_INTEGER,
     modulePreload: false,
     target: "es2022",
-    rollupOptions: { input: "poster.html", output: { inlineDynamicImports: true } },
+    rollupOptions: { input: "poster.html", output: { codeSplitting: false } },
   },
 });

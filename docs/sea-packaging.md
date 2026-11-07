@@ -30,7 +30,9 @@ Skip this and it fails closed rather than misleadingly: `Permission denied`, exi
 126, nothing about signing or Gatekeeper. Windows needs no equivalent — a `.exe`
 carries no execute bit to lose.
 
-**Verify a download.** Releases after v0.60.1 carry a signed
+### Verify a download
+
+Releases after v0.60.1 carry a signed
 [SLSA build provenance](https://slsa.dev/provenance/) attestation for every attached
 file: it proves the file was built by this repository's release workflow from the
 tagged commit. With the GitHub CLI:
