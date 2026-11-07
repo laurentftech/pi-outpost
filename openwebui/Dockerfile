@@ -9,7 +9,10 @@
 # See docs/openwebui.md.
 
 FROM node:24-slim@sha256:01d566e8d94d8c619591d78652babfccd3c6992a3dffa9ed5ab39e11cf6c70e9 AS build
-RUN npm install -g npm@12.2.1
+# The pinned npm, verified against its lockfile hash (docs/development.md#the-pinned-npm).
+COPY tools/npm/package.json tools/npm/package-lock.json tools/npm/.npmrc /opt/npm/
+RUN npm ci --prefix /opt/npm --no-audit --no-fund
+ENV PATH=/opt/npm/node_modules/.bin:$PATH
 WORKDIR /repo
 # Every workspace's manifest, so `npm ci` sees the same workspace graph as the lockfile.
 COPY package.json package-lock.json .npmrc ./

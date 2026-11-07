@@ -1,0 +1,23 @@
+name: Use the pinned npm
+description: >-
+  Installs the npm the project builds with from tools/npm/package-lock.json, verified against
+  its integrity hash, and puts it first on PATH. See docs/development.md#the-pinned-npm.
+runs:
+  using: composite
+  steps:
+    - name: Install the pinned npm
+      shell: bash
+      # A job that switches Node versions calls this twice; the installed npm is kept,
+      # since setup-node put its own npm ahead of it and PATH is simply restored.
+      run: |
+        if [ ! -e "$GITHUB_WORKSPACE/tools/npm/node_modules/npm/package.json" ]; then
+          npm ci --prefix "$GITHUB_WORKSPACE/tools/npm" --no-audit --no-fund
+        fi
+        echo "$GITHUB_WORKSPACE/tools/npm/node_modules/.bin" >> "$GITHUB_PATH"
+    - name: Check the npm on PATH
+      shell: bash
+      run: |
+        expected=$(node -p 'require(process.argv[1]).dependencies.npm' "$GITHUB_WORKSPACE/tools/npm/package.json")
+        actual=$(npm --version)
+        echo "npm $actual"
+        test "$actual" = "$expected" || { echo "::error::npm on PATH is $actual, expected $expected"; exit 1; }

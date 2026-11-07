@@ -15,7 +15,10 @@ RUN --mount=type=secret,id=proxy_ca \
     apt-get update \
  && apt-get install -y --no-install-recommends bash ca-certificates curl git python3 python3-pip python3-venv make g++ \
  && if [ -f /run/secrets/proxy_ca ]; then export NODE_EXTRA_CA_CERTS=/run/secrets/proxy_ca; fi \
- && npm install -g npm@12.2.1 \
+ && cp -r /recipe/npm /opt/npm \
+ && npm ci --prefix /opt/npm --no-audit --no-fund \
+ && export PATH=/opt/npm/node_modules/.bin:$PATH \
+ && test "$(npm --version)" = "$(node -p 'require("/opt/npm/package.json").dependencies.npm')" \
  && npm install -g --prefix /opt/pi-outpost --allow-scripts=node-pty,koffi --no-audit --no-fund "${PI_OUTPOST_PACKAGE:-pi-outpost@${PI_OUTPOST_VERSION}}" \
  && test "$(node -p 'require("/opt/pi-outpost/lib/node_modules/pi-outpost/package.json").version')" = "${PI_OUTPOST_VERSION}" \
  && case "${TARGETARCH}" in amd64) arch=x64 ;; arm64) arch=arm64 ;; *) echo 'Use linux/amd64 or linux/arm64' >&2; exit 1 ;; esac \
@@ -40,7 +43,7 @@ RUN --mount=type=secret,id=proxy_ca \
  && chmod 755 /opt/pi-outpost-docker/entrypoint.sh \
  && npm cache clean --force \
  && rm -rf /var/lib/apt/lists/* /root/.cache /tmp/*.tgz
-ENV PATH=/opt/pi-outpost/bin:/opt/landstrip/bin:$PATH \
+ENV PATH=/opt/pi-outpost/bin:/opt/landstrip/bin:/opt/npm/node_modules/.bin:$PATH \
     XDG_CONFIG_HOME=/data/config \
     XDG_CACHE_HOME=/data/cache
 USER node
