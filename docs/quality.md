@@ -56,15 +56,36 @@ does not make its result mandatory before merging.
 This is a snapshot of that ruleset; legacy branch-protection settings were not readable through
 the available API access and must also be checked by a repository administrator.
 
-The proposed required checks are the always-run CI jobs:
+The proposed required checks are:
 
-- `check (ubuntu-latest)` and `check (windows-latest)`;
-- `browser`;
-- `npm-install (ubuntu-latest)`, `npm-install (windows-latest)` and `npm-install (macos-latest)`;
-- `mxc-linux` and `mxc-macos`;
+- `CI ok`, the CI job that waits for all the others (`check`, `npm-install`, `browser`,
+  `mxc-linux`, `mxc-macos`) and fails if any of them failed or was cancelled;
 - `Analyze (actions)`, `Analyze (csharp)` and `Analyze (javascript-typescript)`.
 
+Requiring `CI ok` rather than each job keeps the rule valid when jobs are added, and does not
+wait forever on a matrix job that was skipped (a skipped matrix reports no per-platform check).
+
 Do not make the path-filtered Docker recipe job a universal requirement: it can be absent on an
-unrelated PR. Review approval count, administrator exceptions and whether the branch must be up
+unrelated PR.
+
+### Documentation-only pull requests
+
+A pull request that only changes documentation skips the test jobs; `CI ok` passes once the
+classification has run, and CodeQL still runs, so such a PR can merge in minutes rather than
+waiting for the full suites. A push to `main` always runs everything.
+
+The CI's `changes` job decides. Documentation only means: `README.md`, `CONTRIBUTING.md`,
+`SECURITY.md`, `CLAUDE.md`, `AGENTS.md`, the issue and pull request templates, and files under
+`docs/` whose path no other file names. Everything else runs the full CI, including `openspec/`
+(the scenario-coverage check), `skills/` and `CHANGELOG.md`, which tests read and the packages
+ship.
+
+Some `docs/` pages are contracts: tests validate the examples in the structured-exchange guides,
+and the CLI build copies them into the package. The classification recognises them because those
+tests and scripts name them by full path. So **a test or script that reads a file under `docs/`
+must spell its repository path in full** (`"docs/<page>.md"`), not assemble it from parts: a
+page named that way is always tested; one reached through `path.join("docs", name)` would be
+skipped on a documentation-only PR. A mention in a code comment or a user-facing link also counts
+as naming a page; that only makes such a page's PRs run the full CI. Review approval count, administrator exceptions and whether the branch must be up
 to date are repository governance decisions. Verify the live ruleset when reviewing enforcement;
 this document does not change those settings or claim an independent review already happened.
