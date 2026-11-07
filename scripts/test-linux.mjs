@@ -36,7 +36,7 @@
  *   npm run test:linux -- npm test --workspace server   # one step, when iterating
  *   npm run test:linux -- --fresh         # ignore the dependency cache
  */
-import { execFileSync, spawnSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import path from "node:path";

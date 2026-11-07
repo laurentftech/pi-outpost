@@ -175,10 +175,6 @@ export interface SlideContent {
   visuals: SlideVisuals;
 }
 
-function isVisualEmpty(visuals: SlideVisuals): boolean {
-  return visuals.images === 0 && visuals.charts === 0 && visuals.diagrams === 0 && visuals.media === 0;
-}
-
 /** "2 images and 1 chart" — the unread content, named rather than implied. */
 export function describeVisuals(visuals: SlideVisuals): string {
   const parts: string[] = [];

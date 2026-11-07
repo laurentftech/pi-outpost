@@ -13,8 +13,6 @@
  * memory is a measurement and not a contract.
  */
 import { execFileSync } from "node:child_process";
-import { mkdtemp, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
 import path from "node:path";
 import { connect, makeWorkspace, startServer } from "../server/test/harness.mjs";
 

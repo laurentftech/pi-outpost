@@ -22,13 +22,11 @@ import { escapeCell } from "./markdownTable.ts";
 import {
   contentTypeOf,
   decode,
-  directoryOf,
   localName,
   parseRelationshipList,
   relationshipIdOf,
   relativeTarget,
   relsPartOf,
-  resolvePart,
   scanRawRelationships,
 } from "./ooxml.ts";
 import { IMAGE_CONTENT_TYPES, type ImageInfo, type ImageKind } from "./imageInfo.ts";

@@ -15,7 +15,7 @@
 import { pictureMarker, type FoundPicture, type PictureMarker } from "./extractedPictures.ts";
 import { IMAGE_CONTENT_TYPES, readImageInfo } from "@pi-outpost/office/imageInfo.ts";
 import { renderSpans, struckThroughNotice, BOLD, ITALIC, STRIKE, type Span } from "./markdownSpans.ts";
-import { escapeCell, renderMarkdownTable } from "@pi-outpost/office/markdownTable.ts";
+import { renderMarkdownTable } from "@pi-outpost/office/markdownTable.ts";
 import { parseRelationshipList, relsPartOf } from "@pi-outpost/office/ooxml.ts";
 import { scanXml, XmlError } from "@pi-outpost/office/xml.ts";
 import { readZipEntry, ZipError, type ZipLimits } from "@pi-outpost/office/zip.ts";

@@ -12,18 +12,16 @@
  */
 
 import assert from "node:assert/strict";
-import { readFile, realpath, unlink, writeFile } from "node:fs/promises";
+import { realpath, writeFile } from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
 import { connect, makeWorkspace, startServer } from "./harness.mjs";
 import {
-  RETIREMENT_TIMEOUT_MS,
   next,
   secondProject,
   seedSession,
   sessionsDirOf,
   startScriptedServer,
-  wait,
 } from "./multiProjectHarness.mjs";
 
 const reviewPlan = (id) => ({
