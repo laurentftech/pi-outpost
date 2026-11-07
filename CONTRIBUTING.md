@@ -40,8 +40,8 @@ the change deliberately updates it; avoid unrelated formatting and dependency ch
 
 New or changed behaviour comes with automated tests in the relevant suite, and a bug fix with a
 test that fails without it. A test must assert the outcome (in the UI suites, lint refuses a test
-with no assertion). Where the change has OpenSpec scenarios, CI also checks that each one is mapped to its
-test (see below).
+with no assertion). Where the change has OpenSpec scenarios, CI also checks that each one is
+mapped to its test (see below).
 
 Run the checks relevant to the change. These are the common starting points:
 
