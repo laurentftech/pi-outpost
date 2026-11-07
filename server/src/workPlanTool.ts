@@ -1,7 +1,6 @@
 import { Type, type TSchema } from "typebox";
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 import {
-  WORK_PLAN_ACTIONS,
   WORK_PLAN_CREATE_MAX_DEPTH,
   WORK_PLAN_EVIDENCE_RESULTS,
   WORK_PLAN_LIMITS,

@@ -1,0 +1,6 @@
+name: pi-outpost CodeQL config
+
+# Generated from shared/schemas/*.json by shared/scripts/generate-structured-exchange-check.mjs.
+# A finding there is fixed in the generator; the output itself is never edited by hand.
+paths-ignore:
+  - shared/src/generated/**

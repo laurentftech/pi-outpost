@@ -11,7 +11,7 @@
  */
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { parseSerializedStructuredExchange, parseStructuredExchange } from "@pi-outpost/shared/structured-exchange/parse";
+import { parseSerializedStructuredExchange } from "@pi-outpost/shared/structured-exchange/parse";
 import { checkStructuredExchangeSchema } from "@pi-outpost/shared/structured-exchange/schema-node";
 import {
   bytesCeilingFor,
@@ -22,7 +22,6 @@ import {
 } from "@pi-outpost/shared/structured-exchange/bounds";
 import {
   STRUCTURED_EXCHANGE_BYTES_CEILING_2,
-  STRUCTURED_EXCHANGE_CEILINGS,
   STRUCTURED_EXCHANGE_CEILINGS_2,
   STRUCTURED_EXCHANGE_SCHEMA_V1,
   STRUCTURED_EXCHANGE_SCHEMA_V2,

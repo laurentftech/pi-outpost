@@ -79,7 +79,6 @@ import os from "node:os";
 import path from "node:path";
 import { createInterface } from "node:readline/promises";
 import { runCliProviderLogin, runCliProviderLogout, type CliAccountRuntime } from "./cliAccounts.ts";
-import { pathToFileURL } from "node:url";
 import { CliError, helpText, parseCli, readSecret, runInit } from "./cli.ts";
 import { readFileSafely } from "./readFileSafely.ts";
 import { createBtwExtension } from "./btwExtension.ts";
@@ -104,7 +103,7 @@ import {
   unconfinedShellVerdict,
 } from "./confinementStatus.ts";
 import { readPrompt, runPrintTurn } from "./printMode.ts";
-import { checkRunner, gitReadOnlyFiles, isPosixMxc, mxcPosixConfig, mxcTerminalConfig, seatbeltPolicy, runnerKind, siblingsToDeny, terminalPolicy, userGitConfig, type RunnerCheck } from "./terminalSandbox.ts";
+import { checkRunner, type RunnerCheck } from "./terminalSandbox.ts";
 import { isPowerShell } from "./confinedBash.ts";
 import { browsableUrl, openBrowser, shouldOpenBrowser } from "./openBrowser.ts";
 import {
@@ -149,9 +148,7 @@ import {
   CredentialSyncError,
   knownProviders,
   type ProviderDeclaration,
-  providerConfig,
   storeApiKey,
-  storeProvider,
   tlsHint,
   validBaseUrl,
   validProviderId,
@@ -264,7 +261,6 @@ import {
 } from "./sandbox.ts";
 import {
   firstExchange,
-  generateSessionTitle,
   hasBeenNamed,
   MAX_NAME_LENGTH,
   MAX_QUERY_LENGTH,
@@ -2613,7 +2609,6 @@ function announceWorkspaceActivity(): void {
 }
 
 /** Sandbox paths to announce after updating. */
-let lastAnnouncedSandbox: { root: string; allowWrite: boolean; allowBash: boolean; writableRoot?: string } | undefined;
 
 /**
  * Describe one project's state for a client bound to it.

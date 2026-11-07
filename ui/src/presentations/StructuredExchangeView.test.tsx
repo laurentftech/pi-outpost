@@ -1512,7 +1512,6 @@ describe("what an export of a filtered view claims", () => {
       edges: [{ from: "fresh", to: "store", kind: "writes" }],
     },
   };
-  const entry = (key: string) => document.querySelector(`[data-legend-entry="${key}"]`)!;
 
   /**
    * The decision, stated once: an export carries the view the reader is looking at,

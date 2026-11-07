@@ -8,7 +8,7 @@ import { mkdir, readFile, realpath } from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
-import { agentDirAtOldVersion, NAME, toolOf } from "./fakePiPackages.mjs";
+import { agentDirAtOldVersion, NAME } from "./fakePiPackages.mjs";
 import { connect, makeWorkspace, startServer } from "./harness.mjs";
 
 const PROVIDER = fileURLToPath(new URL("./fixtures/side-sessions-provider.mjs", import.meta.url));

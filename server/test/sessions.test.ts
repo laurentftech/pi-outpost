@@ -3,7 +3,6 @@ import { describe, test } from "node:test";
 import { sanitizeName, hasBeenNamed, firstExchange, toSummary, snippetAround, searchSessions } from "../src/sessions.ts";
 import type { SessionEntry, SessionInfo } from "../src/sessions.ts";
 // SessionSummary is from shared — just duck-type for tests
-import { MIN_SESSION_QUERY_LENGTH } from "@pi-outpost/shared";
 
 // ---------------------------------------------------------------------------
 // sanitizeName

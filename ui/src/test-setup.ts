@@ -53,6 +53,9 @@ if (typeof window !== "undefined") {
 
 if (!globalThis.ResizeObserver) {
   globalThis.ResizeObserver = class ResizeObserver {
+    // Takes the callback like the real one, or CodeQL reads every `new ResizeObserver(cb)`
+    // in the app as an argument passed to this stub's empty default constructor.
+    constructor(_callback: ResizeObserverCallback) {}
     observe() {}
     unobserve() {}
     disconnect() {}

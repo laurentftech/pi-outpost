@@ -378,7 +378,7 @@ test("a real Pi RPC child executes work_plan and synchronizes its persisted resu
   });
   const client = connect(server.wsUrl());
   try {
-    const hello = await client.waitFor("hello", 30_000);
+    await client.waitFor("hello", 30_000);
     client.send({ type: "prompt", text: "Create and refine the Work Plan" });
     const changed = await client.waitFor(
       (message) => message.type === "work_plan_changed"

@@ -6,8 +6,7 @@
 import { mkdtemp, rm, writeFile, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
-import { startServer, freePort, connect } from "./harness.mjs";
+import { startServer, connect } from "./harness.mjs";
 
 const root = await mkdtemp(path.join(tmpdir(), "pi-outpost-ext-test-"));
 try {

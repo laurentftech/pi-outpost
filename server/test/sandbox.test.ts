@@ -11,7 +11,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { after, before, describe, test } from "node:test";
 import { isWithin, isWithinAny } from "../src/sandbox.ts";
-import { connect, startServer, makeWorkspace, freePort } from "./harness.mjs";
+import { connect, startServer, freePort } from "./harness.mjs";
 
 describe("sandbox path checking", () => {
   const SEP = path.sep;
@@ -79,7 +79,6 @@ describe("sandbox path checking", () => {
 
 describe("sandbox readExceptions integration", () => {
   let server;
-  const SEP = path.sep;
 
   before(async () => {
     // Create workspace: sandbox root is a subdirectory.

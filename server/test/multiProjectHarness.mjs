@@ -7,13 +7,11 @@
  * runner — 26 tests, each starting a real server. Two files get two budgets, and
  * the runner executes them in parallel, so the wall clock falls as well.
  */
-import assert from "node:assert/strict";
-import { readFile, realpath, unlink, writeFile } from "node:fs/promises";
+import { realpath, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import test from "node:test";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
-import { connect, makeWorkspace, startServer } from "./harness.mjs";
+import { makeWorkspace, startServer } from "./harness.mjs";
 
 /**
  * Seed a saved session for one project in the store the server reads.

@@ -3013,7 +3013,7 @@ describe("directory_changed", () => {
   const sentSince = (from: number) => mockWs!.sent.slice(from).map((raw) => JSON.parse(raw) as Record<string, unknown>);
 
   it("re-lists a directory the tree is holding", async () => {
-    const result = await withExpanded(["docs"]);
+    await withExpanded(["docs"]);
     const before = mockWs!.sent.length;
 
     act(() => mockWs!.receive({ type: "directory_changed", path: "docs" }));
