@@ -1,0 +1,51 @@
+# OpenSSF Scorecard: supply-chain security checks. Publishes the results that
+# back the README badge, and uploads them to the Security tab as SARIF.
+# https://github.com/ossf/scorecard-action
+name: Scorecard
+
+on:
+  # Branch-Protection is only re-evaluated on this trigger.
+  branch_protection_rule:
+  schedule:
+    - cron: '27 6 * * 1'
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+# Everything is read-only unless a job asks for more.
+permissions: read-all
+
+jobs:
+  analysis:
+    name: Scorecard analysis
+    runs-on: ubuntu-latest
+    permissions:
+      # Upload the results to code scanning.
+      security-events: write
+      # Publish the results to the OpenSSF API (and so the badge).
+      id-token: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Run analysis
+        uses: ossf/scorecard-action@fa7117db83c52d787ae5a89f350999701505d78e # v2.5.0
+        with:
+          results_file: results.sarif
+          results_format: sarif
+          publish_results: true
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: SARIF file
+          path: results.sarif
+          retention-days: 7
+
+      - name: Upload to code scanning
+        uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
+        with:
+          sarif_file: results.sarif
