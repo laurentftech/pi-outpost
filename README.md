@@ -3,6 +3,7 @@
 [![CI](https://github.com/laurentftech/pi-outpost/actions/workflows/ci.yml/badge.svg)](https://github.com/laurentftech/pi-outpost/actions/workflows/ci.yml)
 [![Coverage](https://raw.githubusercontent.com/laurentftech/pi-outpost/gh-pages/badges/coverage.svg)](https://github.com/laurentftech/pi-outpost/actions/workflows/ci.yml)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/laurentftech/pi-outpost/badge)](https://scorecard.dev/viewer/?uri=github.com/laurentftech/pi-outpost)
+[![OpenSSF Best Practices](https://www.bestpractices.dev/projects/16423/badge)](https://www.bestpractices.dev/projects/16423)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Node](https://img.shields.io/badge/node-%E2%89%A524-brightgreen)](https://nodejs.org)
 
