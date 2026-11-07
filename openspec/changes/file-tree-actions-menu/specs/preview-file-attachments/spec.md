@@ -10,10 +10,10 @@
 > anchored; `FileTree` is the exported component that renders them, and
 > `addPathAttachment` the exported state transition it drives.
 
-The system SHALL let the user reference any file or folder listed in the file tree as a prompt attachment without opening its preview, and SHALL let the user drop that reference the same way, through the Reference in prompt / Remove from prompt item of the entry's actions menu. The tree SHALL mark on the row every file or folder the next prompt references — whether the reference comes from an attachment or from an `@` mention typed in the draft — and that marker SHALL drop the reference when activated. Referencing a selection SHALL reference each selected entry once.
+The system SHALL let the user reference any file or folder listed in the file tree as a prompt attachment without opening its preview, and SHALL let the user drop that reference the same way, with the `@` control on the entry's row or the Reference in prompt / Remove from prompt item of its actions menu. The tree SHALL mark every file or folder the next prompt references — whether the reference comes from an attachment or from an `@` mention typed in the draft — by keeping its `@` lit, and SHALL surface the `@` of an unreferenced entry only on hover, on devices that have hover. Referencing a selection SHALL reference each selected entry once.
 
 #### Scenario: User references a file from the tree
-- **WHEN** the user chooses Reference in prompt in a file's actions menu
+- **WHEN** the user activates the `@` on a file's row, or chooses Reference in prompt in its actions menu
 - **THEN** the composer contains a removable attachment for that file's path and the tree marks it as referenced
 
 #### Scenario: Draft mentions a file by hand

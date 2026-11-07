@@ -82,6 +82,25 @@ export type RowActionId =
   | "move"
   | "delete";
 
+/**
+ * The symbol each action is drawn with in the menu: the ones the tree rows used to
+ * carry (↗ ⌂ ✎ × @ +), so what was learned on the row is found again in the menu,
+ * and the same family for the actions that are new.
+ */
+export const ROW_ACTION_SYMBOL: Record<RowActionId, string> = {
+  open: "↵",
+  "show-diff": "±",
+  "open-native": "↗",
+  reveal: "⌂",
+  new: "+",
+  reference: "@",
+  unreference: "@",
+  download: "⤓",
+  rename: "✎",
+  move: "→",
+  delete: "×",
+};
+
 export interface RowAction {
   id: RowActionId;
   label: string;

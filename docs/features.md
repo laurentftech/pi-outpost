@@ -79,9 +79,10 @@
   Explorer or the Linux file manager; reference it in the prompt; **Download** it to the machine
   your browser runs on (a folder as a `.zip`), which is how you take a file off a remote server;
   rename (F2), move to another folder, delete (Del). Folders take every action a file does; the
-  writable root itself cannot be renamed, moved or deleted. The row itself only shows states: the
-  git badge (click it for the diff) and **@** while the entry is referenced (click it to drop the
-  reference).
+  writable root itself cannot be renamed, moved or deleted. Each item carries the symbol of its
+  action (↗ open with app, ⌂ show, @ reference, ⤓ download, ✎ rename, → move, × delete). Besides
+  the **⋯**, a row keeps only the git badge (click it for the diff) and its **@**: shown on hover,
+  lit while the entry is referenced, one click to reference or drop it.
 - Select several entries with Shift-click (a range) or Ctrl/Cmd-click (one at a time), Escape to
   clear: the menu then deletes them with one confirmation, moves them (drag one onto a folder, or
   **Move to…** and pick the folder), downloads them as one `.zip`, or references them all. A

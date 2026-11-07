@@ -19,8 +19,9 @@ on several files means repeating the same click once per file.
   - folder, at parity: **New file or folder…**, **Show in file manager** · **Reference in
     prompt**, **Download as .zip** · **Rename…**, **Move to…** · **Delete…**
   - an item the row cannot take (read-only entry, no handler wired) is absent, not disabled.
-- The row keeps only states, not actions: the **git badge** (still opens the diff) and the **@
-  marker** while the entry is referenced. The ↗ ⌂ ✎ × + icons go.
+- Besides the `⋯`, the row keeps the **git badge** (still opens the diff) and the **@** reference
+  toggle (on hover, lit while referenced). The ↗ ⌂ ✎ × + icons leave the row for the menu, where
+  each item carries its action's symbol.
 - **Folders get every lifecycle operation files have**: rename, delete (with everything inside,
   said in the confirmation), move (never into itself, never replacing an existing folder), copy of
   a read-only folder by drag, reference in prompt. The browser root and the writable root itself
@@ -55,7 +56,7 @@ None — the behaviour belongs to the existing Files tree, file-browser and atta
   `File lifecycle operations are confined and permissioned` extends to folders; new requirements
   for downloading (file, folder, selection), for copying a folder, and for batch delete/move.
 - `preview-file-attachments`: `Reference files from the file tree` — the reference control moves
-  into the menu, the referenced marker stays on the row, folders can be referenced, and a selection
+  into the menu too, the `@` stays on the row (on hover, lit while referenced), folders can be referenced, and a selection
   can be referenced at once.
 
 ## Impact

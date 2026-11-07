@@ -349,17 +349,25 @@ function useRowMenu(props: TreeProps, fullPath: string) {
   };
 }
 
-/** The referenced marker: a state on the row, which drops the reference when pressed. */
-function ReferencedMarker({ name, path, props }: { name: string; path: string; props: TreeProps }) {
-  if (!props.onToggleAttachPath || !(props.attachedPaths?.includes(path) ?? false)) return null;
+/**
+ * The `@` on a row: references the entry in the prompt, or drops the reference.
+ * Referenced, it stays lit, so the tree at rest says what the next prompt carries —
+ * whether the reference came from here or from an `@` typed in the draft. Otherwise
+ * it follows the hover convention: the one action quick enough to keep on the row.
+ */
+function ReferenceToggle({ name, path, props }: { name: string; path: string; props: TreeProps }) {
+  if (!props.onToggleAttachPath) return null;
+  const attached = props.attachedPaths?.includes(path) ?? false;
   return (
     <button
       type="button"
       onClick={() => props.onToggleAttachPath?.(path)}
-      title="Referenced in the prompt — press to remove"
-      aria-label={`Remove ${name} from the prompt`}
-      aria-pressed
-      className="mr-1 shrink-0 rounded px-1 font-mono text-xs font-bold text-blue-600 hover:bg-zinc-200 dark:text-blue-400 dark:hover:bg-zinc-700"
+      title={attached ? "Remove from the prompt" : "Reference in the prompt"}
+      aria-label={attached ? `Remove ${name} from the prompt` : `Reference ${name} in the prompt`}
+      aria-pressed={attached}
+      className={`mr-1 shrink-0 rounded px-1 font-mono text-xs hover:bg-zinc-200 dark:hover:bg-zinc-700 ${
+        attached ? "font-bold text-blue-600 dark:text-blue-400" : `text-zinc-400 dark:text-zinc-600 ${REVEALED_ON_HOVER}`
+      }`}
     >
       @
     </button>
@@ -523,7 +531,7 @@ function TreeNode({
               Move here
             </button>
           )}
-          <ReferencedMarker name={entry.name} path={fullPath} props={props} />
+          <ReferenceToggle name={entry.name} path={fullPath} props={props} />
           {picking === null && more}
         </div>
         {open && <DirChildren path={fullPath} depth={depth + 1} {...props} />}
@@ -560,7 +568,7 @@ function TreeNode({
           {entry.name}
         </span>
       </button>
-      <ReferencedMarker name={entry.name} path={fullPath} props={props} />
+      <ReferenceToggle name={entry.name} path={fullPath} props={props} />
       {gitState && (
         <button
           type="button"

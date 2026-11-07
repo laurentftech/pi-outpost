@@ -1,6 +1,6 @@
 import { useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
 import { useClickOutside } from "../util/clickOutside";
-import type { RowAction, RowActionId } from "./fileTreeModel";
+import { ROW_ACTION_SYMBOL, type RowAction, type RowActionId } from "./fileTreeModel";
 
 interface RowMenuProps {
   /** Accessible name: what the menu acts on. */
@@ -97,10 +97,13 @@ export function RowMenu({ label, groups, anchor, disabled, onSelect, onClose }: 
                 role="menuitem"
                 disabled={off}
                 onClick={() => onSelect(action.id)}
-                className={`flex w-full items-center gap-3 px-3 py-1 text-left hover:bg-zinc-100 focus:bg-zinc-100 focus:outline-none disabled:opacity-40 dark:hover:bg-zinc-800 dark:focus:bg-zinc-800 ${
+                className={`flex w-full items-center gap-2 px-3 py-1 text-left hover:bg-zinc-100 focus:bg-zinc-100 focus:outline-none disabled:opacity-40 dark:hover:bg-zinc-800 dark:focus:bg-zinc-800 ${
                   action.danger ? "text-red-600 dark:text-red-400" : "text-zinc-700 dark:text-zinc-300"
                 }`}
               >
+                <span aria-hidden className="w-3 shrink-0 text-center font-mono text-zinc-400 dark:text-zinc-500">
+                  {ROW_ACTION_SYMBOL[action.id]}
+                </span>
                 <span className="flex-1 truncate">{action.label}</span>
                 {action.shortcut && <span aria-hidden className="text-[10px] text-zinc-400 dark:text-zinc-500">{action.shortcut}</span>}
               </button>

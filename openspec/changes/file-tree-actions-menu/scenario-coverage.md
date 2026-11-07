@@ -10,7 +10,7 @@ over HTTP in `server/test/files-download.test.mjs`, whose archives are read back
 checked. Expected paths are built with `path.join`, so the Windows CI job compares what the server
 resolves.
 
-## Capability: `components` (34 scenarios, modified and added)
+## Capability: `components` (35 scenarios, modified and added)
 
 | Scenario | Coverage | Assertion evidence |
 | --- | --- | --- |
@@ -29,7 +29,8 @@ resolves.
 | AReadOnlyFileOffersOnlyWhatItCanTake | covered | `ui/src/components/fileTreeModel.test.ts` — "AReadOnlyFileOffersOnlyWhatItCanTake: …": a read-only file and folder keep Download and Reference, the file Open, and lose Rename, Move, Delete and New; `ui/src/components/FileTree.test.tsx` — "opens a read-only file with its associated application" on the rendered menu |
 | TheRootsOfferNoRemoval | covered | `ui/src/components/FileTree.test.tsx` — "TheRootsOfferNoRemoval: …": with `writableRoot: "src"`, the `src` menu has no Rename, Move or Delete but keeps New; `ui/src/components/fileTreeModel.test.ts` likewise |
 | TheContextMenuOpensTheSameMenu | covered | `ui/src/components/FileTree.test.tsx` — "TheContextMenuOpensTheSameMenu: …": `fireEvent.contextMenu` answers `false` (the browser's menu prevented) and the menu named `Actions for readme.md` opens with its items |
-| OnlyStatesStayOnTheRow | covered | `ui/src/components/FileTree.test.tsx` — "OnlyStatesStayOnTheRow: …": the row's buttons are exactly the label, `Remove readme.md from the prompt`, `Show diff of readme.md` and `Actions for readme.md` |
+| TheRowKeepsTheAtAndItsStates | covered | `ui/src/components/FileTree.test.tsx` — "TheRowKeepsTheAtAndItsStates: …": the file row's buttons are exactly the label, `Remove readme.md from the prompt`, `Show diff of readme.md` and `Actions for readme.md`; the folder row's are its `@` and its ⋯; "keeps the @ lit on a referenced row, and reveals it only on hover elsewhere" |
+| EachItemCarriesItsSymbol | covered | `ui/src/components/FileTree.test.tsx` — "AFileRowsMenuInItsOrder: …" and "AFolderRowsMenu: …" read each item as symbol and name (`↵ Open` … `× Delete…`, `+ New file or folder…`, `⤓ Download as .zip`); "each menu item carries the symbol of its action" (`@ Remove from prompt`, `⌂ Show in file manager`) |
 | TheMenuIsAKeyboardMenu | covered | `ui/src/components/RowMenu.test.tsx` — "TheMenuIsAKeyboardMenu: …": focus on the first item, ArrowDown/Up wrap, Home/End; "Enter on an item runs it; Escape closes…"; `ui/src/components/FileTree.test.tsx` — "TheMenuIsAKeyboardMenu: Escape closes it and focus returns to the row's ⋯" |
 | OneMenuAtATime | covered | `ui/src/components/FileTree.test.tsx` — "OneMenuAtATime: …": one `menu` after opening a second row's, none after the tree is replaced by another project's; `ui/src/components/RowMenu.test.tsx` — "OneMenuAtATime: a press outside the menu closes it" |
 | ShiftClickSelectsARange | covered | `ui/src/components/FileTree.test.tsx` — "ShiftClickSelectsARange: …": `a`, `b`, `c` selected, `onSelectFile` called once (the plain click only) |
@@ -95,7 +96,7 @@ resolves.
 
 | Scenario | Coverage | Assertion evidence |
 | --- | --- | --- |
-| User references a file from the tree | covered | `ui/src/components/FileTree.test.tsx` — "User references a file from the tree: …": `onToggleAttachPath("readme.md")` from the menu; `ui/src/App.test.tsx` — "references a file from the tree, and drops it from its referenced marker": the marker appears `aria-pressed` once referenced |
+| User references a file from the tree | covered | `ui/src/components/FileTree.test.tsx` — "User references a file from the tree: …": `onToggleAttachPath("readme.md")` from the menu; `ui/src/App.test.tsx` — "references a file from the tree, and drops it from its referenced marker": the marker appears `aria-pressed` once referenced; "the @ on a row references the file or the folder in one click" |
 | Draft mentions a file by hand | covered | Unchanged: `ui/src/components/Composer.test.tsx` — "reports the mentioned paths so the app can attach them" |
 | A file is referenced twice | covered | Unchanged: `ui/src/components/Composer.test.tsx` — "does not mention the path twice when the draft already names it" |
 | TheMarkerDropsTheReference | covered | `ui/src/components/FileTree.test.tsx` — "TheMarkerDropsTheReference: …": the marker and Remove from prompt each report `onToggleAttachPath("readme.md")`; `ui/src/App.test.tsx` — after the marker the reference is gone from the tree |

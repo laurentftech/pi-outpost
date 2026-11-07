@@ -61,7 +61,7 @@ Every truncated file or directory label SHALL expose its complete entry name thr
 
 ### Requirement: FileTree row actions menu
 
-Each file and folder row SHALL carry one actions menu, opened by a `⋯` control or by the row's context menu, and SHALL carry no other action control. The `⋯` control SHALL follow the hover/touch convention. Items SHALL be labelled and grouped in a fixed order, with an item the row cannot take left out rather than disabled. The row SHALL keep the git badge and the referenced marker, which are states.
+Each file and folder row SHALL carry one actions menu, opened by a `⋯` control or by the row's context menu. Besides it the row SHALL carry only the git badge and the `@` reference toggle. The `⋯` and an unreferenced `@` SHALL follow the hover/touch convention. Items SHALL be labelled, each with its action's symbol, and grouped in a fixed order; an item the row cannot take SHALL be left out rather than disabled.
 
 #### Scenario: AFileRowsMenuInItsOrder
 - **GIVEN** a writable, git-modified file with every callback wired
@@ -87,9 +87,13 @@ Each file and folder row SHALL carry one actions menu, opened by a `⋯` control
 - **WHEN** the user right-clicks a row
 - **THEN** the same actions menu opens at the pointer instead of the browser's own
 
-#### Scenario: OnlyStatesStayOnTheRow
-- **GIVEN** a referenced, git-modified file
-- **THEN** its row shows the git badge, the referenced marker and the `⋯` control, and no other control
+#### Scenario: TheRowKeepsTheAtAndItsStates
+- **GIVEN** a referenced, git-modified file and an unreferenced folder
+- **THEN** the file's row shows the lit `@`, the git badge and `⋯`, the folder's row its `@` and `⋯`, and no other control
+
+#### Scenario: EachItemCarriesItsSymbol
+- **WHEN** the user opens a row's actions menu
+- **THEN** each item shows its action's symbol beside its label — ↵ open, ± diff, ↗ open with app, ⌂ show in file manager, + new, @ reference, ⤓ download, ✎ rename, → move, × delete
 
 #### Scenario: TheMenuIsAKeyboardMenu
 - **GIVEN** an open actions menu

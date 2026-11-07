@@ -297,10 +297,19 @@ describe("FileTree", () => {
       expect(screen.getByRole("button", { name: "Remove src from the prompt" })).toHaveAttribute("aria-pressed", "true");
     });
 
-    it("keeps the referenced marker visible, and shows none on a row that is not referenced", () => {
+    it("keeps the @ lit on a referenced row, and reveals it only on hover elsewhere", () => {
       setup({ tree: { "": [file("readme.md"), file("notes.md")] }, attachedPaths: ["readme.md"] });
       expect(screen.getByRole("button", { name: /Remove readme.md/ }).className).not.toMatch(/opacity-0/);
-      expect(screen.queryByRole("button", { name: /notes.md from the prompt/ })).not.toBeInTheDocument();
+      const plain = screen.getByRole("button", { name: "Reference notes.md in the prompt" });
+      expect(plain).toHaveAttribute("aria-pressed", "false");
+      expect(plain.className).toMatch(/opacity-0/);
+    });
+
+    it("the @ on a row references the file or the folder in one click", () => {
+      const { onToggleAttachPath } = setup();
+      fireEvent.click(screen.getByRole("button", { name: "Reference readme.md in the prompt" }));
+      fireEvent.click(screen.getByRole("button", { name: "Reference src in the prompt" }));
+      expect(onToggleAttachPath.mock.calls).toEqual([["readme.md"], ["src"]]);
     });
   });
 
@@ -916,28 +925,39 @@ function everything(overrides: Partial<Props> = {}) {
 const selectedNames = () =>
   Array.from(document.querySelectorAll('[data-selected="true"]')).map((row) => row.querySelector("[title]")!.getAttribute("title"));
 const label = (name: string) => screen.getByText(name).closest("button")!;
+/** A menu item as it is seen: its symbol, then the accessible name it is chosen by. */
+const symbolAndName = (item: HTMLElement) =>
+  `${item.querySelector("[aria-hidden]")?.textContent ?? ""} ${item.getAttribute("aria-label") ?? within(item).getByText(/\w/, { selector: "span:not([aria-hidden])" }).textContent}`;
 const flat = { "": [file("a"), file("b"), file("c"), file("d")] };
 
 describe("the actions menu", () => {
-  it("OnlyStatesStayOnTheRow: a referenced, changed file shows its badge, its marker and ⋯, nothing else", () => {
+  it("TheRowKeepsTheAtAndItsStates: the @, the git badge and ⋯, nothing else, on files and folders", () => {
     everything({ attachedPaths: ["readme.md"], gitFiles: { "readme.md": "modified" } });
-    const row = label("readme.md").parentElement!;
-    expect(within(row).getAllByRole("button").map((button) => button.getAttribute("aria-label") ?? button.textContent)).toEqual([
+    const names = (row: HTMLElement) => within(row).getAllByRole("button").map((button) => button.getAttribute("aria-label") ?? button.textContent);
+    expect(names(label("readme.md").parentElement!)).toEqual([
       "readme.md",
       "Remove readme.md from the prompt",
       "Show diff of readme.md",
       "Actions for readme.md",
     ]);
+    expect(names(dirToggle("src").parentElement!).slice(1)).toEqual(["Reference src in the prompt", "Actions for src"]);
+  });
+
+  it("each menu item carries the symbol of its action", () => {
+    everything({ attachedPaths: ["readme.md"] });
+    openMenu("readme.md");
+    expect(symbolAndName(menuItem("Remove from prompt"))).toBe("@ Remove from prompt");
+    expect(symbolAndName(menuItem("Show in file manager"))).toBe("⌂ Show in file manager");
   });
 
   it("AFileRowsMenuInItsOrder: the rendered menu reads its groups in order", () => {
     everything({ gitFiles: { "readme.md": "modified" } });
     const menu = openMenu("readme.md");
-    expect(within(menu).getAllByRole("group").map((group) => within(group).getAllByRole("menuitem").map((item) => item.textContent?.replace(/F2|Del$/, "")))).toEqual([
-      ["Open", "Show diff", "Open with associated app", "Show in file manager"],
-      ["Reference in prompt", "Download"],
-      ["Rename…", "Move to…"],
-      ["Delete…"],
+    expect(within(menu).getAllByRole("group").map((group) => within(group).getAllByRole("menuitem").map(symbolAndName))).toEqual([
+      ["↵ Open", "± Show diff", "↗ Open with associated app", "⌂ Show in file manager"],
+      ["@ Reference in prompt", "⤓ Download"],
+      ["✎ Rename…", "→ Move to…"],
+      ["× Delete…"],
     ]);
   });
 
@@ -1013,14 +1033,14 @@ describe("folders at parity", () => {
   it("AFolderRowsMenu: a writable folder offers everything a file does that a folder can take", () => {
     everything();
     const menu = openMenu("src");
-    expect(within(menu).getAllByRole("menuitem").map((item) => item.textContent?.replace(/F2|Del$/, ""))).toEqual([
-      "New file or folder…",
-      "Show in file manager",
-      "Reference in prompt",
-      "Download as .zip",
-      "Rename…",
-      "Move to…",
-      "Delete…",
+    expect(within(menu).getAllByRole("menuitem").map(symbolAndName)).toEqual([
+      "+ New file or folder…",
+      "⌂ Show in file manager",
+      "@ Reference in prompt",
+      "⤓ Download as .zip",
+      "✎ Rename…",
+      "→ Move to…",
+      "× Delete…",
     ]);
   });
 

@@ -30,7 +30,7 @@
 
 - [x] 5.1 Add the pure `rowActions(entry, context)` returning ordered groups, and verify unit tests for AFileRowsMenuInItsOrder, AFolderRowsMenu, AReadOnlyFileOffersOnlyWhatItCanTake, TheRootsOfferNoRemoval and a selection-wide variant (counts, mixed selection)
 - [x] 5.2 Build `RowMenu` (menu/menuitem roles, arrow keys, Home/End, Enter, Escape, focus return, outside click, flip/clamp inside the panel) and verify component tests for TheMenuIsAKeyboardMenu and OneMenuAtATime
-- [x] 5.3 Replace the row icons in `FileTree.tsx` with the `⋯` control and the context menu on file and folder rows, keep the git badge and the referenced marker, make folder rows renameable, deletable and draggable, and verify `FileTree.test.tsx` for OnlyStatesStayOnTheRow, TheContextMenuOpensTheSameMenu, the lifecycle scenarios (delete confirm/cancel, ConfirmAFolderDeletion, DragAFolderOntoAWritableFolder, open natively), TheTreeOffersRevealOnFilesAndFolders, CreateFileFromTree via the menu, ReadOnlyDirectoryOffersNothing, and the reference scenarios including ReferenceAFolder and TheMarkerDropsTheReference
+- [x] 5.3 Replace the row icons in `FileTree.tsx` with the `⋯` control and the context menu on file and folder rows, keep the git badge and the `@` reference toggle, give each menu item its symbol, make folder rows renameable, deletable and draggable, and verify `FileTree.test.tsx` for TheRowKeepsTheAtAndItsStates, EachItemCarriesItsSymbol, TheContextMenuOpensTheSameMenu, the lifecycle scenarios (delete confirm/cancel, ConfirmAFolderDeletion, DragAFolderOntoAWritableFolder, open natively), TheTreeOffersRevealOnFilesAndFolders, CreateFileFromTree via the menu, ReadOnlyDirectoryOffersNothing, and the reference scenarios including ReferenceAFolder and TheMarkerDropsTheReference
 
 ## 6. Multi-selection and destination picking
 
@@ -47,7 +47,7 @@
 
 - [x] 8.1 Write `openspec/changes/file-tree-actions-menu/scenario-coverage.md` mapping every scenario of the three delta specs to its test, and verify `npm run check:scenarios` passes
 - [x] 8.2 Rebuild `web`, `@pi-outpost/embed` and `build:e2e-host`, run `npm run bench`, and drive the tree with Playwright on 127.0.0.1:4321 at 224 px and full width: open the menu by `⋯` and right-click on files and folders, download a file and a folder and check the saved bytes and archive entries, Shift/Ctrl-select files and folders and delete and move them, rename a folder, pick a destination; then a break-it pass (double clicks, menu left open while switching project, deleting a selected folder on disk, moving a folder while its child is open in the viewer, acting while a batch is pending) and read back the DOM and filesystem after each burst
-- [ ] 8.3 Run `npm run typecheck`, `npm run lint`, the server, office and ui suites, and `openspec validate file-tree-actions-menu --strict`, and verify all pass
+- [x] 8.3 Run `npm run typecheck`, `npm run lint`, the server, office and ui suites, and `openspec validate file-tree-actions-menu --strict`, and verify all pass
 
 ## Workflow follow-up
 
