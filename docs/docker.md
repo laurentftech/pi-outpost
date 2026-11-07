@@ -3,7 +3,7 @@
 This recipe runs **pi-outpost itself**, including its web interface, agent and integrated terminal.
 It is separate from the [Open WebUI tool-server image](openwebui.md).
 
-Node.js, npm **12.2.1**, Python 3, pip, venv, git and curl run in the same container. The agent uses
+Node.js, npm **12.2.2**, Python 3, pip, venv, git and curl run in the same container. The agent uses
 these installed tools; it does not launch another Python container. You can build locally from a
 pinned published pi-outpost package. Starting with the first release containing this recipe, the
 release workflow also publishes the tested Linux x64 image to `ghcr.io/laurentftech/pi-outpost`.

@@ -3,6 +3,6 @@
   "private": true,
   "description": "The npm the project builds with, pinned by its lockfile's integrity hash and installed with `npm ci`. Used by CI, the release workflow and the Dockerfiles; see docs/development.md#the-pinned-npm.",
   "dependencies": {
-    "npm": "12.2.1"
+    "npm": "12.2.2"
   }
 }

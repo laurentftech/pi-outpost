@@ -18,7 +18,7 @@ pushed; latest SHALL move only for stable versions. Anonymous manifest access SH
 
 ### Requirement: FullApplicationRecipe
 The repository SHALL provide a local Docker/Compose recipe for the full app with pinned pi-outpost,
-npm 12.2.1, Python, venv and native terminal bindings. It SHALL run as an unprivileged user, drop
+npm 12.2.2, Python, venv and native terminal bindings. It SHALL run as an unprivileged user, drop
 capabilities, use no-new-privileges and publish on loopback without a Docker socket or privileged mode.
 
 #### Scenario: KeepsTheDockerDaemonOutsideTheApp
@@ -28,7 +28,7 @@ capabilities, use no-new-privileges and publish on loopback without a Docker soc
 
 #### Scenario: UsesPinnedNpmWithNativeBindings
 - **WHEN** the built image starts the app
-- **THEN** npm reports 12.2.1 and the app's real native PTY opens successfully
+- **THEN** npm reports 12.2.2 and the app's real native PTY opens successfully
 
 ### Requirement: ConfinedPythonAndTerminal
 The agent's shell and interactive terminal SHALL use landstrip with the project's policy. The recipe

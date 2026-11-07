@@ -18,7 +18,7 @@ gap, is in [OpenSSF Best Practices: status and plan](openssf.md).
 | Coverage thresholds | `server/package.json`, `ui/package.json` | Server unit suites: lines 92%, branches 86%, functions 90%. UI: lines 91%, branches 85%, functions 93%. These are minimum thresholds, not claimed current measurements. |
 | Spec scenario inventory | `scripts/check-scenario-coverage.mjs` | Checks a touched change's scenario matrix and cited files. A reviewer must still read the assertions and verify their outcomes. |
 | Packaging and confinement | CLI install, container, MCP bundle and native sandbox tests | Exercises installed/native artifacts and refusals. Some jobs run only on specific platforms or changed paths; use their actual result for the change. |
-| Install and publication policy | `.npmrc`, root `allowScripts`, release workflow | npm 12.2.1 rejects unreviewed install scripts; npm publication uses GitHub OIDC/provenance. Dependencies and upstream advisories still need review. |
+| Install and publication policy | `.npmrc`, root `allowScripts`, release workflow | npm 12.2.2 rejects unreviewed install scripts; npm publication uses GitHub OIDC/provenance. Dependencies and upstream advisories still need review. |
 
 ## Tests are type-checked
 

@@ -179,5 +179,5 @@ file path. Reread every new test for them before pushing.
 
 Follow [`docs/development.md` § Releasing](docs/development.md#releasing) step by step —
 do not release from memory. The step most often skipped: regenerate `package-lock.json`
-with `npx -y npm@12.2.1 install --package-lock-only` in the same commit as the version bump;
-use the same pinned npm 12.2.1 as CI, and review install-script policy changes.
+with `npx -y npm@12.2.2 install --package-lock-only` in the same commit as the version bump;
+use the same pinned npm 12.2.2 as CI, and review install-script policy changes.
