@@ -334,8 +334,10 @@ by hand, on `main`.
 9. **Check the result.** `npm view pi-outpost@X.Y.Z version` and
    `npm view @pi-outpost/embed@X.Y.Z version`. The CLI is about 25 MB and can take a few
    minutes to show on npm after the publish log says it is done — trust the log before an
-   immediate 404. The GitHub Release carries notes generated from the merged PRs, and three
-   executables.
+   immediate 404. The GitHub Release carries notes generated from the merged PRs, three
+   executables, the two Claude Desktop bundles, and `pi-outpost-X.Y.Z.sigstore.json`, the
+   signed build provenance for all of them. Check one asset against it:
+   `gh release download vX.Y.Z -p 'pi-outpost-X.Y.Z-linux-x64' && gh attestation verify pi-outpost-X.Y.Z-linux-x64 -R laurentftech/pi-outpost`.
 
    The *image* job pushes pi-outpost's Open WebUI server to
    `ghcr.io/laurentftech/pi-outpost-openwebui:X.Y.Z`, and to `latest` for a stable version. Check
