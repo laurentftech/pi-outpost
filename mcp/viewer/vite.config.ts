@@ -51,6 +51,6 @@ export default defineConfig({
     cssCodeSplit: false,
     assetsInlineLimit: Number.MAX_SAFE_INTEGER,
     modulePreload: false,
-    rollupOptions: { input: "planning.html", output: { inlineDynamicImports: true } },
+    rollupOptions: { input: "planning.html", output: { codeSplitting: false } },
   },
 });
