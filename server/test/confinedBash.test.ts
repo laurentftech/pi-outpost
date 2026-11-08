@@ -59,7 +59,7 @@ describe("confinedBashOperations", () => {
   }
 
   /** What the fake runner recorded for the last command: its temp dir sits in the OS temp dir. */
-  async function lastRecord(): Promise<{ args: string[]; env: Record<string, string>; cwd: string; policy: { filesystem: Record<string, string[]> }; script: string }> {
+  async function lastRecord(): Promise<{ args: string[]; env: Record<string, string>; cwd: string; policy: { filesystem: Record<string, string[]>; network?: unknown }; script: string }> {
     const { readdir, stat } = await import("node:fs/promises");
     const records = (await readdir(tmpdir())).filter((name) => name.startsWith("pi-outpost-bash-") && name.endsWith(".record.json"));
     const withTimes = await Promise.all(records.map(async (name) => ({ name, at: (await stat(path.join(tmpdir(), name))).mtimeMs })));
@@ -162,10 +162,13 @@ describe("confinedBashOperations", () => {
       return { started, start };
     }
     const base = { url: "http://127.0.0.1:3999", watchRefusals: () => () => {} };
+    // landstrip holds a proxy on Linux only (on Windows the policy refuses one): the plumbing is
+    // the same on every host, so it is played with the Linux policy everywhere.
+    const LINUX_POLICY = { platform: "linux" as const };
 
     test("the list and the session's hosts, a proxy per command, closed after it", async () => {
       const spy = proxies();
-      const ops = operations({ networkProxy: base, allowedHosts: ["registry.npmjs.org"], askHost: async () => "refused", startProxy: spy.start, grants: () => ({ hosts: ["github.com"], directories: [] }) });
+      const ops = operations({ ...LINUX_POLICY, networkProxy: base, allowedHosts: ["registry.npmjs.org"], askHost: async () => "refused", startProxy: spy.start, grants: () => ({ hosts: ["github.com"], directories: [] }) });
       await exec("0", { ops });
       await exec("0", { ops });
       assert.deepEqual(spy.started, [
@@ -178,6 +181,7 @@ describe("confinedBashOperations", () => {
       const asked: Array<{ command: string; host: string }> = [];
       const answers: Record<string, SandboxGrantOutcome> = { "example.com": "approved-once", "example.org": "refused" };
       const ops = operations({
+        ...LINUX_POLICY,
         networkProxy: base,
         allowedHosts: [],
         askHost: async ({ command, host }) => (asked.push({ command, host }), answers[host]),
@@ -195,11 +199,38 @@ describe("confinedBashOperations", () => {
       const spy = proxies();
       // The shared proxy refuses a host while the command runs: told to the launch's watcher.
       const shared = { url: base.url, watchRefusals: (listener: (host: string) => void) => (listener("example.com"), () => {}) };
-      const ops = operations({ networkProxy: shared, allowedHosts: [], startProxy: spy.start });
+      const ops = operations({ ...LINUX_POLICY, networkProxy: shared, allowedHosts: [], startProxy: spy.start });
       const { output } = await exec("0", { ops });
       assert.equal(spy.started.length, 0, "no proxy of its own");
       assert.match(output, /\[pi-outpost\] network refused: example\.com — not in sandbox\.allowedHosts\. Ask the user to add it there if the command needs it\.\s*$/);
     });
+  });
+
+  test("under a proxy, landstrip's policy holds the network to its port and the command is told where it is", async () => {
+    const spy: string[] = [];
+    const start = async () => {
+      spy.push("dedicated");
+      return { url: "http://127.0.0.1:4101", watchRefusals: () => () => {}, close: async () => {} };
+    };
+    const shared = { url: "http://127.0.0.1:4100", watchRefusals: () => () => {} };
+    // No one to ask: the shared proxy's port.
+    await exec("0", { ops: operations({ platform: "linux", networkProxy: shared, allowedHosts: [], startProxy: start }) });
+    let record = await lastRecord();
+    assert.deepEqual(record.policy.network, { allowNetwork: false, allowLocalBinding: false, httpProxyPort: 4100 });
+    // The fake runner reads its environment back through process.env, case-insensitive on Windows.
+    const names = ["HTTPS_PROXY", "HTTP_PROXY", "ALL_PROXY", ...(process.platform === "win32" ? [] : ["https_proxy", "http_proxy", "all_proxy"])];
+    for (const name of names) assert.equal(record.env[name], "http://127.0.0.1:4100", name);
+    // Someone to ask: the command's own proxy, and its port alone.
+    await exec("0", { ops: operations({ platform: "linux", networkProxy: shared, allowedHosts: [], askHost: async () => "refused", startProxy: start }) });
+    record = await lastRecord();
+    assert.deepEqual(spy, ["dedicated"]);
+    assert.deepEqual(record.policy.network, { allowNetwork: false, allowLocalBinding: false, httpProxyPort: 4101 });
+    assert.equal(record.env.HTTPS_PROXY, "http://127.0.0.1:4101");
+    // No list: the network open and no proxy variable, as before.
+    await exec("0", { ops: operations({ platform: "linux" }) });
+    record = await lastRecord();
+    assert.deepEqual(record.policy.network, { allowNetwork: true });
+    assert.equal(record.env.HTTPS_PROXY, undefined);
   });
 
   test("a working directory outside the root starts the command in the root", async () => {

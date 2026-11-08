@@ -128,7 +128,9 @@ test("AnUnprovenRunnerAsksNothingAboutHosts: hosts are asked about under MXC on 
   for (const bashRunner of ["/app/bin/x64/lxc-exec", "/app/bin/arm64/mxc-exec-mac", "/usr/bin/sandbox-exec"]) {
     assert.equal(asksAboutHosts({ ...sandbox, bashRunner }), true, bashRunner);
   }
-  assert.equal(asksAboutHosts({ ...sandbox, bashRunner: "/opt/landstrip/bin/landstrip" }), false, "a runner without the proof never asks");
+  // landstrip asks on Linux, where CI proves it; elsewhere it holds no list at all.
+  assert.equal(asksAboutHosts({ ...sandbox, bashRunner: "/opt/landstrip/bin/landstrip" }), process.platform === "linux", "landstrip asks on Linux only");
+  assert.equal(asksAboutHosts({ ...sandbox, bashRunner: "/usr/local/bin/some-new-runner" }), false, "a runner without the proof never asks");
   assert.equal(asksAboutHosts({ ...sandbox, grants: "never" }), false, "grants off: the list alone decides");
   assert.equal(asksAboutHosts({ ...sandbox, allowedHosts: undefined }), false, "no list: the network is open, nothing to ask");
 });
@@ -138,9 +140,11 @@ test("an unlisted host is asked about only under a runner shown to keep a comman
   for (const runner of ["C:\\pi\\node_modules\\@microsoft\\mxc-sdk\\bin\\x64\\wxc-exec.exe", "/app/bin/x64/lxc-exec", "/app/bin/arm64/mxc-exec-mac", "/usr/bin/sandbox-exec"]) {
     assert.equal(hostGrantsRefusal(runner), undefined, runner);
   }
-  // landstrip, and any runner nobody has proven: refused, saying what it must show.
-  for (const runner of ["/opt/landstrip/bin/landstrip", "/usr/local/bin/some-new-runner"]) {
-    assert.match(hostGrantsRefusal(runner) ?? "", /not yet proven under .*reach no other proxy/, runner);
+  // landstrip on Linux: proven there (sandboxGrantsReal.test.ts, CI's Linux job), known by its name.
+  assert.equal(hostGrantsRefusal("/opt/landstrip/bin/landstrip", "linux"), undefined);
+  // landstrip elsewhere, and any runner nobody has proven — on Linux too: refused, saying what it must show.
+  for (const [runner, platform] of [["/opt/landstrip/bin/landstrip", "win32"], ["C:\tools\landstrip.exe", "win32"], ["/usr/local/bin/some-new-runner", "linux"], ["/usr/local/bin/some-new-runner", "win32"]] as const) {
+    assert.match(hostGrantsRefusal(runner, platform) ?? "", /not yet proven under .*reach no other proxy/, `${runner} on ${platform}`);
   }
 });
 

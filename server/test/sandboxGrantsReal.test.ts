@@ -35,7 +35,7 @@ const RUNNERS: Array<{ name: string; runner: string | undefined; skip: string | 
 
 // What `hostGrantsRefusal` waits for on the POSIX runners holding the network (MXC on Windows is
 // `confinedNetworkMxc.test.ts`): a command reaches its own proxy, and no other session's.
-for (const { name, runner, skip } of RUNNERS.filter((entry) => ["MXC on Linux", "MXC on macOS", "Seatbelt"].includes(entry.name))) {
+for (const { name, runner, skip } of RUNNERS.filter((entry) => ["MXC on Linux", "MXC on macOS", "Seatbelt", "landstrip"].includes(entry.name))) {
   // openlore: scenario=AnotherCommandsProxyIsNoWayOut spec=sandbox-approved-grants
   describe(`another session's proxy under ${name}`, { skip }, () => {
     let base: string;

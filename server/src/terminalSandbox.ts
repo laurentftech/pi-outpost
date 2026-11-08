@@ -284,7 +284,12 @@ function lastJsonLine(text: string): Record<string, unknown> | undefined {
 /** landstrip's native policy, as much of it as a terminal uses. */
 export interface TerminalPolicy {
   filesystem: { denyRead: string[]; allowRead: string[]; allowWrite: string[] };
-  network: { allowNetwork: boolean };
+  /**
+   * Open, or — under `sandbox.allowedHosts` — closed but for the proxy's port: landstrip then
+   * permits loopback TCP to that port alone, by its number on any loopback address (the proxy
+   * holds it on `[::1]` too, `egressProxy.ts`). Local binding stays off: it would reopen the loopback.
+   */
+  network: { allowNetwork: true } | { allowNetwork: false; allowLocalBinding: false; httpProxyPort: number };
   /** Windows only: the AppContainer flavour. `standard`: `lpac` refuses even allowed tools such as git. */
   windows?: { appContainerMode: "standard" | "lpac" };
 }
@@ -322,6 +327,8 @@ export interface TerminalPolicyInput {
    */
   grantedRead?: string[];
   grantedWrite?: string[];
+  /** `sandbox.allowedHosts`' proxy (`http://127.0.0.1:<port>`): the network closed but for it. Linux, the agent's shell only. */
+  networkProxy?: string;
 }
 
 /**
@@ -352,8 +359,23 @@ export function terminalPolicy(input: TerminalPolicyInput): TerminalPolicy {
       allowRead: unique([...SYSTEM_READ, ...toolTrees(input.searchPath, path.posix), input.root, input.tmp, ...(input.readOnlyFiles ?? []), ...granted(input)]),
       allowWrite: unique([...writable, ...(input.grantedWrite ?? []), input.tmp, "/dev/null", "/dev/tty", "/dev/pts"]),
     },
-    network: { allowNetwork: true },
+    network: input.networkProxy === undefined ? { allowNetwork: true } : { allowNetwork: false, allowLocalBinding: false, httpProxyPort: proxyPort(input.networkProxy) },
   };
+}
+
+/** The port of the server's proxy URL; a URL without one is refused rather than guessed. */
+function proxyPort(proxy: string): number {
+  const port = Number(new URL(proxy).port);
+  if (!Number.isInteger(port) || port <= 0) throw new Error(`the network proxy ${proxy} names no port`);
+  return port;
+}
+
+/**
+ * The variables that send a command's HTTP clients to the server's proxy, for the runners that do
+ * not set them themselves (Seatbelt, landstrip). MXC sets its own.
+ */
+export function proxyEnvironment(proxy: string): Record<string, string> {
+  return Object.fromEntries(["HTTPS_PROXY", "HTTP_PROXY", "ALL_PROXY", "https_proxy", "http_proxy", "all_proxy"].map((name) => [name, proxy]));
 }
 
 /**
@@ -367,6 +389,8 @@ export function terminalPolicy(input: TerminalPolicyInput): TerminalPolicy {
  * be listed (names, not contents).
  */
 function windowsTerminalPolicy(input: TerminalPolicyInput): TerminalPolicy {
+  // AppContainer could hold the proxy's port too, but nothing proves it here: refused, never ignored.
+  if (input.networkProxy !== undefined) throw new Error("sandbox.allowedHosts is not enforced by landstrip on Windows: use MXC");
   const slash = (p: string) => p.replaceAll("\\", "/");
   // The search path's entries themselves, not their installations: AppContainer grants
   // access to every allowed tree on each launch, and whole installations (Git, Node,
@@ -759,7 +783,7 @@ export function seatbeltPolicy(input: MxcMacInput): SeatbeltPolicy {
     return [entry.slice(0, at), entry.slice(at + 1)];
   }));
   const proxy = request.runtimeConfig?.networkProxy;
-  if (proxy) for (const name of ["HTTPS_PROXY", "HTTP_PROXY", "ALL_PROXY", "https_proxy", "http_proxy", "all_proxy"]) env[name] = proxy;
+  if (proxy) Object.assign(env, proxyEnvironment(proxy));
   const subpaths = (paths: string[]) => paths.map((p) => `    (subpath ${sbplString(p)})`).join("\n");
   const byDepth = (paths: string[]) => [...paths].sort((a, b) => a.split("/").length - b.split("/").length);
   const port = proxy ? new URL(proxy).port : undefined;
