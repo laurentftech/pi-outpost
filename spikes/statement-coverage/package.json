@@ -1,0 +1,1 @@
+{"name":"pi-outpost-statement-coverage-spike","private":true,"type":"module","dependencies":{"istanbul-lib-instrument":"6.0.3","nyc":"17.1.0","source-map-support":"0.5.21","ts-node":"10.9.2","typescript":"5.9.3"}}

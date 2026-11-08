@@ -1,0 +1,429 @@
+{
+  "baseCommit": "aaa029434f42fc31b6818c2c51498171f2c27b41",
+  "node": "v26.4.0",
+  "platform": "win32",
+  "cpu": "Intel(R) Core(TM) i5-7500 CPU @ 3.40GHz",
+  "scope": "Small controlled fixtures and selected real tests only; not full-suite/product coverage or a CI runtime forecast.",
+  "fixtures": {
+    "istanbul": {
+      "timingsMs": [
+        1057.382,
+        1081.7968999999998
+      ],
+      "first": {
+        "lines": {
+          "total": 8,
+          "covered": 4,
+          "skipped": 0,
+          "pct": 50
+        },
+        "functions": {
+          "total": 5,
+          "covered": 3,
+          "skipped": 0,
+          "pct": 60
+        },
+        "statements": {
+          "total": 11,
+          "covered": 6,
+          "skipped": 0,
+          "pct": 54.54
+        },
+        "branches": {
+          "total": 2,
+          "covered": 1,
+          "skipped": 0,
+          "pct": 50
+        }
+      },
+      "merged": {
+        "lines": {
+          "total": 8,
+          "covered": 6,
+          "skipped": 0,
+          "pct": 75
+        },
+        "functions": {
+          "total": 5,
+          "covered": 4,
+          "skipped": 0,
+          "pct": 80
+        },
+        "statements": {
+          "total": 11,
+          "covered": 9,
+          "skipped": 0,
+          "pct": 81.81
+        },
+        "branches": {
+          "total": 2,
+          "covered": 2,
+          "skipped": 0,
+          "pct": 100
+        }
+      },
+      "afterThrowHits": [
+        0
+      ],
+      "files": 2
+    },
+    "v8": {
+      "timingsMs": [
+        1035.0507000000002,
+        820.0614
+      ],
+      "first": {
+        "lines": {
+          "total": 10,
+          "covered": 9,
+          "skipped": 0,
+          "pct": 90
+        },
+        "functions": {
+          "total": 6,
+          "covered": 4,
+          "skipped": 0,
+          "pct": 66.66
+        },
+        "statements": {
+          "total": 17,
+          "covered": 13,
+          "skipped": 0,
+          "pct": 76.47
+        },
+        "branches": {
+          "total": 2,
+          "covered": 1,
+          "skipped": 0,
+          "pct": 50
+        }
+      },
+      "merged": {
+        "lines": {
+          "total": 10,
+          "covered": 10,
+          "skipped": 0,
+          "pct": 100
+        },
+        "functions": {
+          "total": 6,
+          "covered": 5,
+          "skipped": 0,
+          "pct": 83.33
+        },
+        "statements": {
+          "total": 17,
+          "covered": 16,
+          "skipped": 0,
+          "pct": 94.11
+        },
+        "branches": {
+          "total": 2,
+          "covered": 2,
+          "skipped": 0,
+          "pct": 100
+        }
+      },
+      "afterThrowHits": [
+        1
+      ],
+      "files": 1
+    },
+    "tutorial-commonjs": {
+      "ms": 5393.1547,
+      "files": 1,
+      "summaries": [
+        {
+          "lines": {
+            "total": 10,
+            "covered": 8,
+            "skipped": 0,
+            "pct": 80
+          },
+          "functions": {
+            "total": 5,
+            "covered": 3,
+            "skipped": 0,
+            "pct": 60
+          },
+          "statements": {
+            "total": 15,
+            "covered": 10,
+            "skipped": 0,
+            "pct": 66.66
+          },
+          "branches": {
+            "total": 1,
+            "covered": 1,
+            "skipped": 0,
+            "pct": 100
+          }
+        }
+      ]
+    },
+    "repo-esm-tsx": {
+      "ms": 1489.7515000000003,
+      "status": 1,
+      "error": "Must use import to load ES Module (fixture.ts)"
+    },
+    "repo-esm-without-all": {
+      "ms": 1509.5363000000016,
+      "files": 0,
+      "summaries": []
+    }
+  },
+  "timings": [
+    {
+      "suite": "server-unit",
+      "samplesMs": {
+        "baseline": [
+          1620.0872000000002,
+          2249.7651999999944,
+          1352.2816999999923
+        ],
+        "v8": [
+          4359.1864000000005,
+          2766.6178999999975,
+          2731.4070000000065
+        ],
+        "istanbul": [
+          3974.0309999999954,
+          4382.906300000002,
+          4021.3828000000067
+        ]
+      },
+      "medianMs": {
+        "baseline": 1620.0872000000002,
+        "v8": 2766.6178999999975,
+        "istanbul": 4021.3828000000067
+      },
+      "istanbulOverV8": 1.4535374762087712
+    },
+    {
+      "suite": "real-server-child",
+      "samplesMs": {
+        "baseline": [
+          6586.975199999999,
+          6457.937000000005,
+          6249.683099999995
+        ],
+        "v8": [
+          12517.516900000002,
+          9392.032699999996,
+          8003.0244999999995
+        ],
+        "istanbul": [
+          17603.2693,
+          17287.088200000013,
+          16010.225199999986
+        ]
+      },
+      "medianMs": {
+        "baseline": 6457.937000000005,
+        "v8": 9392.032699999996,
+        "istanbul": 17287.088200000013
+      },
+      "istanbulOverV8": 1.84061201149779
+    },
+    {
+      "suite": "ui",
+      "samplesMs": {
+        "baseline": [
+          3850.7853000000014,
+          3549.06779999999,
+          3657.62460000001
+        ],
+        "v8": [
+          4120.853499999997,
+          4312.965800000005,
+          4262.216599999985
+        ],
+        "istanbul": [
+          4368.3052000000025,
+          4217.375100000005,
+          3563.994000000006
+        ]
+      },
+      "medianMs": {
+        "baseline": 3657.62460000001,
+        "v8": 4262.216599999985,
+        "istanbul": 4217.375100000005
+      },
+      "istanbulOverV8": 0.9894793005123248
+    }
+  ],
+  "sharedUnion": {
+    "server": {
+      "lines": {
+        "total": 63,
+        "covered": 0,
+        "skipped": 0,
+        "pct": 0
+      },
+      "functions": {
+        "total": 2,
+        "covered": 0,
+        "skipped": 0,
+        "pct": 0
+      },
+      "statements": {
+        "total": 65,
+        "covered": 0,
+        "skipped": 0,
+        "pct": 0
+      },
+      "branches": {
+        "total": 48,
+        "covered": 0,
+        "skipped": 0,
+        "pct": 0
+      }
+    },
+    "ui": {
+      "lines": {
+        "total": 63,
+        "covered": 61,
+        "skipped": 0,
+        "pct": 96.82
+      },
+      "functions": {
+        "total": 2,
+        "covered": 2,
+        "skipped": 0,
+        "pct": 100
+      },
+      "statements": {
+        "total": 65,
+        "covered": 63,
+        "skipped": 0,
+        "pct": 96.92
+      },
+      "branches": {
+        "total": 48,
+        "covered": 42,
+        "skipped": 0,
+        "pct": 87.5
+      }
+    },
+    "merged": {
+      "lines": {
+        "total": 63,
+        "covered": 61,
+        "skipped": 0,
+        "pct": 96.82
+      },
+      "statements": {
+        "total": 65,
+        "covered": 63,
+        "skipped": 0,
+        "pct": 96.92
+      },
+      "functions": {
+        "total": 2,
+        "covered": 2,
+        "skipped": 0,
+        "pct": 100
+      },
+      "branches": {
+        "total": 48,
+        "covered": 42,
+        "skipped": 0,
+        "pct": 87.5
+      },
+      "branchesTrue": {
+        "total": 0,
+        "covered": 0,
+        "skipped": 0,
+        "pct": "Unknown"
+      }
+    },
+    "identicalInventories": true
+  },
+  "unitIntegrationUnion": {
+    "unit": {
+      "lines": {
+        "total": 529,
+        "covered": 385,
+        "skipped": 0,
+        "pct": 72.77
+      },
+      "functions": {
+        "total": 53,
+        "covered": 33,
+        "skipped": 0,
+        "pct": 62.26
+      },
+      "statements": {
+        "total": 619,
+        "covered": 441,
+        "skipped": 0,
+        "pct": 71.24
+      },
+      "branches": {
+        "total": 638,
+        "covered": 452,
+        "skipped": 0,
+        "pct": 70.84
+      }
+    },
+    "child": {
+      "lines": {
+        "total": 529,
+        "covered": 178,
+        "skipped": 0,
+        "pct": 33.64
+      },
+      "functions": {
+        "total": 53,
+        "covered": 22,
+        "skipped": 0,
+        "pct": 41.5
+      },
+      "statements": {
+        "total": 619,
+        "covered": 198,
+        "skipped": 0,
+        "pct": 31.98
+      },
+      "branches": {
+        "total": 638,
+        "covered": 127,
+        "skipped": 0,
+        "pct": 19.9
+      }
+    },
+    "merged": {
+      "lines": {
+        "total": 529,
+        "covered": 390,
+        "skipped": 0,
+        "pct": 73.72
+      },
+      "statements": {
+        "total": 619,
+        "covered": 449,
+        "skipped": 0,
+        "pct": 72.53
+      },
+      "functions": {
+        "total": 53,
+        "covered": 36,
+        "skipped": 0,
+        "pct": 67.92
+      },
+      "branches": {
+        "total": 638,
+        "covered": 462,
+        "skipped": 0,
+        "pct": 72.41
+      },
+      "branchesTrue": {
+        "total": 0,
+        "covered": 0,
+        "skipped": 0,
+        "pct": "Unknown"
+      }
+    },
+    "identicalInventories": true
+  }
+}
