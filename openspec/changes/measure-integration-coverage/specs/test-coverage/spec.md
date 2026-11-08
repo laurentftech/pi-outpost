@@ -23,8 +23,8 @@ processes they start, together with the code run by the unit suites, in one figu
 - **THEN** the file's covered lines are the union of both
 
 ### Requirement: CoverageIsComputedOverTheFullInventory
-The server percentages SHALL be computed over every source file under `server/src`, except
-the files on a published exclusion list. A file that no test loads SHALL count with all its
+The server percentages SHALL be computed over every source file under `server/src` and
+`shared/src`, except the files on a published exclusion list. A file that no test loads SHALL count with all its
 lines uncovered.
 
 #### Scenario: UnloadedFileCountsAsUncovered
@@ -46,7 +46,7 @@ that the coverage run reads, and the run summary SHALL show that list.
 - **THEN** it names that file and the reason it is excluded
 
 #### Scenario: UnlistedFileCannotBeExcludedSilently
-- **GIVEN** a file under `server/src` that is not on the exclusion list
+- **GIVEN** a file under `server/src` or `shared/src` that is not on the exclusion list
 - **WHEN** the coverage run completes
 - **THEN** that file is part of the total
 
@@ -68,13 +68,13 @@ inventory falls below its configured threshold.
 - **THEN** the run exits non-zero and names the measure that fell short
 
 ### Requirement: ChildCoverageCannotBreakTheRun
-A server process's coverage data SHALL be reduced to the server's own sources before the run
-reads it, so its size stays bounded whatever the dependencies the process loaded.
+A server process's coverage data SHALL be reduced to the measured sources (`server/src` and
+`shared/src`) before the run reads it, so its size stays bounded whatever the dependencies the process loaded.
 
 #### Scenario: LargeDependencyDoesNotInflateCoverageData
 - **GIVEN** an integration suite whose server loads pdf.js
 - **WHEN** that server stops in a coverage run
-- **THEN** the coverage kept for it contains only entries for files under `server/src`
+- **THEN** the coverage kept for it contains only entries for files under `server/src` or `shared/src`
 
 #### Scenario: UnreadableChildCoverageIsReported
 - **GIVEN** a server killed before it finished writing its coverage

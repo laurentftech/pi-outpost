@@ -13,7 +13,7 @@
     "lint": "oxlint",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage --coverage.provider=v8 --coverage.reporter=text --coverage.reporter=lcov --coverage.thresholds.lines=91 --coverage.thresholds.branches=85 --coverage.thresholds.functions=93"
+    "test:coverage": "vitest run --coverage --coverage.provider=v8 --coverage.reporter=text --coverage.reporter=lcov --coverage.reporter=json-summary --coverage.thresholds.lines=91 --coverage.thresholds.branches=85 --coverage.thresholds.functions=93"
   },
   "dependencies": {
     "@codemirror/autocomplete": "^6.20.3",

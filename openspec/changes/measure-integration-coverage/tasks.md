@@ -6,26 +6,26 @@ with the harness and filter behind it.
 
 ## 1. Coverage mode in the harness
 
-- [ ] 1.1 Add one helper that returns the server child's `NODE_V8_COVERAGE` (the run's coverage directory when the coverage switch is set, `""` otherwise) and use it in `server/test/harness.mjs`; teach `server/test/testChildEnvironment.test.ts` to accept that helper and nothing looser; verify the guard test passes, still refuses its existing unsafe forms, and a test shows the helper returns `""` without the switch (scenario ServerChildWritesNoCoverageOutsideCoverageMode)
+- [x] 1.1 Add one helper that returns the server child's `NODE_V8_COVERAGE` (the run's coverage directory when the coverage switch is set, `""` otherwise) and use it in `server/test/harness.mjs`; teach `server/test/testChildEnvironment.test.ts` to accept that helper and nothing looser; verify the guard test passes, still refuses its existing unsafe forms, and a test shows the helper returns `""` without the switch (scenario ServerChildWritesNoCoverageOutsideCoverageMode)
 - [ ] 1.2 In coverage mode only, wait up to 15 s after SIGTERM before SIGKILL in the harness's `stop()`; verify by a harness test that a coverage-mode server leaves a coverage file after `stop()` and that the grace is unchanged without the switch
 - [ ] 1.3 Verify the server's own spawners still blank the sink in coverage mode: an integration test in coverage mode checks the fake agent child reports no coverage directory (scenario AgentChildReceivesNoCoverageSink)
 
 ## 2. Filter and merge
 
-- [ ] 2.1 Add a coverage filter module that keeps only `result` and source-map entries under `server/src`, moves an unparseable file aside and reports it; unit-test it on fixture files: a pdf.js entry is dropped, a `server/src` entry kept, a truncated file reported without throwing (scenarios LargeDependencyDoesNotInflateCoverageData, UnreadableChildCoverageIsReported)
+- [x] 2.1 Add a coverage filter module that keeps only `result` and source-map entries under `server/src` and `shared/src`, moves an unparseable file aside and reports it; unit-test it on fixture files: a pdf.js entry is dropped, a `server/src` entry kept, a truncated file reported without throwing (scenarios LargeDependencyDoesNotInflateCoverageData, UnreadableChildCoverageIsReported)
 - [ ] 2.2 Call the filter from the harness right after a coverage-mode server exits, and again over the whole directory before the report; verify after a local coverage run that no file in the directory exceeds a few MB
 - [ ] 2.3 Add `c8` as a pinned dev dependency of the server workspace (lockfile regenerated with npm 12.2.2, no install scripts) and record the decision with `record_decision`; verify `npm ci` passes with the root `.npmrc` policy
-- [ ] 2.4 Move the exclusions to one file with a reason per entry (`src/generated/**`, the bundled validator, `*.d.ts`); verify a test fails if a `server/src` file is excluded without being listed (scenarios ExclusionsArePublishedWithTheirReason, UnlistedFileCannotBeExcludedSilently)
+- [x] 2.4 Move the exclusions to one file with a reason per entry (`shared/src/generated/**`, `**/*.d.ts`); verify a test fails if a `server/src` or `shared/src` file is excluded without being listed (scenarios ExclusionsArePublishedWithTheirReason, UnlistedFileCannotBeExcludedSilently)
 
 ## 3. The coverage run
 
-- [ ] 3.1 Rewrite `npm run test:coverage --workspace server` to run every server suite, unit and integration, with `scripts/test.mjs`'s batching, in coverage mode, then merge with c8 `--all` over `server/src` and fail below lines/statements 93, branches 85, functions 95; verify locally under Linux (CI or WSL) that it passes on `main`'s code and fails when a threshold is raised above the measured value (scenarios ServerCoverageIncludesIntegrationSuites, UnitAndIntegrationCountsAreMerged, ThresholdsFailTheRun)
+- [ ] 3.1 Rewrite `npm run test:coverage --workspace server` to run every server suite, unit and integration, with `scripts/test.mjs`'s batching, in coverage mode, then merge with c8 `--all` over `server/src` and `shared/src`, measure the full figure, set the thresholds just under it and fail below them; verify locally under Linux (CI or WSL) that it passes on `main`'s code and fails when a threshold is raised above the measured value (scenarios ServerCoverageIncludesIntegrationSuites, UnitAndIntegrationCountsAreMerged, ThresholdsFailTheRun)
 - [ ] 3.2 Verify on a fixture file under `server/src` that no test imports that the report lists it at 0% and counts it, and that `src/index.ts` is in the total (scenarios UnloadedFileCountsAsUncovered, CentralEntryPointIsMeasured)
 
 ## 4. CI, summary and badge
 
 - [ ] 4.1 In `.github/workflows/ci.yml`, replace the Ubuntu `npm test --workspace server` and `test:coverage` steps with the single coverage step; Windows keeps `npm test --workspace server`; update the comments that explain the exclusions; verify in the PR's CI that the Ubuntu job passes and record its duration against the last `main` run (24 min Ubuntu, 27 min Windows)
-- [ ] 4.2 Update `scripts/coverage-summary.mjs`: drop `SUBPROCESS_ONLY`, report covered/total for lines, statements, branches and functions, and print the exclusion list; extend its script test (scenarios SummaryShowsNumeratorAndDenominator, ExcludedFileIsNamedInTheSummary)
+- [x] 4.2 Update `scripts/coverage-summary.mjs`: drop `SUBPROCESS_ONLY`, report covered/total for lines, statements, branches and functions, and print the exclusion list; extend its script test (scenarios SummaryShowsNumeratorAndDenominator, ExcludedFileIsNamedInTheSummary)
 - [ ] 4.3 Point `scripts/coverage-badge.mjs` at the merged server lcov (formula unchanged); verify its script test and the badge job's inputs in `ci.yml`
 - [ ] 4.4 Update `docs/quality.md` (checks table, "What the coverage badge means", thresholds), `docs/development.md` (tests and coverage, how to run it locally under Linux) and `docs/openssf.md` (coverage action and change log); verify the documented commands run as written and local links resolve
 

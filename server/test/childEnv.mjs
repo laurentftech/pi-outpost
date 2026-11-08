@@ -27,3 +27,23 @@
 export function envWithoutCoverageSink(extra = {}) {
   return { ...process.env, ...extra, NODE_V8_COVERAGE: "" };
 }
+
+/**
+ * Set by `npm run test:coverage` and nowhere else: the directory the servers the harness
+ * starts write their V8 coverage into. Read through `serverCoverageSink()`.
+ */
+export const COVERAGE_DIR_VARIABLE = "PI_OUTPOST_TEST_COVERAGE_DIR";
+
+/**
+ * The NODE_V8_COVERAGE value for a server the harness starts: the coverage run's
+ * directory when one is running, `""` otherwise.
+ *
+ * The one deliberate exception to the rule above. A server under test is the code being
+ * measured, so a coverage run wants its coverage; but only that run, which cuts each
+ * file down to `server/src` as soon as the server stops (coverageFilter.mjs), so nothing
+ * large ever reaches a reporter. The processes the server itself starts — the agent,
+ * terminals, npm — still blank the sink in the server's own code.
+ */
+export function serverCoverageSink() {
+  return process.env[COVERAGE_DIR_VARIABLE] || "";
+}

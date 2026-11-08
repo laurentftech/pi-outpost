@@ -51,6 +51,10 @@ export interface StartServerOptions {
   entry?: string;
 }
 
+/** How long stop() waits after SIGTERM before killing, outside and inside a coverage run. */
+export const STOP_GRACE_MS: number;
+export const COVERAGE_STOP_GRACE_MS: number;
+export function stopGraceMs(): number;
 /** A port nothing else is on, from the OS. */
 export function freePort(): Promise<number>;
 /** A temporary workspace holding `files` (relative path → content). */

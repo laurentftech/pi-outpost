@@ -54,7 +54,7 @@ each file, and merged unit and integration data: lines 94.91% (41,615/43,843), b
 
 The server child gets `NODE_V8_COVERAGE` pointing at a per-run directory, and the test
 processes keep the one node's runner sets. A final step merges everything with c8
-(`c8 report --all --src server/src`), which applies the source maps node records in each
+(`c8 report --all` over `server/src` and `shared/src`), which applies the source maps node records in each
 file.
 
 Alternatives considered: node's `--experimental-test-coverage` alone cannot see child
@@ -76,7 +76,7 @@ product code to know about tests. Coverage runs only on Linux, so it is not need
 ### Filter each child as soon as it stops
 
 After a server in coverage mode exits, the harness rewrites the files it wrote: keep only
-the `result` entries and source-map entries whose URL lies under `server/src`, and drop the
+the `result` entries and source-map entries whose URL lies under `server/src` or `shared/src`, and drop the
 rest. A file that fails to parse (a child killed mid-write) is moved aside and counted, not
 fed to the reporter. The filter lives in one module used by the harness and by the final
 step, which re-checks anything the harness could not reach (a test that killed its server
@@ -101,13 +101,22 @@ with the same batching and concurrency as `scripts/test.mjs`, then merges and ch
 thresholds. On Ubuntu it replaces `npm test --workspace server`; Windows keeps
 `npm test --workspace server`. The summary and badge scripts read the merged lcov.
 
+### The inventory is `server/src` and `shared/src`
+
+The current figure counts the `shared/src` code the server tests load (its exclusions,
+`**/generated/**` and the validator, only exist there), and nothing else measures `shared`.
+The new inventory therefore takes both directories in full, so `shared` is measured
+rather than dropped. The filter keeps entries under either root.
+
 ### Exclusions in one file, thresholds from the measurement
 
-The exclusion list moves to one file with a reason per entry: generated code
-(`src/generated/**`), the bundled reference validator, and type declarations (`*.d.ts`, so
-`pdfjs-worker.d.ts`). Thresholds start just under the spike's values, leaving room for run
-to run noise: lines and statements 93, branches 85, functions 95. The maintainer can tighten
-them after a few runs on `main`.
+The exclusion list moves to one file with a reason per entry: the generated
+structured-exchange validators (`shared/src/generated/**`) and type declarations
+(`**/*.d.ts`, so `pdfjs-worker.d.ts`). The bundled reference validator the old command
+excluded is not under either root, so it needs no entry. The spike measured `server/src`
+alone; thresholds are set just under the figure the first full run measures over both
+directories, leaving room for run-to-run noise, and recorded in the PR. The maintainer can
+tighten them after a few runs on `main`.
 
 ### The badge keeps its formula
 

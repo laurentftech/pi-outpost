@@ -23,10 +23,12 @@ coverage), while the Windows job (27 min) remains the longest in CI.
 - The server's coverage covers the integration suites too: on the Ubuntu CI leg, the servers
   the test harness starts write V8 coverage when they exit, and the run merges it with the
   unit suites' coverage.
-- The figure is computed over an explicit inventory: every file under `server/src` counts,
-  a file no test loads counting as 0%. The few exclusions (generated code, the bundled
-  reference validator, type declarations) are listed in one place with their reason.
-- Each child's coverage is cut down to `server/src` as soon as the child stops, so the raw
+- The figure is computed over an explicit inventory: every file under `server/src` and
+  `shared/src` counts, a file no test loads counting as 0%. `shared/src` is in it because the
+  current figure already counts the shared code the server tests load, and no other step
+  measures it. The few exclusions (the generated structured-exchange validators, type
+  declarations) are listed in one place with their reason.
+- Each child's coverage is cut down to the measured sources as soon as the child stops, so the raw
   files (about 20 MB per process) never accumulate and node's test reporter never reads
   them.
 - In coverage mode only, the harness gives a stopping server time to exit cleanly before
