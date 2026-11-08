@@ -59,6 +59,20 @@ gets different counts from the server and UI pipelines.
 On 8 November 2026 the merged report measured, for lines, branches and functions: `server/src`
 98.8%, 93.4%, 98.4%; `shared/src` 98.9%, 81.5%, 97.5%; `ui/src` 97.1%, 87.3%, 93.7%.
 
+### How far to trust each figure
+
+- **`ui/src`** is measured from code Vite leaves readable, so its figures are precise.
+- **`server/src`** is approximate. The server runs under tsx, which compacts each module onto
+  one line; mapped back to the TypeScript, the ranges V8 reports lose precision. A function
+  that never runs can leave only part of its first line marked unrun, so lines and functions
+  read a little high.
+- **Branches are indicative only**, wherever server suites run the code. The converter does
+  not find the same branches from the server side as from the UI side: for
+  `shared/src/structuredExchangeProfile.ts` it finds 12 through the server suites and 93
+  through the UI's. A low branch figure for a `shared/src` file can therefore be an artifact of
+  measurement rather than a gap in its tests. Choose what to test by reading the code's error
+  paths and edge cases, not from that figure alone.
+
 The badge still describes those scopes, **not whole-repository or end-to-end coverage**: the
 browser suites, the other workspaces (`office`, `posters`, `openwebui`, `mcp`, `embed`) and the
 processes the server starts (the agent, terminals) are not instrumented. Coverage says which
