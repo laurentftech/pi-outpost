@@ -45,6 +45,11 @@ coverage), while the Windows job (27 min) remains the longest in CI.
   run's coverage directory and only when coverage mode asks for it; the agent and terminal
   children the server starts still never inherit it.
 
+- **Revision after #461**: one converter, `monocart-coverage-reports` 3, for the server and UI
+  suites (the UI through `vitest-monocart-coverage` 5, on Vitest 5). It counts only lines of code
+  and merges raw V8 data, so `shared/src` is credited by every suite that runs it, and each of
+  `server/src`, `shared/src` and `ui/src` gets its own figure. c8 is removed.
+
 ## Capabilities
 
 ### New Capabilities

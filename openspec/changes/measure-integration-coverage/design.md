@@ -37,20 +37,64 @@ each file, and merged unit and integration data: lines 94.91% (41,615/43,843), b
 
 - One instrumented server run on Ubuntu that yields the full-inventory figure and fails below
   the thresholds.
+- One figure each for `server/src`, `shared/src` and `ui/src`, the shared one crediting every
+  suite that runs shared code, all counted with the same definitions.
 - Bounded disk use and no step that parses an unfiltered child coverage file.
 - Unchanged behaviour outside coverage mode, on every platform.
 
 **Non-Goals:**
 
 - Coverage on Windows or macOS. Those legs keep their uninstrumented runs.
-- UI coverage, which Vitest already measures over its own sources.
+- Coverage of the other workspaces (`office`, `posters`, `openwebui`, `mcp`, `embed`).
 - Coverage of processes other than the server under test (the pi agent, terminals,
   `npm` children).
 - Raising coverage. This change measures; filling the gaps it reveals is separate work.
 
 ## Decisions
 
-### Collect with `NODE_V8_COVERAGE`, report with c8
+### Revision, 8 November 2026: one converter for every suite
+
+The first version (#461) reported the server with c8 and left the UI to Vitest's own coverage.
+Two defects followed, both found in the merged result:
+
+- `shared/src` code tested by UI suites (`markdownMath.ts`, `docx/mathmlToOmml.ts`) showed
+  near 0%: its tests had stayed in `ui/` when the code moved, and each tool credited only its
+  own suites.
+- c8's V8-to-Istanbul conversion counts every line of a file as a statement, comments and blank
+  lines included (118 lines for the 118-line `markdownMath.ts`, against 63 lines of code for
+  Vitest), so a comment inside a run function counted as covered.
+
+The two tools also define lines, branches and functions differently, so their reports cannot be
+added. Both sides therefore keep raw V8 data and one converter, `monocart-coverage-reports` 3
+(MCR), turns it into a report: the server's files from the coverage run, the UI's through
+`vitest-monocart-coverage` 5 (which requires Vitest 5, adopted in #464). MCR converts by syntax
+tree, so only code counts, and it merges raw V8 data from many processes before converting, so
+a `shared/src` file gets one total and the union of every suite's hits. c8 is removed.
+
+Two things the converter needs, found while wiring it:
+
+- **The code V8 ran.** A NODE_V8_COVERAGE file holds byte ranges into the JavaScript tsx
+  produced, not that JavaScript; given only the `.ts` on disk, MCR parses TypeScript loosely and
+  finds wrong functions and statements. In a coverage run, the load hook
+  (`server/test/stripDependencySourceMaps.mjs`) keeps tsx's output for `server/src` and
+  `shared/src` beside the coverage files, and the conversion hands it to MCR. Files no suite
+  loads are compiled with esbuild for the same reason, so they count their functions and
+  branches, not only their lines.
+- **No statements figure.** MCR counts statements from the generated code's lines: tsx emits a
+  module on one line, Vite does not, so the same file gets 2 statements from the server side
+  and 67 from the UI side. Lines (mapped back to the source), functions and branches (from the
+  syntax tree) agree across sides; those three are published.
+- **Lines of code only.** MCR also counts lines that produce no code — interfaces, type
+  aliases, `import type` — and reports them as covered, which put the server above c8 (98.8%
+  of lines on the first merged run, against 95.0%). The report recomputes each file's line
+  coverage over the lines its compilation maps back to (esbuild, with a source map), from
+  MCR's per-line counts. A file of types alone has no such line and is not owed. In a
+spike, `shared/src/docx/mathmlToOmml.ts` went from 21/160 lines (server suites) and 82/85 (UI
+suites, its own definition) to 127/160 merged. Both packages are maintained by one person and
+publish without npm provenance; they run in CI and on developer machines only, never in what
+pi-outpost ships, and have no install scripts.
+
+### Collect with `NODE_V8_COVERAGE`, report with c8 (superseded by the revision above)
 
 The server child gets `NODE_V8_COVERAGE` pointing at a per-run directory, and the test
 processes keep the one node's runner sets. A final step merges everything with c8
@@ -94,7 +138,12 @@ one helper that returns `""` unless that switch is on. The server's own spawners
 touched, so agent and terminal children never inherit coverage. The guard test learns this
 helper as a recognised form; its other checks stay as they are.
 
-### One Ubuntu step replaces two
+### One Ubuntu step replaces two (revised: two collection steps and one report)
+
+With one converter, the Ubuntu leg runs `npm run test:coverage` in `server` and in `ui`, each
+leaving raw V8 data, then `node scripts/coverage-report.mjs`, which merges them, checks the
+inventory and each scope's thresholds, and writes the summary and the badge's input.
+
 
 `npm run test:coverage --workspace server` runs every server suite, unit and integration,
 with the same batching and concurrency as `scripts/test.mjs`, then merges and checks the
@@ -118,7 +167,11 @@ alone; thresholds are set just under the figure the first full run measures over
 directories, leaving room for run-to-run noise, and recorded in the PR. The maintainer can
 tighten them after a few runs on `main`.
 
-### The badge keeps its formula
+### The badge keeps its formula (revised: one merged report)
+
+The badge is line coverage over the merged report: `server/src`, `shared/src` and `ui/src`,
+each file counted once. Before, a shared file could appear in two reports.
+
 
 The badge stays "line coverage across the server and UI lcov files". Only the server input
 changes, so the badge's meaning changes with it, which `docs/quality.md` states. The
@@ -135,7 +188,12 @@ changes, so the badge's meaning changes with it, which `docs/quality.md` states.
   run fails clearly if the disk fills, and source-map deduplication is ready as a fallback.
 - [Thresholds too tight for run-to-run variation] → Start below the measured values, then
   adjust once the variation across several runs is known.
-- [c8 version drift changes the numbers] → Pin c8 in the lockfile like any dev dependency.
+- [Converter version drift changes the numbers] → MCR is pinned by the lockfile like any dev
+  dependency; a change in the figures on an update is read in the PR's summary.
+- [Two single-maintainer packages without npm provenance] → Dev-only, no install scripts, locked
+  by integrity hash; reviewed on each update like any other dependency.
+- [The figures move] → Without comment lines the server figure is no longer flattered, and
+  `shared/src` gains the UI suites' hits: thresholds are reset from the first merged run.
 
 ## Migration Plan
 

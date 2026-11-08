@@ -15,7 +15,7 @@ and the work planned for each gap, is in [OpenSSF: status and plan](openssf.md).
 | Static analysis | [CodeQL workflow](../.github/workflows/codeql.yml) | Actions, C# and JavaScript/TypeScript on PRs, main and weekly. JS/TS uses `security-and-quality`; other languages retain default queries. Findings still need review. |
 | Unit and integration tests | [CI workflow](../.github/workflows/ci.yml), workspace test scripts | Main suites run on Ubuntu and Windows; real HTTP/WebSocket tests use isolated server processes. Native install checks also run on macOS. |
 | Browser checks | `npm run test:e2e`, `npm run test:webbench` | Built app/widget flows; the bench covers Chromium, Firefox, WebKit and selected axe accessibility scans. These are bounded scenarios, not exhaustive accessibility or UI certification. |
-| Coverage thresholds | `server/test/coverageConfig.mjs`, `ui/package.json` | Server, over every file in `server/src` and `shared/src`, unit and integration suites together: lines and statements 94%, branches 86%, functions 95%. UI: lines 91%, branches 85%, functions 93%. These are minimum thresholds, not claimed current measurements. |
+| Coverage thresholds | `scripts/coverage-config.mjs` | Lines, branches and functions over every file of each scope, all suites together: `server/src` 97/92/97%, `shared/src` 97/80/96%, `ui/src` 96/86/92%. These are minimum thresholds, not claimed current measurements. |
 | Spec scenario inventory | `scripts/check-scenario-coverage.mjs` | Checks a touched change's scenario matrix and cited files. A reviewer must still read the assertions and verify their outcomes. |
 | Packaging and confinement | CLI install, container, MCP bundle and native sandbox tests | Exercises installed/native artifacts and refusals. Some jobs run only on specific platforms or changed paths; use their actual result for the change. |
 | Install and publication policy | `.npmrc`, root `allowScripts`, release workflow | npm 12.2.2 rejects unreviewed install scripts; npm publication uses GitHub OIDC/provenance. Dependencies and upstream advisories still need review. |
@@ -39,17 +39,25 @@ works before the package is built. Browser tests still import its built public e
 
 ## What the coverage badge means
 
-The badge is line coverage across the server and UI reports.
+The badge is line coverage over the merged report: `server/src`, `shared/src` and `ui/src`,
+each file counted once.
 
-Server coverage counts every server suite, unit and integration, including the server
-processes the integration suites start. It is computed over an inventory: every file under
-`server/src` and `shared/src`, `server/src/index.ts` included. A file no test loads counts with
-all its lines uncovered. Only the files listed in
-[`server/test/coverageConfig.mjs`](../server/test/coverageConfig.mjs) are left out, each with its
-reason: the generated structured-exchange validators and the type declarations. The CI summary
-gives covered/total counts for lines, statements, branches and functions, and repeats that list.
-On 8 November 2026 the server measured 95.0% of lines and statements, 87.3% of branches and
-96.3% of functions. The UI has its own Vitest coverage report over `ui/src`.
+Coverage counts every server and UI suite, including the server processes the integration
+suites start, converted by one tool (monocart-coverage-reports) so the two sides' figures can be
+merged. It has three scopes, each with its own figure and thresholds: `server/src`,
+`shared/src` and `ui/src`. `shared/src` is credited by every suite that runs it, server and UI
+together. Every file of a scope counts, `server/src/index.ts` included, and a file no test loads
+counts with all its lines, branches and functions uncovered. Only lines that produce code count:
+comments, blank lines and what TypeScript erases (interfaces, type aliases, `import type`) do
+not. Only the files listed in [`scripts/coverage-config.mjs`](../scripts/coverage-config.mjs)
+are left out, each with its reason: the generated structured-exchange validators, type
+declarations, and the UI's tests and test helpers. The CI summary gives covered/total counts
+for lines, branches and functions, per scope and per file, and repeats that list. Statements
+are not reported: the converter counts them from the generated code's lines, so the same file
+gets different counts from the server and UI pipelines.
+
+On 8 November 2026 the merged report measured, for lines, branches and functions: `server/src`
+98.8%, 93.4%, 98.4%; `shared/src` 98.9%, 81.5%, 97.5%; `ui/src` 97.1%, 87.3%, 93.7%.
 
 The badge still describes those scopes, **not whole-repository or end-to-end coverage**: the
 browser suites, the other workspaces (`office`, `posters`, `openwebui`, `mcp`, `embed`) and the

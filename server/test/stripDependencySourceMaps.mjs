@@ -17,7 +17,10 @@
  * removed from it — tsx's inline one and the package's own, which node would otherwise fall
  * back to. Nothing under node_modules is in the coverage report; nothing else is touched.
  */
+import { createHash } from "node:crypto";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { registerHooks } from "node:module";
+import path from "node:path";
 
 const MAP_COMMENT = /^\/\/[#@] sourceMappingURL=.*$/gm;
 
@@ -27,9 +30,32 @@ export function withoutDependencySourceMaps(url, source) {
   return source.replace(MAP_COMMENT, "");
 }
 
+/**
+ * In a coverage run, where the code V8 ran for our own sources is kept: the JavaScript tsx
+ * produced, which the coverage file's byte ranges refer to and the converter must parse —
+ * the `.ts` on disk is not that code. One file per distinct source, under `sources/`.
+ */
+const SOURCES = process.env.NODE_V8_COVERAGE ? path.join(process.env.NODE_V8_COVERAGE, "sources") : undefined;
+const OWN = /\/(?:server|shared)\/src\//;
+
+function recordSource(url, source) {
+  if (!SOURCES || !url.startsWith("file:") || url.includes("/node_modules/") || !OWN.test(url)) return;
+  const name = `${createHash("sha1").update(url).update("\0").update(source).digest("hex")}.json`;
+  mkdirSync(SOURCES, { recursive: true });
+  try {
+    // Exclusive create: the same source from another process is already there, and fine.
+    writeFileSync(path.join(SOURCES, name), JSON.stringify({ url, source }), { flag: "wx" });
+  } catch (error) {
+    if (error?.code !== "EEXIST") throw error;
+  }
+}
+
 registerHooks({
   load(url, context, nextLoad) {
     const result = nextLoad(url, context);
+    if (result.source != null && !url.includes("/node_modules/")) {
+      recordSource(url, typeof result.source === "string" ? result.source : Buffer.from(result.source).toString("utf8"));
+    }
     if (result.source == null || !url.includes("/node_modules/")) return result;
     const source = typeof result.source === "string" ? result.source : Buffer.from(result.source).toString("utf8");
     const stripped = withoutDependencySourceMaps(url, source);

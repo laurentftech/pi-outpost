@@ -71,7 +71,9 @@ describe("the coverage run", () => {
     );
     // One file per thread the child ran: judged together, since only the thread that loaded
     // our code stores its map, and each on its own for what no file may carry.
-    const files = readdirSync(sink).map((name) => path.join(sink, name));
+    const files = readdirSync(sink)
+      .filter((name) => name.endsWith(".json"))
+      .map((name) => path.join(sink, name));
     assert.ok(files.length > 0, "the child wrote no coverage file");
     const cached: string[] = [];
     for (const file of files) {
@@ -81,5 +83,14 @@ describe("the coverage run", () => {
       cached.push(...urls);
     }
     assert.ok(cached.some((url) => url.endsWith("/server/src/pdf.ts")), `our own source map was dropped too; cached: ${cached.join(", ") || "nothing"}`);
+
+    // The code V8 ran for our own sources is kept for the converter, and only theirs: the
+    // coverage ranges point into tsx's output, not into the .ts on disk.
+    const kept = readdirSync(path.join(sink, "sources")).map((name) => JSON.parse(readFileSync(path.join(sink, "sources", name), "utf8")) as { url: string; source: string });
+    const pdf = kept.find(({ url }) => url.endsWith("/server/src/pdf.ts"));
+    assert.ok(pdf, `the code that ran for server/src/pdf.ts was not kept; kept: ${kept.map(({ url }) => url).join(", ")}`);
+    assert.doesNotMatch(pdf.source, /:\s*(?:string|number|boolean)\b[^\n]*[=;)]/, "kept the TypeScript, not the JavaScript tsx produced");
+    assert.match(pdf.source, /sourceMappingURL=data:/, "the kept code carries the map back to the TypeScript");
+    assert.deepEqual(kept.filter(({ url }) => url.includes("/node_modules/")), [], "a dependency's code was kept");
   });
 });

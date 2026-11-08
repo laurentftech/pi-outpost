@@ -1,9 +1,9 @@
 /**
  * Write a coverage badge as a self-contained SVG.
  *
- *   node scripts/coverage-badge.mjs badges/coverage.svg server/coverage/lcov.info ui/coverage/lcov.info
+ *   node scripts/coverage-badge.mjs badges/coverage.svg coverage/coverage-scopes.json
  *
- * The figure is line coverage across every lcov given — the metric a badge is
+ * The figure is line coverage across every input given — the metric a badge is
  * universally read as, so quoting it misleads nobody. It first showed the lowest
  * of the three, which was defensible but read as a worse project than this one
  * is: branches sat five points under lines and dragged the badge amber while the
@@ -17,12 +17,25 @@
 import { readFileSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
-/** Totals for one lcov file: [hit, found] per metric. */
+/**
+ * Totals for one input: [hit, found] per metric. The merged report
+ * (`coverage/coverage-scopes.json`, from scripts/coverage-report.mjs) is read for its scopes'
+ * totals: the figures the run summary shows. An lcov file is read for its LH/LF records.
+ */
 function readLcov(file) {
   const totals = { lines: [0, 0], branches: [0, 0], functions: [0, 0] };
   const add = (key, index, value) => {
     totals[key][index] += Number(value);
   };
+  if (file.endsWith(".json")) {
+    for (const { totals: scope } of JSON.parse(readFileSync(file, "utf8")).scopes) {
+      for (const key of Object.keys(totals)) {
+        add(key, 0, scope[key].covered);
+        add(key, 1, scope[key].total);
+      }
+    }
+    return totals;
+  }
   for (const line of readFileSync(file, "utf8").split("\n")) {
     if (line.startsWith("LH:")) add("lines", 0, line.slice(3));
     else if (line.startsWith("LF:")) add("lines", 1, line.slice(3));
@@ -75,7 +88,7 @@ function svg(label, value, fill) {
 
 const [output, ...inputs] = process.argv.slice(2);
 if (!output || inputs.length === 0) {
-  console.error("usage: coverage-badge.mjs <output.svg> <lcov...>");
+  console.error("usage: coverage-badge.mjs <output.svg> <coverage-scopes.json | lcov...>");
   process.exit(1);
 }
 

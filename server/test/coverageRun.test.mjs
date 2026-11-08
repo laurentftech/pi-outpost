@@ -4,19 +4,15 @@
  * that server starts in turn — here the agent child — still write none.
  */
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
 import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
-import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { after, test } from "node:test";
-import { COVERAGE_DIR_VARIABLE, envWithoutCoverageSink } from "./childEnv.mjs";
-import { c8ReportArgs } from "./coverageConfig.mjs";
+import { buildReport } from "../../scripts/coverage-report.mjs";
+import { COVERAGE_DIR_VARIABLE } from "./childEnv.mjs";
+import { convertServerCoverage } from "./coverageConvert.mjs";
 import { isUnder } from "./coverageFilter.mjs";
-
-const C8 = createRequire(import.meta.url).resolve("c8/bin/c8.js");
-const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 import { COVERAGE_STOP_GRACE_MS, makeWorkspace, startServer, STOP_GRACE_MS, stopGraceMs } from "./harness.mjs";
 
 const FAKE = fileURLToPath(new URL("./fixtures/fake-pi-rpc.mjs", import.meta.url));
@@ -87,17 +83,13 @@ test(
 
     // openlore: scenario=CodeReachedOnlyThroughTheServerProcessIsCovered spec=test-coverage
     // This test process never imports src/index.ts, so whatever the report counts as run
-    // there was run by the server: c8 reads the server's file through tsx's source maps.
-    const reportsDirectory = path.join(coverageDir, "report");
-    const report = spawnSync(
-      process.execPath,
-      [C8, ...c8ReportArgs({ tempDirectory: coverageDir, reportsDirectory, roots: ["server/src"], thresholds: { lines: 1 } })],
-      { cwd: REPO, env: envWithoutCoverageSink(), encoding: "utf8" },
-    );
-    assert.equal(report.status, 0, `${report.stdout}${report.stderr}`);
-    const summary = JSON.parse(await readFile(path.join(reportsDirectory, "coverage-summary.json"), "utf8"));
-    const index = summary[Object.keys(summary).find((key) => path.resolve(key) === INDEX)];
+    // there was run by the server, converted and reported as the coverage run does it.
+    const converted = path.join(coverageDir, "converted");
+    await convertServerCoverage(coverageDir, converted);
+    const report = await buildReport({ inputDirs: [path.join(converted, "raw")], outputDir: path.join(coverageDir, "report") });
+    const index = report.scopes.find(({ name }) => name === "server").files.find((file) => file.path === "server/src/index.ts");
     assert.ok(index, "src/index.ts is missing from the report");
-    assert.ok(index.lines.covered > 1000, `only ${index.lines.covered} lines of src/index.ts reported as run by the server`);
+    // Starting and stopping alone runs several hundred of its lines of code (about 900 on CI).
+    assert.ok(index.summary.lines.covered > 500, `only ${index.summary.lines.covered} lines of src/index.ts reported as run by the server`);
   },
 );
