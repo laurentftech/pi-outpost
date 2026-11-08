@@ -37,9 +37,9 @@ if(process.env.SPIKE_TRIAL==='1'&&dir&&allowed){
     // Trial-only adaptation: preserve production files and the normal harness policy.
     if(file===path.join(root,'server/test/harness.mjs')){
       const source=String(loaded.source);
-      const original='return serverCoverageSink() ? COVERAGE_STOP_GRACE_MS : STOP_GRACE_MS;';
+      const original='const stopped = await waitForExit(stopGraceMs());';
       if(source.split(original).length!==2)throw new Error('Trial shutdown adapter drift: review harness');
-      return {...loaded,source:source.replace(original,'return COVERAGE_STOP_GRACE_MS;')};
+      return {...loaded,source:source.replace(original,'const stopped = await waitForExit(COVERAGE_STOP_GRACE_MS);')};
     }
     if(!['server','shared'].includes(trialScope(file)?.name))return loaded;
     if(!started){startProcess(dir,id,relative,{owner,pid:process.pid,ppid:process.ppid});started=true;trace('started');}

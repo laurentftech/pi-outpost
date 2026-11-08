@@ -52,5 +52,8 @@ assert.equal(reportRun.status,1,'a Node-only sample must fail the full three-sco
 const report=JSON.parse(readFileSync(path.join(dir,'real/report/summary.json'),'utf8'));
 assert.deepEqual(report.errors,['ui: zero covered instructions','Missing server/UI suite completion records'],'complete inventory must compile with no source drift, but incomplete suites must remain flagged');
 assert.ok(report.files.some(f=>f.scope==='ui'&&f.summary.statements.total>0&&f.summary.statements.covered===0),'unloaded UI code counts at zero');
+const grace=spawnSync(process.execPath,['--import','tsx/esm','--test','--test-name-pattern=^stop','server/test/coverageRun.test.mjs'],{cwd:root,
+  env:{...env,SPIKE_TRIAL_DIR:path.join(dir,'grace')},encoding:'utf8',timeout:120000});
+assert.equal(grace.status,0,grace.stdout+'\n'+grace.stderr);
 await import('./trial-lifecycle-selftest.mjs');
 console.log('Compact dump union, missing/empty/truncated data, unrelated-child gate and real Node test worker passed.');

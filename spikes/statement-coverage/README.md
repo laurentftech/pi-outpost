@@ -180,3 +180,10 @@ SIGTERM flush (one second, beyond the old 300ms budget), and an unrecoverable
 SIGKILL which must remain a missing-dump failure. POSIX signal controls run on
 Linux; Windows runs the normal/failed-start and ownership controls. A test-only
 fixture entry is admitted solely when SPIKE_TRIAL_SELFTEST=1.
+
+
+The first shutdown follow-up collected all 728 expected dumps, but correctly
+failed because the adapter also changed the pure `stopGraceMs()` policy function
+under test. The corrected adapter changes only `stop()`'s wait call in the trial;
+the original policy function and its regression assertions remain intact. That
+exact regression now runs in the collector preflight before a full-suite trial.
