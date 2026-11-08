@@ -83,8 +83,12 @@ Two things the converter needs, found while wiring it:
 - **No statements figure.** MCR counts statements from the generated code's lines: tsx emits a
   module on one line, Vite does not, so the same file gets 2 statements from the server side
   and 67 from the UI side. Lines (mapped back to the source), functions and branches (from the
-  syntax tree) agree across sides; those three are published. Lines are the source's
-  non-comment, non-blank lines, type declarations included. In a
+  syntax tree) agree across sides; those three are published.
+- **Lines of code only.** MCR also counts lines that produce no code — interfaces, type
+  aliases, `import type` — and reports them as covered, which put the server above c8 (98.8%
+  of lines on the first merged run, against 95.0%). The report recomputes each file's line
+  coverage over the lines its compilation maps back to (esbuild, with a source map), from
+  MCR's per-line counts. A file of types alone has no such line and is not owed. In a
 spike, `shared/src/docx/mathmlToOmml.ts` went from 21/160 lines (server suites) and 82/85 (UI
 suites, its own definition) to 127/160 merged. Both packages are maintained by one person and
 publish without npm provenance; they run in CI and on developer machines only, never in what

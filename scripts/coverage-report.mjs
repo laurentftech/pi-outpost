@@ -96,6 +96,68 @@ async function untestedToJavaScript(entry) {
   entry.sourceMap = JSON.parse(map);
 }
 
+const BASE64 = Object.fromEntries([..."ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"].map((char, index) => [char, index]));
+
+/** The original (0-based) lines a source map's mappings point at. */
+function mappedLines(mappings) {
+  const lines = new Set();
+  let original = 0;
+  for (const line of mappings.split(";")) {
+    for (const segment of line.split(",")) {
+      if (segment === "") continue;
+      const values = [];
+      let value = 0;
+      let shift = 0;
+      for (const char of segment) {
+        const digit = BASE64[char];
+        value += (digit & 31) << shift;
+        if (digit & 32) shift += 5;
+        else {
+          values.push(value & 1 ? -(value >>> 1) : value >>> 1);
+          value = 0;
+          shift = 0;
+        }
+      }
+      // [generated column, source, original line, original column, name]: the line is a delta.
+      if (values.length >= 4) {
+        original += values[2];
+        lines.add(original);
+      }
+    }
+  }
+  return lines;
+}
+
+/**
+ * The 1-based lines of a source file that produce code: what compiling it maps back to.
+ * Comments, blank lines and everything TypeScript erases — interfaces, type aliases,
+ * `import type`, annotations on a line of their own — produce none, so they are neither
+ * covered nor uncovered lines.
+ */
+export function codeLines(file, source) {
+  const { transformSync } = createRequire(import.meta.url)("esbuild");
+  const loader = file.endsWith(".tsx") ? "tsx" : /\.[cm]?ts$/.test(file) ? "ts" : "js";
+  const { map } = transformSync(source, { loader, format: "esm", sourcemap: "external", sourcefile: file, jsx: "automatic" });
+  return new Set([...mappedLines(JSON.parse(map).mappings)].map((line) => line + 1));
+}
+
+/**
+ * A file's line coverage over its lines of code. The converter reports a count per line it
+ * considers (`data.lines`: a number, or "covered/total" for a line partly run); it also counts
+ * lines that produce no code, as covered. Those are dropped here.
+ */
+function lineCoverage(file, absolute) {
+  const code = codeLines(absolute, readFileSync(absolute, "utf8"));
+  let covered = 0;
+  let total = 0;
+  for (const [line, count] of Object.entries(file.data?.lines ?? {})) {
+    if (!code.has(Number(line))) continue;
+    total += 1;
+    if (typeof count === "string" ? !count.startsWith("0/") : count > 0) covered += 1;
+  }
+  return { covered, total };
+}
+
 /**
  * Convert and merge `inputDirs` (MCR raw directories) over the inventory. The scopes and the
  * exclusion-aware `scopeFor` come from coverage-config.mjs unless a test passes its own.
@@ -123,6 +185,7 @@ export async function buildReport({ inputDirs, outputDir, baseDir = REPO, scopes
     if (!scope) continue;
     const entry = byScope.get(scope.name);
     const summary = Object.fromEntries(MEASURES.map((measure) => [measure, { covered: file.summary[measure].covered, total: file.summary[measure].total }]));
+    summary.lines = lineCoverage(file, absolute);
     for (const measure of MEASURES) {
       entry.totals[measure].covered += summary[measure].covered;
       entry.totals[measure].total += summary[measure].total;
@@ -138,10 +201,20 @@ export async function buildReport({ inputDirs, outputDir, baseDir = REPO, scopes
   return { scopes: report, failures };
 }
 
-/** Inventory files (repository-relative) the report does not list. */
-export function missingFromReport(report, tracked) {
+/**
+ * Inventory files (repository-relative) the report does not list. A file with no line of code
+ * — only types — produces nothing to run or to measure, so the converter leaves it out and it
+ * is not owed.
+ */
+export function missingFromReport(report, tracked, baseDir = REPO) {
   const reported = new Set(report.scopes.flatMap(({ files }) => files.map((file) => file.path)));
-  return tracked.filter(inInventory).filter((file) => !reported.has(file));
+  return tracked
+    .filter(inInventory)
+    .filter((file) => !reported.has(file))
+    .filter((file) => {
+      const absolute = path.resolve(baseDir, file);
+      return !existsSync(absolute) || codeLines(absolute, readFileSync(absolute, "utf8")).size > 0;
+    });
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {

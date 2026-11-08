@@ -9,7 +9,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { after, before, test } from "node:test";
-import { buildReport, convertV8ToRaw, missingFromReport } from "./coverage-report.mjs";
+import { buildReport, codeLines, convertV8ToRaw, missingFromReport } from "./coverage-report.mjs";
 import { inInventory } from "./coverage-config.mjs";
 
 // Line numbers matter: 2, 4 and 7 are a comment, a blank line and a comment.
@@ -116,4 +116,29 @@ test("CoverageBelowThresholdFailsCi: a scope below a threshold fails, naming the
   assert.ok(scopes[0].totals.functions.covered < scopes[0].totals.functions.total, "the fixture must fall short");
   assert.equal(failures.length, 1, failures.join("; "));
   assert.match(failures[0], /^shared functions .* is below 99%$/);
+});
+
+// openlore: scenario=CommentLinesAreNotCounted spec=test-coverage
+test("only lines that produce code count: TypeScript's types, comments and blank lines do not", () => {
+  const source = [
+    'import type { Thing } from "./thing.ts";', // 1: erased
+    'import { make } from "./make.ts";', // 2: code
+    "", // 3
+    "export interface Options {", // 4: erased
+    "  /** A size. */", // 5
+    "  size: number;", // 6: erased
+    "}", // 7: erased
+    "export type Pair = [number, number];", // 8: erased
+    "// a comment", // 9
+    "export function area(options: Options): number {", // 10: code
+    "  const { size } = options;", // 11: code
+    "  return size * size;", // 12: code
+    "}", // 13
+    "export const thing: Thing = make();", // 14: code
+  ].join("\n");
+  const lines = codeLines("shape.ts", source);
+  for (const line of [1, 3, 4, 5, 6, 7, 8, 9]) assert.ok(!lines.has(line), `line ${line} produces no code, yet it counts`);
+  for (const line of [2, 10, 11, 12, 14]) assert.ok(lines.has(line), `line ${line} is code, yet it does not count`);
+  // A file of types alone has nothing to measure, so the report does not owe it.
+  assert.equal(codeLines("types.ts", "export interface A { a: string }\nexport type B = A[];\n").size, 0);
 });

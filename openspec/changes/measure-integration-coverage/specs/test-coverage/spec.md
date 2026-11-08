@@ -51,8 +51,9 @@ A file that no test loads SHALL count with all its lines uncovered.
 - **THEN** `server/src/index.ts` is in the report and counted in the total, not set aside
 
 ### Requirement: OnlyExecutableCodeIsCounted
-A line SHALL count toward coverage only when it holds code: comments and blank lines SHALL be
-neither covered nor uncovered lines.
+A line SHALL count toward coverage only when it produces code: comments, blank lines and
+what TypeScript erases (interfaces, type aliases, type-only imports) SHALL be neither covered
+nor uncovered lines. A file that produces no code SHALL NOT be owed in the report.
 
 #### Scenario: CommentLinesAreNotCounted
 - **GIVEN** a source file with comment and blank lines inside a function the tests run
