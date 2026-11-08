@@ -207,6 +207,68 @@ describe("drawio_check sees wires", () => {
     assert.equal(routeWire(labelled.cells.find((cell) => cell.id === "w")!, pageGeometry(labelled)), undefined);
   });
 
+  test("each end or style the port does not follow is refused, and the same diagram without it is routed", () => {
+    const route = (cells: string) => {
+      const page = readDrawio(model(cells))[0]!;
+      return routeWire(page.cells.find((cell) => cell.id === "w")!, pageGeometry(page));
+    };
+    const plain = "rounded=0;whiteSpace=wrap;html=1;";
+    // [why, shape a's style, the wire's style]: each differs from a routed pair by one property.
+    const cases: Array<[string, string, string]> = [
+      ["a shape pointing north", `${plain}direction=north;`, "html=1;"],
+      ["a shape flipped horizontally", `${plain}flipH=1;`, "html=1;"],
+      ["a shape flipped vertically", `${plain}flipV=1;`, "html=1;"],
+      ["a stencil shape", "shape=mxgraph.flowchart.document;html=1;", "html=1;"],
+      ["an inline stencil", "shape=stencil(abc);html=1;", "html=1;"],
+      ["a rounded perimeter on a rounded shape", "rounded=1;roundedPerimeter=1;html=1;", "html=1;"],
+      ["a perimeter the port does not draw", `${plain}perimeter=trianglePerimeter;`, "html=1;"],
+      ["a target port", plain, "html=1;targetPort=y;"],
+      ["snapping to a point", plain, "html=1;snapToPoint=1;"],
+      ["fixed-point spacing", plain, "html=1;fixedPointSpacing=1;"],
+      ["an orthogonal flag", plain, "html=1;orthogonal=1;"],
+    ];
+    assert.ok(route(box("a", 40, 40, plain) + box("b", 240, 40) + wire("w", "a", "b", "html=1;")), "the baseline pair must route");
+    for (const [why, shape, style] of cases) {
+      assert.equal(route(box("a", 40, 40, shape) + box("b", 240, 40) + wire("w", "a", "b", style)), undefined, why);
+    }
+    // Only the combination is refused: a rounded perimeter on a square shape, or a rounded shape, still route.
+    assert.ok(route(box("a", 40, 40, "rounded=0;roundedPerimeter=1;html=1;") + box("b", 240, 40) + wire("w", "a", "b", "html=1;")));
+    assert.ok(route(box("a", 40, 40, "rounded=1;html=1;") + box("b", 240, 40) + wire("w", "a", "b", "html=1;")));
+    // An east-facing shape is the default direction, and routes.
+    assert.ok(route(box("a", 40, 40, `${plain}direction=east;`) + box("b", 240, 40) + wire("w", "a", "b", "html=1;")));
+  });
+
+  test("a loop, or an end that is not a routable shape, is refused rather than guessed", () => {
+    const route = (cells: string) => {
+      const page = readDrawio(model(cells))[0]!;
+      return routeWire(page.cells.find((cell) => cell.id === "w")!, pageGeometry(page));
+    };
+    // A loop takes draw.io's loop style, which is not ported
+    assert.equal(route(box("a", 40, 40) + wire("w", "a", "a", "html=1;")), undefined);
+    // An end on another wire, which has no box to route to
+    const other = wire("v", "a", "b", "html=1;");
+    assert.equal(route(box("a", 40, 40) + box("b", 240, 40) + other + wire("w", "a", "v", "html=1;")), undefined);
+    // A loose end with no point: nowhere to draw it to
+    const loose = `<mxCell id="w" style="html=1;" edge="1" parent="1" source="a"><mxGeometry relative="1" as="geometry"/></mxCell>`;
+    assert.equal(route(box("a", 40, 40) + loose), undefined);
+    // …and with its point given, it routes to that point
+    const pointed = `<mxCell id="w" style="html=1;" edge="1" parent="1" source="a"><mxGeometry relative="1" as="geometry"><mxPoint x="400" y="70" as="targetPoint"/></mxGeometry></mxCell>`;
+    const routed = route(box("a", 40, 40) + pointed);
+    assert.ok(routed);
+    assert.deepEqual(routed.points.at(-1), { x: 400, y: 70 });
+    // noEdgeStyle=1 draws a style the port does not know as a straight wire
+    assert.ok(route(box("a", 40, 40) + box("b", 240, 40) + wire("w", "a", "b", "edgeStyle=isometricEdgeStyle;noEdgeStyle=1;html=1;")));
+  });
+
+  test("a fixed end on a shape with perimeter spacing sits on the spaced box, as draw.io places it", () => {
+    // draw.io places exitX/exitY on the box grown by its perimeterSpacing (getPerimeterBounds):
+    // a box at 40,40 120×60 with 10 of spacing leaves by its bottom-right corner at 170,110.
+    // Placed on the box itself, the point would be 160,100, and the outline reached from it 170,105.
+    const page = readDrawio(model(box("a", 40, 40, "rounded=0;perimeterSpacing=10;html=1;") + box("b", 400, 300) + wire("w", "a", "b", "exitX=1;exitY=1;exitDx=0;exitDy=0;html=1;")))[0]!;
+    const route = routeWire(page.cells.find((cell) => cell.id === "w")!, pageGeometry(page))!;
+    assert.deepEqual(route.points[0], { x: 170, y: 110 });
+  });
+
   test("A route is draw.io's: an orthogonal wire around the corner, ends on the outlines", () => {
     const page = readDrawio(model(box("a", 40, 40) + box("b", 240, 200) + wire("w", "a", "b", "edgeStyle=orthogonalEdgeStyle;html=1;")))[0]!;
     const route = routeWire(page.cells.find((cell) => cell.id === "w")!, pageGeometry(page))!;
