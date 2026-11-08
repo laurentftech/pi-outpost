@@ -7,6 +7,35 @@ version you had and the one you run now, without going online.
 Releases before 0.41.0 are described on
 [GitHub Releases](https://github.com/laurentftech/pi-outpost/releases).
 
+## [0.61.0] - 2026-11-08
+
+### Added
+
+- **One actions menu per row in the Files tree.** Each file and folder now has a single
+  `⋯` menu (also on right-click) instead of a row of unlabelled icons. Folders can be
+  renamed, moved, deleted and downloaded like files. Select several entries with
+  Shift-click or Ctrl/Cmd-click to delete, move, download or reference them together.
+  **Download** saves a file as itself, and a folder or a selection as one `.zip`.
+  The last move, rename or deletion can be undone (Undo, or Ctrl/Cmd+Z): deleted entries
+  go to a temporary server trash, emptied at startup and after 24 hours.
+  ([#438](https://github.com/laurentftech/pi-outpost/pull/438))
+- **Git credentials for private repositories in Agent resources.** When a clone or refresh
+  needs a login, the panel asks for a user name and token, stores them for that host and
+  retries. Settings → Accounts lists the stored Git hosts and removes them. Git errors now
+  show git's actual reason instead of its progress line. ([#428](https://github.com/laurentftech/pi-outpost/pull/428))
+- **Host questions on Linux and macOS sandboxes.** Under MXC on Linux and macOS and under
+  Seatbelt, a connection to a host missing from `sandbox.allowedHosts` now asks you
+  instead of being refused silently. ([#429](https://github.com/laurentftech/pi-outpost/pull/429))
+- Release files now carry signed build provenance: check a download with
+  `gh attestation verify <file> -R laurentftech/pi-outpost`. ([#436](https://github.com/laurentftech/pi-outpost/pull/436))
+
+### Fixed
+
+- Terminal colours in tool output are rendered instead of printed as escape codes, in the
+  app and in the HTML export. ([#427](https://github.com/laurentftech/pi-outpost/pull/427))
+- A session whose first reply starts with a tool call is titled from its answer, not from
+  the question alone. ([#449](https://github.com/laurentftech/pi-outpost/pull/449))
+
 ## [0.60.1] - 2026-11-06
 
 ### Fixed
