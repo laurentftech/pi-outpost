@@ -78,6 +78,30 @@ describe("the agent's bash under landstrip, the network", { skip }, () => {
     return { output, exitCode };
   }
 
+  // openlore: scenario=ALandstripRefusalIsToldInWords spec=sandbox-runner-bash
+  test("ALandstripRefusalIsToldInWords: a refused bind and a refused write read as the sandbox's, not as JSON", async () => {
+    const beside = path.join(base, "beside.txt");
+    const result = await bash(
+      [
+        // What python3 -m venv does: a probe it survives.
+        `python3 -c "import socket
+try:
+    socket.socket(socket.AF_INET6).bind(('::1', 0))
+except OSError:
+    pass
+print('probe-done')"`,
+        `echo x > ${JSON.stringify(beside)} 2>/dev/null; echo "write=$?"`,
+      ].join("\n"),
+      proxy,
+    );
+    assert.match(result.output, /probe-done/, result.output);
+    assert.match(result.output, /write=(?!0\b)\d+/, result.output);
+    assert.match(result.output, /\[sandbox\] refused bind \[::1\]:0: outside what this sandbox allows\. The command went on/, result.output);
+    assert.match(result.output, new RegExp(`\\[sandbox\\] refused write ${beside.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}: outside what this sandbox allows`), result.output);
+    assert.doesNotMatch(result.output, /_DENIED|"kind":/, `landstrip's raw report reached the agent: ${result.output}`);
+    assert.equal(result.exitCode, 0, "the command itself succeeded");
+  });
+
   // openlore: scenario=UnderLandstripWithoutAnAllowlistTheNetworkIsOpen spec=sandbox-runner-bash
   test("UnderLandstripWithoutAnAllowlistTheNetworkIsOpen: a public host is reached, no proxy variable is set", async (t) => {
     if (!online) return t.skip("this host does not reach registry.npmjs.org");

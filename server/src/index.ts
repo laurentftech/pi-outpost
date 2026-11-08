@@ -259,6 +259,7 @@ import {
   assertNoUnconfinedBuiltIns,
   delegatedBuiltIns,
   isWithin,
+  networkSummary,
   protectFromWrites,
   realResolve,
   SandboxDelegationError,
@@ -7612,7 +7613,7 @@ if (config.sandbox) {
           config.sandbox.autoRunner?.unavailable !== undefined
             ? `${isPowerShell(config.sandbox.bashShell) ? "powershell" : "bash"} (REFUSED: "auto" found no runner — ${config.sandbox.autoRunner.unavailable})`
             : config.sandbox.bashRunner
-            ? `${isPowerShell(config.sandbox.bashShell) ? "powershell" : "bash"} (confined by ${config.sandbox.bashRunner}, ${config.sandbox.bashImage ? `WSLC image ${config.sandbox.bashImage}` : `shell ${config.sandbox.bashShell ?? "/bin/bash"}`}${config.sandbox.allowedHosts ? `, network only to ${config.sandbox.allowedHosts.join(", ") || "nothing"}` : ""})`
+            ? `${isPowerShell(config.sandbox.bashShell) ? "powershell" : "bash"} (confined by ${config.sandbox.bashRunner}, ${config.sandbox.bashImage ? `WSLC image ${config.sandbox.bashImage}` : `shell ${config.sandbox.bashShell ?? "/bin/bash"}`}${networkSummary(config.sandbox) ? `, ${networkSummary(config.sandbox)}` : ""})`
             : config.sandbox.bashFrom
               ? `bash (from ${config.sandbox.bashFrom})`
               : "bash (UNCONFINED)",
