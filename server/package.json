@@ -14,8 +14,7 @@
     "build:sea": "node scripts/build-sea.mjs",
     "test": "node scripts/test.mjs",
     "test:live": "node --test --test-timeout=180000 test/live/*.test.mjs",
-    "test:coverage": "node --import tsx/esm --import ./test/stripDependencySourceMaps.mjs --test --experimental-test-coverage --test-coverage-exclude='test/**' --test-coverage-exclude='src/index.ts' --test-coverage-exclude='src/embeddedRuntime.ts' --test-coverage-exclude='**/validate-structured-exchange.mjs' --test-coverage-exclude='**/generated/**' --test-coverage-lines=92 --test-coverage-branches=86 --test-coverage-functions=90 --test-reporter=spec --test-reporter-destination=stdout --test-reporter=lcov --test-reporter-destination=coverage/lcov.info --test-timeout=300000 test/*.test.ts",
-    "pretest:coverage": "node -e \"require('node:fs').mkdirSync('coverage',{recursive:true})\""
+    "test:coverage": "node scripts/test-coverage.mjs"
   },
   "dependencies": {
     "@earendil-works/pi-coding-agent": "^1.5.0",
@@ -43,6 +42,7 @@
   "devDependencies": {
     "@types/node": "^24.0.0",
     "@types/ws": "^8.18.2",
+    "c8": "^12.0.0",
     "esbuild": "^0.28.2",
     "jszip": "^3.10.2",
     "tsx": "^4.23.15",

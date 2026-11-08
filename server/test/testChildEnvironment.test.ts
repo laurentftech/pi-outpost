@@ -21,7 +21,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { after, describe, test } from "node:test";
-import { envWithoutCoverageSink } from "./childEnv.mjs";
+import { COVERAGE_DIR_VARIABLE, envWithoutCoverageSink, serverCoverageSink } from "./childEnv.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const SELF = path.basename(fileURLToPath(import.meta.url));
@@ -52,7 +52,10 @@ function guard(call: string, source: string): string | undefined {
   const blanked = new RegExp(
     `\\b${variable}\\b[^;]*=\\s*(?:envWithoutCoverageSink\\(|\\{[^;]*NODE_V8_COVERAGE:\\s*"")|\\b${variable}\\.NODE_V8_COVERAGE\\s*=\\s*""|\\.\\.\\.${variable}\\s*\\}\\s*=\\s*envWithoutCoverageSink\\(`,
   );
-  return blanked.test(source) ? `builds ${variable} blanked` : undefined;
+  if (blanked.test(source)) return `builds ${variable} blanked`;
+  // The harness's server: blank, except in a coverage run, which names its directory.
+  const coverageRun = new RegExp(`\\b${variable}\\b[^;]*=\\s*\\{[^;]*NODE_V8_COVERAGE:\\s*serverCoverageSink\\(\\)`);
+  return coverageRun.test(source) ? `builds ${variable} with the coverage run's sink` : undefined;
 }
 
 describe("children launched by the server tests", () => {
@@ -77,6 +80,9 @@ describe("children launched by the server tests", () => {
     assert.equal(guard(`spawn(process.execPath, argv, { env })`, `const env = { ...process.env };\ndelete env.NODE_V8_COVERAGE;`), undefined);
     assert.equal(guard(`execFile(process.execPath, ["x.mjs"], { env: envWithoutCoverageSink() })`, source), "envWithoutCoverageSink");
     assert.equal(guard(`spawn(process.execPath, argv, { env })`, `const env = envWithoutCoverageSink({ A: "1" });`), "builds env blanked");
+    // Only the coverage run's own helper may give a built environment a sink, not any value.
+    assert.equal(guard(`spawn(process.execPath, argv, { env })`, `const env = { ...process.env, NODE_V8_COVERAGE: serverCoverageSink() };`), "builds env with the coverage run's sink");
+    assert.equal(guard(`spawn(process.execPath, argv, { env })`, `const env = { ...process.env, NODE_V8_COVERAGE: process.env.SINK ?? "" };`), undefined);
   });
 });
 
@@ -100,6 +106,22 @@ describe("the rule the guard enforces", () => {
       );
     assert.equal(parent(`(() => { const e = { ...process.env }; delete e.NODE_V8_COVERAGE; return e; })()`), withSink.NODE_V8_COVERAGE, "node no longer re-injects a deleted sink — the rule can relax");
     assert.equal(parent(`{ ...process.env, NODE_V8_COVERAGE: "" }`), "");
+  });
+
+  // openlore: scenario=ServerChildWritesNoCoverageOutsideCoverageMode spec=test-coverage
+  test("ServerChildWritesNoCoverageOutsideCoverageMode: the server's sink is blank unless a coverage run names one", () => {
+    const saved = process.env[COVERAGE_DIR_VARIABLE];
+    try {
+      delete process.env[COVERAGE_DIR_VARIABLE];
+      assert.equal(serverCoverageSink(), "");
+      process.env[COVERAGE_DIR_VARIABLE] = "";
+      assert.equal(serverCoverageSink(), "");
+      process.env[COVERAGE_DIR_VARIABLE] = sink;
+      assert.equal(serverCoverageSink(), sink);
+    } finally {
+      if (saved === undefined) delete process.env[COVERAGE_DIR_VARIABLE];
+      else process.env[COVERAGE_DIR_VARIABLE] = saved;
+    }
   });
 
   test("envWithoutCoverageSink blanks it and keeps what it is given", () => {

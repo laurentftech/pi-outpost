@@ -118,7 +118,17 @@ jobs:
           echo "LANDSTRIP_BIN=$RUNNER_TEMP/landstrip/package/bin/landstrip" >> "$GITHUB_ENV"
           "$RUNNER_TEMP/landstrip/package/bin/landstrip" doctor
 
+      # On Ubuntu the server suites run once, instrumented: every suite, unit and integration,
+      # including the servers the integration suites start, reported over the inventory in
+      # server/test/coverageConfig.mjs (server/src and shared/src, a file no test loads at
+      # 0%), and failing below its thresholds. Windows runs them uninstrumented: there the
+      # harness ends a server with taskkill /F, which leaves it no exit to write coverage on.
       - run: npm test --workspace server
+        if: matrix.os != 'ubuntu-latest'
+        env:
+          CI: true
+      - run: npm run test:coverage --workspace server
+        if: matrix.os == 'ubuntu-latest'
         env:
           CI: true
 
@@ -145,25 +155,12 @@ jobs:
           docker build -f openwebui/Dockerfile -t pi-outpost-openwebui:dev .
           bash openwebui/test/image.sh pi-outpost-openwebui:dev
 
-      # Coverage on one platform only, and over the unit suites alone. The .mjs
-      # suites drive a real server in a subprocess: its coverage is not ours to
-      # claim, and loading them all made node truncate its own report at 10 MB.
-      # Windows runs nothing instrumented, so a coverage tool cannot turn that leg red.
-      #
-      # src/embeddedRuntime.ts is excluded too: it is a thin adapter over the pi SDK's
-      # AgentSession (every method delegates), exercised only by the .mjs suites above.
-      # Its sole caller (src/index.ts) is already excluded, but node's coverage
-      # instruments it non-deterministically when it appears in the transitive import
-      # graph — pulling ~49 uncovered functions into a total the unit suites cannot reach.
-      - run: npm run test:coverage --workspace server
-        if: matrix.os == 'ubuntu-latest'
-        env:
-          CI: true
+      # UI coverage, Ubuntu only; the server's was measured with its suites above.
       - run: npm run test:coverage --workspace ui
         if: matrix.os == 'ubuntu-latest'
       - name: Coverage summary
         if: matrix.os == 'ubuntu-latest' && !cancelled()
-        run: node scripts/coverage-summary.mjs server=server/coverage/lcov.info ui=ui/coverage/lcov.info
+        run: node scripts/coverage-summary.mjs server=server/coverage/coverage-summary.json ui=ui/coverage/coverage-summary.json
       - name: Keep the coverage for the badge job
         if: matrix.os == 'ubuntu-latest' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

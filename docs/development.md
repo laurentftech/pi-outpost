@@ -137,7 +137,8 @@ npm run test --workspace ui            # component unit tests (vitest, jsdom, te
 npm run test:e2e                        # real built app in Chromium, including multi-project flows
 npm run test:webbench                   # core app/widget flows in Chromium, Firefox and WebKit, plus WCAG 2.2 AA scans
 npm run test:live --workspace server   # drives real agent turns (needs model auth, costs tokens)
-npm run test:linux                     # the ubuntu CI leg — suite then coverage — on Linux, non-root
+npm run test:linux                     # the ubuntu CI leg — every server suite, instrumented — on Linux, non-root
+npm run test:coverage --workspace server   # the same step directly, on Linux or macOS
 ```
 
 Install the three Playwright engines once with `npx playwright install chromium firefox webkit`.
@@ -178,13 +179,12 @@ write never returns, the runner then reports every test as passing and prints no
 because a test file that never exits never reports. Run it before pushing anything that
 touches paths, permissions, signals, or file watching.
 
-It runs both server steps of the ubuntu leg — `npm test --workspace server` and then
-`npm run test:coverage --workspace server` —
-because each has gone red on its own while the other was green, and coverage runs on no
-other platform. That step once failed on `main` with 1250 tests passing and none failing:
-npm children spawned by the code under test inherited `NODE_V8_COVERAGE`, were killed at
-their timeout mid-write, and the parent's reporter died parsing the truncated file. Nothing
-short of running the real step would have shown it.
+It runs the ubuntu leg's server step, `npm run test:coverage --workspace server`: every
+server suite, instrumented, which runs on no other platform (see [Coverage](#coverage)). A
+coverage run once failed on `main` with 1250 tests passing and none failing: npm children
+spawned by the code under test inherited `NODE_V8_COVERAGE`, were killed at their timeout
+mid-write, and the parent's reporter died parsing the truncated file. Nothing short of
+running the real step would have shown it.
 
 The fix for that was incomplete, and the job kept failing the same way now and then. Deleting
 `NODE_V8_COVERAGE` from a child's environment does nothing: node's `child_process` copies the
@@ -203,6 +203,32 @@ files besides — about 8 MiB of a 9.7 MiB file, for code the report never shows
 removes every `sourceMappingURL` comment from modules under `node_modules`, and nothing else.
 Our own maps stay, since the report reads lines through them. The largest coverage file of the
 unit suites went from 9.7 MiB to under 5 MiB.
+
+### Coverage
+
+`npm run test:coverage --workspace server` (`server/scripts/test-coverage.mjs`) runs every
+server suite with `NODE_V8_COVERAGE` set, then reports with c8 over the inventory in
+[`server/test/coverageConfig.mjs`](../server/test/coverageConfig.mjs): every file under
+`server/src` and `shared/src`, a file no test loads at 0%, minus the exclusions listed there
+with their reasons. It fails below that file's thresholds, or if an inventory file is missing
+from the report.
+
+The integration suites' servers are measured too, which takes three things from the harness,
+all switched on by `PI_OUTPOST_TEST_COVERAGE_DIR` and by nothing else:
+
+- the server gets the run's directory as `NODE_V8_COVERAGE`, through `serverCoverageSink()` in
+  `server/test/childEnv.mjs`, the one launch `testChildEnvironment.test.ts` lets name a sink;
+  the agent, terminal and npm children the server starts still blank it;
+- `stop()` gives it 15 s after SIGTERM, instead of 300 ms, to shut down and write its coverage
+  on `process.exit`;
+- as soon as it has stopped, `server/test/coverageFilter.mjs` cuts its file down to the
+  inventory's roots: about 20 MB raw, mostly dependencies' source maps, of which ours are a
+  few MB. A file a killed process left half-written is set aside and named, never parsed by
+  the report.
+
+Linux and macOS only: on Windows the harness ends a server with `taskkill /F`, which leaves it
+no exit to write coverage on, so the script refuses to run there. CI runs it on Ubuntu in place
+of `npm test`; Windows runs `npm test`, uninstrumented.
 
 It runs as a non-root user on purpose: as root, every "refuses an unwritable path"
 assertion in this repository passes for the wrong reason. Dependencies are cached in a

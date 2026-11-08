@@ -1,45 +1,26 @@
 /**
- * Turn lcov files into a markdown coverage table for the GitHub Actions run summary.
+ * Turn coverage json-summary files into a markdown table for the GitHub Actions run summary.
  *
- *   node scripts/coverage-summary.mjs server=server/coverage/lcov.info ui=ui/coverage/lcov.info
+ *   node scripts/coverage-summary.mjs server=server/coverage/coverage-summary.json ui=ui/coverage/coverage-summary.json
  *
- * Writes to $GITHUB_STEP_SUMMARY when set, stdout otherwise, so the same command
- * is useful locally.
- *
- * One file is deliberately singled out. server/src/index.ts is exercised only by
- * the integration tests, which spawn the server as a subprocess — the coverage
- * instrumentation does not follow it there, so it reports near zero however well
- * tested it is. Folding that into one headline number would understate the suite
- * by roughly thirty points, so it is reported apart and named.
+ * Writes to $GITHUB_STEP_SUMMARY when set, stdout otherwise, so the same command is useful
+ * locally. Every percentage comes with the covered and total counts behind it, for lines,
+ * statements, branches and functions, so a reader can check the arithmetic. The server's
+ * figure is measured over an inventory (server/test/coverageConfig.mjs): every file under
+ * server/src and shared/src, unit and integration suites together, a file no test loads at
+ * 0%; the files it leaves out are listed here with their reason.
  */
-import { readFileSync, existsSync, appendFileSync } from "node:fs";
+import { appendFileSync, existsSync, readFileSync } from "node:fs";
 import path from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import { COVERAGE_EXCLUSIONS, COVERAGE_ROOTS } from "../server/test/coverageConfig.mjs";
 
-/** Files whose coverage is measured elsewhere — reported, but kept out of the total. */
-const SUBPROCESS_ONLY = ["src/index.ts"];
+const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+export const MEASURES = ["lines", "statements", "branches", "functions"];
 
-/** Parse an lcov file into per-source-file counters. */
-function parseLcov(file) {
-  const records = [];
-  let current = null;
-  for (const line of readFileSync(file, "utf8").split("\n")) {
-    if (line.startsWith("SF:")) {
-      current = { file: line.slice(3).trim(), lines: [0, 0], branches: [0, 0], functions: [0, 0] };
-      records.push(current);
-    } else if (current === null) {
-      continue;
-    } else if (line.startsWith("LF:")) current.lines[1] = Number(line.slice(3));
-    else if (line.startsWith("LH:")) current.lines[0] = Number(line.slice(3));
-    else if (line.startsWith("BRF:")) current.branches[1] = Number(line.slice(4));
-    else if (line.startsWith("BRH:")) current.branches[0] = Number(line.slice(4));
-    else if (line.startsWith("FNF:")) current.functions[1] = Number(line.slice(4));
-    else if (line.startsWith("FNH:")) current.functions[0] = Number(line.slice(4));
-  }
-  return records;
-}
-
-const pct = (hit, found) => (found === 0 ? null : (hit / found) * 100);
+const pct = ({ covered, total }) => (total === 0 ? null : (covered / total) * 100);
 const show = (value) => (value === null ? "—" : `${value.toFixed(1)}%`);
+const counted = (metric) => `${show(pct(metric))} (${metric.covered}/${metric.total})`;
 
 /** Green above 80, amber above 60, red below — a glance should be enough. */
 function badge(value) {
@@ -49,85 +30,51 @@ function badge(value) {
   return "🔴";
 }
 
-function summarise(records) {
-  const total = records.reduce(
-    (acc, record) => ({
-      lines: [acc.lines[0] + record.lines[0], acc.lines[1] + record.lines[1]],
-      branches: [acc.branches[0] + record.branches[0], acc.branches[1] + record.branches[1]],
-      functions: [acc.functions[0] + record.functions[0], acc.functions[1] + record.functions[1]],
-    }),
-    { lines: [0, 0], branches: [0, 0], functions: [0, 0] },
-  );
-  return {
-    lines: pct(...total.lines),
-    branches: pct(...total.branches),
-    functions: pct(...total.functions),
-    counted: total.lines,
-  };
-}
+/** A json-summary path as the repository-relative path a reader recognises. */
+const relative = (file) => path.relative(REPO, file).split(path.sep).join("/");
 
-const inputs = process.argv.slice(2).map((arg) => {
-  const [name, file] = arg.split("=");
-  return { name, file };
-});
-
-const out = [];
-out.push("## Coverage\n");
-
-const overall = [];
-const details = [];
-
-for (const { name, file } of inputs) {
-  if (!file || !existsSync(file)) {
-    out.push(`> \`${name}\`: no lcov at \`${file ?? "(unset)"}\` — coverage not reported for this workspace.\n`);
-    continue;
-  }
-  const records = parseLcov(file);
-  const held = records.filter((record) => !SUBPROCESS_ONLY.some((skip) => record.file.endsWith(skip)));
-  const apart = records.filter((record) => SUBPROCESS_ONLY.some((skip) => record.file.endsWith(skip)));
-  const summary = summarise(held);
-
-  overall.push({ name, summary, apart });
-
-  details.push(`<details><summary><strong>${name}</strong> — per file</summary>\n`);
-  details.push("| file | lines | branches | functions |");
-  details.push("| --- | ---: | ---: | ---: |");
-  for (const record of [...held].sort((a, b) => (pct(...a.lines) ?? 0) - (pct(...b.lines) ?? 0))) {
-    const lines = pct(...record.lines);
-    details.push(
-      `| \`${path.posix.normalize(record.file)}\` | ${badge(lines)} ${show(lines)} | ${show(pct(...record.branches))} | ${show(pct(...record.functions))} |`,
-    );
-  }
-  details.push("\n</details>\n");
-}
-
-out.push("| workspace | lines | branches | functions |");
-out.push("| --- | ---: | ---: | ---: |");
-for (const { name, summary } of overall) {
-  out.push(
-    `| **${name}** | ${badge(summary.lines)} ${show(summary.lines)} | ${show(summary.branches)} | ${show(summary.functions)} |`,
-  );
-}
-out.push("");
-
-// Always said, whether the file shows up in the report or not: a reader comparing
-// these figures to the repository has to know which code they do not describe.
-out.push(
-  "> Measured over the unit suites. `server/src/index.ts` and the WebSocket wiring are covered by integration tests that drive a real server in a subprocess, which the instrumentation does not follow — their absence here is not an absence of tests.\n",
-);
-
-const excluded = overall.flatMap(({ name, apart }) => apart.map((record) => ({ name, record })));
-if (excluded.length > 0) {
-  out.push("| measured apart | lines |");
-  out.push("| --- | ---: |");
-  for (const { record } of excluded) {
-    out.push(`| \`${path.posix.normalize(record.file)}\` | ${show(pct(...record.lines))} |`);
+/**
+ * The markdown for `inputs`: `{ name, summary }` pairs, `summary` a parsed json-summary
+ * (or undefined when the workspace produced none).
+ */
+export function renderSummary(inputs) {
+  const out = ["## Coverage\n"];
+  const details = [];
+  out.push(`| workspace | ${MEASURES.join(" | ")} |`);
+  out.push(`| --- |${MEASURES.map(() => " ---: |").join("")}`);
+  const missing = [];
+  for (const { name, summary } of inputs) {
+    if (!summary) {
+      missing.push(name);
+      continue;
+    }
+    out.push(`| **${name}** | ${MEASURES.map((measure) => `${badge(pct(summary.total[measure]))} ${counted(summary.total[measure])}`).join(" | ")} |`);
+    const files = Object.entries(summary).filter(([key]) => key !== "total");
+    details.push(`<details><summary><strong>${name}</strong> — per file</summary>\n`);
+    details.push(`| file | ${MEASURES.join(" | ")} |`);
+    details.push(`| --- |${MEASURES.map(() => " ---: |").join("")}`);
+    for (const [file, metrics] of files.sort(([, a], [, b]) => (pct(a.lines) ?? 0) - (pct(b.lines) ?? 0))) {
+      details.push(`| \`${relative(file)}\` | ${MEASURES.map((measure) => counted(metrics[measure])).join(" | ")} |`);
+    }
+    details.push("\n</details>\n");
   }
   out.push("");
+  for (const name of missing) out.push(`> \`${name}\`: no coverage summary — coverage not reported for this workspace.\n`);
+  out.push(
+    `> **server**: every file under ${COVERAGE_ROOTS.map((root) => `\`${root}\``).join(" and ")}, measured over the unit and integration suites together, including the servers the integration suites start. A file no test loads counts at 0%. Left out:\n>`,
+  );
+  for (const { pattern, reason } of COVERAGE_EXCLUSIONS) out.push(`> - \`${pattern}\` — ${reason}`);
+  out.push("");
+  out.push(...details);
+  return `${out.join("\n")}\n`;
 }
 
-out.push(...details);
-
-const markdown = `${out.join("\n")}\n`;
-if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, markdown);
-else process.stdout.write(markdown);
+if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
+  const inputs = process.argv.slice(2).map((arg) => {
+    const [name, file] = arg.split("=");
+    return { name, summary: file && existsSync(file) ? JSON.parse(readFileSync(file, "utf8")) : undefined };
+  });
+  const markdown = renderSummary(inputs);
+  if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, markdown);
+  else process.stdout.write(markdown);
+}
