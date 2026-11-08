@@ -190,9 +190,13 @@ print('DOCKER_' + 'PYTHON_OK', flush=True)
       return { refused: `${error.stdout ?? ""}${error.stderr ?? ""}` };
     }
   }
-  /** A listener of the container, outside any sandbox, standing for the server's proxy: answers its name. */
+  /**
+   * A listener of the container, outside any sandbox, standing for the server's proxy: answers its name.
+   * Its sockets ignore errors: the readiness probe below exits as soon as it connects, and an
+   * unhandled ECONNRESET would end the listener before the check it stands for.
+   */
   function listener(port, name) {
-    docker(["exec", "-d", container, "node", "-e", `require('node:net').createServer(s=>s.end('${name}')).listen(${port},'127.0.0.1')`]);
+    docker(["exec", "-d", container, "node", "-e", `require('node:net').createServer(s=>{s.on('error',()=>{});s.end('${name}')}).listen(${port},'127.0.0.1')`]);
     const deadline = Date.now() + 10_000;
     while (Date.now() < deadline) {
       try {

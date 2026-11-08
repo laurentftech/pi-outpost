@@ -105,7 +105,7 @@ describe("the agent's bash under landstrip, the network", { skip }, () => {
     assert.match(result.output, /loopback=(?!0\b)\d+/, result.output);
     assert.doesNotMatch(result.output, /svc-127-0-0-1/, "another service on the loopback was reached");
     assert.match(result.output, /\[pi-outpost\] network refused: example\.com — not in sandbox\.allowedHosts\.[^\n]*\s*$/, result.output);
-    assert.ok(relayed.includes("registry.npmjs.org:443"), `not through the proxy: ${relayed.join(", ")}`);
+    assert.ok(relayed.some((target) => target === "registry.npmjs.org:443"), `not through the proxy: ${relayed.join(", ")}`);
   });
 
   // openlore: scenario=UnderLandstripNoOtherLoopbackAddressReachesAService spec=sandbox-runner-bash
