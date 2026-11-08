@@ -3,8 +3,8 @@
 ## Purpose
 
 Defines what the project's test coverage figures measure — which suites and processes
-contribute, over which inventory of source files — so a reported percentage is a claim about
-the shipped server code that anyone can check.
+contribute, over which inventory of source files, and what counts as a line — so a reported
+percentage is a claim about the shipped code that anyone can check.
 
 ## ADDED Requirements
 
@@ -22,10 +22,24 @@ processes they start, together with the code run by the unit suites, in one figu
 - **WHEN** the coverage run completes
 - **THEN** the file's covered lines are the union of both
 
+### Requirement: SharedCodeIsCreditedByEverySuite
+The coverage of `shared/src` SHALL count the code run by the server suites and by the UI
+suites together: a line, branch or function is covered when any suite runs it.
+
+#### Scenario: SharedCodeRunOnlyByUiTestsIsCovered
+- **GIVEN** a function in `shared/src` that only a UI test runs
+- **WHEN** the coverage run completes
+- **THEN** that function and its lines are reported as covered
+
+#### Scenario: SharedCountsAreTheUnionOfServerAndUiSuites
+- **GIVEN** a file in `shared/src` run partly by a server suite and partly by a UI suite
+- **WHEN** the coverage run completes
+- **THEN** its covered lines, branches and functions are the union of both, over one total
+
 ### Requirement: CoverageIsComputedOverTheFullInventory
-The server percentages SHALL be computed over every source file under `server/src` and
-`shared/src`, except the files on a published exclusion list. A file that no test loads SHALL count with all its
-lines uncovered.
+Coverage SHALL be computed over every source file under `server/src`, `shared/src` and
+`ui/src`, except the files on a published exclusion list, with a figure for each of the three.
+A file that no test loads SHALL count with all its lines uncovered.
 
 #### Scenario: UnloadedFileCountsAsUncovered
 - **GIVEN** a new file under `server/src` that no test imports
@@ -36,9 +50,18 @@ lines uncovered.
 - **WHEN** the coverage run completes
 - **THEN** `server/src/index.ts` is in the report and counted in the total, not set aside
 
+### Requirement: OnlyExecutableCodeIsCounted
+A line SHALL count toward coverage only when it holds code: comments and blank lines SHALL be
+neither covered nor uncovered lines.
+
+#### Scenario: CommentLinesAreNotCounted
+- **GIVEN** a source file with comment and blank lines inside a function the tests run
+- **WHEN** the coverage run completes
+- **THEN** those lines are absent from the file's line total, and its covered lines are lines of code
+
 ### Requirement: ExclusionsArePublishedWithTheirReason
-Every file left out of the server inventory SHALL be listed, with the reason, in one place
-that the coverage run reads, and the run summary SHALL show that list.
+Every file left out of the inventory SHALL be listed, with the reason, in one place that the
+coverage run reads, and the run summary SHALL show that list.
 
 #### Scenario: ExcludedFileIsNamedInTheSummary
 - **GIVEN** a file on the exclusion list
@@ -46,26 +69,26 @@ that the coverage run reads, and the run summary SHALL show that list.
 - **THEN** it names that file and the reason it is excluded
 
 #### Scenario: UnlistedFileCannotBeExcludedSilently
-- **GIVEN** a file under `server/src` or `shared/src` that is not on the exclusion list
+- **GIVEN** a file under `server/src`, `shared/src` or `ui/src` that is not on the exclusion list
 - **WHEN** the coverage run completes
-- **THEN** that file is part of the total
+- **THEN** that file is part of its scope's total
 
 ### Requirement: SummaryPublishesCountsNotOnlyPercentages
-The coverage summary SHALL report, for lines, statements, branches and functions, the
-covered count and the total count behind each percentage.
+The coverage summary SHALL report, for each scope and each file, and for lines, branches and
+functions, the covered count and the total count behind each percentage.
 
 #### Scenario: SummaryShowsNumeratorAndDenominator
 - **WHEN** the coverage summary is written
-- **THEN** each of lines, statements, branches and functions shows covered/total and the percentage
+- **THEN** each of lines, branches and functions shows covered/total and the percentage, per scope and per file
 
 ### Requirement: ThresholdsFailTheRun
-The coverage run SHALL fail when the server's line, branch or function coverage over the
-inventory falls below its configured threshold.
+The coverage run SHALL fail when a scope's line, branch or function coverage falls below the
+threshold configured for that scope.
 
 #### Scenario: CoverageBelowThresholdFailsCi
-- **GIVEN** a change that leaves server branch coverage below its threshold
+- **GIVEN** a change that leaves a scope's branch coverage below its threshold
 - **WHEN** the coverage run completes
-- **THEN** the run exits non-zero and names the measure that fell short
+- **THEN** the run exits non-zero and names the scope and the measure that fell short
 
 ### Requirement: ChildCoverageCannotBreakTheRun
 A server process's coverage data SHALL be reduced to the measured sources (`server/src` and

@@ -13,7 +13,7 @@
     "lint": "oxlint",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage --coverage.provider=v8 --coverage.reporter=text --coverage.reporter=lcov --coverage.reporter=json-summary --coverage.thresholds.lines=91 --coverage.thresholds.branches=85 --coverage.thresholds.functions=93"
+    "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
     "@codemirror/autocomplete": "^6.20.3",
@@ -75,6 +75,7 @@
     "jszip": "^3.10.2",
     "mathml2omml": "^0.5.0",
     "oxlint": "^1.88.0",
-    "vitest": "^5.1.0"
+    "vitest": "^5.1.0",
+    "vitest-monocart-coverage": "^5.0.0"
   }
 }

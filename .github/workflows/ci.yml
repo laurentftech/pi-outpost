@@ -119,10 +119,9 @@ jobs:
           "$RUNNER_TEMP/landstrip/package/bin/landstrip" doctor
 
       # On Ubuntu the server suites run once, instrumented: every suite, unit and integration,
-      # including the servers the integration suites start, reported over the inventory in
-      # server/test/coverageConfig.mjs (server/src and shared/src, a file no test loads at
-      # 0%), and failing below its thresholds. Windows runs them uninstrumented: there the
-      # harness ends a server with taskkill /F, which leaves it no exit to write coverage on.
+      # including the servers the integration suites start. Their coverage is reported with the
+      # UI's further down. Windows runs them uninstrumented: there the harness ends a server
+      # with taskkill /F, which leaves it no exit to write coverage on.
       - run: npm test --workspace server
         if: matrix.os != 'ubuntu-latest'
         env:
@@ -155,20 +154,24 @@ jobs:
           docker build -f openwebui/Dockerfile -t pi-outpost-openwebui:dev .
           bash openwebui/test/image.sh pi-outpost-openwebui:dev
 
-      # UI coverage, Ubuntu only; the server's was measured with its suites above.
+      # UI coverage, Ubuntu only, over ui/src and the shared/src code the UI's tests run.
       - run: npm run test:coverage --workspace ui
         if: matrix.os == 'ubuntu-latest'
+      # Both sides' raw coverage, merged by one converter over server/src, shared/src and
+      # ui/src (scripts/coverage-config.mjs): a shared file is credited by every suite that
+      # runs it, a file no test loads counts at 0%. Fails below a scope's thresholds.
+      - name: Coverage report
+        if: matrix.os == 'ubuntu-latest'
+        run: node scripts/coverage-report.mjs
       - name: Coverage summary
         if: matrix.os == 'ubuntu-latest' && !cancelled()
-        run: node scripts/coverage-summary.mjs server=server/coverage/coverage-summary.json ui=ui/coverage/coverage-summary.json
+        run: node scripts/coverage-summary.mjs coverage/coverage-scopes.json
       - name: Keep the coverage for the badge job
         if: matrix.os == 'ubuntu-latest' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: coverage
-          path: |
-            server/coverage/lcov.info
-            ui/coverage/lcov.info
+          path: coverage/coverage-scopes.json
           retention-days: 1
 
       - run: npm test --workspace ui
@@ -375,7 +378,7 @@ jobs:
         with:
           name: coverage
           path: coverage-artifact
-      - run: node scripts/coverage-badge.mjs badge/coverage.svg coverage-artifact/server/coverage/lcov.info coverage-artifact/ui/coverage/lcov.info
+      - run: node scripts/coverage-badge.mjs badge/coverage.svg coverage-artifact/coverage-scopes.json
       - name: Publish to gh-pages
         run: |
           set -euo pipefail

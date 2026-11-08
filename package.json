@@ -48,7 +48,8 @@
     "@axe-core/playwright": "^4.14.0",
     "@playwright/test": "^1.64.1",
     "concurrently": "^10.0.6",
-    "jsdom": "~30.0.1"
+    "jsdom": "~30.0.1",
+    "monocart-coverage-reports": "^3.2.1"
   },
   "overrides": {
     "rehype-katex": {

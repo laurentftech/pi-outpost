@@ -42,9 +42,9 @@
   "devDependencies": {
     "@types/node": "^24.0.0",
     "@types/ws": "^8.18.2",
-    "c8": "^12.0.0",
     "esbuild": "^0.28.2",
     "jszip": "^3.10.2",
+    "monocart-coverage-reports": "^3.2.1",
     "tsx": "^4.23.15",
     "typescript": "^5.8.0"
   }
