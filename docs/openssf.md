@@ -14,6 +14,10 @@ and Security Baseline levels 1–3 are separate series; achieving one does not i
 Status values: **To do** · **In progress** (pull request open) · **Done** (public evidence) ·
 **Maintainer decision** (a commitment only the maintainer can make).
 
+The [product roadmap](roadmap.md) describes the individual maintainer's direction through 2027,
+including priorities and exclusions, without delivery commitments. This page tracks the evidence
+and remaining work for OpenSSF criteria.
+
 ## Current standing
 
 As of 8 November 2026: passing 100%, silver 67%, gold 39% (entry last updated on 7 November). OpenSSF Scorecard: 7.3, from a scan run on 8 November before v0.61.0 was published. The public entry lists every answer
@@ -118,7 +122,7 @@ are corrected at the next update, once the evidence is in place.
 | Regenerate the lockfile with npm 12.2.1 | A development dependency (`jszip`) was added in #438 with a lockfile written by npm 11, against the current rule. | Regenerated with `npx -y npm@12.2.1 install --package-lock-only` on `main`: no difference, so the lockfile already matches npm 12.2.1. Nothing to commit. | Done |
 | Make code style and review explicit | A short TypeScript/React guide, the rules actually automated, and a review checklist: behaviour, tests, security boundaries, documentation, dependencies. | Guide linked from CONTRIBUTING, consistent configurations, passing and refused examples. Lint rules are not full formatting. Criteria `coding_standards`, `coding_standards_enforced`, `code_review_standards`. | To do |
 | Complete governance and roles | Document how the project works today: the maintainer, decisions, acceptance of contributions, releases and security handling. Propose a code of conduct for explicit adoption. | Public documents that match the actual permissions, reviewed by the maintainer before they commit the project. Criteria `governance`, `roles_responsibilities`, `code_of_conduct`. | Done: [GOVERNANCE.md](../GOVERNANCE.md), [CODE_OF_CONDUCT.md](../CODE_OF_CONDUCT.md) (Contributor Covenant 2.1) merged (#455); the three criteria are met on the entry |
-| Publish a twelve-month roadmap | Directions, exclusions and constraints, without unrealistic dates. This page is a work plan for the badge, not the product roadmap the criterion asks for. | A dated page reviewed regularly. A set of issues alone does not say what is out of scope. Criterion `documentation_roadmap`. | Later (maintainer) |
+| Publish a twelve-month roadmap | [Product roadmap](roadmap.md): direction from November 2026 through 2027, priorities, exclusions and individual-maintainer constraints. There are no delivery deadlines or fixed review commitments. | Merge the roadmap and its README link, then update `documentation_roadmap` with the public URL. Review the text when direction or capacity changes. | In progress: roadmap prepared; badge answer follows publication |
 | Identify small contributions | A few self-contained tasks with a reproduction, a scope, likely files and acceptance criteria. | Public issues labelled `good first issue`, doable without knowing the whole architecture. None was open at the last check. Criterion `small_tasks`. | To do |
 | Check accessibility beyond axe | Keep the existing scans and add keyboard, focus, zoom, contrast and screen-reader passes on the essential flows. | Reproducible results on chat, questions, menus, files and documents, with issues tracked. An automated scan is not full conformance. | To do |
 | Prepare localisation | Inventory user-facing text and choose a gradual strategy for messages, plurals, dates and numbers. A SHOULD criterion: a justified "unmet" is acceptable, and building a full localisation framework only for the badge would be disproportionate. | A second locale verified in the running app, with a fallback, if one is genuinely useful. Being free software does not imply internationalisation. | Maintainer decision |
@@ -164,6 +168,7 @@ versioned formats where needed, and a tested migration procedure.
 
 | Date | Change |
 | --- | --- |
+| 2026-11-08 | Prepared the product roadmap through 2027, with explicit exclusions and individual-maintainer constraints, and linked it from the README. Publication and the `documentation_roadmap` entry update follow review and merge. |
 | 2026-11-07 | Initial audit and two updates of the badge entry (passing 100%, silver 53%, gold 30%). |
 | 2026-11-07 | Test suites type-checked (#445). |
 | 2026-11-07 | Review: Scorecard findings, corrections due on the entry, Dependabot and npm 12, per-file notices and localisation nuances. Status added to every action. Plan published in the repository. |

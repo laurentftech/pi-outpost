@@ -72,6 +72,7 @@ See the [feature guide](docs/features.md) for details.
 | [Contributing](CONTRIBUTING.md) | Bug reports, development workflow, tests and pull requests |
 | [Security policy](SECURITY.md) | Private vulnerability reporting, supported versions and trust boundaries |
 | [Code quality](docs/quality.md) | Enforced checks, coverage scope, known debt and merge rules |
+| [Product roadmap](docs/roadmap.md) | Direction through 2027, priorities and scope; no delivery commitments |
 | [OpenSSF status and plan](docs/openssf.md) | Best Practices and Security Baseline badges, evidence and remaining work |
 
 [Compare with other tools](docs/comparison.md) · [Changelog](CHANGELOG.md) · [MIT license](LICENSE)
