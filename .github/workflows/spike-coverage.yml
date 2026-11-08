@@ -1,0 +1,65 @@
+# SPIKE (not for main): measure server coverage over the full inventory, unit and
+# integration suites together. Runs only on pushes to the spike branch.
+name: Spike coverage
+
+on:
+  push:
+    branches: [spike/coverage]
+
+permissions:
+  contents: read
+
+jobs:
+  coverage:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+      - name: Use the pinned npm
+        uses: ./.github/actions/setup-npm
+      - run: npm ci
+      - run: npm run build --workspace @pi-outpost/embed
+      - name: landstrip runner for the confined-terminal test
+        run: |
+          cd "$RUNNER_TEMP"
+          npm pack --silent @landstrip/landstrip-linux-x64@0.19.8
+          mkdir landstrip && tar xzf landstrip-landstrip-linux-x64-0.19.8.tgz -C landstrip
+          echo "LANDSTRIP_BIN=$RUNNER_TEMP/landstrip/package/bin/landstrip" >> "$GITHUB_ENV"
+      - name: Run every server suite with coverage
+        run: bash scripts/spike/cov-run.sh | tee "$RUNNER_TEMP/run.txt"
+      - name: Report
+        if: ${{ !cancelled() }}
+        working-directory: server
+        run: |
+          report() { # $1 = name, rest = coverage dirs
+            name=$1; shift
+            dir="$RUNNER_TEMP/merged-$name"; rm -rf "$dir"; mkdir -p "$dir"
+            for d in "$@"; do cp "$d"/*.json "$dir"/ 2>/dev/null || true; done
+            npx -y c8@10.1.3 report --temp-directory "$dir" --reports-dir "$RUNNER_TEMP/c8-$name" \
+              --src src --include 'src/**' --exclude 'src/generated/**' \
+              --exclude '**/validate-structured-exchange.mjs' --all \
+              --reporter=text-summary --reporter=json-summary --reporter=text
+          }
+          {
+            echo "## Unit suites only, full inventory"; echo '```'
+            report unit "$RUNNER_TEMP/cov/unit" | sed -n '/Coverage summary/,/====/p'
+            echo '```'; echo "## Unit and integration suites, full inventory"; echo '```'
+            report all "$RUNNER_TEMP/cov/unit" "$RUNNER_TEMP/cov/int" > "$RUNNER_TEMP/all.txt"
+            sed -n '/Coverage summary/,/====/p' "$RUNNER_TEMP/all.txt"
+            echo '```'; echo "## Run"; echo '```'; cat "$RUNNER_TEMP/run.txt"; echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: ${{ !cancelled() }}
+        with:
+          name: spike-coverage
+          path: |
+            ${{ runner.temp }}/c8-unit/coverage-summary.json
+            ${{ runner.temp }}/c8-all/coverage-summary.json
+            ${{ runner.temp }}/all.txt
+            ${{ runner.temp }}/run.txt
+            ${{ runner.temp }}/cov/logs
+          retention-days: 3

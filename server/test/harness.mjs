@@ -123,7 +123,7 @@ async function startServerOn(root, config, options, port) {
   // Blanked, not deleted. This used to `delete` it, which did nothing: node's
   // child_process copies the parent's NODE_V8_COVERAGE into any child environment that
   // does not name it. testChildEnvironment.test.ts holds every launch to this.
-  const env = { ...process.env, PI_OUTPOST_CONFIG: configPath, PI_OFFLINE: "1", NODE_V8_COVERAGE: "" };
+  const env = { ...process.env, PI_OUTPOST_CONFIG: configPath, PI_OFFLINE: "1", NODE_V8_COVERAGE: process.env.SPIKE_SERVER_COVERAGE ?? "" };
   for (const [key, value] of Object.entries(options.env ?? {})) {
     if (value === undefined) delete env[key];
     else env[key] = value;
@@ -210,7 +210,8 @@ async function startServerOn(root, config, options, port) {
         clearTimeout(timer);
         return exited;
       };
-      const stopped = await waitForExit(300);
+      // SPIKE: a server writing its coverage needs time to exit cleanly.
+      const stopped = await waitForExit(process.env.SPIKE_SERVER_COVERAGE ? 15_000 : 300);
       if (!stopped) killGroup("SIGKILL");
       const exited = await waitForExit(5_000);
       if (!exited) throw new Error(`test server ${child.pid} did not exit after termination`);
