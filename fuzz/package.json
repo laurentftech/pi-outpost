@@ -1,0 +1,10 @@
+{
+  "name": "pi-outpost-fuzz",
+  "private": true,
+  "description": "Fuzz targets for pi-outpost's parsers of untrusted input (ClusterFuzzLite, Jazzer.js). Not a workspace: its own lockfile keeps the fuzzer out of the product's dependency tree.",
+  "license": "MIT",
+  "devDependencies": {
+    "@jazzer.js/core": "4.0.0"
+  },
+  "allowScripts": {}
+}

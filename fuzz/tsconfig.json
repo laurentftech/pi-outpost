@@ -1,0 +1,17 @@
+{
+  "//": "The fuzz targets, checked against the parsers they call. Run by the root `typecheck` script: fuzz is not a workspace, and esbuild bundles it without checking types.",
+  "compilerOptions": {
+    "target": "ES2023",
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "lib": ["ES2023"],
+    "types": ["node"],
+    "strict": true,
+    "allowImportingTsExtensions": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true
+  },
+  "include": ["targets/**/*.ts"]
+}

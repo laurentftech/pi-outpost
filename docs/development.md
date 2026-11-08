@@ -275,6 +275,40 @@ own origin with hostile CSS, the servers behind it, and a seeded transcript with
 and tables. Rebuild `web`, then `@pi-outpost/embed`, then `build:e2e-host` first — the bench
 serves `dist/`, so an unbuilt fix is invisible.
 
+### Fuzzing
+
+The parsers that read untrusted bytes are fuzzed with [ClusterFuzzLite](https://google.github.io/clusterfuzzlite/)
+and [Jazzer.js](https://github.com/CodeIntelligenceTesting/jazzer.js), one target each in
+[`fuzz/targets/`](../fuzz/targets):
+
+| Target | What it reads | Not a finding |
+| --- | --- | --- |
+| `mail` | an `.eml` or `.msg` file, through `readMessage` | a `MailError` |
+| `zip` | an Office document's zip, through `readAllZipEntries` | a `ZipError` |
+| `structured-exchange` | a model's structured exchange document, through the whole gate | nothing: the gate never throws |
+
+Anything else thrown, a hang or a crash is a finding. The seeds are the repository's own
+fixtures and the structured-exchange conformance suite, gathered by `fuzz/build.mjs`.
+
+- **On a pull request** touching those parsers, `fuzz/` or `.clusterfuzzlite/`
+  (`.github/workflows/cflite-pr.yml`), each affected target runs for five minutes.
+- **Daily on `main`** (`cflite-batch.yml`), every target runs for an hour.
+
+A crash fails the job; its log names the input, which the job keeps as an artifact.
+Reproduce it locally with the bundled target and Jazzer.js:
+
+```sh
+node fuzz/build.mjs
+(cd fuzz && npm ci)
+npx --prefix fuzz jazzer fuzz/build/mail.js --sync crash-<id>
+```
+
+`fuzz/` is not a workspace: its own lockfile keeps Jazzer.js out of the product's dependency
+tree, and the targets are bundled with every dependency inlined, for the Node 20 that OSS-Fuzz's
+runner uses. `.clusterfuzzlite/` is laid out as an OSS-Fuzz project, so it can be submitted
+there unchanged. A new target is a `fuzz/targets/<name>.fuzz.ts` exporting `fuzz(data: Buffer)`,
+an entry in `TARGETS` in `fuzz/build.mjs`, and its name in `.clusterfuzzlite/build.sh`.
+
 ## When a turn dies of stack exhaustion
 
 `server/src/turnFailureLog.ts` writes a census of the *input* to

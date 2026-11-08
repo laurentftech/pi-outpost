@@ -71,7 +71,7 @@ describe("type-checked test suites", () => {
 
       test("the suite's configuration is what `npm run typecheck` runs", () => {
         const manifest = JSON.parse(readFileSync(path.join(ROOT, suite.script.packageJson), "utf8"));
-        assert.equal(manifest.scripts?.typecheck, suite.name === "e2e" ? "npm run typecheck --workspaces --if-present && tsc -p e2e" : suite.script.typecheck);
+        assert.equal(manifest.scripts?.typecheck, suite.name === "e2e" ? "npm run typecheck --workspaces --if-present && tsc -p e2e && tsc -p fuzz" : suite.script.typecheck);
         const root = JSON.parse(readFileSync(path.join(ROOT, "package.json"), "utf8"));
         assert.match(root.scripts.typecheck, /npm run typecheck --workspaces --if-present/);
       });
