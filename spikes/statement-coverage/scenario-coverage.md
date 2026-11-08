@@ -33,3 +33,11 @@ its own tests. The relevant delta spec has 15 scenarios; all are enumerated belo
 The fixture and selected real tests pass, so feasibility is established. The uncovered
 and partial rows are integration work required before calling a nightly feature complete
 or using a new full-product percentage in OpenSSF.
+
+
+The shutdown follow-up adds `trial-lifecycle-selftest.mjs` controls for normal exit,
+failed startup, owner identification, slow SIGTERM flush and SIGKILL loss. These
+support `UnreadableChildCoverageIsReported` with actual subprocess outcomes; they
+do not turn the exploratory workflow into the specified production CI policy.
+The first complete-suite run still failed collection integrity (two absent dumps).
+All partial/uncovered integration classifications above remain open.

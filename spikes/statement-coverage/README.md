@@ -160,3 +160,23 @@ To reproduce the full trial on Linux after installing the same prerequisites as 
 ```sh
 node spikes/statement-coverage/trial-run.mjs
 ```
+
+
+### Follow-up: shutdown diagnostics
+
+The first full Linux run is recorded in [linux-trial-results.md](linux-trial-results.md).
+Both suites passed, but two absent dumps invalidated the measurement. The next
+trial records each measured process's owning test, PID/parent PID, spawn/close
+status, and flush start/completion. Lifecycle records and expected-process markers
+are uploaded with the report; command arguments and environment values are not.
+
+Only inside the experimental Node loader, the harness's shutdown allowance is
+adapted to its existing 15-second coverage grace period. Production harness files,
+normal CI and runtime sources are unchanged. The adapter fails on source drift.
+This is a test-environment adaptation, not proof that timeout caused the first loss.
+
+Collector controls now cover a normal exit, a failed startup, a deliberately slow
+SIGTERM flush (one second, beyond the old 300ms budget), and an unrecoverable
+SIGKILL which must remain a missing-dump failure. POSIX signal controls run on
+Linux; Windows runs the normal/failed-start and ownership controls. A test-only
+fixture entry is admitted solely when SPIKE_TRIAL_SELFTEST=1.

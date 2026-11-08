@@ -9,8 +9,8 @@ export function writeJson(file,value){
   writeFileSync(temporary,JSON.stringify(value));
   renameSync(temporary,file);
 }
-export function startProcess(dir,id,entry){
-  writeJson(path.join(dir,'expected',`${id}.json`),{id,entry});
+export function startProcess(dir,id,entry,details={}){
+  writeJson(path.join(dir,'expected',`${id}.json`),{id,entry,...details});
 }
 export function dump(dir,id,coverage){
   const files=[];

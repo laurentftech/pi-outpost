@@ -13,7 +13,7 @@ if(!dir)throw new Error('SPIKE_TRIAL_DIR is required');
 const output=path.join(dir,'report');
 mkdirSync(output,{recursive:true});
 const {map,missing,processes}=collect(dir);
-const errors=missing.map(m=>`Missing or empty dump: ${m.id} (${m.entry})`);
+const errors=missing.map(m=>`Missing or empty dump: ${m.id} (${m.entry}; owner: ${m.owner??"unknown"})`);
 if(processes===0)errors.push('No measured processes: collection did not run');
 const inventory=[];
 function walk(at){
