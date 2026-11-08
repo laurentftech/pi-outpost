@@ -18,7 +18,7 @@
  * back to. Nothing under node_modules is in the coverage report; nothing else is touched.
  */
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { registerHooks } from "node:module";
 import path from "node:path";
 
@@ -41,10 +41,13 @@ const OWN = /\/(?:server|shared)\/src\//;
 function recordSource(url, source) {
   if (!SOURCES || !url.startsWith("file:") || url.includes("/node_modules/") || !OWN.test(url)) return;
   const name = `${createHash("sha1").update(url).update("\0").update(source).digest("hex")}.json`;
-  const file = path.join(SOURCES, name);
-  if (existsSync(file)) return;
   mkdirSync(SOURCES, { recursive: true });
-  writeFileSync(file, JSON.stringify({ url, source }));
+  try {
+    // Exclusive create: the same source from another process is already there, and fine.
+    writeFileSync(path.join(SOURCES, name), JSON.stringify({ url, source }), { flag: "wx" });
+  } catch (error) {
+    if (error?.code !== "EEXIST") throw error;
+  }
 }
 
 registerHooks({
