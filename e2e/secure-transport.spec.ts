@@ -51,12 +51,15 @@ test("HttpsBrowserAndReconnect", async ({ browser }) => {
     await expect(page.getByTitle("connected", { exact: true })).toBeVisible();
     const composer = page.locator("textarea");
     await expect(composer).toBeVisible();
-    await composer.fill("draft survives a disconnected transport");
     expect(sockets.length).toBeGreaterThan(0);
     expect(sockets.every((url) => url.startsWith("wss://"))).toBe(true);
     expect(new URL(page.url()).searchParams.has("token")).toBe(false);
     await page.getByTitle("Show files", { exact: true }).click();
     await expect(page.getByText("https-proof.txt", { exact: true })).toBeVisible();
+    // Socket-open precedes the initial workspace snapshot. Wait for actual project
+    // data before drafting: the composer is keyed by that workspace identity.
+    await composer.fill("draft survives a disconnected transport");
+    await expect(composer).toHaveValue("draft survives a disconnected transport");
 
     // Adverse pass: cut the active transport, preserve the draft, then reconnect and reload.
     interrupted = true;
