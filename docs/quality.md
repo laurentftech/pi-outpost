@@ -3,8 +3,8 @@
 This page describes executable checks and known limits, so contributors and reviewers can assess
 the evidence behind a green build. See [CONTRIBUTING.md](../CONTRIBUTING.md) for the contribution
 workflow and [SECURITY.md](../SECURITY.md) for private vulnerability reports. Where the project
-stands against the OpenSSF Best Practices silver and gold levels, and the work planned for each
-gap, is in [OpenSSF Best Practices: status and plan](openssf.md).
+stands against the OpenSSF Best Practices silver and gold levels and Security Baseline levels,
+and the work planned for each gap, is in [OpenSSF: status and plan](openssf.md).
 
 ## Checks in the repository
 

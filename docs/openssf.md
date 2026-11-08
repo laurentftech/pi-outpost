@@ -1,14 +1,14 @@
-# OpenSSF Best Practices: status and plan
+# OpenSSF: status and plan
 
 pi-outpost holds the OpenSSF Best Practices **passing** badge
 ([project 16423](https://www.bestpractices.dev/en/projects/16423)). This page records where the
-project stands against the **silver** and **gold** levels, what it intends to do about each gap,
-and what has changed. It is kept up to date as work lands, and read before every update of the
-badge entry.
+project stands against the **silver** and **gold** levels and the separate **Security Baseline**
+levels 1–3, what it intends to do about each gap, and what has changed. It is kept up to date as
+work lands, and read before every update of the badge entry.
 
 It proposes work; it does not claim it done. An action is **Done** only once its evidence is
-public, and the badge entry is changed only after that. Scope: Best Practices passing, silver and
-gold — not the separate OpenSSF Security Baseline. Criteria:
+public, and the badge entry is changed only after that. Best Practices passing, silver and gold
+and Security Baseline levels 1–3 are separate series; achieving one does not imply the other. Best Practices criteria:
 [silver](https://www.bestpractices.dev/en/criteria/1), [gold](https://www.bestpractices.dev/en/criteria/2).
 
 Status values: **To do** · **In progress** (pull request open) · **Done** (public evidence) ·
@@ -19,6 +19,70 @@ Status values: **To do** · **In progress** (pull request open) · **Done** (pub
 As of 8 November 2026: passing 100%, silver 67%, gold 39% (entry last updated on 7 November). OpenSSF Scorecard: 7.3, from a scan run on 8 November before v0.61.0 was published. The public entry lists every answer
 and its justification. Supporting evidence for the checks this repository runs is in
 [Code quality and verification](quality.md).
+
+The Security Baseline entry was audited and saved on **8 November 2026**, against criteria
+**v2026.08.28**. All 64 controls have a recorded answer and justification; none is unknown.
+
+[![OpenSSF Baseline](https://www.bestpractices.dev/projects/16423/baseline)](https://www.bestpractices.dev/en/projects/16423/baseline-1)
+
+| Security Baseline level | Met | N/A | Unmet | Site progress | Status |
+| --- | ---: | ---: | ---: | ---: | --- |
+| [Level 1](https://www.bestpractices.dev/en/projects/16423/baseline-1) | 23 | 1 | 0 | 24/24 (100%) | Achieved |
+| [Level 2](https://www.bestpractices.dev/en/projects/16423/baseline-2) | 15 | 0 | 4 | 15/19 (79%) | Not achieved |
+| [Level 3](https://www.bestpractices.dev/en/projects/16423/baseline-3) | 10 | 1 | 10 | 11/21 (52%) | Not achieved |
+
+These are the controls specific to each level, not cumulative totals. Site progress counts both
+Met and N/A; higher levels also require the preceding levels. The badge is a voluntary
+self-assessment with public justifications, not an independent security certification.
+
+Evidence checked for this update:
+
+- All 2,804 tracked files were inventoried by content, including extensionless files and Office
+  container entries. No native executable artifacts were found. Document fixtures have reviewable
+  XML, generators or recorded Office provenance; graphical assets are excluded by the criterion.
+- All 11 workspaces, the MCP bundles and container builds use this source repository. The two
+  multi-repository controls are N/A.
+- GitHub Actions defaults to read-only permissions. The active `protect_main` ruleset requires
+  pull requests, CI and CodeQL, with no bypass; independent human approval is not required.
+- All five software files attached to v0.61.0 passed Sigstore verification constrained to
+  `.github/workflows/release.yml`, `refs/tags/v0.61.0` and GitHub-hosted runners. An altered bundle
+  was refused. This verifies provenance, not OS code signing or reproducible builds.
+- Existing architecture, sandbox investigations and OpenSpec design risk analyses support the
+  Baseline security-assessment and threat-modeling controls. The stronger consolidated security
+  argument and independent review work below remain open.
+
+## Security Baseline — remaining work
+
+Each row corresponds to an Unmet answer saved on the public entry. Completion means the change
+and its evidence are public, the relevant enforcement has been checked, and the answer has been
+updated. The Level 2 work comes first; Level 3 also depends on it.
+
+### Level 2
+
+| Criterion | Observed gap | Completion evidence | Status |
+| --- | --- | --- | --- |
+| `OSPS-LE-01.01` | MIT licensing does not require a legal authorization assertion on every commit; there is no mandatory DCO/CLA check. | Adopt a per-commit attestation process, document it in CONTRIBUTING, and require a check that accepts valid assertions and refuses missing ones. | Maintainer decision |
+| `OSPS-QA-06.01` | Documentation-only PRs can merge without running a test suite. Tests on main run after acceptance. | Run an appropriate automated test suite before every merge, including documentation-only changes, and require its result through `CI ok`. | To do |
+| `OSPS-SA-02.01` | The HTTP route inventory includes `/files/download`, absent from the reference documentation; the WebSocket protocol lacks a complete external message reference. | Document inputs, outputs, authentication and errors for the actual HTTP/WebSocket inventory; check it against production routes and protocol types. Keep the existing CLI, embedding, MCP and OpenAPI references aligned. | To do |
+| `OSPS-VM-01.01` | SECURITY.md describes coordinated disclosure but explicitly promises no response timeframe. | Publish a realistic response/acknowledgement target and escalation process. Distinguish that target from a universal fix deadline. | Maintainer decision |
+
+### Level 3
+
+| Criterion | Observed gap | Completion evidence | Status |
+| --- | --- | --- | --- |
+| `OSPS-AC-04.02` | CodeQL requests `packages: read` for private packs and `actions: read` for private repositories, although this public configuration uses neither. | Remove unused scopes or document a concrete requirement; verify the real analysis still uploads results. Review each privileged job against its activity. | To do |
+| `OSPS-BR-01.04` | The scenario-coverage step interpolates a collaborator-controlled base ref into a shell script. | Pass it through a quoted environment variable and validate its use; exercise unusual valid refs. Apply the same review to other trusted inputs. | To do |
+| `OSPS-BR-07.02` | Credential hygiene and deployment-key rotation are documented, but no policy covers storage, access and rotation of the project's own development/CI/publication credentials. | Publish that policy, including OIDC, remaining credentials, rotation/revocation responsibilities and recovery. | Maintainer decision |
+| `OSPS-GV-04.01` | Governance requires roles to be documented before access is granted, but does not define collaborator review before elevated access. | Define review criteria, decision authority and least-privilege access scope in GOVERNANCE; apply the review before granting access. | Maintainer decision |
+| `OSPS-QA-02.02` | Compiled SEA distributions are released without SBOMs. A source lockfile and a provenance bundle are different artifacts. | Generate and deliver an SBOM for every compiled release asset; check its components against what the build actually embeds. | To do |
+| `OSPS-QA-07.01` | The ruleset requires zero approving reviews. | Establish a second human reviewer and require at least one non-author human approval before merge. Automated and AI reviews do not satisfy this criterion. | Waiting for volunteers |
+| `OSPS-VM-04.02` | Dependabot alert 82 (`GHSA-g3hv-75wg-m249`, minimatch via API Extractor) has a written non-exploitability rationale but no VEX document. | Publish a VEX statement with the affected component/version, status and rationale; maintain it as the component or reachability changes. | To do |
+| `OSPS-VM-05.01` | Dependency triage does not define remediation thresholds for both vulnerabilities and licenses. | Publish an SCA policy covering identification, severity/license thresholds, prioritization, remediation and justified exceptions. | Maintainer decision |
+| `OSPS-VM-05.02` | The release procedure has no SCA policy-compliance gate before each release. | Require a release check against the SCA policy, with applicable violations resolved or documented as permitted exceptions. | To do |
+| `OSPS-VM-05.03` | CI and the ruleset do not require an automatic SCA gate for malicious/vulnerable dependencies. | Evaluate every code change against the policy and block merging on violations; test both refusal and justified non-exploitable exceptions. | To do |
+
+These tasks overlap the Best Practices work below: reuse governance, dependency monitoring,
+release verification and independent review rather than maintaining separate mechanisms for each badge.
 
 ## Corrections due on the badge entry
 
@@ -92,7 +156,7 @@ versioned formats where needed, and a tested migration procedure.
 2. Simple fixes: the Vite option, the lockfile and the verification heading; the npm pinning.
 3. Correct the badge-entry answers listed above, once their evidence is in place.
 4. Consolidate style, review, governance and the security argument.
-5. Measure the missing coverage and verify the next signed release.
+5. Measure the missing coverage; keep verifying signed release files, and document Docker provenance.
 6. Organise continuity and independent contribution: gold cannot be reached through code or
    badge-entry changes alone.
 
@@ -111,3 +175,4 @@ versioned formats where needed, and a tested migration procedure.
 | 2026-11-08 | Correction of the 2026-11-07 correction: npm 12.2.2 does bundle the fixed `undici` 6.29.1 and `ip-address` 10.7.5; only the lockfile recorded stale versions. Merged: #453 (lockfile matches the tarball; Dependabot alerts down from 16 to 4), #455 (governance, code of conduct), #456 (both count as documentation in CI), #457 (full install to bump npm). |
 | 2026-11-08 | v0.61.0 released. Its files' provenance and the npm provenance verified; `signed_releases` ready for the entry. Its tag is lightweight and unsigned: the workflow should refuse such a tag. |
 | 2026-11-08 | Counts refreshed: entry at passing 100%, silver 67%, gold 39% (governance, code of conduct, 2FA, `warnings_strict`, `interfaces_current` and `regression_tests_added50` updated on 7 November); Scorecard 7.3; Dependabot 88 fixed, 1 dismissed, 4 open. |
+| 2026-11-08 | Security Baseline audit saved: Level 1 achieved (23 Met, 1 N/A); Level 2 15/19 and Level 3 11/21, with no unknown answers. Added the 14 unmet controls, completion evidence and the official Baseline badge. Verified all five v0.61.0 release files against their signer workflow/tag; an altered file is rejected. |

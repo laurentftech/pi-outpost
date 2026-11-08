@@ -4,6 +4,7 @@
 [![Coverage](https://raw.githubusercontent.com/laurentftech/pi-outpost/gh-pages/badges/coverage.svg)](https://github.com/laurentftech/pi-outpost/actions/workflows/ci.yml)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/laurentftech/pi-outpost/badge)](https://scorecard.dev/viewer/?uri=github.com/laurentftech/pi-outpost)
 [![OpenSSF Best Practices](https://www.bestpractices.dev/projects/16423/badge)](https://www.bestpractices.dev/projects/16423)
+[![OpenSSF Baseline](https://www.bestpractices.dev/projects/16423/baseline)](https://www.bestpractices.dev/en/projects/16423/baseline-1)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Node](https://img.shields.io/badge/node-%E2%89%A524-brightgreen)](https://nodejs.org)
 
@@ -71,5 +72,6 @@ See the [feature guide](docs/features.md) for details.
 | [Contributing](CONTRIBUTING.md) | Bug reports, development workflow, tests and pull requests |
 | [Security policy](SECURITY.md) | Private vulnerability reporting, supported versions and trust boundaries |
 | [Code quality](docs/quality.md) | Enforced checks, coverage scope, known debt and merge rules |
+| [OpenSSF status and plan](docs/openssf.md) | Best Practices and Security Baseline badges, evidence and remaining work |
 
 [Compare with other tools](docs/comparison.md) · [Changelog](CHANGELOG.md) · [MIT license](LICENSE)

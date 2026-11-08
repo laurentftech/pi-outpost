@@ -54,7 +54,7 @@ passkey or hardware key.
 The project currently has a single maintainer, and no one else can take over issues, merges and
 releases. This is a known risk. The plan is to name a trusted person with minimal permissions and a
 written, tested hand-over procedure once volunteers are available. Progress is tracked in
-[OpenSSF Best Practices: status and plan](docs/openssf.md).
+[OpenSSF: status and plan](docs/openssf.md).
 
 ## Changing this document
 
