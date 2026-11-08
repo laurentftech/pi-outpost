@@ -105,6 +105,52 @@ export function refusalNote(hosts: string[]): string {
   return `[pi-outpost] network refused: ${hosts.join(", ")} — not in sandbox.allowedHosts. Ask the user to add ${them} there if the command needs ${them}.`;
 }
 
+/**
+ * One of landstrip's own lines, read as the agent should: a refusal landstrip reports on stderr
+ * (`{"kind":"filesystem","code":"FILESYSTEM_DENIED","state":"info",…}`) becomes one line saying the
+ * sandbox refused that one operation; anything else is undefined, and passes as it is.
+ *
+ * The raw JSON misled the agent: `python3 -m venv` tries a harmless `bind` on `[::1]:0`, and the
+ * only line in a successful command's output was that refusal, which it read as the command failing.
+ * MXC reports nothing of the kind: the program's own error is all there is.
+ */
+export function landstripNote(line: string): string | undefined {
+  if (!line.startsWith("{") || !line.includes('"state":"info"')) return undefined;
+  let report: { kind?: unknown; code?: unknown; state?: unknown; operation?: unknown; target?: unknown; path?: unknown };
+  try {
+    report = JSON.parse(line);
+  } catch {
+    return undefined;
+  }
+  if (report.state !== "info" || typeof report.code !== "string" || !report.code.endsWith("_DENIED")) return undefined;
+  const what = typeof report.operation === "string" ? report.operation : "an operation";
+  const on = typeof report.target === "string" ? report.target : typeof report.path === "string" ? report.path : undefined;
+  return `[sandbox] refused ${what}${on ? ` ${on}` : ""}: outside what this sandbox allows. The command went on; judge it by its exit status and output.`;
+}
+
+/**
+ * landstrip's stderr, line by line: its refusals rewritten by `landstripNote`, the rest unchanged.
+ * A line is held only until its end arrives, and what is left is written at `end`.
+ */
+export function landstripStderr(onData: (data: Buffer) => void): { write: (data: Buffer) => void; end: () => void } {
+  let pending = "";
+  const emit = (line: string, newline: boolean) => onData(Buffer.from(`${landstripNote(line.replace(/\r$/, "")) ?? line}${newline ? "\n" : ""}`));
+  return {
+    write: (data) => {
+      pending += data.toString("utf8");
+      let at;
+      while ((at = pending.indexOf("\n")) >= 0) {
+        emit(pending.slice(0, at), true);
+        pending = pending.slice(at + 1);
+      }
+    },
+    end: () => {
+      if (pending) emit(pending, false);
+      pending = "";
+    },
+  };
+}
+
 /** What the user answered about a host a command connected to, or why nobody was asked. */
 export type HostAnswer = SandboxGrantOutcome | { forbidden: string };
 
@@ -372,7 +418,9 @@ export function confinedBashOperations(options: ConfinedBashOptions): ConfinedBa
         // landstrip opens the proxy's port and sets nothing: the command is told where it is.
         if (networkProxy !== undefined) runnerEnv = { ...env, ...proxyEnvironment(networkProxy.url) };
       }
-      const launch = () => run(options.runner, args, { cwd: startIn, env: runnerEnv, onData, signal, timeoutMs, timeout, windows });
+      // landstrip reports each refusal as a JSON line on stderr: told to the agent in words.
+      const stderr = kind === "landstrip" && !windows ? landstripStderr(onData) : undefined;
+      const launch = () => run(options.runner, args, { cwd: startIn, env: runnerEnv, onData, ...(stderr ? { stderr } : {}), signal, timeoutMs, timeout, windows });
       // curl, git and PowerShell print only "403" for a refused tunnel: the model is told which
       // host, and why. Commands of the agent's shell run one at a time, so these are this one's.
       const refused = new Set<string>();
@@ -490,6 +538,8 @@ async function run(
     cwd: string;
     env: Record<string, string>;
     onData: (data: Buffer) => void;
+    /** Where stderr goes instead of `onData`, ended when the runner closes. */
+    stderr?: { write: (data: Buffer) => void; end: () => void };
     signal?: AbortSignal;
     timeoutMs?: number;
     timeout?: number;
@@ -512,7 +562,7 @@ async function run(
     end();
   }, options.timeoutMs);
   child.stdout?.on("data", options.onData);
-  child.stderr?.on("data", options.onData);
+  child.stderr?.on("data", options.stderr ? options.stderr.write : options.onData);
   if (options.signal) {
     if (options.signal.aborted) onAbort();
     else options.signal.addEventListener("abort", onAbort, { once: true });
@@ -522,6 +572,7 @@ async function run(
       child.once("error", reject);
       child.once("close", (code, signal) => resolve({ code, signal }));
     });
+    options.stderr?.end();
     if (options.signal?.aborted) throw new Error("aborted");
     if (timedOut) throw new Error(`timeout:${options.timeout}`);
     return { exitCode: code ?? (signal ? 128 + (SIGNAL_NUMBERS[signal] ?? 0) : 1) };
