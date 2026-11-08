@@ -4,8 +4,45 @@
 
 - [Staying up to date](#staying-up-to-date)
 - [Running it as a service](#running-it-as-a-service)
+- [Remote transport: HTTPS or SSH](#remote-transport-https-or-ssh)
 - [Docker with Python](docker.md)
 - [Installing it as an app](#installing-it-as-an-app)
+
+## Remote transport: HTTPS or SSH
+
+Local HTTP on `127.0.0.1` remains the default. A listener bound off loopback needs a
+shared token **and** HTTPS/WSS; a token alone does not encrypt traffic. Existing remote
+HTTP configurations now refuse startup until you choose one of these deployments:
+
+- **Native HTTPS:** set `server.tls.certFile` and `server.tls.keyFile` to matching PEM
+  files, and add the exact public HTTPS origin to `server.allowedOrigins`. See the
+  [complete example](how-to.md#reach-it-from-your-phone-or-another-machine). TLS 1.2 is
+  the minimum. Use a certificate trusted by your clients with the correct DNS/IP SAN;
+  provide the full chain and an unencrypted key readable only by the service account.
+  Certificate issuance/renewal is external; restart after renewal. Startup rejects
+  unreadable, malformed, mismatched, expired or not-yet-valid material, with no HTTP fallback.
+- **SSH:** leave `server.host` at `127.0.0.1` on the remote machine, then run this on
+  your client (OpenSSH on Windows, Linux or macOS):
+
+  ```sh
+  ssh -N -L 127.0.0.1:3141:127.0.0.1:3141 user@server.example.com
+  ```
+
+  Open `http://127.0.0.1:3141` locally. SSH encrypts the network transit; the HTTP/WS
+  endpoints stay on loopback at each end. No plaintext exception is needed. Keep a
+  token on shared machines and verify the SSH host key. Choose another local port
+  if 3141 is occupied.
+- **TLS reverse proxy:** keep pi-outpost on loopback and terminate HTTPS at the proxy,
+  including WebSocket upgrade forwarding. Allow the exact public HTTPS origin and
+  keep the token enabled. If a container/private-network hop requires a non-loopback
+  listener, explicitly set `server.allowInsecureHttp: true` (or
+  `PI_OUTPOST_ALLOW_INSECURE_HTTP=1`) and prevent clients from reaching that listener
+  directly. This emits a warning and leaves that hop unencrypted. Forwarded headers
+  never opt into plaintext automatically; TLS errors never fall back to HTTP.
+
+The [Docker template](docker.md) explicitly permits its host-local container hop;
+persisted configurations are not silently rewritten. These settings apply to the
+pi-outpost listener, not a separately deployed Open WebUI service or provider endpoints.
 
 ## Staying up to date
 

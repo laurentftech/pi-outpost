@@ -234,7 +234,8 @@ configured once.
 variable > file > default** — except the fields you can change from Settings, where what you
 applied wins and persists. Environment variables: `PI_OUTPOST_PORT` (falling back to `PORT`,
 which platforms inject), `PI_OUTPOST_HOST`, `PI_OUTPOST_CWD`, `PI_OUTPOST_AGENT_DIR`,
-`PI_OUTPOST_TOKEN`, `PI_OFFLINE`.
+`PI_OUTPOST_TOKEN`, `PI_OUTPOST_TLS_CERT`, `PI_OUTPOST_TLS_KEY`,
+`PI_OUTPOST_ALLOW_INSECURE_HTTP` (`0` or `1`), `PI_OFFLINE`.
 
 One exception, and it is deliberate: **a sandbox that grants write or bash but names no
 `sandbox.root` refuses a `--cwd`/`PI_OUTPOST_CWD` override.** Such a sandbox falls back to
@@ -391,6 +392,8 @@ install that must stay small can omit it and name no `"mxc"`.
 |-----|--------|
 | `server.port` | Port to listen on (default `3141`). `--port` and `PI_OUTPOST_PORT`/`PORT` override it |
 | `server.host` | Address to bind (default `127.0.0.1` — only change this if you have read the security note above) |
+| `server.tls.certFile` / `server.tls.keyFile` | PEM certificate (including its chain) and matching unencrypted private key for native HTTPS/WSS, TLS 1.2 or newer. Both are required. File paths are relative to the config; `PI_OUTPOST_TLS_CERT` / `PI_OUTPOST_TLS_KEY` override them relative to the launch directory. Invalid, expired or unreadable material refuses startup |
+| `server.allowInsecureHttp` | Default `false`: off-loopback HTTP refuses startup. Explicit `true` permits a protected proxy/container hop and emits a warning; it does not encrypt that hop. `PI_OUTPOST_ALLOW_INSECURE_HTTP=0` or `1` overrides. Keep direct access blocked. See [HTTPS and SSH](deployment.md#remote-transport-https-or-ssh) |
 | `server.allowedOrigins` | Extra exact Origins accepted on the WebSocket, and given CORS headers on the HTTP endpoints |
 | `server.token` | Shared secret required on the WebSocket, `/branding`, `/files/raw` and `/files/docx-template` (`PI_OUTPOST_TOKEN` overrides). Mandatory in practice off loopback |
 | `openBrowser` | Whether starting the server opens the interface (default: wherever a desktop session exists) |

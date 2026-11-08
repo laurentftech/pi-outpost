@@ -62,14 +62,14 @@ export function shouldOpenBrowser({
  * are not reachable as themselves either — a browser has to be sent somewhere it can
  * connect, which is the loopback of the same family.
  */
-export function browsableUrl(address: { address: string; port: number; family?: string }): string {
+export function browsableUrl(address: { address: string; port: number; family?: string }, scheme: "http" | "https" = "http"): string {
   const host =
     address.address === "0.0.0.0" || address.address === "::" || address.address === ""
       ? "127.0.0.1"
       : address.address;
   // A literal IPv6 address needs its brackets back before it is a URL.
   const authority = host.includes(":") ? `[${host}]` : host;
-  return `http://${authority}:${address.port}/`;
+  return `${scheme}://${authority}:${address.port}/`;
 }
 
 /**

@@ -50,6 +50,12 @@ docker compose logs -f pi-outpost
 Open `http://127.0.0.1:3141/`, authenticate with the contents of `server-token`, then configure a model
 in the setup screen. Its key is saved in `/data/agent`, not passed to commands in an environment
 variable. The app is single-tenant: use a separate Compose project, data volume and token for each user.
+The template explicitly sets `server.allowInsecureHttp: true` for the container-to-host
+hop, which emits a plaintext warning. Existing `/data/config.json` files are preserved:
+on upgrade, explicitly add that setting only if you retain the protected loopback
+publication, or configure native TLS instead. Do not publish this HTTP port to public
+interfaces. See [HTTPS/SSH deployment](deployment.md#remote-transport-https-or-ssh).
+
 The port is published on loopback only. Remote access needs an authenticated TLS reverse proxy or
 SSH tunnel; do not expose it by casually changing the bind address.
 

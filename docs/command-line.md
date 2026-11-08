@@ -56,6 +56,11 @@ pi-outpost update --extensions [--check]
 There is deliberately **no `--token` flag**: a secret on the command line is readable by
 anyone who can list processes. Use `PI_OUTPOST_TOKEN` or the file's `server.token`.
 
+Off-loopback listeners also require encrypted transport. `PI_OUTPOST_TLS_CERT` and
+`PI_OUTPOST_TLS_KEY` override the PEM paths in `server.tls` (relative environment paths
+use the launch directory). `PI_OUTPOST_ALLOW_INSECURE_HTTP=0` or `1` overrides the
+explicit protected-hop exception; no new CLI flags are needed. See [HTTPS and SSH](deployment.md#remote-transport-https-or-ssh).
+
 ### `pi-outpost -p`
 
 Runs one turn of the agent without a browser, then exits — to script a task, or to try a sandbox,

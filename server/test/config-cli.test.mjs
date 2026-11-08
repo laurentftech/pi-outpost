@@ -154,6 +154,19 @@ describe("configuration: discovery, precedence, profiles", () => {
     assert.equal(resolved(out).port, 4005);
   });
 
+  test("TLS config output names paths without private key bytes", async () => {
+    const tls = {
+      certFile: fileURLToPath(new URL("./fixtures/tls/test-cert.pem", import.meta.url)),
+      keyFile: fileURLToPath(new URL("./fixtures/tls/test-key.pem", import.meta.url)),
+    };
+    const configFile = path.join(dir, "tls-config.json");
+    await writeFile(configFile, JSON.stringify({ sandbox: false, server: { tls } }));
+    const { code, out } = await cli(["config", "--config", configFile], { cwd: dir, env: { XDG_CONFIG_HOME: xdg } });
+    assert.equal(code, 0, out);
+    assert.deepEqual(resolved(out).tls, tls);
+    assert.doesNotMatch(out, /BEGIN.*PRIVATE KEY|MIIEv/);
+  });
+
   test("the token is never printed back, only its presence", async () => {
     const { out } = await cli(["config"], {
       cwd: dir,
@@ -285,7 +298,8 @@ describe("configuration: discovery, precedence, profiles", () => {
       cwd: dir,
       env: { XDG_CONFIG_HOME: xdg, PI_OUTPOST_TOKEN: "a-long-random-secret" },
     });
-    assert.equal(withToken.code, 0);
+    assert.equal(withToken.code, 1);
+    assert.match(withToken.out, /refusing unencrypted HTTP/);
   });
 
   test("init --global does not pin the agent to the config directory", async () => {

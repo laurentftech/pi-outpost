@@ -75,6 +75,10 @@ In Next.js, the component doing this must be a client component (`"use client"`)
 
 Configure this on the pi-outpost server, whatever the deployment topology:
 
+Remote listeners require a token and encrypted transport by default. Configure native
+`server.tls` or a TLS proxy, and use an HTTPS `serverUrl` from HTTPS host pages so the
+widget uses WSS. See the [HTTPS/SSH deployment guide](https://github.com/laurentftech/pi-outpost/blob/main/docs/deployment.md#remote-transport-https-or-ssh).
+
 - **`server.allowedOrigins`** — the widget carries the *host page's* origin (e.g. `https://your-app.example.com`), not pi-outpost's own. Add it explicitly; even same-domain deployments need this (only `localhost`/`127.0.0.1` are trusted automatically). Listing it is all a cross-origin mount needs: the server answers those origins with the CORS headers the browser requires on every HTTP route, and applies the same allowlist to the WebSocket handshake. It grants no authority of its own — a token-protected route still wants its token.
 - **`embed.workspaceControls`** — when the host does not pass `workspace`, choose what the
   widget exposes: `"settings"` (the one-project default), `"root"` (a compact root chooser)
