@@ -170,7 +170,11 @@ describe("file lifecycle over the socket", () => {
     // for it, so what it has received by then is all the batch announced.
     observer.send({ type: "list_directory", path: "writable", requestId: "batch-barrier" });
     await observer.waitFor((message) => message.requestId === "batch-barrier");
-    const changes = observer.received.slice(before).filter((message) => message.type === "file_changed");
+    // Only this directory's: the previous test's copy into writable/archive can still be
+    // announced late, by the file watcher, on a slow run.
+    const changes = observer.received
+      .slice(before)
+      .filter((message) => message.type === "file_changed" && /^writable\/batch(\/|$)/.test(message.path));
     assert.equal(changes.length, 1, `one notification for writable/batch, got ${JSON.stringify(changes.map((m) => m.path))}`);
     assert.match(changes[0].path, /^writable\/batch\/[^/]+$/);
   });

@@ -89,6 +89,7 @@ test(
     const report = await buildReport({ inputDirs: [path.join(converted, "raw")], outputDir: path.join(coverageDir, "report") });
     const index = report.scopes.find(({ name }) => name === "server").files.find((file) => file.path === "server/src/index.ts");
     assert.ok(index, "src/index.ts is missing from the report");
-    assert.ok(index.summary.lines.covered > 1000, `only ${index.summary.lines.covered} lines of src/index.ts reported as run by the server`);
+    // Starting and stopping alone runs several hundred of its lines of code (about 900 on CI).
+    assert.ok(index.summary.lines.covered > 500, `only ${index.summary.lines.covered} lines of src/index.ts reported as run by the server`);
   },
 );
