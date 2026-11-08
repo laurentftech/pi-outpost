@@ -43,6 +43,8 @@ export interface HarnessClient {
 }
 
 export interface StartServerOptions {
+  /** Explicit trust for isolated TLS fixtures; normal certificate verification remains on. */
+  ca?: string | Buffer;
   /** Patches the server's environment; a key set to undefined is removed. */
   env?: Record<string, string | undefined>;
   /** Run an already-bundled server instead of the TypeScript source. */
@@ -55,6 +57,6 @@ export function freePort(): Promise<number>;
 export function makeWorkspace(files?: Record<string, string | Buffer | Uint8Array>): Promise<string>;
 /** Start a server confined to `root`; `config` is merged over the harness defaults. */
 export function startServer(root: string, config?: Record<string, unknown>, options?: StartServerOptions): Promise<HarnessServer>;
-export function connect(url: string): HarnessClient;
+export function connect(url: string, options?: WebSocket.ClientOptions): HarnessClient;
 /** A minimal valid PNG. */
 export const PNG_BYTES: Buffer;

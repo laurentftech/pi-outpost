@@ -184,16 +184,17 @@ Locally declared models are unaffected.
 
 ## Reach it from your phone or another machine
 
-Three security decisions, and all three are needed. The example also spells out the default
-port because the same value appears in the allowed origin and browser URL:
+Configure a certificate trusted by your clients for the hostname you use, a token and the
+exact browser origin. Remote listeners refuse plaintext HTTP by default:
 
 ```json
 {
   "server": {
     "host": "0.0.0.0",
     "port": 3141,
-    "token": "…",
-    "allowedOrigins": ["http://192.168.1.10:3141"]
+    "token": "a-long-random-secret",
+    "tls": { "certFile": "/etc/pi-outpost/fullchain.pem", "keyFile": "/etc/pi-outpost/privkey.pem" },
+    "allowedOrigins": ["https://outpost.example.com:3141"]
   }
 }
 ```
@@ -201,20 +202,21 @@ port because the same value appears in the allowed origin and browser URL:
 1. **`host`** off `127.0.0.1`, and **`port`** names the port used below. `3141` is the
    default, but spelling it out keeps the listen address and browser origin visibly aligned.
    The server refuses to bind off loopback without a
-   token, so this alone will not start.
+   token and encrypted transport, so this alone will not start.
 2. **`token`** — a long random secret, `openssl rand -hex 32`. Prefer the
    `PI_OUTPOST_TOKEN` environment variable, which overrides the file and keeps the
    secret out of it. There is no `--token` flag on purpose: argv is readable by anyone
    who can list processes.
 3. **`allowedOrigins`** with the exact origin *you will type in the browser*. Only
    `localhost` and `127.0.0.1` are trusted automatically, so a connection from
-   `http://192.168.1.10:3141` is rejected as a forbidden origin until you list it.
+   `https://outpost.example.com:3141` is rejected as a forbidden origin until you list it.
 
-Then open `http://192.168.1.10:3141/?token=<secret>` once. The token is stored locally
+Then open `https://outpost.example.com:3141/?token=<secret>` once. The token is stored locally
 and stripped from the URL.
 
-There is no transport encryption here: put it behind a reverse proxy with TLS, or on a
-Tailscale network, before it crosses anything you do not control. And remember what
+The certificate must match the hostname (or IP address) in that URL. Protect the private
+key with service-account file permissions and restart after renewing it. You can also use
+an [SSH tunnel or TLS reverse proxy](deployment.md#remote-transport-https-or-ssh). Remember what
 you are exposing — an agent that can read your files, and write or run commands if you
 granted it that.
 

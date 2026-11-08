@@ -40,7 +40,7 @@ The starter configuration lets the agent **read and write this directory, with a
 
 **No Node.js?** Download a standalone executable from [Releases](https://github.com/laurentftech/pi-outpost/releases). See the [standalone executable guide](docs/sea-packaging.md) for platform setup.
 
-> The server listens on loopback by default. Network deployments require an auth token and a suitable sandbox. Everyone connected shares the same projects and conversations: this is a single-tenant application. Read the [deployment recipes](docs/how-to.md#lock-down-a-shared-deployment) and [sandboxing guide](docs/sandboxing.md) before exposing it.
+> The server listens on loopback by default. Network deployments require an auth token, encrypted transport (native HTTPS/WSS, a TLS proxy or an SSH tunnel) and a suitable sandbox. Remote HTTP refuses startup by default. Everyone connected shares the same projects and conversations: this is a single-tenant application. Read the [HTTPS/SSH guide](docs/deployment.md#remote-transport-https-or-ssh), [deployment recipes](docs/how-to.md#lock-down-a-shared-deployment) and [sandboxing guide](docs/sandboxing.md) before exposing it.
 
 ## What you get
 

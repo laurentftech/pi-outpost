@@ -22,6 +22,7 @@
   },
   "server": {
     "host": "0.0.0.0",
+    "allowInsecureHttp": true,
     "port": 3141
   }
 }

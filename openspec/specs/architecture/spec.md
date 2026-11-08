@@ -44,7 +44,7 @@ The server SHALL hold zero or more workspaces, each owning one agent session and
 The system SHALL implement security via network scoping, an optional shared token, and sandboxing:
 - The server binds to 127.0.0.1 by default (`server.host` config to override deliberately)
 - WebSocket upgrades are rejected unless the Origin is localhost/127.0.0.1 or an exact match in `server.allowedOrigins`
-- When a token is configured (`server.token` / `PI_OUTPOST_TOKEN`), the WebSocket and the HTTP API additionally require it (timing-safe comparison); binding beyond localhost without a token is the operator's explicit choice
+- When a token is configured (`server.token` / `PI_OUTPOST_TOKEN`), the WebSocket and the HTTP API additionally require it (timing-safe comparison); off-loopback listeners require a token and secure transport as specified in `server-transport` (with an explicit protected-hop plaintext exception)
 - When a sandbox is configured, built-in file tools are replaced by scoped ones confined to `sandbox.root` (writes further confined to `sandbox.writableRoot`, bash off by default). Pi's own built-in tools that the sandbox does not replace are not registered in the session at all, so neither an extension nor a setting can activate an unconfined one; a sandboxed session that would still register one fails to start. A sandbox is scoped to the workspace it belongs to: a workspace's tools are confined to that workspace's root, never to another workspace's
 - A client may open a workspace at any server-side path it can reach through the directory picker, exactly as it may already move the sandbox root there; the boundary is the configured lock, not an enumeration of allowed roots. A workspace opened this way is sandboxed at its own root like any other
 - Session switching only accepts paths returned by the SessionManager listing (no arbitrary file paths), and only from the session manager of the workspace the connection is bound to
@@ -52,7 +52,7 @@ The system SHALL implement security via network scoping, an optional shared toke
 #### Scenario: CrossOriginRejected
 - **GIVEN** a WebSocket upgrade with an Origin not in the allowlist
 - **WHEN** the connection is attempted
-- **THEN** the server rejects the upgrade
+- **THEN** the server closes the connection with a policy violation before any agent data is sent
 
 #### Scenario: TokenRequired
 - **GIVEN** a configured token

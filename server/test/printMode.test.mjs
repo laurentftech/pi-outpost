@@ -6,7 +6,7 @@
  */
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { after, before, describe, test } from "node:test";
@@ -75,6 +75,21 @@ describe("pi-outpost -p", () => {
     assert.equal(stdout, "done\n");
     assert.match(stderr, /\[server\] http:\/\/127\.0\.0\.1:\d+\//, "the server it ran, on a loopback port of its own");
     assert.doesNotMatch(stdout, /\[server\]|\[pi\]|\[config\]/);
+  });
+
+  test("LocalPrintWithTlsConfiguration", { timeout: 150_000 }, async () => {
+    const tlsConfig = path.join(dir, "tls-config.json");
+    const full = JSON.parse(await readFile(config, "utf8"));
+    full.server = { tls: {
+      certFile: fileURLToPath(new URL("./fixtures/tls/test-cert.pem", import.meta.url)),
+      keyFile: fileURLToPath(new URL("./fixtures/tls/test-key.pem", import.meta.url)),
+    } };
+    await writeFile(tlsConfig, JSON.stringify(full));
+    const { code, stdout, stderr } = await print(["-p", "Say hello", "--model", MODEL], { config: tlsConfig, env: { BASH_CALL_STEPS: "[]" } });
+    assert.equal(code, 0, stderr);
+    assert.equal(stdout, "done\n");
+    assert.match(stderr, /\[server\] http:\/\/127\.0\.0\.1:\d+\//);
+    assert.doesNotMatch(stderr, /\[server\] https:/);
   });
 
   // openlore: scenario=APromptFromStdin spec=cli

@@ -7,6 +7,7 @@
 import { spawn, execSync } from "node:child_process";
 import { mkdtemp, rm, writeFile, mkdir } from "node:fs/promises";
 import net from "node:net";
+import https from "node:https";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -146,7 +147,8 @@ async function startServerOn(root, config, options, port) {
   child.stdout.on("data", (d) => (log += d));
   child.stderr.on("data", (d) => (log += d));
 
-  const base = `http://127.0.0.1:${port}`;
+  const secure = Boolean(config.server?.tls);
+  const base = `${secure ? "https" : "http"}://127.0.0.1:${port}`;
   const deadline = Date.now() + 60_000;
   // The exit code can be known before the pipes are drained: wait for them, or the
   // reason the server gave for dying is lost and the failure reads "exited (1):".
@@ -164,7 +166,14 @@ async function startServerOn(root, config, options, port) {
     try {
       const health = new URL("/health", base);
       if (health.hostname !== "127.0.0.1" || health.port !== String(port)) throw new Error("test health check escaped its local server");
-      const res = await fetch(health);
+      const res = secure ? await new Promise((resolve, reject) => {
+        const request = https.get(health, { ca: options.ca, timeout: 1000 }, (response) => {
+          response.resume();
+          resolve({ ok: response.statusCode === 200 });
+        });
+        request.on("timeout", () => request.destroy(new Error("TLS health timed out")));
+        request.on("error", reject);
+      }) : await fetch(health);
       // Ready, and *ours*. freePort() let the port go before the child bound it, so
       // another test file's server may hold it and answer here while the child is still
       // on its way to dying at bind — harnessOwnServer.test.mjs. The child logs its
@@ -183,7 +192,7 @@ async function startServerOn(root, config, options, port) {
     root,
     /** The config the server loaded — for tests that make it unwritable. */
     configFile: configPath,
-    wsUrl: (token) => `ws://127.0.0.1:${port}/ws${token ? `?token=${encodeURIComponent(token)}` : ""}`,
+    wsUrl: (token) => `${secure ? "wss" : "ws"}://127.0.0.1:${port}/ws${token ? `?token=${encodeURIComponent(token)}` : ""}`,
     log: () => log,
     async stop() {
       // Signal the *group* (negative pid): tsx does not forward signals to the node
@@ -222,8 +231,8 @@ async function startServerOn(root, config, options, port) {
 }
 
 /** Connect and collect server messages; `waitFor` resolves on the first matching one. */
-export function connect(url) {
-  const ws = new WebSocket(url);
+export function connect(url, options) {
+  const ws = new WebSocket(url, options);
   const received = [];
   const waiters = [];
   let closeInfo = null;

@@ -639,6 +639,10 @@ export interface AppConfig {
   gitPath?: string;
   port: number;
   host: string;
+  /** Native HTTPS/WSS. Paths are resolved before the listener reads the PEM files. */
+  tls?: { certFile: string; keyFile: string };
+  /** Explicit exception for an operator-protected proxy/container hop. Default false. */
+  allowInsecureHttp?: boolean;
   /** Extra exact Origins allowed on the WebSocket (for embedding in another app). */
   allowedOrigins: string[];
   /**
@@ -1332,6 +1336,16 @@ export function loadConfig(
     }
     config.allowedOrigins = origins;
     config.token = optionalString(server, "token");
+    config.allowInsecureHttp = optionalBoolean(server, "allowInsecureHttp", false);
+    if (server.tls !== undefined) {
+      const tls = asObject(server.tls, "server.tls");
+      const certFile = optionalString(tls, "certFile", "server.tls.certFile");
+      const keyFile = optionalString(tls, "keyFile", "server.tls.keyFile");
+      config.tls = {
+        certFile: certFile?.trim() ? resolve(certFile) : "",
+        keyFile: keyFile?.trim() ? resolve(keyFile) : "",
+      };
+    }
   }
 
   if (raw.files !== undefined) {
@@ -1493,6 +1507,7 @@ export function loadConfig(
 
   applyRuntime(config, flags, env);
   requireTokenOffLoopback(config);
+  requireSecureTransport(config);
 
   // `quiet` is for the validation load in persistEditableSettings: it reads a
   // temporary file that is not the running configuration, and announcing it as
@@ -1501,6 +1516,9 @@ export function loadConfig(
     if (!options.quiet) console.log(line);
   };
   announce(`[config] loaded ${filePath}`);
+  if (!isLoopbackHost(config.host) && !config.tls && config.allowInsecureHttp) {
+    announce(`[security] HTTP is explicitly enabled on ${config.host}; traffic is unencrypted on this hop. Protect it with a TLS proxy or encrypted tunnel and prevent direct access.`);
+  }
   for (const line of deprecations) announce(`[config] ${line}`);
   // The runtime decides what actually executes on this host, so say it every start —
   // with the command redacted, since an argument vector can carry an API key.
@@ -1525,6 +1543,21 @@ export function loadConfig(
 }
 
 const LOOPBACK = new Set(["127.0.0.1", "::1", "localhost", "::ffff:127.0.0.1"]);
+
+export function isLoopbackHost(host: string): boolean {
+  return LOOPBACK.has(host);
+}
+
+/** Headers cannot attest to the network outside this process. Only operator configuration can. */
+export function requireSecureTransport(config: AppConfig): void {
+  if (config.tls) {
+    if (!config.tls.certFile?.trim()) fail('"server.tls.certFile" must name a nonempty PEM certificate path');
+    if (!config.tls.keyFile?.trim()) fail('"server.tls.keyFile" must name a nonempty PEM private key path');
+    return;
+  }
+  if (isLoopbackHost(config.host) || config.allowInsecureHttp) return;
+  fail(`refusing unencrypted HTTP on ${config.host}: configure "server.tls.certFile" and "server.tls.keyFile" for HTTPS/WSS. For SSH, keep the server on 127.0.0.1 and forward its port. Only for a protected proxy/tunnel hop, explicitly set "server.allowInsecureHttp": true.`);
+}
 
 /**
  * Off loopback, the agent's bash and edit tools are reachable by anything that can
@@ -1582,6 +1615,18 @@ export function applyRuntime(config: AppConfig, flags: CliOptions, env: NodeJS.P
     config.port = parsed;
   }
   if (env.PI_OUTPOST_HOST) config.host = env.PI_OUTPOST_HOST;
+
+  for (const [name, field] of [["PI_OUTPOST_TLS_CERT", "certFile"], ["PI_OUTPOST_TLS_KEY", "keyFile"]] as const) {
+    if (env[name] === undefined) continue;
+    if (!env[name]!.trim()) fail(`${name} must name a nonempty PEM file path`);
+    config.tls ??= { certFile: "", keyFile: "" };
+    config.tls[field] = path.resolve(env[name]!);
+  }
+  if (env.PI_OUTPOST_ALLOW_INSECURE_HTTP !== undefined) {
+    const value = env.PI_OUTPOST_ALLOW_INSECURE_HTTP;
+    if (value !== "0" && value !== "1") fail("PI_OUTPOST_ALLOW_INSECURE_HTTP must be 0 or 1");
+    config.allowInsecureHttp = value === "1";
+  }
 
   const token = env.PI_OUTPOST_TOKEN;
   if (token !== undefined) {

@@ -106,6 +106,7 @@ import { readPrompt, runPrintTurn } from "./printMode.ts";
 import { checkRunner, type RunnerCheck } from "./terminalSandbox.ts";
 import { isPowerShell } from "./confinedBash.ts";
 import { browsableUrl, openBrowser, shouldOpenBrowser } from "./openBrowser.ts";
+import { listenerTls } from "./serverTransport.ts";
 import {
   currentEvidence,
   detectChannel,
@@ -640,6 +641,8 @@ if (cli.command === "config") {
 if (cli.command === "print") {
   config.port = 0;
   config.host = "127.0.0.1";
+  // This process's private loopback-only client/server pair never serves remote clients.
+  config.tls = undefined;
   config.openBrowser = false;
   if (config.terminal) config.terminal.enabled = false;
 }
@@ -1003,7 +1006,15 @@ function applyCors(req: FastifyRequest, reply: FastifyReply): boolean {
 const MAX_IMAGES = 6;
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024; // of base64 text
 
-const app = Fastify({ logger: false });
+let httpsOptions: Awaited<ReturnType<typeof listenerTls>>;
+try {
+  httpsOptions = await listenerTls(config);
+} catch (error) {
+  complain(error);
+  await holdConsoleIfOwned();
+  process.exit(1);
+}
+const app = Fastify({ logger: false, ...(httpsOptions ? { https: httpsOptions } : {}) });
 // An exceeded frame limit *closes the socket* rather than answering, and a torn-down
 // connection reports nothing the client can show the user — so the limit is stated
 // here next to every cap it has to clear, rather than inherited from ws's 100 MB
@@ -1448,7 +1459,8 @@ try {
   // configured value is a number nobody is listening on, and this line was saying
   // `http://127.0.0.1:0/` — which is the whole of what an operator gets when no
   // browser opens.
-  const url = typeof bound === "object" && bound !== null ? browsableUrl(bound) : `http://${HOST}:${PORT}/`;
+  const scheme = httpsOptions ? "https" : "http";
+  const url = typeof bound === "object" && bound !== null ? browsableUrl(bound, scheme) : `${scheme}://${HOST}:${PORT}/`;
   console.log(`[server] ${url}`);
   // A terminal switched on in the configuration that cannot run here is said now, in
   // the console the operator is reading, not first discovered as a button that fails.

@@ -56,6 +56,11 @@ The authoritative setup and limitations are in [sandboxing](docs/sandboxing.md),
 [Docker with Python](docs/docker.md). Run the server as an ordinary OS user, keep credentials
 outside the project, and protect remote access with the documented authentication and transport.
 
+Off-loopback pi-outpost listeners require a token and native HTTPS/WSS by default.
+Local HTTP may be carried over an SSH tunnel or a TLS proxy. The explicit
+`server.allowInsecureHttp` exception leaves its hop unencrypted and requires deployment
+isolation; forwarded headers do not enable it. See [remote transport](docs/deployment.md#remote-transport-https-or-ssh).
+
 ## Verification and maintenance
 
 [The quality guide](docs/quality.md) lists the repository's tests, static analysis, coverage scope
