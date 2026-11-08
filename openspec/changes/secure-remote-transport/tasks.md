@@ -11,4 +11,4 @@
 ## 3. Integration verification and PR
 
 - [x] 3.1 Exercise the built running app over HTTPS with Playwright including interruption/reconnection and adverse ordering; read DOM/connection results.
-- [ ] 3.2 Complete the main/delta scenario-to-test matrix, focused and relevant suites, type/lint checks and strict OpenSpec validation; review documentation impact and open the PR.
+- [x] 3.2 Complete the main/delta scenario-to-test matrix, focused and relevant suites, type/lint checks and strict OpenSpec validation; review documentation impact and open the PR (#463).
