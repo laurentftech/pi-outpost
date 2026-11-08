@@ -38,14 +38,24 @@ describe("withoutDependencySourceMaps", () => {
 });
 
 describe("the coverage run", () => {
-  test("loads the hook after tsx", () => {
+  // Hooks registered later run first, so only a hook loaded after tsx sees tsx's output.
+  test("loads the hook after tsx in the test processes", () => {
     const script = JSON.parse(readFileSync(path.join(SERVER, "package.json"), "utf8")).scripts["test:coverage"] as string;
-    const tsxAt = script.indexOf("--import tsx/esm");
-    const hookAt = script.indexOf("--import ./test/stripDependencySourceMaps.mjs");
-    assert.notEqual(tsxAt, -1, "test:coverage no longer loads tsx");
-    assert.notEqual(hookAt, -1, "test:coverage no longer loads the hook that keeps dependency maps out of coverage files");
-    // Hooks registered later run first, so only a hook loaded after tsx sees tsx's output.
-    assert.ok(hookAt > tsxAt, "the hook must be loaded after tsx");
+    assert.equal(script, "node scripts/test-coverage.mjs");
+    const coverage = readFileSync(path.join(SERVER, "scripts", "test-coverage.mjs"), "utf8");
+    assert.match(coverage, /"scripts\/test\.mjs", "--import", "\.\/test\/stripDependencySourceMaps\.mjs"/, "test:coverage no longer loads the hook that keeps dependency maps out of coverage files");
+    // scripts/test.mjs puts tsx first and the arguments it is given after.
+    const runner = readFileSync(path.join(SERVER, "scripts", "test.mjs"), "utf8");
+    const tsxAt = runner.indexOf('"--import", "tsx/esm"');
+    const forwardedAt = runner.indexOf("...process.argv.slice(2)");
+    assert.notEqual(tsxAt, -1, "the server test runner no longer loads tsx");
+    assert.ok(forwardedAt > tsxAt, "the hook must be loaded after tsx");
+  });
+
+  test("loads the hook after tsx in the servers a coverage run starts", () => {
+    const harness = readFileSync(path.join(SERVER, "test", "harness.mjs"), "utf8");
+    assert.match(harness, /\[TSX_LOADER, \.\.\.coverageImports, ENTRY\]/);
+    assert.match(harness, /coverageImports = serverCoverageSink\(\) \? \[`--import=\$\{pathToFileURL\(path\.join\(SERVER_DIR, "test", "stripDependencySourceMaps\.mjs"\)\)\.href\}`\]/);
   });
 
   const sink = mkdtempSync(path.join(tmpdir(), "pi-outpost-dependency-maps-"));

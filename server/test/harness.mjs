@@ -10,7 +10,7 @@ import net from "node:net";
 import https from "node:https";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import WebSocket from "ws";
 import { serverCoverageSink } from "./childEnv.mjs";
 import { filterCoverageDir } from "./coverageFilter.mjs";
@@ -147,7 +147,7 @@ async function startServerOn(root, config, options, port) {
   // since a source run is precisely the shape those defines are absent from.
   // In a coverage run, dependencies' source maps are kept out of the server's coverage file
   // from the start (stripDependencySourceMaps.mjs); the filter in stop() does the rest.
-  const coverageImports = serverCoverageSink() ? ["--import=./test/stripDependencySourceMaps.mjs"] : [];
+  const coverageImports = serverCoverageSink() ? [`--import=${pathToFileURL(path.join(SERVER_DIR, "test", "stripDependencySourceMaps.mjs")).href}`] : [];
   const argv = options.entry ? [options.entry] : [TSX_LOADER, ...coverageImports, ENTRY];
   const child = spawn(process.execPath, argv, {
     cwd: SERVER_DIR,
