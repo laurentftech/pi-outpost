@@ -1,0 +1,63 @@
+name: Statement coverage experiment
+
+on:
+  push:
+    branches: [codex/statement-coverage-spike]
+    paths:
+      - spikes/statement-coverage/**
+      - .github/workflows/statement-coverage-spike.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: statement-coverage-experiment-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  measure:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+      - uses: ./.github/actions/setup-npm
+      - run: npm ci
+      - run: npm ci --prefix spikes/statement-coverage
+      - run: node spikes/statement-coverage/run-fixtures.mjs
+      - run: node spikes/statement-coverage/trial-selftest.mjs
+      - run: npm run build --workspace @pi-outpost/embed
+      - name: landstrip runner for the real confined-terminal tests
+        run: |
+          cd "$RUNNER_TEMP"
+          npm pack --silent @landstrip/landstrip-linux-x64@0.19.8
+          mkdir landstrip && tar xzf landstrip-landstrip-linux-x64-0.19.8.tgz -C landstrip
+          echo "LANDSTRIP_BIN=$RUNNER_TEMP/landstrip/package/bin/landstrip" >> "$GITHUB_ENV"
+          "$RUNNER_TEMP/landstrip/package/bin/landstrip" doctor
+      - name: Full server and UI suites with original-source Istanbul
+        run: node spikes/statement-coverage/trial-run.mjs
+      - name: Publish experiment summary
+        if: always()
+        run: |
+          report=spikes/statement-coverage/results/linux-trial/report/summary.md
+          if [ -f "$report" ]; then
+            cat "$report" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo 'The experiment did not produce a report. Inspect the failed step; no coverage claim is made.' >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: statement-coverage-experiment
+          path: |
+            spikes/statement-coverage/results/linux-trial/report/
+            spikes/statement-coverage/results/linux-trial/timings.json
+            spikes/statement-coverage/results/fixtures/summary.json
+          retention-days: 7
+          if-no-files-found: warn

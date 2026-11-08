@@ -121,3 +121,42 @@ This is a completed feasibility experiment, **not an implemented nightly feature
 Existing OpenSpec coverage requirements remain unchanged; the companion scenario
 matrix records what this spike proves and what it leaves open. No new OpenSSF claim
 is justified by these partial benchmark percentages.
+
+## Branch-only full-suite Linux trial
+
+The `Statement coverage experiment` workflow runs only on pushes to the isolated
+`codex/statement-coverage-spike` branch (or manual dispatch once registered). It has
+no daily schedule, is not a required PR check and does not alter normal CI. Its first
+run is an experiment, not adoption of a new coverage policy.
+
+It runs the fixture controls, collector self-tests, then the complete server and UI
+suites on Node 24/Linux. The Node loader admits only test files and the actual server
+entry point; unrelated eval, agent-fixture and external child entries install no hook
+or collector. Original source maps are stored once and processes write compact hit
+counts. SIGTERM takes a synchronous snapshot before the harness's force-kill fallback;
+an exit dump supersedes that snapshot. Missing, empty or truncated data invalidates
+the report. Completed suite status records are also required.
+
+The report seeds every source file in the three measured scopes at zero and checks
+the observed statement/function/branch inventory against the original source. It
+reuses central exclusions and additionally names the generated `embedded-web.ts`
+bundle as excluded, because handwritten UI sources are already measured separately.
+Other production workspaces remain outside these scopes and are named as such.
+
+The workflow publishes a dated/commit-specific summary, numerator/denominator for
+statements, branches and functions, per-file data, collection-integrity status and
+suite durations as an artifact. Statement percentages are observations; 80/90% are
+not blocking adoption thresholds for this exploratory run. Test failures or invalid
+collection fail the workflow and prevent treating its report as a passing result.
+
+Local collector validation:
+
+```sh
+node spikes/statement-coverage/trial-selftest.mjs
+```
+
+To reproduce the full trial on Linux after installing the same prerequisites as CI:
+
+```sh
+node spikes/statement-coverage/trial-run.mjs
+```
