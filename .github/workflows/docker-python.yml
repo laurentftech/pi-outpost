@@ -8,6 +8,12 @@ on:
       - .github/workflows/docker-python.yml
       - .github/workflows/release.yml
       - scripts/image-tags*
+      # The confinement the image's runner applies, built into the CLI it installs.
+      - server/src/egressProxy.ts
+      - server/src/terminalSandbox.ts
+      - server/src/confinedBash.ts
+      - server/src/config.ts
+      - server/src/sandboxGrants.ts
   workflow_dispatch:
 
 permissions:
@@ -29,17 +35,21 @@ jobs:
           cache: npm
       - name: Use the pinned npm
         uses: ./.github/actions/setup-npm
-      # Only the browser client is needed on the host; the app and its native
-      # dependencies are installed and exercised inside the Docker image.
-      - run: npm ci --workspaces=false --ignore-scripts --no-audit --no-fund
+      # The CLI is built from this branch and packed as the release packs it: the recipe and the
+      # app it installs move together (the bootstrap writes configuration this CLI must accept).
+      - run: npm ci --no-audit --no-fund
+      - run: npm run build
       - run: npx playwright install --with-deps chromium
       - name: Build the full application image
         run: |
-          package=$(npm pack pi-outpost@0.59.1 --ignore-scripts --pack-destination deploy/docker --silent)
-          mv "deploy/docker/$package" deploy/docker/pi-outpost.tgz
-          docker build --build-arg PI_OUTPOST_PACKAGE=/recipe/pi-outpost.tgz \
-            -t pi-outpost-python:0.59.1 deploy/docker
+          version=$(node -p "require('./cli/package.json').version")
+          npm pack --workspace cli --ignore-scripts --pack-destination deploy/docker --silent
+          mv deploy/docker/pi-outpost-*.tgz deploy/docker/pi-outpost.tgz
+          docker build --build-arg PI_OUTPOST_VERSION="$version" --build-arg PI_OUTPOST_PACKAGE=/recipe/pi-outpost.tgz \
+            -t "pi-outpost-python:$version" deploy/docker
+          echo "PI_OUTPOST_TEST_VERSION=$version" >> "$GITHUB_ENV"
+          echo "PI_OUTPOST_TEST_IMAGE=pi-outpost-python:$version" >> "$GITHUB_ENV"
       - name: Exercise the installed app, confinement, terminal and persistence
         env:
           LANDSTRIP_APPARMOR_PROFILE: pi-outpost-landstrip
-        run: sudo --preserve-env=LANDSTRIP_APPARMOR_PROFILE,PLAYWRIGHT_BROWSERS_PATH "$(command -v node)" deploy/docker/test.mjs
+        run: sudo --preserve-env=LANDSTRIP_APPARMOR_PROFILE,PLAYWRIGHT_BROWSERS_PATH,PI_OUTPOST_TEST_VERSION,PI_OUTPOST_TEST_IMAGE "$(command -v node)" deploy/docker/test.mjs

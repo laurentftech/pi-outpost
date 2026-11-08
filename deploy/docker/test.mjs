@@ -45,9 +45,16 @@ await writeFile(path.join(root, ".env"), `PROJECT_DIR=${workspace}\nPI_OUTPOST_P
 await writeFile(path.join(root, "server-token"), token, { mode: 0o600 });
 await ownedByApp(path.join(root, "server-token"));
 await writeFile(path.join(root, "test.yml"), JSON.stringify({ services: { "pi-outpost": {
-  image, restart: "no", environment: { PI_OFFLINE: "1", OUTPOST_ALLOW_AGENT_NETWORK: "0" },
+  image, restart: "no", environment: { PI_OFFLINE: "1" },
   ports: ["127.0.0.1:0:8000"],
 } } }));
+/** The test project's Compose override, with the operator's network choice (undefined: the default). */
+async function override(allowAgentNetwork) {
+  await writeFile(path.join(root, "test.yml"), JSON.stringify({ services: { "pi-outpost": {
+    image, restart: "no", environment: { PI_OFFLINE: "1", ...(allowAgentNetwork === undefined ? {} : { OUTPOST_ALLOW_AGENT_NETWORK: allowAgentNetwork }) },
+    ports: ["127.0.0.1:0:8000"],
+  } } }));
+}
 let socket;
 let base;
 let container;
@@ -169,10 +176,55 @@ print('DOCKER_' + 'PYTHON_OK', flush=True)
       assert.match(`${refusal.stderr ?? ""}`, /PermissionError/);
     }
   }
+  /**
+   * A Python connect to the container's loopback under `network`, through the adapter, to a listener
+   * started outside the sandbox on `port`: what came back, or the refusal.
+   */
+  async function connectUnder(network, port) {
+    await writeFile(path.join(workspace, "connect-policy.json"), JSON.stringify({ network }));
+    await ownedByApp(path.join(workspace, "connect-policy.json"));
+    try {
+      return { reached: docker(["exec", container, "/opt/landstrip/bin/landstrip", "run", "-p", "/workspace/connect-policy.json", "--",
+        "python3", "-c", `import socket; s=socket.create_connection(('127.0.0.1',${port}),5); print(s.recv(32).decode(),flush=True)`]) };
+    } catch (error) {
+      return { refused: `${error.stdout ?? ""}${error.stderr ?? ""}` };
+    }
+  }
+  /** A listener of the container, outside any sandbox, standing for the server's proxy: answers its name. */
+  function listener(port, name) {
+    docker(["exec", "-d", container, "node", "-e", `require('node:net').createServer(s=>s.end('${name}')).listen(${port},'127.0.0.1')`]);
+    const deadline = Date.now() + 10_000;
+    while (Date.now() < deadline) {
+      try {
+        docker(["exec", container, "node", "-e", `require('node:net').connect(${port},'127.0.0.1').on('connect',()=>process.exit(0)).on('error',()=>process.exit(1))`]);
+        return;
+      } catch {}
+    }
+    throw new Error(`listener ${name} did not start`);
+  }
+  const PROXY_PORT = 47123;
+  const proxyOnly = { allowNetwork: false, allowLocalBinding: false, httpProxyPort: PROXY_PORT };
+  // openlore: scenario=TheAgentIsAskedAboutEveryHostByDefault spec=docker-python-deployment
+  // The question itself, answered both ways under the real landstrip runner, is
+  // APosixRunnerAsksAboutAnUnlistedHost / APosixRunnerAppliesARefusal (server/test/sandboxGrantsReal.test.ts).
+  // Here, what the image adds to it: the key in a fresh volume, accepted by the app, and the
+  // adapter leaving the proxy's port as the one way out.
+  assert.equal(JSON.parse(docker(["exec", container, "cat", "/data/agent/docker-network.json"])).network, "ask");
+  const fresh = JSON.parse(docker(["exec", container, "cat", "/data/config.json"]));
+  assert.deepEqual(fresh.sandbox.allowedHosts, [], "a fresh volume asks about every host");
+  assert.equal(fresh.sandbox.grants, undefined, "grants on: hosts are asked about");
+  listener(PROXY_PORT, "PROXY_OK");
+  listener(PROXY_PORT + 1, "OTHER_SERVICE");
+  const throughProxy = await connectUnder(proxyOnly, PROXY_PORT);
+  assert.match(throughProxy.reached ?? throughProxy.refused, /PROXY_OK/, "the default ceiling closed the proxy's port");
+  const besideProxy = await connectUnder(proxyOnly, PROXY_PORT + 1);
+  assert.ok(besideProxy.refused !== undefined && !/OTHER_SERVICE/.test(besideProxy.refused), "another loopback service was reached beside the proxy");
+  console.log("TheAgentIsAskedAboutEveryHostByDefault passed (allowedHosts: [] in a fresh volume, proxy port alone open)");
   // openlore: scenario=AgentNetworkNeedsOperatorOptIn spec=docker-python-deployment
-  assert.equal(JSON.parse(docker(["exec", container, "cat", "/data/agent/docker-network.json"])).allowAgentNetwork, false);
   await networkMustBeRefused({ allowNetwork: true });
-  console.log("AgentNetworkNeedsOperatorOptIn passed (bind and connect refused by default)");
+  const openPolicy = await connectUnder({ allowNetwork: true }, PROXY_PORT + 1);
+  assert.ok(openPolicy.refused !== undefined && !/OTHER_SERVICE/.test(openPolicy.refused), "an open policy reached the loopback by default");
+  console.log("AgentNetworkNeedsOperatorOptIn passed (an open policy is closed by default)");
   pty.send("python3 -c \"import time; print('WAIT_'+'READY', flush=True); time.sleep(60)\"\r");
   await pty.waitFor("WAIT_READY");
   pty.send("\x03");
@@ -184,23 +236,32 @@ print('DOCKER_' + 'PYTHON_OK', flush=True)
   const { checkBrowser } = await import("./browser.mjs");
   await checkBrowser({ base, token, workspace });
   // openlore: scenario=PersistsProjectsAndAgentState spec=docker-python-deployment
-  docker(["exec", container, "node", "-e", "const fs=require('node:fs');const p='/data/config.json';const c=JSON.parse(fs.readFileSync(p));c.branding={title:'Docker persistence proof'};fs.writeFileSync(p,JSON.stringify(c));"]);
+  // A volume from before host questions: its configuration has no sandbox.allowedHosts.
+  docker(["exec", container, "node", "-e", "const fs=require('node:fs');const p='/data/config.json';const c=JSON.parse(fs.readFileSync(p));c.branding={title:'Docker persistence proof'};delete c.sandbox.allowedHosts;fs.writeFileSync(p,JSON.stringify(c));"]);
   compose(["up", "--detach", "--no-build", "--force-recreate"]);
   await ready();
   const persisted = JSON.parse(docker(["exec", container, "cat", "/data/config.json"]));
   assert.equal(persisted.branding.title, "Docker persistence proof");
+  // openlore: scenario=AnExistingConfigurationIsAskedAboutToo spec=docker-python-deployment
+  assert.deepEqual(persisted.sandbox.allowedHosts, [], "an existing configuration was not given host questions");
+  assert.match(compose(["logs", "--no-color"]), /\[ok  \] shell sandbox\s+confined by/, "the app did not accept the added key");
+  console.log("AnExistingConfigurationIsAskedAboutToo passed (key added on upgrade, app confined)");
   assert.equal(JSON.parse(docker(["exec", container, "cat", "/data/agent/auth.json"])).anthropic.key, "docker-test-not-a-real-key");
   assert.equal(await readFile(path.join(workspace, "python-proof.txt"), "utf8"), "persisted");
   console.log("PersistsProjectsAndAgentState passed (container recreation)");
-  // Isolated test-only operator opt-in. The shipped Compose default stays OFF.
+  // Isolated test-only operator opt-in. The shipped Compose default asks.
   // No real credentials or public/LAN ports are used in this temporary project.
-  await writeFile(path.join(root, "test.yml"), JSON.stringify({ services: { "pi-outpost": {
-    image, restart: "no", environment: { PI_OFFLINE: "1", OUTPOST_ALLOW_AGENT_NETWORK: "1" },
-    ports: ["127.0.0.1:0:8000"],
-  } } }));
+  docker(["exec", container, "node", "-e", "const fs=require('node:fs');const p='/data/config.json';const c=JSON.parse(fs.readFileSync(p));delete c.sandbox.allowedHosts;fs.writeFileSync(p,JSON.stringify(c));"]);
+  await override("1");
   compose(["up", "--detach", "--no-build", "--force-recreate"]);
   await ready();
-  assert.equal(JSON.parse(docker(["exec", container, "cat", "/data/agent/docker-network.json"])).allowAgentNetwork, true);
+  assert.equal(JSON.parse(docker(["exec", container, "cat", "/data/agent/docker-network.json"])).network, "config");
+  // openlore: scenario=AnOperatorOptInFollowsTheConfiguration spec=docker-python-deployment
+  assert.equal(JSON.parse(docker(["exec", container, "cat", "/data/config.json"])).sandbox.allowedHosts, undefined, "the operator's configuration was rewritten");
+  listener(PROXY_PORT + 1, "OTHER_SERVICE");
+  const optedIn = await connectUnder({ allowNetwork: true }, PROXY_PORT + 1);
+  assert.match(optedIn.reached ?? optedIn.refused, /OTHER_SERVICE/, "an open policy was closed under the opt-in");
+  console.log("AnOperatorOptInFollowsTheConfiguration passed (configuration untouched, open policy forwarded)");
   // openlore: scenario=HonorsAnExplicitNetworkRefusal spec=docker-python-deployment
   await networkMustBeRefused({ allowNetwork: false, allowLocalBinding: false });
   console.log("HonorsAnExplicitNetworkRefusal passed (opt-in never widens caller policy)");
@@ -216,6 +277,17 @@ print('DOCKER_' + 'PYTHON_OK', flush=True)
   appPty.send("\x03");
   socket.close();
   console.log("Opted-in Python HTTP app passed, with filesystem confinement rechecked");
+  // openlore: scenario=AnOperatorRefusalClosesTheNetworkEntirely spec=docker-python-deployment
+  await override("0");
+  compose(["up", "--detach", "--no-build", "--force-recreate"]);
+  await ready();
+  assert.equal(JSON.parse(docker(["exec", container, "cat", "/data/agent/docker-network.json"])).network, "none");
+  await networkMustBeRefused({ allowNetwork: true });
+  listener(PROXY_PORT, "PROXY_OK");
+  const refusedProxy = await connectUnder(proxyOnly, PROXY_PORT);
+  assert.ok(refusedProxy.refused !== undefined && !/PROXY_OK/.test(refusedProxy.refused), "the proxy's port stayed open under 0");
+  assert.match(refusedProxy.refused, /PermissionError/);
+  console.log("AnOperatorRefusalClosesTheNetworkEntirely passed (bind, connect and the proxy port refused)");
   compose(["down"]);
   // openlore: scenario=RefusesMissingCredentialsOrUnverifiedConfinement spec=docker-python-deployment
   const data = path.join(root, "negative-data");
@@ -240,6 +312,16 @@ print('DOCKER_' + 'PYTHON_OK', flush=True)
     assert.ok(!output.includes(token));
   }
   console.log("RefusesMissingCredentialsOrUnverifiedConfinement passed");
+  // openlore: scenario=AnInvalidNetworkChoiceIsRefused spec=docker-python-deployment
+  let invalid;
+  try {
+    docker(["run", "--rm", "--init", "--cap-drop=ALL", "--security-opt=no-new-privileges", "-e", "PI_OFFLINE=1", "-e", "OUTPOST_ALLOW_AGENT_NETWORK=yes",
+      "--mount", `type=bind,src=${workspace},dst=/workspace`, "--mount", `type=bind,src=${data},dst=/data`,
+      "--mount", `type=bind,src=${path.join(root, "server-token")},dst=/run/secrets/pi_outpost_token,readonly`, image]);
+  } catch (error) { invalid = error; }
+  assert.ok(invalid?.status > 0, "An invalid network choice must refuse startup");
+  assert.match(`${invalid.stdout ?? ""}\n${invalid.stderr ?? ""}`, /OUTPOST_ALLOW_AGENT_NETWORK must be unset \(the default: every host is asked about\), 1 \(the configuration decides\) or 0 \(no network\)/);
+  console.log("AnInvalidNetworkChoiceIsRefused passed");
   console.log("ValidatesTheDistributableImage passed (CLI version, non-root image and all real-app checks)");
   console.log("Docker recipe and running-app browser checks passed.");
 } finally {

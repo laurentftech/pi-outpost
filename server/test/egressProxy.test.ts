@@ -29,6 +29,15 @@ function tunnel(proxyPort: number, target: string, payload: string): Promise<{ s
   });
 }
 
+/** Whether something can listen on [::1] here: without IPv6 nothing can, and the proxy keeps 127.0.0.1 alone. */
+function hasIpv6Loopback(): Promise<boolean> {
+  const probe = createServer();
+  return new Promise((resolve) => {
+    probe.once("error", () => resolve(false));
+    probe.listen({ port: 0, host: "::1", ipv6Only: true }, () => probe.close(() => resolve(true)));
+  });
+}
+
 describe("which hosts a list names", () => {
   test("exact names, and a suffix for the names under it — not the suffix itself, nor a lookalike", () => {
     const list = ["registry.npmjs.org", "*.githubusercontent.com"];
@@ -71,6 +80,51 @@ describe("the proxy", () => {
 
   test("listens on the loopback only", () => {
     assert.match(proxy.url, /^http:\/\/127\.0\.0\.1:\d+$/);
+  });
+
+  // A runner may open the proxy's port by its number on every loopback address (landstrip does):
+  // the proxy holds [::1] too, so nothing else of the host listens there under that number.
+  test("holds its port on [::1] as well, and answers there", async (t) => {
+    if (!(await hasIpv6Loopback())) return t.skip("this host has no IPv6 loopback: nothing can listen on [::1]");
+    const squatter = createServer();
+    const error = await new Promise<NodeJS.ErrnoException | undefined>((resolve) => {
+      squatter.once("error", resolve);
+      squatter.listen({ port: proxyPort, host: "::1", ipv6Only: true }, () => squatter.close(() => resolve(undefined)));
+    });
+    assert.equal(error?.code, "EADDRINUSE", "another server could listen on [::1] with the proxy's port");
+    const status = await new Promise<string>((resolve, reject) => {
+      const socket = connect(proxyPort, "::1", () => socket.write("CONNECT example.invalid:443 HTTP/1.1\r\nHost: example.invalid:443\r\n\r\n"));
+      let data = "";
+      socket.on("data", (chunk) => (data += chunk.toString()));
+      socket.on("error", reject);
+      socket.on("close", () => resolve(data.split("\r\n")[0]));
+    });
+    assert.match(status, /^HTTP\/1\.1 403 /, "the proxy itself answers on [::1]");
+  });
+
+  test("gives up a port already taken on [::1] for one free on both", async (t) => {
+    if (!(await hasIpv6Loopback())) return t.skip("this host has no IPv6 loopback");
+    // The kernel's next ephemeral port cannot be predicted: hold a block of them on [::1] and check
+    // that the proxy never shares a number with one.
+    const taken: Server[] = [];
+    for (let i = 0; i < 64; i++) {
+      const s = createServer();
+      await new Promise<void>((resolve, reject) => {
+        s.once("error", reject);
+        s.listen({ port: 0, host: "::1", ipv6Only: true }, () => resolve());
+      });
+      taken.push(s);
+    }
+    try {
+      const ports = new Set(taken.map((s) => (s.address() as { port: number }).port));
+      for (let i = 0; i < 8; i++) {
+        const other = await startEgressProxy({ allowedHosts: [] });
+        await other.close();
+        assert.ok(!ports.has(Number(new URL(other.url).port)), "the proxy shares its number with a service on [::1]");
+      }
+    } finally {
+      await Promise.all(taken.map((s) => new Promise((resolve) => s.close(resolve))));
+    }
   });
 
   // openlore: scenario=AnAllowedHostIsReached spec=sandbox-runner-bash

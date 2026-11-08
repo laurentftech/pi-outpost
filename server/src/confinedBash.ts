@@ -26,6 +26,7 @@ import {
   gitReadOnlyFiles,
   isPosixMxc,
   mxcPosixConfig,
+  proxyEnvironment,
   seatbeltPolicy,
   mxcTerminalConfig,
   runnerKind,
@@ -59,7 +60,7 @@ export interface ConfinedBashOptions {
   /** The user's git configuration, read-only inside: git's identity (see `userGitConfig`). */
   gitConfig?: string;
   /**
-   * `sandbox.allowedHosts`' proxy (`egressProxy.ts`): MXC's process container only. The
+   * `sandbox.allowedHosts`' proxy (`egressProxy.ts`): under MXC, Seatbelt, or landstrip on Linux. The
    * hosts it refuses while a command runs are named after the command's output.
    */
   networkProxy?: Pick<EgressProxy, "url" | "watchRefusals">;
@@ -364,9 +365,12 @@ export function confinedBashOperations(options: ConfinedBashOptions): ConfinedBa
           userProfile: process.env.USERPROFILE,
           readOnlyFiles,
           platform,
+          ...(networkProxy === undefined ? {} : { networkProxy: networkProxy.url }),
         });
         await writeFile(policyFile, JSON.stringify(policy), { mode: 0o600 });
         args = ["run", "-p", policyFile, "--", shell, ...shellArgs];
+        // landstrip opens the proxy's port and sets nothing: the command is told where it is.
+        if (networkProxy !== undefined) runnerEnv = { ...env, ...proxyEnvironment(networkProxy.url) };
       }
       const launch = () => run(options.runner, args, { cwd: startIn, env: runnerEnv, onData, signal, timeoutMs, timeout, windows });
       // curl, git and PowerShell print only "403" for a refused tunnel: the model is told which

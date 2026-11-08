@@ -538,15 +538,31 @@ describe("loadConfig — resource path resolution", () => {
       assert.equal(loadConfig(dir, { config: configPath }).sandbox!.allowedHosts, undefined);
       for (const sandbox of [
         { allowedHosts: hosts },
-        { bashRunner: "./bin/landstrip", allowedHosts: hosts },
+        // landstrip holds the network to the proxy on Linux only (AnAllowlistIsKeptUnderLandstripOnLinux).
+        ...(process.platform === "linux" ? [] : [{ bashRunner: "./bin/landstrip", allowedHosts: hosts }]),
         { bashRunner: "mxc", bashImage: "buildpack-deps:bookworm-scm", allowedHosts: hosts },
       ]) {
         await writeFile(configPath, JSON.stringify({ sandbox: { root: ".", allowBash: true, ...sandbox } }, null, 2));
-        assert.throws(() => loadConfig(dir, { config: configPath }), /"sandbox\.allowedHosts" needs MXC or Seatbelt as "sandbox\.bashRunner", and no "sandbox\.bashImage"/, JSON.stringify(sandbox));
+        assert.throws(() => loadConfig(dir, { config: configPath }), /"sandbox\.allowedHosts" needs MXC, Seatbelt, or landstrip on Linux as "sandbox\.bashRunner", and no "sandbox\.bashImage"/, JSON.stringify(sandbox));
       }
       for (const allowedHosts of [["https://github.com"], ["github.com:443"], "github.com", [""]]) {
         await writeFile(configPath, JSON.stringify({ sandbox: { root: ".", allowBash: true, bashRunner: "mxc", allowedHosts } }, null, 2));
         assert.throws(() => loadConfig(dir, { config: configPath }), /sandbox\.allowedHosts|allowedHosts/, JSON.stringify(allowedHosts));
+      }
+    });
+  });
+
+  // openlore: scenario=AnAllowlistIsKeptUnderLandstripOnLinux spec=sandbox-runner-bash
+  test("AnAllowlistIsKeptUnderLandstripOnLinux: landstrip keeps allowed hosts, lower-cased, on Linux only", async () => {
+    await withTempDir(async (dir) => {
+      const configPath = path.join(dir, "config.json");
+      await writeFile(configPath, JSON.stringify({ sandbox: { root: ".", allowBash: true, bashRunner: "./bin/landstrip", allowedHosts: ["Registry.npmjs.org"] } }, null, 2));
+      if (process.platform === "linux") {
+        const sandbox = loadConfig(dir, { config: configPath }).sandbox!;
+        assert.equal(sandbox.bashRunner, path.join(dir, "bin", "landstrip"));
+        assert.deepEqual(sandbox.allowedHosts, ["registry.npmjs.org"]);
+      } else {
+        assert.throws(() => loadConfig(dir, { config: configPath }), /"sandbox\.allowedHosts" needs MXC, Seatbelt, or landstrip on Linux/);
       }
     });
   });
@@ -1456,7 +1472,7 @@ describe("the default sandbox", () => {
       assert.deepEqual(loadConfig(dir, { config: configPath }).sandbox!.allowedHosts, ["registry.npmjs.org"]);
     });
     await withConfig({ sandbox: { root: ".", allowBash: true, bashRunner: "none", allowedHosts: ["registry.npmjs.org"] } }, (dir, configPath) => {
-      assert.throws(() => loadConfig(dir, { config: configPath }), /"sandbox\.allowedHosts" needs MXC or Seatbelt/);
+      assert.throws(() => loadConfig(dir, { config: configPath }), /"sandbox\.allowedHosts" needs MXC, Seatbelt, or landstrip on Linux/);
     });
     for (const bashRunner of ["auto", "none"]) {
       await withConfig({ sandbox: { root: ".", allowBash: true, bashRunner, bashImage: "buildpack-deps:bookworm-scm" } }, (dir, configPath) => {

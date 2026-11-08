@@ -109,14 +109,20 @@ jobs:
       # The confined terminal's real test needs landstrip's runner, and only Linux confines.
       # Fetched rather than depended on: the package is platform-specific, and nothing
       # pi-outpost ships needs it.
-      - name: landstrip runner for the confined-terminal test
+      # The version the Docker image ships (deploy/docker/Dockerfile): the network checks under
+      # sandbox.allowedHosts prove the runner users run. It is an AppImage, extracted since the
+      # runner has no FUSE, and it creates user namespaces, which Ubuntu 24.04's AppArmor refuses
+      # to a process without a profile: the host setting docs/sandboxing.md documents, as in mxc-linux.
+      - name: landstrip runner for the confined-terminal and network tests
         if: matrix.os == 'ubuntu-latest'
         run: |
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
           cd "$RUNNER_TEMP"
-          npm pack --silent @landstrip/landstrip-linux-x64@0.19.8
-          mkdir landstrip && tar xzf landstrip-landstrip-linux-x64-0.19.8.tgz -C landstrip
-          echo "LANDSTRIP_BIN=$RUNNER_TEMP/landstrip/package/bin/landstrip" >> "$GITHUB_ENV"
-          "$RUNNER_TEMP/landstrip/package/bin/landstrip" doctor
+          npm pack --silent @landstrip/landstrip-linux-x64@0.20.26
+          mkdir landstrip && tar xzf landstrip-landstrip-linux-x64-0.20.26.tgz -C landstrip
+          (cd landstrip && ./package/bin/landstrip --appimage-extract > /dev/null)
+          echo "LANDSTRIP_BIN=$RUNNER_TEMP/landstrip/squashfs-root/usr/bin/landstrip" >> "$GITHUB_ENV"
+          "$RUNNER_TEMP/landstrip/squashfs-root/usr/bin/landstrip" doctor
 
       # On Ubuntu the server suites run once, instrumented: every suite, unit and integration,
       # including the servers the integration suites start. Their coverage is reported with the

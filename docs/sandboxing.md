@@ -76,9 +76,9 @@ Name the same runner for the agent's `bash` (`sandbox.bashRunner`) and for the t
 pi-outpost writes the runner's policy from the configuration, so a command cannot widen it. A
 missing or failing runner refuses every command; nothing falls back to running unconfined.
 
-The network stays open (`git fetch`, `npm install` work). Under MXC (Windows 11, Linux, Apple-silicon macOS) or Seatbelt (macOS), `sandbox.allowedHosts` limits it
-to the hosts you name ([below](#the-network-only-named-hosts)). Elsewhere, close it around the server —
-a Docker network, a firewall — or [hand `bash` to an extension](#alternative-hand-bash-to-an-extension)
+The network stays open (`git fetch`, `npm install` work). Under MXC (Windows 11, Linux, Apple-silicon macOS), Seatbelt (macOS) or landstrip on Linux, `sandbox.allowedHosts` limits it
+to the hosts you name and asks you about the others ([below](#the-network-only-named-hosts)). Elsewhere,
+close it around the server — a Docker network, a firewall — or [hand `bash` to an extension](#alternative-hand-bash-to-an-extension)
 that filters it.
 
 ## What is confined
@@ -135,7 +135,7 @@ The Linux package is an AppImage. Use the extracted executable as the runner whe
 including in Docker; keep its extracted directory and license notices. The full-app recipe performs
 this extraction while building the image and keeps `/opt/landstrip/bin/landstrip` as its runner path.
 
-It needs Landlock and a seccomp profile that lets its calls through. landstrip 0.20.20 also creates
+It needs Landlock and a seccomp profile that lets its calls through. landstrip 0.20.26 also creates
 user, PID and mount namespaces, with a private procfs: Docker's unchanged default profile refuses it.
 The [full-app recipe](docker.md) supplies dedicated seccomp and AppArmor profiles and documents the
 system-path exception. Verify the actual runner on the host; do not disable confinement to make it start.
@@ -146,10 +146,26 @@ the agent directory, the configuration, every mounted project. Also:
 The [full-app Docker recipe](docker.md) includes Python, the integrated terminal and landstrip,
 and checks both confined surfaces before serving.
 
+**The network, host by host.** `sandbox.allowedHosts` holds the agent's shell to the hosts it names,
+and asks you about the others ([below](#the-network-only-named-hosts)):
+
+```json
+{
+  "sandbox": { "root": "/work/app", "allowWrite": true, "allowBash": true, "bashRunner": "/opt/landstrip/bin/landstrip", "allowedHosts": ["pypi.org", "files.pythonhosted.org"] }
+}
+```
+
+Each command then runs with IP networking denied but for loopback TCP to the server's proxy, and
+`HTTPS_PROXY`, `HTTP_PROXY` and `ALL_PROXY` pointing at it. landstrip opens that port by its number on
+every loopback address: the proxy holds it on `127.0.0.1` and `[::1]`, so only a service of your machine
+listening on another `127.x` address under the very same port number could be reached — keep none
+there. The runner is known by its file name, `landstrip`: a runner under another name does not take host
+questions. On Windows, landstrip refuses the key: use MXC.
+
 - run the server as an ordinary user, not root (`--security-opt no-new-privileges` is compatible);
 - mount only the projects and the agent directory — never the Docker socket, never `--privileged`;
 - keep provider keys in the credential store (`pi-outpost login`, or Settings), not in the server's
-  environment. landstrip 0.20.20 hides the server's processes in a separate PID namespace; a runner
+  environment. landstrip 0.20.26 hides the server's processes in a separate PID namespace; a runner
   using filesystem confinement alone can leave same-account `/proc/<pid>/environ` readable.
 
 ## Linux, as an option: MXC
@@ -350,14 +366,18 @@ curl: (56) CONNECT tunnel failed, response 403
 ```
 
 - A name matches that host only; `*.githubusercontent.com` matches the names under it, not
-  `githubusercontent.com` itself. An empty list closes the network entirely.
+  `githubusercontent.com` itself. An empty list names no host: with grants on, every host is asked
+  about; with `sandbox.grants: "never"`, the network is closed entirely.
 - Plain `http://` is relayed like HTTPS, to the listed hosts only.
 - On Windows, list your hosts' certificate authorities too. `curl.exe` checks a certificate's
   revocation by fetching the authority's list over plain HTTP, and fails when it cannot: for
   registry.npmjs.org that is `*.pki.goog`. The note after the output names the host it was refused.
 - The agent's shell only, under MXC — Windows' process container, or [Linux's](#linux-as-an-option-mxc)
-  Bubblewrap: the key is refused without MXC as `bashRunner`, and with `bashImage` (WSLC). The terminal
-  panel is your own shell and keeps the network.
+  Bubblewrap —, [Seatbelt](#macos-every-mac-seatbelt), or [landstrip on Linux](#linux-landstrip): the key
+  is refused without one of them as `bashRunner`, and with `bashImage` (WSLC). The terminal panel is
+  your own shell and keeps the network.
+- A program that ignores `HTTPS_PROXY`, or resolves names and connects itself (UDP, raw sockets), is
+  refused: it has no way out but the proxy.
 - Without the key, the network is open, as before. A Settings apply keeps the list.
 
 ### A real bash: WSLC (experimental)
@@ -473,8 +493,8 @@ asked, and it stays refused.
 
 | Runner | Directories | Hosts |
 | --- | --- | --- |
-| MXC on Windows 11, Linux and Apple-silicon macOS, Seatbelt | asked for by the agent | asked about on connection, under `sandbox.allowedHosts` |
-| landstrip | asked for by the agent | — (the network is open) |
+| MXC on Windows 11, Linux and Apple-silicon macOS, Seatbelt, landstrip on Linux | asked for by the agent | asked about on connection, under `sandbox.allowedHosts` |
+| landstrip on Windows | asked for by the agent | — (the network is open) |
 | WSLC (`sandbox.bashImage`) | refused: the container's mounts are fixed when it starts | — |
 
 A runner takes host questions once a command under it is shown to reach its own proxy and no other
