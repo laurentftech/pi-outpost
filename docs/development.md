@@ -204,14 +204,52 @@ removes every `sourceMappingURL` comment from modules under `node_modules`, and 
 Our own maps stay, since the report reads lines through them. The largest coverage file of the
 unit suites went from 9.7 MiB to under 5 MiB.
 
+It runs as a non-root user on purpose: as root, every "refuses an unwritable path"
+assertion in this repository passes for the wrong reason. Dependencies are cached in a
+Docker volume and reinstalled only when `package-lock.json` changes, so a second run costs
+about what a local one does. `--fresh` ignores that cache; `--shell` drops you into the same
+container; any other arguments replace the command, which is how you run one step at a time
+while iterating:
+
+```bash
+npm run test:linux -- npm test --workspace server
+```
+
 ### Coverage
 
-`npm run test:coverage --workspace server` (`server/scripts/test-coverage.mjs`) runs every
-server suite with `NODE_V8_COVERAGE` set, then reports with c8 over the inventory in
-[`server/test/coverageConfig.mjs`](../server/test/coverageConfig.mjs): every file under
-`server/src` and `shared/src`, a file no test loads at 0%, minus the exclusions listed there
-with their reasons. It fails below that file's thresholds, or if an inventory file is missing
-from the report.
+Three steps, run in this order on Ubuntu CI and locally on Linux or macOS:
+
+```bash
+npm run test:coverage --workspace server   # every server suite, instrumented → server/coverage/raw
+npm run test:coverage --workspace ui       # every UI suite, through vitest-monocart-coverage → ui/coverage/raw
+node scripts/coverage-report.mjs           # merge, inventory check, thresholds → coverage/
+node scripts/coverage-summary.mjs coverage/coverage-scopes.json   # the table CI shows
+```
+
+Both sides leave monocart-coverage-reports (MCR) raw data, and
+[`scripts/coverage-report.mjs`](../scripts/coverage-report.mjs) merges it over the scopes in
+[`scripts/coverage-config.mjs`](../scripts/coverage-config.mjs): `server/src`, `shared/src` and
+`ui/src`, a file no test loads at 0%, minus the exclusions listed there with their reasons. MCR
+merges the raw V8 data of every process before converting it, so a `shared/src` file run by
+server and UI suites gets one total and the union of their hits. The report fails below a
+scope's thresholds, or if an inventory file with code is missing from it.
+
+What the report counts, and why:
+
+- **The code V8 ran.** A coverage file holds byte ranges into the JavaScript tsx produced, not
+  that JavaScript. In a coverage run the load hook `server/test/stripDependencySourceMaps.mjs`
+  keeps tsx's output for `server/src` and `shared/src` under `<coverage dir>/sources/`, and
+  `server/test/coverageConvert.mjs` hands it to MCR, which reads functions and branches from it
+  and maps them back to the TypeScript. Files no suite loads are compiled with esbuild so they
+  count their functions and branches too.
+- **Lines of code only.** MCR also reports lines TypeScript erases as covered; the report
+  recomputes each file's lines over those its compilation maps back to. A types-only file has
+  none and is not owed.
+- **No statements.** MCR counts them from the generated code's lines, and tsx emits a module on
+  one line while Vite does not.
+
+`ui/mcr.config.mjs` holds the UI side's MCR options; Vite names the UI's own files from `ui/`,
+and the report puts them back under `ui/src`.
 
 The integration suites' servers are measured too, which takes three things from the harness,
 all switched on by `PI_OUTPOST_TEST_COVERAGE_DIR` and by nothing else:
@@ -226,20 +264,9 @@ all switched on by `PI_OUTPOST_TEST_COVERAGE_DIR` and by nothing else:
   few MB. A file a killed process left half-written is set aside and named, never parsed by
   the report.
 
-Linux and macOS only: on Windows the harness ends a server with `taskkill /F`, which leaves it
-no exit to write coverage on, so the script refuses to run there. CI runs it on Ubuntu in place
-of `npm test`; Windows runs `npm test`, uninstrumented.
-
-It runs as a non-root user on purpose: as root, every "refuses an unwritable path"
-assertion in this repository passes for the wrong reason. Dependencies are cached in a
-Docker volume and reinstalled only when `package-lock.json` changes, so a second run costs
-about what a local one does. `--fresh` ignores that cache; `--shell` drops you into the same
-container; any other arguments replace the command, which is how you run one step at a time
-while iterating:
-
-```bash
-npm run test:linux -- npm test --workspace server
-```
+The server step is Linux and macOS only: on Windows the harness ends a server with
+`taskkill /F`, which leaves it no exit to write coverage on, so the script refuses to run there.
+CI runs it on Ubuntu in place of `npm test`; Windows runs `npm test`, uninstrumented.
 
 ### Driving the real app
 

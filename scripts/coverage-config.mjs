@@ -17,11 +17,15 @@ import { fileURLToPath } from "node:url";
 
 export const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
-/** The scopes, in report order, with the thresholds below which the run fails. */
+/**
+ * The scopes, in report order, with the thresholds below which the run fails: about a point
+ * under the first merged measurement on CI (8 November 2026 — server lines 98.8%, branches
+ * 93.4%, functions 98.4%; shared 98.9%, 81.5%, 97.5%; ui 97.1%, 87.3%, 93.7%).
+ */
 export const COVERAGE_SCOPES = [
-  { name: "server", root: "server/src", thresholds: { lines: 0, branches: 0, functions: 0 } },
-  { name: "shared", root: "shared/src", thresholds: { lines: 0, branches: 0, functions: 0 } },
-  { name: "ui", root: "ui/src", thresholds: { lines: 0, branches: 0, functions: 0 } },
+  { name: "server", root: "server/src", thresholds: { lines: 97, branches: 92, functions: 97 } },
+  { name: "shared", root: "shared/src", thresholds: { lines: 97, branches: 80, functions: 96 } },
+  { name: "ui", root: "ui/src", thresholds: { lines: 96, branches: 86, functions: 92 } },
 ];
 
 /** Files left out of the inventory: glob relative to the repository root, and why. */
