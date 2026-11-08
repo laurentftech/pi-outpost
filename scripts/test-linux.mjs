@@ -23,15 +23,15 @@
  * and the same kernel interfaces, which is what the failing class depends on, but not
  * a byte-for-byte runner image.
  *
- * What runs by default is both of the ubuntu leg's server steps — the suite, and then
- * the coverage run — with CI=true, as the runner sets it. The second step is not a
- * formality. `main` went red on it with every test passing: npm children spawned by the
- * code under test inherited `NODE_V8_COVERAGE`, were killed at their timeout mid-write,
- * and the parent's reporter died on the truncated file. That step is ubuntu-only on CI,
- * so it is only reachable from here; running `npm test` alone would reproduce nothing.
+ * What runs by default is the ubuntu leg's server step — every suite, instrumented, then
+ * the coverage report and its thresholds — with CI=true, as the runner sets it. It is not
+ * `npm test` with a report on top: the servers the integration suites start write their
+ * own coverage, wait longer to stop and have their files cut down, and `main` once went
+ * red on a coverage run with every test passing. That step is ubuntu-only on CI, so it is
+ * only reachable from here.
  *
  * Usage:
- *   npm run test:linux                    # both server steps, as the ubuntu leg runs them
+ *   npm run test:linux                    # the server step, as the ubuntu leg runs it
  *   npm run test:linux -- --shell         # a shell in the same container, to poke about
  *   npm run test:linux -- npm test --workspace server   # one step, when iterating
  *   npm run test:linux -- --fresh         # ignore the dependency cache
@@ -49,9 +49,8 @@ const argv = process.argv.slice(2);
 const fresh = argv.includes("--fresh");
 const shell = argv.includes("--shell");
 const rest = argv.filter((arg) => arg !== "--fresh" && arg !== "--shell");
-// The ubuntu leg of CI, in order: the suite, then coverage over the unit suites. Both,
-// because each has failed on its own while the other was green.
-const DEFAULT_COMMAND = "npm test --workspace server && npm run test:coverage --workspace server";
+// The ubuntu leg of CI: every server suite, instrumented, reported over the inventory.
+const DEFAULT_COMMAND = "npm run test:coverage --workspace server";
 const command = rest.length > 0 ? rest.join(" ") : DEFAULT_COMMAND;
 
 const die = (message, detail) => {

@@ -23,29 +23,31 @@ export const COVERAGE_EXCLUSIONS = [
 ];
 
 /**
- * The run fails below these, measured over the inventory. Set just under the first full
- * measurement (see openspec/changes/measure-integration-coverage), to absorb run-to-run noise.
+ * The run fails below these, measured over the inventory. Set about a point under the first
+ * two full measurements on CI (2026-11-08: lines and statements 95.0%, branches 87.3%,
+ * functions 96.3%), to absorb run-to-run noise without letting a real drop through.
  */
-export const COVERAGE_THRESHOLDS = { lines: 93, statements: 93, branches: 85, functions: 95 };
+export const COVERAGE_THRESHOLDS = { lines: 94, statements: 94, branches: 86, functions: 95 };
 
 /**
  * The arguments for `c8 report`, run from the repository root: the inventory, the
- * exclusions above and nothing else, the reports CI reads, and the thresholds.
+ * exclusions above and nothing else, the reports CI reads, and the thresholds. The other
+ * options exist so a test can run the same report over a fixture.
  */
-export function c8ReportArgs({ tempDirectory, reportsDirectory }) {
+export function c8ReportArgs({ tempDirectory, reportsDirectory, roots = COVERAGE_ROOTS, exclusions = COVERAGE_EXCLUSIONS, thresholds = COVERAGE_THRESHOLDS }) {
   return [
     "report",
     "--temp-directory", tempDirectory,
     "--reports-dir", reportsDirectory,
     "--all",
-    ...COVERAGE_ROOTS.flatMap((root) => ["--src", root, "--include", `${root}/**`]),
-    ...COVERAGE_EXCLUSIONS.flatMap(({ pattern }) => ["--exclude", pattern]),
+    ...roots.flatMap((root) => ["--src", root, "--include", `${root}/**`]),
+    ...exclusions.flatMap(({ pattern }) => ["--exclude", pattern]),
     // Given any --exclude, c8 drops its default exclusions: the list above is the whole of them.
     // Applied after source maps, to the TypeScript paths the report shows.
     "--exclude-after-remap",
     "--reporter", "lcov", "--reporter", "json-summary", "--reporter", "text-summary",
     "--check-coverage",
-    ...Object.entries(COVERAGE_THRESHOLDS).flatMap(([measure, value]) => [`--${measure}`, String(value)]),
+    ...Object.entries(thresholds).flatMap(([measure, value]) => [`--${measure}`, String(value)]),
   ];
 }
 

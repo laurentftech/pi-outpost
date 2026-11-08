@@ -27,11 +27,11 @@ with the harness and filter behind it.
 - [ ] 4.1 In `.github/workflows/ci.yml`, replace the Ubuntu `npm test --workspace server` and `test:coverage` steps with the single coverage step; Windows keeps `npm test --workspace server`; update the comments that explain the exclusions; verify in the PR's CI that the Ubuntu job passes and record its duration against the last `main` run (24 min Ubuntu, 27 min Windows)
 - [x] 4.2 Update `scripts/coverage-summary.mjs`: drop `SUBPROCESS_ONLY`, report covered/total for lines, statements, branches and functions, and print the exclusion list; extend its script test (scenarios SummaryShowsNumeratorAndDenominator, ExcludedFileIsNamedInTheSummary)
 - [ ] 4.3 Point `scripts/coverage-badge.mjs` at the merged server lcov (formula unchanged); verify its script test and the badge job's inputs in `ci.yml`
-- [ ] 4.4 Update `docs/quality.md` (checks table, "What the coverage badge means", thresholds), `docs/development.md` (tests and coverage, how to run it locally under Linux) and `docs/openssf.md` (coverage action and change log); verify the documented commands run as written and local links resolve
+- [x] 4.4 Update `docs/quality.md` (checks table, "What the coverage badge means", thresholds), `docs/development.md` (tests and coverage, how to run it locally under Linux) and `docs/openssf.md` (coverage action and change log); verify the documented commands run as written and local links resolve
 
 ## 5. Proof
 
-- [ ] 5.1 Write `openspec/changes/measure-integration-coverage/scenario-coverage.md` mapping every scenario to its test, reading the assertions; run `npm run check:scenarios` and `openspec validate measure-integration-coverage --strict`
+- [x] 5.1 Write `openspec/changes/measure-integration-coverage/scenario-coverage.md` mapping every scenario to its test, reading the assertions; run `npm run check:scenarios` and `openspec validate measure-integration-coverage --strict`
 - [ ] 5.2 Run the full suites, typecheck and lint; verify the PR's CI is green on Ubuntu and Windows, and the summary shows the new figures
 
 ## Workflow follow-up

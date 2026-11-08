@@ -15,7 +15,7 @@ and the work planned for each gap, is in [OpenSSF: status and plan](openssf.md).
 | Static analysis | [CodeQL workflow](../.github/workflows/codeql.yml) | Actions, C# and JavaScript/TypeScript on PRs, main and weekly. JS/TS uses `security-and-quality`; other languages retain default queries. Findings still need review. |
 | Unit and integration tests | [CI workflow](../.github/workflows/ci.yml), workspace test scripts | Main suites run on Ubuntu and Windows; real HTTP/WebSocket tests use isolated server processes. Native install checks also run on macOS. |
 | Browser checks | `npm run test:e2e`, `npm run test:webbench` | Built app/widget flows; the bench covers Chromium, Firefox, WebKit and selected axe accessibility scans. These are bounded scenarios, not exhaustive accessibility or UI certification. |
-| Coverage thresholds | `server/package.json`, `ui/package.json` | Server unit suites: lines 92%, branches 86%, functions 90%. UI: lines 91%, branches 85%, functions 93%. These are minimum thresholds, not claimed current measurements. |
+| Coverage thresholds | `server/test/coverageConfig.mjs`, `ui/package.json` | Server, over every file in `server/src` and `shared/src`, unit and integration suites together: lines and statements 94%, branches 86%, functions 95%. UI: lines 91%, branches 85%, functions 93%. These are minimum thresholds, not claimed current measurements. |
 | Spec scenario inventory | `scripts/check-scenario-coverage.mjs` | Checks a touched change's scenario matrix and cited files. A reviewer must still read the assertions and verify their outcomes. |
 | Packaging and confinement | CLI install, container, MCP bundle and native sandbox tests | Exercises installed/native artifacts and refusals. Some jobs run only on specific platforms or changed paths; use their actual result for the change. |
 | Install and publication policy | `.npmrc`, root `allowScripts`, release workflow | npm 12.2.2 rejects unreviewed install scripts; npm publication uses GitHub OIDC/provenance. Dependencies and upstream advisories still need review. |
@@ -39,15 +39,24 @@ works before the package is built. Browser tests still import its built public e
 
 ## What the coverage badge means
 
-Server coverage instruments the `.test.ts` unit suites. It excludes `server/src/index.ts`,
-`server/src/embeddedRuntime.ts`, generated code and the bundled reference validator. The `.mjs`
-integration suites exercise real server subprocesses whose execution is not included in that
-unit coverage total. The UI has its own Vitest coverage report.
+The badge is line coverage across the server and UI reports.
 
-The badge therefore describes the measured scopes, **not whole-repository or end-to-end coverage**.
-In particular, it does not measure the central server entry point. Inspect the integration/browser
-assertions for those behaviours. The [development guide](development.md#tests) explains the
-instrumentation constraints; the coverage command and CI summary are the source of truth.
+Server coverage counts every server suite, unit and integration, including the server
+processes the integration suites start. It is computed over an inventory: every file under
+`server/src` and `shared/src`, `server/src/index.ts` included. A file no test loads counts with
+all its lines uncovered. Only the files listed in
+[`server/test/coverageConfig.mjs`](../server/test/coverageConfig.mjs) are left out, each with its
+reason: the generated structured-exchange validators and the type declarations. The CI summary
+gives covered/total counts for lines, statements, branches and functions, and repeats that list.
+On 8 November 2026 the server measured 95.0% of lines and statements, 87.3% of branches and
+96.3% of functions. The UI has its own Vitest coverage report over `ui/src`.
+
+The badge still describes those scopes, **not whole-repository or end-to-end coverage**: the
+browser suites, the other workspaces (`office`, `posters`, `openwebui`, `mcp`, `embed`) and the
+processes the server starts (the agent, terminals) are not instrumented. Coverage says which
+lines ran, not that a test checked what they did; read the assertions for that. The
+[development guide](development.md#coverage) explains how the measurement works; the coverage
+command and CI summary are the source of truth.
 
 ## Warning and maintainability debt
 
