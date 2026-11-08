@@ -10,7 +10,7 @@
  * A file that does not parse — a process killed mid-write — is renamed aside with an
  * `.unreadable` suffix and reported, never handed to the reporter.
  */
-import { readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
+import { readdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -50,10 +50,12 @@ export function isUnder(url, roots = SOURCE_ROOTS) {
  * (renamed to `<file>.unreadable`), with the sizes before and after.
  */
 export async function filterCoverageFile(file, roots = SOURCE_ROOTS) {
-  const before = (await stat(file)).size;
+  // One read, sized from what was read: no separate stat for the file to change after.
+  const raw = await readFile(file);
+  const before = raw.length;
   let data;
   try {
-    data = JSON.parse(await readFile(file, "utf8"));
+    data = JSON.parse(raw.toString("utf8"));
     if (!Array.isArray(data?.result)) throw new Error("no result array");
   } catch {
     await rename(file, `${file}.unreadable`);
