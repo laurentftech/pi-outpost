@@ -16,6 +16,7 @@ updates:
   # a weekly bump.
   - package-ecosystem: docker
     directories:
+      - /.clusterfuzzlite
       - /deploy/docker
       - /openwebui
       - /scripts/mxc-linux
