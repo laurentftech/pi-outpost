@@ -2,7 +2,8 @@
 
 Isolated experiment against main `aaa029434f42fc31b6818c2c51498171f2c27b41`
 (2026-11-08). It changes no production source, existing coverage pipeline, thresholds,
-root dependency/lockfile, or GitHub workflow. No schedule is enabled.
+root dependency/lockfile, or PR coverage gates. It adds a separate workflow scheduled
+daily at 03:00 Europe/Paris after it is merged to the default branch.
 
 ## Findings
 
@@ -91,43 +92,36 @@ it does not use `NODE_OPTIONS`. Neither the benchmark nor the fixtures edit trac
 application files. All modules are measured by standard Istanbul counters; the adapter
 only selects sources, transpiles and writes the counters at exit.
 
-## Recommendation and remaining work
+## Outcome and remaining work
 
-Proceed with a **manual Linux workflow first**, then schedule it daily on `main` if the
-full-suite result is reliable and its cost acceptable. Keep it independent of the PR
-critical path. Publish a report tied to an exact commit, numerator/denominator,
-exclusions, tool versions and threshold outcome. A daily result establishes the
-measured commit's coverage; it does not guarantee every intervening PR met a statement
+The complete Node 24/Linux trial passed on the spike branch: [workflow run 42524597050](https://github.com/laurentftech/pi-outpost/actions/runs/42524597050).
+It passed the server and UI suites, collector preflight and collection-integrity checks.
+The report records the measured commit, numerator/denominator, exclusions, tool version,
+timings and threshold outcome. The trial also preserves the original `stopGraceMs()` policy
+function and its regression assertions while adapting only the test harness wait in the
+instrumented run.
+
+The workflow is configured to run daily at 03:00 Europe/Paris once merged to the
+default branch.
+It remains independent of the PR critical path. Each daily result establishes coverage only
+for its named commit; it does not guarantee that every intervening PR met a statement
 threshold. Keep the existing PR line/branch/function thresholds in place.
 
-Before enabling that workflow:
+Before making an OpenSSF `test_statement_coverage80`/`90` or `test_branch_coverage80` claim,
+review successful full reports over time and decide on thresholds from those results. Do not
+copy a line percentage into the statement field. The measured inventory covers
+`server/src`, `shared/src` and `ui/src`; other production workspaces and browser suites remain
+outside the report, as documented in each summary. Existing OpenSpec coverage requirements
+remain unchanged; the companion scenario matrix records what this spike proves and leaves open.
 
-1. Run the complete suites under the candidate instrumentation on supported Node 24
-   and Linux, including the real harness's graceful shutdown and all subprocess paths.
-2. Reuse the central inventory/exclusions. The spike's Node hook selects server/shared
-   directories and does not yet apply every production exclusion. Add all unloaded
-   production files at zero, not just the fixture, and reconcile other workspaces.
-3. Verify normal, signalled and failed exits. Fail/report missing or incomplete dumps
-   explicitly; a green test result with absent coverage is not a valid measurement.
-4. Enforce collection boundaries for agent, terminal and other forked children. The
-   experiment explicitly loads only owned processes but does not prove every real
-   child's environment/execArgv isolation.
-5. Benchmark complete collection, conversion and report time. Consider a content-keyed
-   instrumentation cache; no cache benefit was measured here.
-6. Set statement thresholds from the new full report. Do not copy a line percentage
-   into the statement field, and do not infer 80/90% from this partial exercise.
+## Full-suite Linux trial
 
-This is a completed feasibility experiment, **not an implemented nightly feature**.
-Existing OpenSpec coverage requirements remain unchanged; the companion scenario
-matrix records what this spike proves and what it leaves open. No new OpenSSF claim
-is justified by these partial benchmark percentages.
-
-## Branch-only full-suite Linux trial
-
-The `Statement coverage experiment` workflow runs only on pushes to the isolated
-`codex/statement-coverage-spike` branch (or manual dispatch once registered). It has
-no daily schedule, is not a required PR check and does not alter normal CI. Its first
-run is an experiment, not adoption of a new coverage policy.
+Once merged, the `Statement coverage experiment` workflow will run daily at 03:00
+Europe/Paris against the default branch. On the spike branch it also runs on matching
+pushes and manual dispatch. It is not a required PR check and does not alter normal CI.
+Each run publishes a commit-specific report in the workflow summary and an artifact
+retained for 90 days. The successful spike run validated the measurement process;
+daily reports provide ongoing measurements without adopting a new coverage policy.
 
 It runs the fixture controls, collector self-tests, then the complete server and UI
 suites on Node 24/Linux. The Node loader admits only test files and the actual server

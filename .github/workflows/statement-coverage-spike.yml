@@ -1,6 +1,9 @@
 name: Statement coverage experiment
 
 on:
+  schedule:
+    - cron: '0 3 * * *'
+      timezone: Europe/Paris
   push:
     branches: [codex/statement-coverage-spike]
     paths:
@@ -61,5 +64,5 @@ jobs:
             spikes/statement-coverage/results/linux-trial/lifecycle/
             spikes/statement-coverage/results/linux-trial/expected/
             spikes/statement-coverage/results/fixtures/summary.json
-          retention-days: 7
+          retention-days: 90
           if-no-files-found: warn
