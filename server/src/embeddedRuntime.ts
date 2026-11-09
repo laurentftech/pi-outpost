@@ -6,7 +6,6 @@
  * snapshot were derived *from* this backend, so any divergence would be a bug
  * rather than an adaptation. The RPC runtime is the one doing real work to match.
  */
-import { DEFERRED_TOOLS } from "./documentTools.ts";
 import type { AgentSession, CreateAgentSessionRuntimeFactory, SessionManager } from "@earendil-works/pi-coding-agent";
 import { createAgentSessionRuntime } from "@earendil-works/pi-coding-agent";
 import type {
@@ -509,7 +508,10 @@ export class EmbeddedRuntime implements AgentRuntime {
       case "tool_execution_start":
         // Declarations have already reached the provider. Resolve a remembered name
         // in the execution snapshot, retaining SDK validation and extension hooks.
-        if (DEFERRED_TOOLS.includes(event.toolName) && this.session.getCallableToolNames().includes(event.toolName)) {
+        // Any deferred tool, not only ours: one an extension registers deferred is as
+        // loadable by tool_search, and a model calling it by name is the same case.
+        // Deferred only — a `direct` tool someone switched off stays off.
+        if (this.session.getToolDefinition(event.toolName)?.exposure === "deferred" && this.session.getCallableToolNames().includes(event.toolName)) {
           this.setToolPublished(event.toolName, true);
           const tool = this.session.agent.state.tools.find((candidate) => candidate.name === event.toolName);
           if (tool && this.executionTools && !this.executionTools.some((candidate) => candidate.name === tool.name)) this.executionTools.push(tool);

@@ -200,8 +200,9 @@
   work around that document and is forgotten after five quiet turns. Naming the document
   again brings it back, and the agent can load one by itself with `tool_search` — for a
   file it found on its own, say. Resuming an embedded conversation restores recently used
-  tools with the same inactivity counts; an explicit call to a remembered deferred tool
-  reactivates it even after its schema has expired
+  tools with the same inactivity counts; an explicit call to a remembered deferred tool —
+  pi-outpost's or one another extension registers deferred — reactivates it even after its
+  schema has expired
 - Email dropped on the composer: an Outlook `.msg`, or a `.eml`/`.emlx` from macOS Mail, Gmail or
   any webmail, is copied into the workspace and read by `mail_extract` — subject, sender,
   recipients, date, the body as markdown, and an inventory of its attachments. Ask for the
@@ -322,9 +323,9 @@ moving and removing tasks — is always there. `work_plan_extended`, which sets 
 dependencies, resources and verification evidence or replaces the plan wholesale, appears
 only once the session has a plan: every one of those operations acts on a task that must
 already exist, and their schemas are the expensive half to send on turns that never use
-them. It goes again after five turns in which nothing touched the plan, and any later
-`work_plan` call brings it straight back — so a plan opened in the morning stops charging
-for the afternoon that moved on to something else. A supervised `pi --mode rpc` child gets
+them. It goes again after five turns in which nothing touched the plan — so a plan opened
+in the morning stops charging for the afternoon that moved on to something else — and any
+later `work_plan` call brings it straight back, as does `tool_search`. A supervised `pi --mode rpc` child gets
 both at all times, having no way to change its published toolset.
 
 When a non-empty plan contains at least one `needs_review` task and every other task is either

@@ -501,6 +501,14 @@ unconfined ones (a sandbox without `allowBash` stays without `bash`). A `tools` 
 server's config replaces `defaultTools` entirely, so name `codemode` and `tool_search` there
 if you use one.
 
+An extension of your own that keeps a tool out of the prompt until needed should register it
+with `exposure: "deferred"`, not as an inactive tool (`defaultActive: false`). `tool_search`
+only finds deferred tools: an inactive `direct` tool that leaves the active set — on a resume,
+a `/tree` move, or anything else that rebuilds it — cannot be found again, and the agent
+searches for it in vain. A deferred one can, and in the embedded runtime a call to its name
+from memory also runs it and declares it for the rest of the conversation. Your extension can
+still switch it on itself with `setActiveTools`.
+
 The `codemode` card starts compact. Expand it to see the script, its nested calls
 and their result, including while it is running. They remain in that card after
 reloading the conversation.

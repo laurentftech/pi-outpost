@@ -281,7 +281,7 @@ export function createWorkPlanToolDefinition(): ToolDefinition {
       'Create the whole plan in one call, dependencies included: {"action":"create","title":"<plan title>","tasks":[{"id":"a","title":"<first task>"},{"id":"b","title":"<second task>","dependsOn":["a"],"subtasks":[{"title":"<a step of the second task>"}]}]}',
       "Give a task an explicit short id whenever something references it; ids are generated for the rest.",
       'Update one task with {"action":"update_task","taskId":"b","status":"in_progress"}. Statuses are todo, in_progress, done, blocked, needs_review.',
-      `Dependencies, resources, evidence and whole-plan replacement are in ${WORK_PLAN_EXTENDED_TOOL}. It appears as soon as this session has a plan.`,
+      `Dependencies, resources, evidence and whole-plan replacement are in ${WORK_PLAN_EXTENDED_TOOL}. It appears as soon as this session has a plan. If it is not listed, {"action":"get"} brings it back for your next call.`,
       // Pointing a small model at `replace` for this was a trap: that action wants
       // a complete normalized document, down to a plan id and an updatedAt it
       // would have to invent. `clear` then `create` reaches the same state through

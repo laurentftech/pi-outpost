@@ -25,7 +25,7 @@
  */
 import fs from "node:fs/promises";
 import type { ExtensionAPI, ToolDefinition } from "@earendil-works/pi-coding-agent";
-import { deferOnDemandTools, TOOL_SEARCH_TOOL } from "./documentTools.ts";
+import { DEFERRED_TOOLS, deferOnDemandTools, TOOL_SEARCH_TOOL } from "./documentTools.ts";
 import { registerPendingWriteHooks } from "./pendingWrites.ts";
 import { registerPosterPictureHooks } from "./posterPictureHooks.ts";
 import { createBtwExtension } from "./btwExtension.ts";
@@ -58,7 +58,7 @@ import { createStructuredExchangeTableToolDefinition } from "./structuredExchang
 import { createStructuredExchangeToolDefinition } from "./structuredExchangeTool.ts";
 import { createStructuredExchangeProjectModelToolDefinition } from "./structuredExchangeProjectModelTool.ts";
 import { createXlsxExtractToolDefinition } from "./xlsxTool.ts";
-import { createWorkPlanExtendedToolDefinition, createWorkPlanToolDefinition } from "./workPlanTool.ts";
+import { createWorkPlanExtendedToolDefinition, createWorkPlanToolDefinition, WORK_PLAN_EXTENDED_TOOL } from "./workPlanTool.ts";
 
 /** What the parent must tell the child. Mirrors the fields index.ts uses embedded. */
 export interface PiOutpostToolsSettings {
@@ -157,12 +157,17 @@ export async function createPiOutpostTools(settings: PiOutpostToolsSettings): Pr
   ];
 }
 
+const CHILD_DEFERRED_TOOLS = DEFERRED_TOOLS.filter((name) => name !== WORK_PLAN_EXTENDED_TOOL);
+
 export default async function (pi: ExtensionAPI): Promise<void> {
   const tools = await createPiOutpostTools(parseToolsSettings(process.env[TOOLS_ENV_VAR]));
   // Deferred, as the embedded runtime registers them. The parent cannot publish or
   // withdraw anything here, so they stay undeclared until the agent loads one with
   // tool_search — rather than every one of them declared on every request.
-  for (const tool of deferOnDemandTools(tools)) pi.registerTool(tool);
+  // Except the extended Work Plan tool: the server publishes it when a plan appears, and
+  // here nothing can, so deferring it would leave a child with a plan and no way to act on
+  // it short of a search. Declared always, the documented cost of this dialect.
+  for (const tool of deferOnDemandTools(tools, CHILD_DEFERRED_TOOLS)) pi.registerTool(tool);
   // Pi registers its tool search inactive and only switches it on for MCP servers. Absent
   // under --no-extensions or an allowlist leaving it out, and then there is nothing to do.
   pi.on("session_start", () => {

@@ -16,6 +16,7 @@ import { DEFERRED_TOOLS } from "../src/documentTools.ts";
 const PROVIDER = fileURLToPath(new URL("./fixtures/scripted-tools-provider.mjs", import.meta.url));
 const REACH_XLSX = fileURLToPath(new URL("./fixtures/reach-xlsx-extension.mjs", import.meta.url));
 const WORKBOOK = fileURLToPath(new URL("./fixtures/xlsx-grid.xlsx", import.meta.url));
+const THIRD_PARTY = fileURLToPath(new URL("./fixtures/third-party-tools-extension.mjs", import.meta.url));
 
 /** Each request the provider recorded that declared any tool, in order. */
 async function requests(log) {
@@ -51,6 +52,11 @@ async function nthRequest(log, index, timeoutMs = 30_000) {
 }
 
 const declaredOnDemand = (request) => request.tools.filter((tool) => DEFERRED_TOOLS.includes(tool));
+/**
+ * The same, for the RPC child, which keeps the extended Work Plan tool declared: the server
+ * publishes it when a plan appears, and nothing can in a child.
+ */
+const childDeclaredOnDemand = (request) => declaredOnDemand(request).filter((tool) => tool !== "work_plan_extended");
 const steps = (...list) => `STEPS:${JSON.stringify(list)}`;
 const DIAGRAM_POSTER_STRUCTURE_SEARCHES = [
   ["check a draw.io diagram for errors", "drawio_check"],
@@ -65,9 +71,9 @@ function searchSteps() {
   return DIAGRAM_POSTER_STRUCTURE_SEARCHES.map(([query]) => ({ tool: "tool_search", args: { query } }));
 }
 
-async function assertSearchesLoadedInOrder(log) {
+async function assertSearchesLoadedInOrder(log, { child = false } = {}) {
   const first = await nthRequest(log, 0);
-  assert.deepEqual(declaredOnDemand(first), [], "none of the six is declared before a search");
+  assert.deepEqual((child ? childDeclaredOnDemand : declaredOnDemand)(first), [], "none of the six is declared before a search");
   for (const [index, [, expected]] of DIAGRAM_POSTER_STRUCTURE_SEARCHES.entries()) {
     const loaded = await nthRequest(log, index + 1);
     assert.ok(loaded.tools.includes(expected), `${expected} is declared after its search; got ${loaded.tools.join(", ")}`);
@@ -149,6 +155,48 @@ test("A loaded tool survives the turn that loaded it", async () => {
   }
 });
 
+test("Searching loads the extended Work Plan tool, withheld or withdrawn", async () => {
+  const { server, client, log } = await scriptedServer();
+  try {
+    client.send({ type: "prompt", text: steps({ tool: "tool_search", args: { query: "work plan dependencies evidence" } }) });
+    assert.ok(!(await nthRequest(log, 0)).tools.includes("work_plan_extended"), "withheld from a session with no plan");
+    assert.ok((await nthRequest(log, 1)).tools.includes("work_plan_extended"), "the search found it and declared it for the next call");
+  } finally {
+    client.close();
+    await server.stop();
+  }
+});
+
+test("Another extension's deferred tool, called by name, runs and is declared from then on", async () => {
+  const { server, client, log } = await scriptedServer({}, [PROVIDER, THIRD_PARTY]);
+  try {
+    client.send({ type: "prompt", text: steps({ tool: "third_party_deferred", args: {} }) });
+    assert.ok(!(await nthRequest(log, 0)).tools.includes("third_party_deferred"), "not declared before the call");
+    const after = await nthRequest(log, 1);
+    assert.deepEqual(after.results, ["third_party_deferred ran"], "the remembered name reached the tool");
+    assert.ok(after.tools.includes("third_party_deferred"), "and the call declared it for the next request");
+  } finally {
+    client.close();
+    await server.stop();
+  }
+});
+
+test("Another extension's switched-off direct tool is not revived by calling its name", async () => {
+  const { server, client, log } = await scriptedServer({}, [PROVIDER, THIRD_PARTY]);
+  try {
+    client.send({ type: "prompt", text: steps({ tool: "third_party_switched_off", args: {} }) });
+    assert.ok(!(await nthRequest(log, 0)).tools.includes("third_party_switched_off"), "not declared");
+    const after = await nthRequest(log, 1);
+    assert.equal(after.results.length, 1);
+    assert.doesNotMatch(after.results[0], /third_party_switched_off ran/, "the call did not run it");
+    assert.match(after.results[0], /not found/i, "the model is told the tool is not there");
+    assert.ok(!after.tools.includes("third_party_switched_off"), "nor did it switch the tool on");
+  } finally {
+    client.close();
+    await server.stop();
+  }
+});
+
 test("A loaded tool nobody calls is withdrawn", async () => {
   const { server, client, log } = await scriptedServer();
   try {
@@ -206,7 +254,8 @@ test("The RPC child loads and keeps a searched tool, and declares none before", 
     client.send({ type: "prompt", text: steps({ tool: "tool_search", args: { query: "Excel" } }) });
     // "A runtime that cannot gate publishes them all", as it now reads: it declares none.
     const first = await nthRequest(log, 0);
-    assert.deepEqual(declaredOnDemand(first), [], "the child declares no on-demand tool before a search");
+    assert.deepEqual(childDeclaredOnDemand(first), [], "the child declares no on-demand tool before a search");
+    assert.ok(first.tools.includes("work_plan_extended"), "but keeps the extended Work Plan tool declared");
     assert.ok(first.tools.includes("tool_search"), "and declares tool_search");
     assert.equal(first.hint, true, "and its system prompt says so");
     assert.ok((await nthRequest(log, 1)).tools.includes("xlsx_extract"), "the search loads xlsx_extract for the next call");
@@ -239,7 +288,7 @@ test("The RPC child loads each diagram, poster and structure tool on demand", as
   try {
     await client.waitFor("hello", 30_000);
     client.send({ type: "prompt", text: steps(...searchSteps()) });
-    await assertSearchesLoadedInOrder(log);
+    await assertSearchesLoadedInOrder(log, { child: true });
   } finally {
     client.close();
     await server.stop();
