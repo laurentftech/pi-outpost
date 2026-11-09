@@ -64,5 +64,5 @@ jobs:
             spikes/statement-coverage/results/linux-trial/lifecycle/
             spikes/statement-coverage/results/linux-trial/expected/
             spikes/statement-coverage/results/fixtures/summary.json
-          retention-days: 90
+          retention-days: 7
           if-no-files-found: warn

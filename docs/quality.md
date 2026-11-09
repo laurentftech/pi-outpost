@@ -63,7 +63,7 @@ Once the [statement coverage workflow](../.github/workflows/statement-coverage-s
 merged, it will run a daily Istanbul trial measuring statements and branches over an explicit
 inventory of `server/src`, `shared/src` and `ui/src`, with unloaded files at zero and collection
 integrity checks for every instrumented test process. Each run publishes a commit-specific
-summary and 90-day artifact. This is an experimental report on the default-branch commit, not a
+summary and 7-day artifact. This is an experimental report on the default-branch commit, not a
 per-PR gate or an OpenSSF threshold claim; the workflow fails when suites fail or coverage data
 is incomplete.
 

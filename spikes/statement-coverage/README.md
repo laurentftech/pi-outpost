@@ -120,7 +120,7 @@ Once merged, the `Statement coverage experiment` workflow will run daily at 03:0
 Europe/Paris against the default branch. On the spike branch it also runs on matching
 pushes and manual dispatch. It is not a required PR check and does not alter normal CI.
 Each run publishes a commit-specific report in the workflow summary and an artifact
-retained for 90 days. The successful spike run validated the measurement process;
+retained for 7 days. The successful spike run validated the measurement process;
 daily reports provide ongoing measurements without adopting a new coverage policy.
 
 It runs the fixture controls, collector self-tests, then the complete server and UI
