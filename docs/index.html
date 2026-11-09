@@ -322,6 +322,7 @@
         <div class="nav-links">
           <a href="#features">Features</a>
           <a href="#install">Install</a>
+          <a href="https://github.com/laurentftech/pi-outpost/blob/main/docs/features.md">Documentation</a>
           <a href="#faq">FAQ</a>
           <a href="https://github.com/laurentftech/pi-outpost">GitHub</a>
         </div>
@@ -336,8 +337,8 @@
         <h1>Self-hosted Web UI for Pi Coding Agent</h1>
         <p>
           Run Pi from your browser on your own machine or server.
-          Pi Outpost provides a full web interface for streaming responses,
-          tool execution, files, Git, rich diagrams, multiple projects, and sandboxed agents.
+          Pi Outpost brings conversations, tools, files, Git, and document work into one
+          interface, while keeping the agent and workspace on a machine you control.
         </p>
 
         <div class="actions">
@@ -366,7 +367,7 @@
 
           <article class="feature">
             <h3>Files &amp; editor</h3>
-            <p>Browse your workspace and edit files without leaving the interface.</p>
+            <p>Browse, search, compare, and edit workspace files; preview Markdown, HTML, and documents in place.</p>
           </article>
 
           <article class="feature">
@@ -381,12 +382,12 @@
 
           <article class="feature">
             <h3>Documents</h3>
-            <p>Work with PDF and Office documents as part of your coding workflow, and build PowerPoint decks from your own templates — tables and charts included — checked by rendering them.</p>
+            <p>Read PDF and Office files, review Word changes, and create or update Word and PowerPoint documents from templates.</p>
           </article>
 
           <article class="feature">
             <h3>Rich diagrams</h3>
-            <p>Render rich diagrams directly in conversations for architecture, flows, and technical explanations.</p>
+            <p>Render and edit Mermaid, draw.io, and structured diagrams in conversations and workspace files.</p>
           </article>
 
           <article class="feature">
@@ -401,12 +402,12 @@
 
           <article class="feature">
             <h3>Self-hosted</h3>
-            <p>Run the Node process yourself and decide where the agent and its sandbox live.</p>
+            <p>Run the agent beside your files. File tools follow the configured workspace boundary; shell and extensions need their own controls.</p>
           </article>
           
           <article class="feature">
             <h3>Remote development</h3>
-            <p>Run Pi on a remote VM or server while using the full interface from your local workstation.</p>
+            <p>Work against a remote machine over HTTPS or an SSH tunnel, with the agent and workspace staying there.</p>
           </article>
         </div>
       </section>
@@ -414,14 +415,15 @@
       <section id="install">
         <h2>Install</h2>
         <p class="lead">
-          Run Pi Outpost on your own machine or server with Node.js.
-          See the repository for the latest installation and configuration options.
+          With Node.js 24 or later, start it with npx. Prefer a download with no Node.js setup?
+          Releases also include a standalone executable for each supported platform.
         </p>
 
         <pre class="code"><span class="prompt">$ </span>npx --allow-scripts=node-pty,koffi pi-outpost</pre>
 
         <div class="actions">
-          <a class="button primary" href="https://github.com/laurentftech/pi-outpost#readme">Read the documentation</a>
+          <a class="button primary" href="https://github.com/laurentftech/pi-outpost/blob/main/docs/getting-started.md">Get started in 5 minutes</a>
+          <a class="button" href="https://github.com/laurentftech/pi-outpost/releases">Download a standalone app</a>
           <a class="button" href="https://www.npmjs.com/package/pi-outpost">View on npm</a>
         </div>
       </section>
@@ -454,7 +456,8 @@
             <h3>Run it remotely</h3>
             <p>
               Keep Pi, your files, tools, and sandbox on a remote VM or server while
-              accessing the interface from your local workstation browser.
+              accessing the interface from your local workstation over HTTPS or SSH.
+              <a href="https://github.com/laurentftech/pi-outpost/blob/main/docs/deployment.md#remote-transport-https-or-ssh">See remote setup</a>.
             </p>
           </div>
         </div>
@@ -494,8 +497,10 @@
             <summary>Can I run Pi Outpost on a remote VM?</summary>
             <p>
               Yes. Run Pi Outpost on a remote VM or server and access its web interface
-              from your local workstation. The agent, workspace, tools, and sandbox stay
-              on the remote environment while you use the UI locally.
+              from your local workstation over HTTPS or an SSH tunnel. The agent and
+              workspace stay on the remote environment. A network-facing listener also
+              requires a token; see the
+              <a href="https://github.com/laurentftech/pi-outpost/blob/main/docs/deployment.md#remote-transport-https-or-ssh">deployment guide</a>.
             </p>
           </details>
 
@@ -521,6 +526,15 @@
               Pi Outpost is open source. Visit the
               <a href="https://github.com/laurentftech/pi-outpost">GitHub repository</a>
               for the source code, documentation, issues, and releases.
+            </p>
+          </details>
+
+          <details>
+            <summary>Where is the full feature and setup documentation?</summary>
+            <p>
+              Browse the <a href="https://github.com/laurentftech/pi-outpost/tree/main/docs">documentation</a>,
+              including the <a href="https://github.com/laurentftech/pi-outpost/blob/main/docs/features.md">feature guide</a>
+              and <a href="https://github.com/laurentftech/pi-outpost/blob/main/docs/getting-started.md">getting started</a>.
             </p>
           </details>
         </div>
