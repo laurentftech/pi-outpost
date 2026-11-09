@@ -1,0 +1,7 @@
+homepage: https://github.com/laurentftech/pi-outpost
+language: javascript
+main_repo: https://github.com/laurentftech/pi-outpost
+fuzzing_engines:
+  - libfuzzer
+sanitizers:
+  - none

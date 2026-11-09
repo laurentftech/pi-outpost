@@ -275,6 +275,49 @@ own origin with hostile CSS, the servers behind it, and a seeded transcript with
 and tables. Rebuild `web`, then `@pi-outpost/embed`, then `build:e2e-host` first — the bench
 serves `dist/`, so an unbuilt fix is invisible.
 
+### Fuzzing
+
+The parsers that read untrusted bytes are fuzzed with
+[Jazzer.js](https://github.com/CodeIntelligenceTesting/jazzer.js), one target each in
+[`fuzz/targets/`](../fuzz/targets):
+
+| Target | What it reads | Not a finding |
+| --- | --- | --- |
+| `mail` | an `.eml` or `.msg` file, through `readMessage` | a `MailError` |
+| `zip` | an Office document's zip, through `readAllZipEntries` | a `ZipError` |
+| `structured-exchange` | a model's structured exchange document, through the whole gate | nothing: the gate never throws |
+
+Anything else thrown, a hang or a crash is a finding. The seeds are the repository's own
+fixtures and the structured-exchange conformance suite, gathered by `fuzz/build.mjs`.
+
+- **On a pull request** touching those parsers, `fuzz/` or `.clusterfuzzlite/`
+  (`.github/workflows/fuzz-pr.yml`), every target runs for 100 seconds.
+- **Daily on `main`** (`fuzz-batch.yml`), every target runs for twenty minutes.
+
+Both run [`fuzz/run.mjs`](../fuzz/run.mjs), which runs each target in turn for a given number of
+seconds, growing its corpus from the seeds. A finding fails the job, names the target in an
+annotation, and the job keeps the crashing input as the `fuzzing-artifacts` artifact. To fuzz
+locally, and to reproduce a crash with the bundled target:
+
+```sh
+node fuzz/build.mjs
+(cd fuzz && npm ci)
+node fuzz/run.mjs 60 mail          # one target for a minute; omit the name for all of them
+npx --prefix fuzz jazzer fuzz/build/mail.js --sync crash-<id>
+```
+
+Jazzer.js runs directly rather than through ClusterFuzzLite's GitHub actions, which cannot fuzz
+JavaScript: their configuration accepts only the `address`, `memory`, `undefined` and `coverage`
+sanitizers, OSS-Fuzz's JavaScript builder refuses every sanitizer but `none` and `coverage`, and a
+`coverage` run produces a coverage report without fuzzing.
+
+`fuzz/` is not a workspace: its own lockfile keeps Jazzer.js out of the product's dependency
+tree, and the targets are bundled with every dependency inlined, for the Node 20 that OSS-Fuzz's
+runner uses. `.clusterfuzzlite/` is laid out as an OSS-Fuzz project, so it can be submitted
+there unchanged. A new target is a `fuzz/targets/<name>.fuzz.ts` exporting `fuzz(data: Buffer)`,
+an entry in `TARGETS` in `fuzz/build.mjs`, and its name in `ALL` in `fuzz/run.mjs` and in
+`.clusterfuzzlite/build.sh`.
+
 ## When a turn dies of stack exhaustion
 
 `server/src/turnFailureLog.ts` writes a census of the *input* to

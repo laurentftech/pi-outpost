@@ -1,0 +1,53 @@
+# Fuzzing on pull requests: run every fuzz target with Jazzer.js for a short while when a change
+# touches a parser of untrusted input (docs/development.md § Fuzzing). A finding fails the job,
+# names the target in an annotation and keeps the crashing input as an artifact.
+#
+# Jazzer.js runs directly: ClusterFuzzLite's actions cannot fuzz JavaScript (see fuzz/run.mjs).
+name: Fuzzing (pull request)
+
+on:
+  pull_request:
+    paths:
+      - server/src/mail*.ts
+      - office/src/zip.ts
+      - shared/src/structuredExchange*.ts
+      - shared/schemas/**
+      - fuzz/**
+      - .clusterfuzzlite/**
+      - .github/workflows/fuzz-pr.yml
+  workflow_dispatch:
+
+permissions: read-all
+
+jobs:
+  fuzz:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    concurrency:
+      group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+      cancel-in-progress: true
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+      - name: Use the pinned npm
+        uses: ./.github/actions/setup-npm
+      # Only esbuild and the targets' pure-JavaScript dependencies are needed: no install script runs.
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - run: node fuzz/build.mjs
+      - run: npm ci --no-audit --no-fund
+        working-directory: fuzz
+      # Five minutes in all, as the ClusterFuzzLite job had.
+      - name: Fuzz every target
+        run: node fuzz/run.mjs 100
+      - name: Keep the crashing input
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: fuzzing-artifacts
+          path: fuzz/artifacts
+          if-no-files-found: ignore
