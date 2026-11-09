@@ -38,11 +38,13 @@ jobs:
       - run: npm run build --workspace @pi-outpost/embed
       - name: landstrip runner for the real confined-terminal tests
         run: |
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
           cd "$RUNNER_TEMP"
-          npm pack --silent @landstrip/landstrip-linux-x64@0.19.8
-          mkdir landstrip && tar xzf landstrip-landstrip-linux-x64-0.19.8.tgz -C landstrip
-          echo "LANDSTRIP_BIN=$RUNNER_TEMP/landstrip/package/bin/landstrip" >> "$GITHUB_ENV"
-          "$RUNNER_TEMP/landstrip/package/bin/landstrip" doctor
+          npm pack --silent @landstrip/landstrip-linux-x64@0.20.26
+          mkdir landstrip && tar xzf landstrip-landstrip-linux-x64-0.20.26.tgz -C landstrip
+          (cd landstrip && ./package/bin/landstrip --appimage-extract > /dev/null)
+          echo "LANDSTRIP_BIN=$RUNNER_TEMP/landstrip/squashfs-root/usr/bin/landstrip" >> "$GITHUB_ENV"
+          "$RUNNER_TEMP/landstrip/squashfs-root/usr/bin/landstrip" doctor
       - name: Full server and UI suites with original-source Istanbul
         run: node spikes/statement-coverage/trial-run.mjs
       - name: Publish experiment summary
