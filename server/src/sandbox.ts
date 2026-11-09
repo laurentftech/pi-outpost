@@ -531,6 +531,18 @@ export function asksAboutHosts(sandbox: SandboxConfig): boolean {
   return Boolean(sandbox.bashRunner) && sandbox.grants !== "never" && sandbox.allowedHosts !== undefined && hostGrantsRefusal(sandbox.bashRunner!) === undefined;
 }
 
+/**
+ * The agent's network in words, for the startup line an operator reads: undefined without
+ * `sandbox.allowedHosts` (open). An empty list under host questions asks about every host, which
+ * "only to nothing" said wrongly.
+ */
+export function networkSummary(sandbox: SandboxConfig): string | undefined {
+  if (sandbox.allowedHosts === undefined) return undefined;
+  const asks = asksAboutHosts(sandbox);
+  if (sandbox.allowedHosts.length === 0) return asks ? "network: every host asked about" : "network closed";
+  return `network only to ${sandbox.allowedHosts.join(", ")}${asks ? ", other hosts asked about" : ""}`;
+}
+
 export function unsuppliedBuiltIns(sandboxedTools: ToolDefinition[], delegated: readonly string[] = []): string[] {
   const supplied = new Set([...sandboxedTools.map((tool) => tool.name), ...delegated]);
   return PI_BUILTIN_TOOL_NAMES.filter((name) => !supplied.has(name));

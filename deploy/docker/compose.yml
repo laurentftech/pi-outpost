@@ -6,13 +6,13 @@ services:
       context: .
       args:
         PI_OUTPOST_VERSION: ${PI_OUTPOST_VERSION:-0.59.1}
-        LANDSTRIP_VERSION: ${LANDSTRIP_VERSION:-0.20.20}
+        LANDSTRIP_VERSION: ${LANDSTRIP_VERSION:-0.20.26}
         APP_UID: ${APP_UID:-1000}
         APP_GID: ${APP_GID:-1000}
     init: true
     restart: unless-stopped
     environment:
-      OUTPOST_ALLOW_AGENT_NETWORK: ${ALLOW_AGENT_NETWORK:-0}
+      OUTPOST_ALLOW_AGENT_NETWORK: ${ALLOW_AGENT_NETWORK:-}
     cap_drop: [ALL]
     security_opt:
       - no-new-privileges:true

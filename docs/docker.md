@@ -60,12 +60,33 @@ The port is published on loopback only. Remote access needs an authenticated TLS
 SSH tunnel; do not expose it by casually changing the bind address.
 
 The terminal is enabled. Python scripts and venv creation work without agent IP networking.
-For downloads such as pip packages, set `ALLOW_AGENT_NETWORK=1` in `.env`, then recreate the service
-with `docker compose up --build -d`. This permits IP connections and listeners inside the container
-subject to the caller's policy. It does not change filesystem or process confinement.
-The trusted server's model API requests are separate and work with this option off.
 
-With that explicit network opt-in, in the terminal:
+**The agent's network asks you, host by host.** By default the agent's shell reaches the network only
+through the server's proxy, and every host it connects to is asked about in the interface — for this
+command, for the rest of the session, or refused ([grants](sandboxing.md#grants-beyond-the-sandbox-when-you-say-so)).
+The image does this with `"sandbox.allowedHosts": []` in `/data/config.json`, added at startup when
+the key is missing — on a fresh volume and on one from an earlier version alike. A question needs a
+browser connected to the project; with none, the host is refused. To stop being asked about the hosts
+you always use, list them there:
+
+```json
+{ "sandbox": { "allowedHosts": ["pypi.org", "files.pythonhosted.org"] } }
+```
+
+`ALLOW_AGENT_NETWORK` in `.env` sets the ceiling; recreate the service after changing it:
+
+| `ALLOW_AGENT_NETWORK` | Agent's shell | Terminal |
+| --- | --- | --- |
+| unset (default) | through the proxy only; unlisted hosts asked about | no IP networking |
+| `1` | as `/data/config.json` says: without `sandbox.allowedHosts`, open | open, listeners included |
+| `0` | no IP networking at all, the proxy included | no IP networking |
+
+None of them changes filesystem or process confinement, and the trusted server's model API requests
+are separate: they work whichever you choose. With `1`, the startup leaves `/data/config.json` alone:
+remove `sandbox.allowedHosts` there for an open network.
+
+For downloads such as pip packages, the agent asks, or you list the hosts. In the terminal, which has
+no questions, set `ALLOW_AGENT_NETWORK=1`, then:
 
 ```sh
 python3 -m venv .venv
@@ -77,7 +98,7 @@ The virtual environment and generated files live in the mounted project and surv
 replacement. For reproducible projects, install from your own pinned requirements file. Additional
 OS libraries belong in the Dockerfile and require rebuilding the image.
 
-For a Python web app, use that same explicit network opt-in and publish the chosen port on loopback in a
+For a Python web app, use `ALLOW_AGENT_NETWORK=1` and publish the chosen port on loopback in a
 `compose.override.yml` beside the recipe, for example:
 
 ```yaml
@@ -106,23 +127,26 @@ chooses; there is no relay service or access to the Docker daemon.
   apply; no `CAP_SYS_PTRACE` is added.
   The AppArmor profile permits user namespaces and the two mounts while retaining Docker's protected
   proc/sys paths. Compose also unmasks system paths so the child can mount its private procfs.
-  These changes are required by landstrip 0.20.20; this is not Docker's unchanged default profile.
+  These changes are required by landstrip 0.20.26; this is not Docker's unchanged default profile.
   Policy sources, license and changes are recorded in `deploy/docker/profiles/NOTICE.md`.
-- **landstrip 0.20.20** confines both the agent's shell and the interactive terminal to `/workspace`
+- **landstrip 0.20.26** confines both the agent's shell and the interactive terminal to `/workspace`
   and private temporary storage. The agent directory and runtime configuration are denied. A real
   canary checks each surface at startup. Any non-verified verdict refuses this recipe's startup.
   Its AppImage is extracted at build time, so running it needs neither FUSE nor an extra device.
-- landstrip 0.20.20 adds a private PID namespace and procfs to filesystem confinement. Keep credentials
+- landstrip 0.20.26 adds a private PID namespace and procfs to filesystem confinement. Keep credentials
   separate anyway: the web token is read from a Compose secret file into protected config, and model
   credentials belong in the credential store. Do not add API keys to the service's environment.
   `PI_OUTPOST_TOKEN` is explicitly refused by this recipe.
-- **IP networking in the agent's shell and terminal is disabled by default.** The adapter tightens the app's generated
-  policy to deny IP connections and listeners. Only the operator can opt in with
-  `ALLOW_AGENT_NETWORK=1`; the choice is recorded in protected `/data/agent/docker-network.json`.
-  With that opt-in, the adapter forwards the caller's policy unchanged; it never turns a denied
-  permission on. An explicit restricted network policy remains restricted. The native unrestricted
-  IP policy permits both outgoing IP traffic and listeners; it is not a host allowlist.
-  Apply any additional outbound restrictions around the container.
+- **By default, the agent's shell reaches only the server's proxy.** The adapter tightens the app's
+  generated policy: IP connections and listeners are denied, and only the proxy's port, when the
+  policy names one, stays open; a policy without it — the terminal's — has no network. The proxy
+  relays the hosts `sandbox.allowedHosts` lists and asks about the others. landstrip opens that port by
+  its number on every loopback address; the proxy holds it on `127.0.0.1` and `[::1]`
+  ([details](sandboxing.md#linux-landstrip)). The operator's choice is recorded in protected
+  `/data/agent/docker-network.json`: `ALLOW_AGENT_NETWORK=1` forwards the policy unchanged, `0`
+  removes the proxy's port too. The adapter never turns a denied permission on. The native unrestricted
+  IP policy (`1` without `sandbox.allowedHosts`) permits outgoing IP traffic and listeners; apply any
+  additional outbound restrictions around the container.
 - Extensions and MCP servers retain their process's rights. Run trusted resources only; the shell
   sandbox does not turn a shared server or malicious extension into an isolated multi-user service.
 

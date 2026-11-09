@@ -1069,12 +1069,15 @@ export function loadConfig(
     }
     const allowedHosts = optionalStringArray(sandbox, "allowedHosts");
     if (allowedHosts !== undefined) {
-      // Only MXC's process container, or Seatbelt, can close the network around the proxy here.
-      // `"auto"` only ever takes MXC or Seatbelt.
+      // MXC's process container, Seatbelt, or landstrip on Linux (its seccomp supervisor) closes
+      // the network around the proxy here. `"auto"` only ever takes MXC or Seatbelt.
       const holdsNetwork =
-        bashRunner === BUNDLED_MXC || bashRunner === SEATBELT || bashRunner === AUTO_RUNNER || (bashRunner !== undefined && bashRunner !== NO_RUNNER && runnerKind(bashRunner) !== "landstrip");
+        bashRunner === BUNDLED_MXC ||
+        bashRunner === SEATBELT ||
+        bashRunner === AUTO_RUNNER ||
+        (bashRunner !== undefined && bashRunner !== NO_RUNNER && (runnerKind(bashRunner) !== "landstrip" || process.platform === "linux"));
       if (bashRunner === undefined || bashImage !== undefined || !holdsNetwork) {
-        fail(`"sandbox.allowedHosts" needs MXC or Seatbelt as "sandbox.bashRunner", and no "sandbox.bashImage": no other backend can hold the network to it`);
+        fail(`"sandbox.allowedHosts" needs MXC, Seatbelt, or landstrip on Linux as "sandbox.bashRunner", and no "sandbox.bashImage": no other backend can hold the network to it`);
       }
       const invalid = allowedHosts.find((host) => !isAllowedHostPattern(host));
       if (invalid !== undefined) {

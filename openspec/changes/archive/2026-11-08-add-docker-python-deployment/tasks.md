@@ -13,4 +13,4 @@
 - [x] Confirm the updated exact-image integration checks in CI.
 
 ## First release verification (after merge)
-- [ ] Verify first actual release publication and anonymous GHCR access after merge.
+- [x] Verify first actual release publication and anonymous GHCR access after merge (v0.61.0: release run green, anonymous manifest pull 200, 2026-11-08).

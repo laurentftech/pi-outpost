@@ -807,7 +807,11 @@ export function routeWire(edge: DrawioCell, geometry: PageGeometry): WireRoute |
       const perimeter = style[`${prefix}Perimeter`] === undefined ? true : Boolean(Number(style[`${prefix}Perimeter`]));
       const dx = number(style, `${prefix}Dx`, 0);
       const dy = number(style, `${prefix}Dy`, 0);
-      let point = { x: terminal.box.x + fx * terminal.box.width + dx, y: terminal.box.y + fy * terminal.box.height + dy };
+      // mxGraph.getConnectionPoint places the point on the perimeter bounds: the box grown by
+      // the shape's perimeterSpacing (mxGraphView.getPerimeterBounds), not the box itself.
+      const spacing = number(terminal.style, "perimeterSpacing", 0);
+      const bounds = { x: terminal.box.x - spacing, y: terminal.box.y - spacing, width: terminal.box.width + 2 * spacing, height: terminal.box.height + 2 * spacing };
+      let point = { x: bounds.x + fx * bounds.width + dx, y: bounds.y + fy * bounds.height + dy };
       if (perimeter) point = perimeterPoint(terminal, point, false, 0);
       return point;
     }

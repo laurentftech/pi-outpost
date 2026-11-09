@@ -1,17 +1,17 @@
 /**
  * The only way out of a confined shell under `sandbox.allowedHosts`.
  *
- * MXC's process container runs each command with outbound traffic denied and this proxy as
- * its `runtimeConfig.networkProxy`: MXC sets `HTTPS_PROXY` and `HTTP_PROXY` in the command's
- * environment, curl, git and npm follow them, and a direct connection is refused by the
- * sandbox. The proxy relays a `CONNECT`, or a plain HTTP request, to a listed host and answers
+ * The runner runs each command with outbound traffic denied and this proxy as its only way out:
+ * MXC as its `runtimeConfig.networkProxy`, setting `HTTPS_PROXY` and `HTTP_PROXY` itself;
+ * Seatbelt and landstrip with the proxy's port open and those variables set by pi-outpost.
+ * curl, git and npm follow them, and a direct connection is refused by the sandbox. The proxy relays a `CONNECT`, or a plain HTTP request, to a listed host and answers
  * anything else `403`, with the host and the key in the status line, so the model can tell the
  * user what to add rather than retry.
  *
  * The host is the boundary, not the port: a listed host is reachable on any port.
  */
 import { createServer, request as httpRequest, type IncomingMessage, type Server } from "node:http";
-import { connect, type Socket } from "node:net";
+import { connect, createServer as createNetServer, type Server as NetServer, type Socket } from "node:net";
 
 const HOST_LABEL = /^(?!-)[a-z0-9-]{1,63}(?<!-)$/i;
 
@@ -151,13 +151,10 @@ export async function startEgressProxy(options: EgressProxyOptions): Promise<Egr
     sockets.add(socket);
     socket.on("close", () => sockets.delete(socket));
   });
-  await new Promise<void>((resolve, reject) => {
-    server.once("error", reject);
-    server.listen(0, "127.0.0.1", () => resolve());
-  });
+  const { port, guard } = await listenOnLoopback(server);
   // A server that only serves its own confined commands: it never keeps the process alive.
   server.unref();
-  const { port } = server.address() as { port: number };
+  guard?.unref();
   return {
     url: `http://127.0.0.1:${port}`,
     watchRefusals: (listener) => {
@@ -167,9 +164,44 @@ export async function startEgressProxy(options: EgressProxyOptions): Promise<Egr
     close: () =>
       new Promise<void>((resolve) => {
         for (const socket of sockets) socket.destroy();
+        guard?.close();
         server.close(() => resolve());
       }),
   };
+}
+
+const LOOPBACK_ATTEMPTS = 16;
+
+/**
+ * Listen on `127.0.0.1` and hold the same port on `[::1]`, serving both.
+ *
+ * Some runners open the proxy's port by its number on every loopback address: landstrip lets a
+ * command reach `127.0.0.2:<port>` and `[::1]:<port>` as well as `127.0.0.1:<port>`. A service
+ * of the host listening on `[::1]` with the proxy's number would then be reachable from inside.
+ * Holding that address too keeps the number the proxy's own; a port already taken there is given
+ * up for another. Without IPv6 nothing can listen on `[::1]`, and the proxy keeps `127.0.0.1`
+ * alone. The rest of `127.0.0.0/8` cannot be held this way: see `docs/sandboxing.md`.
+ */
+async function listenOnLoopback(server: Server): Promise<{ port: number; guard?: NetServer }> {
+  for (let attempt = 1; ; attempt++) {
+    await new Promise<void>((resolve, reject) => {
+      server.once("error", reject);
+      server.listen(0, "127.0.0.1", () => {
+        server.off("error", reject);
+        resolve();
+      });
+    });
+    const { port } = server.address() as { port: number };
+    const guard = createNetServer((socket) => server.emit("connection", socket));
+    const outcome = await new Promise<"held" | "taken" | "unavailable">((resolve) => {
+      guard.once("error", (error: NodeJS.ErrnoException) => resolve(error.code === "EADDRINUSE" ? "taken" : "unavailable"));
+      guard.listen({ port, host: "::1", ipv6Only: true }, () => resolve("held"));
+    });
+    if (outcome === "held") return { port, guard };
+    if (outcome === "unavailable") return { port };
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+    if (attempt === LOOPBACK_ATTEMPTS) throw new Error(`no port free on both 127.0.0.1 and [::1] after ${LOOPBACK_ATTEMPTS} attempts`);
+  }
 }
 
 const shared = new Map<string, Promise<EgressProxy>>();

@@ -4,7 +4,8 @@
  * `sandboxGrantsReal.test.ts` drives the confined bash operations directly; this drives what wires
  * them — `asksAboutHosts`, the broker, the `connection` grant request a client answers — under the
  * runner the environment names: Seatbelt (`SEATBELT_EXEC`) or MXC on macOS (`MXC_MAC_EXEC`) in CI's
- * `mxc-macos` job, MXC on Linux (`MXC_LXC_EXEC` with `MXC_LINUX_EXPECT=confined`) in `mxc-linux`.
+ * `mxc-macos` job, MXC on Linux (`MXC_LXC_EXEC` with `MXC_LINUX_EXPECT=confined`) in `mxc-linux`, and
+ * landstrip (`LANDSTRIP_BIN`, Linux) in CI's Linux job.
  * A provider makes the agent run `curl` against a host `sandbox.allowedHosts` does not list.
  */
 import assert from "node:assert/strict";
@@ -20,8 +21,9 @@ const MODEL = { provider: "bash-call-test", id: "bash-call-test" };
 const RUNNER =
   process.env.SEATBELT_EXEC ??
   process.env.MXC_MAC_EXEC ??
-  (process.env.MXC_LINUX_EXPECT === "confined" ? process.env.MXC_LXC_EXEC : undefined);
-const skip = !RUNNER ? "SEATBELT_EXEC, MXC_MAC_EXEC or MXC_LXC_EXEC (with MXC_LINUX_EXPECT=confined) names no runner" : false;
+  (process.env.MXC_LINUX_EXPECT === "confined" ? process.env.MXC_LXC_EXEC : undefined) ??
+  (process.platform === "linux" ? process.env.LANDSTRIP_BIN : undefined);
+const skip = !RUNNER ? "SEATBELT_EXEC, MXC_MAC_EXEC, MXC_LXC_EXEC (with MXC_LINUX_EXPECT=confined) or LANDSTRIP_BIN (Linux) names no runner" : false;
 
 async function waitForFile(file, timeoutMs = 90_000) {
   const deadline = Date.now() + timeoutMs;

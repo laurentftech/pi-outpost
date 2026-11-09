@@ -12,7 +12,7 @@ import path from "node:path";
 import { after, before, describe, test } from "node:test";
 import { confinedBashOperations, POWERSHELL_SCRIPT_ARGS, powerShellScript } from "../src/confinedBash.ts";
 import { shellIsConfined } from "../src/confinementStatus.ts";
-import { canaryScript, expectedAttempts, prepareBait, readCanary, runCanary, secretVariables, serverEnvironment } from "../src/confinementCanary.ts";
+import { canaryScript, expectedAttempts, prepareBait, readCanary, runCanary, secretVariables } from "../src/confinementCanary.ts";
 
 const base = { runner: "/r", checkedAt: "2026-10-18T00:00:00.000Z", notChecked: [] };
 
@@ -222,9 +222,11 @@ describe("a real runner", { skip: !REAL && "SEATBELT_EXEC (macOS) or MXC_LXC_EXE
 
 const LANDSTRIP = process.platform === "linux" ? process.env.LANDSTRIP_BIN : undefined;
 
-// openlore: scenario=AReadableEnvironmentWithoutSecretsKeepsTheLock spec=sandbox-runner-bash
-describe("landstrip, whose commands can read the server's /proc environ", { skip: !LANDSTRIP && "LANDSTRIP_BIN is not set (CI's Linux job sets it)" }, () => {
-  test("the server's process environment reads as readable, and the verdict follows what it holds", async () => {
+// landstrip 0.19 left /proc/<pid>/environ readable: the gap AReadableEnvironmentWithoutSecretsKeepsTheLock
+// judges, covered above against a canary that reports it. From 0.20 landstrip runs a command in a PID
+// namespace of its own, with its own procfs, so the server's process is out of sight (CI pins 0.20.26).
+describe("landstrip, which hides the server's process", { skip: !LANDSTRIP && "LANDSTRIP_BIN is not set (CI's Linux job sets it)" }, () => {
+  test("every attempt is refused, the server's process environment included", async () => {
     const dir = await mkdtemp(path.join(tmpdir(), "canary-landstrip-"));
     const root = path.join(dir, "app");
     const agentDir = path.join(dir, "agent");
@@ -238,14 +240,9 @@ describe("landstrip, whose commands can read the server's /proc environ", { skip
         return output;
       };
       const verdict = await runCanary({ runner: LANDSTRIP!, agentDir, root, powerShell: false, proxied: false, exec });
-      const secrets = secretVariables(await serverEnvironment());
-      if (secrets.length === 0) {
-        assert.equal(verdict.state, "verified", JSON.stringify(verdict));
-        assert.equal(verdict.state === "verified" && verdict.environmentReadable, true, "landstrip leaves /proc/<pid>/environ readable");
-      } else {
-        assert.equal(verdict.state, "partial", JSON.stringify(verdict));
-        assert.deepEqual(verdict.state === "partial" && verdict.exposed, secrets);
-      }
+      assert.equal(verdict.state, "verified", JSON.stringify(verdict));
+      assert.ok(verdict.state === "verified" && verdict.refused.includes("server-process-environment"), JSON.stringify(verdict));
+      assert.ok(verdict.state === "verified" && !verdict.environmentReadable, "landstrip left the server's /proc/<pid>/environ readable");
     } finally {
       await rm(dir, { recursive: true, force: true });
     }

@@ -53,12 +53,15 @@ export interface GrantContext {
  * Admitted by kind, each because its proof runs in CI: MXC on Windows (`confinedNetworkMxc.test.ts`,
  * "another command's proxy is not a way out"), MXC on Linux and macOS and Seatbelt
  * (`sandboxGrantsReal.test.ts`, "another session's proxy under …", in the `mxc-linux` and
- * `mxc-macos` jobs). Any other runner — one added later included — is refused until its own proof
+ * `mxc-macos` jobs), and landstrip on Linux (the same check, in CI's Linux job). landstrip is
+ * known by its file name: `runnerKind` calls every runner it does not know landstrip, and those are
+ * not proven. Any other runner — one added later included — is refused until its own proof
  * exists: an unlisted host is then refused, as the list says.
  */
-export function hostGrantsRefusal(runner: string): string | undefined {
+export function hostGrantsRefusal(runner: string, platform: NodeJS.Platform = process.platform): string | undefined {
   const kind = runnerKind(runner);
   if (kind === "mxc" || kind === "seatbelt") return undefined;
+  if (platform === "linux" && path.posix.basename(runner) === "landstrip") return undefined;
   return `host grants are not yet proven under ${path.basename(runner)}: a command there must be shown to reach no other proxy on the loopback`;
 }
 

@@ -7,6 +7,39 @@ version you had and the one you run now, without going online.
 Releases before 0.41.0 are described on
 [GitHub Releases](https://github.com/laurentftech/pi-outpost/releases).
 
+## [0.62.0] - 2026-11-08
+
+### Added
+
+- **Host questions under landstrip on Linux.** `sandbox.allowedHosts` now works with
+  landstrip: the agent's shell reaches the listed hosts through the server's proxy, and a
+  connection to any other host asks you, as under MXC and Seatbelt. An empty list asks about
+  every host. ([#468](https://github.com/laurentftech/pi-outpost/pull/468))
+
+### Changed
+
+- **Docker: the agent's network asks you by default.** The image used to close the agent's
+  network unless the operator opted in; it now reaches hosts only through the server's proxy,
+  which asks you about each one. Existing volumes get `sandbox.allowedHosts: []` at startup.
+  `ALLOW_AGENT_NETWORK=0` now refuses all networking, the proxy included, and `1` follows
+  your configuration as before. The image ships landstrip 0.20.26, which also hides the
+  server's processes from the agent's commands. ([#468](https://github.com/laurentftech/pi-outpost/pull/468))
+- **Remote servers require encrypted transport.** A server listening beyond the loopback
+  now refuses plain HTTP: configure a certificate for native HTTPS/WSS, or keep it on the
+  loopback behind SSH or a TLS proxy. `server.allowInsecureHttp` (or
+  `PI_OUTPOST_ALLOW_INSECURE_HTTP=1`) keeps plain HTTP for a hop you protect otherwise, with
+  a warning. Loopback HTTP is unchanged. ([#463](https://github.com/laurentftech/pi-outpost/pull/463))
+
+### Fixed
+
+- Under landstrip, a refused operation is told to the agent in words instead of landstrip's
+  JSON report, so a command that survived the refusal is no longer taken for a failed one;
+  the startup line now says an empty host list asks about every host.
+  ([#469](https://github.com/laurentftech/pi-outpost/pull/469))
+- draw.io wires with a fixed end on a shape that has perimeter spacing end where draw.io
+  draws them, and `drawio_check` judges those routes as drawn.
+  ([#467](https://github.com/laurentftech/pi-outpost/pull/467))
+
 ## [0.61.0] - 2026-11-08
 
 ### Added
