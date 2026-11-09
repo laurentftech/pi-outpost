@@ -12,7 +12,7 @@ import path from "node:path";
 import { after, before, describe, test } from "node:test";
 import { confinedBashOperations, POWERSHELL_SCRIPT_ARGS, powerShellScript } from "../src/confinedBash.ts";
 import { shellIsConfined } from "../src/confinementStatus.ts";
-import { canaryScript, expectedAttempts, prepareBait, readCanary, runCanary, secretVariables, serverEnvironment } from "../src/confinementCanary.ts";
+import { canaryScript, expectedAttempts, prepareBait, readCanary, runCanary, secretVariables } from "../src/confinementCanary.ts";
 
 const base = { runner: "/r", checkedAt: "2026-10-18T00:00:00.000Z", notChecked: [] };
 
