@@ -15,6 +15,7 @@
  */
 
 import { PROJECT_MODEL_TOOL } from "./projectModelTool.ts";
+import { WORK_PLAN_EXTENDED_TOOL } from "./workPlanTool.ts";
 
 /**
  * The tools that make, update and check a PowerPoint deck. Published together: each is
@@ -74,7 +75,15 @@ export const DOCUMENT_TOOLS = [...new Set(Object.values(EXTRACTORS).flat()), WOR
  */
 export const TOOL_SEARCH_TOOL = "tool_search";
 
-/** The tools registered `deferred`: on-demand document, diagram, poster and structure tools. */
+/**
+ * The tools registered `deferred`: on-demand document, diagram, poster and structure tools,
+ * and the extended half of the Work Plan.
+ *
+ * Every tool the server withholds belongs here. One withheld through the active set alone
+ * — registered `direct`, merely switched off — is out of `tool_search`'s reach, which only
+ * looks at `deferred` and `codemode` tools: once withdrawn, the agent searches for it and
+ * finds nothing. `work_plan_extended` was exactly that until it joined the list.
+ */
 export const DEFERRED_TOOLS = [
   ...DOCUMENT_TOOLS,
   PROJECT_MODEL_TOOL,
@@ -84,6 +93,7 @@ export const DEFERRED_TOOLS = [
   "compare_timelines",
   "write_structure_figure",
   "write_structure_table",
+  WORK_PLAN_EXTENDED_TOOL,
 ];
 
 /**
@@ -96,10 +106,12 @@ export const DEFERRED_TOOLS = [
  * on demand, or the search loading it — declares it as before.
  *
  * Applied where the definitions are handed to a session, in both runtimes, so that the
- * definitions themselves stay what their own modules say.
+ * definitions themselves stay what their own modules say. `deferred` narrows the list for
+ * a runtime that cannot publish a tool on its own (the RPC child keeps the extended Work
+ * Plan tool declared, as it always has).
  */
-export function deferOnDemandTools<T extends { name: string }>(tools: T[]): T[] {
-  return tools.map((tool) => (DEFERRED_TOOLS.includes(tool.name) ? { ...tool, exposure: "deferred" as const } : tool));
+export function deferOnDemandTools<T extends { name: string }>(tools: T[], deferred: readonly string[] = DEFERRED_TOOLS): T[] {
+  return tools.map((tool) => (deferred.includes(tool.name) ? { ...tool, exposure: "deferred" as const } : tool));
 }
 
 /** The tools a document of this extension calls for on this platform. */

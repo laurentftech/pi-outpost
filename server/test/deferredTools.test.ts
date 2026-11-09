@@ -68,6 +68,7 @@ describe("deferOnDemandTools", () => {
       "compare_timelines",
       "write_structure_figure",
       "write_structure_table",
+      "work_plan_extended",
     ]) {
       assert.ok(DEFERRED_TOOLS.includes(name), `${name} is in the deferred inventory`);
       assert.equal(deferred.find((tool) => tool.name === name)?.exposure, "deferred", `${name} is registered deferred`);
@@ -91,6 +92,9 @@ describe("A user's words find each kind", () => {
     ["compare two planning timelines", "compare_timelines"],
     ["draw a structured exchange graph as an SVG figure", "write_structure_figure"],
     ["write a structured exchange table as Markdown", "write_structure_table"],
+    // What a model looks for once the extended half has been withdrawn.
+    ["work plan dependencies evidence", "work_plan_extended"],
+    ["set a task's dependencies", "work_plan_extended"],
   ] as const) {
     for (const platform of ["linux", "win32"] as const) {
       test(`"${query}" loads ${expected} (${platform} inventory)`, async () => {
