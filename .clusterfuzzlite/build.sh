@@ -1,5 +1,6 @@
 #!/bin/bash -eu
-# Build pi-outpost's fuzz targets (fuzz/) into $OUT, as ClusterFuzzLite and OSS-Fuzz run them.
+# Build pi-outpost's fuzz targets (fuzz/) into $OUT, as OSS-Fuzz runs them. The repository's own
+# workflows run Jazzer.js directly (fuzz/run.mjs): ClusterFuzzLite's actions cannot fuzz JavaScript.
 # See docs/development.md § Fuzzing.
 
 # Install and bundle with the build Node and the pinned npm, as CI does (.github/actions/setup-npm).

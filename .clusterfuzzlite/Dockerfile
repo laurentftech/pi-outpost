@@ -1,4 +1,4 @@
-# ClusterFuzzLite build image for fuzz/ (docs/development.md § Fuzzing). OSS-Fuzz's JavaScript
+# OSS-Fuzz / ClusterFuzzLite build image for fuzz/ (docs/development.md § Fuzzing). OSS-Fuzz's JavaScript
 # builder, pinned by digest; Dependabot refreshes it.
 FROM gcr.io/oss-fuzz-base/base-builder-javascript@sha256:fff2fe5f532ffcd3fcea7c54cc1db18951b364b64aa37c415348ce8ba17cde34
 
