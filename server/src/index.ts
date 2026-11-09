@@ -2177,7 +2177,7 @@ function restoreDocumentTools(workspace: Workspace): void {
  * and at the end of every turn, to catch the next path nobody has thought of yet.
  */
 function reassertOnDemandTools(workspace: Workspace): void {
-  for (const tool of [...DEFERRED_TOOLS, WORK_PLAN_EXTENDED_TOOL]) {
+  for (const tool of DEFERRED_TOOLS) {
     workspace.agent.setToolPublished(tool, workspace.documentToolIdleTurns.has(tool));
   }
 }

@@ -185,9 +185,9 @@ describe("createPiOutpostTools", () => {
       "present_structure",
       "present_project_model",
       "work_plan",
-      // Registered, not necessarily published: the server withholds this one from a
-      // session with no plan through the SDK's active-tool set. A child registers it
-      // and publishes it always, which is the stated cost of that dialect.
+      // Registered, not necessarily published: the server registers this one deferred and
+      // publishes it while a plan is worked. A child registers it declared and keeps it
+      // so, which is the stated cost of that dialect.
       "work_plan_extended",
     ]);
   });
@@ -266,10 +266,14 @@ describe("default export (extension entry)", () => {
       assert.deepEqual(events.sort(), ["session_shutdown", "session_start", "session_start", "tool_call", "tool_execution_end", "tool_execution_start", "tool_result"]);
       assert.deepEqual(commands, ["btw"]);
       // The on-demand tools are registered deferred: the child cannot withdraw them, so
-      // they stay undeclared until the agent loads one with tool_search.
+      // they stay undeclared until the agent loads one with tool_search. All but the
+      // extended Work Plan tool, which the server would publish when a plan appears and
+      // nothing in a child can: it stays declared there, as it always was.
       for (const tool of registered) {
-        assert.equal((tool as { exposure?: string }).exposure, DEFERRED_TOOLS.includes(tool.name) ? "deferred" : undefined, tool.name);
+        const deferred = DEFERRED_TOOLS.includes(tool.name) && tool.name !== "work_plan_extended";
+        assert.equal((tool as { exposure?: string }).exposure, deferred ? "deferred" : undefined, tool.name);
       }
+      assert.equal((registered.find((tool) => tool.name === "work_plan_extended") as { exposure?: string }).exposure, undefined);
       const ctx = { ui: { setWidget: () => {} } };
       for (const handler of handlers.get("session_start")!) handler({ type: "session_start" }, ctx);
       assert.deepEqual(active, ["read", "tool_search"], "tool_search is switched on");
