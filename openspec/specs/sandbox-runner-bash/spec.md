@@ -321,12 +321,18 @@ other service on the host's loopback, SHALL be unreachable from a command.
 ### Requirement: AnAllowlistNeedsMxcWithoutAnImage
 
 `sandbox.allowedHosts` SHALL be refused at load, with a reason naming the key and what it needs, unless
-MXC is the `bashRunner` and no `bashImage` is set: no other backend enforces it here.
+the `bashRunner` is MXC without a `bashImage`, Seatbelt, or landstrip on Linux: no other backend
+enforces it here.
 
 #### Scenario: AnAllowlistNeedsMxcWithoutAnImage
-- **GIVEN** `sandbox.allowedHosts` with no runner, with landstrip as `bashRunner`, or with `bashImage`
+- **GIVEN** `sandbox.allowedHosts` with no runner, with landstrip as `bashRunner` on Windows, or with `bashImage`
 - **WHEN** the configuration is loaded
 - **THEN** it is refused with a reason naming the key and what it needs
+
+#### Scenario: AnAllowlistIsKeptUnderLandstripOnLinux
+- **GIVEN** `sandbox.allowedHosts` naming `Registry.npmjs.org`, and landstrip as `bashRunner` on Linux
+- **WHEN** the configuration is loaded
+- **THEN** it is kept, lower-cased, and the configuration loads
 
 ### Requirement: AConfinedShellRunsATurnsCommandsInOrder
 
@@ -423,10 +429,11 @@ attempt, whether it was refused; any attempt that succeeded SHALL be a failed ch
 
 ### Requirement: AReadableServerEnvironmentIsJudgedByWhatItHolds
 
-When the only attempt that got through is reading the server's process environment (the known gap of
-landstrip on Linux), the verdict SHALL depend on what that environment holds: with no secret-looking
-variable, the lock SHALL be shown closed and say the environment is readable but holds no secret; with
-some, it SHALL be shown partly confined, naming those variables and never their values.
+When the only attempt that got through is reading the server's process environment (as under
+landstrip before 0.20 on Linux; 0.20 hides the server's process), the verdict SHALL depend on what
+that environment holds: with no secret-looking variable, the lock SHALL be shown closed and say the
+environment is readable but holds no secret; with some, it SHALL be shown partly confined, naming
+those variables and never their values.
 
 #### Scenario: AReadableEnvironmentWithoutSecretsKeepsTheLock
 - **GIVEN** a runner under which a command can read the server's process environment, and a server environment with no key, token, secret or password
@@ -460,3 +467,48 @@ with a message naming it. A path SHALL be resolved against the configuration's f
 - **GIVEN** `sandbox.bashShell: "pwsh.exe"` and PowerShell 7 on `PATH`
 - **WHEN** the configuration loads, and the agent's shell runs under MXC
 - **THEN** the shell is PowerShell 7 from `PATH`, and the canary finds it confined; a name not on `PATH` stops startup saying so
+
+### Requirement: UnderLandstripOnLinuxTheNetworkFollowsAllowedHosts
+
+Under landstrip on Linux, the agent's shell SHALL keep the network it has today without
+`sandbox.allowedHosts`. With it, the shell SHALL reach only the listed hosts, through the server's proxy.
+Direct IP traffic SHALL be denied, and so SHALL every loopback port but its proxy's, whatever loopback
+address it is reached on.
+
+#### Scenario: UnderLandstripWithoutAnAllowlistTheNetworkIsOpen
+- **GIVEN** `bash` confined by the real landstrip runner on Linux and no `sandbox.allowedHosts`
+- **WHEN** a command fetches a public host
+- **THEN** the host is reached and no proxy variable is set in the command's environment
+
+#### Scenario: UnderLandstripAnAllowedHostIsReachedAndOthersAreRefused
+- **GIVEN** `sandbox.allowedHosts` naming `registry.npmjs.org`, and `bash` confined by the real landstrip runner on Linux
+- **WHEN** a command fetches that host, an unlisted host, and that host again ignoring the proxy, and reaches another service on the loopback
+- **THEN** only the first succeeds, through the proxy, and the output ends with the note naming the unlisted host
+
+#### Scenario: UnderLandstripNoOtherLoopbackAddressReachesAService
+- **GIVEN** the same shell, and a service listening on the host's loopback on a port other than the proxy's
+- **WHEN** a command connects to that service at `127.0.0.1`, at another `127.x` address and at `::1`, and opens a listening socket
+- **THEN** every connection fails without the service's answer, and the listening socket is refused
+
+### Requirement: ALandstripRefusalIsToldInWords
+
+Under landstrip, each refusal landstrip reports on stderr SHALL reach the agent as one line naming
+the operation and its target, saying the sandbox refused it and that the command went on, instead of
+landstrip's JSON. Every other line of the command's output SHALL pass unchanged.
+
+#### Scenario: ALandstripRefusalIsToldInWords
+- **GIVEN** `bash` confined by the real landstrip runner on Linux
+- **WHEN** a command makes a `bind` the sandbox refuses and survives it, and writes beside the root
+- **THEN** its output holds `[sandbox] refused bind [::1]:0` and `[sandbox] refused write <path>`, no landstrip JSON, and its exit status is the command's own
+
+### Requirement: TheStartupLineSaysAnEmptyListAsks
+
+The server's startup line SHALL describe the agent's network as it behaves. With
+`sandbox.allowedHosts` empty, it SHALL say every host is asked about under host questions, and that
+the network is closed without them. With hosts listed, it SHALL name those hosts, and say the others
+are asked about when they are.
+
+#### Scenario: TheStartupLineSaysAnEmptyListAsks
+- **GIVEN** `sandbox.allowedHosts: []` under a runner that takes host questions
+- **WHEN** the server starts
+- **THEN** the sandbox line says every host is asked about, and with `sandbox.grants: "never"` it says the network is closed
