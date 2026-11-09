@@ -334,15 +334,16 @@
     <div class="wrap">
       <div class="hero">
         <span class="eyebrow">Pi Outpost</span>
-        <h1>Self-hosted Web UI for Pi Coding Agent</h1>
+        <h1>Self-hosted Web UI for Pi Coding Agent, sandboxed by default</h1>
         <p>
-          Run Pi from your browser on your own machine or server.
-          Pi Outpost brings conversations, tools, files, Git, and document work into one
-          interface, while keeping the agent and workspace on a machine you control.
+          A self-hosted web interface for the Pi Coding Agent, with project-scoped file access
+          and an operating-system sandbox for its shell from the first run. If confinement
+          cannot be verified, commands are refused — never silently run outside the sandbox.
         </p>
 
         <div class="actions">
           <a class="button primary" href="#install">Get started</a>
+          <a class="button" href="https://github.com/laurentftech/pi-outpost/blob/main/docs/sandboxing.md">How sandboxing works</a>
           <a class="button" href="https://github.com/laurentftech/pi-outpost">View on GitHub</a>
         </div>
       </div>
@@ -381,6 +382,11 @@
           </article>
 
           <article class="feature">
+            <h3>Sandboxed by default</h3>
+            <p>Project-scoped file access and a confined agent shell from the start. If the sandbox cannot be verified, commands are refused instead of running unconfined.</p>
+          </article>
+
+          <article class="feature">
             <h3>Documents</h3>
             <p>Read PDF and Office files, review Word changes, and create or update Word and PowerPoint documents from templates.</p>
           </article>
@@ -402,7 +408,7 @@
 
           <article class="feature">
             <h3>Self-hosted</h3>
-            <p>Run the agent beside your files. File tools follow the configured workspace boundary; shell and extensions need their own controls.</p>
+            <p>Keep the agent and files on your machine. Extensions and MCP servers are outside this sandbox, so review what you install.</p>
           </article>
           
           <article class="feature">
