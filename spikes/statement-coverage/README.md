@@ -81,6 +81,15 @@ node spikes/statement-coverage/benchmark.mjs
 node spikes/statement-coverage/summarize.mjs
 ```
 
+The isolated toolchain pins the latest compatible direct releases: `nyc` 18.0.0,
+`istanbul-lib-instrument` 6.0.3, `source-map-support` 0.5.21, `ts-node` 10.9.2 and
+TypeScript 5.9.3. TypeScript 7.0.2 fails in ts-node's compiler adapter (`fileExists`
+is undefined), so it is not a compatible update yet. `nyc` 18 declares `glob` 13 and
+`minimatch` 10, whose latest releases in those ranges still have npm audit advisories;
+the override scopes patched `glob` 14.0.4 and `minimatch` 11.0.5 to nyc only. The
+fixture suite passes with these versions. Recheck the overrides when nyc updates its
+dependency ranges.
+
 The benchmark defaults to three samples and runs processes sequentially. It never
 launches a browser or sends a model request. The real-server case uses a disposable
 workspace and a fake test token. On Windows its owned stdin allows an exit-time dump
