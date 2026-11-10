@@ -359,7 +359,7 @@ test("the snapshot carries the model's accepted thinking levels, and they follow
   const client = connect(server.wsUrl());
   try {
     const hello = await client.waitFor("hello");
-    assert.deepEqual(hello.thinkingLevels, ["off", "low", "medium", "xhigh"], "sanitised: off ensured, canonical order");
+    assert.deepEqual(hello.thinkingLevels, ["low", "medium", "xhigh"], "sanitised without inventing an unsupported off level");
 
     client.send({ type: "set_model", provider: "local", id: "other" });
     const changed = await client.waitFor("model_changed");

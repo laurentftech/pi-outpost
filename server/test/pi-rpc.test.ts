@@ -328,8 +328,8 @@ describe("RpcRuntimeStarts", () => {
     const { runtime } = await startFake({
       commands_: { get_available_thinking_levels: { data: { levels: ["low", "medium", "xhigh", "bogus"] } } },
     });
-    // sanitised: unknown name dropped, canonical order, `off` ensured
-    assert.deepEqual(runtime.snapshot().thinkingLevels, ["off", "low", "medium", "xhigh"]);
+    // Unknown names are dropped; an unreported off level must not be invented.
+    assert.deepEqual(runtime.snapshot().thinkingLevels, ["low", "medium", "xhigh"]);
   });
 
   test("keeps what the catalog says a model reasons when set_model does not repeat it", async () => {

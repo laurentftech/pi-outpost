@@ -618,15 +618,22 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
     { env: { ...onlyOneFakeProvider(), FAKE_PI_RPC_CONFIG: progressFakeConfig } },
   );
 
-  // A seventh server whose model accepts a proper subset of the thinking levels —
-  // no `high` — so the model-aware slider can be read back.
+  // Explicit model capabilities for the thinking slider: a gapped subset and
+  // all six stops, independent of the SDK's changing provider defaults.
   const thinkingRoot = await makeWorkspace({ "readme.md": "# thinking\n" });
   const thinkingFakeConfig = path.join(thinkingRoot, "fake-rpc.json");
   await writeFile(
     thinkingFakeConfig,
     JSON.stringify({
       state: { sessionId: "thinking-1", model: { provider: "local", id: "qwen3.8", name: "Qwen3.8", reasoning: true } },
-      commands_: { get_available_thinking_levels: { data: { levels: ["low", "medium", "xhigh"] } } },
+      models: [
+        { provider: "local", id: "qwen3.8", name: "Qwen3.8", reasoning: true },
+        { provider: "local", id: "six-levels", name: "Six levels", reasoning: true },
+      ],
+      thinkingLevelsByModel: {
+        "local/qwen3.8": ["off", "low", "medium", "xhigh"],
+        "local/six-levels": ["off", "minimal", "low", "medium", "high", "xhigh"],
+      },
     }),
   );
   const thinking = await startServer(

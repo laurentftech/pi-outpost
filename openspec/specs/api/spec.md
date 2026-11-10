@@ -65,6 +65,11 @@ Server messages carrying workspace content SHALL reach only the connections boun
 - **WHEN** a client connects
 - **THEN** the snapshot carries that ordered subset
 
+#### Scenario: RuntimeThinkingFloorIsPreserved
+- **GIVEN** a model whose runtime reports `low`, `medium`, `high` and `xhigh`, without `off`
+- **WHEN** a client receives the session snapshot
+- **THEN** its accepted thinking levels contain exactly that ordered subset, without adding `off`
+
 #### Scenario: TheAcceptedLevelsFollowAModelChange
 - **GIVEN** a connected client
 - **WHEN** the model is changed to one that accepts a different subset of thinking levels
