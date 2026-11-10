@@ -124,7 +124,12 @@ test("a version changed behind the server's back needs a restart too", async (t)
   // The startup listing, settled — already received or still to come. `next()` would
   // accept only a list sent after it is armed, and when the startup check's broadcasts
   // have already landed no other list comes until the check below is sent.
-  await client.waitFor((m) => m.type === "pi_packages" && m.packages[0]?.check?.state !== "checking", 60_000);
+  //
+  // Nor only a `pi_packages` message: when the check has finished before this client
+  // connected — a slow runner, or an instrumented one — the settled list is in `hello`
+  // and nothing follows it. Waiting for a broadcast then waited out the full 60 s.
+  const listOf = (m) => (m.type === "pi_packages" ? m.packages : m.type === "hello" ? m.piPackages : undefined);
+  await client.waitFor((m) => listOf(m)?.length > 0 && listOf(m)[0].check?.state !== "checking", 60_000);
   const manifest = path.join(agentDir, "npm", "node_modules", NAME, "package.json");
   const edited = JSON.parse(await readFile(manifest, "utf8"));
   await writeFile(manifest, JSON.stringify({ ...edited, version: "1.0.1" }));
