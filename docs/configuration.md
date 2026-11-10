@@ -492,6 +492,12 @@ color-scheme changes immediately; the browser remembers the selected preference.
 pi SDK session inside this process. `rpc` supervises a `pi --mode rpc` child — to match an
 existing pi installation, or to isolate a crash.
 
+Pi 1.5.1 defaults to `"cacheWarming": "idle"`: for eligible prompt caches it can send
+refresh requests between agent runs for up to 30 minutes when the refresh is expected
+to pay for itself. These provider requests can be billed. Set `cacheWarming` in
+`<agentDir>/settings.json`, Pi's global settings: `"streaming"` retains the previous
+behavior, and `"off"` disables warming. See [Pi's settings](https://github.com/earendil-works/pi/blob/v1.5.1/packages/coding-agent/docs/settings.md#model-and-thinking).
+
 With extensions enabled, the embedded session loads Pi's built-in `codemode`, `tool_search`
 and MCP extensions too. Their activation follows Pi's settings and MCP configuration: add
 `"defaultTools": ["+codemode", "+tool_search"]` to `~/.pi/agent/settings.json` to switch them
