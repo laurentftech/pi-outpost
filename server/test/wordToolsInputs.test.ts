@@ -16,6 +16,7 @@ import { before, describe, test } from "node:test";
 import { createDocument } from "@pi-outpost/office/docxBuild.ts";
 import { readWordPackage } from "@pi-outpost/office/docxTemplate.ts";
 import { readAllZipEntries } from "@pi-outpost/office/zip.ts";
+import type { PictureSource, ReferencedImage } from "@pi-outpost/shared/docx";
 import { realResolve } from "../src/sandbox.ts";
 import {
   createDocxCreateToolDefinition,
@@ -35,6 +36,18 @@ async function call(tool: Tool, params: Record<string, unknown>): Promise<string
 const unzip = (bytes: Buffer) => readAllZipEntries(bytes, { maxEntries: 1000, maxInflatedBytes: 64 * 1024 * 1024, maxTotalBytes: 256 * 1024 * 1024 });
 const documentXml = async (file: string) => unzip(await readFile(file)).get("word/document.xml")!.toString("utf8");
 const exists = (file: string) => readFile(file).then(() => true, () => false);
+
+/** The type leaves both optional; sandboxPictures always provides them, and that is checked. */
+function loaders(source: PictureSource): Required<Pick<PictureSource, "imageKey" | "loadImage">> {
+  assert.ok(source.imageKey !== undefined && source.loadImage !== undefined, "sandboxPictures provides imageKey and loadImage");
+  return { imageKey: source.imageKey, loadImage: source.loadImage };
+}
+
+/** A picture that must have loaded as a raster, with its type and size. */
+function raster(image: ReferencedImage | undefined): Extract<ReferencedImage, { kind: "raster" }> {
+  assert.equal(image?.kind, "raster");
+  return image as Extract<ReferencedImage, { kind: "raster" }>;
+}
 
 function png(width: number, height: number): Buffer {
   const chunk = (type: string, data: Buffer) => {
@@ -112,27 +125,27 @@ describe("Word tool inputs", () => {
       await mkdir(folder, { recursive: true });
       await writeFile(path.join(folder, "chart.png"), png(40, 30));
       await writeFile(path.join(folder, "photo.jpeg"), jpeg(64, 48));
-      const pictures = sandboxPictures(options, folder);
+      const pictures = loaders(sandboxPictures(options, folder));
       assert.equal(pictures.imageKey("chart.png"), path.join(folder, "chart.png"));
-      const raster = await pictures.loadImage("chart.png");
-      assert.deepEqual(raster && { kind: raster.kind, type: raster.kind === "raster" ? raster.type : undefined, width: raster.width, height: raster.height }, { kind: "raster", type: "png", width: 40, height: 30 });
-      const photo = await pictures.loadImage("photo.jpeg");
-      assert.equal(photo?.kind === "raster" ? photo.type : undefined, "jpg", "a JPEG is embedded as jpg");
+      const chart = raster(await pictures.loadImage("chart.png"));
+      assert.deepEqual({ type: chart.type, width: chart.width, height: chart.height }, { type: "png", width: 40, height: 30 });
+      const photo = raster(await pictures.loadImage("photo.jpeg"));
+      assert.deepEqual({ type: photo.type, width: photo.width, height: photo.height }, { type: "jpg", width: 64, height: 48 }, "a JPEG is embedded as jpg");
     });
 
     test("a reference is decoded, its query and fragment dropped; one that is not percent-encoded is taken as written", async () => {
       await writeFile(path.join(root, "my chart.png"), png(10, 10));
       await writeFile(path.join(root, "100%.png"), png(12, 12));
-      const pictures = sandboxPictures(options, root);
-      assert.equal((await pictures.loadImage("my%20chart.png?v=2#top"))?.width, 10);
+      const pictures = loaders(sandboxPictures(options, root));
+      assert.equal(raster(await pictures.loadImage("my%20chart.png?v=2#top")).width, 10);
       assert.equal(pictures.imageKey("100%.png"), path.join(root, "100%.png"), "a malformed escape is not an error");
-      assert.equal((await pictures.loadImage("100%.png"))?.width, 12);
+      assert.equal(raster(await pictures.loadImage("100%.png")).width, 12);
     });
 
     test("nothing is fetched or read outside the workspace: a URL, a protocol-relative link, an escape, a missing file and a non-picture are each left out", async () => {
       await writeFile(path.join(outside, "secret.png"), png(5, 5));
       await writeFile(path.join(root, "notes.png"), "this is text, not a picture");
-      const pictures = sandboxPictures(options, root);
+      const pictures = loaders(sandboxPictures(options, root));
       assert.equal(pictures.imageKey("https://example.com/a.png"), undefined);
       assert.equal(await pictures.loadImage("https://example.com/a.png"), undefined);
       assert.equal(await pictures.loadImage("//example.com/a.png"), undefined);
