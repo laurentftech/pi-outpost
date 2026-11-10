@@ -53,7 +53,7 @@ const timings=existsSync(timingsFile)?JSON.parse(readFileSync(timingsFile,'utf8'
 if(!['server','ui','office'].every(name=>timings.some(t=>t.name===name)))errors.push('Missing server/UI/office suite completion records');
 if(timings.some(t=>t.status!==0))errors.push('One or more instrumented suites failed; this is not a passing coverage run');
 const report={commit:execFileSync('git',['rev-parse','HEAD'],{cwd:root,encoding:'utf8'}).trim(),node:process.version,
-  scope:'server/src, shared/src, ui/src and office/src only; other production workspaces, browser suites and worker threads are not instrumented',
+  scope:'server/src, shared/src, ui/src and office/src only; other production workspaces and browser suites are not instrumented',
   tool:'istanbul-lib-instrument 6.0.3, applied to original TypeScript before transpilation',
   collectionIntegrity:errors.length===0,errors,processes,exclusions:TRIAL_EXCLUSIONS,scopes,files,timings};
 writeFileSync(path.join(output,'summary.json'),JSON.stringify(report,null,2));

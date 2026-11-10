@@ -115,8 +115,18 @@ const officeData=collect(path.join(dir,'office'));
 assert.equal(officeData.missing.length,0);
 const zipStream=officeData.map.fileCoverageFor(path.join(root,'office/src/zipStream.ts')).toSummary().statements;
 assert.ok(zipStream.covered>0,'an office test worker credits office/src');
+// Worker threads: a measured process's workers are hooked too, each with its own dump, written
+// before every reply so terminate() loses nothing. mermaidRender runs Mermaid in one.
+const threads=spawnSync(process.execPath,['--import','tsx/esm','--test','test/mermaidRender.test.ts'],{cwd:path.join(root,'office'),
+  env:{...env,SPIKE_TRIAL_DIR:path.join(dir,'threads')},encoding:'utf8',timeout:180000});
+assert.equal(threads.status,0,threads.stdout+'\n'+threads.stderr);
+const threadData=collect(path.join(dir,'threads'));
+assert.deepEqual(threadData.missing,[],'every hooked thread left a dump');
+assert.ok(readdirSync(path.join(dir,'threads','dumps')).some(n=>/^node-\d+-thread-\d+\.json$/.test(n)),'a worker thread has its own dump');
+const worker=threadData.map.fileCoverageFor(path.join(root,'office/src/mermaidWorker.ts')).toSummary().statements;
+assert.ok(worker.covered>0,'code run in a worker thread credits office/src');
 const grace=spawnSync(process.execPath,['--import','tsx/esm','--test','--test-name-pattern=^stop','server/test/coverageRun.test.mjs'],{cwd:root,
   env:{...env,SPIKE_TRIAL_DIR:path.join(dir,'grace')},encoding:'utf8',timeout:120000});
 assert.equal(grace.status,0,grace.stdout+'\n'+grace.stderr);
 await import('./trial-lifecycle-selftest.mjs');
-console.log('Compact dump union, missing/empty/truncated data, unrelated-child gate and real Node test worker passed.');
+console.log('Compact dump union, missing/empty/truncated data, unrelated-child gate, real Node test worker and worker threads passed.');
