@@ -19,6 +19,7 @@ import path from "node:path";
 import process from "node:process";
 import { after, before, describe, test } from "node:test";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { envWithoutCoverageSink } from "./childEnv.mjs";
 
 const SERVER_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const ENTRY = path.join(SERVER_DIR, "src", "index.ts");
@@ -33,8 +34,7 @@ function cli(args, { cwd, input = "", env = {} } = {}) {
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, [`--import=${TSX_LOADER}`, ENTRY, ...args], {
       cwd,
-      env: {
-        ...process.env,
+      env: envWithoutCoverageSink({
         // Never the developer's own configuration, credentials or network.
         PI_OUTPOST_CONFIG: undefined,
         PI_OUTPOST_PROFILE: undefined,
@@ -46,7 +46,7 @@ function cli(args, { cwd, input = "", env = {} } = {}) {
         XDG_CONFIG_HOME: path.join(tmpdir(), `pi-cli-commands-no-xdg-${process.pid}`),
         INIT_CWD: cwd,
         ...env,
-      },
+      }),
       stdio: ["pipe", "pipe", "pipe"],
     });
     let out = "";
