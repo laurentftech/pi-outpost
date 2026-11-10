@@ -125,8 +125,8 @@ remain unchanged; the companion scenario matrix records what this spike proves a
 
 ## Full-suite Linux trial
 
-Once merged, the `Statement coverage experiment` workflow will run daily at 03:00
-Europe/Paris against the default branch. On the spike branch it also runs on matching
+The `Statement coverage experiment` workflow runs daily at 03:00 Europe/Paris against
+the default branch. On the spike branch it also runs on matching
 pushes and manual dispatch. It is not a required PR check and does not alter normal CI.
 Each run publishes a commit-specific report in the workflow summary and an artifact
 retained for 7 days. The successful spike run validated the measurement process;
@@ -148,7 +148,9 @@ Other production workspaces remain outside these scopes and are named as such.
 
 The workflow publishes a dated/commit-specific summary, numerator/denominator for
 statements, branches and functions, per-file data, collection-integrity status and
-suite durations as an artifact. Statement percentages are observations; 80/90% are
+suite durations as an artifact. The summary itself also lists, per scope, the 15 files
+with the most uncovered statements (then branches) (`trial-gaps.mjs`), so where tests
+would raise the figure is readable from the run page without the artifact. Statement percentages are observations; 80/90% are
 not blocking adoption thresholds for this exploratory run. Test failures or invalid
 collection fail the workflow and prevent treating its report as a passing result.
 

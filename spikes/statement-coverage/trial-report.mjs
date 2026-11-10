@@ -7,6 +7,7 @@ import coverageLib from 'istanbul-lib-coverage';
 import { collect } from './trial-store.mjs';
 import { instrument } from './instrument.mjs';
 import { trialScope,TRIAL_EXCLUSIONS } from './trial-scope.mjs';
+import { gapsMarkdown } from './trial-gaps.mjs';
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../..');
 const dir=process.env.SPIKE_TRIAL_DIR;
 if(!dir)throw new Error('SPIKE_TRIAL_DIR is required');
@@ -58,7 +59,7 @@ const report={commit:execFileSync('git',['rev-parse','HEAD'],{cwd:root,encoding:
 writeFileSync(path.join(output,'summary.json'),JSON.stringify(report,null,2));
 writeFileSync(path.join(output,'coverage-final.json'),JSON.stringify(map.toJSON()));
 const rows=Object.entries(scopes).map(([name,s])=>`| ${name} | ${s.statements.covered}/${s.statements.total} (${s.statements.pct}%) | ${s.branches.covered}/${s.branches.total} (${s.branches.pct}%) | ${s.functions.covered}/${s.functions.total} (${s.functions.pct}%) |`);
-const markdown=`# Experimental statement coverage\n\nCommit: \`${report.commit}\`; Node ${report.node}.\n\n${report.tool}.\n\nIntegrity: **${report.collectionIntegrity?'PASS':'FAIL'}**; ${processes} measured process/suite dumps.\n\n${report.scope}. A daily report measures the default-branch commit named above; it does not establish coverage for every intervening commit or certify OpenSSF compliance on its own.\n\n| Scope | Statements | Branches | Functions |\n|---|---:|---:|---:|\n${rows.join('\n')}\n\n## Timings\n\n${timings.map(t=>`- ${t.name}: ${(t.ms/1000).toFixed(1)} s, exit ${t.status}`).join('\n')}\n\n## Exclusions\n\n${TRIAL_EXCLUSIONS.map(e=>`- \`${e.pattern}\`: ${e.reason}`).join('\n')}\n\n## Integrity errors\n\n${errors.length?errors.map(e=>'- '+e).join('\n'):'None.'}\n`;
+const markdown=`# Experimental statement coverage\n\nCommit: \`${report.commit}\`; Node ${report.node}.\n\n${report.tool}.\n\nIntegrity: **${report.collectionIntegrity?'PASS':'FAIL'}**; ${processes} measured process/suite dumps.\n\n${report.scope}. A daily report measures the default-branch commit named above; it does not establish coverage for every intervening commit or certify OpenSSF compliance on its own.\n\n| Scope | Statements | Branches | Functions |\n|---|---:|---:|---:|\n${rows.join('\n')}\n\n${gapsMarkdown(files,Object.keys(scopes))}\n\n## Timings\n\n${timings.map(t=>`- ${t.name}: ${(t.ms/1000).toFixed(1)} s, exit ${t.status}`).join('\n')}\n\n## Exclusions\n\n${TRIAL_EXCLUSIONS.map(e=>`- \`${e.pattern}\`: ${e.reason}`).join('\n')}\n\n## Integrity errors\n\n${errors.length?errors.map(e=>'- '+e).join('\n'):'None.'}\n`;
 writeFileSync(path.join(output,'summary.md'),markdown);
 console.log(markdown);
 if(errors.length)process.exitCode=1;
