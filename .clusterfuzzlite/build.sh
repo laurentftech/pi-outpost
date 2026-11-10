@@ -16,7 +16,9 @@ node fuzz/build.mjs
 # compile_javascript_fuzzer copies the project directory into $OUT whole: fuzz/ alone, its
 # node_modules holding Jazzer.js and build/ the bundled targets.
 cp -r fuzz "$SRC/pi-outpost-fuzz"
+# Without --sync, as fuzz/run.mjs explains: that mode never turns the event loop, and what Node
+# frees there — a zlib engine destroyed on damaged data — piles up until the run is out of memory.
 for target in mail zip structured-exchange; do
-  compile_javascript_fuzzer pi-outpost-fuzz "build/$target.js" --sync
+  compile_javascript_fuzzer pi-outpost-fuzz "build/$target.js"
   (cd "fuzz/build/seeds/$target" && zip -q -j "$OUT/${target}_seed_corpus.zip" ./*)
 done

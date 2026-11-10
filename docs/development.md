@@ -303,8 +303,12 @@ locally, and to reproduce a crash with the bundled target:
 node fuzz/build.mjs
 (cd fuzz && npm ci)
 node fuzz/run.mjs 60 mail          # one target for a minute; omit the name for all of them
-npx --prefix fuzz jazzer fuzz/build/mail.js --sync crash-<id>
+npx --prefix fuzz jazzer fuzz/build/mail.js crash-<id>
 ```
+
+The targets run in Jazzer.js's default mode, not `--sync`. Synchronous mode never turns Node's
+event loop, so what Node frees there is never freed: a zlib engine destroyed on damaged data
+piled up until the zip target ran out of memory, in a reader that does not leak.
 
 Jazzer.js runs directly rather than through ClusterFuzzLite's GitHub actions, which cannot fuzz
 JavaScript: their configuration accepts only the `address`, `memory`, `undefined` and `coverage`
