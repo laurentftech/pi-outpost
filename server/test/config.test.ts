@@ -806,8 +806,8 @@ describe("loadConfig — resource path resolution", () => {
       );
       const declared = loadConfig(dir, { config: configPath }).thinkingLevels;
       assert.deepEqual(declared?.[0], { provider: "maison", levels: ["off"] });
-      // Normalised the way a runtime-reported list is: canonical order, `off` ensured
-      assert.deepEqual(declared?.[1], { provider: "maison", id: "big", levels: ["off", "low", "medium"] });
+      // Canonical order, preserving the deployment's declared reasoning floor.
+      assert.deepEqual(declared?.[1], { provider: "maison", id: "big", levels: ["low", "medium"] });
     });
   });
 
@@ -832,7 +832,7 @@ describe("loadConfig — resource path resolution", () => {
         configPath,
         JSON.stringify({ thinkingLevels: [{ provider: "maison", levels: ["low", "ludicrous"] }] }, null, 2),
       );
-      assert.deepEqual(loadConfig(dir, { config: configPath }).thinkingLevels?.[0].levels, ["off", "low"]);
+      assert.deepEqual(loadConfig(dir, { config: configPath }).thinkingLevels?.[0].levels, ["low"]);
     });
   });
 

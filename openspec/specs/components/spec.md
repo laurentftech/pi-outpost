@@ -268,10 +268,16 @@ the server happened to report.
 - **THEN** the corresponding callback is invoked with the requested value
 
 #### Scenario: TheThinkingControlOffersOnlyTheModelsLevels
-- **GIVEN** `ModelBar` is supplied with a current model that accepts `low`, `medium` and `xhigh` but not `high`
+- **GIVEN** `ModelBar` is supplied with a current model that accepts `off`, `low`, `medium` and `xhigh` but not `high`
 - **WHEN** the thinking control is opened
 - **THEN** it presents `off`, `low`, `medium` and `xhigh` as ordered stops and no `high`
 - **AND** selecting the last stop reports `xhigh` through the callback
+
+#### Scenario: AModelRequiringReasoningHasNoOffStop
+- **GIVEN** a model whose accepted thinking levels start at `low` and exclude `off`
+- **WHEN** the thinking control is opened and its lowest stop is selected
+- **THEN** that stop selects `low` and the control offers no `off` stop
+- **AND** switching to a model that accepts `off` restores that model's `off` stop
 
 #### Scenario: TheThinkingControlFallsBackWithoutAList
 - **GIVEN** `ModelBar` is supplied with no accepted-levels list for the current model

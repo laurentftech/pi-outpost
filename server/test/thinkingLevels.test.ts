@@ -10,15 +10,18 @@ import { clampThinkingLevel, normalizeThinkingLevels } from "@pi-outpost/shared"
 describe("normalizeThinkingLevels", () => {
   test("drops names this build does not know and keeps canonical order", () => {
     assert.deepEqual(normalizeThinkingLevels(["xhigh", "low", "medium", "bogus", "max"]), [
-      "off",
       "low",
       "medium",
       "xhigh",
     ]);
   });
 
-  test("ensures off is always a stop, even when the runtime omits it", () => {
-    assert.deepEqual(normalizeThinkingLevels(["low", "medium", "xhigh"]), ["off", "low", "medium", "xhigh"]);
+  test("preserves a model's reasoning floor without inventing off", () => {
+    assert.deepEqual(normalizeThinkingLevels(["low", "medium", "xhigh"]), ["low", "medium", "xhigh"]);
+  });
+
+  test("keeps off available when the model actually reports it", () => {
+    assert.deepEqual(normalizeThinkingLevels(["medium", "off", "low"]), ["off", "low", "medium"]);
   });
 
   test("keeps a genuine off-only set as off-only", () => {
@@ -58,6 +61,7 @@ describe("clampThinkingLevel", () => {
   });
 
   test("steps up only when nothing below is on offer", () => {
+    assert.equal(clampThinkingLevel("off", ["low", "medium", "high"]), "low");
     assert.equal(clampThinkingLevel("minimal", ["high", "xhigh"]), "high");
   });
 

@@ -461,8 +461,11 @@ Declare the answer instead:
 
 An entry without `id` covers every model of that provider; where both could apply, the one
 naming the model wins. Levels are normalised as a runtime-reported list is — unknown names
-dropped, canonical order, `off` always available — and an entry naming no usable level
+dropped, canonical order, no additional levels inserted — and an entry naming no usable level
 fails startup rather than leaving a model nothing can be asked of.
+
+Some models require reasoning: Claude Opus 5.5, for example, requires at least `low` and
+does not offer `off`. Models that support disabling reasoning still offer `off`.
 
 A declaration is **authoritative**: it replaces what the runtime reports, because the
 setting exists precisely for the models the runtime is guessing about. A `set_thinking`
@@ -471,8 +474,9 @@ sends it.
 
 Changing the model **settles** the level on the new model's scale: a session on `high`
 moving to a model that stops at `low` lands on `low`, and one moving to a model that
-accepts no thinking lands on `off` — never a step up, which would spend more effort than
-was asked for. The interface is told what it settled at, so it cannot go on showing a
+accepts no thinking lands on `off`. It steps up only when the new model has no accepted
+level at or below the previous one, landing on that model's lowest level. The interface
+is told what it settled at, so it cannot go on showing a
 level the agent is not using. A model with a single accepted level says so in the control
 rather than offering a slider with nowhere to go.
 
@@ -491,6 +495,12 @@ color-scheme changes immediately; the browser remembers the selected preference.
 `agentRuntime.mode` decides what actually runs the agent. `embedded` (the default) keeps a
 pi SDK session inside this process. `rpc` supervises a `pi --mode rpc` child — to match an
 existing pi installation, or to isolate a crash.
+
+Pi 1.5.1 defaults to `"cacheWarming": "idle"`: for eligible prompt caches it can send
+refresh requests between agent runs for up to 30 minutes when the refresh is expected
+to pay for itself. These provider requests can be billed. Set `cacheWarming` in
+`<agentDir>/settings.json`, Pi's global settings: `"streaming"` retains the previous
+behavior, and `"off"` disables warming. See [Pi's settings](https://github.com/earendil-works/pi/blob/v1.5.1/packages/coding-agent/docs/settings.md#model-and-thinking).
 
 With extensions enabled, the embedded session loads Pi's built-in `codemode`, `tool_search`
 and MCP extensions too. Their activation follows Pi's settings and MCP configuration: add
