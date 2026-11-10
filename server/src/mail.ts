@@ -577,17 +577,31 @@ function parseEntity(entity: Buffer, state: ParseState, depth: number): MimeEnti
     const boundary = contentType.params.boundary;
     if (boundary === undefined || boundary === "") {
       state.notes.push(`a ${mediaType} part declares no boundary; it was read as a single part`);
-      return node;
+      return asSinglePart(node);
     }
     if (depth >= MAX_DEPTH) {
       state.notes.push(`parts nested deeper than ${MAX_DEPTH} were not read`);
       return node;
     }
-    for (const piece of splitMultipart(body, boundary, state)) {
+    const pieces = splitMultipart(body, boundary, state);
+    if (pieces === undefined) {
+      state.notes.push("a multipart part's boundary was never found; it was read as a single part");
+      return asSinglePart(node);
+    }
+    for (const piece of pieces) {
       node.children.push(parseEntity(piece, state, depth + 1));
     }
   }
   return node;
+}
+
+/**
+ * A multipart that cannot be split, read as the text it holds. The note says it was read
+ * as a single part: a multipart leaf is neither a body nor a file, so without this its
+ * text reached no one and the message was reported to carry no body at all.
+ */
+function asSinglePart(node: MimeEntity): MimeEntity {
+  return { ...node, mediaType: "text/plain" };
 }
 
 /**
@@ -596,9 +610,9 @@ function parseEntity(entity: Buffer, state: ParseState, depth: number): MimeEnti
  * Anything before the first delimiter is the preamble and anything after the
  * closing one is the epilogue; neither is a part. A missing closing delimiter — a
  * truncated message — yields the parts that were there, which is what the caller
- * needs from a truncated message.
+ * needs from a truncated message. Undefined when no delimiter appears at all.
  */
-function splitMultipart(body: Buffer, boundary: string, state: ParseState): Buffer[] {
+function splitMultipart(body: Buffer, boundary: string, state: ParseState): Buffer[] | undefined {
   const marker = Buffer.from(`--${boundary}`, "latin1");
   const starts: number[] = [];
   let at = 0;
@@ -610,10 +624,7 @@ function splitMultipart(body: Buffer, boundary: string, state: ParseState): Buff
     if (found === 0 || body[found - 1] === 0x0a) starts.push(found);
     at = found + marker.length;
   }
-  if (starts.length === 0) {
-    state.notes.push("a multipart part's boundary was never found; it was read as a single part");
-    return [];
-  }
+  if (starts.length === 0) return undefined;
 
   const parts: Buffer[] = [];
   for (let index = 0; index < starts.length; index++) {
