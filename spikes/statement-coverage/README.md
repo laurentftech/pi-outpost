@@ -136,7 +136,9 @@ It runs the fixture controls, collector self-tests, then the complete server and
 suites on Node 24/Linux. The Node loader admits only test files and the actual server
 entry point; unrelated eval, agent-fixture and external child entries install no hook
 or collector. Original source maps are stored once and processes write compact hit
-counts. SIGTERM takes a synchronous snapshot before the harness's force-kill fallback;
+counts. Instrumented code is cached for the run, keyed by the instrumenter, path and
+content (`trial-cache.mjs`), and filled before the suites start: re-instrumenting in every
+server process added seconds to each startup, enough to fail the update-check startup test. SIGTERM takes a synchronous snapshot before the harness's force-kill fallback;
 an exit dump supersedes that snapshot. Missing, empty or truncated data invalidates
 the report. Completed suite status records are also required.
 

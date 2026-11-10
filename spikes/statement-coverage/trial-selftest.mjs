@@ -3,10 +3,11 @@ import { spawnSync } from 'node:child_process';
 import { existsSync,mkdirSync,readFileSync,writeFileSync,readdirSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath,pathToFileURL } from 'node:url';
-import { instrument } from './instrument.mjs';
+import { instrument,executable } from './instrument.mjs';
 import { startProcess,dump,collect } from './trial-store.mjs';
 import { largestGaps,gapsMarkdown } from './trial-gaps.mjs';
 import { trialScope } from './trial-scope.mjs';
+import { cachedExecutable,cacheKey } from './trial-cache.mjs';
 {
   // Largest gaps: ranked by uncovered statements, then branches, then path; fully covered files left out.
   const metric=(covered,total)=>({covered,total,pct:total?Math.round(covered/total*10000)/100:100});
@@ -41,6 +42,19 @@ const root=path.resolve(here,'../..');
 const dir=path.join(here,'results',`store-selftest-${Date.now()}`);
 mkdirSync(dir,{recursive:true});
 const file=path.join(here,'fixture.ts');
+{
+  // The instrumentation cache serves exactly what instrumenting computes, computes it once,
+  // and never serves one content's code for another.
+  const cacheDir=path.join(dir,'cache');
+  const first=cachedExecutable(cacheDir,file);
+  assert.equal(first,executable(readFileSync(file,'utf8'),file).code,'cached code is the instrumented code');
+  const entries=readdirSync(path.join(cacheDir,'instrumented'));
+  assert.deepEqual(entries,[`${cacheKey(file,readFileSync(file,'utf8'))}.js`],'one entry, named by the content key, no temporary left');
+  writeFileSync(path.join(cacheDir,'instrumented',entries[0]),'// served from the cache');
+  assert.equal(cachedExecutable(cacheDir,file),'// served from the cache','a second load reads the cache instead of instrumenting again');
+  assert.notEqual(cacheKey(file,readFileSync(file,'utf8')+'\n'),cacheKey(file,readFileSync(file,'utf8')),'changed content, different entry');
+  assert.notEqual(cacheKey(path.join(here,'unloaded.ts'),readFileSync(file,'utf8')),cacheKey(file,readFileSync(file,'utf8')),'same content at another path, different entry');
+}
 const data=instrument(readFileSync(file,'utf8'),file).coverage;
 assert.equal(Object.keys(data.s).length,11);
 data.s['0']=1;

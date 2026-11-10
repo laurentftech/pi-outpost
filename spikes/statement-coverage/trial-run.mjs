@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { mkdirSync,writeFileSync } from 'node:fs';
+import { mkdirSync,readdirSync,writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath,pathToFileURL } from 'node:url';
 const here=path.dirname(fileURLToPath(import.meta.url));
@@ -10,6 +10,16 @@ mkdirSync(dir,{recursive:true});
 const hook=pathToFileURL(path.join(here,'trial-register.mjs')).href;
 const baseEnv={...process.env,NODE_V8_COVERAGE:'',PI_OUTPOST_TEST_COVERAGE_DIR:'',
   SPIKE_TRIAL:'1',SPIKE_TRIAL_DIR:dir,PI_OFFLINE:'1',CI:'true'};
+// Instrument every measured server-side file before any suite starts a server (trial-cache.mjs).
+const { warm }=await import('./trial-cache.mjs');
+const { trialScope }=await import('./trial-scope.mjs');
+const measured=[];
+const walk=(at)=>{for(const entry of readdirSync(at,{withFileTypes:true})){const file=path.join(at,entry.name);
+  if(entry.isDirectory())walk(file);else if(['server','shared','office'].includes(trialScope(file)?.name))measured.push(file);}};
+for(const scope of ['server','shared','office'])walk(path.join(root,scope,'src'));
+const warmStart=performance.now();
+warm(dir,measured);
+console.log(`Instrumented ${measured.length} files in ${((performance.now()-warmStart)/1000).toFixed(1)} s`);
 const timings=[];
 for(const [name,args,cwd=root] of [
   ['server',['server/scripts/test.mjs','--test-concurrency=2']],

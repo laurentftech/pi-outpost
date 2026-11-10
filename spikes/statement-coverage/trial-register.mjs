@@ -12,7 +12,7 @@ const fixture=relative==='spikes/statement-coverage/trial-lifecycle-fixture.mjs'
 const allowed=fixture||relative==='server/src/index.ts'||/^(?:server|office)\/test\/[^/]+\.test\.(?:mjs|ts)$/.test(relative);
 const dir=process.env.SPIKE_TRIAL_DIR;
 if(process.env.SPIKE_TRIAL==='1'&&dir&&allowed){
-  const { executable }=await import('./instrument.mjs');
+  const { cachedExecutable }=await import('./trial-cache.mjs');
   const { startProcess,dump,writeJson }=await import('./trial-store.mjs');
   const id=`node-${process.pid}`;
   let started=false;
@@ -43,7 +43,7 @@ if(process.env.SPIKE_TRIAL==='1'&&dir&&allowed){
     }
     if(!['server','shared','office'].includes(trialScope(file)?.name))return loaded;
     if(!started){startProcess(dir,id,relative,{owner,pid:process.pid,ppid:process.ppid});started=true;trace('started');}
-    return {...loaded,format:'module',source:executable(readFileSync(file,'utf8'),file).code};
+    return {...loaded,format:'module',source:cachedExecutable(dir,file)};
   }});
   const flush=(reason)=>{
     if(!started)return;
