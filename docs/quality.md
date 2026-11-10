@@ -61,7 +61,8 @@ On 8 November 2026 the merged report measured, for lines, branches and functions
 
 The [statement coverage workflow](../.github/workflows/statement-coverage-spike.yml) runs a
 daily Istanbul trial measuring statements and branches over an explicit inventory of
-`server/src`, `shared/src` and `ui/src`, with unloaded files at zero and collection integrity
+`server/src`, `shared/src`, `ui/src` and `office/src` (the Office document parsers and builders,
+measured by this trial only), with unloaded files at zero and collection integrity
 checks for every instrumented test process. Each run publishes a commit-specific summary, which
 lists per scope the files with the most uncovered statements and branches, and a 7-day
 artifact with the full per-file report. This is an experimental report on the default-branch commit, not a

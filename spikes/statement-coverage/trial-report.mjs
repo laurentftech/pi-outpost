@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import coverageLib from 'istanbul-lib-coverage';
 import { collect } from './trial-store.mjs';
 import { instrument } from './instrument.mjs';
-import { trialScope,TRIAL_EXCLUSIONS } from './trial-scope.mjs';
+import { trialScope,TRIAL_EXCLUSIONS,TRIAL_SCOPE_NAMES } from './trial-scope.mjs';
 import { gapsMarkdown } from './trial-gaps.mjs';
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../..');
 const dir=process.env.SPIKE_TRIAL_DIR;
@@ -24,7 +24,7 @@ function walk(at){
     else if(trialScope(file))inventory.push(file);
   }
 }
-for(const scope of ['server','shared','ui'])walk(path.join(root,scope,'src'));
+for(const scope of TRIAL_SCOPE_NAMES)walk(path.join(root,scope,'src'));
 const files=[];
 for(const file of inventory){
   // Runtime dumps are JSON: omit undefined placeholder positions identically on both sides.
@@ -42,7 +42,7 @@ for(const file of inventory){
   files.push({path:path.relative(root,file).split(path.sep).join('/'),scope:trialScope(file).name,summary:map.fileCoverageFor(file).toSummary().toJSON()});
 }
 for(const file of map.files())if(!inventory.includes(file))errors.push(`Measured file outside current inventory: ${file}`);
-const scopes=Object.fromEntries(['server','shared','ui'].map(name=>{
+const scopes=Object.fromEntries(TRIAL_SCOPE_NAMES.map(name=>{
   const group=coverageLib.createCoverageSummary();
   for(const file of files.filter(f=>f.scope===name))group.merge(file.summary);
   return [name,group.toJSON()];
@@ -50,10 +50,10 @@ const scopes=Object.fromEntries(['server','shared','ui'].map(name=>{
 for(const [name,summary] of Object.entries(scopes))if(summary.statements.covered===0)errors.push(`${name}: zero covered instructions`);
 const timingsFile=path.join(dir,'timings.json');
 const timings=existsSync(timingsFile)?JSON.parse(readFileSync(timingsFile,'utf8')):[];
-if(!['server','ui'].every(name=>timings.some(t=>t.name===name)))errors.push('Missing server/UI suite completion records');
+if(!['server','ui','office'].every(name=>timings.some(t=>t.name===name)))errors.push('Missing server/UI/office suite completion records');
 if(timings.some(t=>t.status!==0))errors.push('One or more instrumented suites failed; this is not a passing coverage run');
 const report={commit:execFileSync('git',['rev-parse','HEAD'],{cwd:root,encoding:'utf8'}).trim(),node:process.version,
-  scope:'server/src, shared/src, ui/src only; other production workspaces and browser suites are not instrumented',
+  scope:'server/src, shared/src, ui/src and office/src only; other production workspaces, browser suites and worker threads are not instrumented',
   tool:'istanbul-lib-instrument 6.0.3, applied to original TypeScript before transpilation',
   collectionIntegrity:errors.length===0,errors,processes,exclusions:TRIAL_EXCLUSIONS,scopes,files,timings};
 writeFileSync(path.join(output,'summary.json'),JSON.stringify(report,null,2));

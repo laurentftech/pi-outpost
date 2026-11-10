@@ -6,6 +6,7 @@ import { fileURLToPath,pathToFileURL } from 'node:url';
 import { instrument } from './instrument.mjs';
 import { startProcess,dump,collect } from './trial-store.mjs';
 import { largestGaps,gapsMarkdown } from './trial-gaps.mjs';
+import { trialScope } from './trial-scope.mjs';
 {
   // Largest gaps: ranked by uncovered statements, then branches, then path; fully covered files left out.
   const metric=(covered,total)=>({covered,total,pct:total?Math.round(covered/total*10000)/100:100});
@@ -80,12 +81,26 @@ const reportRun=spawnSync(process.execPath,[path.join(here,'trial-report.mjs')],
   env:{...process.env,NODE_OPTIONS:'',NODE_V8_COVERAGE:'',SPIKE_TRIAL_DIR:path.join(dir,'real')},encoding:'utf8',timeout:120000});
 assert.equal(reportRun.status,1,'a Node-only sample must fail the full three-scope integrity check');
 const report=JSON.parse(readFileSync(path.join(dir,'real/report/summary.json'),'utf8'));
-assert.deepEqual(report.errors,['ui: zero covered instructions','Missing server/UI suite completion records'],'complete inventory must compile with no source drift, but incomplete suites must remain flagged');
+assert.deepEqual(report.errors,['ui: zero covered instructions','office: zero covered instructions','Missing server/UI/office suite completion records'],'complete inventory must compile with no source drift, but incomplete suites must remain flagged');
 assert.ok(report.files.some(f=>f.scope==='ui'&&f.summary.statements.total>0&&f.summary.statements.covered===0),'unloaded UI code counts at zero');
 const summaryMd=readFileSync(path.join(dir,'real/report/summary.md'),'utf8');
 assert.match(summaryMd,/## Largest gaps[\s\S]*### server\n\n\| File \|[\s\S]*### ui\n\n\| File \| [\s\S]*## Timings/,'the summary lists each scope\'s largest gaps from the real per-file report');
 const firstUi=largestGaps(report.files,'ui',1)[0];
 assert.ok(summaryMd.includes(`| \`${firstUi.path}\` | ${firstUi.missedStatements} |`),'the table is the report\'s own per-file data');
+// office/src: a trial-only scope, in the inventory with its files seeded, declarations excluded.
+assert.equal(trialScope(path.join(root,'office/src/zip.ts'))?.name,'office');
+assert.equal(trialScope(path.join(root,'office/src/types.d.ts')),undefined,'a declaration file stays excluded');
+assert.equal(trialScope(path.join(root,'office/test/zipStream.test.ts')),undefined,'office tests are not production code');
+assert.ok(report.files.some(f=>f.path==='office/src/zip.ts'&&f.scope==='office'&&f.summary.statements.total>0),'office files are in the inventory');
+assert.match(summaryMd,/### office\n\n/);
+// The hook admits the office suite's own test workers and credits office/src through them.
+const office=spawnSync(process.execPath,['--import','tsx/esm','--test','test/zipStream.test.ts'],{cwd:path.join(root,'office'),
+  env:{...env,SPIKE_TRIAL_DIR:path.join(dir,'office')},encoding:'utf8',timeout:120000});
+assert.equal(office.status,0,office.stdout+'\n'+office.stderr);
+const officeData=collect(path.join(dir,'office'));
+assert.equal(officeData.missing.length,0);
+const zipStream=officeData.map.fileCoverageFor(path.join(root,'office/src/zipStream.ts')).toSummary().statements;
+assert.ok(zipStream.covered>0,'an office test worker credits office/src');
 const grace=spawnSync(process.execPath,['--import','tsx/esm','--test','--test-name-pattern=^stop','server/test/coverageRun.test.mjs'],{cwd:root,
   env:{...env,SPIKE_TRIAL_DIR:path.join(dir,'grace')},encoding:'utf8',timeout:120000});
 assert.equal(grace.status,0,grace.stdout+'\n'+grace.stderr);

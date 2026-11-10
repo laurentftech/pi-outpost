@@ -140,11 +140,15 @@ counts. SIGTERM takes a synchronous snapshot before the harness's force-kill fal
 an exit dump supersedes that snapshot. Missing, empty or truncated data invalidates
 the report. Completed suite status records are also required.
 
-The report seeds every source file in the three measured scopes at zero and checks
+The report seeds every source file in the measured scopes (`server/src`, `shared/src`,
+`ui/src`, and `office/src`, which only this trial measures) at zero and checks
 the observed statement/function/branch inventory against the original source. It
 reuses central exclusions and additionally names the generated `embedded-web.ts`
 bundle as excluded, because handwritten UI sources are already measured separately.
-Other production workspaces remain outside these scopes and are named as such.
+`office/src` is credited by its own suite (`office/test`, run under the same hook) and by
+every server suite that loads it. Code run in a worker thread (`office/src/mermaidWorker.ts`)
+is not instrumented and counts as uncovered. Other production workspaces remain outside
+these scopes and are named as such.
 
 The workflow publishes a dated/commit-specific summary, numerator/denominator for
 statements, branches and functions, per-file data, collection-integrity status and
