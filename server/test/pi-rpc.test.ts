@@ -805,6 +805,34 @@ describe("RpcProcessFailureIsContained", () => {
     await assert.rejects(runtime.prompt("second"), /record that is not JSON/);
   });
 
+  for (const [what, line, reason] of [
+    ["a JSON value that is not an object", "42", /JSON value that is not an object/],
+    ["a record with no type", '{"id":"x","data":1}', /record with no type/],
+    ["a response nothing can be matched to", '{"type":"response","success":true}', /uncorrelated response for an unknown command/],
+    ["a response to an id never sent", '{"type":"response","id":"never-sent","command":"prompt","success":true}', /response for unknown id never-sent/],
+  ] as const) {
+    test(`fails closed on ${what}, naming the violation`, async () => {
+      const { runtime } = await startFake({ malformedAfter: "prompt", malformedLine: line });
+      const failed = waitForEvent(runtime, (event) => event.type === "runtime_failed");
+      await runtime.prompt("first");
+      const event = await failed;
+      assert.match(event.type === "runtime_failed" ? event.message : "", reason);
+      assert.equal(runtime.ok, false);
+      await assert.rejects(runtime.prompt("second"), reason, "later commands are refused with the same cause");
+    });
+  }
+
+  test("accepts a record ended by CRLF, as a child on Windows may write it", async () => {
+    const { runtime } = await startFake({ malformedAfter: "prompt", malformedLine: '{"type":"extension_error","extensionPath":"crlf","error":"x"}\r' });
+    const seen = waitForEvent(runtime, (event) => event.type === "error");
+    await runtime.prompt("first");
+    const event = await seen;
+    // Accepted as one record, and nothing of the line ending reached the event.
+    assert.equal(event.type === "error" ? event.message : "", "[extension crlf] x");
+    await runtime.prompt("second");
+    assert.equal(runtime.ok, true);
+  });
+
   test("fails closed when the child exits unexpectedly", async () => {
     const { runtime } = await startFake({ exitAfter: "prompt", exitCode: 23 });
     const failed = waitForEvent(runtime, (event) => event.type === "runtime_failed");
