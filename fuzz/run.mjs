@@ -52,9 +52,16 @@ for (const target of targets) {
   mkdirSync(artifacts, { recursive: true });
   console.log(`::group::${target}: ${seconds} s`);
   // The first corpus directory is the one libFuzzer adds new inputs to; the seeds are only read.
+  //
+  // Not `--sync`: that mode calls the target in a loop on the main thread and never yields to the
+  // event loop, so whatever Node releases there never is. zlib is one: an engine that fails on
+  // damaged data is destroyed through `process.nextTick`, and the zip target grew by ~4 KB a run
+  // until libFuzzer stopped it out of memory — a leak the server, whose event loop turns, does not
+  // have. The default mode runs libFuzzer on its own thread and the event loop with it, at about
+  // two thirds of the speed.
   const run = spawnSync(
     process.execPath,
-    [cli, bundle, "--sync", corpus, seeds, "--", `-max_total_time=${seconds}`, `-artifact_prefix=${artifacts}${path.sep}`],
+    [cli, bundle, corpus, seeds, "--", `-max_total_time=${seconds}`, `-artifact_prefix=${artifacts}${path.sep}`],
     { cwd: fuzz, stdio: "inherit" },
   );
   console.log("::endgroup::");
