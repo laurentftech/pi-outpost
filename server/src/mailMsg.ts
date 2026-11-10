@@ -410,6 +410,26 @@ export function decompressRtf(stream: Buffer): Buffer | null {
 }
 
 /**
+ * Past the fallback that follows a `\uN` character: what a reader without Unicode shows
+ * instead, `count` units of it (`\ucN`, one by default) — a character or a `\'xx` byte each.
+ * Kept, it doubles every such character: `l\u8217\'92ecole` read as "l’\x92ecole". A group's
+ * end stops it, as the format says.
+ */
+function skipUnicodeFallback(rtf: string, at: number, count: number): number {
+  for (let left = count; left > 0 && at < rtf.length; left--) {
+    const char = rtf[at];
+    if (char === "{" || char === "}") break;
+    if (char !== "\\") {
+      at++;
+      continue;
+    }
+    const unit = /^\\(?:'[0-9a-fA-F]{2}|[a-zA-Z]+-?\d*[ ]?|.)/s.exec(rtf.slice(at, at + 40));
+    at += unit === null ? 1 : unit[0].length;
+  }
+  return at;
+}
+
+/**
  * The HTML a body's RTF encapsulates, or `null` when the RTF is genuine rich text.
  *
  * Outlook wraps an HTML body in RTF rather than storing it as HTML: the markup sits
@@ -427,12 +447,16 @@ export function htmlFromEncapsulatedRtf(rtf: string): string | null {
   /** Depth of a group being skipped whole, such as `\*\mhtmltag`. */
   let skipUntilDepth: number | null = null;
   let depth = 0;
+  /** `\ucN`: the fallback units after each `\uN`, scoped to the group that sets it. */
+  let fallback = 1;
+  const fallbacks: number[] = [];
 
   while (at < rtf.length) {
     const char = rtf[at];
 
     if (char === "{") {
       depth++;
+      fallbacks.push(fallback);
       at++;
       // `{\*\mhtmltag…}` and `{\*\…}` destinations that are not htmltag are skipped.
       const ahead = rtf.slice(at, at + 12);
@@ -442,6 +466,7 @@ export function htmlFromEncapsulatedRtf(rtf: string): string | null {
     if (char === "}") {
       if (skipUntilDepth !== null && depth <= skipUntilDepth) skipUntilDepth = null;
       depth--;
+      fallback = fallbacks.pop() ?? 1;
       at++;
       continue;
     }
@@ -483,11 +508,16 @@ export function htmlFromEncapsulatedRtf(rtf: string): string | null {
         if (suppressed === 0 && skipUntilDepth === null) out += "\t";
         continue;
       }
+      if (word === "uc" && parameter !== undefined) {
+        fallback = Math.max(0, Number(parameter));
+        continue;
+      }
       if (word === "u" && parameter !== undefined) {
         if (suppressed === 0 && skipUntilDepth === null) {
           const code = Number(parameter);
           out += String.fromCharCode(code < 0 ? code + 65536 : code);
         }
+        at = skipUnicodeFallback(rtf, at, fallback);
         continue;
       }
       // Every other control word is formatting the HTML does not need.
@@ -512,10 +542,13 @@ export function textFromRtf(rtf: string): string {
   let at = 0;
   let skipUntilDepth: number | null = null;
   let depth = 0;
+  let fallback = 1;
+  const fallbacks: number[] = [];
   while (at < rtf.length) {
     const char = rtf[at];
     if (char === "{") {
       depth++;
+      fallbacks.push(fallback);
       at++;
       // Font and colour tables, and `\*\…` destinations, carry no prose.
       if (skipUntilDepth === null && /^\\(\*|fonttbl|colortbl|stylesheet|info|pict)/.test(rtf.slice(at, at + 12))) {
@@ -526,6 +559,7 @@ export function textFromRtf(rtf: string): string {
     if (char === "}") {
       if (skipUntilDepth !== null && depth <= skipUntilDepth) skipUntilDepth = null;
       depth--;
+      fallback = fallbacks.pop() ?? 1;
       at++;
       continue;
     }
@@ -549,13 +583,21 @@ export function textFromRtf(rtf: string): string {
         continue;
       }
       at += control[0].length;
+      if (control[1] === "uc" && control[2] !== undefined) {
+        fallback = Math.max(0, Number(control[2]));
+        continue;
+      }
+      if (control[1] === "u" && control[2] !== undefined) {
+        if (writable) {
+          const code = Number(control[2]);
+          out += String.fromCharCode(code < 0 ? code + 65536 : code);
+        }
+        at = skipUnicodeFallback(rtf, at, fallback);
+        continue;
+      }
       if (!writable) continue;
       if (control[1] === "par" || control[1] === "line") out += "\n";
       else if (control[1] === "tab") out += "\t";
-      else if (control[1] === "u" && control[2] !== undefined) {
-        const code = Number(control[2]);
-        out += String.fromCharCode(code < 0 ? code + 65536 : code);
-      }
       continue;
     }
     if (char === "\r" || char === "\n") {

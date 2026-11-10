@@ -260,6 +260,48 @@ describe("bodies", () => {
   });
 });
 
+// The RTF below is written with "\\" rather than String.raw: tsx reads `舗` in a raw
+// template as the character U+8217, which would hide the very escape under test.
+describe("rich-text characters", () => {
+  test("a \\uN character is read once: its fallback is skipped, whether a byte or a character", () => {
+    // Outlook writes a curly apostrophe as 舗 followed by \'92, its cp1252 byte.
+    assert.equal(textFromRtf("{\\rtf1\\ansi l\\u8217\\'92ecole, caf\\u233?}"), "l’ecole, café");
+    assert.equal(
+      htmlFromEncapsulatedRtf("{\\rtf1\\ansi\\fromhtml1 {\\*\\htmltag84 <p>}l\\u8217\\'92ecole, caf\\u233?{\\*\\htmltag84 </p>}}"),
+      "<p>l’ecole, café</p>",
+    );
+  });
+
+  test("\\ucN sets how many fallback units follow, for its group only", () => {
+    assert.equal(textFromRtf("{\\rtf1 {\\uc2 a\\u233\\'65\\'cc b} c\\u233? d}"), "aé b cé d", "two units inside the group, one again after it");
+    assert.equal(textFromRtf("{\\rtf1\\uc0 x\\u233 y}"), "xéy", "no fallback: the next character is text");
+    assert.equal(
+      htmlFromEncapsulatedRtf("{\\rtf1\\fromhtml1 {\\uc2 {\\*\\htmltag84 <b>}\\u233\\'65\\'cc{\\*\\htmltag84 </b>}} \\u233?}"),
+      "<b>é</b> é",
+    );
+  });
+
+  test("a fallback stops at the end of its group, and a negative \\uN is the character above 32767", () => {
+    assert.equal(textFromRtf("{\\rtf1 {a\\u233}b}"), "aéb", "the closing brace is not taken as the fallback");
+    assert.equal(textFromRtf("{\\rtf1 \\u-3913?}"), "", "-3913 + 65536 is U+F0B7, the Symbol-font bullet");
+    assert.equal(htmlFromEncapsulatedRtf("{\\rtf1\\fromhtml1 \\u-3913?}"), "");
+  });
+
+  test("line breaks, tabs and escaped characters are text; ignorable and table destinations are not", () => {
+    assert.equal(
+      textFromRtf("{\\rtf1{\\info{\\title Hidden}}{\\*\\generator Writer;}{\\stylesheet{\\s0 Normal;}}{\\pict 89504e47}One\\par Two\\line Three\\tab 3\\par\\par\\par\\par \\{braces\\} \\\\ end}"),
+      "One\nTwo\nThree\t3\n\n{braces} \\ end",
+    );
+  });
+
+  test("in encapsulated HTML, the rendering Outlook adds, rewritten links and the base are dropped; breaks, tabs and escapes are kept", () => {
+    const rtf =
+      "{\\rtf1\\ansi\\fromhtml1 {\\*\\htmltag84 <p>}Avant\\htmlrtf {\\htmlrtf0 \\htmlrtf}\\par\\htmlrtf0 \\par Apr\\'e8s\\tab \\{x\\}" +
+      "{\\*\\mhtmltag84 <a href=\"http://rewritten.example\">}{\\*\\htmlbase http://base.example/}{\\*\\htmltag84 </p>}}";
+    assert.equal(htmlFromEncapsulatedRtf(rtf), "<p>Avant\nAprès\t{x}</p>");
+  });
+});
+
 describe("attachments", () => {
   test("lists each attachment with its identifier, name, type and size", () => {
     const deck = Buffer.from("PK\u0003\u0004 deck", "latin1");

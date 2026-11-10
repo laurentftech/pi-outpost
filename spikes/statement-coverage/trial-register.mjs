@@ -9,14 +9,14 @@ const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../..');
 const entry=process.argv[1]?path.resolve(process.argv[1]):'';
 const relative=path.relative(root,entry).split(path.sep).join('/');
 const fixture=relative==='spikes/statement-coverage/trial-lifecycle-fixture.mjs'&&process.env.SPIKE_TRIAL_SELFTEST==='1';
-const allowed=fixture||relative==='server/src/index.ts'||/^server\/test\/[^/]+\.test\.(?:mjs|ts)$/.test(relative);
+const allowed=fixture||relative==='server/src/index.ts'||/^(?:server|office)\/test\/[^/]+\.test\.(?:mjs|ts)$/.test(relative);
 const dir=process.env.SPIKE_TRIAL_DIR;
 if(process.env.SPIKE_TRIAL==='1'&&dir&&allowed){
-  const { executable }=await import('./instrument.mjs');
+  const { cachedExecutable }=await import('./trial-cache.mjs');
   const { startProcess,dump,writeJson }=await import('./trial-store.mjs');
   const id=`node-${process.pid}`;
   let started=false;
-  const owner=relative.startsWith('server/test/')?relative:(process.env.SPIKE_TRIAL_OWNER||relative);
+  const owner=/^(?:server|office)\/test\//.test(relative)?relative:(process.env.SPIKE_TRIAL_OWNER||relative);
   process.env.SPIKE_TRIAL_OWNER=owner;
   const trace=(event,extra={})=>writeJson(path.join(dir,'lifecycle',`${id}-${event}.json`),
     {id,entry:relative,owner,event,time:new Date().toISOString(),pid:process.pid,ppid:process.ppid,...extra});
@@ -41,9 +41,9 @@ if(process.env.SPIKE_TRIAL==='1'&&dir&&allowed){
       if(source.split(original).length!==2)throw new Error('Trial shutdown adapter drift: review harness');
       return {...loaded,source:source.replace(original,'const stopped = await waitForExit(COVERAGE_STOP_GRACE_MS);')};
     }
-    if(!['server','shared'].includes(trialScope(file)?.name))return loaded;
+    if(!['server','shared','office'].includes(trialScope(file)?.name))return loaded;
     if(!started){startProcess(dir,id,relative,{owner,pid:process.pid,ppid:process.ppid});started=true;trace('started');}
-    return {...loaded,format:'module',source:executable(readFileSync(file,'utf8'),file).code};
+    return {...loaded,format:'module',source:cachedExecutable(dir,file)};
   }});
   const flush=(reason)=>{
     if(!started)return;

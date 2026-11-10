@@ -59,11 +59,13 @@ gets different counts from the server and UI pipelines.
 On 8 November 2026 the merged report measured, for lines, branches and functions: `server/src`
 98.8%, 93.4%, 98.4%; `shared/src` 98.9%, 81.5%, 97.5%; `ui/src` 97.1%, 87.3%, 93.7%.
 
-Once the [statement coverage workflow](../.github/workflows/statement-coverage-spike.yml) is
-merged, it will run a daily Istanbul trial measuring statements and branches over an explicit
-inventory of `server/src`, `shared/src` and `ui/src`, with unloaded files at zero and collection
-integrity checks for every instrumented test process. Each run publishes a commit-specific
-summary and 7-day artifact. This is an experimental report on the default-branch commit, not a
+The [statement coverage workflow](../.github/workflows/statement-coverage-spike.yml) runs a
+daily Istanbul trial measuring statements and branches over an explicit inventory of
+`server/src`, `shared/src`, `ui/src` and `office/src` (the Office document parsers and builders,
+measured by this trial only), with unloaded files at zero and collection integrity
+checks for every instrumented test process. Each run publishes a commit-specific summary, which
+lists per scope the files with the most uncovered statements and branches, and a 7-day
+artifact with the full per-file report. This is an experimental report on the default-branch commit, not a
 per-PR gate or an OpenSSF threshold claim; the workflow fails when suites fail or coverage data
 is incomplete.
 

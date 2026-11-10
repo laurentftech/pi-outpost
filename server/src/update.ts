@@ -461,7 +461,7 @@ export function extractSingleVersion(parsed: unknown): string {
  * This is a fallback for an absent executable only: an npm registry/auth/CA error
  * must be reported as-is, never retried through a request that bypasses `.npmrc`.
  */
-const directRegistryLatestVersion: VersionLookup = async (options) => {
+export const directRegistryLatestVersion: VersionLookup = async (options) => {
   const configured = options.registry ?? process.env.npm_config_registry;
   const base = configured?.trim() || PUBLIC_REGISTRY;
   // A scoped name keeps its `@` and encodes its `/`: `@scope%2Fname`, as registries expect.

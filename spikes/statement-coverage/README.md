@@ -125,8 +125,8 @@ remain unchanged; the companion scenario matrix records what this spike proves a
 
 ## Full-suite Linux trial
 
-Once merged, the `Statement coverage experiment` workflow will run daily at 03:00
-Europe/Paris against the default branch. On the spike branch it also runs on matching
+The `Statement coverage experiment` workflow runs daily at 03:00 Europe/Paris against
+the default branch. On the spike branch it also runs on matching
 pushes and manual dispatch. It is not a required PR check and does not alter normal CI.
 Each run publishes a commit-specific report in the workflow summary and an artifact
 retained for 7 days. The successful spike run validated the measurement process;
@@ -136,19 +136,27 @@ It runs the fixture controls, collector self-tests, then the complete server and
 suites on Node 24/Linux. The Node loader admits only test files and the actual server
 entry point; unrelated eval, agent-fixture and external child entries install no hook
 or collector. Original source maps are stored once and processes write compact hit
-counts. SIGTERM takes a synchronous snapshot before the harness's force-kill fallback;
+counts. Instrumented code is cached for the run, keyed by the instrumenter, path and
+content (`trial-cache.mjs`), and filled before the suites start: re-instrumenting in every
+server process added seconds to each startup, enough to fail the update-check startup test. SIGTERM takes a synchronous snapshot before the harness's force-kill fallback;
 an exit dump supersedes that snapshot. Missing, empty or truncated data invalidates
 the report. Completed suite status records are also required.
 
-The report seeds every source file in the three measured scopes at zero and checks
+The report seeds every source file in the measured scopes (`server/src`, `shared/src`,
+`ui/src`, and `office/src`, which only this trial measures) at zero and checks
 the observed statement/function/branch inventory against the original source. It
 reuses central exclusions and additionally names the generated `embedded-web.ts`
 bundle as excluded, because handwritten UI sources are already measured separately.
-Other production workspaces remain outside these scopes and are named as such.
+`office/src` is credited by its own suite (`office/test`, run under the same hook) and by
+every server suite that loads it. Code run in a worker thread (`office/src/mermaidWorker.ts`)
+is not instrumented and counts as uncovered. Other production workspaces remain outside
+these scopes and are named as such.
 
 The workflow publishes a dated/commit-specific summary, numerator/denominator for
 statements, branches and functions, per-file data, collection-integrity status and
-suite durations as an artifact. Statement percentages are observations; 80/90% are
+suite durations as an artifact. The summary itself also lists, per scope, the 15 files
+with the most uncovered statements (then branches) (`trial-gaps.mjs`), so where tests
+would raise the figure is readable from the run page without the artifact. Statement percentages are observations; 80/90% are
 not blocking adoption thresholds for this exploratory run. Test failures or invalid
 collection fail the workflow and prevent treating its report as a passing result.
 
