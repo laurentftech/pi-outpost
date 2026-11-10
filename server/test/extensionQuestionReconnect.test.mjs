@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFile, realpath, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
@@ -25,6 +25,13 @@ for (const mode of ["embedded", "rpc"]) {
   test(`${mode}: the last client can leave past the idle timeout and answer the same question on return`, async t => {
     const root = await realpath(await makeWorkspace());
     const beta = await realpath(await makeWorkspace());
+    // The final command requests thinking=off. Keep that capability explicit:
+    // provider defaults can change to a model that requires reasoning.
+    const agentDir = path.join(root, ".pi-agent");
+    await mkdir(agentDir, { recursive: true });
+    await writeFile(path.join(agentDir, "settings.json"), JSON.stringify({
+      defaultProvider: "anthropic", defaultModel: "claude-sonnet-4-5",
+    }));
     const answers = path.join(root, "answers.jsonl");
     const extension = path.join(root, "question.mjs");
     await writeFile(extension, `import { appendFile } from "node:fs/promises";
@@ -42,7 +49,7 @@ export default pi => pi.registerCommand("ask", {handler: async (_args, ctx) => {
       },
     }));
     const server = await startServer(root, {
-      openProjects: [beta], workspaceIdleTimeoutMs: 1_000,
+      agentDir, openProjects: [beta], workspaceIdleTimeoutMs: 1_000,
       ...(mode === "rpc"
         ? { sandbox: false, agentRuntime: { mode: "rpc", executable: process.execPath, args: [FAKE], startupTimeoutMs: 20_000 } }
         : { noExtensions: false, extensionPaths: [extension] }),

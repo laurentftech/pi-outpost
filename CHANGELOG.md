@@ -7,6 +7,32 @@ version you had and the one you run now, without going online.
 Releases before 0.41.0 are described on
 [GitHub Releases](https://github.com/laurentftech/pi-outpost/releases).
 
+## [0.62.1] - 2026-11-10
+
+### Fixed
+
+- **Thinking controls respect the model's minimum.** Models requiring reasoning no
+  longer offer an unsupported `off` choice; models allowing it keep that choice.
+  ([#478](https://github.com/laurentftech/pi-outpost/pull/478))
+- **Find on-demand tools again after they leave the prompt.** `tool_search` can reload
+  the extended Work Plan tools after inactivity. In embedded sessions, calling a
+  remembered deferred tool from another extension also reactivates it.
+  ([#474](https://github.com/laurentftech/pi-outpost/pull/474))
+
+### Changed
+
+- **Updated the pi engine to 1.5.1**, with tool-search, file-reading and grep fixes.
+  When no model is configured, the Anthropic default is now Claude Opus 5.5.
+  Eligible prompt caches can now be warmed while idle, which can incur provider
+  charges; set `cacheWarming` to `"streaming"` for the previous behavior or `"off"`
+  in `<agentDir>/settings.json` to disable warming.
+  ([#478](https://github.com/laurentftech/pi-outpost/pull/478))
+- More automated checks exercise malformed ZIP archives, email and structured-exchange
+  documents. ([#472](https://github.com/laurentftech/pi-outpost/pull/472))
+- Refreshed the project website, with clearer guidance on built-in sandboxing and
+  deployment options. ([#475](https://github.com/laurentftech/pi-outpost/pull/475),
+  [#476](https://github.com/laurentftech/pi-outpost/pull/476))
+
 ## [0.62.0] - 2026-11-08
 
 ### Added

@@ -191,8 +191,8 @@ export type ThinkingLevel = (typeof THINKING_LEVELS)[number];
 /**
  * The thinking levels a model accepts, as a runtime reports them, sanitised for
  * the wire: only names this build knows, in the canonical `THINKING_LEVELS`
- * order, with `off` always a stop — thinking can be turned off whatever the
- * model's effort tiers are. An input that names nothing recognisable (an empty
+ * order, without adding levels the model did not report: some models require
+ * reasoning and cannot use `off`. An input that names nothing recognisable (an empty
  * list, or a runtime that could not answer) yields `undefined`, which a client
  * reads as "offer the full set".
  */
@@ -202,7 +202,7 @@ export function normalizeThinkingLevels(levels: unknown): ThinkingLevel[] | unde
     levels.filter((l): l is ThinkingLevel => typeof l === "string" && (THINKING_LEVELS as readonly string[]).includes(l)),
   );
   if (known.size === 0) return undefined;
-  return THINKING_LEVELS.filter((l) => l === "off" || known.has(l));
+  return THINKING_LEVELS.filter((l) => known.has(l));
 }
 
 /**
@@ -212,7 +212,7 @@ export function normalizeThinkingLevels(levels: unknown): ThinkingLevel[] | unde
  * It steps *down* in effort first: a session on `high` moving to a model that tops
  * out at `low` should think as hard as that model can, and a silent step up would
  * bill the user for effort nobody asked for. Only when nothing below is on offer
- * does it step up, and `off` is always the floor.
+ * does it step up to that model's lowest accepted level.
  */
 export function clampThinkingLevel(level: ThinkingLevel, levels: readonly ThinkingLevel[]): ThinkingLevel {
   if (levels.includes(level)) return level;
