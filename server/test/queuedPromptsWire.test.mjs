@@ -475,3 +475,101 @@ test("embedded: Stop while a tool runs leaves the queue pending, unsent, for the
   client.send({ type: "prompt", text: "carry on" });
   await eventually(async () => (await requests(log)).some((request) => request.users.some((user) => user.text === "keep me queued")), "delivered with the next turn");
 });
+
+/**
+ * A fake Pi child with a turn running and one prompt, "later", in its queue: the queue's
+ * take-back and re-queue fail or answer as `fake` says. Returns the booted context, the
+ * queued entry, and a reader for the commands the child received.
+ */
+async function rpcWithQueued(t, fake = {}) {
+  const root = await realpath(await makeWorkspace({}));
+  const fakeConfig = path.join(root, "fake-rpc.json");
+  const commandLog = path.join(root, "commands.jsonl");
+  await writeFile(fakeConfig, JSON.stringify({
+    commandLog,
+    ...fake,
+    commands_: {
+      prompt: [
+        { after: [{ type: "agent_start" }] },
+        { data: { disposition: "queued" }, after: [{ type: "queue_update", steering: ["later"], followUp: [] }] },
+        {},
+      ],
+      ...fake.commands_,
+    },
+  }));
+  const ctx = await boot(t, {
+    fakeConfig,
+    sandbox: false,
+    agentRuntime: { mode: "rpc", executable: process.execPath, args: [FAKE_RPC], startupTimeoutMs: 15_000 },
+  });
+  const { client } = ctx;
+  client.send({ type: "prompt", text: "start" });
+  await client.waitFor("agent_start");
+  client.send({ type: "prompt", text: "later" });
+  await eventually(() => queueTexts(client).join("|") === "later", "queued");
+  const commands = async () => (await readFile(commandLog, "utf8")).split(/\r?\n/).filter(Boolean).map((line) => JSON.parse(line));
+  return { ...ctx, queued: latestQueue(client)[0], commands };
+}
+
+const refusal = (client) => next(client, (message) => message.type === "queued_prompt_refused");
+
+test("rpc: a queue the child cannot give back is refused by name, and Stop still stops the turn", async (t) => {
+  const { client, queued, commands } = await rpcWithQueued(t, { failures: { clear_queue: "the queue is locked" } });
+  assert.equal(queued.editable, true);
+
+  let refused = refusal(client);
+  client.send({ type: "edit_queued_prompt", id: queued.id, text: "sooner" });
+  assert.deepEqual(await refused, { type: "queued_prompt_refused", message: "The queue could not be changed: the queue is locked", text: "sooner" });
+
+  refused = refusal(client);
+  client.send({ type: "remove_queued_prompt", id: queued.id });
+  assert.equal((await refused).message, "The queue could not be changed: the queue is locked");
+
+  refused = refusal(client);
+  client.send({ type: "send_queue_now" });
+  assert.equal((await refused).message, "The queue could not be sent: the queue is locked");
+  assert.deepEqual(queueTexts(client), ["later"], "every failed change leaves the queue as it was");
+
+  // Stop keeps the queue aside first, so the stopped step cannot swallow it. When that
+  // fails, the turn must stop all the same — it used to keep running, the error the only sign.
+  const warned = next(client, (message) => message.type === "error");
+  client.send({ type: "abort" });
+  assert.equal((await warned).message, "The queued messages could not be kept pending: the queue is locked");
+  await eventually(async () => (await commands()).some((command) => command.type === "abort"), "the child is told to abort");
+});
+
+test("rpc: an empty edit, and an edit of a message the agent received meanwhile, are refused", async (t) => {
+  // The child answers the take-back with an empty queue: it delivered "later" just before.
+  const { client, queued, commands } = await rpcWithQueued(t, { commands_: { clear_queue: { data: { steering: [], followUp: [] } } } });
+
+  let refused = refusal(client);
+  client.send({ type: "edit_queued_prompt", id: queued.id, text: "   " });
+  assert.deepEqual(await refused, { type: "queued_prompt_refused", message: "A queued message cannot be empty — remove it instead", text: "   " });
+  assert.ok(!(await commands()).some((command) => command.type === "clear_queue"), "refused before the queue is touched");
+
+  refused = refusal(client);
+  const delivered = next(client, (message) => message.type === "user" && message.text === "later");
+  client.send({ type: "edit_queued_prompt", id: queued.id, text: "sooner" });
+  assert.deepEqual(await refused, {
+    type: "queued_prompt_refused",
+    message: "The agent has already received that message — it can no longer be changed",
+    text: "sooner",
+  });
+  await delivered;
+  await eventually(() => latestQueue(client).length === 0, "the queue no longer lists it");
+  assert.ok(!(await commands()).some((command) => command.type === "steer" && command.message === "sooner"), "the edit was not queued");
+});
+
+test("rpc: an edited message the child will not queue is refused, with the edit offered back", async (t) => {
+  const { client, queued } = await rpcWithQueued(t, {
+    failures: { steer: "steering is closed" },
+    commands_: { clear_queue: { data: { steering: ["later"], followUp: [] } } },
+  });
+  const refused = refusal(client);
+  client.send({ type: "edit_queued_prompt", id: queued.id, text: "sooner" });
+  assert.deepEqual(await refused, {
+    type: "queued_prompt_refused",
+    message: "The edited message could not be queued: steering is closed",
+    text: "sooner",
+  });
+});
