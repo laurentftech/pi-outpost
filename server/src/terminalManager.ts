@@ -485,7 +485,9 @@ export class TerminalManager {
             this.socketSessions.delete(socket);
           }
         }
-        void session.dispose?.().catch(() => {});
+        // The shell is gone, but on Windows its ConPTY is not: until `kill()` closes the
+        // pseudoconsole, it holds the server's event loop open. Same teardown as a close.
+        endSession(session);
         onExit(terminalId, exitCode);
       }));
 

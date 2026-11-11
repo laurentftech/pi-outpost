@@ -272,10 +272,15 @@ describe("TerminalManager", () => {
     const manager = new TerminalManager();
     const socket = {} as WebSocket;
     await manager.open(socket, "held", process.cwd(), 80, 24, () => {}, () => {});
-    assert.equal(manager.resize(socket, "not-held", 80, 24), false);
-    assert.equal(await manager.getCwd(socket, "not-held"), undefined);
-    assert.equal(manager.close(socket, "not-held"), false);
-    assert.equal(manager.write(socket, "held", "echo still\n"), true, "the held terminal is untouched");
+    try {
+      assert.equal(manager.resize(socket, "not-held", 80, 24), false);
+      assert.equal(await manager.getCwd(socket, "not-held"), undefined);
+      assert.equal(manager.close(socket, "not-held"), false);
+      assert.equal(manager.write(socket, "held", "echo still\n"), true, "the held terminal is untouched");
+    } finally {
+      // A live ConPTY keeps the test process alive on Windows: the file would never finish.
+      manager.close(socket, "held");
+    }
   });
 });
 

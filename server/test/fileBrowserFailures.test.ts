@@ -149,7 +149,8 @@ describe("file browser refusals from the filesystem", () => {
       write("plain.txt");
       const error = await refusal(() => createFileFromBrowser(root, undefined, "plain.txt/child.txt"));
       assert.equal(error.reason, "not-found");
-      assert.match(error.message, /is not a folder/);
+      // Windows reports ENOENT, not ENOTDIR, for a path through a file.
+      assert.match(error.message, process.platform === "win32" ? /does not exist/ : /is not a folder/);
       assert.equal(readFileSync(path.join(root, "plain.txt"), "utf8"), "content\n");
     });
 
