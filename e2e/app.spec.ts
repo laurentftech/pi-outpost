@@ -158,17 +158,19 @@ test.describe("the return-to-latest control", () => {
   test("answers the keyboard, not only the pointer", async ({ page }) => {
     // jsdom dispatches no click from a keydown, so this is the only place the
     // claim that the control is keyboard-operable is actually tested.
+    // Let the initial follow-to-bottom finish before moving into scrollback.
+    const distanceFromEnd = () =>
+      scroller(page).evaluate((main) => main.scrollHeight - main.scrollTop - main.clientHeight);
+    await expect.poll(distanceFromEnd).toBeLessThan(120);
     await scrollTo(page, 0);
     const control = page.getByRole("button", { name: CONTROL });
+    await expect(control).toBeVisible();
     await control.focus();
+    await expect(control).toBeFocused();
     await page.keyboard.press("Enter");
 
     await expect(control).toHaveCount(0);
-    await expect
-      .poll(() =>
-        scroller(page).evaluate((main) => main.scrollHeight - main.scrollTop - main.clientHeight),
-      )
-      .toBeLessThan(120);
+    await expect.poll(distanceFromEnd).toBeLessThan(120);
   });
 
   // openlore: scenario=ComposerStaysUsable spec=conversation-scroll-navigation
