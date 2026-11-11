@@ -90,6 +90,15 @@ function applyReplacement(replacement) {
   if (replacement.entries) entries = replacement.entries;
   if (replacement.tree) tree = replacement.tree;
   if (replacement.leafId !== undefined) leafId = replacement.leafId;
+  // A new session may also behave differently, so that one server runs scenario after
+  // scenario: its failures and scripts replace the old ones, counted from the start. The
+  // session commands keep their own scripts, or the next session would never come.
+  if (replacement.failures !== undefined) config.failures = replacement.failures;
+  if (replacement.commands_ !== undefined) {
+    const kept = ["new_session", "switch_session"].filter((type) => config.commands_?.[type] !== undefined);
+    config.commands_ = { ...replacement.commands_, ...Object.fromEntries(kept.map((type) => [type, config.commands_[type]])) };
+    for (const type of [...commandCounts.keys()]) if (!kept.includes(type)) commandCounts.delete(type);
+  }
 }
 
 const THINKING_ORDER = ["off", "minimal", "low", "medium", "high", "xhigh"];
