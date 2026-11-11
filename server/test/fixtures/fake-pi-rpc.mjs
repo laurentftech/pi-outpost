@@ -44,8 +44,11 @@ if (modeAt === -1 || argv[modeAt + 1] !== "rpc") {
   process.exit(2);
 }
 
-if (config.startupFailure) {
-  process.stderr.write(`${config.startupFailure}\n`);
+// One project's agent failing to start while the others start: keyed by the directory the
+// child was launched in, as the server reports it.
+const startupFailure = config.startupFailure ?? config.startupFailureByCwd?.[launch.cwd];
+if (startupFailure) {
+  process.stderr.write(`${startupFailure}\n`);
   process.exit(config.startupExitCode ?? 1);
 }
 
