@@ -7,6 +7,20 @@ version you had and the one you run now, without going online.
 Releases before 0.41.0 are described on
 [GitHub Releases](https://github.com/laurentftech/pi-outpost/releases).
 
+## [0.62.2] - 2026-11-11
+
+### Fixed
+
+- **Decode Outlook rich-text email without duplicating Unicode fallback characters.**
+  ([#480](https://github.com/laurentftech/pi-outpost/pull/480))
+- **Keep email text when multipart boundaries are missing and preserve loosely written
+  HTML tables.** ([#481](https://github.com/laurentftech/pi-outpost/pull/481),
+  [#483](https://github.com/laurentftech/pi-outpost/pull/483))
+- **Stop the agent turn even when queued messages cannot be kept pending.**
+  ([#484](https://github.com/laurentftech/pi-outpost/pull/484))
+- **Close Windows pseudo-terminals when their shell exits.**
+  ([#481](https://github.com/laurentftech/pi-outpost/pull/481))
+
 ## [0.62.1] - 2026-11-10
 
 ### Fixed
