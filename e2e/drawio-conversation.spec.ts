@@ -447,6 +447,7 @@ test("ABendIsRemovedByClickAndDelete: in touch-up, a bend clicked then Delete re
   // The first segment runs from Alpha to the first waypoint: Delete takes that waypoint out
   const handle = await firstSegmentHandleOnScreen(frame, 0);
   await page.mouse.click(handle.x, handle.y);
+  await expect(frame).toBeFocused();
   await page.keyboard.press("Delete");
   // A second press does not go on to delete the wire still selected
   await page.keyboard.press("Delete");
@@ -475,6 +476,7 @@ test("a bend of a wire inside a container is removed by click and Delete too: it
   await page.mouse.click(wires[0]!.x, wires[0]!.y);
   const handle = await firstSegmentHandleOnScreen(frame, 0);
   await page.mouse.click(handle.x, handle.y);
+  await expect(frame).toBeFocused();
   await page.keyboard.press("Delete");
   await expect(overlay.getByTestId("drawio-touchup-status")).toHaveText("● unsaved");
   await overlay.getByRole("button", { name: "✓ save" }).click();
