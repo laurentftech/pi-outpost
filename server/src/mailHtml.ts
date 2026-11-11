@@ -314,23 +314,52 @@ export function reduceHtmlToMarkdown(html: string, options: ReduceHtmlOptions = 
   const flushTable = (): void => {
     const frame = tables.pop();
     if (frame === undefined) return;
+    // A cell or row still open at the table's end holds text too: HTML lets both
+    // close tags be left out, and `<td>` with no `<tr>` at all is a row a browser
+    // supplies.
+    closeRow(frame);
     const rows = frame.rows.filter((row) => row.some((cell) => cell.trim() !== ""));
     const columns = rows.length === 0 ? 0 : Math.max(...rows.map((row) => row.length));
     const isData = !frame.nested && rows.length >= 2 && columns >= 2;
     if (isData) {
-      const rendered = renderMarkdownTable(rows, { header: true });
-      if (tables.length > 0 && tables[tables.length - 1].cell !== null) tables[tables.length - 1].cell?.push(rendered);
-      else out.push(quoteDepth > 0 ? rendered.replace(/^/gm, "> ".repeat(quoteDepth)) : rendered);
+      // A markdown cell is one line; the cell keeps its line breaks until here, in
+      // case the table turned out to be layout and its cells became blocks.
+      const rendered = renderMarkdownTable(
+        rows.map((row) => row.map((cell) => cell.replace(/\s+/g, " ").trim())),
+        { header: true },
+      );
+      pushBlock(rendered);
       return;
     }
     for (const row of rows) {
       for (const cell of row) {
         const text = cell.trim();
-        if (text === "") continue;
-        if (tables.length > 0 && tables[tables.length - 1].cell !== null) tables[tables.length - 1].cell?.push(text);
-        else out.push(quoteDepth > 0 ? text.replace(/^/gm, "> ".repeat(quoteDepth)) : text);
+        if (text !== "") pushBlock(text);
       }
     }
+  };
+
+  /** A finished block: into the enclosing cell when there is one, apart from its neighbours. */
+  const pushBlock = (text: string): void => {
+    const cell = tables.length > 0 ? tables[tables.length - 1].cell : null;
+    if (cell !== null) cell.push(`\n\n${text}\n\n`);
+    else out.push(quoteDepth > 0 ? text.replace(/^/gm, "> ".repeat(quoteDepth)) : text);
+  };
+
+  /** The open cell, if any, onto its row — a row `<tr>` never started included. */
+  const closeCell = (frame: TableFrame): void => {
+    if (frame.cell === null) return;
+    const text = frame.cell.join("").replace(/[ \t]+/g, " ").replace(/ ?\n ?/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
+    frame.cell = null;
+    (frame.row ??= []).push(text);
+  };
+
+  /** The open row, if any, onto its table, with its open cell. */
+  const closeRow = (frame: TableFrame): void => {
+    closeCell(frame);
+    if (frame.row === null) return;
+    frame.rows.push(frame.row);
+    frame.row = null;
   };
 
   scanHtml(html, (event) => {
@@ -375,14 +404,21 @@ export function reduceHtmlToMarkdown(html: string, options: ReduceHtmlOptions = 
         tables.push({ rows: [], row: null, cell: null, nested: false });
         return;
       }
+      // `</tr>` and `</td>` are optional in HTML: the next one opening closes them.
       if (name === "tr") {
         const frame = tables[tables.length - 1];
-        if (frame !== undefined) frame.row = [];
+        if (frame !== undefined) {
+          closeRow(frame);
+          frame.row = [];
+        }
         return;
       }
       if (name === "td" || name === "th") {
         const frame = tables[tables.length - 1];
-        if (frame !== undefined) frame.cell = [];
+        if (frame !== undefined) {
+          closeCell(frame);
+          frame.cell = [];
+        }
         return;
       }
       if (name === "li") {
@@ -450,20 +486,12 @@ export function reduceHtmlToMarkdown(html: string, options: ReduceHtmlOptions = 
     }
     if (name === "tr") {
       const frame = tables[tables.length - 1];
-      if (frame?.row != null) {
-        frame.rows.push(frame.row);
-        frame.row = null;
-      }
+      if (frame !== undefined) closeRow(frame);
       return;
     }
     if (name === "td" || name === "th") {
       const frame = tables[tables.length - 1];
-      if (frame?.cell != null) {
-        const text = frame.cell.join("").replace(/\s+/g, " ").trim();
-        frame.cell = null;
-        if (frame.row === null) frame.row = [];
-        frame.row.push(text);
-      }
+      if (frame !== undefined) closeCell(frame);
       return;
     }
     if (name === "ul" || name === "ol") {
