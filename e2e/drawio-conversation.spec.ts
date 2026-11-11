@@ -222,8 +222,12 @@ test("AConnectorIsReattached: at full size, a wire's end moved to another shape 
   // the middle of Bravo, and a double-click on a wire gives the wire a label instead
   const bravo = await centreOf(page, frame, "Bravo");
   await page.mouse.dblclick(bravo.x - 45, bravo.y + 18);
+  const labelEditor = inner.locator(".mxCellEditor[contenteditable=true]");
+  await expect(labelEditor).toHaveText("Bravo");
+  await expect(labelEditor).toBeFocused();
   await page.keyboard.press("ControlOrMeta+a");
   await page.keyboard.type("Bravo v2");
+  await expect(labelEditor).toHaveText("Bravo v2");
   await page.mouse.click(box.x + box.width - 20, box.y + box.height - 20);
 
   await overlay.getByRole("button", { name: "✓ save" }).click();

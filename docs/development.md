@@ -65,9 +65,9 @@ Use npm 12.2.2 locally and in CI. Regenerate `package-lock.json` with that versi
 when changing dependencies. Review install-script changes explicitly: `npm
 approve-scripts --allow-scripts-pending` lists undecided packages. The committed
 `allowScripts` policy allows reviewed native/build scripts and denies the Google
-SDK no-op and protobufjs version advisory. `.npmrc` rejects unreviewed scripts. Keep the
-Playwright container tag in `.github/workflows/ci.yml` aligned with the locked
-`@playwright/test` version.
+SDK no-op and protobufjs version advisory. `.npmrc` rejects unreviewed scripts. CI's
+browser job runs on macOS and installs the browsers of the locked `@playwright/test`
+version, cached per version, so a Playwright update needs no workflow change.
 
 ### The pinned npm
 
@@ -102,12 +102,12 @@ it with what the install put in `tools/npm/node_modules/npm/node_modules`.
 Then update `packageManager`, `engines.npm` and the version named in this guide,
 [CONTRIBUTING.md](../CONTRIBUTING.md) and the `deploy/docker/test.mjs` check, in one commit.
 
-The browser CI container needs both `build-essential` and `python3` to compile
-`node-pty` on Linux. Its install step shows lifecycle output and checks that the
-native terminal binding loads before building: npm can silently omit this optional
-dependency when compilation fails.
-APT network waits in this job are bounded, with retries and a five-minute cap for each update/install
-command. A stalled mirror must fail with diagnostics rather than consume the whole CI run.
+The browser CI job runs on macOS, where `node-pty` ships prebuilt: on Linux it is compiled at
+install, and the job used to fetch a compiler from Ubuntu's mirrors on every run, so a mirror that
+did not resolve failed it before any test. Its install step shows lifecycle output and checks that
+the native terminal binding loads before building: npm can silently omit this optional dependency
+when its install fails. Linux still compiles and exercises the terminal in the `check` job, whose
+runner image carries the build tools.
 
 Keep jsdom on `~30.0.1` for now: 30.1.2 breaks the Blob/object-URL path used by
 the Mermaid raster export tests (`Cannot read properties of undefined (reading
