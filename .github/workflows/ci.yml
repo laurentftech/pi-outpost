@@ -235,23 +235,16 @@ jobs:
   browser:
     needs: changes
     if: needs.changes.outputs.code == 'true'
-    runs-on: ubuntu-latest
+    # macOS, not a Playwright container on Linux. There node-pty has no prebuilt binary, so
+    # every run compiled it, with a compiler apt-get fetched first — and when Ubuntu's
+    # mirrors stopped resolving from the container (2026-11-11), the job failed before a
+    # single test, on every branch. Here node-pty ships prebuilt and the browsers need no
+    # system libraries. They are installed by the Playwright this repository locks, so the
+    # two cannot drift apart as an image tag could. Linux still runs every server suite,
+    # terminal included, in `check`.
+    runs-on: macos-latest
     timeout-minutes: 30
-    # Chromium and the twenty-odd system libraries it needs are already in this
-    # image. Installing them per run took eleven minutes against a job whose real
-    # work — checkout, install, build, the suite — takes about one, and it did it
-    # on every pull request.
-    #
-    # The tag pins the Playwright version, so it has to move with the dependency:
-    # a browser older or newer than the client that drives it fails at launch, and
-    # fails confusingly. The step below refuses the job when the two drift apart.
-    container:
-      image: mcr.microsoft.com/playwright:v1.64.1-noble
     steps:
-      - name: Install build tools for native addons
-        run: |
-          timeout 5m apt-get -o Acquire::Retries=2 -o Acquire::http::Timeout=15 -o Acquire::https::Timeout=15 update
-          timeout 5m apt-get -o Acquire::Retries=2 -o Acquire::http::Timeout=15 -o Acquire::https::Timeout=15 install -y build-essential python3
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
@@ -260,20 +253,21 @@ jobs:
       - name: Use the pinned npm
         uses: ./.github/actions/setup-npm
       # node-pty is optional for users, but this job must exercise the terminal.
-      # Keep native build failures visible instead of discovering missing types
-      # in the subsequent TypeScript build.
       - run: npm ci --foreground-scripts
       - name: Native terminal binding loads
         run: node -e "require('node-pty')"
-      - name: The image must carry the Playwright this repo installs
-        run: |
-          image=$(grep -om1 'mcr.microsoft.com/playwright:v[0-9.]*' .github/workflows/ci.yml | sed 's/.*:v//')
-          installed=$(node -p "require('@playwright/test/package.json').version")
-          if [ "$image" != "$installed" ]; then
-            echo "::error::container image is Playwright $image, package.json installs $installed — bump the image tag"
-            exit 1
-          fi
-          echo "Playwright $installed, browsers from the image at $PLAYWRIGHT_BROWSERS_PATH"
+      - name: The Playwright this repository locks
+        id: playwright
+        run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+      # Keyed by that version: a new Playwright downloads the browsers it drives.
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        id: browsers
+        with:
+          path: ~/Library/Caches/ms-playwright
+          key: playwright-${{ runner.os }}-${{ runner.arch }}-${{ steps.playwright.outputs.version }}
+      - name: Install the browsers
+        if: steps.browsers.outputs.cache-hit != 'true'
+        run: npx playwright install chromium firefox webkit
       # web/dist is what the server serves, embed/dist is what the host page imports
       - run: npm run build
       - name: Capture extension status colours
@@ -294,7 +288,6 @@ jobs:
         run: npm run test:webbench
         env:
           CI: true
-          HOME: /root
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: failure()
         with:

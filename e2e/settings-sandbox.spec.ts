@@ -21,7 +21,11 @@ test("Settings keeps the agent's sandbox and external resource access in sync", 
   await page.getByRole("button", { name: "Use this directory" }).click();
   await page.getByRole("textbox", { name: /Writable root/ }).fill(moved);
   await page.getByRole("button", { name: "Apply & restart session" }).click();
-  await expect(page.getByRole("button", { name: "Apply & restart session" })).toHaveCount(0, { timeout: 20_000 });
+  // Until the server has rebuilt the session: the menu closes on its acknowledgement. The
+  // button turns into "Restarting…" at once, so waiting on its first label alone passed
+  // before the restart ended — and a prompt sent then was refused as a session change in
+  // progress (seen on macOS, where it lands in that window).
+  await expect(page.getByRole("button", { name: /^(Apply & restart session|Restarting…)$/ })).toHaveCount(0, { timeout: 20_000 });
 
   // The sidebar reads the server's browser root after the apply.
   await page.getByTitle("Show files").click();
