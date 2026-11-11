@@ -4777,7 +4777,16 @@ async function abortTurn(workspace: Workspace): Promise<void> {
       await workspace.agent.abort();
       return;
     }
-    const taken = await takeQueueBack(workspace);
+    let taken: QueuedEntry[];
+    try {
+      taken = await takeQueueBack(workspace);
+    } catch (error) {
+      // The queue could not be kept aside, and it is still where it was. Stop is still
+      // Stop: a turn left running because the queue could not be saved is the worse loss.
+      broadcast(workspace, { type: "error", message: `The queued messages could not be kept pending: ${error instanceof Error ? error.message : String(error)}` });
+      await workspace.agent.abort();
+      return;
+    }
     await stopTurn(workspace);
     await requeue(workspace, undefined, taken);
   } finally {

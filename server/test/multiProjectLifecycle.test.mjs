@@ -328,6 +328,16 @@ test("a pinned server refuses to open, close or switch", async (t) => {
     (m) => m.type === "workspace_error" && m !== refusedSwitch,
   );
   assert.match(refusedOpen.message, /pinned/i);
+
+  const refusals = client.received.filter((m) => m.type === "workspace_error").length;
+  client.send({ type: "close_project", root: beta });
+  client.send({ type: "open_side_session", root: beta });
+  await client.waitFor(() => client.received.filter((m) => m.type === "workspace_error").length === refusals + 2);
+  assert.deepEqual(
+    client.received.filter((m) => m.type === "workspace_error").slice(refusals).map((m) => m.message),
+    ["This server is pinned to one project", "This server is pinned to one project"],
+    "closing and side sessions are refused the same way",
+  );
 });
 
 test("opening an unreadable path fails and opens nothing", async (t) => {
