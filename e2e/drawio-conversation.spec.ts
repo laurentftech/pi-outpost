@@ -360,9 +360,9 @@ test("Escape while touching up is \"done\": it leaves the touch-up, asking first
 });
 
 /** The services diagram with its wires drawn as `style` says: Alpha wired to Bravo and to Charlie. */
-function wiredDiagram(style: string): string {
-  const wire = (id: string, target: string) => `        <mxCell id="${id}" edge="1" parent="1" source="a" target="${target}" style="${style}html=1;endArrow=block;">\n          <mxGeometry relative="1" as="geometry"/>\n        </mxCell>`;
-  return SERVICES_DIAGRAM.replace(/ {8}<mxCell id="a-b"[\s\S]*?<\/mxCell>/, `${wire("a-b", "b")}\n${wire("a-c", "c")}`);
+function wiredDiagram(style: string, secondStyle = style): string {
+  const wire = (id: string, target: string, style: string) => `        <mxCell id="${id}" edge="1" parent="1" source="a" target="${target}" style="${style}html=1;endArrow=block;">\n          <mxGeometry relative="1" as="geometry"/>\n        </mxCell>`;
+  return SERVICES_DIAGRAM.replace(/ {8}<mxCell id="a-b"[\s\S]*?<\/mxCell>/, `${wire("a-b", "b", style)}\n${wire("a-c", "c", secondStyle)}`);
 }
 
 /** The visible wires' midpoints, in page coordinates. */
@@ -507,7 +507,7 @@ test("EveryWireIsRestyled: with nothing selected, every wire of the page changes
 
 // openlore: scenario=OnlyTheSelectedWiresAreRestyled spec=drawio-diagrams
 test("OnlyTheSelectedWiresAreRestyled: a wire clicked, then curved, is the only one curved", async ({ page }) => {
-  await writeFile(FILE(), wiredDiagram("edgeStyle=orthogonalEdgeStyle;"));
+  await writeFile(FILE(), wiredDiagram("edgeStyle=orthogonalEdgeStyle;", "edgeStyle=none;"));
   const block = await openReply(page);
   await block.getByRole("button", { name: "Show diagram at full size" }).click();
   const overlay = page.getByTestId("drawio-enlarged");
@@ -516,14 +516,18 @@ test("OnlyTheSelectedWiresAreRestyled: a wire clicked, then curved, is the only 
   await touchUp(overlay, frame);
   const wires = await wireMidpoints(frame);
   expect(wires).toHaveLength(2);
-  await page.mouse.click(wires[0]!.x, wires[0]!.y);
   const control = overlay.getByRole("combobox", { name: "Wire style" });
+  await expect(control).toHaveValue("mixed");
+  await page.mouse.click(wires[0]!.x, wires[0]!.y);
   await expect(control).toHaveValue("orthogonal");
   await control.selectOption("curved");
   await expect(control).toHaveValue("curved");
   await overlay.getByRole("button", { name: "✓ save" }).click();
-  await expect.poll(async () => [await savedCell("a-b"), await savedCell("a-c")].filter((cell) => cell.includes("curved=1")).length).toBe(1);
-  expect([await savedCell("a-b"), await savedCell("a-c")].every((cell) => cell.includes("edgeStyle=orthogonalEdgeStyle"))).toBe(true);
+  await expect.poll(() => savedCell("a-b")).toContain("curved=1");
+  expect(await savedCell("a-b")).toContain("edgeStyle=orthogonalEdgeStyle");
+  const unselected = await savedCell("a-c");
+  expect(unselected).toContain("edgeStyle=none");
+  expect(unselected).not.toContain("curved=1");
 });
 
 // openlore: scenario=NewWiresFollowThePage spec=drawio-diagrams
