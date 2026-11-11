@@ -44,8 +44,11 @@ if (modeAt === -1 || argv[modeAt + 1] !== "rpc") {
   process.exit(2);
 }
 
-if (config.startupFailure) {
-  process.stderr.write(`${config.startupFailure}\n`);
+// One project's agent failing to start while the others start: keyed by the directory the
+// child was launched in, as the server reports it.
+const startupFailure = config.startupFailure ?? config.startupFailureByCwd?.[launch.cwd];
+if (startupFailure) {
+  process.stderr.write(`${startupFailure}\n`);
   process.exit(config.startupExitCode ?? 1);
 }
 
@@ -90,6 +93,15 @@ function applyReplacement(replacement) {
   if (replacement.entries) entries = replacement.entries;
   if (replacement.tree) tree = replacement.tree;
   if (replacement.leafId !== undefined) leafId = replacement.leafId;
+  // A new session may also behave differently, so that one server runs scenario after
+  // scenario: its failures and scripts replace the old ones, counted from the start. The
+  // session commands keep their own scripts, or the next session would never come.
+  if (replacement.failures !== undefined) config.failures = replacement.failures;
+  if (replacement.commands_ !== undefined) {
+    const kept = ["new_session", "switch_session"].filter((type) => config.commands_?.[type] !== undefined);
+    config.commands_ = { ...replacement.commands_, ...Object.fromEntries(kept.map((type) => [type, config.commands_[type]])) };
+    for (const type of [...commandCounts.keys()]) if (!kept.includes(type)) commandCounts.delete(type);
+  }
 }
 
 const THINKING_ORDER = ["off", "minimal", "low", "medium", "high", "xhigh"];

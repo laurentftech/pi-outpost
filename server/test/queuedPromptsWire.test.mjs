@@ -475,3 +475,112 @@ test("embedded: Stop while a tool runs leaves the queue pending, unsent, for the
   client.send({ type: "prompt", text: "carry on" });
   await eventually(async () => (await requests(log)).some((request) => request.users.some((user) => user.text === "keep me queued")), "delivered with the next turn");
 });
+
+// The scenarios below each need a child that fails differently. One server runs them all:
+// each opens a new session, and the session brings the failures and scripts it is to have.
+const QUEUE_SCENARIO_PROMPTS = [
+  { after: [{ type: "agent_start" }] },
+  { data: { disposition: "queued" }, after: [{ type: "queue_update", steering: ["later"], followUp: [] }] },
+];
+const QUEUE_SCENARIOS = {
+  cannotGiveBack: { failures: { clear_queue: "the queue is locked" } },
+  deliveredMeanwhile: { failures: {}, commands_: { clear_queue: { data: { steering: [], followUp: [] } } } },
+  willNotRequeue: { failures: { steer: "steering is closed" }, commands_: { clear_queue: { data: { steering: ["later"], followUp: [] } } } },
+};
+const QUEUE_SCENARIO_ORDER = ["cannotGiveBack", "deliveredMeanwhile", "willNotRequeue"];
+
+test("rpc: the queue's refusals, one scenario per session on one server", async (t) => {
+  const root = await realpath(await makeWorkspace({}));
+  const fakeConfig = path.join(root, "fake-rpc.json");
+  const commandLog = path.join(root, "commands.jsonl");
+  const scenario = (name, n) => ({
+    ...QUEUE_SCENARIOS[name],
+    commands_: { prompt: QUEUE_SCENARIO_PROMPTS, ...QUEUE_SCENARIOS[name].commands_ },
+    state: { sessionId: `scenario-${n}`, isStreaming: false },
+    messages: [],
+  });
+  await writeFile(fakeConfig, JSON.stringify({
+    commandLog,
+    // Every scenario, the first included, starts from a new session.
+    commands_: { new_session: QUEUE_SCENARIO_ORDER.map((name, n) => ({ replacement: scenario(name, n) })) },
+  }));
+  const { client } = await boot(t, {
+    fakeConfig,
+    sandbox: false,
+    agentRuntime: { mode: "rpc", executable: process.execPath, args: [FAKE_RPC], startupTimeoutMs: 15_000 },
+  });
+  const allCommands = async () => (await readFile(commandLog, "utf8")).split(/\r?\n/).filter(Boolean).map((line) => JSON.parse(line));
+
+  /** A new session with a turn running and "later" queued; the commands the child receives from here. */
+  const start = async () => {
+    const replaced = next(client, (message) => message.type === "session_replaced");
+    client.send({ type: "new_session" });
+    await replaced;
+    const from = (await allCommands()).length;
+    client.send({ type: "prompt", text: "start" });
+    await next(client, (message) => message.type === "agent_start");
+    // The queue this session announces, not the last one the client heard of.
+    const queued = next(client, (message) => message.type === "queue" && message.prompts.map((prompt) => prompt.text).join("|") === "later");
+    client.send({ type: "prompt", text: "later" });
+    return { queued: (await queued).prompts[0], commands: async () => (await allCommands()).slice(from) };
+  };
+  const refusal = () => next(client, (message) => message.type === "queued_prompt_refused");
+
+  await t.test("a queue the child cannot give back is refused by name, and Stop still stops the turn", async () => {
+    const { queued, commands } = await start();
+    assert.equal(queued.editable, true);
+
+    let refused = refusal();
+    client.send({ type: "edit_queued_prompt", id: queued.id, text: "sooner" });
+    assert.deepEqual(await refused, { type: "queued_prompt_refused", message: "The queue could not be changed: the queue is locked", text: "sooner" });
+
+    refused = refusal();
+    client.send({ type: "remove_queued_prompt", id: queued.id });
+    assert.equal((await refused).message, "The queue could not be changed: the queue is locked");
+
+    refused = refusal();
+    client.send({ type: "send_queue_now" });
+    assert.equal((await refused).message, "The queue could not be sent: the queue is locked");
+    assert.deepEqual(queueTexts(client), ["later"], "every failed change leaves the queue as it was");
+
+    // Stop keeps the queue aside first, so the stopped step cannot swallow it. When that
+    // fails, the turn must stop all the same — it used to keep running, the error the only sign.
+    const warned = next(client, (message) => message.type === "error");
+    client.send({ type: "abort" });
+    assert.equal((await warned).message, "The queued messages could not be kept pending: the queue is locked");
+    await eventually(async () => (await commands()).some((command) => command.type === "abort"), "the child is told to abort");
+  });
+
+  await t.test("an empty edit, and an edit of a message the agent received meanwhile, are refused", async () => {
+    // The child answers the take-back with an empty queue: it delivered "later" just before.
+    const { queued, commands } = await start();
+
+    let refused = refusal();
+    client.send({ type: "edit_queued_prompt", id: queued.id, text: "   " });
+    assert.deepEqual(await refused, { type: "queued_prompt_refused", message: "A queued message cannot be empty — remove it instead", text: "   " });
+    assert.ok(!(await commands()).some((command) => command.type === "clear_queue"), "refused before the queue is touched");
+
+    refused = refusal();
+    const delivered = next(client, (message) => message.type === "user" && message.text === "later");
+    client.send({ type: "edit_queued_prompt", id: queued.id, text: "sooner" });
+    assert.deepEqual(await refused, {
+      type: "queued_prompt_refused",
+      message: "The agent has already received that message — it can no longer be changed",
+      text: "sooner",
+    });
+    await delivered;
+    await eventually(() => latestQueue(client).length === 0, "the queue no longer lists it");
+    assert.ok(!(await commands()).some((command) => command.type === "steer" && command.message === "sooner"), "the edit was not queued");
+  });
+
+  await t.test("an edited message the child will not queue is refused, with the edit offered back", async () => {
+    const { queued } = await start();
+    const refused = refusal();
+    client.send({ type: "edit_queued_prompt", id: queued.id, text: "sooner" });
+    assert.deepEqual(await refused, {
+      type: "queued_prompt_refused",
+      message: "The edited message could not be queued: steering is closed",
+      text: "sooner",
+    });
+  });
+});
