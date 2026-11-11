@@ -1,5 +1,4 @@
 // A branch-only Linux experiment. No Node hook or dump is installed in unrelated children.
-import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { registerHooks, syncBuiltinESMExports } from 'node:module';
