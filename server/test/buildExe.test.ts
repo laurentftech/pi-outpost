@@ -6,7 +6,7 @@
  * not execute, a path silently overwritten.
  */
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, test } from "node:test";
@@ -24,6 +24,7 @@ import {
   seaConfigFor,
   findBuildInputs,
   placeMxcExecutor,
+  resignMacho,
 } from "../src/buildExe.ts";
 
 describe("the generated SEA config", () => {
@@ -291,5 +292,96 @@ describe("MXC's executor beside a Windows executable", () => {
       assert.equal(placed, undefined);
       assert.match(lines.join(" "), /not installed/);
     });
+  });
+
+  test("without the optional install, an executor already beside it is still reported", () => {
+    withDirs(({ out, lines }) => {
+      const beside = path.join(out, "wxc-exec.exe");
+      writeFileSync(beside, "from an earlier build");
+      const placed = placeMxcExecutor(path.join(out, "pi-outpost.exe"), { platform: "win32", executor: undefined, log: (l) => lines.push(l) });
+      assert.equal(placed, beside);
+      assert.deepEqual(lines, [], "nothing is missing, so nothing is said");
+    });
+  });
+
+  test("an executable built beside the executor itself leaves it as it is", () => {
+    withDirs(({ source, lines }) => {
+      // Built into the package's own bin folder: the source is the destination.
+      const placed = placeMxcExecutor(path.join(path.dirname(source), "pi-outpost.exe"), { platform: "win32", executor: source, log: (l) => lines.push(l) });
+      assert.equal(placed, source);
+      assert.equal(readFileSync(source, "utf8"), "the executor");
+      assert.deepEqual(lines, []);
+    });
+  });
+});
+
+describe("a result that runs but fails is not called produced", () => {
+  const withScript = (body: string, check: (script: string) => void) => {
+    const dir = mkdtempSync(path.join(tmpdir(), "build-exe-run-"));
+    try {
+      const script = path.join(dir, "fake-exe");
+      writeFileSync(script, `#!/bin/sh\n${body}\n`);
+      chmodSync(script, 0o755);
+      check(script);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  };
+
+  // A shell script stands for the executable; Windows runs none without a shell.
+  const posix = { skip: process.platform === "win32" ? "a script is not an executable on Windows" : false };
+
+  test("a non-zero exit is reported with what it printed", posix, () => {
+    withScript('echo "segfault in disguise" >&2; exit 3', (script) => {
+      assert.deepEqual(producedExecutableRuns(script), { ok: false, detail: "exited 3: segfault in disguise" });
+    });
+  });
+
+  test("a death by signal is reported by its signal", posix, () => {
+    withScript("kill -KILL $$", (script) => {
+      assert.deepEqual(producedExecutableRuns(script), { ok: false, detail: "killed by SIGKILL" });
+    });
+  });
+});
+
+describe("signing on macOS", () => {
+  test("a missing codesign names how to install it, and a refused signature says why", () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "build-exe-sign-"));
+    try {
+      const target = path.join(dir, "not-a-macho");
+      writeFileSync(target, "plain text, which codesign refuses");
+      assert.throws(
+        () => resignMacho(target),
+        (error: unknown) =>
+          error instanceof BuildExeError &&
+          // macOS has codesign and refuses this file; nowhere else has codesign at all.
+          (process.platform === "darwin"
+            ? /could not sign the executable/.test(error.message)
+            : /codesign is required on macOS.*xcode-select --install/.test(error.message)),
+      );
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("building directly", () => {
+  test("a failing node --build-sea is refused with its own words, and logged as the path taken", () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "pi-outpost-buildexe-"));
+    try {
+      writeFileSync(path.join(dir, "pi-outpost.sea.mjs"), "console.log('a bundle')");
+      const lines: string[] = [];
+      // A folder that does not exist: Node 26 cannot write there, and the Node 24 the
+      // CI runs on does not know --build-sea at all. Both are this refusal.
+      const target = path.join(dir, "missing", "pi-outpost");
+      assert.throws(
+        () => buildExecutable({ out: target, cwd: dir, inputsFrom: dir, nodeVersion: "v26.0.0", log: (l) => lines.push(l) }),
+        (error: unknown) => error instanceof BuildExeError && /^node --build-sea failed: \S/.test(error.message),
+      );
+      assert.deepEqual(lines, ["[build-exe] building with node --build-sea (node v26.0.0)"]);
+      assert.equal(existsSync(target), false);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
