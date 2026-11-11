@@ -116,6 +116,15 @@ describe("a confined terminal under the real runner", { skip }, () => {
     assert.match(await run("jobs"), /Running\s+sleep 30/);
   });
 
+  test("the folder reported is the confined shell's own, not the runner's", async () => {
+    // The pty's process is landstrip; the shell is its child. Reading the runner's cwd
+    // would answer the folder the terminal was opened in, whatever the shell did since.
+    await run(`cd ${out}`);
+    assert.equal(await manager.getCwd(socket, "t1"), out);
+    await run(`cd ${root}`);
+    assert.equal(await manager.getCwd(socket, "t1"), root);
+  });
+
   // openlore: scenario=TheServerCannotBeSignalled spec=terminal
   test("the server cannot be signalled from inside", async () => {
     assert.match(await run(`kill -TERM ${process.pid}; echo exit=$?`), /not permitted|exit=1/);

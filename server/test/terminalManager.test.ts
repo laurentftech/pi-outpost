@@ -250,6 +250,38 @@ describe("TerminalManager", () => {
     while (alive(pid) && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 100));
     assert.ok(!alive(pid), "and it is gone once the grace period has passed");
   });
+
+  test("a shell that exits on its own reports its code and is forgotten", async () => {
+    const manager = new TerminalManager();
+    const socket = {} as WebSocket;
+    // node as the "shell": the same on every platform, and it exits when told to.
+    const exited = new Promise<{ id: string; code?: number }>((resolve) => {
+      void manager.open(socket, "self-exit", process.cwd(), 80, 24, () => {}, (id, code) => resolve({ id, code }), {
+        shell: process.execPath,
+        shellArgs: ["-e", "setTimeout(() => process.exit(3), 200)"],
+      });
+    });
+    assert.deepEqual(await exited, { id: "self-exit", code: 3 });
+    assert.equal(manager.write(socket, "self-exit", "x"), false, "nothing is left to write to");
+    assert.equal(manager.resize(socket, "self-exit", 80, 24), false);
+    assert.equal(await manager.getCwd(socket, "self-exit"), undefined);
+    assert.equal(manager.close(socket, "self-exit"), false, "it was already removed");
+  });
+
+  test("a terminal id the socket does not hold is refused by every operation", async () => {
+    const manager = new TerminalManager();
+    const socket = {} as WebSocket;
+    await manager.open(socket, "held", process.cwd(), 80, 24, () => {}, () => {});
+    try {
+      assert.equal(manager.resize(socket, "not-held", 80, 24), false);
+      assert.equal(await manager.getCwd(socket, "not-held"), undefined);
+      assert.equal(manager.close(socket, "not-held"), false);
+      assert.equal(manager.write(socket, "held", "echo still\n"), true, "the held terminal is untouched");
+    } finally {
+      // A live ConPTY keeps the test process alive on Windows: the file would never finish.
+      manager.close(socket, "held");
+    }
+  });
 });
 
 describe("terminalEnvironment", () => {

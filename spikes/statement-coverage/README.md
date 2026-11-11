@@ -148,9 +148,15 @@ the observed statement/function/branch inventory against the original source. It
 reuses central exclusions and additionally names the generated `embedded-web.ts`
 bundle as excluded, because handwritten UI sources are already measured separately.
 `office/src` is credited by its own suite (`office/test`, run under the same hook) and by
-every server suite that loads it. Code run in a worker thread (`office/src/mermaidWorker.ts`)
-is not instrumented and counts as uncovered. Other production workspaces remain outside
-these scopes and are named as such.
+every server suite that loads it. Worker threads of a measured process are measured too
+(`office/src/mermaidWorker.ts` runs in one): each thread writes its own dump when it starts
+and before every reply it posts, because a worker stopped with `terminate()` gets no exit
+event. A worker of an unmeasured process is left alone, as its process is. Other production
+workspaces remain outside these scopes and are named as such.
+
+`trial-focus.mjs` measures a few test files on any platform while tests are being written,
+and with `--baseline` a downloaded CI `coverage-final.json` says how many statements that
+report left uncovered the tests now reach.
 
 The workflow publishes a dated/commit-specific summary, numerator/denominator for
 statements, branches and functions, per-file data, collection-integrity status and

@@ -485,7 +485,9 @@ export class TerminalManager {
             this.socketSessions.delete(socket);
           }
         }
-        void session.dispose?.().catch(() => {});
+        // The shell is gone, but on Windows its ConPTY is not: until `kill()` closes the
+        // pseudoconsole, it holds the server's event loop open. Same teardown as a close.
+        endSession(session);
         onExit(terminalId, exitCode);
       }));
 
@@ -665,7 +667,8 @@ function isInside(candidate: string, root: string): boolean {
 /**
  * A sandbox runner's shell, on Linux: the runner's child, through the runner's own layers.
  *
- * landstrip's shell is its child. MXC's sits under `lxc-exec` and two `bwrap` processes —
+ * landstrip's shell is its child, or, when landstrip isolates processes, the child of the
+ * landstrip it forks into a new pid namespace. MXC's sits under `lxc-exec` and two `bwrap` processes —
  * beside the `sh -c` that supervises `slirp4netns` for its network — and under the `sh -c`
  * MXC wraps every command line in. On macOS MXC's shell is the executor's only child.
  * Undefined anywhere else, or once gone.
@@ -713,8 +716,13 @@ async function argv(pid: number): Promise<string[]> {
   return (await fs.readFile(`/proc/${pid}/cmdline`, "utf8").catch(() => "")).split("\0");
 }
 
-/** The processes a runner is made of, above the shell it runs. */
-const RUNNER_LAYERS = new Set(["lxc-exec", "bwrap"]);
+/**
+ * The processes a runner is made of, above the shell it runs. landstrip isolating processes
+ * forks itself as the first process of a new pid namespace, so its shell is a grandchild of
+ * the pty's process: stopping at the inner landstrip reported the folder the terminal opened
+ * in, whatever the shell did since.
+ */
+const RUNNER_LAYERS = new Set(["lxc-exec", "bwrap", "landstrip"]);
 
 /** A process's children, from a scan of `/proc/<n>/stat`: a runner's threads spawn them too. */
 async function childrenOf(pid: number): Promise<Array<{ pid: number; name: string }>> {
