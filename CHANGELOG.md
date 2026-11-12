@@ -7,6 +7,15 @@ version you had and the one you run now, without going online.
 Releases before 0.41.0 are described on
 [GitHub Releases](https://github.com/laurentftech/pi-outpost/releases).
 
+## [0.62.3] - 2026-11-12
+
+### Fixed
+
+- **Start reliably in Git workspaces, including on Windows.** Git changes noticed
+  while the agent loads its extensions no longer crash the server with
+  `clients is not iterable`.
+  ([#490](https://github.com/laurentftech/pi-outpost/pull/490))
+
 ## [0.62.2] - 2026-11-11
 
 ### Fixed
