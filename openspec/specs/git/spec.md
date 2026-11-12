@@ -37,7 +37,6 @@ missing binary indistinguishable from a directory that was never a repository.
 #### Scenario: RepositoriesOnlyUnderneath
 - **WHEN** the server starts with a browser root that is not inside a git work tree but holds repositories in its child directories
 - **THEN** the snapshot carries gitAvailable: true and git requests are served
-
 ### Requirement: ConfinedGitCommands
 
 The workspace Git integration SHALL run only read-only git commands (`rev-parse`, `status`, `log`, `show`), spawned without a shell with fixed argument lists, `cwd` at the browser root or at the toplevel of a repository in the workspace's repository set, and a pathspec that is either `-- .` (repo-scoped requests) or the single confined file being asked about (file-scoped requests), so git itself reports nothing outside the browser root, with a timeout and output cap. A repository toplevel SHALL become a `cwd` only after passing the same confinement check the file browser uses, so a repository discovered outside the browser root is never consulted. Single-file operations MUST validate the path with the same confinement used by the file browser; commit ids MUST match `/^[0-9a-f]{7,40}$/i`, and a revision naming the working tree MUST be an exact literal marker, never passed to git as a revision. A path MUST NOT be interpretable as an option or a revision by git: file-scoped commands MUST separate paths from revisions with `--`.
@@ -68,7 +67,6 @@ The agent-resource updater is a separate capability and MUST NOT broaden the com
 - **WHEN** a workspace Git request names a resource repository outside the browser root or asks for an update command
 - **THEN** the workspace Git integration refuses it exactly as before
 - **AND** the request is not rerouted to the resource updater
-
 ### Requirement: WorkingTreeStatus
 
 The system SHALL report per-file status (modified, added, deleted, untracked, conflicted)
@@ -95,7 +93,6 @@ repository. A workspace holding one repository SHALL therefore behave exactly as
 - **WHEN** a file_changed broadcast or agent_end event occurs
 - **THEN** The client refetches git_status (coalescing concurrent refetches)
 - **AND** tree badges and the header branch reflect the new state
-
 ### Requirement: WorktreeFileDiff
 
 The system SHALL provide, for a file under the browser root, its HEAD content and its
@@ -111,7 +108,6 @@ browser's size and binary limits.
 #### Scenario: UntrackedFileDiff
 - **WHEN** git_diff is requested for an untracked file
 - **THEN** The response carries an empty before and the worktree content as after
-
 ### Requirement: CommitHistory
 
 The system SHALL list recent commits (id, author, ISO date, subject; limit clamped to
@@ -171,7 +167,6 @@ falling back to another repository.
 - **GIVEN** a commit id that exists only in the second repository
 - **WHEN** its patch is requested against the first
 - **THEN** the request fails with a git_error and no patch from either repository is returned
-
 ### Requirement: GitUISurface
 
 The frontend SHALL show a branch chip in the header when git is available, mark files
@@ -240,7 +235,6 @@ history affordance.
 #### Scenario: ViewerHistoryAffordance
 - **WHEN** an unmodified tracked file is open in the viewer
 - **THEN** no diff toggle is offered but the history affordance is
-
 ### Requirement: FileCommitHistory
 
 The system SHALL list the commits touching a single file under the browser root, newest
@@ -271,7 +265,6 @@ rather than an error.
 #### Scenario: FileLogPathEscapeRefused
 - **WHEN** the file history is requested for a path resolving outside the browser root
 - **THEN** the request fails with a git_error and no git command runs on that path
-
 ### Requirement: RevisionPairDiff
 
 The system SHALL return the content of one file at two requested revisions so the client
@@ -305,7 +298,6 @@ client can label the diff and detect a stale reply.
 #### Scenario: BinaryOrOversizedSide
 - **WHEN** either side exceeds the file browser's size limit or is detected as binary
 - **THEN** the request fails with a git_error rather than returning unusable content
-
 ### Requirement: FileHistoryGraph
 
 The frontend SHALL open a full-pane file-history view for the file in the viewer, showing
@@ -337,7 +329,6 @@ viewer beneath it, matching the commit-diff pane.
 #### Scenario: HistoryUnavailableWithoutGit
 - **WHEN** the session reports gitAvailable: false
 - **THEN** no history affordance is rendered
-
 ### Requirement: RevisionPairSelection
 
 The file-history view SHALL let the user pick any two of the listed revisions as the diff's
@@ -391,7 +382,6 @@ diff belongs to.
 #### Scenario: DiffRequestFailed
 - **WHEN** the content request for a selected pair fails (oversized, binary, or a git error)
 - **THEN** the pane shows the error message and keeps the history list usable
-
 ### Requirement: ResolveTheRepositoryOwningAPath
 
 The system SHALL own, per workspace, a set of git repositories: the repositories whose
@@ -445,7 +435,6 @@ it as a single entry, and the set SHALL NOT report that entry as a file of its o
 - **WHEN** the working-tree status is reported
 - **THEN** the child's own files carry their status
 - **AND** the containing repository's single entry for that child is not reported as a file
-
 ### Requirement: RepositorySetFreshness
 
 The repository set SHALL be re-established when a repository appears under the browser root
@@ -463,7 +452,6 @@ stops being consulted.
 - **WHEN** one of them ceases to be a repository
 - **THEN** its files are reported as owned by no repository
 - **AND** no git command is spawned against its former toplevel
-
 ### Requirement: LocateTheGitExecutable
 
 The system SHALL resolve the git executable before spawning it, rather than trusting the
@@ -504,7 +492,6 @@ Resolution SHALL happen once per server run, not once per command.
 - **GIVEN** a machine with no git on `PATH` and none in any standard location
 - **WHEN** the system resolves the executable
 - **THEN** resolution fails, and git is reported unavailable because the executable could not be run
-
 ### Requirement: SayWhyGitIsUnavailable
 
 When git is unavailable the system SHALL report which of three things is true, rather than
@@ -563,7 +550,6 @@ looks when something is missing.
 - **GIVEN** a workspace reported unavailable because it holds no repository
 - **WHEN** a repository appears under it and the set is re-established
 - **THEN** git is reported available and no reason is carried
-
 ### Requirement: CommitMetroMap
 
 The branch chip's commit history SHALL draw its commits as a metro map, like the
@@ -589,7 +575,6 @@ Clicking a commit SHALL still open its patch.
 #### Scenario: ATaggedCommitShowsItsTag
 - **WHEN** a listed commit carries a tag
 - **THEN** its row shows the tag's name, in a form told apart from a branch name
-
 ### Requirement: CommitMetroMapFollowsTheRepository
 
 An open commit map SHALL follow a commit, checkout or branch made in its repository
@@ -606,7 +591,6 @@ is shown the next time it opens.
 - **GIVEN** the history of a repository was opened, then closed
 - **WHEN** that repository changes outside the application
 - **THEN** its commit map is not asked for, and opening the history again asks for it
-
 ### Requirement: GitScrollbarOverview
 The editor and read-only source SHALL show a right overview rail beside the scrollbar, with added, modified and deleted hunks colored like the left git gutter. Markers SHALL locate changes across the whole document, remain visible for single lines and end deletions, and follow draft, HEAD, layout and file changes. Activating a marker SHALL scroll to that change without editing. No comparable changes SHALL leave no markers.
 
@@ -626,7 +610,6 @@ The editor and read-only source SHALL show a right overview rail beside the scro
 #### Scenario: OverviewSurvivesLayoutChanges
 - **WHEN** a file has wrapped lines, an open change peek, scrolling, or a resized editor
 - **THEN** the overview stays fixed by the scrollbar with markers positioned against the current document layout, and ordinary scrollbar use still works
-
 ### Requirement: EditorChangeGutter
 
 The file's source view and its editor SHALL mark, beside each line, what differs from the
@@ -655,7 +638,6 @@ when HEAD's version cannot be compared.
 #### Scenario: TheGutterFollowsHead
 - **WHEN** the file's status is re-read after a commit moved HEAD
 - **THEN** the marks compare with the new HEAD, and an answer to an earlier request is ignored
-
 ### Requirement: GutterChangePeek
 
 A click on a gutter mark SHALL show HEAD's text for that change under it. An editable
@@ -673,7 +655,6 @@ read-only source view SHALL NOT.
 #### Scenario: TheSourceViewOffersNoRevert
 - **WHEN** the user clicks a mark in the read-only source view
 - **THEN** HEAD's text is shown, and no revert is offered
-
 ### Requirement: GitStateFollowsOutsideChanges
 
 The server SHALL notice when a repository's own state changes — a commit, checkout,
@@ -696,7 +677,6 @@ count as a change.
 #### Scenario: ALinkedWorkTreeIsFollowed
 - **WHEN** the workspace is a linked work tree, whose git state lives outside it, and a commit is made in it
 - **THEN** the change is announced
-
 ### Requirement: CommitMapFailuresStayInTheMap
 
 A commit map that cannot be listed SHALL say so inside the history menu, in place of its
@@ -708,13 +688,13 @@ saying it is loading once its request has failed.
 - **GIVEN** the history of a repository is open
 - **WHEN** listing its commits fails
 - **THEN** the menu shows the failure in place of the commits, no longer says it is loading, and the conversation's error banner is unchanged
-
 ### Requirement: GitFailuresSayWhy
 
 A git command that fails without git writing anything SHALL be reported with the reason the
 server knows instead: that it ran past its time limit, naming the limit; that git could not be
 started; or that it wrote more than the server reads. A failure git explains SHALL keep git's own
-first line.
+reason: its first `fatal:` or `error:` line, or its last non-empty line when it wrote neither,
+so that a progress line such as `Cloning into '…'...` is never reported as the cause.
 
 #### Scenario: ATimedOutCommandNamesItsLimit
 - **WHEN** a git command is stopped by the server's time limit
@@ -726,4 +706,8 @@ first line.
 
 #### Scenario: GitsOwnWordsAreKept
 - **WHEN** git fails and writes a reason
-- **THEN** the error is git's first line
+- **THEN** the error is git's reason line
+
+#### Scenario: AProgressLineIsNotTheReason
+- **WHEN** git writes a progress line and then a `fatal:` line before failing
+- **THEN** the error is the `fatal:` line
