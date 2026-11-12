@@ -868,6 +868,20 @@ function publishWrittenDocuments(target: () => Workspace): (paths: string[]) => 
 }
 
 /**
+ * Every connected client, and the workspace it is bound to.
+ *
+ * A set before this: one workspace meant one audience, so "connected" and
+ * "interested in this project" were the same fact. They stop being the same fact
+ * as soon as the server holds a second project, and a message that reaches a
+ * client bound elsewhere is the failure this map exists to make unstatable.
+ *
+ * Initialize broadcast state before creating workspaces: their watchers can
+ * announce changes while startup is awaiting the agent's resources or extensions.
+ */
+const clients = new Map<WebSocket, Workspace>();
+const WS_LOG_PATH = process.env.WS_LOG_PATH ? path.resolve(process.env.WS_LOG_PATH) : undefined;
+
+/**
  * The project this server booted with, and everything rooted at it.
  *
  * Its runtime is attached below rather than built here: the HTTP server
@@ -2924,15 +2938,6 @@ function snapshot(workspace: Workspace): SessionSnapshot {
 
 // --- WebSocket broadcast -------------------------------------------------------
 
-/**
- * Every connected client, and the workspace it is bound to.
- *
- * A set before this: one workspace meant one audience, so "connected" and
- * "interested in this project" were the same fact. They stop being the same fact
- * as soon as the server holds a second project, and a message that reaches a
- * client bound elsewhere is the failure this map exists to make unstatable.
- */
-const clients = new Map<WebSocket, Workspace>();
 const terminalManager = new TerminalManager({ PI_CODING_AGENT_DIR: LAUNCH_PI_CODING_AGENT_DIR });
 
 /**
@@ -3084,7 +3089,6 @@ function terminalUnavailableReason(): string | undefined {
   return terminalRunner.ok ? undefined : terminalRunner.reason;
 }
 
-const WS_LOG_PATH = process.env.WS_LOG_PATH ? path.resolve(process.env.WS_LOG_PATH) : undefined;
 
 function sendToSockets(sockets: Iterable<WebSocket>, message: ServerMessage): void {
   const data = JSON.stringify(message);
