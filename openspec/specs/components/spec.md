@@ -39,7 +39,6 @@ extension-rendered HTML and normalized markdown.
 - **GIVEN** a custom conversation item supplied by an extension
 - **WHEN** `CustomMessageCard` renders the item
 - **THEN** supported rendered HTML or normalized markdown is displayed
-
 ### Requirement: PromptComposition
 
 `Composer` SHALL present prompt composition from the connection, streaming, command, file-search,
@@ -61,7 +60,6 @@ through callbacks rather than communicating with the server directly.
 - **GIVEN** prefill state supplied to `Composer`
 - **WHEN** the component receives that state
 - **THEN** the prefill is made available for editing before submission
-
 ### Requirement: WorkspaceAndGitNavigation
 
 The component layer SHALL provide `FileTree`, `FileViewer`, `Sidebar`, `GitMenu`,
@@ -98,10 +96,9 @@ revision-pair state. Navigation and mutation requests SHALL be emitted through c
 - **GIVEN** file-history state supplied to `GitFileHistory`
 - **WHEN** the user picks two revisions
 - **THEN** the requested revision pair is reported through its diff-request callback
-
 ### Requirement: FileTree lifecycle controls
 
-`FileTree` SHALL expose callbacks for opening a file natively, renaming a file, deleting a file, moving a writable file to a directory, and copying a read-only file to a writable directory; it SHALL not perform filesystem operations itself. For a writable file, it SHALL expose rename and delete controls following the tree's existing hover/touch convention. Submitting a blank inline rename SHALL cancel the edit, restore the existing row, and report no rename request. It SHALL show a confirmation naming the target file before reporting a delete request, and cancellation SHALL report no request. It SHALL make a regular file row draggable and accept it only on a directory row that is a valid writable destination, reporting a move for a writable source and a copy for a read-only source. It SHALL expose native opening for any listed file inside the browser root, including a read-only file.
+`FileTree` SHALL expose callbacks for opening a file natively, renaming a file or folder, deleting a file or folder, moving a writable file or folder to a directory, and copying a read-only file or folder to a writable directory; it SHALL not perform filesystem operations itself. For a writable file or folder, it SHALL offer rename and delete in the row's actions menu. Submitting a blank inline rename SHALL cancel the edit, restore the existing row, and report no rename request. It SHALL show a confirmation naming the target before reporting a delete request — for a folder, saying that everything inside it is deleted too — and cancellation SHALL report no request. It SHALL make a regular file or folder row draggable and accept it only on a directory row that is a valid writable destination other than the dragged folder or one of its descendants, reporting a move for a writable source and a copy for a read-only source. It SHALL offer native opening in the actions menu of any listed file inside the browser root, including a read-only file.
 
 Every truncated file or directory label SHALL expose its complete entry name through the same hover tooltip convention used by the Git tree.
 
@@ -112,7 +109,7 @@ Every truncated file or directory label SHALL expose its complete entry name thr
 
 #### Scenario: Confirm a file deletion
 - **GIVEN** a writable file in `FileTree`
-- **WHEN** the user chooses delete and confirms the dialog
+- **WHEN** the user chooses Delete in its actions menu and confirms the dialog
 - **THEN** `FileTree` reports one delete request for that file through its callback
 
 #### Scenario: Cancel a file deletion
@@ -136,7 +133,7 @@ Every truncated file or directory label SHALL expose its complete entry name thr
 
 #### Scenario: Open a read-only file natively
 - **GIVEN** a read-only file row
-- **WHEN** the user activates its native-open control
+- **WHEN** the user chooses Open with associated app in its actions menu
 - **THEN** `FileTree` reports the file path through its native-open callback
 
 #### Scenario: Reveal a truncated entry name
@@ -144,6 +141,15 @@ Every truncated file or directory label SHALL expose its complete entry name thr
 - **WHEN** the user hovers the truncated label
 - **THEN** the browser tooltip exposes the complete entry name
 
+#### Scenario: ConfirmAFolderDeletion
+- **GIVEN** a writable folder in `FileTree`
+- **WHEN** the user chooses Delete in its actions menu
+- **THEN** the confirmation names the folder and says that everything inside it is deleted, and confirming reports one delete request for that folder
+
+#### Scenario: DragAFolderOntoAWritableFolder
+- **GIVEN** a writable folder row `drafts` and a writable folder row `archive`
+- **WHEN** the user drops `drafts` on `archive`, and then tries to drop `drafts` on one of its own subfolders
+- **THEN** `FileTree` reports one move of `drafts` to `archive`, and the drop on its subfolder is not accepted
 ### Requirement: Resizable Files Sidebar
 
 When the Files sidebar is open, the component layer SHALL expose a focusable vertical resize handle on its right boundary. Pointer movement and keyboard commands on that handle SHALL change the sidebar width within a 224-pixel minimum and a 640-pixel maximum. The default width SHALL remain 288 pixels.
@@ -174,7 +180,6 @@ The component layer SHALL persist a valid user-selected width in local browser s
 - **GIVEN** the stored sidebar-width preference is missing, malformed, or outside the supported bounds
 - **WHEN** the Files sidebar opens
 - **THEN** the sidebar renders at the default width or the nearest supported boundary without an application error
-
 ### Requirement: Resizable File History Split
 
 When file History presents its commit list and diff side by side, the component layer SHALL expose a focusable vertical resize handle between them. Pointer and keyboard resizing SHALL change the commit-list width within the same 224-pixel minimum and 640-pixel maximum, with 416 pixels as its default.
@@ -195,7 +200,6 @@ The History width SHALL use a local browser-storage preference distinct from the
 - **GIVEN** file History displays the commit list above the diff in a narrow layout
 - **WHEN** the History surface renders
 - **THEN** the commit list retains its responsive stacked sizing and no vertical resize handle is available
-
 ### Requirement: ExtensionInteractionSurfaces
 
 The component layer SHALL provide distinct surfaces for extension dialogs, notifications, and
@@ -230,7 +234,6 @@ offer a dismiss control on each notification.
 - **GIVEN** extension widget state supplied by the application
 - **WHEN** `ExtensionWidgets` renders
 - **THEN** the widgets are presented by the dedicated extension surface
-
 ### Requirement: RuntimeControls
 
 The component layer SHALL expose runtime controls through `Header`, `ModelBar`, `SettingsMenu`,
@@ -338,7 +341,6 @@ the server happened to report.
 - **GIVEN** conversation-tree state supplied to `TreeMenu`
 - **WHEN** the user selects a navigation or fork action
 - **THEN** the requested action is reported through the corresponding callback
-
 ### Requirement: SharedPresentationPrimitives
 
 The domain SHALL provide shared presentation primitives for copying text, syntax highlighting,
@@ -371,7 +373,6 @@ render pipeline; content originating in a tool's own output SHALL NOT be routed 
 - **GIVEN** a tool result whose own output contains markup
 - **WHEN** a presentation renders that output
 - **THEN** the output is presented as inert text rather than through `RenderedHtml`
-
 ### Requirement: SharedGraphPrimitives
 
 The component layer SHALL render the conversation tree and the file-history graph from one set of
@@ -393,7 +394,6 @@ rendering.
 #### Scenario: LayoutIsTestableWithoutRendering
 - **WHEN** lane assignment is exercised
 - **THEN** it can be computed and asserted without mounting a component
-
 ### Requirement: FileTreeReflectsDiskChanges
 
 The frontend SHALL keep the file tree in agreement with the workspace without requiring the user
@@ -436,7 +436,6 @@ Git status SHALL be refreshed on the same signal, so badges do not outlive the s
 - **GIVEN** a file open in edit mode with unsaved changes
 - **WHEN** the frontend is told that the file's directory changed
 - **THEN** the unsaved buffer is left alone
-
 ### Requirement: ManualTreeRefresh
 
 The frontend SHALL offer a control that re-lists every directory the tree is currently holding,
@@ -452,7 +451,6 @@ indistinguishable from a workspace that did not change.
 #### Scenario: RefreshIsAlwaysAvailable
 - **GIVEN** any file tree
 - **THEN** the refresh control is present, independently of whether directory watching is on
-
 ### Requirement: AModelWithOneLevelIsStatedNotDrawnAsARange
 
 Where the accepted set supplied to `ModelBar` holds a single level, the thinking control
@@ -473,7 +471,6 @@ already happened.
 - **GIVEN** `ModelBar` is supplied with `high` as the current level and an accepted set without it
 - **WHEN** the thinking control is opened
 - **THEN** the control still reads `high`
-
 ### Requirement: AgentResourceManager
 
 The component layer SHALL expose a dedicated Agent resources dialog from Settings as the single interactive surface for adding and removing user skill and extension roots, for turning collection skills on and off, and for removing repositories. Settings SHALL retain the loaded and configured resource summary but SHALL open this dialog instead of presenting separate add-directory controls. The dialog SHALL present separate **Add local folder…** and **Add Git repository…** buttons. The dialog SHALL otherwise use a repository-first split layout: a searchable and filterable repository list with an attention summary on the left, and the selected repository's status, actions, skills, and extensions on the right. Non-Git and provenance-unavailable resources SHALL be reachable as non-updateable groups.
@@ -618,7 +615,6 @@ The component SHALL render only supplied inventory and operation state and SHALL
 - **GIVEN** a selected repository that supplies a path declared in the configuration file
 - **WHEN** its details are displayed
 - **THEN** no Remove repository action is offered and the dialog says why
-
 ### Requirement: ConversationFilterControls
 
 `Header` SHALL expose the conversation's content filters as a single labelled menu rather than one button per kind. The menu SHALL render only the filter state supplied to it and SHALL report each requested change through a callback, holding no filtering state of its own. Its trigger SHALL carry the filtered/unfiltered state so it is legible while the menu is closed, and the menu SHALL be dismissible the way the application's other popovers are — a click outside it and the Escape key — so it cannot be stranded open over a conversation that has moved on.
@@ -662,7 +658,6 @@ Each entry SHALL be an accessible checkbox-like control reporting its checked st
 - **GIVEN** an assistant item rendered with reasoning hidden
 - **WHEN** the same item is rendered again with reasoning shown
 - **THEN** its reasoning is present in full
-
 ### Requirement: ACodeBlockCanBeCopied
 
 Every code block shown as code in an assistant reply SHALL carry a copy control in its top-right corner that copies the block's content exactly, without its fence or language tag, and SHALL confirm the copy.
@@ -671,7 +666,6 @@ Every code block shown as code in an assistant reply SHALL carry a copy control 
 - **GIVEN** a reply containing a ```` ```ts ```` block
 - **WHEN** the reader activates the block's copy control
 - **THEN** the clipboard holds the block's content without the fence, and the control shows that it copied
-
 ### Requirement: MermaidActionsMatchOtherDiagrams
 
 Mermaid SHALL show a visible action row below its picture, with the same action
@@ -707,7 +701,6 @@ the content scrolls. The close control SHALL stay at the top right.
 - **WHEN** download is requested repeatedly while an export is pending
 - **THEN** only one export runs
 - **AND** replacing the source before it completes prevents the obsolete file from downloading
-
 ### Requirement: HeaderControlsShareOneRow
 
 `Header` SHALL keep its controls on one row of one height, none of them wrapping its label.
@@ -730,6 +723,208 @@ they do not fit the bar, and SHALL return inline once the bar has room for them 
 #### Scenario: StatusesUnfoldWhenRoomReturns
 - **WHEN** the bar grows well past the width at which the statuses folded
 - **THEN** they return inline, and a list left open does not reappear at the next fold
+
+### Requirement: FileTree row actions menu
+
+Each file and folder row SHALL carry one actions menu, opened by a `⋯` control or by the row's context menu. Besides it the row SHALL carry only the git badge and the `@` reference toggle. The `⋯` and an unreferenced `@` SHALL follow the hover/touch convention. Items SHALL be labelled, each with its action's symbol, and grouped in a fixed order; an item the row cannot take SHALL be left out rather than disabled.
+
+#### Scenario: AFileRowsMenuInItsOrder
+- **GIVEN** a writable, git-modified file with every callback wired
+- **WHEN** the user opens its actions menu
+- **THEN** the items read, in order and grouped: Open, Show diff, Open with associated app, Show in file manager · Reference in prompt, Download · Rename…, Move to… · Delete…
+
+#### Scenario: AFolderRowsMenu
+- **GIVEN** a writable folder row with every callback wired
+- **WHEN** the user opens its actions menu
+- **THEN** the items read, in order and grouped: New file…, New folder…, Show in file manager · Reference in prompt, Download as .zip · Rename…, Move to… · Delete…
+
+#### Scenario: AReadOnlyFileOffersOnlyWhatItCanTake
+- **GIVEN** a read-only file, and a read-only folder
+- **WHEN** the user opens each one's actions menu
+- **THEN** Rename…, Move to…, Delete…, New file… and New folder… are absent, and Download and Reference in prompt are present on both, and Open on the file
+
+#### Scenario: TheRootsOfferNoRemoval
+- **GIVEN** the folder row that is the writable root itself
+- **WHEN** the user opens its actions menu
+- **THEN** Rename…, Move to… and Delete… are absent
+
+#### Scenario: TheContextMenuOpensTheSameMenu
+- **WHEN** the user right-clicks a row
+- **THEN** the same actions menu opens at the pointer instead of the browser's own
+
+#### Scenario: TheRowKeepsTheAtAndItsStates
+- **GIVEN** a referenced, git-modified file and an unreferenced folder
+- **THEN** the file's row shows the lit `@`, the git badge and `⋯`, the folder's row its `@` and `⋯`, and no other control
+
+#### Scenario: EachItemCarriesItsSymbol
+- **WHEN** the user opens a row's actions menu
+- **THEN** each item shows its action's symbol beside its label — ↵ open, ± diff, ↗ open with app, ⌂ show in file manager, + new, @ reference, ⤓ download, ✎ rename, → move, × delete
+
+#### Scenario: TheMenuIsAKeyboardMenu
+- **GIVEN** an open actions menu
+- **WHEN** the user moves with the arrow keys, presses Enter, or presses Escape
+- **THEN** focus moves between items, Enter runs the focused item, Escape closes the menu, and focus returns to the row
+
+#### Scenario: OneMenuAtATime
+- **GIVEN** an open actions menu
+- **WHEN** the user opens another row's menu, clicks outside it, or the listed project changes
+- **THEN** the first menu is closed
+### Requirement: FileTree multi-selection
+
+`FileTree` SHALL let the user select several file and folder rows: Shift-click SHALL select every visible row between the anchor and the clicked row, Ctrl/Cmd-click SHALL add or remove one row, and Escape SHALL clear the selection. These clicks SHALL NOT open a file nor expand a folder, and a plain click that expands a folder SHALL NOT select it. An entry inside a selected folder SHALL be covered by it and acted on once. A path that leaves the listing SHALL leave the selection.
+
+#### Scenario: ShiftClickSelectsARange
+- **GIVEN** files `a`, `b`, `c`, `d` listed in that order and `a` clicked
+- **WHEN** the user Shift-clicks `c`
+- **THEN** `a`, `b` and `c` are selected, `d` is not, and the open file is unchanged
+
+#### Scenario: CtrlClickTogglesOneFile
+- **GIVEN** a selection of `a` and `b`
+- **WHEN** the user Ctrl-clicks (Cmd-clicks on macOS) `b` and then `d`
+- **THEN** the selection is `a` and `d`
+
+#### Scenario: EscapeClearsTheSelection
+- **GIVEN** a selection of several files
+- **WHEN** the user presses Escape in the tree
+- **THEN** nothing is selected
+
+#### Scenario: ARangeIncludesVisibleFoldersOnly
+- **GIVEN** an expanded folder between two files, and a collapsed folder whose entries are not shown
+- **WHEN** the user Shift-clicks across them
+- **THEN** every visible row in between is selected, both folder rows included, and none of the collapsed folder's entries
+
+#### Scenario: ASelectedFolderCoversItsContent
+- **GIVEN** the folder `docs` and the file `docs/a.md` are both selected
+- **WHEN** the user deletes, moves, downloads or references the selection
+- **THEN** the request carries `docs` once and not `docs/a.md`
+
+#### Scenario: ExpandingAFolderDoesNotSelectIt
+- **GIVEN** a folder opened with a plain click
+- **WHEN** the user Ctrl-clicks two files inside it and deletes the selection
+- **THEN** only those two files are requested for deletion, never the folder
+
+#### Scenario: ASelectionDoesNotOutliveItsFiles
+- **GIVEN** a selection including `b`
+- **WHEN** `b` is deleted, or another project is listed
+- **THEN** `b`, or the whole selection, is no longer selected
+### Requirement: FileTree acts on a selection
+
+The actions menu of a selected row SHALL act on the whole selection and say how many entries it covers; the menu of an unselected row SHALL first make that row the selection. On a selection it SHALL offer Delete…, Move to…, Download and Reference in prompt, each only when every selected entry can take it. Delete SHALL ask one confirmation naming the count. Download SHALL fetch one archive. Dropping a selected row on a folder SHALL move the selection.
+
+#### Scenario: DeleteASelectionWithOneConfirmation
+- **GIVEN** two writable files and one writable folder selected
+- **WHEN** the user chooses Delete 3 items… and confirms once
+- **THEN** `FileTree` reports one batch delete request for the three paths, and the confirmation says the folder's content goes with it
+
+#### Scenario: DownloadASelectionAsOneArchive
+- **GIVEN** a file and a folder selected
+- **WHEN** the user chooses Download
+- **THEN** one download is started, for one `.zip` holding both
+
+#### Scenario: DragASelectionOntoAFolder
+- **GIVEN** two writable files selected and a writable folder
+- **WHEN** the user drags one of the selected rows onto the folder
+- **THEN** `FileTree` reports one batch move of both paths to that folder
+
+#### Scenario: AMixedSelectionOffersNoMutation
+- **GIVEN** a selection holding a writable and a read-only file
+- **WHEN** the user opens the menu of a selected row
+- **THEN** Delete… and Move to… are absent, and Download and Reference in prompt are present
+
+#### Scenario: TheMenuOfAnUnselectedRowActsOnThatRow
+- **GIVEN** a selection of `a` and `b`
+- **WHEN** the user opens the actions menu of `d`
+- **THEN** the selection becomes `d` alone and the menu acts on `d`
+
+#### Scenario: KeyboardShortcutsOnTheSelection
+- **GIVEN** a focused selected row in a selection of writable entries
+- **WHEN** the user presses Delete
+- **THEN** the same single confirmation is asked as from the menu, and F2 on a single focused writable file or folder opens its rename
+### Requirement: FileTree selection bar
+
+While two or more entries are selected, `FileTree` SHALL show a bar above the listing that stays in view while the tree scrolls. It SHALL name how many entries are selected, offer the actions the selection's menu offers, each running on the whole selection exactly as from the menu, and offer a control that clears the selection. With fewer than two entries selected, no bar SHALL be shown.
+
+#### Scenario: TheBarAppearsWithASelection
+- **GIVEN** one file selected
+- **WHEN** the user Ctrl-clicks a second entry, and then a third
+- **THEN** a bar appears saying 2 selected, then 3 selected, and it holds the same actions as the menu of a selected row
+
+#### Scenario: DeleteFromTheBar
+- **GIVEN** three writable entries selected
+- **WHEN** the user presses Delete in the bar and confirms once
+- **THEN** `FileTree` reports one batch delete request for the three paths and the bar goes away
+
+#### Scenario: TheBarClearsTheSelection
+- **GIVEN** a selection and its bar
+- **WHEN** the user presses the bar's clear control
+- **THEN** nothing is selected and the bar is gone
+
+#### Scenario: NoBarForOneEntry
+- **GIVEN** a single file clicked, or no selection
+- **THEN** no selection bar is shown
+### Requirement: FileTree undo of the last change
+
+After a move, a rename or a deletion made from the tree succeeds, for one entry or several, `FileTree` SHALL say what changed and offer to undo it, by a control and by Ctrl/Cmd+Z in the tree. Undoing SHALL move entries back where they came from, rename back, or restore what was deleted. The offer SHALL last until another file operation or its dismissal; an undo SHALL NOT offer an undo.
+
+#### Scenario: UndoAMove
+- **GIVEN** `inbox/a.txt` and `inbox/b.txt` moved to `archive`
+- **WHEN** the user presses Undo in the tree
+- **THEN** `FileTree` reports one move of `archive/a.txt` and `archive/b.txt` back to `inbox`, and says the move was undone
+
+#### Scenario: UndoPutsEachBackWhereItCameFrom
+- **GIVEN** `x/one.txt` and `y/two.txt` moved together to `archive`
+- **WHEN** the user undoes it
+- **THEN** `archive/one.txt` is moved back to `x`, and once that is answered `archive/two.txt` back to `y`
+
+#### Scenario: UndoByKeyboard
+- **GIVEN** a move just made from the tree
+- **WHEN** the user presses Ctrl+Z (Cmd+Z on macOS) in the tree
+- **THEN** the move is undone as with the Undo control
+
+#### Scenario: UndoIsOfferedForTheLastMoveOnly
+- **GIVEN** a move that can be undone
+- **WHEN** another file operation starts, or the user dismisses the offer
+- **THEN** no undo is offered any more
+
+#### Scenario: AnUndoThatCannotBeDoneSaysWhy
+- **GIVEN** a moved file whose original place has since been taken by another file of the same name
+- **WHEN** the user undoes the move
+- **THEN** that file is not moved back, nothing is overwritten, and the tree shows the refusal
+
+#### Scenario: AnUndoIsNotUndone
+- **WHEN** an undo has been answered
+- **THEN** the tree says the move was undone and offers no undo of the undo
+
+#### Scenario: UndoARename
+- **GIVEN** `draft.md` renamed to `final.md` from the tree
+- **WHEN** the user presses Undo
+- **THEN** `FileTree` reports a rename of `final.md` back to `draft.md`, and says the rename was undone
+
+#### Scenario: UndoADeletion
+- **GIVEN** two files and a folder deleted from the tree, confirmed once
+- **WHEN** the user presses Undo
+- **THEN** `FileTree` asks the server to restore all three in one request, and says the deletion was undone
+### Requirement: FileTree destination picking
+
+Move to… SHALL put the tree in a destination-picking mode that names what is being moved: every writable folder row other than a moved folder or its descendants, and the workspace root, SHALL become a target; clicking one SHALL report the move and leave the mode; Escape or a Cancel control SHALL leave it without a request. Folders SHALL still expand while picking.
+
+#### Scenario: PickADestination
+- **GIVEN** two writable files and Move to… chosen on them
+- **WHEN** the user expands `archive` and clicks `archive/2026`
+- **THEN** `FileTree` reports one move of both files to `archive/2026` and the tree leaves picking mode
+
+#### Scenario: CancelPicking
+- **GIVEN** the tree is picking a destination
+- **WHEN** the user presses Escape or Cancel
+- **THEN** no move is reported and the tree is back to normal
+
+#### Scenario: AReadOnlyFolderIsNoTarget
+- **GIVEN** the tree is picking a destination
+- **THEN** a read-only folder cannot be clicked as a target
+
+#### Scenario: AMovedFolderIsNoTargetForItself
+- **GIVEN** the tree is picking a destination for the folder `project`
+- **THEN** neither `project` nor any folder inside it can be clicked as a target
 
 ## Technical Notes
 

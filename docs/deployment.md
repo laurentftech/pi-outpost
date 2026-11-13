@@ -5,6 +5,7 @@
 - [Staying up to date](#staying-up-to-date)
 - [Running it as a service](#running-it-as-a-service)
 - [Remote transport: HTTPS or SSH](#remote-transport-https-or-ssh)
+- [Private access with Tailscale](#private-access-with-tailscale)
 - [Docker with Python](docker.md)
 - [Installing it as an app](#installing-it-as-an-app)
 
@@ -43,6 +44,58 @@ HTTP configurations now refuse startup until you choose one of these deployments
 The [Docker template](docker.md) explicitly permits its host-local container hop;
 persisted configurations are not silently rewritten. These settings apply to the
 pi-outpost listener, not a separately deployed Open WebUI service or provider endpoints.
+
+## Private access with Tailscale
+
+Use [Tailscale Serve](https://tailscale.com/docs/reference/tailscale-cli/serve) to reach
+pi-outpost from devices in your tailnet without opening a router port or exposing the
+service to the public internet. Serve terminates HTTPS and forwards requests to a local
+HTTP service. Keep pi-outpost bound to loopback; its HTTP hop to Serve stays on the same
+machine.
+
+1. Install Tailscale on the server and the client devices, and sign them in to the same
+   tailnet. In the Tailscale admin console, enable **MagicDNS** and **HTTPS Certificates**
+   on the DNS page. Tailscale HTTPS certificates publish the device's full DNS name in
+   Certificate Transparency logs; choose a non-sensitive machine name before enabling
+   certificates.
+2. Configure pi-outpost in `~/.config/pi-outpost/config.json` (or your platform's user
+   config directory):
+
+   ```json
+   {
+     "server": {
+       "host": "127.0.0.1",
+       "port": 3141,
+       "token": "replace-with-a-long-random-secret",
+       "allowedOrigins": ["https://pi-outpost.example-tailnet.ts.net"]
+     }
+   }
+   ```
+
+   Generate a token with `openssl rand -hex 32`. Replace the example hostname with the
+   server's full MagicDNS name, shown in the Tailscale admin console or by `tailscale status`.
+   The origin must be exactly the HTTPS origin you will open; omit the port when
+   Serve uses its default HTTPS port 443. Keep the config private because it contains the
+   shared token. Restart pi-outpost after changing it.
+3. On the server, expose the local port through Serve:
+
+   ```sh
+   tailscale serve --bg 3141
+   tailscale serve status
+   ```
+
+   Open `https://<server>.<tailnet>.ts.net/?token=<secret>` from a device connected to the
+   tailnet, replacing the placeholders with the HTTPS URL from `tailscale serve status` and
+   the configured token. pi-outpost stores the token in that browser and removes it from the
+   URL. Serve is private to the tailnet; do not use `tailscale funnel` for this setup.
+   Tailnet access rules still control which devices can connect.
+
+To stop sharing the service, run `tailscale serve off`. pi-outpost remains available on
+the server's loopback address. For a Docker deployment on the same host, the supplied
+Compose file already publishes port 3141 on `127.0.0.1`, so the same Serve command can
+proxy to it without changing the container's network settings. See the
+[Tailscale Serve reference](https://tailscale.com/docs/reference/tailscale-cli/serve) for
+other target and port options.
 
 ## Staying up to date
 

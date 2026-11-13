@@ -9,18 +9,15 @@ token flow (URL parameter, localStorage, token screen) and an embed token option
 
 ### Requirement: OptionalSharedToken
 
-The system SHALL support an optional shared-secret token, configured as `server.token` and
-overridden by the `PI_OUTPOST_TOKEN` environment variable (env wins). An empty-string token
-MUST be rejected at config load. Without a token, behavior is unchanged (no authentication).
+The system SHALL support a shared-secret token, configured as `server.token` and overridden by `PI_OUTPOST_TOKEN` (env wins). Empty tokens MUST be rejected at config load. A token MAY be omitted on literal loopback listeners; it SHALL be required on non-loopback listeners, including native TLS or explicitly permitted plaintext protected hops.
 
 #### Scenario: EnvOverridesConfig
 - **WHEN** both server.token and PI_OUTPOST_TOKEN are set
-- **THEN** The environment variable's value is the effective token
+- **THEN** the environment variable's value is the effective token
 
 #### Scenario: NoTokenConfigured
-- **WHEN** neither server.token nor PI_OUTPOST_TOKEN is set
-- **THEN** All endpoints behave exactly as before (no credential required)
-
+- **WHEN** neither server.token nor PI_OUTPOST_TOKEN is set on a literal loopback listener
+- **THEN** endpoints require no credential and retain their Origin and confinement controls
 ### Requirement: ProtectedSurfaces
 
 When a token is configured, the system SHALL require it on the WebSocket (via `?token=`
@@ -45,7 +42,6 @@ code 4401, so the client can distinguish bad credentials from an unreachable ser
 #### Scenario: HealthRedacted
 - **WHEN** GET /health is called while auth is enabled
 - **THEN** 200 with ok status but without the session id
-
 ### Requirement: BrowserTokenFlow
 
 The frontend SHALL accept the token from a `?token=` URL parameter (persisting it to
