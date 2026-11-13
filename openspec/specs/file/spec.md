@@ -22,7 +22,6 @@ cannot be used to escape the sandbox even for paths that do not exist yet.
 - **GIVEN** A path containing symlinks (possibly to a not-yet-existing file)
 - **WHEN** realResolve is called
 - **THEN** The symlink-free absolute path is returned
-
 ### Requirement: CheckPathWithinRoot
 
 > Implementation: `isWithin` in `server/src/sandbox.ts` · confidence: reviewed
@@ -38,7 +37,6 @@ The system SHALL check if a target path is within a specified root directory.
 - **GIVEN** A target path that is outside the root directory (including prefix look-alikes such as `/root-other` for root `/root`)
 - **WHEN** isWithin is called
 - **THEN** Returns false
-
 ### Requirement: CreateSandboxedTools
 
 > Implementation: `createSandboxedTools` in `server/src/sandbox.ts` · confidence: reviewed
@@ -115,7 +113,6 @@ and a path inside the root on paper reaches a file outside it.
 - **GIVEN** a sandbox root
 - **WHEN** the PowerPoint extraction tool targets a path that resolves outside that root and outside every read exception
 - **THEN** the operation is denied
-
 ### Requirement: ResolveBrowserRoot
 
 > Implementation: `resolveBrowserRoot` in `server/src/fileBrowser.ts` · confidence: reviewed
@@ -128,7 +125,6 @@ configuration (the sandbox root when a sandbox is configured, otherwise the agen
 - **GIVEN** Valid AppConfig
 - **WHEN** resolveBrowserRoot is called
 - **THEN** The browser root path is resolved successfully
-
 ### Requirement: ResolveWritableRoot
 
 > Implementation: `resolveWritableRoot` in `server/src/fileBrowser.ts` · confidence: reviewed
@@ -147,7 +143,6 @@ mark which part of the tree the agent may modify.
 - **GIVEN** Valid AppConfig with writes disabled
 - **WHEN** resolveWritableRoot is called
 - **THEN** No writable root is returned
-
 ### Requirement: ListDirectory
 
 > Implementation: `listDirectory` in `server/src/fileBrowser.ts` · confidence: reviewed
@@ -166,7 +161,6 @@ relative paths that escape the root.
 - **GIVEN** Valid root and relPath pointing outside the root or to a non-existent directory
 - **WHEN** listDirectory is called
 - **THEN** An error is thrown
-
 ### Requirement: ReadFileForPreview
 
 > Implementation: `readFileForPreview` in `server/src/fileBrowser.ts` (limit `MAX_PREVIEW_BYTES` = 1 MiB) · confidence: reviewed
@@ -186,7 +180,6 @@ and size so the client can later detect concurrent modification when saving.
 - **GIVEN** Valid root and relPath pointing outside the root or to a non-existent file
 - **WHEN** readFileForPreview is called
 - **THEN** An error is thrown
-
 ### Requirement: WriteFileFromBrowser
 
 > Implementation: `writeFileFromBrowser` in `server/src/fileBrowser.ts` · confidence: reviewed
@@ -209,7 +202,6 @@ saved file always remains reopenable in the viewer. Writes are atomic (temp file
 #### Scenario: SaveTooLarge
 - **WHEN** write_file is called with content larger than the preview size limit
 - **THEN** The write is refused with a too-large error
-
 ### Requirement: DetectConcurrentModification
 
 > Implementation: `writeFileFromBrowser` in `server/src/fileBrowser.ts` · confidence: reviewed
@@ -231,7 +223,6 @@ write MUST be refused with a conflict error instead of silently overwriting.
 #### Scenario: ExplicitOverwrite
 - **WHEN** write_file is called with force after the user chose "overwrite" on the conflict banner
 - **THEN** The mtime comparison is skipped and the write proceeds (permission and size checks still apply)
-
 ### Requirement: FullSizeFileViewer
 
 - **Implementation**: `FileViewer::ui/src/components/FileViewer.tsx`
@@ -328,7 +319,6 @@ capability.
 - **GIVEN** a structured-exchange document shown rendered
 - **WHEN** the reader looks at the viewer's toolbar
 - **THEN** a graph, a sequence or a timeline offers its figure as SVG, a table offers a Word document holding the table and an Excel workbook, and neither offers its JSON as Word text
-
 ### Requirement: SearchFiles
 
 > Implementation: `searchFiles` in `server/src/fileBrowser.ts` · confidence: reviewed
@@ -348,7 +338,6 @@ of results.
 - **GIVEN** Valid root and an empty query string
 - **WHEN** searchFiles is called
 - **THEN** An empty array is returned
-
 ### Requirement: CreateFileFromBrowser
 
 The system SHALL create an empty file at a path supplied by the browser, under exactly the
@@ -385,7 +374,6 @@ clients that the path changed, so every open tree shows it.
 #### Scenario: NameIsNotAPath
 - **WHEN** the requested name contains a path separator, or is `.`, `..`, empty, or whitespace only
 - **THEN** it is refused and nothing is created
-
 ### Requirement: CreateDirectoryFromBrowser
 
 The system SHALL create a directory from the browser under the same rules as file creation:
@@ -401,13 +389,12 @@ On success the system SHALL notify connected clients that the tree changed.
 #### Scenario: CreateDirectoryRefused
 - **WHEN** the path is outside the writable zone, already exists, or the name is not a name
 - **THEN** it is refused with the same reason a file creation would give, and nothing is created
-
 ### Requirement: CreateFromTree
 
 The frontend SHALL let the user create a file or a directory from the file tree, in a directory the
-tree shows as writable. The affordance SHALL NOT be offered on a directory outside the writable
-zone, and SHALL follow the tree's existing convention for row controls: revealed on hover where
-hovering exists, and always present where it does not.
+tree shows as writable. The affordances SHALL be the New file… and New folder… items of the directory's
+actions menu, and the workspace root's own control above the listing; it SHALL NOT be offered on a
+directory outside the writable zone.
 
 The name SHALL be entered in the tree itself, at the directory it will be created in, so the
 destination is shown rather than typed. Confirming SHALL request creation; cancelling SHALL leave
@@ -419,7 +406,7 @@ rejected name can be corrected rather than retyped.
 
 #### Scenario: CreateFileFromTree
 - **GIVEN** a directory inside the writable zone
-- **WHEN** the user activates its creation control, types a name and confirms
+- **WHEN** the user chooses New file… in its actions menu, types a name and confirms
 - **THEN** the file is created in that directory and opens in the viewer ready to be edited
 
 #### Scenario: CreateDirectoryFromTree
@@ -428,7 +415,7 @@ rejected name can be corrected rather than retyped.
 
 #### Scenario: ReadOnlyDirectoryOffersNothing
 - **GIVEN** a directory outside the writable zone, or a read-only sandbox
-- **THEN** no creation control is offered on it
+- **THEN** its actions menu offers neither New file… nor New folder…
 
 #### Scenario: CancelCreation
 - **WHEN** the user cancels the input
@@ -437,10 +424,9 @@ rejected name can be corrected rather than retyped.
 #### Scenario: RefusedNameKeepsTheInput
 - **WHEN** creation is refused, because the name is taken or not usable
 - **THEN** the reason is shown next to the input and the typed name is still there to correct
-
 ### Requirement: File lifecycle operations are confined and permissioned
 
-The system SHALL rename, delete, move, and copy an existing regular file only after resolving every supplied path with the file browser's symlink-safe confinement rules. Rename, delete, and move SHALL require the source to be inside the writable zone. Copy SHALL allow a confined read-only source because it leaves that source unchanged. Move and copy SHALL require the destination directory to be inside the writable zone. A rename name SHALL be one non-empty path segment other than `.` or `..`; rename, move, and copy SHALL refuse an existing destination and SHALL NOT overwrite it. Deletion SHALL target a regular file only. On success, the system SHALL notify connected clients of the affected tree paths.
+The system SHALL rename, delete, move, and copy an existing regular file or directory only after resolving every supplied path with the file browser's symlink-safe confinement rules. Rename, delete, and move SHALL require the source to be inside the writable zone. Copy SHALL allow a confined read-only source because it leaves that source unchanged. Move and copy SHALL require the destination directory to be inside the writable zone. A rename name SHALL be one non-empty path segment other than `.` or `..`; rename, move, and copy SHALL refuse an existing destination and SHALL NOT overwrite it. Deleting a directory SHALL delete everything inside it, removing a symbolic link as a link and never following it. A directory SHALL NOT be moved into itself or one of its descendants. The browser root and the writable root itself SHALL NOT be renamed, moved or deleted. On success, the system SHALL notify connected clients of the affected tree paths.
 
 #### Scenario: Rename a writable file
 - **GIVEN** `draft.docx` is an existing regular file in a writable directory
@@ -470,6 +456,33 @@ The system SHALL rename, delete, move, and copy an existing regular file only af
 - **WHEN** the browser requests to copy `reference/report.docx` to `workspace/archive`
 - **THEN** the file exists at both paths, and connected clients are notified for the destination branch
 
+#### Scenario: RenameAFolder
+- **GIVEN** a writable folder `drafts` holding files and subfolders
+- **WHEN** the browser requests its rename to `final`
+- **THEN** `final` holds the same content, `drafts` no longer exists, and clients are notified of the parent directory
+
+#### Scenario: DeleteAFolderWithItsContent
+- **GIVEN** a writable folder `old` holding files, a subfolder, and a symbolic link to a file outside it
+- **WHEN** the browser requests its deletion
+- **THEN** `old` and everything inside it are gone, and the link's target is untouched
+
+#### Scenario: MoveAFolder
+- **GIVEN** writable folders `inbox/project` and `archive`
+- **WHEN** the browser requests to move `inbox/project` to `archive`
+- **THEN** `archive/project` holds its content and `inbox/project` no longer exists
+
+#### Scenario: RefuseMovingAFolderIntoItself
+- **WHEN** the browser requests to move `project` into `project` or `project/sub`
+- **THEN** the request is refused and nothing is changed
+
+#### Scenario: RefuseReplacingAFolder
+- **GIVEN** `archive/project` already exists
+- **WHEN** the browser requests to move or rename another folder to `archive/project`
+- **THEN** the request is refused as a conflict and both folders keep their content
+
+#### Scenario: TheRootsCannotBeRemoved
+- **WHEN** the browser requests to rename, move or delete the browser root, or the writable root itself
+- **THEN** the request is refused and nothing is changed
 ### Requirement: Native file opening is confined
 
 The system SHALL request that the host operating system open a selected existing regular file inside the browser root with its associated application. It SHALL invoke the platform launcher without a shell and with the validated absolute path as an argument, and SHALL NOT start it hidden. Native opening SHALL not require the file to be writable. If the path is outside the browser root, is not a regular file, or the platform launcher fails, the system SHALL report an error and SHALL not launch an application for an unvalidated path. On Windows, where `explorer.exe` exits with a non-zero code even when it has opened the file, only a failure to start it SHALL be reported as an error.
@@ -487,7 +500,6 @@ The system SHALL request that the host operating system open a selected existing
 - **GIVEN** the server runs on Windows and a CSV file is inside the browser root
 - **WHEN** the browser requests native opening for it
 - **THEN** `explorer.exe` is started with the file and without the hidden-window flag, and its non-zero exit code is not reported as a failure
-
 ### Requirement: UploadFileFromBrowser
 
 The system SHALL store a file supplied by the browser under exactly the permission rules that
@@ -560,7 +572,6 @@ the tree changed, so every open tree shows the upload.
 #### Scenario: UploadBeyondSizeLimit
 - **WHEN** the payload exceeds the maximum upload size
 - **THEN** it is refused as too large and nothing is written
-
 ### Requirement: WatchListedDirectories
 
 The system SHALL watch the contents of every directory it has listed for a client, and SHALL
@@ -624,7 +635,6 @@ kind SHALL be sent; every other file-browser behaviour SHALL be unchanged.
 - **GIVEN** a configuration with file watching disabled
 - **WHEN** a directory is listed and an entry inside it then changes on disk
 - **THEN** the listing is returned as usual and no change notification is sent
-
 ### Requirement: StructuredExchangeDocumentsArePreviewedAsWhatTheyDescribe
 
 A file in the workspace whose content is a structured-exchange document SHALL be displayed by the
@@ -677,7 +687,6 @@ SHALL NOT be reported as invalid — the document is not at fault.
 #### Scenario: TooLargeIsNotTheSameAsInvalid
 - **WHEN** a valid document exceeds what the viewer may fetch
 - **THEN** the viewer reports the size limit it hit, and does not report the document as invalid
-
 ### Requirement: ADocumentCanBeEditedBesideItsRendering
 
 The full-size viewer SHALL offer, for a file it can render — a structured-exchange
@@ -741,7 +750,6 @@ the view follows the editor without ever going stale.
 #### Scenario: OtherFilesAreUnaffected
 - **WHEN** a file the viewer has no rendering for is opened
 - **THEN** no side-by-side mode is offered and the file keeps the display it has today
-
 ### Requirement: RevealInFileManager
 
 The system SHALL ask the host operating system's file manager to show an existing file or folder
@@ -751,7 +759,8 @@ D-Bus method, falling back to opening the containing folder with `xdg-open` when
 It SHALL invoke these without a shell and with the validated absolute path. Revealing SHALL not
 require the path to be writable. If the path is outside the browser root or does not exist, the
 system SHALL report an error and SHALL not launch anything; if the file manager cannot be started,
-it SHALL report an error. The Files tree SHALL offer the control on every file and folder row.
+it SHALL report an error. The Files tree SHALL offer Show in file manager in the actions menu of
+every file and folder row.
 
 #### Scenario: RevealAFileOnEachPlatform
 - **GIVEN** `docs/report.docx` exists inside the browser root
@@ -773,9 +782,8 @@ it SHALL report an error. The Files tree SHALL offer the control on every file a
 
 #### Scenario: TheTreeOffersRevealOnFilesAndFolders
 - **GIVEN** the Files tree shows a folder and a file
-- **WHEN** the user presses Show in file manager on either row
+- **WHEN** the user chooses Show in file manager in either row's actions menu
 - **THEN** the browser sends a reveal request for that row's path, and a failure is shown on the tree
-
 ### Requirement: AgentWritesStayOutOfPiConfiguration
 
 None of the agent's file-writing tools SHALL write inside a `.pi` directory under the writable zone:
@@ -804,7 +812,6 @@ The rule SHALL apply only to the part of the path below the writable zone, and S
 #### Scenario: EveryFileWritingToolIsHeld
 - **WHEN** a tool that writes a file — here the table writer — is asked for an output in `.pi`
 - **THEN** it is refused with the reason, and no file is written
-
 ### Requirement: LoadedSkillsAreReadable
 
 Under a sandbox, the read tools (`read`, `ls`, `grep`, `find`) SHALL also read, and only read, the
@@ -820,7 +827,6 @@ sandbox SHALL become readable.
 #### Scenario: OnlySkillsBecomeReadable
 - **WHEN** the agent reads the agent directory's `auth.json`, or a file of pi-outpost's installation outside any skill
 - **THEN** each read is refused as outside the sandbox, and no key is returned
-
 ### Requirement: HtmlFilesAreRendered
 
 An HTML file (`.html`, `.htm`) SHALL open rendered in the file viewer, with the modes a Markdown file
@@ -836,7 +842,6 @@ asked of the user.
 #### Scenario: HtmlIsEditedBesideItsRendering
 - **WHEN** the user edits an HTML file in the side-by-side mode
 - **THEN** the rendering follows the draft
-
 ### Requirement: ARenderedPageIsIsolated
 
 A rendered HTML page SHALL be drawn in a sandboxed frame with an opaque origin. Its relative resources
@@ -846,7 +851,6 @@ enters it. The server SHALL still answer an HTML file on `/files/raw` as an atta
 #### Scenario: ThePageCannotReachTheApplication
 - **WHEN** an opened page's script tries to read the application's document, its storage and the access token
 - **THEN** each attempt fails, and the page's document holds no `/files/raw` address and no token
-
 ### Requirement: LinksInARenderedPage
 
 A relative link in a rendered page SHALL open the linked workspace file in the viewer, an absolute link
@@ -856,7 +860,6 @@ viewer to open a file.
 #### Scenario: ARelativeLinkOpensInTheViewer
 - **WHEN** the user clicks a relative link in a rendered page
 - **THEN** the linked workspace file opens in the viewer, and a message from anything but the page's own frame opens nothing
-
 ### Requirement: EditingFromTheRenderingMovesToTheText
 
 When the reader opens the editor while a file with a rendering shows that rendering, the viewer SHALL
@@ -872,7 +875,6 @@ the editor SHALL bring the rendering back, unless the reader chose another mode 
 - **GIVEN** a file shown rendered, without room for two panes
 - **WHEN** the reader clicks edit, then done
 - **THEN** the source mode is shown with the editor, and after done the rendering again
-
 ### Requirement: ImportExternalFilesIntoTreeFolders
 The file tree SHALL accept external files on writable folder rows and an explicit workspace-root
 target. It SHALL import their bytes into that directory, without attaching them to the composer.
@@ -915,7 +917,6 @@ a duplicate import. Internal file moves and copies SHALL retain their existing b
 - **WHEN** the workspace changes while dropped files are being read or uploaded
 - **THEN** no subsequent request from that batch writes into the new workspace,
   and feedback from the previous workspace is not shown in the new tree
-
 ### Requirement: ExistingDirectoryUploads
 An upload_file request with existingDirectory=true SHALL require workspaceId to match the socket's
 workspace. It SHALL target an existing writable directory inside the browser root, including the
@@ -935,7 +936,6 @@ create that directory.
 - **WHEN** the import target is read-only, outside the writable zone, or escapes the browser root
   directly or through a symlink
 - **THEN** the upload is refused without writing a file
-
 ### Requirement: SearchFileContents
 The Files area SHALL provide a content-search control. A non-empty query SHALL find case-insensitive literal text in searchable text files and in PDF pages with extractable text below the current browser root. Results SHALL identify the file and matching line or PDF page, with a text excerpt. Empty queries SHALL not start a search.
 
@@ -957,7 +957,6 @@ The Files area SHALL provide a content-search control. A non-empty query SHALL f
 - **GIVEN** searchable files contain no match for a non-empty query
 - **WHEN** the search completes
 - **THEN** Files reports that there are no matches
-
 ### Requirement: ContentSearchRespectsWorkspaceBoundary
 Content search SHALL stay within the current browser root, skip symbolic links and common dependency or generated directories, and ignore binary files other than PDFs whose text can be extracted. PDF text search SHALL use the document's text layer and SHALL NOT execute embedded scripts or fetch resources over the network. It SHALL NOT read or return content from paths outside the browser root.
 
@@ -975,7 +974,6 @@ Content search SHALL stay within the current browser root, skip symbolic links a
 - **GIVEN** a symbolic link below the browser root points to a matching file outside it
 - **WHEN** the user searches for text in that file
 - **THEN** the external file's content is not read and no result is returned for it
-
 ### Requirement: ContentSearchResultsOpenAtMatch
 Each content-search result SHALL let the user open its file in the file viewer at the matching line or PDF page, with the match brought into view.
 
@@ -988,7 +986,6 @@ Each content-search result SHALL let the user open its file in the file viewer a
 - **GIVEN** a content-search result identifies a PDF path and page containing the match
 - **WHEN** the user selects that result
 - **THEN** the PDF opens on that page with the matching text highlighted
-
 ### Requirement: ContentSearchResultsFollowWorkspace
 Search results SHALL remain associated with the workspace that produced them and SHALL NOT be displayed or acted on after the user switches to another workspace.
 
@@ -996,6 +993,117 @@ Search results SHALL remain associated with the workspace that produced them and
 - **GIVEN** a content search is pending in one workspace
 - **WHEN** the user switches to another workspace before it completes
 - **THEN** the pending result is not shown in the new workspace and cannot open a file there
+
+### Requirement: DownloadFromBrowser
+
+The server SHALL serve as a download, authenticated like `/files/raw` and confined by the same symlink-safe resolution: a regular file as itself, a directory as a `.zip`, several paths as one `.zip`. It SHALL stream, with no preview size ceiling, as an attachment named after the entry (`application/octet-stream`, `nosniff`). Writability SHALL NOT be required. A missing or escaping path SHALL be refused.
+
+#### Scenario: DownloadAWorkspaceFile
+- **GIVEN** `reports/q3 résumé.pdf` of 20 MB exists inside the browser root
+- **WHEN** an authenticated client requests its download
+- **THEN** it receives the exact bytes, as an attachment named `q3 résumé.pdf`, never rendered inline
+
+#### Scenario: DownloadAFolderAsAZip
+- **GIVEN** a folder `reports` holding files and a subfolder
+- **WHEN** its download is requested
+- **THEN** the client receives `reports.zip`, whose entries are the folder's files under `reports/` with their bytes intact, empty subfolders included
+
+#### Scenario: DownloadSeveralEntriesAsOneZip
+- **GIVEN** the paths `a.txt`, `docs` and `img/logo.png`
+- **WHEN** their download is requested together
+- **THEN** one `.zip` holds `a.txt`, `docs/…` and `logo.png` at its top level
+
+#### Scenario: DownloadIsAuthenticated
+- **WHEN** a download is requested without a valid token, or with a foreign Host header
+- **THEN** it is refused and no byte of the file is sent
+
+#### Scenario: DownloadIsConfined
+- **WHEN** a download is requested for a traversal path, a symlink leading outside the browser root, or a path that does not exist
+- **THEN** it is refused and nothing outside the browser root is read
+
+#### Scenario: DownloadAReadOnlyFile
+- **GIVEN** a file inside the browser root but outside the writable zone
+- **WHEN** its download is requested
+- **THEN** it is served
+
+#### Scenario: TheTreeDownloadsFromTheServer
+- **GIVEN** pi-outpost runs on another machine than the browser
+- **WHEN** the user chooses Download on a file, a folder, or a selection
+- **THEN** the browser saves one file — the file itself, or one `.zip` — fetched from the server
+### Requirement: ArchivesAreBoundedAndConfined
+
+An archive's entries SHALL be collected before its first byte is sent. An archive past 65 535 entries or 4 GiB SHALL be refused with a message naming the limit, and no partial archive SHALL be sent. An entry that resolves outside the browser root SHALL be left out, and the archive SHALL say how many were.
+
+#### Scenario: ATooLargeFolderIsRefusedUpFront
+- **GIVEN** a folder holding more than 65 535 entries
+- **WHEN** its download is requested
+- **THEN** the response is an error naming the limit, not a truncated archive, and the tree shows that message
+
+#### Scenario: AnEscapingLinkIsLeftOut
+- **GIVEN** a folder holding a file and a symbolic link to a file outside the browser root
+- **WHEN** its download is requested
+- **THEN** the archive holds the file, not the link's target, and says that one entry was left out
+### Requirement: CopyAFolder
+
+Copying a directory SHALL copy everything inside it into the destination directory under its own name, with the confinement of the single-file copy. Entries that resolve outside the browser root SHALL be left out and counted in the result. The copy SHALL refuse an existing destination and SHALL NOT overwrite it.
+
+#### Scenario: CopyAReadOnlyFolder
+- **GIVEN** `reference/templates` is outside the writable zone and `workspace` is writable
+- **WHEN** the browser requests to copy `reference/templates` to `workspace`
+- **THEN** `workspace/templates` holds the same files and subfolders, and `reference/templates` is unchanged
+
+#### Scenario: ACopyLeavesOutEscapingLinks
+- **GIVEN** a folder holding a symbolic link that resolves outside the browser root
+- **WHEN** it is copied
+- **THEN** the copy does not hold the link nor its target, and the result says one entry was left out
+### Requirement: Deleted entries can be restored
+
+A file or folder deleted from the browser SHALL be moved into a trash the server keeps outside every workspace, in a place the agent cannot read, and the answer SHALL carry a restore token. Restoring SHALL put the entry back at its path, with the rules of a move, never overwriting. The trash SHALL be emptied when the server starts, and of anything older than 24 hours.
+
+#### Scenario: DeleteThenRestore
+- **GIVEN** a writable folder `old` holding files, deleted from the browser
+- **WHEN** the browser asks to restore it with the token the deletion returned
+- **THEN** `old` is back with the same content, and connected clients are notified
+
+#### Scenario: RestoreRefusesAnOverwrite
+- **GIVEN** `notes.md` deleted, then a new `notes.md` created at the same path
+- **WHEN** the deletion is restored
+- **THEN** the restore of `notes.md` is refused as a conflict and the new file is unchanged
+
+#### Scenario: TheTrashIsOutsideTheWorkspace
+- **WHEN** a file is deleted from the browser
+- **THEN** it is in no listing of the browser root, and its bytes are under the server's own data directory, which the agent's tools cannot read
+
+#### Scenario: ATokenFromElsewhereRestoresNothing
+- **WHEN** a restore names an unknown token, a token already used, or a token of another project
+- **THEN** that token is refused and nothing is written
+
+#### Scenario: TheTrashIsEmptied
+- **GIVEN** entries in the trash
+- **WHEN** the server starts, or an entry is older than 24 hours
+- **THEN** that entry is erased for good and can no longer be restored
+### Requirement: Batch file lifecycle operations
+
+The system SHALL delete, or move to one directory, several files and directories in one request, applying to each path the rules of the single-entry operations. It SHALL go on after a refused path, SHALL roll nothing back, SHALL report each path as done or refused with its reason, and SHALL notify connected clients once for the affected tree paths.
+
+#### Scenario: DeleteSeveralFiles
+- **GIVEN** three writable regular files and a writable folder
+- **WHEN** the browser requests their deletion in one request
+- **THEN** none of them exists, the result lists all four as done, and clients are notified once
+
+#### Scenario: OneRefusalDoesNotStopTheBatch
+- **GIVEN** a batch move of `a.txt`, `outside/b.txt` (outside the writable zone) and `c.txt` to `archive`
+- **WHEN** the server handles it
+- **THEN** `a.txt` and `c.txt` are in `archive`, `outside/b.txt` is unchanged, and the result names it as refused with its reason
+
+#### Scenario: ABatchMoveRefusesAnOverwrite
+- **GIVEN** `archive/a.txt` already exists
+- **WHEN** a batch moves `a.txt` into `archive`
+- **THEN** `a.txt` is reported refused as a conflict and neither file changes
+
+#### Scenario: TheTreeReportsWhatWasRefused
+- **WHEN** a batch from the tree comes back with refused paths
+- **THEN** the tree states how many files were done and names each refused file with its reason
 
 ## Technical Notes
 

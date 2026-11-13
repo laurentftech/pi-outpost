@@ -31,7 +31,6 @@ items, models, branding, queue) that replaces local state.
 - **GIVEN** An unreachable server URL
 - **WHEN** the useAgent hook mounts
 - **THEN** `connected` stays false and the client retries the connection after a delay
-
 ### Requirement: SendMessage
 
 - **Implementation**: `useAgent::ui/src/useAgent.ts`
@@ -62,7 +61,6 @@ file preview follow the same rules.
 - **GIVEN** No active WebSocket connection
 - **WHEN** an action is called
 - **THEN** The message is not sent and the UI reflects the disconnected state
-
 ### Requirement: HandleNotification
 
 - **Implementation**: `useAgent::ui/src/useAgent.ts`
@@ -85,7 +83,6 @@ them to the reducer.
 - **GIVEN** A frame that is not valid JSON
 - **WHEN** it is received on the WebSocket
 - **THEN** The frame is ignored without crashing the client
-
 ### Requirement: UpdateState
 
 The system SHALL update client state exclusively through the reducer, keyed by ServerMessage type.
@@ -103,7 +100,6 @@ state such as the cached conversation tree.
 - **GIVEN** A cached conversation tree in state
 - **WHEN** a `session_replaced` snapshot arrives
 - **THEN** The tree is reset to null so consumers refetch it
-
 ### Requirement: WebUIContextInjection
 
 The server SHALL prepend a web-UI context block to the agent's system prompt at session creation, ahead of other product-owned guidance and any operator-configured `appendSystemPrompt` entries. The block SHALL describe rendering capabilities only (markdown/math/mermaid rendering, file links opening in the viewer, inline display of workspace-relative image references) and SHALL NOT grant or imply any additional permissions. Web-UI context injection SHALL be disabled when the top-level config key `webContext` is `false` (default `true`) without disabling unrelated product-owned guidance for available capabilities.
@@ -123,7 +119,6 @@ The server SHALL prepend a web-UI context block to the agent's system prompt at 
 - **GIVEN** a config with `appendSystemPrompt: ["Only discuss this project."]`
 - **WHEN** the agent session is created with injection enabled
 - **THEN** the operator entry is still present and unchanged after the product-owned context blocks
-
 ### Requirement: Product-owned Work Plan system guidance
 When the Work Plan tool is available to a session, the server SHALL append concise product-owned guidance to the agent's system prompt that directs the agent to create and maintain a Work Plan for non-trivial multi-step work, read the current plan before resuming substantial work, reconcile it before declaring completion, and skip it for trivial interactions. This system fragment SHALL be the sole owner of Work Plan selection and maintenance guidance; the tool contract SHALL retain only identity and mechanical calling guidance. One shared composition path SHALL produce identical guidance for embedded and RPC runtimes, omit it when the tool is unavailable, and preserve every operator-configured system-prompt entry.
 
@@ -152,7 +147,6 @@ When the Work Plan tool is available to a session, the server SHALL append conci
 - **WHEN** the effective system prompt and tool contract are assembled
 - **THEN** selection, maintenance, resume, and reconciliation guidance appears in the product-owned system fragment
 - **AND** the tool-owned prompt guidance does not duplicate it
-
 ### Requirement: Work Plan client synchronization
 The agent client SHALL keep its Work Plan state synchronized with authoritative snapshots and Work Plan change frames. Replacing or switching a session SHALL replace the visible Work Plan with the plan belonging to the newly active session, without retaining tasks from the previous session.
 
@@ -160,7 +154,6 @@ The agent client SHALL keep its Work Plan state synchronized with authoritative 
 - **GIVEN** two sessions with different Work Plans
 - **WHEN** the user switches sessions
 - **THEN** the client displays only the newly active session's Work Plan
-
 ### Requirement: A document extractor is published when a document arrives
 
 The document extraction tools SHALL be published to a session only once a document of their
@@ -280,7 +273,6 @@ that runtime SHALL register them deferred and declare none of them until the age
 - **GIVEN** a workspace served by the RPC runtime
 - **WHEN** a turn is sent that names no document and loads no tool
 - **THEN** no document extraction tool is declared to the model, and `tool_search` is
-
 ### Requirement: Presentation tools are published with a template or their skill
 
 The presentation tools — `pptx_layouts`, `pptx_create` and `pptx_render` — SHALL be published on
@@ -322,7 +314,6 @@ tools with the others, deferred like them.
 #### Scenario: TheRpcChildRegistersThePresentationTools
 - **WHEN** the RPC child builds its toolset
 - **THEN** it registers `pptx_layouts`, `pptx_create` and `pptx_render` after `pptx_extract`
-
 ### Requirement: WordTemplateToolsArePublishedOnDemand
 
 `docx_styles`, `docx_create`, `docx_update` and `docx_render` SHALL be published together when a prompt names a
@@ -343,7 +334,6 @@ calls a tool with a `.docx`/`.dotx` path. A trigger from the agent's side SHALL 
 - **GIVEN** a sandbox where writing is disabled
 - **WHEN** the tools are registered
 - **THEN** `docx_create` and `docx_update` are absent, and `docx_styles` and `docx_render` are present
-
 ### Requirement: DeckUpdateIsPublishedWithThePresentationTools
 
 `pptx_update` SHALL be published whenever the presentation tools are, and SHALL NOT be registered
@@ -357,7 +347,6 @@ where writing is disabled.
 - **GIVEN** a sandbox where writing is disabled
 - **WHEN** the tools are registered
 - **THEN** `pptx_update` is absent
-
 ### Requirement: RestyleIsPublishedWithTheWordTools
 
 `docx_restyle` SHALL be published whenever the Word template tools are, and SHALL NOT be registered
@@ -371,7 +360,6 @@ where writing is disabled.
 - **GIVEN** a sandbox where writing is disabled
 - **WHEN** the tools are registered
 - **THEN** `docx_restyle` is absent
-
 ### Requirement: Withheld tools stay withheld
 
 A tool the server publishes on demand (a document tool, the project model tool, the extended Work
@@ -395,7 +383,6 @@ exempt.
 - **GIVEN** a session publishing no on-demand tool
 - **WHEN** an extension command switches every registered tool on, and the user then sends a prompt
 - **THEN** the turn that follows is sent no on-demand tool
-
 ### Requirement: On-demand tools are deferred, not withheld
 
 The tools the server publishes on demand (the document tools and the project model tool) SHALL be
@@ -409,7 +396,6 @@ unreachable.
 - **WHEN** a turn is sent
 - **THEN** no document tool is declared to the model
 - **AND** an extension tool calling `xlsx_extract` through `ctx.executeTool()` gets its result, not an unknown-tool error
-
 ### Requirement: The agent can load an on-demand tool by searching
 
 Where on-demand tools are deferred, `tool_search` SHALL be declared, the system prompt SHALL say
@@ -436,7 +422,6 @@ only by the rules that publish them on demand.
 - **GIVEN** a session with extensions turned off
 - **WHEN** a turn is sent
 - **THEN** `tool_search` is not declared and the system prompt holds no such line
-
 ### Requirement: A tool loaded by search is aged like the others
 
 A document or project model tool that `tool_search` loads SHALL count as published by the server:
@@ -458,7 +443,6 @@ count is kept.
 - **GIVEN** a workspace served by the RPC runtime
 - **WHEN** the agent loads `xlsx_extract` with `tool_search`
 - **THEN** the next request declares it, and it stays declared on that branch, as that dialect cannot withdraw it
-
 ### Requirement: Diagram, poster and structured-exchange tools are deferred
 The agent tools `drawio_check`, `poster_check`, `poster_pictures`, `compare_timelines`, `write_structure_figure` and `write_structure_table` SHALL be registered with deferred exposure in both runtimes. They SHALL remain loadable through `tool_search` and SHALL not be declared before they are loaded.
 
@@ -473,7 +457,6 @@ The agent tools `drawio_check`, `poster_check`, `poster_pictures`, `compare_time
 - **WHEN** the model receives its tool declarations
 - **THEN** none of the six tools is declared
 - **AND** `tool_search` can load each tool by a query for its purpose
-
 ### Requirement: The agent is told which deferred tool families it can search for
 When `tool_search` is available, the product-owned system guidance SHALL tell the agent that diagram, poster and structured-exchange tools can be loaded with it.
 
@@ -486,6 +469,30 @@ When `tool_search` is available, the product-owned system guidance SHALL tell th
 - **GIVEN** a session where `tool_search` is unavailable
 - **WHEN** the product-owned system guidance is composed
 - **THEN** it does not advertise these tool families as searchable
+
+### Requirement: Resuming restores recently used document tools
+The embedded runtime SHALL reconstruct recently used deferred tools and their idle counters from the selected session branch. Reopening a session SHALL NOT reset its idle clock. Compaction SHALL NOT discard the branch evidence needed for restoration. A new branch SHALL NOT inherit tools from another branch.
+
+#### Scenario: A PowerPoint extraction survives session resume
+- **GIVEN** a PowerPoint extractor used once followed by four idle turns
+- **WHEN** the conversation is resumed and the user says "Reuse the tool" without naming the file
+- **THEN** the first model request declares the extractor and the same call returns the presentation content
+
+#### Scenario: Resume preserves expiry and branch isolation
+- **GIVEN** an extractor unused for five turns, or a new empty conversation
+- **WHEN** the conversation is resumed
+- **THEN** no extractor schema is restored from expired work or another branch
+### Requirement: A remembered deferred tool can be called directly
+The embedded runtime SHALL execute explicit calls to registered callable deferred tools even when their schemas are not declared. It SHALL republish the called tool, retain SDK validation and extension hooks, and apply the existing sandbox. It SHALL NOT resolve unknown or unavailable tools.
+
+#### Scenario: An expired extractor is reused without a search
+- **GIVEN** a PowerPoint extractor whose schema expired after five idle turns
+- **WHEN** the model repeats its previous call directly without tool_search
+- **THEN** the presentation content is returned and the extractor is declared in the following request
+
+#### Scenario: Direct reuse preserves refusals
+- **WHEN** a model calls an unknown tool or a deferred extractor on a path outside the sandbox
+- **THEN** the unknown tool remains unknown and the outside path is refused
 
 ## Technical Notes
 

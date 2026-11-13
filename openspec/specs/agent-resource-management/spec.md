@@ -80,7 +80,6 @@ A preview SHALL be bound to the repository revision, catalogue and root set it o
 #### Scenario: Enroll with nothing turned on
 - **WHEN** the user confirms a collection preview without turning any skill on and without selecting an extension root
 - **THEN** the repository is enrolled with its catalogue and nothing from it is loaded
-
 ### Requirement: Resource provenance inventory
 
 The system SHALL inventory the skills and extensions applicable to the current workspace and SHALL report each resource's kind, display name, loaded path when known, origin, and provenance availability. It SHALL group filesystem resources by their canonical nearest enclosing Git worktree, deduplicate repositories reached through multiple resource paths, and keep a resource in the nearest nested repository rather than an ancestor repository.
@@ -106,19 +105,22 @@ Resources that are built in, not Git-backed, or reported by a runtime without su
 #### Scenario: Provenance is unavailable
 - **WHEN** the active runtime reports a resource without a usable filesystem provenance
 - **THEN** the resource remains visible as non-updateable and the inventory explains that its repository cannot be determined
-
 ### Requirement: Non-interactive git execution
 
 Every git process this capability spawns SHALL run non-interactively: it SHALL NOT be able
 to prompt for a passphrase or password, on its own terminal or through an askpass helper,
 and SHALL NOT inherit an interactive terminal from the server process. A repository whose
-address requires credentials the deployment has not already provided SHALL fail with a
-display-safe reason within the bounded execution time rather than waiting for input.
+address requires credentials the deployment has not already provided SHALL fail within the
+bounded execution time rather than waiting for input, with a display-safe reason that names
+the host and says the failure is one of authentication when git reports it as such.
 
 Credentials the deployment has configured for git itself — a credential helper storing
-them without prompting, an SSH agent, a key without a passphrase — SHALL keep working, so
-the operator's existing authentication is neither duplicated nor stored by this system.
-Credentials embedded in an address SHALL NOT be persisted, logged, or returned to a client.
+them without prompting, an SSH agent, a key without a passphrase — SHALL keep working and
+SHALL be consulted before any credential this system stores, and this system SHALL NOT copy
+them. HTTPS credentials this system keeps per Git host, as described by the git-host-credentials
+capability, SHALL be offered to these git processes after the deployment's own. Credentials
+embedded in an address SHALL NOT be logged or returned to a client, and SHALL NOT be written to
+the clone's configured remote; they SHALL be kept only in that store.
 
 #### Scenario: A repository needing credentials fails instead of waiting
 - **WHEN** a clone or fetch reaches a repository that would prompt for a password or passphrase
@@ -130,6 +132,11 @@ Credentials embedded in an address SHALL NOT be persisted, logged, or returned t
 - **WHEN** a repository is cloned or refreshed
 - **THEN** the operation succeeds without this system asking for or storing credentials
 
+#### Scenario: An authentication failure is named
+- **GIVEN** an HTTPS repository requiring authentication and no credential available for its host
+- **WHEN** it is cloned
+- **THEN** the failure names the host and says it requires authentication, rather than showing git's progress line
+- **AND** no embedded credential appears in the message
 ### Requirement: Repository update assessment
 
 The system SHALL let a client refresh the remote state of one known resource repository or all known resource repositories. It SHALL classify each repository as unchecked, checking, current, updateable, dirty, detached, ahead, diverged, without an upstream, locked, unavailable, busy, or failed, and SHALL include a user-readable reason for every non-updateable state. Unchecked and checking are transient states carrying no verdict: neither SHALL be presented as a repository that is up to date. A repository SHALL be updateable only when its current branch tracks an upstream, its worktree and index contain no changes or untracked files, and its local commit is an ancestor of and behind the fetched upstream commit.
@@ -157,7 +164,6 @@ Checking SHALL NOT change tracked files, the current branch, or the checked-out 
 #### Scenario: One refresh fails among several
 - **WHEN** refreshing one known repository fails while another succeeds
 - **THEN** the failed repository reports its own failure and the successful repository retains its assessment
-
 ### Requirement: Confined fast-forward update
 
 The system SHALL update only a repository discovered from server-known resource provenance and selected by its opaque server-issued identifier. It SHALL serialize checks and updates for the same canonical repository, fetch and revalidate every eligibility condition immediately before mutation, and integrate only the exact fetched upstream by fast-forward. The update request MUST carry the revisions observed by the confirmation UI, and the server SHALL reject it if the repository or upstream changed since that observation.
@@ -186,7 +192,6 @@ Resource update Git processes SHALL be spawned without a shell, with fixed argum
 #### Scenario: Client supplies an unknown repository
 - **WHEN** a client requests an update using an identifier not present in the server inventory
 - **THEN** the request is refused and no Git process is started for a client-selected path
-
 ### Requirement: Extension update protection
 
 A repository that supplies any applicable extension SHALL be treated as executable-code-bearing, including when it also supplies skills. Its update SHALL require an explicit executable-code confirmation tied to the assessed revisions. When extension updates are locked by configuration, the entire repository SHALL be non-updateable through the interface because a repository fast-forward cannot safely update only its skill files.
@@ -203,7 +208,6 @@ A repository that supplies any applicable extension SHALL be treated as executab
 #### Scenario: Confirmation becomes stale
 - **WHEN** an executable-code update request confirms revisions that no longer match the repository assessment
 - **THEN** the server refuses it and requires a new assessment and confirmation
-
 ### Requirement: Affected runtime reload
 
 Before changing a repository, the system SHALL identify every started workspace whose configured roots or loaded resource provenance overlap that repository. It SHALL refuse the update while any such workspace is streaming a turn or replacing its session. After a successful fast-forward, it SHALL rebuild the resources for every affected started workspace whose runtime is idle and broadcast the resulting inventories. Workspaces that are not started SHALL discover the new resources when they next start.
@@ -226,7 +230,6 @@ An update that succeeds on disk but whose runtime rebuild fails SHALL be reporte
 #### Scenario: Unstarted workspace loads later
 - **WHEN** an updated repository is configured for a workspace that is not started
 - **THEN** no runtime is started solely for the update and the new resources are loaded on that workspace's next start
-
 ### Requirement: Skill collection catalogue
 
 When a Git repository is enrolled through **Add Git repository**, the system SHALL build a catalogue
@@ -278,7 +281,6 @@ rather than presented as if the listed skills were all it contains.
 - **GIVEN** a repository carrying more skills than the catalogue bound
 - **WHEN** its catalogue is built
 - **THEN** the result states that the bound was reached and names it
-
 ### Requirement: Selective skill enablement
 
 Every skill in the catalogue of a repository enrolled through **Add Git repository** SHALL be off
@@ -360,7 +362,6 @@ under those roots; this requirement does not change them.
 - **GIVEN** a repository enrolled before this change through a skill root
 - **WHEN** the server starts with this change
 - **THEN** every skill under that root is still loaded and no selection is imposed on it
-
 ### Requirement: Whole-repository removal
 
 The system SHALL let the user remove an enrolled repository as a whole, addressed by its
@@ -422,7 +423,6 @@ MUST NOT be reported as a complete removal.
 #### Scenario: An unknown repository is refused
 - **WHEN** a client asks to remove an identifier the server does not know
 - **THEN** the request is refused and no file is deleted
-
 ### Requirement: Repository display name
 
 The system SHALL name a repository, in its preview and its inventory group, after the repository
@@ -439,7 +439,6 @@ SHALL be named after its folder. The name SHALL NOT carry credentials from the a
 - **GIVEN** a worktree with no `origin` remote
 - **WHEN** it is inventoried
 - **THEN** it is named after its folder
-
 ### Requirement: ExtensionCodeRunsAfterARestart
 
 A running server cannot load an extension's new code: a module it has already imported is what a second import returns. After updating a repository that supplies at least one extension, each rebuilt runtime SHALL therefore be reported as needing a restart, naming the repository, rather than as reloaded, and the repository SHALL join what waits on a restart to run. A repository that supplies skills alone SHALL still be reported as reloaded, because a rebuilt session reads skills again from disk.
@@ -452,7 +451,6 @@ A running server cannot load an extension's new code: a module it has already im
 #### Scenario: ASkillsOnlyRepositoryIsReallyReloaded
 - **WHEN** a repository supplying only skills is updated
 - **THEN** its runtimes are reported as reloaded, nothing waits on a restart, and the agent has the new skill text
-
 ### Requirement: AResourceInventoryDoesNotHoldStartup
 
 Starting a project SHALL NOT wait for its resource inventory longer than a short grace. When the
@@ -463,7 +461,6 @@ inventory message.
 - **GIVEN** a skill whose repository git answers about only after ten seconds
 - **WHEN** the server starts and a client connects
 - **THEN** the client is greeted while that question is still pending, and the inventory listing the repository arrives afterwards
-
 ### Requirement: TheInventoryAsksGitOncePerRepository
 
 The inventory SHALL ask git where a repository is at most once per repository, and SHALL NOT ask it
