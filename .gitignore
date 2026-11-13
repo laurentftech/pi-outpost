@@ -67,3 +67,7 @@ RELEASE_NOTES.md
 
 # Exact CLI package handed from the release job to the Docker build.
 /deploy/docker/pi-outpost.tgz
+
+# Cargo
+.cargo/
+spikes/gpui-native-client/target
