@@ -101,6 +101,37 @@ such a reference as a link to the file, never as a broken picture.
 - **WHEN** a conversation whose reply references a `.drawio` file is exported to HTML or Word
 - **THEN** the export shows the reference as a link naming the file, and no broken picture
 
+### Requirement: DrawioInMarkdownFiles
+
+A local `.drawio` or `.dio` picture reference in a rendered Markdown file SHALL draw
+the diagram with the same isolated viewer and controls as a reference in a reply.
+Its path SHALL resolve against the Markdown file's directory, including encoded
+names, in both rendered and split mode. External references SHALL keep their
+ordinary image handling. Unrelated viewer updates SHALL keep the drawing mounted,
+and a saved change to the diagram SHALL update it in the same frame.
+
+#### Scenario: AReferencedDiagramIsDrawnInMarkdown
+- **GIVEN** a Markdown file and `document.drawio` in the same directory
+- **WHEN** the Markdown contains `![structure](document.drawio)`
+- **THEN** the diagram is drawn with its controls, rather than fetched as an image
+
+#### Scenario: MarkdownDiagramsStayMounted
+- **GIVEN** a rendered Markdown file referencing a diagram
+- **WHEN** the find controls or surrounding prose change, then the diagram is saved elsewhere
+- **THEN** the drawing keeps the same frame and shows the saved diagram
+- **AND** ordinary pictures in the document stay mounted during unrelated viewer updates
+
+#### Scenario: AMissingMarkdownDiagramSaysSo
+- **WHEN** a referenced diagram is missing, deleted or malformed
+- **THEN** the viewer names the file or explains why it cannot draw it, without a broken picture
+- **AND** creating or repairing the file restores its drawing
+
+#### Scenario: MarkdownDiagramReferencesFollowDraft
+- **GIVEN** a Markdown file open in split mode
+- **WHEN** its image reference changes to an encoded `.dio` path
+- **THEN** the preview draws that file instead of retaining the previous diagram
+- **AND** returning to rendered mode after discarding the edit draws the saved reference
+
 ### Requirement: DrawioDiagramControls
 
 Wherever a `.drawio` diagram is drawn, in a reply or in the file viewer, it SHALL offer the

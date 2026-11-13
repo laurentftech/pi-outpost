@@ -142,9 +142,12 @@
   ([docs/claude-desktop.md](claude-desktop.md)).
 - draw.io diagrams: a `.drawio` file opens drawn, by draw.io's own viewer, with every page and zoom,
   offline — it runs in a sandboxed frame allowed no connection at all, so a diagram's remote images
-  or fonts are simply not fetched. A reply that references one as a picture
-  (`![overview](./diagrams/overview.drawio)`) draws it in the conversation too, with the controls
+  or fonts are simply not fetched. A reply or Markdown file that references one as a picture
+  (`![overview](./diagrams/overview.drawio)`) draws it inline too, with the controls
   every diagram has — ⤢ enlarge, ⤓ download SVG (the page shown), ⤓ download .drawio, ↗ open.
+  In Markdown files, paths are relative to the document's directory: `![structure](document.drawio)`
+  draws a diagram beside the document, in rendered or split mode. The drawing follows the saved
+  diagram without reloading its viewer when the surrounding text or find controls change.
   **✎ touch up**, in the file viewer and at full size, makes it editable in place: move and resize
   boxes, drag a wire's end to another box or draw a new one from a box's connection points,
   retype a label, delete, undo (⌘/Ctrl+Z), choose how wires are drawn (straight, orthogonal or
