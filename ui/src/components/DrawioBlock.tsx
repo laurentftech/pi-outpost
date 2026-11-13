@@ -254,9 +254,8 @@ export function DrawioBlock({
 
   const onPageLocked = useCallback(() => setNotice("Save or undo the touch-ups on this page before turning to another."), []);
 
-  // Escape while touching up means "done", wherever the keyboard is: in the frame (it
-  // says so) or on these controls. Caught before the full-size view or the file viewer
-  // take it as "close", which would be leaving more than the touch-up.
+  // Escape belongs to this diagram while touching up or enlarged. Catch it before
+  // the file viewer closes the document underneath the diagram as well.
   const endTouchUpRef = useRef(endTouchUp);
   endTouchUpRef.current = endTouchUp;
   // From the frame: "done" while touching up, else what Escape means around it — closing
@@ -275,17 +274,16 @@ export function DrawioBlock({
     else if (enlargedRef.current) closeEnlargedRef.current();
   }, []);
   useEffect(() => {
-    if (touching === null) return;
+    if (touching === null && !enlarged) return;
     function onKey(event: KeyboardEvent) {
       if (event.key !== "Escape") return;
       event.preventDefault();
       event.stopImmediatePropagation();
-      if (leaveRef.current) leaveRef.current();
-      else endTouchUpRef.current();
+      onEscape();
     }
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
-  }, [touching]);
+  }, [touching, enlarged, onEscape]);
 
   function downloads(where: Where) {
     return (

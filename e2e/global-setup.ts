@@ -4,7 +4,7 @@ import { access, mkdir, readdir, readFile, realpath, rm, stat, writeFile } from 
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { SEEDED_MESSAGES, SEEDED_PLAN_FIGURE, SEEDED_PLAN_FIGURE_PATH } from "./fixtures/seeded-transcript";
-import { DRAWIO_REPLY_MESSAGES, SERVICES_DIAGRAM, SERVICES_DIAGRAM_PATH } from "./fixtures/drawio-conversation";
+import { DRAWIO_MARKDOWN_FILES, DRAWIO_REPLY_MESSAGES, SERVICES_DIAGRAM, SERVICES_DIAGRAM_PATH } from "./fixtures/drawio-conversation";
 import { pageOf } from "@pi-outpost/posters/format";
 import { POSTER_EXAMPLE } from "@pi-outpost/posters/guide";
 // The same harness the server's own integration tests use: a real server, in its
@@ -804,7 +804,7 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
   // A reply that references a .drawio, in a workspace that has it: drawn in the
   // conversation, touched up and saved back. Its own server, because the specs write
   // the file and must not disturb the transcript every other diagram spec reads.
-  const drawioChatRoot = await realpath(await makeWorkspace({ [SERVICES_DIAGRAM_PATH]: SERVICES_DIAGRAM }));
+  const drawioChatRoot = await realpath(await makeWorkspace({ [SERVICES_DIAGRAM_PATH]: SERVICES_DIAGRAM, ...DRAWIO_MARKDOWN_FILES }));
   const drawioChatConfig = path.join(drawioChatRoot, "fake-rpc.json");
   await writeFile(drawioChatConfig, JSON.stringify({ messages: DRAWIO_REPLY_MESSAGES, state: { sessionId: "drawio-chat-1" } }));
   const drawioChat = await startServer(

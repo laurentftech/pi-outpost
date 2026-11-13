@@ -43,3 +43,11 @@ export const DRAWIO_REPLY_MESSAGES = [
     content: [{ type: "text", text: `Here they are:\n\n![Services](./${SERVICES_DIAGRAM_PATH})\n\nAnd the one you deleted:\n\n![Gone](./diagrams/gone.drawio)\n` }],
   },
 ];
+
+export const DRAWIO_MARKDOWN_PATH = "diagrams/report.md";
+export const DRAWIO_MARKDOWN = "# Structure\n\nThe services.\n\n![structure](services.drawio)\n\n![logo](logo.svg)\n";
+export const DRAWIO_MARKDOWN_FILES = {
+  [DRAWIO_MARKDOWN_PATH]: DRAWIO_MARKDOWN,
+  "diagrams/alternate plan.DIO": SERVICES_DIAGRAM.replace("Alpha", "Alternate"),
+  "diagrams/logo.svg": '<svg xmlns="http://www.w3.org/2000/svg" width="80" height="24"><rect width="80" height="24" fill="#458"/><text x="5" y="17" fill="white">Logo</text></svg>',
+};

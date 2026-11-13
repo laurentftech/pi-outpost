@@ -136,6 +136,25 @@ describe("DrawioBlock in a reply", () => {
 });
 
 describe("DrawioBlock controls", () => {
+  it("Escape closes the enlarged diagram without closing its document, then returns Escape to the document", () => {
+    mount(<DrawioBlock path={PATH} xml={FILE} variant="viewer" />, { fileIo: fakeFileIo() });
+    const inline = screen.getByTestId("drawio-frame");
+    fireEvent.click(screen.getByRole("button", { name: "Show diagram at full size" }));
+    expect(screen.getByTestId("drawio-enlarged")).toBeInTheDocument();
+    const documentKey = vi.fn();
+    document.addEventListener("keydown", documentKey);
+    try {
+      fireEvent.keyDown(document, { key: "Escape" });
+      expect(screen.queryByTestId("drawio-enlarged")).not.toBeInTheDocument();
+      expect(screen.getByTestId("drawio-frame")).toBe(inline);
+      expect(documentKey).not.toHaveBeenCalled();
+      fireEvent.keyDown(document, { key: "Escape" });
+      expect(documentKey).toHaveBeenCalledTimes(1);
+    } finally {
+      document.removeEventListener("keydown", documentKey);
+    }
+  });
+
   // openlore: scenario=DownloadDrawioSavesTheFile spec=drawio-diagrams
   it("DownloadDrawioSavesTheFile: saves the file's text under its own name", async () => {
     mount(<DrawioBlock path={PATH} xml={FILE} variant="viewer" />, { fileIo: fakeFileIo() });

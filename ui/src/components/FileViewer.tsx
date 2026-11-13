@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import ReactMarkdown from "react-markdown";
+import ReactMarkdown, { type Components } from "react-markdown";
 import rehypeKatex from "rehype-katex";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
@@ -13,11 +13,12 @@ import { DocxExportButton } from "./DocxExportButton";
 import { DrawioFrame } from "./DrawioFrame";
 import { PosterFrame } from "./PosterFrame";
 import { DrawioBlock } from "./DrawioBlock";
+import { DrawioMarkdownParagraph, isWorkspaceDrawio, workspaceDrawioPath } from "./markdownDrawio";
 import { HtmlPageFrame } from "./HtmlPageFrame";
 import type { LoadFile } from "../util/htmlPage";
 import { SplitDiffBlock } from "./DiffBlocks";
 import { diffLines } from "../util/diff";
-import { isDrawioFile, isImageFile, isPdfFile, rawFileUrl, resolveRelativeHref } from "../util/workspacePath";
+import { isDrawioFile, isExternalRef, isImageFile, isPdfFile, rawFileUrl, resolveRelativeHref } from "../util/workspacePath";
 import { normalizeMathDelimiters } from "../util/markdownMath";
 import { MarkdownPre } from "./Mermaid";
 import { ViewerErrorBoundary } from "./ViewerErrorBoundary";
@@ -88,6 +89,8 @@ interface FileViewerProps {
  * keystrokes is one recomputation rather than twenty.
  */
 const RENDER_DEBOUNCE_MS = 250;
+const markdownRemarkPlugins = [remarkGfm, remarkMath];
+const markdownRehypePlugins = [rehypeKatex];
 
 /**
  * Whether there is room for two panes.
@@ -725,60 +728,45 @@ export function FileViewer({
     [serverUrl, token, workspace],
   );
 
+  // Stable renderer identities keep pictures and diagram frames mounted while the
+  // agent streams or the editor updates the surrounding prose. The current callback
+  // lives in a ref because App can pass a new closure on each update.
+  const onReloadRef = useRef(onReload);
+  onReloadRef.current = onReload;
+  const markdownComponents = useMemo<Components>(() => ({
+    pre: MarkdownPre,
+    p: DrawioMarkdownParagraph,
+    a: ({ node: _node, href, children, ...rest }) => {
+      if (!href || isExternalRef(href)) {
+        return <a href={href} target="_blank" rel="noreferrer" {...rest}>{children}</a>;
+      }
+      if (href.startsWith("#")) return <a href={href} {...rest}>{children}</a>;
+      return (
+        <a href={href} {...rest} onClick={(event) => {
+          event.preventDefault();
+          onReloadRef.current(resolveRelativeHref(file.path, href));
+        }}>{children}</a>
+      );
+    },
+    img: ({ node: _node, src, alt, ...rest }) => {
+      if (isWorkspaceDrawio(src)) {
+        const path = workspaceDrawioPath(src, file.path);
+        return <DrawioBlock key={path} path={path} variant="reply" />;
+      }
+      const resolved = typeof src === "string" && src !== "" && !isExternalRef(src)
+        ? rawFileUrl(serverUrl, resolveRelativeHref(file.path, src), token, undefined, workspace)
+        : src;
+      return <img {...rest} src={resolved} alt={alt ?? ""} loading="lazy" className="max-w-full rounded-lg" />;
+    },
+  }), [file.path, serverUrl, token, workspace]);
+
   function renderedMarkdown(source: string) {
     return (
-            <div className="prose-chat mx-auto max-w-3xl p-4 text-zinc-700 dark:text-zinc-300">
-              <ReactMarkdown
-                remarkPlugins={[remarkGfm, remarkMath]}
-                rehypePlugins={[rehypeKatex]}
-                components={{
-                  // Same routing AssistantMessage uses: a ```mermaid fence renders as a
-                  // diagram here too, instead of falling through to plain <pre> text.
-                  pre: MarkdownPre,
-                  // Relative links point at sibling files, not server routes: open them
-                  // in the viewer instead of navigating the page (which 404s)
-                  a: ({ href, children, ...rest }) => {
-                    if (!href || /^[a-z][a-z0-9+.-]*:/i.test(href)) {
-                      return (
-                        <a href={href} target="_blank" rel="noreferrer" {...rest}>
-                          {children}
-                        </a>
-                      );
-                    }
-                    if (href.startsWith("#")) {
-                      return (
-                        <a href={href} {...rest}>
-                          {children}
-                        </a>
-                      );
-                    }
-                    return (
-                      <a
-                        href={href}
-                        onClick={(event) => {
-                          event.preventDefault();
-                          onReload(resolveRelativeHref(file.path, href));
-                        }}
-                        {...rest}
-                      >
-                        {children}
-                      </a>
-                    );
-                  },
-                  // Relative image references resolve against this file's directory
-                  // and load through /files/raw (the text protocol refuses binary)
-                  img: ({ src, alt, ...rest }) => {
-                    const resolved =
-                      typeof src === "string" && src !== "" && !/^[a-z][a-z0-9+.-]*:/i.test(src) && !src.startsWith("//")
-                        ? rawFileUrl(serverUrl, resolveRelativeHref(file.path, src), token, undefined, workspace)
-                        : src;
-                    return <img {...rest} src={resolved} alt={alt ?? ""} loading="lazy" className="max-w-full rounded-lg" />;
-                  },
-                }}
-              >
-                {normalizeMathDelimiters(source)}
-              </ReactMarkdown>
-            </div>
+      <div className="prose-chat mx-auto max-w-3xl p-4 text-zinc-700 dark:text-zinc-300">
+        <ReactMarkdown remarkPlugins={markdownRemarkPlugins} rehypePlugins={markdownRehypePlugins} components={markdownComponents}>
+          {normalizeMathDelimiters(source)}
+        </ReactMarkdown>
+      </div>
     );
   }
 
