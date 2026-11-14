@@ -204,7 +204,6 @@ test("monkey: rapid layout changes, threshold resizing and typing keep the dirty
   const { content } = await openEditor(page, "layout-monkey.ts");
   await content.press("ControlOrMeta+End");
   await page.keyboard.type("draft");
-  const dirty = await text(page);
   const beside = page.getByRole("button", { name: "◫ beside chat" });
   await expect(beside).toBeVisible();
   await beside.click();
