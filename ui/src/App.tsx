@@ -817,10 +817,14 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
   /**
    * Two things the scroll handler alone would miss.
    *
-   * `scrollend` is what finally ends a guarded return, whatever ended it: the
-   * animation arriving, or a reader dragging the scrollbar *towards* the end and
-   * letting go short of it — a drag that emits no gesture and only ever moves the
-   * way the animation was going, so nothing else can tell it apart.
+   * `scrollend` is what finally ends a guarded return. Settled at the end, the
+   * return arrived. Settled short of it with the guard still held, nobody took the
+   * scroll over — a reader's wheel, touch, key or press on the scroller (where a
+   * scrollbar drag begins) would have dropped the guard first — so the browser cut
+   * the animation short. Chromium does that when the layout moves under it, a
+   * diagram finishing its render say, and a scrollend mid-way read as the reader
+   * stopping left the transcript stranded halfway with nothing following it. The
+   * return is finished with a jump instead.
    *
    * The observer covers the geometry moving under a scroll position that did not:
    * a resized window, a composer that grew, tool cards revealed. None of those
@@ -830,7 +834,13 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
     const main = scrollerElement;
     if (!main) return;
     const settle = () => {
+      const interrupted =
+        returning.current !== null && main.scrollHeight - main.scrollTop - main.clientHeight >= NEAR_BOTTOM_PX;
       returning.current = null;
+      if (interrupted) {
+        bottomRef.current?.scrollIntoView({ behavior: "auto" });
+        return;
+      }
       evaluatePosition();
     };
     main.addEventListener("scrollend", settle);
@@ -1556,6 +1566,8 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
             onWheel={handleScrollGesture}
             onTouchStart={handleScrollGesture}
             onKeyDown={handleScrollGesture}
+            // A scrollbar drag starts here, and is the reader's as much as a wheel
+            onPointerDown={handleScrollGesture}
             /* During a switch the outgoing conversation fades and holds rather than
                emptying: a blank pane makes a switch read as a page reload, which is
                the one thing this transition exists to avoid. No skeleton — the old
