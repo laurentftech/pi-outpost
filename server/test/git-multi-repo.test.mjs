@@ -277,12 +277,17 @@ describe("a status asked just before the connection moves to another project", (
     client.send({ type: "git_status", requestId: "moving" });
     client.send({ type: "switch_workspace", root: beta });
     const answer = await client.waitFor(seen, 20_000);
-    const switchedFirst = order.findIndex((m) => m.type === "workspace_switched") !== -1;
-    if (switchedFirst) {
-      // Answered for where the connection is now: a project without a repository
+    // Answered either way: the client asks nothing more until it has an answer
+    assert.equal(answer.type, "git_status");
+    const fromOldProject = answer.files.some((file) => file.path === "README.md");
+    // The connection is bound to the new project before `workspace_switched` is
+    // sent, so an answer for the new one may come first. What must never happen is
+    // the old project's files arriving once the client has been told it moved.
+    if (order[0]?.type === "workspace_switched") {
+      assert.equal(fromOldProject, false, "the old project's status landed after the switch");
       assert.deepEqual(answer.files, []);
-    } else {
-      assert.ok(answer.files.some((file) => file.path === "README.md"), "an answer sent before the switch is the old project's, in order");
+    } else if (!fromOldProject) {
+      assert.deepEqual(answer.files, []);
     }
   });
 });
