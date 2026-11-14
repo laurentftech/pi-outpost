@@ -67,3 +67,9 @@ RELEASE_NOTES.md
 
 # Exact CLI package handed from the release job to the Docker build.
 /deploy/docker/pi-outpost.tgz
+
+# Rust builds run from this tree: Cargo's registry cache (CARGO_HOME set to the repo)
+# and the GPUI spike's build output. Tens of thousands of files each, which would
+# otherwise land in every git status the file browser reads.
+/.cargo/
+/spikes/*/target/
