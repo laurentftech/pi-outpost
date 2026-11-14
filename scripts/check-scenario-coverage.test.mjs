@@ -137,6 +137,21 @@ describe("check-scenario-coverage", () => {
     assert.match(output, /renamed-away\.test\.mjs.*nowhere in the repository/);
   });
 
+  test("refuses a citation that matches a file only by ignoring case, on every platform", () => {
+    // macOS and Windows checkouts find README.md under `readme.md`; Linux CI does not.
+    const root = fixture({
+      specs: { alpha: oneScenario },
+      matrix: "| Scenario | Coverage | Evidence |\n|---|---|---|\n| It does the thing | covered | `docs/readme.md` says so |\n",
+    });
+    fs.mkdirSync(path.join(root, "docs"), { recursive: true });
+    fs.writeFileSync(path.join(root, "docs", "README.md"), "# docs\n");
+    execFileSync("git", ["init", "-q"], { cwd: root });
+    execFileSync("git", ["add", "-A"], { cwd: root });
+    const { code, output } = run(root);
+    assert.match(output, /docs\/readme\.md.*nowhere in the repository/);
+    assert.notEqual(code, 0);
+  });
+
   test("refuses a matrix that cites nothing at all", () => {
     const { code, output } = run(
       fixture({
