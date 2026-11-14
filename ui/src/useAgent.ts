@@ -206,6 +206,14 @@ export interface GitStatusState {
   repos: GitRepoStatus[];
   /** Browser-root-relative path → state, across all of them. */
   files: Record<string, GitFileState>;
+  /**
+   * Directories reported as one entry because they hold more untracked files than
+   * the server lists one by one: path → how many they hold at least. Each is also
+   * in `files`, as untracked.
+   */
+  atLeast?: Record<string, number>;
+  /** The server's version of this status, named when asking again so it can answer with changes only. */
+  version?: number;
 }
 
 export type OutcomeState =
@@ -530,6 +538,11 @@ export interface AgentState {
   /** Why git is unavailable, when it is. Null whenever it is available. */
   gitUnavailable: GitUnavailable | null;
   gitStatus: GitStatusState | null;
+  /**
+   * Bumped when a change answer arrived for a version this client does not hold:
+   * it was dropped, and the full status must be asked for again.
+   */
+  gitStatusResync: number;
   /** Worktree-vs-HEAD contents for the viewer's diff toggle. */
   gitDiff: GitDiffState | null;
   gitBaseline: GitBaselineState | null;
@@ -632,6 +645,7 @@ const initialState: AgentState = {
   gitUnavailable: null,
   credentials: null,
   gitStatus: null,
+  gitStatusResync: 0,
   gitDiff: null,
   gitBaseline: null,
   gitLog: null,
@@ -1893,20 +1907,58 @@ function reduce(state: AgentState, action: Action): AgentState {
         },
       };
     case "git_status": {
-      const files: Record<string, GitFileState> = {};
-      for (const file of message.files) files[file.path] = file.status;
       const previous = state.gitStatus;
+      if (message.base !== undefined) {
+        // Changes only make sense against the version they were computed from. Any
+        // other - the state was reset since, or never held - is dropped, and the
+        // full status asked for again.
+        if (previous === null || previous.version !== message.base) {
+          return { ...state, gitStatusResync: state.gitStatusResync + 1 };
+        }
+        const files = { ...previous.files };
+        const atLeast = { ...previous.atLeast };
+        for (const path of message.removed ?? []) {
+          delete files[path];
+          delete atLeast[path];
+        }
+        for (const file of message.files) {
+          files[file.path] = file.status;
+          if (file.atLeast === undefined) delete atLeast[file.path];
+          else atLeast[file.path] = file.atLeast;
+        }
+        const repos =
+          message.repo === undefined
+            ? message.repos
+            : previous.repos.map((repo) => message.repos.find((one) => one.repo === repo.repo) ?? repo);
+        return { ...state, gitStatus: { repos, files, atLeast, version: message.version } };
+      }
+      const files: Record<string, GitFileState> = {};
+      const atLeast: Record<string, number> = {};
+      for (const file of message.files) {
+        files[file.path] = file.status;
+        if (file.atLeast !== undefined) atLeast[file.path] = file.atLeast;
+      }
       // A full sweep is authoritative: it is also how a repository that appeared or
       // vanished enters and leaves the list
-      if (message.repo === undefined || previous === null) return { ...state, gitStatus: { repos: message.repos, files } };
+      if (message.repo === undefined || previous === null) {
+        return { ...state, gitStatus: { repos: message.repos, files, atLeast, version: message.version } };
+      }
       // A scoped answer speaks for one repository only — drop that repository's old
       // files, keep everyone else's, and refresh its branch in place
       const kept: Record<string, GitFileState> = {};
+      const keptAtLeast: Record<string, number> = {};
       for (const [path, status] of Object.entries(previous.files)) {
-        if (repoForPath(previous.repos, path)?.repo !== message.repo) kept[path] = status;
+        if (repoForPath(previous.repos, path)?.repo !== message.repo) {
+          kept[path] = status;
+          const count = previous.atLeast?.[path];
+          if (count !== undefined) keptAtLeast[path] = count;
+        }
       }
       const repos = previous.repos.map((repo) => message.repos.find((one) => one.repo === repo.repo) ?? repo);
-      return { ...state, gitStatus: { repos, files: { ...kept, ...files } } };
+      return {
+        ...state,
+        gitStatus: { repos, files: { ...kept, ...files }, atLeast: { ...keptAtLeast, ...atLeast }, version: message.version },
+      };
     }
     case "git_repositories_changed":
       // A workspace that has lost its last repository keeps no status to show: the
@@ -2250,8 +2302,15 @@ export function useAgent(serverUrl = "", explicitToken?: string, embedded = fals
   );
   /** The repository list as of the last status, for attributing a changed path. */
   const gitReposRef = useRef<GitRepoStatus[]>([]);
+  /**
+   * The version of the status held, named when asking again. Read through an effect,
+   * so it can lag the state by a render: a lagging version is one the server did not
+   * last send, which it answers in full - slower, never wrong.
+   */
+  const gitVersionRef = useRef<number | undefined>(undefined);
   useEffect(() => {
     gitReposRef.current = state.gitStatus?.repos ?? [];
+    gitVersionRef.current = state.gitStatus?.version;
   }, [state.gitStatus]);
   const gitStatusInFlight = useRef(new Set<string>());
   const gitStatusQueued = useRef(new Set<string>());
@@ -2268,10 +2327,18 @@ export function useAgent(serverUrl = "", explicitToken?: string, embedded = fals
       gitStatusInFlight.current.add(scope);
       const requestId = `git:${randomId()}`;
       gitStatusScopes.current.set(requestId, scope);
-      sendMessage({ type: "git_status", ...(repo === undefined ? {} : { repo }), requestId });
+      const base = gitVersionRef.current;
+      sendMessage({ type: "git_status", ...(repo === undefined ? {} : { repo }), ...(base === undefined ? {} : { base }), requestId });
     },
     [sendMessage],
   );
+  // A change answer was dropped for want of its base: what is held can no longer be
+  // brought up to date by differences, so ask for everything.
+  useEffect(() => {
+    if (state.gitStatusResync === 0) return;
+    gitVersionRef.current = undefined;
+    refreshGitStatus();
+  }, [state.gitStatusResync, refreshGitStatus]);
   const gitStatusSettled = useCallback(
     (requestId: string) => {
       const scope = gitStatusScopes.current.get(requestId) ?? "";
@@ -2601,6 +2668,12 @@ export function useAgent(serverUrl = "", explicitToken?: string, embedded = fals
           // The history menu stays open while the user works, so its map must move too
           const asked = gitLogAskedRef.current;
           if (asked !== null && asked.repo === message.repo) askGitLog(asked.repo, asked.limit);
+        }
+        if (message.type === "git_status") {
+          // The version the reducer is about to hold, known now: settling below may send
+          // the queued request at once, before the state - and the effect copying its
+          // version - catch up. A stale version there would cost a full sweep per burst.
+          if (message.base === undefined || message.base === gitVersionRef.current) gitVersionRef.current = message.version;
         }
         if (message.type === "git_status" || (message.type === "git_error" && message.requestId.startsWith("git:"))) {
           gitStatusSettled(message.requestId);
