@@ -379,6 +379,26 @@ async function wireMidpoints(frame: Locator): Promise<Array<{ x: number; y: numb
   return points.map((point) => ({ x: box.x + point.x, y: box.y + point.y }));
 }
 
+/**
+ * Selects a wire by clicking its midpoint, and returns once the editor shows it
+ * selected (its handles are drawn as images, added to any the diagram already has).
+ *
+ * The click is retried: in CI the frame can report the touch-up as started a
+ * moment before its editor answers a click, and a click that selects nothing left
+ * the next key press deleting nothing — or something else.
+ */
+async function selectWire(page: Page, frame: Locator, index: number): Promise<void> {
+  const inner = await frameOf(frame);
+  const handles = () => inner.evaluate(() => document.querySelectorAll("svg image").length);
+  // A container already draws an image of its own (its fold control): count from there
+  const before = await handles();
+  await expect(async () => {
+    const wires = await wireMidpoints(frame);
+    await page.mouse.click(wires[index]!.x, wires[index]!.y);
+    await expect.poll(handles, { timeout: 1_000 }).toBeGreaterThan(before);
+  }).toPass({ timeout: 10_000 });
+}
+
 /** The services diagram with two orthogonal wires from Alpha, each bent through two waypoints. */
 function bentDiagram(): string {
   const wire = (id: string, target: string, bends: string) =>
@@ -442,8 +462,7 @@ test("ABendIsRemovedByClickAndDelete: in touch-up, a bend clicked then Delete re
   const frame = overlay.getByTitle(`${SERVICES_DIAGRAM_PATH}, full size`);
   await expect.poll(async () => labels(await frameOf(frame))).toContain("Charlie");
   await touchUp(overlay, frame);
-  const wires = await wireMidpoints(frame);
-  await page.mouse.click(wires[0]!.x, wires[0]!.y);
+  await selectWire(page, frame, 0);
   // The first segment runs from Alpha to the first waypoint: Delete takes that waypoint out
   const handle = await firstSegmentHandleOnScreen(frame, 0);
   await page.mouse.click(handle.x, handle.y);
@@ -472,8 +491,7 @@ test("a bend of a wire inside a container is removed by click and Delete too: it
   const frame = overlay.getByTitle(`${SERVICES_DIAGRAM_PATH}, full size`);
   await expect.poll(async () => labels(await frameOf(frame))).toContain("Charlie");
   await touchUp(overlay, frame);
-  const wires = await wireMidpoints(frame);
-  await page.mouse.click(wires[0]!.x, wires[0]!.y);
+  await selectWire(page, frame, 0);
   const handle = await firstSegmentHandleOnScreen(frame, 0);
   await page.mouse.click(handle.x, handle.y);
   await expect(frame).toBeFocused();
@@ -520,7 +538,7 @@ test("OnlyTheSelectedWiresAreRestyled: a wire clicked, then curved, is the only 
   expect(wires).toHaveLength(2);
   const control = overlay.getByRole("combobox", { name: "Wire style" });
   await expect(control).toHaveValue("mixed");
-  await page.mouse.click(wires[0]!.x, wires[0]!.y);
+  await selectWire(page, frame, 0);
   await expect(control).toHaveValue("orthogonal");
   await control.selectOption("curved");
   await expect(control).toHaveValue("curved");
