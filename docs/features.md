@@ -72,14 +72,15 @@
   brackets closed and matched, Tab / Shift+Tab, several cursors (Ctrl+D, Alt-click), Alt+arrows
   to move lines, Ctrl+/ to comment, folding; Ctrl+S (Cmd+S) saves and stays in the editor, and a
   CRLF file is saved with CRLF. A file's source, when read rather than edited, is shown in the same
-  editor, read-only. Anything outside the writable zone is dimmed.
+  editor, read-only. Click a file row to select it; double-click, Enter or a touch tap opens it.
+  Anything outside the writable zone is dimmed.
   Ctrl+F (Cmd+F) finds text in the open file — source, rendered Markdown, or a live edit
 - Every file and folder in the tree has one actions menu — the **⋯** at the end of its row, or a
   right-click: open, show the diff, create a **New file…** or a **New folder…** inside a folder
   (the root has **+ file** and **+ folder** above the tree), open with the system's own application, show it in Finder,
   Explorer or the Linux file manager; reference it in the prompt; **Download** it to the machine
   your browser runs on (a folder as a `.zip`), which is how you take a file off a remote server;
-  rename (F2), move to another folder, delete (Del). Folders take every action a file does; the
+  copy its relative or absolute path; rename (F2), move to another folder, delete (Del). Folders take every action a file does; the
   writable root itself cannot be renamed, moved or deleted. Each item carries the symbol of its
   action (↗ open with app, ⌂ show, @ reference, ⤓ download, ✎ rename, → move, × delete). Besides
   the **⋯**, a row keeps only the git badge (click it for the diff) and its **@**: shown on hover,
@@ -119,8 +120,12 @@
   (`docx.template`), a second button writes the same document into the template — its styles,
   heading numbering, page setup, header and footer; if the template cannot be used, that button
   says why and the plain export still works
-- Split view: a Markdown, HTML, draw.io or structured document renders beside the editor, following what
-  you type rather than what was last saved
+- A file viewer can cover the conversation or sit beside it when the window has room. Switching
+  layouts keeps the same editor and its unsaved draft; at narrow widths it returns to the overlay.
+  When covering the conversation, its status strip shows whether the agent is replying, needs you,
+  or has finished, and lets you reveal the conversation while keeping the file open.
+- Within the file viewer, **Split view** shows a Markdown, HTML, draw.io or structured document
+  beside its editor, following what you type rather than what was last saved
 - Posters: a `.poster.html` file — a poster, a worksheet or a slide the agent writes in HTML,
   guided by the bundled `posters` skill — opens in the poster editor. Double-click a text to
   correct it (it rewraps), drag a pictogram, change colours, fonts and sizes in **Format**, undo,
