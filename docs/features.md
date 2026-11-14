@@ -73,6 +73,8 @@
   to move lines, Ctrl+/ to comment, folding; Ctrl+S (Cmd+S) saves and stays in the editor, and a
   CRLF file is saved with CRLF. A file's source, when read rather than edited, is shown in the same
   editor, read-only. Click a file row to select it; double-click, Enter or a touch tap opens it.
+  Opening a second file shows the open files as tabs above the viewer; each tab keeps its unsaved
+  edits, undo history and caret, and closing one with unsaved edits asks first.
   Anything outside the writable zone is dimmed.
   Ctrl+F (Cmd+F) finds text in the open file — source, rendered Markdown, or a live edit
 - Every file and folder in the tree has one actions menu — the **⋯** at the end of its row, or a

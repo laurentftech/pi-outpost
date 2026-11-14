@@ -54,9 +54,10 @@ import { TokenGate } from "./components/TokenGate";
 import { WorkPlanPanel } from "./components/WorkPlanPanel";
 import { TerminalPanel } from "./components/TerminalPanel";
 import { OutcomePanel } from "./components/OutcomePanel";
-import { useAgent } from "./useAgent";
+import { useAgent, type OpenFile } from "./useAgent";
 import { EditorView } from "@codemirror/view";
 import { agentStatus } from "./agentStatus";
+import { ViewerTabs } from "./components/ViewerTabs";
 import { keepFocus } from "./components/AgentStatusStrip";
 import { PanelResizeHandle, useResizablePanelWidth } from "./components/PanelResizeHandle";
 import { canShowViewerBeside, CONVERSATION_MIN_WIDTH, readViewerLayout, VIEWER_PANE_WIDTH, writeViewerLayout, type ViewerLayout } from "./util/panelWidth";
@@ -277,7 +278,97 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
     return () => observer.disconnect();
   }, [workArea]);
   const viewerCanBeside = canShowViewerBeside(workAreaWidth);
-  const viewerBeside = !!state.openFile && viewerLayout === "beside" && viewerCanBeside;
+  // Open files, as tabs. Each keeps a mounted viewer — hidden while inactive — so its
+  // draft, undo history, caret and scroll survive a switch, as they survive a layout
+  // change. The active one is the file useAgent reads, so everything that follows the
+  // displayed file (attachment, git diff) stays in step.
+  const [tabs, setTabs] = useState<OpenFile[]>([]);
+  const [activeTab, setActiveTab] = useState<string | null>(null);
+  const [dirtyTabs, setDirtyTabs] = useState<Record<string, boolean>>({});
+  const tabsRef = useRef(tabs);
+  tabsRef.current = tabs;
+  const activeTabRef = useRef(activeTab);
+  activeTabRef.current = activeTab;
+  // Another project or another session is a new start: no tab carries over.
+  const tabScope = `${boundKey ?? ""}|${state.sessionId}`;
+  const tabScopeSeen = useRef(tabScope);
+  useEffect(() => {
+    const file = state.openFile;
+    if (tabScopeSeen.current !== tabScope) {
+      tabScopeSeen.current = tabScope;
+      setTabs(file ? [file] : []);
+      setActiveTab(file?.path ?? null);
+      setDirtyTabs({});
+      return;
+    }
+    if (!file) {
+      // The shown file went away without its tab being closed — deleted, most likely:
+      // drop that tab, and show its neighbour if there is one.
+      const list = tabsRef.current;
+      const gone = activeTabRef.current;
+      const index = list.findIndex((tab) => tab.path === gone);
+      if (index < 0) return;
+      const neighbour = list[index + 1] ?? list[index - 1];
+      setTabs(list.filter((tab) => tab.path !== gone));
+      setActiveTab(neighbour?.path ?? null);
+      if (neighbour) readFile(neighbour.path);
+      return;
+    }
+    setTabs((list) => {
+      const index = list.findIndex((tab) => tab.path === file.path);
+      if (index < 0) return [...list, file];
+      // While its file is read again, a tab keeps showing what it had.
+      if (file.status === "loading" && list[index].status !== "loading") return list;
+      const next = list.slice();
+      next[index] = file;
+      return next;
+    });
+    setActiveTab(file.path);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.openFile, tabScope]);
+  const setTabDirty = useCallback((path: string, dirty: boolean) => {
+    setDirtyTabs((current) => (current[path] === dirty ? current : { ...current, [path]: dirty }));
+  }, []);
+  /** Back on a tab being edited, the caret is where it was and keystrokes go there. */
+  const focusTabEditor = (path: string) => {
+    setTimeout(() => {
+      const pane = viewerPaneRef.current;
+      const editor = [...(pane?.querySelectorAll<HTMLElement>("[data-tab]") ?? [])]
+        .find((element) => element.dataset.tab === path)
+        ?.querySelector<HTMLElement>('[data-testid="file-editor"] .cm-content');
+      if (editor) focusEditor(editor);
+    }, 0);
+  };
+  const activateTab = (path: string) => {
+    if (path === activeTab) return;
+    setActiveTab(path);
+    readFile(path);
+    focusTabEditor(path);
+  };
+  /** `confirmed`: the viewer already asked about unsaved edits (its ✕ and Escape do). */
+  const closeTab = (path: string, confirmed = false) => {
+    if (!confirmed && dirtyTabs[path] && !window.confirm("Discard unsaved changes?")) return;
+    const index = tabs.findIndex((tab) => tab.path === path);
+    if (index < 0) return;
+    setTabs(tabs.filter((tab) => tab.path !== path));
+    setDirtyTabs((current) => {
+      const next = { ...current };
+      delete next[path];
+      return next;
+    });
+    if (path !== activeTab) return;
+    const neighbour = tabs[index + 1] ?? tabs[index - 1];
+    if (neighbour) {
+      setActiveTab(neighbour.path);
+      readFile(neighbour.path);
+      focusTabEditor(neighbour.path);
+    } else {
+      setActiveTab(null);
+      closePreview();
+    }
+  };
+  const viewerOpen = tabs.length > 0;
+  const viewerBeside = viewerOpen && viewerLayout === "beside" && viewerCanBeside;
   // While the tab is in the background, its title says when the agent needs the user
   // or has finished — the one place a user working in another window still sees.
   const [tabHidden, setTabHidden] = useState(() => typeof document !== "undefined" && document.visibilityState === "hidden");
@@ -1059,36 +1150,50 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
     if (window.matchMedia?.("(max-width: 767px)").matches) setSidebarOpen(false);
   }
 
-  const fileViewer = state.openFile ? (
-    <FileViewer
-      // Remount per file: edit drafts must never survive a switch to another path
-      key={state.openFile.path}
-      file={state.openFile}
-      writableRoot={state.writableRoot}
-      docxTemplate={state.docxTemplate}
-      isStreaming={state.isStreaming}
-      agentStatus={viewerAgentStatus}
-      layout={viewerBeside ? "beside" : "overlay"}
-      canBeside={viewerCanBeside}
-      onLayoutChange={setViewerLayout}
-      onRevealConversation={revealConversation}
-      gitState={state.gitStatus?.files[state.openFile.path]}
-      initialShowGitDiff={diffOnOpen}
-      gitDiff={state.gitDiff}
-      gitBaseline={state.gitBaseline?.path === state.openFile.path ? (state.gitBaseline.text ?? null) : null}
-      onFetchGitDiff={fetchGitDiff}
-      onClearGitDiff={clearGitDiff}
-      inRepository={repoForPath(state.gitStatus?.repos ?? [], state.openFile.path) !== null}
-      onOpenGitHistory={fetchGitFileHistory}
-      onClose={closePreview}
-      onReload={readFile}
-      onSave={writeFile}
-      serverUrl={serverUrl}
-      token={authToken}
-      workspace={rawWorkspace}
-      onOpenNative={openNative}
-      rawRevision={state.previewRevision}
-    />
+  const fileViewer = viewerOpen ? (
+    <>
+      <ViewerTabs
+        tabs={tabs.map((tab) => ({ path: tab.path, dirty: dirtyTabs[tab.path] ?? false }))}
+        active={activeTab}
+        onActivate={activateTab}
+        onClose={(path) => closeTab(path)}
+      />
+      <div className="relative min-h-0 flex-1">
+        {tabs.map((tab) => (
+          // One viewer per path, never reused for another: a draft can never be saved onto another file.
+          <div key={tab.path} data-tab={tab.path} className="absolute inset-0" style={{ display: tab.path === activeTab ? undefined : "none" }}>
+          <FileViewer
+            file={tab}
+            writableRoot={state.writableRoot}
+            docxTemplate={state.docxTemplate}
+            isStreaming={state.isStreaming}
+            agentStatus={viewerAgentStatus}
+            layout={viewerBeside ? "beside" : "overlay"}
+            canBeside={viewerCanBeside}
+            onLayoutChange={setViewerLayout}
+            onRevealConversation={revealConversation}
+            gitState={state.gitStatus?.files[tab.path]}
+            initialShowGitDiff={tab.path === activeTab && diffOnOpen}
+            gitDiff={state.gitDiff}
+            gitBaseline={state.gitBaseline?.path === tab.path ? (state.gitBaseline?.text ?? null) : null}
+            onFetchGitDiff={fetchGitDiff}
+            onClearGitDiff={clearGitDiff}
+            inRepository={repoForPath(state.gitStatus?.repos ?? [], tab.path) !== null}
+            onOpenGitHistory={fetchGitFileHistory}
+            onClose={() => closeTab(tab.path, true)}
+            onDirtyChange={(dirty) => setTabDirty(tab.path, dirty)}
+            onReload={readFile}
+            onSave={writeFile}
+            serverUrl={serverUrl}
+            token={authToken}
+            workspace={rawWorkspace}
+            onOpenNative={openNative}
+            rawRevision={state.previewRevision}
+          />
+          </div>
+        ))}
+      </div>
+    </>
   ) : null;
 
   return (
@@ -1349,10 +1454,10 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
             gridTemplateRows: "minmax(0, 1fr) auto auto",
           }}
         >
-          {state.openFile && (
+          {viewerOpen && (
             <div
               ref={viewerPaneRef}
-              className={viewerBeside ? "relative min-h-0 min-w-0 border-r border-zinc-200 dark:border-zinc-800" : "relative z-20 min-h-0 min-w-0"}
+              className={viewerBeside ? "relative flex min-h-0 min-w-0 flex-col border-r border-zinc-200 dark:border-zinc-800" : "relative z-20 flex min-h-0 min-w-0 flex-col"}
               style={{
                 gridColumn: 1,
                 gridRow: viewerBeside ? "1 / -1" : "1",
@@ -1375,7 +1480,7 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
               one, so its panels and commit views layer with the viewer as they always
               have, and all of it stays below the header's menus. */}
           <div className="relative flex min-h-0 min-w-0 flex-col" style={{ gridColumn: viewerBeside ? 2 : 1, gridRow: 1 }}>
-          {state.openFile && conversationPeek && !viewerBeside && (
+          {viewerOpen && activeTab && conversationPeek && !viewerBeside && (
             // In the flow, above the transcript: a floating pill would cover what the
             // user came to read.
             <div className="flex shrink-0 flex-wrap items-center justify-center gap-2 border-b border-zinc-200 bg-zinc-50 px-3 py-1.5 dark:border-zinc-800 dark:bg-zinc-900">
@@ -1385,7 +1490,7 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
                 onClick={backToFile}
                 className="min-h-6 rounded border border-zinc-300 bg-white px-3 py-1 text-sm font-medium text-zinc-700 hover:bg-zinc-100 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-200 dark:hover:bg-zinc-800"
               >
-                ← back to {state.openFile.path.split(/[\\/]/).pop()}
+                ← back to {activeTab.split(/[\\/]/).pop()}
               </button>
               {viewerCanBeside && (
                 <button

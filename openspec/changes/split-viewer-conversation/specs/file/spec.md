@@ -241,3 +241,41 @@ When the application's tab is not in front, the standalone frontend SHALL mark i
 - **GIVEN** a marked title
 - **WHEN** the tab comes to the front
 - **THEN** the title returns to its unmarked form
+
+### Requirement: OpenFilesAsTabs
+
+Opening a file while another is shown SHALL show both as tabs above the viewer, the newly opened one active; a single open file SHALL show no tab bar. Opening a file that already has a tab SHALL activate that tab. Activating a tab SHALL show that file with its own unsaved edits, undo history, caret and scroll as they were.
+
+#### Scenario: ASecondFileOpensTabs
+- **GIVEN** one file open in the viewer, with no tab bar
+- **WHEN** the user opens a second file
+- **THEN** a tab bar shows both files, the second one active
+
+#### Scenario: EachTabKeepsItsDraft
+- **GIVEN** two tabs, the first with unsaved edits and its caret mid-line
+- **WHEN** the user activates the second tab and then the first again
+- **THEN** the first shows its unsaved edits, undo still takes them back, and the caret is where it was
+
+#### Scenario: OpeningAnOpenFileActivatesItsTab
+- **GIVEN** tabs for `a.md` and `b.md`, `b.md` active
+- **WHEN** the user opens `a.md` from the tree
+- **THEN** the `a.md` tab becomes active and no third tab appears
+
+### Requirement: ClosingTabs
+
+Closing a tab SHALL ask for confirmation when it holds unsaved edits and SHALL activate a neighbouring tab when it was the active one; closing the last tab SHALL close the viewer. Switching project SHALL close every tab.
+
+#### Scenario: ClosingADirtyTabAsks
+- **GIVEN** a tab with unsaved edits
+- **WHEN** the user closes it and declines the confirmation
+- **THEN** the tab and its edits stay
+
+#### Scenario: ClosingTheActiveTabShowsItsNeighbour
+- **GIVEN** tabs `a`, `b`, `c` with `b` active
+- **WHEN** the user closes `b`
+- **THEN** `c` becomes active; closing `c` and then `a` closes the viewer
+
+#### Scenario: AnotherProjectClosesTheTabs
+- **GIVEN** several tabs open
+- **WHEN** the user switches to another project
+- **THEN** no tab and no viewer remain

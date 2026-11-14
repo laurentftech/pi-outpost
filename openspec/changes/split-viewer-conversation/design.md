@@ -30,7 +30,7 @@ Findings that shaped the decisions below:
 - Be told when the agent needs the user or has finished when the conversation is not visible.
 
 **Non-Goals:**
-- Multiple open files, tabs or editor groups.
+- Editor groups (two files side by side) — tabs are in scope, splits of the viewer itself are not.
 - Detecting or merging concurrent agent writes to the file being edited (the existing mtime conflict guard on save remains the protection).
 - Keyboard shortcuts for moving between editor and composer.
 
@@ -59,6 +59,10 @@ Below the threshold (provisionally the `lg` breakpoint, 1024 px, applied to the 
 ### Attention in overlay mode
 
 When the viewer overlays the chat pane, its status strip shows replying / running a tool / failed / finished / needs you (question or grant, highlighted), and its action reveals the conversation without closing the viewer, with a "back to file" control. In side-by-side mode the conversation pane is the signal.
+
+### Several files open as tabs, each one keeping its draft
+
+Opening a second file while one is open turns the viewer into tabs; a single file shows no tab bar. Every tab keeps its own mounted viewer — hidden while inactive — so its draft, undo history, caret and scroll survive switching, exactly as they survive a layout change. Activating a tab reads its file again, so everything that follows the displayed file (the composer's attachment, the git diff, the agent status) stays in step; the cached content stays on screen while that read is in flight. Closing a tab with unsaved edits asks first; closing the last tab closes the viewer. There is no limit on the number of tabs.
 
 ## Risks / Trade-offs
 

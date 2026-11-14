@@ -64,3 +64,9 @@
 | `file / AQuestionWhileAway` | covered | `ui/src/App.test.tsx` — AQuestionWhileAway and TheMarkGoesWhenTheUserIsBack |
 | `file / AReplyFinishedWhileAway` | covered | `ui/src/App.test.tsx` — AReplyFinishedWhileAway |
 | `file / TheMarkGoesWhenTheUserIsBack` | covered | `ui/src/App.test.tsx` — AQuestionWhileAway and TheMarkGoesWhenTheUserIsBack |
+| `file / ASecondFileOpensTabs` | covered | `ui/src/App.test.tsx` — ASecondFileOpensTabs: one file shows no tab bar, a second shows both, the new one active |
+| `file / EachTabKeepsItsDraft` | covered | `ui/src/App.test.tsx` — EachTabKeepsItsDraft: same editor element, draft, caret, undo, and focus back in the editor after the switch |
+| `file / OpeningAnOpenFileActivatesItsTab` | covered | `ui/src/App.test.tsx` — OpeningAnOpenFileActivatesItsTab: no third tab |
+| `file / ClosingADirtyTabAsks` | covered | `ui/src/App.test.tsx` — ClosingADirtyTabAsks: declined, the tab and its edits stay |
+| `file / ClosingTheActiveTabShowsItsNeighbour` | covered | `ui/src/App.test.tsx` — ClosingTheActiveTabShowsItsNeighbour: then the last close closes the viewer |
+| `file / AnotherProjectClosesTheTabs` | covered | `ui/src/App.test.tsx` — AnotherProjectClosesTheTabs: a new session leaves no tab and no viewer |

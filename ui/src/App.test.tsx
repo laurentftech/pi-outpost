@@ -5,6 +5,7 @@ import App from "./App";
 import { UploadError } from "./uploads";
 import { editorElement, editorSelection, editorText, editorView, typeInEditor } from "./components/codeEditorTesting";
 import { CONVERSATION_MIN_WIDTH, VIEWER_PANE_WIDTH } from "./util/panelWidth";
+import { undo } from "@codemirror/commands";
 
 // Mock useAgent to return a controlled state without WebSocket dependency
 const mockUseAgent = vi.fn();
@@ -2259,6 +2260,111 @@ describe("App — file viewer beside the conversation", () => {
   const composer = () => screen.getAllByRole("textbox").at(-1)!;
   const besideChat = () => screen.queryByRole("button", { name: "◫ beside chat" });
   const overChat = () => screen.queryByRole("button", { name: "⊡ over chat" });
+
+  describe("tabs", () => {
+    const other = (path: string) => ({ status: "loaded", path, content: `content of ${path}\n`, size: 20, mtimeMs: 2 });
+    const tabNames = () => screen.queryAllByRole("tab").map((tab) => tab.textContent);
+    const selectedTab = () => screen.queryAllByRole("tab").find((tab) => tab.getAttribute("aria-selected") === "true")?.textContent;
+
+    it("ASecondFileOpensTabs: one file shows no tab bar, a second shows both, the new one active", () => {
+      const { rerenderWith } = mount();
+      expect(screen.queryByRole("tablist")).toBeNull();
+
+      rerenderWith({ openFile: other("notes/b.md") });
+
+      expect(tabNames()).toEqual(["draft.md", "b.md"]);
+      expect(selectedTab()).toBe("b.md");
+    });
+
+    it("EachTabKeepsItsDraft: back on a tab, its draft, undo and caret are as they were", async () => {
+      const { rerenderWith } = mount();
+      const view = editWithCaret();
+      const editor = editorElement();
+
+      const api = rerenderWith({ openFile: other("notes/b.md") });
+      // Focus is wherever the user was meanwhile, not in the hidden editor.
+      act(() => (document.activeElement as HTMLElement).blur());
+      fireEvent.click(screen.getByRole("tab", { name: /^draft\.md/ }));
+      expect(api.readFile).toHaveBeenCalledWith("notes/draft.md");
+      // The read in flight, then its answer: the cached tab keeps showing meanwhile.
+      rerenderWith({ openFile: { status: "loading", path: "notes/draft.md", requestId: "r" } });
+      expect(editorElement()).toBe(editor);
+      rerenderWith({ openFile: file });
+
+      expect(selectedTab()).toMatch(/^draft\.md/);
+      expect(editorElement()).toBe(editor);
+      // Keystrokes go back into it, at its caret.
+      await waitFor(() => expect(editor!.contains(document.activeElement)).toBe(true));
+      expect(editorText()).toBe("first line\nsecond line edited\n");
+      expect(editorSelection().from).toBe(14);
+      act(() => {
+        undo(view);
+      });
+      expect(editorText()).toBe("first line\nsecond line\n");
+    });
+
+    it("OpeningAnOpenFileActivatesItsTab: no third tab", () => {
+      const { rerenderWith } = mount();
+      rerenderWith({ openFile: other("notes/b.md") });
+      rerenderWith({ openFile: file });
+      expect(tabNames()).toEqual(["draft.md", "b.md"]);
+      expect(selectedTab()).toBe("draft.md");
+    });
+
+    it("ClosingADirtyTabAsks: declined, the tab and its edits stay", () => {
+      const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+      const { rerenderWith } = mount();
+      editWithCaret();
+      rerenderWith({ openFile: other("notes/b.md") });
+      expect(screen.getByRole("tab", { name: /draft\.md/ })).toContainElement(screen.getByLabelText("unsaved changes"));
+
+      fireEvent.click(screen.getByRole("button", { name: "Close draft.md" }));
+
+      expect(confirm).toHaveBeenCalledWith("Discard unsaved changes?");
+      expect(tabNames()).toEqual(["draft.md", "b.md"]);
+      expect(editorText()).toBe("first line\nsecond line edited\n");
+      confirm.mockRestore();
+    });
+
+    it("ClosingTheActiveTabShowsItsNeighbour: then the last close closes the viewer", () => {
+      const { rerenderWith } = mount({ openFile: other("a.md") });
+      rerenderWith({ openFile: other("b.md") });
+      rerenderWith({ openFile: other("c.md") });
+      // Each render hands App a fresh api: the calls land on the latest one.
+      const api = rerenderWith({ openFile: other("b.md") });
+      expect(selectedTab()).toBe("b.md");
+
+      fireEvent.click(screen.getByRole("button", { name: "Close b.md" }));
+      expect(tabNames()).toEqual(["a.md", "c.md"]);
+      expect(selectedTab()).toBe("c.md");
+      expect(api.readFile).toHaveBeenLastCalledWith("c.md");
+
+      fireEvent.click(screen.getByRole("button", { name: "Close c.md" }));
+      // One file left: no tab bar, the viewer still open on it.
+      expect(screen.queryByRole("tablist")).toBeNull();
+      expect(api.readFile).toHaveBeenLastCalledWith("a.md");
+      expect(api.closeFilePreview).not.toHaveBeenCalled();
+
+      fireEvent.keyDown(document, { key: "Escape" });
+      expect(api.closeFilePreview).toHaveBeenCalled();
+    });
+
+    it("AnotherProjectClosesTheTabs: a new session leaves no tab and no viewer", () => {
+      const { rerenderWith } = mount();
+      rerenderWith({ openFile: other("notes/b.md") });
+      rerenderWith({ openFile: null, sessionId: "another-session" });
+      expect(screen.queryByRole("tablist")).toBeNull();
+      expect(document.querySelector("[data-work-area] .cm-editor")).toBeNull();
+    });
+
+    it("a deleted file's tab goes, and its neighbour is shown", () => {
+      const { rerenderWith } = mount();
+      rerenderWith({ openFile: other("notes/b.md") });
+      const api = rerenderWith({ openFile: null });
+      expect(screen.queryByRole("tablist")).toBeNull();
+      expect(api.readFile).toHaveBeenLastCalledWith("notes/draft.md");
+    });
+  });
 
   it("SwitchBothWaysKeepsTheDraft: the same editor survives both switches, with its undo history", () => {
     mount();

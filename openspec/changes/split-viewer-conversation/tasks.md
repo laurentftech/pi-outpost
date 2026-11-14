@@ -37,6 +37,10 @@
 - [x] 4.7 Copy relative path / Copy absolute path in the row and selection menus; the server sends `browserRoot`; the absolute path uses the server's separator; a brief confirmation.
 - [x] 4.8 Mark the tab title when the agent needs the user or finished while the tab is in the background; never in an embedded widget.
 
+## 4d. Tabs
+
+- [x] 4.9 Open several files as tabs: one mounted viewer per tab, tab bar from the second file, activation re-reads the file, dirty close confirms, last close closes the viewer, a project switch clears the tabs; unit tests per scenario and a browser check.
+
 ## 5. Verify
 
 - [x] 5.1 Component tests for every scenario of the spec deltas; write `scenario-coverage.md` and run `npm run check:scenarios`.
