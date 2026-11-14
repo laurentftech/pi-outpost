@@ -74,10 +74,59 @@ test("reports no console error while loading", async ({ page }) => {
  * make — it computes no layout, so a control that travelled with the transcript
  * or resolved its position against the wrong box would look identical there.
  */
-test.describe("the return-to-latest control", () => {
+// DIAGNOSTIC (branch diag/return-to-latest-flake only): repeat the group, and log
+// every scroll, every programmatic return to the end and every resize callback, so a
+// CI failure carries the order of events that produced it.
+for (let round = 0; round < 10; round++)
+test.describe(`the return-to-latest control #${round}`, () => {
   const CONTROL = "Scroll to the latest message";
 
+  test.afterEach(async ({ page }, testInfo) => {
+    if (testInfo.status === testInfo.expectedStatus) return;
+    const log = await page.evaluate(() => ((window as unknown as { __scrollLog?: string[] }).__scrollLog ?? []).join("\n")).catch((e) => `log unavailable: ${e}`);
+    await testInfo.attach("scroll-log", { body: log, contentType: "text/plain" });
+    await import("node:fs").then((fs) => fs.writeFileSync(testInfo.outputPath("scroll-log.txt"), log));
+    console.log(`SCROLLDIAG ${testInfo.title}\n${log}\nSCROLLDIAG END`);
+  });
+
   test.beforeEach(async ({ page }) => {
+    await page.addInitScript(() => {
+      const log: string[] = [];
+      (window as unknown as { __scrollLog: string[] }).__scrollLog = log;
+      const t0 = performance.now();
+      const geo = () => {
+        const m = document.querySelector("main");
+        if (!m) return "no-main";
+        const control = !!document.querySelector('button[aria-label="Scroll to the latest message"]');
+        return `top=${Math.round(m.scrollTop)} max=${m.scrollHeight - m.clientHeight} ctl=${control ? 1 : 0}`;
+      };
+      const note = (what: string) => log.push(`${Math.round(performance.now() - t0)}ms ${what} | ${geo()}`);
+      (window as unknown as { __note: typeof note }).__note = note;
+      document.addEventListener("scroll", (e) => { if ((e.target as Element)?.tagName === "MAIN") note("scroll"); }, true);
+      document.addEventListener("scrollend", (e) => { if ((e.target as Element)?.tagName === "MAIN") note("scrollend"); }, true);
+      document.addEventListener("wheel", () => note("wheel"), true);
+      const into = Element.prototype.scrollIntoView;
+      Element.prototype.scrollIntoView = function (arg?: boolean | ScrollIntoViewOptions) {
+        note(`scrollIntoView(${JSON.stringify(arg)}) on ${this.tagName}${this.id ? "#" + this.id : ""} from ${(new Error().stack ?? "").split("\n").slice(2, 5).map((l) => l.trim().replace(/https?:\/\/[^/]+/, "")).join(" < ")}`);
+        return into.call(this, arg as ScrollIntoViewOptions);
+      };
+      const RO = window.ResizeObserver;
+      window.ResizeObserver = class extends RO {
+        constructor(cb: ResizeObserverCallback) {
+          super((entries, observer) => {
+            if (entries.some((entry) => entry.target.tagName === "MAIN" || entry.target.parentElement?.tagName === "MAIN")) {
+              note(`resize ${entries.map((entry) => `${entry.target.tagName}:${Math.round(entry.contentRect.height)}`).join(",")}`);
+            }
+            cb(entries, observer);
+          });
+        }
+      };
+      new MutationObserver(() => {
+        const control = !!document.querySelector('button[aria-label="Scroll to the latest message"]');
+        const w = window as unknown as { __ctl?: boolean };
+        if (w.__ctl !== control) { w.__ctl = control; note(`control ${control ? "shown" : "hidden"}`); }
+      }).observe(document.documentElement, { childList: true, subtree: true });
+    });
     await page.goto(process.env.PI_E2E_DIAGRAMS_URL!);
     await expect(page.getByTitle("connected")).toBeVisible();
     // The seeded transcript arrives over the socket; wait for it before scrolling.
@@ -88,6 +137,7 @@ test.describe("the return-to-latest control", () => {
 
   async function scrollTo(page: import("@playwright/test").Page, top: number) {
     await scroller(page).evaluate((main, value) => {
+      (window as unknown as { __note?: (what: string) => void }).__note?.(`TEST sets scrollTop=${value}`);
       main.scrollTop = value;
     }, top);
   }
