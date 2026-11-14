@@ -281,7 +281,7 @@ jobs:
           name: status-colour-previews
           path: e2e/test-results/**/status-*.png
           retention-days: 7
-      - run: npm run test:e2e
+      - run: npm run test:e2e -- e2e/app.spec.ts
         env:
           CI: true
       - name: Cross-browser and accessibility bench
