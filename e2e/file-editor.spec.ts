@@ -236,6 +236,9 @@ test("at 520px the header stays on one row and its sessions menu remains usable"
   expect(rowTops).toHaveLength(1);
   expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(0);
 
+  // Below sm the session list waits behind ⋯ with the other secondary controls
+  await expect(page.getByRole("button", { name: "sessions", exact: true })).toBeHidden();
+  await page.getByRole("button", { name: "More controls" }).click();
   await page.getByRole("button", { name: "sessions", exact: true }).click();
   const search = page.getByRole("searchbox", { name: "Search sessions" });
   await expect(search).toBeVisible();

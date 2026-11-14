@@ -614,7 +614,8 @@ test("ASaveInFlightDoesNotLandElsewhere: leaving for another file mid-save write
     await page.getByText("diagrams", { exact: true }).click();
     await page.getByText("two-pages.drawio", { exact: true }).dblclick(); // a file row opens on double-click
     await expect(page.getByTestId("drawio-frame")).toBeVisible();
-    await expect(page.getByTestId("poster-frame")).toHaveCount(0);
+    // The poster keeps its tab, out of sight; the save still lands in its own file
+    await expect(page.getByTestId("poster-frame")).toBeHidden();
     await expect.poll(async () => readPage(await fs.readFile(file, "utf8")).html).toContain("Saved while leaving");
     expect(await fs.readFile(other, "utf8")).toBe(otherBefore);
     expect(errors).toEqual([]);
