@@ -51,6 +51,8 @@ interface FileViewerProps {
   /** Whether there is room to put the viewer beside the conversation. */
   canBeside?: boolean;
   onLayoutChange?: (layout: ViewerLayout) => void;
+  /** Whether this viewer is the shown tab; a hidden tab's viewer stays mounted. Default true. */
+  active?: boolean;
   /** Show the conversation without closing the viewer; absent, the strip offers no such action. */
   onRevealConversation?: () => void;
   /** Reports whether the editor holds unsaved changes. */
@@ -199,6 +201,7 @@ export function FileViewer({
   canBeside = false,
   onLayoutChange,
   onRevealConversation,
+  active = true,
   onDirtyChange,
   gitState,
   initialShowGitDiff = false,
@@ -933,11 +936,23 @@ export function FileViewer({
 
   // Fetched diff contents are per-file: drop them when this viewer unmounts;
   // when opened straight onto the diff (badge click), fetch it now
+  // The diff state is one for the whole app: a tab closing in the background must not
+  // clear the diff another tab is showing.
+  const gitDiffPath = useRef(gitDiff?.path);
+  gitDiffPath.current = gitDiff?.path;
   useEffect(() => {
     if (initialShowGitDiff) onFetchGitDiff(file.path);
-    return () => onClearGitDiff();
+    return () => {
+      if (gitDiffPath.current === undefined || gitDiffPath.current === file.path) onClearGitDiff();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+  // Shown again as a tab, a viewer on its diff asks for it again: the one in state may
+  // be another tab's by now.
+  useEffect(() => {
+    if (active && showGitDiff && gitDiff?.path !== file.path) onFetchGitDiff(file.path);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active]);
 
   return (
     <div ref={rootRef} className="absolute inset-0 z-20 flex flex-col bg-white dark:bg-zinc-950">

@@ -4049,3 +4049,80 @@ it("keeps an import callback usable across a new session with the same filesyste
   act(() => mockWs!.receive({ type: "file_uploaded", requestId: request.requestId, path: "src/one.txt" }));
   await expect(promise).resolves.toBe("src/one.txt");
 });
+
+describe("useAgent — files open as tabs", () => {
+  async function open(result: { current: ReturnType<typeof useAgent> }, path: string, content = `content of ${path}`) {
+    act(() => result.current.readFile(path));
+    act(() => mockWs!.receive({ type: "file_content", requestId: lastRequestId(), path, content, size: content.length, mtimeMs: 1 }));
+    await waitFor(() => expect(result.current.state.openFile).toMatchObject({ status: "loaded", path }));
+  }
+
+  it("keeps every opened file as a tab, with the content it last had", async () => {
+    const result = await connected();
+    await open(result, "a.md");
+    await open(result, "b.md");
+    expect(result.current.state.openTabs).toEqual(["a.md", "b.md"]);
+    expect(result.current.state.tabFiles["a.md"]).toMatchObject({ status: "loaded", content: "content of a.md" });
+
+    // Shown again: no second tab, and the cached content stays while it is read.
+    act(() => result.current.readFile("a.md"));
+    expect(result.current.state.openTabs).toEqual(["a.md", "b.md"]);
+    expect(result.current.state.tabFiles["a.md"]).toMatchObject({ status: "loaded", content: "content of a.md" });
+  });
+
+  it("carries a background tab through a rename, and drops it when its file is deleted", async () => {
+    const result = await connected();
+    await open(result, "a.md");
+    await open(result, "b.md");
+
+    act(() => result.current.renameFile("a.md", "renamed.md"));
+    act(() => mockWs!.receive({ type: "file_operation_result", requestId: lastRequestId(), operation: "rename_file", previousPath: "a.md", path: "renamed.md" }));
+    await waitFor(() => expect(result.current.state.openTabs).toEqual(["renamed.md", "b.md"]));
+    expect(result.current.state.tabFiles["renamed.md"]).toMatchObject({ path: "renamed.md", content: "content of a.md" });
+    expect(result.current.state.tabFiles["a.md"]).toBeUndefined();
+    expect(result.current.state.openFile?.path).toBe("b.md");
+
+    act(() => result.current.deleteFile("renamed.md"));
+    act(() => mockWs!.receive({ type: "file_operation_result", requestId: lastRequestId(), operation: "delete_file", path: "renamed.md" }));
+    await waitFor(() => expect(result.current.state.openTabs).toEqual(["b.md"]));
+    expect(result.current.state.openFile?.path).toBe("b.md");
+  });
+
+  it("drops the shown file's tab when that file is deleted, keeping the others", async () => {
+    const result = await connected();
+    await open(result, "a.md");
+    await open(result, "b.md");
+    act(() => result.current.deleteFile("b.md"));
+    act(() => mockWs!.receive({ type: "file_operation_result", requestId: lastRequestId(), operation: "delete_file", path: "b.md" }));
+    await waitFor(() => expect(result.current.state.openFile).toBeNull());
+    expect(result.current.state.openTabs).toEqual(["a.md"]);
+  });
+
+  it("closes one tab, the shown file with it only when it was that tab's", async () => {
+    const result = await connected();
+    await open(result, "a.md");
+    await open(result, "b.md");
+    act(() => result.current.closeTab("a.md"));
+    expect(result.current.state.openTabs).toEqual(["b.md"]);
+    expect(result.current.state.openFile?.path).toBe("b.md");
+    act(() => result.current.closeTab("b.md"));
+    expect(result.current.state.openTabs).toEqual([]);
+    expect(result.current.state.openFile).toBeNull();
+  });
+
+  it("closing the viewer, or another session, closes every tab", async () => {
+    const result = await connected();
+    await open(result, "a.md");
+    await open(result, "b.md");
+    act(() => result.current.closeFilePreview());
+    expect(result.current.state.openTabs).toEqual([]);
+
+    await open(result, "a.md");
+    await open(result, "b.md");
+    act(() =>
+      mockWs!.receive({ type: "session_replaced", sessionId: "sess_2", branding: {}, model: "", thinkingLevel: "off", models: [], commands: [], isStreaming: false, items: [] }),
+    );
+    await waitFor(() => expect(result.current.state.openTabs).toEqual([]));
+    expect(result.current.state.tabFiles).toEqual({});
+  });
+});

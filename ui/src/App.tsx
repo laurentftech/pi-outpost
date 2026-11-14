@@ -1,4 +1,4 @@
-import { forwardRef, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { forwardRef, memo, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { UpdateNotice } from "./components/UpdateNotice";
 import { ChangesNotice } from "./components/ChangesNotice";
 import { ReplyConformanceContext } from "./components/ReplyStructuredExchange";
@@ -54,7 +54,7 @@ import { TokenGate } from "./components/TokenGate";
 import { WorkPlanPanel } from "./components/WorkPlanPanel";
 import { TerminalPanel } from "./components/TerminalPanel";
 import { OutcomePanel } from "./components/OutcomePanel";
-import { useAgent, type OpenFile } from "./useAgent";
+import { useAgent } from "./useAgent";
 import { EditorView } from "@codemirror/view";
 import { agentStatus } from "./agentStatus";
 import { ViewerTabs } from "./components/ViewerTabs";
@@ -112,6 +112,22 @@ function focusEditor(content: HTMLElement) {
   if (view) view.focus();
   else content.focus();
 }
+
+/**
+ * One tab's viewer. A hidden tab is skipped by renders that change nothing it shows —
+ * otherwise every hidden viewer would re-render, Markdown and all, with each streamed
+ * token of the conversation.
+ */
+const TabPane = memo(
+  function TabPane({ path, active, children }: { path: string; active: boolean; file: unknown; children: ReactNode }) {
+    return (
+      <div data-tab={path} className="absolute inset-0" style={{ display: active ? undefined : "none" }}>
+        {children}
+      </div>
+    );
+  },
+  (previous, next) => !previous.active && !next.active && previous.file === next.file && previous.path === next.path,
+);
 
 function WorkingIndicator({ label }: { label: string }) {
   return (
@@ -174,7 +190,7 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
     deleteFiles,
     moveFiles,
     restoreDeleted,
-    closeFilePreview,
+    closeTab: closeTabInAgent,
     searchFiles,
     clearFileSearch,
     fetchGitDiff,
@@ -278,56 +294,36 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
     return () => observer.disconnect();
   }, [workArea]);
   const viewerCanBeside = canShowViewerBeside(workAreaWidth);
-  // Open files, as tabs. Each keeps a mounted viewer — hidden while inactive — so its
-  // draft, undo history, caret and scroll survive a switch, as they survive a layout
-  // change. The active one is the file useAgent reads, so everything that follows the
-  // displayed file (attachment, git diff) stays in step.
-  const [tabs, setTabs] = useState<OpenFile[]>([]);
-  const [activeTab, setActiveTab] = useState<string | null>(null);
+  // Open files, as tabs. useAgent keeps the list and each tab's last content, and
+  // carries them through moves, deletions and switches; here each tab keeps a mounted
+  // viewer — hidden while inactive — so its draft, undo history, caret and scroll
+  // survive a switch, as they survive a layout change.
+  const tabs = state.openTabs.flatMap((path) => {
+    const file = state.openFile?.path === path && state.openFile.status === "loaded" ? state.openFile : (state.tabFiles[path] ?? (state.openFile?.path === path ? state.openFile : undefined));
+    return file ? [file] : [];
+  });
+  const activeTab = state.openFile?.path ?? null;
+  // The preview revision a hidden tab last saw: bumps for the shown file must not
+  // reload every hidden image, PDF or page.
+  const tabRevisions = useRef<Record<string, number>>({});
+  if (activeTab) tabRevisions.current[activeTab] = state.previewRevision;
   const [dirtyTabs, setDirtyTabs] = useState<Record<string, boolean>>({});
-  const tabsRef = useRef(tabs);
-  tabsRef.current = tabs;
-  const activeTabRef = useRef(activeTab);
-  activeTabRef.current = activeTab;
-  // Another project or another session is a new start: no tab carries over.
-  const tabScope = `${boundKey ?? ""}|${state.sessionId}`;
-  const tabScopeSeen = useRef(tabScope);
+  const lastActiveIndex = useRef(0);
+  if (activeTab) lastActiveIndex.current = Math.max(0, state.openTabs.indexOf(activeTab));
+  // The shown file went away while other tabs remain (deleted, moved out of reach):
+  // show the neighbour of where it stood.
+  const openTabsKey = state.openTabs.join("\n");
   useEffect(() => {
-    const file = state.openFile;
-    if (tabScopeSeen.current !== tabScope) {
-      tabScopeSeen.current = tabScope;
-      setTabs(file ? [file] : []);
-      setActiveTab(file?.path ?? null);
-      setDirtyTabs({});
-      return;
-    }
-    if (!file) {
-      // The shown file went away without its tab being closed — deleted, most likely:
-      // drop that tab, and show its neighbour if there is one.
-      const list = tabsRef.current;
-      const gone = activeTabRef.current;
-      const index = list.findIndex((tab) => tab.path === gone);
-      if (index < 0) return;
-      const neighbour = list[index + 1] ?? list[index - 1];
-      setTabs(list.filter((tab) => tab.path !== gone));
-      setActiveTab(neighbour?.path ?? null);
-      if (neighbour) readFile(neighbour.path);
-      return;
-    }
-    setTabs((list) => {
-      const index = list.findIndex((tab) => tab.path === file.path);
-      if (index < 0) return [...list, file];
-      // While its file is read again, a tab keeps showing what it had.
-      if (file.status === "loading" && list[index].status !== "loading") return list;
-      const next = list.slice();
-      next[index] = file;
-      return next;
-    });
-    setActiveTab(file.path);
+    if (state.openFile || state.openTabs.length === 0) return;
+    const neighbour = state.openTabs[Math.min(lastActiveIndex.current, state.openTabs.length - 1)];
+    readFile(neighbour);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.openFile, tabScope]);
+  }, [state.openFile === null, openTabsKey]);
   const setTabDirty = useCallback((path: string, dirty: boolean) => {
-    setDirtyTabs((current) => (current[path] === dirty ? current : { ...current, [path]: dirty }));
+    setDirtyTabs((current) => {
+      if (current[path] === dirty || (!dirty && !(path in current))) return current;
+      return { ...current, [path]: dirty };
+    });
   }, []);
   /** Back on a tab being edited, the caret is where it was and keystrokes go there. */
   const focusTabEditor = (path: string) => {
@@ -339,33 +335,28 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
       if (editor) focusEditor(editor);
     }, 0);
   };
+  /** A save on its way back must land on the tab it was made from: stay until it does. */
+  const saving = state.openFile?.status === "loaded" && state.openFile.pendingSave !== undefined;
   const activateTab = (path: string) => {
-    if (path === activeTab) return;
-    setActiveTab(path);
+    if (path === activeTab || saving) return;
     readFile(path);
     focusTabEditor(path);
   };
   /** `confirmed`: the viewer already asked about unsaved edits (its ✕ and Escape do). */
   const closeTab = (path: string, confirmed = false) => {
+    if (path === activeTab && saving) return;
     if (!confirmed && dirtyTabs[path] && !window.confirm("Discard unsaved changes?")) return;
-    const index = tabs.findIndex((tab) => tab.path === path);
+    const index = state.openTabs.indexOf(path);
     if (index < 0) return;
-    setTabs(tabs.filter((tab) => tab.path !== path));
     setDirtyTabs((current) => {
       const next = { ...current };
       delete next[path];
       return next;
     });
-    if (path !== activeTab) return;
-    const neighbour = tabs[index + 1] ?? tabs[index - 1];
-    if (neighbour) {
-      setActiveTab(neighbour.path);
-      readFile(neighbour.path);
-      focusTabEditor(neighbour.path);
-    } else {
-      setActiveTab(null);
-      closePreview();
-    }
+    const rest = state.openTabs.filter((tab) => tab !== path);
+    if (path === activeTab && rest.length > 0) focusTabEditor(rest[Math.min(index, rest.length - 1)]);
+    // Closing the shown tab leaves no file shown; the effect above shows its neighbour.
+    closeTabInAgent(path);
   };
   const viewerOpen = tabs.length > 0;
   const viewerBeside = viewerOpen && viewerLayout === "beside" && viewerCanBeside;
@@ -655,10 +646,6 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
   useEffect(() => {
     attachmentsRef.current = attachments;
   }, [attachments]);
-
-  function closePreview() {
-    closeFilePreview();
-  }
 
   const attachedPaths = useMemo(
     () => [
@@ -1161,7 +1148,7 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
       <div className="relative min-h-0 flex-1">
         {tabs.map((tab) => (
           // One viewer per path, never reused for another: a draft can never be saved onto another file.
-          <div key={tab.path} data-tab={tab.path} className="absolute inset-0" style={{ display: tab.path === activeTab ? undefined : "none" }}>
+          <TabPane key={tab.path} path={tab.path} active={tab.path === activeTab} file={tab}>
           <FileViewer
             file={tab}
             writableRoot={state.writableRoot}
@@ -1188,9 +1175,10 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
             token={authToken}
             workspace={rawWorkspace}
             onOpenNative={openNative}
-            rawRevision={state.previewRevision}
+            active={tab.path === activeTab}
+            rawRevision={tab.path === activeTab ? state.previewRevision : (tabRevisions.current[tab.path] ?? state.previewRevision)}
           />
-          </div>
+          </TabPane>
         ))}
       </div>
     </>

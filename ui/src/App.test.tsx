@@ -28,7 +28,11 @@ vi.mock("./theme/useTheme", () => ({
 
 /** The agent state App reads, with only the fields a test cares about overridden. */
 function agentState(overrides: Record<string, unknown> = {}) {
+  // useAgent's reducer adds a tab for the shown file; this stand-in does the same.
+  const shown = (overrides.openFile ?? null) as { path: string } | null;
   return {
+    openTabs: shown ? [shown.path] : [],
+    tabFiles: {},
     connected: true,
     workspace: null,
     workspaces: [],
@@ -123,6 +127,7 @@ function agentApi(state: ReturnType<typeof agentState>) {
     writeFile: vi.fn(),
     uploadFile: vi.fn(async (name: string) => `uploads/${name}`),
     closeFilePreview: vi.fn(),
+    closeTab: vi.fn(),
     searchFiles: vi.fn(),
     clearFileSearch: vi.fn(),
     fetchGitDiff: vi.fn(),
@@ -2262,38 +2267,43 @@ describe("App — file viewer beside the conversation", () => {
   const overChat = () => screen.queryByRole("button", { name: "⊡ over chat" });
 
   describe("tabs", () => {
-    const other = (path: string) => ({ status: "loaded", path, content: `content of ${path}\n`, size: 20, mtimeMs: 2 });
-    const tabNames = () => screen.queryAllByRole("tab").map((tab) => tab.textContent);
-    const selectedTab = () => screen.queryAllByRole("tab").find((tab) => tab.getAttribute("aria-selected") === "true")?.textContent;
+    // useAgent owns the tab list (see its tests); here the state it would hand App.
+    const loaded = (path: string) => (path === file.path ? file : { status: "loaded", path, content: `content of ${path}\n`, size: 20, mtimeMs: 2 });
+    const tabsState = (paths: string[], shown: string | null) => ({
+      openTabs: paths,
+      tabFiles: Object.fromEntries(paths.map((path) => [path, loaded(path)])),
+      openFile: shown === null ? null : loaded(shown),
+    });
+    const tabNames = () => screen.queryAllByRole("button", { name: /^Show / }).map((tab) => tab.getAttribute("aria-label")!.replace(/^Show /, "").replace(/, unsaved changes$/, ""));
+    const shownTab = () => screen.queryAllByRole("button", { name: /^Show / }).find((tab) => tab.getAttribute("aria-current") === "true")?.getAttribute("aria-label")?.replace(/^Show /, "").replace(/, unsaved changes$/, "");
 
-    it("ASecondFileOpensTabs: one file shows no tab bar, a second shows both, the new one active", () => {
+    it("ASecondFileOpensTabs: one file shows no tab bar, a second shows both, the new one shown", () => {
       const { rerenderWith } = mount();
-      expect(screen.queryByRole("tablist")).toBeNull();
+      expect(screen.queryByRole("navigation", { name: "Open files" })).toBeNull();
 
-      rerenderWith({ openFile: other("notes/b.md") });
+      rerenderWith(tabsState(["notes/draft.md", "notes/b.md"], "notes/b.md"));
 
       expect(tabNames()).toEqual(["draft.md", "b.md"]);
-      expect(selectedTab()).toBe("b.md");
+      expect(shownTab()).toBe("b.md");
     });
 
-    it("EachTabKeepsItsDraft: back on a tab, its draft, undo and caret are as they were", async () => {
+    it("EachTabKeepsItsDraft: back on a tab, its draft, undo, caret and focus are as they were", async () => {
       const { rerenderWith } = mount();
       const view = editWithCaret();
       const editor = editorElement();
 
-      const api = rerenderWith({ openFile: other("notes/b.md") });
+      const api = rerenderWith(tabsState(["notes/draft.md", "notes/b.md"], "notes/b.md"));
       // Focus is wherever the user was meanwhile, not in the hidden editor.
       act(() => (document.activeElement as HTMLElement).blur());
-      fireEvent.click(screen.getByRole("tab", { name: /^draft\.md/ }));
+      fireEvent.click(screen.getByRole("button", { name: /^Show draft\.md/ }));
       expect(api.readFile).toHaveBeenCalledWith("notes/draft.md");
-      // The read in flight, then its answer: the cached tab keeps showing meanwhile.
-      rerenderWith({ openFile: { status: "loading", path: "notes/draft.md", requestId: "r" } });
+      // The read in flight, then its answer: the tab keeps showing what it had meanwhile.
+      rerenderWith({ ...tabsState(["notes/draft.md", "notes/b.md"], null), openFile: { status: "loading", path: "notes/draft.md", requestId: "r" } });
       expect(editorElement()).toBe(editor);
-      rerenderWith({ openFile: file });
+      rerenderWith(tabsState(["notes/draft.md", "notes/b.md"], "notes/draft.md"));
 
-      expect(selectedTab()).toMatch(/^draft\.md/);
+      expect(shownTab()).toBe("draft.md");
       expect(editorElement()).toBe(editor);
-      // Keystrokes go back into it, at its caret.
       await waitFor(() => expect(editor!.contains(document.activeElement)).toBe(true));
       expect(editorText()).toBe("first line\nsecond line edited\n");
       expect(editorSelection().from).toBe(14);
@@ -2303,66 +2313,51 @@ describe("App — file viewer beside the conversation", () => {
       expect(editorText()).toBe("first line\nsecond line\n");
     });
 
-    it("OpeningAnOpenFileActivatesItsTab: no third tab", () => {
-      const { rerenderWith } = mount();
-      rerenderWith({ openFile: other("notes/b.md") });
-      rerenderWith({ openFile: file });
-      expect(tabNames()).toEqual(["draft.md", "b.md"]);
-      expect(selectedTab()).toBe("draft.md");
-    });
-
     it("ClosingADirtyTabAsks: declined, the tab and its edits stay", () => {
       const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
       const { rerenderWith } = mount();
       editWithCaret();
-      rerenderWith({ openFile: other("notes/b.md") });
-      expect(screen.getByRole("tab", { name: /draft\.md/ })).toContainElement(screen.getByLabelText("unsaved changes"));
+      const api = rerenderWith(tabsState(["notes/draft.md", "notes/b.md"], "notes/b.md"));
+      expect(screen.getByRole("button", { name: "Show draft.md, unsaved changes" })).toBeInTheDocument();
 
       fireEvent.click(screen.getByRole("button", { name: "Close draft.md" }));
 
       expect(confirm).toHaveBeenCalledWith("Discard unsaved changes?");
-      expect(tabNames()).toEqual(["draft.md", "b.md"]);
+      expect(api.closeTab).not.toHaveBeenCalled();
       expect(editorText()).toBe("first line\nsecond line edited\n");
       confirm.mockRestore();
     });
 
-    it("ClosingTheActiveTabShowsItsNeighbour: then the last close closes the viewer", () => {
-      const { rerenderWith } = mount({ openFile: other("a.md") });
-      rerenderWith({ openFile: other("b.md") });
-      rerenderWith({ openFile: other("c.md") });
-      // Each render hands App a fresh api: the calls land on the latest one.
-      const api = rerenderWith({ openFile: other("b.md") });
-      expect(selectedTab()).toBe("b.md");
-
+    it("ClosingTheActiveTabShowsItsNeighbour: the tab goes, and its neighbour is read", () => {
+      const { rerenderWith } = mount(tabsState(["a.md", "b.md", "c.md"], "b.md"));
+      const api = rerenderWith(tabsState(["a.md", "b.md", "c.md"], "b.md"));
       fireEvent.click(screen.getByRole("button", { name: "Close b.md" }));
-      expect(tabNames()).toEqual(["a.md", "c.md"]);
-      expect(selectedTab()).toBe("c.md");
-      expect(api.readFile).toHaveBeenLastCalledWith("c.md");
+      expect(api.closeTab).toHaveBeenCalledWith("b.md");
 
-      fireEvent.click(screen.getByRole("button", { name: "Close c.md" }));
-      // One file left: no tab bar, the viewer still open on it.
-      expect(screen.queryByRole("tablist")).toBeNull();
-      expect(api.readFile).toHaveBeenLastCalledWith("a.md");
-      expect(api.closeFilePreview).not.toHaveBeenCalled();
-
-      fireEvent.keyDown(document, { key: "Escape" });
-      expect(api.closeFilePreview).toHaveBeenCalled();
+      // useAgent drops the tab and the shown file with it; App shows the neighbour.
+      const after = rerenderWith(tabsState(["a.md", "c.md"], null));
+      expect(after.readFile).toHaveBeenCalledWith("c.md");
     });
 
-    it("AnotherProjectClosesTheTabs: a new session leaves no tab and no viewer", () => {
-      const { rerenderWith } = mount();
-      rerenderWith({ openFile: other("notes/b.md") });
-      rerenderWith({ openFile: null, sessionId: "another-session" });
-      expect(screen.queryByRole("tablist")).toBeNull();
+    it("the last tab's ✕ or Escape closes it, and with it the viewer", () => {
+      const { api } = mount();
+      fireEvent.keyDown(document, { key: "Escape" });
+      expect(api.closeTab).toHaveBeenCalledWith("notes/draft.md");
+    });
+
+    it("AnotherProjectClosesTheTabs: no tab, no viewer once useAgent has dropped them", () => {
+      const { rerenderWith } = mount(tabsState(["notes/draft.md", "notes/b.md"], "notes/b.md"));
+      rerenderWith({ openTabs: [], tabFiles: {}, openFile: null, sessionId: "another-session" });
+      expect(screen.queryByRole("navigation", { name: "Open files" })).toBeNull();
       expect(document.querySelector("[data-work-area] .cm-editor")).toBeNull();
     });
 
-    it("a deleted file's tab goes, and its neighbour is shown", () => {
+    it("waits for a save on its way back before showing another tab", () => {
+      const pending = { ...file, pendingSave: { requestId: "w", content: "x" } };
       const { rerenderWith } = mount();
-      rerenderWith({ openFile: other("notes/b.md") });
-      const api = rerenderWith({ openFile: null });
-      expect(screen.queryByRole("tablist")).toBeNull();
-      expect(api.readFile).toHaveBeenLastCalledWith("notes/draft.md");
+      const api = rerenderWith({ openTabs: ["notes/draft.md", "notes/b.md"], tabFiles: { "notes/draft.md": file, "notes/b.md": loaded("notes/b.md") }, openFile: pending });
+      fireEvent.click(screen.getByRole("button", { name: /^Show b\.md/ }));
+      expect(api.readFile).not.toHaveBeenCalled();
     });
   });
 
@@ -2629,7 +2624,7 @@ describe("App — file viewer beside the conversation", () => {
   it("an Escape with nothing focused still closes the viewer over the chat", () => {
     const { api } = mount();
     fireEvent.keyDown(document, { key: "Escape" });
-    expect(api.closeFilePreview).toHaveBeenCalled();
+    expect(api.closeTab).toHaveBeenCalledWith("notes/draft.md");
   });
 
   it("a reply sent while looking at the conversation keeps focus in the composer", async () => {

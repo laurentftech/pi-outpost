@@ -383,6 +383,12 @@ describe("FileViewer", () => {
       expect(onClearGitDiff).toHaveBeenCalled();
     });
 
+    it("leaves another tab's diff alone when its own viewer goes away", () => {
+      const { onClearGitDiff, unmount } = setup({ gitState: "modified", gitDiff: { path: "other/file.ts", head: "a", worktree: "b" } as never });
+      unmount();
+      expect(onClearGitDiff).not.toHaveBeenCalled();
+    });
+
     it("offers the history affordance for any tracked file, changed or not", () => {
       const { onOpenGitHistory } = setup({ inRepository: true, gitState: undefined });
       fireEvent.click(button("⎇ history"));

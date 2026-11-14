@@ -66,9 +66,9 @@
 | `file / TheMarkGoesWhenTheUserIsBack` | covered | `ui/src/App.test.tsx` — AQuestionWhileAway and TheMarkGoesWhenTheUserIsBack |
 | `file / ASecondFileOpensTabs` | covered | `ui/src/App.test.tsx` — ASecondFileOpensTabs: one file shows no tab bar, a second shows both, the new one active |
 | `file / EachTabKeepsItsDraft` | covered | `ui/src/App.test.tsx` — EachTabKeepsItsDraft: same editor element, draft, caret, undo, and focus back in the editor after the switch |
-| `file / OpeningAnOpenFileActivatesItsTab` | covered | `ui/src/App.test.tsx` — OpeningAnOpenFileActivatesItsTab: no third tab |
+| `file / OpeningAnOpenFileActivatesItsTab` | covered | `ui/src/useAgent.test.ts` — keeps every opened file as a tab, with the content it last had (shown again: no second tab) |
 | `file / ClosingADirtyTabAsks` | covered | `ui/src/App.test.tsx` — ClosingADirtyTabAsks: declined, the tab and its edits stay |
-| `file / ClosingTheActiveTabShowsItsNeighbour` | covered | `ui/src/App.test.tsx` — ClosingTheActiveTabShowsItsNeighbour: then the last close closes the viewer |
-| `file / AnotherProjectClosesTheTabs` | covered | `ui/src/App.test.tsx` — AnotherProjectClosesTheTabs: a new session leaves no tab and no viewer |
+| `file / ClosingTheActiveTabShowsItsNeighbour` | covered | `ui/src/App.test.tsx` — ClosingTheActiveTabShowsItsNeighbour; `ui/src/useAgent.test.ts` — closes one tab, the shown file with it only when it was that tab's |
+| `file / AnotherProjectClosesTheTabs` | covered | `ui/src/useAgent.test.ts` — closing the viewer, or another session, closes every tab; `ui/src/App.test.tsx` — AnotherProjectClosesTheTabs |
 | `components / APhoneHeaderIsOneRow` | covered | `ui/src/components/Header.test.tsx` — keeps the secondary controls behind ⋯ until it is opened, then shows them (classes); measured one row at 390px in the running app |
 | `components / TheFoldedControlsAreAtHand` | covered | `ui/src/components/Header.test.tsx` — keeps the secondary controls behind ⋯ until it is opened, then shows them; `ui/src/util/keepInViewport.test.ts` for the menu placement |
