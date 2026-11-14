@@ -70,3 +70,5 @@
 | `file / ClosingADirtyTabAsks` | covered | `ui/src/App.test.tsx` — ClosingADirtyTabAsks: declined, the tab and its edits stay |
 | `file / ClosingTheActiveTabShowsItsNeighbour` | covered | `ui/src/App.test.tsx` — ClosingTheActiveTabShowsItsNeighbour: then the last close closes the viewer |
 | `file / AnotherProjectClosesTheTabs` | covered | `ui/src/App.test.tsx` — AnotherProjectClosesTheTabs: a new session leaves no tab and no viewer |
+| `components / APhoneHeaderIsOneRow` | covered | `ui/src/components/Header.test.tsx` — keeps the secondary controls behind ⋯ until it is opened, then shows them (classes); measured one row at 390px in the running app |
+| `components / TheFoldedControlsAreAtHand` | covered | `ui/src/components/Header.test.tsx` — keeps the secondary controls behind ⋯ until it is opened, then shows them; `ui/src/util/keepInViewport.test.ts` for the menu placement |

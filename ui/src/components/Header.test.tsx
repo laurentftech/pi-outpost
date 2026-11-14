@@ -576,3 +576,28 @@ describe("Header", () => {
     });
   });
 });
+
+// jsdom applies no media query: these check the classes that put the secondary
+// controls behind ⋯ below lg (sessions below sm), and that ⋯ lifts them.
+describe("Header — controls behind ⋯ on narrow screens", () => {
+  const wrapperOf = (element: HTMLElement) => element.closest("span.contents") as HTMLElement;
+
+  it("keeps the secondary controls behind ⋯ until it is opened, then shows them", () => {
+    setup();
+    const more = screen.getByRole("button", { name: "More controls" });
+    expect(more).toHaveAttribute("aria-expanded", "false");
+    expect(more).toHaveClass("lg:hidden");
+    const outcome = screen.getByRole("button", { name: /Outcome/ });
+    const sessions = screen.getByRole("button", { name: "sessions" });
+    expect(wrapperOf(outcome)).toHaveClass("max-lg:hidden");
+    expect(wrapperOf(sessions)).toHaveClass("max-sm:hidden");
+    // The primary controls are never behind it.
+    expect(screen.getByRole("button", { name: /\+ new/ }).closest("span.contents")).toBeNull();
+
+    fireEvent.click(more);
+
+    expect(screen.getByRole("button", { name: "Fewer controls" })).toHaveAttribute("aria-expanded", "true");
+    expect(wrapperOf(outcome)).not.toHaveClass("max-lg:hidden");
+    expect(wrapperOf(sessions)).not.toHaveClass("max-sm:hidden");
+  });
+});

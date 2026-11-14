@@ -619,6 +619,10 @@ function ThemeToggle({ theme, preference = theme, onToggle, onSetTheme }: { them
 }
 
 export function Header(props: HeaderProps) {
+  // Below lg the secondary controls wait behind ⋯, so the bar keeps to one row; opened,
+  // they take the rows after it, as themselves — their menus are never clipped.
+  const [moreOpen, setMoreOpen] = useState(false);
+  const tray = moreOpen ? "contents" : "contents max-lg:hidden";
   const { isStreaming, connected } = props;
   // State rather than a ref: the statuses measure the bar from their own layout effect,
   // which runs before a parent's ref is attached — a ref would still be empty then.
@@ -671,6 +675,7 @@ export function Header(props: HeaderProps) {
       >
         {props.sidebarOpen ? "◧" : "◨"} files
       </button>
+      <span className={tray}>
       <button
         type="button"
         onClick={props.onToggleOutcome}
@@ -696,6 +701,7 @@ export function Header(props: HeaderProps) {
           onShowCommit={props.onShowCommit}
         />
       )}
+      </span>
 
       {/* The title gives way first: it names the deployment, which the reader knows,
           while the project and the branch beside it say where the agent works. */}
@@ -709,7 +715,8 @@ export function Header(props: HeaderProps) {
 
       <ExtensionStatuses statuses={props.statuses} bar={bar} />
 
-      <div className="ml-auto flex w-full max-w-full shrink-0 flex-wrap items-center gap-1 sm:w-auto sm:gap-1.5">
+      <div className="ml-auto flex max-w-full shrink-0 flex-wrap items-center gap-1 sm:gap-1.5">
+        <span className={tray}>
         <ConversationFilterMenu filters={props.filters} onFilterChange={props.onFilterChange} />
         {props.onExportConversation && (
           <button
@@ -740,6 +747,7 @@ export function Header(props: HeaderProps) {
           </button>
         )}
         {props.showThemeToggle && <ThemeToggle theme={props.theme} preference={props.themePreference} onSetTheme={props.onSetTheme} onToggle={props.onToggleTheme} />}
+        </span>
         <button
           type="button"
           onClick={props.onNewSession}
@@ -748,6 +756,7 @@ export function Header(props: HeaderProps) {
         >
           + new
         </button>
+        <span className={tray}>
         <TreeMenu
           tree={props.tree}
           isStreaming={isStreaming}
@@ -755,6 +764,19 @@ export function Header(props: HeaderProps) {
           onNavigate={props.onNavigateTree}
           onFork={props.onForkSession}
         />
+        </span>
+        <button
+          type="button"
+          onClick={() => setMoreOpen((open) => !open)}
+          aria-expanded={moreOpen}
+          aria-label={moreOpen ? "Fewer controls" : "More controls"}
+          title={moreOpen ? "Fewer controls" : "More controls"}
+          className={`${HEADER_CONTROL} border-zinc-300 text-zinc-500 hover:border-zinc-400 hover:text-zinc-700 lg:hidden dark:border-zinc-800 dark:text-zinc-400 dark:hover:border-zinc-600 dark:hover:text-zinc-200 ${moreOpen ? "bg-zinc-100 dark:bg-zinc-800" : ""}`}
+        >
+          ⋯
+        </button>
+        {/* On a phone the session list waits behind ⋯ too: one row has room for no more. */}
+        <span className={moreOpen ? "contents" : "contents max-sm:hidden"}>
         <SessionMenu
           sessions={props.sessions}
           sessionSearch={props.sessionSearch}
@@ -766,6 +788,7 @@ export function Header(props: HeaderProps) {
           onSearchSessions={props.onSearchSessions}
           onClearSessionSearch={props.onClearSessionSearch}
         />
+        </span>
         <SettingsMenu
           credentials={props.credentials}
           login={props.login}

@@ -157,3 +157,16 @@ Opening a file can now change the whole layout, so a plain mouse click on a file
 #### Scenario: OneActivationStillOpensFromTheBadgeAndTheMenu
 - **WHEN** the user clicks a file's git badge, or chooses Open in its actions menu
 - **THEN** the diff, or the file, is opened at once
+
+### Requirement: SecondaryHeaderControlsFold
+
+So that the header keeps one row on narrow screens without hiding or clipping anything, below the lg breakpoint the secondary controls (Outcome, the git branch, the conversation filter, the HTML export, the terminal, the theme and the conversation tree) — and below the sm breakpoint the session list — SHALL wait behind a ⋯ control that shows them on the rows after it, as themselves, with their own menus. The project, Files, new session and settings controls SHALL stay on the row.
+
+#### Scenario: APhoneHeaderIsOneRow
+- **GIVEN** a 390-pixel-wide window
+- **THEN** the header is one row holding the project, Files, new session, ⋯ and settings controls, none of them off screen
+
+#### Scenario: TheFoldedControlsAreAtHand
+- **GIVEN** a narrow window
+- **WHEN** the user opens ⋯ and then the sessions menu
+- **THEN** the folded controls are shown, and the sessions menu opens whole inside the window
