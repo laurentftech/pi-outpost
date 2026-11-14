@@ -1658,10 +1658,10 @@ describe("ReturnToLatest", () => {
     expect(control()).toBeInTheDocument();
   });
 
-  it("lets go of the guard when the scroll settles short of the end", () => {
-    // A reader who drags the scrollbar towards the end and releases early emits
-    // no gesture, and every position they pass through moves the same way the
-    // animation was going. `scrollend` is the only thing that separates them.
+  it("lets go of the guard when a scrollbar drag settles short of the end", () => {
+    // A reader who drags the scrollbar towards the end and releases early moves the
+    // same way the animation was going; the press that starts the drag is what
+    // tells them apart.
     mount();
     const main = scroller();
     layout(main, { scrollHeight: 4000, clientHeight: 600, scrollTop: 2000 });
@@ -1669,14 +1669,35 @@ describe("ReturnToLatest", () => {
     fireEvent.click(screen.getByRole("button", { name: CONTROL }));
     expect(control()).toBeNull();
 
+    fireEvent.pointerDown(main);
     layout(main, { scrollHeight: 4000, clientHeight: 600, scrollTop: 2600 });
     fireEvent.scroll(main);
-    expect(control()).toBeNull(); // indistinguishable from the animation, so far
-
     fireEvent(main, new Event("scrollend"));
 
     // Settled, and not at the end: the reader is reading scrollback again.
     expect(control()).toBeInTheDocument();
+  });
+
+  // openlore: scenario=ScrollsToEnd spec=conversation-scroll-navigation
+  it("finishes a return the browser cut short, when nobody took the scroll over", () => {
+    // Recorded in CI: the smooth return stopped at 2,960 of 6,700 px with a
+    // scrollend, while a diagram finished rendering; read as the reader stopping,
+    // the transcript stayed stranded there and stopped following.
+    mount();
+    const main = scroller();
+    layout(main, { scrollHeight: 4000, clientHeight: 600, scrollTop: 2000 });
+    fireEvent.scroll(main);
+    fireEvent.click(screen.getByRole("button", { name: CONTROL }));
+    const jumps = vi.mocked(Element.prototype.scrollIntoView).mock.calls.length;
+
+    layout(main, { scrollHeight: 4000, clientHeight: 600, scrollTop: 2600 });
+    fireEvent.scroll(main);
+    fireEvent(main, new Event("scrollend"));
+
+    expect(control()).toBeNull();
+    const calls = vi.mocked(Element.prototype.scrollIntoView).mock.calls;
+    expect(calls.length).toBe(jumps + 1);
+    expect(calls.at(-1)?.[0]).toEqual({ behavior: "auto" });
   });
 
   it("keeps following when the end moves away under a reader who never scrolled up", () => {
