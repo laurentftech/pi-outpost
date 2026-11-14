@@ -756,6 +756,11 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
    * anything that streams in while it runs.
    */
   const returning = useRef<number | null>(null);
+  /**
+   * Set by a reader's gesture that interrupted a return, until the next position is
+   * read: that position is theirs, whatever else moved in the same instant.
+   */
+  const tookOver = useRef(false);
   /** The scroller's geometry when last evaluated: tells the end moving from the reader moving. */
   const lastGeometry = useRef<{ scrollTop: number; scrollHeight: number } | null>(null);
 
@@ -782,7 +787,13 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
     const near = main.scrollHeight - main.scrollTop - main.clientHeight < NEAR_BOTTOM_PX;
     const last = lastGeometry.current;
     lastGeometry.current = { scrollTop: main.scrollTop, scrollHeight: main.scrollHeight };
-    if (!near && stickToBottom.current && last && main.scrollHeight > last.scrollHeight && main.scrollTop >= last.scrollTop) {
+    // A reader who stopped a return mid-flight is somewhere the animation had not
+    // reached and they chose; a diagram finishing its render in the same instant
+    // makes that look like content growing under someone being followed. Logged in
+    // CI: a wheel at 1,449 px, the transcript growing by 622, and a jump to the end.
+    const byReader = tookOver.current;
+    tookOver.current = false;
+    if (!byReader && !near && stickToBottom.current && last && main.scrollHeight > last.scrollHeight && main.scrollTop >= last.scrollTop) {
       // The end moved away, the viewport did not move up: content grew under a
       // reader being followed (a reply's last block landing in one piece, with the
       // browser reporting a scroll for it). A reader leaving always moves up; a
@@ -811,6 +822,7 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
 
   /** A scroll the reader started: whatever we were animating towards, they own it now. */
   function handleScrollGesture() {
+    if (returning.current !== null) tookOver.current = true;
     returning.current = null;
   }
 
